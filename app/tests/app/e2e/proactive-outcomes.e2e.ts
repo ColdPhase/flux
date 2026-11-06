@@ -51,7 +51,7 @@ test('all pages render quiet comparisons and insufficient evidence with current 
       // A saved task filter can hide an outcome link's destination. These links
       // must restore the whole project before landing on real persisted work.
       const views = page.getByRole('navigation', { name: 'Task views' });
-      const jumps = page.getByRole('navigation', { name: 'Project work sections' });
+      const jumps = page.getByRole('navigation', { name: 'Space work sections' });
       // Results have no group in Tasks (#342); the cited result is checked below from the suggestion itself.
       for (const [label, target] of [['Work', 'g-open']] as const) {
         // The phone's saved view is Mine (it has no group views); the computer's is a group plus the toolbar's Mine toggle.
@@ -188,7 +188,7 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
       try {
       await usagePage.goto(`${origin.origin}/settings/background-compute`);
       const usage = usagePage.locator('.background-usage'); await usage.waitFor();
-      assert.match(await usage.innerText(), /3 \/ 3 requests[\s\S]*\$0.15 \/ \$0.50[\s\S]*\$0.02[\s\S]*\$0.05[\s\S]*\$0.00 reserved/);
+      assert.match(await usage.innerText(), /3 requests[\s\S]*\$0.15 · your key’s daily budget is \$0.50[\s\S]*\$0.02[\s\S]*\$0.05[\s\S]*\$0.00 reserved/);
       await usage.getByRole('button', { name: 'Refresh usage', exact: true }).scrollIntoViewIfNeeded();
       await usagePage.screenshot({ path: `/state/comparison-usage-${width}-summary.png`, fullPage: true });
       const shortcut = usagePage.getByRole('button', { name: 'View recent requests', exact: true });
@@ -247,13 +247,13 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
     const marked = (await api(page, 'GET', '/api/v1/background-compute-connections/current')).data as { name: string; keyLastFour: string };
     // #513: connections are disconnected on AI connections; usage stays on Background suggestions.
     await page.goto(`${origin.origin}/settings/ai-connections`);
-    await page.getByRole('button', { name: `Disconnect ${marked.name}, key ending ${marked.keyLastFour}`, exact: true }).click();
-    await page.getByRole('heading', { name: 'Add an AI connection', exact: true }).waitFor();
+    await page.getByRole('button', { name: `Remove ${marked.name}, key ending ${marked.keyLastFour}`, exact: true }).click();
+    await page.getByRole('heading', { name: 'Use an API key', exact: true }).waitFor();
     await page.goto(`${origin.origin}/settings/background-compute`);
     await page.locator('.background-usage').waitFor();
     await page.getByRole('button', { name: 'Refresh usage', exact: true }).click();
     const accounting = (await api(page, 'GET', '/api/v1/background-compute-usage')).data as BackgroundComputeUsage;
-    assert.equal(accounting.currentLimits, null); assert.equal(accounting.conservativeCountedCents, 15);
+    assert.equal(accounting.dailyBudgetCents, null); assert.equal(accounting.conservativeCountedCents, 15);
     assert.match(await page.locator('.background-usage').innerText(), /3 requests[\s\S]*\$0.15/);
     await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks`);
     const insufficient = page.getByRole('article', { name: 'Insufficient evidence for Bedside gesture lamp' }); await insufficient.waitFor();

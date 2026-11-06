@@ -54,7 +54,10 @@ describe('runtime tables hold display facts only', () => {
       // 0096 (T4): a keyed HMAC of the account (exactly 64 hex digits by CHECK, too short for any vendor
       // token), the previous masked label for the account-change notice, and the last sign-out.
       'account_fingerprint:text', 'previous_account_label:text', 'account_changed_at:timestamp with time zone', 'signed_out_at:timestamp with time zone',
-      'sign_out_failed:boolean'],
+      'sign_out_failed:boolean',
+      // 0003 (#854): the provider's remaining usage as the last run saw it: a share 0–100, a window name, a time, one boolean.
+      'usage_left_percent:smallint', 'usage_window:text', 'usage_resets_at:timestamp with time zone', 'usage_limit_reached:boolean',
+      'usage_read_at:timestamp with time zone'],
     agent_runtime_operator_statements: ['statement:text', 'agreed_on:date', 'recorded_at:timestamp with time zone'],
     // 0097: bounded operation identity/time/phase and digests; no raw ticket, session token or output.
     agent_runtime_auth_operations: ['binding_id:uuid', 'client:text', 'owner_user_id:text', 'operation_id:uuid', 'revision:integer',

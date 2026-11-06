@@ -207,8 +207,9 @@ class RailNavigation(unittest.TestCase):
                 page, ids = self.setup_owner(engine, coarse=True, many=True)
                 project = ids["projects"][0]["id"]
                 agent = self.api(page, "POST", f"/api/v1/workspaces/{ids['workspace']}/agents", {"name": "Garden analyst", "owner": "self"}, 201)
-                self.api(page, "POST", "/api/v1/personal-assistant", {"consentVersion": "o-008-2026-10-02", "agentId": agent["id"],
-                    "perRunCents": 8, "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, 201)
+                # #854: the model of a connection (Connect AI's default: the TEST-ONLY fixture key); nothing else to agree to.
+                default = self.api(page, "GET", "/api/v1/personal-assistant/model", None, 200)["default"]
+                self.api(page, "POST", "/api/v1/personal-assistant", {"agentId": agent["id"], **default}, 201)
                 conversation = self.api(page, "POST", f"/api/v1/projects/{project}/conversations", {
                     "body": "Compare the sensors for the east garden bed.", "clientMessageId": str(uuid.uuid4())}, 201)
                 mock("/__script", {"reset": True, "delay": 30})

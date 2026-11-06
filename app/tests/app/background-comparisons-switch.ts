@@ -82,12 +82,10 @@ try {
     const connection = expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
       name: 'Lab comparison endpoint', provider: 'openai_compatible', model, baseUrl: `${MOCK}/openai/v1`, apiKey: key,
       price: { inputMicrosPerMTok: 10_000_000, outputMicrosPerMTok: 40_000_000 }, useForBackground: true,
-      payerOrganization: 'Lab payer', providerWorkspace: 'Lab workspace', workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true,
-      providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
-      maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 20 } }), 201) as BackgroundComputeConnection;
+      dailyBudgetCents: 50 } }), 201) as BackgroundComputeConnection;
     const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/proactive-comparison-rules`, { body: {
       agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison', dataScope: 'current_project_published',
-      permittedEffect: 'quiet_project_proposal', maxRunsPerDay: 3, periodBudgetCents: 50, perRunCents: 20 } }), 201) as ProactiveComparisonRule;
+      permittedEffect: 'quiet_project_proposal' } }), 201) as ProactiveComparisonRule;
     assert.equal(rule.status, 'paused');
     const marker = `switch-evidence-${randomUUID()}`;
     const material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/materials`, { body: {

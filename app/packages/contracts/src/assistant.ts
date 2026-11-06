@@ -17,7 +17,6 @@ export type AssistantAreas = Record<AssistantAreaId, AssistantAreaMode>;
 export const DEFAULT_ASSISTANT_AREAS: Readonly<AssistantAreas> = {
   tasks: 'edit', wiki: 'edit', maps: 'edit', conversations: 'edit', decisions: 'edit',
 };
-export const ASSISTANT_LIMITS = { backgroundRunsPerDay: { min: 0, max: 24, default: 24 } } as const;
 const CONTEXT_CAPABILITIES: AgentMcpCapabilityId[] = ['project.identity.read'];
 
 /**
@@ -79,12 +78,8 @@ export function assistantRunScopes(tools: readonly string[]): string[] {
 /** The owner's assistant settings. Its "What it may do" is the assistant connection's own row (`mayDo`), read here for the screen. */
 export interface AssistantSettings {
   workspaceId: string; ownerUserId: string; agentId: string; connectionId: string;
-  mayDo: AgentMayDo; backgroundRunsPerDay: number;
+  mayDo: AgentMayDo;
   version: number; createdAt: string; updatedAt: string;
-}
-export interface UpdateAssistantSettings {
-  backgroundRunsPerDay?: number;
-  expectedVersion?: number;
 }
 export const assistantSettingsPath = (workspaceId: string, ownerUserId: string) =>
   `/api/v1/workspaces/${workspaceId}/assistants/${ownerUserId}/settings`;

@@ -57,7 +57,7 @@ organization). Have you accepted them?  [y/N]
   client. To turn the runtime off, empty `FLUX_AGENT_RUNTIME` and run `./flux up` (see
   [Switching off](#switching-off-purging-reset-and-clean)).
 - **Enter means yes, for Codex.** `Enter` on the first question writes `FLUX_AGENT_RUNTIME=codex`.
-  Codex is available: owners sign in with ChatGPT on Settings → Agents and AI.
+  Codex is available: owners sign in with ChatGPT on Settings → AI (Connect AI).
   `n` writes nothing and does not ask the second question.
 - **Claude Code needs a typed `y`.** The second question records *your* statement that you have agreed to
   Anthropic's Commercial Terms (see [Before you switch it on](#before-you-switch-it-on)), so `Enter`, `n`
@@ -256,13 +256,13 @@ The image of each slot contains node-pty 1.1.0 (pinned; compiled from source in 
 the terminal. Nothing else is added to the slot image.
 ## Runs
 
-Once an owner is signed in, they can turn their assistant on with *Claude Code* in Settings → Your
-assistant (consent `f-022-runtime-2026-10-16`; no API key is used or needed). Each *Ask my assistant* then
-runs their own Claude Code in their own slot:
+Once an owner is signed in, their Claude plan (or ChatGPT plan) is one of their connections in Settings → AI →
+Connect AI, and their assistant can use any of its models ([Connect AI](../product/model-providers.md), #854). No API
+key is used or needed. Each *Ask my assistant* then runs their own Claude Code (or Codex) in their own slot:
 
 - **Token.** The worker asks the API, which is Flux's authorization server, for a run token: a signed MCP
   access token for the owner's assistant connection, with `flux_run_id` and `flux_place` (the run's project
-  and conversation), audience `/mcp`, scope `flux.context.read` and a lifetime of five minutes. The worker
+  and conversation), audience `/mcp`, scope `flux.context.read` and a lifetime of the run's clock plus five minutes. The worker
   proves it holds the run with a one-time nonce whose hash it stored on the run row. Only the token's id,
   expiry and exact tools are kept; the token itself never reaches the database, a queue, a file or a log.
 - **What runs.** The slot runs the fixed `claude -p --output-format stream-json …` command of
@@ -273,19 +273,39 @@ runs their own Claude Code in their own slot:
 - **What it can read.** The route lists exactly the run's tools: the read tools of the areas the owner
   switched on (F-027 AST-4; read only in this first step), refuses every other tool with the S6 refusal,
   reaches only the run's project, refuses the token once the run ends, the owner stops it, revokes the
-  assistant's connection or turns an area off, and returns at most 16 KiB per tool result and 64 KiB per
-  run.
+  assistant's connection or turns an area off, and returns at most 256 KiB per tool result and 8 MiB per
+  run (safety bounds, below).
 - **Read-back.** The slot checks the CLI's first `system/init`: any tool other than the run's exact Flux
   tools (and `EndConversation`), or any MCP server other than a connected Flux, stops the CLI with no
   answer. The worker checks it again.
 - **Ends.** Each end has its own state on the run: an expired login (*Sign in to Claude again*), a plan
-  limit (with the reset time the CLI reported), the no-event timeout (60 s) and the wall clock (5 min), a
-  crash, an answer over 16 KiB, tool results over their bound, a busy slot, the turn cap, a refused
-  request and a broken stream (`unknown`, never rerun). None falls back to an API key. Stop sends SIGINT,
-  then SIGTERM after 5 s, then kills; the run records the request and the slot's acknowledgement
-  separately. Token-shaped strings and the run token are removed from the committed answer.
-- **Limits.** 20 requests a day per owner, one at a time; a run never waits behind a sign-in, a status
-  check or another run in the slot's serial lane (it ends *busy*).
+  limit (with the reset time the CLI reported), a crash, a refused request, a busy slot, one of the safety
+  bounds below, and a broken stream (`unknown`, never rerun). None falls back to another connection. Stop
+  sends SIGINT, then SIGTERM after 5 s, then kills; the run records the request and the slot's
+  acknowledgement separately. Token-shaped strings and the run token are removed from the committed answer.
+- **A plan's limit pauses the request** (#854). When the CLI reports its plan's limit with a reset time, the
+  request waits, queued, as "Claude limit reached, resumes at 14:00" and starts again by itself when the plan
+  resets. Without a reset time it says "Claude limit reached" and tries again every two hours. Either way at most
+  three times in a row, and never for a request that already changed something: it ends with the line and how many
+  changes were made. Nothing moves to another connection, and there is no button to switch. For Codex, the slot also
+  reads the plan's remaining usage from the app-server after each run, for Connect AI's line ("48% of your weekly limit
+  left · resets Mon"); for Claude Code, Connect AI says "Plan limits apply" until a limit is reached.
+- **No Flux limits** (#843). Flux sets no runs a day, no five-minute clock, no step count and no change limit
+  of its own. A run never waits behind a sign-in, a status check or another run in the slot's serial lane (it
+  ends *busy*). Only these technical safety bounds remain; nobody meets them in normal use:
+
+  | Bound | Value | Where |
+  | --- | --- | --- |
+  | Wall clock of one run | 1 hour | `RUNTIME_RUN_LIMITS.wallClockSeconds` |
+  | No event from the CLI | 10 minutes | `RUNTIME_RUN_LIMITS.idleSeconds` |
+  | Steps (turns) of one run | 200 | `RUNTIME_RUN_LIMITS.maxTurns` (the same for an API-key run) |
+  | Answer size | 64 KiB | `RUNTIME_RUN_LIMITS.maxAnswerBytes` |
+  | Tool results | 256 KiB per call, 8 MiB per run | `RUN_TOKEN_LIMITS` |
+  | Requests waiting at once per person | 20 (paused ones not counted) | `MAX_WAITING_REQUESTS` |
+  | Schedules per person | 200 | `ASSISTANT_JOB_LIMITS` |
+
+  An API key keeps one daily budget set by its owner ([CA-3](../product/model-providers.md#ca-3--the-providers-limits-not-fluxs)); a
+  request that finds it used waits for the key's next day.
 - **Transcripts.** `--no-session-persistence`, and after every run the slot deletes the CLI's session
   directories (`projects`, `todos`, `shell-snapshots`, `session-env`, `transcripts`) from the binding
   directory and the run's MCP configuration from `/tmp`.
@@ -415,7 +435,7 @@ changes. It proves the flags exist, not how the CLIs behave in a run; the automa
 | `./scripts/check_application.sh` | With the runtime off: the API reports it disabled; no request input selects a slot; the runtime tables hold display facts only; core, supervisor, manager and egress tests, including the fuzz tests of the supervisor-stream reader and `runtime-egress`; the sign-in console in process with real terminals (the 15-minute end with injected timers, disconnect, the closed request set, the session-bound ticket). |
 | `python3 -m unittest tests.test_container_isolation tests.test_runtime_inspect` | No Compose file mounts a Docker or Podman socket, and none binds a host path outside the checkout (so no `/var/run` or `/run` directory mount); `inspect.py` refuses the same on a running project. |
 | `python3 -m unittest tests.test_flux_subscription_question` | The launcher's question with a pseudo-terminal and a stub `docker` as the fake host check: Enter, Enter writes `codex` and no statement; Enter, `y` writes `codex,claude_code` and today's date; `n` writes nothing; no terminal asks and writes nothing; each failing host check shows no question and one reason line; an existing `docker/.env` and a second `./flux up` are never asked; `./flux ai on` asks the same, only adds and refuses without a terminal. It creates no Docker resource. |
-| `./scripts/check_application.sh` (`agent-runtime-runs.test.ts`) | A run end to end with the TEST ONLY fake `claude`: the real worker processor and engine, an in-process `runtime-manager` and supervisor, and real MCP calls to the API with a minted run token. Progress, the commit recheck, the exact argv, the token only in `FLUX_RUN_TOKEN` and the `Authorization` header, no transcript, the read-back (an extra tool or server), every end state, results past the bound, Stop (SIGINT and SIGTERM), a busy slot, redaction, revocation mid-run, switches off before and during a run, runs per day and the DM/private/other-project canaries. |
+| `./scripts/check_application.sh` (`agent-runtime-runs.test.ts`) | A run end to end with the TEST ONLY fake `claude`: the real worker processor and engine, an in-process `runtime-manager` and supervisor, and real MCP calls to the API with a minted run token. Progress, the commit recheck, the exact argv, the token only in `FLUX_RUN_TOKEN` and the `Authorization` header, no transcript, the read-back (an extra tool or server), every end state, results past the bound, Stop (SIGINT and SIGTERM), a busy slot, redaction, revocation mid-run, switches off before and during a run, no runs a day, a plan limit that pauses and resumes the request by itself, and the DM/private/other-project canaries. |
 | `./scripts/check_mcp_clients.sh` (last step, `runtime-run-claude.e2e.ts`) | Opt-in, needs the internet: the pinned real `claude` with the run template's exact argv against the scripted local model (no account): its `system/init` field names, a start-up tool list equal to the run's switch-derived list, a connected Flux server and a call answered through `/mcp` with `FLUX_RUN_TOKEN`. |
 | `./scripts/check_runtime_cli_contract.sh` | Opt-in: the fixed templates' flags and the sign-in, status and sign-out assertion table (golden `--help`, status JSON keys, exit codes, streams; `--network none`, no account) against the pinned real CLIs. |
 | `FLUX_LIVE_VENDOR=1 ./scripts/check_vendor_live.sh` | Optional and never required: shows the status of the logins already on the maintainer's machine. Refuses without the variable. |

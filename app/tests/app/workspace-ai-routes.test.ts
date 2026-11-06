@@ -41,8 +41,8 @@ async function objectsOf(scene: AssistantScene): Promise<Objects> {
       VALUES ($1, $2, $3, $4, $5, 'Fact', 'Meaning', 'result', 'Result', 'negative')`, [ids.proposal, ws.id, place.id, randomUUID(), owner.id]);
     await client.query(`INSERT INTO agent_questions (id, workspace_id, project_id, conversation_id, message_id, agent_id, asked_user_id, question, options)
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'Which probe?', '["A","B"]')`, [ids.question, ws.id, place.id, thread.id, randomUUID(), agentId, owner.id]);
-    await client.query(`INSERT INTO proactive_comparison_rules (id, workspace_id, project_id, owner_user_id, agent_id, max_runs_per_day, period_budget_cents, per_run_cents)
-      VALUES ($1, $2, $3, $4, $5, 1, 10, 5)`, [ids.rule, ws.id, place.id, owner.id, agentId]);
+    await client.query(`INSERT INTO proactive_comparison_rules (id, workspace_id, project_id, owner_user_id, agent_id)
+      VALUES ($1, $2, $3, $4, $5)`, [ids.rule, ws.id, place.id, owner.id, agentId]);
     await client.query(`INSERT INTO proactive_comparison_proposals (id, outbox_id, owner_user_id, agent_id, project_id, result_id, source_fingerprint, sources,
       fact, interpretation, suggested_action, provider, model) VALUES ($1, $2, $3, $4, $5, $6, $7, '[]', 'Fact', 'Meaning', 'Check', 'anthropic', 'claude-sonnet-5')`,
     [ids.comparison, randomUUID(), owner.id, agentId, place.id, randomUUID(), 'a'.repeat(64)]);

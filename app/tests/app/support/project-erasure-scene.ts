@@ -45,7 +45,7 @@ export async function seedDraftAndProactive(f: ThreadNativeScene, resultId: stri
     [randomUUID(), f.workspaceId, f.projectId, owner]);
   const rule = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/proactive-comparison-rules`,
     { body: { agentId: f.agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison', dataScope: 'current_project_published',
-      permittedEffect: 'quiet_project_proposal', maxRunsPerDay: 1, periodBudgetCents: 5, perRunCents: 5 } }), 201) as { id: string };
+      permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string };
   // Terminal zero-cost candidates need no provider connection; one stays unanswered, two carry an outcome.
   const candidate = async (n: number) => {
     const id = randomUUID();

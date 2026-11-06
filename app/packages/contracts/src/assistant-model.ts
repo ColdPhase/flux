@@ -1,14 +1,13 @@
 import { aiModelCallsTools, tablePrice, type AiPrice, type AiProviderKind } from './ai-providers.js';
-import type { AssistantEngine } from './personal-runs.js';
+import type { AiConnectionRef } from './personal-runs.js';
 
-// The assistant's model (F-027 AST-11, #596): one model per assistant, chosen when it is turned on and changed
-// from Settings or the conversation. The list is the models the connected account offers; the server accepts
-// only a model in it. Nothing here is an id a person types.
+// The model of each agent (F-027 AST-11, #596; Connect AI #854): picked from any of the person's connections, with the
+// picker grouped by connection ("Claude plan: Opus · Sonnet · Haiku"). Connect AI sets the default: the connection the
+// person made first, at its default model. The server accepts only a model in a connection's list. Nothing here is an
+// id a person types.
 
-/** `GET` the caller's own choice and `PUT` a new one; `POST /api/v1/personal-assistant` also takes `model`. */
+/** `GET` the caller's own choice and `PUT` a new one; `POST /api/v1/personal-assistant` also takes `connection` and `model`. */
 export const ASSISTANT_MODEL_PATH = '/api/v1/personal-assistant/model';
-/** A legacy assistant (turned on before AST-11) has no model chosen: it runs with no model flag, as before. */
-export const ASSISTANT_PLAN_DEFAULT = 'default';
 /** What a plan model id may look like before it reaches a command template (never a flag, a path or a space). */
 export const ASSISTANT_PLAN_MODEL_PATTERN = /^[a-z0-9][a-z0-9.-]{0,63}$/;
 
@@ -26,21 +25,32 @@ export interface AssistantModelOption {
 /** `claude_plan` and `chatgpt_plan`: the owner's subscription through its CLI; `api_key`: the owner's own key. */
 export type AssistantModelAccount = 'claude_plan' | 'chatgpt_plan' | 'api_key';
 
-/** The caller's own assistant model and what they may choose. Never another person's. */
-export interface AssistantModelChoice {
-  engine: AssistantEngine | null;
-  account: AssistantModelAccount | null;
-  /** "Claude", "ChatGPT" or the provider's name; null without an account. */
-  company: string | null;
-  /** The model in force, an option id (or {@link ASSISTANT_PLAN_DEFAULT} for a legacy assistant). */
-  current: string;
-  /** The option preselected before Turn on. */
-  default: string;
+/** One connection's models in the picker: "Claude plan: Opus · Sonnet · Haiku". */
+export interface AssistantModelGroup {
+  connection: AiConnectionRef;
+  account: AssistantModelAccount;
+  /** "Claude plan", "ChatGPT plan" or the API key's name. */
+  label: string;
+  /** "Claude", "ChatGPT" or the API provider's name, for "Your Claude plan didn't accept Opus". */
+  company: string;
   options: AssistantModelOption[];
+}
+
+/** A model of one connection. */
+export interface AssistantModelPick { connection: AiConnectionRef; model: string }
+
+/** The caller's own assistant model and what they may choose, from every connection they have. Never another person's. */
+export interface AssistantModelChoice {
+  /** The model in force; null before Turn on. */
+  current: AssistantModelPick | null;
+  /** Connect AI's default for a new agent: the connection made first, at its default model; null without a connection. */
+  default: AssistantModelPick | null;
+  /** One group per usable connection, in the order they were made. */
+  groups: AssistantModelGroup[];
   /** The assistant is on and the choice is stored; false before Turn on (the ready card keeps it locally). */
   saved: boolean;
 }
-export interface ChangeAssistantModelCommand { model: string }
+export type ChangeAssistantModelCommand = AssistantModelPick;
 
 /** Everything a person may read about a model: the names of the models Flux knows. */
 const NAMES: Record<string, string> = {
@@ -76,15 +86,18 @@ export const ASSISTANT_PLAN_MODELS: Record<'claude_code' | 'codex', { account: A
   },
 };
 
-/** The row a legacy assistant sees, ticked, until it picks a model. */
-export const ASSISTANT_PLAN_DEFAULT_OPTION: AssistantModelOption = { id: ASSISTANT_PLAN_DEFAULT, name: "Your plan's default", note: 'Whatever your plan uses', callsTools: true };
-
-/** Models offered for a provider's API key besides the connection's own: only ones with a price in Flux's table. */
+/**
+ * Models offered for a provider's API key besides the connection's own: only ones with a price in Flux's table. The first
+ * is the key's default model when its owner names none (#854: the key form asks only for the key and its daily budget).
+ */
 const API_MODELS: Partial<Record<AiProviderKind, readonly string[]>> = {
   anthropic: ['claude-sonnet-5-5', 'claude-haiku-4-5', 'claude-fable-5-1'],
-  openai: ['gpt-6-luna', 'gpt-6-sol', 'gpt-6.1-sol', 'gpt-6-astra'],
+  openai: ['gpt-6.1-sol', 'gpt-6-luna', 'gpt-6-sol', 'gpt-6-astra'],
   gemini: ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.1-pro-preview'],
 };
+
+/** The default model of a new key of a named provider, or null where the owner must name one (OpenRouter, an own endpoint). */
+export const apiKeyDefaultModel = (provider: AiProviderKind): string | null => API_MODELS[provider]?.[0] ?? null;
 
 const dollars = (micros: number) => {
   const value = micros / 1_000_000;

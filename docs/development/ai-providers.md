@@ -107,10 +107,13 @@ The table rows come from these pages (all vendor claims):
 Gemini's promotional prices that double on 2027-01-01 (3.6–3.8 Flash) are left out. A stale table
 row would under-reserve, so for those models the owner enters the price.
 
-- A personal run reserves `16,000 × input + 1,500 × output` at the connection's price (`32,000 × input`
-  for a request of a run with tools, 2026-10-16, #484). The owner's
-  per-run setting is the ceiling it must fit (`PERSONAL_RUN_COST_OVER_LIMIT`, `run_cost_over_limit`).
-- A comparison reserves `8,000 × input + 1,200 × output`, at least O-007's $0.05.
+- One request of a personal run is bounded at `32,000 × input + 4,000 × output` at the key's price (`64,000 × input`
+  for a request of a run with tools; #484, #843). When the worker starts the run it reserves its turns × that
+  largest request, never above what is left of the key's one daily budget (`budgetedReservationMicros`, #854);
+  a request that finds not even one request's room left waits for the key's next day (`end_reason = 'budget'`,
+  `resume_at`). There is no per-run ceiling.
+- A comparison reserves `8,000 × input + 1,200 × output`, at least O-007's $0.05, against the same daily budget
+  of the background key (`apiKeySpendToday` counts personal runs and comparisons on the key together).
 - Usage is charged at the connection's price, or reconciled at the cost the provider reported in
   the response (OpenRouter `usage.cost`), which never raises or bypasses the reservation.
 - The charge never exceeds the reservation (`boundedUsageMicros`). Usage above the request's token

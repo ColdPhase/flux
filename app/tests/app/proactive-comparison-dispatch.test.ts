@@ -46,13 +46,9 @@ describe('controlled background comparison dispatch (#58)', () => {
       { body: { name: 'Project comparison agent', owner: 'self' } }), 201) as { id: string }).id;
     const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`,
       { body: { agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
-        dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
-        maxRunsPerDay: 3, periodBudgetCents: 15, perRunCents: 5 } }), 201) as { id: string };
+        dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string };
     expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-      provider: 'anthropic', model: 'claude-sonnet-5', apiKey: fakeKey, payerOrganization: 'Consent test payer', providerWorkspace: 'One test workspace',
-      workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true,
-      providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
-      maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 15, perRunCents: 5,
+      provider: 'anthropic', model: 'claude-sonnet-5', apiKey: fakeKey, dailyBudgetCents: 17,
     } }), 201);
     await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [rule.id]);
     material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/materials`,

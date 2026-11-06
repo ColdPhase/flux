@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, type AiPrice } from '@flux/contracts';
+import { PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, RUNTIME_RUN_LIMITS, type AiPrice } from '@flux/contracts';
 import { boundedInputTokens, conservativeTokenEstimate } from '../ai/estimate.js';
 import { ForbiddenError, NotFoundError, WorkspaceAiBlockedError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
@@ -13,32 +13,38 @@ import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
 import { answerWithSchedule } from './schedule-request.js';
 import { createRuntimeRunProcessor, type RuntimeCaps } from './runtime-run.js';
+import { reserveOnKey } from './service.js';
 import { updateAndAnnounce } from './progress.js';
 import { requestParts, runToolLoop, type LoopResult, type RunAccount } from './tool-loop.js';
 import {
-  centsToMicros, connectionCallsTools, MORNING_SUMMARY_SYSTEM_PROMPT, parseOutput, requestInput, runChargeMicros, runTokensWithinLimits, SYSTEM_PROMPT, TOOL_SYSTEM_PROMPT, type SuppliedSource,
+  centsToMicros, connectionCallsTools, MORNING_SUMMARY_SYSTEM_PROMPT, parseOutput, requestInput, runChargeMicros, runReservationMicros, runTokensWithinLimits, SYSTEM_PROMPT, TOOL_SYSTEM_PROMPT, type SuppliedSource,
 } from './validation.js';
 
 // The worker side of a personal run (`personal-run.dispatch.v1`, O-008 §3–§5). The job payload
 // is the run id only. Before reading, before dispatch and inside the commit transaction the run
 // is checked again: the owner's enablement (pause, removal), the owner's own connection, the
 // agent (`agent.invoke`), the agent's and owner's current project access, and before dispatch
-// the daily cap. A run refused before dispatch costs zero and releases its reservation. After
-// dispatch the observed usage is charged, but a refusal at commit stores nothing: the answer is
-// withheld and no proposal is created. There is never another payer or connection to fall back to.
+// the API key's daily budget (#854). A run refused before dispatch costs zero and releases its
+// reservation. After dispatch the observed usage is charged, but a refusal at commit stores
+// nothing: the answer is withheld and no proposal is created. There is never another payer or
+// connection to fall back to.
 //
-// A run with tools (F-027 AST-8, `tools` below and `tool-loop.ts`) is a bounded loop of such
-// requests: the same rechecks run before every further request, each request is reconciled by
-// itself against the run's reservation, and a run that reaches its turn cap, its money
-// reservation or one request's input bound ends `cap_reached` ("Limit reached") with the changes
-// it already made kept. A run without tools, or on a model that cannot call them, is one request.
+// A run with tools (F-027 AST-8, `tools` below and `tool-loop.ts`) is a loop of such requests: the
+// same rechecks run before every further request, each request is reconciled by itself against
+// the run's reservation, and a run that uses up what was left of the key's daily budget ends
+// `cap_reached` with `budget`, keeping the changes it already made. The step count and the clock
+// are technical safety bounds only (#843). A run without tools, or on a model that cannot call
+// them, is one request.
 
 export const PERSONAL_RUN_JOB = 'personal-run.dispatch.v1';
 
-/** Never retried by the queue (O-008 §4): a failed dispatch ends the run; the owner retries as a new run. */
+/**
+ * Never retried by the queue (O-008 §4): a failed dispatch ends the run; the owner retries as a new run. The job outlives
+ * the run's own safety clock (#843).
+ */
 export const PERSONAL_RUN_QUEUE: Pick<JobRetryPolicy, 'retryLimit' | 'expireInSeconds' | 'deleteAfterSeconds'> = {
   retryLimit: 0,
-  expireInSeconds: 300,
+  expireInSeconds: RUNTIME_RUN_LIMITS.wallClockSeconds + 600,
   deleteAfterSeconds: 7 * 24 * 3600,
 };
 
@@ -64,9 +70,9 @@ export interface PersonalRunProcessorDeps {
    * it every run is one request with no tools, as before.
    */
   tools?: PersonalToolHost;
-  /** The most requests of one run with tools; at most {@link PERSONAL_RUN_LIMITS}`.maxTurns`. */
+  /** The most requests of one run with tools; at most {@link PERSONAL_RUN_LIMITS}`.maxTurns`, a safety bound (#843). */
   maxTurns?: number;
-  /** The clock bound of a run with tools (AST-6: five minutes). */
+  /** The safety clock of a run with tools (#843: an hour, the same as on a plan). */
   wallClockMs?: number;
   now?: () => number;
   /**
@@ -107,24 +113,27 @@ async function recheck(ports: PersonalRunPorts, connections: PersonalConnectionL
   if (run.runTokenJti && ports.runs.assistantConnectionLive && !(await ports.runs.assistantConnectionLive(run.ownerUserId, run.workspaceId)))
     return { refusal: 'revoked' };
   if (!compute.enabled) return { refusal: 'unavailable' };
-  // Exactly the connection the run was started on (PROV-1), never the owner's newest or another.
+  // Exactly the connection the run was started on (PROV-1), never the owner's newest or another. Choosing another model
+  // for the next request does not touch a request already sent.
   const connection = run.connectionId ? await connections.resolve(run.ownerUserId, run.connectionId) : null;
   if (!connection || connection.status !== 'active' || connection.ownerUserId !== run.ownerUserId
-    || connection.id !== run.connectionId || connection.id !== enablement.connectionId) return { refusal: 'unavailable' };
+    || connection.id !== run.connectionId) return { refusal: 'unavailable' };
   // The sources are what the owner can read in this project, as the agent;
   // the answer is posted to the place, so its owner must still be able to write there.
   if (!(await ports.access.canUseProject(owner, 'write', run.projectId, { lock })) || !(await ports.access.canUseProject(agent, 'read', run.projectId, { lock })))
     return { refusal: 'denied' };
   if (stage === 'before_dispatch') {
-    const spend = await ports.runs.spendToday(run.ownerUserId, enablement.timeZone, run.id);
-    if (spend.chargedMicros + spend.reservedMicros + run.reservedMicros > centsToMicros(enablement.dailyCapCents)) return { refusal: 'cap_reached' };
+    // The key's one daily budget (#854): what the rest of the day's work holds, and this run's own reservation.
+    const spend = await ports.runs.keySpend(connection, run.id);
+    if (!spend || spend.chargedMicros + spend.reservedMicros + run.reservedMicros > centsToMicros(spend.budgetCents)) return { refusal: 'cap_reached' };
   }
   return { connection };
 }
 
+/** How a run ends. `cap_reached` without another reason is the API key's daily budget (#854): Flux has no other cap. */
 const ended = (status: RunEndStatus, stage: Stage | null, extra: RunChanges = {}): RunChanges => status === 'ai_off'
   ? { status: 'stopped', stoppedAtStage: stage, completedAt: new Date(), ...extra, endReason: 'ai_off' }
-  : { status, stoppedAtStage: stage, completedAt: new Date(), ...extra };
+  : { status, stoppedAtStage: stage, completedAt: new Date(), ...(status === 'cap_reached' ? { endReason: 'budget' as const } : {}), ...extra };
 const free: RunChanges = { costState: 'released', chargedMicros: 0 };
 
 /** F-029: a stop request the turn-off sweep made ends the run `ai_off`; the owner's own Stop stays `stopped`. */
@@ -197,12 +206,12 @@ export const unavailablePersonalCompute: PersonalCompute = {
   dispatch: async () => ({ kind: 'failed', reason: 'provider_error', billed: 'none' }),
 };
 
-/** AST-6: a run with tools has five minutes. */
-const WALL_CLOCK_MS = 5 * 60_000;
+/** The safety clock of a run with tools (#843): the same as a run on a plan. */
+const WALL_CLOCK_MS = RUNTIME_RUN_LIMITS.wallClockSeconds * 1000;
 
 export function createPersonalRunProcessor({ uow, connections, compute, stopPollMs = 250, hooks = {}, tools, maxTurns = PERSONAL_RUN_LIMITS.maxTurns,
   wallClockMs = WALL_CLOCK_MS, now = Date.now, runtime, tokens, runtimeCaps }: PersonalRunProcessorDeps) {
-  const runtimeRuns = createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, ...(runtimeCaps ? { caps: runtimeCaps } : {}) });
+  const runtimeRuns = createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, now, ...(runtimeCaps ? { caps: runtimeCaps } : {}) });
   /** Aborts the provider request as soon as the owner's stop is recorded. */
   function watchStop(runId: string, controller: AbortController) {
     let active = true;
@@ -232,7 +241,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
   /** The usage is charged at the price of the connection the run was reserved on, or as the provider reported it (PROV-3), never above the run's reservation. */
   function settleRequest(run: RunRecord, result: PersonalComputeResult, price: AiPrice | null): Settlement {
     // Usage beyond the run's token limits, or a cost above its reservation, is treated as a lost
-    // response: the cost is unknown, the whole reservation stays counted against the daily cap, the
+    // response: the cost is unknown, the reservation stays counted against the key's daily budget, the
     // reported numbers are not stored, and the answer is withheld. Without a price the charge stays unknown too.
     const usage = result.kind === 'completed' ? result.usage : null;
     const tokens: RunChanges = usage && runTokensWithinLimits(usage) ? { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens } : {};
@@ -246,17 +255,21 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
 
   /**
    * The same for a run with tools: every request was reconciled when it came back, so the account
-   * is the charge. A request that may have been billed without a usable report keeps the whole
-   * reservation counted as `unknown`.
+   * is the charge. A request that may have been billed without a usable report ends the run: what the
+   * earlier requests cost and the most that one could have cost stay counted as `unknown`, and the rest
+   * of the reservation is released (#854), so a Stop never uses up the key's day.
    */
-  function settleAccount(account: RunAccount): Settlement {
-    if (account.unknown) return { charge: { costState: 'unknown', chargedMicros: 0 }, withhold: true };
+  function settleAccount(run: RunRecord, account: RunAccount, price: AiPrice | null): Settlement {
+    if (account.unknown) {
+      const lost = account.micros + (runReservationMicros(price, true) ?? run.reservedMicros);
+      return { charge: { costState: 'unknown', chargedMicros: 0, reservedMicros: Math.min(run.reservedMicros, lost) }, withhold: true };
+    }
     if (account.requests === 0) return { charge: { ...free }, withhold: false };
     return { charge: { costState: 'observed', chargedMicros: account.micros, inputTokens: account.inputTokens, outputTokens: account.outputTokens }, withhold: false };
   }
 
-  /** How a run that did not end in an answer is closed: at one of its own limits, or at a standing check. */
-  type Early = { status: RunEndStatus; stage: Stage };
+  /** How a run that did not end in an answer is closed: at one of its own bounds, or at a standing check. */
+  type Early = { status: RunEndStatus; stage: Stage; endReason?: RunRecord['endReason'] };
 
   async function commit(runId: string, result: PersonalComputeResult | null, sources: SuppliedSource[],
     settle: (run: RunRecord) => Settlement, early: Early | null = null): Promise<PersonalRunOutcome> {
@@ -276,10 +289,13 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       if (run.stopRequestedAt) return (await updateAndAnnounce(ports, run.id, ended('stopped', 'before_commit', charge))).status;
       // A tool result passed the MCP route's bound (F-022 "Caps"): the run ends in its own state, nothing is posted.
       if (run.mcpLimit) return (await updateAndAnnounce(ports, run.id, ended('cap_reached', 'before_commit', { ...charge, endReason: 'mcp_results_too_large' }))).status;
-      if (early) return (await updateAndAnnounce(ports, run.id, ended(early.status, early.stage, charge))).status;
+      if (early) return (await updateAndAnnounce(ports, run.id, ended(early.status, early.stage, { ...charge, ...(early.endReason ? { endReason: early.endReason } : {}) }))).status;
       // A `tool_use` stop here means a request without tools came back asking for some: its text is
       // half an answer to a call that will never be made, so nothing is posted (the cost stays as observed).
-      if (!result || result.kind === 'failed' || withhold || result.stopReason === 'tool_use') return (await updateAndAnnounce(ports, run.id, ended('provider_failed', null, charge))).status;
+      if (!result || result.kind === 'failed' || withhold || result.stopReason === 'tool_use') {
+        const credits: RunChanges = result?.kind === 'failed' && result.reason === 'no_credits' ? { endReason: 'credits' } : {};
+        return (await updateAndAnnounce(ports, run.id, ended('provider_failed', null, { ...charge, ...credits }))).status;
+      }
       let checked: Awaited<ReturnType<typeof recheck>>;
       try {
         checked = await recheck(ports, connections, compute, run, 'before_commit', true);
@@ -316,15 +332,16 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
   }
 
   /** The loop's end, as the run's commit: an answer is committed like a single request's; every other end closes the run. */
-  function commitLoop(runId: string, loop: LoopResult, sources: SuppliedSource[]): Promise<PersonalRunOutcome> {
-    const settle = () => settleAccount(loop.account);
+  function commitLoop(runId: string, loop: LoopResult, sources: SuppliedSource[], price: AiPrice | null): Promise<PersonalRunOutcome> {
+    const settle = (run: RunRecord) => settleAccount(run, loop.account, price);
     const { end } = loop;
     switch (end.kind) {
       case 'answer': return commit(runId, end.result, sources, settle);
       case 'failed': return commit(runId, end.result, sources, settle);
       case 'lost': return commit(runId, null, sources, settle);
-      // The turn cap, the money reservation, the input bound or the clock: "Limit reached".
-      case 'limit': return commit(runId, null, sources, settle, { status: 'cap_reached', stage: 'before_dispatch' });
+      // The key's daily budget, or a safety bound (steps, the clock, one request's input).
+      case 'limit': return commit(runId, null, sources, settle, end.limit === 'input' ? { status: 'input_too_large', stage: 'before_dispatch' }
+        : { status: 'cap_reached', stage: 'before_dispatch', endReason: end.limit === 'money' ? 'budget' : end.limit === 'turns' ? 'max_turns' : 'wall_clock' });
       case 'halted': return end.status === 'gone' ? Promise.resolve('skipped') : commit(runId, null, sources, settle, { status: end.status, stage: 'before_dispatch' });
     }
   }
@@ -379,7 +396,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
     if (session) {
       // A standing check between the turns of the loop: the same as before a dispatch. It also
       // touches the row, so a long loop is not swept as a crashed worker's.
-      const gate = (): Promise<{ status: RunEndStatus | 'gone' } | null> => uow.run(async (ports) => {
+      const gate = (spentMicros: number): Promise<{ status: RunEndStatus | 'gone' } | null> => uow.run(async (ports) => {
         const current = await ports.runs.findRun(run.id, { lock: true });
         if (!current || current.status !== 'dispatching') return { status: 'gone' as const };
         if (current.stopRequestedAt) return { status: await stopped(ports, current) };
@@ -390,7 +407,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         });
         if ('refusal' in checked) return { status: checked.refusal };
         if (checked.connection.id !== connection.id) return { status: 'unavailable' as const };
-        await ports.runs.updateRun(run.id, {});
+        // What was spent so far stays on the row: a lost worker counts it and one more request, not the whole reservation.
+        await ports.runs.updateRun(run.id, { chargedMicros: spentMicros });
         return null;
       });
       let loop: LoopResult;
@@ -400,13 +418,13 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
           maxTurns: Math.max(1, Math.min(maxTurns, PERSONAL_RUN_LIMITS.maxTurns)), deadline: now() + wallClockMs, now, gate, signal: controller.signal,
         });
       } catch {
-        // An unexpected failure inside the loop is a lost response: the reservation stays counted.
+        // An unexpected failure inside the loop is a lost response: its largest cost stays counted.
         loop = { end: { kind: 'failed', result: { kind: 'failed', reason: 'provider_error', billed: 'unknown' } }, account: { micros: 0, inputTokens: 0, outputTokens: 0, requests: 0, unknown: true }, turns: 0 };
       } finally {
         stopWatching();
       }
       await hooks.afterDispatch?.(run);
-      return commitLoop(run.id, loop, ready.fitted.sources);
+      return commitLoop(run.id, loop, ready.fitted.sources, connection.price);
     }
     let result: PersonalComputeResult;
     try {
@@ -432,6 +450,8 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const claimed = await uow.run(async (ports) => {
         const run = await ports.runs.findRun(id, { lock: true });
         if (!run || run.status !== 'queued') return null;
+        // A request paused by the key's daily budget waits for its resume time (#854).
+        if (run.resumeAt && run.resumeAt.getTime() > now()) return null;
         // One lane per owner: a request behind the one that is working waits for it to end (AST-6 queue).
         if (await ports.runs.laneBusy(run.ownerUserId, run.id)) return null;
         const checked = await recheck(ports, connections, compute, run, 'before_read', true).catch((error: unknown) => {
@@ -439,7 +459,20 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
           throw error;
         });
         if ('refusal' in checked) return { done: true as const, status: (await updateAndAnnounce(ports, run.id, ended(checked.refusal, 'before_read', free))).status };
-        return { done: false as const, run: await updateAndAnnounce(ports, run.id, { status: 'reading' }) };
+        // Its turn in the owner's lane: it reserves now against what is left of the key's daily budget (#854), or waits for
+        // the key's next day when not even one request fits.
+        const onModel = connectionOnModel(checked.connection, run.model);
+        const withTools = !!tools && !!onModel && connectionCallsTools(onModel) && run.kind !== 'morning_summary';
+        const held = onModel ? await reserveOnKey(ports, onModel, withTools, Math.max(1, Math.min(maxTurns, PERSONAL_RUN_LIMITS.maxTurns)), run.id) : null;
+        if (!held) return { done: true as const, status: (await updateAndAnnounce(ports, run.id, ended('unavailable', 'before_read', free))).status };
+        if ('paused' in held) {
+          // A background run does not wait for tomorrow: its next firing is its next chance.
+          if (run.authority !== 'owner_request') return { done: true as const, status: (await updateAndAnnounce(ports, run.id, ended('cap_reached', 'before_read', free))).status };
+          await updateAndAnnounce(ports, run.id, { resumeAt: held.paused, endReason: 'budget' });
+          return null;
+        }
+        return { done: false as const, run: await updateAndAnnounce(ports, run.id, { status: 'reading', reservedMicros: held.reservedMicros, reservedAt: new Date(),
+          largestRequestMicros: held.largestRequestMicros, resumeAt: null, endReason: null }) };
       });
       if (!claimed) return 'skipped';
       if (claimed.done) return claimed.status;

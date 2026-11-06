@@ -2,7 +2,7 @@ import { eq, ne, sql } from 'drizzle-orm';
 import type { InspectedComparisonSource, NotificationSourceRef } from '@flux/contracts';
 import { pgTable, text, timestamp, date, uuid, integer, smallint, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
 import { AGENT_MAY_DO, AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentJsonValue, type AgentPostcondition, type CoWorkSourceRef } from '@flux/contracts';
-import { AI_PROVIDER_KINDS, ASSISTANT_RUN_END_REASONS, BACKGROUND_CONSENT_VERSIONS, type AiProviderKind, type PersonalRunConsentVersion } from '@flux/contracts';
+import { AI_PROVIDER_KINDS, ASSISTANT_RUN_END_REASONS, type AiProviderKind } from '@flux/contracts';
 
 export const samples = pgTable('samples', {
   id: uuid('id').primaryKey(),
@@ -797,7 +797,6 @@ export const assistantSettings = pgTable('assistant_settings', {
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   agentId: uuid('agent_id').notNull(), connectionId: uuid('connection_id').notNull().unique(),
-  backgroundRunsPerDay: integer('background_runs_per_day').notNull().default(24),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1385,17 +1384,13 @@ export const backgroundComputeConnections = pgTable('background_compute_connecti
   outputPriceMicrosPerMTok: integer('output_price_micros_per_mtok'),
   priceSource: text('price_source', { enum: ['table', 'owner'] }),
   priceCheckedOn: date('price_checked_on', { mode: 'string' }),
-  payerOrganization: text('payer_organization').notNull(),
-  providerWorkspace: text('provider_workspace').notNull(),
   encryptedKey: text('encrypted_key'),
   keyLastFour: text('key_last_four').notNull(),
   keyFingerprint: text('key_fingerprint').notNull(),
-  maxRunsPerDay: integer('max_runs_per_day').notNull(),
-  periodDays: integer('period_days').notNull(),
-  periodBudgetCents: integer('period_budget_cents').notNull(),
-  perRunCents: integer('per_run_cents').notNull(),
-  consentVersion: text('consent_version', { enum: BACKGROUND_CONSENT_VERSIONS }).notNull(),
-  consentedAt: timestamp('consented_at', { withTimezone: true }).notNull().defaultNow(),
+  /** The key's one daily budget (0003, #854): the only limit on what runs on it. */
+  dailyBudgetCents: integer('daily_budget_cents').notNull(),
+  /** The IANA time zone whose midnight starts the key's day. */
+  timeZone: text('time_zone').notNull().default('UTC'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
 }, (table) => [
@@ -1413,9 +1408,6 @@ export const proactiveComparisonRules = pgTable('proactive_comparison_rules', {
   purpose: text('purpose', { enum: ['camera_sensor_comparison'] }).notNull().default('camera_sensor_comparison'),
   dataScope: text('data_scope', { enum: ['current_project_published'] }).notNull().default('current_project_published'),
   permittedEffect: text('permitted_effect', { enum: ['quiet_project_proposal'] }).notNull().default('quiet_project_proposal'),
-  maxRunsPerDay: integer('max_runs_per_day').notNull(),
-  periodBudgetCents: integer('period_budget_cents').notNull(),
-  perRunCents: integer('per_run_cents').notNull(),
   status: text('status', { enum: ['enabled', 'paused', 'revoked'] }).notNull().default('paused'),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1790,21 +1782,14 @@ export const notificationEmails = pgTable('notification_emails', {
 // Owner-invoked personal assistant runs (migration 0024, #68, O-008). No key material is stored.
 export const personalRunEnablements = pgTable('personal_run_enablements', {
   ownerUserId: text('owner_user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
-  // References #124's key connection once that table lands; a compared snapshot until then.
+  /** The owner's API key connection the assistant's model belongs to (`server`); null on a plan (`runtime`). */
   connectionId: uuid('connection_id'),
-  consentVersion: text('consent_version').$type<PersonalRunConsentVersion>().notNull(),
-  consentedAt: timestamp('consented_at', { withTimezone: true }).notNull().defaultNow(),
-  consentProvider: text('consent_provider').$type<AiProviderKind>().notNull(),
-  consentModel: text('consent_model').notNull(),
-  consentPayerOrganization: text('consent_payer_organization').notNull(),
-  consentPayerWorkspace: text('consent_payer_workspace').notNull(),
-  perRunCents: integer('per_run_cents').notNull().default(6),
-  dailyCapCents: integer('daily_cap_cents').notNull().default(100),
-  timeZone: text('time_zone').notNull().default('UTC'),
+  /** 0003 (#854): the provider of the assistant's connection; on a plan it names the CLI (`openai`: Codex, else Claude Code). */
+  provider: text('provider').$type<AiProviderKind>().notNull(),
   status: text('status', { enum: ['active', 'paused'] }).notNull().default('active'),
-  /** 0100 (F-022 T5): the owner's API key connection (`server`) or their own Claude Code (`runtime`). */
+  /** 0100 (F-022 T5): the owner's API key connection (`server`) or their own Claude Code or Codex (`runtime`). */
   engine: text('engine', { enum: ['server', 'runtime'] }).notNull().default('server'),
-  /** 0110 (F-027 AST-11): the assistant's one model; null when none was chosen (the account's own default). */
+  /** 0110 (F-027 AST-11): the assistant's one model, from its connection's list. */
   assistantModel: text('assistant_model'),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1845,6 +1830,10 @@ export const personalRuns = pgTable('personal_runs', {
   stopRequestedAt: timestamp('stop_requested_at', { withTimezone: true }),
   costState: text('cost_state', { enum: ['reserved', 'released', 'observed', 'unknown'] }).notNull().default('reserved'),
   reservedMicros: integer('reserved_micros').notNull(),
+  /** When the money was held: the key's day it counts on (#854). */
+  reservedAt: timestamp('reserved_at', { withTimezone: true }).notNull().defaultNow(),
+  /** The most one request of this run can cost at the key's price. */
+  largestRequestMicros: integer('largest_request_micros'),
   chargedMicros: integer('charged_micros').notNull().default(0),
   inputTokens: integer('input_tokens'),
   outputTokens: integer('output_tokens'),
@@ -1864,6 +1853,8 @@ export const personalRuns = pgTable('personal_runs', {
   engine: text('engine', { enum: ['server', 'runtime'] }).notNull().default('server'),
   endReason: text('end_reason', { enum: ASSISTANT_RUN_END_REASONS }),
   planLimitResetsAt: timestamp('plan_limit_resets_at', { withTimezone: true }),
+  /** 0003 (#854): a request paused by its connection's limit waits, queued, until this time. */
+  resumeAt: timestamp('resume_at', { withTimezone: true }),
   stopAcknowledgedAt: timestamp('stop_acknowledged_at', { withTimezone: true }),
   answerRedacted: boolean('answer_redacted').notNull().default(false),
   runTokenNonceHash: text('run_token_nonce_hash'),
@@ -2369,7 +2360,7 @@ export const assistantReactions = pgTable('assistant_reactions', {
   id: uuid('id').primaryKey().defaultRandom(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   event: text('event').$type<import('@flux/contracts').AssistantReactionEvent>().notNull(), action: text('action').$type<import('@flux/contracts').AssistantReactionAction>().notNull(),
-  enabled: boolean('enabled').notNull().default(false), dailyLimit: integer('daily_limit').notNull().default(10), version: integer('version').notNull().default(1),
+  enabled: boolean('enabled').notNull().default(false), version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [unique().on(t.ownerUserId, t.projectId, t.event), foreignKey({ columns: [t.workspaceId, t.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade')]);
 export const assistantReactionEvents = pgTable('assistant_reaction_events', {

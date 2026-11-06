@@ -196,7 +196,7 @@ describe('workspace AI lock: notifications by AI origin (#642)', () => {
   test('an assistant\'s note on a task', async () => {
     const { owner, ws, place } = scene;
     const taskId = randomUUID();
-    const rule = { id: randomUUID(), workspaceId: ws.id, projectId: place.id, projectName: place.name, ownerUserId: owner.id, event: 'failed_result', action: 'tell', enabled: true, dailyLimit: 10, version: 1 };
+    const rule = { id: randomUUID(), workspaceId: ws.id, projectId: place.id, projectName: place.name, ownerUserId: owner.id, event: 'failed_result', action: 'tell', enabled: true, version: 1 };
     const event = { id: randomUUID(), reactionId: rule.id, ownerUserId: owner.id, objectId: taskId, sourceId: randomUUID(), action: 'tell', event: 'failed_result', reactionVersion: 1, state: 'running', runId: null, createdAt: new Date(), data: null, aiEpoch: 1 };
     await pool.query(`INSERT INTO assistant_reactions(id,workspace_id,project_id,owner_user_id,event,action,enabled) VALUES($1,$2,$3,$4,'failed_result','tell',true)`, [rule.id, ws.id, place.id, owner.id]);
     await pool.query(`INSERT INTO assistant_reaction_events(reaction_id,owner_user_id,object_id,source_id,action,event,reaction_version,state,ai_epoch,id) VALUES($1,$2,$3,$4,'tell','failed_result',1,'running',(SELECT epoch FROM workspace_ai_policies WHERE workspace_id=$5),$6)`,

@@ -22,7 +22,7 @@ export function useAskBar({ project, audienceShort }: PaneCore, assistant: Retur
     if (action === 'connect') openDetails('connect-ai');
     else if (action === 'resume') void assistant.resume().catch(() => setAskFailure('Couldn’t resume. Try again.'));
     else if (action === 'tell') void tellOperator(project.workspaceId, assistant.status?.setup.runtime.client).then(() => setAskFailure('Told whoever runs Flux.'), () => setAskFailure('Couldn’t tell them. Try again.'));
-    else if (action === 'key') navigate('/settings/ai-connections');
+    else if (action === 'key') navigate('/settings/ai-connections?new=1');
     else navigate('/settings/assistant');
   }
   return { state, error: notIn ? notInText : ask.askFailure, onAction };

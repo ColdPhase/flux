@@ -49,6 +49,23 @@ export type AgentRuntimePayer = 'claude_plan' | 'anthropic_console' | 'chatgpt_p
 
 export type AgentRuntimeConnectionState = 'signed_out' | 'signed_in' | 'sign_in_again';
 
+/**
+ * The provider's remaining usage of a plan, as last seen (#854, #843): Codex's own rate-limit read after a run ("48% of your
+ * weekly limit left · resets Mon"), or a limit a run hit ("Claude limit reached, resumes at 14:00"). Display facts only.
+ * Null when the provider reported nothing: the line then says "Plan limits apply", never zero.
+ */
+export interface AgentRuntimeUsage {
+  /** The share of the most-used window still left, 0–100; null when only a reached limit is known. */
+  leftPercent: number | null;
+  /** The window that share belongs to; null when unknown. */
+  window: 'five_hour' | 'weekly' | null;
+  /** When that window resets; null when the provider did not say. */
+  resetsAt: string | null;
+  /** The plan's limit was reached and has not reset yet. */
+  limitReached: boolean;
+  readAt: string;
+}
+
 /** The owner's own sign-in to a CLI in their slot: display facts only, never a credential. */
 export interface AgentRuntimeConnection {
   state: AgentRuntimeConnectionState;
@@ -65,6 +82,8 @@ export interface AgentRuntimeConnection {
   accountChange: { previousLabel: string | null; at: string } | null;
   /** The last sign-out; `failed`: the CLI's own logout failed, the files were deleted anyway. */
   signOut: { at: string; failed: boolean } | null;
+  /** The provider's remaining usage, while signed in and when it reported any. */
+  usage: AgentRuntimeUsage | null;
 }
 
 export interface AgentRuntimeStatus {

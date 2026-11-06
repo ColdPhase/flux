@@ -1,14 +1,14 @@
 import {
-  ASSISTANT_PLAN_DEFAULT, ASSISTANT_PLAN_DEFAULT_OPTION, ASSISTANT_PLAN_MODEL_PATTERN, ASSISTANT_PLAN_MODELS, AI_MODEL_ID_PATTERN, AI_PROVIDERS,
+  ASSISTANT_PLAN_MODEL_PATTERN, ASSISTANT_PLAN_MODELS, AI_MODEL_ID_PATTERN, AI_PROVIDERS,
   assistantApiModels, assistantApiPrice, assistantModelName,
-  type AssistantModelChoice, type AssistantModelOption,
+  type AiConnectionRef, type AssistantModelAccount, type AssistantModelChoice, type AssistantModelGroup, type AssistantModelOption, type AssistantModelPick,
 } from '@flux/contracts';
 import type { PersonalConnection, PersonalRuntimeClient } from './ports.js';
 
-// The assistant's model (F-027 AST-11, #596): what the owner may choose on their account, and how the choice reaches
-// a run. Pure functions; the use cases in service.ts decide who may ask.
+// The model of an agent (F-027 AST-11, #596; Connect AI #854): what the owner may choose on each of their connections, and
+// how the choice reaches a run. Pure functions; the use cases in service.ts decide who may ask.
 
-/** The provenance label of a run on a plan whose owner chose no model (kept as before AST-11). */
+/** The provenance label of a run on a plan when no model id reached it (the CLI's own default). */
 export const RUNTIME_MODEL = 'claude-code';
 export const CODEX_RUNTIME_MODEL = 'codex';
 
@@ -27,7 +27,7 @@ export function planModels(client: PersonalRuntimeClient) {
 
 export interface ModelAccount {
   engine: 'runtime' | 'server' | null;
-  account: AssistantModelChoice['account'];
+  account: AssistantModelAccount | null;
   company: string | null;
   /** "Claude plan", "ChatGPT plan" or "API key's provider", for "Your Claude plan doesn't offer that model". */
   plan: string;
@@ -51,19 +51,38 @@ export function apiModelAccount(connection: Pick<PersonalConnection, 'provider' 
   };
 }
 
-/** The choice as the owner sees it. A legacy assistant (no model stored on a plan) sees one extra, ticked row. */
-export function modelChoice(account: ModelAccount, stored: string | null, saved: boolean): AssistantModelChoice {
-  const legacy = account.engine === 'runtime' && saved && stored === null;
-  const current = saved ? (stored ?? (account.engine === 'runtime' ? ASSISTANT_PLAN_DEFAULT : account.default)) : account.default;
-  return {
-    engine: account.engine, account: account.account, company: account.company, current, default: account.default, saved,
-    options: legacy ? [ASSISTANT_PLAN_DEFAULT_OPTION, ...account.options] : account.options,
-  };
+/** One of the owner's usable connections with what it offers: a plan's CLI, or an API key (its connection). */
+export interface ConnectionModels {
+  ref: AiConnectionRef;
+  /** "Claude plan", "ChatGPT plan" or the key's name. */
+  label: string;
+  account: ModelAccount;
+  /** The API key; null on a plan. */
+  connection: PersonalConnection | null;
+  /** When it was made: the first is Connect AI's default (#854). */
+  since: number;
 }
 
-/** The name of the model in force, for "It is still Sonnet." */
-export const modelNameOf = (choice: Pick<AssistantModelChoice, 'current'>) =>
-  choice.current === ASSISTANT_PLAN_DEFAULT ? ASSISTANT_PLAN_DEFAULT_OPTION.name : assistantModelName(choice.current);
+/** The picker's groups, in the order the connections were made. */
+export function modelGroups(connections: readonly ConnectionModels[]): AssistantModelGroup[] {
+  return [...connections].sort((a, b) => a.since - b.since).map((item) => ({
+    connection: item.ref, account: item.account.account!, label: item.label, company: item.account.company ?? item.label, options: item.account.options,
+  }));
+}
+
+/** Connect AI's default for a new agent (#854): the connection made first, at its default model. */
+export function defaultPick(connections: readonly ConnectionModels[]): AssistantModelPick | null {
+  const first = [...connections].sort((a, b) => a.since - b.since)[0];
+  return first && first.account.default ? { connection: first.ref, model: first.account.default } : null;
+}
+
+/** The choice as the owner sees it: every connection's models, the model in force and Connect AI's default. */
+export function modelChoice(connections: readonly ConnectionModels[], current: AssistantModelPick | null, saved: boolean): AssistantModelChoice {
+  return { current: saved ? current : null, default: defaultPick(connections), groups: modelGroups(connections), saved };
+}
+
+/** The name of a model, for "It is still Sonnet." */
+export const modelNameOf = (pick: Pick<AssistantModelPick, 'model'>) => assistantModelName(pick.model);
 
 /**
  * The owner's connection on the model they chose (F-020 PROV-3): the connection's own model and price when the model is
@@ -84,5 +103,5 @@ export function connectionOnModel(connection: PersonalConnection, model: string 
  * recorded with the engine's label. Only an id the protocol accepts ever becomes a flag value.
  */
 export function runtimeModelFlag(model: string): string | undefined {
-  return model === RUNTIME_MODEL || model === CODEX_RUNTIME_MODEL || model === ASSISTANT_PLAN_DEFAULT || !ASSISTANT_PLAN_MODEL_PATTERN.test(model) ? undefined : model;
+  return model === RUNTIME_MODEL || model === CODEX_RUNTIME_MODEL || !ASSISTANT_PLAN_MODEL_PATTERN.test(model) ? undefined : model;
 }

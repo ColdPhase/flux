@@ -451,7 +451,7 @@ describe('sign-in to Claude Code (T4 #279)', () => {
     // Negative control: the status reports a login, so the same call signs in.
     const signedIn = await record(runtime, 'sso', facts('ada@example.org'));
     assert.deepEqual({ ...signedIn.connections.claude_code, signedInAt: null }, { state: 'signed_in', signInMethod: 'sso', authMethod: 'claude.ai', plan: 'max',
-      accountLabel: 'a***@example.org', signedInAt: null, payer: 'claude_plan', accountChange: null, signOut: null });
+      accountLabel: 'a***@example.org', signedInAt: null, payer: 'claude_plan', accountChange: null, signOut: null, usage: null });
     // A status that no longer reports the login: Sign in again, never silently signed in.
     const lost = await record(runtime, null, { signedIn: false, facts: null });
     assert.equal(lost.connections.claude_code?.state, 'sign_in_again');

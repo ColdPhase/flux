@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
-import { tablePrice } from '@flux/contracts';
-import type { PersonalConnectionLookup } from './ports.js';
+import { API_KEY_DAILY_BUDGET_CENTS, tablePrice } from '@flux/contracts';
+import type { PersonalConnection, PersonalConnectionLookup } from './ports.js';
 
 // TEST FIXTURE ONLY (#68). A stand-in for #124's owner key connections, so the browser suite can
 // drive a whole run through the real worker, the real Anthropic adapter and a MOCK provider
@@ -20,13 +20,20 @@ function connectionIdOf(ownerUserId: string) {
 const FIXTURE_MODEL = 'claude-sonnet-5';
 const FIXTURE_PRICE = tablePrice('anthropic', FIXTURE_MODEL)!;
 
+/** The fixture key's one daily budget: the default of a new key. */
+export const FIXTURE_DAILY_BUDGET_CENTS = API_KEY_DAILY_BUDGET_CENTS.default;
+
 /** Every person has one stable, active fixture connection of their own: Anthropic at its table price. */
 export const testFixturePersonalConnections: PersonalConnectionLookup = {
-  resolve: async (ownerUserId, connectionId) => (connectionId !== undefined && connectionId !== connectionIdOf(ownerUserId) ? null : {
-    id: connectionIdOf(ownerUserId), ownerUserId, status: 'active', keyRef: TEST_FIXTURE_KEY_REF,
-    payer: { organization: 'Test fixture payer', workspace: 'Test fixture workspace' },
-    provider: 'anthropic', model: FIXTURE_MODEL, baseUrl: null,
+  list: async (ownerUserId) => [fixtureFor(ownerUserId)],
+  resolve: async (ownerUserId, connectionId) => (connectionId !== undefined && connectionId !== connectionIdOf(ownerUserId) ? null : fixtureFor(ownerUserId)),
+};
+
+function fixtureFor(ownerUserId: string): PersonalConnection {
+  return {
+    id: connectionIdOf(ownerUserId), ownerUserId, status: 'active', keyRef: TEST_FIXTURE_KEY_REF, name: 'Test fixture key',
+    provider: 'anthropic', model: FIXTURE_MODEL, baseUrl: null, dailyBudgetCents: FIXTURE_DAILY_BUDGET_CENTS, timeZone: 'UTC', createdAt: new Date(0),
     price: { inputMicrosPerMTok: FIXTURE_PRICE.inputMicrosPerMTok, outputMicrosPerMTok: FIXTURE_PRICE.outputMicrosPerMTok,
       source: 'table', checkedOn: FIXTURE_PRICE.checkedOn },
-  }),
-};
+  };
+}

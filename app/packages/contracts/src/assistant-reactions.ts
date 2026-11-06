@@ -13,11 +13,11 @@ export const ASSISTANT_REACTION_ACTIONS: Record<AssistantReactionAction, string>
 };
 export interface AssistantReaction {
   id: string; workspaceId: string; projectId: string; projectName: string; event: AssistantReactionEvent; action: AssistantReactionAction;
-  enabled: boolean; dailyLimit: number; version: number;
+  enabled: boolean; version: number;
   last: { line: string; at: string } | null;
 }
 export interface SaveAssistantReaction {
-  projectId: string; event: AssistantReactionEvent; action: AssistantReactionAction; enabled: boolean; dailyLimit?: number; expectedVersion?: number; noteVersion?: string;
+  projectId: string; event: AssistantReactionEvent; action: AssistantReactionAction; enabled: boolean; expectedVersion?: number; noteVersion?: string;
 }
 export const assistantReactionsPath = (workspaceId: string, ownerId: string) => `/api/v1/workspaces/${workspaceId}/people/${ownerId}/assistant/when`;
 export const assistantReactionPath = (workspaceId: string, ownerId: string, id: string) => `${assistantReactionsPath(workspaceId, ownerId)}/${id}`;

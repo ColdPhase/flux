@@ -20,11 +20,14 @@ export const REQUEST_LIMITS = {
   tools: 64,
 } as const;
 
-/** Caps a run request carries (F-022 "Caps"); the owner may lower the defaults. */
+/**
+ * The technical safety bounds a run request carries (#843: Flux sets no limits of its own; these only stop a run that went
+ * wrong). The supervisor refuses values outside them.
+ */
 export const RUN_CAP_BOUNDS = {
-  maxTurns: { min: 1, max: 50 },
-  wallClockSeconds: { min: 10, max: 1800 },
-  idleSeconds: { min: 5, max: 600 },
+  maxTurns: { min: 1, max: 500 },
+  wallClockSeconds: { min: 10, max: 7200 },
+  idleSeconds: { min: 5, max: 1800 },
   maxAnswerBytes: { min: 1024, max: 64 * 1024 },
 } as const;
 

@@ -35,12 +35,11 @@ separate from the external MCP/OAuth connection. The request names the provider
 kind and model (any of [F-020](../product/model-providers.md); see
 [AI providers](ai-providers.md)), the base URL for an OpenAI-compatible endpoint,
 an owner price only when neither the provider's listing nor Flux's price table has
-the model, and includes the key, its payer organization and dedicated provider workspace,
-affirmation of spending authority and single-workspace scope, acknowledgement
-that project-published excerpts may leave the instance, and a **consented 30-day
-local budget**, per-run ceiling and maximum daily runs. An internal reservation
-gate now counts possible charges across the owner's connections in a rolling
-30-day window and UTC day; it reserves the most one request can cost at the
+the model, and includes the key, an optional name and the key's **one daily budget**
+(10 cents to $1,000, in the owner's time zone; #854, [CA-3](../product/model-providers.md#ca-3--the-providers-limits-not-fluxs)).
+There is no second allowance for background work, no per-run ceiling and no runs a day.
+An internal reservation gate counts the key's spend today, personal runs and comparisons
+together (`apiKeySpendToday`); it reserves the most one request can cost at the
 connection's price (8,000 input and 1,200 output tokens), at least 5 cents,
 atomically, keeps unknown charges counted, and allows one in-flight reservation per
 owner. A connection without a known price is refused (`CONNECTION_PRICE_UNKNOWN`). It does
@@ -52,8 +51,8 @@ ciphertext. Replacing/revoking clears the earlier ciphertext in the database.
 
 Enabling returns `BACKGROUND_CONNECTION_REQUIRED` without a current owner
 connection, `BACKGROUND_PRICE_UNKNOWN` when that connection has no known price,
-`BACKGROUND_BUDGET_TOO_LOW` if the rule exceeds that owner's consented budget or
-one request at the connection's price exceeds the per-request allowance, and
+`BACKGROUND_BUDGET_TOO_LOW` if one comparison at the connection's price costs more than
+the key's daily budget, and
 `BACKGROUND_RUNTIME_UNAVAILABLE` after those checks while the operator's runtime switch
 is off (the default; see "Runtime switch"). The stored rule then remains paused. A configured key does not start a provider call or emit a proposal. A
 negative result authored by any currently authorized human contributor creates a

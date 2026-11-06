@@ -79,7 +79,7 @@ what changed, what was decided and what is next, so you do not have to ask aroun
     <td width="50%" valign="top"><img src="docs/assets/screens/highlight-home.webp" width="100%" alt="Home when Ada comes back: two questions under Needs you, a Continue where you left off card that says Answer Basia's question, and the project marked new."><br><sub><b>Come back and catch up.</b> Home shows what needs you and the next step where you left off.</sub></td>
   </tr>
   <tr>
-    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-agent.webp" width="100%" alt="Settings, Agents and AI: the Connect your MCP client card with the Claude Code tab and the two commands that add Flux and sign in."><br><sub><b>Your own agent, with your permission.</b> Add the address to Claude Code, Codex or any MCP client, then choose the projects it may use.</sub></td>
+    <td width="50%" valign="top"><img src="docs/assets/screens/highlight-agent.webp" width="100%" alt="Settings, AI: the Connect your MCP client card with the Claude Code tab and the two commands that add Flux and sign in."><br><sub><b>Your own agent, with your permission.</b> Add the address to Claude Code, Codex or any MCP client, then choose the projects it may use.</sub></td>
     <td width="50%" valign="top"><img src="docs/assets/screens/highlight-map.webp" width="100%" alt="The Map view of the Community garden sensors project: a sketch with one idea, Six sensors for twelve beds, linked to three others, with the project's Conversation, Map, Tasks, Wiki and Agents views above it."><br><sub><b>One project, three views.</b> The conversation, the map (here) and the wiki, plus tasks and agents, sit under one header.</sub></td>
   </tr>
   <tr>
@@ -171,7 +171,7 @@ Your own MCP client, such as Claude Code or Codex, can read the projects you cho
 computer with your own model account, which Flux never sees. On the `./flux demo` data:
 
 1. Sign in as Ada, the company's owner (`./flux demo` prints her password), and open the Connect page:
-   your name at the bottom left → **All settings** → **Agents and AI** → **Local co-work on this
+   your name at the bottom left → **All settings** → **AI** → **Local co-work on this
    computer** → **Manage**, or go straight to <http://127.0.0.1:8081/connect-agent>. 8081 is the
    default port; use the one `./flux up` printed.
 2. **Create your personal agent.** Keep the company "Riverside Makers (demo)", give the agent a

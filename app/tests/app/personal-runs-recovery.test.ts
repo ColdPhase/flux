@@ -14,7 +14,7 @@ const ownIds: string[] = [];
 let first: Person; let second: Person; let third: Person; let fourth: Person; let ws: Workspace; let place: Project; let conversation: Conversation;
 const agents = new Map<string, string>();
 
-async function seed(owner: Person, status: 'queued' | 'reading' | 'dispatching' | 'completed', ageSeconds = 3600) {
+async function seed(owner: Person, status: 'queued' | 'reading' | 'dispatching' | 'completed', ageSeconds = 5400) {
   const id = randomUUID();
   const now = new Date();
   await db.insert(schema.personalRuns).values({ aiEpoch: 1,
@@ -78,6 +78,13 @@ describe('personal-run crash recovery (real SQL, no provider)', () => {
     for (const event of events.rows) assert.deepEqual(event.recipients, [`human:${event.object_id === reading ? second.id : event.object_id === dispatched ? third.id : first.id}`]);
     await recoverPersonalRuns(uow);
     assert.equal((await pool.query("SELECT count(*)::int AS n FROM events WHERE kind='assistant_run.changed.v1' AND object_id=ANY($1::uuid[])", [[queued, reading, dispatched]])).rows[0].n, 3, 'repeated sweep is inert');
+  });
+
+  test('#854: a run lost with its worker counts what it had spent and one more request, not its whole reservation', async () => {
+    const id = await seed(first, 'dispatching', 5400);
+    await pool.query('UPDATE personal_runs SET reserved_micros = 5000000, charged_micros = 2500, largest_request_micros = 168000 WHERE id = $1', [id]);
+    await recoverPersonalRuns(uow);
+    assert.deepEqual(await row(id), { status: 'provider_failed', cost_state: 'unknown', charged_micros: 0, reserved_micros: 170_500, answer_body: null });
   });
 
   test('a locked old row does not hold up recovery of another owner', async () => {

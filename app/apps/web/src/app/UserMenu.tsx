@@ -89,7 +89,7 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
           </div>
           <AppearanceControls idPrefix={popId} />
           {/* Settings, one way in (#763 SG-7): the company's people are in Settings › Company (F-037), and the assistant and
-              background suggestions in Settings → Agents and AI, so the menu never lists a feature this server has turned off. */}
+              background suggestions in Settings → AI, so the menu never lists a feature this server has turned off. */}
           <div className="me__sec">
             <Link to="/settings" className="me__item" onClick={follow}><Icon name="gear" />All settings</Link>
           </div>

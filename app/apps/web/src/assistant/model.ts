@@ -1,11 +1,12 @@
 import { useEffect, useSyncExternalStore } from 'react';
-import { ASSISTANT_MODEL_PATH, assistantModelName, type AssistantModelChoice, type AssistantModelOption } from '@flux/contracts';
+import { ASSISTANT_MODEL_PATH, assistantModelName, type AssistantModelChoice, type AssistantModelOption, type AssistantModelPick } from '@flux/contracts';
 import { ApiError, NetworkError, request } from '../api/client';
 import { isWorking, runModelName } from './format';
 import { listOwnRuns } from './api';
 
-// The assistant's one model (F-027 AST-11): the ready card, Settings, the ask bar and the panel all read and write
-// the same value, so they can never disagree. This is the shared store behind them; the server decides what is valid.
+// The assistant's one model (F-027 AST-11; any connection's, #854): the ready card, Settings, the ask bar and the panel all
+// read and write the same value, so they can never disagree. This is the shared store behind them; the server decides what
+// is valid.
 
 let choice: AssistantModelChoice | null = null;
 let started = false;
@@ -13,9 +14,6 @@ const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((listener) => listener());
 const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
 
-/** The list for the way being set up (the API key form names its connection), without touching the shared choice. */
-export const fetchAssistantModel = (connectionId?: string, signal?: AbortSignal) =>
-  request<AssistantModelChoice>(connectionId ? `${ASSISTANT_MODEL_PATH}?connectionId=${encodeURIComponent(connectionId)}` : ASSISTANT_MODEL_PATH, { signal });
 
 /** Reads the caller's own choice again (when a control comes into view or opens its list). */
 export async function refreshAssistantModel(signal?: AbortSignal) {
@@ -28,8 +26,16 @@ export async function refreshAssistantModel(signal?: AbortSignal) {
   }
 }
 
-export const modelOption = (current: AssistantModelChoice | null, id: string | undefined): AssistantModelOption | null =>
-  current?.options.find((option) => option.id === id) ?? null;
+/** The option a pick names, in its own connection's group. */
+export const modelOption = (current: AssistantModelChoice | null, pick: AssistantModelPick | null | undefined): AssistantModelOption | null =>
+  (pick && current?.groups.find((group) => group.connection === pick.connection)?.options.find((option) => option.id === pick.model)) ?? null;
+/** "Sonnet · Claude plan": a model with the connection it belongs to. */
+export const pickLabel = (current: AssistantModelChoice | null, pick: AssistantModelPick | null | undefined): string => {
+  if (!pick) return '';
+  const group = current?.groups.find((item) => item.connection === pick.connection);
+  const name = modelOption(current, pick)?.name ?? assistantModelName(pick.model);
+  return group ? `${name} · ${group.label}` : name;
+};
 
 /** The line that confirms a change, for a polite live region (AST-11 "Behaviour"). */
 async function confirmation(name: string) {
@@ -45,11 +51,11 @@ async function confirmation(name: string) {
  * Chooses the model on the server. Resolves with the confirming sentence; rejects with the server's plain error
  * ("Your Claude plan doesn't offer that model. It is still Sonnet.") and leaves the stored choice as it was.
  */
-export async function chooseAssistantModel(id: string): Promise<string> {
+export async function chooseAssistantModel(pick: AssistantModelPick): Promise<string> {
   try {
-    const next = await request<AssistantModelChoice>(ASSISTANT_MODEL_PATH, { method: 'PUT', body: { model: id } });
+    const next = await request<AssistantModelChoice>(ASSISTANT_MODEL_PATH, { method: 'PUT', body: pick });
     choice = next;
-    const sentence = await confirmation(modelOption(next, next.current)?.name ?? assistantModelName(next.current));
+    const sentence = await confirmation(modelOption(next, next.current)?.name ?? assistantModelName(pick.model));
     emit();
     return sentence;
   } catch (error) {

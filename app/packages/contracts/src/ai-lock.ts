@@ -73,7 +73,6 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'PATCH /api/v1/proactive-comparison-rules/:ruleId': gated('params', 'ruleId', 'comparison_rule', { body: 'status', equals: 'enabled' }),
   // The assistant (F-027).
   'GET /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/settings': gated('params', 'workspaceId', 'workspace'),
-  'PATCH /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/settings': gated('params', 'workspaceId', 'workspace'),
   'POST /api/v1/workspaces/:workspaceId/assistant-operator-requests': gated('params', 'workspaceId', 'workspace'),
   'GET /api/v1/conversations/:conversationId/assistant-changes': gated('params', 'conversationId', 'conversation'),
   'GET /api/v1/conversations/:conversationId/assistant-activity': gated('params', 'conversationId', 'conversation'),

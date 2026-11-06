@@ -1,3 +1,4 @@
+import { AI_PROVIDERS } from '@flux/contracts';
 import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -43,8 +44,11 @@ export function assistantChangeRows(db: DbExecutor) {
     },
     async enablement(ownerUserId: string) {
       const e = schema.personalRunEnablements;
-      const [row] = await db.select({ status: e.status, createdAt: e.createdAt, payer: e.consentPayerOrganization }).from(e).where(eq(e.ownerUserId, ownerUserId)).for('share');
-      return row ?? null;
+      const [row] = await db.select({ status: e.status, createdAt: e.createdAt, engine: e.engine, provider: e.provider }).from(e).where(eq(e.ownerUserId, ownerUserId)).for('share');
+      if (!row) return null;
+      // Who pays, as the change's receipt names it (#854): the plan of the CLI, or the API key's provider account.
+      const payer = row.engine === 'runtime' ? (row.provider === 'openai' ? 'ChatGPT plan' : 'Claude plan') : `${AI_PROVIDERS[row.provider].label} API key`;
+      return { status: row.status, createdAt: row.createdAt, payer };
     },
     async byCommand(runId: string, clientCommandId: string): Promise<AssistantChangeRow | null> {
       const [row] = await db.select().from(c).where(and(eq(c.runId, runId), eq(c.clientCommandId, clientCommandId)));

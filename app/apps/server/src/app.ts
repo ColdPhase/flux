@@ -302,7 +302,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
   await app.register(aiRoutes(assistantRoutes), { db, sessions: identity, boss });
   await app.register(aiRoutes(personalRunRoutes), { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
-    toolTurns: personalRuns.toolTurns, runtime: personalRuntimeAvailability(config.agentRuntime, db) });
+    runtime: personalRuntimeAvailability(config.agentRuntime, db) });
   await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });
   // The `runtime` transport (F-022 AIM-3): off unless the operator set FLUX_AGENT_RUNTIME.

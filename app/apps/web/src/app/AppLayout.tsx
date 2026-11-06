@@ -144,7 +144,7 @@ function AppLayoutContent() {
   const aiConnections = location.pathname === '/settings/ai-connections';
   // A page inside Settings (#266 PF-5): on the phone its header leads back instead of opening the drawer.
   const settingsPage = /^\/settings\/./.test(location.pathname);
-  // Back from a direct link goes to the page that leads there: the AI pages to Agents and AI (#513).
+  // Back from a direct link goes to the page that leads there: the AI pages to Settings › AI (#513).
   const settingsParent = /^\/settings\/(assistant|background-compute|ai-connections|agents\/connect)(\/|$)/.test(location.pathname) ? '/settings/agents' : '/settings';
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
   const tablet = useMediaQuery(MEDIA.tablet);
@@ -643,11 +643,11 @@ function AppLayoutContent() {
     : location.pathname === '/projects'
     ? { crumb: null, title: 'Spaces', topic: 'Every space you can open', noDetails: true }
     : /^\/settings(\/(appearance|account|company|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
-    ? { crumb: null, title: 'Settings', topic: 'Appearance, notifications, agents and AI', noDetails: true }
+    ? { crumb: null, title: 'Settings', topic: 'Appearance, notifications and AI', noDetails: true }
     : backgroundSettings
     ? { crumb: null, title: 'Background suggestions', topic: 'Your usage and space rules', noDetails: true }
     : aiConnections
-    ? { crumb: null, title: 'AI connections', topic: 'Your own keys, payers and allowances', noDetails: true }
+    ? { crumb: null, title: 'Your API keys', topic: 'Each with one daily budget', noDetails: true }
     : location.pathname === '/search'
     ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', noDetails: true }
     : location.pathname === '/settings/assistant/how'

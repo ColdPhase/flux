@@ -15,8 +15,7 @@ try {
     { body: { name: 'Sensor comparison assistant', owner: 'self' } }), 201) as { id: string };
   const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/proactive-comparison-rules`,
     { body: { agentId: agent.id, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
-      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
-      maxRunsPerDay: 3, periodBudgetCents: 15, perRunCents: 5 } }), 201) as { id: string };
+      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string };
   await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [rule.id]);
   const material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Low-light measurement, 5 lux',

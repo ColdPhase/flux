@@ -29,8 +29,7 @@ async function fixture() {
     { body: { name: 'Comparison agent', owner: 'self' } }), 201) as { id: string };
   const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/proactive-comparison-rules`,
     { body: { agentId: agent.id, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
-      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
-      maxRunsPerDay: 3, periodBudgetCents: 50, perRunCents: 5 } }), 201) as { id: string };
+      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string };
   // Controlled scheduler only; no production enable endpoint or provider registration.
   await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [rule.id]);
   await collect(start);
@@ -41,9 +40,7 @@ async function fixture() {
   const candidates = async () => (await pool.query('SELECT * FROM proactive_comparison_outbox WHERE rule_id=$1 ORDER BY created_at,id', [rule.id])).rows;
   const window = async () => (await pool.query('SELECT * FROM proactive_comparison_project_changes WHERE project_id=$1', [prj.id])).rows[0];
   const connect = async () => expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-    provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'scheduling-fixture-'.repeat(4)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture scope',
-    workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true,
-    projectDataDisclosureAcknowledged: true, maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 5,
+    provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'scheduling-fixture-'.repeat(4)}END8`, dailyBudgetCents: 50,
   } }), 201);
   return { owner, ws, prj, agent, rule, material, negative, candidates, window, connect };
 }
@@ -224,9 +221,7 @@ test('unchanged dismissed/unknown candidates never retry; a new human revision p
   for (const state of ['dismissed', 'unknown'] as const) {
     const f = await fixture(); const material = await f.material(); const result = await f.negative();
     expectStatus(await f.owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-      provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'scheduling-fixture-'.repeat(4)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture scope',
-      workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true,
-      projectDataDisclosureAcknowledged: true, maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 5,
+      provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'scheduling-fixture-'.repeat(4)}END8`, dailyBudgetCents: 50,
     } }), 201);
     await collect(start); await comparisonSchedulingTick(db, at(2));
     const candidate = (await f.candidates())[0]!;
@@ -263,8 +258,8 @@ test('cursor ahead of a rebuilt log recovers and logs every enabled project beyo
   const f = await fixture(); const ids = Array.from({ length: 205 }, () => randomUUID());
   await pool.query(`INSERT INTO projects(id,workspace_id,name,visibility,created_by)
     SELECT id,$2,'Recovery fixture','restricted',$3 FROM unnest($1::uuid[]) id`, [ids, f.ws.id, f.owner.id]);
-  await pool.query(`INSERT INTO proactive_comparison_rules(id,workspace_id,project_id,owner_user_id,agent_id,max_runs_per_day,period_budget_cents,per_run_cents,status)
-    SELECT gen_random_uuid(),$2,id,$3,$4,3,50,5,'enabled' FROM unnest($1::uuid[]) id`, [ids, f.ws.id, f.owner.id, f.agent.id]);
+  await pool.query(`INSERT INTO proactive_comparison_rules(id,workspace_id,project_id,owner_user_id,agent_id,status)
+    SELECT gen_random_uuid(),$2,id,$3,$4,'enabled' FROM unnest($1::uuid[]) id`, [ids, f.ws.id, f.owner.id, f.agent.id]);
   await pool.query('UPDATE proactive_comparison_cursor SET seq=(SELECT coalesce(max(seq),0)+10 FROM events) WHERE id=1');
   const logs: string[] = [];
   await comparisonSchedulingTick(db, start, (message) => logs.push(message));

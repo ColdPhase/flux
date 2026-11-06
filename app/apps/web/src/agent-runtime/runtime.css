@@ -1,4 +1,4 @@
-/* Claude Code in Flux (F-022 T4 #279): the runtime section of Settings → Agents and AI and its sign-in console.
+/* Claude Code in Flux (F-022 T4 #279): the runtime section of Settings → AI and its sign-in console.
    Phone first: one column, 44px targets and 16px fields on coarse pointers (docs/design/apple-hig-mobile.md). */
 .rt .aset__state { flex-wrap: wrap; }
 .rt-sub { margin: 14px 0 8px; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }
@@ -53,7 +53,7 @@
 }
 /* Touch (#763 SG-4): the folded line is a 44 px target wherever it shows. */
 @media (pointer: coarse), (hover: none) { .rt-more > summary { display: flex; align-items: center; min-height: 44px; } }
-/* Agents and AI (#763 SG-6): the sign-in section's notes at the meta size of the other settings lines, and a chevron
+/* Settings › AI (#763 SG-6): the sign-in section's notes at the meta size of the other settings lines, and a chevron
    for its folded line instead of the browser's triangle. */
 .sset-in .rt > .nset__note { font-size: var(--fs-xs); line-height: 1.45; color: var(--t3); }
 .rt-more > summary { list-style: none; display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }

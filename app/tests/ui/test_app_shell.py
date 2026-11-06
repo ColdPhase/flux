@@ -1784,8 +1784,8 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="Sign in")).to_be_visible()
         self.assert_read_waits_for_the_grace(page, start, "/api/v1/auth/capabilities")
 
-    def test_14e_the_assistant_setup_reads_its_connections_only_once_the_page_is_live(self) -> None:
-        """Settings > Assistant opened while the page is being left lists the owner's connections after the grace (#471)."""
+    def test_14e_the_assistant_page_reads_its_status_only_once_the_page_is_live(self) -> None:
+        """Settings > Assistant opened while the page is being left reads its status after the grace (#471)."""
         page = self.page(signed_in=False)
         page.add_init_script(FETCH_RECORDER)
         page.goto("/sign-up")
@@ -1795,7 +1795,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Create account").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         start = self.open_while_leaving(page, "/settings/assistant")
-        self.assert_read_waits_for_the_grace(page, start, "/api/v1/background-compute-connections")
+        self.assert_read_waits_for_the_grace(page, start, "/api/v1/personal-assistant")
 
 
 if __name__ == "__main__":

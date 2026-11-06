@@ -8,9 +8,6 @@ export interface ProactiveComparisonRule {
   purpose: 'camera_sensor_comparison';
   dataScope: 'current_project_published';
   permittedEffect: 'quiet_project_proposal';
-  maxRunsPerDay: number;
-  periodBudgetCents: number;
-  perRunCents: number;
   status: 'enabled' | 'paused' | 'revoked';
   version: number;
   createdAt: string;
@@ -18,11 +15,9 @@ export interface ProactiveComparisonRule {
   revokedAt: string | null;
 }
 
+/** A rule has no allowance of its own: its comparisons count against the background API key's one daily budget (#854). */
 export interface CreateProactiveComparisonRule {
   agentId: string;
-  maxRunsPerDay: number;
-  periodBudgetCents: number;
-  perRunCents: number;
   purpose: 'camera_sensor_comparison';
   dataScope: 'current_project_published';
   permittedEffect: 'quiet_project_proposal';

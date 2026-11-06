@@ -88,7 +88,7 @@ GROUPS = [
      "`compose.yaml` (both ship with every release; the repository copies are in `docker/`) or on the source Compose "
      "file. Set them in `.env`; [INSTALL.md](release-guide.md#calls-and-screen-sharing-optional) has the ports and firewall."),
     ("ai", "AI providers",
-     "Owners connect their own AI provider in **Settings → Agents and AI**. These switches decide what the instance allows. "
+     "Owners connect their own AI provider in **Settings → AI**. These switches decide what the instance allows. "
      "Both Compose files pass the switches to `api` and `worker`; the assistant and background suggestions also need the "
      "key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below)."),
     ("runtime", "Agent runtime: the owner's own Claude Code or Codex",

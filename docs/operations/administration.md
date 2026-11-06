@@ -96,7 +96,7 @@ does is in [operating encrypted spaces](encrypted-spaces.md).
 
 ## Agents and connections
 
-**Settings → Agents and AI** is where each person creates their own agent, connects an MCP client
+**Settings → AI** is where each person creates their own agent, connects an MCP client
 such as Claude Code or Codex to the projects they choose, adds an AI provider key, and, when the
 operator allows it, signs in with their own Claude or ChatGPT subscription. Every connection lists
 the projects and actions it may use and can be revoked there. [Connect your own

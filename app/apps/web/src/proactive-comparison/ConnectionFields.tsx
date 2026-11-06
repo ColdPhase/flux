@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react';
-import { AI_PROVIDER_KINDS, AI_PROVIDERS, AI_PRICE_TABLE, BACKGROUND_COMPARISON_LIMITS, maxRequestMicros, tablePrice,
+import { AI_PROVIDER_KINDS, AI_PROVIDERS, AI_PRICE_TABLE, apiKeyDefaultModel, BACKGROUND_COMPARISON_LIMITS, maxRequestMicros, tablePrice,
   type AiModelList, type AiPrice, type AiProviderKind, type BackgroundComputeConnection } from '@flux/contracts';
 import { Button, Select, Option } from '../ui';
 import { listAiModels } from './api';
@@ -68,7 +68,11 @@ export function ConnectionFields({ connection, disabled, onProvider }: {
     <label>Provider
       {/* Named explicitly: inside its label, the options would otherwise join the field's name. */}
       <Select name="provider" aria-label="Provider" required value={provider} disabled={disabled}
-        onChange={(next) => { setProvider(next as AiProviderKind | ''); setList(null); setListStatus(''); }}>
+        onChange={(next) => {
+          setProvider(next as AiProviderKind | ''); setList(null); setListStatus('');
+          // A named provider starts on Flux's default model for it (#854); the owner may type another.
+          if (next) setModel(apiKeyDefaultModel(next as AiProviderKind) ?? '');
+        }}>
         <Option value="">Choose a provider</Option>
         {AI_PROVIDER_KINDS.map((kind) => <Option key={kind} value={kind}>{AI_PROVIDERS[kind].label}</Option>)}
       </Select>
@@ -88,11 +92,11 @@ export function ConnectionFields({ connection, disabled, onProvider }: {
       <p className="background-settings__help" role="status">{listStatus || (provider && !info?.keylessModelList ? 'Type the model id exactly as the provider names it.' : '')}</p>
     </div>
     {provider && model ? table
-      ? <p className="background-settings__help" data-testid="connection-price">Price: {priceText(table)} · Flux price table, checked {table.checkedOn}. One request reserves up to {comparisonReserveText(table)}.</p>
+      ? <p className="background-settings__help" data-testid="connection-price">Price: {priceText(table)} · Flux price table, checked {table.checkedOn}.</p>
       // Remounted per model, so a listed price becomes the starting value of the owner's price.
       : <fieldset key={`${provider}:${model}`} className="background-settings__price" disabled={disabled}>
         <legend>Price per 1M tokens (USD)</legend>
-        <p className="background-settings__help">Flux’s price table does not have this model. Enter its price from your provider’s pricing; enter 0 for a self-hosted server you pay for otherwise. Flux reserves the most one request can cost at this price. Without a price, the connection can be saved but no rule or assistant can use it.</p>
+        <p className="background-settings__help">Flux’s price table does not have this model. Enter its price from your provider’s pricing; enter 0 for a self-hosted server you pay for otherwise. Flux prices each request at it before sending, so your daily budget holds. Without a price, the key can be saved but nothing can use it.</p>
         {listedPrice ? <p className="background-settings__help" data-testid="listed-price">{info!.label} lists {priceText(listedPrice)} (read {list!.checkedOn}); it is filled in below for you to confirm.</p> : null}
         <div className="background-settings__limits">
           <label>Input price<input name="inputPrice" type="number" min="0" max="1000" step="any" inputMode="decimal" defaultValue={listedPrice ? usd(listedPrice.inputMicrosPerMTok) : undefined} /></label>

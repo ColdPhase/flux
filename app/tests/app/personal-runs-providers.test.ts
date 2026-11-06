@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase } from '@flux/db';
 import { createPersonalRunProcessor, type Principal } from '@flux/core';
-import { PERSONAL_RUN_CONSENT_VERSION, type AssistantAnswer, type Conversation, type Page, type Project, type Workspace } from '@flux/contracts';
+import { type AssistantAnswer, type Conversation, type Page, type Project, type Workspace } from '@flux/contracts';
 import { parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
@@ -55,38 +55,38 @@ describe('personal runs on any provider through the same path (#179)', () => {
       { body: { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() } }), 201) as Conversation;
   });
 
-  test('a connection without a known price, or one too costly for the per-run limit, cannot be enabled or run', async () => {
-    connections.connect(owner.id, randomUUID(), { provider: 'gemini', model: 'gemini-model', price: null });
-    await assert.rejects(runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId }), { code: 'PERSONAL_RUN_PRICE_UNKNOWN' });
-    // 16,000 × $30/M + 1,500 × $60/M = $0.57 per run, above the $0.50 maximum per-run limit.
-    connections.connect(owner.id, randomUUID(), { provider: 'openai', model: 'gpt-model', price: { inputMicrosPerMTok: 30_000_000, outputMicrosPerMTok: 60_000_000, source: 'owner', checkedOn: null } });
-    await assert.rejects(runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, perRunCents: 50 }), { code: 'PERSONAL_RUN_COST_OVER_LIMIT' });
+  test('a key without a known price cannot be picked: its daily budget could not hold, so nothing is turned on (#854)', async () => {
+    const unpriced = randomUUID();
+    connections.connect(owner.id, unpriced, { provider: 'gemini', model: 'gemini-model', price: null });
+    await assert.rejects(runs.enable(human(owner), { agentId, connection: unpriced, model: 'gemini-model' }), { code: 'ASSISTANT_MODEL_UNAVAILABLE' });
     assert.equal((await runs.status(human(owner))).state, 'not_enabled');
+    assert.equal((await runs.model(human(owner))).groups.some((group) => group.connection === unpriced), false, 'an unpriced key is not offered in the picker');
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM personal_runs WHERE owner_user_id=$1', [owner.id])).rows[0].n, 0);
   });
 
   for (const target of [
+    // One request of a run without tools: 32,000 input and 4,000 output tokens at the key's price (#843 bounds).
     { provider: 'openai_compatible' as const, model: 'llama3.1:8b', baseUrl: `${MOCK}/openai/v1`, wire: 'openai',
-      price: { inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 2_000_000, source: 'owner' as const, checkedOn: null }, reserved: 16_000 + 3_000, paths: ['/openai/v1/chat/completions'] },
+      price: { inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 2_000_000, source: 'owner' as const, checkedOn: null }, reserved: 32_000 + 8_000, paths: ['/openai/v1/chat/completions'] },
     { provider: 'anthropic' as const, model: 'claude-sonnet-5', baseUrl: null, wire: 'anthropic',
-      price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table' as const, checkedOn: '2026-10-02' }, reserved: 47_000,
+      price: { inputMicrosPerMTok: 2_000_000, outputMicrosPerMTok: 10_000_000, source: 'table' as const, checkedOn: '2026-10-02' }, reserved: 64_000 + 40_000,
       paths: ['/anthropic/v1/messages/count_tokens', '/anthropic/v1/messages'] },
   ]) {
-    test(`${target.provider}: consent names the connection, the run reserves its largest request, the answer names provider and model`, async () => {
+    test(`${target.provider}: the model of a key, a run that reserves against the key's daily budget when it starts, the answer names provider and model`, async () => {
       await mock('/__reset', {});
       const enabled = await runs.status(human(owner)).then((status) => status.enablement);
       if (enabled) await runs.remove(human(owner));
       const connectionId = randomUUID();
       connections.connect(owner.id, connectionId, target);
-      const status = await runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, perRunCents: 6, dailyCapCents: 100 });
+      const status = await runs.enable(human(owner), { agentId, connection: connectionId, model: target.model });
       assert.equal(status.state, 'ready');
-      assert.deepEqual([status.disclosure.provider, status.disclosure.model, status.disclosure.price, status.disclosure.maxRunMicros],
-        [target.provider, target.model, target.price, target.reserved]);
-      assert.deepEqual([status.enablement!.consent.provider, status.enablement!.consent.model], [target.provider, target.model]);
+      assert.deepEqual([status.enablement!.connection, status.enablement!.engine, status.enablement!.model], [connectionId, 'server', target.model]);
+      assert.equal(status.today!.budgetCents, 1_000, 'the key\'s one daily budget');
 
       await mock('/__script', { wire: target.wire, text: 'Fact: the camera fails below 5 lux [S1].', usage: { input: 1_000, output: 100 } });
       const asked = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Where are we?' });
-      assert.deepEqual(await row(asked.run.id), { status: 'queued', provider: target.provider, model: target.model, reserved_micros: target.reserved, charged_micros: 0, cost_state: 'reserved' });
+      assert.deepEqual(await row(asked.run.id), { status: 'queued', provider: target.provider, model: target.model, reserved_micros: 0, charged_micros: 0, cost_state: 'reserved' },
+        'a request waiting its turn holds nothing yet');
       assert.equal(await processor.process(asked.run.id), 'completed');
       const charged = Math.ceil((1_000 * target.price.inputMicrosPerMTok + 100 * target.price.outputMicrosPerMTok) / 1_000_000);
       assert.deepEqual(await row(asked.run.id), { status: 'completed', provider: target.provider, model: target.model, reserved_micros: target.reserved, charged_micros: charged, cost_state: 'observed' });
@@ -98,22 +98,21 @@ describe('personal runs on any provider through the same path (#179)', () => {
       assert.deepEqual(answer.provenance, { provider: target.provider, model: target.model });
       assert.equal(answer.sources.length, 1);
       assert.equal(JSON.stringify(answers).includes(KEY), false);
+      assert.equal((await runs.status(human(owner))).today!.chargedMicros, charged, 'the key\'s day counts what its runs were charged');
     });
   }
 });
 
 // #192 review B1: a run is never charged above its reservation. Usage above the run's token
 // limits, or a reconciled cost above the reservation, fails closed like a lost response: cost
-// `unknown`, the whole reservation stays counted against the daily cap, nothing is posted.
+// `unknown`, the whole reservation stays counted against the key's daily budget, nothing is posted.
 describe('a personal run is never charged above its reservation (#179 PROV-3, #192 B1)', () => {
   let owner: Person;
   let thread: Conversation;
   let agentId: string;
   const PRICE = { inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 2_000_000, source: 'owner' as const, checkedOn: null };
-  // 16,000 × $1/M + 1,500 × $2/M = 19,000 micro-dollars, within the $0.06 per-run limit.
-  const RESERVED = 19_000;
-  let unknownRuns = 0;
-  let chargedToday = 0;
+  // 32,000 × $1/M + 4,000 × $2/M = 40,000 micro-dollars: the largest request, reserved when the run starts.
+  const RESERVED = 40_000;
 
   before(async () => {
     owner = await person('pr-bound-owner');
@@ -127,9 +126,9 @@ describe('a personal run is never charged above its reservation (#179 PROV-3, #1
   async function runOn(target: { provider: 'openai_compatible' | 'openrouter'; model: string; baseUrl: string | null }, script: Record<string, unknown>) {
     await mock('/__reset', {});
     if ((await runs.status(human(owner))).enablement) await runs.remove(human(owner));
-    connections.connect(owner.id, randomUUID(), { ...target, price: PRICE });
-    const status = await runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, perRunCents: 6, dailyCapCents: 100 });
-    assert.equal(status.disclosure.maxRunMicros, RESERVED);
+    const key = randomUUID();
+    connections.connect(owner.id, key, { ...target, price: PRICE });
+    await runs.enable(human(owner), { agentId, connection: key, model: target.model });
     await mock('/__script', { wire: 'openai', text: 'Fact: the camera fails below 5 lux [S1].', ...script });
     const asked = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Where are we?' });
     const outcome = await processor.process(asked.run.id);
@@ -141,9 +140,9 @@ describe('a personal run is never charged above its reservation (#179 PROV-3, #1
   const compatible = { provider: 'openai_compatible' as const, model: 'llama3.1:8b', baseUrl: `${MOCK}/openai/v1` };
   const openrouter = { provider: 'openrouter' as const, model: 'vendor/model', baseUrl: null };
   for (const [name, target, script] of [
-    ['reported input above the 16,000-token limit (the review reproduction: 40,200 µ$ > 19,000 µ$)', compatible, { usage: { input: 40_000, output: 100 } }],
-    ['reported output above the 1,500-token limit', compatible, { usage: { input: 1_000, output: 1_501 } }],
-    ['an OpenRouter usage.cost above the reservation', openrouter, { usage: { input: 1_000, output: 100 }, cost: 0.019001 }],
+    ['reported input above the 32,000-token bound (80,200 µ$ > 40,000 µ$)', compatible, { usage: { input: 80_000, output: 100 } }],
+    ['reported output above the 4,000-token bound', compatible, { usage: { input: 1_000, output: 4_001 } }],
+    ['an OpenRouter usage.cost above the reservation', openrouter, { usage: { input: 1_000, output: 100 }, cost: 0.040001 }],
     ['an OpenRouter usage.cost too large for the integer charge column', openrouter, { usage: { input: 1_000, output: 100 }, cost: 1_000_000 }],
     ['reported tokens too large for the integer token columns', compatible, { usage: { input: 3_000_000_000, output: 100 } }],
   ] as const) {
@@ -152,29 +151,28 @@ describe('a personal run is never charged above its reservation (#179 PROV-3, #1
       assert.equal(outcome, 'provider_failed');
       assert.deepEqual(stored, { status: 'provider_failed', reserved_micros: RESERVED, charged_micros: 0, cost_state: 'unknown', input_tokens: null, output_tokens: null });
       assert.equal(posted, false, 'the answer of an out-of-bounds response is withheld');
-      unknownRuns++;
       const today = (await runs.status(human(owner))).today!;
-      assert.deepEqual([today.chargedMicros, today.reservedMicros], [chargedToday, unknownRuns * RESERVED],
-        'the daily cap counts the whole reservation of every unknown run and no charge above it');
+      assert.deepEqual([today.chargedMicros, today.reservedMicros], [RESERVED, 0],
+        'the key\'s daily budget counts the most an unknown run could have cost, and no charge above it');
     });
   }
 
   test('a reported cost at the reservation, and usage at the token limits, still reconcile as observed', async () => {
-    const atCeiling = await runOn(openrouter, { usage: { input: 1_000, output: 100 }, cost: 0.019 });
+    const atCeiling = await runOn(openrouter, { usage: { input: 1_000, output: 100 }, cost: 0.04 });
     assert.deepEqual([atCeiling.outcome, atCeiling.stored, atCeiling.posted], ['completed',
       { status: 'completed', reserved_micros: RESERVED, charged_micros: RESERVED, cost_state: 'observed', input_tokens: 1_000, output_tokens: 100 }, true]);
-    const atLimits = await runOn(compatible, { usage: { input: 16_000, output: 1_500 } });
+    const atLimits = await runOn(compatible, { usage: { input: 32_000, output: 4_000 } });
     assert.deepEqual([atLimits.outcome, atLimits.stored, atLimits.posted], ['completed',
-      { status: 'completed', reserved_micros: RESERVED, charged_micros: RESERVED, cost_state: 'observed', input_tokens: 16_000, output_tokens: 1_500 }, true]);
-    chargedToday += 2 * RESERVED;
+      { status: 'completed', reserved_micros: RESERVED, charged_micros: RESERVED, cost_state: 'observed', input_tokens: 32_000, output_tokens: 4_000 }, true]);
     const today = (await runs.status(human(owner))).today!;
-    assert.deepEqual([today.chargedMicros, today.reservedMicros], [chargedToday, unknownRuns * RESERVED]);
+    assert.deepEqual([today.chargedMicros, today.reservedMicros], [RESERVED, 0], 'the key of the last run was charged exactly its observed cost');
   });
 });
 
-// F-027 AST-11 (#596): the assistant's model on an API key. The list is the connection's own model and the provider's models that
-// have a table price; the run is reserved, sent and recorded at the chosen model, and a change reaches the next request only.
-describe('the assistant\'s model on an API key (F-027 AST-11, #596)', () => {
+// F-027 AST-11 (#596), Connect AI (#854): the model of an agent, picked from any of its owner's connections in one list grouped by
+// connection, with Connect AI's default (the connection made first) preselected. The run is reserved, sent and recorded at the
+// chosen model, and a change reaches the next request only. Picking a model of another connection moves the assistant there.
+describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () => {
   let owner: Person; let viewer: Person; let guest: Person;
   let thread: Conversation;
   let agentId: string;
@@ -194,88 +192,96 @@ describe('the assistant\'s model on an API key (F-027 AST-11, #596)', () => {
     connections.connect(owner.id, sonnet5, { provider: 'anthropic', model: 'claude-sonnet-5', baseUrl: null });
   });
 
-  test('AST-11.1/AST-11.5: the list, a choice at turn-on, the reservation and the request at the chosen model; a change reaches the next request only', async () => {
+  test('AST-11.1/AST-11.5: the grouped list, a choice at turn-on, the request at the chosen model; a change reaches the next request only', async () => {
     let choice = await runs.model(human(owner));
-    assert.deepEqual([choice.engine, choice.account, choice.company, choice.current, choice.default, choice.saved], ['server', 'api_key', 'Anthropic', 'claude-sonnet-5', 'claude-sonnet-5', false]);
-    assert.deepEqual(choice.options.map((option) => [option.id, option.name, option.note, option.callsTools]), [
+    assert.deepEqual([choice.current, choice.default, choice.saved], [null, { connection: sonnet5, model: 'claude-sonnet-5' }, false]);
+    assert.equal(choice.groups.length, 1);
+    assert.deepEqual([choice.groups[0]!.connection, choice.groups[0]!.account, choice.groups[0]!.company], [sonnet5, 'api_key', 'Anthropic']);
+    assert.deepEqual(choice.groups[0]!.options.map((option) => [option.id, option.name, option.note, option.callsTools]), [
       ['claude-sonnet-5', 'Sonnet 5', 'Your connection\'s model', true],
       ['claude-sonnet-5-5', 'Sonnet 5.5', 'Input $2, output $10 per 1M tokens', true],
       ['claude-haiku-4-5', 'Haiku 4.5', 'Input $1, output $5 per 1M tokens', true],
       ['claude-fable-5-1', 'Fable 5.1', 'Input $10, output $50 per 1M tokens', true],
     ]);
-    // A model outside the list, or from another provider, is refused at turn-on and nothing is turned on.
+    // A model outside the key's list, or another provider's, is refused at turn-on and nothing is turned on.
     for (const bad of ['gpt-6-sol', 'sonnet', '--model']) {
-      await assert.rejects(runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, model: bad }),
-        { code: 'ASSISTANT_MODEL_UNAVAILABLE', message: 'Your API key\'s provider doesn\'t offer that model. Nothing was turned on.' }, bad);
+      await assert.rejects(runs.enable(human(owner), { agentId, connection: sonnet5, model: bad }),
+        { code: 'ASSISTANT_MODEL_UNAVAILABLE', message: 'Your API key doesn\'t offer that model. Nothing was turned on.' }, bad);
     }
+    // A plan the person is not signed in to is not theirs to pick.
+    await assert.rejects(runs.enable(human(owner), { agentId, connection: 'claude_plan', model: 'sonnet' }),
+      { code: 'ASSISTANT_MODEL_UNAVAILABLE', message: 'Sign in to Claude first. Nothing was turned on.' });
     assert.equal((await runs.status(human(owner))).state, 'not_enabled');
 
     await mock('/__reset', {});
-    const status = await runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, model: 'claude-haiku-4-5', perRunCents: 6, dailyCapCents: 100 });
-    assert.deepEqual([status.enablement!.model, status.disclosure.model, status.disclosure.maxRunMicros], ['claude-haiku-4-5', 'claude-haiku-4-5', 16_000 + 7_500],
-      'the disclosure names the chosen model and its table price');
-    assert.deepEqual([status.enablement!.consent.model], ['claude-sonnet-5'], 'the consent still names the connection');
+    const status = await runs.enable(human(owner), { agentId, connection: sonnet5, model: 'claude-haiku-4-5' });
+    assert.deepEqual([status.enablement!.connection, status.enablement!.model], [sonnet5, 'claude-haiku-4-5']);
     choice = await runs.model(human(owner));
-    assert.deepEqual([choice.current, choice.saved], ['claude-haiku-4-5', true]);
+    assert.deepEqual([choice.current, choice.saved], [{ connection: sonnet5, model: 'claude-haiku-4-5' }, true]);
 
     await mock('/__script', { wire: 'anthropic', text: 'Fact: the camera fails below 5 lux [S1].', usage: { input: 1_000, output: 100 } });
     const first = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Where are we?' });
     // The next request is sent with the new model; this one keeps Haiku even though the choice changes before it runs.
-    choice = await runs.chooseModel(human(owner), { model: 'claude-sonnet-5' });
-    assert.equal(choice.current, 'claude-sonnet-5');
-    assert.deepEqual(await row(first.run.id), { status: 'queued', provider: 'anthropic', model: 'claude-haiku-4-5', reserved_micros: 23_500, charged_micros: 0, cost_state: 'reserved' });
+    choice = await runs.chooseModel(human(owner), { connection: sonnet5, model: 'claude-sonnet-5' });
+    assert.deepEqual(choice.current, { connection: sonnet5, model: 'claude-sonnet-5' });
+    assert.deepEqual(await row(first.run.id), { status: 'queued', provider: 'anthropic', model: 'claude-haiku-4-5', reserved_micros: 0, charged_micros: 0, cost_state: 'reserved' });
     assert.equal(await processor.process(first.run.id), 'completed');
     const sent = (await mock('/__requests')).requests.filter((item) => item.path === '/anthropic/v1/messages');
     assert.equal((sent[0]!.body as { model: string }).model, 'claude-haiku-4-5', 'the request sent before the change used Haiku');
-    assert.equal((await row(first.run.id)).charged_micros, 1_000 + 500, 'charged at the Haiku table price');
+    assert.deepEqual([(await row(first.run.id)).reserved_micros, (await row(first.run.id)).charged_micros], [32_000 + 20_000, 1_000 + 500], 'reserved and charged at the Haiku table price');
     const second = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'And now?' });
-    assert.deepEqual(await row(second.run.id), { status: 'queued', provider: 'anthropic', model: 'claude-sonnet-5', reserved_micros: 47_000, charged_micros: 0, cost_state: 'reserved' });
     assert.equal(await processor.process(second.run.id), 'completed');
     assert.equal(((await mock('/__requests')).requests.filter((item) => item.path === '/anthropic/v1/messages').at(-1)!.body as { model: string }).model, 'claude-sonnet-5');
   });
 
-  test('AST-11.1: a model that costs more than the per-request limit, another provider\'s model or a bad id is refused with the exact copy and the previous model stays', async () => {
-    const refusals: [string, string][] = [
-      ['claude-fable-5-1', 'One request to Fable 5.1 can cost more than your per-request limit. It is still Sonnet 5.'],
-      ['gpt-6-sol', 'Your API key\'s provider doesn\'t offer that model. It is still Sonnet 5.'],
-      ['not a model id', 'Your API key\'s provider doesn\'t offer that model. It is still Sonnet 5.'],
+  test('AST-11.1: another provider\'s model, a bad id or a connection the person does not have is refused with the exact copy and the previous model stays', async () => {
+    const refusals: [{ connection: string; model: string }, string][] = [
+      [{ connection: sonnet5, model: 'gpt-6-sol' }, 'Your API key doesn\'t offer that model. It is still Sonnet 5.'],
+      [{ connection: sonnet5, model: 'not a model id' }, 'Your API key doesn\'t offer that model. It is still Sonnet 5.'],
+      [{ connection: randomUUID(), model: 'claude-sonnet-5' }, 'Connect that API key first. It is still Sonnet 5.'],
+      [{ connection: 'chatgpt_plan', model: 'gpt-6.1-sol' }, 'Sign in to ChatGPT first. It is still Sonnet 5.'],
     ];
-    for (const [model, message] of refusals) {
-      await assert.rejects(runs.chooseModel(human(owner), { model }), { code: 'ASSISTANT_MODEL_UNAVAILABLE', message }, model);
+    for (const [pick, message] of refusals) {
+      await assert.rejects(runs.chooseModel(human(owner), pick), { code: 'ASSISTANT_MODEL_UNAVAILABLE', message }, JSON.stringify(pick));
     }
-    assert.equal((await runs.model(human(owner))).current, 'claude-sonnet-5');
-    // Choosing the same model again changes nothing.
+    assert.deepEqual((await runs.model(human(owner))).current, { connection: sonnet5, model: 'claude-sonnet-5' });
+    // Choosing the same model again changes nothing; a costly model is fine: there is no per-request limit (#843).
     const version = (await runs.status(human(owner))).enablement!.version;
-    await runs.chooseModel(human(owner), { model: 'claude-sonnet-5' });
+    await runs.chooseModel(human(owner), { connection: sonnet5, model: 'claude-sonnet-5' });
     assert.equal((await runs.status(human(owner))).enablement!.version, version);
+    await runs.chooseModel(human(owner), { connection: sonnet5, model: 'claude-fable-5-1' });
+    await runs.chooseModel(human(owner), { connection: sonnet5, model: 'claude-sonnet-5' });
   });
 
-  test('AST-11.1: a connection on its own endpoint offers only its own model (no other has a table price) and a model without tool calling says so', async () => {
-    const other = await person('pr-model-endpoint-owner');
-    connections.connect(other.id, randomUUID(), { provider: 'openai_compatible', model: 'llama3.1:8b', baseUrl: `${MOCK}/openai/v1`,
+  test('#854: several connections at once; the picker is grouped by connection in the order they were made, and a model of another moves the assistant there', async () => {
+    const other = await person('pr-model-several-owner');
+    const first = randomUUID();
+    const second = randomUUID();
+    connections.connect(other.id, first, { provider: 'openai_compatible', model: 'llama3.1:8b', baseUrl: `${MOCK}/openai/v1`,
       price: { inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 2_000_000, source: 'owner', checkedOn: null } });
-    const own = await runs.model(human(other));
-    assert.deepEqual(own.options.map((option) => [option.id, option.name]), [['llama3.1:8b', 'llama3.1:8b']]);
-    connections.connect(other.id, randomUUID(), { provider: 'openai', model: 'gpt-6-luna' });
-    const openai = await runs.model(human(other));
-    assert.deepEqual(openai.options.map((option) => [option.id, option.callsTools]), [['gpt-6-luna', true], ['gpt-6-sol', true], ['gpt-6.1-sol', false], ['gpt-6-astra', false]],
+    connections.connect(other.id, second, { provider: 'openai', model: 'gpt-6-luna' });
+    const choice = await runs.model(human(other));
+    assert.deepEqual(choice.groups.map((group) => group.connection), [first, second], 'one group per connection, the first made first');
+    assert.deepEqual(choice.default, { connection: first, model: 'llama3.1:8b' }, 'Connect AI\'s default is the connection made first');
+    assert.deepEqual(choice.groups[0]!.options.map((option) => [option.id, option.name]), [['llama3.1:8b', 'llama3.1:8b']], 'an own endpoint offers only its own model');
+    assert.deepEqual(choice.groups[1]!.options.map((option) => [option.id, option.callsTools]), [['gpt-6-luna', true], ['gpt-6.1-sol', false], ['gpt-6-sol', true], ['gpt-6-astra', false]],
       'GPT-6.1 Sol and GPT-6 Astra can answer but can\'t make changes on Chat Completions (AST-8.3)');
   });
 
   test('AST-11.2: only the owner reads or changes the model; anyone else gets their own empty answer or a refusal', async () => {
     for (const someone of [viewer, guest]) {
       const theirs = await runs.model(human(someone));
-      assert.deepEqual([theirs.engine, theirs.company, theirs.options, theirs.saved], [null, null, [], false]);
-      await assert.rejects(runs.chooseModel(human(someone), { model: 'claude-haiku-4-5' }), { code: 'PERSONAL_RUN_NOT_ENABLED' });
+      assert.deepEqual([theirs.groups, theirs.current, theirs.default, theirs.saved], [[], null, null, false]);
+      await assert.rejects(runs.chooseModel(human(someone), { connection: sonnet5, model: 'claude-haiku-4-5' }), { code: 'PERSONAL_RUN_NOT_ENABLED' });
     }
-    assert.equal((await runs.model(human(owner))).current, 'claude-sonnet-5', 'nobody else changed it');
-    // Over HTTP (the API container composes no connections): a viewer or guest sees nothing of the owner's, and cannot change anything.
-    for (const [someone, current] of [[viewer, ''], [guest, ''], [owner, 'claude-sonnet-5']] as const) {
-      const read = expectStatus(await someone.browser.request('GET', '/api/v1/personal-assistant/model'), 200) as { options: unknown[]; current: string };
-      assert.deepEqual([read.options, read.current], [[], current], 'the API container offers this account no list; only the owner sees their own stored model');
+    assert.deepEqual((await runs.model(human(owner))).current, { connection: sonnet5, model: 'claude-sonnet-5' }, 'nobody else changed it');
+    // Over HTTP (the API container's own lookup does not hold this test's fake keys): a viewer or guest sees nothing of the owner's.
+    for (const [someone, current] of [[viewer, null], [guest, null], [owner, { connection: sonnet5, model: 'claude-sonnet-5' }]] as const) {
+      const read = expectStatus(await someone.browser.request('GET', '/api/v1/personal-assistant/model'), 200) as { groups: unknown[]; current: unknown };
+      assert.deepEqual([read.groups, read.current], [[], current], 'the API container offers this account no list; only the owner sees their own stored model');
     }
     for (const someone of [viewer, guest]) {
-      const refused = await someone.browser.request('PUT', '/api/v1/personal-assistant/model', { body: { model: 'claude-haiku-4-5' } });
+      const refused = await someone.browser.request('PUT', '/api/v1/personal-assistant/model', { body: { connection: sonnet5, model: 'claude-haiku-4-5' } });
       assert.equal(refused.status, 409, refused.text);
       assert.equal((refused.json as { code: string }).code, 'PERSONAL_RUN_NOT_ENABLED');
     }
@@ -284,3 +290,59 @@ describe('the assistant\'s model on an API key (F-027 AST-11, #596)', () => {
   });
 });
 
+// #854, #843: no payer switching and one daily budget. A removed key pauses its assistant even when another connection exists;
+// a request that finds the key's budget used waits, queued, for the key's next day, and nothing is sent to anyone.
+describe('no payer switching; the API key\'s one daily budget pauses a request until the next day (#854, #843)', () => {
+  let owner: Person;
+  let thread: Conversation;
+  let agentId: string;
+
+  before(async () => {
+    owner = await person('pr-budget-owner');
+    const ws = await createWorkspace(owner, 'Budget assistant');
+    const place = await createProject(owner, ws.id, 'Lamp sensor budget', 'workspace');
+    agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
+    thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
+      { body: { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() } }), 201) as Conversation;
+  });
+
+  test('a removed key stops its assistant; it never switches to the owner\'s other connection and nothing is sent', async () => {
+    const used = randomUUID();
+    const spare = randomUUID();
+    connections.connect(owner.id, used, { provider: 'anthropic', model: 'claude-sonnet-5' });
+    connections.connect(owner.id, spare, { provider: 'openai', model: 'gpt-6-luna' });
+    await runs.enable(human(owner), { agentId, connection: used, model: 'claude-sonnet-5' });
+    connections.disconnect(owner.id, used);
+    const status = await runs.status(human(owner));
+    assert.deepEqual([status.state, status.unavailableReason, status.enablement!.connection], ['unavailable', 'connection_changed', used]);
+    const before = (await pool.query('SELECT count(*)::int AS n FROM personal_runs WHERE owner_user_id=$1', [owner.id])).rows[0].n;
+    await assert.rejects(runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Where are we?' }), { code: 'PERSONAL_RUN_UNAVAILABLE' });
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM personal_runs WHERE owner_user_id=$1', [owner.id])).rows[0].n, before, 'nothing ran on the spare key');
+    // Only the owner's own pick moves it: then the next request goes to the other connection.
+    await runs.chooseModel(human(owner), { connection: spare, model: 'gpt-6-luna' });
+    assert.equal((await runs.status(human(owner))).state, 'ready');
+    await runs.remove(human(owner));
+  });
+
+  test('at the key\'s budget a request waits for the next day, with one line and no switch; the assistant reads "capped"', async () => {
+    const tiny = randomUUID();
+    // A model whose one request is above the key's whole budget would wait for a day that never comes: it is refused.
+    connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 10 });
+    await assert.rejects(runs.enable(human(owner), { agentId, connection: tiny, model: 'claude-sonnet-5' }), /can cost more than this key's daily budget/);
+    connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 20 });
+    await runs.enable(human(owner), { agentId, connection: tiny, model: 'claude-sonnet-5' });
+    // $0.10 left of the day: less than one largest request of Sonnet 5 (32,000 × $2/M + 4,000 × $10/M = $0.104).
+    connections.connect(owner.id, tiny, { provider: 'anthropic', model: 'claude-sonnet-5', dailyBudgetCents: 10 });
+    const status = await runs.status(human(owner));
+    assert.deepEqual([status.state, status.today!.budgetCents], ['capped', 10]);
+    const asked = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Where are we?' });
+    assert.equal(asked.run.status, 'queued');
+    assert.equal(asked.run.endReason, 'budget');
+    assert.ok(asked.run.resumesAt && Date.parse(asked.run.resumesAt) > Date.now(), 'it resumes when the key\'s next day starts');
+    assert.equal(queue.runIds.includes(asked.run.id), false, 'a paused request is not dispatched now');
+    assert.equal(await processor.process(asked.run.id), 'skipped', 'the worker does not start it before its resume time');
+    assert.equal((await row(asked.run.id)).status, 'queued');
+    await runs.stop(human(owner), asked.run.id);
+    await runs.remove(human(owner));
+  });
+});

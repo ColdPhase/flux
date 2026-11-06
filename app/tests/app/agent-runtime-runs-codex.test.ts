@@ -4,7 +4,7 @@ import { readdir, readFile, writeFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { PERSONAL_RUNTIME_CONSENT_VERSION, type Conversation, type Project, type Workspace } from '@flux/contracts';
+import { type Conversation, type Project, type Workspace } from '@flux/contracts';
 import { createPersonalRunProcessor, noPersonalConnections, REDACTED_SECRET, type AgentRuntimeConfig, type Principal } from '@flux/core';
 import { callSupervisor } from '@flux/runtime-protocol';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
@@ -82,10 +82,10 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     runs = personalRunUseCases(db, { queue: queue.factory, connections: noPersonalConnections, providerEnabled: false, runtime: personalRuntimeAvailability(config, db) });
     processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections: noPersonalConnections, compute,
       runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50,
-      runtimeCaps: { idleSeconds: 5, wallClockSeconds: 10 } });
+      runtimeCaps: { idleSeconds: 5, wallClockSeconds: 10, maxTurns: 10 } });
     const status = await runs.status(human(owner));
     assert.deepEqual(status.setup.runtime, { state: 'signed_in', payer: 'chatgpt_plan', accountLabel: null, client: 'codex' }, 'the payer comes from `codex login status`');
-    await runs.enable(human(owner), { consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId, engine: 'runtime' });
+    await runs.enable(human(owner), { agentId, connection: 'chatgpt_plan', model: 'gpt-6.1-sol' });
   });
   after(async () => {
     await new Promise<void>((done) => manager.close(() => done()));
@@ -99,12 +99,12 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     await pool.query(`UPDATE personal_runs SET created_at = created_at - interval '2 days' WHERE owner_user_id = $1`, [owner.id]);
   });
 
-  test('the consent names the ChatGPT plan and OpenAI; the run is labelled Codex and reserves no money', async () => {
+  test('the assistant runs on the ChatGPT plan with OpenAI; the run is labelled Codex and reserves no money (#854)', async () => {
     const status = await runs.status(human(owner));
     assert.equal(status.state, 'ready');
-    assert.equal(status.enablement?.consent.payer.organization, 'Your ChatGPT plan');
-    assert.equal(status.enablement?.consent.provider, 'openai');
-    assert.equal(status.enablement?.connectionId, null);
+    assert.deepEqual([status.enablement?.connection, status.enablement?.engine, status.enablement?.model], ['chatgpt_plan', 'runtime', 'gpt-6.1-sol']);
+    const stored = (await pool.query('SELECT connection_id, provider FROM personal_run_enablements WHERE owner_user_id = $1', [owner.id])).rows[0];
+    assert.deepEqual(stored, { connection_id: null, provider: 'openai' });
   });
 
   test('a run commits its answer; exact argv with every override, prompt on stdin, token only in FLUX_RUN_TOKEN, only allowlisted app-server methods, no transcript', async () => {
@@ -114,7 +114,7 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.equal(await processor.process(started.run.id), 'completed');
     const stored = await row(started.run.id);
     assert.deepEqual([stored.status, stored.answer_body, stored.end_reason, stored.reserved_micros, stored.cost_state, stored.provider, stored.model],
-      ['completed', 'Done: I read 2 things.', null, 0, 'unknown', 'openai', 'codex']);
+      ['completed', 'Done: I read 2 things.', null, 0, 'unknown', 'openai', 'gpt-6.1-sol']);
     const progress = await pool.query(`SELECT data FROM events WHERE object_id = $1 AND kind = 'assistant_run.changed.v1' ORDER BY seq`, [started.run.id]);
     assert.deepEqual(progress.rows.filter((r) => r.data.step === 'tool').map((r) => r.data.tool), ['flux_list_contexts', 'flux_get_doc']);
     const recorded = await calls();
@@ -139,9 +139,10 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.ok(run.envNames.includes('FLUX_RUN_TOKEN'));
     assert.ok(!run.argv.some((arg) => /eyJ[A-Za-z0-9_-]{10,}\./.test(arg)), 'the token is never an argument');
     assert.equal(run.persist, false);
-    // The app-server client sent only initialize, config/read (the preflight) and nothing else; the app-server never had the token.
+    // The app-server client sent only initialize, config/read (the preflight) and, after the run, what is left of the plan for its
+    // usage line (#854), and nothing else; the app-server never had the token.
     const methods = recorded.filter((entry) => entry.event === 'app_server').map((entry) => entry.method);
-    assert.deepEqual(methods.filter((method) => method !== 'initialized'), ['initialize', 'config/read']);
+    assert.deepEqual(methods.filter((method) => method !== 'initialized'), ['initialize', 'config/read', 'initialize', 'account/rateLimits/read']);
     const appServer = recorded.find((entry) => (entry.argv as string[]).includes('app-server')) as { envNames: string[] };
     assert.ok(!appServer.envNames.includes('FLUX_RUN_TOKEN'), 'the preflight never sees the run token');
     assert.deepEqual(await readdir(home()).then((names) => names.filter((name) => ['sessions', 'archived_sessions', 'history.jsonl'].includes(name))), []);
@@ -231,20 +232,21 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     }
   });
 
-  test('AST-11: the chosen model reaches Codex as -m; a legacy assistant starts with no flag; an unaccepted model ends the run as its own state', async () => {
+  test('AST-11: the chosen model reaches Codex as -m; an unaccepted model ends the run as its own state', async () => {
     const argvOf = async () => ((await calls()).find((entry) => entry.event === 'run') as { argv: string[] }).argv;
     const flag = (argv: string[]) => (argv.includes('-m') ? argv[argv.indexOf('-m') + 1] : null);
     await script({ calls: [], answer: 'Done.' });
     let choice = await runs.model(human(owner));
-    assert.deepEqual([choice.account, choice.company, choice.current, choice.default], ['chatgpt_plan', 'ChatGPT', 'default', 'gpt-6.1-sol']);
-    assert.deepEqual(choice.options.map((option) => option.id), ['default', 'gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna']);
-    const legacy = await ask();
-    assert.equal(await processor.process(legacy.run.id), 'completed');
-    assert.equal(flag(await argvOf()), null);
-    assert.equal((await row(legacy.run.id)).model, 'codex');
+    assert.deepEqual([choice.current, choice.default], [{ connection: 'chatgpt_plan', model: 'gpt-6.1-sol' }, { connection: 'chatgpt_plan', model: 'gpt-6.1-sol' }]);
+    assert.deepEqual(choice.groups.map((group) => [group.account, group.company, group.options.map((option) => option.id)]),
+      [['chatgpt_plan', 'ChatGPT', ['gpt-6.1-sol', 'gpt-6-astra', 'gpt-6-luna']]]);
+    const first = await ask();
+    assert.equal(await processor.process(first.run.id), 'completed');
+    assert.equal(flag(await argvOf()), 'gpt-6.1-sol');
+    assert.equal((await row(first.run.id)).model, 'gpt-6.1-sol');
 
-    choice = await runs.chooseModel(human(owner), { model: 'gpt-6-luna' });
-    assert.equal(choice.current, 'gpt-6-luna');
+    choice = await runs.chooseModel(human(owner), { connection: 'chatgpt_plan', model: 'gpt-6-luna' });
+    assert.deepEqual(choice.current, { connection: 'chatgpt_plan', model: 'gpt-6-luna' });
     await resetFake(); await script({ calls: [], answer: 'Done.' });
     const chosen = await ask();
     assert.equal(await processor.process(chosen.run.id), 'completed');
@@ -252,12 +254,12 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     assert.equal(flag(argv), 'gpt-6-luna');
     assert.ok(argv.indexOf('-m') < argv.indexOf('-'), 'before the prompt marker');
     assert.equal((await row(chosen.run.id)).model, 'gpt-6-luna');
-    await assert.rejects(runs.chooseModel(human(owner), { model: 'sonnet' }), (error: unknown) => (error as Error).message === 'Your ChatGPT plan doesn\'t offer that model. It is still GPT-6 Luna.');
+    await assert.rejects(runs.chooseModel(human(owner), { connection: 'chatgpt_plan', model: 'sonnet' }), (error: unknown) => (error as Error).message === 'Your ChatGPT plan doesn\'t offer that model. It is still GPT-6 Luna.');
 
     await resetFake(); await scenario('run_model_unavailable');
     const refused = await ask();
     assert.equal(await processor.process(refused.run.id), 'unavailable');
     assert.deepEqual([(await row(refused.run.id)).end_reason, (await row(refused.run.id)).answer_body], ['model_unavailable', null]);
-    assert.equal((await runs.model(human(owner))).current, 'gpt-6-luna');
+    assert.deepEqual((await runs.model(human(owner))).current, { connection: 'chatgpt_plan', model: 'gpt-6-luna' });
   });
 });

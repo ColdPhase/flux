@@ -21,11 +21,14 @@ export class FakeConnections implements PersonalConnectionLookup {
   readonly byOwner = new Map<string, PersonalConnection[]>();
   resolved: string[] = [];
 
-  /** Adds a connection (or replaces the one with that id); the owner's others stay. */
-  connect(ownerUserId: string, id: string, model: { provider?: AiProviderKind; model?: string; baseUrl?: string | null; price?: AiPrice | null; toolCalling?: boolean } = {}): PersonalConnection {
+  private made = 0;
+
+  /** Adds a connection (or replaces the one with that id); the owner's others stay. Its one daily budget defaults to $10 (#854). */
+  connect(ownerUserId: string, id: string, model: { provider?: AiProviderKind; model?: string; baseUrl?: string | null; price?: AiPrice | null; toolCalling?: boolean;
+    dailyBudgetCents?: number; timeZone?: string } = {}): PersonalConnection {
     const connection: PersonalConnection = {
-      id, ownerUserId, status: 'active', keyRef: `test-key-ref-${id}`,
-      payer: { organization: `Payer org of ${ownerUserId}`, workspace: 'Default' },
+      id, ownerUserId, status: 'active', keyRef: `test-key-ref-${id}`, name: `Key ${id.slice(0, 8)}`,
+      dailyBudgetCents: model.dailyBudgetCents ?? 1_000, timeZone: model.timeZone ?? 'UTC', createdAt: new Date(Date.UTC(2026, 0, 1) + this.made++ * 1000),
       provider: model.provider ?? 'anthropic', model: model.model ?? 'claude-sonnet-5', baseUrl: model.baseUrl ?? null,
       price: model.price === undefined ? FAKE_PRICE : model.price,
       ...(model.toolCalling !== undefined ? { toolCalling: model.toolCalling } : {}),
@@ -38,6 +41,17 @@ export class FakeConnections implements PersonalConnectionLookup {
   disconnect(ownerUserId: string, id?: string) {
     if (id === undefined) this.byOwner.delete(ownerUserId);
     else this.byOwner.set(ownerUserId, (this.byOwner.get(ownerUserId) ?? []).filter((item) => item.id !== id));
+  }
+
+  /** The owner's newest connection, as a model pick of its own model (what the old "newest connection" turn-on used). */
+  latest(ownerUserId: string): { connection: string; model: string } {
+    const newest = (this.byOwner.get(ownerUserId) ?? []).at(-1);
+    if (!newest) throw new Error('No fake connection for this owner');
+    return { connection: newest.id, model: newest.model };
+  }
+
+  async list(ownerUserId: string) {
+    return [...(this.byOwner.get(ownerUserId) ?? [])];
   }
 
   async resolve(ownerUserId: string, connectionId?: string) {

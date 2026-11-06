@@ -1,28 +1,22 @@
 import type { AiPrice, AiProviderKind } from './ai-providers.js';
 
-/**
- * Disclosure versions of a background connection's consent. `o-007-2026-09-28` named Anthropic and
- * `claude-sonnet-5` only and stays valid for exactly those connections; `o-007-2026-10-02` is the
- * provider-neutral revision of F-020 (#179), naming the selected provider, model and price.
- */
-export const BACKGROUND_CONSENT_VERSIONS = ['o-007-2026-09-28', 'o-007-2026-10-02'] as const;
-export type BackgroundConsentVersion = (typeof BACKGROUND_CONSENT_VERSIONS)[number];
-export const BACKGROUND_CONSENT_VERSION: BackgroundConsentVersion = 'o-007-2026-10-02';
-
 /** One bounded background comparison request (O-007 §3), the same for every provider. */
 export const BACKGROUND_COMPARISON_LIMITS = { maxInputTokens: 8_000, maxOutputTokens: 1_200, minimumReserveCents: 5 } as const;
 
 /**
- * An owner's AI connections (F-020 PROV-1): one or more, each with a name. Adding a connection never
- * replaces another. Background comparisons use the one marked `usedForBackground`; the assistant in
- * Flux uses the one its consent names. Removing a connection stops the uses that point to it, with no
- * fallback to another connection or payer.
+ * An owner's API keys (F-020 PROV-1; Connect AI #854): one or more, each with a name and one daily budget, the only limit
+ * on what runs on it. Adding a key never replaces another. Background comparisons use the one marked `usedForBackground`;
+ * an agent uses the key its model belongs to. Removing a key stops what uses it, with no fallback to another connection
+ * or payer.
  */
 export const backgroundComputeConnectionsPath = '/api/v1/background-compute-connections';
 export const backgroundComputeConnectionPath = (connectionId: string) => `${backgroundComputeConnectionsPath}/${connectionId}`;
 /** Whether this instance runs background comparisons (#58, `FLUX_BACKGROUND_COMPARISONS`). */
 export const backgroundComparisonRuntimePath = '/api/v1/background-comparisons/runtime';
 export interface BackgroundComparisonRuntime { status: 'available' | 'unavailable' }
+
+/** The one daily budget of an API key, in cents (#854): set by its owner; at the budget its agents pause until the next day. */
+export const API_KEY_DAILY_BUDGET_CENTS = { min: 10, max: 100_000, default: 500 } as const;
 
 /** Metadata only. The API never returns the key or its ciphertext. */
 export interface BackgroundComputeConnection {
@@ -33,50 +27,42 @@ export interface BackgroundComputeConnection {
   /** Whether background comparisons run on this connection (at most one of the owner's). */
   usedForBackground: boolean;
   provider: AiProviderKind;
+  /** The key's default model: the one Connect AI offers first for a new agent. */
   model: string;
   /** The owner's endpoint for `openai_compatible`; null for a named provider's fixed URL. */
   baseUrl: string | null;
-  /** Null when no price is known: the connection cannot be enabled for any use (PROV-3). */
+  /** Null when no price is known: the daily budget cannot hold, so the key cannot be used (PROV-3). */
   price: AiPrice | null;
-  payerOrganization: string;
-  providerWorkspace: string;
   keyLastFour: string;
   keyFingerprint: string;
-  maxRunsPerDay: number;
-  periodDays: 30;
-  periodBudgetCents: number;
-  perRunCents: number;
-  consentVersion: BackgroundConsentVersion;
-  consentedAt: string;
+  /** The key's one daily budget. */
+  dailyBudgetCents: number;
+  /** The IANA time zone whose midnight starts the key's day. */
+  timeZone: string;
+  /** Today's use of the budget by everything that runs on the key: what was spent, not what work in progress holds. */
+  today: { spentMicros: number; resetsAt: string };
   createdAt: string;
 }
 
 /**
- * An owner explicitly attests the provider payer/workspace and local budget. The price comes from
- * the provider's own listing or Flux's price table when either has the model; an owner `price` is
- * accepted only when neither does (PROV-3), in micro-dollars per 1M tokens, and may be zero.
+ * Adds an API key. The price comes from Flux's dated table when it has the model; an owner `price` is accepted only when
+ * it does not (PROV-3), in micro-dollars per 1M tokens, and may be zero (a self-hosted endpoint).
  */
 export interface ConnectBackgroundComputeCommand {
-  /** 1–80 characters; defaults to "<Provider> · <model>". */
+  /** 1–80 characters; defaults to "<Provider> key". */
   name?: string;
   /** Make this the connection background comparisons use; the owner's first connection always is. */
   useForBackground?: boolean;
   provider: AiProviderKind;
-  model: string;
+  /** The key's default model; for a named provider, Flux's default for it when left out. */
+  model?: string;
   /** Required for `openai_compatible`, refused for the named providers. */
   baseUrl?: string;
   price?: { inputMicrosPerMTok: number; outputMicrosPerMTok: number };
   apiKey: string;
-  payerOrganization: string;
-  providerWorkspace: string;
-  workspaceScopedKeyConfirmed: true;
-  payerAuthorityConfirmed: true;
-  providerBillingAcknowledged: true;
-  projectDataDisclosureAcknowledged: true;
-  maxRunsPerDay: number;
-  periodDays: 30;
-  periodBudgetCents: number;
-  perRunCents: number;
+  dailyBudgetCents: number;
+  /** Defaults to UTC. */
+  timeZone?: string;
 }
 
 /** Project-readable, quiet suggestion from one owner-funded background candidate. */
@@ -111,9 +97,10 @@ export const proactiveComparisonProposalUsePath = (proposalId: string) => `${pro
 export const proactiveComparisonRulesPath = (projectId: string) => `/api/v1/projects/${projectId}/proactive-comparison-rules`;
 export const proactiveComparisonRulePath = (ruleId: string) => `/api/v1/proactive-comparison-rules/${ruleId}`;
 
-/** `PATCH /api/v1/background-compute-connections/:id`: rename it, or make it the background connection. */
+/** `PATCH /api/v1/background-compute-connections/:id`: rename it, change its daily budget, or make it the background connection. */
 export interface UpdateBackgroundComputeConnectionCommand {
   name?: string;
+  dailyBudgetCents?: number;
   /** Only `true`: another connection is chosen by marking it; none is chosen by removing the marked one. */
   usedForBackground?: true;
 }

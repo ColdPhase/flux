@@ -36,7 +36,7 @@ export function AssistantReactions({ status, userId }: { status: PersonalAssista
   }, [workspaceId, allProjects]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!workspaceId) return null;
   const toggle = async (item: AssistantReaction) => {
-    try { await save(scope, item.id, { projectId: item.projectId, event: item.event, action: item.action, dailyLimit: item.dailyLimit, enabled: !item.enabled, expectedVersion: item.version }); load(); }
+    try { await save(scope, item.id, { projectId: item.projectId, event: item.event, action: item.action, enabled: !item.enabled, expectedVersion: item.version }); load(); }
     catch (cause) { if (cause instanceof ApiError && cause.code === 'ASSISTANT_BACKGROUND_NOTE_REQUIRED') setEditing(item); else setError(failure(cause)); }
   };
   return <>
@@ -62,14 +62,13 @@ function Body({ scope, projects, linked, item, onClose, onSaved }: { scope: Sche
   const [project, setProject] = useState(item?.projectId ?? projects[0]?.id ?? '');
   const [event, setEvent] = useState<AssistantReactionEvent>(item?.event ?? 'blocked');
   const [action, setAction] = useState<AssistantReactionAction>(item?.action ?? 'tell');
-  const [limit, setLimit] = useState(item?.dailyLimit ?? 10);
   const [note] = useBackgroundNote(scope);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const actions = ASSISTANT_REACTION_EVENTS.find((entry) => entry.id === event)!.actions;
   const allowed = event !== 'pr_ready' || linked.includes(project);
   return <form className="asched" onSubmit={(submit) => { submit.preventDefault(); setBusy(true); setError('');
-    void save(scope, item?.id ?? null, { projectId: project, event, action, dailyLimit: limit, enabled: true, ...(item ? { expectedVersion: item.version } : {}), ...(note ? { noteVersion: note.version } : {}) })
+    void save(scope, item?.id ?? null, { projectId: project, event, action, enabled: true, ...(item ? { expectedVersion: item.version } : {}), ...(note ? { noteVersion: note.version } : {}) })
       .then(onSaved, (cause) => setError(failure(cause))).finally(() => setBusy(false)); }}>
     <header className="asched__head ui-panel__head"><h2 className="asched__title">When something happens</h2><IconButton icon="x" label="Close" onClick={onClose} /></header>
     <div className="asched__body">
@@ -78,7 +77,6 @@ function Body({ scope, projects, linked, item, onClose, onSaved }: { scope: Sche
     <label className="asched__field">Then<Select className="asched__select" aria-label="Then" value={action} onChange={(next) => setAction(next as AssistantReactionAction)}>{actions.map((id) => <Option key={id} value={id}>{ASSISTANT_REACTION_ACTIONS[id]}</Option>)}</Select></label>
     <p className="asched__meta">Only your items in this project. At most once per item in 30 minutes.</p>
     {action === 'draft_reply' ? <p className="asched__note">Opens Reply with a draft for you to review. Only Send posts it.</p> : null}
-    <details className="asched__more"><summary>More</summary><label className="asched__field">Runs a day<input className="asched__select" type="number" min="1" max="24" value={limit} onChange={(change) => setLimit(Number(change.target.value))} /></label></details>
     <NoteLines note={note} />
     {error ? <p role="alert" className="nset__error">{error}</p> : null}
     </div><footer className="asched__foot"><Button variant="secondary" onClick={onClose}>Cancel</Button><Button type="submit" variant="primary" busy={busy} disabled={!allowed || !project || !note}>{item?.enabled ? 'Save' : 'Turn on'}</Button></footer>

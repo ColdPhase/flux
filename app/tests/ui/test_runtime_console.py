@@ -1,9 +1,10 @@
-"""Browser tests for Claude Code in Flux: Settings → Agents and AI → Sign in to Claude Code (F-022 T4, #279).
+"""Browser tests for Claude Code in Flux: Settings › AI › Connect AI › Claude plan (F-022 T4, #279; #854).
 
 Two stacks run this module:
 
-- scripts/check_ui.sh, where the operator switch FLUX_AGENT_RUNTIME is empty (the default): the
-  settings page says plainly that the server does not offer it, at phone width;
+- scripts/check_ui.sh, where the operator switch FLUX_AGENT_RUNTIME is empty (the default): Connect AI
+  says plainly that the server does not offer the plans, at phone width; the plan's own page (behind
+  Connect AI's "Change") is rendered from stubbed statuses;
 - scripts/check_agent_runtime.sh, with FLUX_UI_RUNTIME=on, against the runtime profile with the
   TEST ONLY fake `claude` (its `auth login` prints the URL and prompt as the pinned Claude Code
   2.1.285 does). There the whole sign-in runs at phone width (390×844, touch) and at 1440×900:
@@ -147,12 +148,17 @@ class RuntimeConsole(unittest.TestCase):
     def test_02_off_the_server_says_so(self) -> None:
         page = self.page()
         page.goto("/settings/agents")
-        section = page.locator("section.rt")
-        expect(section.get_by_role("heading", name="Agent sign-in in Flux")).to_be_visible()
-        expect(section).to_contain_text("Signing in with your Claude or ChatGPT subscription isn’t turned on for this Flux server.")
-        expect(section.get_by_role("link", name=re.compile("^Use an API key"))).to_be_visible()
-        expect(section.get_by_role("link", name="Sign in with Claude")).to_have_count(0)
-        self.phone_layout(page, "section.rt")
+        connect = page.get_by_role("region", name="Connect AI", exact=True)
+        connect.get_by_role("button", name="Connect AI", exact=True).click()
+        window = page.get_by_role("dialog", name="Connect your AI")
+        for kind in ("claude_plan", "chatgpt_plan"):
+            expect(window.locator(f"[data-choice={kind}]")).to_contain_text("Not offered on this Flux server")
+            expect(window.locator(f"[data-choice={kind}] input")).to_be_disabled()
+        expect(window.locator("[data-choice=api_key] input")).to_be_enabled()
+        window.get_by_role("button", name="Cancel").click()
+        expect(window).to_have_count(0)
+        expect(page.get_by_role("link", name=re.compile("^Sign in with"))).to_have_count(0)
+        self.phone_layout(page, "section.cai")
         self.no_credential_fields(page)
         shot(page, "runtime-off-phone-390")
         page.goto("/settings/agents/claude-code")
@@ -163,9 +169,9 @@ class RuntimeConsole(unittest.TestCase):
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
     def test_03_before_sign_in_the_notices_are_plain(self) -> None:
         page = self.page()
-        page.goto("/settings/agents")
-        section = page.locator("section.rt")
-        expect(section.get_by_role("heading", name=re.compile("Claude Code and Codex in Flux · Claude Code not signed in"))).to_be_visible()
+        page.goto("/settings/agents/claude-code")
+        section = page.locator(".rt-page")
+        expect(section.get_by_role("heading", name="Before you sign in")).to_be_visible()
         facts = section.get_by_role("list", name="Before you sign in")
         expect(facts).to_contain_text("The person who runs this server can technically read that storage")
         expect(facts).to_contain_text("Anthropic recommends API keys for products and automation, and may restrict this kind of use without notice")
@@ -173,16 +179,14 @@ class RuntimeConsole(unittest.TestCase):
         expect(facts).to_contain_text("Never your password, the sign-in code or the login itself.")
         expect(facts).to_contain_text("agreed to Anthropic’s Commercial Terms on 2026-10-05")
         expect(section.locator("img, svg[data-logo]")).to_have_count(0)
-        self.phone_layout(page, "section.rt")
+        self.phone_layout(page, ".rt-page")
         self.no_credential_fields(page)
         shot(page, "runtime-before-phone-390")
 
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
     def test_04_sign_in_in_the_console_at_phone_width(self) -> None:
         page = self.page()
-        page.goto("/settings/agents")
-        page.get_by_role("link", name="Sign in with Claude").tap()
-        expect(page).to_have_url(re.compile(r"/settings/agents/claude-code$"))
+        page.goto("/settings/agents/claude-code")
         expect(page.get_by_role("button", name="Sign in with Claude")).to_be_visible()
         expect(page.get_by_role("radio")).to_have_count(0)
         page.locator("details.rt-more summary").filter(has_text="Other ways to sign in").tap()
@@ -215,9 +219,13 @@ class RuntimeConsole(unittest.TestCase):
         expect(outcome).to_contain_text("Who pays: Your Anthropic Console organization (API billing, cost not reported to Flux).")
         self.phone_layout(page, ".rt-page")
         shot(page, "runtime-signed-in-phone-390")
-        page.get_by_role("link", name="Back to Agents and AI").tap()
+        page.get_by_role("link", name="Back to AI").tap()
+        row = page.get_by_role("region", name="Connect AI", exact=True).locator("li[data-connection=claude_plan]")
+        expect(row.locator(".sset-row__t")).to_have_text("Claude plan · Connected")
+        expect(row.locator(".cai__usage-text")).to_have_text("Plan limits apply")
+        row.get_by_role("link", name="Change Claude plan").tap()
         section = page.locator("section.rt")
-        expect(section.get_by_role("heading", name=re.compile("Claude Code and Codex in Flux · Claude Code signed in"))).to_be_visible()
+        expect(section.get_by_role("heading", name="Claude plan · connected")).to_be_visible()
         expect(section.get_by_role("list", name="Your sign-in")).to_contain_text("Anthropic Console · API billing")
         expect(section.get_by_role("list", name="Your sign-in")).to_contain_text("o***@example.org")
         for name in ("Check sign-in", "Sign out", "Remove shared runtime space from Flux…"):
@@ -237,7 +245,7 @@ class RuntimeConsole(unittest.TestCase):
             route.fulfill(status=200, content_type="application/json", body=json.dumps(stubbed))
 
         page.route("**/api/v1/agent-runtime", status)
-        page.goto("/settings/agents")
+        page.goto("/settings/agents/claude-code")
         notice = page.get_by_role("alert").filter(has_text="Signed in to a different account than before.")
         expect(notice).to_contain_text("It was r***@example.test; now it is o***@example.org.")
         expect(notice).to_contain_text("If you didn’t do this, sign out here now and change your Flux password.")
@@ -257,11 +265,11 @@ class RuntimeConsole(unittest.TestCase):
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
     def test_06_sign_out_at_phone_width(self) -> None:
         page = self.page()
-        page.goto("/settings/agents")
+        page.goto("/settings/agents/claude-code")
         section = page.locator("section.rt")
-        section.get_by_role("button", name="Sign out").tap()
-        expect(section.get_by_role("heading", name=re.compile("Claude Code and Codex in Flux · Claude Code not signed in"))).to_be_visible()
-        expect(section.get_by_role("link", name="Sign in with Claude")).to_be_visible()
+        section.get_by_role("button", name="Sign out", exact=True).tap()
+        expect(section.get_by_role("heading", name="Claude plan · not connected")).to_be_visible()
+        expect(page.get_by_role("button", name="Sign in with Claude", exact=True)).to_be_visible()
         self.assertEqual(self.api(page, "GET", "/api/v1/agent-runtime")["connections"]["claude_code"]["state"], "signed_out")
 
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
@@ -285,7 +293,7 @@ class RuntimeConsole(unittest.TestCase):
         shot(page, "runtime-wrong-code-desktop-1440")
         page.get_by_role("button", name="Cancel sign-in").click()
         outcome = page.locator(".rt-outcome")
-        expect(outcome.get_by_role("heading", name="Not signed in")).to_be_visible()
+        expect(outcome.get_by_role("heading", name="Couldn’t connect")).to_be_visible()
         expect(outcome).to_contain_text("You cancelled the sign-in. Runtime access stays disabled until cleanup is confirmed")
         shot(page, "runtime-not-signed-in-desktop-1440")
         current = self.api(page, "GET", "/api/v1/agent-runtime")
@@ -297,7 +305,7 @@ class RuntimeConsole(unittest.TestCase):
             self.assertEqual(current["lastRelease"]["reason"], "auth_recovery")
 
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
-    def test_07b_a_failed_sign_in_says_so_and_offers_start_again(self) -> None:
+    def test_07b_a_failed_sign_in_says_so_and_offers_try_again(self) -> None:
         # The TEST ONLY fake CLI fails the exchange for a code starting `fake-reject-` (the scenario file
         # cannot be seeded before the browser starts the sign-in).
         page = self.page(phone=False)
@@ -317,16 +325,36 @@ class RuntimeConsole(unittest.TestCase):
         page.get_by_label("Paste the code from the sign-in page").fill(f"fake-reject-code#{state}")
         page.get_by_role("button", name="Send").click()
         outcome = page.locator(".rt-outcome")
-        expect(outcome.get_by_role("heading", name="Not signed in")).to_be_visible()
+        expect(outcome.get_by_role("heading", name="Couldn’t connect")).to_be_visible()
         expect(outcome.get_by_role("alert")).to_contain_text("Claude Code ended without reporting a login, so you are not signed in.")
-        expect(outcome.get_by_role("button", name="Start again")).to_be_visible()
+        expect(outcome.get_by_role("button", name="Try again")).to_be_visible()
         expect(page.get_by_role("heading", name="Signed in", exact=True)).to_have_count(0)
         shot(page, "runtime-failed-sign-in-desktop-1440")
         current = self.api(page, "GET", "/api/v1/agent-runtime")
         self.assertEqual(current["connections"]["claude_code"]["state"], "signed_out")
         self.assertIsNone(current["connections"]["claude_code"]["signedInAt"])
-        outcome.get_by_role("button", name="Start again").click()
+        outcome.get_by_role("button", name="Try again").click()
         expect(page.get_by_role("button", name="Sign in with Claude")).to_be_visible()
+
+    @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
+    def test_07bb_the_connect_ai_window_runs_the_same_sign_in_and_says_when_it_failed(self) -> None:
+        """#854: the real CLI's sign-in in the one window: open claude.ai, paste the code, "Couldn't connect" with Try again."""
+        page = self.page(phone=False)
+        page.goto("/settings/agents")
+        page.get_by_role("region", name="Connect AI", exact=True).get_by_role("button", name=re.compile("^Connect (AI|another)$")).click()
+        window = page.get_by_role("dialog", name="Connect your AI")
+        window.locator("[data-choice=claude_plan]").click()
+        window.get_by_role("button", name="Continue").click()
+        opener = window.get_by_role("link", name="Open claude.ai")
+        expect(opener).to_be_visible()
+        window.get_by_text("Show details").click()
+        state = re.search(r"[?&]state=([\w-]+)", opener.get_attribute("href")).group(1)
+        window.get_by_label("Paste the code from the sign-in page").fill(f"fake-reject-code#{state}")
+        window.get_by_role("button", name="Send").click()
+        expect(window.get_by_role("heading", name="Couldn’t connect")).to_be_visible()
+        expect(window.get_by_role("alert")).to_contain_text("Claude Code ended without reporting a login")
+        expect(window.get_by_role("button", name="Try again")).to_be_visible()
+        shot(page, "runtime-window-failed-desktop-1440")
 
     @unittest.skipUnless(RUNTIME, "needs the runtime profile (scripts/check_agent_runtime.sh)")
     def test_07c_paste_and_a_reload_keep_the_same_sign_in_and_other_sessions_see_nothing(self) -> None:
@@ -393,7 +421,7 @@ class RuntimeConsole(unittest.TestCase):
         if current["binding"] is None:
             self.assertEqual(current["pool"], "available")
             self.api(page, "POST", "/api/v1/agent-runtime/binding")
-        page.goto("/settings/agents")
+        page.goto("/settings/agents/claude-code")
         section = page.locator("section.rt")
         section.get_by_role("button", name="Remove shared runtime space from Flux…").tap()
         confirm = page.get_by_role("group", name="Remove shared runtime space from Flux")
@@ -402,7 +430,7 @@ class RuntimeConsole(unittest.TestCase):
         shot(page, "runtime-remove-phone-390")
         confirm.get_by_role("button", name="Sign out and remove").tap()
         expect(section.get_by_role("status").filter(has_text="Signing out of both clients and removing your shared runtime space")).to_be_visible()
-        expect(section.get_by_role("heading", name=re.compile("Claude Code and Codex in Flux · Claude Code not signed in"))).to_be_visible(timeout=60000)
+        expect(section.get_by_role("heading", name="Claude plan · not connected")).to_be_visible(timeout=60000)
         deadline = time.time() + 30
         while self.api(page, "GET", "/api/v1/agent-runtime")["binding"] is not None and time.time() < deadline:
             time.sleep(0.5)
@@ -432,7 +460,7 @@ class RuntimeConsole(unittest.TestCase):
                 "state": state, "signInMethod": "device_code", "authMethod": "chatgpt.com" if signed_in else None,
                 "plan": "Plus" if signed_in else None, "accountLabel": "c***@example.org" if signed_in else None,
                 "signedInAt": signed_at if signed_in else None, "payer": "chatgpt_plan" if signed_in else None,
-                "accountChange": None, "signOut": sign_out,
+                "accountChange": None, "signOut": sign_out, "usage": None,
             }
 
         def codex_only(state: str, *, sign_out: dict | None = None) -> dict:
@@ -441,24 +469,25 @@ class RuntimeConsole(unittest.TestCase):
                            connections={"claude_code": None, "codex": codex_connection(state, sign_out=sign_out)})
             return current
 
-        # Codex-only, signed out: use OpenAI facts and disclosure, never Anthropic's.
+        # Codex-only, signed out: the ChatGPT plan's page uses OpenAI facts and disclosure, never Anthropic's.
         page = self.page()
         signed_out = codex_only("signed_out")
         page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(
             status=200, headers={"cache-control": "no-store"}, content_type="application/json", body=json.dumps(signed_out)))
-        page.goto("/settings/agents")
+        page.goto("/settings/agents/codex")
         section = page.locator("section.rt")
-        expect(section.get_by_role("heading", name="Codex in Flux · not signed in")).to_be_visible()
-        expect(section).to_contain_text("OpenAI’s rules")
-        expect(section).to_contain_text("your ChatGPT plan")
-        expect(section).not_to_contain_text("Anthropic")
-        expect(section).not_to_contain_text("your Claude plan")
-        section.locator("details.rt-more summary").filter(has_text="Which account should I use?").click()
-        expect(section.locator("details.rt-more").filter(has_text="Which account should I use?")).to_contain_text("A ChatGPT sign-in uses the account or organization you choose in Codex.")
+        expect(section.get_by_role("heading", name="ChatGPT plan · not connected")).to_be_visible()
+        before = page.get_by_role("list", name="Before you sign in")
+        expect(before).to_contain_text("OpenAI’s rules")
+        expect(before).to_contain_text("your ChatGPT plan")
+        expect(page.locator(".rt-page")).not_to_contain_text("Anthropic")
+        expect(page.locator(".rt-page")).not_to_contain_text("your Claude plan")
+        page.locator("details.rt-more summary").filter(has_text="Which account should I use?").click()
+        expect(page.locator("details.rt-more").filter(has_text="Which account should I use?")).to_contain_text("A ChatGPT sign-in uses the account or organization you choose in Codex.")
         shot(page, f"runtime-codex-only-signed-out-phone-390-{UI_BROWSER}")
         page.close()
 
-        # Codex-only, signed in: the action names Codex and confirms the saved sign-out for Codex.
+        # Codex-only, signed in: the action signs out of Codex and confirms the saved sign-out for Codex.
         page = self.page()
         signed_in = codex_only("signed_in")
         confirmed = codex_only("signed_out", sign_out={"at": signed_out_at, "failed": False})
@@ -471,14 +500,15 @@ class RuntimeConsole(unittest.TestCase):
             route.fulfill(status=200, headers={"cache-control": "no-store"}, content_type="application/json", body=json.dumps(confirmed))
 
         page.route("**/api/v1/agent-runtime/sign-out", sign_out)
-        page.goto("/settings/agents")
+        page.goto("/settings/agents/codex")
         section = page.locator("section.rt")
-        expect(section.get_by_role("heading", name="Codex in Flux · signed in")).to_be_visible()
+        expect(section.get_by_role("heading", name="ChatGPT plan · connected")).to_be_visible()
+        expect(section.get_by_test_id("plan-usage")).to_have_text("Plan limits apply")
         expect(section.get_by_role("list", name="Your Codex sign-in")).to_contain_text("c***@example.org")
-        expect(section.get_by_role("button", name="Check Codex sign-in")).to_be_visible()
-        section.get_by_role("button", name="Sign out of Codex").click()
+        expect(section.get_by_role("button", name="Check sign-in")).to_be_visible()
+        section.get_by_role("button", name="Sign out", exact=True).click()
         expect(section.get_by_role("status").filter(has_text="Signed out of Codex in Flux.")).to_be_visible()
-        self.assertEqual(posted, [{"client": "codex"}], "the button signs out the currently selected client")
+        self.assertEqual(posted, [{"client": "codex"}], "the button signs out the client of this plan")
         expect(section.get_by_role("button", name="Remove shared runtime space from Flux…")).to_be_visible()
         section.get_by_role("button", name="Remove shared runtime space from Flux…").click()
         removal = page.get_by_role("group", name="Remove shared runtime space from Flux")
@@ -488,7 +518,7 @@ class RuntimeConsole(unittest.TestCase):
         shot(page, f"runtime-codex-confirmed-signout-removal-phone-390-{UI_BROWSER}")
         page.close()
 
-        # Both clients offered: the mixed state is reported individually, while removal stays shared.
+        # Both plans offered: each plan's page reports its own state, while removal stays shared.
         page = self.page()
         mixed = self.runtime_snapshot()
         mixed.update(clients={"claude_code": "available", "codex": "available"}, commercialTerms=None)
@@ -496,20 +526,25 @@ class RuntimeConsole(unittest.TestCase):
         page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(
             status=200, headers={"cache-control": "no-store"}, content_type="application/json", body=json.dumps(mixed)))
         page.goto("/settings/agents")
+        connect = page.get_by_role("region", name="Connect AI", exact=True)
+        expect(connect.locator("li[data-connection]")).to_have_count(1)
+        expect(connect.locator("li[data-connection=claude_plan] .sset-row__t")).to_have_text("Claude plan · Connected")
+        page.goto("/settings/agents/codex")
         section = page.locator("section.rt")
-        expect(section.get_by_role("heading", name="Claude Code and Codex in Flux · Claude Code signed in · Codex not signed in")).to_be_visible()
-        expect(section.get_by_role("link", name="Sign in with ChatGPT")).to_be_visible()
-        expect(section.get_by_role("button", name="Sign out of ChatGPT", exact=True)).to_have_count(0)
+        expect(section.get_by_role("heading", name="ChatGPT plan · not connected")).to_be_visible()
+        expect(page.get_by_role("button", name="Get a code")).to_be_visible()
+        expect(section.get_by_role("button", name="Sign out", exact=True)).to_have_count(0)
         mixed["connections"]["codex"] = codex_connection("signed_in")
         page.reload()
-        expect(section.get_by_role("heading", name="Claude Code and Codex in Flux · Claude Code signed in · Codex signed in")).to_be_visible()
-        expect(section.locator(".rt-codex")).to_contain_text("ChatGPT plan")
+        expect(section.get_by_role("heading", name="ChatGPT plan · connected")).to_be_visible()
+        expect(section).to_contain_text("ChatGPT plan")
         expect(section.get_by_role("button", name="Sign out", exact=True)).to_be_visible()
-        expect(section.get_by_role("button", name="Sign out of ChatGPT", exact=True)).to_be_visible()
         section.get_by_role("button", name="Remove shared runtime space from Flux…").click()
         removal = page.get_by_role("group", name="Remove shared runtime space from Flux")
         expect(removal).to_contain_text("Claude Code and Codex")
         shot(page, f"runtime-mixed-clients-shared-removal-phone-390-{UI_BROWSER}")
+        page.goto("/settings/agents")
+        expect(connect.locator("li[data-connection]")).to_have_count(2)
         page.close()
 
     def held_poll(self, *, remove: bool) -> None:
@@ -535,7 +570,8 @@ class RuntimeConsole(unittest.TestCase):
         def read(route: Route) -> None:
             nonlocal reads
             reads += 1
-            if reads == 2:
+            # The plan's page reads the status once, the plan's section once, then polls: hold that first poll.
+            if reads == 3:
                 held.append(route)
             else:
                 route.fulfill(status=200, content_type="application/json", body=json.dumps(restrictive if acted else initial))
@@ -550,9 +586,9 @@ class RuntimeConsole(unittest.TestCase):
 
         page.route("**/api/v1/agent-runtime", read)
         page.route("**/api/v1/agent-runtime/binding" if remove else "**/api/v1/agent-runtime/sign-out", action)
-        page.goto("/settings/agents")
+        page.goto("/settings/agents/claude-code")
         section = page.locator("section.rt")
-        expect(section.get_by_role("heading", name="Claude Code in Flux · signed in")).to_be_visible()
+        expect(section.get_by_role("heading", name="Claude plan · connected")).to_be_visible()
         deadline = time.time() + 10
         while not held and time.time() < deadline:
             page.wait_for_timeout(20)
@@ -562,7 +598,7 @@ class RuntimeConsole(unittest.TestCase):
             page.get_by_role("group", name="Remove shared runtime space from Flux").get_by_role("button", name="Sign out and remove").tap()
         else:
             section.get_by_role("button", name="Sign out", exact=True).tap()
-        expected = "Claude Code in Flux · removing" if remove else "Claude Code in Flux · not signed in"
+        expected = "Claude plan · removing" if remove else "Claude plan · not connected"
         expect(section.get_by_role("heading", name=expected)).to_be_visible()
         try:
             held[0].fulfill(status=200, content_type="application/json", body=json.dumps(previous))
@@ -592,7 +628,7 @@ class RuntimeConsole(unittest.TestCase):
         released.update(binding=None, connections={"claude_code": None, "codex": None},
             lastRelease={"reason": "operator", "at": "2026-10-07T10:01:00.000Z", "signOutFailed": True})
         page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(released)))
-        page.goto("/settings/agents")
+        page.goto("/settings/agents/claude-code")
         section = page.locator("section.rt")
         expect(section).to_contain_text("Sign-out was not confirmed for at least one client")
         expect(section).not_to_contain_text("It signed out first")
@@ -623,7 +659,7 @@ class RuntimeConsole(unittest.TestCase):
                     assets: list[str] = []
                     page.on("request", lambda request: assets.append(request.url) if "/assets/" in request.url else None)
                     page.goto("/settings/agents")
-                    expect(page.get_by_role("heading", name="Agents and AI", exact=True)).to_be_visible()
+                    expect(page.get_by_role("heading", name="AI", exact=True)).to_be_visible()
                     self.assertFalse(any("ClaudeCodeSignIn-" in url or "SignInConsole-" in url for url in assets),
                                      "opening Settings does not import either sign-in route or terminal")
                     page.goto("/settings/assistant/claude-code")
@@ -695,10 +731,17 @@ class RuntimeConsole(unittest.TestCase):
                         page.emulate_media(color_scheme=theme)
                         page.route("**/api/v1/agent-runtime", lambda route: route.fulfill(
                             status=200, content_type="application/json", body=json.dumps(current)))
-                        page.goto("/settings/agents")
+                        page.goto("/settings/agents/claude-code")
+                        expect(page.get_by_role("heading", name=re.compile("^(Before you sign in|Sign in to another account)$"))).to_be_visible()
                         section = page.locator("section.rt")
+                        if name == "unbound-old-receipt":
+                            # No space and no sign-in: the plan's page shows only a fresh sign-in, and no old receipt.
+                            expect(section).to_have_count(0)
+                            expect(page.get_by_text("Signed out of Claude Code in Flux.", exact=True)).to_have_count(0)
+                            page.close()
+                            continue
                         heading = section.locator("h3#rt-h")
-                        expect(heading).to_contain_text("Claude Code in Flux ·")
+                        expect(heading).to_contain_text("Claude plan ·")
                         if name in ("confirmed", "unconfirmed", "pending", "superseded", "recovery"):
                             shot(page, f"runtime-outcome-{name}-{'phone-390' if phone else 'desktop-1440'}-{theme}-{UI_BROWSER}")
                         if name == "confirmed":
@@ -715,7 +758,7 @@ class RuntimeConsole(unittest.TestCase):
                             geometry = outcome.evaluate("""node => {
                               const heading = node.closest('section.rt').querySelector('#rt-h').getBoundingClientRect();
                               const result = node.getBoundingClientRect();
-                              const following = node.closest('section.rt').querySelector('.rt-choices, .rt-sub');
+                              const following = node.closest('section.rt').nextElementSibling;
                               return {heading:heading.bottom, top:result.top, bottom:result.bottom,
                                 following:following?.getBoundingClientRect().top ?? innerHeight, height:innerHeight};
                             }""")
@@ -741,7 +784,7 @@ class RuntimeConsole(unittest.TestCase):
                             expect(section.get_by_text("Signed out of Claude Code in Flux.", exact=True)).to_have_count(0)
                             order = uncertain.evaluate("""node => ({top:node.getBoundingClientRect().top,
                               heading:node.closest('section.rt').querySelector('#rt-h').getBoundingClientRect().bottom,
-                              choices:node.closest('section.rt').querySelector('.rt-choices').getBoundingClientRect().top})""")
+                              choices:node.closest('section.rt').querySelector('.rt-actions').getBoundingClientRect().top})""")
                             self.assertLessEqual(order["top"] - order["heading"], 24)
                             self.assertLess(order["top"], order["choices"], "unconfirmed action stays beside its current state")
                             shot(page, f"runtime-outcome-uncertain-action-{'phone-390' if phone else 'desktop-1440'}-{theme}-{UI_BROWSER}")
@@ -776,9 +819,9 @@ class RuntimeConsole(unittest.TestCase):
                         if response_kind != "off":
                             page.route("**/api/v1/agent-runtime/binding", lambda route: held.append(route)
                                        if route.request.method == "DELETE" else route.continue_())
-                        page.goto("/settings/agents")
+                        page.goto("/settings/agents/claude-code")
                         section = page.locator("section.rt")
-                        expect(section.get_by_role("heading", name="Claude Code in Flux · not signed in")).to_be_visible()
+                        expect(section.get_by_role("heading", name="Claude plan · not connected")).to_be_visible()
                         section.get_by_role("button", name="Remove shared runtime space from Flux…").click()
                         group = page.get_by_role("group", name="Remove shared runtime space from Flux")
                         submit = group.get_by_role("button", name="Sign out and remove")

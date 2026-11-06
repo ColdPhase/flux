@@ -1,11 +1,10 @@
 import { createHash } from 'node:crypto';
 import {
   aiModelCallsTools,
-  PERSONAL_RUN_CONSENT_VERSION,
   PERSONAL_RUN_LIMITS,
-  PERSONAL_RUNTIME_CONSENT_VERSION,
   personalRunMaxInputTokens,
   WORK_LIMITS,
+  type AiConnectionRef,
   type AiPrice,
   type AssistantRunKind,
   type AssistantRunTarget,
@@ -13,9 +12,8 @@ import {
   type EnablePersonalRunsCommand,
   type InvokeAssistantRunCommand,
   type ResultFinding,
-  type UpdatePersonalRunsCommand,
 } from '@flux/contracts';
-import { InvalidInputError, RuleViolationError } from '../access/errors.js';
+import { InvalidInputError } from '../access/errors.js';
 import { id, isId } from '../work/validation.js';
 import { boundedUsageMicros, requestReservationMicros, usageMicros, usageTokensWithin } from '../ai/price.js';
 import type { PersonalComputeUsage, PersonalConnection } from './ports.js';
@@ -25,49 +23,22 @@ import type { PersonalComputeUsage, PersonalConnection } from './ports.js';
 
 const KINDS: readonly AssistantRunKind[] = ['ask', 'summarize', 'map_thought'];
 
-function cents(value: unknown, label: string, range: { default: number; min: number; max: number }): number {
-  if (value === undefined) return range.default;
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < range.min || value > range.max)
-    throw new InvalidInputError(`${label} must be an integer from ${range.min} to ${range.max}`);
+/** One of the caller's connections as a request names it: a plan, or an API key's id (#854). */
+export function connectionRef(value: unknown): AiConnectionRef {
+  if (value === 'claude_plan' || value === 'chatgpt_plan') return value;
+  return id(value, 'connection').toLowerCase();
+}
+
+/** A model id from a connection's list: what is offered decides; this only refuses what can never be one. */
+export function modelRef(value: unknown): string {
+  if (typeof value !== 'string' || !value || value.length > 200) throw new InvalidInputError('model must be a model id');
   return value;
 }
 
-/** An IANA time zone Node can resolve; the daily cap resets at its midnight. */
-export function timeZone(value: unknown): string {
-  if (value === undefined) return 'UTC';
-  if (typeof value !== 'string' || !value || value.length > 64) throw new InvalidInputError('timeZone must be an IANA time zone');
-  try {
-    return new Intl.DateTimeFormat('en-US', { timeZone: value }).resolvedOptions().timeZone;
-  } catch {
-    throw new InvalidInputError('timeZone must be an IANA time zone');
-  }
-}
-
+/** Turning the assistant on names its agent and a model of one of the caller's connections; nothing else (#854). */
 export function normalizeEnable(command: EnablePersonalRunsCommand) {
   if (!command || typeof command !== 'object') throw new InvalidInputError('An enablement is required');
-  if (command.engine !== undefined && command.engine !== 'server' && command.engine !== 'runtime') throw new InvalidInputError('engine must be server or runtime');
-  const engine = command.engine ?? 'server';
-  // Each engine has its own disclosure: the runtime's payer is the owner's plan and its data goes to Anthropic (F-022 AIM-3).
-  const consent = engine === 'runtime' ? PERSONAL_RUNTIME_CONSENT_VERSION : PERSONAL_RUN_CONSENT_VERSION;
-  if (command.consentVersion !== consent)
-    throw new RuleViolationError(`Accept the current disclosure ${consent}`, 'CONSENT_VERSION_MISMATCH');
-  if (engine === 'runtime' && command.connectionId !== undefined) throw new InvalidInputError('A runtime assistant uses no API key connection');
-  const perRunCents = cents(command.perRunCents, 'perRunCents', PERSONAL_RUN_LIMITS.perRunCents);
-  const dailyCapCents = cents(command.dailyCapCents, 'dailyCapCents', PERSONAL_RUN_LIMITS.dailyCapCents);
-  if (perRunCents > dailyCapCents) throw new InvalidInputError('perRunCents cannot exceed dailyCapCents');
-  const connectionId = command.connectionId === undefined ? null : id(command.connectionId, 'connectionId');
-  if (command.model !== undefined && (typeof command.model !== 'string' || !command.model || command.model.length > 200)) throw new InvalidInputError('model must be a model id');
-  return { agentId: id(command.agentId, 'agentId'), connectionId, perRunCents, dailyCapCents, timeZone: timeZone(command.timeZone), engine, model: command.model };
-}
-
-export function normalizeUpdate(command: UpdatePersonalRunsCommand) {
-  if (!command || typeof command !== 'object') throw new InvalidInputError('An update is required');
-  const changes: { perRunCents?: number; dailyCapCents?: number; timeZone?: string } = {};
-  if (command.perRunCents !== undefined) changes.perRunCents = cents(command.perRunCents, 'perRunCents', PERSONAL_RUN_LIMITS.perRunCents);
-  if (command.dailyCapCents !== undefined) changes.dailyCapCents = cents(command.dailyCapCents, 'dailyCapCents', PERSONAL_RUN_LIMITS.dailyCapCents);
-  if (command.timeZone !== undefined) changes.timeZone = timeZone(command.timeZone);
-  if (!Object.keys(changes).length) throw new InvalidInputError('Nothing to update');
-  return changes;
+  return { agentId: id(command.agentId, 'agentId'), connection: connectionRef(command.connection), model: modelRef(command.model) };
 }
 
 function target(value: unknown, kind: AssistantRunKind): AssistantRunTarget | null {
@@ -154,16 +125,17 @@ export function runReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' |
 }
 
 /**
- * What a run with a tool loop reserves (F-027 AST-8, PROV-3): its turns × the largest possible
- * request at the connection's price, never above the owner's per-run ceiling. One request must
- * always fit the ceiling (the caller refuses a connection whose single request does not), so the
- * reservation is at least one request. Null without a known price.
+ * What a run reserves against its API key's daily budget (#854, PROV-3): its turns × the largest possible request at the
+ * key's price, never above what is left of the day's budget. Before each further request the loop checks that one more
+ * still fits, so the day's spend stays within the budget. `'budget'`: not even one request fits what is left today; null
+ * without a known price.
  */
-export function toolRunReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null, perRunCapMicros: number,
-  turns: number = PERSONAL_RUN_LIMITS.maxTurns): number | null {
-  const one = runReservationMicros(price, true);
+export function budgetedReservationMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null, tools: boolean, leftMicros: number,
+  turns: number = PERSONAL_RUN_LIMITS.maxTurns): number | 'budget' | null {
+  const one = runReservationMicros(price, tools);
   if (one === null) return null;
-  return Math.max(one, Math.min(one * Math.max(1, Math.floor(turns)), perRunCapMicros));
+  if (one > leftMicros) return 'budget';
+  return tools ? Math.min(one * Math.max(1, Math.floor(turns)), leftMicros) : one;
 }
 
 /**

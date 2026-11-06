@@ -6,7 +6,7 @@ import { MORNING_SUMMARY_JOB, PUSH_SEND_JOB, policySourceReader, sendMorningSumm
  * Starts the assistant's run for a person's morning summary inside the claim's transaction (F-027 A8, AST-7.6); false: the plain
  * summary goes out. Composed by `apps/worker/src/assistant`, which owns the personal-run path.
  */
-export type AssistantSummaryStart = (tx: Transaction, summary: SummaryPorts, userId: string, day: string, now: Date) => Promise<boolean>;
+export type AssistantSummaryStart = (tx: Transaction, summary: SummaryPorts, userId: string, day: string, now: Date, timeZone: string) => Promise<boolean>;
 
 /** Drizzle rows, the access policy and pg-boss for the morning summary (#350); the rules are in core. */
 export function summaryPorts(tx: Transaction, boss: Pick<PgBoss, 'send'>, start?: AssistantSummaryStart): SummaryPorts {
@@ -24,7 +24,7 @@ export function summaryPorts(tx: Transaction, boss: Pick<PgBoss, 'send'>, start?
     deliverableSubscriptions: (userId) => pushSubscriptionRepository(tx).deliverableIdsForUser(userId),
     enqueuePush: (job) => boss.send(PUSH_SEND_JOB, job, { db: queueDb, singletonKey: `${job.notificationId}:${job.subscriptionId}` }),
   };
-  if (start) ports.assistantSummary = { start: (userId, day, now) => start(tx, ports, userId, day, now) };
+  if (start) ports.assistantSummary = { start: (userId, day, now, timeZone) => start(tx, ports, userId, day, now, timeZone) };
   return ports;
 }
 

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { AGENT_ALWAYS_WAITS, aiConnectionLabel, assistantSettingsPath, type AssistantSettings, type PersonalAssistantStatus } from '@flux/contracts';
+import { AGENT_ALWAYS_WAITS, assistantSettingsPath, type AssistantSettings, type PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
 import { AgentTag, Icon, Kreska, agentHue } from '../ui';
-import { runtimeNames } from './format';
+import { connectionName, dollars } from './format';
 import { AssistantModelControl } from './ModelPicker';
 import { MayDoChoice } from '../agent-connection/MayDoChoice';
 
@@ -17,8 +17,6 @@ export function AssistantHeader({ name, userId, status, busy, onToggle }: {
   const first = name.trim().split(/\s+/)[0] || name;
   const on = status.state !== 'paused';
   const runtime = status.enablement?.engine === 'runtime';
-  const consent = status.enablement?.consent;
-  const names = runtimeNames(status.setup.runtime?.client);
   return (
     <section className="sset-card aset-screen__head" aria-labelledby="aset-title">
       <div className="sset-row">
@@ -31,9 +29,10 @@ export function AssistantHeader({ name, userId, status, busy, onToggle }: {
       </div>
       <div className="sset-row aset-screen__account">
         <div className="sset-row__b">
-          <span className="sset-row__t">{runtime ? `${names.plan} · your subscription` : consent ? `${aiConnectionLabel(consent.provider, consent.model)} · your API key` : 'Your AI account'}</span>
+          <span className="sset-row__t">{status.enablement ? connectionName(status.enablement.connection) : 'Your AI account'}</span>
           <span className="aset-model-row"><AssistantModelControl variant="field" /></span>
-          {runtime ? <span className="sset-row__s">Flux can&apos;t see your plan&apos;s limits.</span> : null}
+          <span className="sset-row__s">{runtime ? 'Flux adds no limits of its own. If your plan’s limit is reached, it pauses and resumes by itself.'
+            : status.today ? `Your API key’s daily budget: ${dollars(status.today.budgetCents)}. It pauses for the day when it is used.` : 'Your API key’s daily budget applies.'}</span>
         </div>
         <Link className="ui-link aset-screen__change" to="/settings/agents">Change <Icon name="chevron-right" size={12} /></Link>
       </div>

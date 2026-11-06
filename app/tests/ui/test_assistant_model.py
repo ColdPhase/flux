@@ -1,4 +1,5 @@
-"""Browser tests for the assistant's model (F-027 AST-11, #596): one model, chosen at turn-on and changed everywhere.
+"""Browser tests for the assistant's model (F-027 AST-11, #596; #854 grouped by connection): one model, chosen at turn-on and changed
+everywhere, from any of the person's connections.
 
 Same stubbed-engine approach as test_assistant_screen: the model endpoint is an in-memory world that applies the server's rules
 (only a listed model, the previous one stays on a refusal), so these prove the words, the taps and the layout at both widths.
@@ -26,7 +27,13 @@ CLAUDE = [
     {"id": "opus", "name": "Opus", "note": "Harder requests", "callsTools": True},
     {"id": "haiku", "name": "Haiku", "note": "Quick, simple requests", "callsTools": True},
 ]
-LEGACY = {"id": "default", "name": "Your plan's default", "note": "Whatever your plan uses", "callsTools": True}
+CODEX = [
+    {"id": "gpt-6.1-sol", "name": "GPT-6.1 Sol", "note": "Everyday work", "callsTools": True},
+    {"id": "gpt-6-astra", "name": "GPT-6 Astra", "note": "The hardest requests", "callsTools": True},
+]
+CLAUDE_PLAN = {"connection": "claude_plan", "account": "claude_plan", "label": "Claude plan", "company": "Claude"}
+CHATGPT_PLAN = {"connection": "chatgpt_plan", "account": "chatgpt_plan", "label": "ChatGPT plan", "company": "ChatGPT"}
+KEY = {"connection": "4c1f0a52-7d3e-4b8a-9f61-2e5d8c7b9a10", "account": "api_key", "label": "Work Anthropic", "company": "Anthropic"}
 API = [
     {"id": "claude-sonnet-5", "name": "Sonnet 5", "note": "Your connection's model", "callsTools": True},
     {"id": "gpt-6-astra", "name": "GPT-6 Astra", "note": "Input $10, output $50 per 1M tokens", "callsTools": False},
@@ -55,11 +62,16 @@ class AssistantModel(unittest.TestCase):
 
     # ---------------------------------------------------------------- stubs
 
-    def stub_model(self, page: Page, *, saved: bool = True, current: str = "sonnet", options: list[dict] | None = None, refuse: dict | None = None) -> dict:
-        """GET and PUT of the model, applying the server's rules: a model outside the list is refused and the previous one stays."""
+    def stub_model(self, page: Page, *, saved: bool = True, current: str = "sonnet", options: list[dict] | None = None, refuse: dict | None = None,
+                   group: dict | None = None, more: list[tuple[dict, list[dict]]] | None = None) -> dict:
+        """GET and PUT of the model, applying the server's rules: only a model in a connection's list, and the previous one stays on
+        a refusal. One group per connection (#854): the first is the given one (the Claude plan by default), then `more`."""
+        head = group or CLAUDE_PLAN
         listed = options if options is not None else CLAUDE
-        world = {"choice": {"engine": "runtime", "account": "claude_plan", "company": "Claude", "current": current, "default": listed[0]["id"] if listed else "",
-                            "options": listed, "saved": saved}, "puts": [], "gets": 0, "refuse": refuse}
+        groups = [{**head, "options": listed}, *({**extra, "options": items} for extra, items in (more or []))]
+        world = {"choice": {"current": {"connection": head["connection"], "model": current} if current else None,
+                            "default": {"connection": head["connection"], "model": listed[0]["id"]} if listed else None,
+                            "groups": groups, "saved": saved}, "puts": [], "gets": 0, "refuse": refuse}
 
         def model(route: Route) -> None:
             if route.request.method == "GET":
@@ -73,8 +85,8 @@ class AssistantModel(unittest.TestCase):
             world["puts"].append(body)
             if world["refuse"]:
                 self.json(route, world["refuse"], 409)
-            elif any(option["id"] == body.get("model") for option in listed):
-                world["choice"] = dict(world["choice"], current=body["model"], options=[option for option in listed if option["id"] != "default"])
+            elif any(item["connection"] == body.get("connection") and any(option["id"] == body.get("model") for option in item["options"]) for item in groups):
+                world["choice"] = dict(world["choice"], current={"connection": body["connection"], "model": body["model"]})
                 self.json(route, world["choice"])
             else:
                 self.json(route, {"code": "ASSISTANT_MODEL_UNAVAILABLE", "message": "Your Claude plan doesn't offer that model. It is still Sonnet."}, 409)
@@ -143,7 +155,7 @@ class AssistantModel(unittest.TestCase):
                 shot(page, f"model-ready-{self.tag(phone, dark)}")
                 card.get_by_role("button", name="Turn on", exact=True).click()
                 expect(page.get_by_role("switch", name="Your assistant is on")).to_be_visible()
-                self.assertEqual((posted[0]["engine"], posted[0]["model"]), ("runtime", "opus"))
+                self.assertEqual((posted[0]["connection"], posted[0]["model"]), ("claude_plan", "opus"))
 
     def test_03_turn_on_sends_the_default_when_nothing_was_picked(self) -> None:
         page = self.page()
@@ -175,9 +187,9 @@ class AssistantModel(unittest.TestCase):
                 model = self.stub_model(page)
                 page.goto("/settings/assistant")
                 row = page.locator(".aset-screen__account")
-                expect(row).to_contain_text("Claude · your subscription")
+                expect(row).to_contain_text("Claude plan")
                 expect(row).to_contain_text("Model: Sonnet")
-                expect(row).to_contain_text("Flux can't see your plan's limits.")
+                expect(row).to_contain_text("Flux adds no limits of its own.")
                 self.assertGreaterEqual(row.get_by_role("button", name="Model: Sonnet. Change").bounding_box()["height"], 44)
                 self.no_horizontal_scroll(page)
                 shot(page, f"model-settings-{self.tag(phone, dark)}")
@@ -186,7 +198,7 @@ class AssistantModel(unittest.TestCase):
                 menu.get_by_role("menuitemradio", name=re.compile("Opus")).click()
                 expect(row.get_by_role("button", name="Model: Opus. Change")).to_be_visible()
                 expect(row.get_by_role("status")).to_have_text("Model: Opus. It applies from your next request.")
-                self.assertEqual(model["puts"], [{"model": "opus"}])
+                self.assertEqual(model["puts"], [{"connection": "claude_plan", "model": "opus"}])
                 page.reload()
                 expect(page.locator(".aset-screen__account")).to_contain_text("Model: Opus")
                 self.assertIsNone(FORBIDDEN.search(page.locator(".pane-in").inner_text()))
@@ -235,7 +247,7 @@ class AssistantModel(unittest.TestCase):
                 menu.get_by_role("menuitemradio", name=re.compile("Haiku")).click(); taps += 1      # 2
                 self.assertEqual(taps, 2)
                 expect(bar.get_by_role("button", name="Model: Haiku. Change")).to_have_text("Haiku")
-                self.assertEqual(model["puts"], [{"model": "haiku"}])
+                self.assertEqual(model["puts"], [{"connection": "claude_plan", "model": "haiku"}])
                 # One value everywhere: the panel, then Settings, show the same model.
                 bar.get_by_role("button", name="Stop asking your assistant").click()
                 page.get_by_role("button", name="Ada's assistant", exact=True).click()
@@ -258,7 +270,7 @@ class AssistantModel(unittest.TestCase):
         shot(page, "model-panel-1440-light")
         menu.get_by_role("menuitemradio", name=re.compile("Opus")).click()
         expect(panel.get_by_role("button", name="Model: Opus. Change")).to_be_visible()
-        self.assertEqual(model["puts"], [{"model": "opus"}])
+        self.assertEqual(model["puts"], [{"connection": "claude_plan", "model": "opus"}])
         # A colleague's assistant: no model control and no model name anywhere in what they see.
         other = self.page()
         self.stub_assistant(other)
@@ -283,7 +295,7 @@ class AssistantModel(unittest.TestCase):
         page.get_by_role("menuitemradio", name=re.compile("Opus")).click()
         expect(row.get_by_role("alert")).to_have_text("Your Claude plan doesn't offer that model. It is still Sonnet.")
         expect(row.get_by_role("button", name="Model: Sonnet. Change")).to_be_visible()
-        self.assertEqual(model["puts"], [{"model": "opus"}])
+        self.assertEqual(model["puts"], [{"connection": "claude_plan", "model": "opus"}])
         shot(page, "model-refused-390-light")
         # Offline: the same promise.
         page2 = self.page()
@@ -319,34 +331,37 @@ class AssistantModel(unittest.TestCase):
         menu = page.get_by_role("menu", name="Model")
         menu.get_by_role("menuitemradio", name=re.compile("Haiku")).click()
         expect(line.get_by_role("status")).to_contain_text("Model: Haiku")
-        self.assertEqual(model["puts"], [{"model": "haiku"}])
+        self.assertEqual(model["puts"], [{"connection": "claude_plan", "model": "haiku"}])
 
     # ---------------------------------------------------------------- the list's own states
 
-    def test_10_an_assistant_from_before_the_choice_shows_its_plans_default_until_a_pick(self) -> None:
+    def test_10_the_list_is_grouped_by_connection_and_a_pick_names_its_connection(self) -> None:
+        """#854: with a Claude plan and a ChatGPT plan, one list grouped by connection; the control names the connection, and a
+        pick from the other group saves that connection with its model."""
         page = self.page()
         self.stub_assistant(page)
-        legacy = self.stub_model(page, current="default", options=[LEGACY] + CLAUDE)
+        world = self.stub_model(page, more=[(CHATGPT_PLAN, CODEX)])
         page.goto("/settings/assistant")
         row = page.locator(".aset-screen__account")
-        expect(row).to_contain_text("Model: Your plan's default")
-        control = row.get_by_role("button", name="Model: Your plan's default. Change")
+        control = row.get_by_role("button", name="Model: Sonnet · Claude plan. Change")
         control.click()
         menu = page.get_by_role("menu", name="Model")
-        expect(menu.get_by_role("menuitemradio")).to_have_count(4)
-        expect(menu.get_by_role("menuitemradio").first).to_have_attribute("aria-checked", "true")
-        menu.get_by_role("menuitemradio", name=re.compile("Sonnet")).click()
-        picked = row.get_by_role("button", name="Model: Sonnet. Change")
-        expect(picked).to_be_visible()
-        picked.click()
-        expect(page.get_by_role("menu", name="Model").get_by_role("menuitemradio")).to_have_count(3)
-        self.assertEqual(legacy["puts"], [{"model": "sonnet"}])
+        groups = menu.get_by_role("group")
+        expect(groups).to_have_count(2)
+        expect(groups.nth(0)).to_have_accessible_name("Claude plan")
+        expect(groups.nth(1)).to_have_accessible_name("ChatGPT plan")
+        expect(groups.nth(0).get_by_role("menuitemradio")).to_have_count(3)
+        expect(groups.nth(1).get_by_role("menuitemradio")).to_have_count(2)
+        self.inside(page, menu)
+        shot(page, "model-groups-1440-light")
+        groups.nth(1).get_by_role("menuitemradio", name=re.compile("GPT-6.1 Sol")).click()
+        expect(row.get_by_role("button", name="Model: GPT-6.1 Sol · ChatGPT plan. Change")).to_be_visible()
+        self.assertEqual(world["puts"], [{"connection": "chatgpt_plan", "model": "gpt-6.1-sol"}])
 
     def test_11_a_model_that_cannot_make_changes_says_so_beside_it(self) -> None:
         page = self.page()
         self.stub_assistant(page)
-        keyed = self.stub_model(page, current="claude-sonnet-5", options=API)
-        keyed["choice"].update(engine="server", account="api_key", company="Anthropic")
+        self.stub_model(page, current="claude-sonnet-5", options=API, group=KEY)
         page.goto("/settings/assistant")
         row = page.locator(".aset-screen__account")
         menu = self.open_list(page, row, "Sonnet 5")
@@ -379,7 +394,7 @@ class AssistantModel(unittest.TestCase):
         page.keyboard.press("ArrowDown")
         page.keyboard.press("Enter")
         expect(page.get_by_role("button", name="Model: Opus. Change")).to_be_focused()
-        self.assertEqual(model["puts"], [{"model": "opus"}])
+        self.assertEqual(model["puts"], [{"connection": "claude_plan", "model": "opus"}])
 
 
 if __name__ == "__main__":

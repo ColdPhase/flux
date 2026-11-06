@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunTools, assistantSettingsPath, compileAssistantAreas, DEFAULT_ASSISTANT_AREAS, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS,
+  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunTools, assistantSettingsPath, compileAssistantAreas, DEFAULT_ASSISTANT_AREAS, PERSONAL_RUN_LIMITS,
   personalRunTokenPath, RUN_TOKEN_LIMITS, type AgentMayDo, type AssistantSettings, type Conversation, type Project, type Workspace,
 } from '@flux/contracts';
 import { createPersonalRunProcessor, type PersonalComputeResult, type PersonalToolCall, type Principal } from '@flux/core';
@@ -27,7 +27,7 @@ import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs
 const connections = new FakeConnections();
 const compute = new FakeCompute();
 const queue = new FakeQueue();
-const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true, toolTurns: PERSONAL_RUN_LIMITS.maxTurns });
+const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
 const tokens = runTokenIssuer(db, apiUrl);
 const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20,
   tools: mcpToolHost(tokens, `${apiUrl}/mcp`), tokens });
@@ -93,7 +93,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() } }), 201) as Conversation;
     docId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/docs`, { body: { title: 'Sensor notes', body: `The sensor is a PIR. ${WIKI_CANARY}` } }), 201) as { id: string }).id;
-    // Ten long messages: one page of ten is past 16 KiB, so a run's read of it hits the per-call bound (#484).
+    // Ten long messages: a run that has almost used up its results reads past the bound on them (#484).
     bigThreadId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'long message. '.repeat(300), clientMessageId: randomUUID() } }), 201) as Conversation).id;
     for (let i = 1; i < 10; i += 1)
@@ -110,7 +110,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const connectionId = randomUUID();
     connections.connect(owner.id, connectionId);
     // Turning the assistant on creates its one `owner_assistant` connection and joins the projects the owner manages (A1).
-    await runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, connectionId, perRunCents: 50, dailyCapCents: 1_000 });
+    await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
   });
   beforeEach(async () => {
     compute.dispatched = []; compute.counted = [];
@@ -210,7 +210,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     await end(runId);
   });
 
-  test('a tool result over 16 KiB is not returned and the run ends in its own state', async () => {
+  test('a tool result past the route\'s bound is not returned and the run ends in its own state', async () => {
     const replies: PersonalComputeResult[] = [
       { kind: 'completed', text: 'reading', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
         toolCalls: [{ id: 'c1', name: 'flux_get_conversation', input: { projectId: place.id, id: bigThreadId } }] },
@@ -218,9 +218,11 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     ];
     compute.respond = async () => replies.shift()!;
     const started = await ask();
+    // A safety bound (#843): this run starts close to it instead of reading 8 MiB.
+    await pool.query('UPDATE personal_runs SET mcp_result_bytes = $1 WHERE id = $2', [RUN_TOKEN_LIMITS.resultBytesPerRun - 1024, started.run.id]);
     assert.equal(await processor.process(started.run.id), 'cap_reached');
     const stored = await row(started.run.id);
-    assert.deepEqual([stored.status, stored.end_reason, stored.mcp_limit, stored.answer_body], ['cap_reached', 'mcp_results_too_large', 'call', null]);
+    assert.deepEqual([stored.status, stored.end_reason, stored.mcp_limit, stored.answer_body], ['cap_reached', 'mcp_results_too_large', 'run', null]);
     const second = compute.dispatched.at(-1)!;
     assert.ok(!JSON.stringify(second.turns ?? []).includes('long message. long message. long message.'), 'the oversized result never reached the provider');
   });
@@ -252,7 +254,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
       await runs.remove(human(owner)).catch(() => undefined);
       const connectionId = randomUUID();
       connections.connect(owner.id, connectionId);
-      await runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, connectionId, perRunCents: 50, dailyCapCents: 1_000 });
+      await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
     };
     const revoke = async () => {
       const assistant = await settings();
@@ -300,9 +302,9 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.ok(stored.run_token_closed_at, 'the session closed the token');
   });
 
-  test('AST-8.2 through /mcp: a provider that keeps calling tools stops at the turn cap, every call made through the route', async (t) => {
+  test('AST-8.2 through /mcp: a provider that keeps calling tools stops at a safety bound, every call made through the route', async (t) => {
     // With every switch on the run lists 19 read tools. Their definitions travel with every request, so they
-    // are kept short (#484): measured below, bounded here, and ten turns fit the 32,000-token tool-run input bound.
+    // are kept short (#484): measured below, bounded here, and over a hundred turns fit the tool-run input bound.
     compute.respond = async () => ({ kind: 'completed', text: 'again', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
       toolCalls: [{ id: `c${compute.dispatched.length}`, name: 'flux_list_contexts', input: {} }] });
     const full = await ask();
@@ -314,10 +316,10 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.ok(fullBytes <= TOOL_DEFINITION_BYTES, `the run's tool definitions take ${fullBytes} bytes; keep them under ${TOOL_DEFINITION_BYTES} (they are input of every request)`);
     assert.ok(!JSON.stringify(fullTools).includes('"$schema"') && !JSON.stringify(fullTools).includes('"pattern"'), 'no draft URL or uuid regular expression on the wire');
     assert.ok(fullTools.every((tool) => tool.name !== 'flux_get_conversation' || JSON.stringify(tool.inputSchema).includes('"beforeSequence"')), 'the parameters themselves are kept');
-    assert.equal(fullOutcome, 'cap_reached');
-    assert.equal(compute.dispatched.length, PERSONAL_RUN_LIMITS.maxTurns, 'ten turns fit within the tool-run input bound with every tool on');
+    assert.equal(fullOutcome, 'input_too_large');
+    assert.ok(compute.dispatched.length > 100, 'over a hundred turns fit within the tool-run input bound with every tool on');
     compute.dispatched = [];
-    // Only read: a shorter list, the same ten turns.
+    // Only read: a shorter list, and the bound on steps comes first.
     await setMayDo('read');
     compute.respond = async () => ({ kind: 'completed', text: 'again', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
       toolCalls: [{ id: `c${compute.dispatched.length}`, name: 'flux_list_contexts', input: {} }] });
@@ -336,7 +338,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const connectionId = randomUUID();
     await runs.remove(human(owner));
     connections.connect(owner.id, connectionId, { toolCalling: false });
-    await runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, connectionId, perRunCents: 50, dailyCapCents: 1_000 });
+    await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
     compute.respond = async () => ({ kind: 'completed', text: 'Fact: one answer [S1].', stopReason: 'end_turn', usage: { inputTokens: 500, outputTokens: 20 } });
     const started = await ask();
     assert.equal(await processor.process(started.run.id), 'completed');

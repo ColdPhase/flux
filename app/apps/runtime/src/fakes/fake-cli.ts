@@ -219,6 +219,8 @@ interface RunScript {
   answer?: string;
   /** A pause before each call after the first (a model thinking between turns). */
   delayMs?: number;
+  /** The plan's limit comes after the calls: the run changed things first. */
+  limitAfterCalls?: boolean;
 }
 
 /**
@@ -229,7 +231,7 @@ interface RunScript {
  * answer (`{{results}}` is replaced by what the calls returned) and silent `probes` (calls made without a
  * tool-use event, as a CLI ignoring its permissions would). Every MCP answer is recorded in
  * `fake-calls.jsonl` (the token never is). Scenarios: run_extra_tool, run_extra_server, run_expired_login,
- * run_plan_limit, run_model_unavailable, run_hang (no event after init), run_slow (events forever, never a result), run_crash,
+ * run_plan_limit, run_plan_limit_soon (resets in two hours), run_plan_limit_no_time, run_model_unavailable, run_hang (no event after init), run_slow (events forever, never a result), run_crash,
  * run_big_answer, run_secret_answer, run_broken_stream, run_ignore_sigint, run_max_turns. Without
  * `--no-session-persistence` it writes a transcript under `projects/`, as the real CLI would.
  */
@@ -282,6 +284,9 @@ async function claudeRun(argv: string[]): Promise<number> {
   if (mode === 'run_ignore_sigint') { for (;;) { emit({ type: 'stream_event', event: { type: 'ping' }, session_id: session }); await new Promise((wait) => setTimeout(wait, 500)); } }
   if (mode === 'run_expired_login') { emit({ type: 'result', subtype: 'success', is_error: true, result: 'Invalid API key · Please run /login', num_turns: 1, session_id: session }); return 1; }
   if (mode === 'run_plan_limit') { emit({ type: 'result', subtype: 'success', is_error: true, result: 'Claude AI usage limit reached|1791374400', num_turns: 1, session_id: session }); return 1; }
+  // #854: a plan limit that resets two hours from now, so the request pauses and resumes by itself.
+  if (mode === 'run_plan_limit_no_time') { emit({ type: 'result', subtype: 'success', is_error: true, result: 'Claude AI usage limit reached', num_turns: 1, session_id: session }); return 1; }
+  if (mode === 'run_plan_limit_soon') { emit({ type: 'result', subtype: 'success', is_error: true, result: `Claude AI usage limit reached|${Math.floor(Date.now() / 1000) + 7200}`, num_turns: 1, session_id: session }); return 1; }
   if (mode === 'run_model_unavailable') {
     emit({ type: 'result', subtype: 'success', is_error: true, result: "There's an issue with the selected model (opus). It may not exist or you may not have access to it. Run /model to pick a different model.", num_turns: 1, session_id: session });
     return 1;
@@ -308,8 +313,9 @@ async function claudeRun(argv: string[]): Promise<number> {
     results.push(result);
     emit({ type: 'user', session_id: session, message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: useId, content: result.text, is_error: result.isError }] } });
   }
+  if (script.limitAfterCalls) { emit({ type: 'result', subtype: 'success', is_error: true, result: `Claude AI usage limit reached|${Math.floor(Date.now() / 1000) + 7200}`, num_turns: results.length + 1, session_id: session }); return 1; }
   let answer = (script.answer ?? 'Done: I read {{count}} things in this project.').replace('{{count}}', String(results.length)).replace('{{results}}', JSON.stringify(results));
-  if (mode === 'run_big_answer') answer = 'x'.repeat(20 * 1024);
+  if (mode === 'run_big_answer') answer = 'x'.repeat(70 * 1024);
   if (mode === 'run_secret_answer') answer = `Here: sk-ant-api03-${randomBytes(12).toString('hex')} and the token ${token} and Bearer ${token}.`;
   emit({ type: 'result', subtype: 'success', is_error: false, result: answer, num_turns: results.length + 1, session_id: session, total_cost_usd: 0 });
   return 0;
@@ -462,7 +468,7 @@ async function codexRun(argv: string[]): Promise<number> {
       error: result.isError ? { message: result.text } : null, status: result.isError ? 'failed' : 'completed' } });
   }
   let answer = (script.answer ?? 'Done: I read {{count}} things in this project.').replace('{{count}}', String(results.length)).replace('{{results}}', JSON.stringify(results.map(({ name, isError, text }) => ({ name, isError, text }))));
-  if (mode === 'run_big_answer') answer = 'x'.repeat(20 * 1024);
+  if (mode === 'run_big_answer') answer = 'x'.repeat(70 * 1024);
   if (mode === 'run_secret_answer') answer = `Here: sk-proj-${randomBytes(12).toString('hex')} and the token ${token} and Bearer ${token}.`;
   emit({ type: 'item.completed', item: { id: next(), type: 'agent_message', text: answer } });
   emit({ type: 'turn.completed', usage: { input_tokens: 1200, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 80, reasoning_output_tokens: 0 } });

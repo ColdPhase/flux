@@ -2,7 +2,7 @@ import { request as httpRequest } from 'node:http';
 import { parseSupervisorFrame, resultMatches, type RunFrame, type StepOutcome, type SupervisorError, type SupervisorFrame, type SupervisorResult } from './frames.js';
 import { DEFAULT_FRAME_LIMITS, FrameStreamError, NdjsonReader, type FrameLimits } from './ndjson.js';
 import { RUNTIME_PORTS } from './names.js';
-import { requestBody, type SupervisorRequest } from './requests.js';
+import { requestBody, RUN_CAP_BOUNDS, type SupervisorRequest } from './requests.js';
 
 // The manager's side of one supervisor request: an authenticated POST on the slot's own network and a
 // bounded, ordered read of the answer. The answer must be `accepted` (for this request), any `step`s,
@@ -15,7 +15,8 @@ export type SupervisorCallOutcome =
 export interface SupervisorTarget { host: string; port?: number; secret: string }
 
 export const SUPERVISOR_TIMEOUTS_MS: Record<SupervisorRequest['kind'], number> = {
-  bind: 10_000, status: 30_000, login: 15 * 60_000, run: 30 * 60_000, stop: 10_000, logout: 60_000, release: 120_000,
+  // A run may use the largest wall clock a request can carry (#843), plus its stop grace and Codex's rate-limit read.
+  bind: 10_000, status: 30_000, login: 15 * 60_000, run: (RUN_CAP_BOUNDS.wallClockSeconds.max + 60) * 1000, stop: 10_000, logout: 60_000, release: 120_000,
 };
 
 const MAX_STEPS = 16;

@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { createPersonalRunProcessor, type Principal } from '@flux/core';
 import {
-  PERSONAL_RUN_CONSENT_VERSION,
   type Conversation, type ConversationMessage, type ConversationSummary, type InboxItem, type InboxResponse, type Project,
   type ReturnSummary, type SearchResponse, type SearchResult, type StagedFile, type Workspace,
 } from '@flux/contracts';
@@ -127,7 +126,7 @@ describe('a file-only message in every consumer that quotes it', () => {
     const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20 });
     const agentId = await agent(owner, ws.id, place.id, 'Owner assistant');
     connections.connect(owner.id, randomUUID());
-    await runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, dailyCapCents: 1000 });
+    await runs.enable(human(owner), { agentId, ...connections.latest(owner.id) });
     const { run } = await runs.invoke(human(owner), talk.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'What did the writer send?' });
     assert.equal(await processor.process(run.id), 'completed');
     assert.equal(compute.dispatched.length, 1);

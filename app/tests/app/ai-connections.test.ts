@@ -35,9 +35,7 @@ const keys = {
   gemini: `AIza${marker.repeat(3)}GE01`,
   openai_compatible: `local-${marker.repeat(3)}OC01`,
 };
-const consent = { payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture workspace', workspaceScopedKeyConfirmed: true,
-  payerAuthorityConfirmed: true, providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
-  maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 20 };
+const consent = { dailyBudgetCents: 50 };
 const codeOf = (response: { json: unknown }) => (response.json as { code?: string } | null)?.code;
 
 function decrypt(blob: string, ownerId: string, connectionId: string) {
@@ -76,7 +74,7 @@ describe('provider-neutral owner AI connections (#179)', () => {
       const response = await owner.browser.request('POST', path, { body: { ...consent, ...body, apiKey: key, useForBackground: true } });
       const saved = expectStatus(response, 201, String(body.provider)) as BackgroundComputeConnection;
       for (const [field, value] of Object.entries(expect)) assert.deepEqual(saved[field as keyof BackgroundComputeConnection], value, `${body.provider} ${field}`);
-      assert.equal(saved.consentVersion, 'o-007-2026-10-02');
+      assert.deepEqual([saved.dailyBudgetCents, saved.today.spentMicros], [50, 0], 'one daily budget, nothing spent yet');
       assert.equal(saved.keyLastFour, key.slice(-4));
       assert.equal(response.text.includes(key), false, 'the key is never returned');
       const current = await owner.browser.request('GET', `${path}/current`);
@@ -182,21 +180,21 @@ describe('enabling and dispatch on any provider (#179 PROV-2/PROV-3)', () => {
       { body: { name: 'Provider-neutral agent', owner: 'self' } }), 201) as { id: string }).id;
     ruleId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`,
       { body: { agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison', dataScope: 'current_project_published',
-        permittedEffect: 'quiet_project_proposal', maxRunsPerDay: 3, periodBudgetCents: 50, perRunCents: 20 } }), 201) as { id: string }).id;
+        permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string }).id;
     material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/materials`,
       { body: { clientMutationId: randomUUID(), title: 'Sensor measurement', body: 'Camera A captured 38% of gestures at 5 lux.' } }), 201) as Material;
   });
   beforeEach(() => mock('/__reset', {}));
 
-  test('a connection without a known price cannot be enabled; a model whose request exceeds the allowance is refused', async () => {
+  test('a connection without a known price cannot be enabled; a key whose budget is below one request is refused when saved', async () => {
     await connect({ provider: 'gemini', model: 'gemini-model', apiKey: keys.gemini });
     assert.equal(codeOf(await enable()), 'BACKGROUND_PRICE_UNKNOWN');
     // PROV-3: a provider's own listing or reported cost is never a reservation price.
     assert.equal((await connect({ provider: 'openrouter', model: 'vendor/priced-model', apiKey: keys.openrouter })).price, null);
     assert.equal(codeOf(await enable()), 'BACKGROUND_PRICE_UNKNOWN');
-    // 8,000 × $30/M + 1,200 × $60/M = $0.312 per request, above the $0.20 allowance.
-    await connect({ provider: 'openai', model: 'gpt-model', price: { inputMicrosPerMTok: 30_000_000, outputMicrosPerMTok: 60_000_000 }, apiKey: keys.openai });
-    assert.equal(codeOf(await enable()), 'BACKGROUND_BUDGET_TOO_LOW');
+    // 64,000 × $30/M + 4,000 × $60/M = $2.16 per request, above this key's $0.20 daily budget: it would wait for a day that never comes.
+    assert.equal(codeOf(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openai', model: 'gpt-model', useForBackground: true,
+      price: { inputMicrosPerMTok: 30_000_000, outputMicrosPerMTok: 60_000_000 }, apiKey: keys.openai, dailyBudgetCents: 20 } })), 'AI_BUDGET_TOO_SMALL');
     await connect({ provider: 'anthropic', model: 'claude-sonnet-5', apiKey: keys.anthropic });
     assert.equal(codeOf(await enable()), 'BACKGROUND_RUNTIME_UNAVAILABLE', 'a priced connection reaches the last gate');
   });
@@ -206,7 +204,7 @@ describe('enabling and dispatch on any provider (#179 PROV-2/PROV-3)', () => {
     await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [ruleId]);
     const runs: { body: Record<string, unknown>; key: string; wire: 'anthropic' | 'openai'; reserved: number; observed: number }[] = [
       // 8,000 × $10/M + 1,200 × $40/M = $0.128 → 13 cents; 300 × $10/M + 90 × $40/M = $0.0066 → 1 cent.
-      { body: { provider: 'openai_compatible', model: 'llama3.1:8b', baseUrl: COMPATIBLE, price: { inputMicrosPerMTok: 10_000_000, outputMicrosPerMTok: 40_000_000 } },
+      { body: { provider: 'openai_compatible', model: 'llama3.1:8b', baseUrl: COMPATIBLE, price: { inputMicrosPerMTok: 10_000_000, outputMicrosPerMTok: 40_000_000 }, dailyBudgetCents: 100 },
         key: keys.openai_compatible, wire: 'openai', reserved: 13, observed: 1 },
       // The table price: $0.028 → O-007's 5-cent floor; 300 × $2/M + 90 × $10/M → 1 cent.
       { body: { provider: 'anthropic', model: 'claude-sonnet-5' }, key: keys.anthropic, wire: 'anthropic', reserved: 5, observed: 1 },
@@ -254,7 +252,7 @@ describe('several connections per owner and the assistant\'s own one (#179 PROV-
     const lookup = personalConnectionLookup(db);
     assert.equal((await lookup.resolve(owner.id))?.id, second.id, 'without a choice: the newest, only to describe enabling');
     const named = await lookup.resolve(owner.id, first.id);
-    assert.deepEqual([named?.id, named?.provider, named?.model, named?.keyRef, named?.payer.organization], [first.id, 'anthropic', 'claude-sonnet-5', first.id, 'Fixture payer']);
+    assert.deepEqual([named?.id, named?.provider, named?.model, named?.keyRef, named?.dailyBudgetCents], [first.id, 'anthropic', 'claude-sonnet-5', first.id, 50]);
     assert.equal(await lookup.resolve(owner.id, foreign.id), null, 'another person\'s connection is never returned');
     assert.equal(await lookup.resolve(other.id, first.id), null);
 

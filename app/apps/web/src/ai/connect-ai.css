@@ -1,0 +1,37 @@
+/* Connect AI (#854, mockup Main): the section head with "Connect another" on the right, then one row per connection. A row
+   is its name and state, one usage line with a short bar, and "Change" on the right, vertically centred, with a gap so it
+   never overlaps the text however long the line is. */
+.cai__head { display: flex; align-items: center; gap: 12px; margin: 22px 2px 8px; }
+.cai__title { display: flex; flex: 1; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; min-width: 0; }
+.cai__h { margin: 0; }
+.cai__lead { font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
+.cai__row { align-items: center; gap: 12px; }
+.cai__row .sset-row__b { gap: 4px; }
+.cai__state { font-weight: 400; color: var(--t3); }
+.cai__usage { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
+.cai__usage-text { min-width: 0; overflow-wrap: anywhere; }
+.cai__bar { position: relative; flex: none; width: 56px; height: 4px; border-radius: 2px; background: var(--line2, var(--line)); overflow: hidden; }
+.cai__bar > i { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: var(--t2); }
+.cai__change { flex: none; align-self: center; margin-left: 8px; }
+.cai__empty { display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.cai__choose-lead { flex: 1; min-width: 0; font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); }
+/* The Connect AI window (mockup ConnectAI): one window in steps, a dialog on the computer and a sheet on the phone. */
+.cai-dialog { width: min(480px, calc(100% - 32px)); }
+.cai-window { display: flex; flex-direction: column; gap: 10px; padding: 20px; max-height: calc(100dvh - 96px); overflow-y: auto; }
+.cai-sheet .cai-window { padding-top: 28px; }
+.cai-window__title { margin: 0; font-size: var(--fs-title); font-weight: 600; color: var(--t1); }
+.cai-window__lead { margin: 0 0 6px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); overflow-wrap: anywhere; }
+.cai-window__choices { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 14px; }
+.cai-window__choice { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 12px; border: 1px solid var(--line2, var(--line)); border-radius: 10px; cursor: pointer; }
+.cai-window__choice.is-off { opacity: .6; cursor: default; }
+.cai-window__choice:has(input:checked) { border-color: var(--t2); }
+.cai-window__choice:has(input:focus-visible) { outline: 2px solid var(--t1); outline-offset: 1px; }
+.cai-window__text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cai-window__name { font-size: var(--fs-sm); font-weight: 600; color: var(--t1); }
+.cai-window__detail { font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
+.cai-window__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 6px; }
+.cai-window__key { padding: 0; }
+@media (max-width: 600px) {
+  .cai__head { align-items: flex-start; }
+  .cai__bar { display: none; }
+}

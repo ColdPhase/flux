@@ -1,37 +1,27 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router';
-import { AI_PROVIDERS, aiConnectionLabel, aiModelCallsTools, type AssistantModelChoice, maxRequestMicros, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, PERSONAL_RUNTIME_CONSENT_VERSION,
-  type Agent, type AgentRuntimePayer, type BackgroundComputeConnection, type PersonalAssistantStatus } from '@flux/contracts';
+import { type Agent, type AgentRuntimePayer, type AssistantModelPick, type PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
 import { AiOffEverywhere, AiOffThere, useBlockedWorkspaceIds } from '../ai/workspaceAi';
 import { createPersonalAgent } from '../agent-connection/api';
 import { listAgents } from '../work/api';
 import { Button, ErrorState, Icon, Kreska, Spinner, Select, Option } from '../ui';
-import { whenPageLive } from '../api/pageLeaving';
-import { listBackgroundConnections } from '../proactive-comparison/api';
-import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, resumeAssistant, selectAssistantAgent, tellOperator, updateAssistant } from './api';
+import { enableAssistant, getAssistantStatus, pauseAssistant, removeAssistant, resumeAssistant, selectAssistantAgent, tellOperator } from './api';
 import { ModelPicker } from './ModelPicker';
-import { fetchAssistantModel, refreshAssistantModel, useAssistantModel } from './model';
-import { dollars, micros, perMillion, runtimeNames, runtimePayerDetail, runtimePayerText, SERVER_AI_OFF_LINE, stateLine, unavailableText, type RuntimeClientName } from './format';
+import { modelOption, refreshAssistantModel, useAssistantModel } from './model';
+import { connectionName, dollars, micros, runtimeNames, runtimePayerDetail, runtimePayerText, SERVER_AI_OFF_LINE, stateLine, unavailableText, type RuntimeClientName } from './format';
 import '../notifications/notifications.css';
 import './assistant.css';
 import { AssistantControls, AssistantHeader } from './AssistantScreen';
 import { AssistantReactions } from './AssistantReactions';
 import { AssistantSchedules } from './AssistantSchedules';
 
-// Your assistant (#68 AC-8, O-008 §1/§3/§6): only the signed-in person's own enablement,
-// consent, caps and pause. Nothing here can see or use anyone else's assistant or payer. The
-// server decides; this page says truthfully what it decided and why an assistant cannot run.
+// Your assistant (#68; Connect AI #854): only the signed-in person's own assistant. It runs on a model of one of their
+// connections, picked in one list grouped by connection; turning it on asks for nothing else (no consent per use, no caps:
+// Flux sets no limits of its own; an API key keeps its one daily budget). Nothing here can see or use anyone else's
+// assistant or payer. The server decides; this page says truthfully what it decided and why an assistant cannot run.
 
-const PER_RUN = [6, 8, 10, 20, 30, 50].filter((value) => value >= PERSONAL_RUN_LIMITS.perRunCents.min && value <= PERSONAL_RUN_LIMITS.perRunCents.max);
-/** The daily cap cannot be under the per-request limit: raising the limit moves a lower cap up to the nearest option that fits. */
-const capAtLeast = (cap: number, perRun: number, values: readonly number[]) => (cap >= perRun ? cap : values.find((value) => value >= perRun) ?? perRun);
-const DAILY = [10, 50, 100, 200, 500, 1000].filter((value) => value >= PERSONAL_RUN_LIMITS.dailyCapCents.min && value <= PERSONAL_RUN_LIMITS.dailyCapCents.max);
-
-export function browserTimeZone() {
-  try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch { return 'UTC'; }
-}
 const failure = (error: unknown, fallback: string) => (error instanceof ApiError && error.status < 500 ? error.message : fallback);
 
 export function AssistantSettings() {
@@ -56,7 +46,7 @@ export function AssistantSettings() {
   const done = (next: PersonalAssistantStatus, message: string) => { setStatus(next); setSaved(message); window.setTimeout(() => setSaved(''), 2500); void refreshAssistantModel(); };
 
   if (everyWorkspace.length > 0 && !workspaces.length) {
-    return <div className="pane-scroll"><div className="pane-in nset aset"><AiOffEverywhere /><p className="nset__note"><Link className="ui-link" to="/settings/agents">Back to Agents and AI</Link></p></div></div>;
+    return <div className="pane-scroll"><div className="pane-in nset aset"><AiOffEverywhere /><p className="nset__note"><Link className="ui-link" to="/settings/agents">Back to AI</Link></p></div></div>;
   }
   if (failed) return <div className="pane-scroll"><div className="pane-in"><ErrorState title="Your assistant settings couldn’t load" actions={<Button variant="secondary" onClick={load}>Try again</Button>}><p>Nothing changed. Human work goes on as usual.</p></ErrorState></div></div>;
   if (!status || !agents) return <div className="pane-scroll"><div className="pane-in"><p className="inbox__loading"><Spinner label="Loading your assistant" /></p></div></div>;
@@ -66,7 +56,7 @@ export function AssistantSettings() {
     return (
       <div className="pane-scroll"><div className="pane-in nset aset" data-assistant="server-off">
         <div className="inbox__head"><div><h2>Your assistant</h2><p>{SERVER_AI_OFF_LINE}. Your own agent app, such as Claude Code or Codex, can still connect through <Link className="ui-link" to="/connect-agent">local co-work</Link>.</p></div></div>
-        <p className="nset__note"><Link className="ui-link" to="/settings/agents">Back to Agents and AI</Link></p>
+        <p className="nset__note"><Link className="ui-link" to="/settings/agents">Back to AI</Link></p>
       </div></div>
     );
   }
@@ -74,6 +64,7 @@ export function AssistantSettings() {
   const ordered = status.enablement ? [...status.enablement.agents.filter((agent) => !aiOff.has(agent.workspaceId)), ...status.enablement.agents.filter((agent) => aiOff.has(agent.workspaceId))] : [];
   const shown: PersonalAssistantStatus = status.enablement ? { ...status, enablement: { ...status.enablement, agents: ordered } } : status;
   const primaryOff = !!ordered[0] && aiOff.has(ordered[0].workspaceId);
+  const addAgent = (agent: Agent) => setAgents((current) => [...(current ?? []), agent]);
 
   return (
     <div className="pane-scroll"><div className="pane-in nset aset">
@@ -95,13 +86,13 @@ export function AssistantSettings() {
         <span className="nset__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{saved}</> : null}</span>
       </div>}
       {status.enablement
-        ? <details className="aset__more"><summary>More<span className="aset__more-hint"> · Limits, projects and what you agreed to</span></summary><Enabled status={shown} agents={agents} workspaces={workspaces} onChange={done} onRemoved={() => { setStatus(null); load(); }} onAgent={(agent) => setAgents((current) => [...(current ?? []), agent])} name={me.user.name} /></details>
-        : <SetupChoice status={status} agents={agents} workspaces={workspaces} name={me.user.name} onEnabled={(next) => done(next, 'Assistant turned on')} onAgent={(agent) => setAgents((current) => [...(current ?? []), agent])} />}
+        ? <details className="aset__more"><summary>More<span className="aset__more-hint"> · Connection, workspaces and turning it off</span></summary><Enabled status={shown} agents={agents} workspaces={workspaces} onChange={done} onRemoved={() => { setStatus(null); load(); }} onAgent={addAgent} name={me.user.name} /></details>
+        : <Setup status={status} agents={agents} workspaces={workspaces} name={me.user.name} onEnabled={(next) => done(next, 'Assistant turned on')} onAgent={addAgent} />}
     </div></div>
   );
 }
 
-/** Settings → Your assistant → How it works: what leaves Flux, who pays and the caps, in one plain page. */
+/** Settings → Your assistant → How it works: what leaves Flux, who pays and that Flux adds no limits, in one plain page. */
 export function AssistantHowItWorks() {
   const [status, setStatus] = useState<PersonalAssistantStatus | null>(null);
   const [failed, setFailed] = useState(false);
@@ -120,20 +111,47 @@ export function AssistantHowItWorks() {
       </div>
       {status ? (
         <section className="nset__sec" aria-label="Details">
-          <Disclosure status={status} perRun={PERSONAL_RUN_LIMITS.perRunCents.default} daily={PERSONAL_RUN_LIMITS.dailyCapCents.default} timeZone={browserTimeZone()} />
+          <ConnectionFacts status={status} />
         </section>
       ) : failed ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />This could not load. Try again.</p>
         : <p className="inbox__loading"><Spinner label="Loading how your assistant works" /></p>}
-      <p className="nset__note"><Link className="ui-link" to="/settings/agents">Back to Agents and AI</Link></p>
+      <p className="nset__note"><Link className="ui-link" to="/settings/agents">Back to AI</Link></p>
     </div></div>
   );
 }
 
-/** Why the assistant cannot run on this server, when that is the case. Never pretends it can. */
-function SetupProblem({ status }: { status: PersonalAssistantStatus }) {
-  if (status.setup.provider === 'off') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>In-app AI is turned off on this Flux server.</b> Nothing is sent to an AI provider, and Flux works as usual. Your own MCP client, such as Claude Code or Codex, can still connect through a <Link className="ui-link" to="/connect-agent">personal Flux grant</Link>.</span></p>;
-  if (status.setup.connection === 'none') return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>Your own AI key isn’t connected.</b> Add an AI connection with your own key in <Link className="ui-link" to="/settings/ai-connections">AI connections</Link>, from any supported provider. Nobody else’s key is ever used for you.</span></p>;
-  return null;
+/**
+ * What running on a connection means (F-022 "Payer and data", #854): where its words go, who pays and that Flux adds no limit
+ * of its own. For a plan: the CLI on this server and the plan's own limits. For an API key: its one daily budget.
+ */
+function ConnectionFacts({ status, client, payer }: { status: PersonalAssistantStatus; client?: RuntimeClientName; payer?: AgentRuntimePayer | null }) {
+  const plan = client !== undefined ? client !== null : status.enablement ? status.enablement.engine === 'runtime' : status.setup.runtime?.state === 'signed_in';
+  const which = client ?? status.setup.runtime?.client;
+  const names = runtimeNames(which);
+  const codex = which === 'codex';
+  if (plan) {
+    const detail = runtimePayerDetail(payer ?? status.setup.runtime?.payer, which);
+    return (
+      <ul className="aset__facts">
+        <li><b>Account</b><span>{names.cli} · {runtimePayerText(payer ?? status.setup.runtime?.payer, which)}. {names.cli} runs unchanged in your own place on this Flux server, signed in as you.</span></li>
+        <li><b>Who pays</b><span>{detail[0]!.toUpperCase()}{detail.slice(1)}. Flux can’t tell whether a request used your plan’s limits or paid extra usage. Never another person or the workspace.</span></li>
+        <li><b>What leaves Flux</b><span>What your request needs from the one project you ask in, read by {names.cli} through Flux and only from the areas you switched on, other members’ messages included. Never your direct messages, private notes, private maps or other projects.</span></li>
+        <li><b>Where it goes</b><span>{codex ? 'To OpenAI, under your ChatGPT or OpenAI account’s settings. On personal ChatGPT plans OpenAI may train on it unless you turned that off in ChatGPT’s data controls.'
+          : 'To Anthropic, under your Claude account’s settings. On personal Claude plans Anthropic may train on it unless you turned that off in Claude’s privacy settings.'}</span></li>
+        <li><b>Who sees answers</b><span>The people in that conversation. They see that your assistant uses {names.plan}, never your plan or account.</span></li>
+        <li><b>Limits</b><span>Flux adds no limits of its own. If your plan’s limit is reached, it pauses and resumes by itself when the plan resets. It never switches to another connection.</span></li>
+      </ul>
+    );
+  }
+  return (
+    <ul className="aset__facts">
+      <li><b>Account</b><span>Your own API key. Your request is sent from the Flux server, never from your browser.</span></li>
+      <li><b>Who pays</b><span>The provider account of your key. Never another person or the workspace.</span></li>
+      <li><b>What leaves Flux</b><span>Excerpts from the one project conversation you ask in: its latest messages, its open work and a map thought you select. Never your direct messages, private notes, private maps or other projects.</span></li>
+      <li><b>Who sees answers</b><span>The people in that conversation. They never see your cost, budget or key.</span></li>
+      <li><b>Limits</b><span>Only your key’s daily budget{status.today ? ` (${dollars(status.today.budgetCents)})` : ''}. Flux prices each request before it is sent, so a day stays within it; at the budget your assistant pauses until the next day. It never switches to another connection.</span></li>
+    </ul>
+  );
 }
 
 function AgentPicker({ workspace, agents, value, onChange, onAgent, name, disabled }: {
@@ -163,64 +181,17 @@ function AgentPicker({ workspace, agents, value, onChange, onAgent, name, disabl
   );
 }
 
-/** The provider of the caller's own connection, named only when that is the connection (PROV-2). */
-const providerName = (status: PersonalAssistantStatus) =>
-  status.disclosure.provider ? (status.disclosure.provider === 'openai_compatible' ? 'your own endpoint' : AI_PROVIDERS[status.disclosure.provider].label) : 'your connection’s AI provider';
-
-export function Disclosure({ status, perRun, daily, timeZone, payer: chosenPayer, connection }: {
-  status: PersonalAssistantStatus; perRun: number; daily: number; timeZone: string; payer?: { organization: string; workspace: string } | null;
-  /** The chosen connection, named in full when the person has several. */
-  connection?: BackgroundComputeConnection | null;
-}) {
-  const { disclosure } = status;
-  const payer = chosenPayer ?? status.enablement?.consent.payer;
-  const price = disclosure.price;
-  return (
-    <ul className="aset__facts">
-      {connection ? <li><b>Connection</b><span>{connection.name} · key ending {connection.keyLastFour}</span></li> : null}
-      <li><b>Provider</b><span>{disclosure.provider && disclosure.model ? aiConnectionLabel(disclosure.provider, disclosure.model) : 'The provider and model of your own AI connection'}. Your request is sent from the Flux server, never from your browser.</span></li>
-      <li><b>Who pays</b><span>{payer ? `${payer.organization} · ${payer.workspace}, through your own API key.` : 'The organization of your own API key. Never another person or the company.'}</span></li>
-      <li><b>What leaves Flux</b><span>Excerpts from the one project conversation you ask in: its latest messages, its open work and a map thought you select. Never your direct messages, private notes, private maps or other projects.</span></li>
-      <li><b>Who sees answers</b><span>The people in that conversation. They never see your cost, cap or key.</span></li>
-      <li><b>Cost</b><span>Each request uses at most {disclosure.maxInputTokens.toLocaleString('en')} input and {disclosure.maxOutputTokens.toLocaleString('en')} output tokens{disclosure.maxRunMicros !== null ? ` and reserves the most that can cost, ${micros(disclosure.maxRunMicros)}` : ''}, never more than your {dollars(perRun)} per-request limit. It stops at {dollars(daily)} a day, reset at midnight in {timeZone}. The cap is a Flux limit, not a guarantee on the provider’s invoice. {price ? `Price ${perMillion(price.inputMicrosPerMTok)} input and ${perMillion(price.outputMicrosPerMTok)} output per 1M tokens, ${price.source === 'table' ? `from Flux’s price table, checked ${price.checkedOn}` : 'entered by you'}.` : 'No price is known for your connection yet, so it cannot be used.'}</span></li>
-    </ul>
-  );
-}
-
 type SetupProps = {
   status: PersonalAssistantStatus; agents: Agent[]; workspaces: { id: string; name: string }[]; name: string;
   onEnabled: (status: PersonalAssistantStatus) => void; onAgent: (agent: Agent) => void;
 };
 
 /**
- * Subscriptions first (F-027 AST-1): signed in to Claude Code here, the assistant runs on that plan; an API
- * key stays one tap away. Without a Claude sign-in this is the API-key setup as before.
+ * Turning the assistant on (#854): one model from any connection, picked in one list grouped by connection, with Connect AI's
+ * default (the connection made first) preselected; then Turn on. "Turn on" is all there is to agree to (F-027 Journey 1
+ * step 4). A workspace without an assistant of the person's gets one.
  */
-function SetupChoice(props: SetupProps) {
-  const [keyWay, setKeyWay] = useState(false);
-  if (props.status.setup.runtime?.state !== 'signed_in' || keyWay) return <Setup {...props} />;
-  return <RuntimeSetup {...props} onKeyWay={() => setKeyWay(true)} />;
-}
-
-/** What turning the assistant on with Claude Code means (F-022 AIM-3 "Payer and data", the O-008 notice for `runtime`). */
-function RuntimeDisclosure({ payer, client }: { payer: AgentRuntimePayer | null | undefined; client?: RuntimeClientName }) {
-  const names = runtimeNames(client);
-  const detail = runtimePayerDetail(payer, client);
-  const codex = client === 'codex';
-  return (
-    <ul className="aset__facts">
-      <li><b>Account</b><span>Agent in Flux · {names.cli} · {runtimePayerText(payer, client)}. {names.cli} runs unchanged in your own place on this Flux server, signed in as you.</span></li>
-      <li><b>Who pays</b><span>{detail[0]!.toUpperCase()}{detail.slice(1)}. Flux can’t tell whether a request used your plan’s limits or paid extra usage. Never another person or the company.</span></li>
-      <li><b>What leaves Flux</b><span>What your request needs from the one project you ask in, read by {names.cli} through Flux and only from the areas you switched on, other members’ messages included. Never your direct messages, private notes, private maps or other projects.</span></li>
-      <li><b>Where it goes</b><span>{codex ? 'To OpenAI, under your ChatGPT or OpenAI account’s settings. On personal ChatGPT plans OpenAI may train on it unless you turned that off in ChatGPT’s data controls.'
-        : 'To Anthropic, under your Claude account’s settings. On personal Claude plans Anthropic may train on it unless you turned that off in Claude’s privacy settings.'}</span></li>
-      <li><b>Who sees answers</b><span>The people in that conversation. They see that your assistant uses {names.plan}, never your plan or account.</span></li>
-      <li><b>Limits</b><span>Up to 20 requests a day, 5 minutes and 10 steps each. If your plan’s limit is reached it pauses and says so. It never switches to an API key.</span></li>
-    </ul>
-  );
-}
-
-function RuntimeSetup({ status, agents, workspaces, name, onEnabled, onAgent, onKeyWay }: SetupProps & { onKeyWay: () => void }) {
+function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: SetupProps) {
   const [chosen, setChosen] = useState<Record<string, string>>(() => Object.fromEntries(workspaces.map((space) => [space.id, agents.find((agent) => agent.workspaceId === space.id)?.id ?? ''])));
   const [more, setMore] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -228,17 +199,14 @@ function RuntimeSetup({ status, agents, workspaces, name, onEnabled, onAgent, on
   // The assistants made by an earlier try: a retry after a failed Turn on reuses them and never makes a second one.
   const made = useRef<Record<string, string>>({});
   const running = useRef(false);
-  // The model (F-027 AST-11): the list's default is preselected; the choice is sent with Turn on and saved with it.
-  const { choice } = useAssistantModel();
-  const [picked, setPicked] = useState<string | null>(null);
+  const { choice, loaded } = useAssistantModel();
+  const [picked, setPicked] = useState<AssistantModelPick | null>(null);
   const model = picked ?? choice?.default ?? null;
-  const payer = status.setup.runtime?.payer ?? null;
-  const names = runtimeNames(status.setup.runtime?.client);
-  const company = status.setup.runtime?.client === 'codex' ? 'OpenAI' : 'Anthropic';
+  const group = model ? choice?.groups.find((item) => item.connection === model.connection) ?? null : null;
+  const client: RuntimeClientName = group?.account === 'chatgpt_plan' ? 'codex' : group?.account === 'claude_plan' ? 'claude_code' : null;
   const first = name.trim().split(/\s+/)[0] || name;
-  // "Turn on" is the consent (F-027 Journey 1 step 4): no check box. A workspace without an assistant of yours gets one.
   async function turnOn() {
-    if (busy || running.current) return;
+    if (busy || running.current || !model) return;
     running.current = true;
     setBusy(true); setError('');
     try {
@@ -254,15 +222,25 @@ function RuntimeSetup({ status, agents, workspaces, name, onEnabled, onAgent, on
         if (agentId) agentIds.push(agentId);
       }
       if (!agentIds.length) { setError('Choose where your assistant works.'); return; }
-      let next = await enableAssistant({ consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId: agentIds[0]!, engine: 'runtime', timeZone: browserTimeZone(), ...(model ? { model } : {}) });
+      let next = await enableAssistant({ agentId: agentIds[0]!, connection: model.connection, model: model.model });
       for (const agentId of agentIds.slice(1)) next = await selectAssistantAgent(agentId);
       onEnabled(next);
     } catch (cause) {
-      setError(cause instanceof ApiError && cause.code === 'PERSONAL_RUN_RUNTIME_SIGN_IN' ? `Sign in to ${names.plan} again to keep using your assistant. Nothing was turned on.`
-        : cause instanceof ApiError && cause.code === 'PERSONAL_RUN_RUNTIME_OFF' ? 'This Flux doesn’t allow signing in with a subscription yet. Nothing was turned on.'
-          : failure(cause, 'Couldn’t turn it on. Try again.'));
+      setError(failure(cause, 'Couldn’t turn it on. Try again.'));
     } finally { running.current = false; setBusy(false); }
   }
+  if (!loaded) return <p className="inbox__loading"><Spinner label="Loading your connections" /></p>;
+  if (!choice?.groups.length) {
+    return (
+      <section className="nset__sec" aria-labelledby="aset-state">
+        <h3 id="aset-state">Connect AI first</h3>
+        <p className="nset__lead">Your assistant runs on one of your connections: a Claude plan, a ChatGPT plan or an API key.</p>
+        <SetupProblem status={status} />
+        <div className="aset__actions"><Link className="ui-btn ui-btn--primary" to="/settings/agents">Connect AI</Link></div>
+      </section>
+    );
+  }
+  const option = modelOption(choice, model);
   return (
     <section className="nset__sec aset-ready" aria-labelledby="aset-ready">
       <h3 id="aset-ready" className="aset-ready__h"><Kreska size={36} />Your assistant is ready</h3>
@@ -272,146 +250,31 @@ function RuntimeSetup({ status, agents, workspaces, name, onEnabled, onAgent, on
         <li>It has your rights: it can open and change only what you can.</li>
         <li>Others in the conversation see what you ask it and what it does.</li>
       </ul>
-      <p className="nset__note">Uses your {names.plan} plan. Flux can&apos;t see its limits. What it reads goes to {company} under your account&apos;s settings.</p>
-      {choice?.options.length && model ? <div className="aset-ready__model">
-        <ModelPicker options={choice.options} value={model} variant="field" disabled={busy} onSelect={setPicked} />
+      <p className="nset__note">{client ? `Uses your ${runtimeNames(client).plan} plan. Flux adds no limits of its own; your plan’s limits apply.`
+        : `Uses your ${group ? group.label : 'API key'}. Its one daily budget is the only limit.`}</p>
+      {model ? <div className="aset-ready__model">
+        <ModelPicker groups={choice.groups} value={model} variant="field" disabled={busy} onSelect={setPicked} />
+        {option && !option.callsTools ? <p className="nset__note">This model can answer but can’t make changes.</p> : null}
       </div> : null}
       {more ? <div className="aset__agents">
-        <RuntimeDisclosure payer={payer} client={status.setup.runtime?.client} />
+        <ConnectionFacts status={status} client={client} />
         {workspaces.map((space) => <AgentPicker key={space.id} workspace={space} agents={agents} name={name} value={chosen[space.id] ?? ''} disabled={busy}
           onAgent={onAgent} onChange={(agentId) => setChosen((current) => ({ ...current, [space.id]: agentId }))} />)}
         <p className="nset__note">You can change what it may do after it is on.</p>
       </div> : null}
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
       <div className="aset__actions">
-        <Button variant="primary" busy={busy} onClick={() => void turnOn()}>Turn on</Button>
+        <Button variant="primary" busy={busy} disabled={!model} onClick={() => void turnOn()}>Turn on</Button>
         <Button variant="quiet" aria-expanded={more} onClick={() => setMore(!more)}>Change what it can do</Button>
-        <Button variant="quiet" onClick={onKeyWay}>Use an API key instead</Button>
       </div>
     </section>
   );
 }
 
-function Setup({ status, agents, workspaces, name, onEnabled, onAgent }: {
-  status: PersonalAssistantStatus; agents: Agent[]; workspaces: { id: string; name: string }[]; name: string;
-  onEnabled: (status: PersonalAssistantStatus) => void; onAgent: (agent: Agent) => void;
-}) {
-  const [perRun, setPerRun] = useState<number>(PERSONAL_RUN_LIMITS.perRunCents.default);
-  const [daily, setDaily] = useState<number>(PERSONAL_RUN_LIMITS.dailyCapCents.default);
-  const [chosen, setChosen] = useState<Record<string, string>>(() => Object.fromEntries(workspaces.map((space) => [space.id, agents.find((agent) => agent.workspaceId === space.id)?.id ?? ''])));
-  const [consent, setConsent] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  // F-020 PROV-1: with more than one of the owner's own connections, they choose which one the
-  // assistant uses; with one, that one is used. Never another person's.
-  const [owned, setOwned] = useState<BackgroundComputeConnection[]>([]);
-  const [ownedState, setOwnedState] = useState<'loading' | 'loaded' | 'failed'>('loading');
-  const [connectionId, setConnectionId] = useState('');
-  // A consent given while one connection was shown never carries over to another.
-  const [pickedModel, setPickedModel] = useState<string | null>(null);
-  const choose = (id: string) => { setConnectionId(id); setConsent(false); setPickedModel(null); };
-  // The model (F-027 AST-11) is chosen from the list of the connection being enabled; the connection's own model is preselected.
-  const [fetched, setFetched] = useState<{ connectionId: string; list: AssistantModelChoice } | null>(null);
-  useEffect(() => {
-    if (!connectionId) return undefined;
-    const controller = new AbortController();
-    fetchAssistantModel(connectionId, controller.signal).then((list) => setFetched({ connectionId, list }), () => undefined);
-    return () => controller.abort();
-  }, [connectionId]);
-  const modelList = fetched?.connectionId === connectionId ? fetched.list : null;
-  const model = pickedModel ?? modelList?.default ?? null;
-  const modelOption = modelList?.options.find((option) => option.id === model) ?? null;
-  useEffect(() => {
-    const controller = new AbortController();
-    // A page being left starts no read (#471); one whose navigation was cancelled reads once it is live.
-    const waiting = whenPageLive(() => {
-      listBackgroundConnections(controller.signal)
-        .then((items) => { setOwned(items); setConnectionId(items[0]?.id ?? ''); setConsent(false); setPickedModel(null); setOwnedState('loaded'); })
-        .catch(() => { if (!controller.signal.aborted) { setOwned([]); setOwnedState('failed'); } });
-    });
-    return () => { waiting(); controller.abort(); };
-  }, []);
-  // The disclosure and the consent describe exactly the connection being enabled: its provider, model,
-  // price, largest request and payer, never the server's default choice (#192 review B2).
-  const selected = owned.find((item) => item.id === connectionId) ?? null;
-  // A model that can call tools runs with them, and its requests may carry more input (#484).
-  const maxInputTokens = selected ? personalRunMaxInputTokens(aiModelCallsTools(selected.provider, selected.model)) : status.disclosure.maxInputTokens;
-  const shown: PersonalAssistantStatus = selected ? { ...status, disclosure: { ...status.disclosure, provider: selected.provider, model: selected.model,
-    price: selected.price ? { ...selected.price } : null, maxInputTokens,
-    maxRunMicros: selected.price ? maxRequestMicros(selected.price, maxInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens) : null } } : status;
-  const payer = selected ? { organization: selected.payerOrganization, workspace: selected.providerWorkspace } : null;
-  const timeZone = browserTimeZone();
-  // Turning it on waits for the list of the owner's connections and names the chosen one; with none
-  // listed, the server's own connection (shown by the status) is the only one there is.
-  const usable = status.setup.provider === 'on' && status.setup.connection === 'active' && ownedState === 'loaded' && (!owned.length || !!selected);
-  const picked = Object.entries(chosen).filter(([, agentId]) => agentId);
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!usable || !consent || !picked.length || busy) return;
-    setBusy(true); setError('');
-    try {
-      let next = await enableAssistant({ consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: picked[0]![1], perRunCents: perRun, dailyCapCents: daily, timeZone,
-        ...(selected ? { connectionId: selected.id } : {}), ...(selected && model ? { model } : {}) });
-      for (const [, agentId] of picked.slice(1)) next = await selectAssistantAgent(agentId);
-      onEnabled(next);
-    } catch (cause) {
-      setError(cause instanceof ApiError && cause.code === 'PERSONAL_RUN_CONNECTION_REQUIRED' ? 'Connect your own AI key first. Nothing was turned on.'
-        : cause instanceof ApiError && cause.code === 'PERSONAL_RUN_PRICE_UNKNOWN' ? 'Your AI connection has no known price. Nothing was turned on.'
-          : cause instanceof ApiError && cause.code === 'PERSONAL_RUN_COST_OVER_LIMIT' ? 'One request to your model can cost more than this per-request limit. Choose a higher limit. Nothing was turned on.'
-            : failure(cause, 'Couldn’t turn it on. Try again.'));
-    } finally { setBusy(false); }
-  }
-  return (
-    <>
-      <section className="nset__sec" aria-labelledby="aset-state">
-        <h3 id="aset-state">Not set up</h3>
-        <p className="nset__lead">Nothing runs and nothing is sent until you turn it on here.</p>
-        <p className="nset__note"><Link className="ui-link" to="/settings/agents">Ways to connect</Link>: your assistant here, or your own agent app (MCP).</p>
-        <SetupProblem status={status} />
-      </section>
-      <form className="nset__sec" aria-labelledby="aset-consent" onSubmit={(event) => void submit(event)}>
-        <h3 id="aset-consent">Before you turn it on</h3>
-        <Disclosure status={shown} perRun={perRun} daily={daily} timeZone={timeZone} payer={payer} connection={owned.length > 1 ? selected : null} />
-        <fieldset className="aset__fields" disabled={!usable || busy}>
-          <legend className="ui-vh">Limits and assistant</legend>
-          {owned.length > 1 ? <label className="aset__field aset__field--connection">AI connection
-            <Select aria-label="AI connection" value={connectionId} onChange={(next) => choose(next)}>
-              {owned.map((item) => <Option key={item.id} value={item.id}>{item.name} · {aiConnectionLabel(item.provider, item.model)}</Option>)}
-            </Select>
-          </label> : null}
-          {modelList?.options.length && model ? <div className="aset__field aset__field--model">
-            <span>Model</span>
-            <ModelPicker options={modelList.options} value={model} variant="field" disabled={!usable || busy} onSelect={setPickedModel} />
-          </div> : null}
-          {selected && modelOption && model !== selected.model ? <p className="nset__note">{modelOption.note}. The cost shown above is for {selected.model}.</p> : null}
-          <label className="aset__field">Up to per request
-            <Select aria-label="Up to per request" value={perRun} onChange={(next) => { setPerRun(Number(next)); setDaily((cap) => capAtLeast(cap, Number(next), DAILY)); }}>{PER_RUN.map((value) => <Option key={value} value={value}>{dollars(value)}</Option>)}</Select>
-          </label>
-          <label className="aset__field">Daily cap
-            <Select aria-label="Daily cap" value={daily} onChange={(next) => setDaily(Number(next))}>{DAILY.filter((value) => value >= perRun).map((value) => <Option key={value} value={value}>{dollars(value)}</Option>)}</Select>
-          </label>
-          <div className="aset__agents">
-            <p className="nset__label">Your assistant</p>
-            {workspaces.map((space) => <AgentPicker key={space.id} workspace={space} agents={agents} name={name} value={chosen[space.id] ?? ''} disabled={!usable || busy}
-              onAgent={onAgent} onChange={(agentId) => setChosen((current) => ({ ...current, [space.id]: agentId }))} />)}
-            <p className="nset__note">It reads a project only where it has been given access, and never more than you can.</p>
-          </div>
-          <label className="aset__consent">
-            <input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-            <span>I agree that excerpts from the project conversations I ask in are sent to {providerName(shown)} under my key’s organization, which pays for them.</span>
-          </label>
-        </fieldset>
-        {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
-        <div className="aset__actions">
-          <Button type="submit" variant="primary" busy={busy} disabled={!usable || !consent || !picked.length}>Turn on my assistant</Button>
-          {usable ? null
-            : ownedState === 'failed' ? <span className="nset__note" role="alert">Your AI connections could not be loaded. Reload the page to try again.</span>
-              : ownedState === 'loading' ? <span className="nset__note">Loading your AI connections…</span>
-                : <span className="nset__note">Not available on this server yet.</span>}
-        </div>
-      </form>
-    </>
-  );
+/** Why the assistant cannot run on this server, when that is the case. Never pretends it can. */
+function SetupProblem({ status }: { status: PersonalAssistantStatus }) {
+  if (status.setup.provider !== 'off' || status.setup.runtime.state !== 'off') return null;
+  return <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>In-app AI is turned off on this Flux server.</b> Nothing is sent to an AI provider, and Flux works as usual. Your own MCP client, such as Claude Code or Codex, can still connect through a <Link className="ui-link" to="/connect-agent">personal Flux grant</Link>.</span></p>;
 }
 
 function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgent }: {
@@ -428,13 +291,12 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
       const next = await action();
       if (next) onChange(next, message); else onRemoved();
     } catch (cause) {
-      setError(cause instanceof ApiError && cause.code === 'VERSION_CONFLICT' ? 'This changed elsewhere. The latest settings are shown.' : failure(cause, 'Couldn’t save. Try again.'));
-      if (cause instanceof ApiError && cause.code === 'VERSION_CONFLICT') onChange(await getAssistantStatus(), '');
+      setError(failure(cause, 'Couldn’t save. Try again.'));
     } finally { setBusy(''); }
   };
   const today = status.today;
-  const used = today ? today.chargedMicros + today.reservedMicros : 0;
-  const cap = (today?.capCents ?? enablement.dailyCapCents) * 10_000;
+  const used = today?.chargedMicros ?? 0;
+  const cap = (today?.budgetCents ?? 0) * 10_000;
   const paused = status.state === 'paused';
   const runtime = enablement.engine === 'runtime';
   return (
@@ -450,18 +312,16 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
             : <Button variant="secondary" busy={busy === 'pause'} onClick={() => void act('pause', pauseAssistant, 'Paused')}>Pause</Button>}
         </div>
       </section>
-      {runtime ? <section className="nset__sec" aria-labelledby="aset-today">
-        <h3 id="aset-today">Account</h3>
-        <p className="nset__lead">Agent in Flux · {runtimeNames(status.setup.runtime?.client).cli} · {runtimePayerText(status.setup.runtime?.payer, status.setup.runtime?.client)}</p>
-        <p className="nset__note">Usage counts on {runtimePayerDetail(status.setup.runtime?.payer, status.setup.runtime?.client)}. Up to 20 requests a day, 5 minutes and 10 steps each. At a limit it stops and says so. It never switches to an API key.</p>
-      </section> : <section className="nset__sec" aria-labelledby="aset-today">
-        <h3 id="aset-today">Today</h3>
-        <div className="aset__meter" role="meter" aria-valuemin={0} aria-valuemax={cap} aria-valuenow={Math.min(used, cap)} aria-label={`${micros(used)} of your ${dollars(enablement.dailyCapCents)} daily cap`}>
-          <span style={{ width: `${Math.min(100, cap ? (used / cap) * 100 : 0)}%` }} />
-        </div>
-        <p className="nset__note">{micros(today?.chargedMicros ?? 0)} used{today?.reservedMicros ? ` and ${micros(today.reservedMicros)} held for work in progress` : ''} of your {dollars(enablement.dailyCapCents)} daily cap. At the cap it stops and says so. It never switches to another payer.</p>
-        <CapsForm key={`${enablement.perRunCents}:${enablement.dailyCapCents}`} status={status} busy={busy === 'caps'} onSave={(perRunCents, dailyCapCents) => act('caps', () => updateAssistant({ perRunCents, dailyCapCents, expectedVersion: enablement.version }), 'Limits saved')} />
-      </section>}
+      <section className="nset__sec" aria-labelledby="aset-today">
+        <h3 id="aset-today">Connection</h3>
+        <p className="nset__lead">{connectionName(enablement.connection)}{runtime ? ` · ${runtimePayerText(status.setup.runtime?.payer, status.setup.runtime?.client)}` : ''}</p>
+        {runtime ? <p className="nset__note">Usage counts on {runtimePayerDetail(status.setup.runtime?.payer, status.setup.runtime?.client)}. Flux adds no limits of its own. If your plan’s limit is reached, it pauses and resumes by itself. It never switches to another connection.</p> : <>
+          <div className="aset__meter" role="meter" aria-valuemin={0} aria-valuemax={cap} aria-valuenow={Math.min(used, cap)} aria-label={`${micros(used)} of your ${dollars(today?.budgetCents ?? 0)} daily budget`}>
+            <span style={{ width: `${Math.min(100, cap ? (used / cap) * 100 : 0)}%` }} />
+          </div>
+          <p className="nset__note">{micros(used)} used of your key’s {dollars(today?.budgetCents ?? 0)} daily budget. At the budget it pauses until the next day. It never switches to another connection. <Link className="ui-link" to="/settings/agents">Change the budget in Connect AI</Link></p>
+        </>}
+      </section>
       <section className="nset__sec" aria-labelledby="aset-agents">
         <h3 id="aset-agents">Your assistant in the company</h3>
         <p className="nset__lead">It has exactly your rights: it reads and changes only what you can.</p>
@@ -469,15 +329,13 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
           value={enablement.agents.find((item) => item.workspaceId === space.id)?.agentId ?? ''} onAgent={onAgent}
           onChange={(agentId) => { if (agentId) void act(`agent-${space.id}`, () => selectAssistantAgent(agentId), 'Assistant chosen'); }} />)}
       </section>
-      <section className="nset__sec" aria-labelledby="aset-consent">
-        <h3 id="aset-consent">What you agreed to</h3>
-        <p className="nset__lead">On {new Date(enablement.consent.acceptedAt).toLocaleDateString(undefined, { dateStyle: 'medium' })} · disclosure {enablement.consent.version}</p>
-        {runtime ? <RuntimeDisclosure payer={status.setup.runtime?.payer} client={status.setup.runtime?.client} />
-          : <Disclosure status={status} perRun={enablement.perRunCents} daily={enablement.dailyCapCents} timeZone={enablement.timeZone} />}
+      <section className="nset__sec" aria-labelledby="aset-off">
+        <h3 id="aset-off">How it works</h3>
+        <ConnectionFacts status={status} />
         {confirmRemove ? <div className="details__confirm" role="group" aria-label="Turn off your assistant">
-          <p>Your assistant stops at once and your consent is removed. Its earlier answers stay in their conversations.</p>
+          <p>Your assistant stops at once. Its earlier answers stay in their conversations.</p>
           <div className="aset__actions">
-            <Button variant="danger" busy={busy === 'remove'} onClick={() => void act('remove', async () => { await removeAssistant(); return null; }, '')}>Turn off and remove consent</Button>
+            <Button variant="danger" busy={busy === 'remove'} onClick={() => void act('remove', async () => { await removeAssistant(); return null; }, '')}>Turn off</Button>
             <Button variant="quiet" onClick={() => setConfirmRemove(false)}>Cancel</Button>
           </div>
         </div> : <Button variant="quiet" onClick={() => setConfirmRemove(true)}>Turn off my assistant…</Button>}
@@ -487,33 +345,14 @@ function Enabled({ status, agents, workspaces, name, onChange, onRemoved, onAgen
   );
 }
 
-/** Journey 6, "Subscription sign-in off on this Flux": tell whoever runs it, or use a key of your own. */
+/** Journey 6, "Subscription sign-in off on this Flux": tell whoever runs it, or connect a key of your own. */
 function OperatorRow({ workspaceId, client }: { workspaceId: string | null; client?: 'claude_code' | 'codex' | null }) {
   const [told, setTold] = useState<'idle' | 'busy' | 'told' | 'failed'>('idle');
   return (
     <div className="aset__actions">
       {workspaceId ? <Button variant="secondary" busy={told === 'busy'} onClick={() => { setTold('busy'); tellOperator(workspaceId, client).then(() => setTold('told'), () => setTold('failed')); }}>Tell whoever runs Flux</Button> : null}
-      <Link className="ui-btn ui-btn--secondary" to="/settings/ai-connections">Use an API key instead</Link>
+      <Link className="ui-btn ui-btn--secondary" to="/settings/ai-connections?new=1">Connect an API key</Link>
       <span role="status" aria-live="polite" className="nset__note">{told === 'told' ? 'Told whoever runs Flux.' : told === 'failed' ? 'Couldn’t tell them. Try again.' : ''}</span>
     </div>
-  );
-}
-
-function CapsForm({ status, busy, onSave }: { status: PersonalAssistantStatus; busy: boolean; onSave: (perRun: number, daily: number) => Promise<void> }) {
-  const enablement = status.enablement!;
-  const [perRun, setPerRun] = useState(enablement.perRunCents);
-  const [daily, setDaily] = useState(enablement.dailyCapCents);
-  const changed = perRun !== enablement.perRunCents || daily !== enablement.dailyCapCents;
-  const options = (values: number[], current: number) => [...new Set([...values, current])].sort((a, b) => a - b);
-  return (
-    <form className="aset__caps" onSubmit={(event) => { event.preventDefault(); if (changed) void onSave(perRun, daily); }}>
-      <label className="aset__field">Up to per request
-        <Select aria-label="Up to per request" value={perRun} onChange={(next) => { setPerRun(Number(next)); setDaily((cap) => capAtLeast(cap, Number(next), options(DAILY, enablement.dailyCapCents))); }}>{options(PER_RUN, enablement.perRunCents).map((value) => <Option key={value} value={value}>{dollars(value)}</Option>)}</Select>
-      </label>
-      <label className="aset__field">Daily cap
-        <Select aria-label="Daily cap" value={daily} onChange={(next) => setDaily(Number(next))}>{options(DAILY, enablement.dailyCapCents).filter((value) => value >= perRun).map((value) => <Option key={value} value={value}>{dollars(value)}</Option>)}</Select>
-      </label>
-      <Button type="submit" variant="secondary" busy={busy} disabled={!changed}>Save limits</Button>
-    </form>
   );
 }

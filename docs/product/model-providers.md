@@ -33,7 +33,8 @@ A person connects AI once, in Settings › AI. Their connections power all of th
 
 - Each agent picks its model from any of its owner's connections. The picker is grouped by
   connection, for example "Claude plan: Opus · Sonnet · Haiku" and "ChatGPT plan: GPT-6.1 Sol ·
-  Astra · Luna". Connect AI sets the default for new agents.
+  Astra · Luna". Connect AI sets the default for new agents: the connection made first, at its
+  default model (implemented on the assistant, #854; wave 2 #857 moves it onto every agent).
 - An API-key connection offers its provider's models that have a price in Flux's dated table, or
   a price the owner entered (zero for a self-hosted endpoint), because the daily budget needs one.
 - A model the plan refuses gives one line: "Your Claude plan didn't accept Opus". Nothing switches
@@ -43,19 +44,29 @@ A person connects AI once, in Settings › AI. Their connections power all of th
 
 ## CA-3 — The provider's limits, not Flux's
 
-- **No Flux limits.** Flux has no runs a day, time, steps or changes per run of its own. The only
-  bounds left are technical safety limits that nobody meets in normal use, listed in #843.
+- **No Flux limits.** Flux has no runs a day, time, steps or changes per run of its own, and no
+  limit on background runs or schedules. The only bounds
+  left are technical safety limits that nobody meets in normal use (one run's hour of wall clock,
+  ten minutes without a sign of life, 200 steps, a 64 KiB answer, tool results of 256 KiB a call and
+  8 MiB a run, 20 waiting requests a person); the [runtime guide](../operations/agent-runtime.md#runs)
+  lists them with where each is set (#843).
 - **The provider's remaining usage** shows in Settings and on the agent where the provider reports
   it. Otherwise the line says "Plan limits apply". It is never shown as zero.
 - **A plan at its limit.** The agent pauses with one line, for example "Claude limit reached,
-  resumes at 14:00", or without a time when the provider gives none, and resumes after the reset.
-  It never switches to another connection or provider, and there is no switch button. When
-  Anthropic's monthly API credits run out, "API requests stop until your next monthly credits
+  resumes at 14:00", or without a time when the provider gives none, and resumes by itself after
+  the reset (a request waits for it in the queue).
+  It never switches to another connection or provider, and there is no switch button. A request
+  that already changed something is not run again: it ends with the line and how many changes
+  were made. When Anthropic's monthly API credits run out, "API requests stop until your next monthly credits
   arrive"; Flux shows that the same way.
 - **An API key keeps one daily budget**, set by its owner. Flux prices each request from the
-  model's price before sending it, so a day's spend stays within the budget; at the budget the
-  agent pauses until the next day. A provider-reported cost only reconciles the charge. A
-  response whose cost cannot be known keeps its full price counted.
+  model's price before sending it, so a day's spend stays within the budget, counted on the day the
+  money is held: a request that waited overnight counts on the day it runs. A budget below one
+  request on the key's model is refused when it is saved. When less than one request is left, the
+  agent pauses until the next day in the key's time zone. Background work on the key (comparisons)
+  shares that one budget; there is no second allowance. A provider-reported cost only reconciles the charge. A
+  response whose cost cannot be known counts what the run had spent and the most that one request
+  could have cost.
 
 ## CA-4 — Key custody and endpoints
 

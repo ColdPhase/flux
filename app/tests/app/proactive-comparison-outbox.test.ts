@@ -19,6 +19,7 @@ describe('negative-result candidate and budget reservation (#58)', () => {
   let projectId: string;
   let workspaceId: string;
   let ruleId: string;
+  let keyId: string;
   let agentId: string;
   let peerResultId: string;
 
@@ -42,14 +43,12 @@ describe('negative-result candidate and budget reservation (#58)', () => {
       { body: { name: 'Comparison agent', owner: 'self' } }), 201) as { id: string }).id;
     ruleId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`,
       { body: { agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
-        dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
-        maxRunsPerDay: 1, periodBudgetCents: 5, perRunCents: 5 } }), 201) as { id: string }).id;
-    expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-      provider: 'anthropic', model: 'claude-sonnet-5', apiKey: fakeKey, payerOrganization: 'Owner payer', providerWorkspace: 'Dedicated test workspace',
-      workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true,
-      providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
-      maxRunsPerDay: 1, periodDays: 30, periodBudgetCents: 5, perRunCents: 5,
-    } }), 201);
+        dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string }).id;
+    // One comparison on Fable reserves 14 cents (8,000 × $10/M + 1,200 × $50/M): a 20-cent daily budget holds one (#854).
+    keyId = (expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
+      provider: 'anthropic', model: 'claude-fable-5-1', apiKey: fakeKey, dailyBudgetCents: 84,
+    } }), 201) as { id: string }).id;
+    await pool.query('UPDATE background_compute_connections SET daily_budget_cents = 20 WHERE id = $1', [keyId]);
     // Production activation remains fail-closed until a provider worker exists. This
     // fixture enables the row solely to exercise the internal outbox/reservation path.
     await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [ruleId]);
@@ -90,8 +89,8 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     assert.equal(attempts.filter((item) => item.status === 'reserved').length, 1);
     assert.equal(attempts.filter((item) => item.status === 'blocked' && item.reason === 'OWNER_IN_FLIGHT').length, 1);
     const reserved = attempts.find((item) => item.status === 'reserved')!;
-    assert.equal(reserved.reservedCents, 5);
-    assert.equal((await pool.query('SELECT sum(reserved_cents)::int AS cents FROM proactive_comparison_outbox WHERE owner_user_id=$1', [owner.id])).rows[0].cents, 5);
+    assert.equal(reserved.reservedCents, 14);
+    assert.equal((await pool.query('SELECT sum(reserved_cents)::int AS cents FROM proactive_comparison_outbox WHERE owner_user_id=$1', [owner.id])).rows[0].cents, 14);
     await pool.query("UPDATE proactive_comparison_outbox SET status='unknown' WHERE id=$1", [reserved.id]);
     const blockedId = ids.find((id) => id !== reserved.id)!;
     assert.deepEqual(await reservations.reserve(blockedId), { status: 'blocked', reason: 'BUDGET_EXHAUSTED' });
@@ -146,8 +145,7 @@ describe('negative-result candidate and budget reservation (#58)', () => {
       { body: { expectedVersion: 2, status: 'revoked' } }), 200);
     const fresh = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`,
       { body: { agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
-        dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
-        maxRunsPerDay: 1, periodBudgetCents: 5, perRunCents: 5 } }), 201) as { id: string; status: string };
+        dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string; status: string };
     assert.notEqual(fresh.id, ruleId); assert.equal(fresh.status, 'paused');
     // Only this fixture activates the internal reservation path; no provider is called.
     await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [fresh.id]);
@@ -155,11 +153,9 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     const queued = (await candidate(negative.id))!;
     assert.equal(queued.rule_id, fresh.id);
     assert.deepEqual(await reservations.reserve(queued.id), { status: 'blocked', reason: 'BUDGET_EXHAUSTED' });
-    const now = new Date();
-    const dayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-    const periodStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
-    assert.deepEqual(await db.transaction((tx) => proactiveOutboxRows(tx).usage(owner.id, dayStart, periodStart)),
-      { dayRuns: 1, periodCents: 5, inFlight: 0 });
+    // The key's one daily budget still counts the unknown charge: a fresh rule shares it (#854).
+    const spend = await db.transaction((tx) => proactiveOutboxRows(tx).keySpend(keyId));
+    assert.deepEqual([spend?.budgetCents, spend?.chargedMicros, spend?.reservedMicros], [20, 140_000, 0]);
     assert.deepEqual((await pool.query('SELECT * FROM proactive_comparison_outbox WHERE id=$1', [charged.id])).rows[0], charged);
     assert.equal((await candidate(negative.id))!.reserved_cents, 0);
   });

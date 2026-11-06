@@ -1,7 +1,7 @@
 import type { MessageFile, MessageContribution } from '@flux/contracts';
 import type {
   AiPrice, AiProviderKind, AgentRuntimePayer, AgentMayDo, AssistantEngine, AssistantProposalStatus, AssistantRunCostState, AssistantRunEndReason,
-  AssistantRunKind, AssistantRunStatus, AssistantSourceRef, PersonalRunConsentVersion, PersonalRunEnablementStatus, PersonalRunTokenGrant, ResultFinding,
+  AssistantRunKind, AssistantRunStatus, AssistantSourceRef, PersonalRunEnablementStatus, PersonalRunTokenGrant, ResultFinding,
 } from '@flux/contracts';
 import type { AssistantIdentityPort } from '../assistant/ports.js';
 import type { Principal } from '../principal.js';
@@ -16,20 +16,14 @@ import type { Paged, PageWindow } from '../work/ports.js';
 
 export interface EnablementRecord {
   ownerUserId: string;
+  /** The API key the assistant's model belongs to (`server`); null on a plan (`runtime`). */
   connectionId: string | null;
-  consentVersion: PersonalRunConsentVersion;
-  consentedAt: Date;
-  consentProvider: AiProviderKind;
-  consentModel: string;
-  consentPayerOrganization: string;
-  consentPayerWorkspace: string;
-  perRunCents: number;
-  dailyCapCents: number;
-  timeZone: string;
+  /** The provider of the assistant's connection; on a plan it names the CLI (`openai`: Codex, else Claude Code). */
+  provider: AiProviderKind;
   status: PersonalRunEnablementStatus;
-  /** `runtime`: the owner's own Claude Code (F-022 AIM-3); `connectionId` is then null. */
+  /** `runtime`: the owner's own Claude Code or Codex (F-022 AIM-3); `connectionId` is then null. */
   engine: AssistantEngine;
-  /** The assistant's one model (F-027 AST-11, 0110); null: none chosen, the account's own default (a legacy assistant). */
+  /** The assistant's one model, from its connection's list (F-027 AST-11); null reads as that connection's default. */
   assistantModel: string | null;
   agents: { workspaceId: string; agentId: string }[];
   version: number;
@@ -37,9 +31,12 @@ export interface EnablementRecord {
   updatedAt: Date;
 }
 
-export type NewEnablement = Omit<EnablementRecord, 'agents' | 'version' | 'status' | 'consentedAt' | 'createdAt' | 'updatedAt' | 'engine' | 'assistantModel'>
-  & { engine?: AssistantEngine; assistantModel?: string | null };
-export type EnablementChanges = Partial<Pick<EnablementRecord, 'perRunCents' | 'dailyCapCents' | 'timeZone' | 'status' | 'assistantModel'>>;
+export type NewEnablement = Pick<EnablementRecord, 'ownerUserId' | 'connectionId' | 'provider' | 'engine'> & { assistantModel: string };
+/** Changing the model may move the assistant to another of the owner's connections (#854): engine, key and provider change with it. */
+export type EnablementChanges = Partial<Pick<EnablementRecord, 'status' | 'assistantModel' | 'connectionId' | 'provider' | 'engine'>>;
+
+/** Today's use of one API key's daily budget (#854), by everything that runs on it. */
+export interface KeySpend { budgetCents: number; chargedMicros: number; reservedMicros: number; resetsAt: Date }
 
 export interface RunRecord {
   id: string;
@@ -81,6 +78,12 @@ export interface RunRecord {
   engine: AssistantEngine;
   endReason: AssistantRunEndReason | null;
   planLimitResetsAt: Date | null;
+  /** A request paused by its connection's limit waits, queued, until then (#854); null otherwise. */
+  resumeAt: Date | null;
+  /** When the money was held: the key's day this run counts on (#854). */
+  reservedAt: Date;
+  /** The most one request of this run can cost at the key's price; null on a plan and before it starts. */
+  largestRequestMicros: number | null;
   stopAcknowledgedAt: Date | null;
   answerRedacted: boolean;
   runTokenJti: string | null;
@@ -104,10 +107,12 @@ export type RunEndStatus = RunRecord['status'] | 'ai_off';
 
 export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
-  | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: AssistantEngine; silent?: boolean; authority?: RunRecord['authority']; backgroundLabel?: string | null };
+  | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: AssistantEngine; silent?: boolean; authority?: RunRecord['authority']; backgroundLabel?: string | null;
+    /** A paused request: queued until then, with the reason it waits (#854). */
+    resumeAt?: Date | null; endReason?: AssistantRunEndReason | null; planLimitResetsAt?: Date | null };
 export type RunChanges = Partial<Pick<RunRecord, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'costState' | 'chargedMicros'
   | 'inputTokens' | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'answerSources' | 'committedAt' | 'dispatchedAt' | 'completedAt'
-  | 'endReason' | 'planLimitResetsAt' | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent'>>;
+  | 'endReason' | 'planLimitResetsAt' | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros'>>;
 
 export interface ProposalRecord {
   id: string;
@@ -151,21 +156,26 @@ export interface PersonalRunRepository {
   /** Sets the owner's assistant agent for a workspace (one per workspace). */
   selectAgent(ownerUserId: string, workspaceId: string, agentId: string): Promise<void>;
   /**
-   * The owner's use since the start of the current day in `timeZone`: charged micros of observed
-   * runs, and held reservations of in-flight and unknown runs. `exceptRunId` leaves one run out.
+   * Today's use of an API key's one daily budget (#854), in the key's time zone: what everything on the key was charged,
+   * and what work in progress or of unknown cost holds. `exceptRunId` leaves one run out. Null when the key is gone.
    */
-  spendToday(ownerUserId: string, timeZone: string, exceptRunId?: string): Promise<{ chargedMicros: number; reservedMicros: number; resetsAt: Date }>;
+  keySpend(connection: Pick<PersonalConnection, 'id' | 'dailyBudgetCents' | 'timeZone'>, exceptRunId?: string): Promise<KeySpend | null>;
   /** The project of a conversation, whoever may read it; callers must authorize before using it. */
   locateConversation(conversationId: string): Promise<{ workspaceId: string; projectId: string } | null>;
   runByClientId(ownerUserId: string, clientRunId: string): Promise<RunRecord | null>;
   findRun(id: string, options?: { lock?: boolean }): Promise<RunRecord | null>;
-  /** The owner's working runs and queued requests: one working and one request waiting behind it at most (AST-6 queue). */
+  /** The owner's working runs and queued requests that are not paused by a limit (AST-6 queue). */
   inFlightCount(ownerUserId: string): Promise<number>;
+  /** How many changes this run made or left waiting: what a second try would repeat. */
+  changeCount(runId: string): Promise<number>;
   /** Another run of this owner holds the lane (reading or dispatching), or this background run would pass a queued owner request: it waits. */
   laneBusy(ownerUserId: string, exceptRunId: string): Promise<boolean>;
   /** The run holding the owner's lane (reading or dispatching), if any: what a queued request waits behind. */
   workingOf(ownerUserId: string): Promise<RunRecord | null>;
-  /** Queued runs whose owner's lane is free, the owner's requests first and then oldest first: the next starts when the one before it ends. */
+  /**
+   * Queued runs whose owner's lane is free and whose resume time (a run paused by a limit) has come, the owner's requests
+   * first and then oldest first: the next starts when the one before it ends.
+   */
   startableQueued(limit: number): Promise<string[]>;
   insertRun(run: NewRun): Promise<RunRecord>;
   updateRun(id: string, changes: RunChanges): Promise<RunRecord>;
@@ -210,8 +220,6 @@ export interface PersonalRunRepository {
   jobOfRun?(runId: string): Promise<{ id: string; title: string } | null>;
   /** The assistant's "What it may do" in the workspace (F-036 AG-3); null without an assistant connection. */
   assistantMayDo?(ownerUserId: string, workspaceId: string): Promise<AgentMayDo | null>;
-  /** The owner's `runtime` runs that started since the start of their local day (F-022 "Caps": runs per day). */
-  runtimeRunsToday?(ownerUserId: string, timeZone: string, exceptRunId?: string): Promise<number>;
 }
 
 /** Adapter over the core access policy. It never reveals objects the principal cannot see. */
@@ -290,7 +298,8 @@ export interface PersonalConnection {
   ownerUserId: string;
   status: 'active' | 'revoked';
   keyRef: string;
-  payer: { organization: string; workspace: string };
+  /** The owner's label, e.g. "Work OpenRouter"; the group's name in the model picker. */
+  name: string;
   provider: AiProviderKind;
   model: string;
   /** `openai_compatible` only; null for a named provider's fixed URL. */
@@ -302,15 +311,21 @@ export interface PersonalConnection {
    * table of known models without tool calling applies as well (`aiModelCallsTools`).
    */
   toolCalling?: boolean;
+  /** When the owner added it: Connect AI's default is the connection made first (#854). */
+  createdAt?: Date;
+  /** The key's one daily budget and the time zone whose midnight starts its day (#854). */
+  dailyBudgetCents: number;
+  timeZone: string;
 }
 
 /**
  * Resolves a connection of `ownerUserId` only (F-020 PROV-1: an owner may keep several). With a
  * `connectionId` it returns exactly that one when the owner still has it, otherwise null; without
- * one, the owner's newest active connection, used only to describe what enabling would use.
+ * one, the owner's newest active connection. `list` returns every active one, oldest first.
  */
 export interface PersonalConnectionLookup {
   resolve(ownerUserId: string, connectionId?: string): Promise<PersonalConnection | null>;
+  list(ownerUserId: string): Promise<PersonalConnection[]>;
 }
 
 /**
@@ -386,7 +401,7 @@ export type PersonalComputeResult =
     replay?: unknown;
   }
   /** `billed: 'none'` when the provider documents no charge (e.g. 429, 5xx before work); else `unknown`. */
-  | { kind: 'failed'; reason: 'rate_limited' | 'overloaded' | 'provider_error' | 'timeout' | 'aborted'; billed: 'none' | 'unknown' };
+  | { kind: 'failed'; reason: 'rate_limited' | 'overloaded' | 'provider_error' | 'timeout' | 'aborted' | 'no_credits'; billed: 'none' | 'unknown' };
 
 /**
  * The provider behind the `agent-runtime` port: the adapters of `@flux/agent-runtime`, selected by
@@ -462,6 +477,8 @@ export interface PersonalRuntimeStanding {
   accountLabel: string | null;
   /** The CLI this standing describes (Codex since F-022 T6, #281); null when the runtime is off. */
   client?: PersonalRuntimeClient | null;
+  /** When the owner signed in, while signed in: Connect AI's default is the connection made first (#854). */
+  signedInAt?: Date | null;
 }
 export type PersonalRuntimeClient = 'claude_code' | 'codex';
 export interface PersonalRuntimeAvailability {

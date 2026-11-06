@@ -59,7 +59,7 @@ export interface SummaryPorts {
    * F-027 A8: when the person asked their assistant to write the summary, starts that run in this same transaction (the claimed
    * day commits with it). False when the assistant cannot write it now: the plain summary goes out, as before.
    */
-  assistantSummary?: { start(userId: string, day: string, now: Date): Promise<boolean> };
+  assistantSummary?: { start(userId: string, day: string, now: Date, timeZone: string): Promise<boolean> };
 }
 
 export interface SummaryUnitOfWork {
@@ -89,7 +89,7 @@ export async function sendMorningSummaries(uow: SummaryUnitOfWork, now: Date = n
       if (!currentDay) return 'changed' as const;
       if (!await ports.claimDay(candidate.userId, currentDay)) return 'claimed' as const;
       // The assistant writes the text and its one push when it finishes; if it cannot start, this plain summary goes out.
-      if (current.preferences.summaryByAssistant && ports.assistantSummary && await ports.assistantSummary.start(candidate.userId, currentDay, now)) return 'writing' as const;
+      if (current.preferences.summaryByAssistant && ports.assistantSummary && await ports.assistantSummary.start(candidate.userId, currentDay, now, current.preferences.timeZone)) return 'writing' as const;
       return deliverPlainSummary(ports, candidate.userId);
     }).catch((error: unknown) => { failed.push(error); return 'failed' as const; });
     if (outcome === 'sent') sent++;

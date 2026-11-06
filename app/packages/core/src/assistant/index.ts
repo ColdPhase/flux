@@ -1,10 +1,10 @@
-export { assistantSettingsUseCases, normalizeAssistantSettings } from './service.js';
+export { assistantSettingsUseCases } from './service.js';
 export type { AssistantSettingsPort, AssistantIdentityPort } from './ports.js';
 export { assistantWaitLine, classifyAssistantChange, REFUSALS as ASSISTANT_REFUSALS, type AssistantChangeFacts, type AssistantWaitLineInput, type AssistantChangeOutcome } from './changes.js';
 export { changedParagraphs, fieldWords, restorableFields, undoSentence, type UndoPlan, type UndoRecord } from './undo.js';
 export type { JobRecord, JobRunRecord, AssistantJobRepository, AssistantJobInbox, AssistantJobPorts, AssistantJobUnitOfWork, NewJob, NewJobRun, JobChanges, JobRunChanges, SettledRunFacts } from './jobs-ports.js';
 export { accountKey, backgroundNote, createAssistantJobs, fireJob, guardText, prepareSchedule, runView as assistantJobRunView, titleFromText, uuidFrom, type AssistantJobUseCases, type JobDeps } from './jobs.js';
-export { cronWords, nextRuns, parseCron, previewRuns, scheduleFields, scheduleWords, shortClock, timeLabel, TOO_OFTEN, type CronFields } from './schedule.js';
+export { cronWords, nextRuns, parseCron, previewRuns, scheduleFields, scheduleWords, shortClock, timeLabel, type CronFields } from './schedule.js';
 export { assistantTick, ASSISTANT_TICK_JOB, ASSISTANT_TICK_QUEUE, ASSISTANT_TICK_RETRY, type TickDeps, type TickResult } from './job-tick.js';
 export { setMorningSummaryByAssistant, settleAssistantSummaries, startAssistantSummary, summaryFacts, summaryLine, SUMMARY_WAIT_MINUTES, todaysSummary,
   type AssistantSummaryPorts, type AssistantSummaryRepository, type MorningSummarySettingPorts, type AssistantSummaryUnitOfWork, type SummaryRow } from './morning-summary.js';

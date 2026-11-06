@@ -26,11 +26,9 @@ async function fixture() {
     { body: { name: 'Comparison assistant', owner: 'self' } }), 201) as { id: string };
   const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/proactive-comparison-rules`,
     { body: { agentId: agent.id, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
-      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal', maxRunsPerDay: 3, periodBudgetCents: 50, perRunCents: 5 } }), 201) as { id: string };
+      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string };
   const connect = async () => expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-    provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'recovery-only-fixture-'.repeat(4)}END8`, payerOrganization: 'Fixture payer', providerWorkspace: 'Fixture scope',
-    workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true,
-    projectDataDisclosureAcknowledged: true, maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 5,
+    provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'recovery-only-fixture-'.repeat(4)}END8`, dailyBudgetCents: 50,
   } }), 201) as { id: string };
   const connection = await connect();
   // Controlled fixtures only. This does not enable the production worker/provider.

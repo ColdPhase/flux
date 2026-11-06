@@ -5,7 +5,7 @@ import {
   assistantChangeActionPath, assistantOperatorRequestPath, assistantRunChangesActionPath, conversationAssistantActivityPath, conversationAssistantChangesPath,
   type AssistantActivity, type AssistantChange, type AssistantChangeDecision, type AssistantChangesDecided, type AssistantRunUndone,
   type AssistantAnswer, type AssistantProposal, type AssistantRun, type EnablePersonalRunsCommand, type InvokeAssistantRunCommand,
-  type Page, type PersonalAssistantStatus, type UpdatePersonalRunsCommand,
+  type Page, type PersonalAssistantStatus,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
@@ -14,7 +14,6 @@ import { request } from '../api/client';
 
 export const getAssistantStatus = (signal?: AbortSignal) => request<PersonalAssistantStatus>(PERSONAL_ASSISTANT_PATH, { signal });
 export const enableAssistant = (command: EnablePersonalRunsCommand) => request<PersonalAssistantStatus>(PERSONAL_ASSISTANT_PATH, { method: 'POST', body: command });
-export const updateAssistant = (command: UpdatePersonalRunsCommand) => request<PersonalAssistantStatus>(PERSONAL_ASSISTANT_PATH, { method: 'PATCH', body: command });
 export const selectAssistantAgent = (agentId: string) => request<PersonalAssistantStatus>(PERSONAL_ASSISTANT_AGENTS_PATH, { method: 'PUT', body: { agentId } });
 export const pauseAssistant = () => request<PersonalAssistantStatus>(PERSONAL_ASSISTANT_PAUSE_PATH, { method: 'POST' });
 export const resumeAssistant = () => request<PersonalAssistantStatus>(PERSONAL_ASSISTANT_RESUME_PATH, { method: 'POST' });

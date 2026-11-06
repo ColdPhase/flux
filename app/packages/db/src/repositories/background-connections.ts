@@ -1,10 +1,11 @@
 import { and, desc, eq, isNull } from 'drizzle-orm';
-import type { AiPrice, BackgroundComputeConnection, ConnectBackgroundComputeCommand } from '@flux/contracts';
+import type { AiPrice, BackgroundComputeConnection } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
+import { apiKeySpendToday } from './api-key-spend.js';
 
 const c = schema.backgroundComputeConnections;
-type Database = Pick<ReturnType<typeof createDatabase>['db'], 'select' | 'update' | 'insert' | 'transaction'>;
+type Database = Pick<ReturnType<typeof createDatabase>['db'], 'select' | 'update' | 'insert' | 'transaction' | 'execute'>;
 type ConnectionRow = typeof c.$inferSelect;
 
 /** The stored price, or null when the connection has none (it cannot be enabled, PROV-3). */
@@ -14,25 +15,30 @@ export function connectionPrice(row: Pick<ConnectionRow, 'inputPriceMicrosPerMTo
     source: row.priceSource, checkedOn: row.priceCheckedOn };
 }
 
-function metadata(row: ConnectionRow): BackgroundComputeConnection {
+async function metadata(db: Pick<Database, 'execute'>, row: ConnectionRow): Promise<BackgroundComputeConnection> {
+  const spend = await apiKeySpendToday(db, row.id);
   return {
     id: row.id, ownerUserId: row.ownerUserId, name: row.name, usedForBackground: row.usedForBackground,
     provider: row.provider, model: row.model, baseUrl: row.baseUrl,
     price: connectionPrice(row),
-    payerOrganization: row.payerOrganization, providerWorkspace: row.providerWorkspace,
     keyLastFour: row.keyLastFour, keyFingerprint: row.keyFingerprint,
-    maxRunsPerDay: row.maxRunsPerDay, periodDays: row.periodDays as 30,
-    periodBudgetCents: row.periodBudgetCents, perRunCents: row.perRunCents,
-    consentVersion: row.consentVersion, consentedAt: row.consentedAt.toISOString(), createdAt: row.createdAt.toISOString(),
+    dailyBudgetCents: row.dailyBudgetCents, timeZone: row.timeZone,
+    today: { spentMicros: spend?.chargedMicros ?? 0, resetsAt: (spend?.resetsAt ?? new Date()).toISOString() },
+    createdAt: row.createdAt.toISOString(),
   };
+}
+
+/** What a new key stores beyond its sealed secret. */
+export interface NewApiKeyConnection {
+  id: string; ownerUserId: string; encryptedKey: string; keyLastFour: string; keyFingerprint: string;
+  price: AiPrice | null; name: string; useForBackground: boolean;
+  provider: BackgroundComputeConnection['provider']; model: string; baseUrl: string | null; dailyBudgetCents: number; timeZone: string;
 }
 
 /** Owner id is always taken from the authenticated principal by the core use case. */
 export function backgroundConnectionRepository(db: Database) {
   return {
-    async add(input: { id: string; ownerUserId: string; encryptedKey: string; keyLastFour: string; keyFingerprint: string;
-      price: AiPrice | null; consentVersion: BackgroundComputeConnection['consentVersion']; name: string; useForBackground: boolean;
-      command: Omit<ConnectBackgroundComputeCommand, 'apiKey' | 'price' | 'name' | 'useForBackground'> }): Promise<BackgroundComputeConnection> {
+    async add(input: NewApiKeyConnection): Promise<BackgroundComputeConnection> {
       return db.transaction(async (tx) => {
         // Serializes one owner's connection changes, so at most one is ever the background connection.
         await tx.select({ id: schema.authUsers.id }).from(schema.authUsers)
@@ -47,29 +53,25 @@ export function backgroundConnectionRepository(db: Database) {
         if (useForBackground && background) await tx.update(c).set({ usedForBackground: false }).where(eq(c.id, background.id));
         const [row] = await tx.insert(c).values({
           id: input.id, ownerUserId: input.ownerUserId, name: input.name, usedForBackground: useForBackground,
-          provider: input.command.provider, model: input.command.model,
-          baseUrl: input.command.baseUrl ?? null,
+          provider: input.provider, model: input.model, baseUrl: input.baseUrl,
           inputPriceMicrosPerMTok: input.price?.inputMicrosPerMTok ?? null, outputPriceMicrosPerMTok: input.price?.outputMicrosPerMTok ?? null,
           priceSource: input.price?.source ?? null, priceCheckedOn: input.price?.checkedOn ?? null,
-          payerOrganization: input.command.payerOrganization, providerWorkspace: input.command.providerWorkspace,
           encryptedKey: input.encryptedKey, keyLastFour: input.keyLastFour, keyFingerprint: input.keyFingerprint,
-          maxRunsPerDay: input.command.maxRunsPerDay, periodDays: input.command.periodDays,
-          periodBudgetCents: input.command.periodBudgetCents, perRunCents: input.command.perRunCents,
-          consentVersion: input.consentVersion,
+          dailyBudgetCents: input.dailyBudgetCents, timeZone: input.timeZone,
         }).returning();
-        return metadata(row!);
+        return metadata(tx, row!);
       });
     },
     async list(ownerUserId: string): Promise<BackgroundComputeConnection[]> {
       const rows = await db.select().from(c).where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt)))
         .orderBy(desc(c.usedForBackground), desc(c.createdAt), desc(c.id));
-      return rows.map(metadata);
+      return Promise.all(rows.map((row) => metadata(db, row)));
     },
     async current(ownerUserId: string): Promise<BackgroundComputeConnection | null> {
       const [row] = await db.select().from(c).where(and(eq(c.ownerUserId, ownerUserId), eq(c.usedForBackground, true), isNull(c.revokedAt)));
-      return row ? metadata(row) : null;
+      return row ? metadata(db, row) : null;
     },
-    async update(ownerUserId: string, connectionId: string, change: { name?: string; usedForBackground?: true }): Promise<BackgroundComputeConnection | null> {
+    async update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number; usedForBackground?: true }): Promise<BackgroundComputeConnection | null> {
       return db.transaction(async (tx) => {
         await tx.select({ id: schema.authUsers.id }).from(schema.authUsers)
           .where(eq(schema.authUsers.id, ownerUserId)).for('update');
@@ -79,8 +81,9 @@ export function backgroundConnectionRepository(db: Database) {
         if (change.usedForBackground) await tx.update(c).set({ usedForBackground: false })
           .where(and(eq(c.ownerUserId, ownerUserId), eq(c.usedForBackground, true)));
         const [row] = await tx.update(c).set({ ...(change.name !== undefined ? { name: change.name } : {}),
+          ...(change.dailyBudgetCents !== undefined ? { dailyBudgetCents: change.dailyBudgetCents } : {}),
           ...(change.usedForBackground ? { usedForBackground: true } : {}) }).where(eq(c.id, connectionId)).returning();
-        return metadata(row!);
+        return metadata(tx, row!);
       });
     },
     async revoke(ownerUserId: string, connectionId: string): Promise<boolean> {

@@ -107,14 +107,10 @@ test('trusted proposal use keeps accepting human creator; suggesting agent owner
   const f = await fixture();
   const rule = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/proactive-comparison-rules`,
     { body: { agentId: f.agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
-      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
-      maxRunsPerDay: 1, periodBudgetCents: 5, perRunCents: 5 } }), 201);
+      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' } }), 201);
   expect(await f.owner.request('POST', '/api/v1/background-compute-connections', { body: {
     provider: 'anthropic', model: 'claude-sonnet-5',
-    apiKey: `sk-ant-api03-${'undo-controlled-provider-'.repeat(4)}END6`, payerOrganization: 'Controlled fixture payer',
-    providerWorkspace: 'Dedicated fixture workspace', workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true,
-    providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
-    maxRunsPerDay: 1, periodDays: 30, periodBudgetCents: 5, perRunCents: 5,
+    apiKey: `sk-ant-api03-${'undo-controlled-provider-'.repeat(4)}END6`, dailyBudgetCents: 17,
   } }), 201);
   // Existing dispatch fixtures enable only the internal controlled-provider path;
   // this proves committed trusted provenance, not production scheduling/billing.

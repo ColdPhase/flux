@@ -62,8 +62,7 @@ export function comparisonOutcomeRows(db: DbExecutor) {
         unknownPossibleCents: sql<number>`coalesce(sum(${counted}) FILTER (WHERE ${q.status} = 'unknown' AND ${q.reservedAt} >= ${period}), 0)::int`,
         inFlightCents: sql<number>`coalesce(sum(${counted}) FILTER (WHERE ${q.status} = 'reserved'), 0)::int`,
       }).from(q).where(eq(q.ownerUserId, ownerId));
-      const [connection] = await db.select({ maxRunsPerDay: c.maxRunsPerDay, periodBudgetCents: c.periodBudgetCents,
-        perRunCents: c.perRunCents }).from(c)
+      const [connection] = await db.select({ dailyBudgetCents: c.dailyBudgetCents }).from(c)
         .where(and(eq(c.ownerUserId, ownerId), eq(c.usedForBackground, true), isNull(c.revokedAt), isNotNull(c.encryptedKey)));
       const candidates = await db.select({ id: q.id, projectId: q.projectId, resultId: q.resultId, ruleId: q.ruleId,
         status: q.status, reason: q.failureCode, createdAt: q.createdAt, reservedAt: q.reservedAt,
@@ -75,7 +74,7 @@ export function comparisonOutcomeRows(db: DbExecutor) {
         conservativeCountedCents: totals?.conservativeCountedCents ?? 0,
         observedEstimatedCents: totals?.observedEstimatedCents ?? 0,
         unknownPossibleCents: totals?.unknownPossibleCents ?? 0, inFlightCents: totals?.inFlightCents ?? 0,
-        currentLimits: connection ? { ...connection, periodDays: 30 } : null,
+        dailyBudgetCents: connection?.dailyBudgetCents ?? null,
         candidates: candidates.map((row) => ({ id: row.id, projectId: row.projectId, resultId: row.resultId, context: null,
           ruleId: row.ruleId, status: row.status, reason: row.reason, createdAt: row.createdAt.toISOString(),
           reservedAt: row.reservedAt?.toISOString() ?? null, startedAt: row.startedAt?.toISOString() ?? null,

@@ -85,15 +85,12 @@ export interface PersonalRunComposition {
   connections?: PersonalConnectionLookup;
   /** The instance operator's provider switch; off until the provider adapter lands. */
   providerEnabled?: boolean;
-  /** The most requests of a run once the worker runs the tool loop (F-027 AST-8); 1 (the default) is one request. */
-  toolTurns?: number;
   /** The owner's own Claude Code in the agent runtime (F-022 AIM-3, #280); absent: no runtime assistant. */
   runtime?: PersonalRuntimeAvailability;
 }
 
-export function personalRunUseCases(db: Database, { queue, connections = noPersonalConnections, providerEnabled = false, toolTurns, runtime }: PersonalRunComposition) {
-  return createPersonalRunUseCases({ uow: personalRunUnitOfWork(db, queue), connections, providerEnabled,
-    ...(toolTurns !== undefined ? { toolTurns } : {}), ...(runtime ? { runtime } : {}) });
+export function personalRunUseCases(db: Database, { queue, connections = noPersonalConnections, providerEnabled = false, runtime }: PersonalRunComposition) {
+  return createPersonalRunUseCases({ uow: personalRunUnitOfWork(db, queue), connections, providerEnabled, ...(runtime ? { runtime } : {}) });
 }
 
 export const assistantProposalUseCases = (db: Database, queue: PersonalRunQueueFactory) => createAssistantProposalUseCases(proposalUnitOfWork(db, queue));

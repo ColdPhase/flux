@@ -112,6 +112,8 @@ export interface PersonalRuntimeRow {
   bindingId: string | null;
   authMethod: string | null;
   accountLabel: string | null;
+  /** While signed in: when (Connect AI's default is the connection made first, #854). */
+  signedInAt: Date | null;
 }
 
 /**
@@ -122,8 +124,8 @@ export interface PersonalRuntimeRow {
  */
 export async function personalRuntimeRow(db: DbExecutor, ownerUserId: string, clients: readonly ('claude_code' | 'codex')[] = ['claude_code']): Promise<PersonalRuntimeRow> {
   const wanted = clients.length ? [...clients] : ['claude_code'];
-  const result = await db.execute<{ id: string; slot: string; binding_state: string; client: string | null; connection_state: string | null; auth_method: string | null; account_label: string | null }>(sql`
-    SELECT b.id, b.slot, b.state AS binding_state, c.client, c.state AS connection_state, c.auth_method, c.account_label
+  const result = await db.execute<{ id: string; slot: string; binding_state: string; client: string | null; connection_state: string | null; auth_method: string | null; account_label: string | null; signed_in_at: Date | string | null }>(sql`
+    SELECT b.id, b.slot, b.state AS binding_state, c.client, c.state AS connection_state, c.auth_method, c.account_label, c.signed_in_at
     FROM agent_runtime_bindings b
     LEFT JOIN agent_runtime_connections c ON c.binding_id = b.id AND c.client IN (${sql.join(wanted.map((client) => sql`${client}`), sql`, `)}) AND c.revoked_at IS NULL
     WHERE b.owner_user_id = ${ownerUserId} AND b.state <> 'released'
@@ -131,14 +133,27 @@ export async function personalRuntimeRow(db: DbExecutor, ownerUserId: string, cl
     LIMIT 1`);
   const row = result.rows[0];
   const fallback = (wanted[0] === 'codex' ? 'codex' : 'claude_code') as PersonalRuntimeRow['client'];
-  if (!row) return { state: 'signed_out', client: fallback, slot: null, bindingId: null, authMethod: null, accountLabel: null };
+  if (!row) return { state: 'signed_out', client: fallback, slot: null, bindingId: null, authMethod: null, accountLabel: null, signedInAt: null };
   const client = (row.client === 'codex' || row.client === 'claude_code' ? row.client : fallback) as PersonalRuntimeRow['client'];
   const state = row.binding_state === 'sign_in_again' || row.connection_state === 'sign_in_again' ? 'sign_in_again'
     : row.binding_state === 'active' && row.connection_state === 'signed_in' ? 'signed_in' : 'signed_out';
-  return { state, client, slot: row.slot, bindingId: row.id, authMethod: state === 'signed_in' ? row.auth_method : null, accountLabel: row.account_label };
+  return { state, client, slot: row.slot, bindingId: row.id, authMethod: state === 'signed_in' ? row.auth_method : null, accountLabel: row.account_label,
+    signedInAt: state === 'signed_in' && row.signed_in_at ? new Date(row.signed_in_at) : null };
 }
 
 /** A run used the binding: the operator's idle policy counts from here (F-022 "Bindings"). */
 export async function touchRuntimeBinding(db: DbExecutor, bindingId: string): Promise<void> {
   await db.execute(sql`UPDATE agent_runtime_bindings SET last_used_at = now() WHERE id = ${bindingId} AND state = 'active'`);
+}
+
+/**
+ * The provider's remaining usage of a plan, as a run just saw it (#854): Codex's own rate-limit read, or a limit the run
+ * met. Display facts only (a share, a window, a time), on the owner's signed-in connection of that CLI.
+ */
+export async function recordRuntimeUsage(db: DbExecutor, bindingId: string, client: 'claude_code' | 'codex',
+  usage: { leftPercent: number | null; window: 'five_hour' | 'weekly' | null; resetsAt: Date | null; limitReached: boolean }): Promise<void> {
+  const left = usage.leftPercent === null ? null : Math.max(0, Math.min(100, Math.round(usage.leftPercent)));
+  await db.execute(sql`UPDATE agent_runtime_connections SET usage_left_percent = ${left}, usage_window = ${usage.window},
+    usage_resets_at = ${usage.resetsAt}, usage_limit_reached = ${usage.limitReached}, usage_read_at = now()
+    WHERE binding_id = ${bindingId} AND client = ${client} AND state = 'signed_in' AND revoked_at IS NULL`);
 }

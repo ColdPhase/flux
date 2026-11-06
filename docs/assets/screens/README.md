@@ -20,7 +20,7 @@ for its highlight. The addresses are `@demo.flux.test`.
 | `join-page.webp` | The page the link opens for someone who has no account yet | [Administration](../../operations/administration.md#invite-links) | 720 × 520 |
 | `highlight-task.webp` | A message becomes a task: the Create window with the message as its source | [README](../../../README.md#highlights) | crop of 1440 × 900 |
 | `highlight-home.webp` | Home when Ada comes back: Needs you and Continue where you left off | [README](../../../README.md#highlights) | crop of 1440 × 900 |
-| `highlight-agent.webp` | Settings → Agents and AI: Connect your MCP client, with the Claude Code commands | [README](../../../README.md#highlights) | crop of 1440 × 1300 |
+| `highlight-agent.webp` | Settings → AI: Connect your MCP client, with the Claude Code commands | [README](../../../README.md#highlights) | crop of 1440 × 1300 |
 | `highlight-map.webp` | The project's Map view: a sketch of linked ideas under the project's views | [README](../../../README.md#highlights) | crop of 1440 × 900 |
 | `highlight-phone.webp` | The Inbox and the notification settings (Inbox, Push, Email for each kind) on a phone, side by side | [README](../../../README.md#highlights) | 2 × 390 × 560 at device scale 2, scaled to 75% |
 | `highlight-encrypted.webp` | An encrypted space's People: the Encryption section and the AI row that stays off | [README](../../../README.md#highlights) | 680 px wide crop of 1440 × 1500 |

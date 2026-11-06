@@ -236,7 +236,7 @@ class AssistantFinish(unittest.TestCase):
 
     # ---------------------------------------------------------------- Journey 6: subscription sign-in off
 
-    def test_11_when_the_operator_turns_subscriptions_off_the_row_offers_to_tell_them_or_use_a_key(self) -> None:
+    def test_11_when_the_operator_turns_subscriptions_off_the_row_offers_to_tell_them_or_connect_a_key(self) -> None:
         for phone in (False, True):
             with self.subTest(phone=phone):
                 page = self.page(phone=phone)
@@ -253,13 +253,13 @@ class AssistantFinish(unittest.TestCase):
                 bar = page.locator("#project-ask")
                 expect(bar).to_contain_text(re.compile(r"This Flux doesn.t allow signing in with a subscription yet\."))
                 expect(bar.get_by_role("button", name="Tell whoever runs Flux")).to_be_visible()
-                expect(bar.get_by_role("button", name="Use an API key instead")).to_be_visible()
+                expect(bar.get_by_role("button", name="Connect an API key")).to_be_visible()
                 shot(page, f"j6-subscription-off-{self.tag(phone)}")
                 bar.get_by_role("button", name="Tell whoever runs Flux").click()
                 expect(bar).to_contain_text("Told whoever runs Flux.")
                 self.assertEqual(len(told), 1)
-                bar.get_by_role("button", name="Use an API key instead").click()
-                expect(page).to_have_url(re.compile(r"/settings/ai-connections$"))
+                bar.get_by_role("button", name="Connect an API key").click()
+                expect(page).to_have_url(re.compile(r"/settings/ai-connections\?new=1$"))
 
     # ---------------------------------------------------------------- AST-10.11: axe on the assistant screens
 
@@ -289,7 +289,9 @@ class AssistantFinish(unittest.TestCase):
 
     def stub_model(self, page: Page) -> None:
         options = [{"id": "sonnet", "name": "Sonnet", "note": "Everyday work", "callsTools": True}, {"id": "opus", "name": "Opus", "note": "Harder requests", "callsTools": True}]
-        choice = {"engine": "runtime", "account": "claude_plan", "company": "Claude", "current": "sonnet", "default": "sonnet", "options": options, "saved": True}
+        pick = {"connection": "claude_plan", "model": "sonnet"}
+        groups = [{"connection": "claude_plan", "account": "claude_plan", "label": "Claude plan", "company": "Claude", "options": options}]
+        choice = {"current": pick, "default": pick, "groups": groups, "saved": True}
         page.route(re.compile(r".*/api/v1/personal-assistant/model(\?.*)?$"), lambda route: self.json(route, choice))
 
     def test_14_the_ready_card_the_panel_and_the_conversation_have_no_axe_violations(self) -> None:

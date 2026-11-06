@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import {
-  agentConnectionPath, assistantSettingsPath, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, personalRunTokenPath,
+  agentConnectionPath, assistantSettingsPath, personalRunTokenPath,
   type AgentMayDo, type AssistantChange, type AssistantSettings, type Conversation, type Project, type Workspace,
 } from '@flux/contracts';
 import type { Principal } from '@flux/core';
@@ -42,7 +42,7 @@ export async function assistantScene(label: string) {
   const connections = new FakeConnections();
   const queue = new FakeQueue();
   const compute = new FakeCompute();
-  const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true, toolTurns: PERSONAL_RUN_LIMITS.maxTurns });
+  const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
   const tokens = runTokenIssuer(db, apiUrl);
   /** The `server` engine's worker: a fake provider calls the same effect tools through the real `/mcp` route. */
   const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20,
@@ -70,7 +70,7 @@ export async function assistantScene(label: string) {
     { body: { body: 'Please tidy the sensor tasks', clientMessageId: randomUUID() } }), 201) as Conversation;
   const connectionId = randomUUID();
   connections.connect(owner.id, connectionId);
-  await runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, connectionId, perRunCents: 50, dailyCapCents: 1_000 });
+  await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
 
   const settings = async () => expectStatus(await owner.browser.request('GET', assistantSettingsPath(ws.id, owner.id)), 200) as unknown as AssistantSettings;
   /** The assistant's own agent connection (the S6 policy and the run tokens belong to it). */

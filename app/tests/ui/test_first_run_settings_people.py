@@ -235,9 +235,9 @@ class FirstRunSettingsPeople(unittest.TestCase):
         self.assertEqual(response.json().get("code"), "INVALID_PASSWORD")
         self.assertEqual(self.api(page, "GET", "/api/v1/me")["user"]["email"], self.ids["maria:email"])
 
-    # ---------------------------------------------------------------- Agents and AI off on the server (SG-2, SG-7)
+    # ---------------------------------------------------------------- Settings › AI off on the server (SG-2, SG-7)
 
-    def test_07_agents_and_ai_is_three_calm_rows_when_the_server_runs_no_ai(self) -> None:
+    def test_07_settings_ai_is_three_calm_rows_when_the_server_runs_no_ai(self) -> None:
         def stub(page: Page) -> None:
             real = self.api(page, "GET", "/api/v1/personal-assistant", status=200)
             off = {**real, "state": "unavailable", "enablement": None,
@@ -253,7 +253,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
             calm = page.locator("[data-ai-settings='server-off']")
             expect(calm).to_be_visible()
             expect(calm.get_by_role("link", name=re.compile("^Local co-work on this computer"))).to_be_visible()
-            card = page.get_by_role("region", name=re.compile("^Your assistant"))
+            card = page.get_by_role("region", name=re.compile("^Your assistant Agent"))
             expect(card).to_contain_text("Off on this Flux server · ask your admin to turn it on")
             expect(card.get_by_role("button")).to_have_count(0)
             expect(card.get_by_role("link")).to_have_count(0)
@@ -270,7 +270,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
         page.goto("/settings/assistant")
         expect(page.locator("[data-assistant='server-off']")).to_contain_text("Off on this Flux server · ask your admin to turn it on")
         expect(page.locator("[data-assistant='server-off']").get_by_role("button")).to_have_count(0)
-        expect(page.get_by_role("link", name="Back to Agents and AI")).to_be_visible()
+        expect(page.get_by_role("link", name="Back to AI")).to_be_visible()
         # The account menu holds Settings only (the company's people are in Settings › Company), never features that may be off.
         page.goto("/")
         page.locator(".me__btn").click()
@@ -333,7 +333,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
         page.goto("/settings")
         nav = page.get_by_role("navigation", name="Settings sections")
         expect(nav.get_by_role("link").first).to_be_visible()
-        self.assertEqual(nav.get_by_role("link").all_inner_texts()[:4], ["Account", "Appearance", "Notifications", "Agents and AI"])
+        self.assertEqual(nav.get_by_role("link").all_inner_texts()[:4], ["Account", "Appearance", "Notifications", "AI"])
         expect(nav.get_by_role("link", name="People")).to_have_count(0)
         nav.get_by_role("link", name="Company").click()
         expect(page).to_have_url(re.compile(r"/settings/company$"))

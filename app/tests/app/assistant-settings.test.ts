@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { DEFAULT_ASSISTANT_AREAS, PERSONAL_RUN_CONSENT_VERSION, agentConnectionPath, assistantSettingsPath,
+import { DEFAULT_ASSISTANT_AREAS, agentConnectionPath, assistantSettingsPath,
   compileAssistantAreas, type AgentConnection, type AssistantSettings, type ProjectAgents } from '@flux/contracts';
 import { authorize } from '@flux/core';
 import { accessReader } from '@flux/db';
@@ -32,7 +32,7 @@ async function setup(label: string) {
   const connections = new FakeConnections(); const queue = new FakeQueue();
   connections.connect(owner.id, randomUUID());
   const runs = personalRunUseCases(db, { connections, queue: queue.factory, providerEnabled: true });
-  await runs.enable(principal(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: agent.id });
+  await runs.enable(principal(owner), { agentId: agent.id, ...connections.latest(owner.id) });
   return { owner, manager, ws, managed, blocked, agent, connections, runs };
 }
 
@@ -73,9 +73,9 @@ test('#522: private assistant discovery is owner-only while an MCP connection sh
 
 test('enablement creates one identity and settings with "Do it and tell me"; it reaches exactly what its owner can; engine changes retain it', async () => {
   const f = await setup('identity'); const saved = (await settings(f.owner, f.ws.id)).body;
-  assert.equal(saved.mayDo, 'act'); assert.equal(saved.backgroundRunsPerDay, 24);
-  assert.deepEqual(Object.keys(saved).sort(), ['agentId', 'backgroundRunsPerDay', 'connectionId', 'createdAt', 'mayDo', 'ownerUserId', 'updatedAt', 'version', 'workspaceId'],
-    'no approval mode, switches, change limit or project list (F-036)');
+  assert.equal(saved.mayDo, 'act');
+  assert.deepEqual(Object.keys(saved).sort(), ['agentId', 'connectionId', 'createdAt', 'mayDo', 'ownerUserId', 'updatedAt', 'version', 'workspaceId'],
+    'no approval mode, switches, change or background-run limit, or project list (F-036, #843)');
   const row = (await pool.query('SELECT compute_source, may_do FROM agent_connections WHERE id=$1', [saved.connectionId])).rows[0];
   assert.deepEqual([row.compute_source, row.may_do], ['owner_assistant', 'act']);
   assert.equal((await pool.query("SELECT count(*)::int n FROM agent_connections WHERE owner_user_id=$1 AND workspace_id=$2 AND compute_source='owner_assistant'", [f.owner.id, f.ws.id])).rows[0].n, 1);
@@ -88,13 +88,13 @@ test('enablement creates one identity and settings with "Do it and tell me"; it 
   const engine = f.connections.connect(f.owner.id, randomUUID(), { provider: 'openai', model: 'fixture-engine' });
   assert.equal((await settings(f.owner, f.ws.id)).body.connectionId, saved.connectionId, 'payer/engine lookup does not replace identity');
   await f.runs.remove(principal(f.owner));
-  const changedEngine = await f.runs.enable(principal(f.owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: f.agent.id });
-  assert.equal(changedEngine.enablement!.connectionId, engine.id);
-  assert.equal(changedEngine.enablement!.consent.provider, 'openai');
+  const changedEngine = await f.runs.enable(principal(f.owner), { agentId: f.agent.id, connection: engine.id, model: engine.model });
+  assert.equal(changedEngine.enablement!.connection, engine.id);
+  assert.equal((await pool.query('SELECT provider FROM personal_run_enablements WHERE owner_user_id=$1', [f.owner.id])).rows[0].provider, 'openai');
   assert.equal((await settings(f.owner, f.ws.id)).body.connectionId, saved.connectionId, 're-enable reuses the one identity');
 });
 
-test('only the owner reads the settings and sets "What it may do"; each choice is kept; competing settings saves have one winner', async () => {
+test('only the owner reads the settings and sets "What it may do"; each choice is kept; nothing else can be saved', async () => {
   const f = await setup('settings'); const original = (await settings(f.owner, f.ws.id)).body;
   const other = await person('assistant-other'); const admin = await person('assistant-admin');
   await addMember(f.manager, f.ws.id, other, 'member'); await addMember(f.manager, f.ws.id, admin, 'admin');
@@ -102,7 +102,6 @@ test('only the owner reads the settings and sets "What it may do"; each choice i
   const mayDo = agentConnectionPath(original.connectionId);
   for (const intruder of [other, admin, f.manager]) {
     expectStatus(await intruder.browser.request('GET', endpoint), 404);
-    expectStatus(await intruder.browser.request('PATCH', endpoint, { body: { backgroundRunsPerDay: 3 }, headers: { 'if-match': String(original.version) } }), 404);
     expectStatus(await intruder.browser.request('PATCH', mayDo, { body: { mayDo: 'read' } }), 404);
   }
   for (const choice of ['read', 'ask', 'act'] as const) {
@@ -114,25 +113,20 @@ test('only the owner reads the settings and sets "What it may do"; each choice i
   const scopes = (await pool.query('SELECT scopes FROM agent_connections WHERE id = $1', [original.connectionId])).rows[0].scopes as string[];
   expectStatus(await f.owner.browser.request('PATCH', mayDo, { body: { mayDo: 'act', scopes: [] } }), 200);
   assert.deepEqual((await pool.query('SELECT scopes FROM agent_connections WHERE id = $1', [original.connectionId])).rows[0].scopes, scopes, 'only "What it may do" can be set here');
-  const responses = await Promise.all([{ backgroundRunsPerDay: 4 }, { backgroundRunsPerDay: 7 }].map((body) => f.owner.browser.request('PATCH', endpoint,
-    { body, headers: { 'if-match': String(original.version) } })));
-  assert.deepEqual(responses.map((r) => r.status).sort(), [200, 409]);
-  const winner = responses.find((r) => r.status === 200)!.json as AssistantSettings;
-  expectStatus(await f.owner.browser.request('PATCH', endpoint, { body: { backgroundRunsPerDay: 25 }, headers: { 'if-match': String(winner.version) } }), 400);
-  for (const removed of [{ approvalMode: 'ask' }, { changesPerRun: 7 }, { areas: { wiki: 'off' } }, { projectMode: 'chosen' }])
-    expectStatus(await f.owner.browser.request('PATCH', endpoint, { body: removed, headers: { 'if-match': String(winner.version) } }), 400);
-  assert.deepEqual((await settings(f.owner, f.ws.id)).body, winner, 'refused saves change nothing');
+  // Nothing is left to save here (#843, F-036): the settings are read, and "What it may do" is the connection's own row.
+  const kept = (await settings(f.owner, f.ws.id)).body;
+  for (const removed of [{ backgroundRunsPerDay: 7 }, { approvalMode: 'ask' }, { changesPerRun: 7 }, { areas: { wiki: 'off' } }, { projectMode: 'chosen' }])
+    expectStatus(await f.owner.browser.request('PATCH', endpoint, { body: removed, headers: { 'if-match': String(kept.version) } }), 404);
+  assert.deepEqual((await settings(f.owner, f.ws.id)).body, kept);
 });
 
 test('agent principals cannot enter the settings port, even if they copy an owner id', async () => {
   let accessed = false;
   const usecases = assistantSettingsUseCases({
     get: async () => { accessed = true; return null; },
-    save: async () => { accessed = true; return null; },
   });
   const ownerId = randomUUID(); const workspaceId = randomUUID();
   await assert.rejects(usecases.get({ kind: 'agent', id: ownerId }, workspaceId, ownerId), /not found/i);
-  await assert.rejects(usecases.save({ kind: 'agent', id: ownerId }, workspaceId, ownerId, 1, { backgroundRunsPerDay: 1 }), /not found/i);
   assert.equal(accessed, false, 'no owner data is read before refusing the principal');
 });
 
@@ -147,7 +141,7 @@ test('a failure after assistant identity creation rolls back enablement, its con
       ensure: async (...args) => { await ports.assistants!.ensure(...args); throw new Error('intentional atomic rollback'); },
     } })),
   } });
-  await assert.rejects(runs.enable(principal(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: agent.id }), /intentional atomic rollback/);
+  await assert.rejects(runs.enable(principal(owner), { agentId: agent.id, ...connections.latest(owner.id) }), /intentional atomic rollback/);
   assert.equal((await pool.query('SELECT 1 FROM personal_run_enablements WHERE owner_user_id=$1', [owner.id])).rowCount, 0);
   assert.equal((await pool.query("SELECT 1 FROM agent_connections WHERE owner_user_id=$1 AND compute_source='owner_assistant'", [owner.id])).rowCount, 0);
   assert.equal((await pool.query('SELECT 1 FROM assistant_settings WHERE owner_user_id=$1', [owner.id])).rowCount, 0);
@@ -155,7 +149,7 @@ test('a failure after assistant identity creation rolls back enablement, its con
 });
 
 
-test('"Only read" set from another API process keeps reads, and a bearer credential cannot change "What it may do" or the settings', async () => {
+test('"Only read" set from another API process keeps reads, and a bearer credential cannot change "What it may do"', async () => {
   const f = await setup('delivery'); const initial = (await settings(f.owner, f.ws.id)).body;
   const doc = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.managed.id}/docs`,
     { body: { title: 'Assistant protected Wiki', body: 'ASSISTANT-WIKI-PRIVATE-68192' } }), 201) as { id: string };
@@ -180,8 +174,6 @@ test('"Only read" set from another API process keeps reads, and a bearer credent
   assert.equal(toolValue((await mcp(token!, 801, 'tools/call', { name: 'flux_get_doc', arguments: { projectId: f.managed.id, id: doc.id } })).message).title, 'Assistant protected Wiki');
   const signedOut = new Browser();
   expectStatus(await signedOut.request('GET', assistantSettingsPath(f.ws.id, f.owner.id), { headers: { authorization: `Bearer ${token!}` } }), 401);
-  expectStatus(await signedOut.request('PATCH', assistantSettingsPath(f.ws.id, f.owner.id), {
-    headers: { authorization: `Bearer ${token!}`, 'if-match': String(initial.version) }, body: { backgroundRunsPerDay: 1 } }), 401);
   expectStatus(await signedOut.request('PATCH', agentConnectionPath(initial.connectionId), { headers: { authorization: `Bearer ${token!}` }, body: { mayDo: 'act' } }), 401);
   const attempted = await beginOauth(f.owner.browser, clientId, redirect, { scope: `${scopes.join(' ')} offline_access` });
   expectStatus(await f.owner.browser.request('POST', `/api/v1/agent-connections/${initial.connectionId}/select-for-oauth`,
@@ -212,7 +204,7 @@ test('removal and concurrent enablement take the owner lock before the enablemen
       },
     } })),
   } });
-  const enabling = enablingRuns.enable(principal(f.owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: f.agent.id })
+  const enabling = enablingRuns.enable(principal(f.owner), { agentId: f.agent.id, ...f.connections.latest(f.owner.id) })
     .then(() => null, (error: unknown) => error);
   pending.push(enabling);
   try {

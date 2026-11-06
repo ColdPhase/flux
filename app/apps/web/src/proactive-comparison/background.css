@@ -70,8 +70,12 @@
 .background-settings__connection-head h4 { margin: 0; font-size: var(--fs-base); font-weight: 600; overflow-wrap: anywhere; }
 .background-settings__badge { font-size: var(--fs-xs); font-weight: 500; color: var(--t1); }
 
-/* Spokój #513: one status line at the top, with AI connections beside it in every state. The fixed row
+/* Spokój #513: one status line at the top, with API keys beside it in every state. The fixed row
    height keeps the link and everything below in place whether the line takes one or two lines. */
 .background-settings__status { display: flex; align-items: center; gap: 12px; min-height: 52px; margin: 8px 0 4px; }
 .background-settings__status .background-settings__note { flex: 1 1 auto; min-width: 0; margin: 0; }
 .background-settings__status .background-settings__back { flex: none; margin-top: 0; }
+/* One daily budget per key (#854): its line under the name, and the budget saved in place. */
+.background-settings__usage { margin: 2px 0 8px; font-size: var(--fs-sm); color: var(--t2); }
+.background-settings__budget { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; margin-top: 8px; }
+.background-settings__budget label { display: grid; gap: 4px; max-width: 200px; }

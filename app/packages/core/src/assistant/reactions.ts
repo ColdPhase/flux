@@ -25,7 +25,6 @@ export interface AssistantReactionRepository {
   lockQueued(now: Date): Promise<ReactionEvent | null>;
   running(reaction: string): Promise<boolean>;
   debounced(owner: string, object: string, since: Date): Promise<boolean>;
-  countToday(reaction: string, zone: string): Promise<number>;
   facts(event: ReactionEvent, rule: ReactionRecord): Promise<ReactionFacts | null>;
   updateEvent(id: string, values: { state: ReactionEvent['state']; runId?: string; line?: string; startedAt?: Date; finishedAt?: Date }): Promise<void>;
   open(): Promise<ReactionEvent[]>;
@@ -45,7 +44,6 @@ export function createAssistantReactions(uow: AssistantReactionUnitOfWork) {
       own(principal, owner);
       const spec = ASSISTANT_REACTION_EVENTS.find((item) => item.id === command.event);
       if (!spec || !(spec.actions as readonly string[]).includes(command.action)) throw new InvalidInputError('Choose what should happen');
-      if (command.dailyLimit !== undefined && (!Number.isInteger(command.dailyLimit) || command.dailyLimit < 1 || command.dailyLimit > 24)) throw new InvalidInputError('Choose between 1 and 24 runs a day');
       return uow.run(async (ports) => {
         const access = await ports.access.requireProject(principal, 'write', command.projectId, { lock: true });
         if (access.workspaceId !== workspace) throw missing();
@@ -111,8 +109,6 @@ export async function assistantReactionTick(deps: { uow: AssistantReactionUnitOf
       if (!await ports.runs.assistantMayDo?.(rule.ownerUserId, rule.workspaceId)) { await end('Skipped: your assistant is off'); return true; }
       if (await ports.reactions.running(rule.id)) { await end('Skipped: the last run is still working'); return true; }
       if (await ports.reactions.debounced(rule.ownerUserId, event.objectId, new Date(now.getTime() - 30 * 60_000))) { await end('Skipped: already checked in the last 30 minutes'); return true; }
-      const limit = await ports.jobs.backgroundLimit(rule.ownerUserId, rule.workspaceId);
-      if (await ports.reactions.countToday(rule.id, enabled.timeZone) >= rule.dailyLimit || limit !== null && await ports.jobs.backgroundRunsToday(rule.ownerUserId, enabled.timeZone) >= limit) { await end('Skipped: daily limit'); return true; }
       const facts = await ports.reactions.facts(event, rule);
       if (rule.event === 'mentioned' && facts && !mentions(String(facts.data.message ?? ''), String(facts.data.ownerName ?? ''))) { await end('Skipped: this is not a mention for you'); return true; }
       if (!facts || facts.ownerUserId !== rule.ownerUserId || facts.projectId !== rule.projectId) { await end('Skipped: this is no longer your item'); return true; }
@@ -140,7 +136,7 @@ export async function assistantReactionTick(deps: { uow: AssistantReactionUnitOf
     if (ok && rule.enabled && event.reactionVersion === rule.version && visible && assistant && await ports.reactions.facts(event, rule)) {
       await ports.reactions.deliver(event, rule, redactSecrets(run.answerBody ?? '').text);
     }
-    await ports.reactions.updateEvent(event.id, { state: ok ? 'done' : 'failed', line: ok ? 'Done' : run.endReason === 'plan_limit' ? 'Paused: plan limit' : 'Could not finish. Open Recent to try again.', finishedAt: now });
+    await ports.reactions.updateEvent(event.id, { state: ok ? 'done' : 'failed', line: ok ? 'Done' : run.endReason === 'plan_limit' ? `${run.provider === 'openai' ? 'ChatGPT' : 'Claude'} limit reached` : 'Could not finish. Open Recent to try again.', finishedAt: now });
   });
   return { fired };
 }

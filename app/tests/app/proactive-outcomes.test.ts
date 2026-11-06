@@ -30,12 +30,9 @@ async function fixture() {
     { body: { name: 'Comparison agent', owner: 'self' } }), 201) as { id: string }).id;
   const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`,
     { body: { agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
-      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
-      maxRunsPerDay: 3, periodBudgetCents: 50, perRunCents: 5 } }), 201) as { id: string };
+      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string };
   const connection = expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-    provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'outcome-fixture-secret-'.repeat(4)}END8`, payerOrganization: 'Private payer', providerWorkspace: 'Private workspace',
-    workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true,
-    projectDataDisclosureAcknowledged: true, maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 5,
+    provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'outcome-fixture-secret-'.repeat(4)}END8`, dailyBudgetCents: 50,
   } }), 201) as { id: string };
   // Only the isolated fixture enables dispatch; production activation remains unavailable.
   await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [rule.id]);
@@ -260,7 +257,7 @@ test('terminal pre-paid refusals persist zero usage without retry, while owner a
   assert.ok(!JSON.stringify(afterLoss).includes('Low-light comparison'));
   assert.ok(!JSON.stringify(afterLoss).includes('Camera missed gestures'));
   assert.deepEqual(afterLoss.candidates.map((row) => Object.fromEntries(Object.entries(row).filter(([field]) => field !== 'context'))), initial.candidates.map((row) => Object.fromEntries(Object.entries(row).filter(([field]) => field !== 'context'))));
-  assert.equal(afterLoss.currentLimits, null); assert.equal(afterLoss.candidates.length, 1);
+  assert.equal(afterLoss.dailyBudgetCents, null); assert.equal(afterLoss.candidates.length, 1);
   assert.ok(!JSON.stringify(afterLoss).includes('38% detected')); assert.ok(!JSON.stringify(afterLoss).includes('cipher'));
   assert.equal((await f.owner.browser.request('GET', `/api/v1/projects/${f.projectId}/proactive-comparison-outcomes`)).status, 404);
 });

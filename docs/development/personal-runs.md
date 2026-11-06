@@ -132,28 +132,29 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
   the Responses API for tool calling, which Flux does not speak yet, so they answer in one request.
   Persisting the owner's mark and the account row's "This model can answer but can't make changes"
   are not part of this change.
-- **Reservation.** `toolRunReservationMicros`: turns × the largest request of a tool run (32,000 ×
-  input price + 1,500 × output price; `PERSONAL_RUN_LIMITS.maxToolInputTokens`, #484), never above the owner's per-run ceiling and never below one request.
-  `createPersonalRunUseCases({ toolTurns })` applies it to a connection that can call tools; the
-  default is 1 (today's single request) and no composition sets more yet. `PERSONAL_RUN_LIMITS.maxTurns`
-  is 10 (AST-6).
+- **Reservation** (#854). `budgetedReservationMicros`: when the worker claims the run, turns × the
+  largest request of a tool run (64,000 × input price + 4,000 × output price;
+  `PERSONAL_RUN_LIMITS.maxToolInputTokens`, #484, #843), never above what is left of the key's one daily
+  budget and never below one request. Asking only checks what the key has already been charged today;
+  a run that finds not even one request's room left waits, queued, for the key's next day
+  (`end_reason = 'budget'`, `resume_at`). `PERSONAL_RUN_LIMITS.maxTurns` is 200, a safety bound.
 - **The loop** (`core/personal-runs/tool-loop.ts`, driven by the processor when its `tools` host
   returns a session with tools). It sends the first request, and while the model asks for tools
-  checks, before running anything it asked for, the turn cap, the money reservation (the largest
-  possible next request must still fit what the reservation has left) and the clock (5 minutes);
+  checks, before running anything it asked for, the turn bound, the money reservation (the largest
+  possible next request must still fit what the reservation has left) and the clock (one hour,
+  `RUNTIME_RUN_LIMITS.wallClockSeconds`);
   runs each call once through the session (a call the provider could not state as JSON, or outside the
   offered tools, is answered with an error and never sent); rechecks the run's standing (stop,
-  enablement, connection, access, daily cap; the same recheck as before a dispatch) before the calls
+  enablement, connection, access, the key's daily budget; the same recheck as before a dispatch) before the calls
   and before the next request; and bounds the next request's input like the first. A run that
-  reaches a limit ends **`cap_reached`** with `stopped_at_stage = before_dispatch`, cost `observed`
-  and nothing posted; the calls already made stay made. The plain words "Limit reached" and the list of
-  changes are the run's message (A4); the web copy of `cap_reached` still says "today's cap", which
-  no run can reach until a worker composes tools. A separate status needs a migration and is left to
-  A4.
+  reaches a bound ends **`cap_reached`** with `stopped_at_stage = before_dispatch`, cost `observed`,
+  nothing posted and its own `end_reason` (`budget`, `max_turns`, `wall_clock` or `input_too_large`);
+  the calls already made stay made.
 - **Per-request reconciliation** (PROV-3). Each response is charged at the connection price or as the
   provider reported it, within what is left of the reservation. A request outside its token limits,
   or one that would take the run above its reservation, is a lost response: cost `unknown`, charge 0,
-  the whole reservation counted, nothing posted (`provider_failed`), the earlier calls kept. A
+  the earlier requests and the most this one could have cost stay counted and the rest of the
+  reservation goes back (#854), nothing posted (`provider_failed`), the earlier calls kept. A
   request that failed after it may have been billed does the same; one that was never sent
   (`billed: none`) keeps the earlier requests' charge. A run's input and output tokens are the sums
   over its requests.
@@ -171,7 +172,7 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
   token per run for the owner's `owner_assistant` connection in the run's workspace: `sub` and
   `flux_owner_user_id` the owner, `flux_connection_id`, `scope` `flux.context.read`, `flux_run_id`,
   `flux_place` (project and conversation), `jti`, audience `/mcp`, lifetime `RUN_TOKEN_LIMITS.lifetimeSeconds`
-  (300). It records the `jti`, the expiry and the exact tools (`assistantRunTools`: the read tools the
+  (the run's clock plus 300 s). It records the `jti`, the expiry and the exact tools (`assistantRunTools`: the read tools the
   owner's switches enable, sorted; the co-work bootstrap and playbook never). Every refusal is the same 404.
   Migration 0100 adds the columns; the token itself is never stored.
 - **At `/mcp`** (`agent-connection/run-token.ts`). A bearer with run claims also needs: the run in flight
@@ -180,7 +181,7 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
   (`restrictTo`); any other tool call gets the S6 refusal (`MCP_ENTRY_UNAVAILABLE`) before anything runs;
   resources and prompts are not offered. Every tool reaches only the run's project: a change that names
   an object elsewhere is refused with `OUTSIDE_RUN_PLACE`, as a read of it is. Results are bounded
-  (`boundRunResult`): over 16 KiB per result or 64 KiB per run, the result is replaced by an error and the
+  (`boundRunResult`): over 256 KiB per result or 8 MiB per run (safety bounds, #843), the result is replaced by an error and the
   run records `mcp_limit`; the processor ends it `cap_reached` with `end_reason = mcp_results_too_large`.
   The delivery fence rechecks the run, so nothing reaches a token after its run ended.
 - **Worker** (`apps/worker/src/personal-runs/mcp-session.ts`, `run-tokens.ts`). `mcpToolHost` mints the
@@ -199,18 +200,21 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
   worker drops from each schema what costs tokens but tells the model nothing (`compactToolSchema` in
   `apps/worker/src/personal-runs/mcp-session.ts`: the `$schema` URL, zod's regular expression beside
   `format: "uuid"`/`"date-time"`, the unbounded safe-integer range; `/mcp` still validates). The
-  per-request input bound of a run with tools is `PERSONAL_RUN_LIMITS.maxToolInputTokens`, 32,000
-  (`personalRunMaxInputTokens`); a request without tools keeps 16,000. A tool run's largest request is
-  priced at 32,000 (Sonnet 5: $0.079), so the owner's per-request limit must cover it and its default is
-  $0.08 (`PERSONAL_RUN_LIMITS.perRunCents`; a run on a connection with a lower limit is `unavailable` /
-  `run_cost_over_limit`, and the owner raises it). The daily cap is unchanged.
+  per-request input bound of a run with tools is `PERSONAL_RUN_LIMITS.maxToolInputTokens`, now 64,000
+  (`personalRunMaxInputTokens`); a request without tools has 32,000 (#843). There is no per-request
+  money ceiling any more; only the key's one daily budget (#854).
 
 ## Runs on the owner's own Claude Code (F-022 T5, #280)
 
 `createRuntimeRunProcessor` (`core/personal-runs/runtime-run.ts`) handles a run whose `engine` is
 `runtime`: the same standing checks before the CLI starts, while it runs (stop, a result bound, a
 revocation, about once a second) and inside the commit; no source reading (the CLI reads through the run
-token); `RUNTIME_RUN_LIMITS` (20 a day, 10 turns, 300 s wall clock, 60 s without an event, 16 KiB answer).
+token); `RUNTIME_RUN_LIMITS` (#843: no runs a day; safety bounds of 200 turns, one hour of wall clock,
+10 minutes without an event and a 64 KiB answer). A plan limit pauses an owner's
+request: `pauseUntilReset` queues a new run (`retry_of_run_id`, `resume_at` at the reset,
+`end_reason = plan_limit`) that `startableQueued` starts after the reset, at most three times in a row
+(`MAX_AUTO_RESUMES`); without a reset time it tries again after `PLAN_RETRY_MS`. A request with a row in
+`assistant_changes` is not resumed: a second try would repeat it. It never moves the request to another connection.
 The worker's `managerPersonalRuntime` resolves the owner's own slot and binding from the database and
 streams the run through `runtime-manager` (`streamManagerRun`); the slot's `run.ts` runs the fixed
 template, checks `system/init`, reduces the JSONL to closed frames and ends each run in its own outcome.
@@ -389,12 +393,11 @@ tokens:
   Dismiss only for people with authority (write access; the work owner or a manager when it
   finishes owned work); others read "… drafted this. It waits for someone who can decide it."
   After a decision: "Recorded by … · drafted by …'s assistant" with *Open result*.
-- **Settings** at `/settings/assistant` (account menu → *Your assistant*, and Details →
-  *Connect your AI*): the disclosure (provider, model, payer, what leaves Flux, who sees
-  answers, caps and the invoice caveat), per-run and daily caps, the assistant per workspace
-  (create one there), the consent checkbox, then state, Pause/Resume, today's meter, cap edits
-  (`expectedVersion`) and *Turn off and remove consent*. With the provider off or no key
-  connection it says so and Turn on stays disabled.
+- **Settings** at `/settings/assistant` (Settings → AI, and Details → *Connect your AI*): the
+  model picker grouped by connection (Connect AI's default first), the assistant per workspace
+  (create one there) and *Turn on*; then state, Pause/Resume, the connection's line (the plan's
+  remaining usage or the key's spend today against its daily budget) and *Turn off*. Without any
+  connection it points to Connect AI (#854). There is no consent checkbox and no cap of Flux's own.
 - `GET /api/v1/personal-assistant` adds `setup: { provider: 'on' | 'off', connection: 'active' | 'none' }`,
   the caller's own, so the UI can state why an assistant cannot run.
 
@@ -429,22 +432,23 @@ interpretation and proposal shape, and adds the accept path AC-7 needs.
 
 ## Money
 
-Amounts are integer micro-dollars. A run reserves its largest possible cost at the
-connection's price (F-020 PROV-3): 16 000 × the input price + 1 500 × the output
-price per token, rounded up (32 000 × the input price for a model that can call
-tools, #484). It is reserved when the run is created, in the same
-transaction as the run row and the job, under the owner's enablement row lock.
-The owner's per-run setting (`per_run_cents × 10 000`) is the ceiling that
-reservation must fit: a connection whose largest request exceeds it cannot be
-enabled (`PERSONAL_RUN_COST_OVER_LIMIT`) and is `unavailable` /
-`run_cost_over_limit` afterwards; one without a price is `PERSONAL_RUN_PRICE_UNKNOWN`
-/ `price_unknown`. Today's use is the charge of `observed` runs plus the
-reservations of in-flight and `unknown` runs since the owner's local midnight.
-`released` runs cost nothing. Usage is charged at the connection's price, or at the
-provider-reported cost when the response carries one (OpenRouter). For Claude
-Sonnet 5 at $2/M and $10/M the request without tools is 16 000 × 2 + 1 500 × 10 =
-47 000 micros ($0.047) and the request with tools 32 000 × 2 + 1 500 × 10 = 79 000
-micros ($0.079); the default ceiling is $0.08 (`PERSONAL_RUN_LIMITS.perRunCents`).
+Amounts are integer micro-dollars. Only runs on an API key cost money in Flux; a run on a
+Claude or ChatGPT plan is the plan's (#854). Each key has **one daily budget** in its own time
+zone (`background_compute_connections.daily_budget_cents`, `time_zone`); there is no per-run
+ceiling and no second allowance. `apiKeySpendToday` counts the key's spend since its local
+midnight: the charge of `observed` runs and comparisons plus the most an `unknown` run could have
+cost, and apart from that what in-flight work holds, which no usage line shows as spent; `released`
+runs cost nothing. Asking admits a request while the key's charged
+spend is under the budget. When the worker claims the run, it reserves turns × the largest request
+(64 000 × the input price + 4 000 × the output price with tools, 32 000 × input without; F-020
+PROV-3, #843) at the key's price, rounded up and never above what is left of the budget; with
+not even one request's room left the run waits for the key's next day (`end_reason = 'budget'`,
+`resume_at`). The claim stamps `reserved_at`, the day the run counts on, so a request that waited
+overnight counts when it runs, and `largest_request_micros`. Each turn keeps what was spent so far
+in `charged_micros`, so a run lost with its worker counts that and one more request, not its whole
+reservation. A connection without a price is `PERSONAL_RUN_PRICE_UNKNOWN` / `price_unknown`.
+Usage is charged at the connection's price, or at the provider-reported cost when the response
+carries one (OpenRouter).
 
 ## HTTP API
 
@@ -453,9 +457,9 @@ from the request.
 
 | Route | Who | Result |
 | --- | --- | --- |
-| `GET /api/v1/personal-assistant` | the caller | Own state `not_enabled`, `ready`, `paused`, `capped` or `unavailable` (with `unavailableReason`), the enablement, today's use and the disclosure. |
-| `POST /api/v1/personal-assistant` | the caller | Enable with `{ consentVersion, agentId, perRunCents?, dailyCapCents?, timeZone? }`: 201. It needs the caller's own agent (`agent.invoke`) and usable connection. |
-| `PATCH /api/v1/personal-assistant` | the caller | Caps and time zone, with `If-Match` or `expectedVersion`. |
+| `GET /api/v1/personal-assistant` | the caller | Own state `not_enabled`, `ready`, `paused`, `capped` (the key's daily budget is used) or `unavailable` (with `unavailableReason`), the enablement with its connection and model, and the key's spend today. |
+| `POST /api/v1/personal-assistant` | the caller | Enable with `{ agentId, connection, model }` (#854; `connection` is `claude_plan`, `chatgpt_plan` or one of the caller's API key ids): 201. It needs the caller's own agent (`agent.invoke`) and that connection. |
+| `GET`, `PUT /api/v1/personal-assistant/model` | the caller | The models of every connection the caller has, grouped by connection, the current pick and Connect AI's default; `PUT { connection, model }` changes it. |
 | `PUT /api/v1/personal-assistant/agents` | the caller | `{ agentId }`: the caller's assistant for that agent's workspace. |
 | `POST …/pause`, `POST …/resume`, `DELETE /api/v1/personal-assistant` | the caller | Pause ends queued work at zero cost. Delete also removes the consent. |
 | `POST /api/v1/conversations/:id/assistant-runs` | the caller | Invoke `{ clientRunId, kind, prompt, target?, continuesRunId? }`: 202 with the run; the same `clientRunId` returns it again (200) and never charges twice. |

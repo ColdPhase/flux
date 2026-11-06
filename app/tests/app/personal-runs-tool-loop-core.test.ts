@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { PERSONAL_RUN_LIMITS, tablePrice } from '@flux/contracts';
 import {
-  connectionCallsTools, emptyAccount, nextRequestFits, reconcileRequest, runReservationMicros, runToolLoop, toolRunReservationMicros,
+  budgetedReservationMicros, connectionCallsTools, emptyAccount, nextRequestFits, reconcileRequest, runReservationMicros, runToolLoop,
   type Gate, type LoopOptions, type PersonalCompute, type PersonalComputeRequest, type PersonalComputeResult, type PersonalToolCall, type PersonalToolSession,
 } from '@flux/core';
 import { FLUX_TOOLS } from './support/provider-tool-fixtures.js';
@@ -12,7 +12,7 @@ import { FLUX_TOOLS } from './support/provider-tool-fixtures.js';
 // fake tool session. No database, no provider, no key.
 
 const SONNET = tablePrice('anthropic', 'claude-sonnet-5')!;
-const ONE = runReservationMicros(SONNET, true)!; // 32,000 × $2/M + 1,500 × $10/M (the tool-run bound, #484)
+const ONE = runReservationMicros(SONNET, true)!; // 64,000 × $2/M + 4,000 × $10/M (the tool-run bound, #484, #843)
 const MAX_USAGE = { inputTokens: PERSONAL_RUN_LIMITS.maxToolInputTokens, outputTokens: PERSONAL_RUN_LIMITS.maxOutputTokens };
 
 const request: PersonalComputeRequest = {
@@ -51,16 +51,16 @@ function loop(compute: PersonalCompute, session: PersonalToolSession, overrides:
 }
 
 describe('the reservation over the turns (AST-8, PROV-3)', () => {
-  test('turns × the largest request, never above the per-run ceiling and never below one request', () => {
-    assert.equal(runReservationMicros(SONNET), 47_000, 'a request without tools keeps the 16,000-token bound');
-    assert.equal(ONE, 79_000, 'a request with tools is bounded at 32,000 input tokens');
-    assert.equal(toolRunReservationMicros(SONNET, 500_000, 10), 500_000, '10 × $0.079 is capped by the $0.50 ceiling');
-    assert.equal(toolRunReservationMicros(SONNET, 200_000, 10), 200_000, 'capped by the owner\'s per-run ceiling');
-    assert.equal(toolRunReservationMicros(SONNET, 80_000, 10), 80_000, 'the $0.08 default ceiling holds one request');
-    assert.equal(toolRunReservationMicros(SONNET, 500_000, 1), ONE, 'one turn is today\'s single request');
-    assert.equal(toolRunReservationMicros(SONNET, 20_000, 10), ONE, 'a ceiling below one request still reserves one (the connection is refused before)');
-    assert.equal(toolRunReservationMicros(null, 500_000), null, 'no price, no reservation');
-    assert.equal(toolRunReservationMicros({ inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 }, 500_000), 0, 'a free self-hosted model reserves nothing');
+  test('turns × the largest request, never above what is left of the key\'s daily budget (#854); "budget" when not even one fits', () => {
+    assert.equal(runReservationMicros(SONNET), 104_000, 'a request without tools has the 32,000-token bound');
+    assert.equal(ONE, 168_000, 'a request with tools is bounded at 64,000 input tokens');
+    assert.equal(budgetedReservationMicros(SONNET, true, 500_000, 10), 500_000, '10 × $0.168 is held to the $0.50 left today');
+    assert.equal(budgetedReservationMicros(SONNET, true, 10_000_000, 10), 10 * ONE, 'turns × the largest request when the budget allows it');
+    assert.equal(budgetedReservationMicros(SONNET, true, 10_000_000, 1), ONE, 'one turn is one request');
+    assert.equal(budgetedReservationMicros(SONNET, false, 10_000_000, 10), 104_000, 'a run without tools is one request');
+    assert.equal(budgetedReservationMicros(SONNET, true, ONE - 1, 10), 'budget', 'not even one request fits: the run waits for the next day');
+    assert.equal(budgetedReservationMicros(null, true, 500_000), null, 'no price, no reservation');
+    assert.equal(budgetedReservationMicros({ inputMicrosPerMTok: 0, outputMicrosPerMTok: 0 }, true, 0), 0, 'a free self-hosted model reserves nothing');
   });
 
   test('a model the owner marked, or Flux\'s table lists, without tool calling is not offered tools', () => {
@@ -83,13 +83,13 @@ describe('per-request reconciliation (PROV-3)', () => {
   });
 
   test('a request outside its token limits, or one that would take the run above its reservation, is a lost response', () => {
-    for (const usage of [{ inputTokens: 32_001, outputTokens: 1 }, { inputTokens: 1, outputTokens: 1_501 }, { inputTokens: -1, outputTokens: 0 }, { inputTokens: 1.5, outputTokens: 0 }]) {
+    for (const usage of [{ inputTokens: 64_001, outputTokens: 1 }, { inputTokens: 1, outputTokens: 4_001 }, { inputTokens: -1, outputTokens: 0 }, { inputTokens: 1.5, outputTokens: 0 }]) {
       const account = emptyAccount();
       assert.equal(reconcileRequest(account, usage, SONNET, 1_000_000), false, JSON.stringify(usage));
       assert.deepEqual(account, { ...emptyAccount(), unknown: true }, 'nothing of it is stored');
     }
     const wide = emptyAccount();
-    assert.equal(reconcileRequest(wide, { inputTokens: 16_001, outputTokens: 1 }, SONNET, ONE), true, 'a tool run may send more than the 16,000 tokens of a single request (#484)');
+    assert.equal(reconcileRequest(wide, { inputTokens: 32_001, outputTokens: 1 }, SONNET, ONE), true, 'a tool run may send more than the 32,000 tokens of a single request (#484)');
     const account = emptyAccount();
     assert.equal(reconcileRequest(account, MAX_USAGE, SONNET, ONE), true);
     assert.equal(reconcileRequest(account, { inputTokens: 1, outputTokens: 0, reportedCostMicros: 1 }, SONNET, ONE), false, 'one micro above the reservation');
@@ -164,7 +164,7 @@ describe('the bounded loop', () => {
 
   test('a request outside its token limits is lost: its numbers are not kept and nothing it asked for runs', async () => {
     const session = new FakeSession();
-    const result = await loop(new FakeProvider(() => toolUse('c1', { inputTokens: 32_001, outputTokens: 10 })), session);
+    const result = await loop(new FakeProvider(() => toolUse('c1', { inputTokens: 64_001, outputTokens: 10 })), session);
     assert.deepEqual(result.end, { kind: 'lost' });
     assert.equal(session.calls.length, 0);
     assert.deepEqual(result.account, { ...emptyAccount(), unknown: true });

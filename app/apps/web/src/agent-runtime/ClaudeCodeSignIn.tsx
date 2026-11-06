@@ -4,14 +4,14 @@ import type { AgentRuntimeStatus, ClaudeCodeSignInMethod } from '@flux/contracts
 import { ApiError } from '../api/client';
 import { Button, ErrorState, Icon, Spinner } from '../ui';
 import { consoleTicket, getRuntime, resumeConsole } from './api';
-import { METHODS, PAYER } from './copy';
-import { BeforeSignIn } from './RuntimeSection';
+import { METHODS, PAYER, signInFailure } from './copy';
+import { BeforeSignIn, PlanConnection, WhichAccount } from './RuntimeSection';
 import type { ConsoleOutcome } from './SignInConsole';
 import '../notifications/notifications.css';
 import '../assistant/assistant.css';
 import './runtime.css';
 
-// Settings → Agents and AI → Sign in to Claude Code (F-022 "Sign-in as in a terminal", T4 #279). The
+// Settings → AI → Sign in to Claude Code (F-022 "Sign-in as in a terminal", T4 #279). The
 // owner picks one of the methods of Claude Code's own `claude auth login`; Flux then starts exactly that
 // command in the owner's runtime and shows its terminal here. The terminal (xterm.js) loads only on
 // this page.
@@ -49,7 +49,7 @@ export function ClaudeCodeSignIn() {
     } finally { setBusy(null); }
   }
 
-  const back = <Link className="ui-link" to="/settings/agents">Back to Agents and AI</Link>;
+  const back = <Link className="ui-link" to="/settings/agents">Back to AI</Link>;
   if (failed) return <div className="pane-scroll"><div className="pane-in"><ErrorState title="This page couldn’t load" actions={<Button variant="secondary" onClick={() => window.location.reload()}>Try again</Button>}><p>Nothing changed.</p></ErrorState></div></div>;
   if (!status) return <div className="pane-scroll"><div className="pane-in"><p className="inbox__loading"><Spinner label="Loading" /></p></div></div>;
   if (!status.enabled || status.clients.claude_code !== 'available') {
@@ -67,10 +67,13 @@ export function ClaudeCodeSignIn() {
           </div>
         </div>
 
+        {/* Connect AI's "Change" (#854): the plan's state, usage and sign-out, above a fresh sign-in. */}
+        {step.kind === 'choose' ? <PlanConnection client="claude_code" onStatus={setStatus} /> : null}
         {step.kind === 'choose' ? (
           <section className="nset__sec" aria-labelledby="rt-before">
-            <h3 id="rt-before">Before you sign in</h3>
+            <h3 id="rt-before">{status.connections.claude_code?.state === 'signed_in' ? 'Sign in to another account' : 'Before you sign in'}</h3>
             <BeforeSignIn status={status} />
+            <WhichAccount />
             <p className="nset__note">Sign-in ends when it is done, when you cancel, or after 15 minutes. A lost or cancelled operation requires safe runtime cleanup before another sign-in and may sign both clients out.</p>
             {status.binding?.recovery ? <p className="nset__problem" role="status">Runtime recovery is pending. Both clients may need to sign in again after cleanup is confirmed.</p> : status.auth?.claude_code ? <p className="nset__note" role="status">Another sign-in, check or sign-out is still in progress.</p> : null}
             {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
@@ -106,15 +109,6 @@ export function ClaudeCodeSignIn() {
   );
 }
 
-const ERRORS: Record<string, string> = {
-  busy: 'Your runtime is busy with another sign-in or task. Try again in a moment.',
-  unavailable: 'The runtime could not confirm the operation. Check its current state before trying again.',
-  refused: 'This sign-in could not start. It may have expired or belong to another session. Start again.',
-  cancelled: 'You cancelled the sign-in. Runtime access stays disabled until cleanup is confirmed; both clients may need to sign in again.',
-  superseded: 'This sign-in result is no longer current and was not accepted. Check the current runtime state before starting again.',
-  ended: 'The sign-in connection ended before its result was confirmed. Flux is recovering the runtime safely; both clients may need to sign in again. Check its state on Agent in Flux.',
-};
-
 function Outcome({ outcome, onAgain, back }: { outcome: ConsoleOutcome; onAgain: () => void; back: ReactNode }) {
   const connection = outcome.status?.connections.claude_code ?? null;
   if (outcome.signedIn && connection) {
@@ -128,15 +122,14 @@ function Outcome({ outcome, onAgain, back }: { outcome: ConsoleOutcome; onAgain:
       </section>
     );
   }
-  const message = outcome.error ? ERRORS[outcome.error] ?? ERRORS.ended
-    : outcome.ended === 'timed_out' ? 'The sign-in ran for 15 minutes and was stopped. Claude Code did not report a login. Start again.'
-      : 'Claude Code ended without reporting a login, so you are not signed in. If the code was refused, start again and paste the whole code.';
+  const message = signInFailure(outcome, 'Claude Code');
   return (
     <section className="nset__sec rt-outcome" aria-labelledby="rt-done">
-      <h3 id="rt-done">{outcome.error === 'superseded' ? 'Result not accepted' : 'Not signed in'}</h3>
+      <h3 id="rt-done">{outcome.error === 'superseded' ? 'Result not accepted' : 'Couldn’t connect'}</h3>
       <p className="nset__problem" role="alert"><Icon name="alert" size={14} /><span>{message}</span></p>
       <div className="aset__actions">
-        <Button variant="primary" onClick={onAgain}>Start again</Button>
+        <Button variant="primary" onClick={onAgain}>Try again</Button>
+        <Link className="ui-btn ui-btn--secondary" to="/settings/ai-connections?new=1">Use an API key</Link>
         {back}
       </div>
     </section>

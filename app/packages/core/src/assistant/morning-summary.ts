@@ -67,7 +67,7 @@ export function summaryLine(answer: string | null): string | null {
 
 /** Starts the assistant's run for `day` inside the claim's transaction. False: the plain summary goes out instead. */
 export async function startAssistantSummary(ports: AssistantSummaryPorts, summary: SummaryPorts, startBackground: (ports: PersonalRunPorts, spec: BackgroundRunSpec) => Promise<BackgroundStart>,
-  userId: string, day: string, now: Date): Promise<boolean> {
+  userId: string, day: string, now: Date, timeZone = 'UTC'): Promise<boolean> {
   const enablement = await ports.runs.enablement(userId);
   if (!enablement || enablement.status !== 'active') return false;
   // The note about background use was shown and accepted when the person turned this on (AST-2.1): without it, no run.
@@ -92,7 +92,7 @@ export async function startAssistantSummary(ports: AssistantSummaryPorts, summar
   if (!readable.length) return false;
   const titles = await ports.summaries.titles(readable.slice(0, FACT_ITEMS).map((row) => row.id));
   const lines = readable.slice(0, FACT_ITEMS).map((row) => redactSecrets((titles.get(row.id) ?? '').replace(/\s+/g, ' ').trim().slice(0, 120)).text).filter(Boolean);
-  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: enablement.timeZone, hour: '2-digit', hourCycle: 'h23' }).format(now));
+  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone, hour: '2-digit', hourCycle: 'h23' }).format(now));
   const prompt = summaryFacts(await ports.summaries.firstName(userId), hour, lines, Math.max(0, readable.length - lines.length));
   // The first project where the person may write and the assistant may read; the run is only anchored there, it reads nothing of it.
   for (const anchor of await ports.summaries.anchors(userId, workspaceId, 5)) {

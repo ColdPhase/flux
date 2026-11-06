@@ -8,18 +8,12 @@ import { pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
 
 const body = (agentId: string) => ({ agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
-  dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
-  maxRunsPerDay: 1, periodBudgetCents: 25, perRunCents: 5 });
+  dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' });
 const path = (id: string) => `/api/v1/projects/${id}/proactive-comparison-rules`;
 const connectionPath = '/api/v1/background-compute-connections';
 const codeOf = (response: { json: unknown }) => (response.json as { code?: string } | null)?.code;
 const fakeKey = `sk-ant-api03-${'owner-budget-key-'.repeat(4)}END9`;
-const connectionBody = (periodBudgetCents = 50) => ({
-  provider: 'anthropic', model: 'claude-sonnet-5', apiKey: fakeKey, payerOrganization: 'Example payer org', providerWorkspace: 'Dedicated maker workspace',
-  workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true,
-  providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
-  maxRunsPerDay: 1, periodDays: 30, periodBudgetCents, perRunCents: 5,
-});
+const connectionBody = (dailyBudgetCents = 50) => ({ provider: 'anthropic', model: 'claude-sonnet-5', apiKey: fakeKey, dailyBudgetCents });
 
 function decryptForTest(blob: string, ownerId: string, connectionId: string) {
   const [version, nonce, tag, encrypted] = blob.split('.');
@@ -50,16 +44,15 @@ describe('owner standing comparison rule', () => {
       { body: { name: 'My comparison agent', owner: 'self' } }), 201) as { id: string }).id;
   });
 
-  test('owner alone persists a fixed audience, purpose, effect and bounded cost', async () => {
+  test('owner alone persists a fixed audience, purpose and effect; a rule has no allowance of its own (#854)', async () => {
     assert.equal((await peer.browser.request('POST', path(project.id), { body: body(agentId) })).status, 404);
     assert.equal((await outsider.browser.request('GET', path(project.id))).status, 404);
-    assert.equal((await owner.browser.request('POST', path(project.id), { body: { ...body(agentId), perRunCents: 51 } })).status, 400);
     assert.equal((await owner.browser.request('POST', path(project.id), { body: { ...body(agentId), dataScope: 'all_my_dms' } })).status, 400);
     rule = expectStatus(await owner.browser.request('POST', path(project.id), { body: body(agentId) }), 201) as ProactiveComparisonRule;
     assert.equal(rule.ownerUserId, owner.id);
     assert.equal(rule.status, 'paused');
-    assert.deepEqual([rule.projectId, rule.purpose, rule.dataScope, rule.permittedEffect, rule.periodBudgetCents],
-      [project.id, 'camera_sensor_comparison', 'current_project_published', 'quiet_project_proposal', 25]);
+    assert.deepEqual([rule.projectId, rule.purpose, rule.dataScope, rule.permittedEffect],
+      [project.id, 'camera_sensor_comparison', 'current_project_published', 'quiet_project_proposal']);
     assert.equal((await owner.browser.request('POST', path(project.id), { body: body(agentId) })).status, 409);
     assert.deepEqual((expectStatus(await owner.browser.request('GET', path(project.id)), 200) as ProactiveComparisonRule[]).map((r) => r.id), [rule.id]);
     assert.deepEqual(expectStatus(await peer.browser.request('GET', path(project.id)), 200), [],
@@ -68,25 +61,21 @@ describe('owner standing comparison rule', () => {
     assert.deepEqual(persisted.rows[0], { trigger_kind: 'human_negative_result', owner_user_id: owner.id, project_id: project.id, status: 'paused' });
   });
 
-  test('owner-only payer consent stores authenticated ciphertext and safe metadata', async () => {
-    assert.equal((await owner.browser.request('POST', connectionPath,
-      { body: { ...connectionBody(), payerAuthorityConfirmed: false } })).status, 400);
-    assert.equal((await owner.browser.request('POST', connectionPath,
-      { body: { ...connectionBody(), periodDays: 0 } })).status, 400);
-    const firstResponse = await owner.browser.request('POST', connectionPath, { body: connectionBody(5) });
+  test('owner-only key with one daily budget stores authenticated ciphertext and safe metadata (#854)', async () => {
+    assert.equal((await owner.browser.request('POST', connectionPath, { body: connectionBody(9) })).status, 400, 'the budget is at least 10 cents');
+    const firstResponse = await owner.browser.request('POST', connectionPath, { body: connectionBody(17) });
     const first = expectStatus(firstResponse, 201) as BackgroundComputeConnection;
     assert.equal(first.ownerUserId, owner.id);
-    assert.equal(first.periodDays, 30);
-    assert.equal(first.periodBudgetCents, 5);
+    assert.deepEqual([first.dailyBudgetCents, first.timeZone, first.today.spentMicros], [17, 'UTC', 0]);
     assert.equal(first.keyLastFour, 'END9');
     assert.equal(first.model, 'claude-sonnet-5');
     assert.ok(!firstResponse.text.includes(fakeKey));
-    const record = await pool.query('SELECT encrypted_key, key_last_four, consent_version FROM background_compute_connections WHERE id=$1', [first.id]);
+    const record = await pool.query('SELECT encrypted_key, key_last_four, daily_budget_cents FROM background_compute_connections WHERE id=$1', [first.id]);
     const blob = record.rows[0].encrypted_key as string;
     assert.ok(blob.startsWith('v1.') && !blob.includes(fakeKey));
     assert.equal(decryptForTest(blob, owner.id, first.id), fakeKey);
     assert.throws(() => decryptForTest(blob, peer.id, first.id), /auth|authenticate|Unsupported state/i);
-    assert.equal(record.rows[0].consent_version, 'o-007-2026-10-02', 'a new connection records the provider-neutral F-020 disclosure');
+    assert.equal(record.rows[0].daily_budget_cents, 17);
     assert.equal(expectStatus(await peer.browser.request('GET', `${connectionPath}/current`), 200), null);
     assert.equal((await peer.browser.request('DELETE', `${connectionPath}/${first.id}`)).status, 404);
 
@@ -127,8 +116,10 @@ describe('owner standing comparison rule', () => {
     assert.equal((await change(peer, 1, 'enabled')).status, 404);
     assert.equal((await change(owner, 1, 'enabled')).status, 409,
       'no owner-supplied background key means the rule cannot be activated');
-    const tooSmall = expectStatus(await owner.browser.request('POST', connectionPath, { body: connectionBody(5) }), 201) as BackgroundComputeConnection;
-    assert.equal(codeOf(await change(owner, 1, 'enabled')), 'BACKGROUND_BUDGET_TOO_LOW');
+    // A budget below one request (64,000 × $10/M + 4,000 × $50/M = 84 cents on Fable) is refused when it is saved.
+    assert.equal(codeOf(await owner.browser.request('POST', connectionPath, { body: { ...connectionBody(83), model: 'claude-fable-5-1' } })), 'AI_BUDGET_TOO_SMALL');
+    const fits = expectStatus(await owner.browser.request('POST', connectionPath, { body: { ...connectionBody(84), model: 'claude-fable-5-1' } }), 201) as BackgroundComputeConnection;
+    assert.equal(codeOf(await owner.browser.request('PATCH', `${connectionPath}/${fits.id}`, { body: { dailyBudgetCents: 83 } })), 'AI_BUDGET_TOO_SMALL');
     // A second connection is used for background work only when chosen (F-020 PROV-1).
     const enough = expectStatus(await owner.browser.request('POST', connectionPath, { body: { ...connectionBody(50), useForBackground: true } }), 201) as BackgroundComputeConnection;
     assert.equal(codeOf(await change(owner, 1, 'enabled')), 'BACKGROUND_RUNTIME_UNAVAILABLE',
@@ -137,7 +128,7 @@ describe('owner standing comparison rule', () => {
     assert.equal((await peer.browser.request('DELETE', `${connectionPath}/${enough.id}`)).status, 404);
     expectStatus(await owner.browser.request('DELETE', `${connectionPath}/${enough.id}`), 204);
     assert.equal(codeOf(await change(owner, 1, 'enabled')), 'BACKGROUND_CONNECTION_REQUIRED', 'the kept, unchosen connection does not take over');
-    expectStatus(await owner.browser.request('DELETE', `${connectionPath}/${tooSmall.id}`), 204);
+    expectStatus(await owner.browser.request('DELETE', `${connectionPath}/${fits.id}`), 204);
     rule = expectStatus(await change(owner, 1, 'paused'), 200) as ProactiveComparisonRule;
     assert.equal(rule.status, 'paused');
     await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) SELECT $1, workspace_id, id, $2, 'denied', $2 FROM projects WHERE id = $3 ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`, [randomUUID(), owner.id, project.id]);

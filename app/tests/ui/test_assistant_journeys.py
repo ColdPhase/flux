@@ -19,6 +19,15 @@ from test_app_shell import shot
 
 FORBIDDEN = base.FORBIDDEN
 NOW = base.NOW
+# The Claude plan's models, Connect AI's default first (#854): the ready card preselects Sonnet of the Claude plan.
+PLAN = {"connection": "claude_plan", "model": "sonnet"}
+CHOICE = {"current": None, "default": PLAN, "saved": False, "groups": [{"connection": "claude_plan", "account": "claude_plan", "label": "Claude plan",
+          "company": "Claude", "options": [{"id": "sonnet", "name": "Sonnet", "note": "Everyday work", "callsTools": True},
+                                           {"id": "opus", "name": "Opus", "note": "Harder requests", "callsTools": True}]}]}
+
+
+def stub_plan_model(page, json_reply) -> None:
+    page.route(re.compile(r".*/api/v1/personal-assistant/model(\?.*)?$"), lambda route: json_reply(route, CHOICE))
 
 
 class AssistantJourneys(unittest.TestCase):
@@ -94,6 +103,7 @@ class AssistantJourneys(unittest.TestCase):
                     else:
                         self.json(route, world["status"])
                 page.route("**/api/v1/personal-assistant", enable)
+                stub_plan_model(page, self.json)
                 page.goto("/settings/assistant")
                 card = page.get_by_role("region", name="Your assistant is ready")
                 expect(card).to_be_visible()
@@ -101,7 +111,7 @@ class AssistantJourneys(unittest.TestCase):
                 expect(card).to_contain_text("It does things and tells you what it did, with Undo. Deleting and other people's things always wait for your OK.")
                 expect(card).to_contain_text("It has your rights: it can open and change only what you can.")
                 expect(card).to_contain_text("Others in the conversation see what you ask it and what it does.")
-                expect(card).to_contain_text("Uses your Claude plan. Flux can't see its limits. What it reads goes to Anthropic under your account's settings.")
+                expect(card).to_contain_text("Uses your Claude plan. Flux adds no limits of its own; your plan’s limits apply.")
                 expect(card.get_by_role("button", name="Turn on", exact=True)).to_be_visible()
                 expect(card.get_by_role("button", name="Change what it can do")).to_be_visible()
                 expect(card.get_by_role("checkbox")).to_have_count(0)
@@ -111,7 +121,8 @@ class AssistantJourneys(unittest.TestCase):
                 shot(page, f"ready-{self.tag(phone, dark)}")
                 card.get_by_role("button", name="Turn on", exact=True).click()
                 expect(page.get_by_role("switch", name="Your assistant is on")).to_be_visible()
-                self.assertEqual((posted[0]["engine"], posted[0]["consentVersion"]), ("runtime", "f-022-runtime-2026-10-16"))
+                self.assertEqual((posted[0]["connection"], posted[0]["model"]), ("claude_plan", "sonnet"))
+                self.assertNotIn("consentVersion", posted[0], "Turn on is all there is to agree to")
 
     def test_03_from_set_up_to_the_runs_message_in_at_most_six_taps(self) -> None:
         for phone in (False, True):
@@ -125,6 +136,7 @@ class AssistantJourneys(unittest.TestCase):
                         world["status"] = enabled
                     self.json(route, world["status"])
                 page.route("**/api/v1/personal-assistant", status)
+                stub_plan_model(page, self.json)
                 asked = self.stub_runs(page, lambda body: (202, self.run_json(clientRunId=body["clientRunId"], prompt=body["prompt"])))
                 run = self.run_json()
                 page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), lambda route: self.json(route, run))
@@ -237,16 +249,24 @@ class AssistantJourneys(unittest.TestCase):
         page = self.page()
         self.failed_ask(page, self.run_json(status="unavailable", endReason="plan_limit", planLimitResetsAt="2026-10-16T14:00:00.000Z", completedAt=NOW))
         line = page.locator(".assistant-working")
-        expect(line).to_contain_text("Paused: your Claude plan’s limit is reached until 14:00.")
+        expect(line).to_contain_text(re.compile(r"Claude limit reached until .*14:00"))
         shot(page, "j6-plan-limit-1440-light")
         page = self.page(phone=True)
         self.failed_ask(page, self.run_json(status="unavailable", endReason="plan_limit", planLimitResetsAt=None, completedAt=NOW))
         line = page.locator(".assistant-working")
-        expect(line).to_contain_text("Paused: your Claude plan’s limit is reached. Claude didn’t say until when.")
-        expect(line.get_by_role("button", name="Try again later")).to_be_visible()
+        expect(line).to_contain_text("Claude limit reached")
+        expect(line).not_to_contain_text("resumes")
+        expect(line.get_by_role("button", name=re.compile("switch|another|use ", re.I))).to_have_count(0)
         shot(page, "j6-plan-limit-390-light")
-        line.get_by_role("button", name="Try again later").click()
+        line.get_by_role("button", name="Dismiss").click()
         expect(page.locator(".assistant-working")).to_have_count(0)
+
+    def test_07b_api_credits_out_is_one_line_with_no_switch(self) -> None:
+        page = self.page()
+        self.failed_ask(page, self.run_json(status="provider_failed", endReason="credits", completedAt=NOW))
+        line = page.locator(".assistant-working")
+        expect(line).to_contain_text("API credits used up. API requests stop until your next monthly credits arrive.")
+        expect(line.get_by_role("button", name=re.compile("switch|another", re.I))).to_have_count(0)
 
     def test_08_signed_out_leads_to_sign_in(self) -> None:
         page = self.page()

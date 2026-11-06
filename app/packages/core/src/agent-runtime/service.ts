@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import {
-  AGENT_RUNTIME_ERRORS, type AgentRuntimeClient, type AgentRuntimeConnection, type AgentRuntimePayer, type AgentRuntimeSignInMethod, type AgentRuntimeStatus,
+  AGENT_RUNTIME_ERRORS, type AgentRuntimeClient, type AgentRuntimeConnection, type AgentRuntimeUsage, type AgentRuntimePayer, type AgentRuntimeSignInMethod, type AgentRuntimeStatus,
 } from '@flux/contracts';
 import { ConflictError, ServiceUnavailableError } from '../access/errors.js';
 import { clientAvailability, type AgentRuntimeConfig } from './config.js';
-import type { AgentRuntimeStore, RuntimeBindingRow, RuntimeClientStatus, RuntimeConnectionRow, RuntimeManagerPort } from './ports.js';
+import type { AgentRuntimeStore, RuntimeBindingRow, RuntimeClientStatus, RuntimeConnectionRow, RuntimeManagerPort, RuntimeUsageRow } from './ports.js';
 import {
   RUNTIME_AUTH_COMMAND_LIFETIME_MS, RUNTIME_AUTH_CONSOLE_LIFETIME_MS, RUNTIME_AUTH_LEASE_MS,
   type RuntimeAuthActor, type RuntimeAuthKind, type RuntimeAuthOperation,
@@ -53,7 +53,24 @@ function connectionView(row: RuntimeConnectionRow): AgentRuntimeConnection {
     payer: signedIn ? runtimePayer(row.authMethod) : null,
     accountChange: row.accountChangedAt ? { previousLabel: row.previousAccountLabel, at: row.accountChangedAt.toISOString() } : null,
     signOut: row.signedOutAt ? { at: row.signedOutAt.toISOString(), failed: row.signOutFailed === true } : null,
+    usage: signedIn ? usageView(row.usage ?? null) : null,
   };
+}
+
+/**
+ * The plan's remaining usage as Connect AI's line shows it (#854): what the provider last reported, while it can still be
+ * true. A reached limit whose reset time has passed, or a share read more than a day ago, is no longer shown: the line then
+ * says "Plan limits apply", never zero.
+ */
+export function usageView(usage: RuntimeUsageRow | null, now = Date.now()): AgentRuntimeUsage | null {
+  if (!usage) return null;
+  const reset = usage.resetsAt?.getTime() ?? null;
+  if (usage.limitReached) {
+    if (reset !== null && reset <= now) return null;
+    if (reset === null && now - usage.readAt.getTime() > 5 * 3600_000) return null;
+  } else if (usage.leftPercent === null || now - usage.readAt.getTime() > 24 * 3600_000 || (reset !== null && reset <= now)) return null;
+  return { leftPercent: usage.limitReached ? 0 : usage.leftPercent, window: usage.window, resetsAt: usage.resetsAt?.toISOString() ?? null,
+    limitReached: usage.limitReached, readAt: usage.readAt.toISOString() };
 }
 
 export interface AgentRuntimeUseCases {

@@ -25,9 +25,10 @@ export function personalRunPorts(tx: Transaction, queue?: PersonalRunQueue): Per
       try {
         const enablement = await ports.runs.enablement(ownerUserId);
         if (!enablement) return { ok: false, message: 'your assistant is off' };
+        const timeZone = await personalRunRows(tx).personTimeZone(ownerUserId);
         const job = await tx.transaction((savepoint) => prepareSchedule({ ...personalRunPorts(savepoint, queue), jobs: assistantJobRows(savepoint),
           inbox: { tell: async () => { throw new Error('Nothing is told about a prepared schedule'); } } }, ownerUserId,
-        { projectId, ...(request.title ? { title: request.title } : {}), text: request.text, schedule: request.schedule as never, timeZone: enablement.timeZone }, runId));
+        { projectId, ...(request.title ? { title: request.title } : {}), text: request.text, schedule: request.schedule as never, timeZone }, runId));
         return { ok: true, title: job.title, words: scheduleWords(job.schedule, job.timeZone) };
       } catch (error) {
         if (error instanceof DomainError) return { ok: false, message: error.message };

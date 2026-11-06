@@ -1,18 +1,19 @@
-import { useLayoutEffect, useRef, useState, type FormEvent } from 'react';
-import { Link, useLoaderData, type LoaderFunctionArgs } from 'react-router';
-import { AI_PROVIDERS, aiConnectionLabel, isAiProviderKind, type AiProviderKind, type BackgroundComputeConnection, type BackgroundComputeUsage,
-  type ConnectBackgroundComputeCommand } from '@flux/contracts';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { Link, useLoaderData, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { AI_PROVIDERS, aiConnectionLabel, API_KEY_DAILY_BUDGET_CENTS, type BackgroundComputeConnection, type BackgroundComputeUsage } from '@flux/contracts';
+import { keyUsageLine } from '../ai/connections';
 import { ApiError } from '../api/client';
 import { Button } from '../ui';
 import { allAiBlocked } from '../app/data';
 import { AiOffEverywhere, useAllAiBlocked } from '../ai/workspaceAi';
-import { BACKGROUND_OFF_LINE, backgroundComparisonRuntime, connectBackgroundCompute, currentBackgroundUsage, listBackgroundConnections, markBackgroundConnection, revokeBackgroundConnection } from './api';
+import { BACKGROUND_OFF_LINE, backgroundComparisonRuntime, currentBackgroundUsage, listBackgroundConnections, markBackgroundConnection, revokeBackgroundConnection, updateBackgroundConnection } from './api';
 import { BackgroundUsage } from './BackgroundUsage';
-import { comparisonReserveText, ConnectionFields, priceSourceText, priceText } from './ConnectionFields';
+import { AddKeyForm, BUDGET_PROBLEM, budgetCents, keyFailure, money, type AddKeyFormHandle } from './AddKeyForm';
+import { priceSourceText, priceText } from './ConnectionFields';
 import { ProjectRuleSettings } from './ProjectRuleSettings';
 import './background.css';
 
-/** Settings → Agents and AI → Background suggestions: the status line, local usage and project rules. */
+/** Settings → AI → Background suggestions: the status line, local usage and project rules. */
 export async function backgroundComputeLoader({ request }: LoaderFunctionArgs) {
   // F-029 (#614): with AI off in every workspace the page is the calm "AI is off" message, and nothing is asked for.
   if (await allAiBlocked()) return null;
@@ -23,7 +24,7 @@ export async function backgroundComputeLoader({ request }: LoaderFunctionArgs) {
   return { connections, usage, runtime };
 }
 
-/** Settings → Agents and AI → AI connections: the owner's own connections and the form to add one. */
+/** Settings → AI → Your API keys: the owner's own keys, each with its one daily budget, and the form to add one. */
 export async function aiConnectionsLoader({ request }: LoaderFunctionArgs) {
   if (await allAiBlocked()) return null;
   return { connections: await listBackgroundConnections(request.signal) };
@@ -32,37 +33,12 @@ export async function aiConnectionsLoader({ request }: LoaderFunctionArgs) {
 function AiOffSettingsPage() {
   return <div className="pane-scroll"><div className="pane-in sset-in">
     <AiOffEverywhere />
-    <p className="sset-note"><Link className="ui-link" to="/settings/agents">Back to Agents and AI</Link></p>
+    <p className="sset-note"><Link className="ui-link" to="/settings/agents">Back to AI</Link></p>
   </div></div>;
 }
-const money = (cents: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-const checks = ['workspaceScoped', 'payerAuthority', 'providerBilling', 'projectDisclosure'] as const;
-/** Who is paid for the requests: the named provider, or whoever runs an owner-set endpoint. */
-const payee = (provider: AiProviderKind) => (provider === 'openai_compatible' ? 'the endpoint’s operator' : AI_PROVIDERS[provider].label);
-/** USD per 1M tokens typed by the owner, in micro-dollars; null when left empty. */
-function ownerPrice(value: FormDataEntryValue | null): number | null {
-  const text = String(value ?? '').trim();
-  if (!text) return null;
-  const number = Number(text);
-  return Number.isFinite(number) && number >= 0 ? Math.round(number * 1_000_000) : NaN;
-}
-
-function failure(error: unknown) {
-  if (error instanceof ApiError) {
-    if (error.code === 'BACKGROUND_KEY_CUSTODY_UNAVAILABLE') return 'This server cannot store background credentials yet. Contact its operator.';
-    // Provider, model, endpoint and price refusals carry a safe, specific reason.
-    if (error.status === 400 && error.code?.startsWith('AI_')) return `${error.message.replace(/\.$/, '')}. The key was cleared; enter it again.`;
-    if (error.status === 401) return 'Your session ended. Sign in again before changing the connection.';
-    if (error.status === 404) return 'This connection is no longer available. Reload to see your current connection.';
-    if (error.status === 400) return 'Flux could not accept these values. The key was cleared; enter it again, then check the organization, workspace, allowance and confirmations.';
-  }
-  return 'The connection could not be changed. Check your connection to Flux and try again.';
-}
-
 /**
- * Owner-only AI connections (F-020 PROV-1), one stable page for the assistant and background suggestions
- * alike (Spokój #513): one or more, each with its own key, payer and allowance. Background suggestions use
- * the one the owner marks; removing it stops them, with no fallback. Saving a connection turns nothing on.
+ * Owner-only API keys (F-020 PROV-1, Connect AI #854): one or more, each with its own key and one daily budget, the only
+ * limit on what runs on it. Background suggestions use the one the owner marks; removing it stops them, with no fallback.
  */
 export function AiConnectionsSettings() {
   const initial = useLoaderData() as { connections: BackgroundComputeConnection[] } | null;
@@ -72,16 +48,15 @@ export function AiConnectionsSettings() {
 }
 
 function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComputeConnection[] } }) {
+  const [params] = useSearchParams();
   const [connections, setConnections] = useState(initial.connections);
   const connection = connections.find((item) => item.usedForBackground) ?? null;
-  const [editing, setEditing] = useState(false);
+  // Connect AI's "API key" choice opens the form at once (#854).
+  const [editing, setEditing] = useState(params.get('new') === '1');
   const [busy, setBusy] = useState(false);
-  // Only to word the key help for the provider chosen in the form.
-  const [formProvider, setFormProvider] = useState<AiProviderKind | ''>('');
-  const keyHelp = formProvider ? AI_PROVIDERS[formProvider].keyHint : 'Choose a provider first to see what its keys look like.';
   const [error, setError] = useState('');
   const [saved, setSaved] = useState('');
-  const formRef = useRef<HTMLFormElement>(null);
+  const formRef = useRef<AddKeyFormHandle>(null);
   const connectSectionRef = useRef<HTMLElement>(null);
   const statusRef = useRef<HTMLParagraphElement>(null);
   const errorRef = useRef<HTMLParagraphElement>(null);
@@ -98,63 +73,37 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
   });
   useLayoutEffect(() => {
     if (!editing) return;
-    formRef.current?.querySelector<HTMLInputElement>('input[name="apiKey"]')?.focus({ preventScroll: true });
+    formRef.current?.focusFirst();
     connectSectionRef.current?.scrollIntoView({ block: 'start' });
   }, [editing]);
+  // "Change" on a key in Connect AI leads here with the key named: its row comes into view.
+  const shown = params.get('key');
+  useLayoutEffect(() => {
+    if (shown) document.getElementById(`connection-${shown}`)?.scrollIntoView({ block: 'start' });
+  }, [shown]);
   const announce = (message: string) => {
     setSaved(message);
     focusAfterRender.current = 'status';
   };
   function cancelAdding() {
-    formRef.current?.reset(); setEditing(false); setError('');
+    formRef.current?.reset(); setEditing(false);
     focusAfterRender.current = 'add';
   }
 
-  async function connect(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function changeBudget(target: BackgroundComputeConnection, value: FormDataEntryValue | null) {
     if (busy) return;
-    const form = event.currentTarget;
-    const data = new FormData(form);
-    if (!checks.every((name) => data.get(name) === 'on')) {
-      setError('Confirm the payer, key scope, provider billing and project disclosure before saving.'); return;
-    }
-    const provider = String(data.get('provider') ?? '');
-    if (!isAiProviderKind(provider)) { setError('Choose a provider before saving.'); return; }
-    const input = ownerPrice(data.get('inputPrice'));
-    const output = ownerPrice(data.get('outputPrice'));
-    if (Number.isNaN(input) || Number.isNaN(output) || (input === null) !== (output === null)) {
-      setError('Enter both prices as numbers of US dollars per 1M tokens, or leave both empty.'); return;
-    }
-    const name = String(data.get('connectionName') ?? '').trim();
-    const command: ConnectBackgroundComputeCommand = {
-      ...(name ? { name } : {}), useForBackground: data.get('useForBackground') === 'on' || connections.length === 0,
-      provider, model: String(data.get('model') ?? '').trim(),
-      ...(provider === 'openai_compatible' ? { baseUrl: String(data.get('baseUrl') ?? '').trim() } : {}),
-      ...(input !== null && output !== null ? { price: { inputMicrosPerMTok: input, outputMicrosPerMTok: output } } : {}),
-      apiKey: String(data.get('apiKey') ?? '').trim(),
-      payerOrganization: String(data.get('payerOrganization') ?? '').trim(),
-      providerWorkspace: String(data.get('providerWorkspace') ?? '').trim(),
-      maxRunsPerDay: Number(data.get('maxRunsPerDay')),
-      periodDays: 30,
-      periodBudgetCents: Math.round(Number(data.get('periodBudget')) * 100),
-      perRunCents: Math.round(Number(data.get('perRun')) * 100),
-      workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true,
-      providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
-    };
+    const budget = budgetCents(value);
+    if (budget === null) { setError(BUDGET_PROBLEM); focusAfterRender.current = 'error'; return; }
     setBusy(true); setError(''); setSaved('');
     try {
-      const added = await connectBackgroundCompute(command);
-      setConnections(await listBackgroundConnections().catch(() => [added, ...connections.map((item) => (added.usedForBackground ? { ...item, usedForBackground: false } : item))]));
-      setEditing(false);
-      announce(added.usedForBackground ? 'Connection saved and used for background suggestions. No rule was enabled.' : 'Connection saved. No rule was enabled.');
-    } catch (cause) { setError(failure(cause)); focusAfterRender.current = 'error'; }
-    finally {
-      // The key exists only in this password input and the same-origin request, never app storage.
-      const key = form.elements.namedItem('apiKey');
-      if (key instanceof HTMLInputElement) key.value = '';
-      command.apiKey = ''; data.delete('apiKey');
-      setBusy(false);
+      const changed = await updateBackgroundConnection(target.id, { dailyBudgetCents: budget });
+      setConnections((current) => current.map((item) => (item.id === changed.id ? changed : item)));
+      announce(`${changed.name}: daily budget ${money(changed.dailyBudgetCents)}.`);
+    } catch (cause) {
+      setError(cause instanceof ApiError && cause.code === 'AI_BUDGET_TOO_SMALL' ? `${cause.message}.` : keyFailure(cause));
+      focusAfterRender.current = 'error';
     }
+    finally { setBusy(false); }
   }
 
   async function disconnect(target: BackgroundComputeConnection) {
@@ -163,10 +112,8 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
     try {
       await revokeBackgroundConnection(target.id);
       setConnections((current) => current.filter((item) => item.id !== target.id));
-      announce(target.usedForBackground
-        ? 'Disconnected in Flux. Background suggestions stop until you choose another connection; none takes over by itself.'
-        : 'Disconnected in Flux. New requests cannot use this key.');
-    } catch (cause) { setError(failure(cause)); focusAfterRender.current = 'error'; }
+      announce('Removed from Flux. What used this key waits until you pick another model; nothing switches by itself.');
+    } catch (cause) { setError(keyFailure(cause)); focusAfterRender.current = 'error'; }
     finally { setBusy(false); }
   }
 
@@ -177,86 +124,65 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
       const marked = await markBackgroundConnection(target.id);
       setConnections((current) => current.map((item) => (item.id === marked.id ? marked : { ...item, usedForBackground: false })));
       announce(`Background suggestions now use ${marked.name}.`);
-    } catch (cause) { setError(failure(cause)); focusAfterRender.current = 'error'; }
+    } catch (cause) { setError(keyFailure(cause)); focusAfterRender.current = 'error'; }
     finally { setBusy(false); }
   }
 
   return <div className="pane-scroll"><div className="pane-in sset-in background-settings">
     <header className="background-settings__head">
-      <h2>AI connections</h2>
-      <p>Your own keys from AI providers, for your assistant and background suggestions. Only you can see or change them.</p>
+      <h2>Your API keys</h2>
+      <p>Your own keys from AI providers. Each has one daily budget, the only limit on what runs on it. Only you can see or change them.</p>
     </header>
     <p ref={statusRef} className="background-settings__saved" tabIndex={-1} role="status">{saved}</p>
     {connections.length ? <section className="background-settings__section" aria-labelledby="background-current">
       <div className="background-settings__section-head">
-        <h3 id="background-current">Your AI connections</h3>
-        {!editing ? <Button ref={addRef} icon="plus" disabled={busy} onClick={() => { setEditing(true); setError(''); setSaved(''); }}>Add a connection</Button> : null}
+        <h3 id="background-current">Keys</h3>
+        {!editing ? <Button ref={addRef} icon="plus" disabled={busy} onClick={() => { setEditing(true); setError(''); setSaved(''); }}>Add a key</Button> : null}
       </div>
-      {error && !editing ? <p ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
-      {!connection ? <p className="background-settings__note" role="note">No connection is used for background suggestions. Choose one below; Flux never picks one for you.</p> : null}
+      {error ? <p ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
       <ul className="background-settings__connections">
-        {connections.map((item) => <li key={item.id} className="background-settings__connection" aria-labelledby={`connection-${item.id}`}>
+        {connections.map((item) => <li key={item.id} id={`connection-${item.id}`} className="background-settings__connection" aria-labelledby={`connection-${item.id}-name`}>
           <div className="background-settings__connection-head">
-            <h4 id={`connection-${item.id}`}>{item.name}</h4>
+            <h4 id={`connection-${item.id}-name`}>{item.name}</h4>
             {item.usedForBackground ? <span className="background-settings__badge">Used for background suggestions</span> : null}
           </div>
+          <p className="background-settings__usage" data-testid="key-usage">{keyUsageLine(item)}</p>
           <dl className="background-settings__metadata">
             <div><dt>Provider / model</dt><dd>{aiConnectionLabel(item.provider, item.model)}</dd></div>
             {item.baseUrl ? <div><dt>Endpoint</dt><dd>{item.baseUrl}</dd></div> : null}
             <div><dt>Price</dt><dd>{item.price
-              ? <>{priceText(item.price)} · {priceSourceText(item.price)}. One request reserves up to {comparisonReserveText(item.price)}.</>
-              : 'Unknown. It cannot be used until a price is known; add the connection again with a price.'}</dd></div>
-            <div><dt>Paid by</dt><dd>{item.payerOrganization} · {item.providerWorkspace}</dd></div>
+              ? <>{priceText(item.price)} · {priceSourceText(item.price)}</>
+              : 'Unknown. It cannot be used until a price is known; add the key again with a price.'}</dd></div>
             <div><dt>Key</dt><dd>Ending {item.keyLastFour}</dd></div>
-            <div><dt>Local allowance</dt><dd>{money(item.periodBudgetCents)} over rolling 30 days · up to {item.maxRunsPerDay} requests a UTC day · {money(item.perRunCents)} per request</dd></div>
           </dl>
-          <p className="background-settings__help">The key-owning organization pays {payee(item.provider)}. Flux limits new requests; this allowance does not guarantee the provider invoice. Interrupted requests can still be charged.</p>
+          <form className="background-settings__budget" onSubmit={(event) => { event.preventDefault(); void changeBudget(item, new FormData(event.currentTarget).get('dailyBudget')); }}>
+            <label>Daily budget (USD)<input name="dailyBudget" type="number" required min={API_KEY_DAILY_BUDGET_CENTS.min / 100} max={API_KEY_DAILY_BUDGET_CENTS.max / 100} step="0.01"
+              defaultValue={(item.dailyBudgetCents / 100).toFixed(2)} aria-describedby={`connection-${item.id}-budget`} /></label>
+            <Button type="submit" disabled={busy}>Save budget</Button>
+          </form>
+          <p id={`connection-${item.id}-budget`} className="background-settings__help">Everything on this key counts against it: your agents and background suggestions. At the budget they pause until the next day, from midnight in {item.timeZone}. Flux prices each request before sending it; the provider’s invoice may still differ slightly.</p>
           <div className="background-settings__actions">
-            {!item.usedForBackground ? <Button disabled={busy} onClick={() => void chooseForBackground(item)} aria-describedby={`connection-${item.id}`}>Use for background suggestions</Button> : null}
-            <Button disabled={busy} onClick={() => void disconnect(item)} aria-label={`Disconnect ${item.name}, key ending ${item.keyLastFour}`}>Disconnect</Button>
+            {!item.usedForBackground ? <Button disabled={busy} onClick={() => void chooseForBackground(item)} aria-describedby={`connection-${item.id}-name`}>Use for background suggestions</Button> : null}
+            <Button disabled={busy} onClick={() => void disconnect(item)} aria-label={`Remove ${item.name}, key ending ${item.keyLastFour}`}>Remove</Button>
           </div>
-          <p className="background-settings__help">Disconnecting removes this key from Flux. Revoke it at {item.provider === 'openai_compatible' ? 'your endpoint' : AI_PROVIDERS[item.provider].label} too if it should stop working outside Flux.</p>
+          <p className="background-settings__help">Removing deletes this key from Flux. Revoke it at {item.provider === 'openai_compatible' ? 'your endpoint' : AI_PROVIDERS[item.provider].label} too if it should stop working outside Flux.</p>
         </li>)}
       </ul>
     </section> : null}
 
     {!connections.length || editing ? <section ref={connectSectionRef} className="background-settings__section" aria-labelledby="background-connect">
       <div className="background-settings__section-head">
-        <h3 id="background-connect">{connections.length ? 'Add a connection' : 'Add an AI connection'}</h3>
+        <h3 id="background-connect">Use an API key</h3>
         {/* Backing out is possible from the top of a long form, on a phone too. */}
         {connections.length ? <Button variant="quiet" onClick={cancelAdding}>Cancel adding</Button> : null}
       </div>
-      {error ? <p id="background-connect-error" ref={errorRef} className="background-settings__error" role="alert" tabIndex={-1}>{error}</p> : null}
-      <p className="background-settings__help">Choose any supported provider and model; every one takes the same path in Flux. Your assistant uses the connection you choose when you set it up; background suggestions use the one marked for them.</p>
-      <form ref={formRef} onSubmit={(event) => void connect(event)}>
-        <fieldset disabled={busy} className="background-settings__fields">
-          <label>Connection name<input name="connectionName" autoComplete="off" maxLength={80} placeholder="For example: Work OpenRouter" /></label>
-          <ConnectionFields connection={null} disabled={busy} onProvider={setFormProvider} />
-          <label>API key<input name="apiKey" type="password" autoComplete="off" spellCheck={false} required minLength={8} maxLength={512}
-            aria-describedby={`background-key-help${error ? ' background-connect-error' : ''}`} /></label>
-          <p id="background-key-help" className="background-settings__help">{keyHelp} This field is cleared after every save attempt; enter a new key to try again.</p>
-          <label>Provider organization<input name="payerOrganization" autoComplete="off" required minLength={2} maxLength={120} /></label>
-          <label>Provider workspace<input name="providerWorkspace" autoComplete="off" required minLength={2} maxLength={120} /></label>
-          <div className="background-settings__limits">
-            <label>Maximum requests a day<input name="maxRunsPerDay" type="number" required min={1} max={3} step={1} defaultValue={1} /></label>
-            <label>30-day local allowance (USD)<input name="periodBudget" type="number" required min="0.05" max="10.00" step="0.01" defaultValue="1.00" /></label>
-            <label>Per-request local allowance (USD)<input name="perRun" type="number" required min="0.05" max="0.50" step="0.01" defaultValue="0.05" /></label>
-          </div>
-          <p className="background-settings__help">One request is limited to 8,000 input tokens, counted with the same conservative Flux estimate for every provider, and 1,200 output tokens. Before starting it, Flux reserves the most it can cost at the connection’s price, and at least $0.05. Unknown possible charges stay counted; no automatic retry or other payer is used.</p>
-          <label className="background-settings__check"><input name="workspaceScoped" type="checkbox" required /><span>This key is restricted to the single provider workspace named above.</span></label>
-          <label className="background-settings__check"><input name="payerAuthority" type="checkbox" required /><span>I am authorized to spend on that organization's provider account.</span></label>
-          <label className="background-settings__check"><input name="providerBilling" type="checkbox" required /><span>I understand that the organization pays the AI provider and that Flux's local allowance is not an invoice cap.</span></label>
-          <label className="background-settings__check"><input name="projectDisclosure" type="checkbox" required /><span>I allow human evidence published in the projects I enable to be sent to this provider; suggestions are visible to that project's readers.</span></label>
-          {connections.length ? <label className="background-settings__check"><input name="useForBackground" type="checkbox" /><span>Use this connection for background suggestions instead of {connection ? connection.name : 'none'}.</span></label>
-            : <p className="background-settings__help">Your first connection is used for background suggestions. You can add more and choose another later.</p>}
-          <div className="background-settings__actions">
-            <Button type="submit" variant="primary" busy={busy}>Save connection and consent</Button>
-            {connections.length ? <Button onClick={cancelAdding}>Cancel</Button> : null}
-          </div>
-        </fieldset>
-      </form>
+      <AddKeyForm ref={formRef} connections={connections} current={connection} {...(connections.length ? { onCancel: cancelAdding } : {})} onAdded={(added) => {
+        void listBackgroundConnections().catch(() => [added, ...connections.map((item) => (added.usedForBackground ? { ...item, usedForBackground: false } : item))]).then(setConnections);
+        setEditing(false);
+        announce(`Key saved with a daily budget of ${money(added.dailyBudgetCents)}.`);
+      }} />
     </section> : null}
-    <Link className="background-settings__back" to="/settings/agents">Back to Agents and AI</Link>
+    <Link className="background-settings__back" to="/settings/agents">Back to AI</Link>
   </div></div>;
 }
 
@@ -264,15 +190,15 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
 function BackgroundStatus({ runtime, connection }: { runtime: 'available' | 'unavailable'; connection: BackgroundComputeConnection | null }) {
   return <div className="background-settings__status">
     <p className="background-settings__note" role="note">{runtime === 'unavailable'
-      ? BACKGROUND_OFF_LINE : connection ? `On · uses ${connection.name}` : 'On · no AI connection is chosen for them yet'}</p>
-    <Link className="background-settings__back" to="/settings/ai-connections">AI connections</Link>
+      ? BACKGROUND_OFF_LINE : connection ? `On · uses ${connection.name} and counts against its daily budget` : 'On · no API key is chosen for them yet'}</p>
+    <Link className="background-settings__back" to="/settings/ai-connections">API keys</Link>
   </div>;
 }
 
 /**
  * Background suggestions (F-020, #513): one status line, then the owner's local usage and project rules.
  * Both stay when the server does not run them, so past requests stay visible and a rule can still be
- * paused or revoked; enabling is dimmed. The connections themselves live on AI connections.
+ * paused or revoked; enabling is dimmed. The keys themselves live on Your API keys.
  */
 export function BackgroundComputeSettings() {
   const initial = useLoaderData() as { connections: BackgroundComputeConnection[]; usage: BackgroundComputeUsage; runtime: 'available' | 'unavailable' } | null;
@@ -309,6 +235,6 @@ function BackgroundPage({ initial }: { initial: { connections: BackgroundCompute
     <BackgroundStatus runtime={initial.runtime} connection={connection} />
     <BackgroundUsage usage={usage} busy={usageBusy} error={usageError} refresh={() => void refreshUsage()} historyRef={historyRef} />
     <ProjectRuleSettings connection={connection} />
-    <Link className="background-settings__back" to="/settings/agents">Back to Agents and AI</Link>
+    <Link className="background-settings__back" to="/settings/agents">Back to AI</Link>
   </div></div>;
 }
