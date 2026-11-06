@@ -16,8 +16,8 @@ import {
 //                                                        whether a backup ledger may be restored on this image
 //   node tooling/dist/operations.js agent-access           prints active connections and refresh tokens
 //   node tooling/dist/operations.js revoke-agent-access    revokes every agent connection and OAuth token
-//   node tooling/dist/operations.js runtime-status         agent runtime slots and their bindings (F-022 T3)
-//   node tooling/dist/operations.js runtime-release <slot> asks the worker to release that slot's binding
+//   node tooling/dist/operations.js runtime-status          the agent runtime and the people in it (F-022 T3, #860)
+//   node tooling/dist/operations.js runtime-release <email> asks the worker to sign that person out and delete their files
 //   node tooling/dist/operations.js runtime-forget <purge-id> [confirmed|unconfirmed [<binding-id>:<client> ...]]
 //                                                        after purge: release bindings with the cleanup outcome
 // The migration commands use the #118 ledger parser of @flux/db, the one the migrator trusts.
@@ -94,17 +94,17 @@ if (command === 'migration-files') {
       console.log(`Revoked ${revoked.credentials} GitHub authorization(s) and ${revoked.bindings} GitHub binding(s); retained history is unavailable until reconnected.`);
     } else if (command === 'runtime-status') {
       const rows = await agentRuntimeOperations(db).list();
-      if (!rows.length) console.log('No agent runtime slot has reported yet (the worker records them once runtime-manager answers).');
+      if (!rows.length) console.log('The agent runtime has not reported yet (the worker records it once runtime-manager answers).');
       for (const row of rows) {
-        const owner = row.binding_state ? `${row.binding_state} for ${row.email ?? 'a deleted account'} since ${new Date(row.created_at!).toISOString().slice(0, 10)}` : 'no binding';
-        console.log(`${row.slot}\t${row.slot_state}${row.out_of_pool_reason ? ` (${row.out_of_pool_reason})` : ''}\t${owner}`);
+        const owner = row.binding_state ? `${row.binding_state} for ${row.email ?? 'a deleted account'} since ${new Date(row.created_at!).toISOString().slice(0, 10)}` : 'nobody yet';
+        console.log(`${row.slot}\t${row.slot_state}${row.out_of_pool_reason ? ` (${row.out_of_pool_reason})` : ''}\t${row.capacity ?? '?'} at once\t${owner}`);
       }
     } else if (command === 'runtime-release') {
-      const slot = args[0] ?? '';
-      if (!/^runtime-[1-9][0-9]{0,2}$/.test(slot)) throw new Error('usage: runtime-release runtime-<n>');
-      const released = await agentRuntimeOperations(db).release(slot);
-      console.log(released ? `Releasing ${slot}: the worker signs its owner out, deletes the binding directory and frees the slot; the owner sees it in Settings.`
-        : `${slot} has no binding to release.`);
+      const email = args[0] ?? '';
+      if (!email.includes('@')) throw new Error('usage: runtime-release <email>');
+      const released = await agentRuntimeOperations(db).release(email);
+      console.log(released ? `Releasing ${email}: the worker signs them out and deletes their files; they see it in Settings.`
+        : `${email} has nothing in the agent runtime.`);
     } else if (command === 'runtime-begin-purge') {
       if (args.length) throw new Error('runtime-begin-purge takes no arguments');
       try {

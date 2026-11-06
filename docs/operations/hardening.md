@@ -7,9 +7,12 @@ described in the [security policy](../SECURITY.md).
 
 - **Only the API is published, on loopback.** PostgreSQL, the worker and the keyring have no host
   port. The keyring's network is internal to the host and joins only `api`, `worker` and `keyring`.
-- **Non-root containers.** The Flux image runs as its own user; the keyring and the agent runtime
-  also run read-only, with every Linux capability dropped and `no-new-privileges`. No service mounts
-  the Docker socket.
+- **Non-root containers.** The Flux image runs as its own user; the keyring also runs read-only, with
+  every Linux capability dropped and `no-new-privileges`. No service mounts the Docker socket.
+- **The agent runtime keeps people apart.** It is read-only with `no-new-privileges` and starts as
+  root inside its container with six capabilities, only to give each person their own user id. Their
+  CLIs run under that id with none. See
+  [what the runtime gets](agent-runtime.md#what-the-runtime-gets).
 - **No swap, no core dumps** for `api`, `worker` and `keyring`.
 - **Pinned images.** PostgreSQL and the release image are pinned by digest.
 - **One origin.** State-changing browser requests are accepted only from `FLUX_PUBLIC_ORIGIN`;

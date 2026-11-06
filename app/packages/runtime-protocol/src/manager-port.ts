@@ -7,7 +7,7 @@ import { RUNTIME_CLIENTS, type RuntimeClient } from './names.js';
 
 export type PortCall<T> = { ok: true; value: T } | { ok: false; code: string };
 export type PortSighting =
-  | { slot: string; reachable: true; bootId: string; bindings: string[]; other: number }
+  | { slot: string; reachable: true; bootId: string; bindings: string[]; other: number; capacity: number; running: string[] }
   | { slot: string; reachable: false; error: string };
 
 export function runtimeManagerPort(client: RuntimeManagerClient) {
@@ -16,7 +16,7 @@ export function runtimeManagerPort(client: RuntimeManagerClient) {
       const answer = await client.slots();
       if (!answer.ok) return answer;
       return { ok: true, value: answer.slots.map((entry): PortSighting => entry.reachable
-        ? { slot: entry.slot, reachable: true, bootId: entry.report.bootId, bindings: entry.report.data.bindings, other: entry.report.data.other }
+        ? { slot: entry.slot, reachable: true, bootId: entry.report.bootId, bindings: entry.report.data.bindings, other: entry.report.data.other, capacity: entry.report.capacity, running: entry.report.running }
         : { slot: entry.slot, reachable: false, error: entry.error }) };
     },
     async bind(slot: string, bindingId: string): Promise<PortCall<void>> {
@@ -37,15 +37,15 @@ export function runtimeManagerPort(client: RuntimeManagerClient) {
       if (answer.result.kind !== 'logout' || answer.result.client !== cli) return { ok: false, code: 'protocol' };
       return { ok: true, value: { logout: answer.result.logout, bootId: answer.bootId } };
     },
-    async release(slot: string, bindingId: string): Promise<PortCall<{ dataEmpty: boolean; logoutFailed: boolean; notInstalled: RuntimeClient[] }>> {
+    async release(slot: string, bindingId: string): Promise<PortCall<{ deleted: boolean; logoutFailed: boolean; notInstalled: RuntimeClient[] }>> {
       const answer = await client.request(slot, { kind: 'release', bindingId });
       if (!answer.ok) return answer;
       if (answer.result.kind !== 'release') return { ok: false, code: 'protocol' };
-      const { dataEmpty, logout } = answer.result;
+      const { deleted, logout } = answer.result;
       // `not_installed` is the slot's own inference from missing files; the caller confirms it only against the
       // durable client history (#480), so it is reported separately and is not a failure by itself.
       return { ok: true, value: {
-        dataEmpty,
+        deleted,
         logoutFailed: Object.values(logout).some((step) => step !== 'ok' && step !== 'not_installed'),
         notInstalled: RUNTIME_CLIENTS.filter((name) => logout[name] === 'not_installed'),
       } };

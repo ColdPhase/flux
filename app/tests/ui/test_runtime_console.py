@@ -425,7 +425,7 @@ class RuntimeConsole(unittest.TestCase):
         section = page.locator("section.rt")
         section.get_by_role("button", name="Remove shared runtime space from Flux…").tap()
         confirm = page.get_by_role("group", name="Remove shared runtime space from Flux")
-        expect(confirm).to_contain_text("Flux tries to sign out of Claude Code and Codex, then deletes both clients’ files from your shared runtime space on this server and frees the space for someone else.")
+        expect(confirm).to_contain_text("Flux tries to sign out of Claude Code and Codex, then deletes both clients’ files from your shared runtime space on this server.")
         self.phone_layout(page, "section.rt")
         shot(page, "runtime-remove-phone-390")
         confirm.get_by_role("button", name="Sign out and remove").tap()

@@ -242,6 +242,25 @@ class AssistantRuntime(unittest.TestCase):
         self.assertEqual(asked[0]["prompt"], "What changed since yesterday?")
         self.no_horizontal_scroll(page)
 
+    def test_04b_a_request_with_no_room_on_the_server_waits_with_one_line(self) -> None:
+        """#860: the server runs as many agents as fit in its memory; the others wait in order, and the line says why."""
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page(phone=phone)
+                stub = self.status_stub(page, enabled=True)
+                run = self.run_json(id=str(uuid.uuid4()), status="queued", endReason="no_room", dispatchedAt=None)
+                page.route("**/api/v1/personal-assistant", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(stub))
+                           if route.request.method == "GET" else route.continue_())
+                page.route(re.compile(r".*/api/v1/assistant-runs\?limit=\d+$"), lambda route: route.fulfill(status=200, content_type="application/json",
+                           body=json.dumps({"items": [run], "total": 1, "limit": 10, "offset": 0})))
+                page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(run)))
+                page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
+                working = page.locator(".assistant-working")
+                expect(working).to_contain_text("Waiting for room on the server")
+                expect(working.get_by_role("button", name=re.compile("switch|another|instead", re.I))).to_have_count(0)
+                self.no_horizontal_scroll(page)
+                shot(page, f"runtime-{'390' if phone else '1440'}-light-no-room")
+
     def test_05_phone_reads_the_runtime_lines_without_overflow(self) -> None:
         page = self.page(phone=True)
         stub = self.status_stub(page, enabled=True)

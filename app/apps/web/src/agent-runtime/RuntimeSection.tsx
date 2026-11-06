@@ -194,7 +194,7 @@ export function PlanConnection({ client, onStatus }: { client: AgentRuntimeClien
       {signedIn ? <p className="nset__note">Signing out pauses what uses this plan until you pick another model. Nothing switches to another connection by itself.</p> : null}
       {binding && confirmRemove && !removing ? (
         <div className="details__confirm" role="group" aria-label="Remove shared runtime space from Flux">
-          <p>Flux tries to sign out of Claude Code and Codex, then deletes both clients’ files from your shared runtime space on this server and frees the space for someone else. If you use either client again, you can set it up later.</p>
+          <p>Flux tries to sign out of Claude Code and Codex, then deletes both clients’ files from your shared runtime space on this server. If you use either client again, you can set it up later.</p>
           {error && errorContext?.action === 'remove' ? <p className="nset__error" aria-hidden="true"><Icon name="alert" size={14} />{error}</p> : null}
           <div className="aset__actions">
             <Button variant="danger" aria-describedby={error && errorContext?.action === 'remove' ? 'rt-error' : undefined} busy={busy === 'remove'} onClick={() => void act('remove', removeRuntime, 'Removal could not be confirmed. Check the current state before trying again.')}>Sign out and remove</Button>

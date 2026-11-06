@@ -8,29 +8,32 @@ import { arrayOf, bool, int, isPlainObject, literal, object, oneOf, str, text, t
 
 export const SUPERVISOR_ERRORS = [
   'unauthorized', 'unknown_request', 'invalid_request', 'busy', 'client_off', 'not_installed',
-  'data_not_empty', 'no_binding', 'binding_mismatch', 'binding_unsafe', 'binding_too_large',
-  'not_available', 'internal',
+  'no_binding', 'binding_mismatch', 'binding_unsafe', 'binding_too_large', 'not_available', 'internal',
 ] as const;
 export type SupervisorError = (typeof SUPERVISOR_ERRORS)[number];
 
 export const STEP_OUTCOMES = ['ok', 'failed', 'timeout', 'not_installed', 'skipped'] as const;
 export type StepOutcome = (typeof STEP_OUTCOMES)[number];
 
-/** The most binding directories a slot report lists; a supervisor never holds more than one. */
-export const MAX_REPORTED_BINDINGS = 8;
+/**
+ * The most binding directories a report lists: every person who can have their own user id in the runtime (#860). A
+ * technical bound nobody meets; `/data` entries past it count as `other`, which takes the runtime out of use.
+ */
+export const MAX_REPORTED_BINDINGS = 40_000;
 
 export interface SlotReport {
   slot: string;
   bootId: string;
   /** `/data`: binding directories (UUID names that are real directories) and any other entries. */
-  data: { empty: boolean; bindings: string[]; other: number };
-  /** True while `/tmp` holds no entry; a new process after a release starts with an empty tmpfs. */
-  tmpEmpty: boolean;
+  data: { bindings: string[]; other: number };
   /** Which CLIs are present (Claude Code from the tools volume, Codex in the image). */
   installed: Record<RuntimeClient, boolean>;
   /** The operator's `FLUX_AGENT_RUNTIME` as the slot reads it. */
   enabled: RuntimeClient[];
-  busy: boolean;
+  /** How many agents can run here at once (#860): worked out from memory, or the operator's `FLUX_RUNTIME_MAX_RUNS`. */
+  capacity: number;
+  /** The runs it has, and the ones that ended a moment ago: a working row not listed here has lost its run (#860). */
+  running: string[];
 }
 
 /**
@@ -98,7 +101,8 @@ export type SupervisorResult =
   | { kind: 'status'; slot: SlotReport }
   | { kind: 'status'; client: ClientStatus }
   | { kind: 'logout'; client: RuntimeClient; logout: StepOutcome }
-  | { kind: 'release'; bindingId: string; logout: Record<RuntimeClient, StepOutcome>; dataEmpty: boolean; exiting: boolean }
+  /** `deleted`: nothing of the person is left: no directory and no process under their user id. */
+  | { kind: 'release'; bindingId: string; logout: Record<RuntimeClient, StepOutcome>; deleted: boolean }
   | { kind: 'stop'; runId: string; state: 'not_running' | 'stopping' }
   /** The sign-in console ended: the CLI exited or reached the console's lifetime; then its status. */
   | { kind: 'login'; client: RuntimeClient; ended: 'exited' | 'timed_out'; exitCode: number | null; status: ClientStatus };
@@ -138,11 +142,11 @@ const enabled: Check<RuntimeClient[]> = (value): value is RuntimeClient[] =>
 export const isSlotReport: Check<SlotReport> = object({
   slot: str(SLOT_NAME, 12),
   bootId: str(BOOT_ID, 36),
-  data: object({ empty: bool, bindings: arrayOf(str(BINDING_ID, 36), MAX_REPORTED_BINDINGS), other: int(0, 1_000_000) }),
-  tmpEmpty: bool,
+  data: object({ bindings: arrayOf(str(BINDING_ID, 36), MAX_REPORTED_BINDINGS), other: int(0, 1_000_000) }),
   installed: perClient(bool),
   enabled,
-  busy: bool,
+  capacity: int(1, 9999),
+  running: arrayOf(str(UUID, 36), MAX_REPORTED_BINDINGS),
 }) as unknown as Check<SlotReport>;
 
 const nullable = <T>(check: Check<T>): Check<T | null> => (value): value is T | null => value === null || check(value);
@@ -164,7 +168,7 @@ const RESULTS: Check<SupervisorResult>[] = [
   object({ kind: literal('status'), slot: isSlotReport }),
   object({ kind: literal('status'), client: isClientStatus }),
   object({ kind: literal('logout'), client, logout: outcome }),
-  object({ kind: literal('release'), bindingId: str(BINDING_ID, 36), logout: perClient(outcome), dataEmpty: bool, exiting: bool }),
+  object({ kind: literal('release'), bindingId: str(BINDING_ID, 36), logout: perClient(outcome), deleted: bool }),
   object({ kind: literal('stop'), runId: str(UUID, 36), state: oneOf(['not_running', 'stopping'] as const) }),
   object({ kind: literal('login'), client, ended: oneOf(['exited', 'timed_out'] as const), exitCode: nullable(int(-1, 255)), status: isClientStatus }),
 ] as unknown as Check<SupervisorResult>[];

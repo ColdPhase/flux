@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { asPerson, type Person } from './process.js';
 import { cliEnvironment, CODEX_FILE_STORE } from './templates.js';
 
 // The allowlisted Codex app-server client (F-022 "Hardening: no local tool" and "Caps", T6 #281). It starts
@@ -35,9 +36,9 @@ export interface AppServerSession {
  * One app-server process for one check. `initialize` is sent first and the session is refused until it
  * answers. The process is killed on `close`, on a timeout, or on any malformed line.
  */
-export async function openAppServer(cliPath: string, bindingDir: string, egressHost: string, options: { timeoutMs: number; overrides?: readonly string[] }): Promise<AppServerSession> {
+export async function openAppServer(cliPath: string, bindingDir: string, egressHost: string, options: { timeoutMs: number; overrides?: readonly string[]; person: Person }): Promise<AppServerSession> {
   const child = spawn(cliPath, [...CODEX_FILE_STORE, ...(options.overrides ?? []), 'app-server'],
-    { env: cliEnvironment('codex', bindingDir, egressHost), cwd: bindingDir, shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    { env: cliEnvironment('codex', bindingDir, egressHost), cwd: bindingDir, shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe'], ...asPerson(options.person) });
   const kill = () => { try { if (child.pid) process.kill(-child.pid, 'SIGKILL'); } catch { /* gone */ } };
   const waiting = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
   let nextId = 0;

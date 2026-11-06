@@ -320,6 +320,6 @@ describe('signing in through the console', () => {
     assert.equal(removed.lastRelease?.signOutFailed, true);
     assert.equal(existsSync(join(dataDir, id)), false, 'the binding directory is gone');
     const { rows } = await pool.query<{ state: string }>('SELECT state FROM agent_runtime_slots WHERE slot = $1', [slotName]);
-    assert.equal(rows[0]?.state, 'wiping', 'freed once a new supervisor reports an empty /data');
+    assert.equal(rows[0]?.state, 'ready', 'one person leaving changes nothing for the runtime');
   });
 });

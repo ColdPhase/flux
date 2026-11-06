@@ -11,7 +11,7 @@ COMPOSE_MAIN="$FLUX_ROOT/docker/compose.source.yaml"
 COMPOSE_DEV="$FLUX_ROOT/docker/compose.dev.yaml"
 # The API and worker's agent-runtime networks (#744); added only while FLUX_AGENT_RUNTIME is set.
 COMPOSE_RUNTIME="$FLUX_ROOT/docker/compose.source.runtime.yaml"
-# The operator's own override (for example extra agent runtime slots); used when it exists.
+# The operator's own override; used when it exists.
 COMPOSE_OVERRIDE="$FLUX_ROOT/docker/compose.override.yaml"
 ENV_EXAMPLE="$FLUX_ROOT/docker/.env.example"
 ENV_FILE="$FLUX_ROOT/docker/.env"
@@ -205,10 +205,10 @@ ensure_env() {
   set_env_line "$draft" FLUX_KEY_PIN_SECRET "$(random_b64url)"
   set_env_line "$draft" FLUX_DEMO_OWNER_PASSWORD "demo-$(random_hex 8)"
   set_env_line "$draft" FLUX_DEMO_PARTNER_PASSWORD "demo-$(random_hex 8)"
-  # Agent runtime secrets (F-022 T3): the service secret and one secret per slot. Generated now so
+  # Agent runtime secrets (F-022 T3): the service secret and the runtime's own. Generated now so
   # switching FLUX_AGENT_RUNTIME on needs nothing else; unused while it is off.
   set_env_line "$draft" FLUX_RUNTIME_MANAGER_SECRET "$(random_hex 32)"
-  for n in 1 2 3 4; do set_env_line "$draft" "FLUX_RUNTIME_SECRET_$n" "$(random_hex 32)"; done
+  set_env_line "$draft" FLUX_RUNTIME_SECRET_1 "$(random_hex 32)"
   [ -z "${FLUX_MAILPIT_PORT:-}" ] || set_env_line "$draft" FLUX_MAILPIT_PORT "$FLUX_MAILPIT_PORT"
   [ -z "${FLUX_DEV_PORT:-}" ] || set_env_line "$draft" FLUX_DEV_PORT "$FLUX_DEV_PORT"
   # F-027 AST-1: only `./flux up` asks, only while it creates the file, and before the build.
@@ -245,7 +245,7 @@ build_main() {
 
 # --- Agent runtime (F-022 AIM-3, T3 #278; docs/operations/agent-runtime.md). FLUX_AGENT_RUNTIME empty,
 # the default, is off: no runtime service runs. On, `up` starts the `runtime` profile. No service ever
-# gets a Docker socket; the slots are a fixed pool in compose.source.yaml (more via the override).
+# gets a Docker socket; one runtime in compose.source.yaml serves everyone (#860).
 runtime_value() { env_value FLUX_AGENT_RUNTIME | tr -d ' '; }
 runtime_on() { [ -n "$(runtime_value)" ]; }
 check_runtime_switch() {
@@ -264,27 +264,27 @@ check_runtime_switch() {
 # interactive `./flux up` and `./flux ai on` ask whether people may sign in with their own ChatGPT and
 # Claude subscriptions. Enter means yes and enables Codex; Claude Code needs a typed `y`, because it is
 # the operator's Commercial Terms statement and a default answer must not make a legal statement. The
-# host is checked first: the questions are not shown on a host whose engine cannot run the slots.
+# host is checked first: the questions are not shown on a host whose engine cannot run the runtime.
 interactive() { [ -t 0 ] && [ -t 1 ]; }
 
 # The first Dockerfile base image (pinned by digest), used for the one throwaway check container. The
 # build pulls the same image, so the check costs nothing extra.
 runtime_probe_image() { sed -n 's/^FROM \(node@sha256:[0-9a-f]\{64\}\) AS .*/\1/p' "$FLUX_ROOT/docker/Dockerfile" 2>/dev/null | head -n 1; }
 
-# Prints one line saying why the Docker engine cannot run the agent runtime slots, or nothing when it can
+# Prints one line saying why the Docker engine cannot run the agent runtime, or nothing when it can
 # (AIM-3: Yama ptrace_scope of 1 or higher, `internal` networks, memory, CPU and process limits). It asks
-# the engine, not this machine: the slots run in the engine's kernel, which on Docker Desktop is a VM.
+# the engine, not this machine: the runtime runs in the engine's kernel, which on Docker Desktop is a VM.
 runtime_host_problem() {
   info=$(docker info --format '{{json .}}' 2>/dev/null) || { say "the Docker engine did not report its settings"; return 0; }
   case "$info" in *'"OSType":"linux"'*) ;; *) say "the Docker engine is not a Linux engine"; return 0 ;; esac
   for limit in MemoryLimit CpuCfsQuota PidsLimit; do
-    case "$info" in *"\"$limit\":true"*) ;; *) say "the Docker engine cannot set the memory, CPU and process limits that every slot has ($limit is off)"; return 0 ;; esac
+    case "$info" in *"\"$limit\":true"*) ;; *) say "the Docker engine cannot set the memory, CPU and process limits the runtime has ($limit is off)"; return 0 ;; esac
   done
   net="flux-ai-check-$$"
   if docker network create --internal "$net" >/dev/null 2>&1; then
     docker network rm "$net" >/dev/null 2>&1 || say "Could not remove the temporary Docker network $net; remove it with: docker network rm $net" >&2
   else
-    say "the Docker engine cannot create an internal network, which every slot needs"; return 0
+    say "the Docker engine cannot create an internal network, which the runtime needs"; return 0
   fi
   image=$(runtime_probe_image)
   [ -n "$image" ] || { say "the check image was not found in docker/Dockerfile"; return 0; }
@@ -309,7 +309,7 @@ ask_line() {
 ask_subscriptions() {
   say "Let people on this Flux sign in with their own ChatGPT and Claude"
   say "subscriptions? Flux runs the official Codex and Claude Code for each"
-  prompt="person in their own isolated slot.  [Y/n]"
+  prompt="person, each isolated from the others.  [Y/n]"
   tries=0
   while [ "$tries" -lt 3 ]; do
     ask_line "$prompt" || return 1
@@ -371,17 +371,33 @@ first_run_runtime_question() {
   fi
 }
 
-# The slot services in this project's Compose files, in number order (runtime-1 … and override slots).
-runtime_slots() { compose_main --profile runtime config --services 2>/dev/null | grep -E '^runtime-[1-9][0-9]*$' | sort -t- -k2 -n | tr '\n' ' '; }
-runtime_services() { printf 'runtime-manager runtime-egress runtime-install %s' "$(runtime_slots)"; }
-# Adds any missing runtime secret (a slot added by the override, or a hand-written docker/.env). Existing
-# values are never changed.
+runtime_services() { printf 'runtime-manager runtime-egress runtime-install runtime-1'; }
+# Adds any missing runtime secret (a hand-written docker/.env). Existing values are never changed.
 ensure_runtime_secrets() {
   [ -n "$(env_value FLUX_RUNTIME_MANAGER_SECRET)" ] || set_env_line "$ENV_FILE" FLUX_RUNTIME_MANAGER_SECRET "$(random_hex 32)"
-  for slot in $(runtime_slots); do
-    key="FLUX_RUNTIME_SECRET_${slot#runtime-}"
-    [ -n "$(env_value "$key")" ] || { set_env_line "$ENV_FILE" "$key" "$(random_hex 32)"; say "Added $key for $slot to ${ENV_FILE#"$FLUX_ROOT"/}."; }
-  done
+  [ -n "$(env_value FLUX_RUNTIME_SECRET_1)" ] || { set_env_line "$ENV_FILE" FLUX_RUNTIME_SECRET_1 "$(random_hex 32)"; say "Added FLUX_RUNTIME_SECRET_1 to ${ENV_FILE#"$FLUX_ROOT"/}."; }
+}
+# What the runtime may use, from what the server has (#860): its memory less 1.25 GiB for Flux itself, and all its CPUs but one.
+# How many agents run at once follows from the memory (about 2 on 4 GB). docker/.env wins when it sets them.
+runtime_limits() {
+  if [ -z "$(env_value FLUX_RUNTIME_MEMORY)" ]; then
+    bytes=$(docker info --format '{{.MemTotal}}' 2>/dev/null || true)
+    case "$bytes" in ''|*[!0-9]*) bytes=0 ;; esac
+    megabytes=$((bytes / 1048576 - 1280))
+    [ "$megabytes" -ge 1280 ] || megabytes=1280
+    export FLUX_RUNTIME_MEMORY="${megabytes}m"
+  fi
+  if [ -z "$(env_value FLUX_RUNTIME_CPUS)" ]; then
+    cpus=$(docker info --format '{{.NCPU}}' 2>/dev/null || true)
+    case "$cpus" in ''|*[!0-9]*) cpus=2 ;; esac
+    if [ "$cpus" -gt 1 ]; then cpus=$((cpus - 1)); else cpus=1; fi
+    export FLUX_RUNTIME_CPUS="$cpus"
+  fi
+}
+# The one line a runtime that refused to start wrote, with the fix; nothing when it did not refuse.
+runtime_refusal() {
+  compose_main --profile runtime logs --no-color --no-log-prefix runtime-1 2>/dev/null \
+    | sed -n 's/^{"event":"runtime_refused","message":"\(.*\)"}$/\1/p' | tail -n 1
 }
 runtime_volumes() {
   docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT" | grep -E "^${PROJECT}_runtime-([1-9][0-9]*-data|tools)\$" || true
@@ -408,10 +424,10 @@ explain_address_pools() {
       warn "(default-address-pools in /etc/docker/daemon.json); see docs/operations/troubleshooting.md#docker-address-pools." ;;
   esac
 }
-# Stops and removes the runtime containers; slot volumes (and so the owners' logins) stay.
+# Stops and removes the runtime containers; its volumes (and so people's logins) stay.
 stop_runtime() {
   [ -n "$(docker ps -aq --filter "label=com.docker.compose.project=$PROJECT" --filter "label=com.docker.compose.service=runtime-manager")" ] || return 0
-  say "FLUX_AGENT_RUNTIME is empty: stopping the agent runtime. Slot volumes and logins are kept (./flux runtime purge removes them)."
+  say "FLUX_AGENT_RUNTIME is empty: stopping the agent runtime. Its volumes and logins are kept (./flux runtime purge removes them)."
   # shellcheck disable=SC2046
   compose_main --profile runtime rm -sf $(runtime_services) >/dev/null 2>&1 || warn "Could not remove every agent runtime container."
 }
@@ -434,7 +450,7 @@ runtime_prepare_cleanup() {
     esac
   fi
 }
-# Best effort before slot volumes are deleted: each CLI signs out (the vendor ends the session where it
+# Best effort before the runtime's volumes are deleted: each CLI signs out (the vendor ends the session where it
 # can), each binding directory is deleted and each supervisor confirms an empty /data.
 runtime_sign_out() {
   runtime_sign_out_result=unconfirmed
@@ -446,8 +462,8 @@ runtime_sign_out() {
     return 0
   fi
   ensure_runtime_secrets
-  # shellcheck disable=SC2046
-  if ! compose_main --profile runtime up -d --no-deps runtime-manager runtime-egress $(runtime_slots) >/dev/null 2>&1; then
+  runtime_limits
+  if ! compose_main --profile runtime up -d --no-deps runtime-manager runtime-egress runtime-1 >/dev/null 2>&1; then
     warn "Could not start the agent runtime to sign out; the logins are deleted with the volumes. Owners should end those sessions in their Claude or ChatGPT account settings."
     return 0
   fi
@@ -466,7 +482,7 @@ runtime_sign_out() {
   # cannot prove that its vendor session ended, so keep that failure in owner history.
   if [ "$tries" -eq 0 ]; then
     runtime_sign_out_result=confirmed
-    # A slot that found no CLI and no files for a client confirms nothing by itself: the database accepts such a
+    # A runtime that found no CLI and no files for a client confirms nothing by itself: the database accepts such a
     # client only while its durable history shows no login was started for it (#480).
     runtime_not_installed=$(printf '%s\n' "$runtime_sign_out_report" | sed -n 's/^FLUX_RUNTIME_NOT_INSTALLED \([0-9a-f-][0-9a-f-]*\) \([a-z_][a-z_]*\)$/\1:\2/p' | tr '\n' ' ')
   fi
@@ -474,21 +490,24 @@ runtime_sign_out() {
 
 start_main() {
   check_runtime_switch
-  if runtime_on; then ensure_runtime_secrets; fi
+  if runtime_on; then ensure_runtime_secrets; runtime_limits; fi
   [ "${BUILT:-0}" = 1 ] || build_main
   if runtime_on; then
     say "Building the agent runtime ($(runtime_value))..."
     compose_main --profile runtime build runtime-install runtime-1
   fi
+  # Compose leaves a running container alone: a runtime that refused starts again, so it looks at the host again (#860).
+  if runtime_on && [ -n "$(runtime_refusal)" ]; then compose_main --profile runtime rm -fs runtime-1 >/dev/null 2>&1 || true; fi
   say "Migrating and starting..."
   # files-init gives the non-root API and worker their files volume; `up` then waits for
   # PostgreSQL, runs the one-shot migration and starts API and worker only if it succeeded.
   compose_main --profile setup run --rm files-init >/dev/null
   if runtime_on; then
-    # runtime-install runs first (a no-op unless claude_code is on); the slots then start.
-    # shellcheck disable=SC2046
-    compose_main --profile runtime up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker runtime-manager runtime-egress $(runtime_slots) \
-      || { compose_main --profile runtime logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress >&2 || true; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
+    # runtime-install runs first (a no-op unless claude_code is on); the runtime then starts. One that refuses (an unmet
+    # host requirement, #860) stays red: this fails with its one message and the fix, and Flux is not reported healthy.
+    compose_main --profile runtime up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker runtime-manager runtime-egress runtime-1 \
+      || { refused=$(runtime_refusal); [ -z "$refused" ] || die "$refused"
+        compose_main --profile runtime logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress runtime-1 >&2 || true; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
   else
     compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
       || { compose_main logs --no-color --tail 60 migrate api worker >&2 || true; explain_address_pools; die "Flux did not become healthy. See the logs above."; }
@@ -1103,11 +1122,12 @@ cmd_restore() {
   fi
   compose_main up -d --wait --wait-timeout "$WAIT_TIMEOUT" api worker \
     || { compose_main logs --no-color --tail 60 api worker >&2 || true; die "Flux did not become healthy after the restore."; }
-  # Slot volumes are not in the backup and were not replaced; the worker reconciles the restored
+  # The runtime's volumes are not in the backup and were not replaced; the worker reconciles the restored
   # bindings with them at its start (F-022: Sign in again, or sign out and delete an unbound directory).
   if runtime_on; then
     # shellcheck disable=SC2046
-    compose_main --profile runtime up -d runtime-manager runtime-egress $(runtime_slots) >/dev/null || warn "The agent runtime did not start after the restore; run ./flux up."
+    runtime_limits
+    compose_main --profile runtime up -d runtime-manager runtime-egress runtime-1 >/dev/null || warn "The agent runtime did not start after the restore; run ./flux up."
   fi
   verify_running || die "The restored instance failed its health or schema check."
   say "Restored $archive into $PROJECT: $(public_origin)"
@@ -1232,7 +1252,7 @@ cmd_upgrade() {
   upgrade_apply "$BACKUP_ARCHIVE" "$from_schema" "$from_commit"
 }
 
-# ./flux runtime status | release runtime-<n> | purge [-y]  (F-022 T3; docs/operations/agent-runtime.md)
+# ./flux runtime status | release <email> | purge [-y]  (F-022 T3; docs/operations/agent-runtime.md)
 cmd_identity() {
   sub=${1:-}
   [ $# -gt 0 ] && shift
@@ -1260,18 +1280,18 @@ cmd_runtime() {
       say "FLUX_AGENT_RUNTIME: '$(runtime_value)'$(runtime_on || printf ' (off)')"
       image_op runtime-status
       if compose_main --profile runtime ps --status running --services 2>/dev/null | grep -qx runtime-manager; then
-        say "Slots as runtime-manager sees them:"
+        say "The runtime as runtime-manager sees it:"
         compose_main exec -T runtime-manager node apps/runtime/dist/manager/cli.js slots
       else
         say "runtime-manager is not running."
       fi ;;
     release)
-      [ $# -eq 1 ] || die "usage: ./flux runtime release runtime-<n>"
-      case "$1" in runtime-[1-9]|runtime-[1-9][0-9]|runtime-[1-9][0-9][0-9]) ;; *) die "usage: ./flux runtime release runtime-<n>" ;; esac
+      [ $# -eq 1 ] || die "usage: ./flux runtime release <email>"
+      case "$1" in *@*) ;; *) die "usage: ./flux runtime release <email>" ;; esac
       image_op runtime-release "$1" ;;
     purge)
       parse_yes "$@"
-      confirm "Sign out and delete EVERY agent runtime login of $PROJECT (slot volumes and the Claude Code tools volume)?" \
+      confirm "Sign out and delete EVERY agent runtime login of $PROJECT (the runtime's volumes and the Claude Code tools volume)?" \
         || { say "Cancelled; nothing was changed."; return 1; }
       runtime_prepare_cleanup
       runtime_sign_out
@@ -1281,7 +1301,7 @@ cmd_runtime() {
       # shellcheck disable=SC2086
       if [ -n "$runtime_purge_id" ]; then image_op runtime-forget "$runtime_purge_id" "$runtime_sign_out_result" $runtime_not_installed; fi
       say "The agent runtime of $PROJECT is purged. Set FLUX_AGENT_RUNTIME= (empty) in ${ENV_FILE#"$FLUX_ROOT"/} so ./flux up keeps it off." ;;
-    *) die "usage: ./flux runtime status | release runtime-<n> | purge [-y]" ;;
+    *) die "usage: ./flux runtime status | release <email> | purge [-y]" ;;
   esac
 }
 
@@ -1435,9 +1455,9 @@ Flux launcher. Flux runs in Docker; the external cowork action also needs the na
   ./flux upgrade [--pull] [-y]
                          Back up, (git pull,) build this checkout, migrate and check health; on
                          failure print the restore instructions.
-  ./flux runtime status | release runtime-<n> | purge [-y]
-                         Agent runtime (FLUX_AGENT_RUNTIME): show slots and bindings, release one slot's
-                         binding (its owner is signed out and told), or sign out and delete every login.
+  ./flux runtime status | release <email> | purge [-y]
+                         Agent runtime (FLUX_AGENT_RUNTIME): show who is in it, release one person's
+                         place (they are signed out and told), or sign out and delete every login.
   ./flux ai on           Ask whether people may sign in with their own ChatGPT and Claude subscriptions
                          (Enter = yes for Codex; Claude Code needs a typed y to Anthropic's Commercial
                          Terms), write FLUX_AGENT_RUNTIME into docker/.env and apply it. The first

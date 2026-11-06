@@ -73,7 +73,7 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
 
     // The owner's slot and their Codex signed in with ChatGPT, as the console leaves them (`codex login status` said so).
     bindingId = randomUUID();
-    await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'held') ON CONFLICT (slot) DO UPDATE SET state = 'held'`, [slot.config.slot]);
+    await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready'`, [slot.config.slot]);
     await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'active')`, [bindingId, owner.id, slot.config.slot]);
     await pool.query(`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, sign_in_method, auth_method, signed_in_at)
       VALUES ($1, $2, $3, 'codex', 'signed_in', 'device_code', 'chatgpt', now())`, [randomUUID(), owner.id, bindingId]);

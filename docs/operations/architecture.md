@@ -18,7 +18,7 @@ Optional parts:
 
 | Part | Turned on by | Adds |
 | --- | --- | --- |
-| Agent runtime | `FLUX_AGENT_RUNTIME` ([guide](agent-runtime.md)) | `runtime-install`, `runtime-manager`, `runtime-egress` and slots `runtime-1`…`4` on their own internal networks; the egress proxy is their only way out |
+| Agent runtime | `FLUX_AGENT_RUNTIME` ([guide](agent-runtime.md)) | `runtime-install`, `runtime-manager`, `runtime-egress` and one `runtime-1` for everyone, each person under their own user id, on their own internal networks; the egress proxy is their only way out |
 | Live media | `docker/compose.live.yaml`, `docker/compose.live.turn.yaml` ([guide](../development/live-media.md)) | `livekit`, with ICE and TURN ports reached directly by browsers, and signaling only through the API at `/media` |
 | Hot-reload development | `./flux dev` | A Vite server and a mail catcher; never on a server |
 
@@ -46,7 +46,7 @@ pulls it by digest; a source checkout builds it from the checkout.
 | Uploaded files | volume `<FLUX_PROJECT>_files` | yes |
 | Settings and secrets | `docker/.env` (release: `.env`) | yes (copied into the archive) |
 | Boot key of encrypted spaces | keyring memory only | no, by design: a restart locks them |
-| Agent runtime logins | the runtime's slot volumes | no ([why](backup-restore.md#agent-runtime-slots)) |
+| Agent runtime logins | the runtime's volume | no ([why](backup-restore.md#agent-runtime-logins)) |
 | OIDC client secret, background key | files you keep on the host | no: keep them yourself |
 
 ## What leaves the server

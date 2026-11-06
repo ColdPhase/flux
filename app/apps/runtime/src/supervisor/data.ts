@@ -1,11 +1,18 @@
-import { chmod, lstat, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { chmod, chown, lstat, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { BINDING_ID, MAX_REPORTED_BINDINGS, type RuntimeClient } from '@flux/runtime-protocol';
+import { runFixed, type Person } from './process.js';
 import { CLIENT_DIRS, CREDENTIAL_FILES } from './templates.js';
 
-// The slot's `/data` (F-022 "A binding directory"). At most one binding directory, named by its UUID,
-// mode 0700, never a symlink. Binding refuses while `/data` holds any entry at all. Credential files
-// are checked by `stat` only and never opened; they are only ever deleted.
+// The runtime's `/data` (F-022 "A binding directory"; #860). One directory per person, named by a UUID, mode 0700 and owned by
+// that person's own user id, never a symlink. Credential files are checked by `stat` only and never opened; they are only ever
+// deleted. A person's CLI can leave anything in their directory, also a link to someone else's, so everything below it is written
+// and deleted as that person (asThem), who has no rights outside their own files. Root touches only `/data/<id>` itself, after
+// endProcesses proved no process of theirs is left, and `rm` follows no link.
+
+/** The user ids given to people: one each, one for every binding directory `/data` can report. */
+export const PERSON_IDS = { first: 20_000, last: 59_999 } as const;
 
 export interface DataEntries { bindings: string[]; other: number }
 
@@ -19,46 +26,61 @@ export async function dataEntries(dataDir: string): Promise<DataEntries> {
   return { bindings: bindings.sort(), other };
 }
 
-export const isEmpty = (entries: DataEntries) => entries.bindings.length === 0 && entries.other === 0;
-
-export async function tmpIsEmpty(tmpDir: string): Promise<boolean> {
-  try { return (await readdir(tmpDir)).length === 0; } catch { return false; }
-}
-
 /** The Anthropic configuration directory under the CLI's HOME (the default location of the Console profile). */
 export const CONSOLE_PROFILE_DIR = '.config/anthropic';
 
-const SUBDIRS = [CLIENT_DIRS.claude_code, CLIENT_DIRS.codex, 'home'];
+const SUBDIRS = [CLIENT_DIRS.claude_code, CLIENT_DIRS.codex, 'home', 'tmp'];
 
-async function privateDir(path: string) {
+async function privateDir(path: string, person: Person) {
   await mkdir(path, { mode: 0o700 });
   await chmod(path, 0o700);
+  if (person) await chown(path, person.uid, person.gid);
 }
 
-/** Creates `/data/<id>` and the CLI homes. The caller has checked that `/data` is empty. */
-export async function createBinding(dataDir: string, bindingId: string): Promise<void> {
+/** The lowest user id no binding directory has. The caller allows one at a time. Null when every id is taken. */
+export async function freePerson(dataDir: string): Promise<Exclude<Person, null> | null> {
+  const taken = new Set<number>();
+  for (const name of (await dataEntries(dataDir)).bindings) {
+    const stat = await lstat(join(dataDir, name)).catch(() => null);
+    if (stat) taken.add(stat.uid);
+  }
+  for (let id: number = PERSON_IDS.first; id <= PERSON_IDS.last; id += 1) if (!taken.has(id)) return { uid: id, gid: id };
+  return null;
+}
+
+/** Creates `/data/<id>` and the CLI homes, owned by the person. */
+export async function createBinding(dataDir: string, bindingId: string, person: Person): Promise<void> {
   if (!BINDING_ID.test(bindingId)) throw new Error('Not a binding id');
   const dir = join(dataDir, bindingId);
-  await privateDir(dir);
-  for (const sub of SUBDIRS) await privateDir(join(dir, sub));
+  await privateDir(dir, person);
+  for (const sub of SUBDIRS) await privateDir(join(dir, sub), person);
 }
 
-export type BindingCheck = { ok: true; dir: string } | { ok: false; code: 'no_binding' | 'binding_unsafe' };
+export type BindingCheck = { ok: true; dir: string; person: Person } | { ok: false; code: 'no_binding' | 'binding_unsafe' };
 
-/** The binding directory, only when it is a real 0700 directory owned by this process with real subdirectories. */
-export async function openBinding(dataDir: string, bindingId: string): Promise<BindingCheck> {
+/**
+ * The binding directory, only when it is a real 0700 directory with real subdirectories. `separate`: people have their own
+ * user ids here, so it must be owned by one of those; otherwise by this process.
+ */
+export async function openBinding(dataDir: string, bindingId: string, separate = false): Promise<BindingCheck> {
   if (!BINDING_ID.test(bindingId)) return { ok: false, code: 'binding_unsafe' };
   const dir = join(dataDir, bindingId);
   const stat = await lstat(dir).catch(() => null);
   if (!stat) return { ok: false, code: 'no_binding' };
-  if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o777) !== 0o700 || (process.getuid && stat.uid !== process.getuid())) {
-    return { ok: false, code: 'binding_unsafe' };
-  }
+  const owner = separate ? stat.uid >= PERSON_IDS.first && stat.uid <= PERSON_IDS.last : !process.getuid || stat.uid === process.getuid();
+  if (!stat.isDirectory() || stat.isSymbolicLink() || (stat.mode & 0o777) !== 0o700 || !owner) return { ok: false, code: 'binding_unsafe' };
   for (const sub of SUBDIRS) {
     const child = await lstat(join(dir, sub)).catch(() => null);
     if (!child || !child.isDirectory() || child.isSymbolicLink()) return { ok: false, code: 'binding_unsafe' };
   }
-  return { ok: true, dir };
+  return { ok: true, dir, person: separate ? { uid: stat.uid, gid: stat.gid } : null };
+}
+
+/** The owner of a binding directory, whatever else is wrong with it: a release must end their processes either way. */
+export async function ownerOf(dataDir: string, bindingId: string, separate: boolean): Promise<Person> {
+  if (!separate || !BINDING_ID.test(bindingId)) return null;
+  const stat = await lstat(join(dataDir, bindingId)).catch(() => null);
+  return stat && stat.uid >= PERSON_IDS.first && stat.uid <= PERSON_IDS.last ? { uid: stat.uid, gid: stat.gid } : null;
 }
 
 /** Removes `/data/<id>` without following any link inside it (a link at the top is removed itself). */
@@ -72,19 +94,38 @@ export async function removeBinding(dataDir: string, bindingId: string): Promise
   }
 }
 
-/** Deletes one CLI's files from the binding directory and leaves its home empty (sign-out). */
-export async function clearClientFiles(bindingDir: string, client: RuntimeClient): Promise<void> {
-  const home = join(bindingDir, CLIENT_DIRS[client]);
-  await rm(home, { recursive: true, force: true });
-  await privateDir(home);
-  if (client === 'claude_code') {
-    for (const entry of await readdir(join(bindingDir, 'home')).catch(() => [] as string[])) {
-      if (entry.startsWith('.claude')) await rm(join(bindingDir, 'home', entry), { recursive: true, force: true });
-    }
-    // The keyless Console sign-in (Claude Code 2.1.242 and later) keeps its Anthropic profile outside
-    // CLAUDE_CONFIG_DIR, by default in `$HOME/.config/anthropic`; sign-out must remove it as well.
-    await rm(join(bindingDir, 'home', CONSOLE_PROFILE_DIR), { recursive: true, force: true });
+/** A fixed shell line as the person, with their directory as `$1`: it can reach only what is theirs, whatever a link there says. */
+async function asThem(person: Person, script: string, dir: string): Promise<boolean> {
+  const done = await runFixed('/bin/sh', ['-c', script, 'sh', dir], { env: { PATH: '/usr/bin:/bin' }, cwd: '/', timeoutMs: 30_000, person });
+  return done.code === 0 && !done.timedOut;
+}
+
+/** Empties the person's scratch directory after a run: nothing a CLI left there stays. */
+export async function clearScratch(bindingDir: string, person: Person): Promise<boolean> {
+  return asThem(person, 'rm -rf -- "$1/tmp" && mkdir -m 0700 -- "$1/tmp"', bindingDir);
+}
+
+/** Deletes one CLI's transcripts from its home. `names` are fixed names, never input. */
+export async function clearClientPaths(bindingDir: string, client: RuntimeClient, names: readonly string[], person: Person): Promise<boolean> {
+  return !names.length || asThem(person, `rm -rf -- ${names.map((name) => `"$1/${CLIENT_DIRS[client]}/${name}"`).join(' ')}`, bindingDir);
+}
+
+/** Removes what a person left at the top of the shared `/tmp`, once no process of theirs is left: a user id can go to someone else later. */
+export async function clearLeftovers(tmpDir: string, person: Person): Promise<void> {
+  if (!person) return;
+  for (const entry of await readdir(tmpDir).catch(() => [] as string[])) {
+    const stat = await lstat(join(tmpDir, entry)).catch(() => null);
+    if (stat?.uid === person.uid) await asThem(person, 'rm -rf -- "$1"', join(tmpDir, entry));
   }
+}
+
+/** Deletes one CLI's files from the binding directory and leaves its home empty (sign-out). */
+export async function clearClientFiles(bindingDir: string, client: RuntimeClient, person: Person): Promise<boolean> {
+  const home = `"$1/${CLIENT_DIRS[client]}"`;
+  // The keyless Console sign-in (Claude Code 2.1.242 and later) keeps its Anthropic profile outside
+  // CLAUDE_CONFIG_DIR, by default in `$HOME/.config/anthropic`; sign-out must remove it as well.
+  const claude = client === 'claude_code' ? ` "$1"/home/.claude* "$1/home/${CONSOLE_PROFILE_DIR}"` : '';
+  return asThem(person, `rm -rf -- ${home}${claude} && mkdir -m 0700 -- ${home}`, bindingDir);
 }
 
 /**
@@ -105,7 +146,9 @@ export async function clientHasFiles(bindingDir: string, client: RuntimeClient):
 const unconfirmedPath = (bindingDir: string, client: RuntimeClient) => join(bindingDir, `unconfirmed-${client}`);
 
 export async function recordUnconfirmed(bindingDir: string, client: RuntimeClient): Promise<void> {
-  await writeFile(unconfirmedPath(bindingDir, client), '', { flag: 'w', mode: 0o600 });
+  // O_EXCL opens nothing that already exists, a link least of all; whatever stands at this path counts as recorded.
+  await writeFile(unconfirmedPath(bindingDir, client), '', { flag: constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL, mode: 0o600 })
+    .catch((error: NodeJS.ErrnoException) => { if (error.code !== 'EEXIST') throw error; });
 }
 
 /** Whether an earlier sign-out of this client failed. Any error other than "absent" counts as recorded. */

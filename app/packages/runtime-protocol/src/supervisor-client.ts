@@ -26,6 +26,8 @@ const MAX_STEPS = 16;
  * up to the largest answer bound once JSON-escaped.
  */
 export const RUN_FRAME_LIMITS: FrameLimits = { lineBytes: 512 * 1024, totalBytes: 4 * 1024 * 1024, frames: 2048 };
+/** A runtime's report lists every person's binding directory (#860): one long line, at most `MAX_REPORTED_BINDINGS` ids. */
+export const REPORT_FRAME_LIMITS: FrameLimits = { lineBytes: 2 * 1024 * 1024, totalBytes: 3 * 1024 * 1024, frames: 16 };
 
 export function callSupervisor(target: SupervisorTarget, request: SupervisorRequest,
   options: { timeoutMs?: number; limits?: FrameLimits; onRun?: (frame: RunFrame) => void } = {}): Promise<SupervisorCallOutcome> {

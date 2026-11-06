@@ -4,12 +4,14 @@ import { CONSOLE_UPGRADE_ANSWER, encodeFrame, isConsoleUpgrade, parseSupervisorR
 import { authorized } from '../shared/auth.js';
 import { serveConsole } from './console.js';
 import { handle, slotReport, type SupervisorConfig } from './handlers.js';
+import { stopPersonRuns } from './run.js';
 
-// The supervisor's listener on its slot network (port 7700). It answers only the manager: a POST to
-// `/v1/<request>` with the slot's own secret and a JSON body of at most 64 KiB, checked against the
-// closed set before anything runs. Requests run one at a time in a single lane (F-022 "Caps": sign-in,
-// status, run and sign-out never overlap), except the read-only slot report and stop. The sign-in
-// console (T4) is the one upgrade it accepts: `GET /v1/login` to `flux-console/1`, same secret.
+// The supervisor's listener on its own network (port 7700). It answers only the manager: a POST to
+// `/v1/<request>` with its own secret and a JSON body of at most 64 KiB, checked against the closed set
+// before anything runs. Each person's requests run one at a time in their own lane (F-022 "Caps": sign-in,
+// status, run and sign-out never overlap), except stop and the read-only report, and one person's lane never
+// waits for another's (#860). The sign-in console (T4) is the one upgrade it accepts: `GET /v1/login` to
+// `flux-console/1`, same secret.
 
 /** A single serial lane with a short queue; a full queue answers `busy`. */
 export class Lane {
@@ -51,18 +53,29 @@ function readBody(req: IncomingMessage, limit: number): Promise<Buffer | null> {
   });
 }
 
-export interface SupervisorServer { server: Server; lane: Lane }
+export interface SupervisorServer { server: Server }
 
-/**
- * `onReleased` runs once a release that confirmed an empty `/data` has been answered: in a slot it
- * ends the process, so the restart policy starts a fresh supervisor with a new boot id and an empty
- * tmpfs `/tmp` (F-022 "Stop, sign-out and removal").
- */
-export function createSupervisorServer(config: SupervisorConfig, onReleased: () => void): SupervisorServer {
-  const lane = new Lane();
-  // Open sign-in consoles; a release ends them first, so it never waits for a console's 15 minutes.
-  const consoles = new Set<() => void>();
-  let closing = false;
+export function createSupervisorServer(config: SupervisorConfig): SupervisorServer {
+  const lanes = new Map<string, Lane>();
+  const laneOf = (bindingId: string) => {
+    let lane = lanes.get(bindingId);
+    if (!lane) { lane = new Lane(); lanes.set(bindingId, lane); }
+    return lane;
+  };
+  // A new person's user id is the lowest free one: two people never get it at once.
+  const binds = new Lane(256);
+  // Open sign-in consoles of each person; a release ends theirs first, so it never waits for a console's 15 minutes.
+  const consoles = new Map<string, Set<() => void>>();
+  const closing = new Set<string>();
+  const host = {
+    laneOf,
+    removing: (bindingId: string) => closing.has(bindingId),
+    opened(bindingId: string, end: () => void) {
+      const open = consoles.get(bindingId) ?? new Set();
+      consoles.set(bindingId, open.add(end));
+      return () => { open.delete(end); if (!open.size) consoles.delete(bindingId); };
+    },
+  };
   const server = createServer({ maxHeaderSize: 8192, requestTimeout: 30_000, headersTimeout: 10_000 }, async (req, res) => {
     const refuse = (status: number, code: SupervisorError) => answer(res, status, [{ t: 'error', code }]);
     if (!authorized(req.headers.authorization, config.secret)) { refuse(401, 'unauthorized'); req.destroy(); return; }
@@ -76,49 +89,55 @@ export function createSupervisorServer(config: SupervisorConfig, onReleased: () 
     const parsed = parseSupervisorRequest(route[1], value);
     if (!parsed.ok) { refuse(parsed.code === 'unknown_request' ? 404 : 400, parsed.code); return; }
     const request = parsed.request;
-    if (closing) { refuse(409, 'busy'); return; }
+    const person = 'bindingId' in request ? request.bindingId : undefined;
+    const removing = () => person !== undefined && closing.has(person);
+    if (removing()) { refuse(409, 'busy'); return; }
     res.writeHead(200, { 'content-type': 'application/x-ndjson', 'cache-control': 'no-store', connection: 'close' });
     const send = (frame: SupervisorFrame) => { if (!res.writableEnded) res.write(encodeFrame(frame)); };
     send({ t: 'accepted', kind: request.kind, bootId: config.bootId });
     const work = async () => {
       try {
-        if (request.kind === 'status' && !request.client) return { result: await slotReport(config, lane.busy) };
+        if (request.kind === 'status' && !request.client) return { result: await slotReport(config) };
         // Recheck after queue wait. A delayed auth command may not target a new
         // supervisor process, even if a stale API still knows its old binding.
         if ((request.kind === 'logout' || (request.kind === 'status' && request.client)) && request.bootId !== config.bootId) {
           return { error: 'invalid_request' as const };
         }
-        if (closing && request.kind !== 'release') return { error: 'busy' as const };
+        if (removing() && request.kind !== 'release') return { error: 'busy' as const };
         return await handle(config, request, send);
       } catch {
         return { error: 'internal' as const };
       }
     };
-    const lanePass = request.kind === 'stop' || (request.kind === 'status' && !request.client);
-    // A run never waits behind a sign-in, a status check or another run: the slot answers `busy` (F-022 "Caps").
-    const running = lanePass ? work() : request.kind === 'run' ? lane.tryRun(work) : lane.run(work);
+    const lanePass = request.kind === 'stop' || person === undefined;
+    // A run never waits behind a sign-in, a status check or another run of theirs: the answer is `busy` (F-022 "Caps").
+    const running = lanePass ? work() : request.kind === 'bind' ? binds.run(() => laneOf(person).run(work) ?? Promise.resolve({ error: 'busy' as const }))
+      : request.kind === 'run' ? laneOf(person).tryRun(work) : laneOf(person).run(work);
     if (!running) { send({ t: 'error', code: 'busy' }); res.end(); return; }
-    if (request.kind === 'release') { closing = true; for (const end of consoles) end(); }
-    const outcome = await running;
-    if ('error' in outcome) {
-      send({ t: 'error', code: outcome.error });
-      if (request.kind === 'release') closing = false;
-      res.end();
-      return;
+    let stopping: NodeJS.Timeout | undefined;
+    if (request.kind === 'release') {
+      closing.add(person!);
+      for (const end of consoles.get(person!) ?? []) end();
+      // A release does not wait out a run. It asks again until its turn comes: a run may still be starting its CLI.
+      stopPersonRuns(config, person!);
+      stopping = setInterval(() => stopPersonRuns(config, person!), 1_000);
     }
-    send({ t: 'result', result: outcome.result });
-    const exiting = outcome.result.kind === 'release' && outcome.result.exiting;
-    if (request.kind === 'release' && !exiting) closing = false;
-    res.end(() => { if (exiting) onReleased(); });
+    const outcome = await running;
+    if (request.kind === 'release') {
+      clearInterval(stopping);
+      closing.delete(person!);
+      if ('result' in outcome && outcome.result.kind === 'release' && outcome.result.deleted) lanes.delete(person!);
+    }
+    send('error' in outcome ? { t: 'error', code: outcome.error } : { t: 'result', result: outcome.result });
+    res.end();
   });
   server.on('upgrade', (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     socket.on('error', () => socket.destroy());
     if (!authorized(req.headers.authorization, config.secret)) { refuseUpgrade(socket, 401, 'Unauthorized'); return; }
     if (req.method !== 'GET' || req.url !== '/v1/login' || !isConsoleUpgrade(req.headers)) { refuseUpgrade(socket, 404, 'Not Found'); return; }
-    if (closing) { refuseUpgrade(socket, 409, 'Conflict'); return; }
     socket.write(CONSOLE_UPGRADE_ANSWER);
-    serveConsole(config, lane, socket, head, consoles);
+    serveConsole(config, host, socket, head);
   });
   server.on('clientError', (_error, socket) => { socket.destroy(); });
-  return { server, lane };
+  return { server };
 }

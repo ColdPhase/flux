@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { chmod, lstat, mkdir, readdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { callSupervisor, NdjsonReader, parseSupervisorFrame, type ClientStatus, type SupervisorCallOutcome, type SupervisorRequest } from '@flux/runtime-protocol';
+import { clearClientFiles, clearScratch, hasUnconfirmed, recordUnconfirmed } from '../../apps/runtime/src/supervisor/data.js';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
 import { CODEX_FEATURE_REVIEW, codexRunOverrides, LOGOUT_TEMPLATES, RUN_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
 import { classifyCodexError, classifyError, effectiveConfigHolds } from '../../apps/runtime/src/supervisor/run.js';
@@ -87,33 +90,33 @@ describe('binding directories', () => {
   before(async () => { slot = await startTestSlot(); });
   after(async () => { await slot.close(); });
 
-  test('bind creates /data/<uuid> 0700 with private CLI homes, is idempotent, and refuses a second binding', async () => {
+  test('bind creates /data/<uuid> 0700 with private CLI homes, is idempotent, and any number of people have theirs (#860)', async () => {
     const bindingId = randomUUID();
     const bound = await call(slot, { kind: 'bind', bindingId });
     assert.ok(bound.ok && bound.result.kind === 'bind' && bound.bootId === slot.config.bootId);
     const dir = join(slot.config.dataDir, bindingId);
     assert.equal((await lstat(dir)).mode & 0o777, 0o700);
-    for (const sub of ['claude', 'codex', 'home']) assert.equal((await lstat(join(dir, sub))).mode & 0o777, 0o700);
+    for (const sub of ['claude', 'codex', 'home', 'tmp']) assert.equal((await lstat(join(dir, sub))).mode & 0o777, 0o700);
     assert.ok((await call(slot, { kind: 'bind', bindingId })).ok, 'a retried bind of the same binding is accepted');
-    assert.deepEqual(await call(slot, { kind: 'bind', bindingId: randomUUID() }), { ok: false, code: 'data_not_empty' });
+    const others = Array.from({ length: 6 }, () => randomUUID());
+    for (const other of others) assert.ok((await call(slot, { kind: 'bind', bindingId: other })).ok, 'no fixed number of people');
     const report = await call(slot, { kind: 'status' });
     assert.ok(report.ok && report.result.kind === 'status' && 'slot' in report.result);
-    assert.deepEqual(report.result.slot.data, { empty: false, bindings: [bindingId], other: 0 });
+    assert.deepEqual(report.result.slot.data, { bindings: [bindingId, ...others].sort(), other: 0 });
     assert.equal(report.result.slot.slot, 'runtime-1');
+    assert.equal(report.result.slot.capacity, 2);
     assert.deepEqual(report.result.slot.installed, { claude_code: true, codex: true });
   });
 
-  test('refuses to bind while /data holds any entry at all', async () => {
-    const empty = await startTestSlot();
+  test('an entry in /data that is not a person\'s directory is reported', async () => {
+    const stray = await startTestSlot();
     try {
-      for (const entry of ['.hidden', 'notes.txt', 'lost+found']) {
-        await writeFile(join(empty.config.dataDir, entry), '');
-        assert.deepEqual(await call(empty, { kind: 'bind', bindingId: randomUUID() }), { ok: false, code: 'data_not_empty' }, entry);
-        await rm(join(empty.config.dataDir, entry));
-      }
-      await mkdir(join(empty.config.dataDir, 'not-a-uuid'));
-      assert.deepEqual(await call(empty, { kind: 'bind', bindingId: randomUUID() }), { ok: false, code: 'data_not_empty' });
-    } finally { await empty.close(); }
+      for (const entry of ['.hidden', 'notes.txt', 'lost+found']) await writeFile(join(stray.config.dataDir, entry), '');
+      await mkdir(join(stray.config.dataDir, 'not-a-uuid'));
+      const report = await call(stray, { kind: 'status' });
+      assert.ok(report.ok && 'slot' in report.result);
+      assert.deepEqual(report.result.slot.data, { bindings: [], other: 4 });
+    } finally { await stray.close(); }
   });
 
   test('a symlinked or loosened binding directory is refused for every CLI operation', async () => {
@@ -129,7 +132,7 @@ describe('binding directories', () => {
       assert.ok(report.ok && 'slot' in report.result && report.result.slot.data.other === 1 && report.result.slot.data.bindings.length === 0);
       // Release removes the link itself, never what it points to.
       const released = await call(unsafe, { kind: 'release', bindingId: linked });
-      assert.ok(released.ok && released.result.kind === 'release' && released.result.dataEmpty);
+      assert.ok(released.ok && released.result.kind === 'release' && released.result.deleted);
       assert.deepEqual(await readdir(unsafe.config.tmpDir), ['elsewhere']);
     } finally { await unsafe.close(); }
     const loose = await startTestSlot();
@@ -187,6 +190,88 @@ describe('fixed command templates and a clean CLI environment', () => {
     assert.ok(stop.ok && stop.result.kind === 'stop' && stop.result.state === 'not_running');
   });
 
+  test('#860: a release stops the person\'s run at once instead of waiting out its hour; nobody else\'s run is touched', async () => {
+    const mcp = createServer((_request, response) => {
+      response.setHeader('content-type', 'application/json');
+      response.end(JSON.stringify({ result: { tools: [{ name: 'flux_get_doc' }] } }));
+    });
+    await new Promise<void>((listening) => mcp.listen(0, '127.0.0.1', listening));
+    const server = await startTestSlot({ mcpUrl: `http://127.0.0.1:${(mcp.address() as AddressInfo).port}/mcp` });
+    try {
+      const runOf = (id: string): SupervisorRequest => ({ kind: 'run', bindingId: id, client: 'claude_code', runId: randomUUID(), prompt: 'Hello', runToken: 'aa.bb.cc',
+        tools: ['flux_get_doc'], caps: { maxTurns: 200, wallClockSeconds: 3600, idleSeconds: 600, maxAnswerBytes: 16384 } });
+      const [ada, jonas] = [randomUUID(), randomUUID()];
+      for (const id of [ada, jonas]) {
+        assert.ok((await call(server, { kind: 'bind', bindingId: id })).ok);
+        await writeFile(join(server.config.dataDir, id, 'claude', 'fake-scenario'), 'run_slow');
+      }
+      const [adaRequest, jonasRequest] = [runOf(ada), runOf(jonas)] as [Extract<SupervisorRequest, { kind: 'run' }>, Extract<SupervisorRequest, { kind: 'run' }>];
+      const running = [call(server, adaRequest), call(server, jonasRequest)];
+      for (const id of [ada, jonas]) {
+        for (let tries = 0; !(await calls(server, id)).some((entry) => (entry as { event?: string }).event === 'tools_list'); tries += 1) {
+          assert.ok(tries < 200, 'the CLI started');
+          await new Promise((wait) => setTimeout(wait, 50));
+        }
+      }
+      const third = randomUUID();
+      assert.ok((await call(server, { kind: 'bind', bindingId: third })).ok);
+      assert.deepEqual(await call(server, { kind: 'stop', bindingId: third, runId: jonasRequest.runId }), { ok: false, code: 'binding_mismatch' }, 'a stop names its person');
+      const released = await call(server, { kind: 'release', bindingId: ada });
+      assert.ok(released.ok && released.result.kind === 'release' && released.result.deleted, JSON.stringify(released));
+      const ended = await running[0]!;
+      assert.ok(ended.ok && ended.result.kind === 'run' && ended.result.outcome === 'stopped', JSON.stringify(ended));
+      const report = await call(server, { kind: 'status' });
+      assert.ok(report.ok && report.result.kind === 'status' && 'slot' in report.result);
+      assert.deepEqual([...report.result.slot.running].sort(), [adaRequest.runId, jonasRequest.runId].sort(), 'the report has the running one, and the one that just ended');
+      const still = await call(server, { kind: 'stop', bindingId: jonas, runId: jonasRequest.runId });
+      assert.ok(still.ok && still.result.kind === 'stop' && still.result.state === 'stopping', 'Jonas\'s run was still going');
+      const his = await running[1]!;
+      assert.ok(his.ok && his.result.kind === 'run' && his.result.outcome === 'stopped');
+    } finally {
+      await server.close();
+      await new Promise((closed) => mcp.close(closed));
+    }
+  });
+
+  test('#860: a link a CLI planted leads nowhere: the cleanup stays inside the person\'s directory and makes no file through it', async () => {
+    const server = await startTestSlot();
+    try {
+      const [ada, jonas] = [randomUUID(), randomUUID()];
+      for (const id of [ada, jonas]) assert.ok((await call(server, { kind: 'bind', bindingId: id })).ok);
+      const dir = join(server.config.dataDir, ada);
+      const his = join(server.config.dataDir, jonas);
+      await writeFile(join(his, 'claude', '.credentials.json'), 'his login');
+      const untouched = async () => assert.equal(await readFile(join(his, 'claude', '.credentials.json'), 'utf8'), 'his login');
+      await rm(join(dir, 'tmp'), { recursive: true });
+      await symlink(his, join(dir, 'tmp'));
+      assert.equal(await clearScratch(dir, null), true);
+      await untouched();
+      assert.ok((await lstat(join(dir, 'tmp'))).isDirectory(), 'her scratch is real again');
+      await rm(join(dir, 'claude'), { recursive: true });
+      await symlink(join(his, 'claude'), join(dir, 'claude'));
+      assert.equal(await clearClientFiles(dir, 'claude_code', null), true);
+      await untouched();
+      assert.ok((await lstat(join(dir, 'claude'))).isDirectory(), 'her CLI home is real again');
+      const stray = join(server.config.dataDir, 'stray-from-the-supervisor');
+      await symlink(stray, join(dir, 'unconfirmed-claude_code'));
+      await recordUnconfirmed(dir, 'claude_code');
+      await assert.rejects(lstat(stray), { code: 'ENOENT' }, 'the marker opens nothing that already stands there');
+      assert.equal(await hasUnconfirmed(dir, 'claude_code'), true, 'and what stands there counts as recorded');
+    } finally { await server.close(); }
+  });
+
+  test('#860: a sign-out leaves nothing of the sign-in in the person\'s scratch or in the shared /tmp', async () => {
+    const server = await startTestSlot();
+    try {
+      const id = randomUUID();
+      assert.ok((await call(server, { kind: 'bind', bindingId: id })).ok);
+      await writeFile(join(server.config.dataDir, id, 'tmp', 'left-by-the-sign-in'), 'x');
+      const out = await call(server, { kind: 'logout', bindingId: id, client: 'claude_code', bootId: server.config.bootId });
+      assert.ok(out.ok, JSON.stringify(out));
+      assert.deepEqual(await readdir(join(server.config.dataDir, id, 'tmp')), []);
+    } finally { await server.close(); }
+  });
+
   test('a run is refused while the binding directory exceeds its size limit', async () => {
     const small = await startTestSlot({ bindingLimitBytes: 64 * 1024 });
     try {
@@ -229,36 +314,40 @@ describe('fixed command templates and a clean CLI environment', () => {
 });
 
 describe('release', () => {
-  test('signs out every CLI, deletes the directory, confirms /data is empty, answers, then ends the process', async () => {
+  test('signs out every CLI and deletes that person\'s directory; the supervisor keeps serving everyone else (#860)', async () => {
     const slot = await startTestSlot();
     try {
       const bindingId = randomUUID();
+      const other = randomUUID();
       assert.ok((await call(slot, { kind: 'bind', bindingId })).ok);
+      assert.ok((await call(slot, { kind: 'bind', bindingId: other })).ok);
+      await signIn(slot, other, 'claude_code');
       await signIn(slot, bindingId, 'claude_code');
       await signIn(slot, bindingId, 'codex');
       const out = await call(slot, { kind: 'release', bindingId });
       assert.ok(out.ok && out.result.kind === 'release');
-      assert.deepEqual(out.result, { kind: 'release', bindingId, logout: { claude_code: 'ok', codex: 'ok' }, dataEmpty: true, exiting: true });
+      assert.deepEqual(out.result, { kind: 'release', bindingId, logout: { claude_code: 'ok', codex: 'ok' }, deleted: true });
       assert.deepEqual(out.ok && out.steps.map((step) => step.step), ['logout', 'logout', 'delete', 'verify']);
-      assert.deepEqual(await readdir(slot.config.dataDir), []);
-      await new Promise((done) => setTimeout(done, 50));
-      assert.equal(slot.released, 1, 'onReleased ran once the answer was sent');
-      // While it exits, nothing else is accepted.
-      assert.deepEqual(await call(slot, { kind: 'bind', bindingId: randomUUID() }), { ok: false, code: 'busy' });
+      assert.deepEqual(await readdir(slot.config.dataDir), [other]);
+      const signedIn = await call(slot, { kind: 'status', bindingId: other, client: 'claude_code', bootId: slot.config.bootId });
+      assert.ok(signedIn.ok && signedIn.result.kind === 'status' && 'client' in signedIn.result && signedIn.result.client.signedIn, 'the other person keeps their login');
+      assert.ok((await call(slot, { kind: 'bind', bindingId: randomUUID() })).ok, 'and the next person gets a place at once');
     } finally { await slot.close(); }
   });
 
-  test('does not end the process when /data cannot be confirmed empty', async () => {
-    const slot = await startTestSlot();
+  test('a person\'s slow command never holds up another person\'s (#860)', async () => {
+    const slot = await startTestSlot({ cliTimeoutMs: 2_500 });
     try {
-      const bindingId = randomUUID();
-      assert.ok((await call(slot, { kind: 'bind', bindingId })).ok);
-      await writeFile(join(slot.config.dataDir, 'stray'), '');
-      const out = await call(slot, { kind: 'release', bindingId });
-      assert.ok(out.ok && out.result.kind === 'release' && !out.result.dataEmpty && !out.result.exiting);
-      assert.equal(slot.released, 0);
-      assert.deepEqual(await readdir(slot.config.dataDir), ['stray']);
-      assert.ok((await call(slot, { kind: 'status' })).ok, 'the supervisor keeps answering, out of the pool');
+      const [ada, jonas] = [randomUUID(), randomUUID()];
+      assert.ok((await call(slot, { kind: 'bind', bindingId: ada })).ok);
+      assert.ok((await call(slot, { kind: 'bind', bindingId: jonas })).ok);
+      await writeFile(join(slot.config.dataDir, ada, 'claude', 'fake-scenario'), 'logout_hangs');
+      const started = Date.now();
+      const hanging = call(slot, { kind: 'logout', bindingId: ada, bootId: slot.config.bootId, client: 'claude_code' });
+      const other = await call(slot, { kind: 'status', bindingId: jonas, client: 'claude_code', bootId: slot.config.bootId });
+      assert.ok(other.ok, 'his request was answered');
+      assert.ok(Date.now() - started < 2_000, 'while hers still hung');
+      await hanging;
     } finally { await slot.close(); }
   });
 
@@ -273,7 +362,7 @@ describe('release', () => {
       const out = await call(slot, { kind: 'release', bindingId });
       assert.ok(out.ok && out.result.kind === 'release');
       assert.deepEqual(out.result.logout, { claude_code: 'timeout', codex: 'failed' });
-      assert.equal(out.result.dataEmpty, true);
+      assert.equal(out.result.deleted, true);
     } finally { await slot.close(); }
   });
 
@@ -396,7 +485,7 @@ describe('Codex in the slot (F-022 T6, #281): its JSONL words, status, preflight
       const bindingId = randomUUID();
       assert.ok((await callSupervisor(target(slot), { kind: 'bind', bindingId })).ok);
       const dir = join(slot.config.dataDir, bindingId);
-      const session = await openAppServer(slot.config.cliPaths.codex, dir, '127.0.0.1', { timeoutMs: 10_000 });
+      const session = await openAppServer(slot.config.cliPaths.codex, dir, '127.0.0.1', { timeoutMs: 10_000, person: null });
       for (const method of ['command/exec', 'thread/start', 'turn/start', 'config/write', 'initialize']) {
         await assert.rejects(session.request(method, {}), (error: Error) => error.name === 'AppServerMethodRefused', method);
       }

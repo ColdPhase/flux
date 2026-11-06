@@ -1,6 +1,7 @@
-import { reconcileAgentRuntime, type AgentRuntimeConfig } from '@flux/core';
+import { reconcileAgentRuntime, recoverLostRuntimeRuns, type AgentRuntimeConfig } from '@flux/core';
 import { agentRuntimeStore, withRuntimeReconcileLock, type Database } from '@flux/db';
 import { createRuntimeManagerClient, runtimeManagerPort } from '@flux/runtime-protocol';
+import { personalRunWorkerUnitOfWork } from '../personal-runs/adapters.js';
 
 // The worker's side of the `runtime` transport (F-022 T3): it reconciles the database's bindings with
 // each slot through runtime-manager at start (which is what makes a restore safe) and then every few
@@ -19,7 +20,8 @@ export function startAgentRuntimeReconciler({ config, db, pool, env }: { config:
     if (running) return;
     running = (async () => {
       try {
-        const report = await withRuntimeReconcileLock(pool, () => reconcileAgentRuntime({ config, store, manager, log }));
+        const report = await withRuntimeReconcileLock(pool, () => reconcileAgentRuntime({ config, store, manager, log,
+          endLostRuns: (active) => recoverLostRuntimeRuns(personalRunWorkerUnitOfWork(db), active) }));
         if (!report) return;
         if (report.error) { if (report.error !== lastError) log({ event: 'manager_unavailable', code: report.error }); lastError = report.error; return; }
         lastError = '';

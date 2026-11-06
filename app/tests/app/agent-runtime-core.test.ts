@@ -88,30 +88,26 @@ function memoryStore() {
         binding,
         auth: [...operations.values()].filter(op => valid(op)).map(op => ({ client: op.client, kind: op.kind })),
         lastRelease: last ? { reason: last.releaseReason!, at: last.releasedAt!, signOutFailed: last.logoutFailed === true } : null,
-        slots: { ready: all.filter((s) => s.state === 'ready' && !live().some((b) => b.slot === s.slot)).length, held: live().length,
-          total: all.filter((s) => s.state !== 'out_of_pool').length },
+        slots: { ready: all.filter((s) => s.state === 'ready').length },
         commercialTerms: null,
       };
     },
     async reserve(owner, id) {
       const existing = live().find((b) => b.ownerUserId === owner);
       if (existing) return { kind: 'existing', binding: existing };
-      const free = [...slots.values()].find((s) => s.state === 'ready' && !live().some((b) => b.slot === s.slot));
-      if (!free) return [...slots.values()].filter((s) => s.state !== 'out_of_pool').length && live().length >= [...slots.values()].filter((s) => s.state !== 'out_of_pool').length ? { kind: 'full' } : { kind: 'starting' };
-      const binding = { id, ownerUserId: owner, slot: free.slot, state: 'binding' as const, createdAt: new Date(), lastUsedAt: null, releaseReason: null, releasedAt: null };
+      const ready = [...slots.values()].filter((s) => s.state === 'ready').sort((a, b) => live().filter((x) => x.slot === a.slot).length - live().filter((x) => x.slot === b.slot).length)[0];
+      if (!ready) return { kind: 'starting' };
+      const binding = { id, ownerUserId: owner, slot: ready.slot, state: 'binding' as const, createdAt: new Date(), lastUsedAt: null, releaseReason: null, releasedAt: null };
       bindings.push(binding);
-      free.state = 'held';
       return { kind: 'reserved', binding };
     },
     async activate(id) { const b = bindings.find((x) => x.id === id && ['binding', 'sign_in_again'].includes(x.state)); if (b) b.state = 'active'; },
-    async abandon(id, slot) {
+    async abandon(id) {
       const index = bindings.findIndex((b) => b.id === id && b.state === 'binding');
-      if (index < 0) return;
-      const [b] = bindings.splice(index, 1);
-      Object.assign(slots.get(b!.slot)!, slot.state === 'out_of_pool' ? { state: 'out_of_pool', outOfPoolReason: slot.reason } : { state: 'unknown' });
+      if (index >= 0) bindings.splice(index, 1);
     },
     async requestRelease(target, reason) {
-      const b = live().find((x) => ('ownerUserId' in target ? x.ownerUserId === target.ownerUserId : x.slot === target.slot) && x.state !== 'releasing');
+      const b = live().find((x) => ('ownerUserId' in target ? x.ownerUserId === target.ownerUserId : x.id === target.bindingId) && x.state !== 'releasing');
       if (!b) return null;
       b.state = 'releasing'; b.releaseReason = reason;
       revoke(b.id);
@@ -159,24 +155,17 @@ function memoryStore() {
     async dismissAccountNotice(owner, client) {
       for (const c of connections) if (c.ownerUserId === owner && c.client === client && !c.revoked) Object.assign(c, { accountChangedAt: null, previousAccountLabel: null });
     },
-    async slotsWithBindings() { return [...slots.values()].map((slot) => ({ slot: { ...slot }, binding: live().find((b) => b.slot === slot.slot) ?? null })); },
-    // As the database does: with `expected` the row is replaced only while it still has that state and wipe boot id.
-    async saveSlot(slot, expected) {
-      const current = slots.get(slot.slot);
-      if (expected && current && (current.state !== expected.state || current.wipeBootId !== expected.wipeBootId)) return;
-      slots.set(slot.slot, { ...slot });
-    },
+    async slotsWithBindings() { return [...slots.values()].map((slot) => ({ slot: { ...slot }, bindings: live().filter((b) => b.slot === slot.slot) })); },
+    async saveSlot(slot) { slots.set(slot.slot, { ...slot }); },
     async markSignInAgain(id) { const b = bindings.find((x) => x.id === id && x.state === 'active'); if (b) b.state = 'sign_in_again'; },
-    async completeRelease(id, slot, logoutFailed) {
+    async completeRelease(id, logoutFailed) {
       const b = bindings.find((x) => x.id === id && x.state === 'releasing');
       if (b) { (b as { state: string }).state = 'released'; b.releasedAt = new Date(); b.logoutFailed = logoutFailed; }
-      slots.set(slot.slot, { ...slot });
     },
     async dropStaleReservation(id, olderThan) {
       const index = bindings.findIndex((b) => b.id === id && b.state === 'binding' && b.createdAt < olderThan);
       if (index < 0) return false;
-      const [b] = bindings.splice(index, 1);
-      slots.get(b!.slot)!.state = 'unknown';
+      bindings.splice(index, 1);
       return true;
     },
     async idleBindings(before) { return live().filter((b) => b.state === 'active' && (b.lastUsedAt ?? b.createdAt) < before); },
@@ -184,29 +173,27 @@ function memoryStore() {
   return { store, slots, bindings, connections, history };
 }
 
-/** A scripted runtime-manager: each slot holds directories and a boot id; release empties it and "restarts" it. */
+/** A scripted runtime-manager: each runtime holds people's directories and a boot id. */
 function fakeManager(names: string[]) {
-  const state = new Map(names.map((slot) => [slot, { bootId: randomUUID(), dirs: [] as string[], other: 0, reachable: true }]));
+  const state = new Map(names.map((slot) => [slot, { bootId: randomUUID(), dirs: [] as string[], other: 0, reachable: true, running: [] as string[] }]));
   const calls: string[] = [];
   const manager: RuntimeManagerPort = {
     async slots() {
       return { ok: true, value: [...state.entries()].map(([slot, s]): RuntimeSlotSighting => s.reachable
-        ? { slot, reachable: true, bootId: s.bootId, bindings: [...s.dirs], other: s.other } : { slot, reachable: false, error: 'unreachable' }) };
+        ? { slot, reachable: true, bootId: s.bootId, bindings: [...s.dirs], other: s.other, capacity: 2, running: [...s.running] } : { slot, reachable: false, error: 'unreachable' }) };
     },
     async bind(slot, id) {
       calls.push(`bind ${slot}`);
       const s = state.get(slot)!;
-      if (s.dirs.length || s.other) return s.dirs.length === 1 && s.dirs[0] === id ? { ok: true, value: undefined } : { ok: false, code: 'data_not_empty' };
-      s.dirs.push(id);
+      if (!s.reachable) return { ok: false, code: 'unreachable' };
+      if (!s.dirs.includes(id)) s.dirs.push(id);
       return { ok: true, value: undefined };
     },
     async release(slot, id) {
       calls.push(`release ${slot}`);
       const s = state.get(slot)!;
       s.dirs = s.dirs.filter((dir) => dir !== id);
-      const dataEmpty = !s.dirs.length && !s.other;
-      if (dataEmpty) s.bootId = randomUUID(); // the supervisor exited and restarted
-      return { ok: true, value: { dataEmpty, logoutFailed: false, notInstalled: [] } };
+      return { ok: true, value: { deleted: true, logoutFailed: false, notInstalled: [] } };
     },
     async status(slot, id, client) {
       calls.push(`status ${slot} ${client}`);
@@ -224,24 +211,21 @@ function fakeManager(names: string[]) {
   return { manager, state, calls, reported };
 }
 
-describe('binding a slot to its owner', () => {
-  test('two owners get two slots; a third sees the pool full; binding is idempotent', async () => {
-    const { store } = memoryStore();
-    const { manager, state } = fakeManager(['runtime-1', 'runtime-2']);
+describe('a place in the runtime', () => {
+  test('there is no fixed number of people: everyone gets a place in the one runtime; binding is idempotent (#860)', async () => {
+    const { store, slots } = memoryStore();
+    const { manager, state } = fakeManager(['runtime-1']);
     const runtime = agentRuntimeUseCases(on, store, manager);
-    assert.equal((await runtime.status('ada')).pool, 'starting', 'nothing is bindable before the worker saw the slots');
+    assert.equal((await runtime.status('ada')).pool, 'starting', 'nothing is bindable before the worker saw the runtime');
     await reconcileAgentRuntime({ config: on, store, manager });
     assert.equal((await runtime.status('ada')).pool, 'available');
+    assert.equal(slots.get('runtime-1')!.capacity, 2, 'the worker records how many agents it runs at once');
     const ada = await runtime.bind('ada');
     assert.equal(ada.binding?.state, 'active');
     assert.deepEqual(await runtime.bind('ada'), ada);
-    assert.equal((await runtime.bind('jonas')).binding?.state, 'active');
-    const slotsOf = [...state.values()].map((s) => s.dirs.length);
-    assert.deepEqual(slotsOf, [1, 1]);
-    await assert.rejects(runtime.bind('mia'), (error: DomainError) => error.code === 'AGENT_RUNTIME_POOL_FULL' && error.status === 409);
-    const mia = await runtime.status('mia');
-    assert.equal(mia.pool, 'full');
-    assert.equal(mia.binding, null);
+    for (let person = 0; person < 20; person += 1) assert.equal((await runtime.bind(`person-${person}`)).binding?.state, 'active');
+    assert.equal(state.get('runtime-1')!.dirs.length, 21);
+    assert.equal((await runtime.status('person-19')).pool, 'available');
   });
 
   test('off: status says so and every command answers AGENT_RUNTIME_OFF', async () => {
@@ -265,78 +249,104 @@ describe('binding a slot to its owner', () => {
     assert.equal((await claudeOnly.status('ada')).clients.codex, 'off');
   });
 
-  test('a slot that refuses the bind (stray entry) leaves the pool and the owner may try again', async () => {
-    const { store, slots } = memoryStore();
-    const { manager, state } = fakeManager(['runtime-1', 'runtime-2']);
+  test('a runtime that cannot prepare a place drops the reservation and the owner may try again', async () => {
+    const { store, bindings } = memoryStore();
+    const { manager, state } = fakeManager(['runtime-1']);
     await reconcileAgentRuntime({ config: on, store, manager });
-    state.get('runtime-1')!.other = 1; // appeared after the report
+    state.get('runtime-1')!.reachable = false;
     const runtime = agentRuntimeUseCases(on, store, manager);
     await assert.rejects(runtime.bind('ada'), (error: DomainError) => error.code === 'AGENT_RUNTIME_UNAVAILABLE');
-    assert.equal(slots.get('runtime-1')!.state, 'out_of_pool');
-    assert.equal((await runtime.bind('ada')).binding?.state, 'active', 'the next attempt uses another slot');
+    assert.equal(bindings.length, 0);
+    state.get('runtime-1')!.reachable = true;
+    assert.equal((await runtime.bind('ada')).binding?.state, 'active');
   });
 });
 
 describe('release and reuse', () => {
-  test('remove → sign out, delete, exit; the slot is bound again only after a new boot id and an empty /data', async () => {
+  test('#860: reconciling ends the runs no runtime has, only when every runtime answered', async () => {
+    const { manager, state } = fakeManager(['runtime-1']);
+    state.get('runtime-1')!.running = ['run-a'];
+    const seen: string[][] = [];
+    const endLostRuns = async (running: string[]) => { seen.push(running); return 0; };
+    await reconcileAgentRuntime({ config: on, store: memoryStore().store, manager, endLostRuns });
+    assert.deepEqual(seen, [['run-a']]);
+    state.get('runtime-1')!.reachable = false;
+    await reconcileAgentRuntime({ config: on, store: memoryStore().store, manager, endLostRuns });
+    assert.equal(seen.length, 1, 'a runtime that did not answer may still have its runs');
+  });
+
+  test('remove → sign out and delete that person only; nobody else is touched and the runtime stays ready (#860)', async () => {
     const { store, slots } = memoryStore();
     const { manager, state, calls } = fakeManager(['runtime-1']);
     const runtime = agentRuntimeUseCases(on, store, manager);
     await reconcileAgentRuntime({ config: on, store, manager });
     await runtime.bind('ada');
-    const bootBefore = state.get('runtime-1')!.bootId;
+    await runtime.bind('jonas');
+    const boot = state.get('runtime-1')!.bootId;
     assert.equal((await runtime.remove('ada')).binding?.state, 'releasing');
-    await assert.rejects(runtime.bind('jonas'), (error: DomainError) => error.code === 'AGENT_RUNTIME_POOL_FULL');
-    // The supervisor exits after the release, but its old boot id answers once more (the restart is slower).
-    const release = manager.release.bind(manager);
-    manager.release = async (slot, id) => { const out = await release(slot, id); state.get(slot)!.bootId = bootBefore; return out; };
-    const first = await reconcileAgentRuntime({ config: on, store, manager });
-    assert.equal(first.released.length, 1);
-    assert.equal(slots.get('runtime-1')!.state, 'wiping');
-    await reconcileAgentRuntime({ config: on, store, manager });
-    assert.equal(slots.get('runtime-1')!.state, 'wiping', 'the same boot id is not a fresh process');
-    await assert.rejects(runtime.bind('jonas'), (error: DomainError) => error.code === 'AGENT_RUNTIME_UNAVAILABLE');
-    state.get('runtime-1')!.bootId = randomUUID(); // the restart policy started a new supervisor
-    await reconcileAgentRuntime({ config: on, store, manager });
+    assert.equal((await runtime.bind('mia')).binding?.state, 'active', 'a release holds nobody else back');
+    const report = await reconcileAgentRuntime({ config: on, store, manager });
+    assert.equal(report.released.length, 1);
     assert.equal(slots.get('runtime-1')!.state, 'ready');
-    assert.equal((await runtime.bind('jonas')).binding?.state, 'active');
+    assert.equal(state.get('runtime-1')!.bootId, boot, 'the runtime does not restart');
+    assert.equal(state.get('runtime-1')!.dirs.length, 2);
+    assert.equal((await runtime.status('jonas')).binding?.state, 'active');
     assert.deepEqual((await runtime.status('ada')).lastRelease?.reason, 'owner');
     assert.deepEqual(calls.filter((c) => c.startsWith('release')), ['release runtime-1']);
   });
 
+  test('a release that could not delete everything stays pending and is tried again', async () => {
+    const { store } = memoryStore();
+    const { manager } = fakeManager(['runtime-1']);
+    const runtime = agentRuntimeUseCases(on, store, manager);
+    await reconcileAgentRuntime({ config: on, store, manager });
+    await runtime.bind('ada');
+    await runtime.remove('ada');
+    const release = manager.release.bind(manager);
+    manager.release = async () => ({ ok: true, value: { deleted: false, logoutFailed: false, notInstalled: [] } });
+    assert.deepEqual((await reconcileAgentRuntime({ config: on, store, manager })).released, []);
+    assert.equal((await runtime.status('ada')).binding?.state, 'releasing');
+    manager.release = release;
+    assert.equal((await reconcileAgentRuntime({ config: on, store, manager })).released.length, 1);
+  });
+
   test('after a restore: a binding without a directory shows Sign in again; a directory without a binding is released', async () => {
     const { store, bindings, slots } = memoryStore();
-    const { manager, state } = fakeManager(['runtime-1', 'runtime-2']);
+    const { manager, state } = fakeManager(['runtime-1']);
     const runtime = agentRuntimeUseCases(on, store, manager);
     await reconcileAgentRuntime({ config: on, store, manager });
     await runtime.bind('ada');
     await runtime.bind('jonas');
-    const adaSlot = bindings.find((b) => b.ownerUserId === 'ada')!.slot;
-    const jonasSlot = bindings.find((b) => b.ownerUserId === 'jonas')!.slot;
+    await runtime.bind('mia');
+    const dirs = state.get('runtime-1')!;
+    const adaDir = bindings.find((b) => b.ownerUserId === 'ada')!.id;
+    const jonasDir = bindings.find((b) => b.ownerUserId === 'jonas')!.id;
+    const miaDir = bindings.find((b) => b.ownerUserId === 'mia')!.id;
     // The restored database: Ada's directory is gone (volume newer than the backup), and Jonas's binding
     // is not in it although his directory is.
-    state.get(adaSlot)!.dirs = [];
+    dirs.dirs = dirs.dirs.filter((dir) => dir !== adaDir);
     bindings.splice(bindings.findIndex((b) => b.ownerUserId === 'jonas'), 1);
     const report = await reconcileAgentRuntime({ config: on, store, manager });
     assert.equal(report.orphans, 1);
     assert.equal((await runtime.status('ada')).binding?.state, 'sign_in_again');
-    assert.deepEqual(state.get(jonasSlot)!.dirs, []);
-    assert.equal(slots.get(jonasSlot)!.state, 'wiping');
-    // Signing in again binds the same slot afresh.
+    assert.deepEqual(dirs.dirs, [miaDir], 'only his directory went');
+    assert.equal(slots.get('runtime-1')!.state, 'ready');
+    assert.ok(jonasDir);
+    // Signing in again makes her place afresh.
     assert.equal((await runtime.bind('ada')).binding?.state, 'active');
-    assert.deepEqual(state.get(adaSlot)!.dirs.length, 1);
+    assert.equal(dirs.dirs.length, 2);
   });
 
-  test('a bind that commits while the worker reconciles is not overwritten with the older decision (#331 m8)', async () => {
-    const { store, slots } = memoryStore();
-    const { manager } = fakeManager(['runtime-1']);
+  test('a directory made while the worker reconciles is not taken for an orphan (#331 m8)', async () => {
+    const { store } = memoryStore();
+    const { manager, state } = fakeManager(['runtime-1']);
     const runtime = agentRuntimeUseCases(on, store, manager);
     await reconcileAgentRuntime({ config: on, store, manager });
-    assert.equal(slots.get('runtime-1')!.state, 'ready');
-    const read = store.slotsWithBindings.bind(store);
-    store.slotsWithBindings = async () => { const rows = await read(); await runtime.bind('ada'); return rows; };
-    await reconcileAgentRuntime({ config: on, store, manager });
-    assert.equal(slots.get('runtime-1')!.state, 'held', 'the stale "ready" did not replace "held"');
+    const sightings = manager.slots.bind(manager);
+    manager.slots = async () => { const seen = await sightings(); await runtime.bind('ada'); return seen; };
+    const report = await reconcileAgentRuntime({ config: on, store, manager });
+    assert.equal(report.orphans, 0);
+    assert.equal(state.get('runtime-1')!.dirs.length, 1);
     assert.equal((await runtime.status('ada')).binding?.state, 'active');
   });
 
@@ -359,16 +369,14 @@ describe('release and reuse', () => {
     assert.equal((await runtime.status('ada')).binding?.state, 'active');
   });
 
-  test('stray entries put a slot out of the pool until the operator fixes it and the supervisor restarts', async () => {
+  test('a stray entry takes the runtime out of use until the operator removes it', async () => {
     const { store, slots } = memoryStore();
     const { manager, state } = fakeManager(['runtime-1']);
     state.get('runtime-1')!.other = 2;
     const first = await reconcileAgentRuntime({ config: on, store, manager });
     assert.deepEqual(first.outOfPool, ['runtime-1']);
+    assert.equal(slots.get('runtime-1')!.outOfPoolReason, 'data_not_empty');
     state.get('runtime-1')!.other = 0;
-    await reconcileAgentRuntime({ config: on, store, manager });
-    assert.equal(slots.get('runtime-1')!.state, 'out_of_pool', 'still the same process');
-    state.get('runtime-1')!.bootId = randomUUID();
     await reconcileAgentRuntime({ config: on, store, manager });
     assert.equal(slots.get('runtime-1')!.state, 'ready');
   });
@@ -600,7 +608,7 @@ describe('sign-in to Claude Code (T4 #279)', () => {
 
     test('a failed or skipped sign-out reported by the slot is unconfirmed whatever the history says', async () => {
       const c = await owned();
-      c.manager.release = async () => ({ ok: true, value: { dataEmpty: true, logoutFailed: true, notInstalled: [] } });
+      c.manager.release = async () => ({ ok: true, value: { deleted: true, logoutFailed: true, notInstalled: [] } });
       await c.runtime.remove('ada');
       const report = await reconcileAgentRuntime({ config: on, store: c.store, manager: c.manager });
       assert.equal(report.logoutFailed.length, 1);

@@ -16,8 +16,8 @@ worker and one keyring on one Docker host, and that is the only deployment that 
   install passes its own file with `-f` after `compose.yaml`).
 - **Disk.** The database keeps every saved version. Watch the `pgdata` volume and keep room for a
   backup, which needs about twice its size while it is written.
-- **Agent runtime.** Four slots by default, each up to 2 GB while it runs. [More
-  slots](agent-runtime.md#more-slots) are added with a Compose override in a source checkout.
+- **Agent runtime.** Everyone with Connect AI has a place; how many agents run at once follows from
+  memory, about 2 on 4 GB, and the others wait ([what each agent needs](agent-runtime.md#what-each-agent-needs)).
 - **Live media.** Calls run in LiveKit with a configured limit of 16 people per room; CPU and
   bandwidth grow with each call. That limit is configured, not a measured capacity.
 

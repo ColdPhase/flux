@@ -1,62 +1,97 @@
 import { randomUUID } from 'node:crypto';
-import { chmod, lstat, readFile } from 'node:fs/promises';
+import { chmod, chown, lstat, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { url as inspectorUrl } from 'node:inspector';
+import { totalmem } from 'node:os';
 import { parseRuntimeSwitch, RUNTIME_PORTS, RUNTIME_SECRET, SLOT_NAME } from '@flux/runtime-protocol';
+import { runCapacity } from './capacity.js';
 import type { SupervisorConfig } from './handlers.js';
+import { hostProblem } from './requirements.js';
 import { createSupervisorServer } from './server.js';
 import { CLI_PATHS } from './templates.js';
 
-// A runtime slot's main process (F-022 "The supervisor"). It reads its slot name and its own secret
-// from the environment Compose gives this slot only, keeps a fresh boot id, and listens on the slot's
-// network for the manager. It never logs a request body, CLI output or a credential.
+// The runtime's main process (F-022 "The supervisor", #860): one supervisor for everyone. It reads its name and its own secret
+// from the environment Compose gives it, keeps a fresh boot id, and listens on its network for the manager. Each person's CLIs
+// run under their own user id, so this process keeps only the capabilities that takes. It never logs a request body, CLI output
+// or a credential.
 
-// The CLI shares our uid, but must not read our /proc environ or write our memory. A slot
-// with missing hardening or ptrace_scope=0 never listens, so the worker cannot admit it.
-// A same-uid CLI can send SIGUSR1. Without this flag Node opens an inspector that
-// can evaluate code and expose the secret despite /proc protection.
-if (process.execArgv.length !== 1 || process.execArgv[0] !== '--disable-sigusr1' || process.env.NODE_OPTIONS || inspectorUrl()) {
-  throw new Error('Runtime slots require only --disable-sigusr1, empty NODE_OPTIONS and no active inspector; no slot was admitted');
+/** The file the Compose health check looks for: written only once the supervisor listens. */
+const READY_FILE = '/tmp/.flux-runtime-ready';
+
+/**
+ * Stops the runtime with one clear message and the fix. It does not exit: the restart policy would start it again every few
+ * seconds forever (#860). It stays up without listening, its health check stays red, and `./flux up` fails with this line.
+ */
+function refuse(message: string): never {
+  console.error(JSON.stringify({ event: 'runtime_refused', message }));
+  setInterval(() => undefined, 2 ** 30);
+  process.on('SIGTERM', () => process.exit(0));
+  process.on('SIGINT', () => process.exit(0));
+  throw new RuntimeRefused();
 }
-// No Yama module at all (Docker Desktop's LinuxKit kernel) is the same refusal as scope 0: absence never
-// bypasses the gate.
-const ptraceScope = (await readFile('/proc/sys/kernel/yama/ptrace_scope', 'utf8').catch(() => '')).trim();
-if (!/^[1-3]$/.test(ptraceScope)) throw new Error('Runtime slots require Linux Yama ptrace_scope >= 1, and this kernel has none or allows 0 (Docker Desktop is unsupported); no slot was admitted');
-createRequire(import.meta.url)('../../native/protect.node');
+class RuntimeRefused extends Error {}
 
-const env = process.env;
-const slot = env.FLUX_RUNTIME_SLOT ?? '';
-const secret = env.FLUX_RUNTIME_SLOT_SECRET ?? '';
-if (!SLOT_NAME.test(slot)) throw new Error('FLUX_RUNTIME_SLOT must name this slot (runtime-<n>)');
-if (!RUNTIME_SECRET.test(secret)) throw new Error(`FLUX_RUNTIME_SLOT_SECRET for ${slot} is missing or shorter than 32 characters; ./flux generates it in docker/.env`);
+async function start() {
+  // The CLIs must not read this process's /proc environ or write its memory, and a CLI must not open its inspector. A runtime with
+  // missing hardening or ptrace_scope=0 never listens, so the worker cannot admit it.
+  if (process.execArgv.length !== 1 || process.execArgv[0] !== '--disable-sigusr1' || process.env.NODE_OPTIONS || inspectorUrl()) {
+    refuse('The agent runtime must start with only --disable-sigusr1, an empty NODE_OPTIONS and no active inspector. Use the image of this version as it is.');
+  }
+  // No Yama module at all (Docker Desktop's LinuxKit kernel) is the same refusal as scope 0: absence never bypasses the gate.
+  const status = await readFile('/proc/self/status', 'utf8').catch(() => '');
+  const problem = hostProblem({
+    ptraceScope: await readFile('/proc/sys/kernel/yama/ptrace_scope', 'utf8').catch(() => ''),
+    uid: process.getuid?.() ?? null,
+    effectiveCapabilities: /^CapEff:\s+([0-9a-f]+)$/m.exec(status)?.[1] ?? '',
+  });
+  if (problem) refuse(problem);
+  // Root's supplementary groups must not follow a person's CLI: `spawn` drops them, the sign-in console's terminal does not.
+  process.setgroups?.([]);
+  createRequire(import.meta.url)('../../native/protect.node');
 
-const dataDir = '/data';
-const data = await lstat(dataDir);
-if (!data.isDirectory() || data.isSymbolicLink() || (process.getuid && data.uid !== process.getuid())) throw new Error('/data must be this slot\'s own directory');
-if ((data.mode & 0o777) !== 0o700) await chmod(dataDir, 0o700);
+  const env = process.env;
+  const slot = env.FLUX_RUNTIME_SLOT ?? '';
+  const secret = env.FLUX_RUNTIME_SLOT_SECRET ?? '';
+  if (!SLOT_NAME.test(slot)) refuse('FLUX_RUNTIME_SLOT must name this runtime (runtime-<n>). Use the Compose files of this version.');
+  if (!RUNTIME_SECRET.test(secret)) refuse(`FLUX_RUNTIME_SLOT_SECRET for ${slot} is missing or shorter than 32 characters; ./flux generates it in docker/.env.`);
 
-const config: SupervisorConfig = {
-  slot,
-  secret,
-  bootId: randomUUID(),
-  dataDir,
-  tmpDir: '/tmp',
-  enabled: parseRuntimeSwitch(env.FLUX_AGENT_RUNTIME),
-  cliPaths: CLI_PATHS,
-  egressHost: 'runtime-egress',
-  bindingLimitBytes: 256 * 1024 * 1024,
-  cliTimeoutMs: 30_000,
-};
+  // People's directories sit under a directory only the supervisor can list.
+  const dataDir = '/data';
+  const data = await lstat(dataDir);
+  if (!data.isDirectory() || data.isSymbolicLink()) refuse('/data must be the runtime\'s own volume.');
+  if (data.uid !== 0) await chown(dataDir, 0, 0);
+  await chmod(dataDir, 0o711);
 
-const { server } = createSupervisorServer(config, () => {
-  console.log(JSON.stringify({ event: 'released', slot, bootId: config.bootId }));
-  server.close();
-  // The restart policy starts a fresh process: a new boot id and an empty tmpfs /tmp.
-  process.exit(0);
-});
-server.listen(RUNTIME_PORTS.supervisor, '0.0.0.0', () => {
-  console.log(JSON.stringify({ event: 'ready', slot, bootId: config.bootId, enabled: config.enabled }));
-});
-const stop = () => { server.close(); process.exit(0); };
-process.on('SIGTERM', stop);
-process.on('SIGINT', stop);
+  let capacity = 1;
+  try {
+    // This container's memory limit, when it has one below the machine's.
+    const limit = process.constrainedMemory();
+    capacity = runCapacity(env.FLUX_RUNTIME_MAX_RUNS, limit > 0 ? Math.min(limit, totalmem()) : totalmem());
+  } catch (error) { refuse((error as Error).message); }
+
+  const config: SupervisorConfig = {
+    slot,
+    secret,
+    bootId: randomUUID(),
+    dataDir,
+    tmpDir: '/tmp',
+    separate: true,
+    capacity,
+    enabled: parseRuntimeSwitch(env.FLUX_AGENT_RUNTIME),
+    cliPaths: CLI_PATHS,
+    egressHost: 'runtime-egress',
+    bindingLimitBytes: 256 * 1024 * 1024,
+    cliTimeoutMs: 30_000,
+  };
+
+  const { server } = createSupervisorServer(config);
+  server.listen(RUNTIME_PORTS.supervisor, '0.0.0.0', () => {
+    // Only the health check reads it, as root. The container's /tmp is new at each start, so nobody can have put anything here first.
+    void writeFile(READY_FILE, '', { mode: 0o600, flag: 'wx' }).catch(() => undefined).then(() => console.log(JSON.stringify({ event: 'ready', slot, bootId: config.bootId, enabled: config.enabled, capacity })));
+  });
+  const stop = () => { server.close(); process.exit(0); };
+  process.on('SIGTERM', stop);
+  process.on('SIGINT', stop);
+}
+
+await start().catch((error: unknown) => { if (!(error instanceof RuntimeRefused)) throw error; });

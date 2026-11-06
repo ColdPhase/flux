@@ -114,8 +114,8 @@ function endChanges(reason: AssistantRunEndReason | 'stopped' | 'unavailable', p
       return ended('provider_failed', null, { ...used, endReason: reason });
     // F-029: the CLI was stopped because AI was turned off in the run's workspace.
     case 'ai_off': return ended('ai_off', 'before_commit', used);
-    // A plan has no budget or API credits; an API key's run never comes here.
-    case 'budget': case 'credits': return ended('provider_failed', null, used);
+    // A plan has no budget or API credits and an API key's run never comes here; a run that waited for room is claimed, not ended.
+    case 'budget': case 'credits': case 'no_room': return ended('provider_failed', null, used);
   }
 }
 
@@ -229,11 +229,17 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         // A request paused by the plan's limit waits for the plan's reset (#854).
         if (run.resumeAt && run.resumeAt.getTime() > now()) return null;
         // One lane per owner: a request behind the one that is working waits for it to end (AST-6 queue).
+        await ports.runs.lockLane(run.ownerUserId);
         if (await ports.runs.laneBusy(run.ownerUserId, run.id)) return null;
         const refusal = await checked(ports, run, 'before_read', true);
         if (refusal) return { done: true as const, status: (await updateAndAnnounce(ports, run.id, ended(refusal, 'before_read', free))).status };
+        // The server runs as many agents as fit in its memory; the others wait, in order, with one line (#860).
+        if (!(await ports.runs.roomForRuntimeRun())) {
+          if (run.endReason !== 'no_room') await updateAndAnnounce(ports, run.id, { endReason: 'no_room', resumeAt: null, planLimitResetsAt: null });
+          return null;
+        }
         return { done: false as const, run: await updateAndAnnounce(ports, run.id, {
-          status: 'reading', ...(run.resumeAt ? { resumeAt: null, endReason: null, planLimitResetsAt: null } : {}) }) };
+          status: 'reading', ...(run.resumeAt || run.endReason ? { resumeAt: null, endReason: null, planLimitResetsAt: null } : {}) }) };
       });
       if (!claimed) return 'skipped';
       if (claimed.done) return claimed.status;

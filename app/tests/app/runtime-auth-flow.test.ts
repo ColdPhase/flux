@@ -33,11 +33,11 @@ async function setup() {
   const owner = await insertedHuman('auth-core-owner'), sessionId = randomUUID(), bindingId = randomUUID(), bootId = randomUUID();
   const slot = `runtime-${900 + Math.floor(Math.random()*99)}`;
   await pool.query(`INSERT INTO auth_sessions(id,user_id,token,expires_at) VALUES ($1,$2,$3,clock_timestamp()+interval '1 hour')`, [sessionId,owner.id,`fixture-${randomUUID()}`]);
-  await pool.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES ($1,'held',$2)`, [slot,bootId]);
+  await pool.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES ($1,'ready',$2)`, [slot,bootId]);
   await pool.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES ($1,$2,$3,'active')`, [bindingId,owner.id,slot]);
   const manager: RuntimeManagerPort = {
     async slots() { return { ok: true, value: [] }; }, async bind() { return { ok:true,value:undefined }; },
-    async release() { return { ok: true,value:{ dataEmpty:true,logoutFailed:false,notInstalled:[] } }; },
+    async release() { return { ok: true,value:{ deleted:true,logoutFailed:false,notInstalled:[] } }; },
     async status() { return { ok:true,value:{ ...signed,bootId } }; },
     async logout() { return { ok:true,value:{ logout:'ok',bootId } }; },
   };

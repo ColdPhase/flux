@@ -4,11 +4,11 @@
 # source checkout's `./flux up`, `./flux ai on` and `./flux runtime ...` do, with `docker compose` only:
 #
 #   sh runtime.sh on codex|claude_code|claude_code,codex [--commercial-terms YYYY-MM-DD]
-#   sh runtime.sh off        # stop the runtime services; slot volumes and logins stay
+#   sh runtime.sh off        # stop the runtime services; their volumes and logins stay
 #   sh runtime.sh up         # apply the switch in .env (use it instead of `docker compose up` once it is on)
 #   sh runtime.sh status
 #   sh runtime.sh release runtime-<n>
-#   sh runtime.sh purge [-y] # sign every CLI out, delete the slot volumes and the tools volume
+#   sh runtime.sh purge [-y] # sign every CLI out, delete the runtime's volumes and the tools volume
 #
 # claude_code needs your own agreement to Anthropic's Commercial Terms with Anthropic; the date you pass
 # is recorded, not verified. No Docker socket is used; the script only runs `docker compose` and `docker volume`.
@@ -60,8 +60,7 @@ need_docker() {
 project() { p=$(env_value FLUX_PROJECT); printf '%s' "${p:-flux}"; }
 switch() { env_value FLUX_AGENT_RUNTIME | tr -d ' '; }
 runtime_on() { [ -n "$(switch)" ]; }
-slots() { compose config --services 2>/dev/null | grep -E '^runtime-[1-9][0-9]*$' | sort -t- -k2 -n | tr '\n' ' '; }
-services() { printf 'runtime-manager runtime-egress runtime-install %s' "$(slots)"; }
+services() { printf 'runtime-manager runtime-egress runtime-install runtime-1'; }
 image_op() { compose run --rm -T migrate node tooling/dist/operations.js "$@"; }
 
 check_switch() {
@@ -78,15 +77,33 @@ check_switch() {
 }
 ensure_secrets() { # missing secrets only; existing values never change
   [ -n "$(env_value FLUX_RUNTIME_MANAGER_SECRET)" ] || set_env_line FLUX_RUNTIME_MANAGER_SECRET "$(random_hex)"
-  for slot in $(slots); do
-    key="FLUX_RUNTIME_SECRET_${slot#runtime-}"
-    [ -n "$(env_value "$key")" ] || { set_env_line "$key" "$(random_hex)"; say "Added $key for $slot to $env_file."; }
-  done
+  [ -n "$(env_value FLUX_RUNTIME_SECRET_1)" ] || { set_env_line FLUX_RUNTIME_SECRET_1 "$(random_hex)"; say "Added FLUX_RUNTIME_SECRET_1 to $env_file."; }
+}
+# What the runtime may use, from what the server has (#860): its memory less 1.25 GiB for Flux itself, and all its CPUs but one.
+# How many agents run at once follows from the memory (about 2 on 4 GB). The env file wins when it sets them.
+runtime_limits() {
+  if [ -z "$(env_value FLUX_RUNTIME_MEMORY)" ]; then
+    bytes=$(docker info --format '{{.MemTotal}}' 2>/dev/null || true)
+    case "$bytes" in ''|*[!0-9]*) bytes=0 ;; esac
+    megabytes=$((bytes / 1048576 - 1280))
+    [ "$megabytes" -ge 1280 ] || megabytes=1280
+    export FLUX_RUNTIME_MEMORY="${megabytes}m"
+  fi
+  if [ -z "$(env_value FLUX_RUNTIME_CPUS)" ]; then
+    cpus=$(docker info --format '{{.NCPU}}' 2>/dev/null || true)
+    case "$cpus" in ''|*[!0-9]*) cpus=2 ;; esac
+    if [ "$cpus" -gt 1 ]; then cpus=$((cpus - 1)); else cpus=1; fi
+    export FLUX_RUNTIME_CPUS="$cpus"
+  fi
+}
+# The one line a runtime that refused to start wrote, with the fix; nothing when it did not refuse.
+runtime_refusal() {
+  compose logs --no-color --no-log-prefix runtime-1 2>/dev/null | sed -n 's/^{"event":"runtime_refused","message":"\(.*\)"}$/\1/p' | tail -n 1
 }
 volumes() {
   docker volume ls -q --filter "label=com.docker.compose.project=$(project)" | grep -E "^$(project)_runtime-([1-9][0-9]*-data|tools)\$" || true
 }
-stop_runtime() { # runtime containers only; slot volumes (and so the owners' logins) stay
+stop_runtime() { # runtime containers only; their volumes (and so people's logins) stay
   # shellcheck disable=SC2046
   compose rm -sf $(services) >/dev/null 2>&1 || warn "Could not remove every agent runtime container."
 }
@@ -95,16 +112,20 @@ cmd_up() {
   check_switch
   if runtime_on; then
     ensure_secrets
-    # runtime-install runs first (a no-op unless claude_code is on); the slots then start.
-    # shellcheck disable=SC2046
-    compose up -d --wait --wait-timeout "$wait_timeout" api worker runtime-manager runtime-egress $(slots) ||
-      { compose logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress >&2 || true
+    runtime_limits
+    # runtime-install runs first (a no-op unless claude_code is on); the runtime then starts. One that refuses (an unmet
+    # host requirement, #860) stays red: this fails with its one message and the fix, and Flux is not reported healthy.
+    # Compose leaves a running container alone: a runtime that refused starts again, so it looks at the host again (#860).
+    [ -z "$(runtime_refusal)" ] || compose rm -fs runtime-1 >/dev/null 2>&1 || true
+    compose up -d --wait --wait-timeout "$wait_timeout" api worker runtime-manager runtime-egress runtime-1 ||
+      { refused=$(runtime_refusal); [ -z "$refused" ] || die "$refused"
+        compose logs --no-color --tail 60 migrate api worker runtime-install runtime-manager runtime-egress runtime-1 >&2 || true
         die "Flux did not become healthy. See the logs above."; }
   else
     compose up -d --wait --wait-timeout "$wait_timeout" api worker ||
       { compose logs --no-color --tail 60 migrate api worker >&2 || true; die "Flux did not become healthy. See the logs above."; }
     if [ -n "$(compose ps -aq runtime-manager 2>/dev/null)" ]; then
-      say "FLUX_AGENT_RUNTIME is empty: stopping the agent runtime. Slot volumes and logins are kept (sh runtime.sh purge removes them)."
+      say "FLUX_AGENT_RUNTIME is empty: stopping the agent runtime. Its volumes and logins are kept (sh runtime.sh purge removes them)."
       stop_runtime
     fi
   fi
@@ -149,7 +170,7 @@ cmd_status() {
   say "FLUX_AGENT_RUNTIME: '$(switch)'$(runtime_on || printf ' (off)')"
   image_op runtime-status
   if compose ps --status running --services 2>/dev/null | grep -qx runtime-manager; then
-    say "Slots as runtime-manager sees them:"
+    say "The runtime as runtime-manager sees it:"
     compose exec -T runtime-manager node apps/runtime/dist/manager/cli.js slots
   else
     say "runtime-manager is not running."
@@ -157,8 +178,8 @@ cmd_status() {
 }
 
 cmd_release() {
-  [ $# -eq 1 ] || die "usage: sh runtime.sh release runtime-<n>"
-  case "$1" in runtime-[1-9]|runtime-[1-9][0-9]|runtime-[1-9][0-9][0-9]) ;; *) die "usage: sh runtime.sh release runtime-<n>" ;; esac
+  [ $# -eq 1 ] || die "usage: sh runtime.sh release <email>"
+  case "$1" in *@*) ;; *) die "usage: sh runtime.sh release <email>" ;; esac
   image_op runtime-release "$1"
 }
 
@@ -168,7 +189,7 @@ cmd_purge() {
     case "$arg" in -y|--yes) assume_yes=1 ;; *) die "unknown option $arg (use -y)" ;; esac
   done
   if [ "$assume_yes" != 1 ]; then
-    printf 'Sign out and delete EVERY agent runtime login of %s (slot volumes and the Claude Code tools volume)? [y/N] ' "$(project)"
+    printf 'Sign out and delete EVERY agent runtime login of %s (the runtime volumes and the Claude Code tools volume)? [y/N] ' "$(project)"
     read -r answer || answer=''
     case "$answer" in y|Y|yes|YES) ;; *) say "Cancelled; nothing was changed."; return 1 ;; esac
   fi
@@ -185,8 +206,8 @@ cmd_purge() {
   if [ -n "$(volumes | grep -- '-data$' || true)" ]; then
     say "Signing out the agent runtime logins first (best effort)..."
     ensure_secrets
-    # shellcheck disable=SC2046
-    if ! compose up -d --no-deps runtime-manager runtime-egress $(slots) >/dev/null 2>&1; then
+    runtime_limits
+    if ! compose up -d --no-deps runtime-manager runtime-egress runtime-1 >/dev/null 2>&1; then
       warn "Could not start the agent runtime to sign out; the logins are deleted with the volumes. Owners should end those sessions in their Claude or ChatGPT account settings."
     else
       tries=0

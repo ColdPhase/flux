@@ -92,10 +92,12 @@ digest replaces the marker.
 
 With the optional `compose.runtime.yaml` (profile `runtime`, off by default) `runtime-manager` and
 `runtime-egress` run the release digest of the application image, and `runtime-install` and
-`runtime-1` to `runtime-4` the digest of the agent-runtime image; see
+`runtime-1` the digest of the agent-runtime image; see
 [agent runtime](agent-runtime.md#installing-from-a-release).
 
-All Flux containers run as the image's non-root user; the image owns `/data/files`, so a new
+All Flux containers run as the image's non-root user, except `runtime-1`, which starts as root inside
+its container to give each person their own user id (see
+[what the runtime gets](agent-runtime.md#what-the-runtime-gets)). The image owns `/data/files`, so a new
 `files` volume is writable without a setup step.
 
 ## Calls and screen sharing

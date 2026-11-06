@@ -170,6 +170,8 @@ export interface PersonalRunRepository {
   changeCount(runId: string): Promise<number>;
   /** Another run of this owner holds the lane (reading or dispatching), or this background run would pass a queued owner request: it waits. */
   laneBusy(ownerUserId: string, exceptRunId: string): Promise<boolean>;
+  /** The runtime has room for one more agent (#860). Held until the transaction ends, so two claims never take the last place. */
+  roomForRuntimeRun(): Promise<boolean>;
   /** The run holding the owner's lane (reading or dispatching), if any: what a queued request waits behind. */
   workingOf(ownerUserId: string): Promise<RunRecord | null>;
   /**
@@ -195,6 +197,10 @@ export interface PersonalRunRepository {
    * background sweep, so a run a crashed worker left behind ends without the owner's next invoke.
    */
   endStaleAny(olderThanSeconds: number, limit: number): Promise<RunRecord[]>;
+  /** Ends working runs on the runtime that are not in `running` and are older than this, one bounded batch. */
+  endLostRuntime(running: readonly string[], olderThanSeconds: number, limit: number): Promise<RunRecord[]>;
+  /** Holds the owner's lane until the transaction ends, so two claims of one owner never pass the lane check together. */
+  lockLane(ownerUserId: string): Promise<void>;
   /** Only the owner's own runs, newest first. */
   listOwnRuns(ownerUserId: string, page: PageWindow): Promise<Paged<RunRecord>>;
   /** Committed answers of a conversation, oldest first. */

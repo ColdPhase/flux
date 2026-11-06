@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = ROOT / "docker" / "runtime.sh"
@@ -15,7 +16,9 @@ echo "$*" >> "$STUB_LOG"
 case "$*" in
   "compose version") echo "Docker Compose version v2" ;;
   "volume inspect"*) exit 1 ;;
-  *"config --services"*) printf 'api\\nworker\\nruntime-install\\nruntime-manager\\nruntime-egress\\nruntime-1\\nruntime-2\\n' ;;
+  "info --format {{.MemTotal}}") echo 4000000000 ;;
+  "info --format {{.NCPU}}") echo 2 ;;
+  *" logs "*) [ -z "${STUB_REFUSED:-}" ] || echo '{"event":"runtime_refused","message":"The agent runtime needs kernel.yama.ptrace_scope of 1 or higher"}' ;;
 esac
 exit 0
 """
@@ -58,12 +61,12 @@ class RuntimeScriptTest(unittest.TestCase):
         settings = self.settings()
         self.assertEqual(settings["FLUX_AGENT_RUNTIME"], "codex")
         self.assertRegex(settings["FLUX_RUNTIME_MANAGER_SECRET"], r"^[0-9a-f]{64}$")
-        self.assertRegex(settings["FLUX_RUNTIME_SECRET_2"], r"^[0-9a-f]{64}$")
-        self.assertNotIn("FLUX_RUNTIME_SECRET_3", settings)  # only the slots the Compose files declare
+        self.assertRegex(settings["FLUX_RUNTIME_SECRET_1"], r"^[0-9a-f]{64}$")
+        self.assertNotIn("FLUX_RUNTIME_SECRET_2", settings)  # one runtime for everyone
         up = [call for call in self.calls() if " up -d --wait" in call]
         self.assertEqual(len(up), 1)
         self.assertIn("-f " + str(self.dir / "compose.yaml") + " -f " + str(self.dir / "compose.runtime.yaml") + " --profile runtime", up[0])
-        self.assertTrue(up[0].endswith("api worker runtime-manager runtime-egress runtime-1 runtime-2"), up[0])
+        self.assertTrue(up[0].endswith("api worker runtime-manager runtime-egress runtime-1"), up[0])
 
     def test_claude_code_is_refused_without_the_commercial_terms_and_changes_nothing(self) -> None:
         before = self.env.read_text()
@@ -98,6 +101,20 @@ class RuntimeScriptTest(unittest.TestCase):
         self.assertEqual([c for c in self.calls() if " stop api worker" in c], [])
         self.assertEqual(self.run_script("purge", "-y").returncode, 0)
         self.assertTrue(any(" stop api worker" in c for c in self.calls()))
+
+    def test_up_starts_a_refused_runtime_again_so_the_documented_fix_works(self) -> None:
+        """#860: Compose leaves a running container alone, so without this the refusal of the old container would stay after the fix."""
+        self.assertEqual(self.run_script("on", "codex").returncode, 0)
+        self.log.write_text("")
+        with mock.patch.dict(os.environ, {"STUB_REFUSED": "1"}):
+            self.assertEqual(self.run_script("up").returncode, 0)
+        calls = self.calls()
+        removed = next(index for index, call in enumerate(calls) if call.endswith("rm -fs runtime-1"))
+        started = next(index for index, call in enumerate(calls) if " up -d --wait " in call and "runtime-1" in call)
+        self.assertLess(removed, started)
+        self.log.write_text("")
+        self.assertEqual(self.run_script("up").returncode, 0)
+        self.assertFalse([call for call in self.calls() if "rm -fs runtime-1" in call], "a healthy runtime is left alone")
 
     def test_the_script_never_touches_an_engine_socket(self) -> None:
         text = SCRIPT.read_text()

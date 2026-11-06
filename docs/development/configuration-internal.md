@@ -50,12 +50,9 @@ the wiring between services or enables test-only code.
 | `FLUX_RUNTIME_INSTALL_SOURCE` | Test image only: install fake CLIs instead of the real ones. |
 | `FLUX_RUNTIME_MANAGER_LISTEN` | Listen address of the runtime manager. |
 | `FLUX_RUNTIME_MANAGER_URL` | How the API and worker reach the runtime manager; default `http://runtime-manager-control:7600`. |
-| `FLUX_RUNTIME_SLOT` | Set by Compose on each runtime slot to its own name. |
+| `FLUX_RUNTIME_SLOT` | Set by Compose on the runtime to its own name. |
 | `FLUX_RUNTIME_SLOT_1` | Set by Compose on the runtime manager from `FLUX_RUNTIME_SECRET_1`. |
-| `FLUX_RUNTIME_SLOT_2` | Set by Compose on the runtime manager from `FLUX_RUNTIME_SECRET_2`. |
-| `FLUX_RUNTIME_SLOT_3` | Set by Compose on the runtime manager from `FLUX_RUNTIME_SECRET_3`. |
-| `FLUX_RUNTIME_SLOT_4` | Set by Compose on the runtime manager from `FLUX_RUNTIME_SECRET_4`. |
-| `FLUX_RUNTIME_SLOT_SECRET` | Set by Compose on each slot from `FLUX_RUNTIME_SECRET_<n>`. |
+| `FLUX_RUNTIME_SLOT_SECRET` | Set by Compose on the runtime from `FLUX_RUNTIME_SECRET_1`. |
 | `FLUX_RUN_TOKEN` | Per-run bearer the runtime gives the CLI it starts. |
 | `FLUX_TEST_ANTHROPIC_URL` | Test deployments only. |
 | `FLUX_TEST_FAILURE_INJECTION` | Test deployments only, together with `FLUX_FIXTURE_TOKEN`. Never in production. |
@@ -84,7 +81,6 @@ Names in the code that are not settings at all:
 | `FLUX_MIGRATION_GATE` | output marker of the operations tool |
 | `FLUX_RUNTIME_NOT_INSTALLED` | output marker of the runtime manager |
 | `FLUX_RUNTIME_PURGE` | output marker of the operations tool |
-| `FLUX_RUNTIME_SECRET` | prefix of FLUX_RUNTIME_SECRET_<n> |
 | `FLUX_SCHEMA_VERSION` | constant: the schema version of this build |
 | `FLUX_TOOL_NAME` | constant: pattern of Flux's MCP tool names |
 | `FLUX_VAPID` | prefix in a message |

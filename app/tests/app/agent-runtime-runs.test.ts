@@ -8,7 +8,7 @@ import {
   agentConnectionPath, assistantChangeActionPath, assistantSettingsPath, ASSISTANT_UNIT_CREATE_VIEW, RUN_TOKEN_LIMITS, RUNTIME_RUN_LIMITS, type AssistantSettings, type Conversation, type Project,
   type Workspace,
 } from '@flux/contracts';
-import { createPersonalRunProcessor, MAX_WAITING_REQUESTS, noPersonalConnections, REDACTED_SECRET, sweepWorkspaceAi, type AgentRuntimeConfig, type Principal } from '@flux/core';
+import { createPersonalRunProcessor, MAX_WAITING_REQUESTS, noPersonalConnections, recoverLostRuntimeRuns, recoverPersonalRuns, REDACTED_SECRET, sweepWorkspaceAi, type AgentRuntimeConfig, type Principal } from '@flux/core';
 import { accessPorts } from '@flux/db';
 import { setWorkspaceAi } from './support/workspace-ai.js';
 import { callSupervisor, type SupervisorRequest } from '@flux/runtime-protocol';
@@ -58,6 +58,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
   }
   const resetFake = async () => { for (const name of ['fake-scenario', 'fake-run.json', 'fake-calls.jsonl']) await writeFile(join(home(), name), ''); };
   const ask = (prompt = 'What do the notes say about the sensor?') => runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt });
+  const uowRecover = () => recoverPersonalRuns(personalRunWorkerUnitOfWork(db));
   async function row(runId: string) {
     return (await pool.query(`SELECT status, end_reason, answer_body, answer_redacted, plan_limit_resets_at, stop_requested_at, stop_acknowledged_at, cost_state,
       reserved_micros, engine, run_token_closed_at, provider, model FROM personal_runs WHERE id = $1`, [runId])).rows[0] as Record<string, unknown>;
@@ -98,7 +99,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
 
     // The owner's slot and their Claude Code signed in, as T3/T4 leave them (the CLI's status said so).
     bindingId = randomUUID();
-    await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'held') ON CONFLICT (slot) DO UPDATE SET state = 'held'`, [slotName]);
+    await pool.query(`INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready') ON CONFLICT (slot) DO UPDATE SET state = 'ready'`, [slotName]);
     await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'active')`, [bindingId, owner.id, slotName]);
     await pool.query(`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, sign_in_method, auth_method, account_label, signed_in_at)
       VALUES ($1, $2, $3, 'claude_code', 'signed_in', 'claude_account', 'claude.ai', 'o***@example.org', now())`, [randomUUID(), owner.id, bindingId]);
@@ -123,6 +124,72 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0
       WHERE owner_user_id = $1 AND status IN ('queued', 'reading', 'dispatching')`, [owner.id]);
     await pool.query(`UPDATE personal_runs SET created_at = created_at - interval '2 days' WHERE owner_user_id = $1`, [owner.id]);
+  });
+
+  test('the server runs as many agents as fit: the others wait for room, stay queued however long, and start by themselves (#860)', async () => {
+    const peer = await person('rt-run-room');
+    // A colleague's agent holds the only place: a copy of a finished run, at work.
+    const done = (await ask('An earlier request')).run;
+    await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [done.id]);
+    const holder = randomUUID();
+    await pool.query(`INSERT INTO personal_runs SELECT (jsonb_populate_record(r, jsonb_build_object('id', $1::uuid, 'owner_user_id', $2::text, 'client_run_id', $3::uuid,
+      'status', 'dispatching', 'dispatched_at', now(), 'completed_at', NULL, 'cost_state', 'reserved', 'charged_micros', 0))).* FROM personal_runs r WHERE r.id = $4`,
+    [holder, peer.id, randomUUID(), done.id]);
+    await pool.query(`UPDATE agent_runtime_slots SET capacity = 1 WHERE slot = $1`, [slotName]);
+    try {
+      const waiting = (await ask('Summarize the notes')).run;
+      assert.equal(await processor.process(waiting.id), 'skipped', 'it does not start');
+      assert.deepEqual([(await row(waiting.id)).status, (await row(waiting.id)).end_reason], ['queued', 'no_room']);
+      assert.equal((await runs.get(human(owner), waiting.id)).endReason, 'no_room', 'the owner sees why');
+      // However long the wait, it is no lost run.
+      await pool.query(`UPDATE personal_runs SET updated_at = now() - interval '2 hours' WHERE id = $1`, [waiting.id]);
+      await runs.status(human(owner));
+      await uowRecover();
+      assert.equal((await row(waiting.id)).status, 'queued');
+      // While there is no room it stays out of the worker's list, so a crowd of these never hides a run on an API key.
+      const offered = () => personalRunWorkerUnitOfWork(db).run((ports) => ports.runs.startableQueued(20));
+      assert.equal((await offered()).includes(waiting.id), false);
+      // Still no room: nothing changes, and no second line is announced.
+      assert.equal(await processor.process(waiting.id), 'skipped');
+      await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released' WHERE id = $1`, [holder]);
+      assert.ok((await offered()).includes(waiting.id), 'with room it is offered as soon as the worker looks');
+      const outcome = await processor.process(waiting.id);
+      assert.equal(outcome, 'completed', 'the place is free: it starts by itself');
+      assert.equal((await row(waiting.id)).end_reason, null, 'and the line is gone');
+    } finally {
+      await pool.query(`UPDATE agent_runtime_slots SET capacity = NULL WHERE slot = $1`, [slotName]);
+      await pool.query(`DELETE FROM personal_runs WHERE id = $1`, [holder]);
+    }
+  });
+
+  test('#860: two requests of one owner claimed at once: one starts, the other waits, and neither fails', async () => {
+    await resetFake();
+    await script({ calls: [], answer: 'One at a time.' });
+    const [first, second] = [(await ask('First')).run, (await ask('Second')).run];
+    const outcomes = await Promise.all([processor.process(first.id), processor.process(second.id)]);
+    assert.deepEqual([...outcomes].sort(), ['completed', 'skipped'], 'the lane is taken before it is read');
+    const waiting = outcomes[0] === 'skipped' ? first : second;
+    assert.equal(await processor.process(waiting.id), 'completed', 'and it starts when the first has ended');
+  });
+
+  test('#860: a run the runtime no longer has stops holding a place; one in the report, or just started, keeps it', async () => {
+    const uow = personalRunWorkerUnitOfWork(db);
+    const lost = (await ask('Lost with its worker')).run;
+    await pool.query(`UPDATE personal_runs SET status = 'dispatching', dispatched_at = now(), updated_at = now() - interval '3 minutes' WHERE id = $1`, [lost.id]);
+    assert.equal(await recoverLostRuntimeRuns(uow, [lost.id]), 0, 'in the report: it is running');
+    assert.equal((await row(lost.id)).status, 'dispatching');
+    await pool.query(`UPDATE personal_runs SET updated_at = now() WHERE id = $1`, [lost.id]);
+    assert.equal(await recoverLostRuntimeRuns(uow, []), 0, 'just started: the report may not have it yet');
+    await pool.query(`UPDATE personal_runs SET updated_at = now() - interval '3 minutes' WHERE id = $1`, [lost.id]);
+    assert.equal(await recoverLostRuntimeRuns(uow, []), 1);
+    const ended = await row(lost.id);
+    assert.deepEqual([ended.status, ended.end_reason], ['provider_failed', 'unknown']);
+  });
+
+  test('without a report of the runtime yet, a run is not held back and ends in its own words', async () => {
+    await pool.query(`UPDATE agent_runtime_slots SET capacity = NULL WHERE slot = $1`, [slotName]);
+    const { run } = await ask('Summarize the notes');
+    assert.equal(await processor.process(run.id), 'completed');
   });
 
   test('the assistant runs on the owner\'s Claude plan; a run reserves no money and needs no API key connection (#854)', async () => {

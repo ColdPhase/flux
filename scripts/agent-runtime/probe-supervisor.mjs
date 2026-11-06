@@ -1,7 +1,7 @@
-// The closed request set of the live supervisors (F-022 T3 #278), run inside runtime-manager (the only
-// service that holds slot secrets) by scripts/check_agent_runtime.sh:
+// The closed request set of the live supervisor (F-022 T3 #278), run inside runtime-manager (the only
+// service that holds its secret) by scripts/check_agent_runtime.sh:
 // `docker exec -i <runtime-manager> node --input-type=module - < probe-supervisor.mjs`.
-// FLUX_PROBE_BOUND_SLOT names a slot that holds a binding; FLUX_PROBE_BINDING is its binding id.
+// FLUX_PROBE_BOUND_SLOT names the runtime; FLUX_PROBE_BINDING is a person's binding id in it.
 const env = process.env;
 const secret = (slot) => env[`FLUX_RUNTIME_SLOT_${slot.slice(8)}`];
 const results = [];
@@ -15,14 +15,13 @@ async function post(slot, path, body, key = secret(slot), method = 'POST') {
 }
 
 const slot = env.FLUX_PROBE_BOUND_SLOT;
-const other = slot === 'runtime-1' ? 'runtime-2' : 'runtime-1';
 const bindingId = env.FLUX_PROBE_BINDING;
 const fresh = crypto.randomUUID();
 
 let answer = await post(slot, '/v1/status', {}, null);
 record('no secret: unauthorized', answer.status === 401 && answer.last?.code === 'unauthorized', answer.status);
-answer = await post(slot, '/v1/status', {}, secret(other));
-record("another slot's secret: unauthorized", answer.status === 401, answer.status);
+answer = await post(slot, '/v1/status', {}, 'a'.repeat(43));
+record('a wrong secret: unauthorized', answer.status === 401, answer.status);
 for (const path of ['/v1/exec', '/v1/shell', '/v1/spawn', '/v1/command', '/v1/']) {
   answer = await post(slot, path, { command: 'id' });
   record(`${path}: unknown request`, answer.status === 404 && answer.last?.code === 'unknown_request', answer.status);
@@ -46,11 +45,13 @@ for (const [path, body] of refused) {
   record(`${path} with ${Object.keys(body).join(',')}: invalid request`, answer.status === 400 && answer.last?.code === 'invalid_request', answer.status);
 }
 answer = await post(slot, '/v1/bind', { bindingId: fresh });
-record('bind is refused while /data holds a binding', answer.status === 200 && answer.last?.code === 'data_not_empty', JSON.stringify(answer.last));
+record('another person binds beside the first (#860)', answer.status === 200 && answer.last?.t === 'result', JSON.stringify(answer.last));
 answer = await post(slot, '/v1/status', {});
 const report = answer.last?.result?.slot;
-record('the slot report names this slot and its binding only', report?.slot === slot && report.data.bindings.length === 1 && report.data.bindings[0] === bindingId, JSON.stringify(report?.data));
-// Status and login name the slot's current boot (every accepted frame carries it), as the console and the manager do.
+record('the report names this runtime, its people and how many run at once', report?.slot === slot && report.data.bindings.includes(bindingId) && report.data.bindings.includes(fresh) && report.capacity >= 1, JSON.stringify(report?.data));
+answer = await post(slot, '/v1/release', { bindingId: fresh });
+record('that person leaves on their own', answer.last?.result?.deleted === true, JSON.stringify(answer.last));
+// Status and login name the runtime's current boot (every accepted frame carries it), as the console and the manager do.
 const bootId = answer.frames.find((frame) => frame.t === 'accepted')?.bootId;
 answer = await post(slot, '/v1/status', { bindingId, client: 'claude_code', bootId });
 record('client status runs the fixed template', answer.status === 200 && answer.last?.t === 'result' && typeof answer.last.result.client.signedIn === 'boolean', JSON.stringify(answer.last));

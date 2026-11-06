@@ -186,20 +186,20 @@ everyone out of the browser as well, which is heavier; revoking the connections 
 step for agents. Revoke sessions that ended after the backup through
 `/api/v1/sessions` or ask people to sign out other sessions.
 
-### Agent runtime slots
+### Agent runtime logins
 
-When the agent runtime is on ([operator guide](agent-runtime.md), F-022 T3), each slot has its own
-volume, which holds owners' Claude Code and Codex logins, written by the CLIs themselves. **`./flux backup`
-never includes a slot volume or the tools volume, on purpose:** the archive would then carry every
+When the agent runtime is on ([operator guide](agent-runtime.md), F-022 T3), its volume holds people's
+Claude Code and Codex logins, written by the CLIs themselves. **`./flux backup`
+never includes that volume or the tools volume, on purpose:** the archive would then carry every
 owner's vendor login, and a login copied to another machine stops working anyway, because the vendors
 rotate refresh tokens and two copies invalidate each other. The archive's `flux.env` does hold the
-runtime's service and slot secrets; they only let Flux's own services talk to each other.
+runtime's secrets; they only let Flux's own services talk to each other.
 
-A restore replaces the database and the files volume but leaves the slot volumes as they are. When the
-worker starts, it compares the restored bindings with what each slot holds: a binding whose directory is
+A restore replaces the database and the files volume but leaves the runtime's volume as it is. When the
+worker starts, it compares the restored bindings with what the runtime holds: a binding whose directory is
 gone shows the owner *Sign in again*, and a directory that has no binding in the restored database is
-signed out (best effort) and deleted, after which that slot restarts before anyone else can use it.
-A disk-level or host snapshot is different: it does capture the slot volumes and their logins.
+signed out (best effort) and deleted.
+A disk-level or host snapshot is different: it does capture that volume and its logins.
 
 ### Encrypted spaces that say their keys were changed
 

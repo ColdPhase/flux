@@ -3,8 +3,8 @@ import { notInstalledMarkers } from './report.js';
 import { listSlots, slotsFromEnv } from './server.js';
 
 // Operator steps the launcher runs inside `runtime-manager` (`docker compose exec`), without the
-// database: `slots` prints each slot's report; `sign-out-all` releases every binding directory found
-// in any slot (sign out each CLI, delete the directory, confirm `/data` is empty, restart), which
+// database: `slots` prints each runtime's report; `sign-out-all` releases every binding directory found
+// in it (sign out each CLI, end their processes, delete the directory), which
 // `./flux reset`, `./flux clean` and `./flux runtime purge` run first (F-022 "Backup, restore and
 // cleanup"). Only outcome codes are printed, never CLI output. A client the slot found no CLI and no files
 // for is also printed as `FLUX_RUNTIME_NOT_INSTALLED <binding> <client>`: `./flux runtime purge` passes those
@@ -18,7 +18,7 @@ if (command === 'slots') {
   for (const entry of await listSlots(config)) {
     if (!entry.reachable) { console.log(`${entry.slot}\tunreachable (${entry.error})`); continue; }
     const { report } = entry;
-    console.log(`${entry.slot}\tboot ${report.bootId}\t${report.data.empty ? 'empty' : `bindings ${report.data.bindings.join(',') || '-'} other ${report.data.other}`}\tinstalled ${Object.entries(report.installed).filter(([, on]) => on).map(([client]) => client).join(',') || '-'}`);
+    console.log(`${entry.slot}\tboot ${report.bootId}\t${report.data.bindings.length} people, ${report.data.other} other\t${report.capacity} at once\tinstalled ${Object.entries(report.installed).filter(([, on]) => on).map(([client]) => client).join(',') || '-'}`);
   }
 } else if (command === 'sign-out-all') {
   let failed = 0;
@@ -27,11 +27,11 @@ if (command === 'slots') {
     for (const bindingId of entry.report.data.bindings) {
       const outcome = await callSupervisor(slots.get(entry.slot)!, { kind: 'release', bindingId });
       if (outcome.ok && outcome.result.kind === 'release') {
-        const { logout, dataEmpty } = outcome.result;
+        const { logout, deleted } = outcome.result;
         const signedOut = Object.values(logout).every((step) => step === 'ok' || step === 'not_installed');
-        console.log(`${entry.slot}: ${signedOut ? 'signed out' : 'sign-out NOT confirmed'} (claude_code ${logout.claude_code}, codex ${logout.codex}); cleanup attempted; /data ${dataEmpty ? 'empty' : 'NOT empty'}`);
+        console.log(`${entry.slot}: ${signedOut ? 'signed out' : 'sign-out NOT confirmed'} (claude_code ${logout.claude_code}, codex ${logout.codex}); cleanup attempted; files and processes ${deleted ? 'gone' : 'NOT gone'}`);
         for (const marker of notInstalledMarkers(bindingId, logout)) console.log(marker);
-        if (!dataEmpty || !signedOut) failed += 1;
+        if (!deleted || !signedOut) failed += 1;
       } else {
         console.log(`${entry.slot}: release failed (${outcome.ok ? 'protocol' : outcome.code})`);
         failed += 1;
