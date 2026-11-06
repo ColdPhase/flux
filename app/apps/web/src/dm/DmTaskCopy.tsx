@@ -42,7 +42,7 @@ export function DmTaskCopy({ dmId, message, excerpt, participants, onClose, onCr
   }, [dmId, message.id, excerpt, projectId]);
 
   const inDm = useMemo(() => new Set(participants.map((p) => p.id)), [participants]);
-  const outside = preview?.audience.filter((person) => person.kind === 'human' && !inDm.has(person.id)) ?? [];
+  const outside = preview?.audience.filter((person) => !inDm.has(person.id)) ?? [];
 
   async function create() {
     if (!preview?.project || busy) return;

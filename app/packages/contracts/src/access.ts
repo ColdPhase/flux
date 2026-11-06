@@ -186,7 +186,8 @@ export interface Project {
 /**
  * One principal who can read a project now (#117). Readable by everyone who can read the
  * project, so its audience is never a guess: workspace owners and admins (managers), people
- * and agents with a grant, and members of a workspace-visible project. Denied and inactive
+ * with a grant, members of a workspace-visible project, and the agents of those people that the
+ * reader may see, which read with their owner's rights (F-036 AG-3). Denied and inactive
  * principals never appear. Ordered people first, then by name.
  */
 export interface ProjectPerson {
