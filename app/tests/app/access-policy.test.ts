@@ -102,8 +102,11 @@ describe('an agent has exactly its owner\'s rights', () => {
       grantProject(admin, project, { principal: { kind: 'human', id: human }, role: 'denied' }, db, accessPorts)],
     ['the owner\'s access is narrowed to reading', (admin: Principal, ws: string, project: string, human: string) =>
       grantProject(admin, project, { principal: { kind: 'human', id: human }, role: 'viewer' }, db, accessPorts)],
-    ['the owner becomes a guest', (admin: Principal, ws: string, _project: string, human: string) =>
-      changeRole(admin, ws, human, { role: 'guest' }, db, accessPorts)],
+    // With a grant a guest still works in the space by hand, so only the role can stop the agent: a guest has no AI (AG-2).
+    ['the owner becomes a guest with a grant on the project', async (admin: Principal, ws: string, project: string, human: string) => {
+      await grantProject(admin, project, { principal: { kind: 'human', id: human }, role: 'contributor' }, db, accessPorts);
+      await changeRole(admin, ws, human, { role: 'guest' }, db, accessPorts);
+    }],
     ['the owner leaves the workspace', (admin: Principal, ws: string, _project: string, human: string) =>
       removeMember(admin, ws, human, db, accessPorts)],
   ] as const) {

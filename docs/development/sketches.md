@@ -12,8 +12,8 @@ participant list of its own.
 
 | Table | Holds |
 | --- | --- |
-| `sketches` | One map in a workspace. `scope` is `project` (with `project_id`) or `private` (owned by `created_by_user_id`, never by an agent). It also has a title and a version. |
-| `sketch_thoughts` | The text, an integer position (`x`, `y`), a size (`width`, `height`), a `shape` (`card`, `pill`, `circle`), an optional placement, and a version. |
+| `sketches` | One map in a workspace. `scope` is `project` (with `project_id`) or `private` (owned by `created_by_user_id`, never by an agent). It also has a title, a version and `edited_by`: everyone who changed it after it was made, as `human:<id>` or `agent:<id>` (whether it is still "yours", [F-036 Terms](../product/assistant.md#terms)). |
+| `sketch_thoughts` | The text, an integer position (`x`, `y`), a size (`width`, `height`), a `shape` (`card`, `pill`, `circle`), an optional placement, a version and `edited_by`, as on `sketches`. |
 | `sketch_links` | An undirected link between two thoughts of the same sketch, with an optional label. There is one link per pair; a thought links to any number of others. |
 
 Composite foreign keys keep every thought and link inside the sketch's

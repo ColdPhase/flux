@@ -111,8 +111,8 @@ export async function undoMap(db:DbExecutor,principal:{kind:'human';id:string},r
     }
     await rows.putVersion('link',id,room.sketchId,epoch);
   }
-  if(restoreTitle)await repository.renameSketch(room.sketchId,virtualSketch.title);
-  await repository.touchSketch(room.sketchId);
+  if(restoreTitle)await repository.renameSketch(room.sketchId,virtualSketch.title,{kind:'human',id:principal.id});
+  await repository.touchSketch(room.sketchId,{kind:'human',id:principal.id});
   const finalThoughts=new Map((await repository.lockThoughts(room.sketchId,thoughtIds)).map(thought=>[thought.id,thought]));
   const finalLinks=await rows.dependencyLinks(room.sketchId,thoughtIds,[...links.keys()]);
   for(const item of change.thoughts)item.after=finalThoughts.get(item.id)??null;

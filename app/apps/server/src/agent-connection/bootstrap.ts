@@ -44,7 +44,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
           connectionId: runtime.connectionId, runtimeSessionId: runtime.id }, agentSourcePage({ limit: workLimit, offset: workOffset })) : undefined;
         const active = work?.units.find((unit) => unit.lease !== null);
         const checkpoint = work?.units.find((unit) => unit.checkpointId !== null);
-        const result: AgentBootstrap = { contractVersion: 1, observedAt: observedAt.toISOString(), runtime,
+        const result: AgentBootstrap = { contractVersion: 2, observedAt: observedAt.toISOString(), runtime,
           project: { id: project.id, workspaceId: project.workspaceId, name: project.name }, grants,
           capabilities: tools.capabilities(runtime.scopes, mcpPolicy),
           trusted: { playbook,

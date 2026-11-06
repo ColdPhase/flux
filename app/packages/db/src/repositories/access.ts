@@ -119,9 +119,9 @@ export async function loadActor(principal: AccessPrincipal, workspaceId: string,
       .where(and(eq(schema.agents.id, principal.id), eq(schema.agents.workspaceId, workspaceId)));
     const [agent] = lock ? await query.for('share') : await query;
     if (!agent || agent.revokedAt) return inactive;
-    // An agent acts only while its owner is a member, with exactly the owner's rights (F-036 AG-3).
+    // An agent acts only while its owner is a company member, with exactly the owner's rights (F-036 AG-3). A guest has no AI (AG-2).
     const ownerRole = await memberRole(db, workspaceId, agent.ownerUserId, lock);
-    return { ...inactive, agent: { ownerUserId: agent.ownerUserId, ownerRole }, active: ownerRole !== null };
+    return { ...inactive, agent: { ownerUserId: agent.ownerUserId, ownerRole }, active: ownerRole !== null && ownerRole !== 'guest' };
   }
   return inactive;
 }

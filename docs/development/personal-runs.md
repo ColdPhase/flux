@@ -178,7 +178,8 @@ that `PersonalToolHost` and the API composes `toolTurns` (10); switched off, eve
   for its owner, the minted `jti`, not closed, not expired, not stopped, its place, and the owner's
   assistant connection. Each request lists exactly the run's tools that the live switches still allow
   (`restrictTo`); any other tool call gets the S6 refusal (`MCP_ENTRY_UNAVAILABLE`) before anything runs;
-  resources and prompts are not offered. Every tool reaches only the run's project. Results are bounded
+  resources and prompts are not offered. Every tool reaches only the run's project: a change that names
+  an object elsewhere is refused with `OUTSIDE_RUN_PLACE`, as a read of it is. Results are bounded
   (`boundRunResult`): over 16 KiB per result or 64 KiB per run, the result is replaced by an error and the
   run records `mcp_limit`; the processor ends it `cap_reached` with `end_reason = mcp_results_too_large`.
   The delivery fence rechecks the run, so nothing reaches a token after its run ended.

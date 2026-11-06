@@ -149,13 +149,13 @@ export function assistantChangeRows(db: DbExecutor) {
       return row?.snapshot ?? null;
     },
     async map(id: string) {
-      return first<{ id: string; title: string; version: number; userId: string | null; agentId: string | null }>(db, sql`
-        SELECT id, title, version, created_by_user_id AS "userId", created_by_agent_id AS "agentId" FROM sketches WHERE id = ${id}`);
+      return first<{ id: string; title: string; version: number; userId: string | null; agentId: string | null; editedBy: string[] }>(db, sql`
+        SELECT id, title, version, created_by_user_id AS "userId", created_by_agent_id AS "agentId", edited_by AS "editedBy" FROM sketches WHERE id = ${id}`);
     },
-    async thoughts(ids: string[]): Promise<{ id: string; sketchId: string; text: string; x: number; y: number; version: number; userId: string | null; agentId: string | null }[]> {
+    async thoughts(ids: string[]): Promise<{ id: string; sketchId: string; text: string; x: number; y: number; version: number; userId: string | null; agentId: string | null; editedBy: string[] }[]> {
       if (!ids.length) return [];
       const t = schema.sketchThoughts;
-      return db.select({ id: t.id, sketchId: t.sketchId, text: t.text, x: t.x, y: t.y, version: t.version, userId: t.createdByUserId, agentId: t.createdByAgentId }).from(t).where(inArray(t.id, ids));
+      return db.select({ id: t.id, sketchId: t.sketchId, text: t.text, x: t.x, y: t.y, version: t.version, userId: t.createdByUserId, agentId: t.createdByAgentId, editedBy: t.editedBy }).from(t).where(inArray(t.id, ids));
     },
     async link(id: string): Promise<(ObjectMaker & { sketchId: string }) | null> {
       return first<ObjectMaker & { sketchId: string }>(db, sql`SELECT sketch_id AS "sketchId", created_by_user_id AS "userId", created_by_agent_id AS "agentId" FROM sketch_links WHERE id = ${id}`);

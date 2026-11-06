@@ -167,6 +167,10 @@ class AssistantUndo(unittest.TestCase):
         shot(page, f"assistant-undo-{suffix}-message")
         line.get_by_role("button", name="Undo", exact=True).click()
         expect(line).to_contain_text(f"Undone by {ADA['name']}")
+        # The guide: after Undo the line is struck through and ends "Undone by Ada".
+        struck = line.locator("s")
+        expect(struck).to_contain_text("Order spare probes")
+        expect(struck).to_have_css("text-decoration-line", "line-through")
         self.assertEqual(calls, [("run", "undo")])
 
     def test_02_the_message_computer_light(self) -> None:

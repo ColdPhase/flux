@@ -316,11 +316,17 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       if (!place || !(await evaluateProject(principal, 'project.read', place.projectId, accessReader(db))).allowed) throw missing();
       return { working: await rows().workingOwners(conversationId) };
     },
-    /** The owner's waiting changes in projects they can still read; the Inbox groups them into one item per run (AG-7). */
+    /**
+     * The owner's waiting changes in projects they can still read; the Inbox groups them into one item per run (AG-7). A guest
+     * has no AI (AG-2), so nothing of theirs can be approved and nothing waits for them here.
+     */
     async inbox(userId: string) {
       const list = await rows().inbox(userId);
       const readable = [];
-      for (const row of list) if ((await evaluateProject({ kind: 'human', id: userId }, 'project.read', row.projectId, accessReader(db))).allowed) readable.push(row);
+      for (const row of list) {
+        const access = await evaluateProject({ kind: 'human', id: userId }, 'project.read', row.projectId, accessReader(db));
+        if (access.allowed && access.actor?.role !== 'guest') readable.push(row);
+      }
       return view(readable, new Map(list.map((row) => [row.runId, row.conversationId])));
     },
   };

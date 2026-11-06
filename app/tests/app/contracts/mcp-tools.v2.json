@@ -5174,7 +5174,7 @@
     "VERSION_CONFLICT"
   ],
   "bootstrap": {
-    "contractVersion": 1,
+    "contractVersion": 2,
     "keys": [
       "capabilities",
       "contractVersion",

@@ -2,6 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { AgentConnection, AgentMcpCapabilityId, AgentMcpPolicy, SaveAgentMcpPolicy } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
+import { loadActor, visibleProjectsSql } from './access.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -22,14 +23,16 @@ interface McpPolicyRepository {
 }
 
 /**
- * The assistant's selection is every project of its workspace, read fresh: no project list is stored for it, so its
- * owner's current rights alone decide where it reaches (F-036 AG-3, #855). Null for any other connection.
+ * The assistant's selection is every project its owner can see now, read fresh: no project list is stored for it, so its owner's
+ * current rights alone decide where it reaches (F-036 AG-3, #855), and a restricted project's id never reaches a caller's payload.
+ * Null for any other connection.
  */
-export async function assistantProjectIds(tx: Pick<Transaction, 'select'>, connectionId: string): Promise<string[] | null> {
-  const [row] = await tx.select({ workspaceId: schema.agentConnections.workspaceId, source: schema.agentConnections.computeSource })
-    .from(schema.agentConnections).where(eq(schema.agentConnections.id, connectionId));
+export async function assistantProjectIds(tx: Transaction, connectionId: string): Promise<string[] | null> {
+  const [row] = await tx.select({ workspaceId: schema.agentConnections.workspaceId, ownerUserId: schema.agentConnections.ownerUserId,
+    source: schema.agentConnections.computeSource }).from(schema.agentConnections).where(eq(schema.agentConnections.id, connectionId));
   if (row?.source !== 'owner_assistant') return null;
-  return (await tx.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.workspaceId, row.workspaceId))
+  const owner = await loadActor({ kind: 'human', id: row.ownerUserId }, row.workspaceId, tx);
+  return (await tx.select({ id: schema.projects.id }).from(schema.projects).where(visibleProjectsSql(owner))
     .orderBy(schema.projects.id)).map((project) => project.id);
 }
 

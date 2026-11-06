@@ -95,7 +95,7 @@ then be updated.
 3. Call `flux_bootstrap` with the project ID and a `clientSessionId`. The
    `clientSessionId` is a UUID that you create once per client session.
    - Check that `trusted.playbook.toolContractVersion` is the version you built
-     for. The response's own `contractVersion` (1) versions the bootstrap response
+     for. The response's own `contractVersion` (2) versions the bootstrap response
      shape.
    - Use only the tools whose capability row says `available: true`.
    - Bootstrap `gaps` name the server providers that this server lacks.

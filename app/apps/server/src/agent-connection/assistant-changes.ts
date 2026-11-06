@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { AGENT_MCP_ENTRIES, ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, type AgentJsonValue, type AgentOperation, type AgentPostcondition,
   type AgentScope, type AssistantObjectType, type AuthenticatedAgentRuntime } from '@flux/contracts';
-import { assistantChangeRows, assistantRemovalRows, lockAgentMcpPolicy, sketchRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
+import { agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, lockAgentMcpPolicy, sketchRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
 import { ASSISTANT_REFUSALS, changedParagraphs, classifyAssistantChange, DomainError, fieldWords, type UndoRecord, evaluateProject, redactSecrets } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
@@ -11,6 +11,7 @@ import { nativeWorkInEventSession } from '../work/adapters.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 import type { ActionInput, NativeActions, Produced } from './action-execution.js';
 import { agentConnectionInTransaction, type FluxMcpClaims } from './context.js';
+import { agentOperationTarget } from './grants.js';
 import { createAgentConnectionStore } from './store.js';
 
 // The agent's effect path (F-036 AG-3, #855; F-027 A3 #403). An assistant run's change tool reaches the same native
@@ -64,6 +65,7 @@ export function callSummary(call: AssistantCall): AssistantCall {
     .map(([key, value]) => [key, key === 'status' && typeof value === 'string' ? value : true])) } };
 }
 const invalidated = (message: string) => new DomainError(403, 'ASSISTANT_CHANGE_INVALIDATED', message);
+const outsideRunPlace = () => new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
 export const SKIPPED = 'ASSISTANT_CHANGE_SKIPPED';
 const isVersionConflict = (error: unknown) => error instanceof DomainError && error.status === 409
   && /VERSION_CONFLICT|STALE|CHANGED/.test(error.code) && error.code !== 'IDEMPOTENCY_CONFLICT';
@@ -128,6 +130,35 @@ async function removalUndo(tx: Transaction, operation: string, value: Record<str
   }
 }
 
+/** The thoughts a change names besides its map: they must be on that map. */
+function namedThoughts(operation: string, payload: Record<string, unknown>): string[] {
+  switch (operation) {
+    case 'map.thought.update': case 'map.thought.delete': return [String(payload.thoughtId)];
+    case 'map.link.create': return [String(payload.fromId), String(payload.toId)];
+    case 'map.positions.update': return ((payload.moves ?? []) as { id: string }[]).map((move) => move.id);
+    default: return [];
+  }
+}
+
+/**
+ * Whether every object a change names is in the run's place, on every change kind. This is the same boundary as a read's
+ * `requireObject`, and it comes before anything about the target is read or recorded: an agent's rights are its owner's, but one
+ * run reaches only the place it was asked in, so a prompt-injected run reaches one space, not all of them.
+ */
+async function withinRunPlace(tx: Transaction, operation: AgentOperation, objectId: string | null, payload: Record<string, unknown>,
+  place: { workspaceId: string; projectId: string }): Promise<boolean> {
+  const objects = agentProjectObjectRows(tx as DbExecutor);
+  const rows = assistantChangeRows(tx as DbExecutor);
+  const kind = agentOperationTarget(operation);
+  if (kind && (!objectId || !await objects.scopeOf(kind, objectId, place, false))) return false;
+  const finishes = operation === 'result.record' ? (payload.finishes as { id?: string } | undefined)?.id : undefined;
+  if (finishes && !await objects.scopeOf('work', finishes, place, false)) return false;
+  const thoughts = [...new Set(namedThoughts(operation, payload))];
+  const found = await rows.thoughts(thoughts);
+  if (found.length !== thoughts.length || found.some((thought) => thought.sketchId !== objectId)) return false;
+  return operation !== 'map.link.delete' || (await rows.link(String(payload.linkId)))?.sketchId === objectId;
+}
+
 /** Who made the target and how the change reads, read inside the change's transaction. */
 async function describe(tx: Transaction, operation: string, objectId: string | null, payload: Record<string, unknown>,
   owner: string): Promise<Target> {
@@ -136,6 +167,9 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
   const agents = await rows.agentIdsOf(owner);
   const ours = (maker: { userId: string | null; agentId: string | null } | null) => !!maker && (maker.userId === owner || (!!maker.agentId && agents.includes(maker.agentId)));
   const otherPerson = (maker: { userId: string | null; agentId: string | null } | null) => maker?.userId && maker.userId !== owner ? maker.userId : null;
+  // A map or thought stays yours only while nobody else has edited it (F-036 Terms), as a page does through `docEditedByOthers`.
+  const stillOurs = (object: { userId: string | null; agentId: string | null; editedBy: string[] } | null) => ours(object)
+    && !!object && object.editedBy.every((editor) => editor === `human:${owner}` || agents.some((agent) => editor === `agent:${agent}`));
   const base = { objectType: OBJECT[operation] ?? 'work', objectId, title: '', mine: true, removal: false, maker: null, forOther: false, beforeVersion: null,
     undo: null as UndoRecord | null, words: assistantChangeWords(operation) } satisfies Target;
   const text = (value: unknown) => typeof value === 'string' ? value.slice(0, 200) : '';
@@ -192,7 +226,7 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
     case 'map.rename': {
       const map = objectId ? await rows.map(objectId) : null;
       const fields = map && typeof payload.title === 'string' ? { title: { before: map.title, after: payload.title } } : null;
-      return { ...base, title: map?.title ?? '', mine: ours(map), maker: otherPerson(map), beforeVersion: map?.version ?? null,
+      return { ...base, title: map?.title ?? '', mine: stillOurs(map), maker: otherPerson(map), beforeVersion: map?.version ?? null,
         undo: fields ? { plan: { kind: 'fields', fields }, ...fieldWords(fields) } : null };
     }
     case 'map.thought.create': case 'map.link.create': {
@@ -206,13 +240,13 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
         .map((key) => [key, { before: thought[key], after: changes[key] }])) : {};
       const undo: UndoRecord | null = operation === 'map.thought.update' && Object.keys(fields).length && Object.keys(changes).every((key) => key in fields)
         ? { plan: { kind: 'fields', fields }, ...fieldWords(fields) } : null;
-      return { ...base, undo, objectId: thought?.id ?? null, title: thought?.text.slice(0, 200) ?? '', mine: ours(thought ?? null), maker: otherPerson(thought ?? null),
+      return { ...base, undo, objectId: thought?.id ?? null, title: thought?.text.slice(0, 200) ?? '', mine: stillOurs(thought ?? null), maker: otherPerson(thought ?? null),
         removal: operation === 'map.thought.delete', beforeVersion: thought?.version ?? null };
     }
     case 'map.positions.update': {
       const moves = (payload.moves ?? []) as { id: string }[];
       const thoughts = await rows.thoughts(moves.map((move) => move.id));
-      const others = thoughts.filter((thought) => !ours(thought));
+      const others = thoughts.filter((thought) => !stillOurs(thought));
       const undo: UndoRecord | null = thoughts.length === moves.length ? { plan: { kind: 'positions', moves: moves.map((move) => {
         const old = thoughts.find((item) => item.id === move.id)!; const to = move as unknown as { x: number; y: number };
         return { id: move.id, before: { x: old.x, y: old.y }, after: { x: to.x, y: to.y } };
@@ -299,8 +333,8 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
   if (!approval) {
     // The run's own token: in flight, its place, the S6 entry admitted by the route's dispatch.
     const context = await agentConnectionInTransaction(tx, claims, 'flux.action.execute', null);
-    if (!context.connection.selectedProjectIds.includes(projectId)) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
     enforceRead((await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.read', projectId, accessReader(tx), { lock: true })).allowed);
+    if (!context.connection.selectedProjectIds.includes(projectId)) throw outsideRunPlace();
     await context.requireProject(projectId, 'project.read');
     agentId = context.principal.id; workspaceId = context.workspaceId;
   } else {
@@ -348,7 +382,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
     const runId = claims.run?.id ?? approval?.runId;
     if (!call || !runId) throw new DomainError(403, 'AGENT_EXECUTION_UNAVAILABLE', 'This change needs its assistant run');
     // Anything outside the run's place has no tool to reach it.
-    if (claims.run && input.projectId !== claims.run.projectId) throw new DomainError(403, 'OUTSIDE_RUN_PLACE', 'An assistant run changes only the project it was asked in');
+    if (claims.run && input.projectId !== claims.run.projectId) throw outsideRunPlace();
     const fingerprint = assistantCallFingerprint(call);
     const live = operation.startsWith('map.') && objectId !== null && await nativeMapRoomExists(db as DbExecutor, objectId);
     const releases = new Set<() => void>();
@@ -376,6 +410,9 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
           }
         }
         authority = await currentAuthority(tx, claims, input.projectId, call.tool, runRow, approval, prepared);
+        // Objects stay in their space: on Approve a miss means the target is gone, which reads "Changed since you asked".
+        if (!await withinRunPlace(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, { workspaceId: authority.workspaceId, projectId: input.projectId }))
+          throw approval ? new DomainError(404, 'OBJECT_NOT_FOUND', 'Project object not found') : outsideRunPlace();
         const ownerName = (await rows.names([claims.ownerUserId])).get(claims.ownerUserId) ?? 'your owner';
         described = await describe(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, claims.ownerUserId);
         const target = described;

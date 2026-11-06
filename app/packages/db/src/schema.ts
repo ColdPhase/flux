@@ -1036,6 +1036,8 @@ export const sketches = pgTable('sketches', {
   title: text('title').notNull(),
   createdByUserId: text('created_by_user_id').references(() => authUsers.id),
   createdByAgentId: uuid('created_by_agent_id'),
+  // Everyone who changed it after it was made, as `human:<id>` or `agent:<id>` (F-036 Terms "Yours").
+  editedBy: text('edited_by').array().notNull().default(sql`'{}'::text[]`),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1068,6 +1070,8 @@ export const sketchThoughts = pgTable('sketch_thoughts', {
   sourceProjectMessageId: uuid('source_project_message_id'),
   createdByUserId: text('created_by_user_id').references(() => authUsers.id),
   createdByAgentId: uuid('created_by_agent_id'),
+  // Everyone who changed it after it was made, as `human:<id>` or `agent:<id>` (F-036 Terms "Yours").
+  editedBy: text('edited_by').array().notNull().default(sql`'{}'::text[]`),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

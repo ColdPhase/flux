@@ -61,3 +61,7 @@ ALTER TABLE public.assistant_changes ADD CONSTRAINT assistant_changes_authority_
   CHECK (authority = ANY (ARRAY['owner_request'::text, 'owner_approval'::text]));
 ALTER TABLE public.assistant_changes ADD CONSTRAINT assistant_changes_after_wait_check
   CHECK (state <> 'applied_after_wait'::text OR authority = 'owner_approval'::text);
+
+-- "Yours" is what you or your agents made and nobody else has edited (F-036 Terms): maps and thoughts record who edited them.
+ALTER TABLE public.sketches ADD COLUMN edited_by text[] DEFAULT '{}'::text[] NOT NULL;
+ALTER TABLE public.sketch_thoughts ADD COLUMN edited_by text[] DEFAULT '{}'::text[] NOT NULL;

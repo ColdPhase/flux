@@ -120,11 +120,11 @@ weaken the existing held-race, replay or revocation requirements.
 
 ## PC-3 — required features, effects and versions
 
-EXT-1's domain contract remains `toolContractVersion: 1`; admitting another wire
+EXT-1's domain contract is `toolContractVersion: 2`; admitting another wire
 era is not permission to alter it. Both formats must preserve all required
 `flux_*` names, input schemas, scopes, annotations, operation/class rules,
 tool error envelopes/codes and bootstrap keys. Preserve selected-project reads,
-pagination/cursors, trusted bootstrap, approved-policy revisions, playbook
+pagination/cursors, trusted bootstrap, playbook
 version/digest, resources and Start/Resume prompt arguments and payloads.
 Transport-specific framing/metadata may differ; authorized domain semantics may
 not. Any actual breaking EXT-1 change requires its existing versioned decision

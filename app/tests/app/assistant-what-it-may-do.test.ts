@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  agentConnectionPath, assistantChangeActionPath, assistantChangeLine, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunChangesActionPath, docPath, NEEDS_YOU_PATH,
-  type AssistantRunUndone, type Conversation, type NeedsYouResponse,
+  agentConnectionPath, agentMcpPolicyPath, assistantChangeActionPath, assistantChangeLine, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunChangesActionPath, docPath, NEEDS_YOU_PATH,
+  type AgentConnection, type AssistantChangeDecision, type AssistantRunUndone, type Conversation, type NeedsYouResponse,
 } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
@@ -21,13 +21,31 @@ let scene: AssistantScene;
 const decide = (who: Person, id: string, action: 'apply' | 'skip' | 'edit', body: unknown = {}) => who.browser.request('POST', assistantChangeActionPath(id, action), { body });
 const undoRun = async (who: Person, runId: string) => expectStatus(await who.browser.request('POST', assistantRunChangesActionPath(runId, 'undo'), { body: {} }), 200) as AssistantRunUndone;
 const ownItems = async (who: Person = scene.owner) => (expectStatus(await who.browser.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse).items.filter((item) => item.key.startsWith('assistant:'));
-const titled = async (title: string) => (await pool.query(`SELECT id, owner_user_id FROM project_work_items WHERE title = $1 AND project_id = $2`, [title, scene.place.id])).rows as { id: string; owner_user_id: string | null }[];
+const titled = async (title: string, projectId = scene.place.id) => (await pool.query(`SELECT id, owner_user_id FROM project_work_items WHERE title = $1 AND project_id = $2`, [title, projectId])).rows as { id: string; owner_user_id: string | null }[];
 const thought = async (who: Person, mapId: string, value: string) => {
   const made = expectStatus(await who.browser.request('POST', `/api/v1/sketches/${mapId}/thoughts`, { body: { text: value, x: 0, y: 0 } }), 201) as { thought?: { id: string; version: number }; id?: string; version?: number };
   return { id: (made.thought?.id ?? made.id)!, version: (made.thought?.version ?? made.version)! };
 };
 const thoughtExists = async (id: string) => (await pool.query(`SELECT count(*)::int AS n FROM sketch_thoughts WHERE id = $1`, [id])).rows[0].n === 1;
 const refusal = (message: Parameters<typeof text>[0]) => (JSON.parse(text(message)) as { code?: string }).code;
+/** Refused either way: a tool error, or an HTTP refusal for a bearer that lost everything. */
+const refused = (answer: { status: number; message: Parameters<typeof result>[0] }) => answer.status !== 200 || result(answer.message)?.isError === true;
+const rename = async (who: Person, sketchId: string, version: number, title: string) =>
+  expectStatus(await who.browser.request('PATCH', `/api/v1/sketches/${sketchId}`, { body: { title }, headers: { 'if-match': `"${version}"` } }), 200) as { version: number };
+const rewrite = async (who: Person, sketchId: string, item: { id: string; version: number }, value: string) =>
+  expectStatus(await who.browser.request('PATCH', `/api/v1/sketches/${sketchId}/thoughts/${item.id}`, { body: { text: value }, headers: { 'if-match': `"${item.version}"` } }), 200) as { id: string; version: number };
+const thoughtText = async (id: string) => (await pool.query(`SELECT text FROM sketch_thoughts WHERE id = $1`, [id])).rows[0]?.text as string | undefined;
+/** A second company where the scene's owner is an ordinary member with an assistant: Jonas owns it, and Ada's rights there can change. */
+async function laboratory(own: AssistantScene) {
+  const lab = await createWorkspace(own.peer, 'Jonas lab');
+  await addMember(own.peer, lab.id, own.owner, 'member');
+  const rig = await createProject(own.peer, lab.id, 'Shared rig', 'restricted');
+  await grant(own.peer, rig.id, own.owner, 'contributor');
+  const newAgent = async (name: string) => (expectStatus(await own.owner.browser.request('POST', `/api/v1/workspaces/${lab.id}/agents`, { body: { name, owner: 'self' } }), 201) as { id: string }).id;
+  await own.runs.selectAgent(human(own.owner), { agentId: await newAgent('Ada assistant') });
+  const thread = expectStatus(await own.peer.browser.request('POST', `/api/v1/projects/${rig.id}/conversations`, { body: { body: 'Rig notes', clientMessageId: randomUUID() } }), 201) as Conversation;
+  return { lab, rig, thread, newAgent };
+}
 /** The owner kept out of the project for the length of one check: a keep-out is the one thing that lowers a workspace owner. */
 async function keptOut(work: () => Promise<void>) {
   await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'denied', $4) ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`,
@@ -249,7 +267,6 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     await live.call('flux_update_task', { workId: theirs.id, expectedVersion: theirs.version, changes: { title: 'Saved before the owner left' } });
     const [saved] = await changesOf(live.runId);
     await keptOut(async () => {
-      const refused = (answer: { status: number; message: Parameters<typeof result>[0] }) => answer.status !== 200 || result(answer.message)?.isError === true;
       assert.ok(refused(await live.call('flux_create_task', { task: { title: 'After the owner lost it' } })), 'the run cannot write');
       assert.ok(refused(await live.call('flux_get_conversation', { conversationId: scene.thread.id })), 'nor read');
       assert.ok(refused(await client.raw('flux_create_task', { projectId: scene.place.id, runtimeSessionId: client.runtimeSessionId, grantId: allowed.id, clientCommandId: randomUUID(),
@@ -290,13 +307,7 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
 
   test('outside its owner\'s rights the assistant is refused and prepares nothing: an owner narrowed to viewer mid-run, and nothing waits', async () => {
     const own = await assistantScene('wd2');
-    const lab = await createWorkspace(own.peer, 'Jonas lab');
-    await addMember(own.peer, lab.id, own.owner, 'member');
-    const rig = await createProject(own.peer, lab.id, 'Shared rig', 'restricted');
-    await grant(own.peer, rig.id, own.owner, 'contributor');
-    const agentId = (expectStatus(await own.owner.browser.request('POST', `/api/v1/workspaces/${lab.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
-    await own.runs.selectAgent(human(own.owner), { agentId });
-    const thread = expectStatus(await own.peer.browser.request('POST', `/api/v1/projects/${rig.id}/conversations`, { body: { body: 'Rig notes', clientMessageId: randomUUID() } }), 201) as Conversation;
+    const { rig, thread } = await laboratory(own);
     const job = await own.task(own.peer, 'Jonas aligns the rig', rig.id);
     const live = await own.liveRun(thread);
     await grant(own.peer, rig.id, own.owner, 'viewer');
@@ -304,5 +315,189 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     assert.match(text(refused.message), /^My owner can't change this, so neither can I/);
     assert.equal((await own.taskRow(job.id)).title, 'Jonas aligns the rig');
     assert.deepEqual((await changesOf(live.runId)).map((row) => row.state), ['refused'], 'nothing waits for an OK the owner could not give');
+  });
+
+  test('a guest has no AI, at once, even with a grant on the space: a client, a running assistant, a queued run, saved changes and the Inbox all stop', async (t) => {
+    const own = await assistantScene('wg');
+    const { lab, rig, thread, newAgent } = await laboratory(own);
+    const mine = await own.task(own.owner, 'Ada wires the rig', rig.id);
+    const [first, second] = [await own.task(own.peer, 'Jonas aligns the rig', rig.id), await own.task(own.peer, 'Jonas cleans the rig', rig.id)];
+    const client = await agentConnection(pool, own.owner.browser, await newAgent('Ada desk'), [rig.id]);
+    const allowed = await client.grant('work.create', 'execute');
+    const clientCreate = (title: string) => client.raw('flux_create_task', { projectId: rig.id, runtimeSessionId: client.runtimeSessionId, grantId: allowed.id, clientCommandId: randomUUID(),
+      peerRequestClass: 'execute', sources: [], task: { title } });
+    assert.ok(!refused(await clientCreate('Client before the change')), 'it works while Ada is a member');
+    const saved = await own.liveRun(thread);
+    for (const task of [first, second]) assert.match(text((await saved.call('flux_update_task', { workId: task.id, expectedVersion: task.version, changes: { title: 'Done by a guest\'s agent' } })).message), /^Waiting for /);
+    await own.complete(saved.runId);
+    const [one, other] = await changesOf(saved.runId);
+    assert.equal((await ownItems(own.owner)).length, 1, 'it waits for her');
+    const running = await own.liveRun(thread);
+    const queued = await own.runs.invoke(human(own.owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Check the rig' });
+
+    expectStatus(await own.peer.browser.request('PATCH', `/api/v1/workspaces/${lab.id}/members/${own.owner.id}`, { body: { role: 'guest' } }), 200);
+
+    await t.test('the local client can neither write nor read', async () => {
+      assert.ok(refused(await clientCreate('Client after the change')), 'write');
+      assert.ok(refused(await client.raw('flux_get_work', { projectId: rig.id, id: mine.id })), 'read');
+      assert.equal((await titled('Client after the change', rig.id)).length, 0);
+    });
+    await t.test('the running assistant can neither write nor read on its next call', async () => {
+      assert.ok(refused(await running.call('flux_create_task', { task: { title: 'Run after the change' } })), 'write');
+      assert.ok(refused(await running.call('flux_get_work', { projectId: rig.id, id: mine.id })), 'read');
+      assert.equal((await titled('Run after the change', rig.id)).length, 0);
+    });
+    await t.test('a queued run never starts', async () => {
+      await own.complete(running.runId);
+      assert.equal(await own.processor.process(queued.run.id), 'revoked');
+    });
+    await t.test('nothing waits for a guest in the Inbox', async () => {
+      assert.deepEqual(await ownItems(own.owner), []);
+      assert.equal((await changesOf(saved.runId))[0]!.state, 'waiting');
+    });
+    await t.test('Approve and Approve all change nothing and close the saved changes', async () => {
+      assert.equal((await decide(own.owner, one!.id, 'apply', { expectedVersion: one!.version })).status, 403);
+      const all = expectStatus(await own.owner.browser.request('POST', assistantRunChangesActionPath(saved.runId, 'apply'), { body: {} }), 200) as { changes: AssistantChangeDecision[] };
+      assert.ok(all.changes.every((decided) => !!decided.message), 'Approve all says why');
+      assert.deepEqual((await changesOf(saved.runId)).map((row) => [row.id, row.state]), [[one!.id, 'refused'], [other!.id, 'refused']]);
+      assert.deepEqual([(await own.taskRow(first.id)).title, (await own.taskRow(second.id)).title], ['Jonas aligns the rig', 'Jonas cleans the rig']);
+    });
+    await t.test('the person keeps their own access; only AI stops', async () => {
+      assert.ok((await own.task(own.owner, 'Ada still works by hand', rig.id)).id);
+    });
+  });
+
+  test('AST-5.3: a run changes only its place: every change that names something in another space is refused like reading it, nothing waits and nothing is recorded', async () => {
+    const vault = await createProject(scene.owner, scene.ws.id, 'Vault', 'restricted');
+    const SECRET = 'Vault combination';
+    const task = await scene.task(scene.owner, SECRET, vault.id);
+    const page = expectStatus(await scene.owner.browser.request('POST', `/api/v1/projects/${vault.id}/docs`, { body: { title: SECRET, body: 'Vault page' } }), 201) as { id: string; version: number };
+    const map = expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/sketches`, { body: { title: SECRET, scope: 'project', projectId: vault.id } }), 201) as { id: string; version: number };
+    const [from, to] = [await thought(scene.owner, map.id, SECRET), await thought(scene.owner, map.id, 'Second vault thought')];
+    const link = expectStatus(await scene.owner.browser.request('POST', `/api/v1/sketches/${map.id}/links`, { body: { fromId: from.id, toId: to.id } }), 201) as { id: string };
+    const talk = expectStatus(await scene.owner.browser.request('POST', `/api/v1/projects/${vault.id}/conversations`, { body: { body: SECRET, clientMessageId: randomUUID() } }), 201) as Conversation;
+    const here = await scene.map(scene.owner, 'Map of this place');
+    const elsewhere = { projectId: vault.id };
+    const finishes = { result: { title: 'Outside the place', finding: 'positive', workIds: [task.id], finishes: { workId: task.id, expectedVersion: task.version } } };
+    const moved = [{ id: from.id, x: 5, y: 5, expectedVersion: from.version }];
+    const changes: [string, Record<string, unknown>][] = [
+      // What the run names by its id, in another space.
+      ['flux_update_task', { workId: task.id, expectedVersion: task.version, changes: { title: 'Changed from outside' } }],
+      ['flux_update_doc', { docId: page.id, expectedVersion: page.version, changes: { body: 'Changed from outside' } }],
+      ['flux_rename_map', { mapId: map.id, expectedVersion: map.version, title: 'Changed from outside' }],
+      ['flux_add_thought', { mapId: map.id, thought: { text: 'Changed from outside', x: 1, y: 1 } }],
+      ['flux_update_thought', { mapId: map.id, thoughtId: from.id, expectedVersion: from.version, changes: { text: 'Changed from outside' } }],
+      ['flux_remove_thought', { mapId: map.id, thoughtId: from.id, expectedVersion: from.version }],
+      ['flux_move_thoughts', { mapId: map.id, moves: moved }],
+      ['flux_link_thoughts', { mapId: map.id, fromId: to.id, toId: from.id }],
+      ['flux_unlink_thoughts', { mapId: map.id, linkId: link.id }],
+      ['flux_reply_in_conversation', { conversationId: talk.id, message: { body: 'Changed from outside' } }],
+      ['flux_create_unit', { taskId: task.id, unitKey: 'outside', expectedTaskVersion: task.version, assignmentConnectionId: await scene.assistantConnectionId(), parent: null, peerRequestClass: 'execute' }],
+      ['flux_record_result', finishes],
+      // Something of another space named through this place's own map.
+      ['flux_update_thought', { mapId: here.id, thoughtId: from.id, expectedVersion: from.version, changes: { text: 'Changed from outside' } }],
+      ['flux_remove_thought', { mapId: here.id, thoughtId: from.id, expectedVersion: from.version }],
+      ['flux_move_thoughts', { mapId: here.id, moves: moved }],
+      ['flux_link_thoughts', { mapId: here.id, fromId: to.id, toId: from.id }],
+      ['flux_unlink_thoughts', { mapId: here.id, linkId: link.id }],
+      // Another space named outright.
+      ['flux_create_task', { ...elsewhere, task: { title: 'Outside the place' } }],
+      ['flux_create_doc', { ...elsewhere, doc: { title: 'Outside the place' } }],
+      ['flux_create_map', { ...elsewhere, title: 'Outside the place' }],
+      ['flux_start_conversation', { ...elsewhere, message: { body: 'Outside the place' } }],
+      ['flux_propose_decision', { ...elsewhere, decision: { title: 'Outside the place' } }],
+      ['flux_record_result', { ...elsewhere, ...finishes }],
+    ];
+    assert.deepEqual([...new Set(changes.map(([name]) => name))].sort(), [...ASSISTANT_RUN_EFFECT_TOOLS].sort(), 'every change kind is covered');
+    for (const mode of ['act', 'ask'] as const) {
+      await scene.setMayDo(mode);
+      const live = await scene.liveRun();
+      assert.equal(refusal((await live.call('flux_get_work', { projectId: vault.id, id: task.id })).message), 'PROJECT_NOT_FOUND', 'the same run cannot read it');
+      // Every kind is asked before anything is asserted, so a failure names all that got through, not only the first. (No `t.test`: this suite's beforeEach would end the run.)
+      const escaped: string[] = [];
+      for (const [name, args] of changes) {
+        const answer = await live.call(name, args);
+        const said = text(answer.message);
+        if (!said.includes('"OUTSIDE_RUN_PLACE"') || said.includes(SECRET)) escaped.push(`${name} ${args.projectId ? 'elsewhere' : args.mapId === here.id ? 'through this map' : 'by id'}: ${said.slice(0, 80)}`);
+      }
+      assert.deepEqual(escaped, [], `${mode}: every change is refused, and says nothing of what is there`);
+      assert.deepEqual(await changesOf(live.runId), [], `${mode}: nothing was applied, waits or is recorded`);
+      await scene.complete(live.runId);
+    }
+    assert.equal((await scene.taskRow(task.id)).title, SECRET);
+    assert.equal((await scene.docBody(page.id)).body, 'Vault page');
+    assert.equal(await thoughtText(from.id), SECRET);
+    const counts = (await pool.query(`SELECT (SELECT count(*)::int FROM sketch_thoughts WHERE sketch_id = $1) AS thoughts, (SELECT count(*)::int FROM sketch_links WHERE sketch_id = $1) AS links,
+      (SELECT count(*)::int FROM project_messages WHERE conversation_id = $2) AS messages, (SELECT version FROM sketches WHERE id = $1) AS version`, [map.id, talk.id])).rows[0];
+    assert.deepEqual(counts, { thoughts: 2, links: 1, messages: 1, version: map.version });
+    assert.equal((await pool.query(`SELECT 1 FROM project_work_items WHERE project_id = $1 AND title = 'Outside the place'`, [vault.id])).rowCount, 0);
+  });
+
+  test('a target that is gone at Approve reads "Changed since you asked", not as outside the place', async () => {
+    const sketch = await scene.map(scene.owner);
+    const item = await thought(scene.owner, sketch.id, 'Gone before the OK');
+    await scene.setMayDo('ask');
+    const live = await scene.liveRun();
+    assert.match(text((await live.call('flux_update_thought', { mapId: sketch.id, thoughtId: item.id, expectedVersion: item.version, changes: { text: 'Too late' } })).message), /^Waiting for /);
+    await scene.complete(live.runId);
+    expectStatus(await scene.owner.browser.request('DELETE', `/api/v1/sketches/${sketch.id}/thoughts/${item.id}`, { headers: { 'if-match': `"${item.version}"` } }), 204);
+    const [saved] = await changesOf(live.runId);
+    const answer = await decide(scene.owner, saved!.id, 'apply', { expectedVersion: saved!.version });
+    assert.equal(answer.status, 409);
+    assert.equal((answer.json as { code: string }).code, 'ASSISTANT_CHANGE_STALE');
+  });
+
+  test('a thought or a map someone else edited waits; your own and your agents\' edits keep it yours, past its first version', async () => {
+    const sketch = await scene.map(scene.owner, 'Shared map');
+    const shared = await thought(scene.owner, sketch.id, 'Ada wrote this');
+    const rewritten = await rewrite(scene.peer, sketch.id, shared, 'Jonas rewrote this');
+    const moved = await thought(scene.owner, sketch.id, 'Jonas moved this');
+    const nudged = expectStatus(await scene.peer.browser.request('PATCH', `/api/v1/sketches/${sketch.id}/positions`, { body: { moves: [{ id: moved.id, x: 40, y: 40, expectedVersion: moved.version }] } }), 200) as { thoughts: { version: number }[] };
+    const kept = await thought(scene.owner, sketch.id, 'Ada keeps this');
+    const edited = await rewrite(scene.owner, sketch.id, kept, 'Ada changed this herself');
+    const live = await scene.liveRun();
+    assert.match(text((await live.call('flux_update_thought', { mapId: sketch.id, thoughtId: shared.id, expectedVersion: rewritten.version, changes: { text: 'Overwrites Jonas' } })).message), /^Waiting for /);
+    assert.match(text((await live.call('flux_move_thoughts', { mapId: sketch.id, moves: [{ id: moved.id, x: 0, y: 0, expectedVersion: nudged.thoughts[0]!.version }] })).message), /^Waiting for /);
+    const first = await live.call('flux_update_thought', { mapId: sketch.id, thoughtId: kept.id, expectedVersion: edited.version, changes: { text: 'Her agent changed this' } });
+    const second = await live.call('flux_update_thought', { mapId: sketch.id, thoughtId: kept.id, expectedVersion: (JSON.parse(text(first.message)) as { version: number }).version, changes: { text: 'Her agent changed this again' } });
+    assert.ok(JSON.parse(text(second.message)).thoughtId, 'her agent keeps working on what stays hers');
+    assert.deepEqual((await changesOf(live.runId)).map((row) => [row.operation, row.state, row.wait_reason]), [['map.thought.update', 'waiting', 'others'], ['map.positions.update', 'waiting', 'others'],
+      ['map.thought.update', 'applied', null], ['map.thought.update', 'applied', null]]);
+    assert.equal(await thoughtText(shared.id), 'Jonas rewrote this');
+    assert.equal(await thoughtText(kept.id), 'Her agent changed this again');
+
+    // A local client uses the same rule, and has nowhere to wait.
+    const other = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Ada thought laptop', owner: 'self' } }), 201) as { id: string }).id;
+    const client = await agentConnection(pool, scene.owner.browser, other, [scene.place.id]);
+    const allowed = await client.grant('map.thought.update', 'execute');
+    assert.equal(refusal(await client.tool('flux_update_thought', { projectId: scene.place.id, runtimeSessionId: client.runtimeSessionId, grantId: allowed.id, clientCommandId: randomUUID(), peerRequestClass: 'execute',
+      sources: [], mapId: sketch.id, thoughtId: shared.id, expectedVersion: rewritten.version, changes: { text: 'Overwrites Jonas from a client' } })), 'AGENT_CHANGE_WAITS');
+    assert.equal(await thoughtText(shared.id), 'Jonas rewrote this');
+
+    const yours = await scene.map(scene.owner, 'Named by Ada');
+    const theirs = await scene.map(scene.owner, 'Named by Ada too');
+    const renamed = await rename(scene.peer, theirs.id, theirs.version, 'Named by Jonas');
+    assert.ok(JSON.parse(text((await live.call('flux_rename_map', { mapId: yours.id, expectedVersion: yours.version, title: 'Renamed by her agent' })).message)).mapId);
+    assert.match(text((await live.call('flux_rename_map', { mapId: theirs.id, expectedVersion: renamed.version, title: 'Overwrites Jonas' })).message), /^Waiting for /);
+  });
+
+  test('a restricted space its owner cannot see stays out of every payload: the connection list and the permissions route', async () => {
+    const own = await assistantScene('wr');
+    const { lab, rig } = await laboratory(own);
+    const hidden = await createProject(own.peer, lab.id, 'Jonas only', 'restricted');
+    assert.equal((await own.owner.browser.request('GET', `/api/v1/projects/${hidden.id}`)).status, 404, 'she cannot see it');
+    const connections = expectStatus(await own.owner.browser.request('GET', '/api/v1/agent-connections'), 200) as unknown as AgentConnection[];
+    const assistant = connections.find((connection) => connection.computeSource === 'owner_assistant' && connection.workspaceId === lab.id)!;
+    assert.deepEqual(assistant.selectedProjectIds, [rig.id], 'only what she can see');
+    const policy = expectStatus(await own.owner.browser.request('GET', agentMcpPolicyPath(assistant.id)), 200) as { projects: { id: string }[]; connection: AgentConnection; policy: { selectedProjectIds: string[] } };
+    assert.deepEqual(policy.projects.map((project) => project.id), [rig.id]);
+    assert.deepEqual(policy.connection.selectedProjectIds, [rig.id]);
+    assert.deepEqual(policy.policy.selectedProjectIds, [rig.id]);
+    const raw = JSON.stringify([connections, policy]);
+    assert.ok(!raw.includes(hidden.id), 'its id appears nowhere');
+    // Added to the space, she reaches it at once: nothing is stored for the assistant.
+    await grant(own.peer, hidden.id, own.owner, 'viewer');
+    const after = expectStatus(await own.owner.browser.request('GET', '/api/v1/agent-connections'), 200) as unknown as AgentConnection[];
+    assert.deepEqual(after.find((connection) => connection.id === assistant.id)!.selectedProjectIds.sort(), [rig.id, hidden.id].sort());
   });
 });

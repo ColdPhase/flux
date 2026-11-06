@@ -21,6 +21,12 @@ const agents = schema.agents;
 const m = schema.dmMessages;
 const dp = schema.dmParticipants;
 
+/** Adds whoever changed a map or a thought to its `edited_by`, once (F-036 Terms "Yours"). */
+function editedBy(column: typeof s.editedBy | typeof t.editedBy, editor: Author) {
+  const who = `${editor.kind}:${editor.id}`;
+  return sql`CASE WHEN ${who} = ANY(${column}) THEN ${column} ELSE array_append(${column}, ${who}) END`;
+}
+
 function author(principal: Author) {
   return principal.kind === 'agent' ? { createdByUserId: null, createdByAgentId: principal.id } : { createdByUserId: principal.id, createdByAgentId: null };
 }
@@ -146,14 +152,15 @@ export function sketchRows(db: DbExecutor) {
       }));
       return (await findSketch(sketch.id))!;
     },
-    async renameSketch(id: string, title: string) {
+    async renameSketch(id: string, title: string, editor: Author) {
       const [located] = await db.select({ workspaceId: s.workspaceId }).from(s).where(eq(s.id, id));
-      await db.update(s).set({ ...(await sealFor(db, 'sketches', located!.workspaceId, { title }, { id })), version: sql`${s.version} + 1`,
+      await db.update(s).set({ ...(await sealFor(db, 'sketches', located!.workspaceId, { title }, { id })), version: sql`${s.version} + 1`, editedBy: editedBy(s.editedBy, editor),
         updatedAt: sql`GREATEST(clock_timestamp(), ${s.updatedAt} + interval '1 millisecond')` }).where(eq(s.id, id));
       return (await findSketch(id))!;
     },
-    async touchSketch(id: string) {
-      await db.update(s).set({ updatedAt: sql`GREATEST(clock_timestamp(), ${s.updatedAt} + interval '1 millisecond')` }).where(eq(s.id, id));
+    async touchSketch(id: string, editor?: Author) {
+      await db.update(s).set({ ...(editor ? { editedBy: editedBy(s.editedBy, editor) } : {}),
+        updatedAt: sql`GREATEST(clock_timestamp(), ${s.updatedAt} + interval '1 millisecond')` }).where(eq(s.id, id));
     },
     async thoughts(sketchId: string, page?: { limit: number; offset: number }) {
       // Thoughts started from messages in one change share created_at: they follow the conversation.
@@ -225,10 +232,10 @@ export function sketchRows(db: DbExecutor) {
       }));
       return findThought(thought.sketchId, thought.id);
     },
-    async updateThought(sketchId: string, id: string, changes: ThoughtChangeRow) {
+    async updateThought(sketchId: string, id: string, changes: ThoughtChangeRow, editor: Author) {
       const [located] = await db.select({ workspaceId: t.workspaceId }).from(t).where(and(eq(t.sketchId, sketchId), eq(t.id, id)));
       const sealed = located ? await sealFor(db, 'sketch_thoughts', located.workspaceId, changes, { id }) : changes;
-      await db.update(t).set({ ...sealed, version: sql`${t.version} + 1`, updatedAt: new Date() }).where(and(eq(t.sketchId, sketchId), eq(t.id, id)));
+      await db.update(t).set({ ...sealed, version: sql`${t.version} + 1`, editedBy: editedBy(t.editedBy, editor), updatedAt: new Date() }).where(and(eq(t.sketchId, sketchId), eq(t.id, id)));
       return findThought(sketchId, id);
     },
     async deleteThought(sketchId: string, id: string) {

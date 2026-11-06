@@ -105,7 +105,8 @@ matching rule applies:
 
 An agent's rights are exactly its owner's ([F-036](../product/assistant.md) AG-3): its level is
 its owner's current level, it holds no grant of its own, and it acts only while not revoked. It
-stops entirely when the owner leaves the workspace. Whatever the owner loses, the agent loses on
+stops entirely when the owner leaves the workspace or becomes a guest, even with a grant on the
+space: a guest has no agents and no AI (F-036 AG-2). Whatever the owner loses, the agent loses on
 its next call. "What it may do" narrows what an agent does inside those rights and never adds any.
 
 **An agent never works outside its owner's current access**, including on drafts it

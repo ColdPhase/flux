@@ -59,7 +59,7 @@ function Said({ text, change }: { text: string; change: AssistantChange | undefi
 
 /**
  * The change line on the agent's message (AG-3): "Updated the Wiki page Calibration (3 changes) · moved #4 to In progress · Undo".
- * Undo restores the earlier versions; the line then reads "Undone by Ada". There is no separate Activity list.
+ * Undo restores the earlier versions; the line is then struck through and ends "Undone by Ada". There is no separate Activity list.
  */
 function ChangeLine({ changes, onChanged, meId, standalone }: { changes: AssistantChange[]; onChanged: () => Promise<void>; meId?: string; standalone: boolean }) {
   const [busy, setBusy] = useState(false);
@@ -86,7 +86,7 @@ function ChangeLine({ changes, onChanged, meId, standalone }: { changes: Assista
     <section ref={home} tabIndex={-1} className="assistant-message" aria-label={`What ${whose} assistant changed`} data-run={runId}>
       {standalone && whose !== 'your' ? <p className="assistant-message__who">{whose[0]!.toUpperCase()}{whose.slice(1)} assistant</p> : null}
       {done.length ? <p className="assistant-message__line" role="status" aria-live="polite">
-        <span>{assistantChangeLine(live.length ? live : done)}</span>
+        {live.length ? <span>{assistantChangeLine(live)}</span> : <s>{assistantChangeLine(done)}</s>}
         {live.length && live.some((change) => change.undoable) ? <><span aria-hidden="true"> · </span>
           <Button variant="link" busy={busy} onClick={() => void undo()}>Undo</Button></> : null}
         {!live.length ? <><span aria-hidden="true"> · </span><span>Undone by {undoneBy ?? 'you'}</span></> : null}

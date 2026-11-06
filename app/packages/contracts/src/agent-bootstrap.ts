@@ -71,7 +71,7 @@ export interface AgentCoordinationReference {
   };
 }
 export interface AgentBootstrap {
-  contractVersion: 1;
+  contractVersion: 2;
   observedAt: string;
   runtime: AuthenticatedAgentRuntime;
   project: { id: string; workspaceId: string; name: string };
