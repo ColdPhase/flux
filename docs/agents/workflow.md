@@ -128,7 +128,7 @@ The evaluator reviews the pinned head in an isolated checkout using
 request changes with concrete findings (criterion, expected, observed,
 reproduction, severity). The author fixes on the same branch and verifies every
 finding before asking for the second and final review round. The evaluator checks
-only the delta and open findings, then approves if no P1/P2 remains. A persisting
+only the delta and open findings, then approves if no blocking finding remains. A persisting
 blocker is recorded and parked instead of starting another automatic round. The
 two-round budget is shared across agents, rebases and heads; see
 [Verdicts](evaluation.md#verdicts).
@@ -138,8 +138,9 @@ the approver or the author merges. **Fast mode** (founder direction, Maurycy,
 2026-10-23) replaces the approval requirement: the author may merge their own PR
 through the admin bypass when the required checks are green, the author's
 impact-based checks pass at that head with commands and result lines in the PR,
-and no P1/P2 from any review is unresolved. Resolve or rebut a peer's open P1/P2
-before merging; never merge over one. Peer review stays welcome before or after
+and no blocking finding from any review is unresolved. Resolve or rebut a peer's
+open blocking finding before merging; never merge over one. File every other P2 as
+a milestone issue first (see [Verdicts](evaluation.md#verdicts)). Peer review stays welcome before or after
 merge; a P1/P2 found after merge becomes an issue owned by the author. New code
 after approval needs the relevant re-review. A reviewer may reproduce a bug
 and prepare a patch on their own branch. Writing on the peer's branch requires

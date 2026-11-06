@@ -113,8 +113,10 @@ Keep procedures in one place and use the guides below when relevant.
   New code or changed criteria require the relevant checks and review again.
 - Merge to `main` through PRs with required checks green. Fast mode (founder
   direction, Maurycy, 2026-10-23): the author may merge their own PR with the
-  admin bypass once its own impact-based checks pass at the head, no P1/P2 from
-  any review is open, and the PR records commands and result lines. Peer review
+  admin bypass once its own impact-based checks pass at the head, no blocking
+  finding from any review is open, and the PR records commands and result lines.
+  A P1, a regression or a broken decision blocks; other P2s become milestone
+  issues before the merge (founder direction, 2026-11-06). Peer review
   is optional and may happen after merge; a post-merge P1/P2 becomes an issue
   for the author. See `docs/agents/workflow.md` §5.
 - Completed tasks contribute to a release; release completion requires the
