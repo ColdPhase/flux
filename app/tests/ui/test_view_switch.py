@@ -262,13 +262,13 @@ class ViewSwitch(unittest.TestCase):
         not the conversation) and stays so until the reads answer; then the real view takes its place (#863 rule 2)."""
         page = self.page()
         project_view(page, "Tasks")  # warm: its code is here, so what is waited for is the reads
-        page.wait_for_function("() => document.querySelector('#content .tb-root, #content .ws-tasks, #content [class*=tb-], #content [class*=ws-]')", timeout=8000)
+        # The Tasks view's own roots, not any class that starts with ws-: the Conversation has .ws-chip and .ws-attach, so a looser selector never waited here, the click on
+        # Conversation then came before Tasks had been reached and the click on Tasks landed on the page it was on.
+        page.wait_for_url(re.compile(PATH["Tasks"]))
+        page.wait_for_function("() => document.querySelector('#content .tb-root, #content .ws-tasks')", timeout=8000)
         project_view(page, "Conversation")
+        page.wait_for_url(re.compile(PATH["Conversation"]))
         page.wait_for_function("() => document.querySelector('#content .project-convo')", timeout=8000)
-        # The earlier switch's tail (the return point it saved, the shell read the event of that makes) is over before the reads are held: a read held
-        # in the middle of it is a different test.
-        page.wait_for_load_state("networkidle")
-        page.wait_for_timeout(1200)
         # The Tasks view's loader reads the project (and the comparison outcomes) before it commits.
         held = self.hold_reads(page, r"/api/v1/projects/[^/?]+(/comparison[^/?]*)?(\?.*)?$")
         page.evaluate("() => { window.__frames = []; }")
@@ -293,7 +293,7 @@ class ViewSwitch(unittest.TestCase):
         while held:
             held.pop().continue_()
         page.wait_for_url(re.compile(PATH["Tasks"]))
-        page.wait_for_function("() => !document.querySelector('[data-pending-view]') && document.querySelector('#content .tb-root, #content [class*=ws-], #content [class*=tb-]')", timeout=8000)
+        page.wait_for_function("() => !document.querySelector('[data-pending-view]') && document.querySelector('#content .tb-root, #content .ws-tasks')", timeout=8000)
 
     def test_10_a_hidden_view_does_not_act_on_keys_while_the_switch_waits(self):
         """The old view stays mounted under the loading state, hidden. Its document-level key handlers must not act on rows nobody can see:

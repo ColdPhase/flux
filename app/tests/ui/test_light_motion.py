@@ -206,9 +206,9 @@ class LightMotionJourney(unittest.TestCase):
         self.assertFalse(verdict["appInert"], "the app is live again at once")
         expect(page.get_by_role("dialog", name="Jump to")).to_have_count(0)
 
-    def first_k(self, visits: tuple[str, ...]) -> tuple[float, float, float, float, int]:
-        """The first ⌘K with the code of the search held, then let go: the dialog's box on its skeleton and on its content, and how many controls name a close."""
-        page = self.page()
+    def first_k(self, visits: tuple[str, ...], *, phone: bool = False) -> dict:
+        """The first ⌘K with the code of the search held, then let go: the dialog's box and where its list starts, on its skeleton and on its content, and how many buttons name a close."""
+        page = self.page(phone=phone)
         held: list = []
         page.route(re.compile(r"/assets/JumpTo-[^/]+\.js"), lambda route: held.append(route))
 
@@ -230,29 +230,32 @@ class LightMotionJourney(unittest.TestCase):
         self.assertEqual(dialog.locator(".ui-spin").count(), 0, "bars at the dialog's size, not a spinner")
         self.assertEqual(page.locator(".ui-scrim").count(), 1)
         page.wait_for_timeout(300)
-        before = dialog.bounding_box()
+        shape = lambda: {"box": dialog.bounding_box(), "list": dialog.locator(".jump__list").bounding_box()["y"] - dialog.bounding_box()["y"]}
+        before = shape()
         closes = page.get_by_role("button", name="Close search").count()
         while held:
             held.pop().continue_()
         expect(dialog.get_by_role("combobox", name="Jump to")).to_be_visible()
         settled(page)
-        after = dialog.bounding_box()
+        after = shape()
         self.assertEqual(page.get_by_role("dialog", name="Jump to").count(), 1, "still the one dialog")
         self.assertEqual(page.locator(".ui-scrim").count(), 1, "and the one scrim")
         scrim = self.by(page, r"ui-scrim", "script")
         self.assertTrue(scrim and all((entry["to"] or {}).get("opacity") == 1 for entry in scrim), f"the scrim only rises: {scrim}")
-        return before["y"], before["height"], after["y"], after["height"], closes
+        return {"before": before, "after": after, "closes": closes}
 
     def test_04c_the_first_k_opens_one_dialog_at_its_final_size_and_its_content_loads_inside_it(self):
-        """Used to be a blink (#863 rule 6), then a 373 px skeleton with a button of its own under the 341 px dialog that shrank to 340 when the content came.
-        One dialog and one scrim that only rises, at the size the content has, with the close control where the real one is: with no recent places
-        (a hint stands in the list) and with two."""
-        for visits in ((), ("tasks", "map")):
-            with self.subTest(recent_places=len(visits)):
-                top, was, top_after, now, closes = self.first_k(visits)
-                self.assertAlmostEqual(top, top_after, delta=1, msg="the dialog does not move")
-                self.assertAlmostEqual(was, now, delta=2, msg=f"the skeleton is the size of the dialog it stands for: {was} then {now}")
-                self.assertEqual(closes, 0, "no button of its own under the dialog: its close is in the field row, as the real one is")
+        """Used to be a blink (#863 rule 6), then a 373 px skeleton with a button of its own under the 341 px dialog that shrank to 340 when the content came,
+        and on a phone a list that moved 58 px when the row of scope chips arrived. One dialog and one scrim that only rises, at the size the content has, its
+        list where the real list is, with the close control where the real one is: with no recent places (a hint stands in the list), with two, and on a phone."""
+        for label, visits, phone in (("no recent places", (), False), ("two recent places", ("tasks", "map"), False), ("phone", (), True)):
+            with self.subTest(case=label):
+                seen = self.first_k(visits, phone=phone)
+                was, now = seen["before"], seen["after"]
+                self.assertAlmostEqual(was["box"]["y"], now["box"]["y"], delta=1, msg="the dialog does not move")
+                self.assertAlmostEqual(was["box"]["height"], now["box"]["height"], delta=2, msg=f"the skeleton is the size of the dialog it stands for: {was['box']} then {now['box']}")
+                self.assertAlmostEqual(was["list"], now["list"], delta=2, msg=f"and its list starts where the real one does: {was['list']} then {now['list']}")
+                self.assertEqual(seen["closes"], 0, "no button of its own under the dialog: its close is in the field row, as the real one is")
 
     def test_04d_the_k_dialog_leaves_at_its_own_size_while_it_fades(self):
         """On Esc the dialog used to collapse to nothing on the first frame, because its content was removed at once, and fade out as an empty box (#863 rule 3)."""
@@ -585,9 +588,19 @@ class LightMotionJourney(unittest.TestCase):
         if (performance.now() - start < ms) requestAnimationFrame(step); else window.__panelDone = true; };
       requestAnimationFrame(step); }"""
 
-    def watch_panel(self, title: str, wait: int = 2200) -> list[dict]:
+    def touch_page(self, width: int, height: int) -> Page:
+        """A touch screen of any width: the coarse pointer's 44 px targets apply (a mouse at the same width gets the smaller ones)."""
+        context = self.fx.context(phone=True, viewport={"width": width, "height": height})
+        self.addCleanup(context.close)
+        page = context.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught browser errors"))
+        return page
+
+    def watch_panel(self, title: str, wait: int = 2200, touch: tuple[int, int] | None = None) -> list[dict]:
         """Opens a task from its row while its reads arrive in two steps (the task and its context, then 450 ms later its relationships) and records every frame."""
-        page = self.page()
+        page = self.touch_page(*touch) if touch else self.page()
         self.open(page, self.fx.tasks_url())
         settled(page)
         held: list = []
@@ -602,7 +615,7 @@ class LightMotionJourney(unittest.TestCase):
         row = page.locator(".ws-task .ws-item", has_text=title).first
         expect(row).to_be_visible()
         page.evaluate(self.PANEL_FRAMES, wait)
-        row.click()
+        row.tap() if touch else row.click()
         expect(page.locator("#details .wd-skeleton")).to_be_visible()
         self.assertEqual(page.locator("#details .ui-spin").count(), 0, "a skeleton, not a spinner")
         page.wait_for_timeout(300)
@@ -629,13 +642,15 @@ class LightMotionJourney(unittest.TestCase):
             if frame["titleHeight"] is not None:
                 self.assertLessEqual(abs(frame["titleHeight"] - settled_at["titleHeight"]), 1.5, f"{label}: the title takes the lines it will have: {frame}")
 
-    def test_10c_the_task_panel_has_no_jump_from_its_skeleton_to_its_content_whatever_the_title(self):
+    def test_10c_the_task_panel_has_no_jump_from_its_skeleton_to_its_content_whatever_the_title_and_the_pointer(self):
         """The task panel waits for its reads behind its own title and its fixed rows; nothing moves at any frame of the wait, including the one in between (task read,
-        relationships not yet), with a title of one line and with one that wraps (#863 rule 6; the review found 295 px, 356 px, 295 px and a 27 px jump)."""
+        relationships not yet), with a title of one line and with one that wraps, with a mouse and on touch screens, where the 44 px targets of `pointer: coarse` make
+        the rows 188 px and the actions 44 px high (#863 rule 6; the review found 295 px, 356 px, 295 px, a 27 px jump and, on touch, 20 px and 32 px)."""
         long = self.fx.new_task("Ask the school about two more ESP32 kits for the far beds and the gate by the shed")
-        for task in (self.fx.tasks[0], long):
-            with self.subTest(title=task["title"][:30]):
-                self.judge_panel(self.watch_panel(task["title"]), task["title"][:30])
+        for where, touch in (("mouse", None), ("phone 390 px", (390, 844)), ("small phone 360 px", (360, 740)), ("tablet 768 px with touch", (768, 1024))):
+            for task in (self.fx.tasks[0], long):
+                with self.subTest(where=where, title=task["title"][:30]):
+                    self.judge_panel(self.watch_panel(task["title"], touch=touch), f"{where}: {task['title'][:30]}")
 
     def thread_panel_at_once(self, *, phone: bool) -> None:
         page = self.page(phone=phone)
@@ -678,6 +693,101 @@ class LightMotionJourney(unittest.TestCase):
 
     def test_10g_a_thread_opens_its_sheet_on_the_frame_of_the_press_on_a_phone(self):
         self.thread_panel_at_once(phone=True)
+
+    def hold_projects(self, page: Page) -> tuple[list, dict]:
+        """Holds the reads of the conversation's loader (the project) until the test lets them go."""
+        held: list = []
+        gate = {"on": True}
+
+        def hold(route):
+            if gate["on"] and route.request.method == "GET" and re.search(r"/api/v1/projects/[^/?]+(\?.*)?$", route.request.url):
+                held.append(route)
+            else:
+                route.fallback()
+        page.route(re.compile(r"/api/v1/"), hold)
+        return held, gate
+
+    def release(self, held: list, gate: dict) -> None:
+        gate["on"] = False
+        while held:
+            held.pop().continue_()
+
+    def test_10h_a_thread_opened_over_a_task_hides_the_task_while_the_thread_is_read(self):
+        """With a task open, "Came from" opens the thread over it. The thread's rows are the panel while its reads are out: the task, which stays mounted for "‹ Task #2",
+        is not on screen (it used to share the panel with the rows, two columns of 210 px with its text stacked letter by letter) (#863 rule 2)."""
+        for where, phone in (("computer", False), ("phone", True)):
+            with self.subTest(where=where):
+                page = self.page(phone=phone)
+                self.open(page, f"{self.fx.project_url()}?open=work:{self.fx.tasks[0]['id']}")
+                panel = page.locator("#details")
+                expect(panel.locator(".wd-from a")).to_be_visible()
+                held, gate = self.hold_projects(page)
+                panel.locator(".wd-from a").first.tap() if phone else panel.locator(".wd-from a").first.click()
+                expect(panel.locator(".thread-opening-panel")).to_be_visible()
+                page.wait_for_timeout(300)
+                self.assertTrue(held, "the thread's reads are being waited for")
+                shown = page.evaluate("""() => { const body = document.querySelector('#details .ui-panel__body'); const box = (el) => { const r = el.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; };
+                  return { body: box(body), rows: box(body.querySelector('.thread-opening-panel')), others: [...body.children].filter((el) => !el.matches('.thread-opening-panel')).map((el) => [String(el.className).split(' ')[0], getComputedStyle(el).display, box(el)]),
+                           chip: document.querySelector('#details .ui-panel__chip')?.textContent }; }""")
+                self.assertEqual([entry[1] for entry in shown["others"]], ["none"] * len(shown["others"]), f"what the panel showed is mounted and not displayed: {shown}")
+                self.assertGreaterEqual(shown["rows"][0], shown["body"][0] - 2, f"the rows have the whole panel: {shown}")
+                self.assertIn("Thread", shown["chip"])
+                self.release(held, gate)
+                expect(panel.locator(".thread__feed")).to_contain_text("Moisture first")
+                expect(panel.locator(".ui-panel__back")).to_contain_text("Task")
+
+    def test_10i_cancelling_a_thread_that_opens_leaves_with_its_rows_not_with_the_space_overview(self):
+        """With the panel closed, replies then Esc: the panel leaves over 120 ms with the thread's rows. It used to show the space's Overview, at full opacity,
+        for the 175 ms the rows lingered and the exit after them, because that was mounted behind the rows on every thread open (#863 rule 3)."""
+        for where, phone in (("computer", False), ("phone", True)):
+            with self.subTest(where=where):
+                page = self.page(phone=phone)
+                self.open(page, self.fx.project_url())
+                settled(page)
+                held, gate = self.hold_projects(page)
+                opener = page.get_by_role("button", name=re.compile(r"^\d+ repl(y|ies)")).first
+                opener.tap() if phone else opener.click()
+                panel = page.locator("#details")
+                expect(panel.locator(".thread-opening-panel")).to_be_visible()
+                page.wait_for_timeout(250)
+                page.evaluate("""() => { const out = window.__cancel = []; const start = performance.now();
+                  const step = () => { const body = document.querySelector('#details .ui-panel__body'); const panel = document.getElementById('details');
+                    if (panel) out.push({ t: Math.round(performance.now() - start), rows: !!body?.querySelector('.thread-opening-panel'), others: body ? [...body.children].filter((el) => !el.matches('.thread-opening-panel')).map((el) => String(el.className).split(' ')[0]) : [], opacity: Number(getComputedStyle(panel.closest('.ui-overlay__surface') || panel).opacity) });
+                    if (performance.now() - start < 900) requestAnimationFrame(step); };
+                  requestAnimationFrame(step); }""")
+                page.keyboard.press("Escape")
+                expect(page.locator("#details")).to_have_count(0)
+                page.wait_for_timeout(700)
+                self.release(held, gate)
+                frames = page.evaluate("window.__cancel")
+                self.assertTrue(frames, "the panel's exit was seen")
+                for frame in frames:
+                    self.assertEqual(frame["others"], [], f"nothing but the thread's rows is in the panel, at any frame: {frame}")
+                self.assertTrue(any(frame["opacity"] < 0.95 for frame in frames), f"and it fades: {frames}")
+
+    def test_10j_a_thread_opening_has_no_row_across_the_panels_head_at_any_width(self):
+        """When the reads take over 200 ms the "Opening the conversation…" row used to lie across the panel's head, over its chip, title and the top of its close control,
+        and a press on the X landed on the row's Cancel. The panel is the loading state; the row waits for a navigation that has no panel (#863 rule 2)."""
+        for where, size, phone in (("1024", (1024, 800), False), ("1440", (1440, 900), False), ("1920", (1920, 1000), False), ("phone", (390, 844), True)):
+            with self.subTest(width=where):
+                context = self.fx.context(phone=phone, viewport={"width": size[0], "height": size[1]})
+                self.addCleanup(context.close)
+                page = context.new_page()
+                self.open(page, self.fx.project_url())
+                settled(page)
+                held, gate = self.hold_projects(page)
+                opener = page.get_by_role("button", name=re.compile(r"^\d+ repl(y|ies)")).first
+                opener.tap() if phone else opener.click()
+                expect(page.locator("#details .thread-opening-panel")).to_be_visible()
+                page.wait_for_timeout(500)
+                self.assertTrue(held, "the reads are waited for, past the 200 ms after which the row comes up")
+                self.assertEqual(page.locator(".route-progress").count(), 0, "no row: the panel is the loading state")
+                close = page.locator("#details .ui-panel__close")
+                box = close.bounding_box()
+                hit = page.evaluate("([x, y]) => !!document.elementFromPoint(x, y)?.closest('.ui-panel__close')", [box["x"] + box["width"] / 2, box["y"] + box["height"] / 2])
+                self.assertTrue(hit, "a press on the centre of the panel's close control lands on it")
+                self.release(held, gate)
+                expect(page.locator("#details .thread__feed")).to_contain_text("Moisture first")
 
     def test_10f_a_panel_that_cannot_know_its_layout_draws_none(self):
         """A decision's lead and the title above its rows have lengths nobody knows before the read: its skeleton is a title bar and quiet lines, with no

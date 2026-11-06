@@ -610,6 +610,12 @@ function AppLayoutContent() {
   const threadTarget = navigation.state === 'loading' && navigation.location ? THREAD_ROUTE.exec(navigation.location.pathname)?.[2] ?? null : null;
   const pendingThread = useSwitching(threadTarget, ownedShown?.key.startsWith('thread:') ? ownedShown.key.slice('thread:'.length) : '');
   const threadOpening = pendingThread && !switching ? pendingThread : null;
+  // The thread whose rows the panel last showed while nothing else was open: a cancelled opening leaves with them, over its 120 ms exit, not with whatever
+  // the closed panel would show (the space's Overview). Something else taking the panel forgets it.
+  const [rowsFor, setRowsFor] = useState<string | null>(null);
+  if (threadOpening && rowsFor !== threadOpening) setRowsFor(threadOpening);
+  else if (detailsOpen && !threadOpening && rowsFor !== null) setRowsFor(null);
+  const opening = threadOpening ?? (detailsOpen ? null : rowsFor);
   // The phone's sheet opens at the height its entry was left at when the thread is one that is returned to (#592), as the thread's own panel will:
   // from the pending navigation's entry while it is out, from the arrival's once it has committed (`sheetStart`).
   const threadSheet = threadOpening && navigation.location ? recall<unknown>('sheet', arrivalEntry(navigation.location, NavigationType.Push) ?? entryOf(navigation.location)) : undefined;
@@ -864,7 +870,8 @@ function AppLayoutContent() {
         <LiveBar />
         {/* The conversation and its one panel share a row under the one header (Spokój, F-026 layout per screen). */}
         <div className="app__body">
-          <RouteProgress />
+          {/* A thread's own panel is its loading state, with its own cancel: a row across the top would lie over the panel's head. */}
+          {threadOpening ? null : <RouteProgress />}
           {/* The one main landmark, the skip link's target (#763 AX-1): a view's own header is then not a second banner. */}
           <main className={`app__pane${switching ? ' is-switching' : ''}`} id="content" ref={paneRef} tabIndex={-1}>
             <ViewFade id={switching ?? routeView(location.pathname)} host={paneRef} skip=".deferred-surface--stage, .lv-stage">
@@ -873,11 +880,11 @@ function AppLayoutContent() {
               <DeferredLiveStage />
             </ViewFade>
           </main>
-          <SidePanel open={detailsOpen || !!threadOpening} onClose={threadOpening ? cancelThread : closePanel} title={threadOpening ? 'Replies' : recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={threadOpening ? 'Cancel opening the thread' : ownedShown?.closeLabel} chip={threadOpening ? 'Thread' : objectChip} id="details" back={threadOpening ? undefined : back} startFull={threadOpening ? typeof threadSheet === 'boolean' ? threadSheet : sheetStart ?? true : sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
-            contentKey={threadOpening ? `owned:thread:${threadOpening}` : ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView}
-            context={threadOpening ? undefined : phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
-            {threadOpening ? <ThreadOpening /> : null}
-            {isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />}
+          <SidePanel open={detailsOpen || !!threadOpening} onClose={opening ? cancelThread : closePanel} title={opening ? 'Replies' : recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={opening ? 'Cancel opening the thread' : ownedShown?.closeLabel} chip={opening ? 'Thread' : objectChip} id="details" back={opening ? undefined : back} startFull={opening ? typeof threadSheet === 'boolean' ? threadSheet : sheetStart ?? true : sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
+            contentKey={opening ? `owned:thread:${opening}` : ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView}
+            context={opening ? undefined : phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
+            {opening ? <ThreadOpening /> : null}
+            {opening && !detailsOpen ? null : isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />}
           </SidePanel>
         </div>
         {/* A locked space's place keeps the tab bar on the phone (LK-2), and offers no "+" there. */}

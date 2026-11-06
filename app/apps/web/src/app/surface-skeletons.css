@@ -14,6 +14,8 @@
 .wd-skeleton__row i:last-child { width: 55%; }
 .wd-skeleton__actions { display: flex; align-items: center; gap: 12px; height: 32px; margin-top: 14px; }
 .wd-skeleton__actions i { width: 72px; }
+/* A touch screen's 44 px targets (work/work.css: `.wd-state`, the small buttons) make a property row 47 px and the action row 44 px high. */
+@media (pointer: coarse) { .wd-skeleton__row { height: 47px; } .wd-skeleton__actions { height: 44px; } }
 .wd-skeleton__sec { display: grid; gap: 14px; margin-top: 22px; }
 .wd-skeleton__sec i:first-child { width: 80px; }
 .wd-skeleton__sec i:last-child { width: 70%; }
@@ -23,3 +25,5 @@
 .jump-skeleton b, .jump-skeleton i { display: block; border-radius: var(--r-pill); background: var(--sub); }
 .jump-skeleton b { height: 10px; }
 .jump-skeleton__opt i { flex: none; width: 15px; height: 15px; }
+.jump-skeleton__chip { display: inline-flex; align-items: center; }
+.jump-skeleton__chip b { width: 30px; }

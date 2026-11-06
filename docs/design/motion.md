@@ -22,21 +22,21 @@ motion audit and the coordinator's reading, not from Hubert's decision on #863. 
 1. **Feedback within 100 ms.** A press, tap or key shows a visible change within 100 ms, as a change of colour or fill.
 2. **A view switch shows the new screen at once.** Switching a space's view or going to another place (Home, Inbox,
    a space, Settings) puts the new screen in place at once. It may fade in over at most 120 ms on `--ease-out`. The
-   old view is never shown while the new one loads and never crossfades with it. A screen whose content is still
-   loading shows its own calm loading state, from the frame the switch is made on. The content of a panel that is
-   replaced (a task by a thread) follows the same rule, and a thread opens its panel on the frame of the press, with
-   its loading rows, though the conversation's reads are still out. The router still waits for a view's code and
-   reads before it commits the route (the old view stays mounted underneath, hidden, so a cancelled switch finds it
-   as it was, and its keys do not act while it is hidden: unmodified keys other than Tab and Escape stop at the
-   window, unless typed into a field, a menu or a dialog); committing the new view before its reads are here is
-   [Still open](#still-open).
+   old view is never held and never crossfades with the new one. A screen whose content is still loading shows its own
+   calm loading state, in its final layout. The content of a panel that is replaced (a task by a thread) follows the
+   same rule, and a thread opens its panel on the frame of the press, with its loading rows, though the conversation's
+   reads are still out. The router still waits for a view's code and reads before it commits the route (the old view
+   stays mounted underneath, hidden, so a cancelled switch finds it as it was, and its keys do not act while it is
+   hidden: unmodified keys other than Tab and Escape stop at the window, unless typed into a field, a menu or a
+   dialog); committing the new view before its reads are here, and the loading states that are not yet in the final
+   layout, are [Still open](#still-open).
 3. **Surfaces share one vocabulary.** Panels, dialogs, menus, popovers, sheets and the drawer all move the same way.
    - They enter in 180 ms on `--ease-out` and leave in 120 ms on `--ease-in`.
    - The motion is a fade plus a short travel from their edge or anchor: 16 px for a panel (`--shift-panel`), 4 px
      for a menu or popover (`--shift-pop`), 8 px for a dialog and from the screen edge for a sheet or drawer.
    - There is no scale and no overshoot.
    - Leaving never delays focus or the next action. Closing while a surface opens, or the reverse, continues from
-     where it is. A surface leaves at the size it had, with its content: nothing is removed from it before it fades.
+     where it is.
 4. **One motion per action.** An action makes one motion. The work area beside a panel or a sheet reflows without
    animation. The sidebar's fold is the one exception (rule 8). Indicators (the view switch's pill, a segmented
    control, the phone tab bar) move with `transform` in `--dur-1` on `--ease-out`, or at once, and never animate
@@ -157,6 +157,16 @@ What #863 does not close, and where it goes:
   state (`app/PendingView.tsx`), not the view itself, and the old view is not usable meanwhile. Making the loaders non-blocking (the view commits at once and fills in, with the last
   answer shown while it is read again) is the client data layer, live push and instant actions of the next wave
   ([#862](https://github.com/ColdPhase/flux/issues/862)). Until then rule 2's "the new screen in place at once" is met by the loading state.
+- **Loading states that are not yet in the final layout (rule 2).** `app/PendingView.tsx` draws one of four shapes by destination (a feed, a
+  list, cards, an index beside a page), not the destination's own layout: the Tasks view's loading state is a list from the top of the content, where
+  the view is three board columns below its toolbar; the Map's and the Wiki's are approximations. Drawing each view's own layout there, or
+  committing the view itself once the loaders no longer block, closes it.
+- **A thread's panel leaves without its content (rule 3).** On a computer its content is removed with the thread's route, so the panel fades out as an
+  empty box over the 120 ms; on a phone the sheet is gone at once, with no exit. A task's panel keeps its content through the exit on both. The thread
+  is rendered by its own view into the panel's slot (`app/OneConversation.tsx`, `app/ownedPanel.tsx`), which unmounts with the route; keeping it through
+  the exit is a change to that ownership, not made here.
+- **A skeleton draws only the layout it knows (rule 6).** A decision's or a result's panel, and a task opened from a link, show a title bar and
+  quiet lines, not the rows of the layout they will have, because its heights depend on text that is not read yet.
 - The Wiki text that moves 72 px, and the layout shift of phone Home when the Needs you rows arrive (0.17) (rule 6).
 - A single input answered by one motion is judged by `claimInput`, which accepts the first change within 2 s of any input, not the
   input that caused it; an unrelated click could let a live update animate once.

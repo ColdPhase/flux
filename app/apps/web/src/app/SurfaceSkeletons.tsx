@@ -41,8 +41,8 @@ export function DetailsSkeleton({ title }: { title?: string }) {
 /**
  * Jump to… (⌘K) while its code arrives, in the final size by construction: it is the dialog's own markup and classes (`search/search.css` is
  * loaded with it) with bars where the labels are. What decides the dialog's height is known before the code is here: the number of recent
- * places (up to four, minus the one in view), the spaces waiting to be unlocked, and the four actions (two on the phone). The close
- * control sits in the field row, as the real one does.
+ * places (up to four, minus the one in view), the spaces waiting to be unlocked, and the four actions (two on the phone), and on the phone the
+ * row of scope chips. The close control sits in the field row, as the real one does.
  */
 export function JumpSkeleton({ places, locked, phone, onClose }: { places: number; locked: number; phone: boolean; onClose: () => void }) {
   const bars = (count: number, offset: number) => Array.from({ length: count }, (_, index) => (
@@ -57,6 +57,8 @@ export function JumpSkeleton({ places, locked, phone, onClose }: { places: numbe
         <span className="jump-skeleton__input"><b /></span>
         <button type="button" className="jump__close" onClick={onClose}>{phone ? 'Cancel' : <><span className="ui-vh">Close</span><kbd aria-hidden="true">Esc</kbd></>}</button>
       </div>
+      {/* The phone's scope chips: a 58 px row whatever their number (44 px chips), so a few bars stand for them. */}
+      {phone ? <div className="jump__chips" aria-hidden="true">{[0, 1, 2, 3].map((chip) => <span key={chip} className="jump__chip jump-skeleton__chip"><b /></span>)}</div> : null}
       <div className="jump__body" aria-hidden="true">
         {places ? null : <p className="jump__hint">Find a message, a material and each of its versions, a task, a rule, a result, a thought or a person. Only what you can open is searched.</p>}
         <ul className="jump__list">
