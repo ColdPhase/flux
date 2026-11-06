@@ -167,7 +167,9 @@ class PageLeaving(unittest.TestCase):
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         open_details(page)
-        page.get_by_role("region", name="People").get_by_role("button", name=re.compile("^Quiet Harbour")).click()
+        # The company's people have one place, Settings › Company (F-037, #874): Details links there instead of opening a panel.
+        page.get_by_role("region", name="People").get_by_role("link", name=re.compile("^Quiet Harbour")).click()
+        expect(page).to_have_url(f"{ORIGIN}/settings/company")
         alert = page.get_by_role("alert").filter(has_text="The people here couldn’t be loaded. Try again.")
         expect(alert).to_be_visible()
         self.assertEqual(failures["left"], 0, "the read really failed")
