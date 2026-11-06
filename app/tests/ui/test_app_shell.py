@@ -1595,8 +1595,8 @@ class AppShellJourney(unittest.TestCase):
         owner.evaluate("() => { window.releaseMaterial(); }")
         expect(owner.get_by_role("article").filter(has_text="Held material")).to_be_visible()
 
-    def test_14_personal_agent_setup_grant_and_revoke(self) -> None:
-        """A first-time owner can create an identity, explicitly grant a project, and revoke access."""
+    def test_14_personal_agent_setup_project_choice_and_revoke(self) -> None:
+        """A first-time owner can create an identity, choose a project for it (it has the owner's rights, no grant), and revoke access."""
         page = self.page(signed_in=False)
         email = f"agent-setup+{int(time.time() * 1000)}@example.test"
         page.goto("/sign-up")
@@ -1609,6 +1609,7 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_label("Space name").fill("Sensor study")
         page.get_by_role("button", name="Create space").click()
         expect(page.get_by_role("heading", level=1, name="Sensor study")).to_be_visible()
+        project_id = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
 
         page.goto("/connect-agent")
         expect(page.get_by_role("heading", name="Your agent connections")).to_be_visible()
@@ -1625,10 +1626,12 @@ class AppShellJourney(unittest.TestCase):
         expect_value(page.get_by_label("Your agent"), re.compile(r".+"))
         expect(page.get_by_role("heading", name="New connection")).to_be_visible()
         project = page.locator(".connection__project").filter(has_text="Sensor study")
-        expect(project.get_by_text("No agent grant yet")).to_be_visible()
-        expect(project.get_by_role("checkbox")).to_be_disabled()
-        project.get_by_role("button", name="Grant", exact=True).click()
-        expect(project.get_by_text("Agent grant: read and propose")).to_be_visible()
+        # F-036 AG-3 (#855, #894): the agent has exactly its owner's rights, so there is no per-project agent grant to make.
+        # The owner manages this space, so the project can be chosen at once.
+        expect(project.get_by_text("Your agent can do here what you can")).to_be_visible()
+        expect(project.get_by_text("No agent grant yet")).to_have_count(0)
+        expect(project.get_by_role("button", name="Grant", exact=True)).to_have_count(0)
+        expect(project.get_by_role("checkbox")).to_be_enabled()
         project.get_by_role("checkbox").check()
         page.get_by_label("Connection name").fill("Research laptop")
         choose(page.get_by_label("Client label"), "codex")
@@ -1637,6 +1640,10 @@ class AppShellJourney(unittest.TestCase):
         expect(saved.get_by_text("My research agent", exact=True)).to_be_visible()
         expect(saved.get_by_text("Sensor study", exact=True)).to_be_visible()
         expect(saved.get_by_text("Selected project", exact=True)).to_be_visible()
+        # Saving the selection gave the agent no grant of its own: its access is its owner's.
+        grants = page.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/grants")
+        self.assertEqual(grants.status, 200, grants.text())
+        self.assertFalse(any(grant["principal"]["kind"] == "agent" for grant in grants.json()), grants.text())
         shot(page, "agent-saved-desktop")
         page.set_viewport_size(PHONE)
         shot(page, "agent-saved-phone")

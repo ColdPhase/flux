@@ -125,7 +125,7 @@ class DirectMessageJourney(unittest.TestCase):
         page.goto("/")
         page.locator("#side-dms").get_by_role("link", name="Messages", exact=True).click()
         expect(page.get_by_role("heading", name="No direct messages yet")).to_be_visible()
-        expect(page.get_by_text("not workspace owners or admins")).to_be_visible()
+        expect(page.get_by_text("not the company’s owners or admins")).to_be_visible()
         # The Create window's Message tab writes in a project's conversation (#521); a direct message starts here.
         page.locator(".view-empty").get_by_role("link", name="New message").click()
         expect(page.get_by_role("heading", level=1, name="New message")).to_be_visible()
