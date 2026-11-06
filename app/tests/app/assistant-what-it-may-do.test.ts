@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  agentConnectionPath, agentMcpPolicyPath, assistantChangeActionPath, assistantChangeLine, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunChangesActionPath, docPath, NEEDS_YOU_PATH,
-  type AgentConnection, type AssistantChangeDecision, type AssistantRunUndone, type Conversation, type NeedsYouResponse,
+  agentConnectionPath, agentMcpPolicyPath, assistantChangeActionPath, assistantChangeLine, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunChangesActionPath, assistantRunChangesPath, docPath, NEEDS_YOU_PATH,
+  type AgentConnection, type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone, type Conversation, type NeedsYouResponse,
 } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
@@ -332,10 +332,20 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     await own.complete(saved.runId);
     const [one, other] = await changesOf(saved.runId);
     assert.equal((await ownItems(own.owner)).length, 1, 'it waits for her');
+    // A second run in the same thread, so one waiting change can be approved after she is a member again without touching the two above.
+    const third = await own.task(own.peer, 'Jonas trims the rig', rig.id);
+    const later = await own.liveRun(thread);
+    assert.match(text((await later.call('flux_update_task', { workId: third.id, expectedVersion: third.version, changes: { title: 'Trimmed by a guest\'s agent' } })).message), /^Waiting for /);
+    await own.complete(later.runId);
+    const [kept] = await changesOf(later.runId);
+    const waitingInThread = async () => (await own.listConversation(own.owner, thread)).filter((change) => change.state === 'waiting').map((change) => change.id).sort();
+    const waitingOnRun = async (runId: string) => ((expectStatus(await own.owner.browser.request('GET', assistantRunChangesPath(runId)), 200) as { items: AssistantChange[] }).items)
+      .filter((change) => change.state === 'waiting').map((change) => change.id).sort();
+    const becomes = async (role: 'guest' | 'member') => expectStatus(await own.peer.browser.request('PATCH', `/api/v1/workspaces/${lab.id}/members/${own.owner.id}`, { body: { role } }), 200);
     const running = await own.liveRun(thread);
     const queued = await own.runs.invoke(human(own.owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Check the rig' });
 
-    expectStatus(await own.peer.browser.request('PATCH', `/api/v1/workspaces/${lab.id}/members/${own.owner.id}`, { body: { role: 'guest' } }), 200);
+    await becomes('guest');
 
     await t.test('the local client can neither write nor read', async () => {
       assert.ok(refused(await clientCreate('Client after the change')), 'write');
@@ -354,6 +364,23 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     await t.test('nothing waits for a guest in the Inbox', async () => {
       assert.deepEqual(await ownItems(own.owner), []);
       assert.equal((await changesOf(saved.runId))[0]!.state, 'waiting');
+    });
+    await t.test('a guest is offered no waiting change, in the conversation or on its run, and the change itself stays waiting', async () => {
+      assert.deepEqual(await waitingInThread(), []);
+      assert.deepEqual([await waitingOnRun(saved.runId), await waitingOnRun(later.runId)], [[], []]);
+      assert.deepEqual([...await changesOf(saved.runId), ...await changesOf(later.runId)].map((row) => row.state), ['waiting', 'waiting', 'waiting']);
+    });
+    await t.test('as a member again the same changes are offered again, and one still works', async () => {
+      await becomes('member');
+      assert.deepEqual(await waitingInThread(), [one!.id, other!.id, kept!.id].sort());
+      assert.deepEqual([await waitingOnRun(saved.runId), await waitingOnRun(later.runId)], [[one!.id, other!.id].sort(), [kept!.id]]);
+      assert.equal((await ownItems(own.owner)).length, 2, 'both runs wait for her in the Inbox again');
+      expectStatus(await decide(own.owner, kept!.id, 'apply', { expectedVersion: kept!.version }), 200);
+      assert.equal((await own.taskRow(third.id)).title, 'Trimmed by a guest\'s agent');
+      assert.equal((await changesOf(later.runId))[0]!.state, 'applied_after_wait');
+      await becomes('guest');
+      assert.deepEqual([await waitingInThread(), await waitingOnRun(saved.runId)], [[], []], 'and a guest again is offered nothing');
+      assert.deepEqual((await changesOf(saved.runId)).map((row) => row.state), ['waiting', 'waiting']);
     });
     await t.test('Approve and Approve all change nothing and close the saved changes', async () => {
       assert.equal((await decide(own.owner, one!.id, 'apply', { expectedVersion: one!.version })).status, 403);

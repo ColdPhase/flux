@@ -231,12 +231,22 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       const userId = owner(principal);
       if (!isUuid(conversationId)) return { items: [] };
       const place = await rows().conversationPlace(conversationId);
-      if (!place || !(await evaluateProject(principal, 'project.read', place.projectId, accessReader(db))).allowed) throw missing();
-      const list = (await rows().forConversationAll(conversationId)).filter((row) => row.ownerUserId === userId || isDone(row));
+      const access = place ? await evaluateProject(principal, 'project.read', place.projectId, accessReader(db)) : null;
+      if (!access?.allowed) throw missing();
+      // A guest has no AI (AG-2): a change still waiting is not offered to them, since its Approve could only fail and close it. The row
+      // stays waiting, so it is offered again if they become a member again.
+      const guest = access.actor?.role === 'guest';
+      const list = (await rows().forConversationAll(conversationId))
+        .filter((row) => isDone(row) || row.ownerUserId === userId && !(guest && row.state === 'waiting'));
       return { items: await view(list, new Map(list.map((row) => [row.runId, row.conversationId])), await undoers(principal, list)) };
     },
     async forRun(principal: Principal, runId: string): Promise<{ items: AssistantChange[] }> {
-      const list = await ownRun(principal, runId);
+      const all = await ownRun(principal, runId);
+      // The same rule as the conversation's: no waiting change for a guest, found by the project the change is in, as in the Inbox.
+      const guestIn = new Map<string, boolean>();
+      for (const row of all) if (row.state === 'waiting' && !guestIn.has(row.projectId))
+        guestIn.set(row.projectId, (await evaluateProject(principal, 'project.read', row.projectId, accessReader(db))).actor?.role === 'guest');
+      const list = all.filter((row) => !(row.state === 'waiting' && guestIn.get(row.projectId)));
       const conversationId = await rows().conversationOf(runId);
       return { items: await view(list, new Map(conversationId ? [[runId, conversationId]] : []), await undoers(principal, list)) };
     },
