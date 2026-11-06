@@ -2,7 +2,11 @@ import { createContext, useContext } from 'react';
 import type { ConversationMessage, ObjectRef, WorkStatus } from '@flux/contracts';
 
 /** A project object shown in the Details panel (#101). */
-export interface ObjectView { kind: 'work' | 'decision' | 'result'; id: string; projectId?: string }
+export interface ObjectView {
+  kind: 'work' | 'decision' | 'result'; id: string; projectId?: string;
+  /** The title of the task, when the opener has it (its row or card): the panel's loading state shows it in its own place at once (#863 rule 6). */
+  title?: string;
+}
 /** A form in the Details panel that starts from a message or a work item, keeping the source in place. */
 export interface WorkFormView {
   kind: 'propose-decision' | 'attach-result';

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Opening } from '../ui';
+import { Opening, OpeningRows } from '../ui';
 
 /** What a view is made of, for the quiet bars that stand in for it while its code and reads arrive. */
 export type PendingKind = 'feed' | 'list' | 'cards' | 'wiki';
@@ -65,4 +65,39 @@ export function useSwitching(target: string | null, current: string): string | n
     return () => window.clearTimeout(timer);
   }, [active, current, lingering]);
   return active ?? (lingering && current !== lingering ? lingering : null);
+}
+
+/**
+ * While a switch is pending the old view is hidden but still mounted, and its key handlers (the Inbox's `e` and `a`, the Wiki's `e`, a
+ * board's arrows) listen on the document: a key pressed then would act on rows nobody can see. Unmodified keys other than Tab and
+ * Escape therefore stop at the window unless they are typed into a field, a menu or a dialog, or into the details panel; a click on the
+ * sidebar leaves the focus on a link, which is not one of those. The shell's own single-key shortcuts wait with them, for the length of the
+ * wait. A key's default action (Enter on a link, a character in a field) is untouched.
+ */
+export function useQuietViewKeys(switching: boolean) {
+  useEffect(() => {
+    if (!switching) return undefined;
+    const quiet = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.key === 'Tab' || event.key === 'Escape') return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest('input, textarea, select, [contenteditable="true"], [role="combobox"], [role="listbox"], [role="menu"], [role="dialog"], [aria-modal="true"], #details')) return;
+      event.stopPropagation();
+    };
+    window.addEventListener('keydown', quiet, true);
+    return () => window.removeEventListener('keydown', quiet, true);
+  }, [switching]);
+}
+
+/**
+ * What the thread's panel holds from the press that opens it until the thread's own panel is showing: the thread's loading rows in the thread's
+ * own layout (`conversations/ThreadFeed.tsx` shows the same rows while its first reads settle, so the one set of rows carries on). What the
+ * panel showed (a task, another thread) stays mounted beside it, hidden (`pending-view.css`): it names itself for the way back ("‹ Task #2").
+ */
+export function ThreadOpening() {
+  return (
+    <div className="ui-panel__slot thread-opening-panel" aria-busy="true">
+      <span className="ui-vh" role="status">Opening the thread…</span>
+      <div className="thread"><div className="thread__pane"><div className="thread__opening"><OpeningRows rows={3} /></div></div></div>
+    </div>
+  );
 }

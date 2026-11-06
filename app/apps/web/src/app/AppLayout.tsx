@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { ProjectPerson } from '@flux/contracts';
-import { Outlet, useLocation, useMatches, useNavigate, useNavigation, useNavigationType, useParams, useRevalidator } from 'react-router';
+import { NavigationType, Outlet, useLocation, useMatches, useNavigate, useNavigation, useNavigationType, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
 import { WORKSPACE_LOCKED_DOM_EVENT, isEncryptionEvent } from '../encryption/api';
 import { useLockedPlace } from '../encryption/state';
@@ -10,7 +10,7 @@ import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { DeferredDetails, DeferredJumpTo, DeferredLiveStage } from './DeferredSurfaces';
 import { RouteProgress } from './RouteProgress';
-import { PendingView, useSwitching } from './PendingView';
+import { PendingView, ThreadOpening, useQuietViewKeys, useSwitching } from './PendingView';
 import './pending-view.css';
 import { useInboxDot } from '../notifications/dot';
 import { placeOf } from './place';
@@ -77,6 +77,9 @@ const KIND_LABEL: Record<string, string> = { work: 'Task', decision: 'Decision',
 
 /** The place a panel's content belongs to (#763 H11-8): one project or direct message with all its views, else the page itself. */
 const panelPlace = (pathname: string) => /^\/(?:projects|dm|spaces)\/[^/]+/.exec(pathname)?.[0] ?? pathname.replace(/\/+$/, '');
+
+/** A project's conversation address with a thread open: `/projects/:projectId/conversations/:conversationId`. */
+const THREAD_ROUTE = /^\/projects\/([^/]+)\/conversations\/([^/]+)/;
 
 const NO_ORIGIN = { key: '', path: '/', label: '' };
 /** What a history entry keeps of its panel (#592): an object the panel shows over the page and the way back it left. A thread or an agent a view owns is kept by its own route. */
@@ -530,6 +533,7 @@ function AppLayoutContent() {
   // Opening a thread beside the conversation or a page inside the Wiki is not a switch. The reading position is restored by its own
   // owner and never animated.
   const switching = useSwitching(navigation.state === 'loading' && navigation.location ? routeView(navigation.location.pathname) : null, routeView(location.pathname));
+  useQuietViewKeys(!!switching);
   const switchingName = switching ? projects.find((project) => switching.startsWith(`/projects/${project.id}/`))?.name ?? directMessages.find((dm) => switching === `/dm/${dm.id}`)?.title ?? 'the conversation' : '';
 
   // In focus the rail shows no counts.
@@ -600,6 +604,16 @@ function AppLayoutContent() {
     toggleDetails(false);
   };
   useLayoutEffect(() => { closeRef.current = closePanel; });
+  // A thread that a press opens beside the conversation (#863 rule 2): the route's reads take a moment, and the panel is its own screen, so it is up
+  // from the frame of the press with the thread's loading rows, and takes the thread in its place when the view's own panel arrives. The loading
+  // state outlasts the navigation until that panel is showing (or a moment after it has ended without it), so the panel never closes between.
+  const threadTarget = navigation.state === 'loading' && navigation.location ? THREAD_ROUTE.exec(navigation.location.pathname)?.[2] ?? null : null;
+  const pendingThread = useSwitching(threadTarget, ownedShown?.key.startsWith('thread:') ? ownedShown.key.slice('thread:'.length) : '');
+  const threadOpening = pendingThread && !switching ? pendingThread : null;
+  // The phone's sheet opens at the height its entry was left at when the thread is one that is returned to (#592), as the thread's own panel will:
+  // from the pending navigation's entry while it is out, from the arrival's once it has committed (`sheetStart`).
+  const threadSheet = threadOpening && navigation.location ? recall<unknown>('sheet', arrivalEntry(navigation.location, NavigationType.Push) ?? entryOf(navigation.location)) : undefined;
+  const cancelThread = () => void navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, defaultShouldRevalidate: false, state: location.state });
   // "N needs you" counts this project's items of the Inbox's one queue (#763 A2), as the sidebar counts them all; it
   // opens the Inbox on them. "What matters" stays its own quiet entry in More.
   const needsYou = activeProject && projectId ? inboxCounts.byProject.get(projectId) ?? 0 : 0;
@@ -859,9 +873,10 @@ function AppLayoutContent() {
               <DeferredLiveStage />
             </ViewFade>
           </main>
-          <SidePanel open={detailsOpen} onClose={closePanel} title={recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={ownedShown?.closeLabel} chip={objectChip} id="details" back={back} startFull={sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
-            contentKey={ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView}
-            context={phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
+          <SidePanel open={detailsOpen || !!threadOpening} onClose={threadOpening ? cancelThread : closePanel} title={threadOpening ? 'Replies' : recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={threadOpening ? 'Cancel opening the thread' : ownedShown?.closeLabel} chip={threadOpening ? 'Thread' : objectChip} id="details" back={threadOpening ? undefined : back} startFull={threadOpening ? typeof threadSheet === 'boolean' ? threadSheet : sheetStart ?? true : sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
+            contentKey={threadOpening ? `owned:thread:${threadOpening}` : ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView}
+            context={threadOpening ? undefined : phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
+            {threadOpening ? <ThreadOpening /> : null}
             {isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />}
           </SidePanel>
         </div>

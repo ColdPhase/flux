@@ -376,8 +376,9 @@ export function ProjectTasks() {
   const parked = work.filter((item) => item.parked && !isFinished(item));
   const finished = work.filter(isFinished);
   const groupCount = (id: GroupId, visible: number) => visible ? counts?.[id] ?? 0 : 0;
-  const openObject = (kind: WorkObjectType, id: string) => () => { saveReading(); openDetails({ kind, id }); };
-  const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable={writable} muted={muted} onOpen={openObject('work', item.id)} onChange={changeState} />;
+  // A task opened from its row brings its title: the panel's loading state shows it in its own place (#863 rule 6).
+  const openObject = (kind: WorkObjectType, id: string, title?: string) => () => { saveReading(); openDetails({ kind, id, ...(title ? { title } : {}) }); };
+  const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable={writable} muted={muted} onOpen={openObject('work', item.id, item.title)} onChange={changeState} />;
   const summaryCounts = data ? mine ? data.summary.mine : data.summary.all : null;
   // What the board leaves to other places, one step away: work a pivot set aside, and decisions that wait in the Inbox.
   const parkedCount = summaryCounts?.parked ?? 0;
@@ -402,7 +403,7 @@ export function ProjectTasks() {
       workJumpId={data?.summary.all.in_progress ? 'g-progress' : data?.summary.all.blocked ? 'g-blocked' : data?.summary.all.open ? 'g-open' : data?.summary.all.parked ? 'g-parked' : 'g-finished'}
       jumpToSection={jumpToSection} writable={writable} refresh={() => { if (listing) refresh(); else refreshBoard(); revalidator.revalidate(); }}
       openResult={(id) => openDetails({ kind: 'result', id, projectId: project.id })}
-      openWork={(item) => openDetails({ kind: 'work', id: item.id, projectId: project.id })} />
+      openWork={(item) => openDetails({ kind: 'work', id: item.id, projectId: project.id, title: item.title })} />
     </div>
   );
 
@@ -420,7 +421,7 @@ export function ProjectTasks() {
           <div className="tb-aside">{proposals}</div>
           <TaskBoard project={project} openRead={read} meId={me.user.id} mine={mine} query={boardSearch.trim().toLowerCase()} writable={writable}
             revision={boardRevision}
-            openWork={(id) => { saveReading(); openDetails({ kind: 'work', id }); }} refresh={refreshBoard}
+            openWork={(id, title) => { saveReading(); openDetails({ kind: 'work', id, title }); }} refresh={refreshBoard}
             showInList={(group) => { if (isGroup(group)) setView({ mode: 'list', status: group }); }}
             clearFilters={() => { setBoardSearch(''); setView({ mine: false }); }} />
         </div>

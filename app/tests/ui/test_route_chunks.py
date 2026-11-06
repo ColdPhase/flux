@@ -693,8 +693,8 @@ class RouteChunksJourney(unittest.TestCase):
                 dialog = page.get_by_role("dialog", name="Jump to")
                 expect(dialog).to_contain_text("Opening search…")
                 self.request_is_held(page, held)
-                # The dialog stands at the height the real one has (341 px), not at a spinner's 84.
-                self.assertGreaterEqual(dialog.bounding_box()["height"], 340, "the held dialog is already its final size")
+                # The dialog is already its final size, not a spinner's 84 px: judged against the real dialog below (and in test_light_motion 04c).
+                pending_height = dialog.bounding_box()["height"]
                 shot(page, f"route-chunks-search-pending-{engine}-desktop")
                 page.keyboard.press("Escape")
                 expect(dialog).to_have_count(0)
@@ -708,6 +708,7 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(field).to_have_value(f"Search download preserves focus {engine}")
                 page.keyboard.press("Control+k")
                 expect(dialog.get_by_role("combobox", name="Jump to")).to_be_focused()
+                self.assertAlmostEqual(dialog.bounding_box()["height"], pending_height, delta=2, msg="the held dialog was the size of the real one")
                 page.keyboard.press("Escape")
                 expect(field).to_be_focused()
 

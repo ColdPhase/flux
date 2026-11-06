@@ -265,6 +265,10 @@ class ViewSwitch(unittest.TestCase):
         page.wait_for_function("() => document.querySelector('#content .tb-root, #content .ws-tasks, #content [class*=tb-], #content [class*=ws-]')", timeout=8000)
         project_view(page, "Conversation")
         page.wait_for_function("() => document.querySelector('#content .project-convo')", timeout=8000)
+        # The earlier switch's tail (the return point it saved, the shell read the event of that makes) is over before the reads are held: a read held
+        # in the middle of it is a different test.
+        page.wait_for_load_state("networkidle")
+        page.wait_for_timeout(1200)
         # The Tasks view's loader reads the project (and the comparison outcomes) before it commits.
         held = self.hold_reads(page, r"/api/v1/projects/[^/?]+(/comparison[^/?]*)?(\?.*)?$")
         page.evaluate("() => { window.__frames = []; }")
@@ -272,13 +276,13 @@ class ViewSwitch(unittest.TestCase):
         page.wait_for_timeout(1000)
         frames = page.evaluate("() => { const frames = window.__frames; window.__frames = null; return frames; }")
         self.assertTrue(held, "Tasks' reads are being waited for")
-        click = next(frame["click"] for frame in frames if frame["click"])
+        click = max(frame["click"] for frame in frames)
         first = next((frame for frame in frames if frame["pending"]), None)
         self.assertIsNotNone(first, f"the loading state was up: {frames[-1]}")
         # Within a few frames of the click (about 30 ms in Chromium, up to about 150 ms in a loaded WebKit, whose render of the shell is slower), and so far
         # before the 350 ms `--delay-wait` the stream's rows used to sit behind; the 120 ms of the pill and the press already answer the click itself.
         self.assertLess(first["t"] - click, 200, "from the frame the switch is made on, not after a delay")
-        timeline = [(round(frame["t"] - click), frame["pending"]) for frame in frames[:12]]
+        timeline = [(round(frame["t"] - click), frame["pending"], frame["view"][:8]) for frame in frames[:14]]
         for frame in frames:
             if frame["t"] < first["t"]:
                 continue
@@ -290,6 +294,33 @@ class ViewSwitch(unittest.TestCase):
             held.pop().continue_()
         page.wait_for_url(re.compile(PATH["Tasks"]))
         page.wait_for_function("() => !document.querySelector('[data-pending-view]') && document.querySelector('#content .tb-root, #content [class*=ws-], #content [class*=tb-]')", timeout=8000)
+
+    def test_10_a_hidden_view_does_not_act_on_keys_while_the_switch_waits(self):
+        """The old view stays mounted under the loading state, hidden. Its document-level key handlers must not act on rows nobody can see:
+        in the Inbox `e` marks the selected row done and `a` accepts a decision (#863, review of #891)."""
+        page = self.page()
+        page.goto("/inbox")
+        ready(page)
+        expect(page.locator(".nyc").first).to_be_visible()
+        writes: list[str] = []
+        page.on("request", lambda request: writes.append(f"{request.method} {request.url}") if request.method != "GET" else None)
+        page.keyboard.press("j")
+        expect(page.locator(".nyc.is-selected")).to_have_count(1)
+        held = self.hold_reads(page, r"/api/v1/projects/[^/?]+(\?.*)?$")
+        # A click on the sidebar leaves the focus on its link, which is no field: the key would reach the Inbox's handler.
+        page.locator(".app__side").get_by_role("link", name=re.compile("Community garden sensors")).first.click()
+        expect(page.locator("#content [data-pending-view]")).to_be_visible()
+        self.assertTrue(held, "the destination's reads are held")
+        for key in ("e", "a", "s", "j", "Enter"):
+            page.keyboard.press(key)
+        page.wait_for_timeout(900)
+        self.assertEqual(writes, [], "no key acted on the hidden Inbox: nothing was sent")
+        expect(page.locator(".ui-toast")).to_have_count(0)
+        self.assertEqual(page.locator("[role=menu]").count(), 0, "and no menu opened on a row nobody sees")
+        # Once the switch is over the new view's keys work as they always do (a held switch, not a dead page).
+        while held:
+            held.pop().continue_()
+        page.wait_for_function("() => !document.querySelector('[data-pending-view]')", timeout=8000)
 
 
 if __name__ == "__main__":

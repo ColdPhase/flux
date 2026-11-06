@@ -1,11 +1,13 @@
 import { Component, Suspense, createElement, lazy, useEffect, useLayoutEffect, useRef, useState, type ComponentProps, type ComponentType, type ReactNode } from 'react';
 import { Button, ErrorState, MEDIA, Overlay, Spinner, useMediaQuery, useSidePanelMode } from '../ui';
 import { pageLeaving, whenPageLive } from '../api/pageLeaving';
-import { useParams } from 'react-router';
+import { useLocation, useParams } from 'react-router';
 import { useLive } from '../live/LiveProvider';
 import type { Details } from './Details';
 import { ReloadRecovery } from './ReloadRecovery';
 import { useShellActions } from './shellContext';
+import { useShellData } from './data';
+import { placeOfPath, useRecentPlaces } from '../search/recent';
 import { DetailsSkeleton, JumpSkeleton } from './SurfaceSkeletons';
 import { preloadProjectViews } from './viewChunks';
 
@@ -114,9 +116,8 @@ function WhenPageLive({ children, fallback }: { children: ReactNode; fallback: R
 
 /** SidePanel itself owns mount/exit/focus; this content is never rendered while initially closed. */
 export function DeferredDetails(props: ComponentProps<typeof Details>) {
-  // The panel's own layout in quiet bars, at the heights the content will have (a task, a decision, a result; any other view a title and lines).
-  const kind = typeof props.view === 'object' && 'kind' in props.view && (props.view.kind === 'work' || props.view.kind === 'decision' || props.view.kind === 'result') ? props.view.kind : 'plain';
-  const opening = <DetailsSkeleton kind={kind} />;
+  // The panel's own layout where it is known, quiet bars where it is not (app/SurfaceSkeletons.tsx): a task opened from its row knows its title.
+  const opening = <DetailsSkeleton title={typeof props.view === 'object' && 'kind' in props.view && props.view.kind === 'work' && 'title' in props.view ? props.view.title : undefined} />;
   return <SurfaceBoundary label="Details"><WhenPageLive fallback={opening}><Surface of={details} props={props} fallback={opening} /></WhenPageLive></SurfaceBoundary>;
 }
 
@@ -126,17 +127,29 @@ export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
   const inProject = !!useParams().projectId;
   useSurfacePreload(inProject);
   const phone = useMediaQuery(MEDIA.phone);
+  const { projects, directMessages, lockedWorkspaces } = useShellData();
+  const recent = useRecentPlaces(userId);
+  const here = placeOfPath(useLocation().pathname)?.key;
   const [requested, setRequested] = useState(open);
   if (open && !requested) setRequested(true);
+  // A body of its own each time the dialog opens, kept through its exit: the content stays mounted while the dialog fades out, so it
+  // leaves at the size it had (it used to collapse to nothing on the first frame of its exit), and one that opens again before the exit
+  // is over starts afresh.
+  const [opens, setOpens] = useState(open ? 1 : 0);
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) { setWasOpen(open); if (open) setOpens(opens + 1); }
   if (!requested) return null;
   const closer = <Button variant="quiet" onClick={onClose}>Close search</Button>;
+  // The recent places the dialog will list (up to four, not the one in view, only those that still exist): what sizes its first list.
+  const places = recent.filter((place) => place.key !== here && (!place.key.startsWith('project:') || projects.some((project) => project.id === place.key.split(':')[1]))
+    && (!place.key.startsWith('dm:') || directMessages.some((dm) => dm.id === place.key.split(':')[1]))).slice(0, 4).length;
   // One dialog, once: the code of Jump to… loads inside it, so ⌘K never dims, undims and dims again. Once requested it stays
   // mounted, so its own exit animation and focus restoration stay intact.
   const wrap = (content: ReactNode) => <Overlay open={open} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="Jump to" className="jump">{content}{closer}</Overlay>;
   return (
     <SurfaceBoundary label="Search" wrap={wrap}>
       <Overlay open={open} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="Jump to" className="jump">
-        {open ? <Surface of={search} props={{ onClose, userId }} fallback={<><JumpSkeleton />{closer}</>} /> : null}
+        <Surface key={opens} of={search} props={{ onClose, userId }} fallback={<JumpSkeleton places={places} locked={lockedWorkspaces.length} phone={phone} onClose={onClose} />} />
       </Overlay>
     </SurfaceBoundary>
   );

@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 import time
 import unittest
+import uuid
 
 from playwright.sync_api import Page, expect, sync_playwright
 
@@ -205,8 +206,8 @@ class LightMotionJourney(unittest.TestCase):
         self.assertFalse(verdict["appInert"], "the app is live again at once")
         expect(page.get_by_role("dialog", name="Jump to")).to_have_count(0)
 
-    def test_04c_the_first_k_opens_one_dialog_and_its_content_loads_inside_it(self):
-        """Used to be a blink: the dialog opened, the scrim went away and came back when the code of the search arrived (#863 rule 6). One dialog, one scrim that only rises."""
+    def first_k(self, visits: tuple[str, ...]) -> tuple[float, float, float, float, int]:
+        """The first ⌘K with the code of the search held, then let go: the dialog's box on its skeleton and on its content, and how many controls name a close."""
         page = self.page()
         held: list = []
         page.route(re.compile(r"/assets/JumpTo-[^/]+\.js"), lambda route: held.append(route))
@@ -219,21 +220,62 @@ class LightMotionJourney(unittest.TestCase):
                     pass
         self.addCleanup(release)
         self.open(page, self.fx.project_url())
+        for name in visits:
+            page.locator(self.tab(name)).click()
+            expect(page.locator(self.tab(name))).to_have_attribute("aria-current", "page")
         clear(page)
         page.keyboard.press("Control+k")
         dialog = page.get_by_role("dialog", name="Jump to")
         expect(dialog.locator(".jump-skeleton")).to_be_visible()
         self.assertEqual(dialog.locator(".ui-spin").count(), 0, "bars at the dialog's size, not a spinner")
-        self.assertGreaterEqual(dialog.bounding_box()["height"], 340)
         self.assertEqual(page.locator(".ui-scrim").count(), 1)
         page.wait_for_timeout(300)
+        before = dialog.bounding_box()
+        closes = page.get_by_role("button", name="Close search").count()
         while held:
             held.pop().continue_()
         expect(dialog.get_by_role("combobox", name="Jump to")).to_be_visible()
+        settled(page)
+        after = dialog.bounding_box()
         self.assertEqual(page.get_by_role("dialog", name="Jump to").count(), 1, "still the one dialog")
         self.assertEqual(page.locator(".ui-scrim").count(), 1, "and the one scrim")
         scrim = self.by(page, r"ui-scrim", "script")
         self.assertTrue(scrim and all((entry["to"] or {}).get("opacity") == 1 for entry in scrim), f"the scrim only rises: {scrim}")
+        return before["y"], before["height"], after["y"], after["height"], closes
+
+    def test_04c_the_first_k_opens_one_dialog_at_its_final_size_and_its_content_loads_inside_it(self):
+        """Used to be a blink (#863 rule 6), then a 373 px skeleton with a button of its own under the 341 px dialog that shrank to 340 when the content came.
+        One dialog and one scrim that only rises, at the size the content has, with the close control where the real one is: with no recent places
+        (a hint stands in the list) and with two."""
+        for visits in ((), ("tasks", "map")):
+            with self.subTest(recent_places=len(visits)):
+                top, was, top_after, now, closes = self.first_k(visits)
+                self.assertAlmostEqual(top, top_after, delta=1, msg="the dialog does not move")
+                self.assertAlmostEqual(was, now, delta=2, msg=f"the skeleton is the size of the dialog it stands for: {was} then {now}")
+                self.assertEqual(closes, 0, "no button of its own under the dialog: its close is in the field row, as the real one is")
+
+    def test_04d_the_k_dialog_leaves_at_its_own_size_while_it_fades(self):
+        """On Esc the dialog used to collapse to nothing on the first frame, because its content was removed at once, and fade out as an empty box (#863 rule 3)."""
+        page = self.page()
+        self.open(page, self.fx.project_url())
+        dialog = self.open_jump(page)
+        settled(page)
+        height = dialog.bounding_box()["height"]
+        page.evaluate("""() => {
+          const el = document.querySelector('[role="dialog"][aria-label="Jump to"]');
+          const out = window.__exit = []; const start = performance.now();
+          const step = () => { if (!el.isConnected || performance.now() - start > 1500) return;
+            out.push({ t: performance.now() - start, h: el.getBoundingClientRect().height, o: Number(getComputedStyle(el.closest('.ui-overlay__surface') || el).opacity), input: !!el.querySelector('input') }); requestAnimationFrame(step); };
+          requestAnimationFrame(step); }""")
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("dialog", name="Jump to")).to_have_count(0)
+        frames = [frame for frame in page.evaluate("window.__exit") if frame["t"] > 0]
+        self.assertGreaterEqual(len(frames), 3, f"the exit is seen: {frames}")
+        for frame in frames:
+            self.assertAlmostEqual(frame["h"], height, delta=1.5, msg=f"it keeps its size while it fades: {frame}")
+            self.assertTrue(frame["input"], f"with its content: {frame}")
+        self.assertLess(min(frame["o"] for frame in frames), 0.9, f"and it really fades: {frames}")
+        expect(page.get_by_role("dialog", name="Jump to")).to_have_count(0)
 
     def test_05_rapid_open_and_close_settles_on_the_latest_state(self):
         page = self.page()
@@ -527,16 +569,29 @@ class LightMotionJourney(unittest.TestCase):
         self.assertEqual(back["copies"], 0, f"nor on Back: {back}")
         self.assertLessEqual(back["scoped"], 1, back)
 
-    SKELETON_MARKS = """() => { const top = (sel) => { const el = document.querySelector(sel); const base = document.querySelector('#details .wd__scroll'); return el && base ? Math.round((el.getBoundingClientRect().top - base.getBoundingClientRect().top) * 10) / 10 : null; };
-      return { rows: top('.wd-skeleton__rows, dl.wd-rows'), actions: top('.wd-skeleton__actions, .wd-acts'), section: top('.wd-skeleton__sec, section.details__sec'), title: top('.wd-skeleton__title, h3.wd-title') }; }"""
+    PANEL_FRAMES = """(ms) => {
+      window.__panel = []; window.__panelDone = false;
+      const top = (sel, base) => { const el = document.querySelector(sel); return el ? Math.round((el.getBoundingClientRect().top - base.getBoundingClientRect().top) * 10) / 10 : null; };
+      const start = performance.now();
+      const step = () => {
+        const base = document.querySelector('#details .wd__scroll');
+        if (base) {
+          const title = document.querySelector('#details .wd-skeleton__name, #details h3.wd-title');
+          window.__panel.push({ t: Math.round(performance.now() - start), skeleton: !!document.querySelector('#details .wd-skeleton'),
+            title: top('#details .wd-skeleton__name, #details h3.wd-title', base), titleHeight: title ? Math.round(title.getBoundingClientRect().height * 10) / 10 : null,
+            rows: top('#details .wd-skeleton__rows, #details dl.wd-rows', base), actions: top('#details .wd-skeleton__actions, #details .wd-acts', base),
+            section: top('#details .wd-skeleton__sec, #details section.details__sec', base) });
+        }
+        if (performance.now() - start < ms) requestAnimationFrame(step); else window.__panelDone = true; };
+      requestAnimationFrame(step); }"""
 
-    def test_10c_the_task_panel_opens_on_a_skeleton_with_the_final_heights_and_no_spinner(self):
-        """The first task panel waits for its reads behind quiet bars at the heights the content has, so nothing jumps when it arrives (#863 rule 6)."""
+    def watch_panel(self, title: str, wait: int = 2200) -> list[dict]:
+        """Opens a task from its row while its reads arrive in two steps (the task and its context, then 450 ms later its relationships) and records every frame."""
         page = self.page()
         self.open(page, self.fx.tasks_url())
         settled(page)
         held: list = []
-        gate = {"on": False}
+        gate = {"on": True}
 
         def hold(route):
             if gate["on"] and route.request.method == "GET" and "stream" not in route.request.url:
@@ -544,21 +599,105 @@ class LightMotionJourney(unittest.TestCase):
             else:
                 route.fallback()
         page.route(re.compile(r"/api/v1/"), hold)
-        gate["on"] = True
-        page.locator(".ws-task .ws-item", has_text=self.fx.tasks[0]["title"]).first.click()
-        skeleton = page.locator("#details .wd-skeleton")
-        expect(skeleton).to_be_visible()
+        row = page.locator(".ws-task .ws-item", has_text=title).first
+        expect(row).to_be_visible()
+        page.evaluate(self.PANEL_FRAMES, wait)
+        row.click()
+        expect(page.locator("#details .wd-skeleton")).to_be_visible()
         self.assertEqual(page.locator("#details .ui-spin").count(), 0, "a skeleton, not a spinner")
-        bars = page.evaluate(self.SKELETON_MARKS)
+        page.wait_for_timeout(300)
+        # The task, its context and the rest come first; the relationships, last, 450 ms later.
+        for route in [route for route in held if "work-relations" not in route.request.url]:
+            held.remove(route)
+            route.continue_()
+        page.wait_for_timeout(450)
         gate["on"] = False
         while held:
             held.pop().continue_()
-        expect(page.locator("#details .wd-rows")).to_be_visible()
+        page.wait_for_function("() => window.__panelDone", timeout=10000)
+        return page.evaluate("window.__panel")
+
+    def judge_panel(self, frames: list[dict], label: str) -> None:
+        real = [frame for frame in frames if not frame["skeleton"] and frame["rows"] is not None]
+        self.assertTrue(real and any(frame["skeleton"] for frame in frames), f"{label}: the panel went from its skeleton to its content: {frames[:3]}")
+        settled_at = real[-1]
+        for frame in frames:
+            for part in ("title", "rows", "actions", "section"):
+                if frame[part] is None:
+                    continue
+                self.assertLessEqual(abs(frame[part] - settled_at[part]), 2, f"{label}: the {part} is at {frame[part]} at {frame['t']} ms and ends at {settled_at[part]}: {frame}")
+            if frame["titleHeight"] is not None:
+                self.assertLessEqual(abs(frame["titleHeight"] - settled_at["titleHeight"]), 1.5, f"{label}: the title takes the lines it will have: {frame}")
+
+    def test_10c_the_task_panel_has_no_jump_from_its_skeleton_to_its_content_whatever_the_title(self):
+        """The task panel waits for its reads behind its own title and its fixed rows; nothing moves at any frame of the wait, including the one in between (task read,
+        relationships not yet), with a title of one line and with one that wraps (#863 rule 6; the review found 295 px, 356 px, 295 px and a 27 px jump)."""
+        long = self.fx.new_task("Ask the school about two more ESP32 kits for the far beds and the gate by the shed")
+        for task in (self.fx.tasks[0], long):
+            with self.subTest(title=task["title"][:30]):
+                self.judge_panel(self.watch_panel(task["title"]), task["title"][:30])
+
+    def thread_panel_at_once(self, *, phone: bool) -> None:
+        page = self.page(phone=phone)
+        self.open(page, self.fx.project_url())
         settled(page)
-        real = page.evaluate(self.SKELETON_MARKS)
-        for part in ("title", "rows", "actions", "section"):
-            self.assertIsNotNone(bars[part], f"the skeleton draws the {part}")
-            self.assertLessEqual(abs(bars[part] - real[part]), 2, f"the {part} does not jump when the content arrives: skeleton {bars}, content {real}")
+        held: list = []
+        gate = {"on": True}
+
+        def hold(route):
+            if gate["on"] and route.request.method == "GET" and re.search(r"/api/v1/projects/[^/?]+(\?.*)?$", route.request.url):
+                held.append(route)
+            else:
+                route.fallback()
+        page.route(re.compile(r"/api/v1/"), hold)
+        opener = page.get_by_role("button", name=re.compile(r"^\d+ repl(y|ies)")).first
+        expect(opener).to_be_visible()
+        page.evaluate("() => { window.__t0 = 0; document.addEventListener('click', () => { window.__t0 = performance.now(); }, true); }")
+        opener.tap() if phone else opener.click()
+        panel = page.locator("#details")
+        expect(panel).to_be_visible()
+        appeared = page.evaluate("performance.now() - window.__t0")
+        self.assertLess(appeared, 300, f"the panel is up within a few frames of the press, not after the thread's reads ({appeared:.0f} ms)")
+        self.assertTrue(held, "the thread's reads are being waited for")
+        self.assertGreaterEqual(panel.locator(".thread__opening .opening__row").count(), 2, "with the thread's loading rows")
+        self.assertEqual(panel.locator(".ui-spin").count(), 0)
+        expect(panel.locator(".ui-panel__chip, .ui-panel__title")).to_contain_text("Thread")
+        page.evaluate("() => { window.__panel = document.getElementById('details'); }")
+        page.wait_for_timeout(700)
+        self.assertTrue(panel.locator(".thread__opening").count() == 1, "and they stay while the reads are out")
+        gate["on"] = False
+        while held:
+            held.pop().continue_()
+        expect(panel.locator(".thread__feed")).to_contain_text("Moisture first")
+        self.assertTrue(page.evaluate("window.__panel === document.getElementById('details')"), "the same panel takes the thread: it did not close and open again")
+        self.assertEqual(panel.locator(".ui-panel__chip, .ui-panel__title").count(), 1)
+
+    def test_10e_a_thread_opens_its_panel_on_the_frame_of_the_press_on_a_computer(self):
+        """Opening a thread waits on the conversation's loader (724 ms at +200 ms reads, the same as main); its panel must not (#863 rule 2)."""
+        self.thread_panel_at_once(phone=False)
+
+    def test_10g_a_thread_opens_its_sheet_on_the_frame_of_the_press_on_a_phone(self):
+        self.thread_panel_at_once(phone=True)
+
+    def test_10f_a_panel_that_cannot_know_its_layout_draws_none(self):
+        """A decision's lead and the title above its rows have lengths nobody knows before the read: its skeleton is a title bar and quiet lines, with no
+        rows, actions or sections at guessed places (the review found a short decision 97 px off) (#863 rule 6)."""
+        page = self.page()
+        held: list = []
+        page.route(re.compile(r"/work-objects/"), lambda route: held.append(route))
+
+        def release() -> None:
+            for route in held:
+                try:
+                    route.abort()
+                except Exception:
+                    pass
+        self.addCleanup(release)
+        page.goto(f"/projects/{self.fx.project}/tasks?view=list&open=decision:{self.fx.decision['id']}")
+        skeleton = page.locator("#details .wd-skeleton")
+        expect(skeleton).to_be_visible()
+        self.assertEqual(skeleton.locator(".wd-skeleton__rows, .wd-skeleton__row, .wd-skeleton__actions").count(), 0, "no rows or actions at guessed places")
+        self.assertEqual(page.locator("#details .ui-spin").count(), 0)
 
     def test_10d_the_thread_panel_and_the_stream_never_open_empty_while_their_first_reads_settle(self):
         """The replies are laid out but hidden until the first reads that decorate them have settled (at most a second, #155). They used to be
@@ -1252,18 +1391,31 @@ class LightMotionJourney(unittest.TestCase):
     SHIFT = """() => { const el = document.querySelector('.home__need, .home__first'); return el ? el.getBoundingClientRect().top : null; }"""
 
     def home_tops(self, context, wait_for_card: bool) -> tuple[float, float, int]:
-        """Where the first section below Continue is while the two reads that decide the card are held, and after they answer."""
+        """Where the first section below Continue is while the two reads that decide the card are held, and after they answer.
+
+        The reads are held in a list and let go by the test, never delayed with a sleep: a sleep inside a sync route handler blocks Playwright's
+        dispatcher, so what the test reads lands after the reads have answered (it failed 2 runs in 8 that way)."""
         page = context.new_page()
         self.addCleanup(page.close)
+        held: list = []
+        gate = {"held": True}
 
-        def slow(route):
-            time.sleep(0.35)
-            route.continue_()
-        page.route(re.compile(r"/api/v1/(return\?|workspaces/[^/]+/work/assigned)"), slow)
+        def hold(route):
+            if gate["held"]:
+                held.append(route)
+            else:
+                route.continue_()
+        page.route(re.compile(r"/api/v1/(return\?|workspaces/[^/]+/work/assigned)"), hold)
         page.goto("/")
         page.wait_for_function(f"() => ({self.SHIFT})() !== null", timeout=10000)
+        # Frames with both reads outstanding: the slot is on screen from the first of them, or it is never kept.
+        page.wait_for_timeout(300)
+        self.assertTrue(held, "the reads that decide the card are being waited for")
         before = page.evaluate(self.SHIFT)
         slot = page.locator(".home__continue-slot").count()
+        gate["held"] = False
+        while held:
+            held.pop().continue_()
         if wait_for_card:
             expect(page.locator(".home__continue")).to_be_visible()
         page.wait_for_timeout(1200)
@@ -1285,7 +1437,7 @@ class LightMotionJourney(unittest.TestCase):
         # Someone with nothing to continue from has no space kept for it: nothing to close up.
         fresh = self.fx.browser.new_context(base_url=ORIGIN, service_workers="block", viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
         self.addCleanup(fresh.close)
-        api(fresh, "POST", "/api/auth/sign-up/email", {"name": "Mara Nowak", "email": f"motion-mara-{self.fx.stamp}@example.test", "password": "light motion for a calm shared studio"})
+        api(fresh, "POST", "/api/auth/sign-up/email", {"name": "Mara Nowak", "email": f"motion-mara-{self.fx.stamp}-{uuid.uuid4().hex[:8]}@example.test", "password": "light motion for a calm shared studio"})
         for visit in range(2):
             before, after, slot = self.home_tops(fresh, wait_for_card=False)
             self.assertEqual(slot, 0, f"visit {visit + 1}: no space is kept for a card that is not there")

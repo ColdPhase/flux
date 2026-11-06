@@ -24,3 +24,5 @@
 @media (prefers-reduced-motion: no-preference) {
   :root:not([data-motion="reduce"]) .pending-view__list, :root:not([data-motion="reduce"]) .pending-view__cards, :root:not([data-motion="reduce"]) .pending-view__wiki { animation: opening-pulse var(--dur-loop) var(--ease-loop) infinite; }
 }
+/* The thread's panel while the thread's reads are out: the panel's earlier content stays mounted (it names itself for "‹ back") but is not shown. */
+.thread-opening-panel ~ * { display: none; }

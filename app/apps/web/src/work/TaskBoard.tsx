@@ -233,7 +233,7 @@ export interface TaskBoardProps {
   writable: boolean;
   /** Changes when the Tasks tab asks every board read to refresh. */
   revision: number;
-  openWork: (id: string) => void;
+  openWork: (id: string, title: string) => void;
   refresh: () => void;
   /** Opens one native group in the List, which pages through all of it. */
   showInList: (group: WorkGroup) => void;
@@ -663,7 +663,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                         onClickCapture={(event) => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); } }}
                         onKeyDown={(event) => onCardKey(event, item, column.id)} onKeyUp={onCardKeyUp}
                         onBlur={() => { if (lifted?.id === item.id) { setLifted(null); say(`Cancelled. “${item.title}” stays in ${LABEL[lifted.from]}.`); } }}
-                        onOpen={() => { if (lifted?.id !== item.id) openWork(item.id); }}
+                        onOpen={() => { if (lifted?.id !== item.id) openWork(item.id, item.title); }}
                         onMenu={(open) => setMenuFor(open ? item.id : null)}
                         onMove={(to) => void move(item, to, true)} />
                     ))}
