@@ -1244,7 +1244,7 @@ class LightMotionJourney(unittest.TestCase):
         self.assertEqual([entry for entry in recorded(page) if "note" in entry["target"]], [], "notes already there do not rise on a visit, nor on a reload")
         self.open(page, self.fx.project_url())
         clear(page)
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="Sketchbook").first.click()
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="My map").first.click()
         expect(page.locator(".note", has_text="Check the gate latch")).to_be_visible()
         page.wait_for_timeout(500)
         self.assertEqual([entry for entry in recorded(page) if "note" in entry["target"]], [], "nor when the view is switched to")
