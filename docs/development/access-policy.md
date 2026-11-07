@@ -421,18 +421,18 @@ There are no agent project grants, standing project policy or requests to let an
 `project_grants` names people only. `POST /api/v1/projects/:id/grants` refuses an agent. OAuth
 consent selects which of the owner's projects a local client works in and can never add rights.
 
-`POST /api/v1/agent-connections/:id/action-grants` needs the owner's current `project.write`. A
-standing grant still narrows what a local client does, and every action runs as the agent under
-the owner's current level, the connection's consent and the grant's own limits.
+There are no standing grants (#859): every action of a local client runs as the agent under the owner's current level,
+the connection's consent and the agent's "What it may do", checked inside the action's transaction.
 
 `PATCH /api/v1/agent-connections/:id { mayDo }` sets "What it may do" (`read`, `act`, `ask`). Only
 the owner, in their own signed-in session, can; everyone else gets `404`, and a bearer or run token
 never reaches it. How each mode behaves is in [personal runs](personal-runs.md).
 
-A local client's changes have nowhere to wait yet, because the change log belongs to the assistant's
-runs. Until they do, what would wait is refused instead and changes nothing: `AGENT_ONLY_READS`,
-`AGENT_ASKS_FIRST`, and `AGENT_CHANGE_WAITS` for a deletion, something of another person's or a task
-for another person.
+A local client's changes follow the assistant's: the change log (`assistant_changes`) names a run or, for a
+client, its connection. A change that would wait is kept with its exact call and shown in the owner's Inbox, one item
+per client; only the owner, in their own signed-in session, approves, edits or skips it, and Approve re-executes the
+call with the owner's rights, the connection and the target's version checked again. The client's token has no route
+to any of it. `AGENT_ONLY_READS` is the only refusal: a client set to Only read changes nothing, and tells its owner.
 
 ## Events
 

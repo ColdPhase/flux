@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { AGENT_MCP_ENTRIES, ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, type AgentJsonValue, type AgentOperation, type AgentPostcondition,
+import { AGENT_MCP_ENTRIES, ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, type AgentJsonValue, type AgentMayDo, type AgentOperation, type AgentPostcondition,
   type AgentScope, type AssistantObjectType, type AuthenticatedAgentRuntime } from '@flux/contracts';
-import { agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, lockAgentMcpPolicy, sketchRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
-import { ASSISTANT_REFUSALS, changedParagraphs, classifyAssistantChange, DomainError, fieldWords, type UndoRecord, evaluateProject, redactSecrets } from '@flux/core';
+import { agentExecutionRows, agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, lockAgentMcpPolicy, sketchRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
+import { ASSISTANT_REFUSALS, changedParagraphs, classifyAssistantChange, DomainError, fieldWords, type UndoRecord, evaluateProject, redactSecrets, requireSpaceAi, SpaceAiOffError } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
 import { nativeMapRoomExists, prepareNativeMap } from '../editing/native-map-journal.js';
@@ -11,17 +11,18 @@ import { nativeWorkInEventSession } from '../work/adapters.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 import type { ActionInput, NativeActions, Produced } from './action-execution.js';
 import { agentConnectionInTransaction, type FluxMcpClaims } from './context.js';
-import { agentOperationTarget } from './grants.js';
+import { agentOperationTarget } from './operation-target.js';
 import { createAgentConnectionStore } from './store.js';
 
-// The agent's effect path (F-036 AG-3, #855; F-027 A3 #403). An assistant run's change tool reaches the same native
-// commands as an external client, but its authority is the run itself (`owner_request`): the run is live and the change is
-// within its owner's current rights, which are exactly the agent's. Its "What it may do" decides the rest: Only read
-// changes nothing, Ask me first waits for everything, and deleting or other people's things always wait. Each call is
-// recorded in the change log in the same transaction, as applied, waiting or refused. A waiting change keeps its exact
-// prepared tool call; only the owner's Approve in their own session (`owner_approval`) re-executes exactly that call
-// through this executor, with every check repeated and the target's version compared. It never revives the run's token
-// or calls a model, and no agent has a tool or token for it.
+// The agent's effect path (F-036 AG-3, #855; F-027 A3 #403; mcp-cowork LC-2, #859). A change to a person's things is made
+// here by an assistant run or by a local client's connection alike. The authority of a run is the run itself
+// (`owner_request`): it is live and the change is within its owner's current rights, which are exactly the agent's. The
+// authority of a local client is its verified bearer and its connection, with the same owner rights read at the moment of
+// the call. The agent's "What it may do" decides the rest: Only read changes nothing, Ask me first waits for everything, and
+// deleting or other people's things always wait. Each call is recorded in the change log in the same transaction, as applied,
+// waiting or refused. A waiting change keeps its exact prepared tool call; only the owner's Approve in their own session
+// (`owner_approval`) re-executes exactly that call through this executor, with every check repeated and the target's version
+// compared. It never revives a run's token, calls a model or reuses a client's token, and no agent has a tool or token for it.
 
 /** The prepared tool call a waiting change keeps: its tool and its run-private arguments, redacted. */
 export interface AssistantCall {
@@ -34,8 +35,11 @@ export interface AssistantText { assistantText: string }
 export const isAssistantText = (value: unknown): value is AssistantText =>
   !!value && typeof value === 'object' && typeof (value as AssistantText).assistantText === 'string';
 
-/** A server-owned purpose that re-executes one saved change on its owner's Approve (never a client claim or an agent's call). */
-export interface AssistantApproval { changeId: string; runId: string; purpose: 'owner_approval'; decidedBy: string }
+/**
+ * A server-owned purpose that re-executes one saved change on its owner's Approve (never a client claim or an agent's call).
+ * `runId` is null for a local client's change, whose source is the connection the claims name.
+ */
+export interface AssistantApproval { changeId: string; runId: string | null; purpose: 'owner_approval'; decidedBy: string }
 
 const stable = (value: unknown): unknown => Array.isArray(value) ? value.map(stable)
   : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value as Record<string, unknown>).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, stable(v)]))
@@ -313,31 +317,32 @@ const producedId = (value: Record<string, unknown>) => {
   return null;
 };
 
+type RunRow = NonNullable<Awaited<ReturnType<ReturnType<typeof assistantChangeRows>['lockRun']>>>;
+type ClientRow = NonNullable<Awaited<ReturnType<ReturnType<typeof assistantChangeRows>['lockClient']>>>;
 interface Authority {
   runtime: AuthenticatedAgentRuntime; workspaceId: string; agentId: string; policyVersion: number;
-  run: NonNullable<Awaited<ReturnType<ReturnType<typeof assistantChangeRows>['lockRun']>>>;
-  settings: NonNullable<Awaited<ReturnType<ReturnType<typeof assistantChangeRows>['settings']>>>;
+  /** The assistant's run; null for a local client's change. */
+  run: RunRow | null;
+  /** The agent's "What it may do", read with its connection row held. */
+  mayDo: AgentMayDo;
   /** The owner can make this change now: the agent's rights are exactly the owner's (F-036 AG-3). */
   ownerCanWrite: boolean;
-  /** Who pays for the run, in the owner's consent's own words ("Your Claude plan"): recorded with the receipt (AST-6.6). */
-  payer: string;
+  /** Where it ran and who pays, in the receipt's words ("Your Claude plan"; a local client uses its owner's own): recorded with the receipt (AST-6.6). */
+  engine: string; payer: string;
 }
 
-/** The checks every agent change repeats, live: the binding, the S6 entry, the run's place and the owner's current rights. */
-async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectId: string, tool: string, run: Authority['run'] | null,
-  approval: AssistantApproval | undefined, prepared: AssistantChangeRow | null): Promise<Authority> {
+/** The checks every agent change repeats, live: the binding, the S6 entry, the place and the owner's current rights. */
+async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectId: string, tool: string, run: RunRow | null, client: ClientRow | null,
+  context: Awaited<ReturnType<typeof agentConnectionInTransaction>> | null, approval: AssistantApproval | undefined, prepared: AssistantChangeRow | null): Promise<Authority> {
   const rows = assistantChangeRows(tx as DbExecutor);
   let agentId: string; let workspaceId: string;
   // The owner's own rights now, which are the agent's: outside them nothing can be changed or prepared (AG-3).
   const ownerCanWrite = (await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.write', projectId, accessReader(tx), { lock: true })).allowed;
   if (!approval) {
-    // The run's own token: in flight, its place, the S6 entry admitted by the route's dispatch.
-    const context = await agentConnectionInTransaction(tx, claims, 'flux.action.execute', null);
-    enforceRead((await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.read', projectId, accessReader(tx), { lock: true })).allowed);
-    if (!context.connection.selectedProjectIds.includes(projectId)) throw outsideRunPlace();
-    await context.requireProject(projectId, 'project.read');
+    // The bearer's own token (checked by the caller before any replay): a run in flight, its place, or a client's live binding.
+    if (!context) throw invalidated('This change needs its connection');
     agentId = context.principal.id; workspaceId = context.workspaceId;
-  } else {
+  } else if (run) {
     const grant = await createAgentConnectionStore(tx).grantForRun(claims.ownerUserId, claims.connectionId);
     if (!grant || grant.connection.id !== claims.connectionId || grant.connection.computeSource !== 'owner_assistant'
       || !grant.connection.scopes.includes('flux.action.execute') || !grant.connection.selectedProjectIds.includes(projectId))
@@ -347,11 +352,34 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
     if (!actor.active || actor.agent?.ownerUserId !== claims.ownerUserId) throw invalidated('Your assistant is no longer available');
     const checked = await evaluateProject({ kind: 'agent', id: agentId }, 'project.write', projectId, accessReader(tx), { lock: true });
     if (!checked.allowed || checked.project?.workspaceId !== workspaceId) throw invalidated('You can no longer change this');
+  } else {
+    // A local client's saved change, approved by its owner in their own session: no token is involved, so the connection itself
+    // must still be live, still the owner's, and still reach the project.
+    const connection = await createAgentConnectionStore(tx).resolve(claims.ownerUserId, claims.connectionId);
+    if (!connection || connection.computeSource === 'owner_assistant' || !connection.scopes.includes('flux.action.execute') || !connection.selectedProjectIds.includes(projectId))
+      throw invalidated('This client can no longer reach this project');
+    agentId = connection.agentId; workspaceId = connection.workspaceId;
+    const actor = await loadActor({ kind: 'agent', id: agentId }, workspaceId, tx, { lock: true });
+    if (!actor.active || actor.agent?.ownerUserId !== claims.ownerUserId) throw invalidated('This client is no longer available');
+    try { await requireSpaceAi(accessReader(tx), projectId, { lock: true }); }
+    catch (error) { if (error instanceof SpaceAiOffError) throw invalidated('AI is off in this space'); throw error; }
+    const checked = await evaluateProject({ kind: 'agent', id: agentId }, 'project.write', projectId, accessReader(tx), { lock: true });
+    if (!checked.allowed || checked.project?.workspaceId !== workspaceId) throw invalidated('You can no longer change this');
   }
   const policy = await lockAgentMcpPolicy(tx, claims.connectionId);
   const entry = AGENT_MCP_ENTRIES.find((item) => item.kind === 'tool' && item.name === tool);
   if (!policy || !entry || !policy.selectedProjectIds.includes(projectId) || !policy.enabledEntryIds.includes(entry.id)
     || !entry.requiredCapabilities.every((id) => policy.enabledCapabilityIds.includes(id))) throw invalidated('This kind of change is unavailable now');
+  const now = new Date();
+  const scopes = ['flux.context.read', 'flux.action.execute'] as AgentScope[];
+  if (client) {
+    // A local client: its connection row, held `FOR SHARE`, is the one place "What it may do" is read.
+    if (client.ownerUserId !== claims.ownerUserId || client.revokedAt || client.agentId !== agentId || client.workspaceId !== workspaceId) throw invalidated('This client is no longer available');
+    const runtime: AuthenticatedAgentRuntime = Object.freeze({ id: claims.connectionId, workspaceId, connectionId: claims.connectionId, ownerUserId: claims.ownerUserId,
+      agentId, clientId: claims.clientId ?? 'flux-client', grantReferenceId: claims.grantReferenceId ?? `flux-client:${claims.connectionId}`, bindingGeneration: 0, scopes,
+      createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + 60_000).toISOString() });
+    return { runtime, workspaceId, agentId, policyVersion: policy.version, run: null, mayDo: client.mayDo, ownerCanWrite, engine: 'client', payer: 'Your own client' };
+  }
   if (!run || run.ownerUserId !== claims.ownerUserId || run.projectId !== projectId || run.agentId !== agentId) throw invalidated('This request is unavailable');
   if (approval) {
     // A normally completed or still live source supplies provenance; a stopped, cancelled or failed one supplies nothing.
@@ -363,26 +391,27 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
   if (!enablement) throw invalidated('Your assistant is off');
   if (approval && enablement.status !== 'active') throw new DomainError(409, 'ASSISTANT_PAUSED', 'Your assistant is paused. Resume it, then approve again');
   if (prepared && enablement.createdAt > prepared.createdAt) throw invalidated('Your assistant was turned off since. Ask again');
-  const now = new Date();
   const runtime: AuthenticatedAgentRuntime = Object.freeze({ id: run.id, workspaceId, connectionId: claims.connectionId, ownerUserId: claims.ownerUserId,
-    agentId, clientId: 'flux-assistant', grantReferenceId: `flux-run:${run.id}`, bindingGeneration: 0, scopes: ['flux.context.read', 'flux.action.execute'] as AgentScope[],
+    agentId, clientId: 'flux-assistant', grantReferenceId: `flux-run:${run.id}`, bindingGeneration: 0, scopes,
     createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + 60_000).toISOString() });
-  return { runtime, workspaceId, agentId, policyVersion: policy.version, run, settings, ownerCanWrite, payer: enablement.payer };
+  return { runtime, workspaceId, agentId, policyVersion: policy.version, run, mayDo: settings.mayDo, ownerCanWrite, engine: run.engine, payer: enablement.payer };
 }
 
 /**
- * The executor of a run token's change tools and of a saved change's re-execution on its owner's Approve. Same call shape as
- * the standing-grant executor, so every tool's own native effect is reused unchanged.
+ * The executor of a change tool of a run token or of a local client's bearer, and of a saved change's re-execution on its
+ * owner's Approve. Every tool's own native effect is reused unchanged.
  */
 export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
   return async function execute<T extends { [key: string]: AgentJsonValue }>(input: ActionInput, operation: AgentOperation,
     objectId: string | null, payload: AgentJsonValue, effect: (native: NativeActions) => Promise<Produced<T>>): Promise<(T & { replayed: boolean }) | AssistantText> {
     const call = input.assistantCall;
     const approval = claims.approval;
-    const runId = claims.run?.id ?? approval?.runId;
-    if (!call || !runId) throw new DomainError(403, 'AGENT_EXECUTION_UNAVAILABLE', 'This change needs its assistant run');
+    // A run's change names the run; a local client's names its connection (the claims), and is the one with no run.
+    const runId = claims.run?.id ?? approval?.runId ?? null;
+    if (!call) throw new DomainError(403, 'AGENT_EXECUTION_UNAVAILABLE', 'This change needs its tool call');
     // Anything outside the run's place has no tool to reach it.
     if (claims.run && input.projectId !== claims.run.projectId) throw outsideRunPlace();
+    const source = runId ? { runId } : { connectionId: claims.connectionId };
     const fingerprint = assistantCallFingerprint(call);
     const live = operation.startsWith('map.') && objectId !== null && await nativeMapRoomExists(db as DbExecutor, objectId);
     const releases = new Set<() => void>();
@@ -392,40 +421,63 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
       return await db.transaction(async (tx) => {
         const rows = assistantChangeRows(tx as DbExecutor);
         const session = transactionEventSession(tx);
-        // The run row first: concurrent calls of one run serialize here.
-        const runRow = await rows.lockRun(runId);
+        // The run row first: concurrent calls of one run serialize here. A client's connection row is held `FOR SHARE`, and one
+        // command ID is serialized by its own lock, so a retry never makes the change twice.
+        const runRow = runId ? await rows.lockRun(runId) : null;
+        const clientRow = runId ? null : await rows.lockClient(claims.connectionId);
+        if (!runId) await agentExecutionRows(tx).lockCommand(claims.connectionId, input.clientCommandId);
         const prepared = approval ? await rows.lock(approval.changeId) : null;
-        if (approval && (!prepared || prepared.state !== 'waiting' || prepared.fingerprint !== fingerprint || prepared.runId !== runId
-          || prepared.ownerUserId !== claims.ownerUserId))
+        if (approval && (!prepared || prepared.state !== 'waiting' || prepared.fingerprint !== fingerprint || (prepared.runId ?? null) !== runId
+          || prepared.ownerUserId !== claims.ownerUserId || !runId && prepared.connectionId !== claims.connectionId))
           throw new DomainError(409, 'ASSISTANT_CHANGE_UNAVAILABLE', 'This change is no longer waiting');
+        // A bearer's call is checked first, replay included: a revoked connection, a switched-off tool, another host binding or a space
+        // with AI off refuse the retry of a change as they refuse the change (nothing more reaches a token whose grant is gone).
+        const context = approval ? null : await agentConnectionInTransaction(tx, claims, 'flux.action.execute', null);
+        if (context) {
+          enforceRead((await evaluateProject({ kind: 'human', id: claims.ownerUserId }, 'project.read', input.projectId, accessReader(tx), { lock: true })).allowed);
+          if (!context.connection.selectedProjectIds.includes(input.projectId)) throw runId ? outsideRunPlace() : new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found');
+          await context.requireProject(input.projectId, 'project.read');
+        }
         if (!approval) {
-          const stored = await rows.byCommand(runId, input.clientCommandId);
+          const stored = runId ? await rows.byCommand(runId, input.clientCommandId) : await rows.byConnectionCommand(claims.connectionId, input.clientCommandId);
           if (stored) {
             if (stored.fingerprint !== fingerprint) throw new DomainError(409, 'IDEMPOTENCY_CONFLICT', 'This command ID belongs to another change');
-            if (stored.state === 'applied' && stored.receipt) return { ...(stored.receipt.value as T), replayed: true };
+            if (stored.state === 'applied' && stored.receipt) {
+              // A local client's retry observes its stored result only while what it made is still as it left it: after a later change by
+              // anyone, the stored outcome no longer describes the object and the retry says so, never a second effect.
+              if (!runId) for (const condition of (stored.receipt.postconditions ?? []) as AgentPostcondition[])
+                if (!await agentExecutionRows(tx).nativePostcondition(stored.workspaceId, stored.projectId, condition))
+                  throw new DomainError(409, 'COMMAND_POSTSTATE_STALE', 'The produced object changed; recover before continuing');
+              return { ...(stored.receipt.value as T), replayed: true };
+            }
             // The retry of a change that has since been decided says what became of it, not that it waits.
             return { assistantText: stored.state === 'undone' ? 'Your owner undid this change'
               : stored.state === 'applied_after_wait' ? 'Your owner approved this change and it was made'
                 : stored.state === 'skipped' ? 'Your owner skipped this change' : stored.refusal ?? 'This change is waiting for your owner\'s OK' };
           }
         }
-        authority = await currentAuthority(tx, claims, input.projectId, call.tool, runRow, approval, prepared);
+        authority = await currentAuthority(tx, claims, input.projectId, call.tool, runRow, clientRow, context, approval, prepared);
         // Objects stay in their space: on Approve a miss means the target is gone, which reads "Changed since you asked".
         if (!await withinRunPlace(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, { workspaceId: authority.workspaceId, projectId: input.projectId }))
-          throw approval ? new DomainError(404, 'OBJECT_NOT_FOUND', 'Project object not found') : outsideRunPlace();
+          throw approval || !authority.run ? new DomainError(404, 'OBJECT_NOT_FOUND', 'Project object not found') : outsideRunPlace();
+        // The exact revisions the change cites are the current ones, and in this space: a private draft or another space's page is never a source.
+        const sourceRows = agentExecutionRows(tx);
+        for (const source of input.sources ?? []) if (await sourceRows.sourceVersion(authority.workspaceId, input.projectId, source.materialId) !== source.version)
+          throw new DomainError(409, 'SOURCE_VERSION_CONFLICT', 'A referenced source changed; recover before continuing');
         const ownerName = (await rows.names([claims.ownerUserId])).get(claims.ownerUserId) ?? 'your owner';
         described = await describe(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, claims.ownerUserId);
         const target = described;
         const phrase = `${target.words.phrase} ${target.words.noun}`;
         if (!approval) {
           // A reaction's read-only action, and an agent whose "What it may do" is Only read, change nothing (F-036 AG-3).
-          const readOnly = !!authority.run.reactionAction && ['tell', 'draft_reply', 'check_task'].includes(authority.run.reactionAction);
-          const outcome = classifyAssistantChange({ mayDo: readOnly ? 'read' : authority.run.reactionAction?.startsWith('suggest_') ? 'ask' : authority.settings.mayDo,
+          const reaction = authority.run?.reactionAction;
+          const readOnly = !!reaction && ['tell', 'draft_reply', 'check_task'].includes(reaction);
+          const outcome = classifyAssistantChange({ mayDo: readOnly ? 'read' : reaction?.startsWith('suggest_') ? 'ask' : authority.mayDo,
             ownerCanWrite: authority.ownerCanWrite, removal: target.removal, mine: target.mine, forOther: target.forOther });
           if (outcome.state === 'refused') {
             // Nothing is prepared for or sent to another person; the agent says so in words (F-036 AG-3 "Never possible").
             const refusal = ASSISTANT_REFUSALS[outcome.reason];
-            await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, runId, ownerUserId: claims.ownerUserId,
+            await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, ...source, ownerUserId: claims.ownerUserId,
               agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
               objectId: target.objectId, objectTitle: target.title, state: 'refused', refusal, preparedCommand: callSummary(call), otherUserId: null,
               policyVersion: authority.policyVersion, beforeVersion: target.beforeVersion, createdAt: new Date() });
@@ -436,14 +488,14 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
             // Measured exactly as the column's CHECK measures it (jsonb text), before anything is written.
             if (await rows.preparedBytes(call) > ASSISTANT_CHANGE_LIMITS.preparedBytes)
               throw new DomainError(413, 'ASSISTANT_CHANGE_TOO_LARGE', 'This change is too large to keep for your OK');
-            await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, runId, ownerUserId: claims.ownerUserId,
+            await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, ...source, ownerUserId: claims.ownerUserId,
               agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
               objectId: target.objectId, objectTitle: target.title, state: 'waiting', waitReason: outcome.reason, preparedCommand: call,
               policyVersion: authority.policyVersion, beforeVersion: target.beforeVersion, otherUserId: target.maker, createdAt: new Date() });
             await session.flushEvents();
             return { assistantText: `Waiting for ${ownerName}'s OK: ${phrase}${target.title ? ` ${target.title}` : ''}.` };
           }
-        } else if (authority.settings.mayDo === 'read') {
+        } else if (authority.mayDo === 'read') {
           throw invalidated('Its "What it may do" is Only read now. Ask again');
         }
         const produced = await effect(natives(tx, session, authority.runtime, live, input.clientCommandId, operation, fingerprint, releases));
@@ -465,15 +517,18 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
             ? { plan: { kind: 'handoff', unitId: unit.unitId, taskId: unit.taskId, creationVersion: unit.version }, before: null, after: `Handed to ${target.recipient ?? 'your agent'}` } : null;
         }
         const receipt = { value: produced.value, postconditions: produced.postconditions, ...(undo ? { undo } : {}), authority: approval?.purpose ?? 'owner_request', runId,
-          engine: authority.run.engine, payer: authority.payer, ownerUserId: claims.ownerUserId, agentId: authority.agentId, assistantConnectionId: claims.connectionId, preparedBy: authority.agentId,
+          engine: authority.engine, payer: authority.payer, ownerUserId: claims.ownerUserId, agentId: authority.agentId, assistantConnectionId: claims.connectionId, preparedBy: authority.agentId,
           ...(approval ? { approvedBy: approval.decidedBy } : {}) } as unknown as Record<string, unknown>;
         const after = afterVersion(produced.postconditions);
         const createdId = producedId(produced.value as Record<string, unknown>);
+        // A local client's message is where its change line shows, with Undo, for everyone who can read the conversation.
+        const sentTo = (produced.value as { conversationId?: unknown }).conversationId;
+        const conversationId = !runId && target.objectType === 'message' && typeof sentTo === 'string' ? { conversationId: sentTo } : {};
         if (prepared) {
           await rows.update(prepared.id, { state: 'applied_after_wait', waitReason: null, authority: approval!.purpose, receipt, afterVersion: after,
-            objectId: prepared.objectId ?? createdId, decidedBy: approval!.decidedBy, decidedAt: new Date() });
+            objectId: prepared.objectId ?? createdId, decidedBy: approval!.decidedBy, decidedAt: new Date(), ...conversationId });
         } else {
-          await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, runId, ownerUserId: claims.ownerUserId,
+          await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, ...source, ...conversationId, ownerUserId: claims.ownerUserId,
             agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
             objectId: target.objectId ?? createdId, objectTitle: target.title, state: 'applied', authority: 'owner_request', preparedCommand: callSummary(call), policyVersion: authority.policyVersion,
             beforeVersion: target.beforeVersion, afterVersion: after, receipt, createdAt: new Date() });
@@ -483,7 +538,8 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
       });
     } catch (error) {
       // A person changed the object between the run's read and its write: skipped, never retried (AG-3 "Attribution and conflicts").
-      if (!approval && isVersionConflict(error) && described && authority) {
+      // A local client keeps the plain conflict (`VERSION_CONFLICT`, `SOURCE_VERSION_CONFLICT`): it reads the object again, in its editor.
+      if (!approval && runId && isVersionConflict(error) && described && authority) {
         const target = described as Target; const held = authority as Authority;
         const who = target.objectId ? await assistantChangeRows(db as DbExecutor).lastActor(target.objectId) : null;
         const label = target.objectType === 'work' ? target.title.split(' ')[0] : target.title;
@@ -491,7 +547,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         await db.transaction(async (tx) => {
           const rows = assistantChangeRows(tx as DbExecutor);
           if (await rows.byCommand(runId, input.clientCommandId)) return;
-          await rows.insert({ id: randomUUID(), workspaceId: held.workspaceId, projectId: input.projectId, runId, ownerUserId: claims.ownerUserId,
+          await rows.insert({ id: randomUUID(), workspaceId: held.workspaceId, projectId: input.projectId, ...source, ownerUserId: claims.ownerUserId,
             agentId: held.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
             objectId: target.objectId, objectTitle: target.title, state: 'refused', refusal, preparedCommand: callSummary(call), otherUserId: null, policyVersion: held.policyVersion, beforeVersion: target.beforeVersion,
             createdAt: new Date() });

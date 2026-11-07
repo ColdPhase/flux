@@ -3,7 +3,7 @@ import {
   ASSISTANT_UNIT_CREATE_VIEW, assistantChangeActionPath, assistantChangeWords, assistantDoneWords, assistantWorkChangeArgs, assistantRunChangesActionPath, assistantRunChangesPath,
   conversationAssistantActivityPath, conversationAssistantChangesPath, WORK_LIMITS, type AssistantActivity, type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone,
 } from '@flux/contracts';
-import { assistantChangeRows, type AssistantChangeRow, type DbExecutor, accessReader, type Database } from '@flux/db';
+import { assistantChangeRows, changeGroup, type AssistantChangeInView, type AssistantChangeRow, type DbExecutor, accessReader, type Database } from '@flux/db';
 import { assistantWaitLine, ConflictError, ForbiddenError, InvalidInputError, undoSentence, type UndoRecord, DomainError, evaluateProject, isUuid, NotFoundError,
   type Principal } from '@flux/core';
 import { CHANGED_SINCE, REMOVAL_OPERATIONS, requireAiOn, undoChange } from './undo.js';
@@ -48,10 +48,11 @@ type Outcome = { ok: true } | { ok: false; code: string; error: string };
 export async function reexecuteChange(db: Database, change: AssistantChangeRow, decidedBy: string): Promise<Outcome> {
   const settings = await db.transaction((tx) => assistantChangeRows(tx as DbExecutor).settings(change.ownerUserId, change.workspaceId));
   const call = change.preparedCommand as AssistantCall | null;
-  if (!settings || !call) return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'Your assistant is no longer available' };
+  if (!call || change.runId && !settings || !change.runId && !change.connectionId) return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'Your assistant is no longer available' };
   const approval: AssistantApproval = { changeId: change.id, runId: change.runId, purpose: 'owner_approval', decidedBy };
-  const claims: FluxMcpClaims = { ownerUserId: change.ownerUserId, connectionId: settings.connectionId, clientId: null, grantReferenceId: null,
-    scopes: ['flux.context.read', 'flux.action.execute'], approval };
+  // The assistant's change is re-executed as the assistant; a local client's, as the connection that made it (#859).
+  const claims: FluxMcpClaims = { ownerUserId: change.ownerUserId, connectionId: change.runId ? settings!.connectionId : change.connectionId!, clientId: null,
+    grantReferenceId: null, scopes: ['flux.context.read', 'flux.action.execute'], approval };
   const tool = savedTools(db, claims).get(call.tool);
   if (!tool) return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'This kind of change is no longer available' };
   // A saved hand-off is decoded by the exact private view it was prepared with: an unknown or unsupported one needs Ask again,
@@ -112,9 +113,9 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     return (row) => principal?.kind === 'human' && (row.operation !== 'work.create' || row.ownerUserId === principal.id)
       && (!REMOVAL_OPERATIONS.has(row.operation) || principal.id === row.ownerUserId) && (principal.id === row.ownerUserId || projects.get(row.projectId) === true);
   }
-  async function view(list: AssistantChangeRow[], conversations: Map<string, string>, mayUndo: (row: AssistantChangeRow) => boolean = () => true): Promise<AssistantChange[]> {
+  async function view(list: AssistantChangeInView[], mayUndo: (row: AssistantChangeRow) => boolean = () => true): Promise<AssistantChange[]> {
     const names = await rows().names(list.flatMap((row) => [row.ownerUserId, row.otherUserId, row.decidedBy].filter((id): id is string => !!id)));
-    const states = await rows().runStates([...new Set(list.map((row) => row.runId))]);
+    const states = await rows().runStates([...new Set(list.flatMap((row) => row.runId ? [row.runId] : []))]);
     // A hand-off says where the unit stands now, in the owner's words for the agent: "Codex hasn't started it yet".
     const units = await rows().unitStates(list.flatMap((row) => { const plan = undoOf(row)?.plan; return plan?.kind === 'handoff' ? [plan.unitId] : []; }));
     return list.map((row) => {
@@ -122,14 +123,14 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       const words = assistantChangeWords(row.operation, assistantWorkChangeArgs(args.changes ?? {}));
       const phrase = `${words.phrase} ${words.noun}`;
       const forOther = row.operation === 'work.create' && row.waitReason === 'others' && row.otherUserId;
-      return { id: row.id, runId: row.runId, projectId: row.projectId, conversationId: conversations.get(row.runId) ?? '', operation: row.operation,
+      return { id: row.id, runId: changeGroup(row), agentName: row.agentName, projectId: row.projectId, conversationId: row.conversationId, operation: row.operation,
         objectType: row.objectType, objectId: row.objectId, objectTitle: row.objectTitle, state: row.state, waitReason: row.waitReason, phrase, verb: words.verb,
         line: handoffLine(row, units) ?? assistantWaitLine({ state: row.state, waitReason: row.waitReason, noun: words.noun, operation: row.operation,
           otherName: row.otherUserId ? names.get(row.otherUserId) ?? null : null, refusal: row.refusal,
           decidedByName: (row.state === 'applied_after_wait' || row.state === 'undone') && row.decidedBy ? names.get(row.decidedBy) ?? null : null }),
         forPerson: forOther ? { id: row.otherUserId!, name: names.get(row.otherUserId!) ?? '' } : null,
         done: assistantDoneWords({ operation: row.operation, objectType: row.objectType, objectTitle: row.objectTitle, status: statusOf(row), phrase }),
-        runState: runStateOf(states.get(row.runId)), before: undoOf(row)?.before ?? null, after: undoOf(row)?.after ?? null,
+        runState: runStateOf(row.runId ? states.get(row.runId) : undefined), before: undoOf(row)?.before ?? null, after: undoOf(row)?.after ?? null,
         owner: { id: row.ownerUserId, name: names.get(row.ownerUserId) ?? '' },
         undoable: (row.state === 'applied' || row.state === 'applied_after_wait') && !!undoOf(row) && mayUndo(row),
         decidedBy: row.decidedBy ? { id: row.decidedBy, name: names.get(row.decidedBy) ?? '' } : null,
@@ -137,8 +138,8 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     });
   }
   async function viewOne(row: AssistantChangeRow, viewer: Principal | null = null) {
-    const conversationId = await rows().conversationOf(row.runId);
-    return (await view([row], new Map(conversationId ? [[row.runId, conversationId]] : []), viewer ? await undoers(viewer, [row]) : undefined))[0]!;
+    const found = (await rows().findInView(row.id))!;
+    return (await view([found], viewer ? await undoers(viewer, [found]) : undefined))[0]!;
   }
   /** The owner's own change, or the same 404 for everyone else. */
   async function own(principal: Principal, changeId: string) {
@@ -170,8 +171,13 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     if (!isUuid(runId)) throw missing();
     const list = await rows().forRun(runId);
     if (!list.length) throw missing();
-    if (list[0]!.ownerUserId !== userId) { await mayEdit(principal, list.find(isDone) ?? list[0]!); return list.filter(isDone); }
-    return list;
+    if (list[0]!.ownerUserId === userId) return list;
+    // Someone else's group: only what was done, and only where the caller may edit (a local client's group can span several projects).
+    const done = list.filter(isDone);
+    await mayEdit(principal, done[0] ?? list[0]!);
+    const editable: typeof list = [];
+    for (const row of done) if ((await evaluateProject(principal, 'project.write', row.projectId, accessReader(db))).allowed) editable.push(row);
+    return editable;
   }
   async function ownRun(principal: Principal, runId: string) {
     const userId = owner(principal);
@@ -238,7 +244,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       const guest = access.actor?.role === 'guest';
       const list = (await rows().forConversationAll(conversationId))
         .filter((row) => isDone(row) || row.ownerUserId === userId && !(guest && row.state === 'waiting'));
-      return { items: await view(list, new Map(list.map((row) => [row.runId, row.conversationId])), await undoers(principal, list)) };
+      return { items: await view(list, await undoers(principal, list)) };
     },
     async forRun(principal: Principal, runId: string): Promise<{ items: AssistantChange[] }> {
       const all = await ownRun(principal, runId);
@@ -247,8 +253,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       for (const row of all) if (row.state === 'waiting' && !guestIn.has(row.projectId))
         guestIn.set(row.projectId, (await evaluateProject(principal, 'project.read', row.projectId, accessReader(db))).actor?.role === 'guest');
       const list = all.filter((row) => !(row.state === 'waiting' && guestIn.get(row.projectId)));
-      const conversationId = await rows().conversationOf(runId);
-      return { items: await view(list, new Map(conversationId ? [[runId, conversationId]] : []), await undoers(principal, list)) };
+      return { items: await view(list, await undoers(principal, list)) };
     },
     /** Approve (or Delete) one waiting change. A target changed since applies nothing. */
     async apply(principal: Principal, changeId: string, expected?: number): Promise<AssistantChangeDecision> {
@@ -337,7 +342,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
         const access = await evaluateProject({ kind: 'human', id: userId }, 'project.read', row.projectId, accessReader(db));
         if (access.allowed && access.actor?.role !== 'guest') readable.push(row);
       }
-      return view(readable, new Map(list.map((row) => [row.runId, row.conversationId])));
+      return view(readable);
     },
   };
 }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import type { Agent, AgentBootstrap, AgentExecutionCommand, AgentMcpPolicy, AgentStandingGrant, WorkItem } from '@flux/contracts';
+import type { Agent, AgentBootstrap, AgentExecutionCommand, AgentMcpPolicy, WorkItem } from '@flux/contracts';
 import { coworkUnitRows } from '@flux/db';
 import { DomainError } from '@flux/core';
 import { coWorkClaimInTransaction } from '../../apps/server/src/co-work/claims.js';
@@ -37,14 +37,8 @@ async function scene() {
     /** The bearer's verified claims, for the one internal-only payload form (a release naming an existing checkpoint). */
     const claims = { ownerUserId: who.id, connectionId: connected.connectionId, clientId: String(binding.client_id),
       grantReferenceId: `flux-grant:${binding.id}`, scopes: [...SCOPES, 'offline_access'] };
-    const grantRequest = (operation: string, objectId: string | null, role: Role, maximumUses = 10) =>
-      who.browser.request('POST', `/api/v1/agent-connections/${connected.connectionId}/action-grants`, { body: {
-        clientCommandId: randomUUID(), projectId: p.id, operation, peerRequestClass: role, maximumUses, ...(objectId ? { objectId } : {}),
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString() } });
-    const standing = async (operation: string, objectId: string | null, role: Role, maximumUses = 10) =>
-      expectStatus(await grantRequest(operation, objectId, role, maximumUses), 201) as AgentStandingGrant;
-    const revoke = async (grantId: string) => expectStatus(await who.browser.request('DELETE',
-      `/api/v1/agent-connections/${connected.connectionId}/action-grants/${grantId}`), 204);
+    // No standing grants (#859): the stub keeps the call sites that name one; the tool helpers drop its id.
+    const standing = async (...named: [operation: string, objectId: string | null, role: Role, maximumUses?: number]) => { void named; return { id: randomUUID() }; };
     const base = (grantId: string, role: Role, clientCommandId: string = randomUUID(), runtimeSessionId = connected.runtimeSessionId) =>
       ({ projectId: p.id, runtimeSessionId, grantId, clientCommandId, peerRequestClass: role });
     /** Another runtime session of this same bearer: a second client session's bootstrap. */
@@ -56,7 +50,7 @@ async function scene() {
       return toolValue(await connected.tool('flux_create_unit', { ...base(create.id, role), taskId: task.id, unitKey,
         expectedTaskVersion: task.version, assignmentConnectionId: connected.connectionId, parent: null })) as { unitId: string; state: string; version: number };
     };
-    return { ...connected, claims, grantRequest, standing, revoke, base, session, take };
+    return { ...connected, claims, standing, base, session, take };
   };
   const task = async (title: string) => expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/work`,
     { body: { title } }), 201) as WorkItem;
@@ -67,7 +61,6 @@ async function scene() {
       { body: { clientMutationId: randomUUID(), title, body: 'Exact first revision' } }), 201) as { materialId: string; version: number };
     return { materialId: created.materialId, version: created.version };
   };
-  const used = async (grantId: string) => (await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [grantId])).rows[0].used as number;
   const unit = async (id: string) => (await pool.query(`SELECT state, version, generation, assignment_connection_id, lease_id, lease_session_id,
     lease_expires_at, checkpoint_id, outcome_ref FROM cowork_units WHERE id=$1`, [id])).rows[0];
   const taskRow = async (id: string) => (await pool.query('SELECT status, version, updated_at FROM project_work_items WHERE id=$1', [id])).rows[0];
@@ -75,7 +68,7 @@ async function scene() {
     FROM cowork_checkpoints WHERE unit_id=$1 ORDER BY created_at`, [unitId])).rows;
   const receipts = async (connectionId: string) =>
     (await pool.query('SELECT count(*)::int AS n FROM agent_command_receipts WHERE connection_id=$1', [connectionId])).rows[0].n as number;
-  return { hubert, marek, ws, p, connect, task, patchTask, material, used, unit, taskRow, checkpoints, receipts };
+  return { hubert, marek, ws, p, connect, task, patchTask, material, unit, taskRow, checkpoints, receipts };
 }
 type Scene = Awaited<ReturnType<typeof scene>>;
 type Connection = Awaited<ReturnType<Scene['connect']>>;
@@ -180,7 +173,6 @@ test('one MCP bearer takes a task, claims, renews and completes its unit with an
 
   // A second connection of the same owner cannot claim it: an exact grant cannot even name the unit, and a project-wide
   // claim grant does not find it.
-  assert.equal((await claude.grantRequest('cowork.claim', root.unitId, 'execute')).status, 404);
   const claudeClaim = await claude.standing('cowork.claim', null, 'execute');
   assert.equal(toolFailure(await claimTool(claude, claudeClaim.id, root.unitId, 2)).code, 'COWORK_UNIT_NOT_FOUND');
 
@@ -214,12 +206,9 @@ test('one MCP bearer takes a task, claims, renews and completes its unit with an
   // Completed is final: the holder cannot claim it again, and the second connection still cannot.
   assert.equal(toolFailure(await claimTool(codex, claimGrant.id, root.unitId, 4)).code, 'COWORK_UNIT_CLOSED');
   assert.equal(toolFailure(await claimTool(claude, claudeClaim.id, root.unitId, 4)).code, 'COWORK_UNIT_NOT_FOUND');
-  assert.deepEqual([await f.used(claimGrant.id), await f.used(renewGrant.id), await f.used(completeGrant.id), await f.used(claudeClaim.id)],
-    [1, 1, 1, 0], 'one use per effect; refusals and the replay spend nothing');
   assert.equal(await f.receipts(claude.connectionId), 0);
   // Completion freed the connection: the other unit can be claimed now.
   assert.equal((toolValue(await claimTool(codex, otherGrant.id, other.unitId, 1)) as Claim).state, 'claimed');
-  assert.equal(await f.used(otherGrant.id), 1);
 });
 
 test('a replay returns the stored claim; a changed payload conflicts; renewal makes the claim receipt stale; a revoked grant refuses', async () => {
@@ -230,7 +219,6 @@ test('a replay returns the stored claim; a changed payload conflicts; renewal ma
   const command = randomUUID();
   const claimed = toolValue(await claimTool(codex, claimGrant.id, root.unitId, 1, { command })) as Claim;
   assert.deepEqual(toolValue(await claimTool(codex, claimGrant.id, root.unitId, 1, { command })), claimed, 'a lost response is retried');
-  assert.equal(await f.used(claimGrant.id), 1);
   assert.equal(await f.receipts(codex.connectionId), 2, 'the creation and the one claim');
   assert.equal(toolFailure(await claimTool(codex, claimGrant.id, root.unitId, 2, { command })).code, 'IDEMPOTENCY_CONFLICT');
 
@@ -238,22 +226,10 @@ test('a replay returns the stored claim; a changed payload conflicts; renewal ma
   const renew = { ...codex.base(renewGrant.id, 'execute'), ...fenceOf(claimed) };
   const renewed = toolValue(await codex.tool('flux_renew_unit', renew)) as Claim;
   assert.deepEqual(toolValue(await codex.tool('flux_renew_unit', renew)), renewed);
-  assert.equal(await f.used(renewGrant.id), 1);
   assert.equal(toolFailure(await claimTool(codex, claimGrant.id, root.unitId, 1, { command })).code, 'COWORK_RECEIPT_STALE',
     'the claim receipt no longer describes the unit after a renewal');
 
-  // The owner revokes the renewal grant: a new renewal and the replay of the earlier one are both refused.
-  await codex.revoke(renewGrant.id);
-  const before = await f.unit(root.unitId);
-  assert.equal(toolFailure(await codex.tool('flux_renew_unit', { ...renew, clientCommandId: randomUUID(), expectedVersion: renewed.version }))
-    .code, 'AGENT_EXECUTION_UNAVAILABLE');
-  assert.equal(toolFailure(await codex.tool('flux_renew_unit', renew)).code, 'AGENT_EXECUTION_UNAVAILABLE');
-  // The same holds for the claim grant: a fresh claim and its replay are refused before any effect.
-  await codex.revoke(claimGrant.id);
-  assert.equal(toolFailure(await claimTool(codex, claimGrant.id, root.unitId, renewed.version)).code, 'AGENT_EXECUTION_UNAVAILABLE');
-  assert.equal(toolFailure(await claimTool(codex, claimGrant.id, root.unitId, 1, { command })).code, 'AGENT_EXECUTION_UNAVAILABLE');
-  assert.deepEqual(await f.unit(root.unitId), before);
-  assert.deepEqual([await f.used(claimGrant.id), await f.used(renewGrant.id), await f.receipts(codex.connectionId)], [1, 1, 3]);
+  assert.deepEqual([await f.receipts(codex.connectionId)], [3]);
 });
 
 test('a lease is fenced by its runtime session and its expiry: the other session and the expired holder are refused', async () => {
@@ -290,7 +266,6 @@ test('a lease is fenced by its runtime session and its expiry: the other session
   assert.deepEqual([reclaimed.generation, reclaimed.lease!.runtimeSessionId], [2, other]);
   assert.equal(toolFailure(await renew({ ...claimed, version: reclaimed.version })).code, 'COWORK_CLAIM_LOST');
   assert.equal(toolFailure(await complete({ ...claimed, version: reclaimed.version })).code, 'COWORK_CLAIM_LOST');
-  assert.deepEqual([await f.used(claimGrant.id), await f.used(renewGrant.id), await f.used(completeGrant.id)], [2, 0, 0]);
 });
 
 test('role eligibility: a wrong class names no unit, execute needs its prerequisites now, plan does not, a closed task refuses', async () => {
@@ -301,10 +276,9 @@ test('role eligibility: a wrong class names no unit, execute needs its prerequis
   const execute = await codex.take(dependent);
   const claimGrant = await codex.standing('cowork.claim', execute.unitId, 'execute');
   assert.equal(toolFailure(await claimTool(codex, claimGrant.id, execute.unitId, 1)).code, 'TASK_PREREQUISITES_UNMET');
-  assert.deepEqual([(await f.unit(execute.unitId)).state, await f.used(claimGrant.id)], ['pending', 0]);
+  assert.deepEqual([(await f.unit(execute.unitId)).state], ['pending']);
 
   // A review-class grant cannot name an execute unit, and a project-wide one does not find it.
-  assert.equal((await codex.grantRequest('cowork.claim', execute.unitId, 'review')).status, 404);
   const review = await codex.standing('cowork.claim', null, 'review');
   assert.equal(toolFailure(await codex.tool('flux_claim_unit', { ...codex.base(review.id, 'review'), unitId: execute.unitId, expectedVersion: 1 }))
     .code, 'COWORK_UNIT_NOT_FOUND');
@@ -323,7 +297,7 @@ test('role eligibility: a wrong class names no unit, execute needs its prerequis
   const held = await f.unit(execute.unitId);
   assert.equal(toolFailure(await codex.tool('flux_renew_unit', { ...codex.base(renewGrant.id, 'execute'), ...fenceOf(claimed) })).code,
     'TASK_PREREQUISITES_UNMET');
-  assert.deepEqual([await f.unit(execute.unitId), await f.used(renewGrant.id)], [held, 0]);
+  assert.deepEqual([await f.unit(execute.unitId)], [held]);
   const releaseGrant = await codex.standing('cowork.release', execute.unitId, 'execute');
   const parked = toolValue(await codex.tool('flux_release_unit', { ...codex.base(releaseGrant.id, 'execute'), ...fenceOf(claimed),
     checkpoint: { summary: 'Started; the prerequisite was reopened.', nextAction: 'Wait for the prerequisite.', blocker: 'Prerequisite reopened' } })) as Claim;
@@ -335,7 +309,7 @@ test('role eligibility: a wrong class names no unit, execute needs its prerequis
   await f.patchTask(closing, { status: 'done' });
   const lateGrant = await codex.standing('cowork.claim', late.unitId, 'execute');
   assert.equal(toolFailure(await claimTool(codex, lateGrant.id, late.unitId, 1)).code, 'COWORK_TASK_CLOSED');
-  assert.deepEqual([(await f.unit(late.unitId)).state, await f.used(lateGrant.id)], ['pending', 0]);
+  assert.deepEqual([(await f.unit(late.unitId)).state], ['pending']);
 });
 
 test('release writes a typed checkpoint under the live fence; the next holder, even after a transfer, claims with it', async () => {
@@ -357,7 +331,7 @@ test('release writes a typed checkpoint under the live fence; the next holder, e
     checkpoint: { ...checkpoint, summary: '   ' } })).code, 'INVALID_INPUT');
   assert.equal(toolFailure(await codex.tool('flux_release_unit', { ...release, clientCommandId: randomUUID(),
     sources: [{ ...source, version: source.version + 1 }] })).code, 'SOURCE_VERSION_CONFLICT');
-  assert.deepEqual([(await f.unit(root.unitId)).state, (await f.checkpoints(root.unitId)).length, await f.used(releaseGrant.id)], ['claimed', 0, 0]);
+  assert.deepEqual([(await f.unit(root.unitId)).state, (await f.checkpoints(root.unitId)).length], ['claimed', 0]);
 
   const released = toolValue(await codex.tool('flux_release_unit', release)) as Claim;
   assert.deepEqual({ ...released, checkpointId: null }, { unitId: root.unitId, generation: 2, version: 3, state: 'paused', lease: null, checkpointId: null });
@@ -395,7 +369,7 @@ test('release writes a typed checkpoint under the live fence; the next holder, e
   await pool.query('DELETE FROM project_materials WHERE id=$1', [source.materialId]);
   const paused = await f.unit(root.unitId);
   assert.equal(toolFailure(await claimTool(marek, marekGrant.id, root.unitId, parked.version)).code, 'COWORK_CHECKPOINT_NOT_FOUND');
-  assert.deepEqual([await f.unit(root.unitId), await f.used(marekGrant.id)], [paused, 1]);
+  assert.deepEqual([await f.unit(root.unitId)], [paused]);
 });
 
 test('production checkpoint rules on the internal checkpointId form: a release needs exact coverage, an untyped checkpoint is never used', async () => {
@@ -404,7 +378,6 @@ test('production checkpoint rules on the internal checkpointId form: a release n
   const source = await f.material('Working plan');
   const root = await codex.take(await f.task('Native outcome A'));
   const claimGrant = await codex.standing('cowork.claim', root.unitId, 'execute');
-  const releaseGrant = await codex.standing('cowork.release', root.unitId, 'execute');
   const claimed = toolValue(await claimTool(codex, claimGrant.id, root.unitId, 1)) as Claim;
   // Two checkpoints written under the live fence, as only a release does in production: one typed, one not.
   const insert = (progress: Record<string, unknown>) => db.transaction(async (tx) => {
@@ -418,7 +391,7 @@ test('production checkpoint rules on the internal checkpointId form: a release n
     sources: [source] });
   const untyped = await insert({ sources: [source], nextAction: 'An untyped note' });
   const release = (checkpointId: string, sources: { materialId: string; version: number }[]) => db.transaction((tx) =>
-    coWorkClaimInTransaction(tx, codex.claims, { runtimeSessionId: codex.runtimeSessionId, grantId: releaseGrant.id, clientCommandId: randomUUID(),
+    coWorkClaimInTransaction(tx, codex.claims, { runtimeSessionId: codex.runtimeSessionId, clientCommandId: randomUUID(),
       projectId: f.p.id, operation: 'cowork.release', peerRequestClass: 'execute', audience: { kind: 'project', projectId: f.p.id },
       objectId: root.unitId, sources, payload: { expectedVersion: claimed.version, generation: claimed.generation, leaseId: claimed.lease!.id,
         checkpointId } } satisfies AgentExecutionCommand,
@@ -428,7 +401,7 @@ test('production checkpoint rules on the internal checkpointId form: a release n
   const held = await f.unit(root.unitId);
   await rejects(release(typed, []), 'COWORK_CHECKPOINT_SOURCES_REQUIRED');
   await rejects(release(untyped, [source]), 'COWORK_CHECKPOINT_NOT_FOUND');
-  assert.deepEqual([await f.unit(root.unitId), await f.used(releaseGrant.id)], [held, 0]);
+  assert.deepEqual([await f.unit(root.unitId)], [held]);
   const paused = await release(typed, [source]);
   assert.deepEqual([paused.state, paused.checkpointId], ['paused', typed]);
   const resumed = toolValue(await claimTool(codex, claimGrant.id, root.unitId, paused.version)) as Claim;

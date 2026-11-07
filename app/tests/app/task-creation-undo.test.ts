@@ -115,15 +115,11 @@ test('unrelated project writer and viewer cannot Undo; an exact agent operation 
   assert.equal((await peer.browser.request('POST', `/api/v1/work/${item.id}/creation-undo`, { body: { clientCommandId: randomUUID(), expectedVersion: item.version } })).status, 403);
   await grant(f.human, f.projectId, peer, 'viewer');
   assert.equal((await peer.browser.request('POST', `/api/v1/work/${item.id}/creation-undo`, { body: { clientCommandId: randomUUID(), expectedVersion: item.version } })).status, 403);
-  const updateGrant = await f.grant('work.update', 'execute');
   const envelope = { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], workId: item.id, expectedVersion: item.version };
-  assert.equal(toolFailure(await f.tool('flux_undo_task_creation', { ...envelope, grantId: updateGrant.id })).code, 'AGENT_EXECUTION_UNAVAILABLE');
   const undoGrant = await f.grant('work.creation.revert', 'execute', 5, item.id);
   const reverted = toolValue(await f.tool('flux_undo_task_creation', { ...envelope, grantId: undoGrant.id }));
-  assert.equal(reverted.workId, item.id); assert.equal(reverted.number, item.number); assert.equal(await f.used(undoGrant.id), 1);
+  assert.equal(reverted.workId, item.id); assert.equal(reverted.number, item.number);
   assert.deepEqual(toolValue(await f.tool('flux_undo_task_creation', { ...envelope, grantId: undoGrant.id })), { ...reverted, replayed: true });
-  expect(await f.owner.request('DELETE', `/api/v1/agent-connections/${f.connectionId}/action-grants/${undoGrant.id}`), 204);
-  assert.equal(toolFailure(await f.tool('flux_undo_task_creation', { ...envelope, grantId: undoGrant.id })).code, 'AGENT_EXECUTION_UNAVAILABLE');
 });
 
 test('old incomplete history stays unknown, human origin stays human (own creation only), removed task links and document mentions keep monotonic use', async () => {

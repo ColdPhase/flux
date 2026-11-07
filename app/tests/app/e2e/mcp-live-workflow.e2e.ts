@@ -52,7 +52,7 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
             + 'Do not change software or contact anyone. The wiki explains the audience. '
             + 'Read the current plan and relevant wiki, decisions, conversations and existing tasks first. '
             + 'Create exactly one task for the plan with source-linked criteria and a stable plan intent; do not duplicate it on Resume. '
-            + 'Within the granted actions, take and claim the task, then pause it with a checkpoint containing observed source coverage and missing context. '
+            + 'Within your owner’s rights, take and claim the task, then pause it with a checkpoint containing observed source coverage and missing context. '
             + 'Leave the task open for a later result. On Resume compare source versions, reread any changed plan, and record a native result explaining the current plan. '
             + 'Stop after that bounded step. Never use another account, modify software or send external messages.' } }), 201);
         expect(await owner.request('POST', `/api/v1/projects/${projectId}/docs`,
@@ -61,11 +61,6 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           { body: { name: spec.label, owner: 'self' } }), 201);
         const connection = expect(await owner.request('POST', '/api/v1/agent-connections', { body: {
           name: spec.label, clientDesignation: spec.designation, agentId: agent.id, selectedProjectIds: [projectId], scopes } }), 201);
-        for (const operation of ['work.create', 'cowork.unit.create', 'cowork.claim', 'cowork.release', 'result.record']) {
-          expect(await owner.request('POST', `/api/v1/agent-connections/${connection.id}/action-grants`, { body: {
-            clientCommandId: randomUUID(), projectId, operation, peerRequestClass: 'execute', maximumUses: 5,
-            expiresAt: new Date(Date.now() + 1_800_000).toISOString() } }), 201);
-        }
         const home = cleanClientHome(spec, { oauthFileStore: !productionFirst });
         delete home.env.MOCK_MODEL_KEY; delete home.env.ANTHROPIC_API_KEY; home.env.RUST_LOG = 'warn';
         if (loginOnly) {

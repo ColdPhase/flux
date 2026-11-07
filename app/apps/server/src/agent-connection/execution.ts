@@ -5,15 +5,13 @@ import { agentOutcomeFingerprint, DomainError, enforce, evaluateProject, normali
   type AgentExecutionOutcome, type AgentExecutionPort, type AgentExecutionScope,
   type NormalizedAgentExecutionCommand } from '@flux/core';
 import { agentConnectionInTransaction, type FluxMcpClaims } from './context.js';
-import { agentOperationTarget } from './grants.js';
+import { agentOperationTarget } from './operation-target.js';
 
 type StoredRuntime = NonNullable<Awaited<ReturnType<ReturnType<typeof agentExecutionRows>['lockRuntime']>>>;
-type StoredGrant = NonNullable<Awaited<ReturnType<ReturnType<typeof agentExecutionRows>['lockGrant']>>>;
 interface Prepared {
   command: NormalizedAgentExecutionCommand;
   fingerprint: string;
   runtime: StoredRuntime;
-  grant: StoredGrant;
   context: AuthenticatedAgentRuntime;
   replay: AgentCommandReceipt | null;
   closed: boolean;
@@ -33,7 +31,7 @@ export interface AgentExecutionDomainChecks {
 /** Operations whose produced thoughts or messages must live in the exact map or conversation the command targeted. */
 const CONTAINED: readonly AgentOperation[] = ['map.positions.update', 'map.thought.create', 'map.thought.update', 'conversation.reply'];
 function denied(code = 'AGENT_EXECUTION_UNAVAILABLE') {
-  return new DomainError(403, code, 'Current runtime, action grant or project authority is unavailable');
+  return new DomainError(403, code, 'Current runtime or project authority is unavailable');
 }
 /** One trusted port bound to this exact caller-owned TX. It never commits, flushes events or opens a receipt TX. */
 export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClaims,
@@ -41,30 +39,21 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
   claims = Object.freeze({ ...claims, scopes: Object.freeze([...claims.scopes]) });
   const rows = agentExecutionRows(tx);
   const threadRows = agentThreadGuardRows(tx);
-  const grantTarget = async (command: NormalizedAgentExecutionCommand, workspaceId: string) => privateTarget
-    ? (await threadRows.thread(command.objectId!, { workspaceId, projectId: command.projectId }))?.id ?? null : command.objectId;
   const handles = new WeakMap<AgentExecutionScope<Transaction>, Prepared>();
-  const recheck = async (prepared: Prepared, requireUnused: boolean) => {
-    const { command, runtime, grant, context } = prepared;
+  const recheck = async (prepared: Prepared) => {
+    const { command, runtime, context } = prepared;
     await agentConnectionInTransaction(tx, claims, 'flux.action.execute', command.projectId);
     enforce(await evaluateProject({ kind: 'agent', id: context.agentId }, 'project.write', command.projectId, accessReader(tx), { lock: true }), 'project');
     for (const source of command.sources) if (await rows.sourceVersion(context.workspaceId, command.projectId, source.materialId) !== source.version)
       throw new DomainError(409, 'SOURCE_VERSION_CONFLICT', 'A referenced source changed; recover before continuing');
     const binding = await rows.lockBinding(runtime.bindingId);
     const liveRuntime = await rows.lockRuntime(runtime.id);
-    const liveGrant = await rows.lockGrant(grant.id);
     const now = await rows.now(); // fresh DB wall time after every relevant lock wait
     if (!binding || binding.generation !== context.bindingGeneration || !liveRuntime || liveRuntime.revokedAt || liveRuntime.expiresAt <= now
       || liveRuntime.bindingId !== runtime.bindingId || liveRuntime.bindingGeneration !== context.bindingGeneration
       || liveRuntime.connectionId !== context.connectionId || liveRuntime.ownerUserId !== context.ownerUserId
       || liveRuntime.agentId !== context.agentId || liveRuntime.workspaceId !== context.workspaceId
-      || JSON.stringify([...liveRuntime.scopes].sort()) !== JSON.stringify([...context.scopes].sort())
-      || !liveGrant || liveGrant.generation !== grant.generation || liveGrant.revokedAt || liveGrant.expiresAt <= now
-      || liveGrant.connectionId !== context.connectionId || liveGrant.ownerUserId !== context.ownerUserId
-      || liveGrant.workspaceId !== context.workspaceId || liveGrant.projectId !== command.projectId
-      || liveGrant.operation !== command.operation || liveGrant.peerRequestClass !== command.peerRequestClass
-      || liveGrant.objectId !== null && liveGrant.objectId !== await grantTarget(command, context.workspaceId)
-      || requireUnused && liveGrant.used >= liveGrant.maximumUses) throw denied();
+      || JSON.stringify([...liveRuntime.scopes].sort()) !== JSON.stringify([...context.scopes].sort())) throw denied();
     return now;
   };
   const postState = async (prepared: Prepared, conditions: AgentPostcondition[]) => {
@@ -86,7 +75,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
         || condition.role !== prepared.command.peerRequestClass
         || condition.leaseSessionId !== null && condition.leaseSessionId !== prepared.context.id))
         throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'The claim post-state belongs to another context or role');
-      // The request role is the sender unit's actual class (the grant's), never the recipient's or the request kind.
+      // The request role is the sender unit's actual class (the unit's), never the recipient's or the request kind.
       if (condition.kind === 'cowork.request_state' && (condition.workspaceId !== prepared.context.workspaceId
         || condition.projectId !== prepared.command.projectId || condition.connectionId !== prepared.context.connectionId
         || condition.role !== prepared.command.peerRequestClass))
@@ -131,13 +120,8 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
         || runtime.workspaceId !== current.workspaceId || !runtime.scopes.includes('flux.action.execute')
         || runtime.scopes.some((scope) => !current.connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute')))
         throw denied();
-      const grant = await rows.lockGrant(command.grantId);
-      if (!grant || grant.connectionId !== claims.connectionId || grant.ownerUserId !== claims.ownerUserId
-        || grant.workspaceId !== current.workspaceId || grant.projectId !== command.projectId
-        || grant.operation !== command.operation || grant.peerRequestClass !== command.peerRequestClass
-        || grant.objectId !== null && grant.objectId !== await grantTarget(command, current.workspaceId)) throw denied();
       const initialNow = await rows.now();
-      if (runtime.revokedAt || runtime.expiresAt <= initialNow || grant.revokedAt || grant.expiresAt <= initialNow) throw denied();
+      if (runtime.revokedAt || runtime.expiresAt <= initialNow) throw denied();
       const context: AuthenticatedAgentRuntime = Object.freeze({ id: runtime.id, workspaceId: runtime.workspaceId,
         connectionId: runtime.connectionId, ownerUserId: runtime.ownerUserId, agentId: runtime.agentId,
         clientId: binding.clientId, grantReferenceId: claims.grantReferenceId, bindingGeneration: binding.generation,
@@ -149,7 +133,6 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
       await rows.lockCommand(claims.connectionId, command.clientCommandId);
       const stored = await rows.receipt(claims.connectionId, command.clientCommandId);
       if (stored && (stored.fingerprint !== fingerprint || stored.runtimeSessionId !== runtime.id
-        || stored.grantId !== grant.id || stored.grantGeneration !== grant.generation
         || stored.bindingId !== bindingId || stored.bindingGeneration !== binding.generation))
         throw new DomainError(409, 'IDEMPOTENCY_CONFLICT', 'This command ID belongs to another execution context or payload');
       const replay: AgentCommandReceipt | null = stored ? { clientCommandId: stored.clientCommandId,
@@ -161,8 +144,8 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
       if (command.objectId && target
         && !await agentProjectObjectRows(tx).scopeOf(target, command.objectId, { workspaceId: context.workspaceId, projectId: command.projectId }, false))
         throw new DomainError(404, 'OBJECT_NOT_FOUND', 'Project object not found');
-      const prepared: Prepared = { command, fingerprint, runtime, grant, context, replay, closed: false };
-      const now = await recheck(prepared, replay === null);
+      const prepared: Prepared = { command, fingerprint, runtime, context, replay, closed: false };
+      const now = await recheck(prepared);
       // Coordination acquires its complete sorted task/unit lock set after this authorization.
       // Its post-state callback runs at complete, after those locks, never early during prepare.
       const scope = Object.freeze({ transaction: tx, context, now, replay: replay ? structuredClone(replay) : null });
@@ -175,11 +158,10 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
       if (prepared.replay && agentOutcomeFingerprint(outcome) !== agentOutcomeFingerprint(prepared.replay))
         throw new DomainError(409, 'IDEMPOTENCY_CONFLICT', 'A replay must retain its original result and post-state');
       await postState(prepared, outcome.postconditions);
-      const completedAt = await recheck(prepared, prepared.replay === null);
+      const completedAt = await recheck(prepared);
       if (!prepared.replay) {
-        if (!await rows.debit(prepared.grant.id, prepared.grant.generation)) throw denied();
         await rows.saveReceipt({ connectionId: prepared.context.connectionId, clientCommandId: prepared.command.clientCommandId,
-          runtimeSessionId: prepared.context.id, grantId: prepared.grant.id, grantGeneration: prepared.grant.generation,
+          runtimeSessionId: prepared.context.id,
           bindingId: prepared.runtime.bindingId, bindingGeneration: prepared.context.bindingGeneration,
           fingerprint: prepared.fingerprint, operation: prepared.command.operation, projectId: prepared.command.projectId,
           value: outcome.value, postconditions: outcome.postconditions, completedAt });

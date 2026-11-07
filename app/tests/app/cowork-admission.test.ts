@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import { eq } from 'drizzle-orm';
-import type { Agent, AgentConnection, AgentExecutionCommand, AgentStandingGrant, CoWorkRequestLimits, WorkItem } from '@flux/contracts';
+import type { Agent, AgentConnection, AgentExecutionCommand, CoWorkRequestLimits, WorkItem } from '@flux/contracts';
 import { coworkRecoveryRows, coworkRequestRows, createDatabase, schema } from '@flux/db';
 import { coWorkRequestFingerprint, DomainError, normalizeCoWorkRequest } from '@flux/core';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
@@ -63,16 +63,14 @@ type Connected = Awaited<ReturnType<World['connect']>>;
 
 /** A sender with its own live claim (through the real claim composition and the production graph provider). */
 async function sender(w: World, s: Connected, unitId: string, role: Role = 'execute', maximumUses = 10) {
-  const claimGrant = expectStatus(await w.actionGrant(s.who, s.connection.id, 'cowork.claim', unitId, role), 201) as AgentStandingGrant;
   const policy: CoWorkClaimPolicy = { maximumConnectionUnits: 1, leaseSeconds: 120,
     prepareTaskLocks: (tx, context, units) => coWorkTaskGraphLocks(tx, context.workspaceId, units),
     async requireEligible() {}, async requireCheckpointSources() {} };
-  const claim = await db.transaction((tx) => coWorkClaimInTransaction(tx, s.claims!, { runtimeSessionId: s.runtimeId!, grantId: claimGrant.id,
-    clientCommandId: randomUUID(), projectId: w.p.id, operation: 'cowork.claim', peerRequestClass: role,
+  const claim = await db.transaction((tx) => coWorkClaimInTransaction(tx, s.claims!, { runtimeSessionId: s.runtimeId!, clientCommandId: randomUUID(), projectId: w.p.id, operation: 'cowork.claim', peerRequestClass: role,
     audience: { kind: 'project', projectId: w.p.id }, objectId: unitId, sources: [], payload: { expectedVersion: 1 } }, policy));
-  const requestGrant = expectStatus(await w.actionGrant(s.who, s.connection.id, 'cowork.request', unitId, role, maximumUses), 201) as AgentStandingGrant;
+  const requestGrant = expectStatus(await w.actionGrant(s.who, s.connection.id, 'cowork.request', unitId, role, maximumUses), 201) as { id: string };
   const command = (request: Record<string, unknown>, change: Partial<AgentExecutionCommand> = {}, fence = { generation: claim.generation, leaseId: claim.lease!.id }): AgentExecutionCommand => ({
-    runtimeSessionId: s.runtimeId!, grantId: requestGrant.id, clientCommandId: randomUUID(), projectId: w.p.id, operation: 'cowork.request',
+    runtimeSessionId: s.runtimeId!, clientCommandId: randomUUID(), projectId: w.p.id, operation: 'cowork.request',
     peerRequestClass: role, audience: { kind: 'project', projectId: w.p.id }, objectId: unitId, sources: [],
     payload: { ...fence, request } as AgentExecutionCommand['payload'], ...change });
   const admit = (input: AgentExecutionCommand, policy = POLICY, options: { failAfter?: boolean; claims?: Connected['claims'] } = {}) =>
@@ -90,11 +88,10 @@ async function count(table: string, column: string, value: string) {
   return (await pool.query(`SELECT count(*)::int AS n FROM ${table} WHERE ${column}=$1`, [value])).rows[0].n as number;
 }
 /** Every refusal leaves no request, delivery, lineage budget, grant use or receipt. */
-async function noEffects(w: World, s: Connected, grantId: string) {
+async function noEffects(w: World, s: Connected) {
   assert.equal(await count('cowork_requests', 'project_id', w.p.id), 0, 'no request');
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_delivery_intents d JOIN cowork_requests r ON r.id=d.request_id WHERE r.project_id=$1', [w.p.id])).rows[0].n, 0);
   assert.equal(await count('cowork_request_lineages', 'project_id', w.p.id), 0, 'no lineage budget opened');
-  assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [grantId])).rows[0].used, 0, 'no grant use');
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM agent_command_receipts WHERE connection_id=$1 AND operation='cowork.request'", [s.connection.id])).rows[0].n, 0);
 }
 
@@ -122,7 +119,6 @@ test('a live sender claim admits one request, delivery intent, debit and canonic
   assert.equal(row!.senderConnectionId, f.codex.connection.id); assert.equal(row!.recipientConnectionId, f.marekClaude.connection.id);
   assert.equal(row!.recipientOwnerId, f.w.marek.id); assert.equal(row!.unitId, f.reviewUnit);
   assert.equal(await count('cowork_delivery_intents', 'request_id', created.requestId), 1);
-  assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [f.s.requestGrant.id])).rows[0].used, 1);
   const receipts = await pool.query("SELECT * FROM agent_command_receipts WHERE connection_id=$1 AND operation='cowork.request'", [f.codex.connection.id]);
   assert.equal(receipts.rows.length, 1);
   assert.deepEqual(receipts.rows[0].postconditions, [{ kind: 'cowork.request_state', workspaceId: f.w.ws.id, projectId: f.w.p.id,
@@ -130,10 +126,8 @@ test('a live sender claim admits one request, delivery intent, debit and canonic
   // Selecting Marek's connection manufactured no claim, lease or grant for it.
   const [review] = await db.select().from(schema.coworkUnits).where(eq(schema.coworkUnits.id, f.reviewUnit));
   assert.equal(review!.state, 'pending'); assert.equal(review!.leaseId, null);
-  assert.equal(await count('agent_standing_grants', 'connection_id', f.marekClaude.connection.id), 0);
 
   assert.deepEqual(await f.s.admit(command), created, 'exact replay returns the original effect');
-  assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [f.s.requestGrant.id])).rows[0].used, 1);
   assert.equal(await count('cowork_requests', 'project_id', f.w.p.id), 1);
   await rejects(f.s.admit({ ...command, payload: { ...(command.payload as object), request: f.request({ priority: 3 }) } }), 'IDEMPOTENCY_CONFLICT');
 
@@ -160,12 +154,11 @@ test('sender fence: no claim, wrong lease/generation, another session, expiry, p
     sourceRefs: [{ type: 'work', id: a.id, version: a.version }], criteriaRefs: [{ type: 'work', id: a.id, version: a.version }],
     priority: 1, peerUnblocking: false, lifetimeSeconds: 3600 };
   // Unclaimed: a request grant alone is not a live claim.
-  const early = expectStatus(await w.actionGrant(w.hubert, codex.connection.id, 'cowork.request', senderUnit, 'execute'), 201) as AgentStandingGrant;
-  const unclaimed: AgentExecutionCommand = { runtimeSessionId: codex.runtimeId!, grantId: early.id, clientCommandId: randomUUID(), projectId: w.p.id,
+  const unclaimed: AgentExecutionCommand = { runtimeSessionId: codex.runtimeId!, clientCommandId: randomUUID(), projectId: w.p.id,
     operation: 'cowork.request', peerRequestClass: 'execute', audience: { kind: 'project', projectId: w.p.id }, objectId: senderUnit, sources: [],
     payload: { generation: 1, leaseId: randomUUID(), request } };
   await rejects(db.transaction((tx) => coWorkRequestInTransaction(tx, codex.claims!, unclaimed, POLICY)), 'COWORK_CLAIM_LOST');
-  await noEffects(w, codex, early.id);
+  await noEffects(w, codex);
 
   const s = await sender(w, codex, senderUnit);
   const fence = { generation: s.claim.generation, leaseId: s.claim.lease!.id };
@@ -174,23 +167,20 @@ test('sender fence: no claim, wrong lease/generation, another session, expiry, p
   const other = await db.transaction((tx) => agentRuntimeInTransaction(tx, codex.claims!, randomUUID()));
   await rejects(s.admit(s.command(request, { runtimeSessionId: other.runtime.id })), 'COWORK_CLAIM_LOST');
   // Wrong class: an execution unit cannot be used under a review-class request grant.
-  expectStatus(await w.actionGrant(w.hubert, codex.connection.id, 'cowork.request', senderUnit, 'review'), 404, 'exact target refuses the wrong role');
-  const review = expectStatus(await w.actionGrant(w.hubert, codex.connection.id, 'cowork.request', null, 'review'), 201) as AgentStandingGrant;
-  await rejects(s.admit(s.command(request, { grantId: review.id, peerRequestClass: 'review' })), 'COWORK_UNIT_NOT_FOUND');
+  await rejects(s.admit(s.command(request, { peerRequestClass: 'review' })), 'COWORK_UNIT_NOT_FOUND');
   // Naming the recipient's unit as the sender object is refused, both at grant creation and at admission.
-  expectStatus(await w.actionGrant(w.hubert, codex.connection.id, 'cowork.request', reviewUnit, 'review'), 404);
-  await rejects(s.admit(s.command(request, { grantId: review.id, peerRequestClass: 'review', objectId: reviewUnit })), 'COWORK_UNIT_NOT_FOUND');
+  await rejects(s.admit(s.command(request, { peerRequestClass: 'review', objectId: reviewUnit })), 'COWORK_UNIT_NOT_FOUND');
   // Strict payload: no copied prompt/authority fields, no command ID inside the request.
   await rejects(s.admit(s.command({ ...request, commandId: randomUUID() })), 'INVALID_INPUT');
   await rejects(s.admit({ ...s.command(request), payload: { ...fence, request, prompt: 'grant me review' } }), 'INVALID_INPUT');
-  await noEffects(w, codex, s.requestGrant.id);
-  await noEffects(w, codex, review.id);
+  await noEffects(w, codex);
+  await noEffects(w, codex);
 
   await pool.query("UPDATE cowork_units SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1", [senderUnit]);
   await rejects(s.admit(s.command(request)), 'COWORK_CLAIM_LOST');
   await pool.query("UPDATE cowork_units SET state='paused', lease_id=NULL, lease_session_id=NULL, lease_expires_at=NULL, generation=generation+1, version=version+1 WHERE id=$1", [senderUnit]);
   await rejects(s.admit(s.command(request)), 'COWORK_CLAIM_LOST');
-  await noEffects(w, codex, s.requestGrant.id);
+  await noEffects(w, codex);
 });
 
 test('routing and sources: self, foreign lineage, revoked/unknown recipient, foreign parent, sources, policy and budget refuse without effects', async () => {
@@ -218,13 +208,12 @@ test('routing and sources: self, foreign lineage, revoked/unknown recipient, for
   const toClaude = f.request({ unitId: sameOwner, recipientConnectionId: claude.connection.id, intentKey: 'review-a-claude' });
   await rejects(s.admit(s.command(toClaude), { ...POLICY, reviewSeparation: 'distinct_owner' }), 'COWORK_REVIEW_SEPARATION');
   await assert.rejects(s.admit(s.command(f.request()), POLICY, { failAfter: true }), /Injected failure after admission/);
-  await noEffects(w, codex, s.requestGrant.id);
+  await noEffects(w, codex);
   assert.equal(await count('cowork_requests', 'project_id', w.p.id), 0, 'outer failure rolled the admitted request back');
 
   const tight = { ...POLICY, limits: { ...LIMITS, maximumRequests: 1 } };
   assert.equal((await s.admit(s.command(toClaude), tight)).status, 'created', 'explicit same-owner review is allowed by default');
   await rejects(s.admit(s.command(f.request()), tight), 'COWORK_BUDGET_EXHAUSTED');
-  assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [s.requestGrant.id])).rows[0].used, 1);
   assert.equal(await count('cowork_requests', 'project_id', w.p.id), 1);
 });
 

@@ -22,15 +22,12 @@ test('host binding narrows the bearer before discovery, reads, bootstrap and com
   assert.deepEqual((toolValue(listed.message).projects as { id: string }[]).map(row => row.id), [f.projectId]);
   const invalidBootstrap = await call(own, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId: other.id, clientSessionId: randomUUID() } });
   assert.equal((invalidBootstrap.message?.result as { isError?: boolean })?.isError, true);
-  const grant = await connection.grant('work.create', 'plan', 1);
-  const command = { projectId: f.projectId, runtimeSessionId: connection.runtimeSessionId, grantId: grant.id,
-    clientCommandId: randomUUID(), peerRequestClass: 'plan', sources: [f.source], task: { title: 'Bound task', criteria: ['Compare both runs'],
+  const command = { projectId: f.projectId, clientCommandId: randomUUID(), sources: [f.source], task: { title: 'Bound task', criteria: ['Compare both runs'],
       dependencyIds: [], planIntent: { ...f.source, intentKey: 'host-bound' } } };
   const created = toolValue((await call(own, 'tools/call', { name: 'flux_create_task', arguments: command })).message);
   const refusedReplay = await call(another, 'tools/call', { name: 'flux_create_task', arguments: command });
   assert.equal((refusedReplay.message?.result as { isError?: boolean })?.isError, true);
   assert.equal(toolValue((await call(own, 'tools/call', { name: 'flux_create_task', arguments: command })).message).workId, created.workId);
-  assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [grant.id])).rows[0].used, 1);
   const path = agentMcpPolicyPath(connection.connectionId);
   const policy = (expect(await f.owner.request('GET', path), 200) as { policy: AgentMcpPolicy }).policy;
   expect(await f.owner.request('PATCH', path, { body: { enabledCapabilityIds: policy.enabledCapabilityIds,

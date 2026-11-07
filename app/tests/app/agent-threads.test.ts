@@ -94,13 +94,13 @@ test('all new-space agent replies fail closed while an actual OAuth v1 people re
   const envelope = { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, grantId: replyGrant.id,
     clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [] };
   const blocked = toolFailure(await f.tool('flux_reply_in_conversation', { ...envelope, conversationId: posted.conversationId, message: { body: 'An unguarded agent turn' } }));
-  assert.equal(blocked.code, 'AGENT_EXECUTION_UNAVAILABLE'); assert.equal(await f.used(replyGrant.id), 0);
+  assert.equal(blocked.code, 'AGENT_EXECUTION_UNAVAILABLE');
   await assert.rejects(() => pool.query(`INSERT INTO project_messages(id,workspace_id,project_id,conversation_id,author_agent_id,client_message_id,request_fingerprint,sequence,body)
     VALUES($1,$2,$3,$4,$5,$6,$7,2,'Bypass attempt')`, [randomUUID(), f.workspaceId, f.projectId, posted.conversationId, f.agentId, randomUUID(), 'x']),
     (e: unknown) => !!e && typeof e === 'object' && 'constraint' in e && e.constraint === 'agent_thread_agent_writes_closed');
   const people = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/conversations`, { body: { body: 'People conversation', clientMessageId: randomUUID() } }), 201);
   const allowed = toolValue(await f.tool('flux_reply_in_conversation', { ...envelope, clientCommandId: randomUUID(), conversationId: people.id, message: { body: 'The existing v1 reply still works.' } }));
-  assert.equal(allowed.conversationId, people.id); assert.equal(await f.used(replyGrant.id), 1);
+  assert.equal(allowed.conversationId, people.id);
   const row = (await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE conversation_id=$1', [posted.conversationId])).rows[0]; assert.equal(row.n, 1);
 });
 

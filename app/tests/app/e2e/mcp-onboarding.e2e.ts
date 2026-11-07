@@ -15,7 +15,7 @@ import { claudeBin, cleanClientHome, clientEvents, connectClient, scopes, seedOa
  * (docker/Dockerfile `mcp-clients`, scripts/check_mcp_clients.sh). Per client: connect, the owner authorizes in Chromium, then
  * the person only says "Start work" (Claude Code: invokes Flux's own `start_work` prompt; Codex: discovers and reads Flux's supplied resource through native tools). The scripted model has no copy of the playbook: it reads
  * the playbook text the CLIs actually gave it, so a client that did not load Flux's instructions cannot complete the flow.
- * Then the first permitted action runs under a standing grant. Models are mocks; this shows delivery and the client's
+ * Then the first permitted action runs as its owner. Models are mocks; this shows delivery and the client's
  * invocation, not model obedience.
  */
 after(() => { setTimeout(() => process.exit(process.exitCode ?? 0), 3000); });
@@ -48,14 +48,12 @@ test('real Codex and Claude Code from clean configurations: supplied playbook re
     const projectId = String(project.id);
     const plan = expect(await owner.request('POST', `/api/v1/projects/${projectId}/materials`,
       { body: { clientMutationId: randomUUID(), title: 'Release plan', body: 'Step one: measure. Step two: compare.' } }), 201);
-    const connections: Record<string, { id: string; agentId: string; grantId: string; clientId: string }> = {};
+    const connections: Record<string, { id: string; agentId: string; clientId: string }> = {};
     for (const spec of specs) {
       const agentId = String(expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name: `${spec.label} agent`, owner: 'self' } }), 201).id);
       const id = String(expect(await owner.request('POST', '/api/v1/agent-connections', { body: { name: spec.label, clientDesignation: spec.designation,
         agentId, selectedProjectIds: [projectId], scopes } }), 201).id);
-      const grant = expect(await owner.request('POST', `/api/v1/agent-connections/${id}/action-grants`, { body: { clientCommandId: randomUUID(), projectId,
-        operation: 'work.create', peerRequestClass: 'execute', maximumUses: 2, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as { id: string };
-      connections[spec.key] = { id, agentId, grantId: grant.id, clientId: await seedOauthClient(pool, spec) };
+      connections[spec.key] = { id, agentId, clientId: await seedOauthClient(pool, spec) };
     }
 
     const homes: Record<string, ClientHome> = {};
@@ -105,15 +103,12 @@ test('real Codex and Claude Code from clean configurations: supplied playbook re
           result = await startWork(spec, `/mcp__flux__start_work ${projectId}`, (turn) => {
             const loaded = playbookIn(turn.prompt);
             if (!loaded) return { text: 'The Flux playbook did not reach this client.' };
-            const out = turn.outputs.map((item) => parse(item[0]));
-            const boot = out[0];
             const flux = (name: string, args: Record<string, unknown>) => ({ call: { name: `mcp__flux__${name}`, args } });
             switch (turn.outputs.length) {
               case 0: return flux('flux_bootstrap', { projectId, clientSessionId });
               case 1: return flux('flux_acknowledge_playbook', { clientSessionId, ...loaded });
               case 2: return flux('flux_project_orientation', { projectId, kind: 'material' });
-              case 3: return flux('flux_create_task', { projectId, runtimeSessionId: boot!.runtime.id, clientCommandId: randomUUID(), peerRequestClass: 'execute',
-                grantId: (boot!.grants.items as { id: string; operation: string }[]).find((grant) => grant.operation === 'work.create')?.id, task: { title } });
+              case 3: return flux('flux_create_task', { projectId, clientCommandId: randomUUID(), task: { title } });
               case 4: return flux('flux_bootstrap', { projectId, clientSessionId });
               default: return { text: 'Started.' };
             }
@@ -157,8 +152,7 @@ test('real Codex and Claude Code from clean configurations: supplied playbook re
                 return emit(`text(JSON.stringify(await tools.mcp__flux__flux_acknowledge_playbook(${JSON.stringify({clientSessionId,...loaded})})));`);
               case 4: return emit(`text(JSON.stringify(await tools.mcp__flux__flux_project_orientation({projectId:${JSON.stringify(boot.project.id)},kind:'material'})));`);
               case 5: return emit(`text(JSON.stringify(await tools.mcp__flux__flux_create_task(${JSON.stringify({
-                projectId:boot.project.id,runtimeSessionId:boot.runtime.id,clientCommandId:randomUUID(),peerRequestClass:'execute',
-                grantId:boot.grants.items.find((grant: {operation:string}) => grant.operation==='work.create')?.id,task:{title},
+                projectId:boot.project.id,clientCommandId:randomUUID(),task:{title},
               })})));`);
               case 6: return emit(`text(JSON.stringify(await tools.mcp__flux__flux_bootstrap({projectId:${JSON.stringify(boot.project.id)},clientSessionId:${JSON.stringify(clientSessionId)}})));`);
               default: return { text: 'Started.' };

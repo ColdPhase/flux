@@ -54,13 +54,6 @@ export function coworkUnitRows(tx: DbExecutor) {
       ...page, nextOffset: rows.length > page.limit ? page.offset + page.limit : null,
       coverage: 'current_connection_open_units' as const };
     },
-    /** Current content-free exact grant target. No runtime, claim or quota is created. */
-    async grantTarget(scope: StorageScope, role: Unit['role']) {
-      const [row] = await tx.select({ id: units.id }).from(units).where(and(eq(units.id, scope.unitId),
-        eq(units.workspaceId, scope.workspaceId), eq(units.projectId, scope.projectId),
-        eq(units.assignmentConnectionId, scope.connectionId), eq(units.role, role))).for('share');
-      return !!row;
-    },
     /** Claim eligibility (#153): the unit's task, already locked by the caller's complete task pass. Takes no lock. */
     async claimTask(workspaceId: string, taskId: string) {
       const table = schema.projectWorkItems;

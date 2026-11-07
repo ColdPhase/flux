@@ -190,7 +190,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         proposal: { id: proposal.id, fact: proposal.fact, interpretation: proposal.interpretation, suggestedAction: proposal.suggestedAction, source: proposal.source },
       });
     }
-    // One item per agent run with what waits for you (F-036 AG-7): "Assistant · 3 things wait for you · Approve all · Open".
+    // One item per agent run, or per local client, with what waits for you (F-036 AG-7): "Assistant · 3 things wait for you · Approve all · Open".
     // Reports of what an agent did never come here; they stay on its message.
     const runs = new Map<string, AssistantChange[]>();
     for (const change of ports.assistant ? await ports.assistant.waiting(userId) : []) runs.set(change.runId, [...(runs.get(change.runId) ?? []), change]);
@@ -202,8 +202,8 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         key: `assistant:${runId}`, kind: 'question', title: `${count} ${count === 1 ? 'thing waits' : 'things wait'} for you`,
         detail: excerpt(assistantChangeSummary(group)),
         project: { id: head.projectId, name: projectNames.get(head.projectId) ?? 'Space' }, from: null, at: head.createdAt,
-        url: `/projects/${head.projectId}/conversations/${head.conversationId}`, decision: null, blocked: null, reason: 'question', snoozeTask: null,
-        assistantChanges: { runId, agentName: 'Assistant', summary: assistantChangeSummary(group),
+        url: head.conversationId ? `/projects/${head.projectId}/conversations/${head.conversationId}` : `/projects/${head.projectId}`, decision: null, blocked: null, reason: 'question', snoozeTask: null,
+        assistantChanges: { runId, agentName: head.agentName, summary: assistantChangeSummary(group),
           changes: group.map((change) => ({ id: change.id, version: change.version, phrase: change.phrase, verb: change.verb, objectTitle: change.objectTitle,
             line: change.line, waitReason: change.waitReason, forPerson: change.forPerson })) },
       });

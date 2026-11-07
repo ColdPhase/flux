@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, redirect, useLoaderData, type LoaderFunctionArgs } from 'react-router';
-import { workspaceAgentsPath, type Agent, type AgentConnection, type AgentScope, type AgentStandingGrant, type ExternalClientDesignation, type Project, type Workspace } from '@flux/contracts';
+import { workspaceAgentsPath, type Agent, type AgentConnection, type AgentScope, type ExternalClientDesignation, type Project, type Workspace } from '@flux/contracts';
 import { getMe } from '../api/auth';
 import { ApiError, NetworkError, request as apiRequest } from '../api/client';
 import { listAccessibleProjects } from '../project/api';
@@ -8,12 +8,11 @@ import { signInPath } from '../auth/logic';
 import { Button, Icon, Kreska, Select, Option } from '../ui';
 import {
   SCOPE_LABELS, continueAgentOAuth, getOauthRequester, createAgentConnection, createPersonalAgent, decideAgentConsent,
-  followOAuthRedirect, getConsentContext, listActionGrants, listAgentConnections,
+  followOAuthRedirect, getConsentContext, listAgentConnections,
   revokeAgentConnection, selectAgentConnection,
   type ConsentContext,
 } from './api';
 import { ClientGuide } from './ClientGuide';
-import { StandingGrants } from './StandingGrants';
 import { McpPermissions } from './McpPermissions';
 import { MayDoChoice } from './MayDoChoice';
 import './connection.css';
@@ -37,8 +36,6 @@ interface ConnectionData {
   heldConnectionId: string | null;
   /** The client label the asking client's own name suggests, for a new connection (#763 AG-6). */
   requesterClient: ExternalClientDesignation | null;
-  /** Each live action connection's standing grants (current and ended); null when they could not be read. */
-  actionGrants: Record<string, AgentStandingGrant[] | null>;
 }
 
 /** The scopes the asking client requested, as Flux knows them; the consent starts with exactly these ticked (#763 FT-2). */
@@ -82,13 +79,6 @@ export async function agentConnectionLoader({ request }: LoaderFunctionArgs): Pr
   }));
   const oauthQuery = queryFrom(request);
   const requester = oauthQuery ? await getOauthRequester(oauthQuery, request.signal) : { connectionId: null, clientDesignation: null };
-  // The grants are the owner's alone; the OAuth chooser does not show them.
-  const actionGrants = oauthQuery ? [] : await Promise.all(connections
-    .filter((connection) => !connection.revokedAt && connection.scopes.includes('flux.action.execute'))
-    .map(async (connection) => {
-      try { return [connection.id, await listActionGrants(connection.id, request.signal)] as const; }
-      catch (error) { if (error instanceof ApiError || error instanceof NetworkError) return [connection.id, null] as const; throw error; }
-    }));
   return {
     connections,
     projects: accessible.projects,
@@ -98,7 +88,6 @@ export async function agentConnectionLoader({ request }: LoaderFunctionArgs): Pr
     oauthQuery,
     heldConnectionId: requester.connectionId,
     requesterClient: requester.clientDesignation,
-    actionGrants: Object.fromEntries(actionGrants),
   };
 }
 
@@ -162,7 +151,7 @@ function ConnectionSummary({ connection, agentName, projectNames, showScopes = t
 }
 
 export function AgentConnectionPage() {
-  const { connections, projects, workspaces, agents, oauthQuery, heldConnectionId, requesterClient, actionGrants } = useLoaderData() as ConnectionData;
+  const { connections, projects, workspaces, agents, oauthQuery, heldConnectionId, requesterClient } = useLoaderData() as ConnectionData;
   const [items, setItems] = useState(connections.filter((connection) => !connection.revokedAt && (!oauthQuery || agents.some((agent) => agent.id === connection.agentId))));
   const [ended, setEnded] = useState(connections.filter((connection) => connection.revokedAt));
   const [selected, setSelected] = useState<string | null>((items.find((item) => item.id === heldConnectionId) ?? items[0])?.id ?? null);
@@ -179,11 +168,12 @@ export function AgentConnectionPage() {
   const [clientDesignation, setClientDesignation] = useState<ExternalClientDesignation>(requesterClient ?? 'other');
   const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? '');
   const [revoking, setRevoking] = useState<string | null>(null);
-  // With one project to choose, it is already chosen.
+  // A client signing in sees what its person sees (F-036 AG-3, LC-2): every space it may reach is already chosen, so signing in is
+  // one click; the person only unticks what the client should not see.
   const [projectIds, setProjectIds] = useState<string[]>(() => {
     const space = agents[0]?.workspaceId ?? workspaces[0]?.id;
-    const here = projects.filter((project) => project.workspaceId === space);
-    return oauthQuery && here.length === 1 ? [here[0]!.id] : [];
+    const here = projects.filter((project) => project.workspaceId === space && project.ai !== 'blocked' && project.access !== 'viewer');
+    return oauthQuery ? here.slice(0, 50).map((project) => project.id) : [];
   });
   const [missing, setMissing] = useState<string | null>(null);
   const [scopes, setScopes] = useState<AgentScope[]>(() => oauthQuery ? requestedScopes(oauthQuery) : ['flux.context.read', 'flux.proposal.write']);
@@ -191,7 +181,6 @@ export function AgentConnectionPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const projectNames = new Map(projects.map((project) => [project.id, project.name]));
-  const projectsById = new Map(projects.map((project) => [project.id, project]));
   const agentNames = new Map(personalAgents.map((agent) => [agent.id, agent.name]));
   const chosenAgent = personalAgents.find((agent) => agent.id === agentId);
   const agentSpace = quick && !chosenAgent ? workspaceId : chosenAgent?.workspaceId;
@@ -332,9 +321,8 @@ export function AgentConnectionPage() {
         </label>
         {!oauthQuery ? <div className="connection__may-do">
           <p className="connection__may-do-label" id={`may-do-${connection.id}`}>What it may do</p>
-          <MayDoChoice connectionId={connection.id} initial={connection.mayDo} labelledBy={`may-do-${connection.id}`} canWait={false} />
+          <MayDoChoice connectionId={connection.id} initial={connection.mayDo} labelledBy={`may-do-${connection.id}`} />
         </div> : null}
-        {!oauthQuery ? <StandingGrants connection={connection} projects={projectsById} initial={actionGrants[connection.id] ?? null} /> : null}
         {/* Revoking is managed in Settings, not on a client's way to consent (#763 AG-6). */}
         {oauthQuery ? null : revoking === connection.id ? <div className="connection__revoke"><span>Revoke this connection now? Its tools will stop working.</span>
           <Button variant="secondary" onClick={() => { void revoke(connection.id); }}>Revoke now</Button>

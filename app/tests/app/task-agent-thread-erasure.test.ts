@@ -65,7 +65,6 @@ test('erasing a project removes its thread rows and provenance; ordinary updates
   // Nothing in any table that names a project still names the erased one, and the other project is untouched.
   for (const [table, count] of Object.entries(await projectReferences(p))) assert.equal(count, 0, `${table} keeps no row of the erased project`);
   assert.deepEqual(await projectReferences(kept.id), keptReferences);
-  assert.equal((await pool.query('SELECT count(*)::int n FROM agent_command_receipts WHERE grant_id IN (SELECT id FROM agent_standing_grants WHERE project_id=$1)', [p])).rows[0].n, 0);
 });
 
 test('erasing a task removes its own thread, guard events and resets; the project keeps boundaries and witnesses', { timeout: 120_000 }, async () => {

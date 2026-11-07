@@ -19,11 +19,11 @@ export const agentSourceCheckpointSchema = z.discriminatedUnion('kind', [
 export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
   const read = tools.forScope('flux.context.read');
   read.registerTool('flux_bootstrap', { title: 'Recover authenticated project context',
-    description: 'Recover the original server runtime, current project, bounded grants/tool catalog and the trusted co-work playbook version. Missing coordination and repository providers are explicit setup gaps; this does not prove instruction loading or grant action authority.',
-    inputSchema: z.strictObject({ clientSessionId: z.uuid(), projectId: z.uuid(), grantLimit: page.limit.optional(), grantOffset: page.offset.optional(),
+    description: 'Recover the original server runtime, current project, tool catalog and the trusted co-work playbook version. Your authority is your owner\'s rights at each call, not what this lists. Missing coordination and repository providers are explicit setup gaps; this does not prove instruction loading.',
+    inputSchema: z.strictObject({ clientSessionId: z.uuid(), projectId: z.uuid(),
       includeWorkRecovery: z.boolean().optional().describe('Recover this connection’s own open units for Start/Resume; also needs project.work.read.'),
       workLimit: page.limit.optional(), workOffset: page.offset.optional() }),
-    annotations: { readOnlyHint: true, idempotentHint: true } }, async ({ clientSessionId, projectId, grantLimit, grantOffset,
+    annotations: { readOnlyHint: true, idempotentHint: true } }, async ({ clientSessionId, projectId,
       includeWorkRecovery, workLimit, workOffset }) => {
     if (includeWorkRecovery) requireMcpSourceKinds(claims, ['work']);
     try {
@@ -33,8 +33,6 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
         const { runtime } = await agentRuntimeInTransaction(tx, claims, clientSessionId);
         const rows = agentExecutionRows(tx);
         const observedAt = await rows.now();
-        const grants = await rows.liveProjectGrants(runtime.ownerUserId, runtime.connectionId, projectId, observedAt,
-          agentSourcePage({ limit: grantLimit, offset: grantOffset }));
         // The playbook is #160's; #153/#74 providers are not yet handed off. No client input or wiki prose fills these fields.
         const playbook = coworkPlaybookReference();
         const acknowledged = await agentPlaybookRows(tx).acknowledgment(runtime.id);
@@ -45,7 +43,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
         const active = work?.units.find((unit) => unit.lease !== null);
         const checkpoint = work?.units.find((unit) => unit.checkpointId !== null);
         const result: AgentBootstrap = { contractVersion: 2, observedAt: observedAt.toISOString(), runtime,
-          project: { id: project.id, workspaceId: project.workspaceId, name: project.name }, grants,
+          project: { id: project.id, workspaceId: project.workspaceId, name: project.name },
           capabilities: tools.capabilities(runtime.scopes, mcpPolicy),
           trusted: { playbook,
             coordination: { activeClaimReference: active?.id ?? null, checkpointReference: checkpoint?.checkpointId ?? null,

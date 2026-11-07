@@ -35,11 +35,11 @@ function restored(value: AgentJsonValue): CoWorkUnitTransition {
 function outcomeUnavailable() { return new NotFoundError('Unit outcome', 'COWORK_OUTCOME_UNAVAILABLE'); }
 
 /**
- * Internal caller-owned composition of the holder's `cowork.unit.complete` / `cowork.unit.transfer`, and of the receiving assignee's `cowork.unit.decline`. The owner's
- * standing grant to this connection (class = the unit's actual role, optional exact unit) is the authority; only the
+ * Internal caller-owned composition of the holder's `cowork.unit.complete` / `cowork.unit.transfer`, and of the receiving assignee's `cowork.unit.decline`.
+ * The owner's rights and this connection's runtime (class = the unit's actual role) are the authority; only the
  * unit's current holder, under its live claim, may finish or hand it over. A transfer grants the assignee nothing: it
- * still needs its own `cowork.claim` grant. No HTTP cache, new transaction, model wake or event flush. Errors must
- * escape the caller's transaction so a refusal leaves no unit change, slot row, grant use or receipt. Not a public tool.
+ * still has to claim it itself. No HTTP cache, new transaction, model wake or event flush. Errors must
+ * escape the caller's transaction so a refusal leaves no unit change, slot row or receipt. Not a public tool.
  */
 export async function coWorkUnitTransitionInTransaction(tx: Transaction, claims: FluxMcpClaims,
   raw: AgentExecutionCommand, policy: CoWorkUnitTransitionPolicy): Promise<CoWorkUnitTransition> {

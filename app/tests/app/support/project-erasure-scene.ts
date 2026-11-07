@@ -36,7 +36,7 @@ export async function projectReferences(projectId: string) {
  * Rows of the features that 0101 lets leave with their project: receipts, grants, discussions, drafts, proactive rows;
  * and the task activity of 0112 (#488), which follows its task.
  */
-export const erasedWithProject = ['agent_command_receipts', 'agent_standing_grants', 'project_task_discussions', 'drafts', 'proactive_comparison_rules',
+export const erasedWithProject = ['agent_command_receipts', 'project_task_discussions', 'drafts', 'proactive_comparison_rules',
   'proactive_comparison_proposals', 'proactive_comparison_insufficient_outcomes', 'project_task_activity'] as const;
 
 export async function seedDraftAndProactive(f: ThreadNativeScene, resultId: string) {

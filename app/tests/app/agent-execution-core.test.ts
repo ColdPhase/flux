@@ -3,11 +3,11 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { AGENT_OPERATIONS, AGENT_OPERATION_CLASSES, AGENT_PEER_REQUEST_CLASSES,
   type AgentExecutionCommand, type AgentOperation, type AgentPostcondition } from '@flux/contracts';
-import { DomainError, normalizeAgentExecution, normalizeStandingGrant, validateAgentPostconditions } from '@flux/core';
+import { DomainError, normalizeAgentExecution, validateAgentPostconditions } from '@flux/core';
 
 function command(): AgentExecutionCommand {
   const projectId = randomUUID();
-  return { runtimeSessionId: randomUUID(), grantId: randomUUID(), clientCommandId: randomUUID(), projectId,
+  return { runtimeSessionId: randomUUID(), clientCommandId: randomUUID(), projectId,
     operation: 'work.create', peerRequestClass: 'execute', audience: { kind: 'project', projectId }, objectId: null,
     sources: [{ materialId: randomUUID(), version: 1 }, { materialId: randomUUID(), version: 2 }], payload: { title: 'A task', detail: { a: 1, b: 2 } } };
 }
@@ -22,9 +22,6 @@ test('durable command normalization is deterministic and rejects ambiguous, wild
     { ...original, payload: { value: Infinity } }, { ...original, payload: { value: 'x'.repeat(200_001) } },
     { ...original, accidentalAuthority: true },
   ]) assert.throws(() => normalizeAgentExecution(changed as AgentExecutionCommand), (error: unknown) => error instanceof DomainError && error.code === 'INVALID_INPUT');
-  assert.throws(() => normalizeStandingGrant({ clientCommandId: randomUUID(), projectId: original.projectId,
-    operation: 'result.record', peerRequestClass: 'review', maximumUses: 2, expiresAt: new Date().toISOString() }),
-  (error: unknown) => error instanceof DomainError && error.code === 'INVALID_INPUT');
 });
 
 test('canonical postcondition registry rejects missing, duplicate, malformed or cross-operation evidence', () => {
@@ -50,7 +47,7 @@ test('claim conditions retain actual role/state/session and allow historical exp
 
 function request(overrides: Partial<AgentExecutionCommand> = {}): AgentExecutionCommand {
   const projectId = randomUUID();
-  return { runtimeSessionId: randomUUID(), grantId: randomUUID(), clientCommandId: randomUUID(), projectId,
+  return { runtimeSessionId: randomUUID(), clientCommandId: randomUUID(), projectId,
     operation: 'cowork.request', peerRequestClass: 'execute', audience: { kind: 'project', projectId }, objectId: randomUUID(),
     sources: [], payload: { kind: 'review', recipientConnectionId: randomUUID(), intentKey: 'review-round-1' }, ...overrides };
 }
@@ -81,18 +78,13 @@ test('cowork.request is reserved for the sender unit role only: never a recipien
   assert.throws(() => normalizeAgentExecution({ ...base, accidentalRecipientAuthority: true } as unknown as AgentExecutionCommand), invalidInput);
 });
 
-test('a cowork.request grant cannot authorize cowork.claim and a claim grant cannot authorize a request', () => {
-  const same = { runtimeSessionId: randomUUID(), grantId: randomUUID(), clientCommandId: randomUUID(), projectId: randomUUID(),
+test('the operation is part of the durable fingerprint, so one command ID cannot cover a request and a claim', () => {
+  const same = { runtimeSessionId: randomUUID(), clientCommandId: randomUUID(), projectId: randomUUID(),
     objectId: randomUUID(), sources: [], payload: { expectedVersion: 1 } };
   const asRequest = request({ ...same, audience: { kind: 'project', projectId: same.projectId } });
   const asClaim = { ...asRequest, operation: 'cowork.claim' as const };
   assert.notEqual(normalizeAgentExecution(asRequest).fingerprint, normalizeAgentExecution(asClaim).fingerprint,
     'the operation is part of the durable fingerprint, so one command ID cannot cover both');
-  for (const operation of ['cowork.request', 'cowork.claim'] as const) {
-    const grant = normalizeStandingGrant({ clientCommandId: randomUUID(), projectId: same.projectId, operation, peerRequestClass: 'review',
-      maximumUses: 1, expiresAt: new Date(Date.now() + 60_000).toISOString() });
-    assert.equal(grant.operation, operation, 'a grant keeps exactly its own operation');
-  }
   const requested: AgentPostcondition = { kind: 'cowork.request_state', workspaceId: randomUUID(), projectId: same.projectId, connectionId: randomUUID(),
     unitId: same.objectId, requestId: randomUUID(), role: 'execute', version: 1, state: 'queued' };
   const claimed: AgentPostcondition = { kind: 'cowork.claim_state', workspaceId: randomUUID(), projectId: same.projectId, connectionId: randomUUID(),
@@ -166,7 +158,7 @@ test('every operation has a registered postcondition entry; an incomplete sample
 
 test('doc and conversation commands: creates have no target, changes name their doc or conversation, post-state is exact', () => {
   const projectId = randomUUID();
-  const base = { runtimeSessionId: randomUUID(), grantId: randomUUID(), clientCommandId: randomUUID(), projectId,
+  const base = { runtimeSessionId: randomUUID(), clientCommandId: randomUUID(), projectId,
     peerRequestClass: 'plan' as const, audience: { kind: 'project' as const, projectId }, sources: [], payload: { body: 'Text' } };
   for (const operation of ['doc.create', 'conversation.create'] as const) {
     assert.deepEqual(AGENT_OPERATION_CLASSES[operation], ['execute', 'plan']);
@@ -193,7 +185,7 @@ test('doc and conversation commands: creates have no target, changes name their 
 test('cowork.unit.create targets the native task; its class is the created role and its post-state is exact', () => {
   assert.deepEqual(AGENT_OPERATION_CLASSES['cowork.unit.create'], ['execute', 'review', 'plan']);
   const projectId = randomUUID(), task = randomUUID();
-  const base: AgentExecutionCommand = { runtimeSessionId: randomUUID(), grantId: randomUUID(), clientCommandId: randomUUID(), projectId,
+  const base: AgentExecutionCommand = { runtimeSessionId: randomUUID(), clientCommandId: randomUUID(), projectId,
     operation: 'cowork.unit.create', peerRequestClass: 'review', audience: { kind: 'project', projectId }, objectId: task, sources: [],
     payload: { unitKey: 'review-a', expectedTaskVersion: 1, assignmentConnectionId: randomUUID(), parent: null } };
   assert.equal(normalizeAgentExecution(base).objectId, task, 'the object is the task the unit is for');
@@ -215,7 +207,7 @@ test('cowork.unit.complete/.transfer target the holder\'s unit; their class is i
   const projectId = randomUUID(), unitId = randomUUID();
   for (const operation of ['cowork.unit.complete', 'cowork.unit.transfer'] as const) {
     assert.deepEqual(AGENT_OPERATION_CLASSES[operation], ['execute', 'review', 'plan']);
-    const base: AgentExecutionCommand = { runtimeSessionId: randomUUID(), grantId: randomUUID(), clientCommandId: randomUUID(), projectId,
+    const base: AgentExecutionCommand = { runtimeSessionId: randomUUID(), clientCommandId: randomUUID(), projectId,
       operation, peerRequestClass: 'execute', audience: { kind: 'project', projectId }, objectId: unitId, sources: [],
       payload: { expectedVersion: 2, generation: 1, leaseId: randomUUID(), assignmentConnectionId: randomUUID() } };
     assert.equal(normalizeAgentExecution(base).objectId, unitId, 'the object is the holder\'s own unit');
