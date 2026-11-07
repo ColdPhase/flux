@@ -71,6 +71,27 @@ export type BackgroundStart =
   | { started: true; run: RunRecord; created: boolean }
   | { started: false; outcome: 'skipped' | 'failed'; line: string };
 
+/** The same reasons a run on a task cannot start, said by the agent (AG-5: "I can't start …"). */
+const TASK_PROBLEM_LINE: Record<PersonalAssistantUnavailableReason, string> = {
+  provider_off: 'I can\'t start: AI is switched off on this Flux.', no_connection: 'I can\'t start: no AI account is connected.',
+  connection_changed: 'I can\'t start: your AI account changed.', price_unknown: 'I can\'t start: your AI account has no known price.',
+  runtime_off: 'I can\'t start: subscription sign-in is off on this Flux.', runtime_sign_in: 'I can\'t start: sign in again.',
+};
+/** What the server asks for when an agent takes a task (#856). */
+export interface TaskRunSpec {
+  ownerUserId: string;
+  agentId: string;
+  workId: string;
+  projectId: string;
+  /** The task's discussion, where the run is anchored. */
+  conversationId: string;
+  /** The task as data: its number and title. */
+  prompt: string;
+  /** Deterministic per owner assignment, so a repeated start returns the same run. */
+  clientRunId: string;
+}
+export type TaskStart = { started: true; run: RunRecord; created: boolean } | { started: false; line: string };
+
 const SERVER_PROBLEM_LINE: Record<PersonalAssistantUnavailableReason, string> = {
   provider_off: 'Skipped: AI is switched off on this Flux', no_connection: 'Skipped: no AI account is connected', connection_changed: 'Skipped: your AI account changed',
   price_unknown: 'Skipped: your AI account has no known price',
@@ -225,6 +246,17 @@ const RUNTIME_OFF: PersonalRuntimeStanding = { state: 'off', payer: null, accoun
 
 /** The plain error of a model the account cannot use (F-027 AST-11): `ASSISTANT_MODEL_UNAVAILABLE`, nothing changes. */
 const modelUnavailable = (message: string) => new ConflictError(message, 'ASSISTANT_MODEL_UNAVAILABLE');
+
+/** Stop was pressed by `by` (the owner or the space admin, decided by the caller): before dispatch the run ends at once and for free. */
+export async function stopRunBy(ports: PersonalRunPorts, runId: string, by: string): Promise<RunRecord | null> {
+  const run = await ports.runs.findRun(runId, { lock: true });
+  if (!run) return null;
+  if (run.status === 'queued' || run.status === 'reading') {
+    return updateAndAnnounce(ports, run.id, { status: 'stopped', stopRequestedAt: new Date(), stopRequestedBy: by, costState: 'released', chargedMicros: 0, completedAt: new Date() });
+  }
+  if (run.status === 'dispatching' && !run.stopRequestedAt) return updateAndAnnounce(ports, run.id, { stopRequestedAt: new Date(), stopRequestedBy: by });
+  return run;
+}
 
 export function createPersonalRunUseCases({ uow, connections, providerEnabled, runtime }: PersonalRunDeps) {
   const runtimeStanding = async (owner: string, client?: PersonalRuntimeClient) => (runtime ? await runtime.standing(owner, client).catch(() => RUNTIME_OFF) : RUNTIME_OFF);
@@ -458,8 +490,51 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     return { started: true, run, created: true };
   }
 
+  /**
+   * #856 (F-036 AG-5): starts the run of an agent on a task its owner holds, on the same path as the owner's own request: the
+   * space's AI switch, the owner's and the agent's current rights, the assistant's standing, the connection and the key's daily
+   * budget are all checked, and the run and its dispatch job commit with the caller's transaction. It is anchored in the task's
+   * discussion. A run that cannot start says why in plain words and writes nothing.
+   */
+  async function startTask(ports: PersonalRunPorts, spec: TaskRunSpec): Promise<TaskStart> {
+    const refused = (line: string): TaskStart => ({ started: false, line });
+    const owner = spec.ownerUserId;
+    const principal: Principal = { kind: 'human', id: owner };
+    const place = await ports.runs.locateConversation(spec.conversationId);
+    if (!place || place.projectId !== spec.projectId) return refused('I can\'t start: this task has no discussion yet.');
+    const ai = await ports.access.spaceAi(place.projectId, { lock: true });
+    if (ai.state !== 'allowed') return refused('I can\'t start: AI is off in this space.');
+    // The agent works as the owner: the owner must still be able to write here, and the agent to read.
+    if (!(await ports.access.canUseProject(principal, 'write', spec.projectId, { lock: true }))) return refused('I can\'t start: you no longer have access to this space.');
+    const existing = await ports.runs.runByClientId(owner, spec.clientRunId);
+    if (existing) return { started: true, run: existing, created: false };
+    const enablement = await ports.runs.enablement(owner, { lock: true });
+    if (!enablement) return refused('I can\'t start: your AI is not connected.');
+    if (enablement.status === 'paused') return refused('I can\'t start: your agent is paused.');
+    if (enablement.agents.find((agent) => agent.workspaceId === place.workspaceId)?.agentId !== spec.agentId || !(await ports.access.canInvoke(principal, spec.agentId, { lock: true })))
+      return refused('I can\'t start: I\'m not one of your agents here.');
+    if (!(await ports.access.canUseProject({ kind: 'agent', id: spec.agentId }, 'read', spec.projectId, { lock: true }))) return refused('I can\'t start: I\'m not in this space.');
+    const taskFence = await ports.runs.prepareTaskUse(place.projectId, spec.conversationId);
+    for (const ended of await ports.runs.endStale(owner, STALE_AFTER_SECONDS)) await announce(ports, ended);
+    if (await waitingRequests(ports, owner) >= MAX_WAITING_REQUESTS) return refused('I can\'t start: I\'m already working on many requests.');
+    const admitted = await admit(ports, owner, enablement);
+    if (!admitted.ok) return refused(admitted.problem === 'runtime_sign_in' ? `I can\'t start: sign in to ${admitted.client === 'codex' ? 'ChatGPT' : 'Claude'} again.` : TASK_PROBLEM_LINE[admitted.problem]);
+    const run = await ports.runs.insertRun({
+      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, ownerUserId: owner, agentId: spec.agentId,
+      connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `task:${spec.workId}:${spec.clientRunId}`, kind: 'task',
+      prompt: spec.prompt, targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine,
+      aiEpoch: ai.epoch, workId: spec.workId,
+    });
+    // A request paused until the key's next day starts by itself then (the worker's queue tick); any other starts now.
+    if (!run.resumeAt) await ports.queue.enqueue(run.id);
+    await taskFence.mark();
+    await announce(ports, run);
+    return { started: true, run, created: true };
+  }
+
   return {
     startBackground,
+    startTask,
     status: (principal: Principal) => uow.run((ports) => status(ports, ownerOf(principal))),
 
     /** The caller's own assistant model and what they may choose, grouped by connection (#854). */
@@ -568,6 +643,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     async retry(principal: Principal, runId: string, command: RetryAssistantRunCommand): Promise<{ run: AssistantRun; created: boolean }> {
       return uow.run(async (ports) => {
         const earlier = await ownRun(ports, principal, runId);
+        // A run on a task is tried again from the task (#856): it is bound to that task and its owner assignment.
+        if (earlier.kind === 'task') throw new ConflictError('Try again from the task', 'ASSISTANT_RUN_NOT_RETRYABLE');
         if (IN_FLIGHT.has(earlier.status)) throw new ConflictError('The run is still in progress', 'ASSISTANT_RUN_NOT_RETRYABLE');
         const started = await start(ports, principal, earlier.conversationId, retryRequest(earlier, command?.clientRunId), earlier.id);
         return { run: await runView(ports, started.run), created: started.created };
@@ -582,12 +659,13 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     async stop(principal: Principal, runId: string): Promise<AssistantRun> {
       return uow.run(async (ports) => {
         const run = await ownRun(ports, principal, runId, true);
+        const by = ownerOf(principal);
         if (run.status === 'queued' || run.status === 'reading') {
           return runView(ports, await updateAndAnnounce(ports, run.id, {
-            status: 'stopped', stopRequestedAt: new Date(), costState: 'released', chargedMicros: 0, completedAt: new Date(),
+            status: 'stopped', stopRequestedAt: new Date(), stopRequestedBy: by, costState: 'released', chargedMicros: 0, completedAt: new Date(),
           }));
         }
-        if (run.status === 'dispatching' && !run.stopRequestedAt) return runView(ports, await updateAndAnnounce(ports, run.id, { stopRequestedAt: new Date() }));
+        if (run.status === 'dispatching' && !run.stopRequestedAt) return runView(ports, await updateAndAnnounce(ports, run.id, { stopRequestedAt: new Date(), stopRequestedBy: by }));
         return runView(ports, run);
       });
     },

@@ -1,0 +1,1 @@
+- The Owner field of a task offers only your own agents. Giving a task to someone else's agent is refused by the server too; to reach another person's agent, give the task to that person ([#904](https://github.com/ColdPhase/flux/issues/904)).

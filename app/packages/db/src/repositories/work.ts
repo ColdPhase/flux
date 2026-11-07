@@ -6,6 +6,7 @@ import type { DbExecutor } from './push.js';
 import { referencedTaskIds } from './task-targets.js';
 import { taskUseRows } from './task-use.js';
 import { taskGraphRows } from './task-graph.js';
+import { agentTaskRows } from './agent-tasks.js';
 import { openField, openRows, openRow, sealFor, sealOf, sealRow, sealsOf, type FieldSeal } from '../sealing.js';
 
 /**
@@ -84,7 +85,7 @@ type ActivityRow = typeof schema.projectTaskActivity.$inferSelect;
 const sameActor = (a: Actor | null, b: Actor | null) => a?.kind === b?.kind && a?.id === b?.id;
 
 /** One entry for each of status, owner, due date and title that differs between the task before and after a change (#488). */
-async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWorkRecord> | null, after: ReturnType<typeof toWorkRecord>, by: Actor, via?: 'github_rule') {
+async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWorkRecord> | null, after: ReturnType<typeof toWorkRecord>, by: Actor, via?: 'github_rule' | 'agent_rule') {
   if (!before) return;
   const entries: { kind: ActivityRow['kind']; detail: Record<string, unknown> }[] = [];
   if (before.status !== after.status) {
@@ -107,7 +108,7 @@ async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWo
 }
 
 function toActivityRecord(row: ActivityRow, position: string) {
-  const detail = row.detail as { from: unknown; to: unknown; blocker?: string | null; waitingForUserId?: string | null; automation?: 'github_rule' };
+  const detail = row.detail as { from: unknown; to: unknown; blocker?: string | null; waitingForUserId?: string | null; automation?: 'github_rule' | 'agent_rule' };
   const common = { id: row.id, workId: row.workId, at: row.createdAt, position, by: { kind: row.actorKind, id: row.actorId } as Actor, automation: detail.automation ?? null };
   switch (row.kind) {
     case 'status': return { ...common, kind: 'status' as const, from: detail.from as WorkRow['status'], to: detail.to as WorkRow['status'], blocker: detail.blocker ?? null, waitingForUserId: detail.waitingForUserId ?? null };
@@ -282,6 +283,8 @@ export function workRows(db: DbExecutor) {
         status: work.status, blocker: work.blocker, waitingForUserId: work.waitingFor?.id ?? null, dueOn: work.dueOn ?? null, ...ownerColumns(work.owner), createdByKind: work.createdBy.kind, createdById: work.createdBy.id,
         criteria: work.criteria ?? [], clientCommandId: work.clientCommandId ?? null, requestFingerprint: work.requestFingerprint ?? null,
       })).returning();
+      // A task made for an agent, or for a person who gave their assistant a standing instruction, is the server's to act on (#856).
+      if (work.owner) await agentTaskRows(db).noteAssigned(work.id, work.owner, work.createdBy);
       return toWorkRecord(await openedWork(db, row!));
     },
     /** The durable native-command lock, then the earlier receipt of this exact actor, project, operation and command. */
@@ -397,7 +400,7 @@ export function workRows(db: DbExecutor) {
       }) };
     },
     async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; waitingFor?: Actor | null; dueOn?: string | null; owner?: Actor | null; parked?: { decisionId: string; at: Date } | null; criteria?: string[] },
-      by: Actor, via?: 'github_rule') {
+      by: Actor, via?: 'github_rule' | 'agent_rule') {
       // Every path that changes a task ends here, so this is the one place its activity (#488) is kept: the row as it was,
       // then the change, then one entry per field that really differs, all in the caller's transaction. The caller holds the row.
       const [stored] = await db.select().from(w).where(eq(w.id, id)).for('update');
@@ -422,6 +425,7 @@ export function workRows(db: DbExecutor) {
       }).where(eq(w.id, id)).returning();
       const next = toWorkRecord(openRow('project_work_items', row!, seal));
       await recordTaskActivity(db, previous ? toWorkRecord(previous) : null, next, by, via);
+      if (next.owner && previous && !sameActor(toWorkRecord(previous).owner, next.owner)) await agentTaskRows(db).noteAssigned(id, next.owner, by, via);
       return next;
     },
     /** A task's activity (#488), newest first, by (time, id) so a page boundary never repeats or skips an entry. */

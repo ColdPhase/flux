@@ -25,9 +25,9 @@ type NewEnablement = Pick<EnablementRow, 'ownerUserId' | 'connectionId' | 'provi
 type EnablementChanges = Partial<Pick<EnablementRow, 'status' | 'assistantModel' | 'connectionId' | 'provider' | 'engine'>>;
 type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
-  | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: RunRow['engine']; silent?: boolean; authority?: RunRow['authority']; backgroundLabel?: string | null;
+  | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { workId?: string | null; engine?: RunRow['engine']; silent?: boolean; authority?: RunRow['authority']; backgroundLabel?: string | null;
     resumeAt?: Date | null; endReason?: RunRow['endReason']; planLimitResetsAt?: Date | null };
-type RunChanges = Partial<Pick<RunRow, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'costState' | 'chargedMicros' | 'inputTokens'
+type RunChanges = Partial<Pick<RunRow, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'stopRequestedBy' | 'costState' | 'chargedMicros' | 'inputTokens'
   | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'committedAt' | 'dispatchedAt' | 'completedAt' | 'endReason' | 'planLimitResetsAt'
   | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros'> & { answerSources: SourceRef[] }>;
 type NewProposal = Pick<ProposalRow, 'id' | 'workspaceId' | 'projectId' | 'runId' | 'ownerUserId' | 'fact' | 'interpretation'
@@ -254,9 +254,10 @@ export function personalRunRows(db: DbExecutor) {
 
     listOwnRuns: (ownerUserId: string, window: Window) => pagedRuns(eq(r.ownerUserId, ownerUserId), 'newest', window),
 
-    // A schedule that posts never posts "Done: nothing to change" (AST-7.11); a silent background run is never listed.
+    // A schedule that posts never posts "Done: nothing to change" (AST-7.11); a silent background run is never listed. The report of a
+    // run on a task is posted as the agent's message in the task's discussion (#856), so it is not listed a second time here.
     listAnswers: (conversationId: string, window: Window) =>
-      pagedRuns(and(eq(r.conversationId, conversationId), isNotNull(r.committedAt), eq(r.silent, false),
+      pagedRuns(and(eq(r.conversationId, conversationId), isNotNull(r.committedAt), eq(r.silent, false), sql`${r.kind} <> 'task'`,
         sql`NOT (${r.kind} = 'scheduled' AND ${r.answerBody} ~* ${NOTHING_TO_CHANGE})`)!, 'committed', window),
 
     async jobOfRun(runId: string) {

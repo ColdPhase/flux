@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
-import { WORK_LIMITS, WORK_STATUSES, type Agent, type CreateWorkCommand, type ObjectRef, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
+import { WORK_LIMITS, WORK_STATUSES, type CreateWorkCommand, type ObjectRef, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { openDm, sendDmMessage } from '../api/direct-messages';
 import { useIntentKeys } from '../api/intent-keys';
@@ -19,7 +19,8 @@ import { AccountChangedError, assertSignedInAs } from '../app/personalSpace';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
 import { searchFlux } from '../search/api';
 import { Button, Icon, MEDIA, Overlay, Spinner, StatusGlyph, Tabs, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
-import { createWork, listAgents, proposeDecision } from '../work/api';
+import { createWork, proposeDecision } from '../work/api';
+import { ownTaskAgents } from '../agents/taskAgents';
 import { STATUS_LABEL } from '../work/format';
 import { useCreatedToast } from '../work/taskState';
 import { ACCEPT_UNDO_MS, startProposal } from '../notifications/pendingAccept';
@@ -227,8 +228,7 @@ function savedForm(records: Unresolved[], title: string, sources: ObjectRef[] | 
   return match?.form ?? null;
 }
 
-interface Context { project: Project; members: { userId: string; name: string }[]; agents: Agent[] }
-const forbidden = (error: unknown) => (error instanceof ApiError && error.status === 403 ? [] : Promise.reject(error));
+interface Context { project: Project; members: { userId: string; name: string }[]; agents: { id: string; name: string }[] }
 
 function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProject, onClose }: PanelProps & { request: CreateRequest; prefilled: boolean }) {
   const { me, projects } = useShellData();
@@ -286,10 +286,11 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
       // The Owner choice offers the people in the space and nobody else (F-037), so nobody is given a task unannounced.
       const [audience, agents] = await Promise.all([
         listProjectPeople(projectId, controller.signal).catch(() => [] as ProjectPerson[]),
-        listAgents(project.workspaceId, controller.signal).catch(forbidden),
+        // The Owner choice offers your own agents and nobody else's (#904, AG-5): another person's agent is reached through that person.
+        ownTaskAgents(controller.signal),
       ]);
       const members = audience.filter((person) => person.kind === 'human').map((person) => ({ userId: person.id, name: person.name }));
-      setContext({ projectId, value: { project, members, agents: agents.filter((agent) => !agent.revokedAt) } });
+      setContext({ projectId, value: { project, members, agents } });
     }).catch(() => { if (!controller.signal.aborted) setContext({ projectId, value: null }); });
     return () => controller.abort();
   }, [projectId]);
@@ -385,7 +386,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
         <PickChip label="Owner" icon={<Icon name="person" size={14} />} shown={ownerLabel} value={owner} onChange={setOwner}>
           <Option value="">No owner</Option>
           <OptionGroup label="People">{people.map((p) => <Option key={p.value} value={p.value}>{p.label}</Option>)}</OptionGroup>
-          {agents.length ? <OptionGroup label="Agents" data-ai-surface="create-agent-owners">{agents.map((a) => <Option key={a.value} value={a.value}>{a.label}</Option>)}</OptionGroup> : null}
+          {agents.length ? <OptionGroup label="Your agents" data-ai-surface="create-agent-owners">{agents.map((a) => <Option key={a.value} value={a.value}>{a.label}</Option>)}</OptionGroup> : null}
         </PickChip>
         {status === 'blocked' ? <PickChip label="Waiting for" icon={<Icon name="person" size={14} />} shown={waitingLabel} value={waiting} onChange={setWaiting}>
           <Option value="">No one in particular</Option>

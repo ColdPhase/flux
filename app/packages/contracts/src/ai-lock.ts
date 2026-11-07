@@ -9,6 +9,7 @@
  * - `use_case`: the space is not in the request; the use case checks or filters it.
  * - `exempt`: no AI read or action, belongs to a person rather than a space, or only reduces or shows one's own history.
  */
+import { TASK_TAKING_PATH, taskAgentPath, taskAgentRetryPath, taskAgentStopPath } from './agent-tasks.js';
 import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CHECK_PATH, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_CONSOLE_RESUME_PATH,
   AGENT_RUNTIME_NOTICE_PATH, AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH } from './agent-runtime.js';
 
@@ -72,6 +73,12 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'PATCH /api/v1/proactive-comparison-proposals/:proposalId': gated('params', 'proposalId', 'comparison_proposal'),
   'POST /api/v1/proactive-comparison-proposals/:proposalId/use': gated('params', 'proposalId', 'comparison_proposal'),
   'PATCH /api/v1/proactive-comparison-rules/:ruleId': gated('params', 'ruleId', 'comparison_rule', { body: 'status', equals: 'enabled' }),
+  // People's agents take tasks (#856, AG-5): the setting is a person's; the state shows what an agent did; Retry starts AI work again.
+  [`GET ${TASK_TAKING_PATH}`]: exempt(PERSON),
+  [`PUT ${TASK_TAKING_PATH}`]: exempt(PERSON),
+  [`GET ${taskAgentPath(':workId')}`]: exempt('Shows what an agent did on a task; no AI read or action'),
+  [`POST ${taskAgentStopPath(':workId')}`]: exempt(REDUCES),
+  [`POST ${taskAgentRetryPath(':workId')}`]: gated('params', 'workId', 'work'),
   // The assistant (F-027).
   'GET /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/settings': exempt(PERSON),
   'POST /api/v1/workspaces/:workspaceId/assistant-operator-requests': exempt(PERSON),
