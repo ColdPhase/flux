@@ -89,8 +89,8 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
 
   /**
    * An event that failed every time must not leave the task silent: its owner reads that in the task and has the task back.
-   * The agent says it (as it says any refusal) and, if it still held the task, gives it back to its owner; a task that is already
-   * someone else's, or finished, needs nothing. Its own transaction, graph lock first, like every step on a task.
+   * The agent says it (as it says any refusal) and, if it still held the task, gives it back to its owner and stops its run on it; a
+   * task that is already someone else's, or finished, needs nothing. Its own transaction, graph lock first, like every step on a task.
    */
   async function giveUp(event: Event) {
     await db.transaction(async (tx) => {
@@ -106,7 +106,12 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       const held = current.owner?.kind === 'agent' && current.owner.id === holder.id;
       if (!held && !(current.owner?.kind === 'human' && current.owner.id === holder.ownerUserId)) return;
       await say(tx, current, holder.id, held ? 'I couldn\'t take care of this. It\'s back with you.' : 'I couldn\'t take this. It\'s still with you.', `gave-up:${event.id}`);
-      if (held) await giveBack(tx, current, holder.ownerUserId, holder.ownerUserId);
+      if (!held) return;
+      await giveBack(tx, current, holder.ownerUserId, holder.ownerUserId);
+      // A rule's hand-back writes no `released` event, and a run still going would report to a task that is no longer its own.
+      const ports = personalRunPorts(tx, queue);
+      for (const going of await rows.runsOfWork(work.id, 8))
+        if (going.agentId === holder.id && IN_FLIGHT.includes(going.status)) await stopRunBy(ports, going.id, holder.ownerUserId);
     });
   }
 
