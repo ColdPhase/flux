@@ -184,10 +184,12 @@ class SpaceSettings(unittest.TestCase):
         switch.focus()
         page.keyboard.press("Space")
         expect(page.locator(".spset__status")).to_have_text("AI is on in this space.")
+        expect(switch).to_have_attribute("aria-checked", "true")
         expect(switch).to_be_focused()
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{pid}")["ai"], "allowed")
         page.keyboard.press("Space")
         expect(page.locator(".spset__status")).to_have_text("AI is off in this space.")
+        expect(switch).to_have_attribute("aria-checked", "false")
         expect(switch).to_be_focused()
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{pid}")["ai"], "blocked")
         # The people: Ada (you, Admin) and Kai (Member); Add people adds Lee; a role changes; Remove asks first.
@@ -343,7 +345,9 @@ class SpaceSettings(unittest.TestCase):
         page = self.page("ada")
         space = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Stopped runs", "visibility": "restricted"}, status=201)
         agent = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents", {"name": "Ada’s analyst", "owner": "self"}, status=201)
-        self.api(page, "POST", "/api/v1/personal-assistant", {"consentVersion": "o-008-2026-10-02", "agentId": agent["id"], "perRunCents": 8, "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, status=201)
+        # #854: the model of a connection (Connect AI's default: the TEST-ONLY fixture key); nothing else to agree to.
+        default = self.api(page, "GET", "/api/v1/personal-assistant/model", status=200)["default"]
+        self.api(page, "POST", "/api/v1/personal-assistant", {"agentId": agent["id"], **default}, status=201)
         conversation = self.api(page, "POST", f"/api/v1/projects/{space['id']}/conversations", {"body": "Which sensor should we test?", "clientMessageId": str(uuid.uuid4())}, status=201)
         mock("/__script", {"reset": True, "delay": 20})
         try:
