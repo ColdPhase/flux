@@ -67,11 +67,20 @@ export const DATABASE_SESSION_OPTIONS = `-c idle_in_transaction_session_timeout=
 export const DATABASE_IDLE_CONNECTION_MS = 120_000;
 
 export function createDatabase(connectionString: string, connectTimeoutMs = databaseConnectTimeoutMs(),
-  options: { queryTimeoutMs?: number; max?: number } = {}) {
+  options: { queryTimeoutMs?: number; max?: number; onError?: (error: Error) => void } = {}) {
   // A client whose BEGIN or ROLLBACK fails is destroyed by the drizzle-orm patch in app/patches (#234). The key
   // rotation's own small pool allows longer statements (whole-table scans, VACUUM, CHECKPOINT; F-030 S2c).
   const pool = new pg.Pool({ connectionString, connectionTimeoutMillis: connectTimeoutMs, query_timeout: options.queryTimeoutMs ?? 2000,
     idleTimeoutMillis: DATABASE_IDLE_CONNECTION_MS, options: DATABASE_SESSION_OPTIONS, ...(options.max ? { max: options.max } : {}) });
+  // A database restart or failover ends every connection with an `error` event (57P01). An EventEmitter with no
+  // listener turns that into an uncaught exception that stops the process (#889), so every pool made here has one:
+  // an idle connection reports to the pool, which drops it, and the next query opens a new one.
+  const report = options.onError ?? ((error: Error) => console.error('Database connection interrupted', error));
+  pool.on('error', report);
+  // A connection that is checked out has the pool's listener removed; it reports on the client itself, between two
+  // queries of a transaction for instance. The query or the COMMIT that follows fails by itself and the pool destroys
+  // the broken client on release, so this listener only keeps the event from crashing the process.
+  pool.on('connect', (client) => client.on('error', () => undefined));
   const db = drizzle({ client: pool, schema });
   return { pool, db };
 }

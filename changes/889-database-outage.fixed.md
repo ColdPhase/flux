@@ -1,0 +1,1 @@
+- A short database outage no longer restarts the API or the worker: every connection pool logs the lost connection, drops it and opens a new one on the next query ([#889](https://github.com/ColdPhase/flux/issues/889)).

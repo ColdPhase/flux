@@ -45,6 +45,7 @@ export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | t
 export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 . scripts/test_images.sh
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.test.yaml --profile test"
+. scripts/database_outage.sh
 
 # Peak memory of the run's long-lived services (F-030 S1 sets the default limits to at least twice the observed peaks).
 report_memory() {
@@ -237,3 +238,7 @@ if $compose logs --no-color api worker providermock | grep -F 'owner-budget-key-
   echo 'Background provider key appeared in API, worker or provider-mock logs' >&2
   exit 1
 fi
+
+# A short database outage (#889) must not restart the API or the worker. Last, because it stops the database for a few seconds.
+$compose up -d --wait api worker keyring
+check_database_outage
