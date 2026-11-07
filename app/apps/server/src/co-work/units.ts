@@ -43,10 +43,10 @@ export function coWorkUnitOutcome(creation: CoWorkUnitCreation, context: { works
 }
 
 /**
- * Internal caller-owned composition of #152's `cowork.unit.create`. The owner's standing grant to this connection
- * (class = the created unit's role, optional exact task) is the authority; nothing here grants the creator or the
+ * Internal caller-owned composition of #152's `cowork.unit.create`. The owner's rights and this connection's runtime
+ * (class = the created unit's role) are the authority; nothing here grants the creator or the
  * assignee a claim. No HTTP cache, new transaction, model wake or event flush. Errors must escape the caller's
- * transaction so a refusal leaves no unit, slot row, grant use or receipt. Not a public tool.
+ * transaction so a refusal leaves no unit, slot row or receipt. Not a public tool.
  */
 export async function coWorkUnitCreateInTransaction(tx: Transaction, claims: FluxMcpClaims,
   raw: AgentExecutionCommand, policy: CoWorkUnitPolicy): Promise<CoWorkUnitCreation> {

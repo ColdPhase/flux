@@ -3,8 +3,8 @@
 Anna owns a space with a restricted project "Volunteer sign-up app". Dev is a member who writes there but does not manage it.
 
 * FT-1 as F-036 AG-3 changed it: Dev's own agent has Dev's rights, so Connect offers the project at once and nobody asks a manager.
-* FT-2: Handing a task to Dev's own agent, whose connection may act but has no grants yet, says what is missing and
-  "Allow and hand off" grants exactly the task's work, then hands it off.
+* FT-2 as #859 changed it: Dev's own agent has Dev's rights and there are no standing grants, so handing it a task is one
+  click, "Hand off", and nothing is granted.
 * FT-3: An invite link made from the project's People also opens the project; the new person lands in it.
 * FT-4: A phone's long-press menu offers "Propose a decision" under More…, and a visible ⋯ opens the same menu.
 * FT-7, FT-11, FT-13: Change access alone offers Invite; the project field is "Space name"; Revoke asks once.
@@ -125,7 +125,7 @@ class FirstTimeUser(unittest.TestCase):
         grants = self.api(self.page("anna"), "GET", f"/api/v1/projects/{self.ids['project']}/grants", status=200)
         self.assertFalse(any(g["principal"]["kind"] == "agent" for g in grants))
 
-    def test_03_hand_off_to_your_own_agent_grants_exactly_the_tasks_work(self) -> None:
+    def test_03_hand_off_to_your_own_agent_needs_no_grant(self) -> None:
         dev = self.page("dev")
         connection = self.api(dev, "POST", "/api/v1/agent-connections", {"agentId": self.ids["agent"], "name": "Dev laptop", "clientDesignation": "claude_code",
                               "selectedProjectIds": [self.ids["project"]], "scopes": ["flux.context.read", "flux.proposal.write", "flux.action.execute"]}, status=201)
@@ -137,8 +137,8 @@ class FirstTimeUser(unittest.TestCase):
             dialog.locator("label.handoff__agent", has_text="Dev's Claude Code").click()
             dialog.get_by_role("button", name="Next").click()
         expect(dialog.get_by_text("Step 2 of 2")).to_be_visible()
-        expect(dialog.locator("[data-needs-grants]")).to_contain_text("can’t work on #")
-        button = dialog.get_by_role("button", name=re.compile("^Allow and hand off"))
+        expect(dialog.locator("[data-needs-grants]")).to_have_count(0)
+        button = dialog.get_by_role("button", name=re.compile("^Hand off"))
         expect(button).to_be_enabled()
         box = button.bounding_box()
         foot = dialog.locator(".handoff__foot").bounding_box()
@@ -146,11 +146,7 @@ class FirstTimeUser(unittest.TestCase):
         shot(dev, "ftu-handoff-allow")
         button.click()
         expect(dev.get_by_text(re.compile("^Handed #\\d+ to Dev's Claude Code"))).to_be_visible()
-        grants = self.api(dev, "GET", f"/api/v1/agent-connections/{connection['id']}/action-grants?limit=50", status=200)["items"]
-        ops = sorted(g["operation"] for g in grants)
-        self.assertEqual(ops, sorted(["work.update", "cowork.unit.create", "cowork.claim", "cowork.renew", "cowork.release", "cowork.unit.complete",
-                                      "result.record", "conversation.reply", "doc.create"]))
-        self.assertTrue(all(g["objectId"] == self.ids["task"] for g in grants if g["operation"] in ("work.update", "cowork.unit.create")))
+        self.api(dev, "GET", f"/api/v1/agent-connections/{connection['id']}/action-grants?limit=50", status=404)
         self.assertEqual(self.api(dev, "GET", f"/api/v1/work/{self.ids['task']}", status=200)["owner"]["id"], self.ids["agent"])
 
     def test_04_a_phone_proposes_a_decision_from_a_message(self) -> None:

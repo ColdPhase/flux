@@ -3,12 +3,13 @@ import { AGENT_OPERATION_CLASSES, type AgentJsonValue, type AgentOperation, type
 import { derivedUuid, DomainError, normalizeMessage } from '@flux/core';
 import type { Database } from '@flux/db';
 import { guardedAgentThreadInEventSession } from '../conversation/store.js';
-import { actionAnnotations as annotations, actionId as id, actionInput, actionVersion as version, nativeActionExecutor } from './action-execution.js';
+import { actionAnnotations as annotations, actionId as id, actionInput, actionVersion as version, coordinationExecutor, coordinationInput,
+  nativeActionExecutor } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
 
-const execution = actionInput(['execute', 'plan']);
+const execution = actionInput();
 const message = z.strictObject({
   body: z.string().min(1).max(100_000).describe('Plain message text, visible to everyone with current access to this project.'),
   cite: z.strictObject({ materialId: id, version }).optional()
@@ -18,7 +19,7 @@ type AgentMessage = z.infer<typeof message>;
 
 /**
  * The canonical message command, as the agent: its client message ID is derived from this connection and the
- * standing-grant command ID, so a retry computes the same send and another connection of the same agent never
+ * command ID, so a retry computes the same send and another connection of the same agent never
  * collides with it. Ordinary text only; blocker, result and handoff contributions come from their own commands.
  */
 function send(connectionId: string, clientCommandId: string, { body, cite }: AgentMessage): SendMessageCommand {
@@ -27,7 +28,7 @@ function send(connectionId: string, clientCommandId: string, { body, cite }: Age
 }
 
 /**
- * Standing-grant contributions to the project's conversations through the canonical start and reply commands
+ * Contributions to the project's conversations through the canonical start and reply commands
  * (#36/#154), in the same one-transaction executor as the work and map actions. The audience is always the
  * project: a direct message, a private note or another project's conversation is never a target.
  */
@@ -35,12 +36,11 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
   const execute = nativeActionExecutor(db, claims);
   const register = (operation: AgentOperation) => tools.forScope('flux.action.execute', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
-  const grantNote = 'Needs a live standing grant for this operation and the runtime from flux_bootstrap. The message is attributed '
-    + 'to this connection\'s agent, acting for its owner.';
+  const note = 'The message is attributed to this connection\'s agent, acting for its owner.';
 
   register('conversation.create').registerTool('flux_start_conversation', {
-    title: 'Start a project conversation under a standing grant',
-    description: `Start one new conversation in the project with its first message. ${grantNote}`,
+    title: 'Start a project conversation',
+    description: `Start one new conversation in the project with its first message. ${note}`,
     inputSchema: z.strictObject({ ...execution, message }), annotations,
   }, ({ message: posted, ...input }) => run(() => execute(input, 'conversation.create', null, posted as unknown as AgentJsonValue,
     async ({ conversations, agent, runtime }) => {
@@ -51,9 +51,9 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
     })));
 
   register('conversation.reply').registerTool('flux_reply_in_conversation', {
-    title: 'Reply in a project conversation under a standing grant',
+    title: 'Reply in a project conversation',
     description: 'Add one reply to an existing conversation of the project, including a task\'s discussion thread. '
-      + `${grantNote} A grant can name this conversation or the whole project.`,
+      + note,
     inputSchema: z.strictObject({ ...execution,
       conversationId: id.describe('A conversation of this project, from flux_list_conversations or a task.'), message }), annotations,
   }, ({ conversationId, message: posted, ...input }) => run(() => execute(input, 'conversation.reply', conversationId,
@@ -63,15 +63,16 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
         postconditions: [{ kind: 'message', id: sent.id }] };
     })));
 
-  // The task's agents' thread (#400): the grant and the strict command are the reply operation's; the server selects
-  // the private task mode, so a client cannot choose it. The five-turn guard debits inside the same transaction.
-  const executeThread = nativeActionExecutor(db, claims, 'task-agent-thread/v1');
+  // The task's agents' thread (#400): the strict command is the reply operation's; the server selects the private task
+  // mode, so a client cannot choose it. It is the agent's own work talk, not a change to a person's things, so it does not
+  // wait. The five-turn guard debits inside the same transaction.
+  const executeThread = coordinationExecutor(db, claims, 'task-agent-thread/v1');
   register('conversation.reply').registerTool('flux_post_agent_thread', {
-    title: 'Write to a task\'s agents\' thread under a standing grant',
+    title: 'Write to a task\'s agents\' thread',
     description: 'Write one work message (a plan, progress, a hand-off note) in the agents\' thread of a task, visible to everyone who can read '
       + 'the task and quiet for people unless they open it. At most five agent messages in a row without a person\'s message or a new '
-      + `artifact version or request change (AGENT_THREAD_TURN_LIMIT). ${grantNote} A grant can name the whole project.`,
-    inputSchema: z.strictObject({ ...execution, taskId: id.describe('The task of this project the message is about.'),
+      + `artifact version or request change (AGENT_THREAD_TURN_LIMIT). ${note} Needs the runtime from flux_bootstrap.`,
+    inputSchema: z.strictObject({ ...coordinationInput(), taskId: id.describe('The task of this project the message is about.'),
       body: message.shape.body, replyToMessageId: id.optional().describe('Accepted for compatibility; the thread is flat.') }), annotations,
   }, ({ taskId, body, replyToMessageId: _reply, ...input }) => run(async () => {
     void _reply;
@@ -81,7 +82,7 @@ export function registerAgentConversationActions(tools: AgentToolRegistry, db: D
           const normalized = normalizeMessage({ body,
             clientMessageId: derivedUuid('flux.agent-thread-message.v1', runtime.connectionId.toLowerCase(), input.clientCommandId.toLowerCase()) });
           const sent = await guardedAgentThreadInEventSession(transaction, events, runtime,
-            { clientCommandId: input.clientCommandId, grantId: input.grantId }, taskId, { ...normalized, projectId: input.projectId });
+            { clientCommandId: input.clientCommandId }, taskId, { ...normalized, projectId: input.projectId });
           return { value: { taskId, conversationId: sent.conversationId, messageId: sent.id, sequence: sent.sequence },
             postconditions: [{ kind: 'message', id: sent.id }] };
         });

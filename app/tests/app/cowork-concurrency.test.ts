@@ -75,7 +75,6 @@ test('three connections take one task at the same time: exactly one wins, the ot
     assert.equal(open.length, 1);
     const winner = all.findIndex((_, index) => !failed(replies[index]!));
     assert.equal(open[0].assignee, all[winner]!.connectionId);
-    for (const [index, grant] of grants.entries()) assert.equal(await f.used(grant.id), index === winner ? 1 : 0, 'only the winner spent a use');
   }
 });
 
@@ -110,8 +109,6 @@ test('two sessions of one connection claim a unit at once: one lease; after it l
     generation: first.generation, leaseId: first.lease.id, outcome: { type: 'material', id: f.material.materialId, version: 1 } });
   assert.ok(['COWORK_CLAIM_LOST', 'COWORK_VERSION_CONFLICT'].includes(failureCode(staleComplete)!), 'the old generation cannot complete');
   assert.deepEqual([(await f.unit(unitId)).state, (await f.unit(unitId)).generation], ['claimed', 2]);
-  assert.equal(await f.used(complete.id), 0);
-  assert.equal(await f.used(renew.id), 0);
 });
 
 test('two transfers of one unit at once: exactly one wins, the generation advances once and the holder\'s claim is fenced', async () => {
@@ -131,10 +128,8 @@ test('two transfers of one unit at once: exactly one wins, the generation advanc
   const winner = !failed(replies[0]!) ? marekClaude : hubertClaude;
   const after = await f.unit(held.unitId);
   assert.deepEqual([after.assignee, after.state, after.generation, after.version, after.from], [winner.connectionId, 'pending', before.generation + 1, before.version + 1, codex.connectionId]);
-  assert.deepEqual([await f.used(toMarek.id), await f.used(toHubert.id)], !failed(replies[0]!) ? [1, 0] : [0, 1], 'only the winner spent a use');
   // The former holder can neither renew nor transfer again: its claim, and then its assignment, are gone.
   assert.ok(failed(await codex.call('flux_renew_unit', { ...codex.base(renew.id, 'execute'), ...fence })));
-  assert.equal(await f.used(renew.id), 0);
   assert.ok(failed(await codex.call('flux_transfer_unit', { ...codex.base(toHubert.id, 'execute'), ...fence, assignmentConnectionId: hubertClaude.connectionId })));
   assert.deepEqual([(await f.unit(held.unitId)).assignee, (await f.unit(held.unitId)).generation], [winner.connectionId, before.generation + 1]);
 });
@@ -162,7 +157,6 @@ test('a received unit is declined and claimed at the same time, in both orders: 
   assert.equal(failureCode(claimedLate), 'COWORK_UNIT_NOT_FOUND');
   const afterA = await f.unit(a.held.unitId);
   assert.deepEqual([afterA.assignee, afterA.state, afterA.generation, afterA.from], [codex.connectionId, 'paused', a.pending.generation + 1, null]);
-  assert.deepEqual([await f.used(a.declineGrant.id), await f.used(a.claimGrant.id)], [1, 0]);
 
   // Claim first: the unit is held by the receiver; the decline is refused and the unit keeps its claim.
   const b = await setup('Claimed first');
@@ -171,7 +165,6 @@ test('a received unit is declined and claimed at the same time, in both orders: 
   assert.equal(failureCode(declinedLate), 'COWORK_VERSION_CONFLICT');
   const afterB = await f.unit(b.held.unitId);
   assert.deepEqual([afterB.assignee, afterB.state, afterB.from], [marekClaude.connectionId, 'claimed', null]);
-  assert.deepEqual([await f.used(b.declineGrant.id), await f.used(b.claimGrant.id)], [0, 1]);
 });
 
 test('duplicate and parallel requests: one command ID is one effect, one intent is one request, and every attempt is accounted for', async () => {
@@ -180,7 +173,6 @@ test('duplicate and parallel requests: one command ID is one effect, one intent 
   const review = await f.startReview(codex, marekClaude, t);
   const target = { type: 'work', id: t.id, version: t.version };
   const count = async () => (await pool.query('SELECT count(*)::int AS n FROM cowork_requests WHERE work_id = $1', [t.id])).rows[0].n as number;
-  const usedBefore = await f.used(review.ask.id);
 
   // The same command five times at once (a client that retries before it hears back): one request, one debit, the same answer.
   const command = randomUUID();
@@ -188,7 +180,6 @@ test('duplicate and parallel requests: one command ID is one effect, one intent 
   assert.equal(errors(same).length, 0);
   assert.equal(new Set(same.map((reply) => String(toolValue(reply).requestId))).size, 1);
   assert.equal(await count(), 1);
-  assert.equal(await f.used(review.ask.id), usedBefore + 1, 'five attempts, one debit');
 
   // The same intent under five different commands: one request, and each command is counted once.
   const intents = await Promise.all(Array.from({ length: 5 }, () => review.send('review-1', target)));
@@ -196,7 +187,6 @@ test('duplicate and parallel requests: one command ID is one effect, one intent 
   assert.equal(new Set(intents.map((reply) => String(toolValue(reply).requestId))).size, 1);
   assert.equal(intents.filter((reply) => toolValue(reply).status === 'created').length, 0, 'the request already existed');
   assert.equal(await count(), 1);
-  assert.equal(await f.used(review.ask.id), usedBefore + 1 + 5);
 });
 
 test('a cancel and the recipient\'s claim or answer meet on the request row, in both orders: one wins, the loser leaves nothing', async () => {
@@ -223,12 +213,10 @@ test('a cancel and the recipient\'s claim or answer meet on the request row, in 
   assert.equal((await f.request(r1)).state, 'claimed');
 
   // Cancel first: the claim is told the request is closed, debits nothing and the request stays cancelled.
-  const usedClaims = await f.used(claimGrant.id);
   const r2 = await fresh('r2');
   const [cancelled2, claimed2] = await ordered({ table: 'cowork_requests', key: 'id', id: r2 }, () => cancel(r2, 1), () => claim(r2));
   assert.equal(cancelled2.status, 200);
   assert.equal(failureCode(claimed2), 'COWORK_REQUEST_CLOSED');
-  assert.equal(await f.used(claimGrant.id), usedClaims, 'the refused claim debited nothing');
   assert.deepEqual([(await f.request(r2)).state, (await f.request(r2)).cancelledBy], ['cancelled', f.marek.id]);
 
   // An answer first: the verdict is recorded and the cancel is refused as closed; a cancel first: the answer records no verdict.
@@ -246,33 +234,6 @@ test('a cancel and the recipient\'s claim or answer meet on the request row, in 
   assert.equal(await verdicts(), 1, 'the refused answer recorded no verdict');
   const view = expectStatus(await f.hubert.browser.request('GET', `/api/v1/work/${t.id}/coordination`), 200) as TaskCoordination;
   assert.deepEqual(view.requests.map((card) => card.state), ['cancelled', 'resolved', 'cancelled', 'claimed']);
-});
-
-test('a grant revoked while its command is in flight waits for that command, which commits; every command after the revocation is refused and creates nothing', async () => {
-  const { f, codex, marekClaude } = await threeConnections();
-  const t = await f.task('Native outcome A');
-  const review = await f.startReview(codex, marekClaude, t);
-  const target = { type: 'work', id: t.id, version: t.version };
-  const requests = async () => (await pool.query('SELECT count(*)::int AS n FROM cowork_requests WHERE work_id = $1', [t.id])).rows[0].n as number;
-  const slot = { table: 'cowork_connection_slots', key: 'connection_id', id: codex.connectionId } as const;
-  const revoke = (grantId: string) => f.hubert.browser.request('DELETE', `/api/v1/agent-connections/${codex.connectionId}/action-grants/${grantId}`);
-  const mint = async () => (expectStatus(await f.hubert.browser.request('POST', `/api/v1/agent-connections/${codex.connectionId}/action-grants`, { body: { clientCommandId: randomUUID(),
-    projectId: f.p.id, operation: 'cowork.request', peerRequestClass: 'execute', objectId: review.held.unitId, maximumUses: 5, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as { id: string }).id;
-
-  // The command holds its grant until it commits: the revocation that arrives meanwhile waits for it, so the command stands.
-  const grant = await mint();
-  const [committed, revoked] = await ordered(slot, () => codex.call('flux_send_request', { ...review.sendArgs('review-1', target), grantId: grant }), () => revoke(grant));
-  assert.equal(failed(committed), false, 'the command that was in flight commits under the grant it was authorized with');
-  assert.equal(revoked.status, 204);
-  assert.equal(await requests(), 1);
-  // From then on the grant is gone: a new command and a retry of the old one are refused, and nothing is created or debited.
-  assert.equal(failureCode(await codex.call('flux_send_request', { ...review.sendArgs('review-2', target), grantId: grant })), 'AGENT_EXECUTION_UNAVAILABLE');
-  assert.equal(failureCode(await codex.call('flux_send_request', { ...review.sendArgs('review-1', target), grantId: grant })), 'AGENT_EXECUTION_UNAVAILABLE');
-  assert.equal(await requests(), 1);
-  // Revoking one grant leaves the others alone: a second grant for the same unit still works.
-  const other = await mint();
-  assert.equal(failed(await codex.call('flux_send_request', { ...review.sendArgs('review-3', target), grantId: other })), false);
-  assert.equal(await requests(), 2);
 });
 
 test('a connection revoked around an in-flight command: the books agree, its unit stops and what it asked stays readable as history', async () => {

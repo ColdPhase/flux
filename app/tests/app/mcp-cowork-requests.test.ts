@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import type { Agent, AgentStandingGrant, TaskCoordination, WorkItem } from '@flux/contracts';
+import type { Agent, TaskCoordination, WorkItem } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
@@ -26,7 +26,7 @@ async function scene() {
     const standing = async (operation: string, objectId: string | null, role: Role, maximumUses = 10) =>
       expectStatus(await who.browser.request('POST', `/api/v1/agent-connections/${connected.connectionId}/action-grants`, { body: {
         clientCommandId: randomUUID(), projectId: p.id, operation, peerRequestClass: role, maximumUses, ...(objectId ? { objectId } : {}),
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as AgentStandingGrant;
+        expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as { id: string };
     const base = (grantId: string, role: Role, clientCommandId: string = randomUUID()) => ({ projectId: p.id,
       runtimeSessionId: connected.runtimeSessionId, grantId, clientCommandId, peerRequestClass: role });
     const claimUnit = async (unitId: string, role: Role, expectedVersion = 1) => {
@@ -40,9 +40,8 @@ async function scene() {
     { body: { title } }), 201) as WorkItem;
   const material = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Review findings', body: 'Two findings, both fixed' } }), 201) as { materialId: string };
-  const used = async (grantId: string) => (await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [grantId])).rows[0].used as number;
   const unitVersion = async (unitId: string) => (await pool.query('SELECT version FROM cowork_units WHERE id=$1', [unitId])).rows[0].version as number;
-  return { hubert, marek, olga, ws, p, connect, task, material, used, unitVersion };
+  return { hubert, marek, olga, ws, p, connect, task, material, unitVersion };
 }
 
 test('a review request travels send -> inbox -> claim -> resolve with a pinned verdict; a new version stales it; the same grant asks again', async () => {
@@ -105,7 +104,6 @@ test('a review request travels send -> inbox -> claim -> resolve with a pinned v
     { ...marekClaude.base(respond.id, 'review', clientCommandId), ...fence, expectedRequestVersion: Number(claimed.version), evidence, ...change });
   assert.equal(toolFailure(await resolve({})).code, 'COWORK_VERDICT_REQUIRED');
   assert.equal(toolFailure(await resolve({ verdict: 'passed', evidence: { type: 'result', id: randomUUID() } })).code, 'COWORK_RESPONSE_UNAVAILABLE');
-  assert.equal(await f.used(respond.id), 0);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts WHERE work_id=$1', [a.id])).rows[0].n, 0);
   const resolvedCommand = randomUUID();
   const resolved = toolValue(await resolve({ verdict: 'passed' }, resolvedCommand));
@@ -132,10 +130,8 @@ test('a review request travels send -> inbox -> claim -> resolve with a pinned v
     [{ verdict: 'passed', current: false, target: { type: 'work', id: a.id, version: a.version } }]);
 
   // The author asks again for the new version under the same standing grant: no other owner prompt or grant.
-  const grantsBefore = (await pool.query('SELECT count(*)::int AS n FROM agent_standing_grants')).rows[0].n as number;
   const again = toolValue(await send('review-2', { type: 'work', id: a.id, version: changed.version }));
   assert.equal(again.status, 'created');
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_standing_grants')).rows[0].n, grantsBefore);
   coordination = await read();
   assert.deepEqual(coordination.requests.map((r) => [r.state, (r.target as { version: number }).version]),
     [['queued', changed.version], ['resolved', a.version]], 'history is kept, newest first');
@@ -220,12 +216,10 @@ test('the recipient defers a queued request with a reason and boundary without c
   assert.equal(toolFailure(await defer({ reason: 'dependency', nextBoundary: 'after_step' })).code, 'INVALID_INPUT', 'a dependency names its record');
   assert.ok(schemaRefused(await defer({ reason: 'because' })), 'free-text reasons are refused by the schema');
   assert.equal(toolFailure(await defer({ expectedRequestVersion: 7 })).code, 'COWORK_VERSION_CONFLICT');
-  assert.equal(await f.used(respond.id), 0, 'refusals debit nothing');
   const command = randomUUID();
   const deferred = toolValue(await defer({}, command));
   assert.deepEqual(deferred, { requestId, version: 2, state: 'deferred', responseRef: null });
   assert.deepEqual(toolValue(await defer({}, command)), deferred, 'a retry replays');
-  assert.equal(await f.used(respond.id), 1);
   assert.deepEqual([await card()].map((r) => [r.state, r.status, r.reason, r.nextBoundary]), [['deferred', 'deferred', 'busy', 'after_step']]);
   const inbox = toolValue(await marekClaude.tool('flux_coordination_inbox', { projectId: f.p.id })).requests as { id: string; state: string; status: string }[];
   assert.deepEqual(inbox.map((r) => [r.id === requestId ? 'deferred one' : 'other', r.state, r.status]),

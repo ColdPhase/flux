@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Tabs, type TabItem } from '../ui';
 
 // Equal setup for every external MCP client (F-020 PROV-5): each gets its own add and login
-// commands, and all of them get the same OAuth consent, grants and presentation in Flux. The
+// commands, and all of them get the same OAuth consent and presentation in Flux. The
 // client label a person picks below is a recognition aid, not a verified identity.
 //
 // Commands checked 2026-10-02 against the clients' own sources:
@@ -64,6 +64,6 @@ export function ClientGuide({ origin, initial = 'claude_code', second = false }:
       <h3>Start work</h3>
       <p>Start it from your client: ask it to start work on your project in Flux.</p>
     </section>}
-    <p>Use your own client account for compute. Flux receives no provider credentials. A connection can do only what you allow on this page: read the selected projects, suggest next steps for review, and run only the actions you grant.</p>
+    <p>Use your own client account for compute. Flux receives no provider credentials. A connection can do only what you can, and only as far as its “What it may do” allows. Deleting anything and other people’s things wait for your OK.</p>
   </div>;
 }

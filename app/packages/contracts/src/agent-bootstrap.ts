@@ -1,5 +1,5 @@
 import type { AgentScope } from './agent-proposals.js';
-import type { AgentOperation, AgentPeerRequestClass, AgentStandingGrant, AuthenticatedAgentRuntime } from './agent-execution.js';
+import type { AgentOperation, AgentPeerRequestClass, AuthenticatedAgentRuntime } from './agent-execution.js';
 
 export const AGENT_SOURCE_KINDS = ['doc', 'material', 'work', 'decision', 'result', 'conversation', 'map'] as const;
 export type AgentSourceKind = typeof AGENT_SOURCE_KINDS[number];
@@ -75,7 +75,6 @@ export interface AgentBootstrap {
   observedAt: string;
   runtime: AuthenticatedAgentRuntime;
   project: { id: string; workspaceId: string; name: string };
-  grants: { items: (AgentStandingGrant & { remainingUses: number })[]; total: number; limit: number; offset: number; nextOffset: number | null };
   capabilities: AgentToolCapability[];
   trusted: { playbook: AgentInstructionReference | null;
     coordination: AgentCoordinationReference | null; repositoryReferences: string[] | null };

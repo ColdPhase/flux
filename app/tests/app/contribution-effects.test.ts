@@ -5,7 +5,7 @@ import { eq, sql } from 'drizzle-orm';
 import { schema, TASK_GRAPH_LOCK_NAMESPACE } from '@flux/db';
 import { agentExecutionUseCases, createAssistantProposalUseCases, createWorkContributions, createWorkUseCases, DomainError, type Principal, type ProposalRecord,
   type WorkPorts } from '@flux/core';
-import type { AgentConnection, AgentExecutionCommand, AgentJsonValue, AgentPostcondition, AgentStandingGrant, AssistantProposal, Conversation, ConversationMessage,
+import type { AgentConnection, AgentExecutionCommand, AgentJsonValue, AgentPostcondition, AssistantProposal, Conversation, ConversationMessage,
   Decision, TaskDiscussion, WorkItem, WorkResult } from '@flux/contracts';
 import { nativeWorkInTransaction, policyWorkAccess, workRepository } from '../../apps/server/src/work/adapters.js';
 import { proposalUnitOfWork } from '../../apps/server/src/personal-runs/adapters.js';
@@ -436,7 +436,7 @@ async function agentFixture() {
   const claims = { ownerUserId: f.owner.id, connectionId: connection.id, clientId, grantReferenceId: `flux-grant:${bindingId}`, scopes: connection.scopes };
   const { runtime } = await db.transaction((tx) => agentRuntimeInTransaction(tx, claims, randomUUID()));
   const grantFor = async (operation: 'work.update' | 'result.record') => expectStatus(await f.owner.browser.request('POST', `/api/v1/agent-connections/${connection.id}/action-grants`, { body: {
-    clientCommandId: randomUUID(), projectId: f.place.id, operation, peerRequestClass: 'execute', maximumUses: 5, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as AgentStandingGrant;
+    clientCommandId: randomUUID(), projectId: f.place.id, operation, peerRequestClass: 'execute', maximumUses: 5, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as { id: string };
   const updateGrant = await grantFor('work.update'); const resultGrant = await grantFor('result.record');
   const principal = { kind: 'agent' as const, id: agent.id };
   let effects = 0;
@@ -461,20 +461,19 @@ test('an agent saving a blocker or publishing a result composes the native effec
   const g = await agentFixture();
   const t = await g.task('Ledger task'); const u = await g.task('Second ledger task');
   const blocked = expectStatus(await g.patch(g.owner, t.id, { status: 'blocked' }, 1), 200) as WorkItem;
-  const update: AgentExecutionCommand = { runtimeSessionId: g.runtime.id, grantId: g.updateGrant.id, clientCommandId: randomUUID(), projectId: g.place.id,
+  const update: AgentExecutionCommand = { runtimeSessionId: g.runtime.id, clientCommandId: randomUUID(), projectId: g.place.id,
     operation: 'work.update', peerRequestClass: 'execute', audience: { kind: 'project', projectId: g.place.id }, objectId: t.id, sources: [],
     payload: { blocker: 'Ledger blocker', expectedVersion: blocked.version } };
   const saveBlocker = (native: ReturnType<typeof nativeWorkInTransaction>) => native.updateWork(g.principal, t.id, { blocker: 'Ledger blocker', clientCommandId: update.clientCommandId }, blocked.version)
     .then((view) => ({ value: { workId: view.id, version: view.version } as AgentJsonValue, postconditions: [{ kind: 'work' as const, id: view.id, version: view.version }] }));
   const base = await g.counts();
   const ledger = async () => ({
-    uses: (await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [g.updateGrant.id])).rows[0].used as number,
     receipts: (await pool.query('SELECT count(*)::int AS n FROM agent_command_receipts WHERE connection_id=$1', [g.connection.id])).rows[0].n as number });
   // Failure after the debit, receipt and effect rolls back ALL of them, including the contribution and its native receipt.
   await assert.rejects(g.run(update, saveBlocker, true), /injected failure after debit/);
-  assert.deepEqual([await g.counts(), await ledger()], [base, { uses: 0, receipts: 0 }]);
+  assert.deepEqual([await g.counts(), await ledger()], [base, { receipts: 0 }]);
   const first = await g.run(update, saveBlocker);
-  assert.deepEqual(await ledger(), { uses: 1, receipts: 1 });
+  assert.deepEqual(await ledger(), { receipts: 1 });
   const read = await g.discussion(g.reader, t.id);
   assert.deepEqual([read.root?.body, read.root?.contribution, read.root?.authorId, read.root?.author?.id, read.root?.author?.kind],
     ['Ledger blocker', { kind: 'blocker' }, null, g.agent.id, 'agent']);
@@ -482,13 +481,13 @@ test('an agent saving a blocker or publishing a result composes the native effec
   // A matching retry replays the ledger value: no effect, no second message, no second debit, no second event.
   const afterFirst = await g.counts();
   assert.deepEqual(await g.run(update, saveBlocker), first);
-  assert.deepEqual([await g.counts(), await ledger(), g.effects()], [afterFirst, { uses: 1, receipts: 1 }, 2]);
+  assert.deepEqual([await g.counts(), await ledger(), g.effects()], [afterFirst, { receipts: 1 }, 2]);
   // Changed produced state stays stale, never a second contribution.
   expectStatus(await g.patch(g.owner, t.id, { title: 'Someone moved the task' }, (first as { version: number }).version), 200);
   await assert.rejects(g.run(update, saveBlocker), (error: unknown) => error instanceof DomainError && error.code === 'COMMAND_POSTSTATE_STALE');
   assert.equal((await g.discussion(g.reader, t.id)).messages.length, 1);
 
-  const record: AgentExecutionCommand = { runtimeSessionId: g.runtime.id, grantId: g.resultGrant.id, clientCommandId: randomUUID(), projectId: g.place.id,
+  const record: AgentExecutionCommand = { runtimeSessionId: g.runtime.id, clientCommandId: randomUUID(), projectId: g.place.id,
     operation: 'result.record', peerRequestClass: 'execute', audience: { kind: 'project', projectId: g.place.id }, objectId: null, sources: [],
     payload: { title: 'Ledger result', work: [u.id, t.id] } };
   const publish = (native: ReturnType<typeof nativeWorkInTransaction>) => native.createResult(g.principal, g.place.id,

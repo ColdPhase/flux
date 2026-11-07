@@ -75,7 +75,7 @@ test('named connections and two tabs in one login complete distinct consent flow
     await pageB.locator('.connection__summary').filter({ hasText: 'Delivery laptop' }).waitFor({ state: 'visible' });
     for (const page of [pageA, pageB]) {
       await page.getByText('Run approved project actions', { exact: true }).waitFor({ state: 'visible' });
-      await page.getByText('Each action also needs a current grant from you, with its own limits and expiry.', { exact: true }).waitFor({ state: 'visible' });
+      await page.getByText('Deleting and other people’s things wait for your OK, and so does everything if you choose Ask me first.', { exact: true }).waitFor({ state: 'visible' });
     }
     if (evidenceDir) {
       mkdirSync(evidenceDir, { recursive: true });

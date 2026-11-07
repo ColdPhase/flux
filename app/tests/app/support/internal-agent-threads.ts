@@ -11,9 +11,9 @@ import { actionScene } from './mcp-actions.js';
 
 export type ThreadNativeScene=Awaited<ReturnType<typeof actionScene>>;
 const authByDatabase=new WeakMap<Database,ReturnType<typeof createAuth>>();
-export const threadCommand=(f:Pick<ThreadNativeScene,'projectId'|'runtimeSessionId'>,taskId:string,grantId:string)=>({
-  projectId:f.projectId,taskId,runtimeSessionId:f.runtimeSessionId,grantId,clientCommandId:randomUUID(),
-  peerRequestClass:'execute' as const,sources:[],message:{body:'One meaningful measured observation.'},
+export const threadCommand=(f:Pick<ThreadNativeScene,'projectId'|'runtimeSessionId'>,taskId:string,...named:[grantId?:string])=>(void named,{
+  projectId:f.projectId,taskId,runtimeSessionId:f.runtimeSessionId,clientCommandId:randomUUID(),
+  sources:[],message:{body:'One meaningful measured observation.'},
 });
 export async function nativeThreadPost(f:Pick<ThreadNativeScene,'tokens'>,command:ReturnType<typeof threadCommand>,database:Database=db){
   let auth=authByDatabase.get(database);if(!auth){auth=createAuth({db:database,config:loadIdentityConfig(),mailer:null,oauthRequests:createOauthRequests()});authByDatabase.set(database,auth);}

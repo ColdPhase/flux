@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import type { Agent, AgentExecutionCommand, AgentStandingGrant, CoWorkRequestLimits, WorkItem } from '@flux/contracts';
+import type { Agent, AgentExecutionCommand, CoWorkRequestLimits, WorkItem } from '@flux/contracts';
 import { COWORK_PLAYBOOK, coworkPlaybookTools } from '@flux/core';
 import { coWorkRequestInTransaction } from '../../apps/server/src/co-work/requests.js';
 import { db, pool } from './support/db.js';
@@ -45,14 +45,12 @@ async function scene() {
     assert.equal(binding.length, 1);
     const claims = { ownerUserId: who.id, connectionId: connected.connectionId, clientId: String(binding[0].client_id),
       grantReferenceId: `flux-grant:${binding[0].id}`, scopes: [...scopes, 'offline_access'] };
-    const standing = async (operation: string, objectId: string | null, role: Role, maximumUses = 10) =>
-      expectStatus(await who.browser.request('POST', `/api/v1/agent-connections/${connected.connectionId}/action-grants`, { body: {
-        clientCommandId: randomUUID(), projectId: p.id, operation, peerRequestClass: role, maximumUses, ...(objectId ? { objectId } : {}),
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as AgentStandingGrant;
+    // No standing grants (#859): the stub keeps the call sites that name one; the tool helpers drop its id.
+    const standing = async (...named: [operation: string, objectId: string | null, role: Role, maximumUses?: number]) => { void named; return { id: randomUUID() }; };
     const base = (grantId: string, role: Role, clientCommandId: string = randomUUID()) => ({ projectId: p.id,
       runtimeSessionId: connected.runtimeSessionId, grantId, clientCommandId, peerRequestClass: role });
-    const internal = (operation: string, objectId: string, role: Role, grantId: string, payload: Record<string, unknown>): AgentExecutionCommand =>
-      ({ runtimeSessionId: connected.runtimeSessionId, grantId, clientCommandId: randomUUID(), projectId: p.id,
+    const internal = (operation: string, objectId: string, role: Role, _grantId: string, payload: Record<string, unknown>): AgentExecutionCommand =>
+      ({ runtimeSessionId: connected.runtimeSessionId, clientCommandId: randomUUID(), projectId: p.id,
         operation: operation as AgentExecutionCommand['operation'], peerRequestClass: role, audience: { kind: 'project', projectId: p.id },
         objectId, sources: [], payload: payload as AgentExecutionCommand['payload'] });
     /** A live claim on this connection's unit over MCP (flux_claim_unit), under an exact cowork.claim grant. */
@@ -67,10 +65,9 @@ async function scene() {
     { body: { title } }), 201) as WorkItem;
   const material = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Review criteria', body: 'Exact current revision' } }), 201) as { materialId: string };
-  const used = async (grantId: string) => (await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [grantId])).rows[0].used as number;
   const units = async () => (await pool.query('SELECT id, work_id, role, assignment_connection_id, state, version FROM cowork_units WHERE workspace_id=$1 ORDER BY id',
     [ws.id])).rows;
-  return { hubert, marek, ws, p, connect, task, material, used, units };
+  return { hubert, marek, ws, p, connect, task, material, units };
 }
 /** A strict schema refusal: the SDK reports it as a tool error or a JSON-RPC error, never a domain effect. */
 function schemaRefused(message: Record<string, unknown> | null) {
@@ -89,7 +86,7 @@ test('the co-work tools are registered for the action scope, listed with their o
   for (const { name } of COWORK_TOOLS) assert.ok(COWORK_PLAYBOOK.modules.some((module) => module.tools.includes(name)), `${name} is declared`);
   const catalog = capabilities.map((item) => item.name);
   assert.deepEqual(coworkPlaybookTools().filter((name) => !catalog.includes(name)), []);
-  assert.equal(COWORK_PLAYBOOK.version, '1.11.0');
+  assert.equal(COWORK_PLAYBOOK.version, '1.12.0');
   assert.ok(!(codex.bootstrap.gaps as string[]).includes('coordination_unavailable'), 'admission, the inbox and resolution exist');
 
   // A connection without the action scope is not shown them (#548) and is refused before any effect.
@@ -116,24 +113,17 @@ test('flux_create_unit takes a task atomically: a retry replays, a re-issued int
     runId: undefined, role: 'execute', assignmentConnectionId: codex.connectionId, version: 1, state: 'pending' });
   assert.deepEqual(await f.units(), [{ id: created.unitId, work_id: a.id, role: 'execute', assignment_connection_id: codex.connectionId,
     state: 'pending', version: 1 }]);
-  assert.equal(await f.used(create.id), 1);
   // A lost response is retried with the same command ID: the stored outcome, no second unit or debit.
   assert.deepEqual(toolValue(await codex.tool('flux_create_unit', input(first))), created);
-  assert.equal(await f.used(create.id), 1);
   assert.equal(toolFailure(await codex.tool('flux_create_unit', input(first, { unitKey: 'take-2' }))).code, 'IDEMPOTENCY_CONFLICT');
   // The same intent under a new command ID returns the existing unit and spends one more use.
   assert.deepEqual(toolValue(await codex.tool('flux_create_unit', input(randomUUID()))), { ...created, status: 'existing' });
-  assert.equal(await f.used(create.id), 2);
   // Another connection of the same owner cannot take the task while the unit is open.
   const other = await claude.standing('cowork.unit.create', a.id, 'execute');
   assert.equal(toolFailure(await claude.tool('flux_create_unit', { ...claude.base(other.id, 'execute'), taskId: a.id, unitKey: 'take',
     expectedTaskVersion: a.version, assignmentConnectionId: claude.connectionId, parent: null })).code, 'COWORK_UNIT_TAKEN');
-  assert.equal(await f.used(other.id), 0);
-  // Grant and target controls: another class, a guessed task, a stale task version.
-  assert.equal(toolFailure(await codex.tool('flux_create_unit', { ...input(randomUUID()), peerRequestClass: 'review' })).code,
-    'AGENT_EXECUTION_UNAVAILABLE');
-  const wide = await codex.standing('cowork.unit.create', null, 'execute');
-  assert.equal(toolFailure(await codex.tool('flux_create_unit', { ...input(randomUUID()), grantId: wide.id, taskId: randomUUID() })).code,
+  // Target controls: a guessed task, a stale task version.
+  assert.equal(toolFailure(await codex.tool('flux_create_unit', { ...input(randomUUID()), taskId: randomUUID() })).code,
     'OBJECT_NOT_FOUND');
   assert.equal(toolFailure(await codex.tool('flux_create_unit', { ...input(randomUUID()), unitKey: 'other', expectedTaskVersion: a.version + 1 })).code,
     'COWORK_VERSION_CONFLICT');
@@ -144,7 +134,6 @@ test('flux_create_unit takes a task atomically: a retry replays, a re-issued int
     assert.ok(schemaRefused(await codex.tool('flux_create_unit', value)), JSON.stringify(change));
   }
   assert.equal((await f.units()).length, 1);
-  assert.equal(await f.used(create.id), 2);
 });
 
 test('flux_claim_request and flux_decline_request act only on a request addressed to the caller\'s unit, under its live claim', async () => {
@@ -170,7 +159,6 @@ test('flux_claim_request and flux_decline_request act only on a request addresse
   assert.equal(toolFailure(await marekClaude.tool('flux_claim_request', { ...marekClaude.base(take.id, 'review'), ...noClaim })).code, 'COWORK_CLAIM_LOST');
   assert.equal(toolFailure(await marekClaude.tool('flux_decline_request', { ...marekClaude.base(respond.id, 'review'), ...noClaim, reason: 'scope' })).code,
     'COWORK_CLAIM_LOST');
-  assert.deepEqual([await f.used(take.id), await f.used(respond.id)], [0, 0]);
 
   // Marek claims his unit over MCP and Codex addresses a review request to it (internal composition).
   const reviewClaim = await marekClaude.claimUnit(reviewUnit, 'review');
@@ -189,13 +177,9 @@ test('flux_claim_request and flux_decline_request act only on a request addresse
   const claimed = toolValue(await marekClaude.tool('flux_claim_request', claimInput));
   assert.deepEqual(claimed, { requestId: asked.requestId, version: 2, state: 'claimed', responseRef: null });
   assert.deepEqual(toolValue(await marekClaude.tool('flux_claim_request', claimInput)), claimed);
-  assert.equal(await f.used(take.id), 1);
   assert.equal(toolFailure(await marekClaude.tool('flux_claim_request', { ...claimInput, clientCommandId: randomUUID(), expectedRequestVersion: 2 })).code,
     'COWORK_REQUEST_CLAIMED');
-  // The sender cannot act on the recipient's unit: an exact grant cannot name it, a project-wide grant does not find it.
-  expectStatus(await f.hubert.browser.request('POST', `/api/v1/agent-connections/${codex.connectionId}/action-grants`, { body: {
-    clientCommandId: randomUUID(), projectId: f.p.id, operation: 'cowork.request.claim', peerRequestClass: 'review', objectId: reviewUnit,
-    maximumUses: 1, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 404);
+  // The sender cannot act on the recipient's unit: its role does not find it.
   const senderWide = await codex.standing('cowork.request.respond', null, 'review');
   assert.equal(toolFailure(await codex.tool('flux_decline_request', { ...codex.base(senderWide.id, 'review'), ...fence, expectedRequestVersion: 2,
     reason: 'scope' })).code, 'COWORK_UNIT_NOT_FOUND');
@@ -205,11 +189,9 @@ test('flux_claim_request and flux_decline_request act only on a request addresse
   for (const change of [{ reason: 'later' }, { outcome: 'resolved' }, { response: { title: 'Findings' } }, { outcome: 'declined' }])
     assert.ok(schemaRefused(await marekClaude.tool('flux_decline_request', { ...declineInput, clientCommandId: randomUUID(), ...change })),
       JSON.stringify(change));
-  assert.equal(await f.used(respond.id), 0);
   const declined = toolValue(await marekClaude.tool('flux_decline_request', declineInput));
   assert.deepEqual(declined, { requestId: asked.requestId, version: 3, state: 'declined', responseRef: null });
   assert.deepEqual(toolValue(await marekClaude.tool('flux_decline_request', declineInput)), declined, 'a retry replays the decline');
-  assert.equal(await f.used(respond.id), 1);
   const row = (await pool.query('SELECT state, version, reason, response_ref FROM cowork_requests WHERE id=$1', [asked.requestId])).rows[0];
   assert.deepEqual(row, { state: 'declined', version: 3, reason: 'capability', response_ref: null });
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id=$1', [f.p.id])).rows[0].n, 0,

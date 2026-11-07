@@ -182,9 +182,6 @@ run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-plan.e2e.ts
 # Named, request-bound agent connection consent, including signed-out setup (#152).
 $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/agent-connections.e2e.ts
 
-# The owner's standing-grant controls on the Connect page decide the agent's next real MCP call (#152).
-run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/agent-grant-controls.e2e.ts
-
 # The owner's capability and project switches on the Connect page decide the agent's next real MCP call (#316).
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/mcp-permission-controls.e2e.ts
 

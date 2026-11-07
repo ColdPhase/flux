@@ -23,7 +23,7 @@ export interface AgentExecutionPort<Tx> {
   complete(scope: AgentExecutionScope<Tx>, outcome: AgentExecutionOutcome): Promise<void>;
 }
 
-const FIELDS = ['runtimeSessionId', 'grantId', 'clientCommandId', 'projectId', 'operation', 'peerRequestClass', 'audience', 'objectId', 'sources', 'payload'];
+const FIELDS = ['runtimeSessionId', 'clientCommandId', 'projectId', 'operation', 'peerRequestClass', 'audience', 'objectId', 'sources', 'payload'];
 function uuid(value: unknown, field: string): string {
   if (!isUuid(value)) throw new InvalidInputError(`${field} must be a UUID`);
   return value.toLowerCase();
@@ -63,7 +63,7 @@ export function normalizeAgentExecution(command: AgentExecutionCommand): Normali
   }).sort((a, b) => a.materialId.localeCompare(b.materialId));
   if (new Set(sources.map((source) => source.materialId)).size !== sources.length) throw new InvalidInputError('Source IDs must be distinct');
   const normalized: AgentExecutionCommand = { runtimeSessionId: uuid(command.runtimeSessionId, 'runtimeSessionId'),
-    grantId: uuid(command.grantId, 'grantId'), clientCommandId: uuid(command.clientCommandId, 'clientCommandId'), projectId,
+    clientCommandId: uuid(command.clientCommandId, 'clientCommandId'), projectId,
     operation: command.operation, peerRequestClass: command.peerRequestClass, audience: { kind: 'project', projectId },
     objectId: command.objectId === null ? null : uuid(command.objectId, 'objectId'), sources, payload: json(command.payload) };
   const creates = ['work.create', 'map.create', 'result.record', 'decision.propose', 'doc.create', 'conversation.create'];

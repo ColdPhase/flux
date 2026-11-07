@@ -104,7 +104,10 @@ export type AssistantObjectType = 'work' | 'doc' | 'map' | 'thought' | 'link' | 
 /** One row of the change log, as its owner sees it. Nobody else sees a waiting change. */
 export interface AssistantChange {
   id: string;
+  /** The group Approve all, Skip all and Undo act on: an assistant run, or for a local client its connection (#859). */
   runId: string;
+  /** The agent that made it, for the Inbox item: "Assistant", or a local client by its name ("Claude Code on this computer"). */
+  agentName: string;
   projectId: string;
   conversationId: string;
   operation: string;

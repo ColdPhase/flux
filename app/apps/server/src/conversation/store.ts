@@ -600,7 +600,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
  * No route calls this adapter. All upstream authorization/command/source locks precede the shared task fence.
  */
 export async function guardedAgentThreadInEventSession(tx: Transaction, session: TransactionEventSession,
-  runtime: AuthenticatedAgentRuntime, command: { clientCommandId: string; grantId: string }, taskId: string, input: AgentThreadPost) {
+  runtime: AuthenticatedAgentRuntime, command: { clientCommandId: string }, taskId: string, input: AgentThreadPost) {
   return session.run(async () => {
     const principal: Principal = { kind: 'agent', id: runtime.agentId };
     const task = await locateThreadTask(principal, taskId, tx, true, true);

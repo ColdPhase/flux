@@ -278,29 +278,28 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     assert.equal((await scene.taskRow(theirs.id)).title, 'Jonas keeps this');
   });
 
-  test('a local client cannot wait yet, so each rule fails closed: Only read, Ask me first, a deletion, others\' things and a task for someone else change nothing', async () => {
+  test('a local client waits like the assistant: Only read changes nothing; Ask me first, a deletion, others\' things and a task for someone else wait', async () => {
     const other = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Ada review laptop', owner: 'self' } }), 201) as { id: string }).id;
     const client = await agentConnection(pool, scene.owner.browser, other, [scene.place.id]);
-    const call = async (name: string, operation: Parameters<typeof client.grant>[0], peerRequestClass: 'execute' | 'plan', args: Record<string, unknown>) =>
-      client.tool(name, { projectId: scene.place.id, runtimeSessionId: client.runtimeSessionId, grantId: (await client.grant(operation, peerRequestClass)).id, clientCommandId: randomUUID(),
-        peerRequestClass, sources: [], ...args });
-    const create = (task: Record<string, unknown>) => call('flux_create_task', 'work.create', 'execute', { task });
+    const call = (name: string, args: Record<string, unknown>) => client.tool(name, { projectId: scene.place.id, clientCommandId: randomUUID(), sources: [], ...args });
+    const create = (task: Record<string, unknown>) => call('flux_create_task', { task });
+    const waits = (message: Parameters<typeof text>[0]) => /^Waiting for /.test(text(message));
 
-    assert.equal(refusal(await create({ title: 'For Jonas from a client', ownerUserId: scene.peer.id })), 'AGENT_CHANGE_WAITS');
+    assert.ok(waits(await create({ title: 'For Jonas from a client', ownerUserId: scene.peer.id })));
     assert.equal((await titled('For Jonas from a client')).length, 0);
     const theirs = await scene.task(scene.peer, 'Jonas owns this');
-    assert.equal(refusal(await call('flux_update_task', 'work.update', 'execute', { workId: theirs.id, expectedVersion: theirs.version, changes: { title: 'Changed by a client' } })), 'AGENT_CHANGE_WAITS');
+    assert.ok(waits(await call('flux_update_task', { workId: theirs.id, expectedVersion: theirs.version, changes: { title: 'Changed by a client' } })));
     assert.equal((await scene.taskRow(theirs.id)).title, 'Jonas owns this');
     const sketch = await scene.map(scene.owner);
     const item = await thought(scene.owner, sketch.id, 'My own thought');
-    assert.equal(refusal(await call('flux_remove_thought', 'map.thought.delete', 'plan', { mapId: sketch.id, thoughtId: item.id, expectedVersion: item.version })), 'AGENT_CHANGE_WAITS');
+    assert.ok(waits(await call('flux_remove_thought', { mapId: sketch.id, thoughtId: item.id, expectedVersion: item.version })));
     assert.equal(await thoughtExists(item.id), true, 'deleting always waits, even what is yours');
 
-    for (const [mayDo, code] of [['read', 'AGENT_ONLY_READS'], ['ask', 'AGENT_ASKS_FIRST']] as const) {
-      expectStatus(await scene.owner.browser.request('PATCH', agentConnectionPath(client.connectionId), { body: { mayDo } }), 200);
-      assert.equal(refusal(await create({ title: `Client in ${mayDo}` })), code);
-      assert.equal((await titled(`Client in ${mayDo}`)).length, 0);
-    }
+    expectStatus(await scene.owner.browser.request('PATCH', agentConnectionPath(client.connectionId), { body: { mayDo: 'read' } }), 200);
+    assert.equal(refusal(await create({ title: 'Client in read' })), 'AGENT_ONLY_READS');
+    expectStatus(await scene.owner.browser.request('PATCH', agentConnectionPath(client.connectionId), { body: { mayDo: 'ask' } }), 200);
+    assert.ok(waits(await create({ title: 'Client in ask' })));
+    assert.equal((await titled('Client in read')).length + (await titled('Client in ask')).length, 0);
     expectStatus(await scene.owner.browser.request('PATCH', agentConnectionPath(client.connectionId), { body: { mayDo: 'act' } }), 200);
     assert.ok(toolValue(await create({ title: 'Client acting' })).workId, 'what is new and its owner\'s own is still made at once');
   });
@@ -493,12 +492,11 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     assert.equal(await thoughtText(shared.id), 'Jonas rewrote this');
     assert.equal(await thoughtText(kept.id), 'Her agent changed this again');
 
-    // A local client uses the same rule, and has nowhere to wait.
+    // A local client uses the same rule, and waits the same way.
     const other = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Ada thought laptop', owner: 'self' } }), 201) as { id: string }).id;
     const client = await agentConnection(pool, scene.owner.browser, other, [scene.place.id]);
-    const allowed = await client.grant('map.thought.update', 'execute');
-    assert.equal(refusal(await client.tool('flux_update_thought', { projectId: scene.place.id, runtimeSessionId: client.runtimeSessionId, grantId: allowed.id, clientCommandId: randomUUID(), peerRequestClass: 'execute',
-      sources: [], mapId: sketch.id, thoughtId: shared.id, expectedVersion: rewritten.version, changes: { text: 'Overwrites Jonas from a client' } })), 'AGENT_CHANGE_WAITS');
+    assert.match(text(await client.tool('flux_update_thought', { projectId: scene.place.id, clientCommandId: randomUUID(),
+      sources: [], mapId: sketch.id, thoughtId: shared.id, expectedVersion: rewritten.version, changes: { text: 'Overwrites Jonas from a client' } })), /^Waiting for /);
     assert.equal(await thoughtText(shared.id), 'Jonas rewrote this');
 
     const yours = await scene.map(scene.owner, 'Named by Ada');

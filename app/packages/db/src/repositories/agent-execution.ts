@@ -1,28 +1,14 @@
-import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq, gt, isNull, sql } from 'drizzle-orm';
-import type { AgentPostcondition, AgentStandingGrant, CreateAgentStandingGrantCommand } from '@flux/contracts';
+import { and, eq, sql } from 'drizzle-orm';
+import type { AgentPostcondition } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
 type Receipt = typeof schema.agentCommandReceipts.$inferInsert;
 const runtime = schema.agentRuntimeSessions;
-const grants = schema.agentStandingGrants;
 const receipts = schema.agentCommandReceipts;
-function grantView(row: typeof grants.$inferSelect): AgentStandingGrant {
-  return { id: row.id, workspaceId: row.workspaceId, projectId: row.projectId, connectionId: row.connectionId,
-    operation: row.operation, peerRequestClass: row.peerRequestClass, objectId: row.objectId,
-    audience: { kind: 'project', projectId: row.projectId }, maximumUses: row.maximumUses, used: row.used,
-    expiresAt: row.expiresAt.toISOString(), revokedAt: row.revokedAt?.toISOString() ?? null, generation: row.generation, createdAt: row.createdAt.toISOString() };
-}
-
 /** Rows/locks only. The caller owns the open transaction and supplies core authorization. */
 export function agentExecutionRows(tx: DbExecutor) {
   return {
-    async ownedConnection(ownerUserId: string, connectionId: string) {
-      const table = schema.agentConnections;
-      const [row] = await tx.select({ id: table.id }).from(table).where(and(eq(table.id, connectionId), eq(table.ownerUserId, ownerUserId))).for('share');
-      return row ?? null;
-    },
     async now(): Promise<Date> {
       // Raw SQL bypasses Drizzle's timestamp column mapper; pg may return text.
       const result = await tx.execute<{ at: Date | string }>(sql`SELECT clock_timestamp() AS at`);
@@ -44,10 +30,6 @@ export function agentExecutionRows(tx: DbExecutor) {
         eq(runtime.clientSessionId, input.clientSessionId))).for('share');
       return row!;
     },
-    async lockGrant(id: string) {
-      const [row] = await tx.select().from(grants).where(eq(grants.id, id)).for('update');
-      return row ?? null;
-    },
     async lockCommand(connectionId: string, commandId: string) {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`flux.agent-command:${connectionId}:${commandId}`}, 0))`);
     },
@@ -61,55 +43,7 @@ export function agentExecutionRows(tx: DbExecutor) {
         .where(and(eq(table.id, id), eq(table.workspaceId, workspaceId), eq(table.projectId, projectId))).for('share');
       return row?.version ?? null;
     },
-    async debit(id: string, generation: number): Promise<boolean> {
-      return (await tx.update(grants).set({ used: sql`${grants.used} + 1` }).where(and(eq(grants.id, id),
-        eq(grants.generation, generation), isNull(grants.revokedAt), gt(grants.expiresAt, sql`clock_timestamp()`),
-        sql`${grants.used} < ${grants.maximumUses}`)).returning({ id: grants.id })).length === 1;
-    },
     async saveReceipt(receipt: Receipt) { await tx.insert(receipts).values(receipt); },
-    async createGrant(ownerUserId: string, connectionId: string, workspaceId: string, command: CreateAgentStandingGrantCommand) {
-      const fingerprint = createHash('sha256').update(JSON.stringify(command)).digest('hex');
-      await tx.insert(grants).values({ id: randomUUID(), ownerUserId, connectionId, workspaceId,
-        clientCommandId: command.clientCommandId, requestFingerprint: fingerprint,
-        projectId: command.projectId, operation: command.operation, peerRequestClass: command.peerRequestClass,
-        objectId: command.objectId ?? null, maximumUses: command.maximumUses, expiresAt: new Date(command.expiresAt) }).onConflictDoNothing();
-      const [row] = await tx.select().from(grants).where(and(eq(grants.connectionId, connectionId), eq(grants.clientCommandId, command.clientCommandId)));
-      return row?.requestFingerprint === fingerprint ? grantView(row) : 'IDEMPOTENCY_CONFLICT' as const;
-    },
-    async listGrants(ownerUserId: string, connectionId: string, page: { limit: number; offset: number }) {
-      const where = and(eq(grants.ownerUserId, ownerUserId), eq(grants.connectionId, connectionId));
-      const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(grants).where(where);
-      const rows = await tx.select().from(grants).where(where).orderBy(desc(grants.createdAt), desc(grants.id)).limit(page.limit).offset(page.offset);
-      return { items: rows.map(grantView), total: count!.total, ...page };
-    },
-    async liveProjectGrants(ownerUserId: string, connectionId: string, projectId: string, observedAt: Date, page: { limit: number; offset: number }) {
-      const where = and(eq(grants.ownerUserId, ownerUserId), eq(grants.connectionId, connectionId), eq(grants.projectId, projectId),
-        isNull(grants.revokedAt), gt(grants.expiresAt, observedAt));
-      const [count] = await tx.select({ total: sql<number>`count(*)::int` }).from(grants).where(where);
-      const rows = await tx.select().from(grants).where(where).orderBy(desc(grants.createdAt), desc(grants.id)).limit(page.limit).offset(page.offset);
-      return { items: rows.map((row) => ({ ...grantView(row), remainingUses: Math.max(0, row.maximumUses - row.used) })), total: count!.total, ...page,
-        nextOffset: page.offset + page.limit < count!.total ? page.offset + page.limit : null };
-    },
-    async revokeGrant(ownerUserId: string, connectionId: string, id: string) {
-      return (await tx.update(grants).set({ revokedAt: sql`clock_timestamp()`, generation: sql`${grants.generation} + 1` })
-        .where(and(eq(grants.id, id), eq(grants.connectionId, connectionId), eq(grants.ownerUserId, ownerUserId), isNull(grants.revokedAt)))
-        .returning({ id: grants.id })).length === 1;
-    },
-    /** The owner's grant on that connection, locked like an execution locks it; another owner's is absent. */
-    async lockOwnedGrant(ownerUserId: string, connectionId: string, id: string) {
-      const [row] = await tx.select().from(grants).where(and(eq(grants.id, id), eq(grants.connectionId, connectionId),
-        eq(grants.ownerUserId, ownerUserId))).for('update');
-      return row ?? null;
-    },
-    /**
-     * New limits for a grant the caller locked and checked. The generation stays: receipts keep replaying, and
-     * every execution already reads the live limits under the same row lock.
-     */
-    async narrowGrant(id: string, limits: { maximumUses: number; expiresAt: Date }) {
-      const [row] = await tx.update(grants).set({ maximumUses: limits.maximumUses, expiresAt: limits.expiresAt })
-        .where(eq(grants.id, id)).returning();
-      return grantView(row!);
-    },
     /**
      * Native post-state readers are operation-specific, same-project and content-free. `containerId` pins a
      * produced thought to its map or a produced message to the conversation the command targeted.

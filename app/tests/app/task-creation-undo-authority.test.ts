@@ -65,11 +65,10 @@ test('a genuine foreign agent exact grant cannot Undo another creator; revoked c
   const command = { projectId: f.projectId, runtimeSessionId: actor.runtimeSessionId, grantId: authority.id,
     clientCommandId: randomUUID(), peerRequestClass: 'plan', sources: [], workId: item.id, expectedVersion: item.version };
   assert.equal(toolFailure(await actor.tool('flux_undo_task_creation', command)).code, 'TASK_CREATION_UNDO_FORBIDDEN');
-  assert.equal(await f.used(authority.id), 0); assert.equal((await f.read(item.id) as unknown as WorkItem).creationUndo?.eligible, true);
+ assert.equal((await f.read(item.id) as unknown as WorkItem).creationUndo?.eligible, true);
   expect(await f.owner.request('DELETE', `/api/v1/agent-connections/${actor.connectionId}`), 204);
   const revoked = await actor.raw('flux_undo_task_creation', command);
   assert.notEqual(revoked.status, 200, 'Revocation refuses before tool execution');
-  assert.equal(await f.used(authority.id), 0);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM task_creation_undo_receipts WHERE work_id=$1', [item.id])).rows[0].n, 0);
 });
 
@@ -89,18 +88,14 @@ test('the exact Undo MCP switch controls execution and receipt replay independen
     clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], workId: item.id, expectedVersion: item.version };
   await save(initial.enabledCapabilityIds.filter(id => id !== 'work.creation.revert'));
   assert.equal(toolFailure(await f.tool('flux_undo_task_creation', command)).code, 'MCP_ENTRY_UNAVAILABLE');
-  assert.equal(await f.used(authority.id), 0);
   assert.equal((await f.read(item.id) as unknown as WorkItem).creationUndo?.eligible, true);
   await save(initial.enabledCapabilityIds.filter(id => id !== 'work.update'));
   const reverted = toolValue(await f.tool('flux_undo_task_creation', command));
   assert.equal((await f.read(item.id) as unknown as WorkItem).lifecycle?.state, 'creation_reverted');
-  assert.equal(await f.used(authority.id), 1);
   await save(initial.enabledCapabilityIds, initial.enabledEntryIds.filter(id => id !== 'tool:flux_undo_task_creation'));
   assert.equal(toolFailure(await f.tool('flux_undo_task_creation', command)).code, 'MCP_ENTRY_UNAVAILABLE');
-  assert.equal(await f.used(authority.id), 1, 'refused replay does not debit the grant');
   await save(initial.enabledCapabilityIds);
   assert.deepEqual(toolValue(await f.tool('flux_undo_task_creation', command)), { ...reverted, replayed: true });
-  assert.equal(await f.used(authority.id), 1, 'authorized exact replay keeps the original effect and debit');
 });
 
 test('trusted proposal use keeps accepting human creator; suggesting agent owner gains no Undo right and used proposal cannot resurrect', { timeout: 45_000 }, async () => {

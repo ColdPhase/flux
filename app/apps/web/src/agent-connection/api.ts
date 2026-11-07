@@ -1,9 +1,9 @@
 import {
   AGENT_CONNECTIONS_PATH, AGENT_OAUTH_CONSENT_CONTEXT_PATH, AGENT_OAUTH_HELD_CONNECTION_PATH, AUTH_OAUTH2_CONSENT_PATH, AUTH_OAUTH2_CONTINUE_PATH,
-  agentActionGrantPath, agentConnectionPath, agentConnectionSelectPath, agentActionGrantsPath, agentMcpPolicyPath, workspaceAgentsPath, type Agent, type AgentConnection,
+  agentConnectionPath, agentConnectionSelectPath, agentMcpPolicyPath, workspaceAgentsPath, type Agent, type AgentConnection,
   type AgentMcpEntry, type AgentMcpPolicy, type SaveAgentMcpPolicy, type AgentConnectionSetupFacts,
-  type AgentScope, type AgentOauthConsentContext, type AgentStandingGrant, type CreateAgentCommand, type CreateAgentConnectionCommand,
-  type AgentMayDo, type CreateAgentStandingGrantCommand, type ExternalClientDesignation, type NarrowAgentStandingGrantCommand, type Page, type UpdateAgentConnectionCommand,
+  type AgentScope, type AgentOauthConsentContext, type CreateAgentCommand, type CreateAgentConnectionCommand,
+  type AgentMayDo, type ExternalClientDesignation, type UpdateAgentConnectionCommand,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
@@ -30,7 +30,7 @@ export type ConsentContext = AgentOauthConsentContext;
 export const SCOPE_LABELS: Record<AgentScope, { title: string; description: string }> = {
   'flux.action.execute': {
     title: 'Run approved project actions',
-    description: 'Each action also needs a current grant from you, with its own limits and expiry.',
+    description: 'Deleting and other people’s things wait for your OK, and so does everything if you choose Ask me first.',
   },
   'flux.context.read': {
     title: 'Read selected project context',
@@ -52,33 +52,6 @@ export function createAgentConnection(command: CreateAgentConnectionCommand) {
 
 export function revokeAgentConnection(connectionId: string) {
   return request<null>(agentConnectionPath(encodeURIComponent(connectionId)), { method: 'DELETE' });
-}
-
-/**
- * Every standing grant of one of your connections, newest first: current ones and their history. The server
- * pages by 50; a connection rarely has more than a few pages, and the reading stops at 100 (5000 grants).
- */
-export async function listActionGrants(connectionId: string, signal?: AbortSignal) {
-  const grants: AgentStandingGrant[] = [];
-  // A long history pages on: a hand-off reads every grant before it adds any, so it never adds one twice (#763 FT-2).
-  for (let offset = 0; offset < 5000; offset += 50) {
-    const page = await request<Page<AgentStandingGrant>>(`${agentActionGrantsPath(encodeURIComponent(connectionId))}?limit=50&offset=${offset}`, { signal });
-    grants.push(...page.items);
-    if (offset + page.items.length >= page.total || page.items.length === 0) break;
-  }
-  return grants;
-}
-
-export function createActionGrant(connectionId: string, command: CreateAgentStandingGrantCommand) {
-  return request<AgentStandingGrant>(agentActionGrantsPath(encodeURIComponent(connectionId)), { method: 'POST', body: command });
-}
-
-export function narrowActionGrant(connectionId: string, grantId: string, command: NarrowAgentStandingGrantCommand) {
-  return request<AgentStandingGrant>(agentActionGrantPath(encodeURIComponent(connectionId), encodeURIComponent(grantId)), { method: 'PATCH', body: command });
-}
-
-export function revokeActionGrant(connectionId: string, grantId: string) {
-  return request<null>(agentActionGrantPath(encodeURIComponent(connectionId), encodeURIComponent(grantId)), { method: 'DELETE' });
 }
 
 export function createPersonalAgent(workspaceId: string, name: string) {
