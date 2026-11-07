@@ -1,6 +1,6 @@
 import type { DbExecutor } from '@flux/db';
 import { assertAuthorized, authorize, enforce, evaluateProject, type WorkAccess } from '@flux/core';
-import { spaceAi, accessReader } from '@flux/db';
+import { agentTaskRows, spaceAi, accessReader } from '@flux/db';
 
 /** Project access through the single policy choke point. */
 export function policyWorkAccess(tx: DbExecutor): WorkAccess {
@@ -17,6 +17,16 @@ export function policyWorkAccess(tx: DbExecutor): WorkAccess {
     },
     async aiAllowed(projectId) {
       return (await spaceAi(tx, projectId, { lock: true })).state === 'allowed';
+    },
+    /**
+     * #904 (AG-5): a task is given to your own agent, never to someone else's; an agent acts for its owner, so it reaches its owner's
+     * agents. (The Owner field offers your agents that run on the server; a local client is not offered there, LC-3.)
+     */
+    async ownsAgent(principal, agentId) {
+      const rows = agentTaskRows(tx);
+      const owner = principal.kind === 'human' ? principal.id : (await rows.agent(principal.id))?.ownerUserId;
+      const target = await rows.agent(agentId);
+      return !!owner && !!target && !target.revokedAt && target.ownerUserId === owner;
     },
   };
 }

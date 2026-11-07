@@ -1,0 +1,6 @@
+/* The agent on a task, in one plain line (#856, mockup AgentStates): calm, no card, no motion of its own. */
+.wd-agent { display: flex; flex-direction: column; gap: var(--s-2); margin: 0 0 var(--s-3); }
+.wd-agent__line { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s-2); min-width: 0; font-size: var(--fs-sm); color: var(--t2); }
+.wd-agent__text { color: var(--t1); font-weight: 500; overflow-wrap: anywhere; }
+.wd-agent__actions { display: inline-flex; gap: var(--s-2); margin-left: auto; }
+.wd-agent[data-agent-line="failed"] .wd-agent__text { color: var(--t1); }

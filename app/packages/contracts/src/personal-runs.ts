@@ -209,7 +209,7 @@ export interface SelectPersonalAgentCommand {
  * What started a run. `scheduled` and `morning_summary` are started by Flux's own tick for the owner's schedules and
  * morning summary (F-027 A8); only the first three can be asked for through the API.
  */
-export type AssistantRunKind = 'ask' | 'summarize' | 'map_thought' | 'scheduled' | 'morning_summary' | 'reaction';
+export type AssistantRunKind = 'ask' | 'summarize' | 'map_thought' | 'scheduled' | 'morning_summary' | 'reaction' | 'task';
 
 /** A map thought on a project sketch of the conversation's project. */
 export interface AssistantRunTarget {

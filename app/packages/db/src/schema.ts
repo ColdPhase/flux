@@ -1815,7 +1815,11 @@ export const personalRuns = pgTable('personal_runs', {
   connectionId: uuid('connection_id'),
   clientRunId: uuid('client_run_id').notNull(),
   requestFingerprint: text('request_fingerprint').notNull(),
-  kind: text('kind', { enum: ['ask', 'summarize', 'map_thought', 'scheduled', 'morning_summary', 'reaction'] }).notNull(),
+  kind: text('kind', { enum: ['ask', 'summarize', 'map_thought', 'scheduled', 'morning_summary', 'reaction', 'task'] }).notNull(),
+  /** 0008 (#856): the task a `task` run works on; its place is the task's discussion. */
+  workId: uuid('work_id').references((): AnyPgColumn => projectWorkItems.id, { onDelete: 'cascade' }),
+  /** 0008 (#856): who pressed Stop, so the owner is told. */
+  stopRequestedBy: text('stop_requested_by').references(() => authUsers.id, { onDelete: 'set null' }),
   prompt: text('prompt').notNull(),
   targetSketchId: uuid('target_sketch_id'),
   targetThoughtId: uuid('target_thought_id'),
@@ -1872,6 +1876,28 @@ export const personalRuns = pgTable('personal_runs', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
 ]);
+
+/** 0008 (#856, F-036 AG-5): "When someone assigns a task to me: Give it to [agent]". No row is "Do nothing". */
+export const agentTaskTaking = pgTable('agent_task_taking', {
+  ownerUserId: text('owner_user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
+  agentId: uuid('agent_id').notNull().references(() => agents.id, { onDelete: 'cascade' }),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** 0008 (#856): what the server must act on, written in the transaction that caused it and drained when the API is told. */
+export const agentTaskEvents = pgTable('agent_task_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  kind: text('kind', { enum: ['assigned', 'finished'] }).notNull(),
+  workId: uuid('work_id').notNull().references(() => projectWorkItems.id, { onDelete: 'cascade' }),
+  runId: uuid('run_id').references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
+  ownerUserId: text('owner_user_id'),
+  ownerAgentId: uuid('owner_agent_id'),
+  byKind: text('by_kind'),
+  byId: text('by_id'),
+  attempts: integer('attempts').notNull().default(0),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  handledAt: timestamp('handled_at', { withTimezone: true }),
+});
 
 export const assistantProposals = pgTable('assistant_proposals', {
   id: uuid('id').primaryKey(),
