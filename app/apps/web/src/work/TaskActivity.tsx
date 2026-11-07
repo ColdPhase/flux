@@ -12,8 +12,8 @@ import { useProjectShell } from '../project/data';
 import { getTaskDiscussion } from '../composer/api';
 import { agentDisplayName, FORMER_MEMBER } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
-import { AgentThreadLink } from '../agents/AgentThreadLink';
 import { TaskAgentState } from '../agents/TaskAgentState';
+import { AgentsThreadSection } from '../agents/AgentsThreadSection';
 import { failure, useAssistantChanges } from '../assistant/WaitingChanges';
 import { undoChange } from '../assistant/api';
 import { RefLink } from '../place/origin';
@@ -194,7 +194,7 @@ function PostedLine({ change, onChanged }: { change: AssistantChange; onChanged:
 
 /** The timeline: newest first, each line with its author and time. */
 export function ActivityTimeline({ state, composer, item, project, me, writable, composerId, empty }: {
-  state: TaskActivityState; composer: TaskComposerDraft; item: Pick<WorkItem, 'id' | 'version'>; project: Project; me: { id: string; name: string }; writable: boolean; composerId: string;
+  state: TaskActivityState; composer: TaskComposerDraft; item: Pick<WorkItem, 'id' | 'version' | 'number' | 'title'>; project: Project; me: { id: string; name: string }; writable: boolean; composerId: string;
   /** One quiet line after the timeline when the task has no results, decisions or Wiki pages yet. */
   empty?: ReactNode;
 }) {
@@ -277,7 +277,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
       {discussion && !discussion.root ? <p className="wd-muted wd-act__none">Nobody has written about this task yet. The first message starts its discussion in the space conversation.</p> : null}
       {state.hasEarlier ? <button type="button" className="wd-inline wd-act__earlier" disabled={state.busyEarlier} onClick={() => void state.loadEarlier()}>{state.busyEarlier ? 'Loading…' : 'Show earlier activity'}</button> : null}
       {empty}
-      <AgentThreadLink workId={item.id} projectId={project.id} revision={state.lines.length} />
+      <AgentsThreadSection task={{ id: item.id, number: item.number, title: item.title }} projectId={project.id} meId={me.id} revision={state.lines.length} />
     </section>
   );
 }

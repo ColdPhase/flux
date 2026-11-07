@@ -265,7 +265,6 @@ SCREENS = [
     Screen("wiki-page", "/projects/{p}/docs/{doc}", needs=("doc",)),
     Screen("wiki-with-panel", "/projects/{p}/docs/{doc}?open=work:{task}", needs=("doc", "task")),   # the Wiki narrowed by the one panel
     Screen("wiki-history", "/projects/{p}/docs/{doc}/history", needs=("doc",)),
-    Screen("project-agents", "/projects/{p}/agents"),
     Screen("project-github", "/projects/{p}/github"),
     Screen("empty-conversation", "/projects/{pe}"),
     Screen("empty-tasks", "/projects/{pe}/tasks"),

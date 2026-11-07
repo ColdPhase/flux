@@ -1,4 +1,4 @@
-"""Browser tests for the request cards in a task's agents' thread (#400 AC-4, #153 AC-2/AC-4).
+"""Browser tests for the request cards in a task's agents' thread, in its Details (#400 AC-4, #153 AC-2/AC-4; #857: a space has no Agents view).
 
 Hubert manages a project with Marek and Vera (members). The cards are read from the task's coordination
 record, shown in plain words above the thread's messages: kind, sender -> recipient, the target, the state, a review's
@@ -154,13 +154,22 @@ class RequestCardsJourney(unittest.TestCase):
         return json.loads(response.text()) if response.text() else {}
 
     def thread_url(self, fragment: str = "") -> str:
-        return f"/projects/{self.ids['project']}/agents?thread={self.ids['task']}{fragment}"
+        """The task's Details, where its agents' thread is (a space has no Agents view, F-038)."""
+        return f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}{fragment}"
+
+    def open_thread(self, page: Page) -> None:
+        """Opens the "Agents’ thread" row of the task's Details."""
+        row = page.get_by_role("button", name=re.compile("^Agents’ thread"))
+        expect(row).to_be_visible()
+        if row.get_attribute("aria-expanded") != "true":
+            row.click()
 
     def cards(self, who: str, *, can_cancel: bool, phone: bool = False, dark: bool = False, open_url: str | None = None) -> tuple[Page, Coordination]:
         page = self.page(who, phone=phone, dark=dark)
         stub = Coordination(self.ids["task"], self.ids["conversation"], self.ids["first"], can_cancel=can_cancel)
         page.route(re.compile(rf".*/api/v1/work/{self.ids['task']}/coordination(/.*)?$"), stub.handler)
         page.goto(open_url or self.thread_url())
+        self.open_thread(page)
         return page, stub
 
     def test_01_the_fixture(self) -> None:
@@ -192,6 +201,7 @@ class RequestCardsJourney(unittest.TestCase):
         # The real server, no stub: a task nobody asked anything about has no cards, and the section does not appear.
         page = self.page("hubert")
         page.goto(self.thread_url())
+        self.open_thread(page)
         expect(page.get_by_role("region", name=THREAD)).to_be_visible()
         expect(page.get_by_role("region", name=REGION)).to_have_count(0)
         self.assertEqual(self.api(page, "GET", f"/api/v1/work/{self.ids['task']}/coordination", status=200)["requests"], [])

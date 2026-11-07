@@ -466,7 +466,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         self.assertIn(work_id, [row["id"] for row in body["items"]], "the stored task is associated with the photo's message as its source")
         self.assertGreaterEqual(next(item["work"] for item in body["sources"] if item["messageId"] == message_id), 1)
 
-    def test_photo_actions_and_escape_in_threads_details_and_agents(self) -> None:
+    def test_photo_actions_and_escape_in_threads_and_details(self) -> None:
         """#369 review: Reply/Create task stay on an opening message; Escape closes only the photo."""
         for phone in (False, True):
             with self.subTest(phone=phone, surface="thread"):
@@ -509,21 +509,6 @@ class FilesReferencesPhotos(unittest.TestCase):
                 expect(page.locator("#details").get_by_label("Write to this task")).to_be_focused()
                 if phone:
                     _, viewer = self.open_in(page, details, "Open photo IMG_2050.png")
-                    self.create_task_from(page, viewer, self.ids["task-root"])
-            with self.subTest(phone=phone, surface="agents"):
-                page = self.page("jonas", phone=phone, path=f"/projects/{self.ids['project']}/agents?task={self.ids['task']}")
-                thread = page.get_by_role("region", name="Thread of Check the mount on sensor 3")
-                agent_root = thread.locator(f'[data-message-id="{self.ids["task-root"]}"]')
-                self.assert_caption_below(agent_root)
-                self.assert_meta_below_caption(agent_root)
-                expect(agent_root.locator(".ref-chip[data-ref=task]")).to_have_text("#8")
-                expect(agent_root.get_by_role("list", name="Link preview")).to_be_visible()
-                opener, viewer = self.open_in(page, thread, "Open photo IMG_2050.png")
-                expect(viewer.get_by_role("button", name="Create task", exact=True)).to_be_visible()
-                viewer.get_by_role("button", name="Reply", exact=True).click()
-                expect(page.get_by_label("Write to this task")).to_be_focused()
-                if not phone:
-                    _, viewer = self.open_in(page, thread, "Open photo IMG_2050.png")
                     self.create_task_from(page, viewer, self.ids["task-root"])
 
     def test_narrow_media_widths_and_viewport_bounds(self) -> None:

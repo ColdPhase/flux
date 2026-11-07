@@ -54,7 +54,7 @@ export function ClientGuide({ origin, initial = 'claude_code' }: { origin: strin
       <code>{`codex mcp add flux --url ${url}\ncodex mcp login flux`}</code>
       <p>Codex starts signing in when it adds the server; run the login command if it asks you to.</p>
       <h3>Start work</h3>
-      <p>Once connected, its Start and Resume commands appear on the project’s Agents view. Resume continues the same Codex thread.</p>
+      <p>Once your connection is saved, its Start and Resume commands appear with it below. Resume continues the same Codex thread.</p>
       <p>If Codex answers “Unsupported protocol version”, update Codex.</p>
     </section> : <section className="connection__client" role="tabpanel" id="guide-other" aria-labelledby="guide-tab-other">
       <p>Add a remote MCP server that uses streamable HTTP with this address. The client must support OAuth sign-in.</p>

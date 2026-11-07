@@ -18,7 +18,7 @@ from playwright.sync_api import expect, sync_playwright
 from test_app_shell import ORIGIN, UPSTREAM, shot as save_shot, start_forwarder
 from test_settings import UI_BROWSER
 
-VIEWS = ("Conversation", "Tasks", "Map", "Wiki", "Agents")
+VIEWS = ("Conversation", "Tasks", "Map", "Wiki")
 PLACES = ("Home", "Spaces", "Inbox")
 SE = {"width": 375, "height": 667}
 CDP_ONLY = "CDP touch gestures exist only in Chromium; the WebKit drawer/sheet drag is unverified"
@@ -49,8 +49,6 @@ class PhoneShellJourney(unittest.TestCase):
         ws = cls.call(page, "POST", "/api/v1/workspaces", {"name": "Riverside Makers"}, 201)
         cls.project = cls.call(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects",
             {"name": "Community garden sensors", "visibility": "restricted"}, 201)
-        # The Agents view stays an added view until #873 retires it (a new space starts with Conversation, Tasks, Map and Wiki).
-        cls.call(page, "POST", f"/api/v1/projects/{cls.project['id']}/views", {"view": "agents"})
         for title, status in (("Order six capacitive probes", "in_progress"), ("Ask the school for two ESP32 kits", "open"),
                               ("Measure LoRa range through the hedge", "done"), ("Write the volunteer guide", "open")):
             cls.call(page, "POST", f"/api/v1/projects/{cls.project['id']}/work", {"title": title, "status": status}, 201)
@@ -166,9 +164,9 @@ class PhoneShellJourney(unittest.TestCase):
         page.get_by_role("link", name=re.compile("^Community garden sensors")).click()
         expect(page).to_have_url(re.compile(f"/projects/{self.project['id']}$"))
         expect(bar).to_have_count(0)
-        # Wiki and Agents appear in the title menu once a project has them (#351, F-026 S20); this
-        # project has neither yet, so add them the way More does before walking the menu.
-        for view in ("docs", "agents"):
+        # Wiki appears in the title menu once a project has it (#351, F-026 S20); this
+        # project has none yet, so add it the way More does before walking the menu.
+        for view in ("docs",):
             response = page.request.fetch(f"{ORIGIN}/api/v1/projects/{self.project['id']}/views", method="POST",
                 headers={"origin": ORIGIN, "content-type": "application/json", "idempotency-key": str(uuid.uuid4())},
                 data=json.dumps({"view": view}))
@@ -176,7 +174,7 @@ class PhoneShellJourney(unittest.TestCase):
         page.reload()
         menu = self.open_views(page)
         expect(menu.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
-        for index, (name, path) in enumerate((("Map", "/map"), ("Wiki", "/docs"), ("Agents", "/agents"), ("Tasks", "/tasks"))):
+        for index, (name, path) in enumerate((("Map", "/map"), ("Wiki", "/docs"), ("Tasks", "/tasks"))):
             if index:  # the previous row's Escape closed the menu
                 menu = self.open_views(page)
             menu.get_by_role("link", name=re.compile(f"^{name}")).click()
@@ -402,7 +400,7 @@ class PhoneShellJourney(unittest.TestCase):
           .map((el) => [el.getAttribute('aria-label') || el.name || el.tagName, parseFloat(getComputedStyle(el).fontSize)])
           .filter(([, size]) => size < 16)"""
         for path in ("/", f"/projects/{self.project['id']}", f"/projects/{self.project['id']}/tasks",
-                     f"/projects/{self.project['id']}/agents", "/settings/notifications", "/dm/new"):
+                     "/settings/notifications", "/dm/new"):
             with self.subTest(path=path):
                 page.goto(path)
                 page.wait_for_load_state("networkidle")

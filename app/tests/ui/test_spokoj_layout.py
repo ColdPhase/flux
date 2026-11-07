@@ -34,8 +34,8 @@ LARGE = {"width": 1920, "height": 1080}
 WIDE = {"width": 2560, "height": 1440}
 TABLET = {"width": 820, "height": 1180}
 PHONES = ({"width": 390, "height": 844}, {"width": 375, "height": 667})
-VIEWS = ("", "/map", "/tasks", "/docs", "/agents")
-VIEW_NAMES = ("Conversation", "Map", "Tasks", "Wiki", "Agents")
+VIEWS = ("", "/map", "/tasks", "/docs")
+VIEW_NAMES = ("Conversation", "Map", "Tasks", "Wiki")
 PEOPLE = re.compile("who can see this space$")
 SETTLED = "() => document.getAnimations().every((a) => a.playState !== 'running')"
 
@@ -68,8 +68,8 @@ class SpokojLayout(unittest.TestCase):
         project = cls.call(page, "POST", f"/api/v1/workspaces/{workspace['id']}/projects",
                            {"name": "Community garden sensors", "visibility": "restricted"}, 201)
         cls.project_id = project["id"]
-        # Wiki and Agents appear in the header once a project has them (#351): add them as More does.
-        for view in ("docs", "agents"):
+        # Wiki appears in the header once a project has it (#351): add it as More does.
+        for view in ("docs",):
             response = page.request.fetch(f"{ORIGIN}/api/v1/projects/{cls.project_id}/views", method="POST",
                                           headers={"origin": ORIGIN, "content-type": "application/json", "idempotency-key": str(uuid.uuid4())},
                                           data=json.dumps({"view": view}))
@@ -374,7 +374,7 @@ class SpokojLayout(unittest.TestCase):
                     if size is TABLET:
                         boxes["title"] = self.box(header.get_by_role("heading", level=1).get_by_role("button"))
                     # Together is in every view; where nothing is open to work on together it stays and says why on a click.
-                    if path in ("/map", "/tasks", "/agents"):
+                    if path in ("/map", "/tasks"):
                         together = header.get_by_role("button", name="Together", exact=True)
                         expect(together).not_to_have_attribute("aria-disabled", "true")
                         together.click()

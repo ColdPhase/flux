@@ -83,8 +83,6 @@ class ProjectHeader(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": "Garden sensors"})
         project = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": PROJECT, "visibility": "restricted"})
-        # The Agents view stays an added view until #873 retires it (a new space starts with Conversation, Tasks, Map and Wiki).
-        self.api(page, "POST", f"/api/v1/projects/{project['id']}/views", {"view": "agents"}, status=200)
         type(self).ids["project"] = project["id"]
         type(self).state = page.context.storage_state()
 
@@ -105,7 +103,7 @@ class ProjectHeader(unittest.TestCase):
             header = self.header(page)
             expect(header.get_by_role("heading", level=1, name=PROJECT)).to_be_visible()
             views = header.get_by_role("navigation", name="Space views")
-            self.assertEqual([text.strip() for text in views.get_by_role("link").all_inner_texts()], ["Conversation", "Map", "Tasks", "Wiki", "Agents"])
+            self.assertEqual([text.strip() for text in views.get_by_role("link").all_inner_texts()], ["Conversation", "Map", "Tasks", "Wiki"])
             expect(views.get_by_role("link", name="Conversation")).to_have_attribute("aria-current", "page")
             # One row: the views sit beside the name, and no second toolbar row follows the header.
             name_box = header.get_by_role("heading", level=1).bounding_box()

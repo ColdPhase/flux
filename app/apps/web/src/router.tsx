@@ -12,7 +12,7 @@ import { NotFoundView } from './app/views';
 import { Home } from './app/Home';
 import { LockedBoundary, LockedSpacePage } from './encryption/LockedSpace';
 import { projectShellLoader } from './project/data';
-import { agentsPage, docViewsPage, mapPage, tasksPage, wikiPage } from './app/viewChunks';
+import { docViewsPage, mapPage, tasksPage, wikiPage } from './app/viewChunks';
 import {
   forgotPasswordAction,
   forgotPasswordLoader,
@@ -147,8 +147,6 @@ export const router = createBrowserRouter([
                   { path: ':docId/history', ...secondary(async () => { const page = await docViewsPage(); return { Component: page.DocHistory, loader: page.docHistoryLoader }; }) },
                 ],
               },
-              // Agents (UI116-2, #136): the project's connections and its task threads.
-              { path: 'agents', ...secondary(async () => { const page = await agentsPage(); return { Component: page.ProjectAgents, loader: page.projectAgentsLoader }; }) },
               // An invitation's link (#62): opens the session's work with the invitation card.
               { path: 'live/:sessionId', ...secondary(async () => ({ Component: (await import('./live/LiveOpen')).LiveOpen })) },
             ],

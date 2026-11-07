@@ -34,7 +34,6 @@ import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext
 import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
 import { ProjectAgentStop } from './WorkingAgent';
-import { useSpaceAi } from '../ai/spaceAi';
 import { useFocus } from './focus';
 import { FocusPill, HeaderFaces, MoreMenu, NeedsYouChip, type MoreItem } from './HeaderParts';
 import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, PhoneTitleMenu, phoneHidesDock, phoneOffersCreate, phonePlaces, type PhoneMenuItem } from './PhoneChrome';
@@ -51,14 +50,14 @@ function lastMapPath(userId: string, projectId: string, sketches: { items: { id:
   return remembered('map', userId, projectId) ?? (only ? `/projects/${projectId}/map/${only.id}` : `/projects/${projectId}/map`);
 }
 
-const PROJECT_VIEW_NAMES = ['Conversation', 'Map', 'Tasks', 'Wiki', 'Agents'];
-const VIEW_LABEL: Record<ProjectViewId, string> = { map: 'Map', docs: 'Wiki', agents: 'Agents' };
-const VIEW_PATH: Record<ProjectViewId, string> = { map: 'map', docs: 'docs', agents: 'agents' };
+const PROJECT_VIEW_NAMES = ['Conversation', 'Map', 'Tasks', 'Wiki'];
+const VIEW_LABEL: Record<ProjectViewId, string> = { map: 'Map', docs: 'Wiki' };
+const VIEW_PATH: Record<ProjectViewId, string> = { map: 'map', docs: 'docs' };
 
-/** Tab order for the slide direction: Home's views, or a project's Conversation · Map · Tasks · Wiki · Agents. */
+/** Tab order for the slide direction: Home's views, or a project's Conversation · Map · Tasks · Wiki. */
 function viewOrder(pathname: string) {
-  const inProject = pathname.match(/^\/projects\/[^/]+(?:\/(tasks|map|docs|agents))?/);
-  if (inProject) return ['conversation', 'map', 'tasks', 'docs', 'agents'].indexOf(inProject[1] ?? 'conversation');
+  const inProject = pathname.match(/^\/projects\/[^/]+(?:\/(tasks|map|docs))?/);
+  if (inProject) return ['conversation', 'map', 'tasks', 'docs'].indexOf(inProject[1] ?? 'conversation');
   // A direct message has the one view.
   if (/^\/dm\/(?!new$)[^/]+/.test(pathname)) return 0;
   return viewIndex(pathname);
@@ -234,7 +233,7 @@ function AppLayoutContent() {
   // New or changed direct messages refresh the sidebar list (#107). An open DM refetches itself.
   const revalidator = useRevalidator();
   const toast = useToast();
-  // Map, Wiki and Agents appear when needed; More adds one on purpose (#351, S21) and opens it.
+  // Map and Wiki appear when needed; More adds one on purpose (#351, S21) and opens it.
   // The answer may come after the person has moved on: the change stays, but only someone still in that
   // project is taken to its new view (or told it failed).
   const addView = async (projectId: string, view: ProjectViewId) => {
@@ -314,7 +313,6 @@ function AppLayoutContent() {
   useLayoutEffect(() => { detailsScope.current = detailsOwner; return () => { detailsScope.current = null; }; }, [detailsOwner]);
   const [actionSlot, setActionSlot] = useState<HTMLElement | null>(null);
   const [metadataSlot, setMetadataSlot] = useState<HTMLElement | null>(null);
-  const [viewMenuMetadataSlot, setViewMenuMetadataSlot] = useState<HTMLElement | null>(null);
   const panelGuard = useRef<(() => boolean) | null>(null);
   const shell = useMemo(() => ({
     openDetails(view: DetailsView = 'place', options?: { back?: 'push' | 'keep' }) {
@@ -340,11 +338,11 @@ function AppLayoutContent() {
     openSearch() { setNavOpen(false); setJumpOpen(true); },
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
-    metadataSlot, viewMenuMetadataSlot,
+    metadataSlot,
     toggleFocus() { void toggleFocus(); },
     toggleSidebar,
     sidebarHidden: railed || focusing,
-  }), [toggleDetails, actionSlot, metadataSlot, viewMenuMetadataSlot, projectId, detailsOwner, toggleSidebar, railed, toggleFocus, focusing, showPanel, hidePanel, reopenPanel, panelSlot, detailsOpen, detailsView, owned, labelOf]);
+  }), [toggleDetails, actionSlot, metadataSlot, projectId, detailsOwner, toggleSidebar, railed, toggleFocus, focusing, showPanel, hidePanel, reopenPanel, panelSlot, detailsOpen, detailsView, owned, labelOf]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -399,23 +397,6 @@ function AppLayoutContent() {
   // page's data: that navigation finishes at once, so no load of this page is left running that
   // could land after the person has moved on or signed out.
   const navigate = useNavigate();
-  // Closing the Details panel by any path (Esc, the close control, a sheet's scrim, a toggle) while the agents' address names
-  // a thread or a task leaves that param behind: a click during the hand-over closes the task's panel before the thread's
-  // owner is registered, and nothing else clears the address (#709). Only the open-to-closed change counts, so a reload on
-  // `?thread=` (the panel not yet shown) keeps it. A sheet or an overlay that closes because a link in it was followed
-  // (the address changed in the same step) was not closed by the person: the thread that link names stays in the address.
-  const wasDetailsOpen = useRef({ open: detailsOpen, key: location.key });
-  useEffect(() => {
-    const was = wasDetailsOpen.current;
-    wasDetailsOpen.current = { open: detailsOpen, key: location.key };
-    if (!was.open || detailsOpen || was.key !== location.key || !/\/agents\/?$/.test(location.pathname)) return;
-    const search = new URLSearchParams(location.search);
-    if (!search.has('thread') && !search.has('task')) return;
-    search.delete('thread');
-    search.delete('task');
-    const query = search.toString();
-    void navigate({ pathname: location.pathname, search: query ? `?${query}` : '', hash: location.hash }, { replace: true, state: location.state });
-  }, [detailsOpen, location, navigate]);
   const openedAt = useRef<string | null>(null);
   useEffect(() => {
     if (openedAt.current === location.key) return;
@@ -544,14 +525,11 @@ function AppLayoutContent() {
   // Home's computer layout has no header row; keep its name available to assistive technology.
   const homeRoot = where === 'home' && location.pathname === '/';
   const activeProject = reachableSpaces.find((project) => project.id === projectId);
-  // F-029 (#614): a project of a workspace whose AI is off has no Agents view and offers none to add (Spokój rule 7: nothing else moves).
-  const aiOff = useSpaceAi(activeProject?.id).blocked;
   // The Conversation tab returns to the conversation that was open before Tasks, Map, Docs or project
   // settings (GitHub), and the
   // Map tab to the sketch (or list) that was open there.
-  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|agents|github)(\/|$)/.test(location.pathname);
+  const onOtherView = /^\/projects\/[^/]+\/(tasks|map|docs|github)(\/|$)/.test(location.pathname);
   const onMap = /^\/projects\/[^/]+\/map(\/|$)/.test(location.pathname);
-  const onAgents = /^\/projects\/[^/]+\/agents(\/|$)/.test(location.pathname);
   const onWiki = /^\/projects\/[^/]+\/docs(\/|$)/.test(location.pathname);
   useEffect(() => {
     if (!projectId || (onOtherView && !onMap)) return;
@@ -561,17 +539,16 @@ function AppLayoutContent() {
   const project = shellProject && shellProject.project.id === projectId ? shellProject : undefined;
   const workSummary = useProjectWorkSummary();
   const openWork = project ? workSummary.summary?.unfinishedTotal : undefined;
-  // Conversation · Map · Tasks · Wiki · Agents in the final design's order (#117); quiet tabs without
+  // Conversation · Map · Tasks · Wiki in the final design's order (#117); quiet tabs without
   // counts. The unfinished work count stays readable to assistive technology on the Tasks tab.
-  const viewNow = /^\/projects\/[^/]+\/(map|docs|agents)(\/|$)/.exec(location.pathname)?.[1] as ProjectViewId | undefined;
+  const viewNow = /^\/projects\/[^/]+\/(map|docs)(\/|$)/.exec(location.pathname)?.[1] as ProjectViewId | undefined;
   const shownProjectViews = project ? shownViews(project, viewNow) : null;
   const projectViews = projectId ? [
     { id: 'conversation', label: 'Conversation', to: onOtherView ? lastConversationPath(me.user.id, projectId) : `${location.pathname}${location.search}` },
     { id: 'map', label: 'Map', to: onMap ? location.pathname : lastMapPath(me.user.id, projectId, project?.sketches), end: false },
     { id: 'tasks', label: 'Tasks', to: `/projects/${projectId}/tasks${lastTasksSearch(me.user.id, projectId)}`, ...(openWork ? { countLabel: `, ${openWork} open` } : {}) },
     { id: 'docs', label: 'Wiki', to: `/projects/${projectId}/docs`, end: false },
-    { id: 'agents', label: 'Agents', to: `/projects/${projectId}/agents` },
-  ].filter((view) => !(aiOff && view.id === 'agents')).filter((view) => !(PROJECT_VIEWS as readonly string[]).includes(view.id) || !shownProjectViews || shownProjectViews.has(view.id as ProjectViewId)) : null;
+  ].filter((view) => !(PROJECT_VIEWS as readonly string[]).includes(view.id) || !shownProjectViews || shownProjectViews.has(view.id as ProjectViewId)) : null;
   const places = phonePlaces(location.pathname, inboxUnread);
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with space access';
@@ -700,7 +677,7 @@ function AppLayoutContent() {
       : null;
   const viewName = activeProject ? PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))] : null;
   const addViewItems: { label: string; run: () => void }[] = project && shownProjectViews && projectId
-    ? addableViews(shownProjectViews).filter((view) => !(aiOff && view === 'agents')).map((view) => ({ label: `Add ${VIEW_LABEL[view]}`, run: () => void addView(projectId, view) })) : [];
+    ? addableViews(shownProjectViews).map((view) => ({ label: `Add ${VIEW_LABEL[view]}`, run: () => void addView(projectId, view) })) : [];
   const moreItems: MoreItem[] = [
     // A header with no room for them (Spokój rule 3) moves the people and Together here; the views stay in the row.
     ...(project?.people ? [{ label: 'Who can see this', run: openAudience, narrow: true }] : []),
@@ -752,10 +729,9 @@ function AppLayoutContent() {
     const agents = includeAgents ? people.length - humans : 0;
     return `${humans} ${humans === 1 ? 'person' : 'people'}${agents ? ` · ${agents} ${agents === 1 ? 'agent' : 'agents'}` : ''}`;
   };
-  const currentProjectView = ['conversation', 'map', 'tasks', 'docs', 'agents'][Math.max(0, viewOrder(location.pathname))];
+  const currentProjectView = ['conversation', 'map', 'tasks', 'docs'][Math.max(0, viewOrder(location.pathname))];
   const projectMenu: PhoneMenuItem[] = projectViews ? ([
     ['conversation', 'chat', undefined], ['tasks', 'tasks', openWork ? `${openWork} open` : undefined], ['map', 'edit', undefined], ['docs', 'doc', undefined],
-    ['agents', 'spark', onAgents ? <span ref={setViewMenuMetadataSlot} /> : undefined],
   ] as const).flatMap(([id, icon, note]) => {
     // A view the project has not added yet (#351) is not in the menu; "Add …" rows offer it.
     const view = projectViews.find((item) => item.id === id);
@@ -773,9 +749,9 @@ function AppLayoutContent() {
       ) : activeProject && projectViews ? (
         <>{routeOrigin ? phoneBack('/projects') : <PhoneBack onBack={() => goBackAPlace('/projects')} />}
           <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={detailsEntry}
-            metadataSlot={onWiki || onAgents ? setMetadataSlot : undefined}
+            metadataSlot={onWiki ? setMetadataSlot : undefined}
             adds={addViewItems.map((item) => ({ label: item.label, run: item.run }))}
-            subtitle={onWiki ? peopleLine(project?.people ?? null) : <>{onAgents && aiOff ? 'AI is off' : PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))]}{project?.people ? <span className="phead__people"> · {peopleLine(project.people, !onAgents)}</span> : null}</>} /></>
+            subtitle={onWiki ? peopleLine(project?.people ?? null) : <>{PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))]}{project?.people ? <span className="phead__people"> · {peopleLine(project.people)}</span> : null}</>} /></>
       ) : activeDm && dmViews ? (
         <>{phoneBack('/projects')}
           <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: 'chat' as const, current: true }))}
