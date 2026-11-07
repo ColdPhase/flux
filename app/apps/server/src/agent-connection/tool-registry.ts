@@ -96,7 +96,7 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, boun
         if (!entry || entry.requiredScope !== requiredScope || entry.operation !== (effect?.operation ?? null))
           throw new Error('A Flux tool must match its exact registered permission');
         dispatch.declare('tool', name);
-        if (effect && (CHANGE_TOOLS.has(name) || run && RUN_EFFECTS.has(name))) {
+        if (effect && (run ? RUN_EFFECTS.has(name) : CHANGE_TOOLS.has(name))) {
           const original = callback as (...args: unknown[]) => unknown;
           const private_ = run ? RUN_PRIVATE[name] : undefined;
           if (run) {

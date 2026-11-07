@@ -153,8 +153,9 @@ describe('A local client follows the owner\'s rights and waits like the assistan
     assert.equal(undone.undone, 1);
     const states = Object.fromEntries((await rows()).map((row) => [row.id, row.state]));
     assert.deepEqual([states[first!.id], states[second!.id]], ['applied', 'undone']);
-    assert.deepEqual([(await titled('Earlier task')).map((row) => row.id), (await titled('Later task')).length], [[early], 0], 'the later task is gone and the earlier one stays');
-    assert.notEqual(later, early);
+    const listed = (expectStatus(await f.owner.request('GET', `/api/v1/projects/${f.projectId}/work?limit=50`), 200) as { items: { id: string }[] }).items.map((item) => item.id);
+    assert.ok(listed.includes(early), 'the earlier task stays');
+    assert.ok(!listed.includes(later), 'the later task is taken back');
   });
 
   describe('attacks', () => {

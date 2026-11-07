@@ -129,10 +129,10 @@ export async function coworkScene() {
         sourceRefs: options.sourceRefs ?? [{ type: 'material', id: material.materialId, version: 1 }], criteriaRefs: [target], peerUnblocking: true });
     const send = async (intentKey: string, target: Record<string, unknown>, options: { clientCommandId?: string; kind?: string; sourceRefs?: unknown[] } = {}) =>
       approvedReply(author, reviewer, await author.call('flux_send_request', sendArgs(intentKey, target, options)));
-    return { held, reviewUnit, reviewClaim, ask, send, sendArgs, approvedReply: (reply: Reply) => approvedReply(author, reviewer, reply) };
+    return { held, reviewUnit, reviewClaim, ask, send, sendArgs };
   }
 
-  return { hubert, marek, ada, vera, olga, ws, p, removeAccess, demote, connect, task, material, unit, request, take, openUnit, startReview };
+  return { hubert, marek, ada, vera, olga, ws, p, removeAccess, demote, connect, task, material, unit, request, take, openUnit, startReview, approvedReply };
 }
 export type CoworkScene = Awaited<ReturnType<typeof coworkScene>>;
 export type CoworkConn = Awaited<ReturnType<CoworkScene['connect']>>;
