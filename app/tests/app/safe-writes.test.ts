@@ -162,6 +162,8 @@ describe('idempotency keys', () => {
     expectStatus(await owner.browser.request('PATCH', `/api/v1/workspaces/${space.id}/members/${admin.id}`, { body: { role: 'member' } }), 200);
     // F-037: the creator is the new space's admin by its own grant; the owner removes them from the space as well.
     const grants = expectStatus(await owner.browser.request('GET', `/api/v1/projects/${created.id}/grants`), 200) as { id: string; principal: { id: string } }[];
+    // A space always keeps an admin (C-16): the owner becomes one too, so the creator's own grant can go.
+    await grant(owner, created.id, owner, 'manager');
     const own = grants.find((item) => item.principal.id === admin.id)!;
     expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${created.id}/grants/${own.id}`), 204);
     expectStatus(await admin.browser.request('GET', `/api/v1/projects/${created.id}`), 404);

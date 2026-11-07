@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { promisify } from 'node:util';
 import { createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
-import { connectionString, pool } from './support/db.js';
+import { connectionString } from './support/db.js';
 
 // #846: the migrator sent each migration file as one query through a pool with the API's 2 s request timeout, so on a host where the
 // v0.1 baseline takes longer (a slow disk, a fraction of a CPU, arm64) every attempt rolled back with "Query read timeout".
@@ -23,8 +23,11 @@ test('migrate applies a baseline that takes longer than 2 s and records every fi
   const scratch = `migrate_slow_${randomUUID().replaceAll('-', '').slice(0, 12)}`;
   const scratchUrl = new URL(connectionString);
   scratchUrl.pathname = `/${scratch}`;
-  await pool.query(`CREATE DATABASE ${scratch}`);
+  // CREATE and DROP DATABASE can take longer than the 2 s request timeout on a loaded host (#916: the DROP hit it in 4 of 8 runs),
+  // so the scratch database is made and removed on a pool with a long one.
+  const { pool: admin } = createDatabase(connectionString, undefined, { queryTimeoutMs: 60_000, max: 1 });
   try {
+    await admin.query(`CREATE DATABASE ${scratch}`);
     const { pool: setup } = createDatabase(scratchUrl.toString());
     try {
       // Only the migration session's query (it holds the whole baseline) sleeps, and only once; pg-boss's own setup is not slowed.
@@ -52,6 +55,6 @@ test('migrate applies a baseline that takes longer than 2 s and records every fi
       assert.deepEqual(await readAppliedMigrationVersions(scratchPool), manifest.map((file) => file.version));
     } finally { await scratchPool.end(); }
   } finally {
-    await pool.query(`DROP DATABASE IF EXISTS ${scratch} WITH (FORCE)`);
+    try { await admin.query(`DROP DATABASE IF EXISTS ${scratch} WITH (FORCE)`); } finally { await admin.end(); }
   }
 });
