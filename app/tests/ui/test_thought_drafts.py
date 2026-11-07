@@ -662,13 +662,12 @@ class ThoughtDraftJourney(unittest.TestCase):
         expect(page.get_by_role("group", name=re.compile("^Map: ")).or_(page.locator(".sk-outline-list"))).to_be_visible()
 
     def round_trip_through_every_view(self, page, *, touch=False):
-        """Map → Conversation → Agents → Tasks → Wiki → Map inside one page visit, as a person switches tabs."""
+        """Map → Conversation → Tasks → Wiki → Map inside one page visit, as a person switches tabs. A space has these four views
+        (F-037, #873); the Agents tab is not one of them, and shows only in a space that has an agent until #857 removes it."""
         page.evaluate("window.sameVisit = true")
-        for name, path in (("Conversation", r"(/conversations/[0-9a-f-]{36})?$"), ("Agents", r"/agents$"), ("Tasks", r"/tasks(\?.*)?$"), ("Wiki", r"/docs(/.*)?$")):
+        for name, path in (("Conversation", r"(/conversations/[0-9a-f-]{36})?$"), ("Tasks", r"/tasks(\?.*)?$"), ("Wiki", r"/docs(/.*)?$")):
             self.tab(page, name, touch=touch)
             page.wait_for_url(re.compile(rf"/projects/{self.project}{path}"))
-            if name == "Agents":
-                expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
             expect(page.locator(".sk-head")).to_have_count(0)
             expect(page.get_by_role("form", name="New thought draft")).to_have_count(0)
         self.back_to_map(page, touch=touch)

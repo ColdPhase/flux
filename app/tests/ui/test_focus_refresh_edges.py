@@ -267,7 +267,7 @@ class RefreshEdges(unittest.TestCase):
                 page, actor = self.actor('Focus Saved ' + theme, theme=theme)
                 self.api(page, 'PATCH', '/api/v1/notification-preferences', {'pause': {'until': None}, 'quietHours': {'enabled': False}})
                 page.goto(f"/projects/{actor['project']}")
-                expect(page.locator('header.top').get_by_role('navigation', name='Project views')).to_be_visible()
+                expect(page.locator('header.top').get_by_role('navigation', name='Space views')).to_be_visible()
                 held, reads, patches = {}, [], []
                 def handler(route):
                     if route.request.method == 'GET' and held.get('fail'):

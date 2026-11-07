@@ -111,7 +111,7 @@ class PauseTruthProbe(unittest.TestCase):
         page,A=self.actor('Held Start')
         self.api(page,'PATCH','/api/v1/notification-preferences',{'pause':{'until':None},'quietHours':{'enabled':False}})
         page.goto(f"/projects/{A['project']}")
-        expect(page.locator('header.top').get_by_role('navigation',name='Project views')).to_be_visible()
+        expect(page.locator('header.top').get_by_role('navigation',name='Space views')).to_be_visible()
         expect(self.pill(page)).to_have_count(0)
         held={}
         def handler(route):

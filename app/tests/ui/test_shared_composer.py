@@ -78,6 +78,12 @@ class SharedComposerJourney(unittest.TestCase):
         material = self.api(page, "POST", f"/api/v1/projects/{project['id']}/materials", {"title": "Verified measurements", "body": "38% gestures at 5 lux", "clientMutationId": str(uuid.uuid4())}, 201)
         return project, tasks[0], tasks[1], material
 
+    def enter_agents(self, page, project):
+        """Moves to the Agents view in the same page visit, as an agent's task link does. A space shows no Agents tab unless it has
+        an agent (F-037, #873: its views are Conversation, Tasks, Map and Wiki), so these tests no longer click one."""
+        page.evaluate("([url]) => { history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }", [f"/projects/{project['id']}/agents"])
+        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
+
     def open_thread(self, page, project, task):
         """Opens a task's thread in the Agents view in the same page visit (an agent's task link does the same)."""
         expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
@@ -180,7 +186,7 @@ class SharedComposerJourney(unittest.TestCase):
         pane.get_by_label("Reply", exact=True).fill("Shared command keeps this reference and attachment")
         self.choose(page, [self.file()], pane)
         expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
-        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Agents")).click()
+        self.enter_agents(page, project)
         self.open_thread(page, project, a)
         expect(page.get_by_label("Write to this task")).to_have_value("Shared command keeps this reference and attachment")
         lost = []
@@ -323,8 +329,7 @@ class SharedComposerJourney(unittest.TestCase):
         self.choose(page, [self.file()], pane)
         expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
         expect(pane.get_by_text("This browser refused draft storage", exact=False)).to_be_visible()
-        tabs = page.get_by_role("navigation", name="Space views")
-        tabs.get_by_role("link", name=re.compile("^Agents")).click()
+        self.enter_agents(page, project)
         self.open_thread(page, project, a)
         expect(page.get_by_label("Write to this task")).to_have_value("Newest memory copy")
         page.get_by_label("Write to this task").fill("The newest second edit")
@@ -783,7 +788,7 @@ class SharedComposerJourney(unittest.TestCase):
                 expect(page.get_by_role("heading", name="Sign in", exact=True)).to_have_count(0)
                 # Use the app's project link so the visit-local store survives the login round trip.
                 page.locator(f'a[href^="/projects/{project["id"]}"]').first.click()
-                page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Agents")).click()
+                self.enter_agents(page, project)
                 self.open_thread(page, project, task)
                 expect(page.get_by_label("Write to this task", exact=True)).to_have_value("")
                 expect(page.get_by_role("list", name="Files in your draft")).to_have_count(0)
