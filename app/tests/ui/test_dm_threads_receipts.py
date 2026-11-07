@@ -396,11 +396,10 @@ class DmThreadsReceipts(unittest.TestCase):
         self.assertLessEqual(resting["scroll"], resting["client"], "no sideways scrolling after the swipe")
         self.assertLessEqual(resting["over"], 0.5, "the bubble and its clock end inside the pane")
         shot(page, "dm-threads-phone-rest-light")
-        # The caption under the composer shares its line with "Choose messages" and does not wrap.
+        # The caption under the composer does not wrap.
         caption = page.locator(".dm__composer .composer__audience > span").first.evaluate("el => ({height: el.getBoundingClientRect().height, line: parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.45})")
         self.assertLessEqual(caption["height"], caption["line"] * 1.3, f"the caption stays on one line ({caption})")
-        for icon in (page.locator(".dm__composer .composer__audience > svg"), page.locator(".dm__composer .dm-select-btn--phone svg")):
-            self.assertGreaterEqual(icon.first.bounding_box()["width"], 10, "the lock and the check icons stay visible")
+        self.assertGreaterEqual(page.locator(".dm__composer .composer__audience > svg").first.bounding_box()["width"], 10, "the lock icon stays visible")
 
     def test_08_project_conversation_roots_and_thread_replies_show_real_receipts(self) -> None:
         import uuid

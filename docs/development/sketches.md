@@ -98,10 +98,9 @@ author receives the events of a private sketch. The stream's `objectType` is `sk
   included), or makes one titled "My map" the first time (`openMyMap` in `api/sketches.ts`), and shows
   it at its own address, `/map/:sketchId`. It is shown as "My map · Only you", with no way back to a list and
   no rename. Create's **Thought** puts a thought on it, in a free place (`freeSpot`). Project
-  sketches live in their project's Map tab, which still lists them, and DM sketches in their DM (#189).
-- A sketch opens only where it lives: `/projects/:projectId/map/:sketchId` for a project
-  sketch, `/dm/:dmId/sketches/:sketchId` for a DM's sketch and `/map/:sketchId` for a private
-  one. A link that cannot know the place (search, doc links) opens `/map/:sketchId`, and the
+  sketches live in their project's Map tab, which still lists them (#189). A direct message has no maps in the app (#866): its Sketches tab, "Choose messages" and "Make it a space" are gone. The API still has `scope=dm` sketches and their promotion; removing them is a follow-up.
+- A map opens only where it lives: `/projects/:projectId/map/:sketchId` for a space's map and
+  `/map/:sketchId` for a private one. A link that cannot know the place (search, doc links) opens `/map/:sketchId`, and the
   view moves it, keeping the `#thought-…` fragment.
 - `/map/:sketchId` is a map (direction C `#lamp-map`, `-select`, `-edit`,
   `-list`). The toolbar has Thought, Connect, Shape, Remove and Undo, plus a status line.

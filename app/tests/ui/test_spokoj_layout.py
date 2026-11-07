@@ -87,7 +87,7 @@ class SpokojLayout(unittest.TestCase):
         page.goto(f"/dm/new?workspace={workspace['id']}&with={cls.kai_id}")
         expect(page).to_have_url(re.compile(r"/dm/[0-9a-f-]{36}$"))
         cls.dm_path = page.url.removeprefix(ORIGIN)
-        # Messages, so the direct message offers "Choose messages".
+        # Messages, so the direct message is not empty.
         cls.call(page, "POST", f"/api/v1/dms/{cls.dm_path.split('/')[-1]}/messages",
                  {"body": "Can you bring the soldering iron on Saturday?", "clientMessageId": str(uuid.uuid4())}, 201)
         context.close()
@@ -435,7 +435,7 @@ class SpokojLayout(unittest.TestCase):
         expect(menu.get_by_role("menuitem", name="Details", exact=True)).to_have_count(0)
         page.keyboard.press("Escape")
         page.goto(self.dm_path)
-        expect(page.locator("header.top").get_by_role("button", name="Choose messages", exact=True)).to_be_visible()
+        expect(page.get_by_role("button", name="Choose messages", exact=True)).to_have_count(0)  # sketches from messages are gone (#866)
         expect(page.get_by_role("button", name="Select", exact=True)).to_have_count(0)
         page.locator("header.top").get_by_role("button", name="More", exact=True).click()
         expect(page.get_by_role("menu", name="More").get_by_role("menuitem", name="Message info")).to_be_visible()
@@ -497,8 +497,6 @@ class SpokojLayout(unittest.TestCase):
                             # The project's title is cut at the same width in every view.
                             self.assertAlmostEqual(title["width"], reference["title width"]["width"], delta=1, msg=f"{size['width']} title width at {path}")
                             self.assertAlmostEqual(controls["title"]["x"], reference["title"]["x"], delta=4, msg=f"{size['width']} title at {path}")
-                # The direct message's "Choose messages" waits by its composer.
-                expect(page.get_by_role("button", name="Choose messages", exact=True)).to_be_visible()
                 shot(page, f"507-phone-{size['width']}-dm")
                 # Every top-level header is 56 px with its controls at the same height; the capsule is here.
                 avatar = None
@@ -514,19 +512,6 @@ class SpokojLayout(unittest.TestCase):
                         self.assertAlmostEqual(here["y"], avatar["y"], delta=1, msg=path)
                     if reference:
                         self.assertAlmostEqual(here["y"], reference["Search"]["y"], delta=1, msg=f"{path}: the same height as the project header's controls")
-
-    def test_12_the_phone_direct_message_chooses_messages_by_its_composer(self) -> None:
-        page = self.page(PHONES[0], touch=True)
-        page.goto(self.dm_path)
-        choose = page.get_by_role("button", name="Choose messages", exact=True)
-        expect(page.locator("header.phead").get_by_role("button", name="Choose messages")).to_have_count(0)
-        self.assertGreaterEqual(self.box(choose)["height"], 44)
-        choose.click()
-        bar = page.get_by_role("region", name="Selected messages")
-        expect(bar.get_by_role("status")).to_have_text("Choose the messages to sketch from")
-        bar.get_by_role("button", name="Cancel").click()
-        expect(bar).to_be_hidden()
-        expect(choose).to_be_focused()
 
 
 if __name__ == "__main__":

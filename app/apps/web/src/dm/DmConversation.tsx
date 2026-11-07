@@ -2,7 +2,6 @@ import { useTyping } from '../typing/useTyping';
 import { TypingNotice } from '../typing/TypingNotice';
 import { useSpareHeight } from '../ui/spareHeight';
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
-import { createPortal } from 'react-dom';
 import { Link, Navigate, useLoaderData, useLocation, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Dm, DmMessage, DmPerson, DmTaskCopyResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
@@ -12,11 +11,8 @@ import { outboxView, useComposerDraft, useComposerScope } from '../composer/draf
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
 import { CiteTile } from '../composer/References';
 import { takeHeldCite } from '../app/citeBus';
-import { createDmSketch } from '../api/sketches';
-import { sketchHref } from '../sketch/format';
 import { useStreamEvents } from '../api/stream';
 import { useShellData } from '../app/data';
-import { useShellActions } from '../app/shellContext';
 import { Avatar, Button, Icon, MEDIA, sendsOnEnter, useMediaQuery, useToast } from '../ui';
 import { audienceLine, dmTitle, othersIn } from './names';
 import { pageBackTo } from '../app/seekMessage';
@@ -77,7 +73,6 @@ function merge(current: DmMessage[], incoming: DmMessage[]) {
 function DmContent({ initial }: { initial: Dm }) {
   // Touch devices add a line with Enter and send with the button (#189).
   const touch = useMediaQuery(MEDIA.touch);
-  const phone = useMediaQuery(MEDIA.phone);
   const { me } = useShellData();
   const revalidator = useRevalidator();
   const audienceId = useId();
@@ -105,18 +100,9 @@ function DmContent({ initial }: { initial: Dm }) {
   const outbox = outboxView(shown, composer.pending, composer.sent, me.user.id);
   const refreshing = useRef(false);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
-  // #96: selecting messages to start a sketch that stays in this DM.
   const navigate = useNavigate();
   const toast = useToast();
-  const [selecting, setSelecting] = useState(false);
-  const [picked, setPicked] = useState<string[]>([]);
-  const [starting, setStarting] = useState(false);
-  const startAttempt = useRef<{ ids: string; key: string } | null>(null);
-  const selectButtonRef = useRef<HTMLButtonElement>(null);
   const root = useRef<HTMLDivElement>(null);
-  const composerBox = useRef<HTMLDivElement>(null);
-  const held = useRef<{ anchor: HTMLElement; offset: number } | null>(null);
-  const { actionSlot } = useShellActions();
   // #536: the open thread lives in the address (?thread=<root>), so reload and Back reflect the same state.
   const [params, setParams] = useSearchParams();
   const location = useLocation();
@@ -281,56 +267,6 @@ function DmContent({ initial }: { initial: Dm }) {
     finally { setOlderBusy(false); }
   }
 
-  function toggleSelecting(on: boolean) {
-    // The swap of the composer and the selection bar must not move what the person is reading (#594): remember the first
-    // message in view and give the bar the composer's height, then put the message back where it was once both have changed.
-    const feed = feedRef.current;
-    if (feed) {
-      const top = feed.getBoundingClientRect().top;
-      const anchor = [...feed.querySelectorAll<HTMLElement>('.dm-msg[data-message-id]')].find((item) => item.getBoundingClientRect().bottom > top);
-      held.current = anchor ? { anchor, offset: anchor.getBoundingClientRect().top - top } : null;
-    }
-    if (on) root.current?.style.setProperty('--dm-swap', `${composerBox.current?.offsetHeight ?? 0}px`);
-    setSelecting(on);
-    setPicked([]);
-    requestAnimationFrame(() => {
-      if (on) feedRef.current?.querySelector<HTMLElement>('.dm-msel')?.focus({ preventScroll: true });
-      else selectButtonRef.current?.focus({ preventScroll: true });
-    });
-  }
-  // Entering or leaving the selection changes the height of what sits under the messages, and a long own message on a
-  // phone wraps once more beside the check: the message the person was on goes back to its place before anything paints.
-  useLayoutEffect(() => {
-    const feed = feedRef.current;
-    const was = held.current;
-    held.current = null;
-    if (!feed || !was || !was.anchor.isConnected) return;
-    const shift = was.anchor.getBoundingClientRect().top - feed.getBoundingClientRect().top - was.offset;
-    if (Math.abs(shift) >= 0.5) feed.scrollTop += shift;
-  }, [selecting]);
-  const pick = (id: string) => setPicked((current) => (current.includes(id) ? current.filter((x) => x !== id) : [...current, id]));
-
-  async function startSketch() {
-    if (!picked.length || starting) return;
-    // In conversation order, whatever order they were picked in; a retry reuses its key.
-    const ids = messages.filter((m) => picked.includes(m.id)).map((m) => m.id);
-    const signature = ids.join(',');
-    if (startAttempt.current?.ids !== signature) startAttempt.current = { ids: signature, key: crypto.randomUUID() };
-    setStarting(true);
-    try {
-      const sketch = await createDmSketch(dm.workspaceId, dm.id, `From ${ids.length} ${ids.length === 1 ? 'message' : 'messages'}`, ids, startAttempt.current.key);
-      startAttempt.current = null;
-      navigate(sketchHref(sketch), { state: { fresh: true, started: ids.length } });
-    } catch (cause) {
-      setStarting(false);
-      if (cause instanceof ApiError && (cause.code === 'DM_RECIPIENT_LEFT' || cause.code === 'DM_RECIPIENT_UNAVAILABLE')) {
-        setLeftNotice(cause.message); setSelecting(false); setPicked([]); void refresh();
-        return;
-      }
-      if (!denied(cause)) toast({ message: 'The sketch couldn’t be started. Your selection is kept; try again.', tone: 'danger' });
-    }
-  }
-
   // Stored messages, then the ones being sent, grouped by day and author as one list.
   const lines = [...shown.map((message) => ({ message, item: null, authorId: message.authorId, at: message.createdAt })),
     ...outbox.pending.map((item) => ({ message: null, item, authorId: me.user.id, at: item.at }))];
@@ -341,7 +277,7 @@ function DmContent({ initial }: { initial: Dm }) {
   useSpareHeight(feedRef, columnRef, liftRef, rows.length, feedNode);
   // #534: what this person observed, and who observed every message of their own whole runs.
   const feedBox = feedRef;
-  useObservation({ scope: dm.id, observe: (ids) => observeDmMessages(dm.id, ids), enabled: !gone && !selecting && !returned.pending, feed: feedBox,
+  useObservation({ scope: dm.id, observe: (ids) => observeDmMessages(dm.id, ids), enabled: !gone && !returned.pending, feed: feedBox,
     ids: shown.filter((m) => m.authorId !== me.user.id).map((m) => m.id), depend: shown.length });
   const runs = ownRuns(lines.map((line) => ({ id: line.message?.id ?? null, authorId: line.authorId, createdAt: line.at })), me.user.id, olderCursor !== null);
   const seen = useReceipts({ scope: dm.id, fetchReceipts: (list, signal) => dmReceipts(dm.id, list, signal), runs, tick: receiptTick + refreshTick });
@@ -392,24 +328,16 @@ function DmContent({ initial }: { initial: Dm }) {
   const goneNotice = recipientGone
     ? leftNotice || `${counterpart!.name.split(/\s+/)[0]} left this conversation. They can reopen it by messaging you.`
     : '';
-  const typing = useTyping(me.user.id, !gone && !selecting ? { kind: 'dm', id: dm.id } : null, !recipientGone);
+  const typing = useTyping(me.user.id, !gone ? { kind: 'dm', id: dm.id } : null, !recipientGone);
   const threadOpen = !!threadId && !!messages.length && !gone;
   const originBack = useOriginPanelBack();
   const slot = useOwnedPanel(threadOpen ? { key: `dm-thread:${threadId}`, chip: 'Thread', label: 'Replies', startFull: true, ...(originBack ? { origin: originBack } : {}), onClose: closeThread } : null);
   if (gone) return <DmUnavailable />;
   const canSend = composer.canSend && !recipientGone;
-  // On the phone the header keeps only Back, the title, Together and Search (Spokój #507): choosing starts by the composer.
-  const canChoose = messages.length > 0 && !recipientGone;
-  const selectButton = actionSlot && canChoose && !phone ? createPortal(
-    <Button ref={selectButtonRef} variant="quiet" icon="check" aria-pressed={selecting} className="dm-select-btn" onClick={() => toggleSelecting(!selecting)}>Choose messages</Button>,
-    actionSlot,
-  ) : null;
   return (
     <div className="convo-split dm-split">
     <div className="convo-split__stream">
-    <div ref={root} className={`dm${selecting ? ' dm--selecting' : ''}`} data-dm-id={dm.id}
-      onKeyDown={(event) => { if (selecting && event.key === 'Escape') { event.preventDefault(); toggleSelecting(false); } }}>
-      {selectButton}
+    <div ref={root} className="dm" data-dm-id={dm.id}>
       <div className={`dm__feed${returned.pending ? ' is-returning' : ''}`} ref={attachFeed}>
         <div className="dm__lift" aria-hidden="true" ref={liftRef} />
         <div className="dm__in" ref={columnRef}>
@@ -432,16 +360,16 @@ function DmContent({ initial }: { initial: Dm }) {
                 if (!line.message) {
                   const item = line.item!;
                   return <DmBubble key={`pending-${item.id}`} message={null} pending={item} mine name={me.user.name} continued={continued} groupLast={groupLast} day={newDay ? label : null}
-                    writable={!recipientGone} selecting={false} picked={false} arrived={false} observed={false} seenBy={[]} nav="stream"
-                    onCreateTask={startCopy} onPick={pick} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />;
+                    writable={!recipientGone} arrived={false} observed={false} seenBy={[]} nav="stream"
+                    onCreateTask={startCopy} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />;
                 }
                 const message = line.message;
                 const mine = message.authorId === me.user.id;
                 // A message confirmed from its queued one keeps that list item: nothing moves (#264).
                 return <DmBubble key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? me.user.name : nameOf(message.authorId)} continued={continued} groupLast={groupLast}
-                  day={newDay ? label : null} writable={!recipientGone} selecting={selecting} picked={selecting && picked.includes(message.id)} arrived={arrived === message.id}
+                  day={newDay ? label : null} writable={!recipientGone} arrived={arrived === message.id}
                   observed={!mine} seenBy={(seen.get(message.id) ?? []).map((p) => p.name)} nav="stream"
-                  onReply={() => openThread(message.id, true)} onOpenThread={(root) => openThread(root.id, false)} onCreateTask={startCopy} onPick={pick} />;
+                  onReply={() => openThread(message.id, true)} onOpenThread={(root) => openThread(root.id, false)} onCreateTask={startCopy} />;
               })}
             </ol>
           ) : (
@@ -449,17 +377,7 @@ function DmContent({ initial }: { initial: Dm }) {
           )}
         </div>
       </div>
-      {selecting ? (
-        <div className="dm-selbar" role="region" aria-label="Selected messages">
-          <div className="dm-selbar__in">
-            <span className="dm-selbar__count" role="status">{picked.length ? `${picked.length} ${picked.length === 1 ? 'message' : 'messages'} selected` : 'Choose the messages to sketch from'}</span>
-            <Button variant="quiet" onClick={() => toggleSelecting(false)}>Cancel</Button>
-            <Button variant="primary" icon="map" busy={starting} aria-disabled={!picked.length || undefined} onClick={() => void startSketch()}>Start sketch from these messages</Button>
-            <p className="dm-selbar__note"><Icon name="lock" size={12} />The sketch stays in this conversation: {audience.replace(/^Only /, 'only ')} can see it. No space is created.</p>
-          </div>
-        </div>
-      ) : null}
-      <div ref={composerBox} className="composer dm__composer" hidden={selecting}>
+      <div className="composer dm__composer">
         <div className="composer__in">
           {goneNotice ? <p className="dm__notice" role="status"><Icon name="lock" size={13} />{goneNotice}</p> : null}
           <ConnectionLine />
@@ -467,8 +385,7 @@ function DmContent({ initial }: { initial: Dm }) {
           <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value) => change(value)} onBlur={typing.stop} onKeyDown={onKey}
             disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`}
             fieldProps={{ 'aria-describedby': audienceId }} sendLabel="Send message" sendDisabled={!canSend} onSend={() => void send()} />
-          <p className="composer__audience"><Icon name="lock" size={13} /><span id={audienceId}>{audience}<span aria-hidden="true"> · </span><span className="composer__where">direct message</span></span>
-            {phone && canChoose ? <Button ref={selectButtonRef} variant="quiet" icon="check" className="dm-select-btn dm-select-btn--phone" onClick={() => toggleSelecting(true)}>Choose messages</Button> : null}</p>
+          <p className="composer__audience"><Icon name="lock" size={13} /><span id={audienceId}>{audience}<span aria-hidden="true"> · </span><span className="composer__where">direct message</span></span></p>
           <TypingNotice {...typing} />
           <SendAnnouncer pending={composer.pending} />
           {composer.error && composer.error !== goneNotice ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{composer.error}</p> : null}

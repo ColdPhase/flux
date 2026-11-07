@@ -2,7 +2,6 @@ import {
   sketchLinkPath,
   sketchLinksPath,
   sketchPath,
-  sketchPromotionPath,
   sketchPositionsPath,
   sketchThoughtPath,
   sketchThoughtsPath,
@@ -13,10 +12,6 @@ import {
   type CreateThoughtCommand,
   type MovedThoughts,
   type MoveThoughtsCommand,
-  type PromotedSketch,
-  type PromotionParticipants,
-  type PromotionTarget,
-  type SketchPromotionPreview,
   type Project,
   type Sketch,
   type SketchDetail,
@@ -43,24 +38,6 @@ export async function openMyMap(workspaceId: string, idempotencyKey: string, sig
   const mine = [...listed.items].sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
   return mine ?? request<Sketch>(workspaceSketchesPath(workspaceId), { method: 'POST', body: { title: 'My map', scope: 'private' }, headers: key(idempotencyKey), signal });
 }
-
-/** Sketches of one direct message (#96), newest change first. */
-export const listDmSketches = (workspaceId: string, dmId: string, limit: number, offset: number, signal?: AbortSignal) =>
-  request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?dmId=${dmId}&limit=${limit}&offset=${offset}`, { signal });
-/** A sketch in a DM, optionally started from selected messages (each becomes a thought with its source). */
-export const createDmSketch = (workspaceId: string, dmId: string, title: string, fromMessageIds: string[], idempotencyKey: string) =>
-  request<Sketch>(workspaceSketchesPath(workspaceId), {
-    method: 'POST', body: { title, scope: 'dm', dmId, ...(fromMessageIds.length ? { fromMessageIds } : {}) }, headers: key(idempotencyKey),
-  });
-/**
- * Who could open a project copy of a DM sketch, and what goes in; nothing is shared. `participants`
- * (#188) says whether a new project is also given to the DM's other people; the web app asks only
- * when the person ticks "Also give … access".
- */
-export const previewPromotion = (sketchId: string, target: { kind: 'new' } | { kind: 'existing'; projectId: string } | null, participants: PromotionParticipants, signal?: AbortSignal) =>
-  request<SketchPromotionPreview>(`${sketchPromotionPath(sketchId)}?${new URLSearchParams({ ...(target ? (target.kind === 'new' ? { target: 'new' } : { projectId: target.projectId }) : {}), participants })}`, { signal });
-export const promoteSketch = (sketchId: string, target: PromotionTarget, token: string, participants: PromotionParticipants, idempotencyKey: string) =>
-  request<PromotedSketch>(sketchPromotionPath(sketchId), { method: 'POST', body: { target, token, participants }, headers: key(idempotencyKey) });
 
 export const getSketch = (sketchId: string, signal?: AbortSignal) => request<SketchDetail>(sketchPath(sketchId), { signal });
 export const renameSketch = (sketchId: string, title: string, version: number, idempotencyKey: string) =>

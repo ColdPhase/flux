@@ -537,8 +537,6 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .composer > .composer__in > .composer__audience { display: block; min-width: 0; line-height: 1.45; overflow-wrap: anywhere; }
   .composer > .composer__in > .composer__audience svg { margin-right: 4px; vertical-align: -2px; }
   /* A direct message's "Choose messages" sits at the end of this line on the phone, not in the header (Spokój #507). */
-  .dm__composer .composer__audience:has(> .dm-select-btn--phone) { display: flex; align-items: center; gap: 8px; }
-  .dm-select-btn--phone.ui-btn { flex: none; min-height: 44px; margin: -12px -8px -12px auto; padding: 0 8px; }
   .composer__hint:has(> .composer__state--idle:only-child), .composer__hint:has(> .composer__keys + .composer__state--idle) { display: none; }
 }
 

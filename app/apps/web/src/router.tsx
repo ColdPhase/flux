@@ -172,8 +172,6 @@ export const router = createBrowserRouter([
           { path: 'dm', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).DmIndex })) },
           { path: 'dm/new', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).NewDm })) },
           { path: 'dm/:dmId', ...secondary(async () => { const page = await import('./dm/DmConversation'); return { Component: page.DmConversation, loader: page.dmLoader }; }) },
-          { path: 'dm/:dmId/sketches', ...secondary(async () => ({ Component: (await import('./dm/DmSketches')).DmSketches })) },
-          { path: 'dm/:dmId/sketches/:sketchId', ...sketch },
           { path: 'inbox', ...secondary(async () => ({ Component: (await import('./notifications/InboxView')).InboxView })) },
           { path: 'inbox/:id', ...secondary(async () => ({ Component: (await import('./notifications/InboxView')).InboxOpen })) },
           // Settings (#350, F-026): every earlier address still opens its section.

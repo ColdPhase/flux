@@ -29,9 +29,9 @@ export function phonePlaces(pathname: string, inboxUnread: number): BottomNavIte
 export function phoneHidesDock(pathname: string): boolean {
   if (pathname === '/dm/new') return true;
   if (/^\/projects\/[^/]+(\/conversations\/[^/]+)?$/.test(pathname)) return true;
-  // Spokój (rule 7): a project's views and a direct message's sketches keep the header's Search, not the capsule.
+  // Spokój (rule 7): a project's views keep the header's Search, not the capsule.
   if (/^\/projects\/[^/]+\/(tasks|map|docs|agents)(\/|$)/.test(pathname)) return true;
-  return /^\/dm\/[^/]+(\/sketches)?$/.test(pathname);
+  return /^\/dm\/[^/]+$/.test(pathname);
 }
 
 /** The places that offer "+": lists and views, not editors, sketches, settings or Search. */

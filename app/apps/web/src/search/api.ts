@@ -21,9 +21,8 @@ export function targetHref(target: SearchTarget): string {
     case 'dm_message': return `/dm/${target.dmId}#message-${target.messageId}`;
     case 'material': return `/materials/${target.materialId}/versions/${target.version}`;
     case 'doc': return `/projects/${target.projectId}/docs/${target.docId}/versions/${target.version}`;
-    // A DM's sketch opens inside the DM, so its tabs and audience stay in view (#96).
-    case 'sketch': return target.dmId ? `/dm/${target.dmId}/sketches/${target.sketchId}` : `/map/${target.sketchId}`;
-    case 'thought': return `${target.dmId ? `/dm/${target.dmId}/sketches/${target.sketchId}` : `/map/${target.sketchId}`}#thought-${target.thoughtId}`;
+    case 'sketch': return `/map/${target.sketchId}`;
+    case 'thought': return `/map/${target.sketchId}#thought-${target.thoughtId}`;
     // A private draft was one of "Your notes"; they are thoughts on My map now (#866), so an old one opens it.
     case 'draft': return '/map';
     case 'person': return `/dm/new?workspace=${encodeURIComponent(target.workspaceId)}&with=${encodeURIComponent(target.userId)}`;
