@@ -13,7 +13,7 @@ import { assistantScene, human, lockWaiters, type AssistantScene } from './suppo
 import { db, pool } from './support/db.js';
 import { publicOrigin } from './support/http.js';
 import { beginOauth, expect, mcp, oauthToken } from './support/mcp.js';
-import { addMember, expectStatus, person, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, type Person } from './support/people.js';
 import { waitFor } from './support/wait.js';
 import { ensureSpaceAiAllowed, setSpaceAi, spaceAiRow } from './support/space-ai.js';
 
@@ -56,7 +56,10 @@ describe('space AI switch: flip and cutover', () => {
   before(async () => {
     scene = await assistantScene('ai-cutover');
     member = await person('ai-cutover-member');
-    await addMember(scene.owner, scene.ws.id, member, 'member');
+    await addMember(scene.lead, scene.ws.id, member, 'member');
+    // The company admin is also one of the space's members, so a demotion leaves them an ordinary member of it, with a way in.
+    await grant(scene.lead, scene.place.id, scene.admin, 'contributor');
+    await grant(scene.lead, scene.place.id, member, 'contributor');
     const connection = expect(await scene.owner.browser.request('POST', '/api/v1/agent-connections',
       { body: { agentId: scene.agentId, selectedProjectIds: [scene.place.id], scopes: ['flux.context.read'] } }), 201);
     const clientId = `flux-test-${randomUUID()}`;
@@ -97,19 +100,19 @@ describe('space AI switch: flip and cutover', () => {
     assert.ok(audience.includes(`human:${scene.peer.id}`) && !audience.some((key) => key.startsWith('agent:')));
     assert.equal((expectStatus(await scene.peer.browser.request('GET', projectPath(scene.place.id)), 200) as Project).ai, 'blocked', 'a reload sees it');
 
-    // A company admin (not in the space) turns it back on with an Idempotency-Key, is demoted, and the replay of that key is refused.
+    // A company admin turns it back on with an Idempotency-Key, is demoted, and the replay of that key is refused.
     const key = randomUUID();
     const on = expectStatus(await put(scene.admin, 'allowed', { 'idempotency-key': key }), 200) as SetSpaceAiResult;
     assert.deepEqual([on.ai, on.changed, on.stopped], ['allowed', true, null]);
-    expectStatus(await scene.owner.browser.request('PATCH', `/api/v1/workspaces/${scene.ws.id}/members/${scene.admin.id}`, { body: { role: 'member' } }), 200);
+    expectStatus(await scene.lead.browser.request('PATCH', `/api/v1/workspaces/${scene.ws.id}/members/${scene.admin.id}`, { body: { role: 'member' } }), 200);
     try {
-      // The space is workspace-visible, so the demoted admin is an ordinary member of it: they can open it and may not change it.
+      // The demoted admin is an ordinary member of the space: they can open it and may not change it.
       const replay = await put(scene.admin, 'allowed', { 'idempotency-key': key });
       assert.equal(replay.status, 403, 'a demoted admin cannot replay the change');
       assert.equal(replay.headers.get('idempotent-replayed'), null);
       assert.equal(code((await put(scene.admin, 'blocked')).json), 'SPACE_AI_ADMIN_REQUIRED', 'nor turn it off again');
     } finally {
-      expectStatus(await scene.owner.browser.request('PATCH', `/api/v1/workspaces/${scene.ws.id}/members/${scene.admin.id}`, { body: { role: 'admin' } }), 200);
+      expectStatus(await scene.lead.browser.request('PATCH', `/api/v1/workspaces/${scene.ws.id}/members/${scene.admin.id}`, { body: { role: 'admin' } }), 200);
     }
   });
 

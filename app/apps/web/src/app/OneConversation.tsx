@@ -73,7 +73,6 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   const [shownId, setShownId] = useState(conversation?.id ?? null);
   if ((conversation?.id ?? null) !== shownId) { setShownId(conversation?.id ?? null); setClosing(null); }
   const thread = conversation && conversation.id !== closing ? conversation : null;
-  const writable = project.access !== 'viewer';
   const makeWork = useCreateWorkFromMessage(project);
   const owners = useAgentOwners(project);
   const { reopenPanel } = useShellActions();
@@ -118,14 +117,14 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
     if (thread && item.conversationId === thread.id) {
       // The thread is already this one: bring its panel back if something closed or covered it, then go to it.
       reopenPanel(`thread:${thread.id}`);
-      document.getElementById(reply && writable ? 'thread-composer' : 'details')?.focus();
+      document.getElementById(reply ? 'thread-composer' : 'details')?.focus();
       return;
     }
     // Switching threads replaces the open one, so closing still returns to the stream in one step.
     const backToStream = thread ? state?.backToStream === true : true;
     navigate(`/projects/${project.id}/conversations/${item.conversationId}`,
       { state: { fromStream: true, backToStream, focusComposer: reply } satisfies NavState, replace: !!thread && backToStream });
-  }, [navigate, project.id, reopenPanel, state?.backToStream, thread, writable]);
+  }, [navigate, project.id, reopenPanel, state?.backToStream, thread]);
   const close = useCallback((options?: { keepPanel?: boolean }) => {
     if (!thread) return;
     if (!opener.current) opener.current = root?.message.id ?? null;
@@ -182,8 +181,8 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
           <Pane key={thread.id} data={data} variant="thread" rootMessageId={rootMessage?.id ?? null} objects={objects}
             focusComposer={!!state?.focusComposer} onThreadSize={roots.threadSize}
             rootHeader={({ preview, taskRow, firstDay }) => <ThreadRoot firstDay={firstDay} message={rootMessage} projectId={project.id} body={rootMessage?.body ?? thread.firstMessageBody} author={rootMessage ? author(rootMessage) : null}
-              agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable={writable} replies={replies} task={root?.task ?? null} taskRow={taskRow} preview={preview} onDenied={onDenied}
-              photo={{ place: project.name, onReply: writable ? () => document.getElementById('thread-composer')?.focus() : undefined, onCreateTask: writable && rootMessage ? () => void makeWork.create(rootMessage) : undefined }} />} />
+              agentOwner={rootMessage?.authorId === null ? agentAuthorOwner(rootMessage.author, owners) ?? null : null} meId={me.user.id} writable replies={replies} task={root?.task ?? null} taskRow={taskRow} preview={preview} onDenied={onDenied}
+              photo={{ place: project.name, onReply: () => document.getElementById('thread-composer')?.focus(), onCreateTask: rootMessage ? () => void makeWork.create(rootMessage) : undefined }} />} />
         </OwnedPanelContent>) : null}
     </div>
     </SourceOfContext.Provider>

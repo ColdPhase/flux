@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import type { Doc, DocVersionSummary, MaterialVersion, Page, ProjectExport } from '@flux/contracts';
-import { pool } from './support/db.js';
+import { loseSpace, pool } from './support/db.js';
 import { expect, toolValue } from './support/mcp.js';
 import { actionScene, toolFailure } from './support/mcp-actions.js';
 
@@ -136,14 +136,14 @@ test('a doc action refuses when its owner lost the project, with no version, eve
   const update = await f.grant('doc.update', 'execute');
   const created = toolValue(await f.tool('flux_create_doc', { ...base(f, create.id, 'plan'), doc: { title: 'Wiring notes', body: 'First pass.' } }));
   const docId = String(created.docId);
-  // The owner is kept out: the agent has exactly what its owner has, so the standing grant carries nothing. No project is
+  // The owner no longer has the space: the agent has exactly what its owner has, so the standing grant carries nothing. No project is
   // reachable, so the MCP request itself is refused before any tool runs, as for a revoked connection.
-  await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by)
-    SELECT $1, a.workspace_id, $2, a.owner_user_id, 'denied', a.owner_user_id FROM agents a WHERE a.id = $3 ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`, [randomUUID(), f.projectId, f.agentId]);
+  const ownerId = String((await pool.query('SELECT owner_user_id FROM agents WHERE id = $1', [f.agentId])).rows[0].owner_user_id);
+  const restore = await loseSpace(f.projectId, ownerId);
   const refused = await f.raw('flux_update_doc', { ...base(f, update.id, 'execute'), docId, expectedVersion: 1,
     changes: { body: 'Second pass.' } });
   assert.equal(refused.status, 403);
   assert.deepEqual([await versions(docId), await docEvents(docId), await f.used(update.id)], [1, 1, 0]);
-  await pool.query('DELETE FROM project_grants WHERE project_id = $1', [f.projectId]);
+  await restore();
   assert.equal((await getDoc(f, docId)).version, 1);
 });

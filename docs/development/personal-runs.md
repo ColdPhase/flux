@@ -309,7 +309,7 @@ else edited. Nothing that waits ever expires.
 
 - **Who decides.** A waiting change is the owner's alone: Approve (Delete), Edit, Skip (Keep) and Approve all
   answer everyone else with the same 404 as for a change that does not exist (another member, a workspace admin,
-  a viewer, a guest, a stranger). The routes take only a signed-in session, so an agent's bearer or a run token is
+  a guest, a stranger). The routes take only a signed-in session, so an agent's bearer or a run token is
   refused, and no tool of any agent decides anything, even its own item. Approve re-executes the saved call with
   every check under the server-owned `owner_approval` purpose: the source run must be live or normally completed
   (a stopped, failed or cancelled one supplies nothing); Pause blocks it and a resume does not apply anything by
@@ -335,7 +335,7 @@ else edited. Nothing that waits ever expires.
 - **Undo** is a set of compensating, versioned writes through the domains' own commands (`work.updateWork` with
   `restore`, `docs.updateDoc`, `maps.updateThought`/`moveThoughts`/`rename`/`removeThought`/`removeLink`,
   `work.undoTaskCreation`), run as the person who undoes: the owner, or anyone who may edit in the project (a
-  viewer gets 403, a stranger 404). What was done is the run's message for everyone who can read the conversation
+  stranger gets 404). What was done is the run's message for everyone who can read the conversation
   (`GET /api/v1/conversations/:id/assistant-changes`: the owner sees all of their own rows, others only what was
   done); a waiting change or a refused Approve never leaves its owner. The web shows this as one line on the
   message with Undo beside it (`assistantChangeLine`), then "Undone by Ada"; there is no Activity list. The restore is recorded as "Jonas
@@ -378,7 +378,7 @@ tokens:
   Send stays disabled when blocked; Esc, × or Backspace in an empty box return to a plain
   reply, which always works. One request, then the composer is a reply again. A refused ask
   explains itself; a manager whose assistant lacks access gets *Let your assistant read this
-  project* (a viewer grant).
+  project* (a space member grant).
 - **Working line.** Owner only, where the answer will appear: "Your assistant is reading this
   conversation…" with **Stop**; afterwards "Stopped. Nothing was posted." or the failure, with
   Retry where it makes sense. It follows the owner's progress events, and polls while the
@@ -549,7 +549,7 @@ mapping, limits, environment isolation) and the composition guards. Run them thr
 `app/tests/ui/test_personal_assistant.py` (through `./scripts/check_ui.sh`, with the
 test-only switch) covers the UI with three people: not set up, consent and caps,
 the manager grant, the working line only for the owner, the attributed answer and its
-citations for peers and a viewer, Stop, a provider failure, a proposal accepted only by
+citations for peers, Stop, a provider failure, a proposal accepted only by
 the work's owner, paused, capped, and phone width. The production fail-closed states
 (provider off, no key) are rendered there from a stubbed status response only.
 The keyboard and modal-focus checks of AC-8 (08b to 08d, 10b) use Tab and Enter only: ask with `/ai`, reach Stop, Retry

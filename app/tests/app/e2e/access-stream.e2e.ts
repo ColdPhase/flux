@@ -167,8 +167,8 @@ describe('access and stream in Chromium against the running services', () => {
     const space = await alice.expect('POST', '/api/v1/workspaces', 201, { name: 'Browser launch' }) as { id: string };
     await alice.expect('POST', `/api/v1/workspaces/${space.id}/members`, 201, { email: bob.email, role: 'member' });
     const room = await alice.expect('POST', `/api/v1/workspaces/${space.id}/projects`, 201, { name: 'Launch room', visibility: 'restricted' }) as { id: string };
-    const grant = await alice.expect('POST', `/api/v1/projects/${room.id}/grants`, 201, { principal: { kind: 'human', id: bob.id }, role: 'viewer' }) as { id: string };
-    await alice.note('created workspace, restricted project and viewer grant for Bob', { workspace: space.id, project: room.id, grant: grant.id });
+    const grant = await alice.expect('POST', `/api/v1/projects/${room.id}/grants`, 201, { principal: { kind: 'human', id: bob.id }, role: 'contributor' }) as { id: string };
+    await alice.note('created workspace, restricted project and member grant for Bob', { workspace: space.id, project: room.id, grant: grant.id });
 
     await bob.openStream();
     await bob.note('opened WebSocket /api/v1/stream in the page', { readyState: await bob.socketState() });

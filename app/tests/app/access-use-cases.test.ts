@@ -129,7 +129,6 @@ function scene(options: Scene = {}, checked = true) {
     ownerCount: async () => { log('workspaces.ownerCount'); return options.ownerCount ?? 2; },
     setRole: async (_w: string, _u: string, role: WorkspaceRole) => { log('workspaces.setRole'); return memberRow(role); },
     deleteMember: async () => { log('workspaces.deleteMember'); },
-    liftDeniedGrants: async () => { log('workspaces.liftDeniedGrants'); },
     recordRemoved: async () => { log('workspaces.recordRemoved'); },
   };
   const encryption = {
@@ -262,11 +261,11 @@ describe('workspace and membership use cases over in-memory repositories', () =>
     await assert.rejects(addMember(human(OWNER), WS, { userId: TARGET, role: 'member' }, twice.db, twice.ports), (error: unknown) => error instanceof ConflictError && error.code === 'ALREADY_MEMBER');
   });
 
-  test('changeRole: the workspace row before the member row; a promoted member\'s old deny goes; the event, then the account, last', async () => {
+  test('changeRole: the workspace row before the member row; the event, then the account, last', async () => {
     const s = scene({ targetRole: 'member' });
     const changed = await changeRole(human(OWNER), WS, TARGET, { role: 'admin' }, s.db, s.ports);
     assert.equal(changed.role, 'admin');
-    assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'workspaces.lock', 'access.loadActor(lock)', 'workspaces.lockMember', 'workspaces.setRole', 'workspaces.liftDeniedGrants',
+    assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'workspaces.lock', 'access.loadActor(lock)', 'workspaces.lockMember', 'workspaces.setRole',
       ...EVENT_LAST, 'workspaces.findAccount(id)', 'commit']);
   });
 
@@ -350,14 +349,14 @@ describe('grant, agent and draft use cases over in-memory repositories', () => {
     assert.deepEqual(s.calls, ['begin', 'projects.lockForGrantChange', 'access.locateProject', 'access.loadActor(lock)', 'access.lockProjectAccess', 'access.readProject', 'projects.member',
       'projects.lockGrantOf', 'projects.insertGrant', ...EVENT_LAST, 'commit']);
     const again = scene({ existingGrant: grantRow() });
-    await grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'viewer' }, again.db, again.ports);
+    await grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'contributor' }, again.db, again.ports);
     assert.ok(again.calls.includes('projects.updateGrant') && !again.calls.includes('projects.insertGrant'), 'an existing grant is replaced, not inserted');
   });
 
   test('grantProject: the constraint violations PostgreSQL reports become ConflictError, with no event', async () => {
     for (const [conflict, message] of [['GRANT_CONFLICT', 'A concurrent grant for this principal was created'], ['GRANTEE_REMOVED', 'This person is no longer in the company']] as const) {
       const s = scene({ grantWrite: { conflict } });
-      await assert.rejects(grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'viewer' }, s.db, s.ports),
+      await assert.rejects(grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'contributor' }, s.db, s.ports),
         (error: unknown) => error instanceof ConflictError && error.code === conflict && error.message === message);
       assert.ok(!s.calls.includes('events.insert'));
       assert.equal(s.calls.at(-1), 'rollback');
@@ -372,17 +371,9 @@ describe('grant, agent and draft use cases over in-memory repositories', () => {
     assert.ok(toOwner.calls.includes('projects.insertGrant'), 'the owner was added');
     await revokeProjectGrant(human(OWNER), PROJECT, GRANT, toOwner.db, toOwner.ports);
     assert.ok(toOwner.calls.includes('projects.deleteGrant'), 'and can be removed by whoever manages the space');
-    // Keeping the owner out of the space is another matter: only an owner may (#914).
-    const denyOwner = async (role: WorkspaceRole) => {
-      const s = scene({ role, granteeRole: 'owner' });
-      await grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'denied' }, s.db, s.ports);
-      return s.calls;
-    };
-    await assert.rejects(denyOwner('admin'), (error: unknown) => error instanceof ForbiddenError && error.code === 'OWNER_REQUIRED');
-    assert.ok((await denyOwner('owner')).includes('projects.insertGrant'), 'an owner can');
     const stranger = scene();
     stranger.ports.projects = () => ({ lockForGrantChange: async () => undefined, member: async () => null }) as never;
-    await assert.rejects(grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'viewer' }, stranger.db, stranger.ports),
+    await assert.rejects(grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'contributor' }, stranger.db, stranger.ports),
       (error: unknown) => error instanceof Error && 'code' in error && error.code === 'NOT_A_MEMBER');
     const gone = scene();
     gone.ports.projects = () => ({ lockForGrantChange: async () => undefined, lockGrant: async () => null }) as never;

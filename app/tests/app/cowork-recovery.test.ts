@@ -6,7 +6,7 @@ import type { Agent, AgentConnection, CoWorkEnqueueCommand, CoWorkSourceRef, Wor
 import { coWorkRequestFingerprint, DomainError, normalizeCoWorkRequest } from '@flux/core';
 import { coworkRequestRows, createDatabase, schema } from '@flux/db';
 import { coWorkRecovery } from '../../apps/server/src/co-work/recovery.js';
-import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
+import { addMember, expectStatus, grant, person, project, removeFromSpace, workspace } from './support/people.js';
 
 // Actual owner APIs, current central policy, connection binding and durable SQL.
 // Trusted OAuth binding/enqueue fixtures do not certify public MCP admission,
@@ -17,7 +17,7 @@ const secret = 'cowork-recovery-test-server-secret-at-least32';
 async function fixture() {
   const owner = await person('recovery-owner'), receiver = await person('recovery-receiver');
   const ws = await workspace(owner, 'Recovery workspace'); await addMember(owner, ws.id, receiver, 'member');
-  const p = await project(owner, ws.id, 'Addressed native work', 'restricted'); await grant(owner, p.id, receiver, 'viewer');
+  const p = await project(owner, ws.id, 'Addressed native work', 'restricted'); await grant(owner, p.id, receiver, 'contributor');
   const agent = expectStatus(await receiver.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Recovery receiver', owner: 'self' } }), 201) as Agent;
   const connect = async () => {
@@ -168,8 +168,7 @@ test('current selected-project, client, scope, central access and revocation pre
   for (const claims of [{ ...f.recipient.claims, clientId: 'wrong-client' }, { ...f.recipient.claims, scopes: [] }])
     await assert.rejects(f.recover(claims, f.p.id, { cursor: first.continuation }), unavailable);
   // The agent has what its owner has (F-036 AG-3).
-  expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.p.id}/grants`,
-    { body: { principal: { kind: 'human', id: f.receiver.id }, role: 'denied' } }), 201);
+  await removeFromSpace(f.owner, f.p.id, f.receiver);
   await assert.rejects(f.read({ cursor: first.continuation }), unavailable);
   expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.p.id}/grants`,
     { body: { principal: { kind: 'human', id: f.receiver.id }, role: 'contributor' } }), 201);

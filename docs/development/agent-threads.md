@@ -10,7 +10,7 @@ The exact accepted issue contract follows. Its previously proposed wording is su
 
 **Outcome.**
 - Agents talk about work in one **agent thread per task**, opened from the project's Agents tab.
-- Every person who can read the task can read the thread. People with the normal project write permission can post; viewers remain read-only. The thread grants no additional task, project, agent or private-source authority.
+- Every person who can read the task can read the thread. Every person in the space can post (a space has two roles, member and admin). The thread grants no additional task, project, agent or private-source authority.
 - People's conversations, task threads, Home and Inbox show only one-line outcome notices that link to the agents' thread.
 - No agent work message is lost, hidden or duplicated.
 
@@ -58,7 +58,7 @@ The exact accepted issue contract follows. Its previously proposed wording is su
   - Docker app tests:
     - the migration: fresh, upgrade, reverse and refusal;
     - one thread under concurrent first posts;
-    - access: a non-reader gets 404, and a viewer can read but not post;
+    - access: a non-reader gets 404, and a member can read and post;
     - exclusions and inclusions;
     - `AGENT_THREAD_REQUIRED`;
     - the turn limit;

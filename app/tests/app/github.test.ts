@@ -15,7 +15,8 @@ import { seal } from '../../apps/server/src/github/crypto.js';
 import type { GithubConfig } from '../../apps/server/src/github/config.js';
 import { githubTransport, type GithubTransport } from '../../apps/server/src/github/http.js';
 import { loadIdentityConfig, registerIdentity } from '../../apps/server/src/identity/index.js';
-import { addMember, expectStatus, grant, person, project, workspace, secondSession, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, secondSession, type Person } from './support/people.js';
+import { loseSpace } from './support/db.js';
 import { publicOrigin } from './support/http.js';
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -63,7 +64,7 @@ describe('GitHub App binding, provenance and durable per-binding inbox (#74)', (
     const ws = await workspace(owner, 'GitHub fixtures'); const ws2 = await workspace(second, 'GitHub second fixtures');
     await addMember(owner, ws.id, viewer, 'member');
     place = await project(owner, ws.id, 'Private source projection', 'restricted'); other = await project(second, ws2.id, 'Same repository separate project', 'restricted');
-    await grant(owner, place.id, viewer, 'viewer'); fixture.authorize(owner); fixture.authorize(second);
+    await grant(owner, place.id, viewer, 'contributor'); fixture.authorize(owner); fixture.authorize(second);
     work = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Native work title' } }), 201) as WorkItem;
     otherWork = expectStatus(await second.browser.request('POST', `/api/v1/projects/${other.id}/work`, { body: { title: 'Second native task' } }), 201) as WorkItem;
     binding = await github.bind(actor(owner), place.id, { installationId: INSTALL, repositoryId: REPO });
@@ -159,7 +160,7 @@ describe('GitHub App binding, provenance and durable per-binding inbox (#74)', (
       { state: 'completed', error_code: 'GITHUB_BINDING_UNAVAILABLE' }, 'a disconnected binding stops retrying instead of staying pending forever');
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM github_task_links WHERE binding_id=$1', [binding.id])).rows[0].n, before.rows[0].n);
     binding = await github.bind(actor(owner), place.id, { installationId: INSTALL, repositoryId: REPO });
-    await grant(owner, place.id, viewer, 'denied');
+    await removeFromSpace(owner, place.id, viewer);
     const count = fixture.calls.length; await rejected(github.links(actor(viewer), work.id), 'PROJECT_NOT_FOUND'); assert.equal(fixture.calls.length, count, 'invisible project does not call provider');
   });
 });
@@ -213,9 +214,7 @@ test('real session-bound OAuth state/PKCE consumes once, checks current project 
     transport.staleCheck = true; await rejected(provider.pull(actor(owner), repo, 42), 'GITHUB_INVALID_RESPONSE'); transport.staleCheck = false;
     transport.mismatchedApp = true; await rejected(provider.repository(actor(owner), INSTALL, REPO), 'GITHUB_ACCESS_UNAVAILABLE'); transport.mismatchedApp = false;
     const next = await app.inject({ method: 'POST', url: `/api/v1/projects/${place.id}/github/authorize`, headers: headers(owner) }); const nextState = new URL(next.json().url).searchParams.get('state')!;
-    // A space always keeps an admin (C-16): the other person becomes one, so the owner can lose access.
-    await addMember(owner, ws.id, second, 'member'); await grant(owner, place.id, second, 'manager');
-    await grant(owner, place.id, owner, 'denied');
+    await loseSpace(place.id, owner.id);
     assert.equal((await app.inject({ method: 'GET', url: `/api/v1/integrations/github/callback?state=${nextState}&code=fixture-code`, headers: headers(owner) })).statusCode, 404, 'revoked project authority before callback'); assert.equal(transport.exchanges, 1);
   } finally { await app.close(); }
 });

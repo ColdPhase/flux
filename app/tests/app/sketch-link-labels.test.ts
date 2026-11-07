@@ -6,7 +6,7 @@ import { DomainError, createSketchUseCases, type SketchUnitOfWork } from '@flux/
 import { sketchPorts, sketchUseCases } from '../../apps/server/src/sketches/adapters.js';
 import { db, pool } from './support/db.js';
 import { Browser } from './support/http.js';
-import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
 
 // #481: renaming a connection preserves it; concurrent labels never overwrite unnoticed.
 const path = (link: ThoughtLink) => `/api/v1/sketches/${link.sketchId}/links/${link.id}`;
@@ -32,7 +32,7 @@ describe('connection labels', () => {
     await addMember(owner, ws.id, editor, 'member');
     await addMember(owner, ws.id, viewer, 'member');
     room = await project(owner, ws.id, 'Garden sensors', 'workspace');
-    await grant(owner, room.id, viewer, 'viewer');
+    await grant(owner, room.id, viewer, 'contributor');
   });
 
   async function linked(actor = owner, scope: Record<string, unknown> = { scope: 'project', projectId: room.id }, label: string | null = null) {
@@ -80,7 +80,7 @@ describe('connection labels', () => {
   test('write access is checked before current labels are returned, including private and DM scopes', async () => {
     const { sketch, link } = await linked(owner, undefined, 'private detail');
     expectStatus(await new Browser().request('PATCH', path(link), { body: { label: 'no', expectedLabel: null } }), 401);
-    for (const [actor, status] of [[viewer, 403], [outsider, 404]] as const) {
+    for (const [actor, status] of [[outsider, 404]] as const) {
       const response = await patch(actor, link, 'no', null);
       expectStatus(response, status);
       assert.ok(!response.text.includes('private detail'), 'denied response does not reveal current label');
@@ -146,7 +146,7 @@ describe('connection labels', () => {
     assert.equal(reused.code, 'IDEMPOTENCY_KEY_REUSED');
     const other = await linked(owner, { scope: 'project', projectId: restricted.id });
     expectStatus(await patch(editor, other.link, 'budget', null, headers), 422, 'same key for another link does not replay');
-    await grant(owner, restricted.id, editor, 'denied');
+    await removeFromSpace(owner, restricted.id, editor);
     expectStatus(await patch(editor, link, 'budget', null, headers), 404, 'replay after losing access');
     assert.equal((await changes(sketch.id)).length, 1);
   });

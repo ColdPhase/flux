@@ -8,7 +8,7 @@ import type { ComparisonProvider, ComparisonSource } from '@flux/core';
 import type { BackgroundComputeUsage, Page, ProactiveComparisonOutcome, ProactiveComparisonProposal } from '@flux/contracts';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
-import { db, pool } from './support/db.js';
+import { db, loseSpace, pool } from './support/db.js';
 
 const masterKey = readFileSync('/run/secrets/flux_background_key');
 const thoughtText = 'Compare the sensor under the same 5 lux trial.';
@@ -25,7 +25,7 @@ async function fixture() {
   const ws = await workspace(owner, 'Quiet comparison outcomes');
   for (const other of [peer, viewer, outsider]) await addMember(owner, ws.id, other, 'member');
   const projectId = (await project(owner, ws.id, 'Low-light comparison', 'restricted')).id;
-  await grant(owner, projectId, peer, 'contributor'); await grant(owner, projectId, viewer, 'viewer');
+  await grant(owner, projectId, peer, 'contributor'); await grant(owner, projectId, viewer, 'contributor');
   const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Comparison agent', owner: 'self' } }), 201) as { id: string }).id;
   const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`,
@@ -84,7 +84,6 @@ test('quiet insufficient evidence keeps the full actual inspected vector, pages 
   assert.equal((await f.outsider.browser.request('GET', `/api/v1/projects/${f.projectId}/proactive-comparison-outcomes`)).status, 404);
   if (item.kind !== 'insufficient_evidence') throw new Error('expected insufficient outcome');
   const path = `/api/v1/proactive-comparison-outcomes/${item.id}`;
-  assert.equal((await f.viewer.browser.request('PATCH', path, { body: { expectedVersion: 1, status: 'dismissed' } })).status, 403);
   assert.equal((await f.outsider.browser.request('PATCH', path, { body: { expectedVersion: 1, status: 'dismissed' } })).status, 404);
   assert.equal((await f.peer.browser.request('PATCH', path, { body: { expectedVersion: 1, status: 'used' } })).status, 400);
   const dismissed = expectStatus(await f.peer.browser.request('PATCH', path, { body: { expectedVersion: 1, status: 'dismissed' } }), 200) as { version: number; status: string };
@@ -250,9 +249,7 @@ test('terminal pre-paid refusals persist zero usage without retry, while owner a
   assert.deepEqual(initial.candidates[0]!.observedUsage, { inputTokens: 0, outputTokens: 0, estimatedCents: 0 });
   assert.deepEqual(initial.candidates[0]!.context, { projectTitle: 'Low-light comparison', resultTitle: 'Camera missed gestures' });
   assert.equal(initial.candidates[0]!.reservedAt, null); assert.equal(initial.candidates[0]!.startedAt, null);
-  // A space always keeps an admin (C-16): the peer becomes one, so the owner can lose access.
-  await grant(f.owner, f.projectId, f.peer, 'manager');
-  await grant(f.owner, f.projectId, f.owner, 'denied');
+  await loseSpace(f.projectId, f.owner.id);
   expectStatus(await f.owner.browser.request('DELETE', `/api/v1/background-compute-connections/${f.connection.id}`), 204);
   const afterLoss = await f.usage();
   assert.equal(afterLoss.candidates[0]!.context, null);

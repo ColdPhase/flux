@@ -6,7 +6,7 @@ import { pool } from './support/db.js';
 import { Browser } from './support/http.js';
 import { actionScene, toolFailure } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
-import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project as createProject, workspace, type Person } from './support/people.js';
 import { eraseProject } from './support/project-erasure-scene.js';
 
 // A task has a due date and a real history (#488, migration 0112). The due date is a calendar day with no time zone. Every
@@ -32,7 +32,7 @@ describe('a task has a due date and a history of who changed it', () => {
     for (const someone of [kai, vera, olga]) await addMember(ada, ws.id, someone, 'member');
     place = await createProject(ada, ws.id, 'Due project', 'restricted');
     await grant(ada, place.id, kai, 'contributor');
-    await grant(ada, place.id, vera, 'viewer');
+    await grant(ada, place.id, vera, 'contributor');
   });
 
   describe('the due date', () => {
@@ -104,12 +104,11 @@ describe('a task has a due date and a history of who changed it', () => {
       assert.equal(await count(task.id), afterKeyed);
     });
 
-    test('needs write access like every field: a viewer is refused and a stranger does not see the task', async () => {
+    test('needs access to the space like every field: a stranger does not see the task', async () => {
       const task = await create({ title: 'Writers only', dueOn: '2026-11-20' });
-      assert.equal((await send(vera, task, { dueOn: '2026-11-21' })).status, 403);
       assert.equal((await send(olga, task, { dueOn: '2026-11-21' })).status, 404);
-      const viewerCreate = await vera.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Nope', dueOn: '2026-11-21' } });
-      assert.equal(viewerCreate.status, 403);
+      const strangerCreate = await olga.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Nope', dueOn: '2026-11-21' } });
+      assert.equal(strangerCreate.status, 404);
       assert.equal((await read(task)).dueOn, '2026-11-20');
       assert.equal(await count(task.id), 0);
       // A contributor may.
@@ -160,7 +159,6 @@ describe('a task has a due date and a history of who changed it', () => {
       assert.equal(await count(task.id), 0, 'the same values are not a change; an outcome is not tracked');
       assert.equal((await send(ada, same, { title: 'x'.repeat(201) })).status, 400);
       assert.equal((await send(ada, task, { title: 'Stale' })).status, 409);
-      assert.equal((await send(vera, same, { title: 'Viewer' })).status, 403);
       assert.equal((await send(ada, same, { owner: { kind: 'human', id: olga.id } })).status, 422, 'an owner without access is refused');
       assert.equal(await count(task.id), 0);
       await patch(same, { criteria: ['Both runs are attached'], blocker: null });
@@ -297,9 +295,9 @@ describe('a task has a due date and a history of who changed it', () => {
       for (const id of [randomUUID(), 'not-an-id']) assert.equal((await ada.browser.request('GET', taskActivityPath(id))).status, 404);
       assert.equal((await new Browser().request('GET', taskActivityPath(task.id))).status, 401);
       // Access that is taken away takes the history away with it.
-      await grant(ada, place.id, olga, 'viewer');
+      await grant(ada, place.id, olga, 'contributor');
       assert.equal((await activity(task, '', olga)).items.length, 1);
-      await grant(ada, place.id, olga, 'denied');
+      await removeFromSpace(ada, place.id, olga);
       assert.equal((await olga.browser.request('GET', taskActivityPath(task.id))).status, 404);
 
       // A task whose creation was undone stays readable as history.

@@ -107,7 +107,7 @@ class OneConversationJourney(unittest.TestCase):
         project = post("ada", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Night lamp", "visibility": "restricted"})
         pid = project["id"]
         post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["jonas"]}, "role": "contributor"})
-        post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["lee"]}, "role": "viewer"})
+        post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["lee"]}, "role": "contributor"})
         start = lambda who, body: post(who, f"/api/v1/projects/{pid}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})  # noqa: E731
         reply = lambda who, cid, body: post(who, f"/api/v1/conversations/{cid}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())})  # noqa: E731
         # More roots than the newest window (50), oldest first, from two people.
@@ -592,25 +592,6 @@ class OneConversationJourney(unittest.TestCase):
         self.assertEqual(len(roots), 1)
         self.assertEqual(roots[0]["message"]["body"], body)
         self.api(member, "GET", path, status=404)
-
-    def test_06_a_reader_reads_the_stream_and_threads_without_a_composer(self) -> None:
-        page = self.page("lee")
-        page.goto(self.project_url())
-        stream = self.stream(page)
-        expect(self.root(page, "r1")).to_be_visible()
-        expect(page.locator("#project-composer")).to_have_count(0)
-        expect(page.locator("#thread-composer")).to_have_count(0)
-        expect(page.locator(".project-convo__read-only")).to_be_visible()
-        expect(stream.get_by_role("button", name="Reply", exact=True)).to_have_count(0)
-        self.root(page, "r1").get_by_role("button", name=re.compile(r"^3 replies")).click()
-        thread = self.thread(page)
-        expect(thread.locator(f"#message-{self.ids['first']}")).to_be_visible()
-        expect(thread.get_by_role("textbox")).to_have_count(0)
-        expect(thread.locator(".project-convo__read-only")).to_be_visible()
-        expect(thread.get_by_role("button", name="Ask my assistant")).to_have_count(0)
-        expect(thread.locator(".project-convo__current-thread")).not_to_contain_text("Replying to")
-        self.api(page, "POST", f"/api/v1/conversations/{self.ids['c1']}/messages", {"body": "A reader cannot reply", "clientMessageId": str(uuid.uuid4())}, status=403)
-        shot(page, "one-conversation-desktop-1440-reader")
 
     # ---------------------------------------------------------------- phone and tablet
 

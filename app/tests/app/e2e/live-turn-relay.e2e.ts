@@ -21,7 +21,7 @@ test('two authorized Chromium clients exchange media when UDP and direct ICE/TCP
     const ws = await workspace(owner, 'Relay proof');
     await addMember(owner, ws.id, member, 'member');
     const place = await project(owner, ws.id, 'Restrictive network', 'restricted');
-    await grant(owner, place.id, member, 'viewer');
+    await grant(owner, place.id, member, 'contributor');
     const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
       body: { body: 'TURN/TLS anchor', clientMessageId: randomUUID() },
     }), 201) as Conversation;
@@ -274,7 +274,7 @@ test('negative control: DTLS fails and no media key exists when the SFU certific
     const ws = await workspace(owner, 'DTLS control');
     await addMember(owner, ws.id, probe, 'member');
     const place = await project(owner, ws.id, 'Fingerprint control', 'restricted');
-    await grant(owner, place.id, probe, 'viewer');
+    await grant(owner, place.id, probe, 'contributor');
     const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
       body: { body: 'DTLS control anchor', clientMessageId: randomUUID() },
     }), 201) as Conversation;
@@ -339,7 +339,7 @@ test('four authorized clients receive two simultaneous code-sized screen tracks 
     const place = await project(owner!, ws.id, 'Readable screens', 'workspace');
     await grant(owner!, place.id, editor!, 'contributor');
     for (const member of [reviewer!, observer!])
-      await grant(owner!, place.id, member, 'viewer');
+      await grant(owner!, place.id, member, 'contributor');
     const conversation = expectStatus(await owner!.browser.request('POST',
       `/api/v1/projects/${place.id}/conversations`, {
         body: { body: 'Two screen discussion', clientMessageId: randomUUID() },
@@ -507,7 +507,7 @@ test('isolated headed Chromium publishes real display capture and virtual camera
     const ws = await workspace(owner, 'Browser capture proof');
     await addMember(owner, ws.id, viewer, 'member');
     const place = await project(owner, ws.id, 'Xvfb source', 'workspace');
-    await grant(owner, place.id, viewer, 'viewer');
+    await grant(owner, place.id, viewer, 'contributor');
     const conversation = expectStatus(await owner.browser.request('POST',
       `/api/v1/projects/${place.id}/conversations`, {
         body: { body: 'Browser media API anchor', clientMessageId: randomUUID() },

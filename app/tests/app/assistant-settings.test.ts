@@ -22,11 +22,10 @@ const settings = async (owner: Person, workspaceId: string, status = 200) => {
 async function setup(label: string) {
   const manager = await person(`assistant-manager-${label}`);
   const owner = await person(`assistant-${label}`); const ws = await workspace(manager, 'Assistant workspace');
-  await addMember(manager, ws.id, owner, 'admin');
+  await addMember(manager, ws.id, owner, 'member');
   const managed = await project(owner, ws.id, 'Managed project', 'workspace');
+  // A restricted space the owner was not added to: a company owner or admin would reach it, so the assistant's owner is a plain member.
   const blocked = await project(manager, ws.id, 'Outside owner scope', 'restricted');
-  expectStatus(await manager.browser.request('POST', `/api/v1/projects/${blocked.id}/grants`,
-    { body: { principal: { kind: 'human', id: owner.id }, role: 'denied' } }), 201);
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Owner assistant', owner: 'self' } }), 201) as { id: string };
   const connections = new FakeConnections(); const queue = new FakeQueue();

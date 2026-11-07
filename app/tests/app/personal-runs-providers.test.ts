@@ -185,7 +185,7 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     const ws = await createWorkspace(owner, 'Assistant model');
     const place = await createProject(owner, ws.id, 'Lamp sensor model', 'workspace');
     expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/members`, { body: { email: viewer.email, role: 'member' } }), 201);
-    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'human', id: viewer.id }, role: 'viewer' } }), 201);
+    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/grants`, { body: { principal: { kind: 'human', id: viewer.id }, role: 'contributor' } }), 201);
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() } }), 201) as Conversation;

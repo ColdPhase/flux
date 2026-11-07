@@ -40,7 +40,7 @@ describe('work, decisions and results in a project', () => {
     for (const someone of [partner, viewer, outsider]) await addMember(owner, ws.id, someone, 'member');
     lamp = await createProject(owner, ws.id, 'Gesture lamp', 'restricted');
     await grant(owner, lamp.id, partner, 'contributor');
-    await grant(owner, lamp.id, viewer, 'viewer');
+    await grant(owner, lamp.id, viewer, 'contributor');
     conversation = json<Conversation>(await post(owner, `/api/v1/projects/${lamp.id}/conversations`,
       { body: 'Camera or sensor? Let us test the camera in low light first.', clientMessageId: randomUUID() }), 201);
     material = json<Material>(await post(owner, `/api/v1/projects/${lamp.id}/materials`,
@@ -74,7 +74,6 @@ describe('work, decisions and results in a project', () => {
     assert.equal(hidden.status, 404);
     assert.deepEqual([hidden.json, missing.json].map((body) => (body as { code: string }).code), ['WORK_NOT_FOUND', 'WORK_NOT_FOUND']);
     assert.equal((await get(outsider, `/api/v1/projects/${lamp.id}/work`)).status, 404);
-    assert.equal((await post(viewer, `/api/v1/projects/${lamp.id}/work`, { title: 'Viewer cannot add' })).status, 403);
     assert.equal((await post(outsider, `/api/v1/projects/${lamp.id}/work`, { title: 'Outsider cannot add' })).status, 404);
 
     // Owners and links must be inside the project's audience.
@@ -166,7 +165,6 @@ describe('work, decisions and results in a project', () => {
     }), 201);
     assert.equal(first.status, 'proposed');
     assert.deepEqual(first.links.map((link) => link.role).sort(), ['affects', 'source', 'source']);
-    assert.equal((await post(viewer, `/api/v1/decisions/${first.id}/accept`, {}, { 'if-match': '"1"' })).status, 403);
     assert.equal((await post(outsider, `/api/v1/decisions/${first.id}/accept`, {}, { 'if-match': '"1"' })).status, 404);
     assert.equal((await post(owner, `/api/v1/decisions/${first.id}/accept`, {})).status, 428);
     const accepted = json<Decision>(await post(owner, `/api/v1/decisions/${first.id}/accept`, {}, { 'if-match': '"1"' }), 200);
@@ -231,7 +229,6 @@ describe('work, decisions and results in a project', () => {
     const finished = json<WorkItem>(await get(owner, `/api/v1/work/${experiment.id}`), 200);
     assert.equal(finished.status, 'done');
     assert.ok(finished.links.some((link) => link.role === 'about' && link.from.id === result.id));
-    assert.equal((await post(viewer, `/api/v1/projects/${lamp.id}/results`, { title: 'No', finding: 'positive' })).status, 403);
     assert.equal((await get(outsider, `/api/v1/results/${result.id}`)).status, 404);
     const linked = json<{ role: string }>(await post(owner, `/api/v1/projects/${lamp.id}/links`, {
       from: { type: 'result', id: result.id }, to: { type: 'material', id: material.materialId, version: 1 },

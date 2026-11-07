@@ -76,10 +76,7 @@ describe('a space always keeps an admin (C-16)', () => {
   test('the last admin cannot step down, remove themselves, leave, or be removed or demoted by a company admin; every refusal has its allowed control', async () => {
     const space = await freshSpace('Alone at the top');
     refused(await set(first, space.id, first, 'contributor'));
-    refused(await set(first, space.id, first, 'viewer'));
-    refused(await set(first, space.id, first, 'denied'));
     refused(await set(companyAdmin, space.id, first, 'contributor'));
-    refused(await set(companyAdmin, space.id, first, 'denied'));
     const own = await grantOf(space.id, first);
     refused(await first.browser.request('DELETE', `/api/v1/projects/${space.id}/grants/${own.id}`));
     refused(await companyAdmin.browser.request('DELETE', `/api/v1/projects/${space.id}/grants/${own.id}`));
@@ -142,33 +139,25 @@ describe('a new space starts with any person of the company (D-3)', () => {
     expectStatus(await creator.browser.request('DELETE', projectGrantPath(space.id, added.id)), 204);
     const again = expectStatus(await add(companyAdmin), 201) as ProjectGrant;
     expectStatus(await companyAdmin.browser.request('DELETE', projectGrantPath(space.id, again.id)), 204);
-    // What stays: an ordinary member still cannot manage the space, and a space admin who is a plain member cannot keep the owner out of it.
+    // What stays: an ordinary member still cannot manage the space.
     assert.equal((await add(other)).status, 404);
-    expectStatus(await add(creator), 201);
-    const shut = await creator.browser.request('POST', projectGrantsPath(space.id), { body: { principal: { kind: 'human', id: owner.id }, role: 'denied' } });
-    assert.equal(code(shut), 'COMPANY_ADMIN_PROTECTED');
   });
 
-  test('only an owner can keep the company owner out of a space: a company admin gets 403 OWNER_REQUIRED, and the owner can still read it (#914)', async () => {
-    const [owner, second, companyAdmin, creator, bystander] = await Promise.all(['dn-owner', 'dn-second', 'dn-admin', 'dn-creator', 'dn-bystander'].map((label) => person(label)));
-    const wsId = (await workspace(owner, 'Deny the owner club')).id;
+  test('nothing keeps the company owner out of a space: a company admin removes them from its people, and they still reach it and add themselves back (#903)', async () => {
+    const [owner, second, companyAdmin, creator] = await Promise.all(['dn-owner', 'dn-second', 'dn-admin', 'dn-creator'].map((label) => person(label)));
+    const wsId = (await workspace(owner, 'Remove the owner club')).id;
     await addMember(owner, wsId, second, 'owner');
     await addMember(owner, wsId, companyAdmin, 'admin');
     await addMember(owner, wsId, creator, 'member');
-    await addMember(owner, wsId, bystander, 'member');
-    const space = expectStatus(await creator.browser.request('POST', `/api/v1/workspaces/${wsId}/projects`, { body: { name: 'Owner stays in', visibility: 'restricted' } }), 201) as Project;
-    const deny = (who: Person, target: Person) => who.browser.request('POST', projectGrantsPath(space.id), { body: { principal: { kind: 'human', id: target.id }, role: 'denied' } });
-    // A company admin manages the space, but cannot shut an owner out of it: the owner would lose the space, Add me and the right to lift the deny.
+    const space = expectStatus(await creator.browser.request('POST', `/api/v1/workspaces/${wsId}/projects`, { body: { name: 'Owner stays in', visibility: 'restricted', people: [owner.id, second.id] } }), 201) as Project;
+    const grantOf = async (target: Person) => (expectStatus(await creator.browser.request('GET', projectGrantsPath(space.id)), 200) as ProjectGrant[]).find((row) => row.principal.id === target.id);
     for (const target of [owner, second]) {
-      const refused = await deny(companyAdmin, target);
-      assert.equal(refused.status, 403, refused.text);
-      assert.equal(code(refused), 'OWNER_REQUIRED');
+      expectStatus(await companyAdmin.browser.request('DELETE', projectGrantPath(space.id, (await grantOf(target))!.id)), 204);
+      assert.equal(await grantOf(target), undefined, 'they are off its people');
       assert.equal((await target.browser.request('GET', `/api/v1/projects/${space.id}`)).status, 200, 'the owner still reaches the space');
+      // Add me: the owner puts themselves back as its admin.
+      expectStatus(await target.browser.request('POST', projectGrantsPath(space.id), { body: { principal: { kind: 'human', id: target.id }, role: 'manager' } }), 201);
+      assert.equal((await grantOf(target))?.role, 'manager');
     }
-    assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_grants WHERE project_id = $1 AND role = $2', [space.id, 'denied'])).rows[0].n, 0, 'nothing was written');
-    // Another owner can, and a company admin can still deny a plain member.
-    expectStatus(await deny(owner, second), 201);
-    assert.equal((await second.browser.request('GET', `/api/v1/projects/${space.id}`)).status, 404, 'the denied owner is out of that space');
-    expectStatus(await deny(companyAdmin, bystander), 201);
   });
 });

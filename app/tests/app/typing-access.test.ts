@@ -6,7 +6,7 @@ import { authorizeTypingContext, authorizeTypingSender, decodeTypingPulse, TYPIN
 import type { Conversation, Dm, ProjectGrant, TypingContext, Workspace } from '@flux/contracts';
 import { typingAccess } from '../../apps/server/src/typing/access.js';
 import { typingTaskDiscussion } from '../../apps/server/src/typing/tasks.js';
-import { addMember, expectStatus, grant, person, project, secondSession, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, secondSession, workspace, type Person } from './support/people.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -42,7 +42,7 @@ describe('current native human typing access and nondurable broker primitives', 
   });
   async function conversation() {
     const room = await project(alice, ws.id, 'Typing restricted', 'restricted');
-    await grant(alice, room.id, bob, 'contributor'); await grant(alice, room.id, viewer, 'viewer');
+    await grant(alice, room.id, bob, 'contributor'); await grant(alice, room.id, viewer, 'contributor');
     const convo = expectStatus(await alice.browser.request('POST', `/api/v1/projects/${room.id}/conversations`,
       { body: { body: 'Actual shared native discussion', clientMessageId: randomUUID() } }), 201) as Conversation;
     return { room, context: { kind: 'conversation' as const, id: convo.id } };
@@ -52,7 +52,7 @@ describe('current native human typing access and nondurable broker primitives', 
     const { context } = await conversation();
     assert.deepEqual(await authorizeTypingContext(access, bobActor, context, 'write'), context);
     assert.deepEqual(await authorizeTypingContext(access, viewerActor, context, 'read'), context);
-    assert.equal(await authorizeTypingContext(access, viewerActor, context, 'write'), null);
+    assert.deepEqual(await authorizeTypingContext(access, viewerActor, context, 'write'), context);
     assert.equal(await authorizeTypingContext(access, await actor(outsider), context, 'read'), null);
     assert.equal(await authorizeTypingContext(access, { actorId: bob.id, sessionId: aliceActor.sessionId }, context, 'read'), null);
     assert.equal(await authorizeTypingContext(access, { ...bobActor, sessionId: 'not-a-session' }, context, 'read'), null);
@@ -63,13 +63,10 @@ describe('current native human typing access and nondurable broker primitives', 
     assert.deepEqual(Object.keys(authorized!).sort(), ['id', 'name']);
   });
 
-  test('current grant downgrade and denial withdraw sender activity while reader access follows its own policy', async () => {
+  test('removal from the space withdraws sender activity and reader access', async () => {
     const { context, room } = await conversation(); const update = pulse(bobActor, context, await notifications.now() + 5000);
     assert.ok(await authorizeTypingSender(access, update));
-    await grant(alice, room.id, bob, 'viewer');
-    assert.equal(await authorizeTypingSender(access, update), null);
-    assert.deepEqual(await authorizeTypingContext(access, bobActor, context, 'read'), context);
-    await grant(alice, room.id, bob, 'denied');
+    await removeFromSpace(alice, room.id, bob);
     assert.equal(await authorizeTypingSender(access, update), null);
     assert.equal(await authorizeTypingContext(access, bobActor, context, 'read'), null);
   });
@@ -175,7 +172,7 @@ describe('current native human typing access and nondurable broker primitives', 
     const canonical = { kind: 'conversation' as const, id: message.conversationId };
     assert.deepEqual(await authorizeTypingContext(production, bobActor, task, 'write'), canonical, 'the task aliases its actual root');
     assert.deepEqual(await authorizeTypingContext(production, viewerActor, task, 'read'), canonical);
-    assert.equal(await authorizeTypingContext(production, viewerActor, task, 'write'), null, 'a viewer cannot type into it');
+    assert.deepEqual(await authorizeTypingContext(production, viewerActor, task, 'write'), canonical, 'another member of the space types into it too');
     const outsiderActor = await actor(outsider);
     assert.equal(await authorizeTypingContext(production, outsiderActor, task, 'read'), null, 'no project access, no alias');
     assert.equal(await authorizeTypingContext(production, bobActor, { kind: 'task', id: randomUUID() }, 'read'), null, 'an unknown task is not an error');

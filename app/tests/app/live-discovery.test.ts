@@ -2,12 +2,11 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import type { Conversation } from '@flux/contracts';
-import { DomainError, grantProject, type LiveMedia } from '@flux/core';
-import { accessPorts } from '@flux/db';
+import { DomainError, type LiveMedia } from '@flux/core';
 import { discoverLiveSessions } from '../../apps/server/src/live/discovery.js';
 import { liveRevocationCoordinator } from '../../apps/server/src/live/revocation.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
-import { db, pool } from './support/db.js';
+import { db, pool, removeFromSpaceCore } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
 function missing(code: string) {
@@ -23,7 +22,7 @@ test('live discovery pages only currently authorized project anchors and reports
   await addMember(owner, ws.id, viewer, 'member');
   const place = await project(owner, ws.id, 'Private work', 'restricted');
   const another = await project(owner, ws.id, 'Another private project', 'restricted');
-  await grant(owner, place.id, viewer, 'viewer');
+  await grant(owner, place.id, viewer, 'contributor');
 
   const first = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
     body: { body: 'First private source', clientMessageId: randomUUID() },
@@ -74,7 +73,7 @@ test('live discovery pages only currently authorized project anchors and reports
   // Access mutation uses the same room-retirement fence as production. The test API
   // intentionally has no SFU and rejects a live revocation with 503.
   await liveRevocationCoordinator(db, pool, media).withProjectChange(place.id, () =>
-    grantProject(principal, place.id, { principal: reader, role: 'denied' }, db, accessPorts));
+    removeFromSpaceCore(principal, place.id, reader, db));
   await assert.rejects(discoverLiveSessions(db, media, reader, place.id), missing('PROJECT_NOT_FOUND'));
 
   await pool.query('UPDATE live_sessions SET state = $1 WHERE id = $2', ['ended', a.id]);

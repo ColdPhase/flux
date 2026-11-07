@@ -65,7 +65,7 @@ describe('notification audience follows the source (access policy)', () => {
     const project = await owner.browser.request('POST', `/api/v1/workspaces/${owner.workspaceId}/projects`, { body: { name: 'Board pack', visibility: 'restricted' } });
     assert.equal(project.status, 201, project.text);
     const projectId = (project.json as { id: string }).id;
-    const grant = await owner.browser.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'human', id: viewer.userId }, role: 'viewer' } });
+    const grant = await owner.browser.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'human', id: viewer.userId }, role: 'contributor' } });
     assert.equal(grant.status, 201, grant.text);
     return { owner, viewer, outsider, projectId, grantId: (grant.json as { id: string }).id };
   }
@@ -104,17 +104,17 @@ describe('notification audience follows the source (access policy)', () => {
     assert.equal((await owner.browser.request('GET', `/api/v1/inbox/${created.id}`)).status, 404, 'even a manager cannot read someone else\'s inbox');
 
     // Access restored: the row is visible again (it was never shown to anyone else).
-    const regrant = await owner.browser.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'human', id: viewer.userId }, role: 'viewer' } });
+    const regrant = await owner.browser.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'human', id: viewer.userId }, role: 'contributor' } });
     assert.equal(regrant.status, 201);
     assert.equal((await viewer.browser.request('GET', `/api/v1/inbox/${created.id}`)).status, 200);
   });
 
-  test('a draft source follows draft visibility; a denied grant hides project notifications', async () => {
-    const { owner, viewer, projectId } = await restrictedProjectWithViewer();
+  test('a draft source follows draft visibility; removing the grant hides project notifications', async () => {
+    const { owner, viewer, projectId, grantId } = await restrictedProjectWithViewer();
     const draft = await owner.browser.request('POST', `/api/v1/workspaces/${owner.workspaceId}/drafts`, { body: { title: 'Minutes', projectId } });
     assert.equal(draft.status, 201, draft.text);
     const { id: draftId, version } = draft.json as { id: string; version: number };
-    await assert.rejects(notify({ userId: viewer.userId, source: { type: 'draft', id: draftId }, title: 'Minutes drafted' }), NotFoundError, 'a private draft is not readable by the viewer');
+    await assert.rejects(notify({ userId: viewer.userId, source: { type: 'draft', id: draftId }, title: 'Minutes drafted' }), NotFoundError, 'a private draft is not readable by the member');
     assert.equal((await owner.browser.request('POST', `/api/v1/drafts/${draftId}/share`, { body: { scope: 'project', projectId }, headers: { 'if-match': `"${version}"` } })).status, 200);
     const aboutDraft = await notify({ userId: viewer.userId, source: { type: 'draft', id: draftId }, title: 'Minutes shared' });
     const aboutProject = await notify({ userId: viewer.userId, source: { type: 'project', id: projectId }, title: 'Board pack' });
@@ -122,10 +122,10 @@ describe('notification audience follows the source (access policy)', () => {
     const listed = (await viewer.browser.request('GET', '/api/v1/inbox')).json as InboxResponse;
     assert.deepEqual(new Set(listed.items.map((item) => item.id)), new Set([aboutDraft.id, aboutProject.id, ownWorkspace.id]));
 
-    const denied = await owner.browser.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'human', id: viewer.userId }, role: 'denied' } });
-    assert.equal(denied.status, 201, denied.text);
+    const removed = await owner.browser.request('DELETE', `/api/v1/projects/${projectId}/grants/${grantId}`);
+    assert.equal(removed.status, 204, removed.text);
     const after = (await viewer.browser.request('GET', '/api/v1/inbox')).json as InboxResponse;
-    assert.deepEqual(after.items.map((item) => item.id), [ownWorkspace.id], 'explicit deny hides both project and draft notifications');
+    assert.deepEqual(after.items.map((item) => item.id), [ownWorkspace.id], 'removing the grant hides both project and draft notifications');
     assert.equal(after.unread, 1);
     assert.equal((await viewer.browser.request('GET', `/api/v1/inbox/${aboutDraft.id}`)).status, 404);
   });

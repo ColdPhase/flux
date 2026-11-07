@@ -9,7 +9,7 @@ import { addMember, expectStatus, person, project, workspace, type Person } from
 // connections and a project with a reader of every kind. Hubert owns the workspace (so manages the project) and two agents,
 // Codex and Hubert Claude; Marek is an admin (and so a manager) who owns Marek Claude and can be demoted to a plain
 // contributor; Ada is a contributor who owns no agent;
-// Vera only reads; Olga has no access at all.
+// Vera is a member too; Olga has no access at all.
 export const ACTION_SCOPES = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'];
 export type Role = 'execute' | 'review' | 'plan';
 export type Reply = Record<string, unknown> | null;
@@ -33,7 +33,7 @@ export async function coworkScene() {
   const p = await project(hubert, ws.id, 'Shared outcome', 'restricted');
   /** The project grants by person, so a test can remove one and watch the reader lose access. */
   const grants = new Map<string, string>();
-  for (const [who, role] of [[marek, 'contributor'], [ada, 'contributor'], [vera, 'viewer']] as const)
+  for (const [who, role] of [[marek, 'contributor'], [ada, 'contributor'], [vera, 'contributor']] as const)
     grants.set(who.id, (expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/grants`,
       { body: { principal: { kind: 'human', id: who.id }, role } }), 201) as { id: string }).id);
   /** Marek stops managing: he is a contributor who still owns his agent (and so can still clear what it sent or was sent). */

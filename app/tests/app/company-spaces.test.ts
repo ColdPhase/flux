@@ -189,22 +189,18 @@ describe('in the company', () => {
     assert.ok(made.workspace.id);
   });
 
-  test('a space admin who is a plain member cannot keep a company admin out, and can still add one', async () => {
+  test('nothing keeps a company admin out of a space: a space admin who is a plain member can add one and remove one, and they still open it (#903)', async () => {
     const space = await newSpace(member, 'Kept private');
-    const denied = await setGrant(member, space.id, admin, 'denied');
-    assert.equal(denied.status, 403, denied.text);
-    assert.equal(raw(denied), 'COMPANY_ADMIN_PROTECTED');
+    expectStatus(await admin.browser.request('GET', `/api/v1/projects/${space.id}`), 200, 'the company admin opens it without being added');
+    const added = expectStatus(await setGrant(member, space.id, admin, 'contributor'), 201, 'adding them to the space stays open') as { id: string };
+    expectStatus(await member.browser.request('DELETE', `/api/v1/projects/${space.id}/grants/${added.id}`), 204, 'so does removing them from its people');
     expectStatus(await admin.browser.request('GET', `/api/v1/projects/${space.id}`), 200, 'the company admin still opens it');
-    expectStatus(await setGrant(member, space.id, admin, 'contributor'), 201, 'adding them to the space stays open');
   });
 
-  test('Everyone is the only space that holds the whole company, and nobody can be kept out of it', async () => {
+  test('Everyone is the only space that holds the whole company', async () => {
     const second = await member.browser.request('POST', `/api/v1/workspaces/${companyId}/projects`, { body: { name: 'Second everyone', visibility: 'workspace' } });
     assert.equal(second.status, 422, second.text);
     assert.equal(raw(second), 'SPACE_NOT_FOR_EVERYONE');
-    const kept = await setGrant(admin, everyoneId, member, 'denied');
-    assert.equal(kept.status, 422, kept.text);
-    assert.equal(raw(kept), 'EVERYONE_HOLDS_EVERYONE');
     expectStatus(await member.browser.request('GET', `/api/v1/projects/${everyoneId}`), 200);
   });
 

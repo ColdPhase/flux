@@ -5,7 +5,7 @@ import { DomainError } from '@flux/core';
 import type { Conversation, Material, WorkItem } from '@flux/contracts';
 import { requireLivePresentationSource } from '../../apps/server/src/live/access.js';
 import { db } from './support/db.js';
-import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace } from './support/people.js';
 
 function missing(code: string) {
   return (error: unknown) => error instanceof DomainError && error.code === code;
@@ -18,7 +18,7 @@ test('live presentation accepts only current, project-readable source versions i
   await addMember(owner, ws.id, viewer, 'member');
   const place = await project(owner, ws.id, 'Presented project', 'restricted');
   const elsewhere = await project(owner, ws.id, 'Foreign project', 'restricted');
-  await grant(owner, place.id, viewer, 'viewer');
+  await grant(owner, place.id, viewer, 'contributor');
 
   const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
     body: { body: 'Project message', clientMessageId: randomUUID() },
@@ -61,7 +61,7 @@ test('live presentation accepts only current, project-readable source versions i
   await db.transaction((tx) => requireLivePresentationSource(principal, place.id,
     { ...workRef, version: changed.version }, tx, true));
 
-  await grant(owner, place.id, viewer, 'denied');
+  await removeFromSpace(owner, place.id, viewer);
   await assert.rejects(db.transaction((tx) => requireLivePresentationSource(principal, place.id, materialRef, tx, true)),
     missing('PROJECT_NOT_FOUND'));
 });

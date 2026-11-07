@@ -35,12 +35,12 @@ export const draftMovePath = (draftId: string) => `${draftPath(draftId)}/move`;
 export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'guest';
 export type ProjectVisibility = 'workspace' | 'restricted';
 /**
- * A space's people (F-037): `manager` is a space admin and `contributor` a space member; only a person can be a space admin.
- * `denied` is an explicit deny: it wins over every role, grant and visibility rule.
+ * A space's people (F-037, #903): `manager` is a space admin and `contributor` a space member; only a person can be a space admin.
+ * There are no other roles: nobody reads a space without being able to work in it, and nobody is kept out of one by a grant.
  */
-export type ProjectGrantRole = 'manager' | 'contributor' | 'viewer' | 'denied';
+export type ProjectGrantRole = 'manager' | 'contributor';
 /** The caller's effective access to a project. `manager` is a space admin, or a company owner or admin. */
-export type ProjectAccess = 'manager' | 'contributor' | 'viewer';
+export type ProjectAccess = 'manager' | 'contributor';
 export type DraftVisibility = 'private' | 'project' | 'workspace';
 
 export type PrincipalRef = { kind: 'human'; id: string } | { kind: 'agent'; id: string };

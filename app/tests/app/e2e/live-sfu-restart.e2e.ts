@@ -36,7 +36,7 @@ test('real SFU restart rotates a lost room; old original and refreshed tokens re
     const ws = await workspace(owner, 'SFU restart');
     await addMember(owner, ws.id, member, 'member');
     const place = await project(owner, ws.id, 'Restart room', 'restricted');
-    await grant(owner, place.id, member, 'viewer');
+    await grant(owner, place.id, member, 'contributor');
     const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
       body: { body: 'Durable restart anchor', clientMessageId: randomUUID() },
     }), 201) as Conversation;

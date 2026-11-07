@@ -114,7 +114,6 @@ export async function changeRole(principal: Principal, workspaceId: string, user
     if (isManager(target.role) && !isManager(role)) await dropUnlockPassword(tx, ports, workspaceId, userId, sealedChange);
     const updated = await workspaces.setRole(workspaceId, userId, role);
     if (role === 'guest') await workspaces.endSpaceAdmin(workspaceId, userId);
-    if (isManager(role) && !isManager(target.role)) await workspaces.liftDeniedGrants(workspaceId, userId);
     // The trigger deleted their holder and the recovery holder; their removal records are pinned now, in this transaction.
     if (sealedChange) await ports.encryption(tx).recordRemovals(workspaceId);
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.member_role_changed.v1', workspaceId, { userId, from: target.role, role });

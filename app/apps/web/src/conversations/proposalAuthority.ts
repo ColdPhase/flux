@@ -11,7 +11,7 @@ export function proposalAuthority(finishes: { workId: string } | null, { writabl
   const observed = referenceWork.actionable;
   const unavailable = observed && referenceWork.unavailable.has(key);
   const access = referenceWork.observation?.access;
-  const canWrite = observed && access !== undefined && access !== 'viewer';
+  const canWrite = observed && access !== undefined;
   const ownerAllows = row?.kind === 'work' && (access === 'manager' || !row.owner || row.owner.kind !== 'human' || row.owner.id === meId);
   return {
     canAccept: canWrite && !!ownerAllows,

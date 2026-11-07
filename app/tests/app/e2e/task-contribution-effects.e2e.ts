@@ -64,7 +64,7 @@ test('a saved blocker, a published result and a handoff appear as marked message
     for (const other of [writer, reader]) await addMember(owner, ws.id, other, 'member');
     const place = await project(owner, ws.id, 'Hinge trial', 'restricted');
     await grant(owner, place.id, writer, 'contributor');
-    await grant(owner, place.id, reader, 'viewer');
+    await grant(owner, place.id, reader, 'contributor');
     const task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, {
       body: { title: 'Inspect the hinge', clientCommandId: randomUUID() },
     }), 201) as WorkItem;

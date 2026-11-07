@@ -49,7 +49,6 @@ async function requireTargetProject(principal: Principal, workspaceId: string, p
   const evaluation = await evaluateProject(principal, 'project.write', projectId, ports.access(tx), { lock: true });
   if (!evaluation.visible) throw new NotFoundError('Space', 'PROJECT_NOT_FOUND');
   if (evaluation.project!.workspaceId !== workspaceId) throw new RuleViolationError('A draft can only link to a space in its own company', 'CROSS_WORKSPACE');
-  if (!evaluation.allowed) throw new ForbiddenError('Contributor access to the target space is required', 'PROJECT_WRITE_REQUIRED');
   return evaluation.project!;
 }
 

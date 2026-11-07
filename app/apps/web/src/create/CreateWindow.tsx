@@ -294,7 +294,6 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
     return () => controller.abort();
   }, [projectId]);
   const loaded = context?.projectId === projectId ? context.value : null;
-  const viewer = loaded?.project.access === 'viewer';
 
   const people = useMemo(() => (loaded?.members.length ? loaded.members.map((m) => ({ value: `human:${m.userId}`, label: m.userId === me.user.id ? `${m.name} (you)` : m.name }))
     : [{ value: `human:${me.user.id}`, label: `${me.user.name} (you)` }]), [loaded, me.user.id, me.user.name]);
@@ -306,7 +305,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
 
   const text = oneLine(title);
   const needsBlocker = status === 'blocked' && !blocker.trim();
-  const ready = !!text && text.length <= WORK_LIMITS.title && !!projectId && !viewer && !needsBlocker;
+  const ready = !!text && text.length <= WORK_LIMITS.title && !!projectId && !needsBlocker;
   const noPlace = !projects.length;
 
   async function submit() {
@@ -410,7 +409,6 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
         <input className="ui-input" value={blocker} maxLength={WORK_LIMITS.blocker} onChange={(event) => setBlocker(event.target.value)} /></label> : null}
       {linking && projectId ? <LinkPicker projectId={projectId} taken={sources.map((s) => s.ref)} onPick={(ref, label) => { setSources([...sources, { ref, label }]); setLinking(false); }} onDone={() => setLinking(false)} /> : null}
       <TooLong text={text} limit={WORK_LIMITS.title} />
-      {viewer ? <p className="create__error" role="alert">You can read this space but not add tasks.</p> : null}
       {error ? <p className="create__error" role="alert">{error}</p> : null}
       {!prefilled && (draft.text || draft.storage === 'visit') ? <p id={noteId} className="create__draft" role="status">
         {draft.storage === 'visit' || (pending.text && pending.storage === 'visit')

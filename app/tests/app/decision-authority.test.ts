@@ -36,10 +36,10 @@ async function stillProposed(reader: Browser, decision: Decision, label: string)
 }
 
 describe('decision acceptance authority (#250, O-009)', () => {
-  // ada owns the workspace; adam is an admin; mia, nat and leo are members; vic is a member narrowed to viewer;
-  // gus is a guest with a contributor grant; gil a guest without one; dee an admin denied on the project.
-  let ada: Person; let adam: Person; let mia: Person; let nat: Person; let leo: Person; let vic: Person;
-  let gus: Person; let gil: Person; let dee: Person; let outsider: Person;
+  // ada owns the workspace; adam is an admin; mia, nat and leo are members;
+  // gus is a guest with a contributor grant; gil a guest without one.
+  let ada: Person; let adam: Person; let mia: Person; let nat: Person; let leo: Person;
+  let gus: Person; let gil: Person; let outsider: Person;
   let ws: Workspace; let lamp: Project;
   let personalAgent: Agent; let sharedAgent: Agent;
   const work = workUseCases(db);
@@ -48,24 +48,21 @@ describe('decision acceptance authority (#250, O-009)', () => {
     expectStatus(await someone.browser.request('POST', decisionsPath(), { body: { title, rationale: `Why: ${title}`, ...extra } }), 201, `propose ${title}`) as Decision;
 
   before(async () => {
-    [ada, adam, mia, nat, leo, vic, gus, gil, dee, outsider] = await Promise.all(
-      ['da-ada', 'da-adam', 'da-mia', 'da-nat', 'da-leo', 'da-vic', 'da-gus', 'da-gil', 'da-dee', 'da-outsider'].map(person));
+    [ada, adam, mia, nat, leo, gus, gil, outsider] = await Promise.all(
+      ['da-ada', 'da-adam', 'da-mia', 'da-nat', 'da-leo', 'da-gus', 'da-gil', 'da-outsider'].map(person));
     ws = await createWorkspace(ada, 'Decision authority');
-    for (const [someone, role] of [[adam, 'admin'], [dee, 'admin'], [mia, 'member'], [nat, 'member'], [leo, 'member'], [vic, 'member'],
+    for (const [someone, role] of [[adam, 'admin'], [mia, 'member'], [nat, 'member'], [leo, 'member'],
       [gus, 'guest'], [gil, 'guest']] as const) await addMember(ada, ws.id, someone, role);
     // A workspace-visible project: members write by default, guests only through a grant.
     lamp = await createProject(ada, ws.id, 'Gesture lamp', 'workspace');
-    await grant(ada, lamp.id, vic, 'viewer');
     await grant(ada, lamp.id, gus, 'contributor');
-    await grant(ada, lamp.id, dee, 'denied');
     personalAgent = expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada helper', owner: 'self' } }), 201) as Agent;
     sharedAgent = expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Lab agent', owner: 'self' } }), 201) as Agent;
   });
 
-  test('DA-2: a person with current project write accepts; viewers, people without access and agents are refused with nothing changed', async () => {
+  test('DA-2: a person with current project access accepts; people without access and agents are refused with nothing changed', async () => {
     const proposal = await propose(mia, 'Use a ToF sensor');
-    for (const [someone, status, label] of [[vic, 403, 'a viewer'], [gil, 404, 'a guest without a grant'],
-      [dee, 404, 'an admin denied on the project'], [outsider, 404, 'someone outside the workspace']] as const) {
+    for (const [someone, status, label] of [[gil, 404, 'a guest without a grant'], [outsider, 404, 'someone outside the workspace']] as const) {
       const refused = await accept(someone.browser, proposal.id, proposal.version);
       assert.equal(refused.status, status, `${label}: ${refused.text}`);
       await stillProposed(ada.browser, proposal, label);
@@ -90,13 +87,7 @@ describe('decision acceptance authority (#250, O-009)', () => {
     }
   });
 
-  test('DA-2: authority is the current one at acceptance: narrowed after proposing, or gone from the workspace, is refused', async () => {
-    const narrowedOwn = await propose(nat, 'Battery powered lamp');
-    await grant(ada, lamp.id, nat, 'viewer');
-    const refused = await accept(nat.browser, narrowedOwn.id, narrowedOwn.version);
-    assert.equal(refused.status, 403, `narrowed to viewer after proposing: ${refused.text}`);
-    await stillProposed(ada.browser, narrowedOwn, 'narrowed proposer');
-
+  test('DA-2: authority is the current one at acceptance: gone from the workspace is refused', async () => {
     const leaving = await propose(leo, 'Ship in spring');
     await removeMember(ada, ws.id, leo);
     const gone = await accept(leo.browser, leaving.id, leaving.version);
@@ -120,16 +111,16 @@ describe('decision acceptance authority (#250, O-009)', () => {
       await stillProposed(ada.browser, created, `create body ${JSON.stringify(body)}`);
     }
     assert.equal(await count(), before + 2);
-    assert.equal((await vic.browser.request('POST', decisionsPath(), { body: { title: 'Viewer replacement', supersedes: rule.id } })).status, 403,
-      'a viewer cannot even propose a replacement');
+    assert.equal((await gil.browser.request('POST', decisionsPath(), { body: { title: 'Outsider replacement', supersedes: rule.id } })).status, 404,
+      'someone without access cannot even propose a replacement');
 
     // An agent proposes the replacement; the current rule does not move.
     const agent: Principal = { kind: 'agent', id: personalAgent.id };
     const replacement = await work.proposeDecision(agent, lamp.id, { title: 'Use a ToF sensor instead', rationale: 'Works in the dark', supersedes: rule.id });
     const current = async () => expectStatus(await mia.browser.request('GET', `/api/v1/decisions/${rule.id}`), 200) as Decision;
     assert.deepEqual([replacement.status, replacement.proposedBy.kind, (await current()).status], ['proposed', 'agent', 'accepted']);
-    assert.equal((await accept(vic.browser, replacement.id, replacement.version)).status, 403);
-    assert.equal((await accept(vic.browser, replacement.id, replacement.version, { decidedBy: ada.id })).status, 403,
+    assert.equal((await accept(gil.browser, replacement.id, replacement.version)).status, 404);
+    assert.equal((await accept(gil.browser, replacement.id, replacement.version, { decidedBy: ada.id })).status, 404,
       'naming someone with authority lends none');
     await rejects(work.acceptDecision(agent, replacement.id, {}, replacement.version), 'DECISION_NEEDS_PERSON');
     await stillProposed(ada.browser, replacement, 'refused replacement');
@@ -189,12 +180,11 @@ describe('decision acceptance authority (#250, O-009)', () => {
       objectId: decisionId, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } });
     assert.equal(delegation.status, 400, delegation.text);
 
-    // The agent itself (owned by the project's manager) is refused; so is a person who can only read.
+    // The agent itself (owned by the project's manager) is refused; so is a person who was never added to the space.
     await rejects(work.acceptDecision({ kind: 'agent', id: f.agentId }, decisionId, {}, 1), 'DECISION_NEEDS_PERSON');
-    const reader = await person('da-mcp-viewer');
+    const reader = await person('da-mcp-reader');
     expectMcp(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/members`, { body: { email: reader.email, role: 'member' } }), 201);
-    expectMcp(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/grants`, { body: { principal: { kind: 'human', id: reader.id }, role: 'viewer' } }), 201);
-    assert.equal((await accept(reader.browser, decisionId, 1)).status, 403);
+    assert.equal((await accept(reader.browser, decisionId, 1)).status, 404);
     await stillProposed(f.owner, proposal, 'agent proposal after refusals');
     assert.equal((await read(String(rule.id))).status, 'accepted');
 

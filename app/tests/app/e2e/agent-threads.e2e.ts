@@ -50,7 +50,7 @@ async function fixture() {
   const ws = await workspace(owner, 'Prototype lab');
   for (const p of [writer, viewer, outsider]) await addMember(owner, ws.id, p, 'member');
   const place = await project(owner, ws.id, 'Gesture lamp', 'restricted');
-  await grant(owner, place.id, writer, 'contributor'); await grant(owner, place.id, viewer, 'viewer');
+  await grant(owner, place.id, writer, 'contributor'); await grant(owner, place.id, viewer, 'contributor');
   const task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Compare the two prototype measurements', outcome: 'Choose the sensor after checking both readings.' } }), 201) as WorkItem;
   const path = `/api/v1/work/${task.id}/agent-thread`;
   const say = async (body: string, who = owner) => expectStatus(await who.browser.request('POST', path, { body: { body, clientMessageId: randomUUID() } }), 201) as ConversationMessage;

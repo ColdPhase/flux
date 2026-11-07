@@ -8,7 +8,7 @@ import {
 import { PERSONAL_RUN_LIMITS, type Conversation, type Project, type Workspace } from '@flux/contracts';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
-import { db, pool } from './support/db.js';
+import { db, loseSpace, pool } from './support/db.js';
 import { expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { FLUX_TOOLS } from './support/provider-tool-fixtures.js';
@@ -227,9 +227,10 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
   test('access revoked between two turns ends the run before the next request, with the first turn charged and its changes kept', async () => {
     await useConnection({});
     compute.respond = async () => toolUse(compute.dispatched.length);
+    let restore: (() => Promise<void>) | null = null;
     session.onCall = async () => {
-      // The owner kept out of the project: their assistant loses it with them (F-036 AG-3).
-      await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'denied', $4) ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`, [randomUUID(), ws.id, place.id, owner.id]);
+      // The owner no longer has the space: their assistant loses it with them (F-036 AG-3).
+      restore = await loseSpace(place.id, owner.id);
     };
     const started = await ask();
     assert.equal(await processor.process(started.run.id), 'denied');
@@ -237,7 +238,7 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
     assert.deepEqual([stored.stopped_at_stage, stored.cost_state, stored.charged_micros, stored.answer_body], ['before_dispatch', 'observed', 2_500, null]);
     assert.equal(compute.dispatched.length, 1, 'no request after the revocation');
     assert.equal(session.changes.length, 1);
-    await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2`, [place.id, owner.id]);
+    await restore!();
   });
 
   test('Stop during a call ends the run stopped: the charge so far is kept, no further request is sent', async () => {

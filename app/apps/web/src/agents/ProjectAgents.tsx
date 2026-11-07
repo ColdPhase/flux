@@ -550,7 +550,7 @@ function rowView(entry: AgentEntry, held: WorkRowProjection[], lead: boolean, no
   if (lead && stopped && now - Date.parse(stopped.stoppedAt) < STOPPED_SHOWN_MS) {
     return { line: `Stopped by ${stopped.stoppedBy.id === meId ? 'you' : stopped.stoppedBy.name} · #${stopped.taskNumber}`, expression, working: false, rank: connectionRank(connection, now) };
   }
-  if (!connection) return { line: entry.access === 'viewer' ? 'Can read here · nothing handed to it' : 'Nothing handed to it', expression, working: false, rank: 7 };
+  if (!connection) return { line: entry.access === 'read' ? 'Can read here · nothing handed to it' : 'Nothing handed to it', expression, working: false, rank: 7 };
   return { line: stateLine(connection, now), expression, working: false, rank: connectionRank(connection, now) };
 }
 
@@ -777,7 +777,7 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
   const changingScope = navigation.state !== 'idle' && !!navigation.location
     && (navigation.location.pathname !== location.pathname || navigation.location.search !== location.search);
   const connections = useConnections(projectId, me.user.id, data);
-  const canWrite = shell?.project.access !== 'viewer';
+  const canWrite = true;
   const agentStops = useAgentStops(projectId, me.user.id);
   const { reload: reloadStops } = agentStops;
   const refreshChoices = choices.onRefresh;

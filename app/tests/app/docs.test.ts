@@ -38,7 +38,7 @@ describe('project docs with immutable versions, links and backlinks', () => {
     lamp = await createProject(owner, ws.id, 'Gesture lamp', 'restricted');
     other = await createProject(owner, ws.id, 'Other project', 'restricted');
     await grant(owner, lamp.id, partner, 'contributor');
-    await grant(owner, lamp.id, viewer, 'viewer');
+    await grant(owner, lamp.id, viewer, 'contributor');
     conversation = json<Conversation>(await post(owner, `/api/v1/projects/${lamp.id}/conversations`,
       { body: 'The PIR sensor misses slow hand movements.', clientMessageId: randomUUID() }), 201);
   });
@@ -82,11 +82,9 @@ describe('project docs with immutable versions, links and backlinks', () => {
     assert.ok(materials.items.every((item) => item.materialId !== doc.id));
   });
 
-  test('access follows the project: viewers read, outsiders see nothing, agents read but do not write', async () => {
+  test('access follows the project: members read, outsiders see nothing, agents read but do not write', async () => {
     const doc = json<Doc>(await post(partner, `/api/v1/projects/${lamp.id}/docs`, { title: 'Wiring notes', state: 'published' }), 201);
     assert.equal(json<Doc>(await get(viewer, `/api/v1/docs/${doc.id}`), 200).title, 'Wiring notes');
-    assert.equal((await patch(viewer, `/api/v1/docs/${doc.id}`, { body: 'No' }, ifMatch(1))).status, 403);
-    assert.equal((await post(viewer, `/api/v1/projects/${lamp.id}/docs`, { title: 'No' })).status, 403);
     const hidden = await get(outsider, `/api/v1/docs/${doc.id}`);
     const missing = await get(outsider, `/api/v1/docs/${randomUUID()}`);
     assert.deepEqual([hidden.status, code(hidden), missing.status, code(missing)], [404, 'DOC_NOT_FOUND', 404, 'DOC_NOT_FOUND']);
@@ -233,7 +231,6 @@ describe('project docs with immutable versions, links and backlinks', () => {
     assert.equal(code(await post(owner, section, { from: { type: 'decision', id: rule.id } }, ifMatch(1))), 'DECISION_NOT_ACCEPTED', 'a proposal stays out');
     json(await post(owner, `/api/v1/decisions/${rule.id}/accept`, {}, ifMatch(1)), 200);
     assert.equal((await post(owner, section, { from: { type: 'decision', id: rule.id } })).status, 428);
-    assert.equal((await post(viewer, section, { from: { type: 'decision', id: rule.id } }, ifMatch(1))).status, 403);
     const added = json<Doc>(await post(owner, section, { from: { type: 'decision', id: rule.id } }, ifMatch(1)), 200);
     assert.deepEqual([added.version, added.reason], [2, 'Added the decision “Use a camera”']);
     assert.equal(added.body, `${started.body.trimEnd()}\n\n[Use a camera](flux:decision/${rule.id})\n`, 'the earlier section is untouched and the decision is one line');

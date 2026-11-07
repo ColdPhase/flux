@@ -38,7 +38,7 @@ export function usePaneCore(data: ProjectData, variant: 'stream' | 'thread'): Pa
   const aiOff = useSpaceAi(project.id).blocked;
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   return {
-    me, project, conversation, people, composerId: conversation ? 'thread-composer' : 'project-composer', writable: project.access !== 'viewer', aiOff,
+    me, project, conversation, people, composerId: conversation ? 'thread-composer' : 'project-composer', writable: true, aiOff,
     audience, audienceShort: audience.replace(/ · only you two$/, ''), revalidateRef,
   };
 }

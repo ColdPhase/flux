@@ -45,7 +45,7 @@ export async function leaveProject(principal: Principal, projectId: string, db: 
       throw new RuleViolationError('Everyone holds the whole company, so nobody leaves it', 'EVERYONE_CANNOT_BE_LEFT');
     }
     const grant = await projects.lockGrantOf(projectId, principal.id);
-    if (!grant || grant.role === 'denied') throw new RuleViolationError('You are in this space through the company, not added to it, so there is nothing to leave', 'NOT_ADDED');
+    if (!grant) throw new RuleViolationError('You are in this space through the company, not added to it, so there is nothing to leave', 'NOT_ADDED');
     await requireAnotherSpaceAdmin(projects, principal, projectId, grant);
     await projects.deleteGrant(grant.id);
     await recordEvent(eventPorts(ports, tx), principal, project!.workspaceId, 'project.grant_revoked.v1', projectId, { grantId: grant.id });

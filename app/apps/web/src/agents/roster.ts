@@ -18,7 +18,7 @@ export interface AgentEntry {
   via: string | null;
   connection: ProjectAgentConnection | null;
   /** What the agent can do in this project: its owner's level, narrowed by its connection; null with no connection here. */
-  access: ProjectAccess | null;
+  access: AgentAccess | null;
 }
 
 /** An expired session is offline even before the next server observation. */
@@ -63,9 +63,11 @@ export const CLIENT_LABEL: Record<ProjectAgentConnection['clientDesignation'], s
   claude_code: 'Claude Code', codex: 'Codex', other: 'External client',
 };
 
-/** What the agent can do through a connection: its owner's level, or read only when the connection only reads (F-036 AG-3). */
-const throughConnection = (connection: ProjectAgentConnection, level: ProjectAccess | null): ProjectAccess | null =>
-  level && (connection.mayDo === 'read' || connection.scopes.every((scope) => scope === 'flux.context.read')) ? 'viewer' : level;
+/** What an agent can do in a space: its owner's level, or `read` when its connection only reads (F-036 AG-3 "Only read"). */
+export type AgentAccess = ProjectAccess | 'read';
+
+const throughConnection = (connection: ProjectAgentConnection, level: ProjectAccess | null): AgentAccess | null =>
+  level && (connection.mayDo === 'read' || connection.scopes.every((scope) => scope === 'flux.context.read')) ? 'read' : level;
 
 export function agentEntries(people: readonly ProjectPerson[] | null, connections: readonly ProjectAgentConnection[], workspaceAgents: readonly Agent[] = [], humans: ReadonlyMap<string, string> = new Map()): AgentEntry[] {
   const accessOf = new Map((people ?? []).filter((person) => person.kind === 'agent').map((person) => [person.id, person]));
@@ -101,11 +103,11 @@ export function tasksHeldBy(agentId: string, rows: readonly NativeWorkRow[]): Wo
 }
 
 /** What the grant lets the agent do here, in the words of the product rules (agents never accept decisions). */
-export function mayDo(access: ProjectAccess | null): { can: string; canTake: boolean } {
+export function mayDo(access: AgentAccess | null): { can: string; canTake: boolean } {
   if (access === 'contributor' || access === 'manager') {
     return { can: 'read this project and write in it: messages, results, tasks and proposed decisions. It can’t accept decisions or invite people.', canTake: true };
   }
-  if (access === 'viewer') return { can: 'read this project. It can’t post, change tasks or propose decisions.', canTake: false };
+  if (access === 'read') return { can: 'read this project. It can’t post, change tasks or propose decisions.', canTake: false };
   return { can: 'nothing here yet: it has no access to this project.', canTake: false };
 }
 

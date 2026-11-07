@@ -5,8 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { after, before, describe, test } from 'node:test';
 import Fastify, { type FastifyInstance } from 'fastify';
 import WebSocket, { WebSocketServer } from 'ws';
-import { accessPorts, createDatabase } from '@flux/db';
-import { grantProject } from '@flux/core';
+import { createDatabase } from '@flux/db';
 import type { Conversation, LiveJoinGrant } from '@flux/contracts';
 import { loadIdentityConfig, registerIdentity } from '../../apps/server/src/identity/index.js';
 import { liveAccess } from '../../apps/server/src/live/access.js';
@@ -16,7 +15,7 @@ import { createLiveMedia, liveMediaConfig, participantIdentity, type LiveMediaAd
 import { registerLiveSignaling } from '../../apps/server/src/live/signaling.js';
 import { admissionRevocation } from '../../apps/server/src/live/admission-revocation.js';
 import { liveAdmissionStore } from '../../apps/server/src/live/admissions.js';
-import { connectionString } from './support/db.js';
+import { connectionString, removeFromSpaceCore } from './support/db.js';
 import { Browser } from './support/http.js';
 import { addMember, expectStatus, grant, password, person, project, workspace, type Person } from './support/people.js';
 
@@ -210,7 +209,7 @@ async function scene(label: string) {
   const ws = await workspace(owner, label);
   await addMember(owner, ws.id, member, 'member');
   const place = await project(owner, ws.id, `${label} project`, 'restricted');
-  await grant(owner, place.id, member, 'viewer');
+  await grant(owner, place.id, member, 'contributor');
   const thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
     body: { body: `${label} anchor`, clientMessageId: randomUUID() } }), 201) as Conversation;
   const session = await liveSessionStore(db).createOrGet({ kind: 'human', id: owner.id }, place.id,
@@ -326,8 +325,7 @@ describe('live media admission (#128)', () => {
 
     // Straight through the policy (the API container has no live media to rotate the room),
     // so the unchanged room isolates the gate's own project check.
-    await grantProject({ kind: 'human', id: s.owner.id }, s.place.id,
-      { principal: { kind: 'human', id: s.member.id }, role: 'denied' }, db, accessPorts);
+    await removeFromSpaceCore({ kind: 'human', id: s.owner.id }, s.place.id, { kind: 'human', id: s.member.id }, db);
     const before = sfu.signals.length;
     await refused(signal(refreshed, laptop.browser));
     assert.equal(sfu.signals.length, before);

@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
 import { createDecipheriv } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { before, describe, test } from 'node:test';
 import type { BackgroundComputeConnection, ProactiveComparisonRule, Workspace, Project } from '@flux/contracts';
-import { pool } from './support/db.js';
+import { loseSpace, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
 
 const body = (agentId: string) => ({ agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
@@ -131,9 +130,9 @@ describe('owner standing comparison rule', () => {
     expectStatus(await owner.browser.request('DELETE', `${connectionPath}/${fits.id}`), 204);
     rule = expectStatus(await change(owner, 1, 'paused'), 200) as ProactiveComparisonRule;
     assert.equal(rule.status, 'paused');
-    await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) SELECT $1, workspace_id, id, $2, 'denied', $2 FROM projects WHERE id = $3 ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`, [randomUUID(), owner.id, project.id]);
+    const restore = await loseSpace(project.id, owner.id);
     assert.equal((await change(owner, 2, 'enabled')).status, 404, 'the owner losing the project prevents enabling the rule again');
-    await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2`, [project.id, owner.id]);
+    await restore();
     rule = expectStatus(await change(owner, 2, 'revoked'), 200) as ProactiveComparisonRule;
     assert.equal(rule.status, 'revoked');
     assert.equal((await change(owner, 3, 'enabled')).status, 409);

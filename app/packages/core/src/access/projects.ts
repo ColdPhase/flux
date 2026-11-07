@@ -129,7 +129,7 @@ export async function getProject(principal: Principal, projectId: string, db: Da
 /**
  * The audience of a project (#117): every person and agent who can read it now. The caller
  * needs `project.read`. Each candidate's level is decided by the access policy itself
- * (`evaluateProject`), never re-derived here, so a deny, a revoked agent or a removed
+ * (`evaluateProject`), never re-derived here, so a revoked agent or a removed
  * member is left out exactly as on their own next request. The candidates are the
  * workspace's members and agents; a project that nobody else can read lists only its managers.
  */
@@ -169,7 +169,7 @@ export async function listSpacePeople(principal: Principal, projectId: string, d
   const audience = await listProjectPeople(principal, projectId, db, ports);
   const { project } = enforce(await evaluateProject(principal, 'project.read', projectId, ports.access(db)), 'project');
   if (project!.visibility === 'workspace') return audience;
-  const added = new Set((await ports.projects(db).listGrants(principal, projectId)).filter((grant) => grant.role !== 'denied').map((grant) => grant.userId));
+  const added = new Set((await ports.projects(db).listGrants(principal, projectId)).map((grant) => grant.userId));
   const humans = audience.filter((person) => person.kind === 'human' && added.has(person.id));
   const listed = new Set(humans.map((person) => person.id));
   return [...humans, ...audience.filter((person) => person.kind === 'agent' && person.agentOwner && listed.has(person.agentOwner.id))];

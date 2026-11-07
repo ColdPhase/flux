@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import type { ComparisonProvider } from '@flux/core';
 import type { Material } from '@flux/contracts';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
-import { db, pool } from './support/db.js';
+import { db, loseSpace, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
 const masterKey = readFileSync('/run/secrets/flux_background_key');
@@ -76,7 +76,7 @@ const changes: Array<{ name: string; phase: 'count' | 'message'; reason: string;
   { name: 'key connection revocation', phase: 'message', reason: 'AUTHORIZATION_CHANGED',
     async change(f) { expectStatus(await f.owner.browser.request('DELETE', `/api/v1/background-compute-connections/${f.connection.id}`), 204); } },
   { name: 'owner project access loss', phase: 'message', reason: 'ACCESS_CHANGED',
-    async change(f) { await grant(f.admin, f.projectId, f.owner, 'denied'); } },
+    async change(f) { await loseSpace(f.projectId, f.owner.id); } },
   { name: 'source revision', phase: 'message', reason: 'SOURCE_CHANGED',
     async change(f) { expectStatus(await f.admin.browser.request('PATCH', `/api/v1/materials/${f.material.materialId}`,
       { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'The original measurement was corrected.' } }), 200); } },

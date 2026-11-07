@@ -9,7 +9,7 @@ import { FILE_LIMITS, imageTypeOf, type CreatedThought, type Sketch, type Sketch
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import { fileUnitOfWork } from '../../apps/server/src/files/adapters.js';
 import { sketchUseCases } from '../../apps/server/src/sketches/adapters.js';
-import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
 import { db, pool } from './support/db.js';
 
 // #252: pasting on a map. Lines and links are ordinary thoughts saved only by the client's confirmation; an image is
@@ -31,7 +31,7 @@ async function scene() {
   const elsewhere = await project(owner, ws.id, 'Reading corner', 'restricted');
   await grant(owner, place.id, writer, 'contributor');
   await grant(owner, elsewhere.id, writer, 'contributor');
-  await grant(owner, place.id, reader, 'viewer');
+  await grant(owner, place.id, reader, 'contributor');
   const map = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/sketches`,
     { body: { title: 'Bedside sensing', scope: 'project', projectId: place.id } }), 201) as Sketch;
   return { owner, writer, reader, outsider, ws, place, elsewhere, map };
@@ -123,18 +123,14 @@ test('a pasted image stays private staging until its thought is saved, then the 
   await createFileUseCases(fileUnitOfWork(db), await diskFileStorage(filesDir)).cleanup();
   assert.equal((await download(f.reader, staged.body.id)).status, 200);
   // Losing project access ends the image read like any project content.
-  await grant(f.owner, f.place.id, f.reader, 'denied');
+  await removeFromSpace(f.owner, f.place.id, f.reader);
   assert.equal((await download(f.reader, staged.body.id)).status, 404);
 });
 
-test('viewers, other uploaders, other projects, private maps, agents and non-images cannot place an image', async () => {
+test('other uploaders, other projects, private maps, agents and non-images cannot place an image', async () => {
   const f = await scene();
   const before = await detail(f.owner, f.map.id);
-  // A viewer can neither stage nor save a thought.
-  const viewerUpload = await upload(f.reader, f.place.id, PNG);
-  assert.equal(viewerUpload.status, 403);
   const staged = (await upload(f.writer, f.place.id, PNG)).body;
-  assert.equal((await place(f.reader, f.map.id, { fileId: staged.id })).status, 403);
   // Another person's staged image is an unknown file, even to the project's manager.
   const foreign = await place(f.owner, f.map.id, { fileId: staged.id });
   assert.equal(foreign.status, 404);

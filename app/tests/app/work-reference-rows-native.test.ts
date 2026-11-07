@@ -9,7 +9,7 @@ import { createAuth } from '../../apps/server/src/identity/auth.js';
 import { createOauthRequests } from '../../apps/server/src/identity/oauth-flow.js';
 import { loadIdentityConfig } from '../../apps/server/src/identity/config.js';
 import { createSessionResolver } from '../../apps/server/src/identity/session.js';
-import { addMember, expectStatus, grant, person, project, secondSession, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, secondSession, workspace, type Person } from './support/people.js';
 import { inBatches, SAME_PROJECT_TASKS } from './support/batches.js';
 
 if (!process.env.DATABASE_URL) throw new Error('DATABASE_URL is required');
@@ -45,7 +45,7 @@ describe('selected native reference rows with exact sessions and current members
     for (const who of [writer, viewer]) await addMember(owner, workspaceId, who, 'member');
     projectId = (await project(owner, workspaceId, 'Exact reference scope', 'restricted')).id;
     foreignId = (await project(owner, workspaceId, 'Other reference scope', 'restricted')).id;
-    await grant(owner, projectId, writer, 'contributor'); await grant(owner, projectId, viewer, 'viewer');
+    await grant(owner, projectId, writer, 'contributor'); await grant(owner, projectId, viewer, 'contributor');
     work = await createWork('Current native cited work', projectId, { outcome: 'Long own outcome must not escape', criteria: ['Own full criterion'], owner: { kind: 'human', id: writer.id } });
     foreign = await createWork('Foreign title must not escape', foreignId, { owner: { kind: 'human', id: owner.id } });
     decision = await post<Decision>(owner, `/api/v1/projects/${projectId}/decisions`, { title: 'Selected native decision', rationale: 'Long private-to-detail rationale' });
@@ -55,7 +55,7 @@ describe('selected native reference rows with exact sessions and current members
   test('mixed historical identities isolate opaque markers and preserve exact native rows, owners and versions', async () => {
     const missing = randomUUID();
     const observation = await read(`work:${foreign.id},work:${work.id},result:${result.id},decision:${decision.id},work:${missing},work:${work.id}`, viewer);
-    assert.equal(observation.projectId, projectId); assert.equal(observation.access, 'viewer'); assert.match(observation.observedAt, /\.\d{6}Z$/);
+    assert.equal(observation.projectId, projectId); assert.equal(observation.access, 'contributor'); assert.match(observation.observedAt, /\.\d{6}Z$/);
     assert.deepEqual(observation.items.map(key), [`decision:${decision.id}`, `result:${result.id}`, `work:${work.id}`]);
     assert.deepEqual(observation.unavailable, [foreign.id, missing].sort().map((id) => ({ kind: 'work', id })));
     const row = observation.items.find(({ kind }) => kind === 'work'); assert.ok(row?.kind === 'work');
@@ -93,15 +93,11 @@ describe('selected native reference rows with exact sessions and current members
     expectStatus(await owner.browser.request('GET', path(fixtures.map(({ id }) => `work:${id}`).join(','))), 400);
   });
 
-  test('project/session denial fails the whole request while a readable downgrade updates final access', async () => {
+  test('project/session denial fails the whole request', async () => {
     expectStatus(await outsider.browser.request('GET', path(`work:${work.id},work:${randomUUID()}`)), 404);
     expectStatus(await viewer.browser.request('GET', path(`work:${foreign.id}`, foreignId)), 404);
-    const denied = heldRead(writer, projectId, `work:${work.id}`, () => grant(owner, projectId, writer, 'denied'));
+    const denied = heldRead(writer, projectId, `work:${work.id}`, () => removeFromSpace(owner, projectId, writer));
     try { await assert.rejects(denied, { status: 404 }); } finally { await grant(owner, projectId, writer, 'contributor'); }
-    try {
-      const down = await heldRead(writer, projectId, `work:${work.id}`, () => grant(owner, projectId, writer, 'viewer'));
-      assert.equal(down.access, 'viewer'); assert.equal(down.items.length, 1);
-    } finally { await grant(owner, projectId, writer, 'contributor'); }
     for (const expired of [false, true]) {
       const current = await secondSession(writer);
       await assert.rejects(heldRead({ ...writer, browser: current.browser }, projectId, `work:${work.id}`, () => expired

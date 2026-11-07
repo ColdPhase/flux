@@ -1,10 +1,8 @@
 """Browser tests for who may accept a project decision (issue #250, decision O-009).
 
 Runs through scripts/check_ui.sh against the running Compose application. Three people share one
-restricted project: Ada manages it, Kai holds a contributor grant and Vic a viewer grant. Ada proposes a
-decision. Vic reads it and sees that it is not binding and who decides it, with no Accept control; his
-direct API attempt is refused and changes nothing. Kai, who did not propose it, accepts it in Details and
-is recorded as the decider. Every step is checked against the API, so the test proves persisted behaviour.
+restricted project: Ada manages it and Kai holds a contributor grant. Ada proposes a
+decision. Kai, who did not propose it, accepts it in Details and is recorded as the decider. Every step is checked against the API, so the test proves persisted behaviour.
 The agent and assistant paths are proven in the API suite (decision-authority.test.ts, personal-runs.test.ts).
 """
 
@@ -23,7 +21,6 @@ PASSWORD = "a person decides here"
 STAMP = int(time.time() * 1000)
 ADA = {"name": "Ada Lind", "email": f"ada.authority+{STAMP}@example.test"}
 KAI = {"name": "Kai Berg", "email": f"kai.authority+{STAMP}@example.test"}
-VIC = {"name": "Vic Sand", "email": f"vic.authority+{STAMP}@example.test"}
 TITLE = "Switch to a ToF distance sensor"
 WHY = "The camera failed below 10 lux; a ToF sensor works in the dark and stores no images"
 
@@ -93,8 +90,8 @@ class DecisionAuthorityJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- three people, one proposal
 
-    def test_01_a_manager_proposes_in_a_project_with_a_contributor_and_a_viewer(self) -> None:
-        for key, person in (("ada", ADA), ("kai", KAI), ("vic", VIC)):
+    def test_01_a_manager_proposes_in_a_project_with_a_contributor(self) -> None:
+        for key, person in (("ada", ADA), ("kai", KAI)):
             page = self.page(None)
             page.goto("/sign-up")
             page.get_by_label("Name").fill(person["name"])
@@ -107,44 +104,13 @@ class DecisionAuthorityJourney(unittest.TestCase):
         ada = self.page("ada")
         ws = self.api(ada, "POST", "/api/v1/workspaces", {"name": "Lamp studio"}, status=201)
         project = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Gesture lamp", "visibility": "restricted"}, status=201)
-        for person, role in ((KAI, "contributor"), (VIC, "viewer")):
+        for person, role in ((KAI, "contributor"),):
             self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": person["email"], "role": "member"}, status=201)
             self.api(ada, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "human", "id": person["id"]}, "role": role}, status=201)
         type(self).project_id = project["id"]
         proposal = self.api(ada, "POST", f"/api/v1/projects/{project['id']}/decisions", {"title": TITLE, "rationale": WHY}, status=201)
         type(self).decision_id = proposal["id"]
         self.assertEqual((proposal["status"], proposal["decidedBy"]), ("proposed", None))
-
-    # ---------------------------------------------------------------- a viewer sees who decides
-
-    def test_02_a_viewer_sees_that_a_person_with_edit_access_decides_and_cannot_accept(self) -> None:
-        page = self.open_decision("vic")
-        panel = self.details(page)
-        expect(panel.get_by_role("heading", name=TITLE)).to_be_visible()
-        expect(panel.locator(".wd-eyebrow")).to_contain_text("Proposed decision")
-        who = panel.get_by_role("region", name="Who decides")
-        expect(who).to_contain_text("Not accepted yet.")
-        expect(who).to_contain_text("A person who can edit Gesture lamp accepts it; agents and assistants can only propose.")
-        expect(panel.get_by_role("button", name=re.compile("^Accept"))).to_have_count(0)
-        expect(panel.get_by_role("heading", name="Accept")).to_have_count(0)
-        shot(page, "decision-desktop-1440-viewer")
-        # A direct attempt is refused and leaves the proposal untouched.
-        refused = self.fetch(page, "POST", f"/api/v1/decisions/{self.decision_id}/accept", {"expectedVersion": 1})
-        self.assertEqual(refused.status, 403, refused.text())
-        stored = self.decision(page)
-        self.assertEqual((stored["status"], stored["version"], stored["decidedBy"]), ("proposed", 1, None))
-        # The Inbox asks only people who can accept: a viewer is not asked, and is told nothing was lost.
-        page.goto("/inbox")
-        expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_visible()
-        expect(page.locator(".nyc")).to_have_count(0)
-
-    def test_03_on_a_phone_the_viewer_reads_the_same_note(self) -> None:
-        page = self.page("vic", phone=True)
-        page.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.decision_id}")
-        sheet = self.details(page, phone=True)
-        expect(sheet.get_by_role("region", name="Who decides")).to_contain_text("A person who can edit Gesture lamp accepts it")
-        expect(sheet.get_by_role("button", name=re.compile("^Accept"))).to_have_count(0)
-        shot(page, "decision-phone-390-viewer")
 
     # ---------------------------------------------------------------- a contributor decides
 
@@ -167,10 +133,10 @@ class DecisionAuthorityJourney(unittest.TestCase):
         stored = self.decision(page)
         self.assertEqual((stored["status"], stored["decidedBy"]["id"], stored["proposedBy"]["id"]), ("accepted", KAI["id"], ADA["id"]))
 
-        # The viewer now reads a current rule, with no pending note.
-        viewer = self.page("vic")
-        viewer.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.decision_id}")
-        sheet = self.details(viewer)
+        # The proposer now reads a current rule, with no pending note.
+        proposer = self.page("ada")
+        proposer.goto(f"/projects/{self.project_id}/tasks?open=decision:{self.decision_id}")
+        sheet = self.details(proposer)
         expect(sheet.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
         expect(sheet).to_contain_text("Kai Berg")
         expect(sheet.get_by_role("region", name="Who decides")).to_have_count(0)

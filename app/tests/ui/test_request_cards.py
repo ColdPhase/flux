@@ -1,6 +1,6 @@
 """Browser tests for the request cards in a task's agents' thread (#400 AC-4, #153 AC-2/AC-4).
 
-Hubert manages a project with Marek (a contributor) and Vera (a viewer). The cards are read from the task's coordination
+Hubert manages a project with Marek and Vera (members). The cards are read from the task's coordination
 record, shown in plain words above the thread's messages: kind, sender -> recipient, the target, the state, a review's
 verdict with whether it still applies, "Open original message", "Download packet" and, for a person who may, "Cancel request".
 The server's records and its authorization (who may cancel, what a packet holds) are proved by the API suite against real
@@ -179,7 +179,7 @@ class RequestCardsJourney(unittest.TestCase):
         for person in (MAREK, VERA):
             self.api(hubert, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": person["email"], "role": "member"}, status=201)
         pid = self.api(hubert, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Arduino lamp", "visibility": "restricted"}, status=201)["id"]
-        for person, role in ((MAREK, "contributor"), (VERA, "viewer")):
+        for person, role in ((MAREK, "contributor"), (VERA, "contributor")):
             self.api(hubert, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": person["id"]}, "role": role}, status=201)
         task = self.api(hubert, "POST", f"/api/v1/projects/{pid}/work", {"title": TASK}, status=201)
         # A long thread: the first message is older than the first page, so "Open original message" has to page back to it.
@@ -305,15 +305,15 @@ class RequestCardsJourney(unittest.TestCase):
         expect(card.get_by_role("alert")).to_contain_text("Only a project manager or the owner of either agent can cancel a request")
         self.assertEqual(len(stub.cancels), 2)
 
-    def test_08_a_viewer_reads_the_cards_and_has_no_cancel(self) -> None:
+    def test_08_a_member_who_is_not_a_party_reads_the_cards_and_has_no_cancel(self) -> None:
         page, stub = self.cards("vera", can_cancel=False)
         region = page.get_by_role("region", name=REGION)
         expect(region.get_by_role("listitem")).to_have_count(7)
         expect(region.get_by_role("button", name="Cancel request")).to_have_count(0)
         expect(region.get_by_role("link", name="Download packet")).to_have_count(7)
         self.assertEqual(stub.cancels, [])
-        # The task is Vera's to read, so the thread is too; she still cannot write to it.
-        expect(page.get_by_label("Write to the agents")).to_be_disabled()
+        # The task is Vera's to read, so the thread is too.
+        expect(page.get_by_label("Write to the agents")).to_be_enabled()
 
     def test_09_a_stranger_gets_nothing(self) -> None:
         stranger = self.page(None)
@@ -338,7 +338,7 @@ class RequestCardsJourney(unittest.TestCase):
         shot(dark_phone, "request-cards-phone-dark-390")
 
     def test_11_a_manager_chooses_who_may_review_and_others_only_read_it(self) -> None:
-        # The real server, no stub: the rule is stored and read back, and a plain contributor or viewer cannot change it.
+        # The real server, no stub: the rule is stored and read back, and a plain member cannot change it.
         path = f"/api/v1/projects/{self.ids['project']}/review-policy"
         hubert = self.page("hubert")
         hubert.goto(f"/projects/{self.ids['project']}/agents")
@@ -353,7 +353,7 @@ class RequestCardsJourney(unittest.TestCase):
         hubert.reload()
         hubert.get_by_role("button", name=re.compile("^Review rule")).click()
         expect(hubert.get_by_role("region", name="Who may review").get_by_role("radio", name=re.compile("^Another person’s agent"))).to_be_checked()
-        # A viewer reads it in a sentence, with no choice to make; the server refuses her anyway.
+        # A member who does not manage the space reads it in a sentence, with no choice to make; the server refuses her anyway.
         vera = self.page("vera")
         vera.goto(f"/projects/{self.ids['project']}/agents")
         vera.get_by_role("button", name=re.compile("^Review rule")).click()

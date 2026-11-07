@@ -209,7 +209,7 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
       const { undo, ...value } = response.value;
       // Advisory for this reader under its final access; the Undo command rechecks everything under the task fence.
       if (value.object.kind === 'work' && undo)
-        return { ...value, object: { ...value.object, creationUndo: creationUndoEligibility(undo, actor, response.access !== 'viewer') }, access: response.access };
+        return { ...value, object: { ...value.object, creationUndo: creationUndoEligibility(undo, actor, true) }, access: response.access };
       return { ...value, access: response.access };
     },
   };

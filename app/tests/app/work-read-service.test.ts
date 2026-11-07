@@ -46,7 +46,7 @@ function harness(overrides: Partial<WorkReadRepository> = {}, fence?: WorkReadFi
   } };
   const final: WorkReadFinalFence = fence ?? { check: async (principal, pid, digest) => {
     calls.push('final-fence'); assert.equal(inTransaction, false); assert.deepEqual(principal, actor);
-    assert.equal(pid, projectId); assert.equal(digest, fingerprint); return 'viewer';
+    assert.equal(pid, projectId); assert.equal(digest, fingerprint); return 'contributor';
   } };
   return { calls, ports, reads: createBoundedWorkReads(unit, final) };
 }
@@ -54,7 +54,7 @@ function harness(overrides: Partial<WorkReadRepository> = {}, fence?: WorkReadFi
 test('combined view and summary share one observation and use access checked after its transaction', async () => {
   const { reads, calls } = harness();
   const view = await reads.view(actor, projectId, new URLSearchParams('limit=1'));
-  assert.equal(view.total, 2); assert.equal(view.summary.workTotal, 2); assert.equal(view.summary.access, 'viewer');
+  assert.equal(view.total, 2); assert.equal(view.summary.workTotal, 2); assert.equal(view.summary.access, 'contributor');
   assert.equal(view.summary.observedAt, at); assert.ok(view.nextCursor); assert.equal(view.selected, null);
   assert.deepEqual(calls, ['tx-start', 'project-policy', 'observation', 'visibility', 'view', 'summary', 'tx-end', 'final-fence']);
 });
@@ -147,7 +147,7 @@ test('all required selectors reach the outside fence as the original normalized 
     associationEdges: async () => slice<ObjectLink>([]), associationEdgeTotal: async () => 0,
     relations: async () => ({ page: slice<ObjectLink>([]), observedAt: at }),
     detail: async () => ({ object: { kind: 'work', id, number: 1, projectId, workspaceId, audience: { kind: 'project', projectId }, title: 'Own native work', outcome: '', criteria: [], dependencyIds: [], prerequisites: [], planIntent: null, status: 'open', owner: null, blocker: null, waitingFor: null, dueOn: null, parked: null, version: 1, createdAt: at, updatedAt: at, createdBy: { ...actor, name: 'Native' }, githubRule: null }, observedAt: at, relations, context: [] }),
-  }, { check: async (_principal, _pid, _digest, required) => { captured.push(required); return 'viewer'; } });
+  }, { check: async (_principal, _pid, _digest, required) => { captured.push(required); return 'contributor'; } });
   await reads.detail(actor, projectId, 'work', id);
   await reads.relations(actor, projectId, new URLSearchParams(`objects=work:${id}`));
   await reads.view(actor, projectId, new URLSearchParams(`purpose=choices&choice=parked_work&decisionId=${otherId}`));
@@ -187,9 +187,9 @@ test('mixed references release exact canonical row/marker accounting with their 
   const { reads } = harness({ references: async (_projectId, objects) => {
     assert.deepEqual(objects, [{ kind: 'work', id }, { kind: 'work', id: otherId }]);
     return { items: [row()], unavailable: [{ kind: 'work', id: otherId }] };
-  } }, { check: async (_actor, _projectId, _digest, required) => { captured = required; return 'viewer'; } });
+  } }, { check: async (_actor, _projectId, _digest, required) => { captured = required; return 'contributor'; } });
   const result = await reads.references(actor, projectId, new URLSearchParams(`objects=work:${otherId},work:${id},work:${id}`));
-  assert.equal(result.access, 'viewer'); assert.equal(result.observedAt, at);
+  assert.equal(result.access, 'contributor'); assert.equal(result.observedAt, at);
   assert.deepEqual(result.unavailable, [{ kind: 'work', id: otherId }]);
   assert.deepEqual(captured, { references: { objects: [{ kind: 'work', id }, { kind: 'work', id: otherId }], available: [{ kind: 'work', id }] } });
 });
@@ -213,13 +213,13 @@ test('thought tasks: bounded parse, coherent observation and the thought set rea
   const thoughtA = '00000000-0000-0000-0000-00000000000a', thoughtB = '00000000-0000-0000-0000-00000000000b';
   const task = { ...row(), createdBy: { kind: 'human' as const, id: 'native-user', name: 'Ada' } };
   let required: unknown;
-  const fence: WorkReadFinalFence = { check: async (_principal, _pid, _digest, value) => { required = value; return 'viewer'; } };
+  const fence: WorkReadFinalFence = { check: async (_principal, _pid, _digest, value) => { required = value; return 'contributor'; } };
   const { reads } = harness({ thoughtTasks: async (_pid, ids) => {
     assert.deepEqual(ids, [thoughtA, thoughtB]);
     return { visible: [thoughtA], counts: [{ thoughtId: thoughtA, tasks: 1 }], links: [{ thoughtId: thoughtA, workId: id }], linkTotal: 1, items: [task] };
   } }, fence);
   const value = await reads.thoughtTasks(actor, projectId, new URLSearchParams(`thoughtIds=${thoughtB.toUpperCase()},${thoughtA},${thoughtB}`));
-  assert.deepEqual(value.counts, [{ thoughtId: thoughtA, tasks: 1 }]); assert.equal(value.access, 'viewer'); assert.equal('visible' in value, false);
+  assert.deepEqual(value.counts, [{ thoughtId: thoughtA, tasks: 1 }]); assert.equal(value.access, 'contributor'); assert.equal('visible' in value, false);
   assert.deepEqual(required, { thoughts: { requested: [thoughtA, thoughtB], visible: [thoughtA] } });
   for (const bad of ['', `thoughtIds=${Array(101).fill(thoughtA).join(',')}`, `thoughtIds=${thoughtA}&limit=1`, 'thoughtIds=nope'])
     await assert.rejects(reads.thoughtTasks(actor, projectId, new URLSearchParams(bad)), { status: 400 });

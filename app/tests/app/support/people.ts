@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import type { Draft, Project, Workspace, WorkspaceRole } from '@flux/contracts';
+import type { Draft, Project, ProjectGrant, Workspace, WorkspaceRole } from '@flux/contracts';
 import { Browser, register, signIn, uniqueEmail, type ClientResponse } from './http.js';
 
 export const password = 'correct horse battery staple';
@@ -47,8 +47,20 @@ export async function project(actor: Person, workspaceId: string, name: string, 
   return expectStatus(await actor.browser.request('POST', `/api/v1/workspaces/${workspaceId}/projects`, { body: { name, visibility } }), 201) as Project;
 }
 
-export async function grant(actor: Person, projectId: string, grantee: Person, role: 'manager' | 'contributor' | 'viewer' | 'denied') {
+export async function grant(actor: Person, projectId: string, grantee: Person, role: 'manager' | 'contributor') {
   expectStatus(await actor.browser.request('POST', `/api/v1/projects/${projectId}/grants`, { body: { principal: { kind: 'human', id: grantee.id }, role } }), 201);
+}
+
+/**
+ * Takes the person out of the space: their grant goes (#903). Nothing keeps someone out of a space they reach another way: a
+ * company owner or admin, or a member of a `workspace`-visible space, still has access, so a test that needs "no access" uses a
+ * restricted space and someone who was added to it.
+ */
+export async function removeFromSpace(actor: Person, projectId: string, grantee: Person) {
+  const grants = expectStatus(await actor.browser.request('GET', `/api/v1/projects/${projectId}/grants`), 200) as ProjectGrant[];
+  const found = grants.find((item) => item.principal.id === grantee.id);
+  assert.ok(found, 'the person was added to the space');
+  expectStatus(await actor.browser.request('DELETE', `/api/v1/projects/${projectId}/grants/${found.id}`), 204);
 }
 
 export async function draft(actor: Person, workspaceId: string, title: string, options: { projectId?: string; body?: string } = {}): Promise<Draft> {

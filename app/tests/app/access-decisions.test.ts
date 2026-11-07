@@ -233,11 +233,10 @@ describe('project decisions (pure)', () => {
     return w;
   };
 
-  test('the level the reader reports sets what is allowed: viewer reads, contributor writes, manager manages', async () => {
+  test('the level the reader reports sets what is allowed: contributor reads and writes, manager manages', async () => {
     const expected: [number, { read: boolean; write: boolean; manage: boolean }][] = [
-      [1, { read: true, write: false, manage: false }],
-      [2, { read: true, write: true, manage: false }],
-      [3, { read: true, write: true, manage: true }],
+      [1, { read: true, write: true, manage: false }],
+      [2, { read: true, write: true, manage: true }],
     ];
     for (const [level, want] of expected) {
       const { reader } = memoryReader(world(level));
@@ -257,12 +256,12 @@ describe('project decisions (pure)', () => {
     assert.equal((await evaluateProject(person, 'project.read', 'not-a-uuid', reader)).visible, false);
     await assert.rejects(assertAuthorized(person, 'project.read', { type: 'project', id: projectId }, reader), NotFoundError);
     const stranger = human('stranger');
-    assert.equal((await evaluateProject(stranger, 'project.read', projectId, memoryReader(world(3)).reader)).visible, false);
+    assert.equal((await evaluateProject(stranger, 'project.read', projectId, memoryReader(world(2)).reader)).visible, false);
   });
 
   test('a visible project with a forbidden action is 403 and carries the row and level the reader loaded', async () => {
     const { reader } = memoryReader(world(1));
-    await assert.rejects(assertAuthorized(person, 'project.write', { type: 'project', id: projectId }, reader), ForbiddenError);
+    await assert.rejects(assertAuthorized(person, 'project.manage', { type: 'project', id: projectId }, reader), ForbiddenError);
     const evaluation = await evaluateProject(person, 'project.read', projectId, reader);
     assert.equal(evaluation.project, project);
     assert.equal(evaluation.level, 1);
@@ -305,11 +304,9 @@ describe('draft decisions (pure)', () => {
 
   test('a project draft is written at contributor level and shared or moved only by its author or a manager', async () => {
     const draft = draftOf('project');
-    const viewer = await decide(peer, draft, [peer], { [key(peer)]: 1 }, actors);
-    assert.deepEqual(viewer, { 'draft.read': true, 'draft.write': false, 'draft.share': false, 'draft.move': false, visible: true });
-    const contributor = await decide(peer, draft, [peer], { [key(peer)]: 2 }, actors);
+    const contributor = await decide(peer, draft, [peer], { [key(peer)]: 1 }, actors);
     assert.deepEqual(contributor, { 'draft.read': true, 'draft.write': true, 'draft.share': false, 'draft.move': false, visible: true });
-    const manager = await decide(boss, draft, [boss], { [key(boss)]: 3 }, actors);
+    const manager = await decide(boss, draft, [boss], { [key(boss)]: 2 }, actors);
     assert.deepEqual(manager, { 'draft.read': true, 'draft.write': true, 'draft.share': true, 'draft.move': true, visible: true });
   });
 
@@ -321,18 +318,16 @@ describe('draft decisions (pure)', () => {
     assert.equal((await decide(peer, draft, [peer], {}, actors))['draft.share'], false);
   });
 
-  test('an agent reads at viewer level and changes only what it owns, or a project draft, at contributor level', async () => {
+  test('an agent changes only what it owns, or a project draft, at its owner\'s level', async () => {
     const bot = agentOf(randomUUID());
     const botActor: Actor = { principal: bot, workspaceId: WS, role: null, agent: { ownerUserId: OWNER_OF_AGENTS, ownerRole: 'member' }, active: true };
     const own = draftOf('private', { ownerUserId: null, ownerAgentId: bot.id });
-    const asViewer = await decide(bot, own, [bot], { [key(bot)]: 1 }, [botActor]);
-    assert.deepEqual(asViewer, { 'draft.read': true, 'draft.write': false, 'draft.share': false, 'draft.move': false, visible: true });
-    const asContributor = await decide(bot, own, [bot], { [key(bot)]: 2 }, [botActor]);
+    const asContributor = await decide(bot, own, [bot], { [key(bot)]: 1 }, [botActor]);
     assert.deepEqual(asContributor, { 'draft.read': true, 'draft.write': true, 'draft.share': true, 'draft.move': true, visible: true });
     const shared = draftOf('project');
-    const others = await decide(bot, shared, [bot], { [key(bot)]: 2 }, [botActor]);
+    const others = await decide(bot, shared, [bot], { [key(bot)]: 1 }, [botActor]);
     assert.deepEqual(others, { 'draft.read': true, 'draft.write': true, 'draft.share': false, 'draft.move': false, visible: true });
-    assert.equal((await decide(bot, own, [], { [key(bot)]: 2 }, [botActor])).visible, false, 'a draft the reader does not report readable stays hidden');
+    assert.equal((await decide(bot, own, [], { [key(bot)]: 1 }, [botActor])).visible, false, 'a draft the reader does not report readable stays hidden');
   });
 
   test('an unknown draft and an inactive caller are not found', async () => {
@@ -396,9 +391,9 @@ describe('agent, sketch, direct message and assistant run decisions (pure)', () 
     const priv = sketchWorld({ scope: 'private', projectId: null }, [owner]);
     assert.deepEqual(await authorize(owner, 'sketch.write', sketch, memoryReader(priv).reader), { allowed: true, visible: true });
     assert.deepEqual(await authorize(admin, 'sketch.read', sketch, memoryReader(priv).reader), { allowed: false, visible: false });
-    assert.equal((await authorize(owner, 'sketch.write', sketch, memoryReader(sketchWorld({}, [owner], 1)).reader)).allowed, false);
-    assert.deepEqual(await authorize(owner, 'sketch.read', sketch, memoryReader(sketchWorld({}, [owner], 1)).reader), { allowed: true, visible: true });
-    assert.equal((await authorize(owner, 'sketch.write', sketch, memoryReader(sketchWorld({}, [owner], 2)).reader)).allowed, true);
+    assert.equal((await authorize(owner, 'sketch.write', sketch, memoryReader(sketchWorld({}, [owner], 0)).reader)).allowed, false);
+    assert.deepEqual(await authorize(owner, 'sketch.read', sketch, memoryReader(sketchWorld({}, [owner], 0)).reader), { allowed: true, visible: true });
+    assert.equal((await authorize(owner, 'sketch.write', sketch, memoryReader(sketchWorld({}, [owner], 1)).reader)).allowed, true);
   });
 
   test('a DM sketch is read-only once the other person of a 1:1 has left', async () => {
@@ -440,7 +435,7 @@ describe('event and AI decisions (pure)', () => {
     const w = emptyWorld();
     w.actors[key(owner)] = member(owner, 'owner');
     w.actors[key(bot)] = { principal: bot, workspaceId: WS, role: null, agent: { ownerUserId: OWNER_OF_AGENTS, ownerRole: 'member' }, active: true };
-    w.projects[projectId] = { project: { id: projectId, workspaceId: WS, visibility: 'workspace' }, levels: { [key(owner)]: 3, [key(bot)]: 1 } };
+    w.projects[projectId] = { project: { id: projectId, workspaceId: WS, visibility: 'workspace' }, levels: { [key(owner)]: 2, [key(bot)]: 1 } };
     return w;
   };
 
@@ -491,10 +486,10 @@ describe('the order of the policy\'s reads and locks (pure)', () => {
   const world = () => {
     const w = emptyWorld();
     w.actors[key(owner)] = member(owner, 'member');
-    w.projects[projectId] = { project: { id: projectId, workspaceId: WS, visibility: 'workspace' }, levels: { [key(owner)]: 2 } };
+    w.projects[projectId] = { project: { id: projectId, workspaceId: WS, visibility: 'workspace' }, levels: { [key(owner)]: 1 } };
     w.drafts[draftId] = { draft: { id: draftId, workspaceId: WS, projectId, ownerUserId: owner.id, ownerAgentId: null, title: 'T', version: 1, visibility: 'project' },
-      readable: [key(owner)], levels: { [key(owner)]: 2 }, owners: [key(owner)] };
-    w.sketches[sketchId] = { sketch: { id: sketchId, workspaceId: WS, scope: 'project', projectId, dmId: null }, readable: [key(owner)], levels: { [key(owner)]: 2 } };
+      readable: [key(owner)], levels: { [key(owner)]: 1 }, owners: [key(owner)] };
+    w.sketches[sketchId] = { sketch: { id: sketchId, workspaceId: WS, scope: 'project', projectId, dmId: null }, readable: [key(owner)], levels: { [key(owner)]: 1 } };
     w.dms[dmId] = { id: dmId, workspaceId: WS, kind: 'group', pairKey: null, readable: [owner.id], participants: [owner.id, 'other'] };
     return w;
   };

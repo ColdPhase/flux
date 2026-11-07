@@ -6,7 +6,7 @@ import { NotFoundError } from '@flux/core';
 import { projectAuthorOwners } from '../../apps/server/src/conversation/author-owners.js';
 import { taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
 import { db, pool } from './support/db.js';
-import { addMember, expectStatus, grant, person, project, removeMember, workspace } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, removeMember, workspace } from './support/people.js';
 
 async function scene() {
   const [manager, owner, reader] = await Promise.all(['History manager', 'Visible historical owner', 'History guest'].map(person));
@@ -15,7 +15,7 @@ async function scene() {
   await addMember(manager, ws.id, reader, 'guest');
   const place = await project(manager, ws.id, 'Preserved authors', 'restricted');
   await grant(manager, place.id, owner, 'contributor');
-  await grant(manager, place.id, reader, 'viewer');
+  await grant(manager, place.id, reader, 'contributor');
   // The agent has exactly its owner's rights (F-036 AG-3): no grant of its own.
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
     body: { name: 'Historical analyst', owner: 'self' },
@@ -59,7 +59,7 @@ test('the current-project owner stays visible in genuine agent history; deny/mem
     unchangedIdentity(row, f.receipt);
     assert.deepEqual(row.author!.projectOwner, { kind: 'human', id: f.owner.id });
   }
-  await grant(f.manager, f.place.id, f.owner, 'denied');
+  await removeFromSpace(f.manager, f.place.id, f.owner);
   // The owner kept out, its agent is too (F-036 AG-3): it can no longer write here.
   await assert.rejects(taskDiscussionUseCases(db).contribute(f.actor, f.task.id, { ...f.command, clientMessageId: randomUUID() }), NotFoundError);
   for (const row of await f.read()) {

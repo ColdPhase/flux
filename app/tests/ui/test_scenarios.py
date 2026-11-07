@@ -25,8 +25,8 @@ people in them would, in the browser:
 5. Inbox, search and the wiki (test_5): the inbox, Jump to and the search page find the items; the wiki
    page gets a second version citing the new rule, and its first version stays as written.
 6. Export and audience (test_6): Ada's project export holds the conversation, the attachment, the map,
-   the work, both rules, the result, the page and their links, and nothing private. A viewer reads the
-   project but not Ada's private note or the DM and cannot accept a decision; a non-member gets 404.
+   the work, both rules, the result, the page and their links, and nothing private. A member reads the
+   project but not Ada's private note or the DM and cannot export it; a non-member gets 404.
 
 Where the product cannot do a step yet, that step is its own small method marked
 @unittest.expectedFailure with the reason (test_2a, test_2b, test_4a), and the scenario continues through
@@ -386,12 +386,7 @@ class ScenarioJourney:
             self.assertTrue(any({link["fromId"], link["toId"]} == {parent_id, new_id} for link in stored["links"]), "the new thought is connected to its parent")
         return new_id
 
-    def give_access(self, page: Page, key: str, read_only: bool) -> None:
-        if read_only:
-            # F-037: a space's people are members or admins; a read-only grant is made through the API only.
-            project_id = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
-            self.api("ada", "POST", f"/api/v1/projects/{project_id}/grants", {"principal": {"kind": "human", "id": self.ids[key]}, "role": "viewer"}, status=201)
-            return
+    def give_access(self, page: Page, key: str) -> None:
         # F-037: the space's people are added in its settings: Add people, tick the person, Add.
         project_id = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
         page.goto(f"/projects/{project_id}/settings")
@@ -475,17 +470,17 @@ class ScenarioJourney:
         members = {member["userId"]: member["role"] for member in self.api("ada", "GET", f"/api/v1/workspaces/{workspace}/members", status=200)}
         self.assertEqual(members, {self.ids["ada"]: "owner", self.ids["jonas"]: "member", self.ids["mia"]: "member", self.ids["lee"]: "member"})
 
-        # Marketplace is for all four: Jonas and Lee write, Mia reads.
+        # Marketplace is for all four: Jonas, Mia and Lee are its members.
         page.goto(f"/projects/{market}")
         if self.phone:
             open_details(page, tap=True)
         else:
             self.tap(page.locator(".top__audience"))
-        for key, read_only in (("jonas", False), ("mia", True), ("lee", False)):
-            self.give_access(page, key, read_only)
+        for key in ("jonas", "mia", "lee"):
+            self.give_access(page, key)
         grants = {grant["principal"]["id"]: grant["role"] for grant in self.api("ada", "GET", f"/api/v1/projects/{market}/grants", status=200)}
         # F-037: Ada started the space, so she is its admin by her own grant.
-        self.assertEqual(grants, {self.ids["ada"]: "manager", self.ids["jonas"]: "contributor", self.ids["mia"]: "viewer", self.ids["lee"]: "contributor"})
+        self.assertEqual(grants, {self.ids["ada"]: "manager", self.ids["jonas"]: "contributor", self.ids["mia"]: "contributor", self.ids["lee"]: "contributor"})
         self.api("lee", "POST", f"/api/v1/projects/{market}/conversations", {"body": MARKET_NOTE, "clientMessageId": str(uuid.uuid4())}, status=201)
         s.update(market=market, workspace=workspace)
 
@@ -1196,29 +1191,25 @@ class ScenarioJourney:
         self.assertEqual(len(private), 1, private)
         draft_id = private[0]["id"]
 
-        # Mia may follow the lamp project read-only.
+        # Mia is a member of the lamp project too.
         page.goto(f"/projects/{lamp}")
         if self.phone:
             open_details(page, tap=True)
         else:
             self.tap(page.locator(".top__audience"))
-        self.give_access(page, "mia", read_only=True)
-        self.assertEqual(self.api("mia", "GET", f"/api/v1/projects/{lamp}", status=200)["access"], "viewer")
+        self.give_access(page, "mia")
+        self.assertEqual(self.api("mia", "GET", f"/api/v1/projects/{lamp}", status=200)["access"], "contributor")
         d3 = self.api("ada", "POST", f"/api/v1/projects/{lamp}/decisions", {"title": D3}, status=201)
 
-        viewer = self.page("mia")
-        viewer.goto(f"/projects/{lamp}")
-        expect(viewer.locator(f"#message-{s['m1']}")).to_contain_text(JONAS_ROOT)
-        expect(viewer.locator(".project-convo__read-only")).to_be_visible()
-        expect(viewer.locator("#project-composer")).to_have_count(0)
-        self.shot(viewer, "6-viewer")
+        member = self.page("mia")
+        member.goto(f"/projects/{lamp}")
+        expect(member.locator(f"#message-{s['m1']}")).to_contain_text(JONAS_ROOT)
+        self.shot(member, "6-member")
         for path in (f"/api/v1/conversations/{s['c1']}", f"/api/v1/docs/{s['doc']}", f"/api/v1/results/{s['result']}", f"/api/v1/files/{s['file']}"):
-            self.assertEqual(self.status("mia", path), 200, f"the viewer reads {path}")
+            self.assertEqual(self.status("mia", path), 200, f"the member reads {path}")
         for path in (f"/api/v1/drafts/{draft_id}", f"/api/v1/dms/{s['dm']}", f"/api/v1/sketches/{s['dm_sketch']}"):
-            self.assertEqual(self.status("mia", path), 404, f"the viewer cannot open the private {path}")
-        self.assertEqual(self.fetch("mia", "POST", f"/api/v1/decisions/{d3['id']}/accept", {"expectedVersion": 1}).status, 403, "a viewer cannot accept")
-        self.assertEqual(self.fetch("mia", "POST", f"/api/v1/conversations/{s['c1']}/messages", {"body": "Can I add a note?", "clientMessageId": str(uuid.uuid4())}).status, 403)
-        self.assertEqual(self.fetch("mia", "GET", f"/api/v1/projects/{lamp}/export").status, 403, "a viewer cannot export")
+            self.assertEqual(self.status("mia", path), 404, f"the member cannot open the private {path}")
+        self.assertEqual(self.fetch("mia", "GET", f"/api/v1/projects/{lamp}/export").status, 403, "a member cannot export")
         for query in ("89 EUR", "Saturday market"):
             self.assertEqual(self.api("mia", "GET", f"/api/v1/search?q={urllib.parse.quote(query)}", status=200)["items"], [], query)
         self.assertEqual(self.api("ada", "GET", f"/api/v1/decisions/{d3['id']}", status=200)["status"], "proposed")

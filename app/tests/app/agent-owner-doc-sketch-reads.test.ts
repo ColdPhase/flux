@@ -18,7 +18,7 @@ async function scene() {
   await addMember(manager, ws.id, owner, 'admin');
   await addMember(manager, ws.id, reader, 'guest');
   const place = await project(manager, ws.id, 'Scoped lists', 'restricted');
-  await grant(manager, place.id, reader, 'viewer');
+  await grant(manager, place.id, reader, 'contributor');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
     body: { name: 'List writer', owner: 'self' },
   }), 201) as { id: string };

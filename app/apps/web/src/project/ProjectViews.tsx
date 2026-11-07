@@ -23,7 +23,6 @@ export function ProjectMap() {
   const { me } = useShellData();
   const navigate = useNavigate();
   const toast = useToast();
-  const writable = project.access !== 'viewer';
   const [state, setState] = useState<{ items: Sketch[]; total: number } | 'loading' | 'failed'>(shell.sketches ?? 'loading');
   const [pages, setPages] = useState(1);
   const [refresh, setRefresh] = useState(0);
@@ -63,7 +62,7 @@ export function ProjectMap() {
     }
   };
 
-  const action = writable ? <Button variant="primary" icon="plus" busy={creating} onClick={() => void start()}>New map</Button> : null;
+  const action = <Button variant="primary" icon="plus" busy={creating} onClick={() => void start()}>New map</Button>;
 
   return (
     <div className="sk-page">

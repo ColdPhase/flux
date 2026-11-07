@@ -63,7 +63,7 @@ Migration `0003_access.sql` adds these tables. Every collaborative row carries
 | `workspace_members` | One role per person: `owner`, `admin`, `member` or `guest`. |
 | `projects` | A work context. Its visibility is `workspace` (every member) or `restricted` (managers and grantees only). |
 | `agents` | An agent identity in one workspace, always owned by a person (`owner_user_id`). It is revocable (`revoked_at`) and is never a human login. |
-| `project_grants` | At most one grant per project and person. The grant is `contributor`, `viewer` or `denied`. Agents hold none: they have their owner's rights. |
+| `project_grants` | At most one grant per project and person. The grant is `manager` (a space admin) or `contributor` (a space member); there are no other roles (#903). Agents hold none: they have their owner's rights. |
 | `drafts` | A minimal item: owner (person or agent), optional `project_id`, visibility `private` / `project` / `workspace`, and an integer `version`. |
 
 Migration `0004_stream_safe_writes.sql` adds `events.seq`, `draft_results` (worker
@@ -89,19 +89,16 @@ revoking a grant or revoking an agent applies on the very next request or call.
 
 **AI in a space** ([AG-10](../product/assistant.md#ag-10--ai-in-a-space), F-037; it replaces the workspace AI lock of F-029). Each space has one switch, a `project_ai_policies` row written by a trigger when the space is made (on, or off in an encrypted workspace). Its epoch grows on every flip, and every AI work row records the epoch it was admitted under. An agent's level on a space is its owner's (F-036 AG-3) and **none** while the switch is off, so every read, list, audience and event audience that goes through the policy leaves the agent out, and a person's own rights are unchanged. AI entry points call `requireSpaceAi(projectId)`, which holds the row `FOR SHARE` (before the grants) and, for queued work, also checks the admission epoch; the flip (`setSpaceAi`) takes the row `FOR UPDATE` first. A space admin and a company owner or admin may flip it (`project.manage`); an agent never. Turning it off sweeps that space's queued runs, tokens, comparisons, reactions, co-work requests and units, and asks a run in progress to stop, whose next check then refuses, so it writes nothing more; what it had already written stays. An agent belongs to its person for the whole Flux, so nothing about AI is checked on the company or on a person's connection, only on the space an agent names.
 
-**Project access level** (none < viewer < contributor < manager). The first
+**Project access level** (none < contributor < manager). A space has two roles, Member (`contributor`) and Admin
+(`manager`) (F-037, #903); nobody reads a space without being able to work in it, and no grant keeps anyone out of one. The first
 matching rule applies:
 
-1. An explicit `denied` grant gives **none**. Explicit deny wins over every role,
-   grant, visibility and draft-ownership rule for that project and its drafts. This
-   includes owners and admins. A denied admin therefore cannot lift their own deny;
-   another manager must do it.
-2. Workspace `owner` and `admin` are **managers** of every project.
-3. An explicit `contributor` or `viewer` grant. A viewer grant also narrows a
-   member's implicit access.
-4. A `member` is a **contributor** on `workspace`-visible projects.
-5. Otherwise the level is **none**. Guests see only projects they were explicitly
-   granted. Nobody without a grant or a manager role sees a restricted project.
+1. Workspace `owner` and `admin` are **managers** of every project, whatever grants they hold. Removing their grant only takes
+   them off the space's people; they reach it as before and put themselves back with Add me.
+2. An explicit `manager` or `contributor` grant gives that level.
+3. A `member` is a **contributor** on `workspace`-visible projects.
+4. Otherwise the level is **none**. Guests see only projects they were explicitly granted. Nobody without a grant or a manager
+   role sees a restricted project. To take someone out of a space, remove their grant.
 
 An agent's rights are exactly its owner's ([F-036](../product/assistant.md) AG-3): its level is
 its owner's current level, it holds no grant of its own, and it acts only while not revoked. It
@@ -112,27 +109,26 @@ its next call. "What it may do" narrows what an agent does inside those rights a
 **An agent never works outside its owner's current access**, including on drafts it
 authored:
 
-- It creates a draft only inside a project where its current level is contributor.
+- It creates a draft only inside a project its owner can work in.
   `draft.create` on the workspace is allowed for an agent only while it has at least
   one such project (`403` otherwise), and a create without `projectId` is rejected
   with `422 PROJECT_REQUIRED`. An agent cannot move a draft out of every project
   (`422 PROJECT_REQUIRED`).
 - Reading any draft, its own private drafts included, needs the agent's current
-  level viewer on the draft's project. Writing, sharing and moving need contributor.
-  The same rule applies in `authorize` and in the `visibleFilter` list condition.
-  After the owner's grant is revoked or replaced by `denied`, the agent's drafts in that project
-  answer `404` and leave its lists and counts. A narrowing to viewer turns writes into `403`.
+  access to the draft's project. The same rule applies in `authorize` and in the `visibleFilter` list condition.
+  After the owner's grant is removed, the agent's drafts in that project
+  answer `404` and leave its lists and counts.
 - People keep the author path: a person always reads and writes their own private
-  drafts, unless an explicit deny on the draft's project applies.
+  drafts, as long as they are in the workspace.
 
 **Drafts.** A new draft is private to its author. Workspace membership never reveals
 a private draft, not even to owners.
 
 | Visibility | Read | Write |
 | --- | --- | --- |
-| `private` | author (an agent author also needs project level ≥ viewer) | author (an agent author also needs project level ≥ contributor) |
-| `project` | project level ≥ viewer, and the author | project level ≥ contributor, and the author (agent: contributor) |
-| `workspace` | owners, admins and members (not guests or agents), and the author (agent: viewer) | author, owners and admins (agent author: contributor) |
+| `private` | author (an agent author also needs access to the project) | author (an agent author also needs access to the project) |
+| `project` | project access, and the author | project access, and the author |
+| `workspace` | owners, admins and members (not guests or agents), and the author | author, owners and admins |
 
 - **Share and move** need the author, or an owner or admin for a non-private draft.
 - **Target project.** A share or move that names a project needs contributor access
@@ -148,8 +144,7 @@ a private draft, not even to owners.
   needs a later copy command.
 
 **Sketches** (#69, details in [sketches.md](sketches.md)). A `project` sketch is
-readable at project level ≥ viewer and changeable at ≥ contributor, so explicit deny
-and every project rule above apply unchanged. A `private` sketch is readable and
+readable and changeable with project access, so every project rule above applies unchanged. A `private` sketch is readable and
 changeable only by the person who created it, while they are active in the workspace.
 Owners, admins and agents (including the author's own agent) never see it. A `dm`
 sketch ([#96](https://github.com/ColdPhase/flux/issues/96)) references its DM by a foreign key.
@@ -186,13 +181,15 @@ company but a guest creates spaces (`project.create`); a new space is `restricte
 gets a `manager` grant. A space's people are its grants: `manager` is a space admin (people only,
 never a guest, and an agent never holds it) and `contributor` a space member. Every member is in
 Everyone through its `workspace` visibility; guests are not. In the company, only setup makes a
-`workspace`-visible space (`SPACE_NOT_FOR_EVERYONE`) and nobody can be denied one
-(`EVERYONE_HOLDS_EVERYONE`).
+`workspace`-visible space (`SPACE_NOT_FOR_EVERYONE`).
 
 The company's owners and admins reach every space, so they can change any of them, but they
 belong only to the ones they were added to. A list says which with `member`: their sidebar shows
-those, and Settings › Company lists every space, where they add themselves. A space admin who is a
-plain member cannot deny a company admin (`COMPANY_ADMIN_PROTECTED`). Joining with a provider runs
+those, and Settings › Company lists every space, where they add themselves **as its admin** (Add me writes a `manager` grant, so a
+space whose last admin left the company still has one, [C-16](../product/decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+Nothing keeps a company owner or admin out of a space: a company owner or admin has the manager level whatever grants exist, so a space
+admin who removes one from the space's people only takes them off its list (an inference of #903: the former `COMPANY_ADMIN_PROTECTED`
+and `OWNER_REQUIRED` refusals guarded the deny, which is gone). Joining with a provider runs
 on every provider sign-in, so an account that linked it later joins too. Someone who leaves or is
 removed goes on `workspace_removed_people` and stays out, also on a provider sign-in, until an
 owner or admin restores them from Settings › Company. Restore brings them back as a `member`, in
@@ -246,8 +243,7 @@ isolation. What is guaranteed:
   change waits until the mutation has committed. A write never commits after a
   revocation that committed before its decision. The project row is the shared lock
   for every project-dependent decision: it also covers access that has no grant row
-  to lock, such as a member's default access being narrowed by a new `viewer` grant
-  or removed by a new `denied` grant. `FOR NO KEY UPDATE` conflicts with `FOR SHARE`
+  to lock, such as a space becoming restricted. `FOR NO KEY UPDATE` conflicts with `FOR SHARE`
   (so it serializes with deciding writers) but not with the `FOR KEY SHARE` that
   foreign-key checks take, so inserting drafts or events into the project is not
   blocked by it. A future project visibility change must take the same lock.
@@ -259,8 +255,7 @@ isolation. What is guaranteed:
 
 `app/tests/app/access-policy.test.ts` checks both orders on two real PostgreSQL
 connections, detecting the wait with `pg_blocking_pids` rather than timing. The
-cases are: revoking the contributor grant of an agent's owner; inserting a `denied` grant for a
-member who has no grant row; narrowing a member's default access with a `viewer` grant; changing the member to guest; and
+cases are: revoking the contributor grant of an agent's owner; changing the member to guest; and
 removing the member. In each case, a change that starts after an update decided waits
 until the update commits. An update that starts while the change is uncommitted waits,
 and is then refused with `404` or `403` without writing.
@@ -299,7 +294,7 @@ forbidden action answers `403`. Error bodies are `{ error, code }`.
 | `GET/PATCH/DELETE /api/v1/projects/:id` | `getProject` (with `ai`, the space's switch), `renameProject`, `deleteProject` |
 | `POST /api/v1/projects/:id/leave` | `leaveProject` |
 | `PUT /api/v1/projects/:id/ai-policy` | `setSpaceAi` (`state`: `allowed` or `blocked`); answers `{ ai, changed, stopped }` |
-| `GET /api/v1/projects/:id/people` | `listProjectPeople` (#117): the people and agents who can read the project now, each with `access`. Needs `project.read`; every candidate's level comes from `evaluateProject`, so denied, removed and revoked principals are left out. Names only the project's audience, never the workspace roster. |
+| `GET /api/v1/projects/:id/people` | `listProjectPeople` (#117): the people and agents who can read the project now, each with `access`. Needs `project.read`; every candidate's level comes from `evaluateProject`, so removed and revoked principals are left out. Names only the project's audience, never the workspace roster. |
 | `POST /api/v1/projects/:id/views` | `addProjectView` (#351): adds Map, Wiki (`docs`) or Agents to the project's `views`; needs `project.write`, adding one it has changes nothing. `POST /workspaces/:id/projects` takes an optional `template` (`build`, `research`, `event`, `blank`) that sets the starting `views` (research adds `docs`); without one a project has every view. Migration 0064 gave every existing project all three, so none loses a view it uses. The web app also shows a view the project already uses (sketches, docs, an agent in it). Conversation and Tasks are always shown. |
 | `GET/POST /api/v1/projects/:id/grants` | `listProjectGrants`, `grantProject` (create or replace) |
 | `DELETE /api/v1/projects/:id/grants/:grantId` | `revokeProjectGrant` |
@@ -683,7 +678,7 @@ and the Better Auth and session endpoints do not take keys.
   resume, whether or not restricted and private activity happened.
 - `app/tests/app/e2e/access-stream.e2e.ts` runs in Chromium (the `e2e` Playwright
   image) against the running API: three people sign up in their own browser
-  contexts, the owner creates a workspace, a restricted project, a viewer grant and a
+  contexts, the owner creates a workspace, a restricted project, a member grant and a
   private draft, and shares it. The granted member's page `WebSocket` receives the
   share and its `fetch` reads the draft; a non-member gets `404`. After the grant is
   revoked, the member's open socket receives a later visible event but nothing for
@@ -699,7 +694,7 @@ and the Better Auth and session endpoints do not take keys.
   `ETag`) and idempotency keys (replay, one row, 422 on reuse, scope, concurrent
   duplicates, expiry and cleanup). It also covers replays after lost access: a demoted
   admin replaying a restricted project creation, and draft create and share replays
-  after a deny grant. Both get `404` without the stored body.
+  after the grant was removed. Both get `404` without the stored body.
 
 ### Agent owner labels (F-026, #339)
 
@@ -707,7 +702,7 @@ The existing project audience read (`GET /api/v1/projects/:id/people`) may
 include `agentOwner` on an agent. A workspace agent has `{ kind: 'workspace' }`.
 A human owner is named only when that human is already in the same current,
 authorized project audience. This projection never lists the workspace roster
-for a guest and excludes denied/revoked agents under the existing policy.
+for a guest and excludes revoked agents and agents of people without access under the existing policy.
 The web owner lookup uses this project read, with no module cache; pending
 answers are scoped to account/project and aborted on scope changes or access
 events. Failed reads clear labels and retry on the next visit, focus, online

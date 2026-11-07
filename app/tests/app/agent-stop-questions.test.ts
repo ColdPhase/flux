@@ -20,7 +20,7 @@ async function scene() {
   const p = await project(hubert, ws.id, 'Heated bed', 'restricted');
   await grant(hubert, p.id, marek, 'contributor');
   await grant(hubert, p.id, ada, 'contributor');
-  await grant(hubert, p.id, eve, 'viewer');
+  await grant(hubert, p.id, eve, 'contributor');
   const agent = expectStatus(await hubert.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Hubert Claude', owner: 'self' } }), 201) as Agent;
   const connected = await agentConnection(pool, hubert.browser, agent.id, [p.id]);
   const run = (role: 'execute' | 'plan' = 'execute') => ({ projectId: p.id, runtimeSessionId: connected.runtimeSessionId, peerRequestClass: role });
@@ -243,8 +243,8 @@ test('a free reply answers a question; invalid questions and people without acce
   assert.deepEqual([(own.json as AgentQuestion).answer?.optionIndex, (own.json as AgentQuestion).answer?.text], [null, 'Cut at the seam, yes']);
   assert.equal(await messages(), 3);
   const second = toolValue(await ask({ askUserId: f.eve.id })) as { questionId: string };
-  assert.equal((await f.eve.browser.request('POST', `/api/v1/agent-questions/${second.questionId}/answer`, { body: { optionIndex: 0 } })).status, 403,
-    'a reader who may not write cannot answer');
+  assert.equal((await f.marek.browser.request('POST', `/api/v1/agent-questions/${second.questionId}/answer`, { body: { optionIndex: 0 } })).status, 403,
+    'only the person asked can answer');
   assert.equal(await messages(), 4);
 });
 

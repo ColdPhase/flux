@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 import type { GrantProjectCommand, ProjectGrant } from '@flux/contracts';
 import { recordEvent } from '../events.js';
 import type { Database, Principal } from '../types.js';
-import { eventPorts, requireRoleAuthority, type DomainEventSink } from './common.js';
-import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError } from './errors.js';
-import { enforce, evaluateProject, isManager, isUuid } from './policy.js';
+import { eventPorts, type DomainEventSink } from './common.js';
+import { ConflictError, InvalidInputError, NotFoundError, RuleViolationError } from './errors.js';
+import { enforce, evaluateProject, isUuid } from './policy.js';
 import type { AccessPorts, ProjectRepository } from './repositories.js';
 import type { GrantRecord } from './records.js';
 import { GRANT_ROLES, oneOf } from './validation.js';
@@ -12,7 +12,7 @@ import { GRANT_ROLES, oneOf } from './validation.js';
 // Project grants (issues #46, #91): list, set and revoke. The project row is taken `FOR NO KEY UPDATE` first,
 // then the actor's project access under `lock`; the grant row is `FOR UPDATE` (or deleted); the event is the last write.
 
-type GrantPorts = Pick<AccessPorts, 'projects' | 'workspaces' | 'access' | 'events'>;
+type GrantPorts = Pick<AccessPorts, 'projects' | 'access' | 'events'>;
 
 function toGrant(row: GrantRecord): ProjectGrant {
   return {
@@ -43,10 +43,11 @@ export async function listProjectGrants(principal: Principal, projectId: string,
 }
 
 /**
- * Creates or replaces the grant of one person on a project. The grantee must be a member of the
- * project's workspace; any person in the company can be added, a company owner too, as New space allows (#905). The owner role
- * itself is not touched, so changing it stays with an owner (`members.ts`), and so does denying an owner a space. Agents have no grants: an agent
- * has exactly its owner's rights (F-036 AG-3, #855).
+ * Creates or replaces the grant of one person on a project: a space admin (`manager`) or a space member (`contributor`, #903). The
+ * grantee must be a member of the project's workspace; any person in the company can be added, a company owner too, as New space
+ * allows (#905). The owner role itself is not touched, so changing it stays with an owner (`members.ts`). A grant never keeps anyone out
+ * of a space: a company owner or admin reaches every space as its manager whatever they hold, so removing their grant only takes them off
+ * the space's people, and Add me puts them back. Agents have no grants: an agent has exactly its owner's rights (F-036 AG-3, #855).
  */
 export async function grantProject(principal: Principal, projectId: string, command: GrantProjectCommand, db: Database, ports: GrantPorts, eventSink?: DomainEventSink): Promise<ProjectGrant> {
   const role = oneOf(command?.role, GRANT_ROLES, 'role');
@@ -56,20 +57,11 @@ export async function grantProject(principal: Principal, projectId: string, comm
   return db.transaction(async (tx) => {
     const projects = ports.projects(tx);
     await projects.lockForGrantChange(projectId);
-    const { actor, project } = enforce(await evaluateProject(principal, 'project.manage', projectId, ports.access(tx), { lock: true }), 'project');
+    const { project } = enforce(await evaluateProject(principal, 'project.manage', projectId, ports.access(tx), { lock: true }), 'project');
     const workspaceId = project!.workspaceId;
     const member = await projects.member(workspaceId, target.id);
     if (!member) throw new RuleViolationError('Only people in the company can be added to a space', 'NOT_A_MEMBER');
     if (role === 'manager' && member.role === 'guest') throw new RuleViolationError('A guest cannot be a space admin', 'GUEST_NOT_SPACE_ADMIN');
-    if (role === 'denied') {
-      // F-037: the company's owners and admins can change any space, so a space admin who is a plain member cannot shut one out.
-      if (isManager(member.role) && !isManager(actor!.role)) throw new ForbiddenError('Only a company owner or admin can keep a company admin out of a space', 'COMPANY_ADMIN_PROTECTED');
-      // Keeping the company owner out of a space would lock them out of it: reading it, adding themselves, lifting the deny and deleting it. Only an owner may.
-      if (member.role === 'owner') requireRoleAuthority(actor!, 'owner');
-      if (project!.visibility === 'workspace' && (await ports.workspaces(tx).company())?.id === workspaceId) {
-        throw new RuleViolationError('Everyone holds the whole company, so nobody can be kept out of it', 'EVERYONE_HOLDS_EVERYONE');
-      }
-    }
     const existing = await projects.lockGrantOf(projectId, target.id);
     if (existing && role !== 'manager') await requireAnotherSpaceAdmin(projects, principal, projectId, existing);
     const written = existing ? await projects.updateGrant(existing.id, role, principal.id)

@@ -108,7 +108,7 @@ class HomeTasksJourney(unittest.TestCase):
         return page
 
     def api(self, page: Page, method: str, path: str, body: dict | None = None, status: int | None = None) -> dict:
-        response = page.request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, "content-type": "application/json"},
+        response = page.request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, **({"content-type": "application/json"} if body is not None else {})},
                                       data=json.dumps(body) if body is not None else None)
         if status is not None:
             self.assertEqual(response.status, status, response.text())
@@ -157,8 +157,7 @@ class HomeTasksJourney(unittest.TestCase):
         page.goto("/tasks")
         expect(self.group(page, "Bike light").get_by_role("link")).to_have_count(1)
         ada = self.page("ada")
-        self.api(ada, "POST", f"/api/v1/projects/{self.ids['bike']}/grants",
-                 {"principal": {"kind": "human", "id": self.ids["nia"]}, "role": "denied"}, status=201)
+        self.api(ada, "DELETE", f"/api/v1/projects/{self.ids['bike']}/grants/{self.ids['bike_grant']}", status=204)
         page.reload()
         expect(self.group(page, "Gesture lamp").get_by_role("link")).to_have_count(4 + BATCH)
         expect(self.tasks(page)).not_to_contain_text("Wire the dynamo")

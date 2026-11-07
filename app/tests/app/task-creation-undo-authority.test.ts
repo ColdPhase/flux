@@ -10,7 +10,7 @@ import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js'
 import { db, pool } from './support/db.js';
 import { actionScene, agentConnection, toolFailure } from './support/mcp-actions.js';
 import { expect, toolValue } from './support/mcp.js';
-import { addMember, expectStatus, grant, person, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, removeFromSpace, type Person } from './support/people.js';
 import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
 
 async function fixture() {
@@ -28,7 +28,7 @@ async function fixture() {
   return { ...f, ownerId, human: owner, peer, create };
 }
 
-test('initial native human assignee requires current project write at Undo and exact receipt replay', { timeout: 30_000 }, async () => {
+test('initial native human assignee requires current access to the space at Undo and exact receipt replay', { timeout: 30_000 }, async () => {
   const f = await fixture();
   // The production MCP creation schema has no owner field. This genuine scene's
   // admitted native agent port supplies initial assignment, preserving the baseline;
@@ -42,16 +42,16 @@ test('initial native human assignee requires current project write at Undo and e
   const commandId = randomUUID(); const command = { clientCommandId: commandId, expectedVersion: item.version };
   assert.deepEqual((expectStatus(await f.peer.browser.request('GET', `/api/v1/work/${item.id}`), 200) as WorkItem).creationUndo,
     { eligible: true, reason: 'eligible' });
-  await grant(f.human, f.projectId, f.peer, 'viewer');
-  assert.equal((await f.peer.browser.request('POST', `/api/v1/work/${item.id}/creation-undo`, { body: command })).status, 403);
+  await removeFromSpace(f.human, f.projectId, f.peer);
+  assert.equal((await f.peer.browser.request('POST', `/api/v1/work/${item.id}/creation-undo`, { body: command })).status, 404);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM task_creation_undo_receipts WHERE work_id=$1', [item.id])).rows[0].n, 0);
   await grant(f.human, f.projectId, f.peer, 'contributor');
   const reverted = expectStatus(await f.peer.browser.request('POST', `/api/v1/work/${item.id}/creation-undo`, { body: command }), 200) as UndoTaskCreationResult;
   assert.equal(reverted.work.lifecycle?.state, 'creation_reverted');
   assert.ok(reverted.work.lifecycle?.state === 'creation_reverted');
   assert.deepEqual(reverted.work.lifecycle.revertedBy, { kind: 'human', id: f.peer.id, name: 'undo-current-assignee' });
-  await grant(f.human, f.projectId, f.peer, 'viewer');
-  assert.equal((await f.peer.browser.request('POST', `/api/v1/work/${item.id}/creation-undo`, { body: command })).status, 403);
+  await removeFromSpace(f.human, f.projectId, f.peer);
+  assert.equal((await f.peer.browser.request('POST', `/api/v1/work/${item.id}/creation-undo`, { body: command })).status, 404);
   await grant(f.human, f.projectId, f.peer, 'contributor');
   assert.deepEqual(expectStatus(await f.peer.browser.request('POST', `/api/v1/work/${item.id}/creation-undo`, { body: command }), 200), reverted);
 });

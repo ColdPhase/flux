@@ -95,7 +95,7 @@ async function context(who: Person, options: { viewport?: { width: number; heigh
 test('real settings UI binds, verifies PR links and removes private projections on access loss at phone/tablet/desktop sizes', { timeout: 90_000 }, async () => {
   const owner = await person('Ada'); const viewer = await person('Jonas');
   const ws = await workspace(owner, 'Lamp workshop'); await addMember(owner, ws.id, viewer, 'member');
-  const place = await project(owner, ws.id, 'Gesture lamp', 'restricted'); await grant(owner, place.id, viewer, 'viewer');
+  const place = await project(owner, ws.id, 'Gesture lamp', 'restricted'); await grant(owner, place.id, viewer, 'contributor');
   const task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Verify physical off-switch behaviour after calibration fails' } }), 201) as WorkItem;
   for (let n=0;n<104;n++) expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, {body:{title:`Native repository task ${String(n+1).padStart(3,'0')}`}}),201);
   const page = await (await context(owner)).newPage(); const collections: string[] = []; const choiceWindows: number[] = [];

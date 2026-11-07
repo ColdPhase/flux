@@ -30,7 +30,6 @@ async function named(name: string): Promise<Person> {
 describe('the Inbox needs-you queue', () => {
   let owner: Person;
   let partner: Person;
-  let viewer: Person;
   let outsider: Person;
   let second: Person;
   let ws: Workspace;
@@ -40,12 +39,11 @@ describe('the Inbox needs-you queue', () => {
 
   before(async () => {
     owner = await named('Needs Owner');
-    [partner, viewer, outsider, second] = await Promise.all(['ny-partner', 'ny-viewer', 'ny-outsider', 'ny-second'].map(person));
+    [partner, outsider, second] = await Promise.all(['ny-partner', 'ny-outsider', 'ny-second'].map(person));
     ws = await workspace(owner, 'Garden space');
-    for (const someone of [partner, viewer, outsider, second]) await addMember(owner, ws.id, someone, 'member');
+    for (const someone of [partner, outsider, second]) await addMember(owner, ws.id, someone, 'member');
     lamp = await createProject(owner, ws.id, 'Garden sensors', 'restricted');
     await grant(owner, lamp.id, partner, 'contributor');
-    await grant(owner, lamp.id, viewer, 'viewer');
     await grant(owner, lamp.id, second, 'contributor');
     conversation = json<Conversation>(await post(owner, `/api/v1/projects/${lamp.id}/conversations`,
       { body: 'Measure soil moisture or frost first?', clientMessageId: randomUUID() }), 201);
@@ -75,12 +73,10 @@ describe('the Inbox needs-you queue', () => {
     const names = mine.decision!.accepters.map((person) => [person.name, person.you]);
     assert.deepEqual(names[0], ['Needs Owner', true]);
     assert.ok(names.some(([name]) => name === 'ny-partner'));
-    assert.ok(!names.some(([name]) => name === 'ny-viewer'), 'a viewer cannot accept');
 
     // The contributor who proposed it can accept it too (DA-2), but is not asked to while someone else can (#763 FT-8);
-    // a viewer, a member without access and a stranger are never asked.
+    // a member without access and a stranger are never asked.
     assert.equal(find(await queue(partner), key), undefined, 'your own proposal waits for someone else');
-    assert.equal(find(await queue(viewer), key), undefined);
     assert.equal(find(await queue(outsider), key), undefined);
 
     // Accepting leaves everyone's queue.
@@ -138,7 +134,6 @@ describe('the Inbox needs-you queue', () => {
     const proposed = json<Decision>(await post(partner, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Private to the garden' }), 201);
     const key = `decision:${proposed.id}`;
     assert.equal((await resolve(outsider, key, { action: 'done' })).status, 404);
-    assert.equal((await resolve(viewer, key, { action: 'done' })).status, 404, 'a viewer is not asked, so cannot answer');
     assert.equal((await resolve(owner, 'decision:not-a-key', { action: 'done' })).status, 404);
     assert.equal((await resolve(owner, `decision:${randomUUID()}`, { action: 'done' })).status, 404);
     assert.equal((await restore(outsider, key)).status, 204, 'restoring touches only your own choice');

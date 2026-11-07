@@ -30,7 +30,11 @@ describe('space AI switch: sweep, role changes against the flip and remaining ro
   let scene: AssistantScene;
   const put = async (who: Person, state: 'allowed' | 'blocked') => who.browser.request('PUT', projectAiPolicyPath(scene.place.id), { body: { state } });
 
-  before(async () => { scene = await assistantScene('ai-sweep'); });
+  before(async () => {
+    scene = await assistantScene('ai-sweep');
+    // The company admin is also one of the space's members, so a demotion leaves them an ordinary member of it.
+    await grant(scene.lead, scene.place.id, scene.admin, 'contributor');
+  });
   beforeEach(async () => { await ensureSpaceAiAllowed(scene.place.id); await scene.reset(); });
   after(async () => { await ensureSpaceAiAllowed(scene.place.id); });
 
@@ -97,7 +101,7 @@ describe('space AI switch: sweep, role changes against the flip and remaining ro
   });
 
   test('a real demotion and removal of the flipping admin against the real flip, in both orders: 200 and 403, never a deadlock', async () => {
-    const { owner, admin, ws } = scene;
+    const { lead: owner, admin, ws } = scene;
     const restore = () => pool.query(`UPDATE workspace_members SET role = 'admin' WHERE workspace_id = $1 AND user_id = $2`, [ws.id, admin.id]);
     const demote = () => owner.browser.request('PATCH', `/api/v1/workspaces/${ws.id}/members/${admin.id}`, { body: { role: 'member' } });
     // Both at once, three times each way round: whichever commits first, neither fails with a lock error, and a flip after the

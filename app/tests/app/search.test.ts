@@ -5,7 +5,7 @@ import type { SearchWork } from '@flux/core';
 import type { Conversation, Decision, Dm, Draft, Material, Project, SearchResponse, SearchResult, Sketch, CreatedThought, WorkItem, WorkResult, Workspace } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { type ClientResponse } from './support/http.js';
-import { addMember, draft as createDraft, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
+import { addMember, draft as createDraft, expectStatus, grant, removeFromSpace, person, project as createProject, workspace, type Person } from './support/people.js';
 import { inBatches } from './support/batches.js';
 
 // Search across Flux (issue #114): one query over project and direct messages, materials and
@@ -73,7 +73,7 @@ describe('search: one query across Flux, only what you may read', () => {
     lamp = await createProject(ari, ws.id, 'Gesture lamp', 'restricted');
     await grant(ari, lamp.id, nia, 'contributor');
     open = await createProject(ari, ws.id, 'Open notes', 'workspace');
-    await grant(ari, open.id, gus, 'viewer');
+    await grant(ari, open.id, gus, 'contributor');
 
     lampThread = await conversation(nia, lamp.id, 'Camera or sensor for the bedside lamp?');
     await say(ari, lampThread.id, 'The infrared sensor reacts at 5 lux in the hallway test.');
@@ -264,7 +264,7 @@ describe('search: one query across Flux, only what you may read', () => {
 
   test('revoking access removes results on the very next search, and leaving a DM removes its messages', async () => {
     assert.ok((await search(nia, 'infrared')).items.length >= 4);
-    await grant(ari, lamp.id, nia, 'denied');
+    await removeFromSpace(ari, lamp.id, nia);
     const denied = await search(nia, 'infrared');
     assert.deepEqual(denied.items, []);
     assert.deepEqual(denied.counts, {});

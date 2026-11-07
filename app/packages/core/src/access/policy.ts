@@ -29,23 +29,20 @@ export type { Actor, LoadOptions, SpaceAi } from './ports.js';
  *   (`owner`, `admin`, `member`, `guest`). An agent has exactly its owner's current rights
  *   (F-036 AG-3) and no grant of its own: its level is its owner's, it acts only while it is
  *   not revoked, and it stops working when the owner leaves the workspace.
- * - Project access levels: none < viewer < contributor < manager.
- *   - An explicit `denied` grant gives none. **Explicit deny wins** over every role,
- *     grant, visibility and ownership rule for that project and its drafts.
- *   - Workspace owners and admins are managers of every project.
- *   - Otherwise an explicit `manager` (a space admin, people only, F-037), `contributor` (a
- *     space member) or `viewer` grant applies (a viewer grant also
- *     narrows a member's implicit access).
+ * - Project access levels: none < contributor < manager (a space has two roles, member and admin, F-037, #903).
+ *   - Workspace owners and admins are managers of every project; no grant takes that away.
+ *   - Otherwise an explicit `manager` (a space admin, people only, F-037) or `contributor` (a
+ *     space member) grant applies.
  *   - Otherwise a `member` is a contributor on `workspace`-visible projects. Guests see
  *     only projects they were explicitly granted; nobody without a grant or manager role
  *     sees a `restricted` project.
  * - Drafts are private to their author by default. Workspace membership alone never
- *   reveals a private draft. A `project` draft is readable at project level viewer and
- *   writable at contributor. A `workspace` draft is readable by owners, admins and
+ *   reveals a private draft. A `project` draft is readable and writable at project level
+ *   contributor. A `workspace` draft is readable by owners, admins and
  *   members (not guests or agents) and writable by its author, owners and admins.
  *   Sharing and moving need the author or, for a non-private draft, an owner/admin.
- * - Sketches (issue #69): a `project` sketch is readable at project level viewer and
- *   changeable at contributor. A `private` sketch is readable and changeable only by the
+ * - Sketches (issue #69): a `project` sketch is readable and changeable at project level
+ *   contributor. A `private` sketch is readable and changeable only by the
  *   person who created it while they are active in the workspace; owners and admins do not
  *   see it, and agents never do. `sketch.create` in a workspace is a private sketch by an
  *   active person; a project sketch needs `project.write` on its project. A `dm` sketch (#96)
@@ -58,7 +55,7 @@ export type { Actor, LoadOptions, SpaceAi } from './ports.js';
  *   for owners, admins and members (guests can take part when added, but not start a DM).
  * - An agent never works outside its owner's current access, not even on drafts it
  *   authored: it creates drafts only inside a project where its owner is a contributor, and
- *   every read (viewer) or write, share and move (contributor) of any draft — its own
+ *   every read, write, share and move of any draft — its own
  *   private drafts included — needs its current level on the draft's project.
  * - With `lock: true` (inside a mutation transaction) the decision locks the rows it
  *   depends on — membership/agent `FOR SHARE`, the draft `FOR UPDATE`, the project and
@@ -111,7 +108,7 @@ export async function requireSpaceAi(reader: Pick<ActorReads, 'spaceAi'>, projec
   return ai;
 }
 
-export const LEVEL = { none: 0, viewer: 1, contributor: 2, manager: 3 } as const;
+export const LEVEL = { none: 0, contributor: 1, manager: 2 } as const;
 const MANAGER_ROLES: readonly WorkspaceRole[] = ['owner', 'admin'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -126,7 +123,6 @@ export function isManager(role: WorkspaceRole | null) {
 export function accessName(level: number): ProjectAccess | null {
   if (level >= LEVEL.manager) return 'manager';
   if (level >= LEVEL.contributor) return 'contributor';
-  if (level >= LEVEL.viewer) return 'viewer';
   return null;
 }
 
@@ -236,8 +232,8 @@ export async function evaluateProject<P extends ProjectFacts = ProjectFacts>(pri
   if (!actor.active) return { ...none, actor };
   if (options?.lock) await reader.lockProjectAccess(actor, projectId);
   const row = await reader.readProject(actor, projectId);
-  if (!row || row.level < LEVEL.viewer) return { ...none, actor };
-  const needed = action === 'project.manage' ? LEVEL.manager : action === 'project.write' ? LEVEL.contributor : LEVEL.viewer;
+  if (!row || row.level < LEVEL.contributor) return { ...none, actor };
+  const needed = action === 'project.manage' ? LEVEL.manager : LEVEL.contributor;
   return { allowed: row.level >= needed, visible: true, actor, project: row.project, level: row.level };
 }
 
@@ -259,9 +255,8 @@ export async function evaluateDraft<D extends DraftFacts = DraftFacts>(principal
   const manager = isManager(actor.role);
   let allowed: boolean;
   if (principal.kind === 'agent') {
-    // Readable already implies current viewer access; changes need current contributor access.
-    const writable = level >= LEVEL.contributor;
-    allowed = action === 'draft.read' || (writable && (action === 'draft.write' ? isOwner || draft.visibility === 'project' : isOwner));
+    // Readable already implies current contributor access, which an agent's changes need too.
+    allowed = action === 'draft.read' || (action === 'draft.write' ? isOwner || draft.visibility === 'project' : isOwner);
     return { allowed, visible: true, actor, draft, level, isOwner };
   }
   switch (action) {

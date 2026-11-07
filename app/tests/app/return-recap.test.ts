@@ -4,7 +4,7 @@ import { before, describe, test } from 'node:test';
 import type { Conversation, Project, ReturnSummary, Workspace, WorkItem, WorkResult } from '@flux/contracts';
 import { pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
-import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project as createProject, workspace, type Person } from './support/people.js';
 
 // The private recap, "What matters" (issue #133), on top of #106's return view: whole project or
 // only what concerns the reader, a chosen period, a stable snapshot (`until`) and the sourced
@@ -136,7 +136,7 @@ describe('private recap: scope, period, snapshot and digest (#133)', () => {
     assert.equal(after.rows[0]!.n, before.rows[0]!.n, 'reading a recap records no shared event');
     const outsider = await olek.browser.request('GET', `/api/v1/return?place=project&id=${lamp.id}&digest=1`);
     assert.equal(outsider.status, 404);
-    await grant(ari, lamp.id, kai, 'denied');
+    await removeFromSpace(ari, lamp.id, kai);
     const revoked = await kai.browser.request('GET', `/api/v1/return?place=project&id=${lamp.id}&digest=1`);
     assert.equal(revoked.status, 404, 'revoked access ends the recap');
     const home = json<ReturnSummary>(await kai.browser.request('GET', '/api/v1/return?place=home&from=7d&digest=1'), 200);

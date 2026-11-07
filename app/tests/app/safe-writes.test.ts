@@ -176,7 +176,7 @@ describe('idempotency keys', () => {
     assert.equal(projects.rows[0].n, 1, 'the denied replay did not create another project');
   });
 
-  test('draft create and share replays are denied after the grant is replaced by a deny', async () => {
+  test('draft create and share replays are denied after the author is removed from the company', async () => {
     const owner = await person('replay-draft-owner');
     const member = await person('replay-draft-member');
     const space = expectStatus(await owner.browser.request('POST', '/api/v1/workspaces', { body: { name: 'Replay drafts' } }), 201) as Workspace;
@@ -192,13 +192,13 @@ describe('idempotency keys', () => {
     expectStatus(await shareDraft(), 200);
     assert.equal((await shareDraft()).headers.get('idempotent-replayed'), 'true');
 
-    await grant(owner, room.id, member, 'denied');
+    expectStatus(await owner.browser.request('DELETE', `/api/v1/workspaces/${space.id}/members/${member.id}`), 204);
     for (const [label, replay] of [['create', createDraft], ['share', shareDraft]] as const) {
       const response = await replay();
       assert.equal(response.status, 404, `${label} replay is denied`);
       assert.equal(response.headers.get('idempotent-replayed'), null);
       assert.equal(response.text.includes(title), false, `${label} replay reveals no content`);
-      assert.equal((response.json as { code: string }).code, 'DRAFT_NOT_FOUND');
+      assert.ok(['DRAFT_NOT_FOUND', 'WORKSPACE_NOT_FOUND'].includes((response.json as { code: string }).code), `${label} replay answers as for a missing object`);
     }
     assert.equal(await countTitled(title), 1);
     assert.equal((await stored(item.id)).version, 2);

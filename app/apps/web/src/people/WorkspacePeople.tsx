@@ -242,7 +242,7 @@ function RemovedPeople({ workspaceId, reload, onRestored }: { workspaceId: strin
   );
 }
 
-/** Every space, for the company's owners and admins: the sidebar lists only their own, and here they add themselves to the others. */
+/** Every space, for the company's owners and admins: the sidebar lists only their own, and here they add themselves to the others, as its admin (#903). */
 function CompanySpaces({ workspaceId }: { workspaceId: string }) {
   const { me, reachableSpaces } = useShellData();
   const revalidator = useRevalidator();
@@ -253,7 +253,7 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
   const join = async (spaceId: string, spaceName: string) => {
     setBusy(spaceId);
     try {
-      await grantPerson(spaceId, me.user.id, 'contributor', crypto.randomUUID());
+      await grantPerson(spaceId, me.user.id, 'manager', crypto.randomUUID());
       revalidator.revalidate();
     } catch { toast({ message: `You couldn’t be added to ${spaceName}. Try again.` }); }
     setBusy(null);

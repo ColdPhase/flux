@@ -6,7 +6,7 @@ import { proactiveOutboxRows } from '@flux/db';
 import { recordEvent } from '@flux/core';
 import type { WorkResult } from '@flux/contracts';
 import { proactiveReservation } from '../../apps/worker/src/proactive-comparison/reservation-adapter.js';
-import { db, pool } from './support/db.js';
+import { db, loseSpace, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { eventPorts } from '../../apps/server/src/events.js';
 
@@ -121,11 +121,11 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     // Re-enable only in this fixture; production activation remains fail-closed.
     await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [ruleId]);
     const accessLost = await result(owner, 'negative', 'Access loss after result');
-    await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'denied', $4) ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`, [randomUUID(), workspaceId, projectId, owner.id]);
+    const restore = await loseSpace(projectId, owner.id);
     assert.deepEqual(await reservations.reserve((await candidate(accessLost.id))!.id),
       { status: 'blocked', reason: 'OWNER_OR_AGENT_ACCESS' });
     assert.equal((await candidate(accessLost.id))!.status, 'not_run');
-    await pool.query('DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2', [projectId, owner.id]);
+    await restore();
   });
 
   test('an agent-origin result cannot be enqueued even when an agent ID is supplied', async () => {

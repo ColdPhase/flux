@@ -135,14 +135,14 @@ describe('draft.summarize.v1 worker', () => {
     assert.deepEqual(await completionEvents(item.id), ['draft.summary_requested.v1', 'draft.summary_completed.v1']);
   });
 
-  /** A member reads a restricted-project draft only through an explicit viewer grant. */
+  /** A member reads a restricted-project draft only through an explicit grant. */
   async function grantScenario(label: string) {
     const owner = await insertedHuman(`${label}-owner`);
     const member = await insertedHuman(`${label}-member`);
     const ws = await createWorkspace(owner, { name: label }, db, accessPorts);
     await addMember(owner, ws.id, { userId: member.id, role: 'member' }, db, accessPorts);
     const room = await createProject(owner, ws.id, { name: 'Room', visibility: 'restricted' }, db, accessPorts);
-    const access = await grantProject(owner, room.id, { principal: { kind: 'human', id: member.id }, role: 'viewer' }, db, accessPorts);
+    const access = await grantProject(owner, room.id, { principal: { kind: 'human', id: member.id }, role: 'contributor' }, db, accessPorts);
     const created = await createDraft(owner, ws.id, { title: 'Room notes', body: 'one two three four five', projectId: room.id }, db, accessPorts);
     const item = await shareDraft(owner, created.id, { scope: 'project', expectedVersion: created.version }, db, accessPorts);
     const summary = await requestDraftSummary(member, item.id, db, delayed);

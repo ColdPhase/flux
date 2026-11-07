@@ -73,7 +73,7 @@ describe('sourced personal agent proposals', () => {
     await assert.rejects(store.create({ ...context, ownerUserId: peer.id }, command), { code: 'CONNECTION_NOT_FOUND' });
     const second = await store.create(context, { ...command, clientCommandId: randomUUID(), suggestedAction: 'Review exposure logs' });
     expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/grants`,
-      { body: { principal: { kind: 'human', id: peer.id }, role: 'viewer' } }), 201);
+      { body: { principal: { kind: 'human', id: peer.id }, role: 'contributor' } }), 201);
     const peerView = expectStatus(await peer.browser.request('GET',
       `/api/v1/projects/${project.id}/agent-proposals?limit=1&offset=0`), 200) as { items: AgentProposal[]; total: number; limit: number; offset: number };
     const nextPage = expectStatus(await peer.browser.request('GET',

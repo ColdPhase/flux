@@ -14,7 +14,7 @@ import { taskDiscussionPorts, taskDiscussionUseCases } from '../../apps/server/s
 import { transactionEventSession } from '../../apps/server/src/work/transaction-events.js';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
 import { agentExecutionInTransaction } from '../../apps/server/src/agent-connection/execution.js';
-import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
 import { backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
 import { guardFinalEventPhase } from './support/final-events.js';
 import { db, pool } from './support/db.js';
@@ -28,7 +28,7 @@ async function scene() {
   for (const other of [writer, reader, outsider]) await addMember(owner, ws.id, other, 'member');
   const place = await project(owner, ws.id, 'Effects trial', 'restricted');
   await grant(owner, place.id, writer, 'contributor');
-  await grant(owner, place.id, reader, 'viewer');
+  await grant(owner, place.id, reader, 'contributor');
   const task = async (title: string) => expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, {
     body: { title, clientCommandId: randomUUID() },
   }), 201) as WorkItem;
@@ -128,17 +128,15 @@ test('an explicitly saved nonempty blocker contributes its exact text; clearing 
   assert.deepEqual((await f.discussion(f.reader, t.id)).messages.at(-1), reply);
 });
 
-test('blocker saves obey current access: viewers are forbidden, outsiders see nothing, and nothing is contributed', async () => {
+test('blocker saves obey current access: outsiders see nothing, and nothing is contributed', async () => {
   const f = await scene();
   const t = await f.task('Guarded task');
   const blocked = expectStatus(await f.patch(f.owner, t.id, { status: 'blocked' }, 1), 200) as WorkItem;
   const before = await f.counts();
-  const viewer = await f.patch(f.reader, t.id, { blocker: 'Not allowed', clientCommandId: randomUUID() }, blocked.version);
-  assert.equal(viewer.status, 403);
   assert.equal((await f.patch(f.outsider, t.id, { blocker: 'Hidden', clientCommandId: randomUUID() }, blocked.version)).status, 404);
   assert.equal((await f.patch(f.owner, t.id, { blocker: '   '.repeat(2), clientCommandId: randomUUID() }, blocked.version)).status, 200, 'a whitespace-only blocker is an empty clear');
   assert.equal((await f.counts()).messages, before.messages);
-  await grant(f.owner, f.place.id, f.writer, 'denied');
+  await removeFromSpace(f.owner, f.place.id, f.writer);
   const denied = await f.patch(f.writer, t.id, { blocker: 'Revoked', clientCommandId: randomUUID() }, blocked.version + 1);
   assert.equal(denied.status, 404);
   assert.equal((await f.counts()).messages, before.messages);
@@ -185,7 +183,7 @@ test('a published result contributes one canonical result message to every linke
   assert.deepEqual([conflict.status, code(conflict)], [409, 'IDEMPOTENCY_CONFLICT']);
   assert.deepEqual(await f.counts(), afterPublish);
   // A replay needs current authorization.
-  await grant(f.owner, f.place.id, f.writer, 'denied');
+  await removeFromSpace(f.owner, f.place.id, f.writer);
   const afterRevocation = await f.counts();
   assert.equal((await f.result(f.writer, body)).status, 404);
   assert.deepEqual(await f.counts(), afterRevocation);
@@ -200,7 +198,6 @@ test('a result with no linked task, or only a decision, creates no task thread; 
   assert.deepEqual(delta(await f.counts(), base), { messages: 0, conversations: 0, bindings: 0, results: 2, receipts: 1, events: 2, search: 0 });
   const t = await f.task('Not linked');
   const before = await f.counts();
-  assert.equal((await f.result(f.reader, { title: 'Viewer result', finding: 'positive', work: [t.id] })).status, 403);
   assert.equal((await f.result(f.outsider, { title: 'Outsider result', finding: 'positive', work: [t.id] })).status, 404);
   assert.deepEqual(await f.counts(), before);
 });
@@ -245,7 +242,6 @@ test('an explicit public handoff is a contribution through the same primitive; A
   for (const kind of ['blocker', 'result', 'ack']) {
     assert.equal((await f.writer.browser.request('POST', path, { body: { body: 'Not a direct kind', clientMessageId: randomUUID(), kind } })).status, 400, kind);
   }
-  assert.equal((await f.reader.browser.request('POST', path, { body: { ...command, clientMessageId: randomUUID() } })).status, 403);
   assert.equal((await f.counts()).messages, base.messages + 1);
   // The generic conversation entry point has no handoff kind.
   assert.equal((await f.writer.browser.request('POST', `/api/v1/conversations/${sent.conversationId}/messages`, {

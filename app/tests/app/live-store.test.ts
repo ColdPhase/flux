@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { DomainError, grantProject } from '@flux/core';
-import { accessPorts } from '@flux/db';
+import { DomainError } from '@flux/core';
 import type { Conversation } from '@flux/contracts';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
-import { db, pool } from './support/db.js';
+import { db, pool, removeFromSpaceCore } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
 function failure(code: string) {
@@ -19,7 +18,7 @@ test('durable live sessions bind to one project and store only idempotent refere
   await addMember(owner, ws.id, participant, 'member');
   const place = await project(owner, ws.id, 'Session project', 'restricted');
   const otherPlace = await project(owner, ws.id, 'Other project', 'restricted');
-  await grant(owner, place.id, participant, 'viewer');
+  await grant(owner, place.id, participant, 'contributor');
   const thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
     body: { body: 'Never copy this private body into live media or trace', clientMessageId: randomUUID() },
   }), 201) as Conversation;
@@ -53,7 +52,7 @@ test('durable live sessions bind to one project and store only idempotent refere
   const columns = await pool.query("SELECT column_name FROM information_schema.columns WHERE table_name IN ('live_sessions', 'live_presentations')");
   assert.equal(columns.rows.some((row) => /title|body|transcript|content/.test(row.column_name)), false);
 
-  await grantProject(ownerPrincipal, place.id, { principal: viewerPrincipal, role: 'denied' }, db, accessPorts);
+  await removeFromSpaceCore(ownerPrincipal, place.id, viewerPrincipal, db);
   await assert.rejects(store.present(first.id, viewerPrincipal, ref, randomUUID()), failure('PROJECT_NOT_FOUND'));
   await assert.rejects(store.createOrGet(viewerPrincipal, place.id, anchor, randomUUID(), async () => {}), failure('PROJECT_NOT_FOUND'));
   // A committed trace survives a participant's grant revocation for authorized project users.

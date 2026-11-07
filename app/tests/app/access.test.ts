@@ -4,7 +4,7 @@ import { before, describe, test } from 'node:test';
 import type { Draft, Page, Project, ProjectGrant, ProjectPerson, Workspace, WorkspaceMember } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { Browser } from './support/http.js';
-import { addMember, draft, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { addMember, draft, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
 
 // Workspace, project, grant and draft policy through the running API (issue #29, AC-2/AC-3).
 
@@ -89,7 +89,7 @@ describe('workspace access policy over HTTP', () => {
   test('sharing to a restricted project reveals the draft only to project grantees', async () => {
     const restricted = await project(owner, ws.id, 'Support escalations', 'restricted');
     await grant(owner, restricted.id, member, 'contributor');
-    await grant(owner, restricted.id, guest, 'viewer');
+    await grant(owner, restricted.id, guest, 'contributor');
     const report = await draft(member, ws.id, 'Redacted report', { projectId: restricted.id });
     expectStatus(await guest.browser.request('GET', `/api/v1/drafts/${report.id}`), 404, 'still private');
     const shared = expectStatus(await shareRequest(member, report.id, 'project'), 200) as Draft;
@@ -123,21 +123,19 @@ describe('workspace access policy over HTTP', () => {
     assert.deepEqual(filtered.items, []);
   });
 
-  test('a viewer can read but not write; a contributor can write', async () => {
+  test('a member writes in the space; managing it and re-sharing another person\'s note stay with its admins', async () => {
     const docs = await project(owner, ws.id, 'Export docs', 'restricted');
-    await grant(owner, docs.id, other, 'viewer');
+    await grant(owner, docs.id, other, 'contributor');
     const spec = await draft(owner, ws.id, 'Export spec', { projectId: docs.id });
     expectStatus(await shareRequest(owner, spec.id, 'project'), 200);
-    expectStatus(await other.browser.request('GET', `/api/v1/drafts/${spec.id}`), 200, 'viewer reads');
-    const denied = expectStatus(await patch(other, spec.id, { body: 'viewer edit' }), 403, 'viewer writes') as { code: string };
-    assert.equal(denied.code, 'FORBIDDEN');
-    expectStatus(await other.browser.request('POST', `/api/v1/workspaces/${ws.id}/drafts`, { body: { title: 'into docs', projectId: docs.id } }), 403, 'viewer adds to project');
-    expectStatus(await shareRequest(other, spec.id, 'private'), 403, 'viewer cannot re-share');
-    expectStatus(await other.browser.request('GET', `/api/v1/projects/${docs.id}/grants`), 403, 'viewer cannot manage grants');
-    await grant(owner, docs.id, other, 'contributor');
-    const edited = expectStatus(await patch(other, spec.id, { body: 'contributor edit' }), 200) as Draft;
-    assert.equal(edited.body, 'contributor edit');
+    expectStatus(await other.browser.request('GET', `/api/v1/drafts/${spec.id}`), 200, 'member reads');
+    const edited = expectStatus(await patch(other, spec.id, { body: 'member edit' }), 200) as Draft;
+    assert.equal(edited.body, 'member edit');
     assert.equal(edited.version, 3);
+    expectStatus(await other.browser.request('POST', `/api/v1/workspaces/${ws.id}/drafts`, { body: { title: 'into docs', projectId: docs.id } }), 201, 'member adds to project');
+    expectStatus(await shareRequest(other, spec.id, 'private'), 403, 'member cannot re-share another person\'s note');
+    expectStatus(await other.browser.request('GET', `/api/v1/projects/${docs.id}/grants`), 403, 'member cannot manage grants');
+    await grant(owner, docs.id, other, 'contributor');
     const grants = expectStatus(await owner.browser.request('GET', `/api/v1/projects/${docs.id}/grants`), 200) as ProjectGrant[];
     // F-037: the creator's own admin grant comes with the space.
     assert.deepEqual(grants.filter((g) => g.principal.id !== owner.id).map((g) => [g.principal.id, g.role]), [[other.id, 'contributor']], 'grant replaced, not duplicated');
@@ -199,7 +197,7 @@ describe('workspace access policy over HTTP', () => {
     expectStatus(await shareRequest(owner, item.id, 'project', foreign.id), 422, 'share');
     expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/drafts`, { body: { title: 'link', projectId: foreign.id } }), 422, 'create link');
     expectStatus(await member.browser.request('POST', `/api/v1/workspaces/${ws.id}/drafts`, { body: { title: 'link', projectId: foreign.id } }), 404, 'invisible foreign project');
-    const outsiderGrant = await owner.browser.request('POST', `/api/v1/projects/${local.id}/grants`, { body: { principal: { kind: 'human', id: outsider.id }, role: 'viewer' } });
+    const outsiderGrant = await owner.browser.request('POST', `/api/v1/projects/${local.id}/grants`, { body: { principal: { kind: 'human', id: outsider.id }, role: 'contributor' } });
     expectStatus(outsiderGrant, 422, 'grant to a non-member');
     const stored = await pool.query('SELECT workspace_id, project_id FROM drafts WHERE id = $1', [item.id]);
     assert.deepEqual(stored.rows[0], { workspace_id: ws.id, project_id: local.id }, 'rejected commands left the draft unchanged');
@@ -213,7 +211,7 @@ describe('workspace access policy over HTTP', () => {
     const team = await workspace(owner, 'Revocation');
     await addMember(owner, team.id, member, 'member');
     const room = await project(owner, team.id, 'War room', 'restricted');
-    await grant(owner, room.id, member, 'viewer');
+    await grant(owner, room.id, member, 'contributor');
     const wide = await draft(owner, team.id, 'All hands');
     expectStatus(await shareRequest(owner, wide.id, 'workspace'), 200);
     const narrow = await draft(owner, team.id, 'Incident', { projectId: room.id });
@@ -225,7 +223,7 @@ describe('workspace access policy over HTTP', () => {
     expectStatus(await member.browser.request('GET', `/api/v1/drafts/${narrow.id}`), 404, 'grant revoked');
     expectStatus(await member.browser.request('GET', `/api/v1/projects/${room.id}`), 404, 'project hidden again');
 
-    await grant(owner, room.id, member, 'viewer');
+    await grant(owner, room.id, member, 'contributor');
     expectStatus(await member.browser.request('GET', `/api/v1/drafts/${wide.id}`), 200);
     expectStatus(await owner.browser.request('DELETE', `/api/v1/workspaces/${team.id}/members/${member.id}`), 204);
     expectStatus(await member.browser.request('GET', `/api/v1/drafts/${wide.id}`), 404, 'workspace draft after removal');
@@ -262,26 +260,22 @@ describe('workspace access policy over HTTP', () => {
     expectStatus(await drafts(member, team.id, '?limit=101'), 400, 'limit bounds');
   });
 
-  test('an explicit deny wins over membership and admin roles', async () => {
-    const team = await workspace(owner, 'Deny');
+  test('a space has two roles, and nothing keeps a company admin out of one (#903)', async () => {
+    const team = await workspace(owner, 'Two roles');
     await addMember(owner, team.id, admin, 'admin');
     await addMember(owner, team.id, member, 'member');
-    const open = await project(owner, team.id, 'Open floor', 'workspace');
-    const item = await draft(owner, team.id, 'Floor plan', { projectId: open.id });
+    const room = await project(owner, team.id, 'Closed floor', 'restricted');
+    const item = await draft(owner, team.id, 'Floor plan', { projectId: room.id });
     expectStatus(await shareRequest(owner, item.id, 'project'), 200);
-    expectStatus(await member.browser.request('GET', `/api/v1/drafts/${item.id}`), 200);
-    await grant(owner, open.id, member, 'denied');
-    await grant(owner, open.id, admin, 'denied');
-    for (const denied of [member, admin]) {
-      expectStatus(await denied.browser.request('GET', `/api/v1/projects/${open.id}`), 404, 'denied project');
-      expectStatus(await denied.browser.request('GET', `/api/v1/drafts/${item.id}`), 404, 'denied draft');
-      expectStatus(await denied.browser.request('GET', `/api/v1/projects/${open.id}/grants`), 404, 'denied admin cannot lift own deny');
+    for (const role of ['viewer', 'denied']) {
+      expectStatus(await owner.browser.request('POST', `/api/v1/projects/${room.id}/grants`, { body: { principal: { kind: 'human', id: member.id }, role } }), 400, role);
     }
-    const workspaceWide = await draft(owner, team.id, 'Workspace note', { projectId: open.id });
-    expectStatus(await shareRequest(owner, workspaceWide.id, 'workspace'), 200);
-    expectStatus(await member.browser.request('GET', `/api/v1/drafts/${workspaceWide.id}`), 404, 'deny also hides workspace-visible drafts of that project');
-    const listed = expectStatus(await drafts(member, team.id, '?limit=100'), 200) as Page<Draft>;
-    assert.equal(listed.total, 0);
+    expectStatus(await admin.browser.request('GET', `/api/v1/projects/${room.id}`), 200, 'an admin reaches a space without a grant');
+    expectStatus(await admin.browser.request('GET', `/api/v1/drafts/${item.id}`), 200, 'and its notes');
+    await grant(owner, room.id, admin, 'contributor');
+    await removeFromSpace(owner, room.id, admin);
+    expectStatus(await admin.browser.request('GET', `/api/v1/projects/${room.id}`), 200, 'removing the grant takes them off its people, not out of the space');
+    expectStatus(await member.browser.request('GET', `/api/v1/projects/${room.id}`), 404, 'a member who was not added sees nothing');
   });
 
   test('a project names exactly the people who can read it, for everyone who can read it (#117)', async () => {
@@ -291,28 +285,27 @@ describe('workspace access policy over HTTP', () => {
     await addMember(owner, team.id, other, 'member');
     await addMember(owner, team.id, guest, 'guest');
     const closed = await project(owner, team.id, 'Closed room', 'restricted');
-    await grant(owner, closed.id, member, 'viewer');
+    await grant(owner, closed.id, member, 'contributor');
     await grant(owner, closed.id, guest, 'contributor');
-    await grant(owner, closed.id, admin, 'denied');
     const people = (who: Person, id = closed.id) => who.browser.request('GET', `/api/v1/projects/${id}/people`);
     const listed = expectStatus(await people(guest), 200, 'a guest with a grant reads the audience') as ProjectPerson[];
     const byId = new Map(listed.map((entry) => [entry.id, entry]));
     assert.equal(byId.get(owner.id)?.access, 'manager');
-    assert.equal(byId.get(member.id)?.access, 'viewer');
+    assert.equal(byId.get(member.id)?.access, 'contributor');
     assert.equal(byId.get(guest.id)?.access, 'contributor');
-    assert.equal(byId.has(admin.id), false, 'a denied admin is not in the audience');
+    assert.equal(byId.has(admin.id), false, 'a company admin reaches the space but is not one of its people until added');
     assert.equal(byId.has(other.id), false, 'a member without a grant cannot read a restricted project');
     assert.equal(listed.length, 3);
     assert.ok(listed.every((entry) => entry.kind === 'human' && typeof entry.name === 'string'));
-    expectStatus(await people(member), 200, 'a viewer reads the audience');
+    expectStatus(await people(member), 200, 'a member reads the audience');
     expectStatus(await people(other), 404, 'someone who cannot read the project learns nothing');
-    expectStatus(await people(admin), 404, 'deny wins for the audience too');
+    expectStatus(await people(admin), 200, 'a company admin reads it too');
     expectStatus(await people(outsider), 404);
     const open = await project(owner, team.id, 'Open floor', 'workspace');
     const everyone = (expectStatus(await people(other, open.id), 200) as ProjectPerson[]).map((entry) => entry.id).sort();
     assert.deepEqual(everyone, [owner.id, admin.id, member.id, other.id].sort(), 'members read a workspace-visible project; a guest without a grant does not');
-    await grant(owner, open.id, other, 'denied');
-    expectStatus(await people(other, open.id), 404, 'a new deny applies on the very next request');
-    assert.equal((expectStatus(await people(member, open.id), 200) as ProjectPerson[]).some((entry) => entry.id === other.id), false);
+    await removeFromSpace(owner, closed.id, member);
+    expectStatus(await people(member), 404, 'a removal applies on the very next request');
+    assert.equal((expectStatus(await people(guest), 200) as ProjectPerson[]).some((entry) => entry.id === member.id), false);
   });
 });

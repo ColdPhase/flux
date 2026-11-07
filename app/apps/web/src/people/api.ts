@@ -15,10 +15,8 @@ import {
   workspaceRemovedPeoplePath,
   workspaceRestorePath,
   workspacePath,
-  type ProjectAccess,
   type ProjectGrant,
   type ProjectGrantRole,
-  type ProjectVisibility,
   type RemovedPerson,
   type Workspace,
   type WorkspaceMember,
@@ -84,17 +82,6 @@ export const ROLE_HINT: Record<WorkspaceRole, string> = {
   guest: 'Sees only the spaces they’re added to, and never has AI.',
 };
 export const isManagerRole = (role: WorkspaceRole | null | undefined) => role === 'owner' || role === 'admin';
-
-/**
- * What the access policy (#29) gives a person on a project, for previews before a change is
- * confirmed. The server decides; after every change the audience is read again from it.
- */
-export function levelFor(role: WorkspaceRole, visibility: ProjectVisibility, grant: ProjectGrantRole | null): ProjectAccess | null {
-  if (grant === 'denied') return null;
-  if (role === 'owner' || role === 'admin') return 'manager';
-  if (grant) return grant;
-  return role === 'member' && visibility === 'workspace' ? 'contributor' : null;
-}
 
 export function firstName(name: string) {
   return name.trim().split(/\s+/)[0] || name;

@@ -85,7 +85,7 @@ class TaskAnnouncements(unittest.TestCase):
         project = post("ada", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Night lamp", "visibility": "restricted"})
         pid = project["id"]
         post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["jonas"]}, "role": "contributor"})
-        post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["lee"]}, "role": "viewer"})
+        post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["lee"]}, "role": "contributor"})
         start = lambda who, body: post(who, f"/api/v1/projects/{pid}/conversations", {"body": body, "clientMessageId": str(uuid.uuid4())})  # noqa: E731
         task = lambda who, body: post(who, f"/api/v1/projects/{pid}/work", {**body, "clientCommandId": str(uuid.uuid4())})  # noqa: E731
         # An early task, then more roots than the newest window (50): its announcement waits with them.
@@ -294,14 +294,13 @@ class TaskAnnouncements(unittest.TestCase):
         expect(self.notice(page, made["id"]).locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska · you")
         self.assertEqual(self.counts(page), (before[0] + 1, before[1] + 1, before[2]), "one task and one announcement; no root")
 
-    def test_07_a_reader_sees_announcements_and_opens_the_task(self) -> None:
+    def test_07_another_member_sees_announcements_and_opens_the_task(self) -> None:
         page = self.page("lee")
         page.goto(f"/projects/{self.ids['project']}")
         made = self.notice(page, self.ids["measure"])
         expect(made.locator(".convo-notice__meta strong")).to_have_text("Ada Kowalska")
         made.get_by_role("button", name=opens_task(MEASURE)).click()
         expect(page.locator("#details").get_by_role("heading", name=MEASURE)).to_be_visible()
-        expect(page.get_by_role("button", name="Create task")).to_have_count(0)
 
     def test_08_phone_keeps_the_announcement_one_line_and_readable(self) -> None:
         self.check_phone_announcements()
@@ -494,17 +493,6 @@ class TaskAnnouncements(unittest.TestCase):
         uuid.UUID(cleared['commandId'])
         self.assertNotEqual(cleared['commandId'], record['commandId'])
 
-    def test_11_a_reader_sees_the_discussion_but_cannot_start_one(self) -> None:
-        page = self.page("lee")
-        page.goto(f"/projects/{self.ids['project']}")
-        section = self.open_task_from_stream(page, self.ids["measure"], MEASURE)
-        expect(section.get_by_role("list", name="Task activity")).to_contain_text(FIRST_WORD)
-        page.locator("#details").get_by_role("button", name="Close details").click()
-        section = self.open_task_from_stream(page, self.ids["live"], LIVE_TASK)
-        expect(section).to_contain_text("Nobody has written about this task yet.")
-        expect(section.get_by_role("textbox")).to_have_count(0)
-        expect(section.get_by_role("button", name="Start the discussion")).to_have_count(0)
-
     def hold_earlier_announcements(self, page: Page) -> list:
         """Holds the read of the second announcement page until the test lets it through."""
         held: list = []
@@ -603,7 +591,7 @@ class TaskAnnouncements(unittest.TestCase):
         self.assertTrue(feed.evaluate(at_end), "the reader stays at the end")
         expect(page.get_by_text(f"Later note {SHORT_NOTES - 1:02} on the board.")).to_be_in_viewport()
 
-    def test_14_lost_write_access_keeps_the_text_and_stores_nothing(self) -> None:
+    def test_14_a_refused_send_keeps_the_text_and_stores_nothing(self) -> None:
         page = self.page("jonas")
         pid = self.ids["project"]
         page.goto(f"/projects/{pid}")
@@ -614,10 +602,9 @@ class TaskAnnouncements(unittest.TestCase):
         key = f"flux:composer:{self.ids['jonas']}:{pid}:task:{self.ids['live']}"
         original = page.evaluate("key => JSON.parse(localStorage.getItem(key))", key)
         before = self.counts(page)
-        ada = self.page("ada")
-        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "viewer"}, status=201)
-        self.addCleanup(lambda: self.api(ada, "POST", f"/api/v1/projects/{pid}/grants",
-                                         {"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "contributor"}, status=201))
+        # The server refuses the send (a space has no read-only role, so the refusal is stubbed): nothing is stored.
+        page.route(f"**/api/v1/work/{self.ids['live']}/discussion", lambda route: route.fulfill(
+            status=403, content_type="application/json", body=json.dumps({"error": "Forbidden", "code": "FORBIDDEN"})) if route.request.method == "POST" else route.continue_())
         with page.expect_response(lambda response: response.request.method == 'POST'
                                   and response.url.endswith(f"/work/{self.ids['live']}/discussion")) as refused:
             section.get_by_role("button", name="Start the discussion").click()

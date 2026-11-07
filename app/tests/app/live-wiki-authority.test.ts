@@ -13,7 +13,7 @@ import { editingRuntime, NATIVE_CHECKPOINT_BYTES } from '../../apps/server/src/e
 import { wikiAuthority } from '../../apps/server/src/editing/authority.js';
 import { liveEditingRows } from '@flux/db';
 import { db, pool } from './support/db.js';
-import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
+import { addMember, expectStatus, grant, person, project, removeFromSpace, workspace } from './support/people.js';
 
 async function context(user: Awaited<ReturnType<typeof person>>): Promise<SessionContext> {
   const [session] = (await pool.query('SELECT id,expires_at FROM auth_sessions WHERE user_id=$1 ORDER BY created_at DESC LIMIT 1', [user.id])).rows;
@@ -148,8 +148,8 @@ test('server-named relative cursor presence uses current writing rights, exact p
       await assert.rejects(authority.cursor(owner,f.doc.id,head.generation,connection,{anchor:extraRoot,head:end}),refused('INVALID_CURSOR'));
     }finally{foreign.destroy();}
     assert.equal((await pool.query('SELECT count(*)::int n FROM events WHERE workspace_id=$1', [f.ws.id])).rows[0].n, events);
-    await grant(f.owner, f.place.id, f.peer, 'viewer');
-    await assert.rejects(authority.cursor(peer, f.doc.id, head.generation, randomUUID(), { anchor, head: end }), refused('FORBIDDEN'));
+    await removeFromSpace(f.owner, f.place.id, f.peer);
+    await assert.rejects(authority.cursor(peer, f.doc.id, head.generation, randomUUID(), { anchor, head: end }), 'a person removed from the space has no cursor');
     await authority.cursor(owner, f.doc.id, head.generation, connection, null);
     assert.equal((await pool.query('SELECT count(*)::int n FROM doc_live_presence WHERE connection_id=$1', [connection])).rows[0].n, 0);
   } finally { document.destroy(); await authority.close(); }

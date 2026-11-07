@@ -486,7 +486,7 @@ export const projectGrants = pgTable('project_grants', {
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
   userId: text('user_id').notNull(),
-  role: text('role', { enum: ['manager', 'contributor', 'viewer', 'denied'] }).notNull(),
+  role: text('role', { enum: ['manager', 'contributor'] }).notNull(),
   createdBy: text('created_by').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

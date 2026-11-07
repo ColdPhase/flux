@@ -8,7 +8,7 @@ import { after, before, describe, test } from 'node:test';
 import type { ComparisonProvider } from '@flux/core';
 import type { Conversation, Material, ProactiveComparisonProposal, WorkResult } from '@flux/contracts';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
-import { db, pool } from './support/db.js';
+import { db, loseSpace, pool } from './support/db.js';
 import { addMember, draft, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
 describe('controlled background comparison dispatch (#58)', () => {
@@ -186,7 +186,7 @@ describe('controlled background comparison dispatch (#58)', () => {
       { status: 'not_run', reason: 'SOURCE_CHANGED' });
     assert.equal(seen.length, afterOutage);
     const accessLost = await negative('Trial before the owner lost the project');
-    await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) SELECT $1, workspace_id, id, $2, 'denied', $2 FROM projects WHERE id = $3 ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`, [randomUUID(), owner.id, projectId]);
+    await loseSpace(projectId, owner.id);
     assert.deepEqual(await dispatchProactiveComparison({ db, candidateId: await candidates(accessLost.id), masterKey, provider }),
       { status: 'not_run', reason: 'OWNER_OR_AGENT_ACCESS' });
     assert.equal(seen.length, afterOutage);

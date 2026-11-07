@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { ConflictError, createWorkUseCases, type Principal } from '@flux/core';
 import type { Agent, Conversation, CreateWorkCommand, Page, TaskCreationNotice, WorkItem } from '@flux/contracts';
 import { workUnitOfWork, workUseCases } from '../../apps/server/src/work/adapters.js';
-import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace } from './support/people.js';
 import { db, pool } from './support/db.js';
 
 async function scene() {
@@ -13,7 +13,7 @@ async function scene() {
   for (const other of [writer, reader, outsider]) await addMember(owner, ws.id, other, 'member');
   const place = await project(owner, ws.id, 'Sensor trial', 'restricted');
   await grant(owner, place.id, writer, 'contributor');
-  await grant(owner, place.id, reader, 'viewer');
+  await grant(owner, place.id, reader, 'contributor');
   const first = expectStatus(await writer.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
     body: { body: 'Jonas recorded the original camera question.', clientMessageId: randomUUID() },
   }), 201) as Conversation;
@@ -58,7 +58,6 @@ test('task creation keeps source messages intact and stores exactly one distinct
   }
   assert.deepEqual(await f.counts(), after, 'opening/render reads never manufacture a notice or root');
   assert.equal((await f.outsider.browser.request('GET', f.noticePath)).status, 404);
-  assert.equal((await f.reader.browser.request('POST', f.path, { body: { title: 'Forbidden' } })).status, 403);
 });
 
 test('same domain command serializes simultaneous API/helper retries without relying on transport cache', async () => {
@@ -79,7 +78,7 @@ test('same domain command serializes simultaneous API/helper retries without rel
   const changed = await f.writer.browser.request('POST', f.path, { body: { ...command, title: 'Another payload' } });
   assert.equal(changed.status, 409);
   await assert.rejects(workUseCases(db).createWork(actor, f.place.id, { ...command, outcome: 'Changed' }), ConflictError);
-  await grant(f.owner, f.place.id, f.writer, 'denied');
+  await removeFromSpace(f.owner, f.place.id, f.writer);
   assert.equal((await f.writer.browser.request('POST', f.path, { body: command })).status, 404, 'durable identity is no new authority');
   assert.equal((await f.notices()).total, 1);
 });

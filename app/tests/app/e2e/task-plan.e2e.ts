@@ -60,7 +60,7 @@ test('a planned task shows its criteria, prerequisite states and plan revision; 
   const ws = await workspace(owner, 'Planned work');
   await addMember(owner, ws.id, reader, 'member');
   const place = await project(owner, ws.id, 'Low-light trial', 'restricted');
-  await grant(owner, place.id, reader, 'viewer');
+  await grant(owner, place.id, reader, 'contributor');
   const api = `/api/v1/projects/${place.id}/work`;
   const create = async (body: Record<string, unknown>) => expectStatus(await owner.browser.request('POST', api, { body }), 201) as WorkItem;
   const plan = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/materials`,

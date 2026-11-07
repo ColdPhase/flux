@@ -103,7 +103,7 @@ export function WikiLayout() {
   // Focus is a computer setting: on a phone the pages are always a row of chips (nothing to exit),
   // and the choice returns when the wiki is wide again.
   const value = useMemo<WikiState>(() => ({
-    project, docs, focus, compact, writable: project.access !== 'viewer',
+    project, docs, focus, compact, writable: true,
     setFocus(next: boolean) { writeKey(FOCUS_KEY, next ? '1' : null); setFocusState(next); },
     importing, importError, importErrorId, startImport, menuSlot, setMenuSlot,
   }), [project, docs, focus, compact, importing, importError, importErrorId, startImport, menuSlot]);
@@ -114,8 +114,8 @@ export function WikiLayout() {
           <WikiIndex activeId={docId ?? null} hidden={focus && !compact} />
           <div className="wiki-main pane-scroll"><Outlet /></div>
         </div>
-        {project.access !== 'viewer' ? <input ref={fileRef} type="file" accept=".md,.markdown,text/markdown,text/x-markdown" hidden tabIndex={-1}
-          onChange={(event) => void importFile(event)} /> : null}
+        <input ref={fileRef} type="file" accept=".md,.markdown,text/markdown,text/x-markdown" hidden tabIndex={-1}
+          onChange={(event) => void importFile(event)} />
       </div>
     </WikiContext.Provider>
   );

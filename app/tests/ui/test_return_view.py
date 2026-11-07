@@ -79,7 +79,7 @@ class ReturnViewJourney(unittest.TestCase):
 
     def api(self, page: Page, method: str, path: str, body: dict | None = None, status: int | None = None, headers: dict | None = None) -> dict:
         response = page.request.fetch(f"{ORIGIN}{path}", method=method,
-                                      headers={"origin": ORIGIN, "content-type": "application/json", **(headers or {})},
+                                      headers={"origin": ORIGIN, **({"content-type": "application/json"} if body is not None else {}), **(headers or {})},
                                       data=json.dumps(body) if body is not None else None)
         if status is not None:
             self.assertEqual(response.status, status, response.text())
@@ -584,8 +584,10 @@ class ReturnViewJourney(unittest.TestCase):
         self.assertTrue(any("confirm the lens order" in item["text"] + (item.get("detail") or "") for item in self.summary(page, "home")["items"]))
         self.api(page, "PUT", "/api/v1/return-points", {"place": {"type": "home"}, "mark": self.summary(page, "home")["mark"]}, status=200)
         self.wait_saved(page, "home")
-        # Nia loses access; her Home point is also moved back, so only authorization can hide the item.
-        self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/grants", {"principal": {"kind": "human", "id": NIA["id"]}, "role": "denied"}, status=201)
+        # Nia is removed from the space; her Home point is also moved back, so only authorization can hide the item.
+        grants = self.api(ari, "GET", f"/api/v1/projects/{self.project_id}/grants", status=200)
+        gone = next(item["id"] for item in grants if item["principal"]["id"] == NIA["id"])
+        self.api(ari, "DELETE", f"/api/v1/projects/{self.project_id}/grants/{gone}", status=204)
         self.api(page, "POST", "/api/v1/return-points/restore", {"place": {"type": "home"}}, status=200)
         fresh = self.summary(page, "home")
         self.assertEqual(fresh["items"], [], "the server's fresh answer is empty")

@@ -154,7 +154,7 @@ class TasksBoardJourney(unittest.TestCase):
         project = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Gesture lamp", "visibility": "restricted"}, status=201)
         pid = project["id"]
         self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": KAI["id"]}, "role": "contributor"}, status=201)
-        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": NIA["id"]}, "role": "viewer"}, status=201)
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": NIA["id"]}, "role": "contributor"}, status=201)
         agent = self.api(ada, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Codex", "owner": "self"}, status=201)
         thread = self.api(ada, "POST", f"/api/v1/projects/{pid}/conversations", {"body": "Should the lamp use a ToF sensor instead of the camera?", "clientMessageId": str(uuid.uuid4())}, status=201)
         message = self.api(kai, "POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": MESSAGE, "clientMessageId": str(uuid.uuid4())}, status=201)
@@ -632,30 +632,6 @@ class TasksBoardJourney(unittest.TestCase):
             expect(self.column(laptop, name)).to_be_visible()
         self.no_sideways_scroll(laptop, 1024, "laptop")
         shot(laptop, "tasks-board-1024-light")
-
-    # ---------------------------------------------------------------- a reader
-
-    def test_11_a_reader_sees_the_board_without_changing_it(self) -> None:
-        page = self.board("nia")
-        patches: list[str] = []
-        page.on("request", lambda request: patches.append(request.url) if request.method == "PATCH" else None)
-        expect(self.card(self.column(page, "In progress"), SOLDER)).to_be_visible()
-        expect(page.get_by_role("button", name="New Task")).to_have_count(0)
-        expect(page.get_by_role("button", name="Move to…")).to_have_count(0)
-        expect(page.get_by_role("button", name=re.compile("^New task in"))).to_have_count(0)
-        solder = self.card(page, SOLDER)
-        solder.get_by_role("button", name=SOLDER, exact=True).focus()
-        page.keyboard.press("Space")
-        expect(solder).not_to_have_class(re.compile("is-lifted"))
-        page.keyboard.press("Escape")
-        self.lift(page, solder)
-        self.hover(page, self.column(page, "Done").locator(".tb-col__cards"))
-        expect(page.locator(".tb-ghost")).to_have_count(0)
-        expect(page.locator(".is-over")).to_have_count(0)
-        page.mouse.up()
-        page.wait_for_timeout(400)
-        self.assertEqual(patches, [])
-        shot(page, "tasks-board-1440-reader")
 
     # ---------------------------------------------------------------- contrast
 

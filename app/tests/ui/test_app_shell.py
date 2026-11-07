@@ -1409,8 +1409,8 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(partner.context.request.get(f"{ORIGIN}/api/v1/drafts/{draft_id}").status, 404)
         invite = owner.context.request.post(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/members", data={"email": partner_email, "role": "member"}, headers={"Origin": ORIGIN})
         self.assertEqual(invite.status, 201, invite.text())
-        grant = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/grants", data={"principal": {"kind": "human", "id": partner_id}, "role": "contributor"}, headers={"Origin": ORIGIN})
-        self.assertEqual(grant.status, 201, grant.text())
+        partner_grant = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/grants", data={"principal": {"kind": "human", "id": partner_id}, "role": "contributor"}, headers={"Origin": ORIGIN})
+        self.assertEqual(partner_grant.status, 201, partner_grant.text())
         partner.goto(f"/projects/{project_id}/conversations/{conversation_id}")
         expect(partner.get_by_role("region", name="Messages").get_by_text("Try a PIR sensor before considering a camera", exact=True)).to_be_visible()
         self.assertNotIn("home address 123", partner.locator("body").inner_text())
@@ -1464,8 +1464,8 @@ class AppShellJourney(unittest.TestCase):
         guest.get_by_role("button", name="Send reply").click()
         expect(guest.get_by_text("A guest can contribute here", exact=True)).to_be_visible()
 
-        denial = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/grants", data={"principal": {"kind": "human", "id": partner_id}, "role": "denied"}, headers={"Origin": ORIGIN})
-        self.assertEqual(denial.status, 201, denial.text())
+        denial = owner.context.request.delete(f"{ORIGIN}/api/v1/projects/{project_id}/grants/{partner_grant.json()['id']}", headers={"Origin": ORIGIN})
+        self.assertEqual(denial.status, 204, denial.text())
         # The open thread hears of the denial from the live stream (#733): without any action, the next read is refused and
         # the person lands on the nearest place they can open with one line saying why (#592). Before the live refresh this
         # waited for a read the person started ("Discuss this version"); now nothing of the project stays on screen meanwhile.

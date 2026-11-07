@@ -9,7 +9,7 @@ import { createAuth } from '../../apps/server/src/identity/auth.js';
 import { createOauthRequests } from '../../apps/server/src/identity/oauth-flow.js';
 import { loadIdentityConfig } from '../../apps/server/src/identity/config.js';
 import { createSessionResolver } from '../../apps/server/src/identity/session.js';
-import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
 import { inBatches, SAME_PROJECT_TASKS } from './support/batches.js';
 
 // #170/#196: tasks linked to selected project thoughts, without the project work collection.
@@ -49,7 +49,7 @@ describe('tasks linked to selected thoughts with exact counts, one bounded windo
     await addMember(owner, workspaceId, viewer, 'member');
     projectId = (await project(owner, workspaceId, 'Thought scope', 'restricted')).id;
     otherId = (await project(owner, workspaceId, 'Other thought scope', 'restricted')).id;
-    await grant(owner, projectId, viewer, 'viewer');
+    await grant(owner, projectId, viewer, 'contributor');
     const map = (await sketch('Sensing directions', 'project', projectId)).id;
     [dark, camera, quiet] = [await thought(map, 'Dark room'), await thought(map, 'Camera only'), await thought(map, 'Nobody home')];
     privateThought = await thought((await sketch('Private notes', 'private')).id, 'Private thought');
@@ -64,7 +64,7 @@ describe('tasks linked to selected thoughts with exact counts, one bounded windo
   test('counts, many-to-many pairs, chooser order and who added each task; foreign thoughts are indistinguishable', async () => {
     const missing = randomUUID();
     const observed = await read([quiet, camera, dark, privateThought, foreignThought, missing, dark], viewer);
-    assert.equal(observed.projectId, projectId); assert.equal(observed.access, 'viewer'); assert.match(observed.observedAt, /\.\d{6}Z$/);
+    assert.equal(observed.projectId, projectId); assert.equal(observed.access, 'contributor'); assert.match(observed.observedAt, /\.\d{6}Z$/);
     assert.deepEqual(observed.counts, [{ thoughtId: dark, tasks: 4 }, { thoughtId: camera, tasks: 1 }].sort((a, b) => a.thoughtId < b.thoughtId ? -1 : 1));
     assert.equal(observed.linkTotal, 5);
     const forDark = observed.links.filter((link) => link.thoughtId === dark).map((link) => link.workId);
@@ -90,8 +90,8 @@ describe('tasks linked to selected thoughts with exact counts, one bounded windo
     expectStatus(await owner.browser.request('GET', `/api/v1/projects/${projectId}/work-thought-tasks`), 400);
     expectStatus(await outsider.browser.request('GET', path(dark)), 404);
     expectStatus(await viewer.browser.request('GET', path(foreignThought, otherId)), 404);
-    await grant(owner, projectId, viewer, 'denied');
-    try { expectStatus(await viewer.browser.request('GET', path(dark)), 404); } finally { await grant(owner, projectId, viewer, 'viewer'); }
+    await removeFromSpace(owner, projectId, viewer);
+    try { expectStatus(await viewer.browser.request('GET', path(dark)), 404); } finally { await grant(owner, projectId, viewer, 'contributor'); }
   });
 
   test('one global window of 100 pairs with exact totals; the rest is counted, never listed', async () => {

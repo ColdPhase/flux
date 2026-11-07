@@ -155,7 +155,7 @@ describe('F-030 S2b: search in an encrypted workspace', () => {
     await post(ada, `/api/v1/projects/${ids.A.restricted}/conversations`, { body: secret, clientMessageId: randomUUID() }, 201);
     assert.equal((await search(cy, { q: secret })).items.length, 0, 'a restricted project is hidden');
     assert.equal((await search(ada, { q: secret })).items.length, 1);
-    await grant(ada, ids.A.restricted, cy, 'viewer');
+    await grant(ada, ids.A.restricted, cy, 'contributor');
     assert.equal((await search(cy, { q: secret })).items.length, 1, 'a grant applies to the next search');
   });
 

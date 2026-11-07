@@ -6,7 +6,7 @@ import type { Conversation, LiveJoinGrant, LiveSession } from '@flux/contracts';
 import { pool as webhookPool } from '../support/db.js';
 import { publicOrigin } from '../support/http.js';
 import { mediaPage, openRoom, refreshedToken, refusedAtGate, roomName, type MediaPage } from '../support/live-sfu.js';
-import { addMember, expectStatus, grant, person, project, workspace } from '../support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace } from '../support/people.js';
 
 /**
  * The public Flux API, two Chromium LiveKit clients, and the pinned self-hosted SFU
@@ -24,7 +24,7 @@ test('Flux revocation retires the real SFU room, rejects original and refreshed 
     const ws = await workspace(owner, 'SFU cutoff');
     await addMember(owner, ws.id, revoked, 'member');
     const place = await project(owner, ws.id, 'Restricted room', 'restricted');
-    await grant(owner, place.id, revoked, 'viewer');
+    await grant(owner, place.id, revoked, 'contributor');
     const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
       body: { body: 'Live room anchor', clientMessageId: randomUUID() },
     }), 201) as Conversation;
@@ -74,7 +74,7 @@ test('Flux revocation retires the real SFU room, rejects original and refreshed 
     assert.equal(JSON.stringify(discovered).includes(oldRoom), false, 'discovery does not disclose the media room ID');
 
     // A successful policy mutation must already have deleted the old SFU room.
-    await grant(owner, place.id, revoked, 'denied');
+    await removeFromSpace(owner, place.id, revoked);
     const hidden = await revoked.browser.request('GET', `/api/v1/projects/${place.id}/live-sessions`);
     assert.equal(hidden.status, 404, hidden.text);
     await Promise.all([ownerPage, revokedPage].map((page) => page.waitForFunction(

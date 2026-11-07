@@ -10,7 +10,7 @@ import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs
 import { db, pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
 import { agentConnection } from './support/mcp-actions.js';
-import { expectStatus, type Person } from './support/people.js';
+import { expectStatus, grant, removeFromSpace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
 import { assistantScene, changesOf, human, text, type AssistantScene } from './support/assistant-scene.js';
 import { waitFor } from './support/wait.js';
@@ -26,11 +26,10 @@ const run = (method: string, path: string, who: Person, body: unknown = {}) => w
 const apply = (who: Person, id: string, body: unknown = {}) => run('POST', assistantChangeActionPath(id, 'apply'), who, body);
 const code = (response: { json: unknown }) => (response.json as { code?: string } | null)?.code;
 const rowOf = async (id: string) => (await pool.query(`SELECT * FROM assistant_changes WHERE id = $1`, [id])).rows[0] as Awaited<ReturnType<typeof changesOf>>[number] & { expires_at: Date };
-/** The owner kept out of the project for the length of one check: the assistant has exactly the owner's rights (F-036 AG-3). */
+/** The owner removed from the project for the length of one check: the assistant has exactly the owner's rights (F-036 AG-3). */
 async function keepOwnerOut() {
-  await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'denied', $4) ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`,
-    [randomUUID(), scene.ws.id, scene.place.id, scene.owner.id]);
-  return async () => { await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2`, [scene.place.id, scene.owner.id]); };
+  await removeFromSpace(scene.lead, scene.place.id, scene.owner);
+  return async () => { await grant(scene.lead, scene.place.id, scene.owner, 'manager'); };
 }
 
 describe('the assistant\'s waiting changes and Undo: who may, and what may not happen (F-027 A3/A4, #403/#404)', () => {
@@ -124,7 +123,7 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     assert.notEqual((await scene.taskRow(theirs.id)).status, 'done');
   });
 
-  test('AST-5.4 held: Approve loses to a Skip, a Stop and the owner kept out of the project that commit while it waits; none leaves an effect', async () => {
+  test('AST-5.4 held: Approve loses to a Skip, a Stop and the owner removed from the project that commit while it waits; none leaves an effect', async () => {
     // Each rival commits inside a held lock that the Apply is queued behind; the Apply then repeats its checks and finds the loser's view.
     const cases: { name: string; hold: (id: string, runId: string) => Promise<Awaited<ReturnType<AssistantScene['holding']>>>;
       rival: (query: (statement: string, values?: unknown[]) => Promise<unknown>, id: string, runId: string) => Promise<unknown>; closed: string }[] = [
@@ -132,10 +131,9 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
         rival: (query, id) => query(`UPDATE assistant_changes SET state = 'skipped', wait_reason = NULL, decided_by = $2, decided_at = now(), version = version + 1 WHERE id = $1`, [id, scene.owner.id]) },
       { name: 'Stop', closed: 'refused', hold: (_id, runId) => scene.holding(`SELECT id FROM personal_runs WHERE id = $1 FOR UPDATE`, [runId]),
         rival: (query, _id, runId) => query(`UPDATE personal_runs SET stop_requested_at = now(), status = 'stopped' WHERE id = $1`, [runId]) },
-      // The owner kept out: the project row a grant change takes first is held, and the deny commits before the Approve decides.
-      { name: 'the owner kept out', closed: 'refused', hold: () => scene.holding(`SELECT id FROM projects WHERE id = $1 FOR NO KEY UPDATE`, [scene.place.id]),
-        rival: (query) => query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'denied', $4) ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`,
-          [randomUUID(), scene.ws.id, scene.place.id, scene.owner.id]) },
+      // The owner removed: the project row a grant change takes first is held, and the removal commits before the Approve decides.
+      { name: 'the owner removed', closed: 'refused', hold: () => scene.holding(`SELECT id FROM projects WHERE id = $1 FOR NO KEY UPDATE`, [scene.place.id]),
+        rival: (query) => query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2`, [scene.place.id, scene.owner.id]) },
     ];
     for (const entry of cases) {
       const { theirs, live, row } = await waiting(`Jonas held ${entry.name} ${randomUUID().slice(0, 4)}`);
@@ -143,7 +141,7 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
       let response: Awaited<ReturnType<typeof apply>>;
       try { response = await held.racing(() => apply(scene.owner, row.id, { expectedVersion: row.version }), (query) => entry.rival(query, row.id, live.runId)); }
       finally {
-        if (entry.name === 'the owner kept out') await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2`, [scene.place.id, scene.owner.id]);
+        if (entry.name === 'the owner removed') await grant(scene.lead, scene.place.id, scene.owner, 'manager');
       }
       assert.ok(response.status >= 400 && response.status < 500, `${entry.name}: the Apply loses (${response.status})`);
       assert.notEqual((await scene.taskRow(theirs.id)).status, 'done', `${entry.name}: no effect`);
@@ -220,7 +218,7 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     assert.deepEqual(log.map((item) => item.state), ['undone', 'applied', 'undone', 'undone', 'undone', 'undone']);
   });
 
-  test('AST-6.2: anyone who may edit can undo the message; it is theirs and recorded; a viewer, a guest and a stranger cannot, and everyone who can read sees what was done', async () => {
+  test('AST-6.2: anyone who may edit can undo the message; it is theirs and recorded; a stranger cannot, and everyone who can read sees what was done', async () => {
     const page = await scene.doc(scene.owner, 'Wiring', 'Wire notes');
     const renamed = await scene.task(scene.owner, 'Probes');
     const live = await scene.liveRun();
@@ -239,14 +237,7 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
       assert.equal(assistantChangeLine(seen), `Added task A fresh task · updated the Wiki page Wiring · renamed task #${renamed.number} Probes`);
     }
     assert.equal((await scene.stranger.browser.request('GET', conversationAssistantChangesPath(scene.thread.id))).status, 404);
-    const undoable = (who: Person) => ofThisRun(who).then((items) => items.every((change) => change.undoable));
-    assert.equal(await undoable(scene.viewer), false);
-    assert.equal(await undoable(scene.guest), false);
     // Refused without a trace.
-    for (const who of [scene.viewer, scene.guest]) {
-      assert.equal((await run('POST', assistantRunChangesActionPath(live.runId, 'undo'), who)).status, 403);
-      assert.equal((await run('POST', assistantChangeActionPath((await changesOf(live.runId))[0]!.id, 'undo'), who)).status, 403);
-    }
     for (const action of ['undo'] as const) assert.equal((await run('POST', assistantRunChangesActionPath(live.runId, action), scene.stranger)).status, 404);
     assert.deepEqual((await changesOf(live.runId)).map((item) => item.state), ['applied', 'applied', 'applied']);
     // Jonas may edit: his Undo is his own, through the same domain commands under his rights, and it is recorded.

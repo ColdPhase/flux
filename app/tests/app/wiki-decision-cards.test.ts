@@ -39,7 +39,7 @@ describe('F-034: decisions in the Wiki are live cards', () => {
     for (const someone of [jonas, viewer]) await addMember(ada, ws.id, someone, 'member');
     garden = await createProject(ada, ws.id, 'Garden sensors', 'restricted');
     await grant(ada, garden.id, jonas, 'contributor');
-    await grant(ada, garden.id, viewer, 'viewer');
+    await grant(ada, garden.id, viewer, 'contributor');
   });
 
   test('Add to docs inserts one reference line, once; the page gets no copied text and no heading', async () => {

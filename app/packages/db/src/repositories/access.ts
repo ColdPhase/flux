@@ -46,7 +46,10 @@ export interface AccessLoadOptions {
 }
 
 // The project access levels the SQL expressions produce; core's `LEVEL` is the same scale.
-const LEVEL = { none: 0, viewer: 1, contributor: 2, manager: 3 } as const;
+const LEVEL = { none: 0, contributor: 1, manager: 2 } as const;
+// Literals, not parameters: a bare `$n` in a CASE branch has no type for PostgreSQL to infer.
+const MANAGER_SQL = sql.raw(String(LEVEL.manager));
+const CONTRIBUTOR_SQL = sql.raw(String(LEVEL.contributor));
 const MANAGER_ROLES: readonly WorkspaceRole[] = ['owner', 'admin'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const NO_AI_POLICY: AccessSpaceAi = { state: 'blocked', epoch: 0 };
@@ -124,21 +127,21 @@ export async function loadActor(principal: AccessPrincipal, workspaceId: string,
   return inactive;
 }
 
-function grantExists(userId: string, projectId: SQLWrapper, role: 'manager' | 'contributor' | 'viewer' | 'denied'): SQL {
+function grantExists(userId: string, projectId: SQLWrapper, role: 'manager' | 'contributor'): SQL {
   return sql`EXISTS (SELECT 1 FROM project_grants g WHERE g.project_id = ${projectId} AND g.user_id = ${userId} AND g.role = ${role})`;
 }
 
 function humanLevel(userId: string, role: WorkspaceRole | null, projectId: SQLWrapper, visibility: SQLWrapper): SQL {
   if (!role) return sql`0`;
-  const denied = grantExists(userId, projectId, 'denied');
-  if (isManager(role)) return sql`(CASE WHEN ${denied} THEN 0 ELSE 3 END)`;
-  const implicit = role === 'member' ? sql` WHEN ${visibility} = 'workspace' THEN 2` : sql``;
-  // F-037: a space admin's `manager` grant gives 3, a space member's `contributor` grant 2.
-  return sql`(CASE WHEN ${denied} THEN 0 WHEN ${grantExists(userId, projectId, 'manager')} THEN 3 WHEN ${grantExists(userId, projectId, 'contributor')} THEN 2 WHEN ${grantExists(userId, projectId, 'viewer')} THEN 1${implicit} ELSE 0 END)`;
+  // A company owner or admin reaches every space as its manager, whatever grants they hold: nothing keeps them out (#903).
+  if (isManager(role)) return sql`${MANAGER_SQL}`;
+  const implicit = role === 'member' ? sql` WHEN ${visibility} = 'workspace' THEN ${CONTRIBUTOR_SQL}` : sql``;
+  // F-037: a space admin's `manager` grant gives the manager level, a space member's `contributor` grant the contributor level.
+  return sql`(CASE WHEN ${grantExists(userId, projectId, 'manager')} THEN ${MANAGER_SQL} WHEN ${grantExists(userId, projectId, 'contributor')} THEN ${CONTRIBUTOR_SQL}${implicit} ELSE 0 END)`;
 }
 
 /**
- * SQL expression for the actor's access level (0–3) to the project identified by
+ * SQL expression for the actor's access level (0–2) to the project identified by
  * `projectId` whose visibility column/expression is `visibility`. Composable into lists.
  * An agent's level is its owner's current level, never more and never less (F-036 AG-3).
  */
@@ -156,7 +159,7 @@ export function projectMemberSql(actor: AccessActor, projectId: SQLWrapper, visi
   if (actor.principal.kind !== 'human' || !actor.active) return sql`true`;
   const everyone = actor.role === 'guest' ? sql`false` : sql`${visibility} = 'workspace'`;
   // Nested: Drizzle would write a column at the top level of a selected expression without its table, and `id` here would mean the grant's.
-  const added = sql`EXISTS (SELECT 1 FROM project_grants g WHERE g.project_id = ${projectId} AND g.user_id = ${actor.principal.id} AND g.role <> 'denied')`;
+  const added = sql`EXISTS (SELECT 1 FROM project_grants g WHERE g.project_id = ${projectId} AND g.user_id = ${actor.principal.id})`;
   return sql`(${everyone} OR ${added})`;
 }
 
@@ -186,10 +189,9 @@ export function visibleDraftsSql(actor: AccessActor): SQL {
     return and(eq(d.workspaceId, actor.workspaceId), sql`${draftProjectLevel(actor)} >= 1`,
       or(isDraftOwner(actor), sql`${d.visibility} = 'project'`))!;
   }
-  const denied = sql`(${d.projectId} IS NOT NULL AND ${grantExists(actor.principal.id, d.projectId, 'denied')})`;
   const audiences: SQL[] = [isDraftOwner(actor), sql`(${d.visibility} = 'project' AND ${draftProjectLevel(actor)} >= 1)`];
   if (actor.principal.kind === 'human' && actor.role !== 'guest') audiences.push(sql`${d.visibility} = 'workspace'`);
-  return and(eq(d.workspaceId, actor.workspaceId), sql`NOT ${denied}`, or(...audiences))!;
+  return and(eq(d.workspaceId, actor.workspaceId), or(...audiences))!;
 }
 
 const sketchProjectVisibility = sql`(SELECT p.visibility FROM projects p WHERE p.id = ${schema.sketches.projectId})`;

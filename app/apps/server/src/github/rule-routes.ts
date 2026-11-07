@@ -4,7 +4,7 @@ import type { Principal } from '@flux/core';
 import type { createGithubRuleUseCases } from './adapters.js';
 
 // "Let linked PRs move this task" (#74 G-1a). Everyone who can read the task reads its rule and automatic changes;
-// only people who can edit it turn it on or off, change its mode or resume it (a viewer gets 403, an outsider 404).
+// only people who can edit it turn it on or off, change its mode or resume it (an outsider gets 404).
 // Reading and turning off work without App configuration; turning on needs the person's own current GitHub access.
 const mode = { type: 'string', enum: [...GITHUB_RULE_MODES] } as const;
 const version = { type: 'integer', minimum: 1 } as const;

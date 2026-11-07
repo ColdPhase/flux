@@ -106,7 +106,7 @@ test('summary state preserves distinct identical owner labels', () => {
   const observed = summary(105);
   observed.state.active = { count: 12, first: { kind: 'work', id: 'native-work', title: 'Measure low-light noise' }, ownerTotal: 5,
     owners: [{ kind: 'human', id: 'one', name: 'Ada' }, { kind: 'human', id: 'two', name: 'Ada' }, { kind: 'agent', id: 'three', name: 'Ada' }] };
-  const part = summaryStateParts(observed, true).find((value) => value.key === 'work');
+  const part = summaryStateParts(observed).find((value) => value.key === 'work');
   assert.equal(part?.text, '12 tasks in progress (Ada, Ada, Ada, 2 others)');
   assert.deepEqual(part?.open, { kind: 'work', id: 'native-work' });
 });
@@ -285,19 +285,19 @@ test('six client adapters make one cookie-bearing GET each and preserve failures
 
 test('bounded state opens actual open/history refs without labelling history as active or hiding superseded decisions', () => {
   const observed = summary(2);
-  assert.equal(summaryStateParts(observed, true)[0]?.text, '2 open tasks');
-  assert.deepEqual(summaryStateParts(observed, true)[0]?.open, { kind: 'work', id: 'first-open' });
+  assert.equal(summaryStateParts(observed)[0]?.text, '2 open tasks');
+  assert.deepEqual(summaryStateParts(observed)[0]?.open, { kind: 'work', id: 'first-open' });
   observed.all.open = 0; observed.state.open = { count: 0, first: null };
   observed.state.history = { completed: 1, notPursued: 1, parked: 2,
     firstWork: { kind: 'work', id: 'retained', title: 'Retained native work' }, decisionCount: 0, firstDecision: null };
-  const history = summaryStateParts(observed, true);
+  const history = summaryStateParts(observed);
   assert.equal(history.length, 1); assert.equal(history[0]?.key, 'history');
   assert.equal(history[0]?.text, '1 completed task · 1 not pursued · 2 parked');
   assert.deepEqual(history[0]?.open, { kind: 'work', id: 'retained' });
   observed.state.history = { completed: 0, notPursued: 0, parked: 0, firstWork: null,
     decisionCount: 1, firstDecision: { kind: 'decision', id: 'superseded', title: 'Earlier rule' } };
-  assert.equal(summaryStateParts(observed, false)[0]?.text, '1 earlier decision');
-  assert.deepEqual(summaryStateParts(observed, false)[0]?.open, { kind: 'decision', id: 'superseded' });
+  assert.equal(summaryStateParts(observed)[0]?.text, '1 earlier decision');
+  assert.deepEqual(summaryStateParts(observed)[0]?.open, { kind: 'decision', id: 'superseded' });
   observed.state.proposal = { kind: 'decision', id: 'proposal', title: 'Needs review' };
-  assert.equal(summaryStateParts(observed, true)[0]?.tone, 'need', 'current needs-you wins over retained history');
+  assert.equal(summaryStateParts(observed)[0]?.tone, 'need', 'current needs-you wins over retained history');
 });

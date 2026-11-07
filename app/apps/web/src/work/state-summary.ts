@@ -11,7 +11,7 @@ export interface StatePart {
   open: { kind: WorkObjectType; id: string };
 }
 
-export function summaryStateParts(summary: ProjectWorkSummary, canDecide: boolean): StatePart[] {
+export function summaryStateParts(summary: ProjectWorkSummary): StatePart[] {
   const { rule, proposal, active, blocked, open, history, result } = summary.state;
   const parts: StatePart[] = [];
   if (rule) parts.push({ key: 'rule', icon: 'rule', text: `Decision: ${rule.title}`, short: `Decision: ${rule.title}`, title: rule.title, open: { kind: 'decision', id: rule.id } });
@@ -29,7 +29,7 @@ export function summaryStateParts(summary: ProjectWorkSummary, canDecide: boolea
     parts.push({ key: 'open', icon: 'tasks', text, short: text, title: open.first.title, open: { kind: 'work', id: open.first.id } });
   }
   if (result) parts.push({ key: 'result', icon: 'result', text: `${result.finding === 'negative' ? 'Negative result' : 'Result'}: ${result.title}`, short: result.finding === 'negative' ? 'Negative result' : 'New result', title: result.title, open: { kind: 'result', id: result.id } });
-  if (proposal) parts.push({ key: 'proposal', icon: null, dot: 'need', tone: canDecide ? 'need' : undefined, text: canDecide ? 'Needs you: a proposed decision' : 'A decision is proposed', short: canDecide ? 'Decision needs you' : 'Decision proposed', title: proposal.title, open: { kind: 'decision', id: proposal.id } });
+  if (proposal) parts.push({ key: 'proposal', icon: null, dot: 'need', tone: 'need', text: 'Needs you: a proposed decision', short: 'Decision needs you', title: proposal.title, open: { kind: 'decision', id: proposal.id } });
   if (!parts.length && history.firstWork) {
     const text = [history.completed ? `${history.completed} completed ${history.completed === 1 ? 'task' : 'tasks'}` : null,
       history.notPursued ? `${history.notPursued} not pursued` : null, history.parked ? `${history.parked} parked` : null].filter(Boolean).join(' · ');

@@ -8,11 +8,13 @@ import { agentStandingGrants } from '../../apps/server/src/agent-connection/gran
 import { agentExecutionInTransaction } from '../../apps/server/src/agent-connection/execution.js';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import { db, pool } from './support/db.js';
-import { expectStatus, person, project, workspace } from './support/people.js';
+import { addMember, expectStatus, grant as giveAccess, person, project, removeFromSpace, workspace } from './support/people.js';
 import { waitUntilBlockedBy } from './support/locks.js';
 
 async function fixture(maximumUses = 1) {
-  const owner = await person('execution-owner'); const ws = await workspace(owner, "Execution workspace"); const p = await project(owner, ws.id, 'Execution target', 'restricted');
+  // The agent's owner is added to the space, so their access can end (#903); a company owner or admin always reaches every space.
+  const lead = await person('execution-lead'); const owner = await person('execution-owner'); const ws = await workspace(lead, "Execution workspace");
+  await addMember(lead, ws.id, owner, 'member'); const p = await project(lead, ws.id, 'Execution target', 'restricted'); await giveAccess(lead, p.id, owner, 'contributor');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Execution agent', owner: 'self' } }), 201) as Agent;
   const connection = expectStatus(await owner.browser.request('POST', '/api/v1/agent-connections',
@@ -55,7 +57,7 @@ async function fixture(maximumUses = 1) {
       return result as { workId: string; version: number };
     });
   }
-  return { owner, p, agent, connection, runtime, claims, grant, command, grants, run, effects: () => effects };
+  return { lead, owner, p, agent, connection, runtime, claims, grant, command, grants, run, effects: () => effects };
 }
 async function rejects(promise: Promise<unknown>, code: string) {
   await assert.rejects(promise, (error: unknown) => error instanceof DomainError && error.code === code);
@@ -109,7 +111,7 @@ test('effect failure rolls back native rows, receipt, event and grant use', asyn
   await f.run(); assert.equal(f.effects(), 3, 'rolled-back commands can be executed once successfully');
 });
 
-test('owner grant API is idempotent, bounded and management-gated; history and narrowing remain owner-only after role loss', async () => {
+test('owner grant API is idempotent, bounded and management-gated; history stays with the owner, who only writes in the project', async () => {
   const f = await fixture(2); const peer = await person('grant-peer');
   const path = `/api/v1/agent-connections/${f.connection.id}/action-grants`;
   const command = { clientCommandId: randomUUID(), projectId: f.p.id, operation: 'work.create', peerRequestClass: 'plan', maximumUses: 3,
@@ -122,13 +124,8 @@ test('owner grant API is idempotent, bounded and management-gated; history and n
   expectStatus(await peer.browser.request('DELETE', `${path}/${first.id}`), 404);
   expectStatus(await f.owner.browser.request('GET', `${path}?limit=51`), 400);
   expectStatus(await f.owner.browser.request('POST', path, { body: { ...command, clientCommandId: randomUUID(), peerRequestClass: 'review' } }), 400);
-  expectStatus(await f.owner.browser.request('POST', `/api/v1/workspaces/${f.p.workspaceId}/members`, { body: { email: peer.email, role: 'owner' } }), 201);
-  // A space always keeps an admin (C-16): the peer becomes one, so the owner can step down to contributor.
-  expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.p.id}/grants`, { body: { principal: { kind: 'human', id: peer.id }, role: 'manager' } }), 201);
-  expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.p.id}/grants`, { body: { principal: { kind: 'human', id: f.owner.id }, role: 'contributor' } }), 201);
-  expectStatus(await peer.browser.request('PATCH', `/api/v1/workspaces/${f.p.workspaceId}/members/${f.owner.id}`, { body: { role: 'member' } }), 200);
-  // #763 FT-2 (F-024 AC-4 amendment, founder decision 2026-11-01): an owner who only writes in the project may add a grant while a
-  // manager's own contributor grant lets the agent in (the fixture gives it one). first-time-user.test.ts covers the refusal once it is gone.
+  // #763 FT-2 (F-024 AC-4 amendment, founder decision 2026-11-01): an owner who only writes in the project (the fixture adds them as a member) may add a
+  // grant while their own contributor grant lets the agent in. first-time-user.test.ts covers the refusal once it is gone.
   expectStatus(await f.owner.browser.request('POST', path, { body: { ...command, clientCommandId: randomUUID() } }), 201, 'a project contributor adds standing authority within the agent\'s own contributor grant');
   const page = expectStatus(await f.owner.browser.request('GET', `${path}?limit=1`), 200) as { total: number; items: AgentStandingGrant[] };
   assert.equal(page.total, 3); assert.equal(page.items.length, 1);
@@ -138,10 +135,10 @@ test('owner grant API is idempotent, bounded and management-gated; history and n
 
 test('runtime expiry/revocation and lost current domain authority deny successful receipt observation', async () => {
   const f = await fixture(2); await f.run();
-  // The owner kept out of the project: the agent has exactly what its owner has (F-036 AG-3).
-  await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) SELECT $1, workspace_id, id, $2, 'denied', $2 FROM projects WHERE id = $3 ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`, [randomUUID(), f.owner.id, f.p.id]);
+  // The owner removed from the project: the agent has exactly what its owner has (F-036 AG-3).
+  await removeFromSpace(f.lead, f.p.id, f.owner);
   await assert.rejects(f.run(), /Space not found/);
-  await pool.query('DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2', [f.p.id, f.owner.id]);
+  await giveAccess(f.lead, f.p.id, f.owner, 'contributor');
   await pool.query("UPDATE agent_runtime_sessions SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1", [f.runtime.id]);
   await rejects(f.run(), 'AGENT_EXECUTION_UNAVAILABLE');
   await pool.query("UPDATE agent_runtime_sessions SET expires_at=clock_timestamp()+interval '1 hour', revoked_at=clock_timestamp() WHERE id=$1", [f.runtime.id]);

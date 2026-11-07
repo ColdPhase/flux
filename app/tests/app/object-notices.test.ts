@@ -16,7 +16,7 @@ async function scene() {
   for (const other of [writer, reader, outsider]) await addMember(owner, ws.id, other, 'member');
   const place = await project(owner, ws.id, 'Night lamp', 'restricted');
   await grant(owner, place.id, writer, 'contributor');
-  await grant(owner, place.id, reader, 'viewer');
+  await grant(owner, place.id, reader, 'contributor');
   const elsewhere = await project(owner, ws.id, 'Other room', 'restricted');
   const root = expectStatus(await writer.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
     body: { body: 'Should the lamp wake up when someone waves?', clientMessageId: randomUUID() },
@@ -107,8 +107,6 @@ test('only people who can read the project read its lines, and another project n
   expectStatus(await f.stranger.browser.request('GET', f.noticePath), 404);
   expectStatus(await f.reader.browser.request('GET', `/api/v1/projects/${f.elsewhere.id}/object-notices`), 404);
   assert.equal((await f.notices(f.owner, `/api/v1/projects/${f.elsewhere.id}/object-notices`)).total, 0);
-  // A viewer reads but cannot make a line: proposing is refused and changes nothing.
-  expectStatus(await f.reader.browser.request('POST', `/api/v1/projects/${f.place.id}/decisions`, { body: { title: 'Not mine' } }), 403);
   assert.equal((await f.notices()).total, 1);
 });
 
