@@ -282,7 +282,9 @@ class AppSelect(unittest.TestCase):
         self.assertEqual(before, opened, "opening the list moved nothing")
         self.assertEqual(scroll, page.evaluate("[document.documentElement.scrollWidth, document.documentElement.scrollHeight]"))
         trigger, layer = place.bounding_box(), pop.bounding_box()
-        self.assertGreaterEqual(layer["y"], trigger["y"] + trigger["height"] - 1, "the list is under its control")
+        below = layer["y"] >= trigger["y"] + trigger["height"] - 1
+        above = layer["y"] + layer["height"] <= trigger["y"] + 6  # Settings ends right under the control: the list opens above it (a pop-over travels 4 px as it enters), never over it
+        self.assertTrue(below or above, f"the list sits against its control: {layer} / {trigger}")
         self.assertGreaterEqual(layer["x"], 0)
         self.assertLessEqual(layer["x"] + layer["width"], DESKTOP["width"])
         self.assertGreaterEqual(layer["width"], trigger["width"] - 1, "the list is at least as wide as its control")
