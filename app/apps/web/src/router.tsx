@@ -166,7 +166,7 @@ export const router = createBrowserRouter([
           { path: 'materials/:materialId', ...material },
           { path: 'materials/:materialId/versions/:version', ...material },
           { path: 'tasks', ...secondary(async () => ({ Component: (await import('./app/TasksView')).TasksView })) },
-          { path: 'map', ...secondary(async () => ({ Component: (await import('./sketch/SketchIndex')).SketchIndex })) },
+          { path: 'map', ...secondary(async () => ({ Component: (await import('./sketch/MyMap')).MyMap })) },
           { path: 'map/:sketchId', ...sketch },
           { path: 'docs', ...secondary(async () => ({ Component: (await docViewsPage()).WorkspaceDocs })) },
           { path: 'dm', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).DmIndex })) },

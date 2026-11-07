@@ -266,18 +266,6 @@ class PhoneShellJourney(unittest.TestCase):
         self.assertTrue(field.evaluate("el => el.scrollHeight <= el.clientHeight + 1"), "all three lines show")
         shot(page, "266-composer-phone")
 
-        # The places bar steps aside while a text field has focus, and comes back after.
-        page.goto("/map")  # the Sketchbook holds the private note (#342)
-        bar = page.get_by_role("navigation", name="Main places")
-        note = page.get_by_label("Private note", exact=True)
-        expect(bar).to_be_visible()
-        note.focus()
-        expect(bar).to_be_hidden()
-        note.fill("Ask about the hedge")
-        page.locator("header h1").click()
-        expect(bar).to_be_visible()
-        expect(note).to_have_value("Ask about the hedge")
-
     # ------------------------------------------------------------------ PF-4
 
     def swipe(self, page, start, end, steps=8, pause=16):

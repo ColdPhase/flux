@@ -26,7 +26,7 @@ people in them would, in the browser:
    page gets a second version citing the new rule, and its first version stays as written.
 6. Export and audience (test_6): Ada's project export holds the conversation, the attachment, the map,
    the work, both rules, the result, the page and their links, and nothing private. A member reads the
-   project but not Ada's private note or the DM and cannot export it; a non-member gets 404.
+   project but not Ada's private thought or the DM and cannot export it; a non-member gets 404.
 
 Where the product cannot do a step yet, that step is its own small method marked
 @unittest.expectedFailure with the reason (test_2a, test_2b, test_4a), and the scenario continues through
@@ -1027,10 +1027,6 @@ class ScenarioJourney:
         expect(page.get_by_role("button", name=re.compile("Mark all", re.I))).to_have_count(0)
         self.no_sideways_scroll(page)
         self.shot(page, "4-home-return")
-        # Ada has no AI of her own: the note composer's spark (in the Sketchbook now) offers to connect one.
-        page.goto("/map")
-        expect(page.locator(".composer__ask")).to_have_accessible_name("Connect your AI")
-
         # In the project, "What matters" works without AI.
         page.goto(f"/projects/{lamp}")
         open_what_matters(page, tap=self.phone)
@@ -1152,19 +1148,16 @@ class ScenarioJourney:
     def test_6_export_and_audience(self) -> None:
         self.need("pivoted", "doc", "file")
         s, lamp = self.s, self.s["lamp"]
-        # Ada keeps a private note; it stays hers.
+        # Ada keeps a private thought on My map; it stays hers.
         page = self.page("ada")
-        page.goto("/map")
-        note = page.get_by_label("Private note", exact=True)
-        note.fill(DRAFT)
-        if self.phone:
-            page.get_by_role("button", name="Save note").tap()
-        else:
-            note.press("Enter")
-        expect(page.get_by_role("region", name="Private drafts").get_by_text(DRAFT)).to_be_visible()
+        my_map = self.api("ada", "POST", f"/api/v1/workspaces/{s['workspace']}/sketches", {"title": "My map", "scope": "private"}, status=201)
+        self.api("ada", "POST", f"/api/v1/sketches/{my_map['id']}/thoughts", {"text": DRAFT, "x": 0, "y": 0}, status=201)
+        page.goto(f"/map/{my_map['id']}")
+        expect(page.locator(".sk-lead")).to_contain_text("My map")
+        expect(page.get_by_text(DRAFT)).to_be_visible()
         private = self.api("ada", "GET", "/api/v1/search?q=89+EUR&place=private", status=200)["items"]
         self.assertEqual(len(private), 1, private)
-        draft_id = private[0]["id"]
+        draft_id = my_map["id"]
 
         # Mia is a member of the lamp project too.
         page.goto(f"/projects/{lamp}")
@@ -1182,7 +1175,7 @@ class ScenarioJourney:
         self.shot(member, "6-member")
         for path in (f"/api/v1/conversations/{s['c1']}", f"/api/v1/docs/{s['doc']}", f"/api/v1/results/{s['result']}", f"/api/v1/files/{s['file']}"):
             self.assertEqual(self.status("mia", path), 200, f"the member reads {path}")
-        for path in (f"/api/v1/drafts/{draft_id}", f"/api/v1/dms/{s['dm']}", f"/api/v1/sketches/{s['dm_sketch']}"):
+        for path in (f"/api/v1/sketches/{draft_id}", f"/api/v1/dms/{s['dm']}", f"/api/v1/sketches/{s['dm_sketch']}"):
             self.assertEqual(self.status("mia", path), 404, f"the member cannot open the private {path}")
         self.assertEqual(self.fetch("mia", "GET", f"/api/v1/projects/{lamp}/export").status, 403, "a member cannot export")
         for query in ("89 EUR", "Saturday market"):

@@ -7,15 +7,12 @@ import {
   sketchThoughtPath,
   sketchThoughtsPath,
   projectPath,
-  workspaceProjectsPath,
   workspaceSketchesPath,
-  WORKSPACES_PATH,
   type CreatedThought,
   type CreateLinkCommand,
   type CreateThoughtCommand,
   type MovedThoughts,
   type MoveThoughtsCommand,
-  type Page,
   type PromotedSketch,
   type PromotionParticipants,
   type PromotionTarget,
@@ -27,7 +24,6 @@ import {
   type Thought,
   type ThoughtLink,
   type UpdateThoughtCommand,
-  type Workspace,
 } from '@flux/contracts';
 import { request } from './client';
 
@@ -37,14 +33,16 @@ import { request } from './client';
 const ifMatch = (version: number) => ({ 'if-match': `"${version}"` });
 const key = (idempotencyKey: string) => ({ 'idempotency-key': idempotencyKey });
 
-export const listWorkspaces = (signal?: AbortSignal) => request<Workspace[]>(WORKSPACES_PATH, { signal });
-export const listProjects = (workspaceId: string, offset: number, signal?: AbortSignal) =>
-  request<Page<Project>>(`${workspaceProjectsPath(workspaceId)}?limit=100&offset=${offset}`, { signal });
-/** The person's own sketchbook: private sketches only (#189), without empty ones (#508); shared ones live in their project or DM. */
-export const listPrivateSketches = (workspaceId: string, limit: number, offset: number, signal?: AbortSignal) =>
-  request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=${limit}&offset=${offset}&scope=private&hideEmpty=true`, { signal });
-export const createPrivateSketch = (workspaceId: string, title: string, idempotencyKey: string) =>
-  request<Sketch>(workspaceSketchesPath(workspaceId), { method: 'POST', body: { title, scope: 'private' }, headers: key(idempotencyKey) });
+/**
+ * My map (#866): the person's oldest private map, made the first time it is asked for. The API lists their private maps newest change
+ * first, and a map nobody put anything on is listed too, so My map is found again before it has a thought. A retry after a lost answer
+ * reuses `idempotencyKey`, so it never makes two.
+ */
+export async function openMyMap(workspaceId: string, idempotencyKey: string, signal?: AbortSignal): Promise<Sketch> {
+  const listed = await request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=100&offset=0&scope=private`, { signal });
+  const mine = [...listed.items].sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+  return mine ?? request<Sketch>(workspaceSketchesPath(workspaceId), { method: 'POST', body: { title: 'My map', scope: 'private' }, headers: key(idempotencyKey), signal });
+}
 
 /** Sketches of one direct message (#96), newest change first. */
 export const listDmSketches = (workspaceId: string, dmId: string, limit: number, offset: number, signal?: AbortSignal) =>

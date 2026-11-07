@@ -112,7 +112,7 @@ class LiveEditingOffJourney(unittest.TestCase):
         thought.press("Delete")
         expect(page.locator(".sk-status")).to_contain_text("Saved")
         expect(thought).to_have_count(0)
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
+        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Undo", exact=True).click()
         expect(page.locator(".sk-status")).to_contain_text("Undid: removed a thought")
         expect(page.locator(".sk-node", has_text="Distance sensor")).to_be_visible()
         time.sleep(0.5)

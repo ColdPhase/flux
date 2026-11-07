@@ -105,20 +105,20 @@ class SketchJourney(unittest.TestCase):
         own_company(page)
         type(self).state = page.context.storage_state()
 
+        # My map is the person's one private map (#866): the sidebar opens it, made the first time, at its own address.
         page.get_by_role("navigation", name="Places").get_by_role("link", name="My map").click()
-        expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
-        page.get_by_role("button", name="New sketch").click()
         expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
         type(self).sketch_url = page.url.replace(ORIGIN, "")
-        name = page.get_by_label("Sketch name")
-        expect(name).to_be_focused()
-        name.fill("Lamp ideas")
-        name.press("Enter")
-        expect(page.get_by_role("button", name="Rename map Lamp ideas")).to_be_visible()
+        expect(page.locator(".sk-lead")).to_contain_text("My map")
+        expect(page.get_by_role("link", name="Maps")).to_have_count(0)  # one map, not an item of a list
+        expect(page.get_by_role("button", name=re.compile("^Rename map"))).to_have_count(0)  # and it keeps its name
         expect(page.locator(".sk-aud")).to_have_text("Only you")
+        # Asking for My map again opens the same map.
+        page.goto("/map")
+        expect(page).to_have_url(f"{ORIGIN}{self.sketch_url}")
 
         # The toolbar's Thought adds a thought and edits it in place.
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Thought", exact=True).click()
+        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).click()
         editor = page.get_by_label("Thought text")
         expect(editor).to_be_focused()
         editor.fill("Gesture-controlled desk lamp")
@@ -149,7 +149,7 @@ class SketchJourney(unittest.TestCase):
         page.reload()
         expect(page.locator(".sk-node")).to_have_count(3)
         stored = self.stored(page)
-        self.assertEqual(stored["title"], "Lamp ideas")
+        self.assertEqual(stored["title"], "My map")
         self.assertEqual(sorted(t["text"] for t in stored["thoughts"]), ["Gesture-controlled desk lamp", "Swipe to dim, hold to switch off", "ToF distance sensor"])
         self.assertEqual(len(stored["links"]), 2)
         self.assertEqual((stored["scope"], stored["createdBy"]["name"]), ("private", NAME))
@@ -282,7 +282,7 @@ class SketchJourney(unittest.TestCase):
         expect(self.thought(page, "ToF distance sensor")).to_have_count(0)
         self.saved(page)
         self.assertEqual(len(self.stored(page)["thoughts"]), 2)
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo").click()
+        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Undo").click()
         expect(self.thought(page, "ToF distance sensor")).to_have_count(1)
         page.wait_for_timeout(300)
         self.saved_or_idle(page)
@@ -316,7 +316,7 @@ class SketchJourney(unittest.TestCase):
     def test_05_list_view_is_the_accessible_alternative(self) -> None:
         page = self.open_sketch()
         page.get_by_role("radio", name="List").click()
-        items = page.get_by_role("tree", name="Thoughts in Lamp ideas")
+        items = page.get_by_role("tree", name="Thoughts in My map")
         expect(items).to_be_visible()
         expect(items.get_by_role("treeitem")).to_have_count(3)
         # #510: the map's tree. The lamp is the root; the ToF sensor, also connected from the swipe, sits
@@ -341,9 +341,9 @@ class SketchJourney(unittest.TestCase):
         shot(page, "sketch-desktop-1280-list")
         # The choice of view is remembered.
         page.reload()
-        expect(page.get_by_role("tree", name="Thoughts in Lamp ideas")).to_be_visible()
+        expect(page.get_by_role("tree", name="Thoughts in My map")).to_be_visible()
         page.get_by_role("radio", name="Map").click()
-        expect(page.get_by_role("group", name="Map: Lamp ideas")).to_be_visible()
+        expect(page.get_by_role("group", name="Map: My map")).to_be_visible()
         texts = [t["text"] for t in self.stored(page)["thoughts"]]
         self.assertIn("60 GHz radar through the shade", texts)
 
@@ -358,7 +358,7 @@ class SketchJourney(unittest.TestCase):
         worker.goto(self.sketch_url)
         expect(worker.locator(".sk-node")).to_have_count(4)
         worker.wait_for_timeout(500)  # both streams are open
-        worker.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Thought", exact=True).click()
+        worker.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).click()
         worker.get_by_label("Thought text").fill("Seen from another tab")
         worker.keyboard.press("Enter")
         expect(watcher.locator(".sk-node", has_text="Seen from another tab")).to_be_visible(timeout=10000)
@@ -370,7 +370,7 @@ class SketchJourney(unittest.TestCase):
 
     def test_07_phone_route(self) -> None:
         page = self.open_sketch(phone=True)
-        expect(page.get_by_role("group", name="Map: Lamp ideas")).to_be_visible()
+        expect(page.get_by_role("group", name="Map: My map")).to_be_visible()
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], "no horizontal page scroll")
         shot(page, "sketch-phone-390-map")
         node = self.thought(page, "Gesture-controlled desk lamp")
@@ -381,12 +381,12 @@ class SketchJourney(unittest.TestCase):
         self.assertGreaterEqual(box(page, plus)["width"], 44, "touch target")
         expect(page.get_by_text("Tap a thought to select it")).to_be_visible()
         show_map_as(page, "List", touch=True)
-        expect(page.get_by_role("tree", name="Thoughts in Lamp ideas")).to_be_visible()
+        expect(page.get_by_role("tree", name="Thoughts in My map")).to_be_visible()
         shot(page, "sketch-phone-390-list")
         show_map_as(page, "Map", touch=True)
         page.goto("/map")
-        expect(page.get_by_role("link", name=re.compile("Lamp ideas"))).to_be_visible()
-        shot(page, "sketch-phone-390-index")
+        expect(page).to_have_url(f"{ORIGIN}{self.sketch_url}")
+        shot(page, "sketch-phone-390-my-map")
 
     def test_08_dark_and_reduced_motion(self) -> None:
         page = self.open_sketch(color_scheme="dark", reduced_motion="reduce")
@@ -422,7 +422,7 @@ class SketchJourney(unittest.TestCase):
                 overlap = a["x"] < b["x"] + b["width"] and b["x"] < a["x"] + a["width"] and a["y"] < b["y"] + b["height"] and b["y"] < a["y"] + a["height"]
                 self.assertFalse(overlap, f"thoughts {i} and {j} do not overlap")
         # S15: the phone map is the whole screen; no toolbar row. It views and adds, and says where to connect.
-        expect(page.get_by_role("toolbar", name="Sketch tools")).to_have_count(0)
+        expect(page.get_by_role("toolbar", name="Map tools")).to_have_count(0)
         expect(page.get_by_role("button", name="Add a thought", exact=True)).to_be_visible()
         expect(page.get_by_text("Connect and arrange on a computer")).to_be_visible()
         options = open_map_options(page, touch=True)
@@ -457,26 +457,6 @@ class SketchJourney(unittest.TestCase):
         self.assertLess(response.status, 300, f"{method} {path}: {response.status} {response.text()}")
         return json.loads(response.text()) if response.text() else {}
 
-    def test_09_the_index_pages_through_every_sketch(self) -> None:
-        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP)
-        self.addCleanup(context.close)
-        page = self.page(context)
-        self.api(page, "POST", "/api/auth/sign-up/email", {"name": "Ines Many", "email": f"many+{int(time.time() * 1000)}@example.test", "password": PASSWORD})
-        ws = self.api(page, "POST", "/api/v1/workspaces", {"name": "Many sketches"})
-        for i in range(105):
-            self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": f"Sketch {i:03d}", "scope": "private"})
-        page.goto("/map")
-        links = page.get_by_role("list", name="Your sketches").get_by_role("link")
-        expect(links).to_have_count(50)
-        expect(page.get_by_text("Showing 50 of 105")).to_be_visible()
-        page.get_by_role("button", name="Show more sketches").click()
-        expect(links).to_have_count(100)
-        page.get_by_role("button", name="Show more sketches").click()
-        expect(links).to_have_count(105)
-        expect(page.get_by_role("button", name="Show more sketches")).to_have_count(0)
-        titles = links.all_inner_texts()
-        self.assertEqual(len({t.splitlines()[0] for t in titles}), 105, "no sketch hidden or repeated")
-
     # ---------------------------------------------------------------- account switch in one tab
 
     def test_10_the_stream_follows_an_account_switch_in_the_same_tab(self) -> None:
@@ -506,8 +486,7 @@ class SketchJourney(unittest.TestCase):
         page.get_by_role("button", name="Sign in").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         page.get_by_role("navigation", name="Places").get_by_role("link", name="My map").click()
-        page.get_by_role("link", name=re.compile("Lamp ideas")).click()
-        expect(page.get_by_role("group", name="Map: Lamp ideas")).to_be_visible()
+        expect(page.get_by_role("group", name="Map: My map")).to_be_visible()
         deadline = time.time() + 8
         while time.time() < deadline and not any(s["frames"] for s in sockets):
             page.wait_for_timeout(100)
@@ -720,10 +699,10 @@ class SketchJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("() => window.__leave"), {"beforeunload": 1, "pagehide": 0}, "the leave was cancelled, not carried out")
         expect(home).to_be_visible()
 
-        # Home has no views bar (#508): the Sketchbook is a place in the sidebar.
+        # Home has no views bar (#508): My map is a place in the sidebar.
         page.get_by_role("navigation", name="Places").get_by_role("link", name="My map", exact=True).click()
-        expect(page.get_by_role("link", name=re.compile("Lamp ideas"))).to_be_visible()
-        expect(page).to_have_url(re.compile(r"/map$"))
+        expect(page.get_by_role("group", name="Map: My map")).to_be_visible()
+        expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
 
 
 if __name__ == "__main__":

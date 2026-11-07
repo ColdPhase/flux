@@ -1,9 +1,9 @@
-"""Browser tests for Spokój on Home, the Sketchbook and search results (#508, #514, #870).
+"""Browser tests for Spokój on Home, My map and search results (#508, #514, #866, #870).
 
-One account in one workspace with a project, a Wiki page written in Markdown, a task, sketches (one empty,
-one with a thought) and notes. Home has no views bar and keeps its quiet links; the Sketchbook is named
-"Sketchbook", hides empty sketches and formats note meta without "You · v1"; Search lists its results in groups
-by kind, each row 48 px with one plain line, numbers its tasks and has no filters to keep in place.
+One account in one workspace with a project, a Wiki page written in Markdown, a task and My map with two thoughts.
+Home has no views bar and keeps its quiet links; My map is the one private map, shown at its own address with its
+thoughts; Search lists its results in groups by kind, each row 48 px with one plain line, numbers its tasks and has
+no filters to keep in place.
 """
 
 from __future__ import annotations
@@ -90,13 +90,11 @@ class SpokojHomeSearch(unittest.TestCase):
         for number in range(1, 5):
             self.api(page, "POST", f"/api/v1/projects/{project['id']}/docs", {"title": f"Radio note {number}", "body": "A radio note for the garden.", "state": "published"}, status=201)
         self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "Check the radio at the gateway"}, status=201)
-        self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": "Untitled sketch", "scope": "private"}, status=201)
-        named = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": "Bed layout", "scope": "private"}, status=201)
+        named = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": "My map", "scope": "private"}, status=201)
         thought = self.api(page, "POST", f"/api/v1/sketches/{named['id']}/thoughts", {"text": "Beans on the south side", "x": 0, "y": 0}, status=201)
         self.api(page, "POST", f"/api/v1/sketches/{named['id']}/thoughts", {"text": "Radio range along the hedge", "x": 240, "y": 0}, status=201)
         self.api(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": "Should the radio sit near the gateway?", "clientMessageId": str(uuid.uuid4())}, status=201)
         self.api(page, "POST", f"/api/v1/projects/{project['id']}/decisions", {"title": "Use one radio band for the garden", "rationale": "The gateway hears only one band."}, status=201)
-        self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/drafts", {"title": "Ask about the pump", "body": "Ask about the pump at 9 o'clock."}, status=201)
         type(self).ids = {"workspace": ws["id"], "thought": thought["thought"]["id"]}
 
     # ---------------------------------------------------------------- Home (#508, AC-1)
@@ -116,35 +114,20 @@ class SpokojHomeSearch(unittest.TestCase):
             expect(page.get_by_role("heading", level=1).first).to_be_visible()
             self.assertEqual(page.locator(".top__views").count(), 0, path)
 
-    # ---------------------------------------------------------------- the Sketchbook (#508, AC-2 to AC-4)
+    # ---------------------------------------------------------------- My map (#508, #866)
 
-    def test_03_the_sketchbook_is_named_and_hides_empty_sketches(self) -> None:
-        page = self.page()
-        page.goto("/map")
-        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
-        expect(page.get_by_text("Only you can see this until you share or move something to a space.")).to_be_visible()
-        sketches = page.get_by_role("list", name="Your sketches")
-        expect(sketches).to_contain_text("Bed layout")
-        expect(sketches).to_contain_text("2 thoughts")
-        expect(sketches.get_by_role("link", name=re.compile("Untitled sketch"))).to_have_count(0)
-        self.assertEqual(page.locator(".top__views").count(), 0)
-        shot(page, "spokoj-sketchbook-desktop")
-        phone = self.page(phone=True)
-        phone.goto("/map")
-        expect(phone.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
-        expect(phone.get_by_role("list", name="Your sketches").get_by_role("link", name=re.compile("Untitled sketch"))).to_have_count(0)
-        shot(phone, "spokoj-sketchbook-phone")
-
-    def test_04_note_meta_has_no_version_and_no_leading_zero(self) -> None:
-        page = self.page()
-        page.goto("/map")
-        note = page.locator(".note").filter(has_text="Ask about the pump")
-        expect(note).to_be_visible()
-        meta = note.locator(".note__meta")
-        expect(meta).not_to_contain_text("You")
-        expect(meta).not_to_contain_text("v1")
-        self.assertIsNone(re.search(r"\b0\d:\d\d", meta.inner_text()), meta.inner_text())
-        expect(meta.locator(".note__num").first).to_be_visible()
+    def test_03_my_map_is_the_one_private_map_with_its_thoughts(self) -> None:
+        for kwargs in ({}, {"phone": True}):
+            page = self.page(**kwargs)
+            page.goto("/map")
+            # One map, shown at its own address, named "My map" and private; its thoughts are what it holds (no list, no notes).
+            expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
+            expect(page.locator(".sk-lead")).to_contain_text("My map")
+            expect(page.locator(".sk-aud")).to_have_text("Only you")
+            expect(page.get_by_text("Beans on the south side")).to_be_visible()
+            self.assertEqual(page.locator(".top__views").count(), 0)
+            self.assertEqual(page.get_by_role("list", name="Your sketches").count(), 0)
+            shot(page, f"spokoj-my-map-{'phone' if kwargs else 'desktop'}")
 
     # ---------------------------------------------------------------- search results (#514, #870)
 
@@ -219,9 +202,9 @@ class SpokojHomeSearch(unittest.TestCase):
                 expect(page.get_by_role("heading", level=2, name=re.compile("Good "))).to_be_visible()
                 shot(page, f"spokoj-home-{size}-{theme}")
                 page.goto("/map")
-                expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
-                expect(page.get_by_role("list", name="Your sketches")).to_contain_text("Bed layout")
-                shot(page, f"spokoj-sketchbook-{size}-{theme}")
+                expect(page.locator(".sk-lead")).to_contain_text("My map")
+                expect(page.get_by_text("Beans on the south side")).to_be_visible()
+                shot(page, f"spokoj-my-map-{size}-{theme}")
                 self.search(page, "radio", phone=phone)
                 shot(page, f"spokoj-search-{size}-{theme}")
 

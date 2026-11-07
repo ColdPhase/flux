@@ -962,25 +962,6 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 self.settle(other)
                 other.close()
 
-    def test_17_home_draft_changes_account_on_current_loader_revalidation(self) -> None:
-        page = self.page("ada")
-        page.goto("/map")
-        field = page.get_by_label("Private note", exact=True)
-        expect(field).to_be_visible()
-        field.fill("Ada's private Home draft before revalidation")
-        page.context.clear_cookies()
-        page.context.add_cookies(self.states["jonas"]["cookies"])
-        # Same-route router navigation revalidates the mounted Home, without a document reload.
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="My map", exact=True).click()
-        expect(page.get_by_role("button", name=re.compile("^Jonas Berg .*account and sign out"))).to_be_visible()
-        expect(field).to_have_value("")
-        field.fill("Jonas's private Home draft")
-        page.context.clear_cookies()
-        page.context.add_cookies(self.states["ada"]["cookies"])
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="My map", exact=True).click()
-        expect(page.get_by_role("button", name=re.compile("^Ada Kowalska .*account and sign out"))).to_be_visible()
-        expect(field).to_have_value("Ada's private Home draft before revalidation")
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

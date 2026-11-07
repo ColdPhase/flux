@@ -446,27 +446,6 @@ a.me__item { text-decoration: none; }
 .composer__line > .composer__audience svg { display: inline; margin-right: 4px; vertical-align: -2px; }
 .dm__composer .composer__audience > span > svg { margin-right: 6px; vertical-align: -2px; }
 .composer__where { color: var(--t3); font-weight: 400; }
-
-/* Private notes on Home */
-.notes { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--line); }
-.notes__h { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
-/* Notes kept only in this browser: an explicit offer to move them into the account (#190 HOME-3). */
-.notes__move { display: grid; gap: 8px; margin: 10px 0 6px; padding: 12px 14px; border-radius: var(--r); background: var(--sub); color: var(--t2); font-size: var(--fs-sm); }
-.notes__move-actions { display: flex; flex-wrap: wrap; gap: 8px; }
-/* Empty, it leaves the layout but stays in the accessibility tree, so its first message is announced. */
-.notes__move-state:empty { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-.notes__moved { margin-top: 18px; color: var(--t2); font-size: var(--fs-sm); }
-.notes__list { list-style: none; margin: 8px 0 0; padding: 0; }
-.note { padding: 10px 0; }
-.note--new { animation: rise var(--dur-in) var(--ease-out) both; }
-.note + .note { border-top: 1px solid var(--line); }
-.note__text { color: var(--t1); white-space: pre-wrap; overflow-wrap: anywhere; max-width: 64ch; }
-.note__meta { display: flex; align-items: center; gap: 8px; margin-top: 2px; font-size: var(--fs-xs); color: var(--t3); font-variant-numeric: tabular-nums; }
-.note__num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-.note__del { min-height: 24px; padding: 0 6px; border-radius: var(--r-sm); color: var(--t3); opacity: 0; transition: var(--tr); }
-.note:hover .note__del, .note__del:focus-visible { opacity: 1; }
-.note__del:hover { background: var(--hov); color: var(--t1); }
-@media (hover: none) { .note__del { opacity: 1; } }
 .composer__hint { margin: 6px 2px 0; font-size: var(--fs-xs); color: var(--t3); }
 /* The key hints describe a keyboard; on touch devices Enter adds a line and the button sends (#189). */
 @media (pointer: coarse), (hover: none) { .composer__keys { display: none; } }
@@ -532,7 +511,6 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   /* The chip stays small; its close button's hit area reaches 44px. */
   .ask__off.ui-icon-btn { position: relative; }
   .ask__off.ui-icon-btn::before { content: ""; position: absolute; inset: -11px; }
-  .note__del { min-height: 44px; padding: 0 10px; }
 }
 /* ---------- Phone: single Messages-like column ---------- */
 @media (max-width: 640px) {
@@ -547,9 +525,6 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
   .auth .ui-btn--lg, .auth .ui-input { min-height: var(--ctl-lg); }
   .auth .ui-input { border-radius: 16px; font-size: var(--fs-input-touch); padding: 0 16px; }
 }
-.note.is-arrived { box-shadow: inset 3px 0 0 var(--t1); padding-left: 12px; }
-.note:focus { outline: none; }
-.note:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
 /* Typing on a touch screen: the keyboard needs the room, so the view bar steps aside (AppLayout sets
    data-typing while a text field, or the same composer's buttons, hold focus). */
 @media (hover: none) and (max-width: 640px) {

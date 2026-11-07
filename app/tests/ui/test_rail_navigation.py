@@ -101,18 +101,18 @@ class RailNavigation(unittest.TestCase):
             self.assertTrue(measured["fits"] and measured["uncovered"], f"complete {label} label belongs to its own control: {measured}")
             self.assertTrue(has_minimum_touch_size(measured["width"]) and has_minimum_touch_size(measured["height"]), f"{label}: {measured}")
 
-    def test_01_sketchbook_and_settings_keep_native_routes_in_the_rail(self):
+    def test_01_my_map_and_settings_keep_native_routes_in_the_rail(self):
         for engine in self.browsers:
             for coarse in (False, True):
                 with self.subTest(engine=engine, coarse=coarse):
                     page, ids = self.setup_owner(engine, coarse=coarse)
                     rail = page.locator(".side--rail")
-                    sketchbook = rail.get_by_role("link", name="My map", exact=True)
-                    self.assertEqual(sketchbook.count(), 1, "the rail must preserve Sketchbook")
-                    self.assert_native_target(page, sketchbook, coarse)
-                    sketchbook.press("Enter")
-                    expect(page).to_have_url(re.compile(r"/map$"))
-                    expect(sketchbook).to_have_attribute("aria-current", "page")
+                    my_map = rail.get_by_role("link", name="My map", exact=True)
+                    self.assertEqual(my_map.count(), 1, "the rail must preserve My map")
+                    self.assert_native_target(page, my_map, coarse)
+                    my_map.press("Enter")
+                    expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))  # My map opens at its own address (#866)
+                    expect(my_map).to_have_attribute("aria-current", "page")
                     settings = rail.get_by_role("link", name="Settings", exact=True)
                     self.assertEqual(settings.count(), 1, "the rail must preserve Settings")
                     self.assert_native_target(page, settings, coarse)

@@ -549,7 +549,7 @@ class MapTaskCountJourney(unittest.TestCase):
         page.keyboard.press("Escape")
         # Create task on the map: the new task is counted at once.
         self.node(page, "later").click()
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Create task from selected thoughts").click()
+        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Create task from selected thoughts").click()
         expect(linked_labels(page)).to_have_text([LATER])
         submit_button(page).click()
         expect(dialog(page)).to_have_count(0)

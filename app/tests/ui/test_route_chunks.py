@@ -33,40 +33,6 @@ EXHAUST_STORAGE = """kind => {
   storage.removeItem('quota-route-probe'); return 'accepted';
 }"""
 
-# Hold one genuine fresh-session HTTP response, preserving its AbortSignal. Release it only after
-# a public MutationObserver witnesses the requested committed Home/sign-in view. No identity is made up.
-HELD_SESSION_RESPONSE = """(() => {
-  const fetch = window.fetch.bind(window);
-  const probe = window.__reloadSession = {armed:false, held:false, settled:false, commitSeen:false, delivery:null};
-  window.fetch = async (input, init = {}) => {
-    const path = new URL(input instanceof Request ? input.url : String(input), location.href).pathname;
-    if (path !== '/api/v1/me' || !probe.armed) return fetch(input, init);
-    probe.armed = false;
-    const signal = init.signal ?? (input instanceof Request ? input.signal : null);
-    try {
-      const response = await fetch(input, init), actual = await response.clone().json();
-      probe.status = response.status; probe.actual = {owner: actual.user?.id, session: actual.session?.id}; probe.held = true;
-      await new Promise((resolve, reject) => {
-        let done = false;
-        const finish = action => { if (done) return; done = true; signal?.removeEventListener('abort', abort); action(); };
-        const abort = () => finish(() => reject(signal.reason ?? new DOMException('Aborted','AbortError')));
-        probe.release = () => finish(resolve);
-        if (signal?.aborted) abort(); else signal?.addEventListener('abort', abort, {once:true});
-      });
-      probe.delivery = 'delivered'; return response;
-    } catch (error) { probe.delivery = error.name === 'AbortError' ? 'aborted' : 'failed'; throw error; }
-    finally { probe.settled = true; }
-  };
-  probe.afterCommit = heading => {
-    const observer = new MutationObserver(() => {
-      if (![...document.querySelectorAll('h1')].some(el => el.textContent.trim() === heading)) return;
-      probe.commitSeen = true; observer.disconnect(); probe.release();
-    });
-    observer.observe(document, {childList:true,subtree:true});
-  };
-})();"""
-
-
 class RouteChunksJourney(unittest.TestCase):
     pw = None
     browsers: dict[str, Browser] = {}
@@ -151,20 +117,14 @@ class RouteChunksJourney(unittest.TestCase):
         expect(page.get_by_role("region", name="Needs you")).to_be_visible()
 
     def notes(self, page: Page):
-        """The private note composer and its device draft live in the Sketchbook's "Your notes" since #342."""
-        page.goto("/map")
-        expect(page.get_by_role("heading", name="Your notes", exact=True)).to_be_visible()
-        expect(page.get_by_placeholder("Write a note…")).to_be_visible()
+        """An editable field with work in it: the message box of the project's conversation (the Sketchbook's note composer is gone, #866)."""
+        page.goto(f"/projects/{self.project_id}")
+        expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
 
     def back_to_notes(self, page: Page, *, phone=False):
-        """Returns to "Your notes" through the router, in the same document (no reload)."""
-        if phone:
-            # The phone has no drawer (#341): Home's quiet "Sketchbook" link opens it.
-            page.get_by_role("navigation", name="Main places").get_by_role("link", name="Home", exact=True).click()
-            page.get_by_role("link", name="My map", exact=True).click()
-        else:
-            page.locator(".app__side").get_by_role("link", name="My map").first.click()
-        expect(page.get_by_role("heading", name="Your notes", exact=True)).to_be_visible()
+        """Returns to the conversation through the router, in the same document (no reload)."""
+        page.get_by_role("navigation", name="Spaces").get_by_role("link", name="Chunk boundaries").click()
+        expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
 
     def settings(self, page: Page, *, phone=False):
         if phone:
@@ -210,85 +170,6 @@ class RouteChunksJourney(unittest.TestCase):
             self.assertLess(time.monotonic(), deadline, "The actual route code request did not arrive")
             page.wait_for_timeout(5)
         self.assertEqual(len(held), 1, "Exactly one actual code download is held")
-
-    def refused_home_draft(self, page: Page, engine: str):
-        self.notes(page)
-        response = page.request.get(f"{ORIGIN}/api/v1/me")
-        self.assertEqual(response.status, 200)
-        key = f"flux:draft:{response.json()['user']['id']}:home"
-        earlier = f"Earlier device draft A {engine}"
-        latest = f"Latest visit-only draft B {engine}: " + "Keep the newest private garden notes. " * 40
-        field = page.get_by_placeholder("Write a note…")
-        field.fill(earlier)
-        page.wait_for_function("([key,text]) => localStorage.getItem(key) === text", arg=[key, earlier])
-        self.assertEqual(page.evaluate(EXHAUST_STORAGE, 'local'), 'QuotaExceededError')
-        field.fill(latest)
-        expect(page.get_by_text("Draft kept until you close this tab", exact=True)).to_be_visible()
-        self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), earlier)
-        return key, earlier, latest
-
-    def test_10_refused_latest_home_draft_blocks_destructive_reload_then_recovers(self):
-        for engine in self.browsers:
-            with self.subTest(engine=engine):
-                page = self.page(engine)
-                key, earlier, latest = self.refused_home_draft(page, engine)
-                pattern = re.compile(r"/assets/SettingsHome-[^/]+\.js(?:\?.*)?$")
-                def refused(route):
-                    route.fulfill(status=503, headers={"cache-control": "no-store"}, content_type="text/plain", body="Real refused route delivery")
-                page.route(pattern, refused)
-                self.settings(page)
-                expect(page.get_by_role("heading", name="This page couldn’t be loaded", exact=True)).to_be_visible()
-                page.unroute(pattern, refused)
-                reload = page.get_by_role("button", name="Reload Flux", exact=True)
-                origin = page.evaluate("performance.timeOrigin")
-                if reload.is_enabled():
-                    # Old-source control follows the real unsafe action and observes its actual loss.
-                    with page.expect_navigation(wait_until="domcontentloaded"):
-                        reload.click()
-                    self.notes(page)
-                    self.assertEqual(page.get_by_placeholder("Write a note…").input_value(), latest,
-                        "unguarded document reload must not restore the older stored A over the latest visit-only B")
-                    self.fail("visit-only work must make automatic code-error Reload unavailable")
-                expect(reload).to_be_disabled()
-                expect(page.get_by_text("Keep this tab open", exact=False)).to_be_visible()
-                page.get_by_role("link", name="Go to Home", exact=True).click()
-                self.back_to_notes(page)
-                expect(page.get_by_placeholder("Write a note…")).to_have_value(latest)
-                self.assertEqual(page.evaluate("performance.timeOrigin"), origin)
-                self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), earlier)
-                page.evaluate("localStorage.removeItem('quota-route-recovery')")
-                persisted = latest + "Storage accepts the newest copy again."
-                page.get_by_placeholder("Write a note…").fill(persisted)
-                page.wait_for_function("([key,text]) => localStorage.getItem(key) === text", arg=[key, persisted])
-                self.settings(page)
-                expect(page.get_by_role("heading", name="This page couldn’t be loaded", exact=True)).to_be_visible()
-                expect(page.get_by_role("button", name="Reload Flux", exact=True)).to_be_enabled()
-                with page.expect_navigation(wait_until="domcontentloaded"):
-                    page.get_by_role("button", name="Reload Flux", exact=True).click()
-                self.assertGreater(page.evaluate("performance.timeOrigin"), origin)
-                expect(page.get_by_role("heading", name="Appearance", exact=True)).to_be_visible()
-                self.notes(page)
-                expect(page.get_by_placeholder("Write a note…")).to_have_value(persisted)
-
-    def test_11_failed_optional_surface_keeps_refused_draft_and_close_recovery(self):
-        for engine in self.browsers:
-            with self.subTest(engine=engine):
-                page = self.page(engine)
-                key, earlier, latest = self.refused_home_draft(page, engine)
-                pattern = re.compile(r"/assets/JumpTo-[^/]+\.js(?:\?.*)?$")
-                def refused(route):
-                    route.fulfill(status=503, headers={"cache-control": "no-store"}, content_type="text/plain", body="Real refused search delivery")
-                page.route(pattern, refused)
-                page.keyboard.press("Control+k")
-                dialog = page.get_by_role("dialog", name="Search", exact=True)
-                expect(dialog).to_contain_text("Search couldn’t be loaded")
-                page.unroute(pattern, refused)
-                expect(dialog.get_by_role("button", name="Reload Flux", exact=True)).to_be_disabled()
-                expect(dialog.get_by_text("Keep this tab open", exact=False)).to_be_visible()
-                page.keyboard.press("Escape")
-                expect(dialog).to_have_count(0)
-                expect(page.get_by_placeholder("Write a note…")).to_have_value(latest)
-                self.assertEqual(page.evaluate("key => localStorage.getItem(key)", key), earlier)
 
     def test_12_wiki_quota_copy_preserves_fields_base_and_attempt_before_reload(self):
         # Live editing (#228) is the wiki editor whenever it is configured, so the shared working copy
@@ -409,57 +290,6 @@ class RouteChunksJourney(unittest.TestCase):
                 page.get_by_role("button", name="Check again", exact=True).click()
                 expect(page.get_by_role("button", name="Reload Flux", exact=True)).to_be_enabled()
 
-    def test_14_held_real_reload_check_cannot_cross_committed_home_or_device_retirement(self):
-        for engine in self.browsers:
-            for retiring in (False, True):
-                with self.subTest(engine=engine, retiring=retiring):
-                    page = self.page(engine)
-                    page.add_init_script(HELD_SESSION_RESPONSE)
-                    self.notes(page)
-                    me = page.request.get(f"{ORIGIN}/api/v1/me").json()
-                    durable = f"Durable same-account work before held reload {engine}"
-                    page.get_by_placeholder("Write a note…").fill(durable)
-                    page.wait_for_function("([id,text]) => localStorage.getItem(`flux:draft:${id}:home`) === text", arg=[me["user"]["id"], durable])
-                    pattern = re.compile(r"/assets/SettingsHome-[^/]+\.js(?:\?.*)?$")
-                    def refused(route):
-                        route.fulfill(status=503, headers={"cache-control":"no-store"}, body="Real refused route")
-                    page.route(pattern, refused)
-                    self.settings(page)
-                    expect(page.get_by_role("button", name="Reload Flux", exact=True)).to_be_enabled()
-                    page.unroute(pattern, refused)
-                    origin = page.evaluate("performance.timeOrigin")
-                    page.evaluate("window.__reloadSession.armed = true")
-                    page.get_by_role("button", name="Reload Flux", exact=True).click()
-                    page.wait_for_function("window.__reloadSession.held")
-                    actual = page.evaluate("window.__reloadSession.actual")
-                    self.assertEqual(actual, {"owner":me["user"]["id"], "session":me["session"]["id"]})
-                    self.assertEqual(page.evaluate("window.__reloadSession.status"), 200)
-                    if retiring:
-                        page.evaluate("window.__reloadSession.afterCommit('Sign in')")
-                        page.get_by_role("button", name=re.compile(self.name)).click()
-                        page.get_by_role("button", name="Sign out", exact=True).click()
-                        expect(page.get_by_role("heading", name="Sign in", exact=True)).to_be_visible()
-                        self.assertEqual(page.request.get(f"{ORIGIN}/api/v1/me").status, 401)
-                    else:
-                        page.evaluate("window.__reloadSession.afterCommit('Home')")
-                        page.get_by_role("link", name="Go to Home", exact=True).click()
-                        self.back_to_notes(page)
-                        expect(page.get_by_placeholder("Write a note…")).to_have_value(durable)
-                    page.wait_for_function("window.__reloadSession.commitSeen && window.__reloadSession.settled")
-                    page.evaluate("new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
-                    self.assertEqual(page.evaluate("performance.timeOrigin"), origin, "old checked response cannot reload a different committed lifetime")
-                    self.assertIn(page.evaluate("window.__reloadSession.delivery"), ('delivered','aborted'))
-                    if retiring:
-                        page.get_by_label("Email").fill(me["user"]["email"])
-                        page.get_by_label("Password", exact=True).fill("a quiet route loading passphrase")
-                        page.get_by_role("button", name="Sign in", exact=True).click()
-                        expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
-                        restored = page.request.get(f"{ORIGIN}/api/v1/me").json()
-                        self.assertEqual(restored["user"]["id"], me["user"]["id"])
-                        self.assertNotEqual(restored["session"]["id"], me["session"]["id"])
-                        type(self).state = page.context.storage_state()
-
-
     def test_15_sign_out_retires_the_live_visit_copy_for_the_next_account_in_this_tab(self):
         # A refused live Save keeps Ari's visit copy only in this tab's memory (#326). Sign-out retires it
         # like the classic drafts, so Ben signing in next reaches none of it, and Ari signing in again
@@ -557,16 +387,16 @@ class RouteChunksJourney(unittest.TestCase):
                     self.assertFalse(any(re.search(rf"/assets/{module}-[^/]+\.js", url) for url in requested), f"Cold Home never imports {module}")
 
     def test_02_held_route_keeps_shell_editable_draft_and_cancellation(self):
-        # The phone's Sketchbook has no route to Settings (its account avatar is on Home, #341), so this journey starts
-        # from the desktop Sketchbook on both engines.
+        # The phone's conversation has no route to Settings (its account avatar is on Home, #341), so this journey starts
+        # from the desktop conversation on both engines.
         for engine, phone in (("chromium", False), ("webkit", False)):
             with self.subTest(engine=engine, phone=phone):
                 page = self.page(engine, phone=phone)
                 held = self.hold(page, "SettingsHome")
                 self.notes(page)
-                field = page.get_by_placeholder("Write a note…")
+                field = page.get_by_label("Write a message", exact=True)
                 field.fill("Private work while the destination downloads")
-                page.evaluate("window.__routeDraftElement = document.querySelector('#composer')")
+                page.evaluate("window.__routeDraftElement = document.querySelector('#project-composer')")
                 before = self.layout(page)
                 self.settings(page, phone=phone)
                 self.assert_pending_is_still(page, before, page.locator('[data-route-pending="/settings"]'))
@@ -575,18 +405,18 @@ class RouteChunksJourney(unittest.TestCase):
                 # The destination's own loading state stands in the content area from the first frame (#863 rule 2); the old view is not shown, but it
                 # is still mounted: the same element holds the draft, so a cancelled switch finds it as it was.
                 expect(page.locator("#content [data-pending-view]")).to_be_visible()
-                expect(page.get_by_role("heading", name="Your notes", exact=True)).to_be_hidden()
-                self.assertTrue(page.evaluate("window.__routeDraftElement === document.querySelector('#composer')"))
+                expect(page.get_by_label("Write a message", exact=True)).to_be_hidden()
+                self.assertTrue(page.evaluate("window.__routeDraftElement === document.querySelector('#project-composer')"))
                 expect(field).to_have_value("Private work while the destination downloads")
                 shot(page, f"route-chunks-pending-{engine}-{'phone' if phone else 'desktop'}")
                 page.get_by_role("button", name="Cancel", exact=True).click()
                 expect(page.locator("[data-route-pending]")).to_have_count(0)
                 expect(page.locator("#content [data-pending-view]")).to_have_count(0)
-                expect(page).to_have_url(f"{ORIGIN}/map")
-                expect(page.get_by_role("heading", name="Your notes", exact=True)).to_be_visible()
+                expect(page).to_have_url(f"{ORIGIN}/projects/{self.project_id}")
+                expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
                 expect(field).to_have_value("Private work while the destination downloads")
                 field.fill("Private work remains editable")
-                self.assertTrue(page.evaluate("window.__routeDraftElement === document.querySelector('#composer')"))
+                self.assertTrue(page.evaluate("window.__routeDraftElement === document.querySelector('#project-composer')"))
                 held.pop().continue_()
                 expect(field).to_have_value("Private work remains editable")
                 # A newer completed navigation stays current even after the canceled code arrives.
@@ -594,7 +424,7 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(page).to_have_url(f"{ORIGIN}/inbox")
                 expect(page.get_by_role("heading", name="Settings", exact=True)).to_have_count(0)
                 self.back_to_notes(page, phone=phone)
-                expect(page.get_by_placeholder("Write a note…")).to_have_value("Private work remains editable")
+                expect(page.get_by_label("Write a message", exact=True)).to_have_value("Private work remains editable")
 
     def test_02b_phone_held_route_keeps_the_conversation_draft_and_cancellation(self):
         """The phone's own path to a lazy route (#341): a project conversation's title menu opens Tasks while its code is
@@ -656,7 +486,7 @@ class RouteChunksJourney(unittest.TestCase):
             with self.subTest(engine=engine):
                 page = self.page(engine)
                 self.notes(page)
-                page.get_by_placeholder("Write a note…").fill(f"Private recovery after code failure {engine}")
+                page.get_by_label("Write a message", exact=True).fill(f"Private recovery after code failure {engine}")
                 page.route(re.compile(r"/assets/SettingsHome-[^/]+\.js(?:\?.*)?$"), lambda route: route.abort("failed"))
                 self.settings(page)
                 expect(page.locator(".ui-error")).to_be_visible()
@@ -666,7 +496,7 @@ class RouteChunksJourney(unittest.TestCase):
                 shot(page, f"route-chunks-code-error-{engine}-desktop")
                 page.get_by_role("link", name="Go to Home", exact=True).click()
                 self.back_to_notes(page)
-                expect(page.get_by_placeholder("Write a note…")).to_have_value(f"Private recovery after code failure {engine}")
+                expect(page.get_by_label("Write a message", exact=True)).to_have_value(f"Private recovery after code failure {engine}")
 
     def test_04_cold_deep_link_announces_destination_without_a_fabricated_shell(self):
         for engine in self.browsers:
@@ -687,7 +517,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page = self.page(engine)
                 held = self.hold(page, "JumpTo")
                 self.notes(page)
-                field = page.get_by_placeholder("Write a note…")
+                field = page.get_by_label("Write a message", exact=True)
                 field.fill(f"Search download preserves focus {engine}")
                 page.keyboard.press("Control+k")
                 dialog = page.get_by_role("dialog", name="Search", exact=True)

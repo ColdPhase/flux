@@ -20,7 +20,7 @@ import { arrivalEntry, entryOf, onFlush, recall, remember as keepPlace, setCurre
 import { RouteOriginBack, useGoToOrigin, useRouteOrigin } from '../place/origin';
 import { restoreTop, usePaneMemory } from '../place/scroll';
 import { Sidebar } from './Sidebar';
-import { startCapture, viewIndex } from './views';
+import { viewIndex } from './views';
 import { PROJECT_VIEWS, SPACE_AI_POLICY_CHANGED_EVENT, type ProjectViewId } from '@flux/contracts';
 import { addProjectView } from '../project/api';
 import { addableViews, audienceLine, shownViews, useProjectShell } from '../project/data';
@@ -891,7 +891,7 @@ function AppLayoutContent() {
         ) : null}
       </div>
 
-      {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} go={(to) => void navigate(to)} onThought={() => startCapture(navigate)} /> : null}
+      {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} go={(to) => void navigate(to)} /> : null}
       <CreateHost request={create} onClose={() => setCreate(null)} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
     </div>

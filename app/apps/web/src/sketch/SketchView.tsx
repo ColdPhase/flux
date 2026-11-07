@@ -84,7 +84,7 @@ export function SketchRoute() {
   const back = projectId ? `/projects/${projectId}/map` : dmId ? `/dm/${dmId}/sketches` : '/map';
   // The live map mounts only when this API's live capability is configured (#228, #239 review);
   // otherwise the map is the ordinary one, unchanged.
-  if (capability === 'loading') return <div className="sk-page sk-page--center"><Spinner label="Opening the sketch" /></div>;
+  if (capability === 'loading') return <div className="sk-page sk-page--center"><Spinner label="Opening the map" /></div>;
   const View = capability === 'configured' ? LiveSketchView : SketchView;
   return <View key={`${me.user.id}:${sketchId}`} sketchId={sketchId} projectId={projectId} dmId={dmId} back={back} />;
 }
@@ -707,13 +707,13 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   // Links that cannot know the place (search, doc links) arrive at `/map/:id` and move here.
   const here = projectId ? `/projects/${projectId}/map/${sketchId}` : dmId ? `/dm/${dmId}/sketches/${sketchId}` : `/map/${sketchId}`;
   if (sketch && sketchHref(sketch) !== here) return <Navigate replace to={`${sketchHref(sketch)}${hash}`} state={location.state} />;
-  if (doc.load === 'loading' && !sketch) return <div className="sk-page sk-page--center"><Spinner label="Opening the sketch" /></div>;
+  if (doc.load === 'loading' && !sketch) return <div className="sk-page sk-page--center"><Spinner label="Opening the map" /></div>;
   if (doc.load === 'not-found' || (!sketch && doc.load === 'failed')) {
     return (
       <div className="sk-page">
         <div className="view-empty">
-          <EmptyState icon="map" title={doc.load === 'not-found' ? 'This sketch isn’t available' : 'The sketch couldn’t be opened'}
-            action={doc.load === 'not-found' ? <Link className="ui-btn ui-btn--secondary" to={back}>All sketches</Link> : <Button onClick={() => void doc.reload()}>Try again</Button>}>
+          <EmptyState icon="map" title={doc.load === 'not-found' ? 'This map isn’t available' : 'The map couldn’t be opened'}
+            action={doc.load === 'not-found' ? <Link className="ui-btn ui-btn--secondary" to={back}>All maps</Link> : <Button onClick={() => void doc.reload()}>Try again</Button>}>
             <p>{doc.load === 'not-found' ? 'It may have been shared with other people only, or you no longer have access to where it lives.' : 'Flux could not be reached. Your changes are safe; try again in a moment.'}</p>
             {connectionDraft !== null ? <label>Your unsaved connection label<textarea aria-label="Recoverable connection label" readOnly value={connectionDraft} /></label> : null}
             {capture.draft ? <label>Your private thought draft<textarea aria-label="Recoverable thought draft" readOnly value={capture.draft.lines ? capture.draft.lines.map((line) => line.text).join('\n') : capture.draft.text} /></label> : null}
@@ -744,15 +744,16 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
       <button key={m} type="button" role="radio" className="seg__b" aria-checked={mode === m} onClick={() => setMode(m)}>{m === 'map' ? 'Map' : 'List'}</button>
     ))}
   </div>;
+  const mine = sketch.scope === 'private';
   const head = (
         <div className="sk-head">
           <p className="sk-lead">
-            <Link to={back} className="sk-back">Maps</Link>
-            <span aria-hidden="true" className="sk-sep">·</span>
-            {renaming && canWrite ? (
+            {/* My map is one map, not an item of a list (#866): there is nothing to go back to, and it keeps its name. */}
+            {mine ? null : <><Link to={back} className="sk-back">Maps</Link><span aria-hidden="true" className="sk-sep">·</span></>}
+            {mine ? <span className="sk-title">My map</span> : renaming && canWrite ? (
               <TitleEditor sketch={sketch} onDone={(title) => {
                 setRenaming(false);
-                if (title && title !== sketch.title) { doc.perform([{ kind: 'rename', title }], 'renamed the sketch'); say(`Renamed to ${quote(title)}`, true); }
+                if (title && title !== sketch.title) { doc.perform([{ kind: 'rename', title }], 'renamed the map'); say(`Renamed to ${quote(title)}`, true); }
               }} />
             ) : (
               <button type="button" className="sk-title" disabled={!canWrite} aria-label={canWrite ? `Rename map ${sketch.title}` : undefined} onClick={() => setRenaming(true)}>{sketch.title}</button>
@@ -834,7 +835,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   // switching moves nothing (Spokój rule 7). The pointer tools only act on the canvas; in the List
   // they are dimmed, not removed, so + Thought, Create task and Undo keep their places.
   const dock = canWrite && !phone ? (
-    <div className="sk-tools" role="toolbar" aria-label="Sketch tools">
+    <div className="sk-tools" role="toolbar" aria-label="Map tools">
       <button type="button" className="sk-tool" aria-label="Select" aria-pressed={mapMode && !connectFrom && !hand} aria-disabled={!mapMode} data-tip="Select"
         onClick={() => { if (!mapMode) return; setHand(false); if (connectFrom) escape(); }}>
         <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"><path d="M3.5 2.5 12 6.2 8 7.6 6.6 11.7z" /></svg>
@@ -854,7 +855,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   ) : null;
   const readonlyNote = !canWrite ? <p className="sk-readonly"><Icon name="lock" size={12} />{doc.liveStatus === 'connecting' ? 'Reconnecting to the shared map. Wait for confirmation before changing it.' : sketch.scope === 'dm'
     ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
-    : 'You can look at this sketch; people who can change it keep it up to date.'}</p> : null;
+    : 'You can look at this map; people who can change it keep it up to date.'}</p> : null;
 
   if (mapMode) {
     // F-026: the map fills the pane; the header, the tools and the notices float over it.
@@ -884,8 +885,8 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
             movers={new Map([...doc.previews?.values() ?? []].flatMap((preview) => preview.positions.map((position) => [position.id, preview.actor.name] as [string, string])))}
             livePreviews={new Map([...doc.previews?.values() ?? []].flatMap((preview) => preview.positions.map((position) => [position.id, preview] as [string, typeof preview])))} />
           {!sketch.thoughts.length ? <p className="sk-first">{phone
-            ? <>An empty sketch. Start with <b>Add a thought</b>.</>
-            : <>An empty sketch. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</>}</p> : null}
+            ? <>An empty map. Start with <b>Add a thought</b>.</>
+            : <>An empty map. Add the first thought with <b>Thought</b>, then keep adding with the <b>+</b> beside it.</>}</p> : null}
           <p className={`sk-help${helpOpen ? ' is-open' : ''}`} id={helpId}>{helpText}</p>
           {connectionTarget ? <ConnectionLabels sketch={sketch} target={connectionTarget} editable={canWrite && !phone}
             onSave={doc.saveLinkLabel} onDraftChange={setConnectionDraft} onClose={closeConnections} /> : null}
@@ -947,7 +948,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
         {canWrite ? (
           <div className={`sk-bar${doc.problem ? ' sk-bar--problem' : ''}`}>
             {/* #510 AC-4: Edit, + Child and Create task are the selected row's own actions on the phone too. */}
-            <div className="sk-tools" role="toolbar" aria-label="Sketch tools">
+            <div className="sk-tools" role="toolbar" aria-label="Map tools">
             <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => remove(selection)} aria-label="Remove from map"><Icon name="trash" size={14} /><span className="sk-bl">Remove</span></button>
             <span className="sk-div" aria-hidden="true" />
@@ -959,7 +960,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
           <>
             <p className="sk-readonly"><Icon name="lock" size={12} />{doc.liveStatus === 'connecting' ? 'Reconnecting to the shared map. Wait for confirmation before changing it.' : sketch.scope === 'dm'
               ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
-              : 'You can look at this sketch; people who can change it keep it up to date.'}</p>
+              : 'You can look at this map; people who can change it keep it up to date.'}</p>
             <p className="sk-status sk-status--readonly" role="status">{status.text}</p>
           </>
         )}
@@ -1003,7 +1004,7 @@ function TitleEditor({ sketch, onDone }: { sketch: SketchDetail; onDone(title: s
   const done = useRef(false);
   const finish = (title: string | null) => { if (done.current) return; done.current = true; onDone(title?.trim() || null); };
   return (
-    <input className="sk-title-edit" value={value} maxLength={200} aria-label="Sketch name" autoFocus onFocus={(event) => event.currentTarget.select()}
+    <input className="sk-title-edit" value={value} maxLength={200} aria-label="Map name" autoFocus onFocus={(event) => event.currentTarget.select()}
       onChange={(event) => setValue(event.target.value)} onBlur={() => finish(value)}
       onKeyDown={(event) => {
         if (event.key === 'Enter') { event.preventDefault(); finish(value); }
