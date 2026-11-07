@@ -1,4 +1,4 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, PrincipalRef, ResultRowProjection, WorkDetailObject, WorkRowProjection } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -32,6 +32,17 @@ export function nativeWorkObjectRows(db: DbExecutor) {
   async function names(refs: PrincipalRef[]) {
     const found = await workRows(db).names(refs);
     return (ref: PrincipalRef): NamedPrincipal => ({ ...ref, name: found.get(actorKey(ref)) ?? (ref.kind === 'agent' ? 'Agent' : 'Former member') });
+  }
+  /** The tasks that are part of this one (#841), by number; a task whose creation was undone is no longer one. At most 50. */
+  async function subtasks(projectId: string, parentId: string) {
+    const l = schema.projectObjectLinks;
+    const children = await openRows(db, 'project_work_items', await db.select({ id: w.id, workspaceId: w.workspaceId, number: w.number, status: w.status, title: w.title,
+      ownerUserId: w.ownerUserId, ownerAgentId: w.ownerAgentId }).from(l).innerJoin(w, eq(w.id, l.fromId))
+      .where(and(eq(l.projectId, projectId), eq(l.role, 'part_of'), eq(l.toType, 'work'), eq(l.toId, parentId), isNull(w.creationRevertedAt))).orderBy(asc(w.number)).limit(50));
+    const owners = children.flatMap((child): PrincipalRef[] => child.ownerUserId ? [{ kind: 'human' as const, id: child.ownerUserId }] : child.ownerAgentId ? [{ kind: 'agent' as const, id: child.ownerAgentId }] : []);
+    const named = await names(owners);
+    return children.map((child) => ({ id: child.id, number: child.number, title: child.title, status: child.status,
+      owner: child.ownerUserId ? named({ kind: 'human', id: child.ownerUserId }) : child.ownerAgentId ? named({ kind: 'agent', id: child.ownerAgentId }) : null }));
   }
   async function rows(projectId: string, objects: readonly NativeWorkReadObject[]): Promise<NativeWorkRow[]> {
     if (objects.length > 100) throw new Error('Native work hydration exceeds the global bound');
@@ -130,7 +141,7 @@ export function nativeWorkObjectRows(db: DbExecutor) {
         const { relations: _relations, parkedBy: _parked, rule: _rule, prerequisiteCounts: _counts, ...work } = row;
         void _relations; void _parked; void _rule; void _counts;
         return { ...work, kind: 'work', outcome: own.outcome, criteria: own.criteria,
-          dependencyIds: prerequisites.map(({ id }) => id), prerequisites, planIntent: plan.planIntent,
+          dependencyIds: prerequisites.map(({ id }) => id), prerequisites, subtasks: await subtasks(projectId, row.id), planIntent: plan.planIntent,
           createdBy: named({ kind: own.createdByKind, id: own.createdById }) };
       }
       if (row.kind === 'decision') {
