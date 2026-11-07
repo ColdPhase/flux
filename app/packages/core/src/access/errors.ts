@@ -12,12 +12,12 @@ export class DomainError extends Error {
 }
 
 /**
- * AI is turned off in the workspace (F-029, #614): no agent or assistant may read or act there, and no
- * person may start AI work there. Also used when a queued item's admission epoch is no longer current.
+ * AI is off in the space (F-037, AG-10): no agent or local client may read or act there, and no person may start AI work
+ * there. Also used when a queued item's admission epoch is no longer current.
  */
-export class WorkspaceAiBlockedError extends DomainError {
+export class SpaceAiOffError extends DomainError {
   constructor() {
-    super(403, 'WORKSPACE_AI_BLOCKED', 'AI is turned off in this company');
+    super(403, 'SPACE_AI_OFF', 'AI is off in this space');
   }
 }
 

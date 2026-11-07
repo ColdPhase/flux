@@ -214,9 +214,6 @@ class Base(unittest.TestCase):
     def section(self, page: Page):
         return page.get_by_role("region", name="Encryption")
 
-    def ai_row(self, page: Page):
-        return page.get_by_role("region", name=f"AI in {A_NAME}")
-
     @staticmethod
     def place(locator) -> dict:
         """Where an element is in its panel's own coordinates, so a scrolled panel does not count as a control moving."""
@@ -529,22 +526,19 @@ class EncryptedWorkspaces(Base):
         expect(message).to_contain_text("Former member")
         expect(message).to_have_attribute("aria-label", "Former member’s message")
 
-    def test_20_the_encryption_section_and_the_ai_row_sit_before_leave_in_every_state(self) -> None:
+    def test_20_the_encryption_section_sits_before_leave_in_every_state(self) -> None:
         for phone in (False, True):
             with self.subTest(window="phone" if phone else "computer"):
                 world = self.make_world()
                 page = self.page(world, "ada", phone=phone)
                 self.open_people(page)
-                section, ai = self.section(page), self.ai_row(page)
+                section = self.section(page)
                 expect(section.get_by_role("heading", name="Encryption")).to_be_visible()
                 expect(section.locator(".people__enc-line")).to_have_text(LINE)
-                # Encryption, then AI, then Leave.
+                # Encryption, then Leave. The company has no AI switch (F-037: AI is per space), so no row for it.
                 leave = page.get_by_role("region", name=f"Leave {A_NAME}")
-                self.assertLess(self.place(section)["y"], self.place(ai)["y"])
-                self.assertLess(self.place(ai)["y"], self.place(leave)["y"])
-                # The AI row: one fixed line, for everyone, no switch.
-                expect(ai.locator(".people__ai-line")).to_have_text(f"Off · {A_NAME} is encrypted, so AI can never be turned on here.")
-                expect(ai.get_by_role("button")).to_have_count(0)
+                self.assertLess(self.place(section)["y"], self.place(leave)["y"])
+                expect(page.get_by_role("region", name=f"AI in {A_NAME}")).to_have_count(0)
                 expect(page.get_by_role("button", name=re.compile(r"Turn o(n|ff) AI"))).to_have_count(0)
                 # An owner's buttons, in one row; with another admin in the space, the one that lets them set a password.
                 for name in ("Change your unlock password", "Lock now", "New recovery code", "Let Ben set an unlock password"):
@@ -560,7 +554,6 @@ class EncryptedWorkspaces(Base):
                 self.open_people(member)
                 expect(self.section(member).locator(".people__enc-line")).to_have_text(LINE)
                 expect(self.section(member).get_by_role("button")).to_have_count(0)
-                expect(self.ai_row(member).locator(".people__ai-line")).to_have_text(f"Off · {A_NAME} is encrypted, so AI can never be turned on here.")
                 self.assertEqual(member.get_by_role("button", name=re.compile(r"Turn o(n|ff) AI")).count(), 0)
                 admin = self.page(world, "ben", phone=phone)
                 self.open_people(admin)
@@ -584,7 +577,6 @@ class EncryptedWorkspaces(Base):
                 names = ("Change your unlock password", "Lock now", "New recovery code", "Let Ben set an unlock password")
                 before = {name: self.place(section.get_by_role("button", name=name)) for name in names}
                 before["heading"] = self.place(section.get_by_role("heading", name="Encryption"))
-                before["ai"] = self.place(self.ai_row(page))
                 lock.focus()
                 page.keyboard.press("Enter")
                 confirm = section.get_by_role("group", name=f"Lock {A_NAME}")
@@ -876,7 +868,8 @@ class EncryptedWorkspaces(Base):
             with self.subTest(window="phone" if phone else "computer"):
                 page = self.page(world, "ada", phone=phone)
                 page.goto("/settings/agents")
-                expect(page.get_by_text(f"Not in {A_NAME}: it is encrypted, so AI is off there for good.").first).to_be_visible()
+                # Settings › AI is the person's own AI: no list of where AI is off (F-037; each space has its own switch).
+                expect(page.get_by_text(re.compile(r"Not in .*: (AI is off there|it is encrypted)"))).to_have_count(0)
                 page.goto("/")
                 expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
                 if phone:

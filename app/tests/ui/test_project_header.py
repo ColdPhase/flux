@@ -117,7 +117,7 @@ class ProjectHeader(unittest.TestCase):
             current = views.get_by_role("link", name="Conversation").bounding_box()
             pill = views.locator(".ui-tabs__indicator").bounding_box()
             self.assertAlmostEqual(pill["width"], current["width"], delta=1.5)
-            # People and agents as faces, which open "People".
+            # People and agents as faces, which open the space's settings.
             faces = header.get_by_role("button", name=re.compile("who can see this space$"))
             expect(faces.locator(".ui-avatar")).to_have_count(1)
             # Nothing needs Ada in a new project, so no chip claims it.
@@ -126,7 +126,8 @@ class ProjectHeader(unittest.TestCase):
         page.get_by_role("link", name="Tasks", exact=True).click()
         expect(views.get_by_role("link", name="Tasks")).to_have_attribute("aria-current", "page")
         faces.click()
-        expect(page.get_by_role("complementary", name="Details").get_by_role("region", name="People", exact=True)).to_be_visible()
+        # The faces open the space's settings, where its people are (F-037).
+        expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
 
     def test_02_more_lists_details_focus_and_the_sidebar_with_keys(self) -> None:
         self.ensure_project()
@@ -137,12 +138,12 @@ class ProjectHeader(unittest.TestCase):
         menu = page.get_by_role("menu", name="More")
         # "Who can see this" is in More only where the header has no room for the faces (a narrow main column).
         items = menu.locator("[role^=menuitem]:visible")
-        self.assertEqual([text.strip() for text in items.locator("span").all_inner_texts()], ["Space details", "What matters", "Focus", "Hide the sidebar"])
+        self.assertEqual([text.strip() for text in items.locator("span").all_inner_texts()], ["Settings", "Space details", "What matters", "Focus", "Hide the sidebar"])
         # Each key shows next to its action (S18) and is announced as its shortcut.
-        self.assertEqual([items.nth(index).get_attribute("aria-keyshortcuts") for index in range(items.count())], [None, None, "F", "["])
+        self.assertEqual([items.nth(index).get_attribute("aria-keyshortcuts") for index in range(items.count())], [None, None, None, "F", "["])
         self.assertEqual(items.locator("kbd").all_inner_texts(), ["F", "["])
         expect(menu.get_by_role("menuitemcheckbox", name="Focus")).to_have_attribute("aria-checked", "false")
-        expect(menu.get_by_role("menuitem", name="Details")).to_be_focused()
+        expect(menu.get_by_role("menuitem", name="Settings")).to_be_focused()
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
         expect(more).to_be_focused()

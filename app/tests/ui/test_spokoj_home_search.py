@@ -111,11 +111,10 @@ class SpokojHomeSearch(unittest.TestCase):
                 expect(page.locator(".home__more").get_by_role("link", name=name, exact=True)).to_be_visible()
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
         page = self.page()
-        for path in ("/map", "/projects/new"):
+        for path in ("/map",):
             page.goto(path)
             expect(page.get_by_role("heading", level=1).first).to_be_visible()
             self.assertEqual(page.locator(".top__views").count(), 0, path)
-        shot(page, "spokoj-projects-new-desktop")
 
     # ---------------------------------------------------------------- the Sketchbook (#508, AC-2 to AC-4)
 

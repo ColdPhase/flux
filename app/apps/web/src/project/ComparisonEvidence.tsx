@@ -2,7 +2,7 @@
 import type { InspectedComparisonSource } from '@flux/contracts';
 import { comparisonSourceHref } from './proposals';
 import { RefLink } from '../place/origin';
-import { useProjectAiBlocked } from '../ai/workspaceAi';
+import { useProjectAiBlocked } from '../ai/spaceAi';
 
 /** Actual inspected references are separate from the model's selected citations. */
 export function ComparisonEvidence({ projectId, sources, unavailable, openResult }: {

@@ -1,13 +1,9 @@
 import type { FastifyInstance } from 'fastify';
-import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { sql } from 'drizzle-orm';
-import { WORKSPACE_AI_SWEEP_JOB, WORKSPACES_PATH, type AddMemberCommand, type ChangeRoleCommand, type CreateWorkspaceCommand,
-  type RenameWorkspaceCommand, type SetWorkspaceAiPolicyCommand, type SetWorkspaceAiPolicyResult } from '@flux/contracts';
-import { addMember, assertAuthorized, changeRole, createWorkspace, getWorkspace, listMembers, listRemovedPeople, listWorkspaces, removeMember, renameWorkspace, restoreMember,
-  setWorkspaceAiPolicy, sweepWorkspaceAi, WorkspaceAiSweepIncomplete, type WorkspaceAiSweepQueue } from '@flux/core';
+import { WORKSPACES_PATH, type AddMemberCommand, type ChangeRoleCommand, type CreateWorkspaceCommand, type RenameWorkspaceCommand } from '@flux/contracts';
+import { addMember, assertAuthorized, changeRole, createWorkspace, getWorkspace, listMembers, listRemovedPeople, listWorkspaces, removeMember, renameWorkspace, restoreMember } from '@flux/core';
 import { accessPorts, accessReader } from '@flux/db';
-import { bodyId, expectedVersion, requires } from '../http/commands.js';
-import { nameSchema, versionSchema } from '../http/schemas.js';
+import { bodyId, requires } from '../http/commands.js';
+import { nameSchema } from '../http/schemas.js';
 import type { AccessContext } from './context.js';
 
 const roleSchema = { type: 'string', enum: ['owner', 'admin', 'member', 'guest'] } as const;
@@ -17,39 +13,7 @@ const roleSchema = { type: 'string', enum: ['owner', 'admin', 'member', 'guest']
  * (core `joinCompany`); `POST /workspaces` exists only on a test deployment, which keeps isolated workspaces.
  */
 export function workspaceRoutes(app: FastifyInstance, { db, principal, command, runCommand, sendCommand, workspaceScope, workspaceChange, verifiedEmailMembers, readOptions }: AccessContext,
-  boss: Pick<PgBoss, 'send'>, options: { testDeployment?: boolean } = {}) {
-  /** F-029 (S2): the sweep job commits with the flip, in its transaction. */
-  const sweepQueue: WorkspaceAiSweepQueue = async (tx, job) => {
-    await boss.send(WORKSPACE_AI_SWEEP_JOB, job, { db: fromDrizzle(tx as Parameters<typeof fromDrizzle>[0], sql), retryLimit: 5, retryDelay: 5 });
-  };
-  // F-029 (S2): an owner or admin turns AI off or on for the whole workspace. The flip commits first; the sweep then runs here at
-  // once (and again from the worker's job), so it never shares a transaction with the flip.
-  app.put<{ Params: { workspaceId: string }; Body: SetWorkspaceAiPolicyCommand }>(`${WORKSPACES_PATH}/:workspaceId/ai-policy`, {
-    schema: { body: { type: 'object', required: ['state'], additionalProperties: false,
-      properties: { state: { type: 'string', enum: ['allowed', 'blocked'] }, expectedVersion: versionSchema } } },
-  }, async (request, reply) => {
-    const response = await runCommand(request, {
-      operation: `PUT ${WORKSPACES_PATH}/:workspaceId/ai-policy`, scope: workspaceScope(request.params.workspaceId),
-      run: async (actor, conn) => {
-        const { sweep, ...result } = await setWorkspaceAiPolicy(actor, request.params.workspaceId,
-          { ...request.body, expectedVersion: expectedVersion(request) }, conn, accessPorts, sweepQueue);
-        return { ...result, sweep };
-      },
-      etag: (body) => { const version = (body as SetWorkspaceAiPolicyResult | null)?.ai.version; return typeof version === 'number' ? `"${version}"` : null; },
-      replay: requires('workspace', 'workspace.manage_ai', () => request.params.workspaceId),
-    });
-    const { sweep, ...body } = (response.body ?? {}) as SetWorkspaceAiPolicyResult & { sweep?: { workspaceId: string; epoch: number } | null };
-    let stopped = body.stopped ?? null;
-    if (sweep && !response.replayed) {
-      try { stopped = await sweepWorkspaceAi(sweep, db, accessPorts); }
-      catch (error) {
-        // Each step is its own transaction: what committed is reported, the rest is repeated by the worker's job.
-        if (error instanceof WorkspaceAiSweepIncomplete) stopped = error.swept;
-        request.log.error({ error }, 'The inline AI sweep did not finish; the worker job repeats it');
-      }
-    }
-    return sendCommand(reply, { ...response, body: { ...body, stopped } });
-  });
+  options: { testDeployment?: boolean } = {}) {
   app.get(WORKSPACES_PATH, async (request) => listWorkspaces(await principal(request), db, accessPorts, readOptions()));
   if (options.testDeployment) {
     app.post<{ Body: CreateWorkspaceCommand }>(WORKSPACES_PATH, {
@@ -95,6 +59,8 @@ export function workspaceRoutes(app: FastifyInstance, { db, principal, command, 
     listRemovedPeople(await principal(request), request.params.workspaceId, db, accessPorts));
   app.post<{ Params: { workspaceId: string; userId: string } }>(`${WORKSPACES_PATH}/:workspaceId/removed-people/:userId/restore`, async (request, reply) => {
     const actor = await principal(request);
+    // Authorize first, like the routes above: an id that is no company at all answers 404, not a failed query.
+    await assertAuthorized(actor, 'workspace.manage_members', workspaceScope(request.params.workspaceId), accessReader(db));
     return reply.code(201).send(await workspaceChange(request.params.workspaceId, (conn) => restoreMember(actor, request.params.workspaceId, request.params.userId, conn, accessPorts)));
   });
   app.delete<{ Params: { workspaceId: string; userId: string } }>(`${WORKSPACES_PATH}/:workspaceId/members/:userId`, async (request, reply) => {

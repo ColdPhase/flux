@@ -1,5 +1,6 @@
 import {
-  WORKSPACES_PATH, projectPath, workspaceProjectsPath, type ProjectViewId, projectViewsPath, type WorkspaceMember, type Page, type Project, workspaceMembersPath, IDEMPOTENCY_KEY_HEADER,
+  WORKSPACES_PATH, projectAiPolicyPath, projectLeavePath, projectPath, workspaceProjectsPath, type ProjectViewId, projectViewsPath, type SetSpaceAiResult, type SpaceAiState,
+  type WorkspaceMember, type Page, type Project, workspaceMembersPath, IDEMPOTENCY_KEY_HEADER,
 } from '@flux/contracts';
 import { request } from '../api/client';
 import { isWorkspaceLocked, type EncryptedWorkspace } from '../encryption/api';
@@ -33,9 +34,20 @@ export async function listAccessibleProjects(signal?: AbortSignal) {
   }
   return { workspaces, lockedWorkspaces, projects };
 }
-// A new space carries the intent's Idempotency-Key: a retry after a lost 201 replays it instead of making a second one.
-export const createProject = (workspaceId: string, name: string, idempotencyKey: string) =>
-  request<Project>(workspaceProjectsPath(workspaceId), { method: 'POST', body: { name, visibility: 'restricted' }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
+// A new space carries the intent's Idempotency-Key: a retry after a lost 201 replays it instead of making a second one. The people are
+// added as members and the creator is its admin, in the same command (F-037).
+export const createProject = (workspaceId: string, name: string, idempotencyKey: string, options: { ai?: boolean; people?: string[] } = {}) =>
+  request<Project>(workspaceProjectsPath(workspaceId), { method: 'POST', body: { name, visibility: 'restricted', ...options }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
+/** A space admin, or a company owner or admin, renames the space. */
+export const renameProject = (projectId: string, name: string, idempotencyKey: string) =>
+  request<Project>(projectPath(projectId), { method: 'PATCH', body: { name }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
+/** Erases the space and everything in it. */
+export const deleteProject = (projectId: string) => request<null>(projectPath(projectId), { method: 'DELETE' });
+/** The caller leaves the space. */
+export const leaveProject = (projectId: string) => request<null>(projectLeavePath(projectId), { method: 'POST' });
+/** Turns AI off or on in the space (AG-10); turning it off stops what agents were doing there at once. */
+export const setSpaceAi = (projectId: string, state: SpaceAiState, idempotencyKey: string) =>
+  request<SetSpaceAiResult>(projectAiPolicyPath(projectId), { method: 'PUT', body: { state }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
 /** Adds Map, Wiki or Agents to a project (#351); adding one it has changes nothing. */
 export const addProjectView = (projectId: string, view: ProjectViewId) =>
   request<Project>(projectViewsPath(projectId), { method: 'POST', body: { view }, headers: { [IDEMPOTENCY_KEY_HEADER]: crypto.randomUUID() } });

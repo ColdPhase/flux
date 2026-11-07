@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { accessReader, assistantChangeRows, assistantRemovalRows, REMOVAL_REASONS, taskGraphRows, type AssistantChangeRow, type DbExecutor, type Removal, type Database } from '@flux/db';
 import type { UpdateWorkCommand } from '@flux/contracts';
-import { DomainError, requireWorkspaceAi, restorableFields, WorkspaceAiBlockedError, type Principal, type UndoRecord } from '@flux/core';
+import { DomainError, requireSpaceAi, restorableFields, SpaceAiOffError, type Principal, type UndoRecord } from '@flux/core';
 import { cancelOwnerAssistantUnitInTransaction } from '../co-work/assistant-units.js';
 import { nativeMapRoomExists, prepareNativeMap } from '../editing/native-map-journal.js';
 import { nativeCapacityRefusal, nativeSketchInEventSession } from '../sketches/adapters.js';
@@ -17,9 +17,9 @@ import { transactionEventSession } from '../work/transaction-events.js';
 export interface UndoResult { done: boolean; message: string | null }
 export const CHANGED_SINCE = 'Changed since. Open it';
 export const NOT_UNDOABLE = 'This one can’t be undone';
-/** The changes whose Undo removes something no person can remove (#68): they follow the workspace AI lock (F-029), as the assistant's work does. */
+/** The changes whose Undo removes something no person can remove (#68): they follow the space's AI switch (AG-10), as the assistant's work does. */
 export const REMOVAL_OPERATIONS: ReadonlySet<string> = new Set(['map.create', 'decision.propose', 'result.record', 'conversation.create', 'conversation.reply']);
-export const requireAiOn = (db: Database, workspaceId: string) => db.transaction(async (tx) => { await requireWorkspaceAi(accessReader(tx as DbExecutor), workspaceId); });
+export const requireAiOn = (db: Database, projectId: string) => db.transaction(async (tx) => { await requireSpaceAi(accessReader(tx as DbExecutor), projectId); });
 class Since extends Error { constructor(readonly message: string = CHANGED_SINCE) { super(message); } }
 
 const sha = (value: string) => createHash('sha256').update(value).digest('hex');
@@ -149,8 +149,8 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
         case 'map.create': case 'decision.propose': case 'result.record': case 'conversation.create': case 'conversation.reply': {
           // The four things no person can remove (#68 closeout): taken back only if the assistant made it in this run and nobody has used it.
           if (plan.kind !== 'removal' || !id) throw new Since(NOT_UNDOABLE);
-          // F-029 and F-030: with AI off in the workspace (every encrypted one) nothing of the assistant's is touched; the policy row is held while it happens.
-          await requireWorkspaceAi(accessReader(tx as DbExecutor), row.workspaceId, { lock: true });
+          // AG-10 and F-030: with AI off in the space (every encrypted one) nothing of the assistant's is touched; the policy row is held while it happens.
+          await requireSpaceAi(accessReader(tx as DbExecutor), row.projectId, { lock: true });
           // A map's row before the graph, as every writer of its thoughts takes them (a thought written while this waits for the graph lock would
           // otherwise cross it); everything else takes the graph first.
           if (row.operation === 'map.create') await assistantRemovalRows(tx as DbExecutor).lockMap(id);
@@ -188,7 +188,7 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
     return { done: true, message: row.operation === 'doc.create' ? 'Moved to your drafts' : null };
   } catch (error) {
     if (error instanceof Since) return { done: false, message: error.message };
-    if (error instanceof WorkspaceAiBlockedError) throw error;
+    if (error instanceof SpaceAiOffError) throw error;
     // A domain refusal (a task already in use, a page someone else holds, a thought gone) is the same truth: it changed.
     if (error instanceof DomainError || (error instanceof Error && 'status' in error)) return { done: false, message: CHANGED_SINCE };
     throw error;

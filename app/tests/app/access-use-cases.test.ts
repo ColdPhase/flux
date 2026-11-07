@@ -12,22 +12,25 @@ import {
   createDraft,
   createProject,
   createWorkspace,
+  deleteProject,
   ForbiddenError,
   grantProject,
   InvalidInputError,
+  leaveProject,
   moveDraft,
   NotFoundError,
   PreconditionRequiredError,
   removeMember,
+  renameProject,
   revokeAgent,
+  RuleViolationError,
   revokeProjectGrant,
-  setWorkspaceAiPolicy,
+  setSpaceAi,
   shareDraft,
-  sweepWorkspaceAi,
+  sweepSpaceAi,
   updateDraft,
   VersionConflictError,
-  WorkspaceAiBlockedError,
-  WorkspaceAiSweepIncomplete,
+  SpaceAiSweepIncomplete,
   type AccessPorts,
   type Actor,
   type DomainEventSink,
@@ -78,6 +81,16 @@ interface Scene {
   existingGrant?: GrantRecord | null;
   draft?: DraftRecord;
   views?: string[];
+  /** The space the reader returns (default `workspace`, as the company's Everyone is). */
+  visibility?: 'workspace' | 'restricted';
+  /** Whether the scene's workspace is the company (F-037). */
+  company?: boolean;
+  /** The role of the existing grant `lockGrantOf` finds. */
+  grantRole?: GrantRecord['role'];
+  /** The space admins `listGrants` finds. */
+  admins?: number;
+  /** `member` finds nobody in the company. */
+  noMember?: boolean;
   failStep?: string;
 }
 
@@ -92,10 +105,10 @@ function scene(options: Scene = {}, checked = true) {
   const actor = (principal: Principal, workspaceId: string): Actor => ({ principal, workspaceId, role: principal.kind === 'human' ? options.role ?? 'owner' : null, agent: null, active: true });
   const access = {
     loadActor: async (principal: Principal, workspaceId: string, o?: { lock?: boolean }) => { log(`access.loadActor${o?.lock ? '(lock)' : ''}`); return actor(principal, workspaceId); },
-    workspaceAi: async (_workspaceId: string, o?: { lock?: boolean }) => { log(`access.workspaceAi${o?.lock ? '(lock)' : ''}`); return { state: options.aiState ?? 'allowed', epoch: 4, version: 2 }; },
+    spaceAi: async (_projectId: string, o?: { lock?: boolean }) => { log(`access.spaceAi${o?.lock ? '(lock)' : ''}`); return { state: options.aiState ?? 'allowed', epoch: 4 }; },
     locateProject: async () => { log('access.locateProject'); return { workspaceId: WS }; },
     lockProjectAccess: async () => { log('access.lockProjectAccess'); },
-    readProject: async () => { log('access.readProject'); return { project: { ...project, views: options.views ?? [] }, level: 3 }; },
+    readProject: async () => { log('access.readProject'); return { project: { ...project, views: options.views ?? [], visibility: options.visibility ?? project.visibility }, level: 3 }; },
     locateDraft: async () => { log('access.locateDraft'); return { workspaceId: WS }; },
     lockDraftForUpdate: async () => { log('access.lockDraftForUpdate'); return { projectId: (options.draft ?? draftRow()).projectId }; },
     readDraft: async (_actor: Actor, _id: string, o: { lock: boolean }) => {
@@ -106,16 +119,15 @@ function scene(options: Scene = {}, checked = true) {
   };
   const workspaces = {
     createWithOwner: async (row: { id: string; name: string }) => { log('workspaces.createWithOwner'); return { id: row.id, name: row.name, version: 1, encrypted: false, company: false, createdAt: now }; },
-    aiPolicies: async () => { log('workspaces.aiPolicies'); return []; },
     lock: async () => { log('workspaces.lock'); },
-    lockAiPolicy: async () => { log('workspaces.lockAiPolicy'); return { state: 'allowed' as const, epoch: 3, version: 1 }; },
-    updateAiPolicy: async () => { log('workspaces.updateAiPolicy'); return { epoch: 4 }; },
+    company: async () => { log('workspaces.company'); return options.company ? { id: WS, name: 'Company', version: 1, encrypted: false, company: true, createdAt: now } : null; },
     findAccount: async (lookup: unknown) => { log(`workspaces.findAccount(${'userId' in (lookup as object) ? 'id' : 'email'})`); return { id: TARGET, email: 'target@example.test', name: 'Target', emailVerified: true }; },
     insertMember: async (row: { role: WorkspaceRole }) => { log('workspaces.insertMember'); return memberRow(row.role); },
     lockMember: async () => { log('workspaces.lockMember'); return memberRow(options.targetRole ?? 'member'); },
     ownerCount: async () => { log('workspaces.ownerCount'); return options.ownerCount ?? 2; },
     setRole: async (_w: string, _u: string, role: WorkspaceRole) => { log('workspaces.setRole'); return memberRow(role); },
     deleteMember: async () => { log('workspaces.deleteMember'); },
+    liftDeniedGrants: async () => { log('workspaces.liftDeniedGrants'); },
     recordRemoved: async () => { log('workspaces.recordRemoved'); },
   };
   const encryption = {
@@ -128,8 +140,11 @@ function scene(options: Scene = {}, checked = true) {
   };
   const projects = {
     lockForGrantChange: async () => { log('projects.lockForGrantChange'); },
-    member: async () => { log('projects.member'); return memberRow('member'); },
-    lockGrantOf: async () => { log('projects.lockGrantOf'); return options.existingGrant ?? null; },
+    member: async () => { log('projects.member'); return options.noMember ? null : memberRow('member'); },
+    lockGrantOf: async () => { log('projects.lockGrantOf'); return options.existingGrant !== undefined ? options.existingGrant : options.grantRole ? { ...grantRow(OWNER), role: options.grantRole } : null; },
+    listGrants: async () => { log('projects.listGrants'); return Array.from({ length: options.admins ?? 1 }, (_, n) => ({ ...grantRow(`admin-${n}`), role: 'manager' as const })); },
+    rename: async (_id: string, _workspaceId: string, name: string) => { log('projects.rename'); return { ...project, name, version: 2 }; },
+    erase: async () => { log('projects.erase'); },
     insertGrant: async () => { log('projects.insertGrant'); return options.grantWrite ?? { grant: grantRow() }; },
     updateGrant: async () => { log('projects.updateGrant'); return options.grantWrite ?? { grant: grantRow() }; },
     lockGrant: async () => { log('projects.lockGrant'); return grantRow(); },
@@ -141,6 +156,9 @@ function scene(options: Scene = {}, checked = true) {
       return { ...project, id: row.id, name: row.name, visibility: row.visibility, views: row.views };
     },
     setViews: async (_id: string, views: string[]) => { log('projects.setViews'); return { ...project, views, version: 2 }; },
+    aiPolicies: async () => { log('projects.aiPolicies'); return [{ projectId: PROJECT, state: 'allowed' as const, changedAt: now, changedBy: null }]; },
+    lockAiPolicy: async () => { log('projects.lockAiPolicy'); return { projectId: PROJECT, state: 'allowed' as const, epoch: 3 }; },
+    updateAiPolicy: async () => { log('projects.updateAiPolicy'); return { epoch: 4 }; },
   };
   const agents = {
     insert: async (row: { id: string; workspaceId: string; name: string; ownerUserId: string }) => {
@@ -160,7 +178,7 @@ function scene(options: Scene = {}, checked = true) {
       return draftRow({ ...audience, version: 4 });
     },
   };
-  const aiSweep = Object.fromEntries(['endQueuedRuns', 'stopInFlightRuns', 'closeRunTokens', 'endComparisons', 'skipReactionEvents', 'cancelRequests', 'stopUnits', 'revokeSessions']
+  const aiSweep = Object.fromEntries(['endQueuedRuns', 'stopInFlightRuns', 'closeRunTokens', 'endComparisons', 'skipReactionEvents', 'cancelRequests', 'stopUnits']
     .map((step) => [step, async () => {
       log(`aiSweep.${step}`);
       if (options.failStep === step) throw new Error(`${step} failed`);
@@ -211,7 +229,7 @@ describe('workspace and membership use cases over in-memory repositories', () =>
     const created = await createWorkspace(human(OWNER), { name: ' Lamp shop ' }, s.db, s.ports);
     assert.equal(created.name, 'Lamp shop');
     assert.equal(created.role, 'owner');
-    assert.deepEqual(s.calls, ['begin', 'workspaces.createWithOwner', ...EVENT_LAST, 'workspaces.aiPolicies', 'commit']);
+    assert.deepEqual(s.calls, ['begin', 'workspaces.createWithOwner', ...EVENT_LAST, 'commit']);
     const agent = scene();
     await assert.rejects(createWorkspace({ kind: 'agent', id: randomUUID() }, { name: 'No' }, agent.db, agent.ports), ForbiddenError);
     assert.deepEqual(agent.calls, [], 'no transaction opens for a refused caller');
@@ -242,11 +260,11 @@ describe('workspace and membership use cases over in-memory repositories', () =>
     await assert.rejects(addMember(human(OWNER), WS, { userId: TARGET, role: 'member' }, twice.db, twice.ports), (error: unknown) => error instanceof ConflictError && error.code === 'ALREADY_MEMBER');
   });
 
-  test('changeRole: the AI policy row before the workspace row before the member row; the event, then the account, last', async () => {
+  test('changeRole: the workspace row before the member row; a promoted member\'s old deny goes; the event, then the account, last', async () => {
     const s = scene({ targetRole: 'member' });
     const changed = await changeRole(human(OWNER), WS, TARGET, { role: 'admin' }, s.db, s.ports);
     assert.equal(changed.role, 'admin');
-    assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'access.workspaceAi(lock)', 'workspaces.lock', 'access.loadActor(lock)', 'workspaces.lockMember', 'workspaces.setRole',
+    assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'workspaces.lock', 'access.loadActor(lock)', 'workspaces.lockMember', 'workspaces.setRole', 'workspaces.liftDeniedGrants',
       ...EVENT_LAST, 'workspaces.findAccount(id)', 'commit']);
   });
 
@@ -259,7 +277,7 @@ describe('workspace and membership use cases over in-memory repositories', () =>
   test('changeRole in a sealed workspace: the key row is locked before the F-029 order, the password dropped before the role changes', async () => {
     const s = scene({ sealed: true, targetRole: 'admin' });
     await changeRole(human(OWNER), WS, TARGET, { role: 'member' }, s.db, s.ports);
-    assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'encryption.memberRole', 'encryption.keys(update)', 'access.workspaceAi(lock)', 'workspaces.lock', 'access.loadActor(lock)',
+    assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'encryption.memberRole', 'encryption.keys(update)', 'workspaces.lock', 'access.loadActor(lock)',
       'workspaces.lockMember', 'encryption.dropUnlockPassword', 'workspaces.setRole', 'encryption.recordRemovals', ...EVENT_LAST, 'workspaces.findAccount(id)', 'commit']);
   });
 
@@ -273,48 +291,50 @@ describe('workspace and membership use cases over in-memory repositories', () =>
   test('removeMember: a person leaving needs only workspace.read; the same locks; the event last', async () => {
     const s = scene({ role: 'guest', targetRole: 'guest' });
     await removeMember(human(TARGET), WS, TARGET, s.db, s.ports);
-    assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'access.workspaceAi(lock)', 'workspaces.lock', 'access.loadActor(lock)', 'workspaces.lockMember', 'workspaces.deleteMember', 'workspaces.recordRemoved', ...EVENT_LAST, 'commit']);
+    assert.deepEqual(s.calls, ['begin', 'encryption.sealed', 'workspaces.lock', 'access.loadActor(lock)', 'workspaces.lockMember', 'workspaces.deleteMember', 'workspaces.recordRemoved', ...EVENT_LAST, 'commit']);
     // S2c: an owner or admin removed from a sealed workspace: the key row first, the password dropped, the removal pinned.
     const sealed = scene({ sealed: true, targetRole: 'admin' });
     await removeMember(human(OWNER), WS, TARGET, sealed.db, sealed.ports);
-    assert.deepEqual(sealed.calls, ['begin', 'encryption.sealed', 'encryption.memberRole', 'encryption.keys(update)', 'access.workspaceAi(lock)', 'workspaces.lock',
+    assert.deepEqual(sealed.calls, ['begin', 'encryption.sealed', 'encryption.memberRole', 'encryption.keys(update)', 'workspaces.lock',
       'access.loadActor(lock)', 'workspaces.lockMember', 'encryption.dropUnlockPassword', 'workspaces.deleteMember', 'workspaces.recordRemoved', 'encryption.recordRemovals', ...EVENT_LAST, 'commit']);
     const other = scene({ role: 'guest', targetRole: 'member' });
     await assert.rejects(removeMember(human(OWNER), WS, TARGET, other.db, other.ports), ForbiddenError, 'a guest cannot remove someone else');
   });
 
-  test('setWorkspaceAiPolicy: the policy row first, the actor under lock, the update, the sweep job, then the event', async () => {
+  test('setSpaceAi: the policy row first, the actor under lock, the update, the sweep job, then the event', async () => {
     const s = scene();
     const queued: unknown[] = [];
-    const result = await setWorkspaceAiPolicy(human(OWNER), WS, { state: 'blocked', expectedVersion: 1 }, s.db, s.ports, async (_tx, job) => { s.calls.push('queue'); queued.push(job); });
-    assert.deepEqual(queued, [{ workspaceId: WS, epoch: 4 }]);
+    const result = await setSpaceAi(human(OWNER), PROJECT, { state: 'blocked' }, s.db, s.ports, async (_tx, job) => { s.calls.push('queue'); queued.push(job); });
+    assert.deepEqual(queued, [{ projectId: PROJECT, epoch: 4 }]);
     assert.equal(result.changed, true);
-    assert.deepEqual(s.calls, ['begin', 'workspaces.lockAiPolicy', 'access.loadActor(lock)', 'encryption.sealed', 'workspaces.updateAiPolicy', 'queue', ...EVENT_LAST, 'workspaces.aiPolicies', 'commit']);
+    assert.deepEqual(s.calls, ['begin', 'projects.lockAiPolicy', 'access.locateProject', 'access.loadActor(lock)', 'access.lockProjectAccess', 'access.readProject', 'encryption.sealed',
+      'projects.updateAiPolicy', 'queue', ...EVENT_LAST, 'commit']);
   });
 
-  test('setWorkspaceAiPolicy: a sealed workspace answers before the permission or the version, a stale version is a conflict', async () => {
+  test('setSpaceAi: a sealed workspace answers before the permission, a space admin or a company admin may, a member may not', async () => {
     const sealed = scene({ sealed: true, role: 'member' });
-    await assert.rejects(setWorkspaceAiPolicy(human(OWNER), WS, { state: 'allowed' }, sealed.db, sealed.ports, async () => undefined),
+    await assert.rejects(setSpaceAi(human(OWNER), PROJECT, { state: 'allowed' }, sealed.db, sealed.ports, async () => undefined),
       (error: unknown) => error instanceof ConflictError && error.code === 'WORKSPACE_ENCRYPTED_AI_OFF');
-    const nobody = scene({ role: 'member' });
-    await assert.rejects(setWorkspaceAiPolicy(human(OWNER), WS, { state: 'allowed', expectedVersion: 1 }, nobody.db, nobody.ports, async () => undefined),
-      (error: unknown) => error instanceof ForbiddenError && error.code === 'WORKSPACE_AI_ADMIN_REQUIRED');
-    const missing = scene();
-    await assert.rejects(setWorkspaceAiPolicy(human(OWNER), WS, { state: 'blocked' }, missing.db, missing.ports, async () => undefined), PreconditionRequiredError);
-    const stale = scene();
-    await assert.rejects(setWorkspaceAiPolicy(human(OWNER), WS, { state: 'blocked', expectedVersion: 9 }, stale.db, stale.ports, async () => undefined), VersionConflictError);
-    assert.ok(!stale.calls.includes('workspaces.updateAiPolicy'));
+    // The in-memory reader gives this person level 3 (a space admin); a level below that is a member, who may not.
+    const admin = scene({ role: 'member' });
+    assert.equal((await setSpaceAi(human(OWNER), PROJECT, { state: 'allowed' }, admin.db, admin.ports, async () => undefined)).changed, false, 'the same state changes nothing');
+    assert.ok(!admin.calls.includes('projects.updateAiPolicy'));
+    const bad = scene();
+    await assert.rejects(setSpaceAi(human(OWNER), PROJECT, { state: 'maybe' as 'allowed' }, bad.db, bad.ports, async () => undefined), InvalidInputError);
+    const bot = scene();
+    await assert.rejects(setSpaceAi({ kind: 'agent', id: AGENT }, PROJECT, { state: 'blocked' }, bot.db, bot.ports, async () => undefined),
+      (error: unknown) => error instanceof ForbiddenError && error.code === 'SPACE_AI_ADMIN_REQUIRED', 'an agent never changes it');
   });
 
-  test('sweepWorkspaceAi: one transaction per step; a failing step is reported and the others still commit', async () => {
+  test('sweepSpaceAi: one transaction per step; a failing step is reported and the others still commit', async () => {
     const ok = scene();
-    const swept = await sweepWorkspaceAi({ workspaceId: WS, epoch: 2 }, ok.db, ok.ports);
-    assert.deepEqual(swept, { runs: 0, tokens: 2, comparisons: 2, reactions: 2, requests: 2, units: 2, sessions: 2, failed: [] });
-    assert.equal(ok.calls.filter((call) => call === 'begin').length, 7);
+    const swept = await sweepSpaceAi({ projectId: PROJECT, epoch: 2 }, ok.db, ok.ports);
+    assert.deepEqual(swept, { runs: 0, tokens: 2, comparisons: 2, reactions: 2, requests: 2, units: 2, failed: [] });
+    assert.equal(ok.calls.filter((call) => call === 'begin').length, 6);
     const broken = scene({ failStep: 'cancelRequests' });
-    await assert.rejects(sweepWorkspaceAi({ workspaceId: WS, epoch: 2 }, broken.db, broken.ports), (error: unknown) => error instanceof WorkspaceAiSweepIncomplete
-      && error.swept.failed.join() === 'requests' && error.swept.units === 2 && error.swept.sessions === 2);
-    await assert.rejects(sweepWorkspaceAi({ workspaceId: 'not-a-uuid', epoch: 2 }, ok.db, ok.ports), InvalidInputError);
+    await assert.rejects(sweepSpaceAi({ projectId: PROJECT, epoch: 2 }, broken.db, broken.ports), (error: unknown) => error instanceof SpaceAiSweepIncomplete
+      && error.swept.failed.join() === 'requests' && error.swept.units === 2);
+    await assert.rejects(sweepSpaceAi({ projectId: 'not-a-uuid', epoch: 2 }, ok.db, ok.ports), InvalidInputError);
   });
 });
 
@@ -363,14 +383,14 @@ describe('grant, agent and draft use cases over in-memory repositories', () => {
       'projects.memberRole', 'projects.deleteGrant', ...EVENT_LAST, 'commit']);
   });
 
-  test('createAgent: the actor under lock, the AI policy under lock, the insert, the event last; AI off refuses before the insert', async () => {
+  test('createAgent: the actor under lock, the insert, the event last; an agent belongs to its person, so no space\'s switch is read', async () => {
     const s = scene();
     const agent = await createAgent(human(OWNER), WS, { name: 'Helper', owner: 'self' }, s.db, s.ports);
     assert.deepEqual(agent.owner, { kind: 'human', id: OWNER });
-    assert.deepEqual(s.calls, ['begin', 'access.loadActor(lock)', 'access.workspaceAi(lock)', 'agents.insert', ...EVENT_LAST, 'commit']);
+    assert.deepEqual(s.calls, ['begin', 'access.loadActor(lock)', 'agents.insert', ...EVENT_LAST, 'commit']);
     const off = scene({ aiState: 'blocked' });
-    await assert.rejects(createAgent(human(OWNER), WS, { name: 'Helper', owner: 'self' }, off.db, off.ports), WorkspaceAiBlockedError);
-    assert.ok(!off.calls.includes('agents.insert'));
+    await createAgent(human(OWNER), WS, { name: 'Helper', owner: 'self' }, off.db, off.ports);
+    assert.ok(off.calls.includes('agents.insert'));
   });
 
   test('createDraft: the workspace under lock, the target project under lock, the insert, the event last', async () => {
@@ -414,23 +434,77 @@ describe('the remaining mutations, and the check that every port is bound to its
     const created = await createProject(human(OWNER), WS, { name: 'Lamp', visibility: 'restricted' }, s.db, s.ports);
     assert.deepEqual([created.name, created.visibility, created.access], ['Lamp', 'restricted', 'manager']);
     // F-037: the creator becomes the new space's first admin in the same transaction.
-    assert.deepEqual(s.calls, ['begin', 'access.loadActor(lock)', 'projects.insert', 'projects.insertGrant', ...EVENT_LAST, 'commit']);
+    assert.deepEqual(s.calls, ['begin', 'access.loadActor(lock)', 'projects.insert', 'projects.insertGrant', ...EVENT_LAST, 'projects.aiPolicies', 'commit']);
     const sunk = scene();
     const recorded: string[] = [];
     const sink: DomainEventSink = { record: async (_principal, _workspaceId, kind) => { recorded.push(kind); } };
     await createProject(human(OWNER), WS, { name: 'Lamp' }, sunk.db, sunk.ports, sink);
     assert.deepEqual(recorded, ['project.created.v1']);
-    assert.deepEqual(sunk.calls, ['begin', 'access.loadActor(lock)', 'projects.insert', 'projects.insertGrant', 'commit'], 'the sink replaces the event ports');
+    assert.deepEqual(sunk.calls, ['begin', 'access.loadActor(lock)', 'projects.insert', 'projects.insertGrant', 'projects.aiPolicies', 'commit'], 'the sink replaces the event ports');
+  });
+
+  test('createProject: the people are added as members in the same transaction, AI off is the first write of its switch, someone outside the company stops it all', async () => {
+    const s = scene();
+    const created = await createProject(human(OWNER), WS, { name: 'Payroll', people: [TARGET, TARGET, OWNER], ai: false }, s.db, s.ports);
+    assert.equal(created.ai, 'blocked');
+    assert.deepEqual(s.calls, ['begin', 'access.loadActor(lock)', 'projects.insert', 'projects.insertGrant', 'projects.member', 'projects.insertGrant', 'projects.lockAiPolicy', 'projects.updateAiPolicy',
+      ...EVENT_LAST, ...EVENT_LAST, 'commit'], 'the creator is listed once and is not added twice; one grant event for the person added');
+    const outside = scene({ noMember: true });
+    await assert.rejects(createProject(human(OWNER), WS, { name: 'Payroll', people: [TARGET] }, outside.db, outside.ports),
+      (error: unknown) => error instanceof RuleViolationError && error.code === 'NOT_A_MEMBER');
+    const badAi = scene();
+    await assert.rejects(createProject(human(OWNER), WS, { name: 'Payroll', ai: 'no' as unknown as boolean }, badAi.db, badAi.ports), InvalidInputError);
+    const badPeople = scene();
+    await assert.rejects(createProject(human(OWNER), WS, { name: 'Payroll', people: [1] as unknown as string[] }, badPeople.db, badPeople.ports), InvalidInputError);
+  });
+
+  test('renameProject: the project row, the actor with the grants under lock, the update, the event last; a name is required', async () => {
+    const s = scene();
+    const renamed = await renameProject(human(OWNER), PROJECT, { name: ' Payroll ' }, s.db, s.ports);
+    assert.deepEqual([renamed.name, renamed.version], ['Payroll', 2]);
+    assert.deepEqual(s.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.rename', ...EVENT_LAST, 'projects.aiPolicies', 'commit']);
+    const blank = scene();
+    await assert.rejects(renameProject(human(OWNER), PROJECT, { name: '  ' }, blank.db, blank.ports), InvalidInputError);
+  });
+
+  test('deleteProject: the project row, the actor under lock, the audience while the space exists, the erasure, the event last; Everyone cannot be deleted', async () => {
+    const s = scene({ visibility: 'restricted', company: true });
+    await deleteProject(human(OWNER), PROJECT, s.db, s.ports);
+    assert.deepEqual(s.calls, ['begin', 'projects.lockForGrantChange', ...target, 'events.candidates', 'projects.erase', 'events.insert', 'commit'], 'a restricted space of the company is erased');
+    const everyone = scene({ company: true });
+    await assert.rejects(deleteProject(human(OWNER), PROJECT, everyone.db, everyone.ports), (error: unknown) => error instanceof RuleViolationError && error.code === 'EVERYONE_CANNOT_BE_DELETED');
+    assert.ok(!everyone.calls.includes('projects.erase'));
+    // A workspace-visible space of an isolated test workspace is not Everyone: only the company has one.
+    const isolated = scene({ company: false });
+    await deleteProject(human(OWNER), PROJECT, isolated.db, isolated.ports);
+    assert.ok(isolated.calls.includes('projects.erase'));
+  });
+
+  test('leaveProject: the caller\'s own grant goes; a space keeps an admin; someone who was never added has nothing to leave; nobody leaves Everyone', async () => {
+    const member = scene({ grantRole: 'contributor', visibility: 'restricted' });
+    await leaveProject(human(OWNER), PROJECT, member.db, member.ports);
+    assert.deepEqual(member.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.lockGrantOf', 'projects.deleteGrant', ...EVENT_LAST, 'commit']);
+    const spare = scene({ grantRole: 'manager', admins: 2, visibility: 'restricted' });
+    await leaveProject(human(OWNER), PROJECT, spare.db, spare.ports);
+    assert.ok(spare.calls.includes('projects.deleteGrant'), 'an admin leaves when another admin stays');
+    const last = scene({ grantRole: 'manager', admins: 1, visibility: 'restricted' });
+    await assert.rejects(leaveProject(human(OWNER), PROJECT, last.db, last.ports), (error: unknown) => error instanceof RuleViolationError && error.code === 'LAST_SPACE_ADMIN');
+    assert.ok(!last.calls.includes('projects.deleteGrant'));
+    const company = scene({ existingGrant: null, visibility: 'restricted' });
+    await assert.rejects(leaveProject(human(OWNER), PROJECT, company.db, company.ports), (error: unknown) => error instanceof RuleViolationError && error.code === 'NOT_ADDED');
+    const everyone = scene({ grantRole: 'manager', admins: 2, company: true });
+    await assert.rejects(leaveProject(human(OWNER), PROJECT, everyone.db, everyone.ports), (error: unknown) => error instanceof RuleViolationError && error.code === 'EVERYONE_CANNOT_BE_LEFT');
+    assert.ok(!everyone.calls.includes('projects.deleteGrant'));
   });
 
   test('addProjectView: the project row for the change, the project under lock, the update, the event last; a view already shown writes nothing', async () => {
     const s = scene();
     const added = await addProjectView(human(OWNER), PROJECT, { view: 'map' }, s.db, s.ports);
     assert.deepEqual(added.views, ['map']);
-    assert.deepEqual(s.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.setViews', ...EVENT_LAST, 'commit']);
+    assert.deepEqual(s.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.setViews', ...EVENT_LAST, 'projects.aiPolicies', 'commit']);
     const again = scene({ views: ['map'] });
     await addProjectView(human(OWNER), PROJECT, { view: 'map' }, again.db, again.ports);
-    assert.deepEqual(again.calls, ['begin', 'projects.lockForGrantChange', ...target, 'commit']);
+    assert.deepEqual(again.calls, ['begin', 'projects.lockForGrantChange', ...target, 'projects.aiPolicies', 'commit']);
   });
 
   test('shareDraft: the draft row and its project, the version check, the target project under lock, the update, the event last', async () => {
@@ -469,8 +543,8 @@ describe('the remaining mutations, and the check that every port is bound to its
     await addMember(human(OWNER), WS, { userId: TARGET, role: 'member' }, s.db, s.ports);
     assert.deepEqual(s.bindings.map(({ port, handle }) => `${port}:${handle}`), ['workspaces:tx1', 'access:tx1', 'access:tx1', 'events:tx1']);
     const sweep = scene();
-    await sweepWorkspaceAi({ workspaceId: WS, epoch: 2 }, sweep.db, sweep.ports);
-    assert.deepEqual(sweep.bindings.map(({ handle }) => handle), ['tx1', 'tx2', 'tx3', 'tx4', 'tx5', 'tx6', 'tx7'], 'each sweep step binds its own transaction');
+    await sweepSpaceAi({ projectId: PROJECT, epoch: 2 }, sweep.db, sweep.ports);
+    assert.deepEqual(sweep.bindings.map(({ handle }) => handle), ['tx1', 'tx2', 'tx3', 'tx4', 'tx5', 'tx6'], 'each sweep step binds its own transaction');
     const miswired = scene({}, false);
     await miswired.db.transaction(async () => { miswired.ports.workspaces(miswired.db); });
     assert.throws(() => miswired.assertBound(), /workspaces was bound to db while tx1 was open/);

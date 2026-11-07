@@ -242,11 +242,11 @@ export interface PersonalRunAccess {
   canInvoke(principal: Principal, agentId: string, options?: { lock?: boolean }): Promise<boolean>;
   canReadSketch(principal: Principal, sketchId: string, options?: { lock?: boolean }): Promise<boolean>;
   /**
-   * F-029: the workspace AI policy (`lock` holds it `FOR SHARE`). `requireWorkspaceAi` throws WORKSPACE_AI_BLOCKED unless
+   * AG-10: the space's AI switch (`lock` holds it `FOR SHARE`). `requireSpaceAi` throws SPACE_AI_OFF unless
    * AI is on there and, given an item's admission `epoch`, still at it; it returns the epoch a new run records.
    */
-  workspaceAi(workspaceId: string, options?: { lock?: boolean }): Promise<{ state: 'allowed' | 'blocked'; epoch: number }>;
-  requireWorkspaceAi(workspaceId: string, options?: { lock?: boolean; epoch?: number }): Promise<{ epoch: number }>;
+  spaceAi(projectId: string, options?: { lock?: boolean }): Promise<{ state: 'allowed' | 'blocked'; epoch: number }>;
+  requireSpaceAi(projectId: string, options?: { lock?: boolean; epoch?: number }): Promise<{ epoch: number }>;
 }
 
 /** Queues the dispatch job of a run in the unit of work. The payload is the run id only. */

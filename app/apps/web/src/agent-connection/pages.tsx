@@ -1,5 +1,4 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
-import { isAiBlocked } from '../ai/workspaceAi';
 import { Link, redirect, useLoaderData, type LoaderFunctionArgs } from 'react-router';
 import { workspaceAgentsPath, type Agent, type AgentConnection, type AgentScope, type AgentStandingGrant, type ExternalClientDesignation, type Project, type Workspace } from '@flux/contracts';
 import { getMe } from '../api/auth';
@@ -94,24 +93,20 @@ export async function agentConnectionLoader({ request }: LoaderFunctionArgs): Pr
     connections,
     projects: accessible.projects,
     workspaces: accessible.workspaces,
-    // F-029 (#614): an agent of a workspace whose AI is off cannot be connected there, so it is not offered.
-    agents: byWorkspace.flat().filter((agent) => agent.owner.id === me.user.id && !agent.revokedAt
-      && accessible.workspaces.find((workspace) => workspace.id === agent.workspaceId)?.ai?.state !== 'blocked'),
+    agents: byWorkspace.flat().filter((agent) => agent.owner.id === me.user.id && !agent.revokedAt),
     ownerId: me.user.id,
     oauthQuery,
-    // A held connection of a workspace whose AI is off is refused (F-029, #614): nothing is held then.
     heldConnectionId: requester.connectionId,
     requesterClient: requester.clientDesignation,
     actionGrants: Object.fromEntries(actionGrants),
   };
 }
 
-export async function agentConsentLoader({ request }: LoaderFunctionArgs): Promise<{ context: ConsentContext | null; oauthQuery: string }> {
+export async function agentConsentLoader({ request }: LoaderFunctionArgs): Promise<{ context: ConsentContext; oauthQuery: string }> {
   await requirePerson(request);
   const oauthQuery = queryFrom(request);
   if (!oauthQuery) throw new Response('The authorization request is missing. Start again in your agent client.', { status: 400 });
-  // The connection's workspace has AI off (F-029, #614): the client is not asked for consent, and the page says why.
-  const context = await getConsentContext(oauthQuery, request.signal).catch((error: unknown) => (isAiBlocked(error) ? null : Promise.reject(error)));
+  const context = await getConsentContext(oauthQuery, request.signal);
   return { context, oauthQuery };
 }
 
@@ -167,11 +162,7 @@ function ConnectionSummary({ connection, agentName, projectNames, showScopes = t
 }
 
 export function AgentConnectionPage() {
-  const { connections, projects, workspaces: everyWorkspace, agents, oauthQuery, heldConnectionId, requesterClient, actionGrants } = useLoaderData() as ConnectionData;
-  // F-029 (#614): a workspace whose AI is off is named once and not offered; its other work is unaffected.
-  const aiOffSpaces = everyWorkspace.filter((workspace) => workspace.ai?.state === 'blocked');
-  const workspaces = everyWorkspace.filter((workspace) => workspace.ai?.state !== 'blocked');
-  // A client authorizing against a workspace whose AI is off cannot pick that connection (the server refuses it).
+  const { connections, projects, workspaces, agents, oauthQuery, heldConnectionId, requesterClient, actionGrants } = useLoaderData() as ConnectionData;
   const [items, setItems] = useState(connections.filter((connection) => !connection.revokedAt && (!oauthQuery || agents.some((agent) => agent.id === connection.agentId))));
   const [ended, setEnded] = useState(connections.filter((connection) => connection.revokedAt));
   const [selected, setSelected] = useState<string | null>((items.find((item) => item.id === heldConnectionId) ?? items[0])?.id ?? null);
@@ -204,7 +195,8 @@ export function AgentConnectionPage() {
   const agentNames = new Map(personalAgents.map((agent) => [agent.id, agent.name]));
   const chosenAgent = personalAgents.find((agent) => agent.id === agentId);
   const agentSpace = quick && !chosenAgent ? workspaceId : chosenAgent?.workspaceId;
-  const eligibleProjects = projects.filter((project) => project.workspaceId === agentSpace && !aiOffSpaces.some((space) => space.id === project.workspaceId));
+  // An agent is connected only to a space whose AI is on (AG-10); the one that is off is simply not offered.
+  const eligibleProjects = projects.filter((project) => project.workspaceId === agentSpace && project.ai !== 'blocked');
   const writes = scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute');
 
   /** The agent has exactly your rights (F-036 AG-3): it may use a project you can read, and act where you can write. */
@@ -332,10 +324,6 @@ export function AgentConnectionPage() {
     </FlowHeader>
     {error ? <div className="connection__alert" role="alert">{error}</div> : null}
     {created ? <p className="connection__created" role="status"><Icon name="check" size={14} /> {created}</p> : null}
-    {aiOffSpaces.length ? <div className="connection__help" role="note" data-ai-off="">
-      {aiOffSpaces.map((space) => <p key={space.id}><strong>AI is off in {space.name}.</strong> Its admins turned off agents and assistants there, so nothing can be connected to it. Everything else works as usual.</p>)}
-      {!workspaces.length ? <p><Link to="/">Back to Flux</Link></p> : null}
-    </div> : null}
     {items.length ? <fieldset className="connection__group" disabled={busy}>
       <legend>Saved selections</legend>
       <div className="connection__choices">{items.map((connection) => <div className="connection__saved" key={connection.id}>
@@ -452,19 +440,8 @@ function ConsentDestination({ context }: { context: ConsentContext }) {
 }
 
 export function AgentConsentPage() {
-  const { context, oauthQuery } = useLoaderData() as { context: ConsentContext | null; oauthQuery: string };
-  if (!context) return <ConsentAiOff />;
+  const { context, oauthQuery } = useLoaderData() as { context: ConsentContext; oauthQuery: string };
   return <ConsentReview context={context} oauthQuery={oauthQuery} />;
-}
-
-/** The consent page for a connection whose workspace has AI off: nothing is asked of the person and nothing is granted. */
-function ConsentAiOff() {
-  return <section className="connection connection--consent" aria-label="Agent access consent" data-ai-off="">
-    <FlowHeader step="Agent connection" title="AI is off here">
-      Its admins turned off agents and assistants there, so this client cannot connect to it. Everything else works as usual.
-    </FlowHeader>
-    <div className="connection__footer"><Link className="ui-btn ui-btn--secondary ui-btn--lg" to="/">Back to Flux</Link></div>
-  </section>;
 }
 
 function ConsentReview({ context, oauthQuery }: { context: ConsentContext; oauthQuery: string }) {

@@ -1,5 +1,5 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { useAllAiBlocked } from '../ai/workspaceAi';
+import { useAllAiBlocked } from '../ai/spaceAi';
 import { useLocation, useRevalidator } from 'react-router';
 import type { Draft } from '@flux/contracts';
 import { Button, EmptyState, Icon, IconButton, MEDIA, duration, sendsOnEnter, useMediaQuery, type IconName } from '../ui';

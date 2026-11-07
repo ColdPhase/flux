@@ -20,7 +20,7 @@ export interface ComposerOption {
   /** "My assistant": asks it (set up and ready), or opens its set-up (F-027 AST-10 Journey 2). */
   assistant?: 'ask' | 'setup';
 }
-/** Whether an action or mention is AI (F-029): those are not offered while the workspace's AI is off. */
+/** Whether an action or mention is AI (F-029): those are not offered while the space's AI is off. */
 const AI_ACTIONS: ReadonlySet<SlashId> = new Set(['handoff', 'ai']);
 
 export interface ComposerTrigger { char: '@' | '/'; query: string; start: number }

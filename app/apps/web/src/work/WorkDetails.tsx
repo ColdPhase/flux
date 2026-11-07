@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
-import { useWorkspaceAi } from '../ai/workspaceAi';
+import { useSpaceAi } from '../ai/spaceAi';
 import { useRevalidator } from 'react-router';
-import type { Agent, ObjectLink, Project, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
+import type { Agent, ObjectLink, Project, ProjectPerson, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast, usePop, Select, Option } from '../ui';
@@ -22,7 +22,7 @@ import { docsLinking } from '../docs/AddToDoc';
 import { getDoc } from '../docs/api';
 import { useAgentOwners } from '../agents/owners';
 import { HandOffDialog } from '../agents/HandOff';
-import { useProjectShell } from '../project/data';
+import { listProjectPeople, useProjectShell } from '../project/data';
 import { useWorkRead } from './useWorkRead';
 import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
 import { WorkPagination } from './WorkPagination';
@@ -43,6 +43,8 @@ import { stateWords } from './taskState';
 interface Context {
   project: Project;
   members: WorkspaceMember[];
+  /** The people in the space (F-037): the Owner and Waiting-for choices offer these and nobody else, so nobody is given a task unannounced. */
+  spacePeople: { userId: string; name: string }[];
   agents: Agent[];
 }
 
@@ -50,11 +52,13 @@ const forbidden = (error: unknown) => error instanceof ApiError && error.status 
 
 async function loadContext(projectId: string, signal: AbortSignal): Promise<Context> {
   const project = await getProject(projectId, signal);
-  const [members, agents] = await Promise.all([
+  const [members, agents, audience] = await Promise.all([
     listWorkspaceMembers(project.workspaceId, signal).catch(forbidden),
     listAgents(project.workspaceId, signal).catch(forbidden),
+    listProjectPeople(projectId, signal).catch(() => [] as ProjectPerson[]),
   ]);
-  return { project, members, agents: agents.filter((agent) => !agent.revokedAt) };
+  const spacePeople = audience.filter((person) => person.kind === 'human').map((person) => ({ userId: person.id, name: person.name }));
+  return { project, members, spacePeople, agents: agents.filter((agent) => !agent.revokedAt) };
 }
 
 function readable(error: unknown) {
@@ -417,13 +421,13 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   useStateKeys(writable, (status) => void setState(status));
   const ownerValue = item.owner ? `${item.owner.kind}:${item.owner.id}` : '';
   // The label says "(you)"; the face is drawn from the name alone, never from that label (#763 H11-9: "M(").
-  const people = context.members.length ? context.members.map((member) => ({ value: `human:${member.userId}`, name: member.name, label: member.userId === me.user.id ? `${member.name} (you)` : member.name }))
+  const people = context.spacePeople.length ? context.spacePeople.map((member) => ({ value: `human:${member.userId}`, name: member.name, label: member.userId === me.user.id ? `${member.name} (you)` : member.name }))
     : [{ value: `human:${me.user.id}`, name: me.user.name, label: `${me.user.name} (you)` }];
   if (item.owner && !people.some((person) => person.value === ownerValue) && item.owner.kind === 'human') people.push({ value: ownerValue, name: item.owner.name, label: item.owner.name });
   const waitingPeople = people.map((person) => ({ ...person, id: person.value.slice('human:'.length) }));
   if (item.waitingFor && !waitingPeople.some((person) => person.id === item.waitingFor!.id)) waitingPeople.push({ value: `human:${item.waitingFor.id}`, id: item.waitingFor.id, name: item.waitingFor.name, label: item.waitingFor.name });
   // F-029 (#614): a workspace whose AI is off offers no agent as an owner; a task an agent already owns keeps showing its name.
-  const aiOff = useWorkspaceAi(context.project.workspaceId).blocked;
+  const aiOff = useSpaceAi(context.project.id).blocked;
   const agents = aiOff ? [] : context.agents.map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
   if (!aiOff && item.owner?.kind === 'agent' && !agents.some((agent) => agent.value === ownerValue)) agents.push({ value: ownerValue, label: `${item.owner.name} (agent)` });
   const ownerOptions = [

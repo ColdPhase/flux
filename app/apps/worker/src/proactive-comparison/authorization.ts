@@ -1,4 +1,4 @@
-import { idpStandingRepository, proactiveOutboxRows, TaskUseRefusal, workspaceAi, accessReader, type Database, type Executor } from '@flux/db';
+import { idpStandingRepository, proactiveOutboxRows, TaskUseRefusal, spaceAi, accessReader, type Database, type Executor } from '@flux/db';
 import { evaluateProject } from '@flux/core';
 
 export type ObservedUsage = { inputTokens: number; outputTokens: number; estimatedCents: number };
@@ -22,9 +22,9 @@ export async function authorizedComparison(db: Executor, candidateId: string, co
     || !connection || connection.id !== candidate.connectionId || !connection.encryptedKey
     || (expectedRuleVersion !== undefined && rule.version !== expectedRuleVersion))
     throw new ComparisonStopped('AUTHORIZATION_CHANGED');
-  // F-029: AI on in the rule's workspace, at the epoch the candidate was admitted under; the input transaction and the
+  // AG-10: AI on in the rule's space, at the epoch the candidate was admitted under; the input transaction and the
   // publish transaction pass `lock`, so a turn-off is ordered before or after them, and the 250 ms watcher aborts the request.
-  const ai = await workspaceAi(db, rule.workspaceId, { lock });
+  const ai = await spaceAi(db, rule.projectId, { lock });
   if (ai.state !== 'allowed' || ai.epoch !== candidate.aiEpoch) throw new ComparisonStopped('AI_OFF');
   if (await idpStandingRepository(db).refuses(candidate.ownerUserId, { lock })) throw new ComparisonStopped('ACCESS_CHANGED');
   const owner = await evaluateProject({ kind: 'human', id: candidate.ownerUserId }, 'project.write', candidate.projectId, accessReader(db), { lock });

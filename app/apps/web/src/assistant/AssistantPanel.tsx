@@ -83,7 +83,7 @@ function Body({ onClose, name, mine, ownerName, provider, userId, onMessage }: {
         </section>
         <section aria-labelledby="aset-panel-recent"><h3 id="aset-panel-recent">Recent</h3>
           {runs === null ? <p>Loading…</p> : recent.length ? <ul className="aset-panel__recent">{recent.map((run) => (
-            <li key={run.id}><span>{RECENT_WORD[run.status] ?? 'Done'}: {run.prompt.length > 60 ? `${run.prompt.slice(0, 59)}…` : run.prompt}</span></li>))}</ul> : <p>Nothing yet.</p>}
+            <li key={run.id}><span>{run.endReason === 'ai_off' ? 'Stopped, AI was turned off' : RECENT_WORD[run.status] ?? 'Done'}: {run.prompt.length > 60 ? `${run.prompt.slice(0, 59)}…` : run.prompt}</span></li>))}</ul> : <p>Nothing yet.</p>}
         </section>
         <section aria-labelledby="aset-panel-can"><h3 id="aset-panel-can">What it may do</h3><p data-testid="assistant-can">{can || 'Loading…'}</p></section>
         <div className="aset-model-row"><AssistantModelControl variant="field" placement="up" /></div>

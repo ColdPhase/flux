@@ -30,7 +30,7 @@ project row and the principal's grants on it `FOR SHARE`. A revocation that comm
 earlier is then seen, and a concurrent one waits until this transaction ends.
 
 The use cases for workspaces, membership, projects, grants, agents and drafts
-(`app/packages/core/src/access/{workspaces,members,workspace-ai,projects,grants,agents,drafts}.ts`)
+(`app/packages/core/src/access/{workspaces,members,space-ai,projects,grants,agents,drafts}.ts`)
 call these functions before they touch data. Mutations decide and write in one transaction,
 holding the locks described under [Concurrency](#concurrency). Their rows come from the
 repositories of `app/packages/db/src/repositories/{workspaces,projects,agents,drafts}.ts`
@@ -87,7 +87,7 @@ project.
 Every decision reads current rows. Nothing is cached, so removing a membership,
 revoking a grant or revoking an agent applies on the very next request or call.
 
-**Workspace AI lock** ([F-029](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/workspace-ai-lock.md), proposed — implementation S1, S2 and S3 merged; eligible independent acceptance by @Zamojski5 pending). `loadActor` treats every agent principal of a workspace whose AI is off as inactive, and AI entry points call `requireWorkspaceAi`; the policy row is locked `FOR SHARE` before the agent, membership, project and grant rows, and the change takes `FOR UPDATE`.
+**AI in a space** ([AG-10](../product/assistant.md#ag-10--ai-in-a-space), F-037; it replaces the workspace AI lock of F-029). Each space has one switch, a `project_ai_policies` row written by a trigger when the space is made (on, or off in an encrypted workspace). Its epoch grows on every flip, and every AI work row records the epoch it was admitted under. An agent's level on a space is its owner's (F-036 AG-3) and **none** while the switch is off, so every read, list, audience and event audience that goes through the policy leaves the agent out, and a person's own rights are unchanged. AI entry points call `requireSpaceAi(projectId)`, which holds the row `FOR SHARE` (before the grants) and, for queued work, also checks the admission epoch; the flip (`setSpaceAi`) takes the row `FOR UPDATE` first. A space admin and a company owner or admin may flip it (`project.manage`); an agent never. Turning it off sweeps that space's queued runs, tokens, comparisons, reactions, co-work requests and units, and asks a run in progress to stop, whose next check then refuses, so it writes nothing more; what it had already written stays. An agent belongs to its person for the whole Flux, so nothing about AI is checked on the company or on a person's connection, only on the space an agent names.
 
 **Project access level** (none < viewer < contributor < manager). The first
 matching rule applies:
@@ -201,6 +201,27 @@ a password account sets up the company when its address is verified, not when it
 single sign-on as the only way in, nobody makes an invite link (`INVITES_OFF_WITH_SSO`).
 Owners and admins rename the company (`PATCH /api/v1/workspaces/:id`, `workspace.rename`).
 
+**A space's settings (F-037, #874).** A space admin and a company owner or admin (all `project.manage`) rename the space
+(`PATCH /api/v1/projects/:id`, `renameProject`), add and remove its people (`grants`), turn its AI on or off
+(`PUT /api/v1/projects/:id/ai-policy`, [AI in a space](#model)) and delete it (`DELETE /api/v1/projects/:id`, `deleteProject`).
+Deleting erases the space in one statement, as every table that names a project cascades (#530, migration 0101), together with its
+notifications and mutes, which name it by source. Its event (`project.deleted.v1`) goes to the people who could open the space,
+decided while it still existed. The Everyone space cannot be deleted (`EVERYONE_CANNOT_BE_DELETED`). Anyone who is added to a space
+leaves it with `POST /api/v1/projects/:id/leave`, and someone who reaches it only through the company, or through Everyone, has
+nothing to leave (`NOT_ADDED`). **A space always keeps an admin** ([C-16](../product/decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)):
+leaving, stepping down (`POST .../grants` with another role) and `DELETE .../grants/:id` all refuse with `LAST_SPACE_ADMIN` while
+the person is the last admin by grant, whoever asks; removing the person from the company or making them a guest is not blocked,
+because a company admin then adds themselves from Settings › Company (`requireAnotherSpaceAdmin`). A new space takes its people
+(any company person, an owner too) and its AI switch in the same command as its creator's admin grant
+(`POST /api/v1/workspaces/:id/projects` with `people` and `ai`). Deleting a space queues the bytes of every file it held in
+`file_garbage` in the same transaction, so the file cleanup removes them. `GET .../people` is the space's own people: the people it
+was added to (the whole company in Everyone), with agents whose owner is among them; a company admin who was not added reaches the space
+but is not listed, so the Owner field, mentions and the header agree with the settings page.
+
+**Search, the Inbox and Needs you for a company admin** (a coordinator default, F-037) are limited to the spaces the person
+belongs to, though they could reach every other space: `memberFilter` in `@flux/db` is `visibleFilter` and membership
+(`projectMemberSql`).
+
 **Membership.** Owners and admins manage members. Only an owner
 can grant, change or remove the owner role (`403 OWNER_REQUIRED`). The last owner
 cannot leave or step down (`409 LAST_OWNER`). Any member may leave. Members can
@@ -248,7 +269,7 @@ and is then refused with `404` or `403` without writing.
 
 | Resource | Actions |
 | --- | --- |
-| workspace | `workspace.read`, `workspace.read_members`, `workspace.manage_members`, `workspace.rename`, `workspace.manage_agents`, `project.create`, `draft.create`, `agent.create`, `sketch.create`, `dm.create` |
+| workspace | `workspace.read`, `workspace.read_members`, `workspace.manage_members`, `workspace.rename`, `project.create`, `draft.create`, `agent.create`, `sketch.create`, `dm.create` |
 | project | `project.read`, `project.write`, `project.manage` |
 | draft | `draft.read`, `draft.write`, `draft.share`, `draft.move` |
 | agent | `agent.read`, `agent.revoke`, `agent.invoke` (only the owning person, while the agent is not revoked; [personal runs](personal-runs.md)) |
@@ -274,8 +295,10 @@ forbidden action answers `403`. Error bodies are `{ error, code }`.
 | `GET/POST /api/v1/workspaces/:id/invites` | `listInvites`, `createInvite` ([invite links](#invite-links-f-035)) |
 | `DELETE /api/v1/workspaces/:id/invites/:inviteId` | `revokeInvite` |
 | `POST /api/v1/invites/preview`, `POST /api/v1/invites/accept` | `previewInvite` (no session needed), `acceptInvite` |
-| `GET/POST /api/v1/workspaces/:id/projects` | `listProjects` (`limit`, `offset`), `createProject` |
-| `GET /api/v1/projects/:id` | `getProject` |
+| `GET/POST /api/v1/workspaces/:id/projects` | `listProjects` (`limit`, `offset`), `createProject` (`name`, optional `visibility`, `ai`, `people`) |
+| `GET/PATCH/DELETE /api/v1/projects/:id` | `getProject` (with `ai`, the space's switch), `renameProject`, `deleteProject` |
+| `POST /api/v1/projects/:id/leave` | `leaveProject` |
+| `PUT /api/v1/projects/:id/ai-policy` | `setSpaceAi` (`state`: `allowed` or `blocked`); answers `{ ai, changed, stopped }` |
 | `GET /api/v1/projects/:id/people` | `listProjectPeople` (#117): the people and agents who can read the project now, each with `access`. Needs `project.read`; every candidate's level comes from `evaluateProject`, so denied, removed and revoked principals are left out. Names only the project's audience, never the workspace roster. |
 | `POST /api/v1/projects/:id/views` | `addProjectView` (#351): adds Map, Wiki (`docs`) or Agents to the project's `views`; needs `project.write`, adding one it has changes nothing. `POST /workspaces/:id/projects` takes an optional `template` (`build`, `research`, `event`, `blank`) that sets the starting `views` (research adds `docs`); without one a project has every view. Migration 0064 gave every existing project all three, so none loses a view it uses. The web app also shows a view the project already uses (sketches, docs, an agent in it). Conversation and Tasks are always shown. |
 | `GET/POST /api/v1/projects/:id/grants` | `listProjectGrants`, `grantProject` (create or replace) |
@@ -302,12 +325,10 @@ places, with no change to the rules above:
   [invite link](#invite-links-f-035) for someone without an account (#763 PE-2; Flux sends no invitation email), and
   `ALREADY_MEMBER`, `OWNER_REQUIRED` and `LAST_OWNER` have their own sentences. Owners and admins also create, copy and
   revoke invite links there.
-- **People** (a project's Details, also opened from the header's audience line and after
-  creating a project) lists `listProjectPeople` with each person's role and says in one
-  sentence who else can open the project. For managers, **Invite** gives a workspace member
-  write or read access (or opens the workspace's People to add someone new), and **Change
-  access** shows each person's Change: change or remove a grant, keep someone out (`denied`) or
-  let them back in. Each change shows its exact consequence before it is confirmed (#512).
+- **Space settings** (a space's ⋯ › Settings, also from the header's faces) hold the name with Change, the people with an
+  Admin or Member choice and Remove on each row and **Add people**, the AI switch, **Leave space**, and **Delete space…**
+  for its admins, which asks first and names the space. The people are read from the server's grants after each change.
+  **New space** is one window: a name, people chosen from the company, the AI switch (on) and Create space.
 
 Every POST and PATCH sends an `Idempotency-Key`, reused when the same change is retried.
 

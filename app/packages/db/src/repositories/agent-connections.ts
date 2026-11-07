@@ -16,7 +16,12 @@ type Row = typeof schema.agentConnections.$inferSelect;
 
 export interface AgentConnectionPolicy {
   initialMcpPolicy(connection: AgentConnection): AgentMcpPolicy;
-  authorizeProject(agentId: string, projectId: string, action: 'project.read' | 'project.write', tx: Transaction): Promise<string>;
+  /**
+   * The workspace of the project the agent may reach, or throws. `selecting` is a connection being made to the space (AG-10: not to one
+   * whose AI is off); everywhere else a space with AI off does not make the connection unavailable, so its sign-in stays and each tool
+   * call that names the space is refused for it.
+   */
+  authorizeProject(agentId: string, projectId: string, action: 'project.read' | 'project.write', tx: Transaction, options?: { selecting?: boolean }): Promise<string>;
 }
 
 function serialize(row: Row, selectedProjectIds: string[]): AgentConnection {
@@ -30,8 +35,8 @@ function serialize(row: Row, selectedProjectIds: string[]): AgentConnection {
 
 /** SQL and locking; the composition root supplies the existing #29 policy. */
 /**
- * The workspace of one owner's connection, or null (F-029): lets the MCP route refuse a connection of a workspace
- * whose AI is off with its own code before anything else is read. Makes no access decision.
+ * The workspace of one owner's connection, or null: lets the MCP route tell a lost connection from a refused one before
+ * anything else is read. Makes no access decision.
  */
 export async function agentConnectionWorkspaceId(db: DbExecutor, connectionId: string, ownerUserId: string): Promise<string | null> {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(connectionId)) return null;
@@ -40,42 +45,11 @@ export async function agentConnectionWorkspaceId(db: DbExecutor, connectionId: s
   return row?.workspaceId ?? null;
 }
 
-/** The workspace of the connection an owner chose for one OAuth request of this session (F-029), or null. */
-export async function workspaceIdOfOauthFlow(db: DbExecutor, ownerUserId: string, sessionId: string, fingerprint: string): Promise<string | null> {
-  const [row] = await db.select({ workspaceId: schema.agentConnections.workspaceId }).from(schema.agentOauthFlows)
-    .innerJoin(schema.agentOauthBindings, eq(schema.agentOauthBindings.id, schema.agentOauthFlows.bindingId))
-    .innerJoin(schema.agentConnections, eq(schema.agentConnections.id, schema.agentOauthBindings.connectionId))
-    .where(and(eq(schema.agentOauthFlows.ownerUserId, ownerUserId), eq(schema.agentOauthFlows.sessionId, sessionId), eq(schema.agentOauthFlows.fingerprint, fingerprint)));
-  return row?.workspaceId ?? null;
-}
-
-/** The workspaces of every connection an owner bound to one OAuth client (F-029), newest first. */
-export async function workspaceIdsOfOauthClient(db: DbExecutor, ownerUserId: string, clientId: string): Promise<string[]> {
-  const rows = await db.select({ workspaceId: schema.agentConnections.workspaceId }).from(schema.agentOauthBindings)
-    .innerJoin(schema.agentConnections, eq(schema.agentConnections.id, schema.agentOauthBindings.connectionId))
-    .where(and(eq(schema.agentOauthBindings.ownerUserId, ownerUserId), eq(schema.agentOauthBindings.clientId, clientId)))
-    .orderBy(desc(schema.agentOauthBindings.createdAt));
-  return rows.map((row) => row.workspaceId);
-}
-
 /** The name an enabled OAuth client gives itself (unverified; a recognition aid only), or null (#763 AG-6). */
 export async function oauthClientName(db: DbExecutor, clientId: string): Promise<string | null> {
   const [client] = await db.select({ name: schema.oauthClient.name }).from(schema.oauthClient).where(and(
     eq(schema.oauthClient.clientId, clientId), or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled))));
   return client?.name ?? null;
-}
-
-/** The workspace behind an OAuth grant reference (`flux-grant:<binding>` or an explicit historic connection id), or null. */
-export async function workspaceIdOfGrantReference(db: DbExecutor, ownerUserId: string, referenceId: string): Promise<string | null> {
-  let connectionId: string | null = referenceId;
-  if (referenceId.startsWith('flux-grant:')) {
-    const bindingId = referenceId.slice('flux-grant:'.length);
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bindingId)) return null;
-    const [binding] = await db.select({ connectionId: schema.agentOauthBindings.connectionId }).from(schema.agentOauthBindings)
-      .where(and(eq(schema.agentOauthBindings.id, bindingId), eq(schema.agentOauthBindings.ownerUserId, ownerUserId)));
-    connectionId = binding?.connectionId ?? null;
-  }
-  return connectionId ? agentConnectionWorkspaceId(db, connectionId, ownerUserId) : null;
 }
 
 export function agentConnectionRepository(db: Database, policy: AgentConnectionPolicy) {
@@ -144,7 +118,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
         if (!agent) return 'AGENT_NOT_FOUND';
         const action = command.scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'project.write' : 'project.read';
         for (const projectId of [...command.selectedProjectIds].sort()) {
-          const workspaceId = await policy.authorizeProject(command.agentId, projectId, action, tx);
+          const workspaceId = await policy.authorizeProject(command.agentId, projectId, action, tx, { selecting: true });
           if (workspaceId !== agent.workspaceId) return 'AGENT_NOT_FOUND';
         }
         const [created] = await tx.insert(schema.agentConnections).values({

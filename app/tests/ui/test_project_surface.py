@@ -322,6 +322,14 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- Details overview
 
+    def test_04b_the_settings_page_lists_who_is_in_the_space(self) -> None:
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}/settings")
+        people = page.get_by_role("list", name=re.compile("^People in "))
+        for name in ("Ada Kowalska", "Jonas Berg", "Nia Okafor"):
+            expect(people).to_contain_text(name)
+        expect(people).not_to_contain_text("Lee Park")
+
     def test_05_details_overview_links_everything_one_step_away(self) -> None:
         page = self.open_project("ada")
         open_details(page)
@@ -334,10 +342,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(panel.get_by_role("region", name="Sources").get_by_role("link", name=re.compile("Low-light test notes"))).to_be_visible()
         expect(panel.get_by_role("region", name="Maps").get_by_role("link", name=re.compile("Sensing options"))).to_be_visible()
         expect(panel.get_by_role("region", name="Wiki").get_by_role("link", name=re.compile("What we learned about low light"))).to_be_visible()
-        people = panel.get_by_role("region", name="People", exact=True)
-        for name in ("Ada Kowalska", "Jonas Berg", "Nia Okafor"):
-            expect(people).to_contain_text(name)
-        expect(people).not_to_contain_text("Lee Park")
+        # Who is in the space is on its settings page (F-037): Details holds one row that leads there.
+        expect(panel.get_by_role("region", name="Space settings", exact=True).get_by_role("link", name="People and settings")).to_be_visible()
+        expect(panel.get_by_role("region", name="People", exact=True)).to_have_count(0)
         shot(page, "project-details-desktop-1440")
         # One step to an object, and back.
         linked.get_by_role("button", name=re.compile("Order two VL53L5CX boards")).click()
@@ -411,17 +418,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(panel.get_by_role("region", name="Wiki", exact=True)).to_have_count(0)
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work-summary", status=200)["unfinishedTotal"], 2)
 
-        # AC-5 (F-037): people with their role and Add people; who can see it in one sentence with Change people; GitHub under Connected.
-        people = panel.get_by_role("region", name="People", exact=True)
-        expect(people.get_by_role("button", name="Add people")).to_be_visible()
-        listed = people.get_by_role("list", name="People who can see Gesture lamp").get_by_role("listitem")
-        expect(listed).to_have_count(3)
-        expect(listed.filter(has_text="Ada Kowalska")).to_contain_text("· you")
-        expect(listed.filter(has_text="Ada Kowalska")).to_contain_text("Admin")
-        expect(listed.filter(has_text="Jonas Berg")).to_contain_text("Member")
-        expect(people.locator(".access__line")).to_have_text(re.compile("^Only the people listed here can open it\\.\\s*Change people$"))
-        expect(people.get_by_role("button", name="Change people", exact=True)).to_be_visible()
-        expect(people.get_by_role("button", name=re.compile("’s role$"))).to_have_count(0)
+        # AC-5 (F-037): the space's people and settings are one row that leads to its settings page; GitHub under Connected.
+        settings = panel.get_by_role("region", name="Space settings", exact=True)
+        expect(settings.get_by_role("link", name="People and settings")).to_have_attribute("href", f"/projects/{self.ids['project']}/settings")
         connected = panel.get_by_role("region", name="Connected", exact=True)
         expect(connected.get_by_role("link", name=re.compile("^GitHub repositories"))).to_have_attribute("href", f"/projects/{self.ids['project']}/github")
 
@@ -512,7 +511,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         sheet = page.get_by_role("dialog", name="Details")
         # The project's Details list its decisions under what matters now (no message was opened in Details first, #763 B3).
         expect(sheet.get_by_role("button", name=re.compile("Keep a manual off switch")).first).to_be_visible()
-        expect(sheet.get_by_role("region", name="People", exact=True)).to_contain_text("Nia Okafor")
+        expect(sheet.get_by_role("region", name="Space settings", exact=True).get_by_role("link", name="People and settings")).to_be_visible()
         shot(page, "project-details-phone-390")
         sheet.get_by_role("button", name=re.compile("Use a ToF sensor")).first.tap()
         expect(sheet.get_by_role("heading", name="Use a ToF sensor, not the camera, for gestures")).to_be_visible()
@@ -532,7 +531,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.locator("header .phead__sub")).to_contain_text("2 people")
         shot(page, "project-long-title-phone-390")
         open_details(page, tap=True)
-        expect(page.get_by_role("dialog", name="Details").get_by_role("region", name="People", exact=True)).to_contain_text("Jonas Berg")
+        expect(page.get_by_role("dialog", name="Details").get_by_role("region", name="Space settings", exact=True).get_by_role("link", name="People and settings")).to_be_visible()
 
 
     # ---------------------------------------------------------------- sidebar: current place and touch targets

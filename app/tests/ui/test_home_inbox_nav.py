@@ -291,7 +291,7 @@ class HomeInboxNav(unittest.TestCase):
     def test_04_pages_reached_from_home_name_themselves(self) -> None:
         page = self.page()
         places = page.get_by_role("navigation", name="Places")
-        for path, title in (("/tasks", "My tasks"), ("/docs", "Wiki"), ("/projects/new", "New space"), ("/no-such-page", "Page not found")):
+        for path, title in (("/tasks", "My tasks"), ("/docs", "Wiki"), ("/no-such-page", "Page not found")):
             page.goto(path)
             expect(page.locator("header.top").get_by_role("heading", level=1)).to_have_text(title)
             expect(page.locator("header.top")).not_to_contain_text("Your private notes")

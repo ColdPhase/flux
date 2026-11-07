@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { ApiError } from '../api/client';
 import { Button, Icon, Spinner, trapTab, usePop, useToast } from '../ui';
 import { useShellData } from '../app/data';
@@ -182,7 +182,7 @@ function ShareBody({ path, version }: { path: string; version: number | null }) 
   const { project } = useWiki();
   const shell = useProjectShell();
   const { me } = useShellData();
-  const { openDetails } = useShellActions();
+  const navigate = useNavigate();
   const [copied, setCopied] = useState<'yes' | 'no' | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const inputId = useId();
@@ -211,7 +211,7 @@ function ShareBody({ path, version }: { path: string; version: number | null }) 
         <Button variant="secondary" icon={copied === 'yes' ? 'check' : 'link'} onClick={() => void copy()} data-autofocus>{copied === 'yes' ? 'Copied' : 'Copy link'}</Button>
       </div>
       <p className="wiki-pop__status" role="status">{copied === 'yes' ? 'Link copied.' : copied === 'no' ? `The browser did not allow copying. The link is selected: press ${isMac ? '⌘ C' : 'Ctrl C'}.` : ''}</p>
-      <Button variant="link" className="wiki-pop__more" onClick={() => { close(); openDetails('place'); }}>See who has access</Button>
+      <Button variant="link" className="wiki-pop__more" onClick={() => { close(); void navigate(`/projects/${project.id}/settings`); }}>See who has access</Button>
     </>
   );
 }

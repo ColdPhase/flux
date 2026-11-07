@@ -12,8 +12,8 @@ import { getWorkReferenceRows } from '../work/read-api';
 import { useWorkRead } from '../work/useWorkRead';
 import { WorkPagination } from '../work/WorkPagination';
 import { audienceLine, useProjectShell } from './data';
-import { ProjectAccess } from '../people/ProjectAccess';
 import { docUrl } from '../docs/api';
+import { useWorkspaceEncryption } from '../encryption/state';
 import { useOpenConversation } from './OverviewContext';
 import { agentDisplayName, shortDate } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
@@ -178,14 +178,15 @@ function NowSection({ projectId, tasks, rules, lines, others }: { projectId: str
  * and results, sources, sketches and docs, and exactly who can see it. Nothing here is a
  * permanent panel; it opens with Details, the state line or a message's Details action.
  */
-export function ProjectOverview({ messageId, selection, focusPeople = null, onBack }: { messageId?: string; selection?: OverviewView['selection']; focusPeople?: object | null; onBack: () => void }) {
+export function ProjectOverview({ messageId, selection, onBack }: { messageId?: string; selection?: OverviewView['selection']; onBack: () => void }) {
   const shell = useProjectShell();
   const open = useOpenConversation();
-  const { me } = useShellData();
-  const { openDetails } = useShellActions();
+  const { me, workspace } = useShellData();
+  const { openDetails, closePanel } = useShellActions();
   const read = useOverviewWork(me.user.id, shell?.project.id ?? null, open?.conversation?.id ?? null, messageId);
   const current = useProjectWorkSummary();
   const owners = useAgentOwners(shell?.project);
+  const encrypted = !!useWorkspaceEncryption(shell?.project.workspaceId);
   if (!shell) return null;
   const { project, people, sketches, docs } = shell;
   // An agent is named with Kreska, the "Agent" tag and its owner; a person by name only.
@@ -348,8 +349,20 @@ export function ProjectOverview({ messageId, selection, focusPeople = null, onBa
         {moreDocs ? <p className="ov-more"><Link to={`${base}/docs`}>All {docs.length} Wiki pages</Link></p> : null}
       </>}
 
-      {/* Exactly who can open it, and for its managers the controls to change that (#188). */}
-      <ProjectAccess project={project} people={people} focusToken={focusPeople} />
+      {/* Who is in the space, in one sentence; the people and the controls to change them are in its settings (F-037). */}
+      <section className="details__sec ov-sec" aria-label="Space settings">
+        <p className="access__line">
+          <Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />
+          <span>{project.visibility === 'workspace' ? `Everyone in ${workspace?.name ?? 'the company'} is in this space; guests only when added.` : 'Only the people added to it can open it.'}</span>
+        </p>
+        {/* F-030 (#655): an encrypted space says so, in one line. */}
+        {encrypted ? <p className="access__line" data-encrypted-line=""><Icon name="lock" size={13} /><span>Encrypted space · only people work here, no AI.</span></p> : null}
+        <Link className="ov-row" to={`/projects/${project.id}/settings`} onClick={closePanel}>
+          <Icon name="people" size={16} className="ov-row__ic" />
+          <span className="ov-row__b"><span className="ov-row__t">People and settings</span></span>
+          <Icon name="chevron-right" size={16} className="ov-row__go" />
+        </Link>
+      </section>
       {projectMode ? <Rows label="Connected" rows={connected} /> : !message && project.access === 'manager' ? <p className="ov-more"><Link to={`${base}/github`}>GitHub repositories</Link></p> : null}
     </div>
   );

@@ -183,8 +183,15 @@ From #874 and the people-and-spaces answers on #861:
 - **Space settings.** A name, its people ("Add people", chosen from the company) with two roles,
   member and space admin, and an AI switch. The creator is an admin and can make others admins.
   The company admin can change any space, except an encrypted one (below; its people stay with
-  its own admins, [coordinator default C-4](#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). The company section
-  of Settings holds the people and the company name only; there is no global AI switch.
+  its own admins, [coordinator default C-4](#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). A space admin
+  can also leave the space, rename it and delete it; the company admin can delete any space, but not Everyone, which holds the whole
+  company. There is no global AI switch.
+- **Company admins and removed people** (Hubert, 2026-11-05). A company admin's sidebar and every list from the shell hold only the
+  spaces they belong to, like everyone else's, and their search and Inbox do too
+  ([coordinator default C-15](#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). Settings › Company holds
+  the people, the company name, every space (an admin can add themselves to one or delete it, and sees an encrypted space's name only)
+  and the people who left or were removed, with **Restore**: they sign in through SSO as usual and join Everyone, and are added to other
+  spaces by hand.
 - **Creating a space** is one window: name, people, an AI switch (on by default) and an
   "Encrypted" switch (off by default; when on, it asks for an unlock password and offers the
   recovery code). A new space has no template and no goal and starts with Conversation, Tasks,
@@ -316,6 +323,9 @@ record that comes from Hubert is cited to him with its date.
 | C-12 | `/ai` in a conversation uses only what that conversation's audience can see, so Show everyone never publishes anything private. The guarantee covers what the agent reads in Flux | [AG-4](assistant.md#ag-4--talking-to-your-agents), [AG-11](assistant.md#ag-11--privacy-payer-and-failures) | Proposed by the coordinator in the answer log of 2026-11-03, from Hubert's answer that `/ai` is private with Show everyone (2026-11-02). A privacy safeguard |
 | C-13 | A question from another agent never makes an agent change anything | [AG-2](assistant.md#ag-2--only-the-owner-prompts-an-agent), [TA-3](cowork-workflow.md#ta-3--questions-between-agents) | Derived from Hubert's answer that messages from anyone but the owner are context only (2026-11-03) |
 | C-14 | Schedules keep only "missed times are skipped": no minimum interval and no pause after failures | [AG-9](assistant.md#ag-9--schedules) | Proposed by the coordinator in the answer log of 2026-11-03 |
+| C-15 | A company admin's search, Inbox and Needs you show only the spaces they belong to, though they can reach others | [F-037](#f-037--one-flux-per-company-with-spaces), [access policy](../development/access-policy.md#rules) | Follows from Hubert's 2026-11-05 decision that their sidebar and lists hold only their own spaces. Keeps what they were not added to out of their way; Settings › Company reaches the rest |
+| C-16 | A space always keeps an admin on space-level actions: nobody leaves, steps down, or is removed or demoted by anyone while they are the last admin of the space, by any route, and the refusal says to add another admin first. Removing that person from the company, or making them a guest, is not blocked: a company admin can then use Add me in Settings › Company | [F-037](#f-037--one-flux-per-company-with-spaces), [access policy](../development/access-policy.md#rules) | Follows from "a space has admins" (F-037) and from the company admin's Add me (2026-11-05). Added by the coordinator on the review of #895 (2026-11-07); no other mechanism is added |
+| C-17 | Turning AI off in a space stops a running run and ends a queued one at once, and the run's owner is told in the thread where they asked (and in the Recent list of their assistant); what the run wrote before stays and the owner can still take it back | [AG-10](assistant.md#ag-10--ai-in-a-space) | Follows from Hubert's 2026-11-05 decision that each space has its own AI switch and AI off means no AI work there. The stop being immediate, and the owner being told, are inferences; a restart of the work is never replayed |
 
 Two more entries in that log keep existing decisions and are not inferences: invitations without
 SSO are links with no email (F-035 stands), and the operator's `FLUX_AGENT_RUNTIME` step is

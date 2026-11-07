@@ -141,17 +141,18 @@ export function PhoneHomeLead() {
 interface Tile { id: string; label: string; icon: IconName; run: (() => void) | null; hint?: string; pick?: boolean }
 
 /**
- * "+" Create (F-026 S2): Task, Thought, Message, Decision, File or link, Sketch. Each tile starts that
+ * "+" Create (F-026 S2, S3): Task, Thought, Message, Decision, File or link, Sketch and Space. Each tile starts that
  * thing where it is made, in the project you are in or the one chosen here: Task opens a new task,
  * Decision the "Propose a decision" sheet, and File or link the file picker inside the tap; the picked
- * files join the project's message draft (a cancelled picker leaves the composer ready for a link).
+ * files join the project's message draft (a cancelled picker leaves the composer ready for a link). Space
+ * opens the New space window (F-037), which is made in the company and needs no space chosen; a guest does not start spaces.
  */
 export function PhoneCreate({ open, onClose, projects, projectId, go, onThought }: {
   open: boolean; onClose: () => void; projects: ProjectSummary[]; projectId: string | undefined;
   go: (to: string) => void; onThought: () => void;
 }) {
   const titleId = useId();
-  const { me } = useShellData();
+  const { me, workspace } = useShellData();
   const { openCreate } = useShellActions();
   const selectedProject = useDraft(me.user.id, 'phone-create-project');
   const preferredProjectId = projects.some((project) => project.id === selectedProject.text)
@@ -182,6 +183,8 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
     { id: 'decision', label: 'Decision', icon: 'rule', run: to(inProject && `${inProject}?open=propose-decision`), hint: 'needs a space' },
     { id: 'file', label: 'File or link', icon: 'clip', hint: 'needs a space', pick: true, run: inProject ? () => setPickerOpen(true) : null },
     { id: 'sketch', label: 'Sketch', icon: 'shape', run: to(inProject ? `${inProject}/map` : '/map') },
+    { id: 'space', label: 'Space', icon: 'people', run: workspace?.role === 'guest' ? null : () => { onClose(); requestAnimationFrame(() => openCreate({ kind: 'project' })); },
+      hint: 'not for guests' },
   ];
   return (
     <Overlay open={open} onClose={onClose} placement="bottom" labelledBy={titleId} className="phone-create">

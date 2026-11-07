@@ -1,0 +1,1 @@
+- Restoring a removed person with a malformed company id answers "not found" instead of a server error. ([#874](https://github.com/ColdPhase/flux/issues/874))

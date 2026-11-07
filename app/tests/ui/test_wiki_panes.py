@@ -658,7 +658,8 @@ class WikiPanesJourney(unittest.TestCase):
         expect(partner.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
         share.click()
         dialog.get_by_role("button", name="See who has access").click()
-        expect(page.locator("#details").get_by_role("heading", name="People", exact=True)).to_be_visible()
+        # The space's settings hold who has access (F-037).
+        expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
 
     # ---------------------------------------------------------------- focus mode
 

@@ -6,7 +6,7 @@ import * as contracts from '@flux/contracts';
 import { AI_ADJACENT_ROUTES, AI_HTTP_ROUTES, AI_NAMED_ROUTE_MODULES, AI_WORK_QUEUES } from '@flux/contracts';
 import { pool } from './support/db.js';
 
-// F-029 workspace AI lock (#614): the inventory of AI work is complete. Every job the worker registers is classified, every
+// AG-10 (F-029, #614): the inventory of AI work is complete. Every job the worker registers is classified, every
 // AI work table has its epoch and backstop, and no other table or trigger has them; anything new fails here.
 
 async function sources(directory: string): Promise<string[]> {
@@ -41,7 +41,7 @@ test('exactly the AI work tables carry ai_epoch and the ai_work_admission backst
   // Every function that writes AI work from a person's own write reads the policy first.
   for (const name of AI_WORK_QUEUES.captureFunctions) {
     const body = (await pool.query(`SELECT prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public' AND p.proname = $1`, [name])).rows[0]?.prosrc as string;
-    assert.match(body, /workspace_ai_policies/, `${name} checks the policy`);
+    assert.match(body, /project_ai_policies/, `${name} checks the policy`);
   }
   const writers = (await pool.query(`SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public'
     AND p.proname <> 'ai_work_admission' AND p.prosrc ~* ANY ($1)`, [AI_WORK_QUEUES.tables.map((table) => `insert\\s+into\\s+${table}\\y`)])).rows.map((row) => row.proname as string);

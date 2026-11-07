@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { CreateWorkspaceCommand, RenameWorkspaceCommand, Workspace, WorkspaceAiPolicy, WorkspaceEncryption, WorkspaceRole } from '@flux/contracts';
+import type { CreateWorkspaceCommand, RenameWorkspaceCommand, Workspace, WorkspaceEncryption, WorkspaceRole } from '@flux/contracts';
 import { MISSING_ENCRYPTION_VIEW, presentEncryption } from '../encryption/view.js';
 import { recordEvent } from '../events.js';
 import type { Database, Executor, Principal } from '../types.js';
@@ -10,9 +10,8 @@ import { insertSpace } from './projects.js';
 import type { AccessPorts } from './repositories.js';
 import type { WorkspaceRecord } from './records.js';
 import { name } from './validation.js';
-import { workspaceAiViews } from './workspace-ai.js';
 
-// Workspaces: the company, list and read (issues #46, #91). Membership is in ./members.ts, the AI switch in ./workspace-ai.ts.
+// Workspaces: the company, list and read (issues #46, #91). Membership is in ./members.ts; a space's AI switch is in ./space-ai.ts.
 //
 // F-037 (#874): one Flux is one company. The first account sets it up (`joinCompany`) as its owner, with the
 // Everyone space; with single sign-on every later account joins it on its first sign-in, and without single sign-on a
@@ -21,9 +20,8 @@ import { workspaceAiViews } from './workspace-ai.js';
 
 type WorkspacePorts = Pick<AccessPorts, 'workspaces' | 'access' | 'events' | 'encryption'>;
 
-function toWorkspace(row: WorkspaceRecord, role: WorkspaceRole | null, ai: WorkspaceAiPolicy, encryption: WorkspaceEncryption | null = null): Workspace {
-  return { id: row.id, name: row.name, company: row.company, role, version: row.version, createdAt: row.createdAt.toISOString(),
-    ai: { ...ai, fixed: row.encrypted ? 'encrypted' : null }, encryption };
+function toWorkspace(row: WorkspaceRecord, role: WorkspaceRole | null, encryption: WorkspaceEncryption | null = null): Workspace {
+  return { id: row.id, name: row.name, company: row.company, role, version: row.version, createdAt: row.createdAt.toISOString(), encryption };
 }
 
 /** The name setup gives the company; an owner or admin changes it in Settings › Company. */
@@ -87,8 +85,7 @@ export async function renameWorkspace(principal: Principal, workspaceId: string,
     const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.rename', workspaceId, ports.access(tx), { lock: true }), 'workspace');
     const row = await ports.workspaces(tx).rename(workspaceId, workspaceName);
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.renamed.v1', workspaceId, {});
-    return toWorkspace(row, actor.role, (await workspaceAiViews(tx, ports, [{ workspaceId, role: actor.role }])).get(workspaceId)!,
-      (await encryptionViews(tx, ports, principal, [{ row, role: actor.role }], options)).get(workspaceId) ?? null);
+    return toWorkspace(row, actor.role, (await encryptionViews(tx, ports, principal, [{ row, role: actor.role }], options)).get(workspaceId) ?? null);
   });
 }
 
@@ -112,7 +109,7 @@ export async function createWorkspace(principal: Principal, command: CreateWorks
   return db.transaction(async (tx) => {
     const row = await ports.workspaces(tx).createWithOwner({ id, name: workspaceName, createdBy: principal.id });
     await recordEvent(eventPorts(ports, tx), principal, id, 'workspace.created.v1', id, {});
-    return toWorkspace(row, 'owner', (await workspaceAiViews(tx, ports, [{ workspaceId: id, role: 'owner' }])).get(id)!);
+    return toWorkspace(row, 'owner');
   });
 }
 
@@ -121,9 +118,8 @@ export async function listWorkspaces(principal: Principal, db: Database, ports: 
   const workspaces = ports.workspaces(db);
   if (principal.kind === 'human') {
     const rows = await workspaces.forMember(principal.id);
-    const ai = await workspaceAiViews(db, ports, rows.map((row) => ({ workspaceId: row.workspace.id, role: row.role })));
     const encryption = await encryptionViews(db, ports, principal, rows.map((row) => ({ row: row.workspace, role: row.role })), options);
-    return rows.map((row) => toWorkspace(row.workspace, row.role, ai.get(row.workspace.id)!, encryption.get(row.workspace.id) ?? null));
+    return rows.map((row) => toWorkspace(row.workspace, row.role, encryption.get(row.workspace.id) ?? null));
   }
   if (principal.kind === 'agent' && isUuid(principal.id)) {
     const workspaceId = await workspaces.workspaceOfAgent(principal.id);
@@ -131,8 +127,7 @@ export async function listWorkspaces(principal: Principal, db: Database, ports: 
     const { visible } = await evaluateWorkspace(principal, 'workspace.read', workspaceId, ports.access(db));
     if (!visible) return [];
     const row = await workspaces.get(workspaceId);
-    return row ? [toWorkspace(row, null, (await workspaceAiViews(db, ports, [{ workspaceId: row.id, role: null }])).get(row.id)!,
-      (await encryptionViews(db, ports, principal, [{ row, role: null }], options)).get(row.id) ?? null)] : [];
+    return row ? [toWorkspace(row, null, (await encryptionViews(db, ports, principal, [{ row, role: null }], options)).get(row.id) ?? null)] : [];
   }
   return [];
 }
@@ -141,6 +136,5 @@ export async function getWorkspace(principal: Principal, workspaceId: string, db
   const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read', workspaceId, ports.access(db)), 'workspace');
   const row = await ports.workspaces(db).get(workspaceId);
   if (!row) throw new NotFoundError('Company', 'WORKSPACE_NOT_FOUND');
-  return toWorkspace(row, actor.role, (await workspaceAiViews(db, ports, [{ workspaceId: row.id, role: actor.role }])).get(row.id)!,
-    (await encryptionViews(db, ports, principal, [{ row, role: actor.role }], options)).get(row.id) ?? null);
+  return toWorkspace(row, actor.role, (await encryptionViews(db, ports, principal, [{ row, role: actor.role }], options)).get(row.id) ?? null);
 }

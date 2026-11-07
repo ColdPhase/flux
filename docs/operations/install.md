@@ -93,8 +93,9 @@ Caddy obtains and renews the certificate itself. [nginx](reverse-proxy.md#nginx)
 
 ### 4. Create your account and check mail
 
-Open `https://flux.example.org` and sign up. The first project you create also creates your first
-space (workspace), and you are its owner.
+Open `https://flux.example.org` and sign up. The first account sets up the company and is its
+owner, with the default space **Everyone**; everyone else joins by an invite link from an admin (or
+by signing in, with single sign-on). Spaces are added from **New › Space**.
 
 <p align="center">
   <picture>

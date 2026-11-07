@@ -6,7 +6,7 @@ import { genericOAuth, jwt } from 'better-auth/plugins';
 import { cimd } from '@better-auth/cimd';
 import { fetchClientMetadataResource } from '@better-auth/cimd/node';
 import { mcp } from '@better-auth/mcp';
-import { accessPorts, schema, workspaceIdOfGrantReference, workspaceIdOfOauthFlow, workspaceAi, type Database } from '@flux/db';
+import { accessPorts, schema, type Database } from '@flux/db';
 import { agentOauthUseCases, companyDisplayName, DomainError, joinCompany } from '@flux/core';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
@@ -134,25 +134,10 @@ export async function ensureOauthResource(db: Database, publicOrigin: string): P
 export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), installProvider = true, standing = null, log, confirmation = createConfirmation(db, config.oidc, undefined, config.ssoOnly), claims = createEmailClaims(db), links = createLinkIntents(db) }: AuthDependencies) {
   const connections = agentOauthUseCases(createAgentConnectionStore(db));
   const resource = mcpResourceIdentifier(config.publicOrigin);
-  /** F-029: the authorization server issues nothing for a workspace whose AI is off. Nothing is revoked. */
-  const refuseAiOff = async (workspaceId: string) => {
-    if ((await workspaceAi(db, workspaceId)).state !== 'allowed')
-      throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'AI is turned off in this company' });
-  };
-  /**
-   * F-029, before the chosen connection is resolved (its agent is inactive while AI is off, so resolving it would throw):
-   * the authorize and consent steps refuse with `access_denied` and mint no code.
-   */
-  const refuseAiOffFlow = async (userId: string, sessionId: string, fingerprint: string) => {
-    const workspaceId = await workspaceIdOfOauthFlow(db, userId, sessionId, fingerprint);
-    if (workspaceId && (await workspaceAi(db, workspaceId)).state !== 'allowed')
-      throw new APIError('FORBIDDEN', { error: 'access_denied', error_description: 'AI is turned off in this company', code: 'WORKSPACE_AI_BLOCKED' });
-  };
   const connectionForGrant = async (userId: string, sessionId: string, scopes: readonly string[]) => {
     const request = oauthRequests.getStore();
     if (!request || request.clearedSessionId && request.clearedSessionId !== sessionId) throw new Error('OAuth flow is unavailable');
-    await refuseAiOffFlow(userId, sessionId, request.fingerprint);
-    // A connection whose agent can no longer reach a project (for example, AI turned off, F-029) is refused, not a 500.
+    // A connection whose agent can no longer reach a project is refused, not a 500.
     const grant = await connections.flowForOauth(userId, sessionId, request.fingerprint).catch((error: unknown) => {
       if (error instanceof DomainError) throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
       throw error;
@@ -164,8 +149,6 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     if (!connection || narrowing && scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'))) {
       throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
     }
-    // F-029: no consent reference, so no authorization code, for a connection of a workspace whose AI is off.
-    await refuseAiOff(connection.workspaceId);
     return grant!;
   };
   // The verification mail (#313): new password accounts while sign-up is `verified`, and a pre-F-024 account the
@@ -238,7 +221,6 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           shouldRedirect: async ({ user, session }) => {
             const request = oauthRequests.getStore();
             if (!request) return true;
-            await refuseAiOffFlow(user.id, session.id, request.fingerprint);
             return !await connections.flowForOauth(user.id, session.id, request.fingerprint);
           },
           consentReferenceId: async ({ user, session, scopes }) =>
@@ -258,16 +240,11 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           if (standing && !await standing.stands(user.id)) {
             throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: signInAgainMessage(config.oidc?.label ?? '') });
           }
-          // F-029, before the grant is resolved (an agent of a workspace whose AI is off has no project to reach).
-          const grantWorkspace = await workspaceIdOfGrantReference(db, user.id, referenceId);
-          if (grantWorkspace) await refuseAiOff(grantWorkspace);
           const grant = await connections.grantForOauth(user.id, referenceId);
           const connection = grant?.connection;
           if (!connection || scopes.some((scope) => scope !== 'offline_access' && !connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'))) {
             throw new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
           }
-          // F-029: the code exchange and every refresh are refused while AI is off in the connection's workspace.
-          await refuseAiOff(connection.workspaceId);
           if (authorizationCodeId) await recordGrantAuthentication(db, user.id, sessionId, referenceId, authorizationCodeId);
           return { flux_connection_id: connection.id, flux_owner_user_id: user.id, flux_grant_reference: grant!.referenceId,
             ...(authorizationCodeId ? { flux_authentication_reference: authorizationCodeId } : {}) };

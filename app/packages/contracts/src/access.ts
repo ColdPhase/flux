@@ -25,6 +25,8 @@ export const projectGrantsPath = (projectId: string) => `${projectPath(projectId
 /** GET: the people and agents who can read the project now (#117), for its audience line. */
 export const projectPeoplePath = (projectId: string) => `${projectPath(projectId)}/people`;
 export const projectGrantPath = (projectId: string, grantId: string) => `${projectGrantsPath(projectId)}/${grantId}`;
+/** POST: the caller leaves the space (their own grant goes). */
+export const projectLeavePath = (projectId: string) => `${projectPath(projectId)}/leave`;
 export const agentPath = (agentId: string) => `${AGENTS_PATH}/${agentId}`;
 export const draftPath = (draftId: string) => `${DRAFTS_PATH}/${draftId}`;
 export const draftSharePath = (draftId: string) => `${draftPath(draftId)}/share`;
@@ -101,43 +103,31 @@ export interface Workspace {
   role: WorkspaceRole | null;
   version: number;
   createdAt: string;
-  /** F-029 (#614): whether agents and assistants may work here. Every member sees the state. */
-  ai: WorkspaceAiPolicy;
   /** F-030 (#655): null for a plain workspace; the lock state and the caller's unlock password otherwise. */
   encryption: WorkspaceEncryption | null;
 }
 
-/**
- * The workspace AI policy (F-029). `changedBy` is named only to callers who may read the members;
- * guests get null.
- */
-export interface WorkspaceAiPolicy {
-  state: 'allowed' | 'blocked';
-  version: number;
-  changedAt: string;
-  changedBy: { id: string; name: string } | null;
-  /** F-030: `'encrypted'` when AI can never be turned on here (an encrypted workspace); the client shows no switch. */
-  fixed: 'encrypted' | null;
-}
+/** A space's AI switch (F-037, AG-10): `allowed` is on, `blocked` is off. It starts on; an encrypted space is always off. */
+export type SpaceAiState = 'allowed' | 'blocked';
 
-/** The refusal of every AI read or action in a workspace whose AI is off (F-029). */
-export const WORKSPACE_AI_BLOCKED = 'WORKSPACE_AI_BLOCKED';
+/** The refusal of every AI read or action in a space whose AI is off (AG-10). */
+export const SPACE_AI_OFF = 'SPACE_AI_OFF';
 
-/** `PUT`: an owner or admin turns AI off or on for the whole workspace (F-029, S2). If-Match or `expectedVersion`. */
-export const workspaceAiPolicyPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/ai-policy`;
-export interface SetWorkspaceAiPolicyCommand { state: 'allowed' | 'blocked'; expectedVersion?: number }
+/** `PUT`: a space admin, or a company owner or admin, turns AI off or on in the space (AG-10). */
+export const projectAiPolicyPath = (projectId: string) => `${PROJECTS_PATH}/${projectId}/ai-policy`;
+export interface SetSpaceAiCommand { state: SpaceAiState }
 /** What turning AI off stopped at once (the worker repeats the same sweep, so a crash cannot skip it). */
-export interface WorkspaceAiSwept {
-  runs: number; tokens: number; comparisons: number; reactions: number; requests: number; units: number; sessions: number;
+export interface SpaceAiSwept {
+  runs: number; tokens: number; comparisons: number; reactions: number; requests: number; units: number;
   /** Steps whose transaction failed (each step is its own transaction, so one cannot stop the others); the job retries them. */
   failed: string[];
 }
-export interface SetWorkspaceAiPolicyResult { ai: WorkspaceAiPolicy; changed: boolean; stopped: WorkspaceAiSwept | null }
-/** Recorded with every change, for the workspace's people (never delivered to an agent). */
-export const WORKSPACE_AI_POLICY_CHANGED_EVENT = 'workspace.ai_policy_changed.v1';
-/** The worker's sweep of one turn-off: `{ workspaceId, epoch }`, touching only work admitted under an older epoch. */
-export const WORKSPACE_AI_SWEEP_JOB = 'workspace-ai.sweep.v1';
-export interface WorkspaceAiSweepJob { workspaceId: string; epoch: number }
+export interface SetSpaceAiResult { ai: SpaceAiState; changed: boolean; stopped: SpaceAiSwept | null }
+/** Recorded with every change, for the space's people (never delivered to an agent). */
+export const SPACE_AI_POLICY_CHANGED_EVENT = 'project.ai_policy_changed.v1';
+/** The worker's sweep of one turn-off: `{ projectId, epoch }`, touching only work admitted under an older epoch. */
+export const SPACE_AI_SWEEP_JOB = 'space-ai.sweep.v1';
+export interface SpaceAiSweepJob { projectId: string; epoch: number }
 
 /** Someone who left the company or was removed; an owner or admin can restore them (Settings › Company). */
 export interface RemovedPerson {
@@ -179,6 +169,8 @@ export interface Project {
    * being in it: Settings › Company lists it for them, and their sidebar does not (F-037).
    */
   member?: boolean;
+  /** AG-10: whether agents and local clients may work in this space. Everyone who can open the space sees the state. */
+  ai: SpaceAiState;
   version: number;
   createdAt: string;
 }
@@ -324,7 +316,14 @@ export interface CreateProjectCommand {
    * is its first space admin. `workspace` holds the whole company, as the Everyone space does.
    */
   visibility?: ProjectVisibility;
+  /** AI in the new space: on by default. */
+  ai?: boolean;
+  /** People of the company added as members; the creator is always the first admin and is not listed. */
+  people?: string[];
 }
+
+/** `PATCH`: a space admin, or a company owner or admin, renames the space. */
+export interface RenameProjectCommand { name: string }
 
 /** Adds an optional view to a project. Adding one it already has changes nothing. */
 export interface AddProjectViewCommand {

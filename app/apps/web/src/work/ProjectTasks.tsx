@@ -6,7 +6,7 @@ import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery, useRowMotio
 import { getProject } from '../project/api';
 import { useShellActions } from '../app/shellContext';
 import { projectAiBlocked, useShellData } from '../app/data';
-import { isAiBlocked } from '../ai/workspaceAi';
+import { isAiBlocked } from '../ai/spaceAi';
 import { remember } from '../app/remembered';
 import { isFinished } from './format';
 import { TaskRow, type TaskRowProps } from './TaskRow';

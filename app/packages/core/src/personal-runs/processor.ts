@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { PERSONAL_RUN_LIMITS, personalRunMaxInputTokens, RUNTIME_RUN_LIMITS, type AiPrice } from '@flux/contracts';
 import { boundedInputTokens, conservativeTokenEstimate } from '../ai/estimate.js';
-import { ForbiddenError, NotFoundError, WorkspaceAiBlockedError } from '../access/errors.js';
+import { ForbiddenError, NotFoundError, SpaceAiOffError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import type { JobRetryPolicy } from '../push/config.js';
 import { isId } from '../work/validation.js';
@@ -100,8 +100,8 @@ function isAccessDenial(error: unknown) {
  * status. `lock` holds the rows the decision depends on until the unit of work commits.
  */
 async function recheck(ports: PersonalRunPorts, connections: PersonalConnectionLookup, compute: PersonalCompute, run: RunRecord, stage: Stage, lock: boolean): Promise<{ refusal: Refusal } | { connection: PersonalConnection }> {
-  // F-029, first: AI on in the run's workspace, at the epoch the run was admitted under (policy row before the others).
-  const ai = await ports.access.workspaceAi(run.workspaceId, { lock });
+  // AG-10, first: AI on in the run's space, at the epoch the run was admitted under (policy row before the others).
+  const ai = await ports.access.spaceAi(run.projectId, { lock });
   if (ai.state !== 'allowed' || ai.epoch !== run.aiEpoch) return { refusal: 'ai_off' };
   const enablement = await ports.runs.enablement(run.ownerUserId, { lock });
   if (!enablement || enablement.agents.find((agent) => agent.workspaceId === run.workspaceId)?.agentId !== run.agentId) return { refusal: 'revoked' };
@@ -138,15 +138,15 @@ const free: RunChanges = { costState: 'released', chargedMicros: 0 };
 
 /** F-029: a stop request the turn-off sweep made ends the run `ai_off`; the owner's own Stop stays `stopped`. */
 async function stopped(ports: PersonalRunPorts, run: RunRecord): Promise<RunEndStatus> {
-  const ai = await ports.access.workspaceAi(run.workspaceId);
+  const ai = await ports.access.spaceAi(run.projectId);
   return ai.state !== 'allowed' || ai.epoch !== run.aiEpoch ? 'ai_off' : 'stopped';
 }
 
 /** Reads the project-audience sources of the run as its agent. Private places are never read. */
 async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ sources: SuppliedSource[]; earlier: string | null } | null> {
   const agent: Principal = { kind: 'agent', id: run.agentId };
-  // F-029: the reads run under the policy row's share lock, at the run's admission epoch (a read after the change sees it).
-  await ports.access.requireWorkspaceAi(run.workspaceId, { lock: true, epoch: run.aiEpoch });
+  // AG-10: the reads run under the policy row's share lock, at the run's admission epoch (a read after the change sees it).
+  await ports.access.requireSpaceAi(run.projectId, { lock: true, epoch: run.aiEpoch });
   await ports.access.requireProject(agent, 'read', run.projectId);
   const sources: SuppliedSource[] = [];
   const next = () => `S${sources.length + 1}`;
@@ -480,7 +480,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const run = claimed.run;
 
       const read = await uow.run((ports) => readSources(ports, run)).catch((error: unknown) => {
-        if (error instanceof WorkspaceAiBlockedError) return 'ai_off' as const;
+        if (error instanceof SpaceAiOffError) return 'ai_off' as const;
         if (isAccessDenial(error)) return null;
         throw error;
       });

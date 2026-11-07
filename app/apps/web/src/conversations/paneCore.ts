@@ -4,7 +4,7 @@ import type { Conversation, Project, ProjectPerson } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import type { MeResponse } from '../api/auth';
 import { useShellData } from '../app/data';
-import { useWorkspaceAi } from '../ai/workspaceAi';
+import { useSpaceAi } from '../ai/spaceAi';
 import { audienceLine, useProjectShell } from '../project/data';
 import { getProject } from '../project/api';
 import type { ProjectData } from './loader';
@@ -15,7 +15,7 @@ export interface PaneCore {
   /** The pane's own field: the stream's composer, or the open thread's reply field. */
   composerId: string;
   writable: boolean;
-  /** F-029 (#614): while the workspace's AI is off this conversation is human-only: no assistant, no AI commands, no suggestions. */
+  /** AG-10: while the space's AI is off this conversation is human-only: no assistant, no AI commands, no suggestions. */
   aiOff: boolean;
   /** "Only you and Kai", and the same without "only you two" for the assistant's line. */
   audience: string; audienceShort: string;
@@ -35,7 +35,7 @@ export function usePaneCore(data: ProjectData, variant: 'stream' | 'thread'): Pa
   const revalidator = useRevalidator();
   const revalidateRef = useRef<() => unknown>(revalidator.revalidate);
   useEffect(() => { revalidateRef.current = revalidator.revalidate; });
-  const aiOff = useWorkspaceAi(project.workspaceId).blocked;
+  const aiOff = useSpaceAi(project.id).blocked;
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   return {
     me, project, conversation, people, composerId: conversation ? 'thread-composer' : 'project-composer', writable: project.access !== 'viewer', aiOff,

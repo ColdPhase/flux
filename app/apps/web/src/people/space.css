@@ -1,0 +1,96 @@
+/* Spaces (F-037, #874): the people picker, the New space window, the space settings page and the delete confirmation. Direction A:
+   cards, 1 px hairlines, no shadows on buttons, one dark button per screen. Colour changes only; nothing moves for its own sake. */
+
+/* People picker: chosen people are one-line chips in a field; the company's list opens under it. */
+.pick { display: grid; gap: 8px; }
+.pick__field { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 10px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
+.pick__chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.pick__chip { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 28px; padding: 0 6px 0 4px; border-radius: 999px; background: var(--sub); color: var(--t1); font-size: var(--fs-sm); font-weight: 500; }
+.pick__chip .ui-avatar { flex: none; background: var(--el); }
+.pick__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick__x { display: grid; place-items: center; flex: none; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--t2); cursor: pointer; transition: var(--tr-fill); }
+.pick__x:hover { background: var(--hov); color: var(--t1); }
+.pick__x:focus-visible, .pick__add:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.pick__add { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 0 6px; border: 0; border-radius: var(--r-btn); background: none; color: var(--t2); font: inherit; font-size: var(--fs-md); font-weight: 500; cursor: pointer; transition: var(--tr-fill); }
+.pick__add:hover { background: var(--hov); color: var(--t1); }
+.pick__add:disabled { opacity: .5; cursor: default; }
+.pick__list { display: grid; gap: 4px; padding: 6px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); max-height: 260px; overflow-y: auto; }
+.pick__list ul { margin: 0; padding: 0; list-style: none; }
+.pick__filter { margin: 2px 2px 4px; }
+.pick__row { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 4px 8px; border-radius: var(--r-sm); cursor: pointer; transition: var(--tr-fill); }
+.pick__row:hover { background: var(--hov); }
+.pick__row input { flex: none; width: 16px; height: 16px; accent-color: var(--t1); }
+.pick__row:has(input:focus-visible) { outline: 2px solid var(--t1); outline-offset: -2px; }
+.pick__row .ui-avatar { flex: none; }
+.pick__who { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
+.pick__who b { font-size: var(--fs-base); font-weight: 500; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick__who span { font-size: var(--fs-xs); color: var(--t3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pick__none { margin: 6px 8px; font-size: var(--fs-sm); color: var(--t3); }
+
+/* The New space window and the delete confirmation share one surface: centred on the computer, a bottom sheet on the phone. */
+.ui-overlay--center .newspace-win { top: 11vh; width: min(600px, calc(100% - 32px)); max-height: 84vh; overflow-y: auto; }
+.ui-overlay--bottom .newspace-win { inset: auto 0 0 0; max-height: 92dvh; overflow-y: auto; border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--sh-pop); padding-bottom: env(safe-area-inset-bottom); }
+.ui-overlay--center .delspace-win { top: 18vh; width: min(480px, calc(100% - 32px)); }
+.ui-overlay--bottom .delspace-win { inset: auto 0 0 0; border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--sh-pop); padding-bottom: env(safe-area-inset-bottom); }
+
+/* The New space window. */
+.newspace { display: grid; gap: 16px; padding: 22px 24px 22px; width: 100%; }
+.newspace__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.newspace__head h2 { margin: 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; color: var(--t1); }
+.newspace__x { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--r-btn); background: none; color: var(--t2); cursor: pointer; transition: var(--tr-fill); }
+.newspace__x:hover { background: var(--hov); color: var(--t1); }
+.newspace__x:focus-visible { outline: 2px solid var(--t1); outline-offset: 1px; }
+.newspace__field { display: grid; gap: 6px; }
+.newspace__label { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: var(--fs-base); font-weight: 600; color: var(--t1); }
+.newspace__label span { font-size: var(--fs-xs); font-weight: 400; color: var(--t3); }
+.newspace .ui-field { margin: 0; }
+.newspace__switches { margin: 0; padding: 0; list-style: none; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); overflow: hidden; }
+.newspace__switches .sset-row { min-height: 56px; }
+.newspace__foot { display: flex; justify-content: flex-end; gap: 8px; }
+.newspace__foot .ui-btn { min-height: 36px; }
+.newspace__error { margin: 0; display: flex; gap: 6px; font-size: var(--fs-sm); color: var(--t2); }
+
+/* Space settings: the page keeps the space's header and tabs; its cards are the Settings cards. */
+.spset .sset-head h2 { margin: 0; }
+.spset__name { display: flex; align-items: center; gap: 12px; }
+.spset__name b { flex: 1; min-width: 0; font-size: var(--fs-base); font-weight: 600; overflow-wrap: break-word; }
+.spset__name form { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
+.spset__name .ui-field { flex: 1; min-width: 0; margin: 0; }
+.spset__seclead { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin: 26px 0 10px; }
+.spset__seclead .sset-sec { margin: 0; }
+.spset__count { margin-left: 6px; font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-xs); font-weight: 400; color: var(--t3); }
+.spset__who { display: flex; flex: 1; flex-direction: column; min-width: 0; line-height: 1.35; }
+.spset__who b { font-size: var(--fs-base); font-weight: 600; color: var(--t1); overflow-wrap: break-word; }
+.spset__who span { font-size: var(--fs-xs); color: var(--t3); overflow-wrap: anywhere; }
+.spset__you { font-weight: 400; color: var(--t3); }
+.spset__role { flex: none; min-width: 96px; font-size: var(--fs-md); font-weight: 500; color: var(--t1); text-align: right; }
+.spset__role.ui-select, .spset__roleselect { flex: none; }
+.spset__rolecell { flex: none; min-width: 96px; text-align: right; }
+.spset__remove.ui-btn { flex: none; min-width: 72px; color: var(--t2); }
+.spset__remove-gap { flex: none; width: 72px; }
+.spset__add { display: grid; gap: 10px; margin: 0 0 14px; padding: 14px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); }
+.spset__add .newspace__foot { justify-content: flex-start; }
+.spset__status { min-height: 18px; margin: 8px 2px 0; font-size: var(--fs-sm); color: var(--t2); }
+.spset__status:empty { display: none; }
+.spset__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px; }
+.spset__actions .ui-btn { min-height: 32px; }
+.spset__note { margin: 10px 2px 0; font-size: var(--fs-sm); color: var(--t3); }
+/* Delete is destructive, and keeps a clear style: a 1 px outline, never the inverted fill (Prostota, quiet buttons). */
+.ui-btn--danger.spset__delete { color: var(--t1); }
+
+/* The delete confirmation. */
+.delspace { display: grid; gap: 14px; padding: 22px 24px; width: 100%; }
+.delspace h2 { margin: 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; color: var(--t1); overflow-wrap: anywhere; }
+.delspace p { margin: 0; font-size: var(--fs-base); line-height: 1.5; color: var(--t2); }
+.delspace p b { font-weight: 600; color: var(--t1); }
+.delspace .newspace__foot .ui-btn { min-height: 36px; }
+@media (max-width: 640px) {
+  .newspace, .delspace { padding: 18px 16px 22px; }
+  /* A person's row stacks on the phone: the name and address on the first line in full, the role and Remove under them. */
+  .spset .sset-row[data-person] { flex-wrap: wrap; row-gap: 6px; }
+  .spset__who { flex: 1 1 calc(100% - 52px); }
+  .spset__role, .spset__rolecell { min-width: 0; margin-left: 48px; text-align: left; }
+  .spset__remove.ui-btn, .spset__confirm { margin-left: auto; }
+  .spset__remove-gap { display: none; }
+  .newspace__foot .ui-btn, .delspace .newspace__foot .ui-btn { flex: 1; min-height: 44px; }
+}

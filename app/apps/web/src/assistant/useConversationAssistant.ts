@@ -6,7 +6,7 @@ import {
   acceptProposal, askAssistant, dismissProposal, getAssistantActivity, getAssistantStatus, getRun, listAnswers, listOwnRuns, listProposals, resumeAssistant, retryRun, stopRun,
 } from './api';
 import { isWorking } from './format';
-import { rememberAskedConversation } from './lastAsked';
+import { aiOffDismissed, dismissAiOff, rememberAskedConversation } from './lastAsked';
 
 // The assistant inside one project conversation (#68 AC-8). The answers and proposals are the
 // conversation's shared objects; the status and the working run are the signed-in person's own
@@ -62,6 +62,11 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
   const queuedRef = useRef(queued);
   useEffect(() => { queuedRef.current = queued; }, [queued]);
 
+  /** The newest run of this conversation, when AI being turned off stopped it and the person has not dismissed the line. */
+  const stoppedByAiOff = useCallback((items: AssistantRun[]) => {
+    const latest = items.find((item) => item.conversationId === conversationId && !item.silent);
+    return latest && latest.endReason === 'ai_off' && !aiOffDismissed(meId, latest.id) ? latest : null;
+  }, [conversationId, meId]);
   const refreshStatus = useCallback(() => { if (enabled) getAssistantStatus().then(setStatus).catch(() => { /* the ask bar keeps saying it is checking */ }); }, [enabled]);
   const refreshActivity = useCallback(async () => {
     if (!conversationId || !enabled) return;
@@ -100,6 +105,8 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
     // F-029 (#614): while the workspace's AI is off only the committed answers (conversation history) are read.
     if (!enabled) {
       if (conversationId) allAnswers(conversationId).then(setAnswers).catch(() => undefined);
+      // The one thing still shown while AI is off: the owner's run that this switch stopped (AG-10).
+      listOwnRuns().then((page) => { const stopped = stoppedByAiOff(page.items); if (stopped) setRun(stopped); }).catch(() => undefined);
       return;
     }
     refreshStatus();
@@ -117,17 +124,18 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
       const waiting = here.find((item) => item.status === 'queued' && (item.behind || working && item.id !== working.id));
       const active = working ?? here.find((item) => item !== waiting);
       if (active) setRun(active);
+      else { const stopped = stoppedByAiOff(page.items); if (stopped) setRun(stopped); }
       if (waiting) setQueued(waiting);
     }).catch(() => undefined);
-  }, [conversationId, projectId, meId, refreshStatus, enabled]);
+  }, [conversationId, projectId, meId, refreshStatus, enabled, stoppedByAiOff]);
 
   useStreamEvents(meId, (event) => {
-    if (!enabled) return;
     if (event.kind === ASSISTANT_RUN_CHANGED_EVENT) {
-      // Owner-only: another person's run never reaches this stream.
+      // Owner-only: another person's run never reaches this stream. While AI is off it still tells the owner their run stopped.
       getRun(event.objectId).then(track).catch(() => undefined);
       return;
     }
+    if (!enabled) return;
     if (event.objectType === 'project' && event.objectId === projectId && event.kind.startsWith('project.assistant_')) void refreshShared();
   }, () => { void refreshShared(); if (enabled && runRef.current) getRun(runRef.current.id).then(track).catch(() => undefined); });
 
@@ -147,7 +155,8 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
 
   return {
     // Masked while AI is off: a run, a suggestion or a status read before the flip is not shown.
-    status: enabled ? status : null, answers, proposals: enabled ? proposals : new Map<string, AssistantProposal>(), run: enabled ? run : null, queued: enabled ? queued : null,
+    status: enabled ? status : null, answers, proposals: enabled ? proposals : new Map<string, AssistantProposal>(),
+    run: enabled || run?.endReason === 'ai_off' ? run : null, queued: enabled ? queued : null,
     others: enabled ? others : [], tick, refreshStatus,
     async cancelQueued() {
       if (!queued) return;
@@ -184,7 +193,7 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
     async retry(runId) {
       track(await retryRun(runId, crypto.randomUUID()));
     },
-    dismissRun() { setRun(null); },
+    dismissRun() { if (run?.endReason === 'ai_off') dismissAiOff(meId, run.id); setRun(null); },
     async resume() {
       setStatus(await resumeAssistant());
     },

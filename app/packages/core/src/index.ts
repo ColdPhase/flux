@@ -20,8 +20,8 @@ export {
   DM_ACTIONS,
   PROJECT_ACTIONS,
   WORKSPACE_ACTIONS,
-  requireWorkspaceAi,
-  type WorkspaceAi,
+  requireSpaceAi,
+  type SpaceAi,
   type Action,
   type ActionsByResource,
   type Actor,
@@ -39,16 +39,17 @@ export type { DomainEventSink } from './access/common.js';
 export { companyDisplayName, createWorkspace, listWorkspaces, getWorkspace, joinCompany, renameWorkspace, requireCompanyAdmin, COMPANY_NAME, EVERYONE_SPACE_NAME, type WorkspaceReadOptions } from './access/workspaces.js';
 export { listMembers, addMember, changeRole, removeMember, listRemovedPeople, restoreMember } from './access/members.js';
 export { createInvite, listInvites, revokeInvite, previewInvite, acceptInvite, withLink, inviteToken, inviteIdOf, inviteTokenHash, type InviteSigner, type CreatedInvite, type InviteJoined } from './access/invites.js';
-export { setWorkspaceAiPolicy, sweepWorkspaceAi, WorkspaceAiSweepIncomplete, type WorkspaceAiSweepQueue } from './access/workspace-ai.js';
-export { createProject, addProjectView, listProjects, getProject, listProjectPeople } from './access/projects.js';
+export { setSpaceAi, sweepSpaceAi, SpaceAiSweepIncomplete, type SpaceAiSweepQueue } from './access/space-ai.js';
+export { createProject, addProjectView, listProjects, getProject, listProjectPeople, listSpacePeople, renameProject } from './access/projects.js';
+export { deleteProject, leaveProject } from './access/project-exit.js';
 export { listProjectGrants, grantProject, revokeProjectGrant } from './access/grants.js';
 export { createAgent, listAgents, revokeAgent } from './access/agents.js';
 export { createDraft, getDraft, listDrafts, updateDraft, shareDraft, moveDraft, toDraft } from './access/drafts.js';
 export type {
-  AccessPorts, AgentRepository, DraftRepository, ProjectRepository, RecordReader, WorkspaceAiSweepRows, WorkspaceEncryptionRows, WorkspaceRepository,
+  AccessPorts, AgentRepository, DraftRepository, ProjectRepository, RecordReader, SpaceAiSweepRows, WorkspaceEncryptionRows, WorkspaceRepository,
 } from './access/repositories.js';
 export type {
-  AccountLookup, AccountRecord, AgentRecord, AiPolicyRecord, AiPolicyRow, DraftRecord, GrantRecord, GrantWrite, MemberRecord, ProjectRecord, SweptRun, WorkspaceRecord,
+  AccountLookup, AccountRecord, AgentRecord, DraftRecord, GrantRecord, GrantWrite, MemberRecord, ProjectRecord, SweptRun, WorkspaceRecord,
 } from './access/records.js';
 export * from './idempotency.js';
 export * from './jobs/draft-summary.js';

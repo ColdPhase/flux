@@ -1,9 +1,9 @@
 # Administration in the app
 
-The operator runs the server; the people who use Flux run their own spaces. There is no server-wide
-administrator account: everything on this page is done in the app by a space's **owners** and
-**admins**, and the [settings file](configuration.md) is the operator's only lever over the whole
-instance.
+The operator runs the server; the people who use Flux run their own company and its spaces. There is no
+server-wide administrator account: everything on this page is done in the app by the company's **owners**
+and **admins** and by each space's own admins, and the [settings file](configuration.md) is the operator's
+only lever over the whole instance.
 
 <p align="center">
   <picture>
@@ -18,33 +18,38 @@ instance.
 
 <p align="center"><sub>Settings → People on a 1440&nbsp;px computer and a 390&nbsp;px phone, in the light and the dark theme your browser asks for.</sub></p>
 
-## Spaces
+## The company and its spaces
 
-A **space** (a workspace in the API and the documentation) holds projects, people and their
-conversations. Whoever creates a space is its owner. The first project someone sets up creates their
-first space with it. Each person can belong to several spaces with a different role in each.
+One Flux is one company. The first account sets it up and owns it, with the default space **Everyone**,
+which holds the whole company. Everything else people do together happens in **spaces**: a space can be a
+department, a team or a project. You see only the spaces you were added to, and the sidebar lists exactly
+those. **New › Space** is one window: a name, the people (chosen from the company), an AI switch that starts
+on, and **Create space**. You are the new space's admin.
 
 ## People and roles
 
-**Settings → People** lists your spaces; open one to see who is in it.
+**Settings › Company** holds the company's name and its people.
 
 | Role | Can |
 | --- | --- |
 | **Owner** | Everything an admin can do, and add or remove owners. |
-| **Admin** | Add and remove people, change roles, manage every project, turn AI off or on. |
-| **Member** | See projects open to the whole space and the ones given to them. |
-| **Guest** | See only the projects given to them. |
+| **Admin** | Add and remove people, change roles, change every space and delete any space except Everyone. |
+| **Member** | Be in Everyone, start spaces and see the ones they are added to. |
+| **Guest** | See only the spaces they are added to, and never have AI. |
 
 Owners and admins add someone who already has an account with **Add someone** (by their email
-address), change a role, or remove a person. Anyone can **Leave** a space, except its last owner.
+address), change a role, or remove a person. Anyone can **Leave** the company, except its last owner.
 Removing someone takes effect on their very next request; their own agents stop with them.
 **Settings › Company** lists people who left or were removed, with **Restore**: they sign in as usual
 and are in Everyone again, and other spaces are added by hand. Below that it lists every space, so
-an owner or admin can add themselves to one; their sidebar shows only the spaces they belong to.
+an owner or admin can add themselves to one or delete it; their sidebar, search and Inbox hold only the
+spaces they belong to.
 
-Inside a project, its managers (owners and admins) choose under **People** whether it is open to
-the whole space or only to the people listed, give one person **Can read** or **Can write**, or keep
-someone out entirely. The full rules are in the [access policy](../development/access-policy.md#rules).
+Each space has its own settings (**⋯ › Settings** in its header): its name, its people, the AI switch,
+**Leave space** and, for its admins, **Delete space…**. A space has two roles, **Member** and **Admin**.
+Its creator is an admin and can make others admins. Deleting asks first, names the space and erases
+everything in it, including its conversations, tasks, Wiki pages and maps. Everyone cannot be deleted
+or left. The full rules are in the [access policy](../development/access-policy.md#rules).
 
 ## Invite links
 
@@ -72,18 +77,19 @@ every pending link.
 
 ## AI in a space
 
-At the end of a space's People, the **AI in** row, followed by the space's name,
-shows whether agents and assistants may work there. Owners and admins turn it off or on for the whole space:
+Each space has an **AI** switch in its settings, on by default. Its admins, and the company's owners and
+admins, turn it off or on for that space. There is no switch for the whole Flux:
 
 - **Off**: no agent, assistant or connected MCP client reads or acts in the space, including each
-  member's own. Work they had started stops. People keep working as before.
+  member's own. `/ai` answers "AI is off in this space" and the Owner picker lists people only. Work
+  an agent had started stops before its next change. People keep working as before.
 - **On again**: assistants and connected agents can work there again with the access they had.
   Nothing that was stopped starts again by itself.
 
 The instance-wide switches for owners' AI connections, the assistant and background suggestions are
 the operator's ([AI providers](configuration.md#ai-providers)), and so is the
 [agent runtime](agent-runtime.md). The space switch can only narrow them. The contract is
-[F-029](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/workspace-ai-lock.md).
+[AI in a space](../product/assistant.md#ag-10--ai-in-a-space).
 
 ## Encrypted spaces
 

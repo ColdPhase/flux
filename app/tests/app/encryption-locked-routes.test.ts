@@ -38,7 +38,9 @@ const ID_ROUTES: Readonly<Record<string, 'notification' | 'account' | 'decision'
 
 /** Answers that refuse a feature an encrypted workspace does not offer, before any of its objects is read. */
 const NOT_OFFERED: Readonly<Record<string, string>> = {
-  '403 WORKSPACE_AI_BLOCKED': 'AI is always off in an encrypted workspace (F-029)',
+  '403 SPACE_AI_OFF': 'AI is always off in an encrypted workspace (F-030)',
+  '409 WORKSPACE_ENCRYPTED_AI_OFF': 'AI is always off in an encrypted workspace: no agent can be made, and the operator is not asked to turn AI on (F-030)',
+  '404 ASSISTANT_WHEN_NOT_FOUND': 'a notification of an encrypted workspace never holds an assistant draft: AI never ran there, so there is nothing to read (F-030)',
   '503 GITHUB_UNAVAILABLE': 'GitHub is refused for an encrypted workspace, and not configured on the test server',
 };
 const codeOf = (text: string) => { try { return (JSON.parse(text) as { code?: string }).code ?? ''; } catch { return ''; } };

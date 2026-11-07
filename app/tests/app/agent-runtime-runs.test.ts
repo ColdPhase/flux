@@ -8,9 +8,9 @@ import {
   agentConnectionPath, assistantChangeActionPath, assistantSettingsPath, ASSISTANT_UNIT_CREATE_VIEW, RUN_TOKEN_LIMITS, RUNTIME_RUN_LIMITS, type AssistantSettings, type Conversation, type Project,
   type Workspace,
 } from '@flux/contracts';
-import { createPersonalRunProcessor, MAX_WAITING_REQUESTS, noPersonalConnections, recoverLostRuntimeRuns, recoverPersonalRuns, REDACTED_SECRET, sweepWorkspaceAi, type AgentRuntimeConfig, type Principal } from '@flux/core';
+import { createPersonalRunProcessor, MAX_WAITING_REQUESTS, noPersonalConnections, recoverLostRuntimeRuns, recoverPersonalRuns, REDACTED_SECRET, sweepSpaceAi, type AgentRuntimeConfig, type Principal } from '@flux/core';
 import { accessPorts } from '@flux/db';
-import { setWorkspaceAi } from './support/workspace-ai.js';
+import { setSpaceAi } from './support/space-ai.js';
 import { callSupervisor, type SupervisorRequest } from '@flux/runtime-protocol';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
 import { RUN_BRIEF } from '../../apps/runtime/src/supervisor/run.js';
@@ -632,20 +632,20 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.equal(compute.dispatched.length, 0);
   });
 
-  test('F-029: a CLI run in flight when AI is turned off is stopped through the slot and its late answer is not posted', async () => {
+  test('AG-10: a CLI run in flight when AI is turned off is stopped through the slot and its late answer is not posted', async () => {
     await resetFake();
     await scenario('run_slow');
     const started = await ask();
     const processing = processor.process(started.run.id);
     await waitFor(async () => (await calls()).some((entry) => entry.event === 'tools_list'), 'the CLI started');
-    const epoch = await setWorkspaceAi(ws.id, 'blocked');
+    const epoch = await setSpaceAi(place.id, 'blocked');
     try {
-      await sweepWorkspaceAi({ workspaceId: ws.id, epoch }, db, accessPorts);
+      await sweepSpaceAi({ projectId: place.id, epoch }, db, accessPorts);
       await processing;
       const stored = await row(started.run.id);
       assert.deepEqual([stored.status, stored.end_reason, stored.answer_body], ['stopped', 'ai_off', null], 'the late answer is not posted and the reason says AI was turned off');
       assert.ok(stored.stop_acknowledged_at, 'the slot stopped the CLI (runtime.stop)');
       assert.ok(stored.run_token_closed_at, 'and its run token is closed');
-    } finally { await setWorkspaceAi(ws.id, 'allowed'); }
+    } finally { await setSpaceAi(place.id, 'allowed'); }
   });
 });

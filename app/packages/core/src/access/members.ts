@@ -102,10 +102,8 @@ async function dropUnlockPassword(tx: Executor, ports: Pick<AccessPorts, 'encryp
 export async function changeRole(principal: Principal, workspaceId: string, userId: string, command: ChangeRoleCommand, db: Database, ports: MemberPorts): Promise<WorkspaceMember> {
   const role = oneOf(command?.role, ROLES, 'role');
   return db.transaction(async (tx) => {
-    // F-030 lock order: workspace_keys before the F-029 order when an owner or admin of a sealed workspace loses the role.
+    // F-030 lock order: workspace_keys before the membership rows when an owner or admin of a sealed workspace loses the role.
     const sealedChange = await lockKeysForManagerChange(tx, ports, workspaceId, userId, role);
-    // F-029 lock order: the AI policy row before any membership row (the event below reads it again for agent audiences).
-    await ports.access(tx).workspaceAi(workspaceId, { lock: true });
     const workspaces = ports.workspaces(tx);
     await workspaces.lock(workspaceId);
     const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, ports.access(tx), { lock: true }), 'workspace');
@@ -116,6 +114,7 @@ export async function changeRole(principal: Principal, workspaceId: string, user
     if (isManager(target.role) && !isManager(role)) await dropUnlockPassword(tx, ports, workspaceId, userId, sealedChange);
     const updated = await workspaces.setRole(workspaceId, userId, role);
     if (role === 'guest') await workspaces.endSpaceAdmin(workspaceId, userId);
+    if (isManager(role) && !isManager(target.role)) await workspaces.liftDeniedGrants(workspaceId, userId);
     // The trigger deleted their holder and the recovery holder; their removal records are pinned now, in this transaction.
     if (sealedChange) await ports.encryption(tx).recordRemovals(workspaceId);
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.member_role_changed.v1', workspaceId, { userId, from: target.role, role });
@@ -131,8 +130,6 @@ export async function changeRole(principal: Principal, workspaceId: string, user
 export async function removeMember(principal: Principal, workspaceId: string, userId: string, db: Database, ports: MemberPorts): Promise<void> {
   await db.transaction(async (tx) => {
     const sealedChange = await lockKeysForManagerChange(tx, ports, workspaceId, userId, null);
-    // F-029 lock order: the AI policy row before any membership row.
-    await ports.access(tx).workspaceAi(workspaceId, { lock: true });
     const workspaces = ports.workspaces(tx);
     await workspaces.lock(workspaceId);
     const self = principal.kind === 'human' && principal.id === userId;

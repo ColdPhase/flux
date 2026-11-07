@@ -1,6 +1,6 @@
 import type { DbExecutor } from '@flux/db';
 import { assertAuthorized, authorize, enforce, evaluateProject, type WorkAccess } from '@flux/core';
-import { workspaceIdOfAiScope, workspaceAi, accessReader } from '@flux/db';
+import { spaceAi, accessReader } from '@flux/db';
 
 /** Project access through the single policy choke point. */
 export function policyWorkAccess(tx: DbExecutor): WorkAccess {
@@ -16,8 +16,7 @@ export function policyWorkAccess(tx: DbExecutor): WorkAccess {
       return (await authorize(candidate, 'project.read', { type: 'project', id: projectId }, accessReader(tx))).allowed;
     },
     async aiAllowed(projectId) {
-      const workspaceId = await workspaceIdOfAiScope(tx, 'project', projectId);
-      return !!workspaceId && (await workspaceAi(tx, workspaceId, { lock: true })).state === 'allowed';
+      return (await spaceAi(tx, projectId, { lock: true })).state === 'allowed';
     },
   };
 }

@@ -13,19 +13,6 @@ export interface AccountRecord { id: string; email: string; name: string; emailV
 
 export type AccountLookup = { userId: string } | { email: string };
 
-/** A workspace's AI policy row (F-029) as the flip reads it under `FOR UPDATE`. */
-export interface AiPolicyRecord { state: 'allowed' | 'blocked'; epoch: number; version: number }
-
-/** One workspace's AI policy with the name of whoever last changed it (null once that account is gone). */
-export interface AiPolicyRow {
-  workspaceId: string;
-  state: 'allowed' | 'blocked';
-  version: number;
-  changedAt: Date;
-  changedBy: string | null;
-  changedByName: string | null;
-}
-
 export interface ProjectRecord extends ProjectFacts {
   name: string;
   visibility: ProjectVisibility;

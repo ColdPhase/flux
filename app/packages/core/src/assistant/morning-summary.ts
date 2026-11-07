@@ -72,19 +72,18 @@ export async function startAssistantSummary(ports: AssistantSummaryPorts, summar
   if (!enablement || enablement.status !== 'active') return false;
   // The note about background use was shown and accepted when the person turned this on (AST-2.1): without it, no run.
   if (backgroundNote(enablement, await ports.jobs.noteVersion(userId, accountKey(enablement))).note !== null) return false;
-  // F-029: the run is anchored only in a workspace whose AI is on, and nothing of a workspace whose AI is off is given to it.
-  let workspaceId: string | undefined;
-  const aiOn = new Map<string, boolean>();
-  const allowed = async (id: string) => {
-    if (!aiOn.has(id)) aiOn.set(id, (await ports.access.workspaceAi(id, { lock: true })).state === 'allowed');
-    return aiOn.get(id)!;
-  };
-  for (const agent of enablement.agents) if (await allowed(agent.workspaceId)) { workspaceId = agent.workspaceId; break; }
+  // AG-10: nothing of a space whose AI is off is given to the run, and the run is anchored only in a space whose AI is on.
+  const workspaceId = enablement.agents[0]?.workspaceId;
   if (!workspaceId) return false;
+  const aiOn = new Map<string, boolean>();
+  const allowed = async (projectId: string) => {
+    if (!aiOn.has(projectId)) aiOn.set(projectId, (await ports.access.spaceAi(projectId, { lock: true })).state === 'allowed');
+    return aiOn.get(projectId)!;
+  };
   const rows = await summary.unread(userId, MORNING_SUMMARY_LOOKBACK + 1);
   const readable: { id: string }[] = [];
   for (const row of rows) {
-    if (!(await allowed(row.source.workspaceId))) continue;
+    if (row.source.type === 'project' && !(await allowed(row.source.id))) continue;
     // Direct messages are never given to a run (AST-9); a muted or unreadable place is not counted.
     if (row.source.type === 'dm' || await summary.isMuted(userId, row.source) || !readsSource(await summary.authorizer.canRead(userId, row.source), row.source)) continue;
     readable.push({ id: row.id });
@@ -96,6 +95,7 @@ export async function startAssistantSummary(ports: AssistantSummaryPorts, summar
   const prompt = summaryFacts(await ports.summaries.firstName(userId), hour, lines, Math.max(0, readable.length - lines.length));
   // The first project where the person may write and the assistant may read; the run is only anchored there, it reads nothing of it.
   for (const anchor of await ports.summaries.anchors(userId, workspaceId, 5)) {
+    if (!(await allowed(anchor.projectId))) continue;
     const started = await startBackground(ports, {
       ownerUserId: userId, projectId: anchor.projectId, conversationId: anchor.conversationId, kind: 'morning_summary', silent: true, label: 'Morning summary', prompt,
       clientRunId: uuidFrom(`morning-summary:${userId}:${day}`),
@@ -128,8 +128,8 @@ export async function settleAssistantSummaries(uow: AssistantSummaryUnitOfWork, 
         await announce(ports, stopped);
       }
       const ended = run ? await ports.runs.findRun(run.id) : null;
-      // F-029: no assistant line is written for a run whose workspace has AI off now; the plain summary goes out.
-      const aiOn = !!ended && (await ports.access.workspaceAi(ended.workspaceId, { lock: true })).state === 'allowed';
+      // AG-10: no assistant line is written for a run whose space has AI off now; the plain summary goes out.
+      const aiOn = !!ended && (await ports.access.spaceAi(ended.projectId, { lock: true })).state === 'allowed';
       const line = aiOn && ended && (ended.status === 'completed' || ended.status === 'truncated') ? summaryLine(ended.answerBody) : null;
       if (line) {
         // The one push carries the same text; with nothing left in the inbox there is no notification to hang it on.

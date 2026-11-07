@@ -1,6 +1,5 @@
-import { WorkspaceAiBlockedError } from './errors.js';
 import type { PersonalRunAccess } from '../personal-runs/ports.js';
-import { accessName, enforce, evaluateAgent, evaluateProject, evaluateSketch, requireWorkspaceAi } from './policy.js';
+import { accessName, enforce, evaluateAgent, evaluateProject, evaluateSketch, requireSpaceAi } from './policy.js';
 import type { AccessReader } from './ports.js';
 
 /**
@@ -23,8 +22,6 @@ export function policyPersonalRunAccess(access: AccessReader): PersonalRunAccess
 
     async requireInvoke(principal, agentId, options) {
       const evaluation = await evaluateAgent(principal, 'agent.invoke', agentId, access, { lock: options?.lock });
-      // F-029: the owner's own assistant, refused with its own reason while AI is off in its workspace.
-      if (evaluation.visible && evaluation.agent && (await access.workspaceAi(evaluation.agent.workspaceId)).state !== 'allowed') throw new WorkspaceAiBlockedError();
       const { agent } = enforce(evaluation, 'agent');
       return { workspaceId: agent!.workspaceId };
     },
@@ -39,7 +36,7 @@ export function policyPersonalRunAccess(access: AccessReader): PersonalRunAccess
       return evaluation.visible && evaluation.allowed;
     },
 
-    workspaceAi: (workspaceId, options) => access.workspaceAi(workspaceId, options),
-    requireWorkspaceAi: (workspaceId, options) => requireWorkspaceAi(access, workspaceId, options),
+    spaceAi: (projectId, options) => access.spaceAi(projectId, options),
+    requireSpaceAi: (projectId, options) => requireSpaceAi(access, projectId, options),
   };
 }

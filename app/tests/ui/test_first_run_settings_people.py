@@ -18,7 +18,7 @@ from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from app_select import choose
 from app_select import labels as app_labels
-from create_window import kind_tab, window
+from create_window import kind_tab, new_space_window, open_create, window
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 from test_settings import assert_touch_target
 
@@ -102,8 +102,9 @@ class FirstRunSettingsPeople(unittest.TestCase):
         """F-037: one Flux is one company, set up by its first account; a later sign-up joins only through a link."""
         self.sign_up("maria", "Maria Nowak")
         page = self.page("maria")
-        page.goto("/projects/new")
-        form = page.get_by_role("form", name="New space")
+        page.goto("/")
+        open_create(page)
+        form = new_space_window(page).get_by_role("form", name="New space")
         expect(form.get_by_label("Space name")).to_be_focused()
         expect(form.get_by_role("alert")).to_have_text("You’re not in a company on this Flux yet. Ask an admin for an invite link.")
         expect(form.get_by_role("button", name="Create space")).to_be_disabled()
@@ -114,15 +115,16 @@ class FirstRunSettingsPeople(unittest.TestCase):
         # The test deployment's fixture route gives Maria a company of her own for the tests below.
         made = self.api(page, "POST", "/api/v1/workspaces", {"name": "Maria’s company"}, status=201)
         type(self).ids["maria:space"] = made["id"]
-        page.goto("/projects/new")
-        form = page.get_by_role("form", name="New space")
+        page.goto("/")
+        open_create(page)
+        form = new_space_window(page).get_by_role("form", name="New space")
         # An empty name says so in the form's own words, not with the browser's bubble.
         form.get_by_role("button", name="Create space").click()
         expect(form.get_by_text("Give the space a name.")).to_be_visible()
         expect(form.get_by_label("Space name")).to_have_attribute("aria-invalid", "true")
         form.get_by_label("Space name").fill("Balcony herbs")
         form.get_by_role("button", name="Create space").click()
-        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
+        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
         self.assertEqual([(space["name"], space["role"]) for space in self.workspaces(page)], [("Maria’s company", "owner")], "starting a space makes no workspace")
 
     def test_02_new_with_no_space_opens_on_space_and_command_k_offers_a_space(self) -> None:
@@ -133,8 +135,8 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         page.keyboard.press("c")
         expect(window(page)).to_have_accessible_name("New space")
-        expect(kind_tab(page, "Space")).to_have_attribute("aria-selected", "true")
-        expect(window(page).get_by_role("tabpanel")).not_to_contain_text("There is no space yet")
+        expect(new_space_window(page).get_by_role("heading", name="New space")).to_be_visible()
+        expect(window(page).get_by_role("tablist")).to_have_count(0)
         page.keyboard.press("Escape")
         expect(window(page)).to_have_count(0)
         page.keyboard.press("Control+k")
@@ -149,7 +151,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(window(page).get_by_label("Space name")).to_have_value("Seed swap")
         # With a space the window starts on Task again (F-026 S3).
         window(page).get_by_role("button", name=re.compile("^Create space")).click()
-        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
+        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         page.keyboard.press("c")

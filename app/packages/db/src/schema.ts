@@ -406,15 +406,14 @@ export const workspaces = pgTable('workspaces', {
 });
 
 /**
- * F-029 workspace AI lock (#614): one row per workspace (0115 writes it for every workspace and a
- * trigger for each new one). `epoch` grows on every state change; AI work rows record the epoch they
- * were admitted under (`ai_epoch`, no default). See docs/product/workspace-ai-lock.md.
+ * The AI switch of a space (F-037, #874; it replaces the F-029 workspace lock): one row per project, written by a trigger when
+ * the space is made (migration 0007). `epoch` grows on every state change; AI work rows record the epoch they were admitted
+ * under (`ai_epoch`, no default). An encrypted space is always blocked.
  */
-export const workspaceAiPolicies = pgTable('workspace_ai_policies', {
-  workspaceId: uuid('workspace_id').primaryKey().references(() => workspaces.id, { onDelete: 'cascade' }),
+export const projectAiPolicies = pgTable('project_ai_policies', {
+  projectId: uuid('project_id').primaryKey().references(() => projects.id, { onDelete: 'cascade' }),
   state: text('state', { enum: ['allowed', 'blocked'] }).notNull(),
   epoch: bigint('epoch', { mode: 'number' }).notNull().default(1),
-  version: integer('version').notNull().default(1),
   changedBy: text('changed_by').references(() => authUsers.id, { onDelete: 'set null' }),
   changedAt: timestamp('changed_at', { withTimezone: true }).notNull().defaultNow(),
 });
@@ -883,8 +882,6 @@ export const agentOauthFlows = pgTable('agent_oauth_flows', {
 
 /** Server-issued runtime identity, bound to one actual OAuth binding/generation. */
 export const agentRuntimeSessions = pgTable('agent_runtime_sessions', {
-  /** 0115 (F-029): the workspace AI policy epoch this item was admitted under; no default. */
-  aiEpoch: bigint('ai_epoch', { mode: 'number' }).notNull(),
   id: uuid('id').primaryKey(),
   bindingId: uuid('binding_id').notNull().references(() => agentOauthBindings.id),
   bindingGeneration: integer('binding_generation').notNull(),

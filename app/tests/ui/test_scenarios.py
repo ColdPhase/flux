@@ -392,13 +392,16 @@ class ScenarioJourney:
             project_id = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
             self.api("ada", "POST", f"/api/v1/projects/{project_id}/grants", {"principal": {"kind": "human", "id": self.ids[key]}, "role": "viewer"}, status=201)
             return
-        region = page.get_by_role("region", name="People", exact=True)
-        self.tap(region.get_by_role("button", name="Add people"))
-        give = region.get_by_role("group", name="Add people")
-        choose(give.get_by_label("Person"), value=self.ids[key])
+        # F-037: the space's people are added in its settings: Add people, tick the person, Add.
+        project_id = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
+        page.goto(f"/projects/{project_id}/settings")
+        self.tap(page.get_by_role("button", name="Add people", exact=True))
+        give = page.get_by_role("group", name="Add people")
+        give.get_by_role("checkbox", name=re.compile(re.escape(NAMES[key]))).check()
         first = NAMES[key].split()[0]
-        self.tap(give.get_by_role("button", name=f"Add {first}"))
-        expect(region.locator(".people__done")).to_contain_text(f"{first} is now a member")
+        self.tap(give.get_by_role("button", name="Add 1 person"))
+        expect(page.locator(".spset__status")).to_contain_text(f"{first} is now in")
+        page.goto(f"/projects/{project_id}")
 
     def send_message(self, page: Page, composer, button) -> None:
         if self.phone:
@@ -448,13 +451,13 @@ class ScenarioJourney:
         if self.phone:
             self.go_to_place(page, "Spaces")
             expect(page.get_by_text("No spaces yet.")).to_be_visible()
-            page.get_by_role("link", name="Create a space").tap()
+            page.get_by_role("button", name="Create a space").tap()
         else:
             page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
             create_other(page, "Space")
         page.get_by_label("Space name").fill(MARKET)
         self.tap(page.get_by_role("button", name="Create space"))
-        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
+        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
         market = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
         workspace = self.api("ada", "GET", f"/api/v1/projects/{market}", status=200)["workspaceId"]
 

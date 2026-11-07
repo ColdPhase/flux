@@ -1,5 +1,4 @@
 import { getCapabilities, getLinkState, startLink, startSso } from '../api/auth';
-import { AiOffEverywhere, AiOffThere, useAllAiBlocked } from '../ai/workspaceAi';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Form, Link, Outlet, useLocation, useNavigation, useSearchParams } from 'react-router';
 import { assistantModelName, type AgentConnection, type BackgroundComputeConnection, type PersonalAssistantStatus, type IdentityCapabilities } from '@flux/contracts';
@@ -18,6 +17,7 @@ import { setTextSize, useTextSize, type TextSize } from './textSize';
 import { setTheme, useTheme, type ThemeChoice } from './theme';
 import './reading.css';
 import './settings.css';
+import { SwitchRow } from '../ui/SwitchRow';
 
 // Settings (F-026, #350; Spokój #513): one calm place with Account, Appearance, Notifications, AI, Company (F-037,
 // #874) and Keyboard shortcuts, in that order on every device. On the computer the section list sits beside the
@@ -56,25 +56,7 @@ export function SettingsLayout() {
   );
 }
 
-/** An on/off switch with its label and an optional line under it, the whole row a target. */
-export function SwitchRow({ label, detail, checked, onChange, icon, disabled }: {
-  label: string; detail?: ReactNode; checked: boolean; onChange: (on: boolean) => void; icon?: ReactNode; disabled?: boolean;
-}) {
-  const id = useId();
-  return (
-    <div className="sset-row">
-      {icon ? <span className="sset-row__ic" aria-hidden="true">{icon}</span> : null}
-      <label className="sset-row__b" htmlFor={id}>
-        <span className="sset-row__t">{label}</span>
-        {detail ? <span className="sset-row__s" id={`${id}-d`}>{detail}</span> : null}
-      </label>
-      <button type="button" role="switch" id={id} className="sset-switch" aria-checked={checked} disabled={disabled}
-        aria-describedby={detail ? `${id}-d` : undefined} onClick={() => onChange(!checked)}>
-        <span aria-hidden="true" />
-      </button>
-    </div>
-  );
-}
+export { SwitchRow };
 
 /** A row that opens another page: an optional icon, a title, a line of detail and a chevron or "Manage". */
 function LinkRow({ to, title, detail, icon, action }: { to: string; title: ReactNode; detail?: ReactNode; icon?: ReactNode; action?: string }) {
@@ -266,8 +248,6 @@ function BackgroundRow({ runtime }: { runtime: 'available' | 'unavailable' | nul
  */
 function AgentsAndAi() {
   const { me } = useShellData();
-  // F-029 (#614): with AI off in every workspace the page says so and nothing else; in some, each card says once where it is off.
-  const allOff = useAllAiBlocked();
   const [connections, setConnections] = useState<AgentConnection[] | null>(null);
   const [assistant, setAssistant] = useState<PersonalAssistantStatus | null>(null);
   const [runtime, setRuntime] = useState<'available' | 'unavailable' | null>(null);
@@ -279,15 +259,13 @@ function AgentsAndAi() {
     listBackgroundConnections(signal).then((list) => { setKeys(list); setKeysFailed(false); }, () => { if (!signal?.aborted) { setKeys([]); setKeysFailed(true); } });
   }, []);
   useEffect(() => {
-    if (allOff) return undefined;
     const controller = new AbortController();
     listAgentConnections(controller.signal).then(setConnections, (error: unknown) => { if (!controller.signal.aborted) { setConnections([]); setFailed(!!error); } });
     getAssistantStatus(controller.signal).then(setAssistant, () => undefined);
     backgroundComparisonRuntime(controller.signal).then((answer) => setRuntime(answer.status), () => { if (!controller.signal.aborted) setRuntime('unavailable'); });
     loadKeys(controller.signal);
     return () => controller.abort();
-  }, [allOff, loadKeys]);
-  if (allOff) return <AiOffEverywhere />;
+  }, [loadKeys]);
   const mine = (connections ?? []).filter((connection) => !connection.revokedAt && connection.ownerUserId === me.user.id);
   const coWork = (
     <ul className="sset-card" aria-busy={connections === null || undefined}>
@@ -307,7 +285,6 @@ function AgentsAndAi() {
     return (
       <div data-ai-settings="server-off">
         {coWork}
-        <AiOffThere />
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
         {failed ? <p className="sset-note" role="note">Your connected agents could not be listed. Manage them under Local co-work.</p> : null}
         <div className="sset-gap"><AssistantCard userId={me.user.id} status={assistant} /></div>
@@ -320,7 +297,6 @@ function AgentsAndAi() {
       {/* #854 (mockup Main): Connect AI first, with every connection and its usage line; then the assistant, which uses one of
           them; then background suggestions and the person's own agent apps. */}
       <ConnectAi apiKeys={assistant ? assistant.setup.provider === 'on' : true} keys={keys} keysFailed={keysFailed} onRetryKeys={() => loadKeys()} />
-      <AiOffThere />
       <section aria-labelledby="ai-in-flux">
         <h3 className="sset-sub" id="ai-in-flux">Your assistant</h3>
         <AssistantCard userId={me.user.id} status={assistant} />
@@ -332,7 +308,6 @@ function AgentsAndAi() {
         <h3 className="sset-sub" id="ai-agent-app">Your agent app</h3>
         <p className="sset-note sset-note--sub">Claude Code, Codex or another app on your own computer, with its own account. Flux never receives its credentials.</p>
         {coWork}
-        <AiOffThere />
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
         {failed ? <p className="sset-note" role="note">Your connected agents could not be listed. Manage them under Local co-work.</p> : null}
       </section>
@@ -369,14 +344,12 @@ export function SettingsAppearance() {
 function PhoneSettings() {
   const { me, workspace } = useShellData();
   const theme = useTheme();
-  const allOff = useAllAiBlocked();
   const [assistant, setAssistant] = useState<PersonalAssistantStatus | null>(null);
   useEffect(() => {
-    if (allOff) return undefined;
     const controller = new AbortController();
     getAssistantStatus(controller.signal).then(setAssistant, () => undefined);
     return () => controller.abort();
-  }, [allOff]);
+  }, []);
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
@@ -389,7 +362,7 @@ function PhoneSettings() {
         <ul className="sset-card sset-gap">
           <LinkRow to="/settings/appearance" icon={<Icon name="sun" size={16} />} title="Appearance" detail={THEME_LABEL[theme]} />
           <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail="Needs you, quiet hours, morning summary" />
-          <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="AI" detail={allOff ? 'AI is off' : assistant ? `Assistant ${ASSISTANT_STATE[assistant.state]}` : undefined} />
+          <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="AI" detail={assistant ? `Assistant ${ASSISTANT_STATE[assistant.state]}` : undefined} />
           <LinkRow to="/settings/company" icon={<Icon name="people" size={16} />} title="Company" detail={workspace ? `${workspace.name} · its people and their roles` : 'Its people and their roles'} />
         </ul>
         <Form method="post" action="/sign-out" className="sset-card sset-gap">
@@ -411,12 +384,10 @@ export function SettingsHome() {
 
 /** Settings → AI on its own page: the assistant, Connect AI, background suggestions and agent apps. */
 export function SettingsAgents() {
-  // With AI off everywhere the page leads with that, not with an introduction to agents the person has no use for (F-029, #614).
-  const allOff = useAllAiBlocked();
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
-        <PageHead title="AI" lead={allOff ? undefined : 'Connect your AI once. Your assistant uses it and can do only what you can.'} />
+        <PageHead title="AI" lead="Connect your AI once. Your assistant uses it and can do only what you can." />
         <AgentsAndAi />
       </div>
     </div>

@@ -4,7 +4,7 @@ import { messagePreview, type ConversationMessage } from '@flux/contracts';
 import { Icon, Kreska, useMediaQuery, usePop, useToast, type IconName } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
-import { useProjectAiBlocked } from '../ai/workspaceAi';
+import { useProjectAiBlocked } from '../ai/spaceAi';
 import { useNeedsYou } from '../notifications/needsYou';
 import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import { useProjectShell } from '../project/data';

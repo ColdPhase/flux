@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import Fastify from 'fastify';
 import type { PgBoss } from 'pg-boss';
-import { assistantRunChangesActionPath, PERSONAL_ASSISTANT_AGENTS_PATH, personalRunTokenPath, type Conversation, type Material, type WorkResult } from '@flux/contracts';
+import { assistantRunChangesActionPath, personalRunTokenPath, type Conversation, type Material, type WorkResult } from '@flux/contracts';
 import { assistantReactionTick, deliverNotificationEmail, settleAssistantSummaries, startAssistantSummary, type NotificationMailer } from '@flux/core';
 import { coworkUnitRows, personalRunTokenRows, pushDeliveryRepository, type Database } from '@flux/db';
 import { assistantUnitOfWork, startBackgroundOf } from '../../apps/worker/src/assistant/index.js';
@@ -19,12 +19,12 @@ import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixt
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
 import type { ComparisonProvider } from '@flux/core';
 import { readFileSync } from 'node:fs';
-import { ensureWorkspaceAiAllowed, setWorkspaceAi } from './support/workspace-ai.js';
+import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 
-// F-029 workspace AI lock, S1 (#614): the remaining S1 rows of the AC-5 matrix, each an AI-off case with its control.
-// Push and e-mail of AI-origin notifications created before the block; the morning summary's cross-workspace facts, anchor
-// and settle; the reaction tick and the epoch; runtime-session and co-work epochs; the run-token mint refused before any
-// GitHub facts are read; the authorize step, consent context and held connection; idempotent replay of a gated command;
+// AG-10 (F-029 S1 rows of the AC-5 matrix, #614; per space under F-037), each an AI-off case with its control.
+// Push and e-mail of AI-origin notifications created before the block; the morning summary's facts, anchor and settle across spaces;
+// the reaction tick and the epoch; an external client's tool call that names the space; co-work epochs; the run-token mint refused
+// before any GitHub facts are read; connecting a client, which is not a space's business; idempotent replay of a gated command;
 // the owner's Undo while AI is off; comparisons (a person's negative result, dispatch under an older epoch).
 
 const code = (json: unknown) => (json as { code?: string } | null)?.code;
@@ -34,9 +34,9 @@ const fakeBoss = () => {
   return { boss, sent };
 };
 
-async function externalConnection(scene: AssistantScene, scopes = ['flux.context.read']) {
+async function externalConnection(scene: AssistantScene, scopes = ['flux.context.read'], selectedProjectIds = [scene.place.id]) {
   const connection = expect(await scene.owner.browser.request('POST', '/api/v1/agent-connections',
-    { body: { agentId: scene.agentId, selectedProjectIds: [scene.place.id], scopes } }), 201);
+    { body: { agentId: scene.agentId, selectedProjectIds, scopes } }), 201);
   const clientId = `flux-test-${randomUUID()}`;
   const redirectUri = 'http://127.0.0.1:19737/callback';
   await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types,
@@ -48,15 +48,15 @@ async function externalConnection(scene: AssistantScene, scopes = ['flux.context
   return { connectionId: String(connection.id), clientId, redirectUri, scope, accessToken: tokens.access_token };
 }
 
-describe('workspace AI lock: the remaining S1 surfaces', () => {
+describe('space AI switch: the remaining surfaces', () => {
   let scene: AssistantScene; let other: AssistantScene;
 
   before(async () => {
     scene = await assistantScene('ai-surfaces');
     other = await assistantScene('ai-surfaces-other');
   });
-  beforeEach(async () => { await ensureWorkspaceAiAllowed(scene.ws.id); await scene.reset(); });
-  after(async () => { await ensureWorkspaceAiAllowed(scene.ws.id); });
+  beforeEach(async () => { await ensureSpaceAiAllowed(scene.place.id); await scene.reset(); });
+  after(async () => { await ensureSpaceAiAllowed(scene.place.id); });
 
   test('push and e-mail skip an AI-origin notification created before the block; a person\'s notification is still sent; read is refused', async () => {
     const { owner, ws, place, agentId } = scene;
@@ -74,14 +74,14 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
       [emails.ai, ai, emails.person, owner.id, person]);
     const target = (notificationId: string) => pushDeliveryRepository(db).findTarget({ notificationId, subscriptionId, userId: owner.id });
     assert.ok(await target(ai), 'control: while AI is on the AI-origin notification is a push target');
-    await setWorkspaceAi(ws.id, 'blocked');
+    await setSpaceAi(place.id, 'blocked');
     assert.equal(await target(ai), null, 'not pushed while AI is off');
     assert.ok(await target(person), 'a person\'s notification is still pushed');
     const sent: string[] = [];
     const mailer = { send: async (message: { to: string }) => { sent.push(message.to); return { messageId: randomUUID() }; } } as unknown as NotificationMailer;
     const options = { available: true, origin: publicOrigin, uow: emailUnitOfWork(db, fakeBoss().boss), mailer };
     const aiMail = await deliverNotificationEmail(options, { emailId: emails.ai });
-    assert.equal((aiMail as { reason?: string }).reason, 'AI is off in this company', JSON.stringify(aiMail));
+    assert.equal((aiMail as { reason?: string }).reason, 'AI is off in this space', JSON.stringify(aiMail));
     const personMail = await deliverNotificationEmail(options, { emailId: emails.person });
     assert.equal(personMail.outcome, 'sent', JSON.stringify(personMail));
     assert.equal(sent.length, 1, 'only the person\'s notification was e-mailed');
@@ -89,20 +89,21 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
     expectStatus(await owner.browser.request('POST', `/api/v1/inbox/${person}/read`), 200);
   });
 
-  test('the morning summary gives the assistant no fact of a workspace whose AI is off, anchors only where AI is on, and writes no line for a blocked run', async () => {
-    const blockedWs = randomUUID(); const openWs = randomUUID();
-    const blocked = new Set<string>([blockedWs]);
+  test('the morning summary gives the assistant no fact of a space whose AI is off, anchors only where AI is on, and writes no line for a blocked run', async () => {
+    const blockedSpace = randomUUID(); const openSpace = randomUUID(); const workspaceId = randomUUID();
+    const blocked = new Set<string>([blockedSpace]);
     const started: { projectId: string; prompt: string }[] = [];
-    const access = { workspaceAi: async (id: string) => ({ state: blocked.has(id) ? 'blocked' : 'allowed', epoch: 1 }) };
-    const rows = [{ id: 'n-blocked', source: { workspaceId: blockedWs, type: 'project', id: randomUUID() } }, { id: 'n-open', source: { workspaceId: openWs, type: 'project', id: randomUUID() } }];
+    const access = { spaceAi: async (id: string) => ({ state: blocked.has(id) ? 'blocked' : 'allowed', epoch: 1 }) };
+    const rows = [{ id: 'n-blocked', source: { workspaceId, type: 'project', id: blockedSpace } }, { id: 'n-open', source: { workspaceId, type: 'project', id: openSpace } }];
     const titles = new Map([['n-blocked', 'Secret plan of the blocked club'], ['n-open', 'Lamp sensor ordered']]);
     const ports = {
       access,
       runs: { enablement: async () => ({ status: 'active', engine: 'server', provider: 'anthropic', model: 'm', connectionId: 'c',
-        agents: [{ workspaceId: blockedWs, agentId: randomUUID() }, { workspaceId: openWs, agentId: randomUUID() }] }) },
+        agents: [{ workspaceId, agentId: randomUUID() }] }) },
       jobs: { noteVersion: async () => null },
       summaries: { titles: async (ids: string[]) => new Map(ids.map((id) => [id, titles.get(id)!])), firstName: async () => 'Ada',
-        anchors: async (_user: string, workspaceId: string) => [{ projectId: `project-in-${workspaceId}`, conversationId: randomUUID() }],
+        // The blocked space is the first place the person could be anchored in.
+        anchors: async () => [{ projectId: blockedSpace, conversationId: randomUUID() }, { projectId: openSpace, conversationId: randomUUID() }],
         create: async () => true },
     };
     const summary = { unread: async () => rows, isMuted: async () => false,
@@ -110,24 +111,24 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
     const startBackground = async (_ports: unknown, spec: { projectId: string; prompt: string }) => { started.push(spec); return { started: true, run: { id: 'run' }, created: true }; };
     assert.equal(await startAssistantSummary(ports as never, summary as never, startBackground as never, 'user', '2026-10-23', new Date()), true);
     assert.equal(started.length, 1);
-    assert.equal(started[0]!.projectId, `project-in-${openWs}`, 'anchored in the workspace whose AI is on');
-    assert.ok(started[0]!.prompt.includes('Lamp sensor ordered'), 'control: the open workspace\'s fact is given');
-    assert.ok(!started[0]!.prompt.includes('Secret plan'), 'nothing of the blocked workspace reaches the prompt');
-    // With every workspace blocked there is no run (the plain summary goes out).
-    blocked.add(openWs);
+    assert.equal(started[0]!.projectId, openSpace, 'anchored in the space whose AI is on');
+    assert.ok(started[0]!.prompt.includes('Lamp sensor ordered'), 'control: the open space\'s fact is given');
+    assert.ok(!started[0]!.prompt.includes('Secret plan'), 'nothing of the blocked space reaches the prompt');
+    // With every space blocked there is no run (the plain summary goes out).
+    blocked.add(openSpace);
     assert.equal(await startAssistantSummary(ports as never, summary as never, startBackground as never, 'user', '2026-10-23', new Date()), false);
-    // Settling: a completed run of a blocked workspace writes no assistant line; the plain summary goes out.
+    // Settling: a completed run of a blocked space writes no assistant line; the plain summary goes out.
     const settled: string[] = [];
-    const settlePorts = (workspaceId: string) => ({ access,
+    const settlePorts = (projectId: string) => ({ access,
       summaries: { writing: async () => [{ ownerUserId: 'user', day: '2026-10-23' }], lock: async () => ({ ownerUserId: 'user', day: '2026-10-23', runId: 'run', createdAt: new Date() }),
         settle: async (_u: string, _d: string, state: string) => { settled.push(state); } },
-      runs: { findRun: async () => ({ id: 'run', workspaceId, status: 'completed', answerBody: 'You have two new things' }) } });
+      runs: { findRun: async () => ({ id: 'run', projectId, status: 'completed', answerBody: 'You have two new things' }) } });
     const plainSummary = { unread: async () => [], insertSummary: async () => undefined, deliver: async () => undefined } as never;
-    const uow = (workspaceId: string) => ({ run: (work: (ports: never, summary: never) => Promise<unknown>) => work(settlePorts(workspaceId) as never, plainSummary) });
-    await settleAssistantSummaries(uow(blockedWs) as never);
-    blocked.delete(openWs);
-    await settleAssistantSummaries(uow(openWs) as never);
-    assert.equal(settled[0], 'plain', 'a blocked workspace\'s run writes no line');
+    const uow = (projectId: string) => ({ run: (work: (ports: never, summary: never) => Promise<unknown>) => work(settlePorts(projectId) as never, plainSummary) });
+    await settleAssistantSummaries(uow(blockedSpace) as never);
+    blocked.delete(openSpace);
+    await settleAssistantSummaries(uow(openSpace) as never);
+    assert.equal(settled[0], 'plain', 'a blocked space\'s run writes no line');
     assert.equal(settled[1], 'written', 'control: a run where AI is on writes its line');
   });
 
@@ -136,14 +137,14 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
     const rule = randomUUID();
     await pool.query(`INSERT INTO assistant_reactions (id, workspace_id, project_id, owner_user_id, event, action, enabled) VALUES ($1, $2, $3, $4, 'blocked', 'tell', true)`,
       [rule, ws.id, place.id, owner.id]);
-    const epoch = async () => Number((await pool.query('SELECT epoch FROM workspace_ai_policies WHERE workspace_id = $1', [ws.id])).rows[0].epoch);
+    const epoch = async () => Number((await pool.query('SELECT epoch FROM project_ai_policies WHERE project_id = $1', [place.id])).rows[0].epoch);
     const future = new Date(Date.now() + 7 * 86_400_000); // ahead of the real clock: the Compose worker's own tick never meets it
     const event = async (aiEpoch: number) => (await pool.query(`INSERT INTO assistant_reaction_events (reaction_id, owner_user_id, object_id, source_id, action, event,
       reaction_version, state, ai_epoch, created_at) VALUES ($1, $2, $3, $4, 'tell', 'blocked', 1, 'queued', $5, $6) RETURNING id`,
     [rule, owner.id, randomUUID(), randomUUID(), aiEpoch, future])).rows[0].id as string;
     const stale = await event(await epoch());
-    await setWorkspaceAi(ws.id, 'blocked');
-    await setWorkspaceAi(ws.id, 'allowed');
+    await setSpaceAi(place.id, 'blocked');
+    await setSpaceAi(place.id, 'allowed');
     const current = await event(await epoch());
     const { boss } = fakeBoss();
     await assistantReactionTick({ uow: assistantUnitOfWork(db, boss), startBackground: startBackgroundOf({ connections: scene.connections, providerEnabled: true }, db, boss) },
@@ -154,33 +155,34 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
     await pool.query('DELETE FROM assistant_reactions WHERE id = $1', [rule]);
   });
 
-  test('an external runtime session from an older epoch answers RUNTIME_UNAVAILABLE; a new client session works', async () => {
+  test('an external client\'s tool call that names the space answers SPACE_AI_OFF while AI is off there, and works again; the connection itself stays', async () => {
     const external = await externalConnection(scene);
-    const bootstrap = (session: string, id: number) => mcp(external.accessToken, id, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId: scene.place.id, clientSessionId: session } });
-    const session = randomUUID();
-    const first = await bootstrap(session, 1);
+    const call = (id: number) => mcp(external.accessToken, id, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId: scene.place.id, clientSessionId: randomUUID() } });
+    const first = await call(1);
     assert.ok(!(first.message?.result as { isError?: boolean } | undefined)?.isError, `control: ${JSON.stringify(first.message).slice(0, 300)}`);
-    await setWorkspaceAi(scene.ws.id, 'blocked');
-    await setWorkspaceAi(scene.ws.id, 'allowed');
-    const stale = await bootstrap(session, 2);
-    assert.match(JSON.stringify(stale.message), /RUNTIME_UNAVAILABLE/, 'the session admitted before the block never works again');
-    const fresh = await bootstrap(randomUUID(), 3);
-    assert.ok(!(fresh.message?.result as { isError?: boolean } | undefined)?.isError, 'a new client session works');
-    assert.ok(toolValue(fresh.message));
+    await setSpaceAi(scene.place.id, 'blocked');
+    const refused = await call(2);
+    assert.match(JSON.stringify(refused.message), /SPACE_AI_OFF/, 'the tool call is refused for that space');
+    // Not for the connection: the tool list is served (a refusal of a whole connection would drop its sign-in in real clients).
+    assert.ok((((await mcp(external.accessToken, 3, 'tools/list')).message?.result as { tools?: unknown[] } | undefined)?.tools ?? []).length > 0, 'the connection still lists its tools');
+    await setSpaceAi(scene.place.id, 'allowed');
+    const again = await call(4);
+    assert.ok(!(again.message?.result as { isError?: boolean } | undefined)?.isError, 'works again once AI is on');
+    assert.ok(toolValue(again.message));
   });
 
   test('a co-work unit admitted under an older epoch is not found by its agent', async () => {
     const work = await scene.task(scene.owner, 'Hand to a unit');
     const unitId = randomUUID();
-    const epoch = Number((await pool.query('SELECT epoch FROM workspace_ai_policies WHERE workspace_id = $1', [scene.ws.id])).rows[0].epoch);
+    const epoch = Number((await pool.query('SELECT epoch FROM project_ai_policies WHERE project_id = $1', [scene.place.id])).rows[0].epoch);
     await pool.query(`INSERT INTO cowork_units (id, workspace_id, project_id, work_id, lineage_work_id, run_id, unit_key, role, assignment_connection_id, ai_epoch)
       VALUES ($1, $2, $3, $4, $4, $5, 'unit', 'execute', $6, $7)`, [unitId, scene.ws.id, scene.place.id, work.id, randomUUID(), await scene.assistantConnectionId(), epoch]);
     const connectionId = await scene.assistantConnectionId();
     // The agent's claim path locks its own unit (`coworkUnitRows.lock`, the `own` predicate carries the epoch).
     const located = () => db.transaction(async (tx) => (await coworkUnitRows(tx).lock({ workspaceId: scene.ws.id, projectId: scene.place.id, connectionId, unitId }))?.unit ?? null);
     assert.ok(await located(), 'control: the unit is found at its epoch');
-    await setWorkspaceAi(scene.ws.id, 'blocked');
-    await setWorkspaceAi(scene.ws.id, 'allowed');
+    await setSpaceAi(scene.place.id, 'blocked');
+    await setSpaceAi(scene.place.id, 'allowed');
     assert.equal(await located(), null, 'admitted before the block: never found again');
   });
 
@@ -190,7 +192,7 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
     const rule = randomUUID();
     await pool.query(`INSERT INTO assistant_reactions (id, workspace_id, project_id, owner_user_id, event, action, enabled) VALUES ($1, $2, $3, $4, 'pr_ready', 'check_task', true)`,
       [rule, scene.ws.id, scene.place.id, scene.owner.id]);
-    const epoch = Number((await pool.query('SELECT epoch FROM workspace_ai_policies WHERE workspace_id = $1', [scene.ws.id])).rows[0].epoch);
+    const epoch = Number((await pool.query('SELECT epoch FROM project_ai_policies WHERE project_id = $1', [scene.place.id])).rows[0].epoch);
     await pool.query(`INSERT INTO assistant_reaction_events (reaction_id, owner_user_id, object_id, source_id, action, event, reaction_version, state, run_id, ai_epoch)
       VALUES ($1, $2, $3, $4, 'check_task', 'pr_ready', 1, 'running', $5, $6)`, [rule, scene.owner.id, randomUUID(), randomUUID(), started.run.id, epoch]);
     const facts: string[] = [];
@@ -203,10 +205,10 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
         assert.equal(await db.transaction((tx) => personalRunTokenRows(tx).arm(started.run.id, createHash('sha256').update(nonce).digest('hex'))), true);
         return app.inject({ method: 'POST', url: personalRunTokenPath(started.run.id), payload: { nonce } });
       };
-      await setWorkspaceAi(scene.ws.id, 'blocked');
+      await setSpaceAi(scene.place.id, 'blocked');
       assert.equal((await mint()).statusCode, 404);
       assert.deepEqual(facts, [], 'no GitHub facts were read while AI is off');
-      await setWorkspaceAi(scene.ws.id, 'allowed');
+      await setSpaceAi(scene.place.id, 'allowed');
       await pool.query('UPDATE assistant_reaction_events SET ai_epoch = $2 WHERE run_id = $1', [started.run.id, epoch + 2]);
       await pool.query('UPDATE personal_runs SET ai_epoch = $2 WHERE id = $1', [started.run.id, epoch + 2]);
       await mint();
@@ -218,34 +220,49 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
     }
   });
 
-  test('the authorize step, consent context and held connection refuse while AI is off; nothing is minted', async () => {
+  test('connecting a client is not a space\'s business: the authorize step, consent context and held connection work while a space\'s AI is off', async () => {
     const external = await externalConnection(scene);
     const started = await beginOauth(scene.owner.browser, external.clientId, external.redirectUri, { scope: external.scope });
     expect(await scene.owner.browser.request('POST', `/api/v1/agent-connections/${external.connectionId}/select-for-oauth`, { body: { oauth_query: started.oauthQuery } }), 204);
     const held = () => scene.owner.browser.request('GET', `/api/v1/agent-oauth/held-connection?oauth_query=${encodeURIComponent(started.oauthQuery)}`);
-    assert.equal((await held()).status, 200, 'control');
-    await setWorkspaceAi(scene.ws.id, 'blocked');
+    await setSpaceAi(scene.place.id, 'blocked');
+    assert.equal((await held()).status, 200, 'the held connection is found');
     const continued = await scene.owner.browser.request('POST', '/api/auth/oauth2/continue', { body: { postLogin: true, oauth_query: started.oauthQuery } });
-    assert.equal(continued.status, 403, `the authorize step refuses, not a 500: ${continued.text}`);
-    assert.match(continued.text, /AI is turned off in this company/);
-    const context = await scene.owner.browser.request('GET', `/api/v1/agent-oauth/consent-context?oauth_query=${encodeURIComponent(started.oauthQuery)}`);
-    assert.deepEqual([context.status, code(context.json)], [403, 'WORKSPACE_AI_BLOCKED']);
-    const heldRefused = await held();
-    assert.deepEqual([heldRefused.status, code(heldRefused.json)], [403, 'WORKSPACE_AI_BLOCKED']);
-    await setWorkspaceAi(scene.ws.id, 'allowed');
-    const resumed = await scene.owner.browser.request('POST', '/api/auth/oauth2/continue', { body: { postLogin: true, oauth_query: started.oauthQuery } });
-    assert.equal(resumed.status, 200, `control: the same step continues once AI is on: ${resumed.text}`);
+    assert.equal(continued.status, 200, `the authorize step continues: ${continued.text}`);
+  });
+
+  test('flux_list_contexts leaves out a space whose AI is off and still lists the client\'s other spaces', async () => {
+    const second = await project(scene.owner, scene.ws.id, 'Second room', 'restricted');
+    const { accessToken } = await externalConnection(scene, ['flux.context.read'], [scene.place.id, second.id]);
+    let id = 70;
+    const listed = async () => (toolValue((await mcp(accessToken, id += 1, 'tools/call', { name: 'flux_list_contexts', arguments: {} })).message).projects as { id: string }[]).map((row) => row.id).sort();
+    assert.deepEqual(await listed(), [scene.place.id, second.id].sort(), 'control: both are listed while AI is on');
+    await setSpaceAi(scene.place.id, 'blocked');
+    assert.deepEqual(await listed(), [second.id], 'the space with AI off is left out and the call still works for the other');
+    await setSpaceAi(scene.place.id, 'allowed');
+    assert.deepEqual(await listed(), [scene.place.id, second.id].sort(), 'listed again once AI is on');
   });
 
   test('an idempotent replay of a gated command is refused while AI is off', async () => {
     const key = randomUUID();
-    const ask = () => scene.owner.browser.request('PUT', PERSONAL_ASSISTANT_AGENTS_PATH, { body: { agentId: scene.agentId }, headers: { 'idempotency-key': key } });
-    assert.equal((await ask()).status, 200, 'the assistant is chosen with an Idempotency-Key');
-    await setWorkspaceAi(scene.ws.id, 'blocked');
+    // A proposal the assistant drafted: its owner dismisses it with an Idempotency-Key (test fixture row, as in space-ai-routes).
+    const proposalId = randomUUID();
+    const fixture = await pool.connect();
+    try {
+      await fixture.query('BEGIN');
+      await fixture.query('SET LOCAL session_replication_role = replica');
+      await fixture.query(`INSERT INTO assistant_proposals (id, workspace_id, project_id, run_id, owner_user_id, fact, interpretation, change_type, result_title, result_finding)
+        VALUES ($1, $2, $3, $4, $5, 'Fact', 'Meaning', 'result', 'Result', 'negative')`, [proposalId, scene.ws.id, scene.place.id, randomUUID(), scene.owner.id]);
+      await fixture.query('COMMIT');
+    } catch (error) { await fixture.query('ROLLBACK'); throw error; } finally { fixture.release(); }
+    const ask = () => scene.owner.browser.request('POST', `/api/v1/assistant-proposals/${proposalId}/dismiss`, { body: { expectedVersion: 1 }, headers: { 'idempotency-key': key } });
+    const first = await ask();
+    assert.equal(first.status, 200, `the proposal is dismissed with an Idempotency-Key: ${first.text}`);
+    await setSpaceAi(scene.place.id, 'blocked');
     const replay = await ask();
-    assert.deepEqual([replay.status, code(replay.json)], [403, 'WORKSPACE_AI_BLOCKED']);
+    assert.deepEqual([replay.status, code(replay.json)], [403, 'SPACE_AI_OFF']);
     assert.equal(replay.headers.get('idempotent-replayed'), null, 'the stored body is not returned');
-    await setWorkspaceAi(scene.ws.id, 'allowed');
+    await setSpaceAi(scene.place.id, 'allowed');
     assert.equal((await ask()).headers.get('idempotent-replayed'), 'true', 'control: replayed once AI is on');
   });
 
@@ -255,25 +272,29 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
     assert.ok(JSON.parse(text((await run.call('flux_update_task', { workId: mine.id, expectedVersion: mine.version, changes: { title: 'Order four spare probes' } })).message)).workId);
     assert.deepEqual((await changesOf(run.runId)).map((row) => row.state), ['applied']);
     await scene.complete(run.runId);
-    await setWorkspaceAi(scene.ws.id, 'blocked');
+    await setSpaceAi(scene.place.id, 'blocked');
     expectStatus(await scene.owner.browser.request('POST', assistantRunChangesActionPath(run.runId, 'undo'), { body: {} }), 200);
     assert.equal((await scene.taskRow(mine.id)).title, 'Order spare probes', 'the person reversed the AI output');
     const apply = await scene.owner.browser.request('POST', assistantRunChangesActionPath(run.runId, 'apply'), { body: {} });
-    assert.equal(code(apply.json), 'WORKSPACE_AI_BLOCKED', 'while Apply stays refused');
+    assert.equal(code(apply.json), 'SPACE_AI_OFF', 'while Apply stays refused');
   });
 
-  test('other workspaces keep AI: the second scene\'s owner works normally while the first is blocked', async () => {
-    await setWorkspaceAi(scene.ws.id, 'blocked');
+  test('other spaces keep AI: the second scene\'s owner works normally while the first is blocked', async () => {
+    await setSpaceAi(scene.place.id, 'blocked');
     const asked = await other.owner.browser.request('POST', `/api/v1/workspaces/${other.ws.id}/assistants/${other.owner.id}/schedules`,
       { body: { projectId: other.place.id, text: 'List what moved', schedule: { kind: 'weekly', at: '16:00', weekday: 5 }, timeZone: 'UTC' } });
     assert.equal(asked.status, 201, asked.text);
-    const workspace = expectStatus(await other.owner.browser.request('GET', `/api/v1/workspaces/${other.ws.id}`), 200) as { ai: { state: string } };
-    assert.equal(workspace.ai.state, 'allowed');
+    const space = expectStatus(await other.owner.browser.request('GET', `/api/v1/projects/${other.place.id}`), 200) as { ai: string };
+    assert.equal(space.ai, 'allowed');
+    // The same person in the blocked space: the schedule is refused there.
+    const refused = await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/assistants/${scene.owner.id}/schedules`,
+      { body: { projectId: scene.place.id, text: 'List what moved', schedule: { kind: 'weekly', at: '16:00', weekday: 5 }, timeZone: 'UTC' } });
+    assert.deepEqual([refused.status, code(refused.json)], [403, 'SPACE_AI_OFF']);
   });
 });
 
-describe('workspace AI lock: background comparisons', () => {
-  let owner: Person; let peer: Person; let wsId: string; let projectId: string; let material: Material; let conversation: Conversation;
+describe('space AI switch: background comparisons', () => {
+  let owner: Person; let peer: Person; let projectId: string; let material: Material; let conversation: Conversation;
   const calls: string[] = [];
   const masterKey = readFileSync('/run/secrets/flux_background_key');
   const provider: ComparisonProvider = {
@@ -291,7 +312,6 @@ describe('workspace AI lock: background comparisons', () => {
   before(async () => {
     [owner, peer] = await Promise.all(['ai-comparison-owner', 'ai-comparison-peer'].map(person));
     const ws = await workspace(owner, 'Comparison lock workspace');
-    wsId = ws.id;
     await addMember(owner, ws.id, peer, 'member');
     projectId = (await project(owner, ws.id, 'Low-light sensors', 'restricted')).id;
     await grant(owner, projectId, peer, 'contributor');
@@ -306,22 +326,22 @@ describe('workspace AI lock: background comparisons', () => {
     conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/conversations`,
       { body: { body: 'Compare sensor measurements.', clientMessageId: randomUUID() } }), 201) as Conversation;
   });
-  after(async () => { await ensureWorkspaceAiAllowed(wsId); });
+  after(async () => { await ensureSpaceAiAllowed(projectId); });
 
   test('a person\'s negative result while AI is off commits and queues no comparison; while AI is on it does', async () => {
     assert.ok(await candidateOf((await negative('Control trial')).id), 'control: a comparison is queued while AI is on');
-    await setWorkspaceAi(wsId, 'blocked');
+    await setSpaceAi(projectId, 'blocked');
     try {
       const result = await negative('Trial while AI is off');
       assert.ok(result.id, 'the person\'s result is recorded');
       assert.equal(await candidateOf(result.id), undefined, 'no comparison is queued');
-    } finally { await setWorkspaceAi(wsId, 'allowed'); }
+    } finally { await setSpaceAi(projectId, 'allowed'); }
   });
 
   test('a comparison admitted before AI was turned off is never sent to the provider, even after re-enable', async () => {
     const stale = await candidateOf((await negative('Admitted before the block')).id);
-    await setWorkspaceAi(wsId, 'blocked');
-    await setWorkspaceAi(wsId, 'allowed');
+    await setSpaceAi(projectId, 'blocked');
+    await setSpaceAi(projectId, 'allowed');
     await comparisonDispatchFixtureDue(pool, stale!);
     const before = calls.length;
     const outcome = await dispatchProactiveComparison({ db, candidateId: stale!, masterKey, provider });

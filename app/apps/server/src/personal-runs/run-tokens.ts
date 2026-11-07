@@ -2,7 +2,7 @@ import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { assistantRunScopes, assistantRunTools, personalRunTokenPath, RUN_TOKEN_LIMITS, type PersonalRunTokenGrant } from '@flux/contracts';
 import { redactSecrets } from '@flux/core';
-import { lockAgentMcpPolicy, personalRunTokenRows, workspaceAi, type Database } from '@flux/db';
+import { lockAgentMcpPolicy, personalRunTokenRows, spaceAi, type Database } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
 
@@ -35,8 +35,8 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       const run = await rows.find(runId, { lock: 'update' });
       if (!run || run.reactionActive === false || (run.status !== 'reading' && run.status !== 'dispatching') || run.stopRequestedAt || run.runTokenJti || !run.runTokenNonceHash
         || !sameHash(sha256(request.body.nonce), run.runTokenNonceHash)) return null;
-      // F-029, first: before any context assembly or outbound call (githubFacts), AI must be on at the run's epoch.
-      const ai = await workspaceAi(tx, run.workspaceId, { lock: true });
+      // AG-10, first: before any context assembly or outbound call (githubFacts), AI must be on in the run's space at the run's epoch.
+      const ai = await spaceAi(tx, run.projectId, { lock: true });
       if (ai.state !== 'allowed' || ai.epoch !== run.aiEpoch) return null;
       const connectionId = await rows.assistantConnectionId(run.ownerUserId, run.workspaceId);
       if (!connectionId) return null;

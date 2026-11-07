@@ -4,7 +4,7 @@ import type { EncryptionViewInput } from '../encryption/view.js';
 import type { Executor } from '../types.js';
 import type { Actor, AccessReader } from './ports.js';
 import type { Principal } from '../principal.js';
-import type { AccountLookup, AccountRecord, AgentRecord, AiPolicyRecord, AiPolicyRow, DraftRecord, GrantRecord, GrantWrite, MemberRecord,
+import type { AccountLookup, AccountRecord, AgentRecord, DraftRecord, GrantRecord, GrantWrite, MemberRecord,
   ProjectRecord, SweptRun, WorkspaceRecord } from './records.js';
 
 // The persistence ports of the access use cases (issues #46, #91). Core states what each use case needs;
@@ -26,11 +26,6 @@ export interface WorkspaceRepository {
   forMember(userId: string): Promise<{ workspace: WorkspaceRecord; role: WorkspaceRole }[]>;
   workspaceOfAgent(agentId: string): Promise<string | null>;
   get(workspaceId: string): Promise<WorkspaceRecord | null>;
-  aiPolicies(workspaceIds: string[]): Promise<AiPolicyRow[]>;
-  /** The AI policy row `FOR UPDATE`. */
-  lockAiPolicy(workspaceId: string): Promise<AiPolicyRecord | null>;
-  /** The next state with the next epoch and version. */
-  updateAiPolicy(workspaceId: string, state: 'allowed' | 'blocked', changedBy: string): Promise<{ epoch: number }>;
   members(workspaceId: string): Promise<{ member: MemberRecord; email: string; name: string }[]>;
   /** The workspace row `FOR NO KEY UPDATE` (nothing for an id that is not a UUID). */
   lock(workspaceId: string): Promise<void>;
@@ -40,6 +35,8 @@ export interface WorkspaceRepository {
   insertMember(row: { workspaceId: string; userId: string; role: WorkspaceRole; createdBy: string }): Promise<MemberRecord | null>;
   /** Someone who became a guest is no longer a space admin: their `manager` grants become plain membership. */
   endSpaceAdmin(workspaceId: string, userId: string): Promise<void>;
+  /** Someone who became a company owner or admin reaches every space again: a deny a space admin gave them goes (P3 of #890). */
+  liftDeniedGrants(workspaceId: string, userId: string): Promise<void>;
   isMember(workspaceId: string, userId: string): Promise<boolean>;
   /** Remembers someone who left or was removed, for Restore. */
   recordRemoved(workspaceId: string, userId: string, removedBy: string): Promise<void>;
@@ -88,16 +85,15 @@ export interface WorkspaceEncryptionRows {
   views(workspaceIds: string[], userId: string | null): Promise<Map<string, EncryptionViewInput>>;
 }
 
-/** The turn-off sweep of F-029 for one workspace and the epoch its flip set (`workspaceAiSweepRows`). One method is one step. */
-export interface WorkspaceAiSweepRows {
-  endQueuedRuns(workspaceId: string, epoch: number): Promise<SweptRun[]>;
-  stopInFlightRuns(workspaceId: string, epoch: number): Promise<SweptRun[]>;
-  closeRunTokens(workspaceId: string, epoch: number): Promise<number>;
-  endComparisons(workspaceId: string, epoch: number): Promise<number>;
-  skipReactionEvents(workspaceId: string, epoch: number): Promise<number>;
-  cancelRequests(workspaceId: string, epoch: number): Promise<number>;
-  stopUnits(workspaceId: string, epoch: number): Promise<number>;
-  revokeSessions(workspaceId: string, epoch: number): Promise<number>;
+/** The turn-off sweep (AG-10) for one space and the epoch its flip set (`spaceAiSweepRows`). One method is one step. */
+export interface SpaceAiSweepRows {
+  endQueuedRuns(projectId: string, epoch: number): Promise<SweptRun[]>;
+  stopInFlightRuns(projectId: string, epoch: number): Promise<SweptRun[]>;
+  closeRunTokens(projectId: string, epoch: number): Promise<number>;
+  endComparisons(projectId: string, epoch: number): Promise<number>;
+  skipReactionEvents(projectId: string, epoch: number): Promise<number>;
+  cancelRequests(projectId: string, epoch: number): Promise<number>;
+  stopUnits(projectId: string, epoch: number): Promise<number>;
 }
 
 export interface ProjectRepository {
@@ -107,8 +103,18 @@ export interface ProjectRepository {
   get(projectId: string): Promise<ProjectRecord | null>;
   /** The views, one version on. */
   setViews(projectId: string, views: string[]): Promise<ProjectRecord>;
+  /** A new name, one version on. */
+  rename(projectId: string, workspaceId: string, name: string): Promise<ProjectRecord>;
+  /** The AI switch of each space, with who last changed it. */
+  aiPolicies(projectIds: string[]): Promise<{ projectId: string; state: 'allowed' | 'blocked'; changedAt: Date; changedBy: string | null }[]>;
+  /** The space's AI policy row `FOR UPDATE` (the flip's first lock). */
+  lockAiPolicy(projectId: string): Promise<{ projectId: string; state: 'allowed' | 'blocked'; epoch: number } | null>;
+  /** The next state with the next epoch. */
+  updateAiPolicy(projectId: string, state: 'allowed' | 'blocked', changedBy: string): Promise<{ epoch: number }>;
+  /** Erases the space and everything that names it, in the caller's transaction. */
+  erase(projectId: string): Promise<void>;
   /** One page of the projects the actor can see with their level; the filter applies before count and page. */
-  listVisible(actor: Actor, page: { limit: number; offset: number }): Promise<{ total: number; rows: { project: ProjectRecord; level: number; member: boolean }[] }>;
+  listVisible(actor: Actor, page: { limit: number; offset: number }): Promise<{ total: number; rows: { project: ProjectRecord; level: number; member: boolean; ai: 'allowed' | 'blocked' | null }[] }>;
   /** The project's grants, leaving out the agents the principal may not see. */
   listGrants(principal: Principal, projectId: string): Promise<GrantRecord[]>;
   /** The workspace's people. */
@@ -159,7 +165,7 @@ export interface AccessPorts {
   agents(db: Executor): AgentRepository;
   drafts(db: Executor): DraftRepository;
   encryption(db: Executor): WorkspaceEncryptionRows;
-  aiSweep(db: Executor): WorkspaceAiSweepRows;
+  aiSweep(db: Executor): SpaceAiSweepRows;
   access(db: Executor): RecordReader;
   events(db: Executor): EventRepository;
 }

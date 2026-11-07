@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { toWebRequest } from '@modelcontextprotocol/node';
 import { sql } from 'drizzle-orm';
-import { WorkspaceAiBlockedError } from '@flux/core';
+import { SpaceAiOffError } from '@flux/core';
 import type { Database, Transaction } from '@flux/db';
 
 /**
@@ -61,16 +61,16 @@ export function createMcpRelay(db: Database, options: { onerror(error: Error): v
       try {
         await db.transaction(async (tx) => { await fence.check(tx); action(); handedOver = true; });
         return true;
-      } catch (error) { aiOff = error instanceof WorkspaceAiBlockedError; return false; }
+      } catch (error) { aiOff = error instanceof SpaceAiOffError; return false; }
     };
     const headers: Record<string, string> = {};
     for (const [name, value] of response.headers) headers[name] = value;
     const refuse = () => {
-      // F-029: AI turned off while this request ran: the same JSON-RPC refusal as before it started (HTTP 200, not 403, so a real
+      // AG-10: AI turned off in the space while this request ran: the same JSON-RPC refusal as before it started (HTTP 200, not 403, so a real
       // client keeps its sign-in for when AI is on again).
       if (!handedOver && !res.headersSent && aiOff) {
         res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-        res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'AI is turned off in this company', data: { code: 'WORKSPACE_AI_BLOCKED' } },
+        res.end(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'AI is off in this space', data: { code: 'SPACE_AI_OFF' } },
           id: requestId(parsedBody) }));
       } else if (!handedOver && !res.headersSent) { res.writeHead(403, { 'content-type': 'application/json' }); res.end(unavailable); }
       else res.destroy();

@@ -48,7 +48,7 @@ const refused = [
   'github_task_rule_changes', 'github_task_rules',
 ] as const;
 const content = [
-  'workspaces', 'workspace_members', 'workspace_ai_policies', 'projects', 'project_grants', 'project_conversations',
+  'workspaces', 'workspace_members', 'project_ai_policies', 'projects', 'project_grants', 'project_conversations',
   'project_messages', 'message_references', 'project_message_observations', 'dm_message_observations', 'return_points', 'dms', 'dm_participants', 'dm_messages',
   'project_materials', 'project_material_versions', 'project_work_items', 'project_task_activity', 'project_task_updates', 'project_task_notices',
   'project_task_plan_intents', 'project_task_dependencies', 'project_task_discussions', 'task_creation_undo_receipts', 'native_command_receipts',
@@ -138,7 +138,7 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   workspaces: { name: 'shown to members while locked ("Garden club is waiting to be unlocked")', created_by: 'a user id' },
   workspace_members: { user_id: 'a user id', role: 'an enum', created_by: 'a user id' },
   workspace_removed_people: { user_id: 'a user id', removed_by: 'a user id' },
-  workspace_ai_policies: { state: 'an enum', changed_by: 'a user id' },
+  project_ai_policies: { state: 'an enum', changed_by: 'a user id' },
   workspace_invites: { role: 'an enum', email: 'the invited address, as visible as a member\'s account address (people are metadata)',
     token_hash: 'a SHA-256 of the link token, no content', created_by: 'a user id', revoked_by: 'a user id', accepted_by: 'a user id' },
   projects: { visibility: 'an enum', created_by: 'a user id', views: 'enum values' },

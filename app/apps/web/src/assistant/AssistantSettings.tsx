@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { type Agent, type AgentRuntimePayer, type AssistantModelPick, type PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
-import { AiOffEverywhere, AiOffThere, useBlockedWorkspaceIds } from '../ai/workspaceAi';
 import { createPersonalAgent } from '../agent-connection/api';
 import { listAgents } from '../work/api';
 import { Button, ErrorState, Icon, Kreska, Spinner, Select, Option } from '../ui';
@@ -25,29 +24,22 @@ import { AssistantSchedules } from './AssistantSchedules';
 const failure = (error: unknown, fallback: string) => (error instanceof ApiError && error.status < 500 ? error.message : fallback);
 
 export function AssistantSettings() {
-  const { me, workspaces: everyWorkspace } = useShellData();
-  // F-029 (#614): the assistant is set up, scheduled and switched only in workspaces whose AI is on.
-  const aiOff = useBlockedWorkspaceIds();
-  const workspaces = useMemo(() => everyWorkspace.filter((space) => !aiOff.has(space.id)), [everyWorkspace, aiOff]);
+  const { me, workspaces } = useShellData();
   const [status, setStatus] = useState<PersonalAssistantStatus | null>(null);
   const [agents, setAgents] = useState<Agent[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [saved, setSaved] = useState('');
   const [pausing, setPausing] = useState(false);
   const fetchAll = useCallback(() => {
-    if (everyWorkspace.length > 0 && !workspaces.length) return; // AI is off everywhere: nothing is asked for (F-029, #614)
     getAssistantStatus().then(setStatus).catch(() => setFailed(true));
     Promise.all(workspaces.map((space) => listAgents(space.id).catch(() => [] as Agent[])))
       .then((lists) => setAgents(lists.flat().filter((agent) => agent.owner.kind === 'human' && agent.owner.id === me.user.id && !agent.revokedAt)))
       .catch(() => setAgents([]));
-  }, [workspaces, everyWorkspace.length, me.user.id]);
+  }, [workspaces, me.user.id]);
   useEffect(fetchAll, [fetchAll]);
   const load = () => { setFailed(false); fetchAll(); };
   const done = (next: PersonalAssistantStatus, message: string) => { setStatus(next); setSaved(message); window.setTimeout(() => setSaved(''), 2500); void refreshAssistantModel(); };
 
-  if (everyWorkspace.length > 0 && !workspaces.length) {
-    return <div className="pane-scroll"><div className="pane-in nset aset"><AiOffEverywhere /><p className="nset__note"><Link className="ui-link" to="/settings/agents">Back to AI</Link></p></div></div>;
-  }
   if (failed) return <div className="pane-scroll"><div className="pane-in"><ErrorState title="Your assistant settings couldn’t load" actions={<Button variant="secondary" onClick={load}>Try again</Button>}><p>Nothing changed. Human work goes on as usual.</p></ErrorState></div></div>;
   if (!status || !agents) return <div className="pane-scroll"><div className="pane-in"><p className="inbox__loading"><Spinner label="Loading your assistant" /></p></div></div>;
   // Nothing can run an assistant on this server (no provider, no agent sign-in) and none is set up: one calm line and the
@@ -60,10 +52,7 @@ export function AssistantSettings() {
       </div></div>
     );
   }
-  // The assistant's workspaces whose AI is on come first: the controls, schedules and choices below work in the first of them.
-  const ordered = status.enablement ? [...status.enablement.agents.filter((agent) => !aiOff.has(agent.workspaceId)), ...status.enablement.agents.filter((agent) => aiOff.has(agent.workspaceId))] : [];
-  const shown: PersonalAssistantStatus = status.enablement ? { ...status, enablement: { ...status.enablement, agents: ordered } } : status;
-  const primaryOff = !!ordered[0] && aiOff.has(ordered[0].workspaceId);
+  const shown: PersonalAssistantStatus = status;
   const addAgent = (agent: Agent) => setAgents((current) => [...(current ?? []), agent]);
 
   return (
@@ -72,12 +61,9 @@ export function AssistantSettings() {
         <AssistantHeader name={me.user.name} userId={me.user.id} status={status} busy={!!pausing}
           onToggle={(on) => { setPausing(true); (on ? resumeAssistant() : pauseAssistant()).then((next) => done(next, on ? 'Resumed' : 'Paused'), () => undefined).finally(() => setPausing(false)); }} />
         <span className="nset__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{saved}</> : null}</span>
-        {primaryOff ? null : <>
-          <AssistantControls status={shown} userId={me.user.id} />
-          <AssistantSchedules status={shown} userId={me.user.id} />
-          <AssistantReactions status={shown} userId={me.user.id} />
-        </>}
-        <AiOffThere className="nset__note" />
+        <AssistantControls status={shown} userId={me.user.id} />
+        <AssistantSchedules status={shown} userId={me.user.id} />
+        <AssistantReactions status={shown} userId={me.user.id} />
       </> : <div className="inbox__head">
         <div>
           <h2>Your assistant</h2>

@@ -82,8 +82,8 @@ export function responseError(response: Response, data: unknown): ApiError {
   const record = (data && typeof data === 'object' ? data : {}) as { code?: unknown; message?: unknown; error?: unknown };
   const code = typeof record.code === 'string' ? record.code : null;
   const message = typeof record.message === 'string' ? record.message : typeof record.error === 'string' ? record.error : response.statusText;
-  // F-029 (#614): the workspace's AI was turned off since the shell last read it; the shell reads it again.
-  if (response.status === 403 && code === 'WORKSPACE_AI_BLOCKED' && typeof window !== 'undefined') window.dispatchEvent(new Event('flux:workspace-ai-blocked'));
+  // AG-10: the space's AI was turned off since the shell last read it; the shell reads it again.
+  if (response.status === 403 && code === 'SPACE_AI_OFF' && typeof window !== 'undefined') window.dispatchEvent(new Event('flux:space-ai-off'));
   // F-030 (#655): the workspace is an encrypted one that waits to be unlocked; the shell reads the workspaces again and the page turns into the locked panel.
   if (response.status === 423 && code === 'WORKSPACE_LOCKED' && typeof window !== 'undefined') {
     const details = (data as { details?: { workspaceId?: unknown } } | null)?.details;

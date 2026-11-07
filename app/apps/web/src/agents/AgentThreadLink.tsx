@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Icon } from '../ui';
 import { getTaskAgentThread } from '../composer/api';
 import { RefLink } from '../place/origin';
-import { useProjectAiBlocked } from '../ai/workspaceAi';
+import { useProjectAiBlocked } from '../ai/spaceAi';
 
 /**
  * The way from a task's Details into its agents' thread, which opens in the Agents tab. Reading the count never

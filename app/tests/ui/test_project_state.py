@@ -301,8 +301,12 @@ class ProjectStateJourney(unittest.TestCase):
                     else:
                         header.get_by_role("button", name="More", exact=True).click()
                         page.get_by_role("menu", name="More").get_by_role("menuitem", name="Who can see this").click()
-                    expect(page.locator("#details").get_by_role("heading", name=name, exact=True)).to_be_visible()
-                    page.get_by_role("button", name="Close details", exact=True).click()
+                    # The audience leads to the space's settings (F-037), under the same header with its long title.
+                    expect(page).to_have_url(re.compile(r"/settings$"))
+                    expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+                    expect(header.get_by_role("heading", level=1, name=name, exact=True)).to_be_visible()
+                    page.go_back()
+                    expect(header.get_by_role("button", name="More", exact=True)).to_be_visible()
                     if width in (744, 820, 1280):
                         shot(page, f"136-state-long-title-{len(name)}-{width}")
 

@@ -154,10 +154,11 @@ class ComputerShell(unittest.TestCase):
         page.locator("body").press("c")
         window = page.get_by_role("dialog", name="New task")
         expect(window).to_be_visible()
-        # New opens the one Create window (#345) on Task; Thought, Message, Decision and Project are its tabs (F-026 S3, E02).
+        # New opens the one Create window (#345) on Task; Thought, Message and Decision are its tabs, and New space opens its own window (F-026 S3, E02, S20).
         expect(window.get_by_label("Title", exact=True)).to_be_focused()
         kinds = window.get_by_role("tablist", name="Create")
-        self.assertEqual([item.strip() for item in kinds.get_by_role("tab").all_inner_texts()], ["Task", "Thought", "Message", "Decision", "Space"])
+        self.assertEqual([item.strip() for item in kinds.get_by_role("tab").all_inner_texts()], ["Task", "Thought", "Message", "Decision"])
+        expect(window.get_by_role("button", name="New space", exact=True)).to_be_visible()
         expect(kinds.get_by_role("tab", name="Task", exact=True)).to_have_attribute("aria-selected", "true")
         page.keyboard.press("Escape")
         expect(window).to_have_count(0)

@@ -19,7 +19,7 @@ import { apiUrl } from './support/http.js';
 import { mcp } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
-import { ensureWorkspaceAiAllowed, setWorkspaceAi } from './support/workspace-ai.js';
+import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 
 // F-027 A3 (#403), F-036 AG-3 (#855): the change log, run authority and "What it may do". An assistant run's change tool goes
 // through the real `/mcp` route with the run's own token (the `runtime` engine's path) and, for "Ask me first", through the
@@ -678,20 +678,20 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.equal(await count('project_results', keptB.resultId), 1, 'the result stays with its task');
   });
 
-  test('#68 Undo of these four follows the workspace AI lock: refused while AI is off, with nothing changed, and works again after', async () => {
+  test('#68 Undo of these four follow the AI switch of their space: refused while AI is off, with nothing changed, and works again after', async () => {
     const run = await liveRun();
     const made = value(await run.call('flux_create_map', { title: 'Locked map' }));
     await complete(run.runId);
     const [change] = await changesOf(run.runId);
-    await setWorkspaceAi(ws.id, 'blocked');
+    await setSpaceAi(place.id, 'blocked');
     try {
       const refused = await owner.browser.request('POST', assistantChangeActionPath(change!.id, 'undo'), { body: {} });
-      assert.deepEqual([refused.status, (refused.json as { code?: string }).code], [403, 'WORKSPACE_AI_BLOCKED']);
+      assert.deepEqual([refused.status, (refused.json as { code?: string }).code], [403, 'SPACE_AI_OFF']);
       const all = await owner.browser.request('POST', assistantRunChangesActionPath(run.runId, 'undo'), { body: {} });
-      assert.deepEqual([all.status, (all.json as { code?: string }).code], [403, 'WORKSPACE_AI_BLOCKED']);
+      assert.deepEqual([all.status, (all.json as { code?: string }).code], [403, 'SPACE_AI_OFF']);
       assert.equal(await count('sketches', made.mapId), 1);
       assert.equal((await stateOf(change!.id)).state, 'applied');
-    } finally { await ensureWorkspaceAiAllowed(ws.id); }
+    } finally { await ensureSpaceAiAllowed(place.id); }
     assert.equal((await undoRun(run.runId)).undone, 1);
     assert.equal(await count('sketches', made.mapId), 0);
   });

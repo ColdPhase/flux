@@ -100,7 +100,7 @@ describe('nobody creates a workspace on a real server', () => {
   test('POST /api/v1/workspaces exists only on a test deployment, and renaming the company exists on both', async () => {
     const routes = async (testDeployment: boolean) => {
       const app = Fastify();
-      workspaceRoutes(app, { workspaceScope: () => ({ type: 'workspace', id: '' }) } as unknown as AccessContext, { send: async () => null } as never, { testDeployment });
+      workspaceRoutes(app, { workspaceScope: () => ({ type: 'workspace', id: '' }) } as unknown as AccessContext, { testDeployment });
       await app.ready();
       const found = { create: app.hasRoute({ method: 'POST', url: '/api/v1/workspaces' }), rename: app.hasRoute({ method: 'PATCH', url: '/api/v1/workspaces/:workspaceId' }) };
       await app.close();

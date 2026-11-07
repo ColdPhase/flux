@@ -55,9 +55,32 @@ def kind_tab(page: Page, name: str) -> Locator:
     return window(page).get_by_role("tablist", name="Create").get_by_role("tab", name=name, exact=True)
 
 
+def open_create(page: Page) -> None:
+    """New in the computer sidebar: the Create window (or, with no space of the person's own yet, the New space window)."""
+    page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
+
+
+def new_space_window(page: Page) -> Locator:
+    """The New space window (F-037, S20): its own title, Name, People, AI and Cancel. It is not a tab of the Create window."""
+    return page.get_by_role("dialog", name="New space")
+
+
+def open_new_space(page: Page) -> Locator:
+    """From the open Create window, its New space button opens the New space window in its place."""
+    expect(window(page)).to_be_visible()
+    window(page).get_by_role("button", name="New space", exact=True).click()
+    expect(new_space_window(page).get_by_role("heading", name="New space")).to_be_visible()
+    return new_space_window(page)
+
+
 def create_other(page: Page, name: str) -> None:
-    """From the open Create window: one of its other tabs (Thought, Message, Decision or Project, #521). With no project
-    yet the window opens on Project (#763 FR-2), so any tab may be showing."""
+    """From the open Create window: one of its other tabs (Thought, Message or Decision, #521), or "Space", which opens the New space
+    window (F-037). With no project yet the window opens on New space (#763 FR-2), so any window may be showing."""
+    if name == "Space":
+        if new_space_window(page).count() == 0:
+            open_new_space(page)
+        expect(new_space_window(page)).to_be_visible()
+        return
     expect(window(page)).to_be_visible()
     kind_tab(page, name).click()
     expect(kind_tab(page, name)).to_have_attribute("aria-selected", "true")

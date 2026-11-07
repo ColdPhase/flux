@@ -14,10 +14,10 @@ import { assistantScene, type AssistantScene } from './support/assistant-scene.j
 import { db, pool } from './support/db.js';
 import { publicOrigin } from './support/http.js';
 import { expectStatus, type Person } from './support/people.js';
-import { ensureWorkspaceAiAllowed, setWorkspaceAi } from './support/workspace-ai.js';
+import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 
-// F-029 follow-up (#642): the "AI origin" of a notification is written by whoever creates it, from the actor or the source, and the lock
-// reads that column. One test per writer: a push and an e-mail queued before the flip are skipped while AI is off, the Inbox list, the unread
+// AG-10 (F-029 follow-up #642; per space under F-037): the "AI origin" of a notification is written by whoever creates it, from the
+// actor or the source, and the switch of the space it is about reads that column. One test per writer: a push and an e-mail queued before the flip are skipped while AI is off, the Inbox list, the unread
 // count, the direct read, Needs you and the plain morning-summary count leave the item out, and the same notification delivers once AI is on.
 
 const fakeBoss = () => {
@@ -53,7 +53,7 @@ interface Expectation {
 }
 
 /** The notification of one writer, queued for push and e-mail before the flip, then the flip and the re-enable. */
-async function assertGated(label: string, recipient: Person, workspaceId: string, notificationId: string, expectation: Expectation = {}) {
+async function assertGated(label: string, recipient: Person, projectId: string, notificationId: string, expectation: Expectation = {}) {
   // Every reason on every channel, so the controls show what is delivered while AI is on.
   const everything = { mention: 1, question: 1, reply: 1, dm: 1, assigned: 1, review: 1, invitation: 1 };
   expectStatus(await recipient.browser.request('PATCH', '/api/v1/notification-preferences', { body: { channels: Object.fromEntries(Object.keys(everything).map((reason) => [reason, { inApp: true, push: true, email: true }])) } }), 200);
@@ -64,8 +64,8 @@ async function assertGated(label: string, recipient: Person, workspaceId: string
   const target = () => pushDeliveryRepository(db).findTarget({ notificationId, subscriptionId, userId: recipient.id });
   const summaryRows = async () => (await morningSummaryRows(db).unread(recipient.id, 200)).map((row) => row.id);
 
-  const hiddenCount = Number((await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND workspace_id = $2 AND in_inbox AND read_at IS NULL AND ai_origin`,
-    [recipient.id, workspaceId])).rows[0].n);
+  const hiddenCount = Number((await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND source_type = 'project' AND source_id = $2 AND in_inbox AND read_at IS NULL AND ai_origin`,
+    [recipient.id, projectId])).rows[0].n);
   assert.ok(hiddenCount >= 1, `${label}: the item is an unread AI-origin Inbox row`);
   const on = await unreadIn(recipient);
   assert.ok(on.items.some((item) => item.id === notificationId), `${label}: control, listed while AI is on`);
@@ -73,13 +73,13 @@ async function assertGated(label: string, recipient: Person, workspaceId: string
   assert.ok((await summaryRows()).includes(notificationId), `${label}: control, in the plain summary count while AI is on`);
   if (expectation.needsYou) assert.ok((await needsYouKeys(recipient)).includes(`note:${notificationId}`), `${label}: control, in Needs you while AI is on`);
 
-  const epoch = await setWorkspaceAi(workspaceId, 'blocked');
+  const epoch = await setSpaceAi(projectId, 'blocked');
   try {
     assert.equal(await target(), null, `${label}: a push queued before the flip is not sent`);
     const sent: string[] = [];
     const mailer = { send: async (message: { to: string }) => { sent.push(message.to); return { messageId: randomUUID() }; } } as unknown as NotificationMailer;
     const mail = await deliverNotificationEmail({ available: true, origin: publicOrigin, uow: emailUnitOfWork(db, fakeBoss().boss), mailer }, { emailId });
-    assert.equal((mail as { reason?: string }).reason, 'AI is off in this company', `${label}: ${JSON.stringify(mail)}`);
+    assert.equal((mail as { reason?: string }).reason, 'AI is off in this space', `${label}: ${JSON.stringify(mail)}`);
     assert.equal(sent.length, 0, `${label}: no e-mail left`);
     const off = await unreadIn(recipient);
     assert.ok(!off.items.some((item) => item.id === notificationId), `${label}: left out of the Inbox list`);
@@ -88,7 +88,7 @@ async function assertGated(label: string, recipient: Person, workspaceId: string
     assert.ok(!(await needsYouKeys(recipient)).includes(`note:${notificationId}`), `${label}: left out of Needs you`);
     assert.ok(!(await summaryRows()).includes(notificationId), `${label}: left out of the plain summary count`);
   } finally {
-    await setWorkspaceAi(workspaceId, 'allowed');
+    await setSpaceAi(projectId, 'allowed');
   }
   assert.ok(epoch > 0);
   // The same notification delivers once AI is on (the skipped e-mail row is terminal, so a new one is queued).
@@ -142,55 +142,55 @@ const review = (overrides: Partial<ReviewFacts>): ReviewFacts => ({
   workOwners: [], agentOwner: scene.owner.id, ...overrides,
 });
 
-describe('workspace AI lock: notifications by AI origin (#642)', () => {
+describe('space AI switch: notifications by AI origin (#642)', () => {
   before(async () => { scene = await assistantScene('ai-notify'); });
-  beforeEach(async () => { await ensureWorkspaceAiAllowed(scene.ws.id); });
-  after(async () => { await ensureWorkspaceAiAllowed(scene.ws.id); });
+  beforeEach(async () => { await ensureSpaceAiAllowed(scene.place.id); });
+  after(async () => { await ensureSpaceAiAllowed(scene.place.id); });
 
   test('a message written by an agent (the event\'s actor is a person, the message\'s author is the agent)', async () => {
-    const { owner, ws, agentId } = scene;
+    const { owner, agentId } = scene;
     const [id] = await generate({ id: randomUUID(), kind: 'project.message_sent.v1', objectId: scene.place.id, actorId: `human:${scene.peer.id}`, data: { messageId: randomUUID() } }, owner, {
       projectMessage: async () => message({ author: { kind: 'agent', id: agentId }, authorName: 'Ada assistant' }) });
-    await assertGated('agent-authored message', owner, ws.id, id!, { needsYou: true });
+    await assertGated('agent-authored message', owner, scene.place.id, id!, { needsYou: true });
   });
 
   test('a question card asked by an agent', async () => {
-    const { owner, ws, agentId } = scene;
+    const { owner, agentId } = scene;
     const [id] = await generate({ id: randomUUID(), kind: 'project.message_sent.v1', objectId: scene.place.id, actorId: `agent:${agentId}`, data: { messageId: randomUUID() } }, owner, {
       projectMessage: async () => message({ author: { kind: 'agent', id: agentId }, authorName: 'Ada assistant', body: 'Which sensor?', asked: { userId: owner.id, question: 'Which sensor?' } }) });
-    await assertGated('agent question', owner, ws.id, id!, { needsYou: true });
+    await assertGated('agent question', owner, scene.place.id, id!, { needsYou: true });
   });
 
   test('a decision proposed by an agent and a result recorded by an agent (the event\'s actor is a person)', async () => {
-    const { owner, ws } = scene;
+    const { owner } = scene;
     const [decision] = await generate({ id: randomUUID(), kind: 'project.decision_proposed.v1', objectId: scene.place.id, actorId: `human:${scene.peer.id}`, data: { decisionId: randomUUID() } }, owner, {
       decision: async () => review({}) });
-    await assertGated('agent decision', owner, ws.id, decision!);
+    await assertGated('agent decision', owner, scene.place.id, decision!);
     const [result] = await generate({ id: randomUUID(), kind: 'project.result_recorded.v1', objectId: scene.place.id, actorId: `human:${scene.peer.id}`, data: { resultId: randomUUID() } }, owner, {
       result: async () => review({ title: 'Bench result' }) });
-    await assertGated('agent result', owner, ws.id, result!);
+    await assertGated('agent result', owner, scene.place.id, result!);
   });
 
   test('work assigned by an agent (the actor is the agent)', async () => {
-    const { owner, ws, agentId } = scene;
+    const { owner, agentId } = scene;
     const workId = (await scene.task(owner, 'Recalibrate the lamp')).id;
     const [id] = await generate({ id: randomUUID(), kind: 'project.work_updated.v1', objectId: scene.place.id, actorId: `agent:${agentId}`, data: { workId, assignedTo: owner.id } }, owner, {
       work: async () => ({ id: workId, projectId: scene.place.id, projectName: scene.place.name, title: 'Recalibrate', number: 1, ownerUserId: owner.id, waitingForUserId: null, status: 'open', blocker: null }) });
-    await assertGated('work assigned by an agent', owner, ws.id, id!);
+    await assertGated('work assigned by an agent', owner, scene.place.id, id!);
   });
 
   test('controls: what people write is not AI origin and stays while AI is off', async () => {
-    const { owner, ws, peer } = scene;
+    const { owner, peer } = scene;
     const [id] = await generate({ id: randomUUID(), kind: 'project.message_sent.v1', objectId: scene.place.id, actorId: `human:${peer.id}`, data: { messageId: randomUUID() } }, owner, {
       projectMessage: async () => message({}) });
     assert.equal(await aiOrigin(id!), false, 'a person\'s message is not AI origin');
     const subscriptionId = await subscription(owner);
-    await setWorkspaceAi(ws.id, 'blocked');
+    await setSpaceAi(scene.place.id, 'blocked');
     try {
       assert.ok(await pushDeliveryRepository(db).findTarget({ notificationId: id!, subscriptionId, userId: owner.id }), 'still pushed');
       assert.ok((await unreadIn(owner)).items.some((item) => item.id === id), 'still in the Inbox');
       assert.ok((await morningSummaryRows(db).unread(owner.id, 200)).some((row) => row.id === id), 'still counted in the plain summary');
-    } finally { await setWorkspaceAi(ws.id, 'allowed'); }
+    } finally { await setSpaceAi(scene.place.id, 'allowed'); }
   });
 
   test('an assistant\'s note on a task', async () => {
@@ -199,21 +199,21 @@ describe('workspace AI lock: notifications by AI origin (#642)', () => {
     const rule = { id: randomUUID(), workspaceId: ws.id, projectId: place.id, projectName: place.name, ownerUserId: owner.id, event: 'failed_result', action: 'tell', enabled: true, version: 1 };
     const event = { id: randomUUID(), reactionId: rule.id, ownerUserId: owner.id, objectId: taskId, sourceId: randomUUID(), action: 'tell', event: 'failed_result', reactionVersion: 1, state: 'running', runId: null, createdAt: new Date(), data: null, aiEpoch: 1 };
     await pool.query(`INSERT INTO assistant_reactions(id,workspace_id,project_id,owner_user_id,event,action,enabled) VALUES($1,$2,$3,$4,'failed_result','tell',true)`, [rule.id, ws.id, place.id, owner.id]);
-    await pool.query(`INSERT INTO assistant_reaction_events(reaction_id,owner_user_id,object_id,source_id,action,event,reaction_version,state,ai_epoch,id) VALUES($1,$2,$3,$4,'tell','failed_result',1,'running',(SELECT epoch FROM workspace_ai_policies WHERE workspace_id=$5),$6)`,
-      [rule.id, owner.id, taskId, event.sourceId, ws.id, event.id]);
+    await pool.query(`INSERT INTO assistant_reaction_events(reaction_id,owner_user_id,object_id,source_id,action,event,reaction_version,state,ai_epoch,id) VALUES($1,$2,$3,$4,'tell','failed_result',1,'running',(SELECT epoch FROM project_ai_policies WHERE project_id=$5),$6)`,
+      [rule.id, owner.id, taskId, event.sourceId, place.id, event.id]);
     await assistantReactionRows(db).deliver(event as never, rule as never, 'The result contradicts the task; check the criteria.');
     const id = (await pool.query(`SELECT id FROM notifications WHERE user_id = $1 AND title = 'Your assistant has a note for your task' AND url LIKE $2`, [owner.id, `%${taskId}`])).rows[0].id as string;
-    await assertGated('assistant reaction note', owner, ws.id, id, { needsYou: true });
+    await assertGated('assistant reaction note', owner, scene.place.id, id, { needsYou: true });
   });
 
   test('an assistant\'s schedule paused notice', async () => {
-    const { owner, ws, place } = scene;
+    const { owner, place } = scene;
     const id = await assistantJobRows(db).notify(owner.id, place.id, 'Paused Daily check: it could not run', 'Your assistant paused this schedule. Turn it on again when it is fixed.', '/settings/assistant');
-    await assertGated('assistant schedule notice', owner, ws.id, id);
+    await assertGated('assistant schedule notice', owner, scene.place.id, id);
   });
 
   test('an assistant-written morning summary (the plain count is not AI origin)', async () => {
-    const { owner, ws, place } = scene;
+    const { owner, place } = scene;
     const subscriptionId = await subscription(owner);
     const { boss } = fakeBoss();
     const uow = summaryUnitOfWork(db, boss);
@@ -225,16 +225,16 @@ describe('workspace AI lock: notifications by AI origin (#642)', () => {
     assert.equal(written.ai_origin, true, 'the assistant-written line is AI origin');
     const target = () => pushDeliveryRepository(db).findTarget({ notificationId: written.id, subscriptionId, userId: owner.id });
     assert.ok(await target(), 'control: pushed while AI is on');
-    await setWorkspaceAi(ws.id, 'blocked');
+    await setSpaceAi(scene.place.id, 'blocked');
     try {
       assert.equal(await target(), null, 'the assistant-written summary queued before the flip is not pushed');
       assert.ok(await pushDeliveryRepository(db).findTarget({ notificationId: plain.id, subscriptionId, userId: owner.id }), 'the plain one is');
-    } finally { await setWorkspaceAi(ws.id, 'allowed'); }
+    } finally { await setSpaceAi(scene.place.id, 'allowed'); }
     assert.ok(place.id);
   });
 
   test('the plain morning-summary count leaves out AI-origin items while AI is off', async () => {
-    const { owner, ws } = scene;
+    const { owner } = scene;
     const { boss } = fakeBoss();
     const uow = summaryUnitOfWork(db, boss);
     const unread = async () => (await morningSummaryRows(db).unread(owner.id, 200)).length;
@@ -247,23 +247,25 @@ describe('workspace AI lock: notifications by AI origin (#642)', () => {
       assert.equal(fresh.length, 1, 'one summary was stored');
       return Number(/^(\d+)\+? things?/.exec(fresh[0].title as string)?.[1]);
     };
-    const hiddenRows = Number((await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND workspace_id = $2 AND in_inbox AND read_at IS NULL AND ai_origin`, [owner.id, ws.id])).rows[0].n);
+    const hiddenRows = Number((await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND source_type = 'project' AND source_id = $2 AND in_inbox AND read_at IS NULL AND ai_origin`, [owner.id, scene.place.id])).rows[0].n);
     assert.ok(hiddenRows > 0, 'the earlier tests left AI-origin items unread');
     const [rowsOn, countOn] = [await unread(), await announced()];
     assert.equal(countOn, rowsOn, 'control: the summary announces every unread item while AI is on');
-    await setWorkspaceAi(ws.id, 'blocked');
+    await setSpaceAi(scene.place.id, 'blocked');
     try {
       assert.equal(await unread(), rowsOn - hiddenRows, 'the unread rows it counts drop by exactly the AI-origin items');
       assert.equal(await announced(), countOn - hiddenRows, 'and so does the number it announces');
-    } finally { await setWorkspaceAi(ws.id, 'allowed'); }
+    } finally { await setSpaceAi(scene.place.id, 'allowed'); }
   });
 
   test('an operator request', async () => {
     const { owner, ws, place, peer } = scene;
+    // An operator request belongs to the company, not to a space: it is not hidden by any space's switch.
     const operator = expectStatus(await peer.browser.request('POST', assistantOperatorRequestPath(ws.id), { body: {} }), 201) as { sent: number };
     assert.ok(operator.sent >= 1, 'the owner was told');
-    const note = (await pool.query(`SELECT id FROM notifications WHERE user_id = $1 AND title LIKE '% would like to use their % plan here' ORDER BY created_at DESC LIMIT 1`, [owner.id])).rows[0].id as string;
-    await assertGated('operator request', owner, ws.id, note, { needsYou: true });
-    assert.ok(place.id);
+    const note = (await pool.query(`SELECT id, source_type FROM notifications WHERE user_id = $1 AND title LIKE '% would like to use their % plan here' ORDER BY created_at DESC LIMIT 1`, [owner.id])).rows[0];
+    await setSpaceAi(place.id, 'blocked');
+    try { assert.ok((await unreadIn(owner)).items.some((item) => item.id === note.id), 'still in the Inbox while a space has AI off'); }
+    finally { await setSpaceAi(place.id, 'allowed'); }
   });
 });

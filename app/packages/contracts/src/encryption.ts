@@ -163,7 +163,6 @@ export const LOCKED_ALLOWED_ROUTES: Readonly<Record<string, string>> = {
   'GET /api/v1/workspaces/:workspaceId/invites': 'Invite links are metadata: a role, an address and who made them (F-035)',
   'POST /api/v1/workspaces/:workspaceId/invites': 'An invite link is metadata (F-035); with an Idempotency-Key it answers 423 itself, as its stored answer is sealed',
   'DELETE /api/v1/workspaces/:workspaceId/invites/:inviteId': 'Revoking an invite link is metadata (F-035)',
-  'PUT /api/v1/workspaces/:workspaceId/ai-policy': 'Answers 409 WORKSPACE_ENCRYPTED_AI_OFF for a sealed workspace',
   'POST /api/v1/workspaces/:workspaceId/unlock': 'Unlocking',
   'POST /api/v1/workspaces/:workspaceId/lock': 'Locking',
   'POST /api/v1/workspaces/:workspaceId/unlock-password-grants': 'Answers 423 itself: a grant is useful only while unlocked',

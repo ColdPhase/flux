@@ -250,6 +250,8 @@ test('terminal pre-paid refusals persist zero usage without retry, while owner a
   assert.deepEqual(initial.candidates[0]!.observedUsage, { inputTokens: 0, outputTokens: 0, estimatedCents: 0 });
   assert.deepEqual(initial.candidates[0]!.context, { projectTitle: 'Low-light comparison', resultTitle: 'Camera missed gestures' });
   assert.equal(initial.candidates[0]!.reservedAt, null); assert.equal(initial.candidates[0]!.startedAt, null);
+  // A space always keeps an admin (C-16): the peer becomes one, so the owner can lose access.
+  await grant(f.owner, f.projectId, f.peer, 'manager');
   await grant(f.owner, f.projectId, f.owner, 'denied');
   expectStatus(await f.owner.browser.request('DELETE', `/api/v1/background-compute-connections/${f.connection.id}`), 204);
   const afterLoss = await f.usage();

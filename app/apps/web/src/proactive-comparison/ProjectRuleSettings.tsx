@@ -4,7 +4,7 @@ import { workspaceAgentsPath, type Agent, type BackgroundComputeConnection, type
 import { ApiError, request } from '../api/client';
 import { listAccessibleProjects } from '../project/api';
 import { useShellData } from '../app/data';
-import { useAllAiBlocked, useBlockedWorkspaceIds } from '../ai/workspaceAi';
+import { useAllAiBlocked } from '../ai/spaceAi';
 import { createPersonalAgent } from '../agent-connection/api';
 import { Button, Spinner, Select, Option } from '../ui';
 import { backgroundComparisonRuntime, changeBackgroundRule, createBackgroundRule, listBackgroundRules } from './api';
@@ -15,7 +15,6 @@ const money = (cents: number) => `$${(cents / 100).toFixed(2)}`;
 /** Only the signed-in person's rules and agents are offered. The server checks every mutation again. */
 export function ProjectRuleSettings({ connection }: { connection: BackgroundComputeConnection | null }) {
   const { me } = useShellData();
-  const blocked = useBlockedWorkspaceIds();
   const allOff = useAllAiBlocked();
   const [params] = useSearchParams();
   const [projects, setProjects] = useState<Project[] | null>(null);
@@ -45,13 +44,13 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
     listAccessibleProjects(controller.signal).then(({ projects }) => {
       if (!controller.signal.aborted) {
         // F-029 (#614): no rule can be made in a project of a workspace whose AI is off, so none is offered.
-        const offered = projects.filter((project) => !blocked.has(project.workspaceId));
+        const offered = projects.filter((project) => project.ai !== 'blocked');
         setProjects(offered);
         setProjectId((id) => offered.some((project) => project.id === id) ? id : '');
       }
     }, () => { if (!controller.signal.aborted) setError('Your current project list could not load. Reload to try again.'); });
     return () => controller.abort();
-  }, [blocked]);
+  }, []);
 
   useEffect(() => {
     if (!selected) return;

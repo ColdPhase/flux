@@ -13,7 +13,7 @@ import { useStreamEvents } from '../api/stream';
 import { INBOX_CHANGED, NEEDS_YOU_ACCEPTED, announceInboxChange, type AcceptedInboxItem } from './api';
 import { acceptingIds, answeringIds } from './pendingAccept';
 import { onPlacesForgotten } from '../place/memory';
-import { useProjectAiBlocked } from '../ai/workspaceAi';
+import { useProjectAiBlocked } from '../ai/spaceAi';
 
 /** The Inbox "Needs you" queue (#342): what asks something of you, computed for you alone. */
 export const getNeedsYou = (signal?: AbortSignal) => request<NeedsYouResponse>(NEEDS_YOU_PATH, { signal }).then(noteLockedWorkspaces);

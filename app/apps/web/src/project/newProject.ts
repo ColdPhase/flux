@@ -1,20 +1,17 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRevalidator } from 'react-router';
-import type { Project } from '@flux/contracts';
+import type { Project, WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useIntentKeys } from '../api/intent-keys';
-import { createProject } from './api';
+import { createProject, listWorkspaceMembers } from './api';
 import { useShellData } from '../app/data';
 import { AccountChangedError, assertSignedInAs } from '../app/personalSpace';
 
-/** Who can see a new space until people are added (F-037): the page and the Create window say the same. */
-export const NEW_SPACE_AUDIENCE = 'Until you add people, only you and the company’s admins can open it';
-
 /**
- * Making a space (F-037, #874), shared by this page and the Create window's Space tab: a name, in the company. Every space
- * starts with Conversation, Tasks, Map and Wiki; there are no templates and no goal, and its creator is its first admin.
- * One key per intent, so a retry after a lost answer never makes a second space. `create` resolves to the new space, or
- * null after it has said why not.
+ * Making a space (F-037, #874), shared by the New space window and its phone page: a name, the people and the AI switch, in the company.
+ * Every space starts with Conversation, Tasks, Map and Wiki; there are no templates and no goal, and its creator is its first admin.
+ * One key per intent (the name, the people and the switch), so a retry after a lost answer never makes a second space and a changed
+ * form never replays the first. `create` resolves to the new space, or null after it has said why not.
  */
 export function useNewProject() {
   const { me, workspace } = useShellData();
@@ -27,15 +24,15 @@ export function useNewProject() {
   // Guests only join the spaces they are added to.
   const allowed = !!workspace && workspace.role !== 'guest';
   const ready = (name: string) => !!name.trim() && allowed;
-  async function create(name: string): Promise<Project | null> {
+  async function create(name: string, options: { ai: boolean; people: string[] }): Promise<Project | null> {
     if (!name.trim() || busy || inFlight.current) return null;
     if (!workspace) { setError('You’re not in a company on this Flux yet. Ask an admin for an invite link.'); return null; }
     inFlight.current = true;
     setBusy(true); setError('');
     try {
       await assertSignedInAs(me.user.id);
-      const intent = `space:${workspace.id}:${name.trim()}`;
-      const project = await createProject(workspace.id, name.trim(), intents.keyFor(intent));
+      const intent = `space:${workspace.id}:${name.trim()}:${options.ai ? 'ai' : 'no-ai'}:${[...options.people].sort().join(',')}`;
+      const project = await createProject(workspace.id, name.trim(), intents.keyFor(intent), { ai: options.ai, people: options.people });
       intents.settle(intent);
       revalidator.revalidate();
       return project;
@@ -44,5 +41,23 @@ export function useNewProject() {
       return null;
     } finally { inFlight.current = false; setBusy(false); }
   }
-  return { space: workspace, allowed, audience: NEW_SPACE_AUDIENCE, busy, error, ready, create };
+  return { space: workspace, allowed, busy, error, ready, create };
+}
+
+/**
+ * The people of the company a new space can start with (F-037): everyone but the creator, who is its admin, the company's owner
+ * included. A guest cannot start spaces, so nothing is read for one.
+ */
+export function useCompanyCandidates() {
+  const { me, workspace } = useShellData();
+  const [members, setMembers] = useState<WorkspaceMember[] | null>(null);
+  const allowed = !!workspace && workspace.role !== 'guest';
+  useEffect(() => {
+    if (!workspace || !allowed) return undefined;
+    const controller = new AbortController();
+    listWorkspaceMembers(workspace.id, controller.signal).then(setMembers, () => { if (!controller.signal.aborted) setMembers([]); });
+    return () => controller.abort();
+  }, [workspace, allowed]);
+  const candidates = (members ?? []).filter((member) => member.userId !== me.user.id);
+  return { candidates, loading: members === null && allowed, companyName: workspace?.name ?? 'the company' };
 }

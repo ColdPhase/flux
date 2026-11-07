@@ -126,7 +126,6 @@ export const router = createBrowserRouter([
           { index: true, Component: Home },
           { path: 'spaces/:workspaceId', Component: LockedSpacePage },
           { path: 'projects', ...secondary(async () => ({ Component: (await import('./app/ProjectsIndex')).ProjectsIndex })) },
-          { path: 'projects/new', ...secondary(async () => ({ Component: (await import('./project/ProjectSetup')).ProjectSetup })) },
           {
             // One project (#117): its header, audience, state line and view tabs share this data.
             id: 'project',
@@ -139,6 +138,8 @@ export const router = createBrowserRouter([
               // A message by its id alone (CW-2): the loader finds its thread and opens it there.
               { path: 'messages/:messageId', ...secondary(async () => ({ loader: (await import('./conversations/messageRoute')).messageLoader })) },
               { path: 'github', ...secondary(async () => ({ Component: (await import('./github/GithubSettings')).GithubSettings })) },
+              // The space's settings (F-037, #874; ⋯ › Settings): its name, people, AI switch, Leave space and Delete space.
+              { path: 'settings', ...secondary(async () => ({ Component: (await import('./people/SpaceSettings')).SpaceSettings })) },
               { path: 'tasks', ...secondary(async () => { const page = await tasksPage(); return { Component: page.ProjectTasks, loader: page.projectTasksLoader }; }) },
               { path: 'map', ...secondary(async () => ({ Component: (await mapPage()).ProjectMap })) },
               { path: 'map/:sketchId', ...sketch },

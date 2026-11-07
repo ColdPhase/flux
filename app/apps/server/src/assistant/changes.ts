@@ -203,7 +203,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     if (row.operation === 'work.create' && row.ownerUserId !== owner(principal)) return `Only ${names.get(row.ownerUserId) ?? 'their owner'} can undo a task their agent added`;
     // Only the agent's owner takes these back, not every editor of the project: nothing else lets a person remove them.
     if (REMOVAL_OPERATIONS.has(row.operation) && owner(principal) !== row.ownerUserId) return `Only ${names.get(row.ownerUserId) ?? 'their owner'} can take back what their agent made`;
-    if (REMOVAL_OPERATIONS.has(row.operation)) await requireAiOn(db, row.workspaceId);
+    if (REMOVAL_OPERATIONS.has(row.operation)) await requireAiOn(db, row.projectId);
     const result = await undoChange(db, row, { kind: 'human', id: owner(principal) }, names.get(owner(principal)) ?? 'Someone', names.get(row.ownerUserId) ?? 'Someone');
     return result.done ? result.message : result.message ?? CHANGED_SINCE;
   }
@@ -310,7 +310,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
         && (row.operation !== 'work.create' || row.ownerUserId === who) && (!REMOVAL_OPERATIONS.has(row.operation) || row.ownerUserId === who)).reverse();
       const changes: AssistantChangeDecision[] = []; const changedSince: string[] = []; let undone = 0;
       // One refusal for the whole message, before anything is undone, rather than half of it.
-      for (const row of list) if (REMOVAL_OPERATIONS.has(row.operation)) { await requireAiOn(db, row.workspaceId); break; }
+      for (const row of list) if (REMOVAL_OPERATIONS.has(row.operation)) { await requireAiOn(db, row.projectId); break; }
       for (const row of list) {
         const message = await undoOne(principal, row);
         if (message === null || message === 'Moved to your drafts') undone++; else changedSince.push(row.objectType === 'work' ? row.objectTitle.split(' ')[0]! : row.objectTitle || row.operation);

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { authorizeEvent, type EventRef } from './access/policy.js';
+import { authorizeEvent, eventResource, type EventRef } from './access/policy.js';
 import type { AccessReader } from './access/ports.js';
 import type { Principal } from './principal.js';
 
@@ -37,13 +37,14 @@ export interface EventPorts {
 
 /** The access policy as the event authorizer, reading through `access`, with the repository bound to the same transaction. */
 export function policyEventPorts(access: AccessReader, repository: EventRepository): EventPorts {
-  // F-029: before the first agent candidate of a workspace, hold its AI policy row `FOR SHARE`, so an
-  // event racing a change of the policy is ordered before it (a pre-block event) or after it (no agent row).
+  // AG-10: before the first agent candidate of an event about a space, hold that space's AI switch `FOR SHARE`, so an event
+  // racing a flip is ordered before it (a pre-block event) or after it (no agent row).
   const locked = new Set<string>();
   return { repository, authorize: async (principal, event) => {
-    if (principal.kind === 'agent' && event.workspaceId && !locked.has(event.workspaceId)) {
-      await access.workspaceAi(event.workspaceId, { lock: true });
-      locked.add(event.workspaceId);
+    const resource = principal.kind === 'agent' ? eventResource(event) : null;
+    if (resource?.type === 'project' && !locked.has(resource.id)) {
+      await access.spaceAi(resource.id, { lock: true });
+      locked.add(resource.id);
     }
     return authorizeEvent(principal, event, access);
   } };

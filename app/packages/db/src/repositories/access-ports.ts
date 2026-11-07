@@ -3,7 +3,7 @@ import { agentRepository } from './agents.js';
 import { draftRepository } from './drafts.js';
 import { eventRepository } from './events.js';
 import { projectRepository } from './projects.js';
-import { workspaceAiSweepRows } from './workspace-ai.js';
+import { spaceAiSweepRows } from './space-ai.js';
 import { workspaceEncryptionRows } from './workspace-encryption.js';
 import { workspaceInviteRepository } from './workspace-invites.js';
 import { workspaceRepository } from './workspaces.js';
@@ -23,7 +23,7 @@ export const accessPorts = {
   agents: agentRepository,
   drafts: draftRepository,
   encryption: workspaceEncryptionRows,
-  aiSweep: workspaceAiSweepRows,
+  aiSweep: spaceAiSweepRows,
   access: accessReader,
   events: eventRepository,
 };
