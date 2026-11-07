@@ -95,6 +95,13 @@ export interface RunRecord {
   /** 0108 (F-027 A4): what started the run, and a background run's short name for the lane's lines. */
   authority: 'owner_request' | 'owner_schedule' | 'owner_reaction';
   backgroundLabel: string | null;
+  /** 0008 (#856): the task a `task` run works on; null for every other kind. */
+  workId: string | null;
+  /** 0008 (#856): who pressed Stop. */
+  stopRequestedBy: string | null;
+  /** 0009 (#841): the run whose question this run answers, and how many questions in a row led here. */
+  askedByRunId: string | null;
+  exchangeTurn: number;
   /** 0115 (F-029): the workspace AI policy epoch the run was admitted under; every later step requires it. */
   aiEpoch: number;
 }
@@ -107,10 +114,10 @@ export type RunEndStatus = RunRecord['status'] | 'ai_off';
 
 export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
-  | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: AssistantEngine; silent?: boolean; authority?: RunRecord['authority']; backgroundLabel?: string | null;
+  | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: AssistantEngine; silent?: boolean; authority?: RunRecord['authority']; backgroundLabel?: string | null; workId?: string | null; askedByRunId?: string | null; exchangeTurn?: number;
     /** A paused request: queued until then, with the reason it waits (#854). */
     resumeAt?: Date | null; endReason?: AssistantRunEndReason | null; planLimitResetsAt?: Date | null };
-export type RunChanges = Partial<Pick<RunRecord, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'costState' | 'chargedMicros'
+export type RunChanges = Partial<Pick<RunRecord, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'stopRequestedBy' | 'costState' | 'chargedMicros'
   | 'inputTokens' | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'answerSources' | 'committedAt' | 'dispatchedAt' | 'completedAt'
   | 'endReason' | 'planLimitResetsAt' | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros'>>;
 

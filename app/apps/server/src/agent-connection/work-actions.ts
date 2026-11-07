@@ -32,13 +32,17 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
       ownerUserId: z.string().min(1).max(200).describe('Optional: the person responsible, by user id. A task for anyone but your owner waits for your owner\'s OK.').optional(),
       waitingForUserId: waitingForUserId.optional(),
       criteria: criteria.optional(), dependencyIds: dependencyIds.optional(),
+      parentTaskId: id.describe('Optional: make this a subtask of this task of the project. A subtask for another person waits for your owner\'s OK.').optional(),
+      sourceMessageId: id.describe('Optional: the message of this project this task was made from. It is kept as the task\'s source, so the task opens it in context and the message shows the task.').optional(),
       planIntent: z.strictObject({ materialId: id, version, intentKey: text(WORK_LIMITS.intentKey) }).optional(),
     }) }),
     annotations,
-  }, async ({ task: { waitingForUserId: waiting, ownerUserId, ...task }, ...input }) => {
+  }, async ({ task: { waitingForUserId: waiting, ownerUserId, sourceMessageId, parentTaskId, ...task }, ...input }) => {
     try {
+      // #844: a task made from a message keeps it as its source, for people and agents alike (the message must be in this project).
+      const sources = [...(materialSources(input).sources ?? []), ...(sourceMessageId ? [{ type: 'message' as const, id: sourceMessageId }] : [])];
       const created: CreateWorkCommand = { ...task, ...(ownerUserId ? { owner: { kind: 'human', id: ownerUserId } } : {}),
-        ...(waiting ? { waitingFor: { kind: 'human', id: waiting } } : {}), ...materialSources(input) };
+        ...(waiting ? { waitingFor: { kind: 'human', id: waiting } } : {}), ...(sources.length ? { sources } : {}), ...(parentTaskId ? { parentId: parentTaskId } : {}) };
       return toolResult(await execute(input, 'work.create', null, created as unknown as AgentJsonValue, async ({ work: native, agent }) => {
         const work = await native.createWork(agent, input.projectId, created);
         return { value: { workId: work.id, number: work.number, version: work.version }, postconditions: [{ kind: 'work', id: work.id, version: work.version }] };

@@ -16,7 +16,8 @@ async function scene() {
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
     body: { name: 'Retained analyst', owner: 'self' },
   }), 201) as { id: string };
-  const task = expectStatus(await manager.browser.request('POST', `/api/v1/projects/${place.id}/work`, {
+  // A task is given to your own agent (#904): its owner gives it.
+  const task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, {
     body: { title: 'Keep the retained owner', owner: { kind: 'agent', id: agent.id } },
   }), 201) as WorkItem;
   /** The overview's linked-row read: the task's native row as this viewer sees it. */

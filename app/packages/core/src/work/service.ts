@@ -26,7 +26,7 @@ import {
 } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError, SpaceAiOffError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
-import type { ActorRef, DecisionRecord, NativeCommandReceipt, ObjectLinkRecord, NewObjectLink, ResultRecord, TaskPlanRecord, WorkChanges, WorkPorts, WorkRecord, WorkRepository, WorkUnitOfWork } from './ports.js';
+import type { ActorRef, DecisionRecord, NativeCommandReceipt, ObjectLinkRecord, NewObjectLink, ResultRecord, TaskChangeVia, TaskPlanRecord, WorkChanges, WorkPorts, WorkRecord, WorkRepository, WorkUnitOfWork } from './ports.js';
 import { assertNoDependencyCycle, assertPrerequisitesMet, creationFingerprint, decidePlanIntent, directPrerequisiteIds, ELIGIBLE_STATUSES,
   lockProjectGraphs, sortedIds } from './task-graph.js';
 import * as valid from './validation.js';
@@ -208,12 +208,17 @@ function requireDependencyScope(projectIds: readonly string[], projectId: string
     throw new RuleViolationError('Every prerequisite must be a task of this space', 'TASK_DEPENDENCY_NOT_FOUND');
 }
 
-async function requireOwner(ports: WorkPorts, projectId: string, owner: ActorRef | null) {
+async function requireOwner(ports: WorkPorts, projectId: string, owner: ActorRef | null, by: Principal) {
   // F-029: no task is handed to an agent while AI is off in the workspace (people stay assignable).
   if (owner?.kind === 'agent' && !(await ports.access.aiAllowed(projectId))) throw new SpaceAiOffError();
+  // #904 (AG-5): a task is given to your own agent, never to someone else's. Another person's agent takes it only through that person.
+  if (owner?.kind === 'agent' && !(await ports.access.ownsAgent?.(by, owner.id)))
+    throw new RuleViolationError('Give a task to one of your own agents. To reach another person\'s agent, give the task to that person.', 'OWNER_NOT_YOUR_AGENT');
   if (owner && !(await ports.access.canRead(owner, projectId)))
     throw new RuleViolationError('The owner needs current access to this space', 'OWNER_WITHOUT_ACCESS');
 }
+
+const sameOwner = (a: ActorRef | null, b: ActorRef | null) => a?.kind === b?.kind && a?.id === b?.id;
 
 /** The one person a blocked task waits for: a person who can read the project (#550). */
 async function requireWaitingFor(ports: WorkPorts, projectId: string, waitingFor: ActorRef | null) {
@@ -391,10 +396,12 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       const criteria = valid.criteria(command.criteria);
       const dependencyIds = valid.dependencyIds(command.dependencyIds);
       const planIntent = valid.planIntent(command.planIntent);
+      // #841: a subtask is part of one task of this space; the parent does not wait for it.
+      const parent: ObjectRef[] = command.parentId === undefined ? [] : [{ type: 'work', id: valid.id(command.parentId, 'parentId') }];
       const clientCommandId = command.clientCommandId === undefined ? undefined : valid.id(command.clientCommandId, 'clientCommandId');
       // The retry fingerprint keeps its original shape (older stored creations still match) and adds the plan
       // fields only when present. The intent fingerprint is the canonical creation, without retry identity.
-      const plan = { ...(criteria.length ? { criteria } : {}), ...(dependencyIds.length ? { dependencyIds } : {}), ...(planIntent ? { planIntent } : {}) };
+      const plan = { ...(criteria.length ? { criteria } : {}), ...(dependencyIds.length ? { dependencyIds } : {}), ...(planIntent ? { planIntent } : {}), ...(parent.length ? { parentId: parent[0]!.id } : {}) };
       const requestFingerprint = clientCommandId ? createHash('sha256').update(JSON.stringify({ title, outcome, status, blocker, owner, ...(waitingFor ? { waitingFor } : {}), ...(dueOn ? { dueOn } : {}), sources, related, ...plan })).digest('hex') : undefined;
       const intentFingerprint = planIntent ? creationFingerprint({ title, outcome, status, blocker, owner, dueOn, sources, related, criteria, dependencyIds }) : undefined;
       return uow.run(async (ports) => {
@@ -417,11 +424,11 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
             return presentWork(ports, earlier.work);
           }
         }
-        await requireOwner(ports, project, owner);
+        await requireOwner(ports, project, owner, principal);
         await requireWaitingFor(ports, project, waitingFor);
-        await requireTargets(ports, project, [...sources, ...related]);
+        await requireTargets(ports, project, [...sources, ...related, ...parent]);
         await lockProjectGraphs(ports.work, [project]);
-        await requireTargets(ports, project, [...sources, ...related]);
+        await requireTargets(ports, project, [...sources, ...related, ...parent]);
         if (planIntent) {
           const existing = await ports.work.findPlanIntent(project, planIntent);
           const produced = existing ? await ports.work.findWork(existing.taskId, { lock: true }) : null;
@@ -430,7 +437,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
           if (decision.kind === 'replay') return presentWork(ports, produced!);
         }
         await requireDependencyTargets(ports, project, dependencyIds);
-        const existingTargets = [...new Set([...dependencyIds, ...await ports.work.taskUseTargets([...sources, ...related])])].sort();
+        const existingTargets = [...new Set([...dependencyIds, ...await ports.work.taskUseTargets([...sources, ...related, ...parent])])].sort();
         const useFence = await ports.work.lockPreparedTaskUse(existingTargets);
         requireDependencyScope(useFence.projectIds, project);
 
@@ -443,7 +450,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         }
         if (planIntent) await ports.work.insertPlanIntent(scope, planIntent, { taskId: record.id, fingerprint: intentFingerprint!, taskVersion: record.version });
         const from = { type: 'work' as const, id: record.id };
-        await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'related', related, by)]);
+        await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'related', related, by), ...linkRows(scope, from, 'part_of', parent, by)]);
         await ports.work.insertCreationNotice(record, sources);
         await useFence.mark();
         if (!trustedOrigin) await ports.work.recordCreationBaseline(record);
@@ -462,7 +469,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
      * blocker or changing only status/owner/text contributes nothing. With `clientCommandId` an exact retry
      * returns the original outcome without contributing again.
      */
-    async updateWork(principal: Principal, workId: string, command: UpdateWorkCommand, expected: number | undefined): Promise<WorkItem> {
+    async updateWork(principal: Principal, workId: string, command: UpdateWorkCommand, expected: number | undefined, via?: TaskChangeVia): Promise<WorkItem> {
       const by = actor(principal);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Change is required');
       if ((command as { planIntent?: unknown }).planIntent !== undefined) throw new InvalidInputError('A task keeps the plan intent it was created with', 'PLAN_INTENT_IMMUTABLE');
@@ -535,10 +542,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
           if (changes.waitingFor) throw new InvalidInputError('A person to wait for applies to blocked work only');
           changes.waitingFor = null;
         }
-        if (changes.owner !== undefined) await requireOwner(ports, projectId, changes.owner);
+        if (changes.owner !== undefined && !sameOwner(current.owner, changes.owner)) await requireOwner(ports, projectId, changes.owner, principal);
         if (changes.waitingFor) await requireWaitingFor(ports, projectId, changes.waitingFor);
         if (dependencyIds !== undefined) await assertNoDependencyCycle(ports.work, workspaceId, id, dependencyIds);
-        const record = await ports.work.updateWork(id, changes, by);
+        const record = await ports.work.updateWork(id, changes, by, via);
         // A person's override suspends the task's rule now, not at the next delivery. Finishing work leaves it: a rule
         // never acts on finished work, and its one-tap Done is how "Ready to close" ends.
         if (overrides && !FINISHED.has(nextStatus)) await ports.work.suspendGithubRule({ id, fromStatus: current.status, status: record.status, version: record.version });

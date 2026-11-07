@@ -90,7 +90,16 @@ export type ObjectRef =
  * `about`: a result reports on this work or decision. `related`: any other connection.
  * `mentions`: the current text of a doc refers to it (#112); rewritten with each doc version.
  */
-export type LinkRole = 'source' | 'affects' | 'still_applies' | 'about' | 'related' | 'mentions';
+export type LinkRole = 'source' | 'affects' | 'still_applies' | 'about' | 'related' | 'mentions' | 'part_of';
+
+/** One task that is part of another (#841): its state in words, and who has it. */
+export interface TaskSubtask {
+  id: string;
+  number: number;
+  title: string;
+  status: WorkStatus;
+  owner: NamedPrincipal | null;
+}
 
 export interface ObjectLink {
   id: string;
@@ -165,6 +174,8 @@ export interface WorkItem extends ProjectObject {
   dependencyIds: string[];
   /** The same prerequisites with their current state, so one task shows what it is waiting for. */
   prerequisites: TaskPrerequisite[];
+  /** Task detail only (#841): the tasks that are part of this one, by number. An agent or a person splits a task into these. */
+  subtasks?: TaskSubtask[];
   /** Null for tasks created without a plan intent, including every task from before this existed. */
   planIntent: TaskPlanIntent | null;
   status: WorkStatus;
@@ -230,6 +241,8 @@ export interface CreateWorkCommand {
   criteria?: string[];
   /** At most 50 distinct tasks of the same project that must be done (and unparked) first. */
   dependencyIds?: string[];
+  /** #841: the task of this project this one is a subtask of. It is part of it; the parent does not wait for it. */
+  parentId?: string;
   /**
    * Correlates this creation with one revision of a plan material. The revision must be the material's
    * current version. The same canonical creation returns the same task; another payload for the same
@@ -336,7 +349,7 @@ export interface TaskActivityEntry {
    * Set when the change was made by a task rule of a linked pull request on its author's behalf (`actor` is that author),
    * so a reader never mistakes it for the author's own action.
    */
-  automation?: 'github_rule';
+  automation?: 'github_rule' | 'agent_rule';
   /** `kind: 'status'`. `blocker` and `waitingFor` are what a move into Blocked said; null for any other `to`. */
   status?: { from: WorkStatus; to: WorkStatus; blocker: string | null; waitingFor: NamedPrincipal | null };
   /** `kind: 'owner'`. Null is nobody. */

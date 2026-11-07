@@ -13,6 +13,7 @@ import { getTaskDiscussion } from '../composer/api';
 import { agentDisplayName, FORMER_MEMBER } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { AgentThreadLink } from '../agents/AgentThreadLink';
+import { TaskAgentState } from '../agents/TaskAgentState';
 import { RefLink } from '../place/origin';
 import { useCreateWorkFromMessage } from './inline';
 import { getTaskActivity } from './api';
@@ -56,7 +57,7 @@ const FROM: Record<NonNullable<Source>, string> = {
 
 /** The text after the actor's name; the actor and the time are shown beside it. */
 function changeText(entry: TaskActivityEntry): string {
-  const rule = entry.automation === 'github_rule' ? ' (a pull request rule)' : '';
+  const rule = entry.automation === 'github_rule' ? ' (a pull request rule)' : entry.automation === 'agent_rule' ? ' (the agent setting)' : '';
   if (entry.kind === 'status' && entry.status) {
     const { to, blocker, waitingFor } = entry.status;
     if (to === 'blocked') {
@@ -162,7 +163,7 @@ function Face({ actor, mine }: { actor: { kind: 'agent' | 'human'; name: string 
 
 /** The timeline: newest first, each line with its author and time. */
 export function ActivityTimeline({ state, composer, item, project, me, writable, composerId, empty }: {
-  state: TaskActivityState; composer: TaskComposerDraft; item: Pick<WorkItem, 'id'>; project: Project; me: { id: string; name: string }; writable: boolean; composerId: string;
+  state: TaskActivityState; composer: TaskComposerDraft; item: Pick<WorkItem, 'id' | 'version'>; project: Project; me: { id: string; name: string }; writable: boolean; composerId: string;
   /** One quiet line after the timeline when the task has no results, decisions or Wiki pages yet. */
   empty?: ReactNode;
 }) {
@@ -180,6 +181,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
       </div>
       {state.failed === 'all' ? <p className="wd-error" role="alert">The activity could not be loaded. <button type="button" className="wd-inline" onClick={state.retry}>Retry</button></p>
         : state.loading ? <p className="wd-muted" aria-busy="true">Loading…</p> : null}
+      <TaskAgentState item={item} projectId={project.id} conversationId={discussion?.conversationId ?? null} revision={state.lines.length} onChanged={state.reload} />
       {state.failed === 'changes' ? <p className="wd-error" role="alert">Some of the history could not be loaded. <button type="button" className="wd-inline" onClick={state.retry}>Retry</button></p> : null}
       {composer.pending.length ? <ol className="wd-pending" aria-label={writable ? 'Messages you are sending' : 'Pending messages kept'}>{composer.pending.map((pending) => (
         <li key={pending.id} id={`pending-${pending.id}`} data-client-message-id={pending.id} data-send-state={pending.state} className={`wd-pending__item is-pending${pending.state === 'failed' ? ' is-failed-send' : ''}`}>
