@@ -92,6 +92,11 @@ class CreateWindow(unittest.TestCase):
     def work(self, page: Page) -> list[dict]:
         return self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["items"]
 
+    def at_rest(self, page: Page) -> None:
+        """Waits until nothing finite is animating. A sheet is "visible" 17 ms into its 180 ms enter, still about 526 px down on a fractional
+        translateY, and a box read there can be 43.99997 tall in float32 where the control is 44; a cancelled animation is over too."""
+        page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
+
     # ---------------------------------------------------------------- AC-1: one window, the same fields
 
     def test_01_new_and_c_open_the_window_with_the_drawn_fields_and_make_a_task(self) -> None:
@@ -311,7 +316,9 @@ class CreateWindow(unittest.TestCase):
             expect(sheet).to_be_visible()
             expect(sheet.get_by_role("heading", name="Search")).to_be_visible()
             chips = sheet.get_by_role("group", name="Search in")
-            self.assertEqual([item.strip() for item in chips.get_by_role("button").all_inner_texts()], ["All", "Tasks", "People", "Agents", "Wiki"])
+            # The sheet opens on its skeleton (#863 rule 6), which already has the "Search" title: the chips are the loaded content, so wait for them.
+            expect(chips.get_by_role("button")).to_have_text(["All", "Tasks", "People", "Agents", "Wiki"])
+            self.at_rest(page)
             for chip in chips.get_by_role("button").all():
                 self.assertGreaterEqual(chip.bounding_box()["height"], 44)
             field = sheet.get_by_role("combobox", name="Jump to")
@@ -888,6 +895,7 @@ class CreateWindow(unittest.TestCase):
         # The same recent places and actions; the phone has no sidebar to hide and no focus mode, and no keys to press.
         self.assertEqual(self.option_names(listbox), ["Cargo bike co-op · Conversation", "Home", "New task", "Go to Inbox"])
         expect(listbox.locator(".jump__keys").first).to_be_hidden()
+        self.at_rest(page)
         for option in listbox.get_by_role("option").all():
             self.assertGreaterEqual(option.bounding_box()["height"], 44)
         listbox.get_by_role("option", name="Go to Inbox", exact=True).tap()
