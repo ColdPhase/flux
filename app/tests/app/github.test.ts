@@ -213,6 +213,8 @@ test('real session-bound OAuth state/PKCE consumes once, checks current project 
     transport.staleCheck = true; await rejected(provider.pull(actor(owner), repo, 42), 'GITHUB_INVALID_RESPONSE'); transport.staleCheck = false;
     transport.mismatchedApp = true; await rejected(provider.repository(actor(owner), INSTALL, REPO), 'GITHUB_ACCESS_UNAVAILABLE'); transport.mismatchedApp = false;
     const next = await app.inject({ method: 'POST', url: `/api/v1/projects/${place.id}/github/authorize`, headers: headers(owner) }); const nextState = new URL(next.json().url).searchParams.get('state')!;
+    // A space always keeps an admin (C-16): the other person becomes one, so the owner can lose access.
+    await addMember(owner, ws.id, second, 'member'); await grant(owner, place.id, second, 'manager');
     await grant(owner, place.id, owner, 'denied');
     assert.equal((await app.inject({ method: 'GET', url: `/api/v1/integrations/github/callback?state=${nextState}&code=fixture-code`, headers: headers(owner) })).statusCode, 404, 'revoked project authority before callback'); assert.equal(transport.exchanges, 1);
   } finally { await app.close(); }

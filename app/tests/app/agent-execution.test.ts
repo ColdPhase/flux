@@ -123,6 +123,8 @@ test('owner grant API is idempotent, bounded and management-gated; history and n
   expectStatus(await f.owner.browser.request('GET', `${path}?limit=51`), 400);
   expectStatus(await f.owner.browser.request('POST', path, { body: { ...command, clientCommandId: randomUUID(), peerRequestClass: 'review' } }), 400);
   expectStatus(await f.owner.browser.request('POST', `/api/v1/workspaces/${f.p.workspaceId}/members`, { body: { email: peer.email, role: 'owner' } }), 201);
+  // A space always keeps an admin (C-16): the peer becomes one, so the owner can step down to contributor.
+  expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.p.id}/grants`, { body: { principal: { kind: 'human', id: peer.id }, role: 'manager' } }), 201);
   expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.p.id}/grants`, { body: { principal: { kind: 'human', id: f.owner.id }, role: 'contributor' } }), 201);
   expectStatus(await peer.browser.request('PATCH', `/api/v1/workspaces/${f.p.workspaceId}/members/${f.owner.id}`, { body: { role: 'member' } }), 200);
   // #763 FT-2 (F-024 AC-4 amendment, founder decision 2026-11-01): an owner who only writes in the project may add a grant while a
