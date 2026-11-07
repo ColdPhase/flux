@@ -368,6 +368,9 @@ class PhoneFinal(unittest.TestCase):
         self.assertEqual(labels[:1], ["Messages"])
         self.assertNotIn("Sketches", labels)
         expect(page.locator(".views")).to_have_count(0)
+        # Its old address is gone with it.
+        page.goto(f"{self.dm_path}/sketches")
+        expect(page.get_by_role("heading", name="This page doesn’t exist")).to_be_visible()
 
     def test_09_every_place_stays_reachable(self):
         page = self.page(SIZES[0])
