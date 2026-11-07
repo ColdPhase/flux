@@ -91,6 +91,8 @@ interface Scene {
   admins?: number;
   /** `member` finds nobody in the company. */
   noMember?: boolean;
+  /** The company role of the person `member` finds (default `member`). */
+  granteeRole?: WorkspaceRole;
   failStep?: string;
 }
 
@@ -140,7 +142,7 @@ function scene(options: Scene = {}, checked = true) {
   };
   const projects = {
     lockForGrantChange: async () => { log('projects.lockForGrantChange'); },
-    member: async () => { log('projects.member'); return options.noMember ? null : memberRow('member'); },
+    member: async () => { log('projects.member'); return options.noMember ? null : memberRow(options.granteeRole ?? 'member'); },
     lockGrantOf: async () => { log('projects.lockGrantOf'); return options.existingGrant !== undefined ? options.existingGrant : options.grantRole ? { ...grantRow(OWNER), role: options.grantRole } : null; },
     listGrants: async () => { log('projects.listGrants'); return Array.from({ length: options.admins ?? 1 }, (_, n) => ({ ...grantRow(`admin-${n}`), role: 'manager' as const })); },
     rename: async (_id: string, _workspaceId: string, name: string) => { log('projects.rename'); return { ...project, name, version: 2 }; },
@@ -362,11 +364,22 @@ describe('grant, agent and draft use cases over in-memory repositories', () => {
     }
   });
 
-  test('grantProject: only an owner may grant to an owner, and the grantee must be a member; revoke needs the grant', async () => {
-    const s = scene({ role: 'admin' });
-    s.ports.projects = () => ({ lockForGrantChange: async () => undefined, member: async () => memberRow('owner') }) as never;
-    await assert.rejects(grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'viewer' }, s.db, s.ports),
-      (error: unknown) => error instanceof ForbiddenError && error.code === 'OWNER_REQUIRED');
+  test('grantProject: any person in the company can be added, a company owner too (#905); the grantee must be a member; revoke needs the grant', async () => {
+    // A company admin (not an owner) adds the company owner to a space, as New space lets a space admin do; the grant is written.
+    const toOwner = scene({ role: 'admin', granteeRole: 'owner' });
+    const granted = await grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'contributor' }, toOwner.db, toOwner.ports);
+    assert.equal(granted.role, 'contributor');
+    assert.ok(toOwner.calls.includes('projects.insertGrant'), 'the owner was added');
+    await revokeProjectGrant(human(OWNER), PROJECT, GRANT, toOwner.db, toOwner.ports);
+    assert.ok(toOwner.calls.includes('projects.deleteGrant'), 'and can be removed by whoever manages the space');
+    // Keeping the owner out of the space is another matter: only an owner may (#914).
+    const denyOwner = async (role: WorkspaceRole) => {
+      const s = scene({ role, granteeRole: 'owner' });
+      await grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'denied' }, s.db, s.ports);
+      return s.calls;
+    };
+    await assert.rejects(denyOwner('admin'), (error: unknown) => error instanceof ForbiddenError && error.code === 'OWNER_REQUIRED');
+    assert.ok((await denyOwner('owner')).includes('projects.insertGrant'), 'an owner can');
     const stranger = scene();
     stranger.ports.projects = () => ({ lockForGrantChange: async () => undefined, member: async () => null }) as never;
     await assert.rejects(grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'viewer' }, stranger.db, stranger.ports),
@@ -380,7 +393,7 @@ describe('grant, agent and draft use cases over in-memory repositories', () => {
     const s = scene();
     await revokeProjectGrant(human(OWNER), PROJECT, GRANT, s.db, s.ports);
     assert.deepEqual(s.calls, ['begin', 'projects.lockForGrantChange', 'access.locateProject', 'access.loadActor(lock)', 'access.lockProjectAccess', 'access.readProject', 'projects.lockGrant',
-      'projects.memberRole', 'projects.deleteGrant', ...EVENT_LAST, 'commit']);
+      'projects.deleteGrant', ...EVENT_LAST, 'commit']);
   });
 
   test('createAgent: the actor under lock, the insert, the event last; an agent belongs to its person, so no space\'s switch is read', async () => {

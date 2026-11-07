@@ -62,8 +62,10 @@ A person connects AI once, in Settings › AI. Their connections power all of th
 - **An API key keeps one daily budget**, set by its owner. Flux prices each request from the
   model's price before sending it, so a day's spend stays within the budget, counted on the day the
   money is held: a request that waited overnight counts on the day it runs. A budget below one
-  request on the key's model is refused when it is saved. When less than one request is left, the
-  agent pauses until the next day in the key's time zone. Background work on the key (comparisons)
+  request on a model that runs on the key (its own, and the one the assistant uses on it) is
+  refused when it is saved, and so is choosing a model whose one request costs more than the
+  budget. When less than one request is left, the agent pauses until the next day in the key's
+  time zone. Background work on the key (comparisons)
   shares that one budget; there is no second allowance. A provider-reported cost only reconciles the charge. A
   response whose cost cannot be known counts what the run had spent and the most that one request
   could have cost.

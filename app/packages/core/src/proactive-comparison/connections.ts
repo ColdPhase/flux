@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, apiKeyDefaultModel, isAiProviderKind, PERSONAL_RUN_LIMITS, type AiPrice, type BackgroundComputeConnection,
+import { AI_PROVIDERS, API_KEY_DAILY_BUDGET_CENTS, apiKeyDefaultModel, assistantApiPrice, assistantModelName, isAiProviderKind, PERSONAL_RUN_LIMITS, type AiPrice, type BackgroundComputeConnection,
   type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand } from '@flux/contracts';
 import { InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
@@ -21,6 +21,8 @@ export interface BackgroundConnectionPort {
   current(ownerUserId: string): Promise<BackgroundComputeConnection | null>;
   update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number; usedForBackground?: true }): Promise<BackgroundComputeConnection | null>;
   revoke(ownerUserId: string, connectionId: string): Promise<boolean>;
+  /** The model the owner's assistant uses on this key, or null when it is on another connection or has none stored (#909). */
+  assistantModelOn(ownerUserId: string, connectionId: string): Promise<string | null>;
 }
 /** What a connection save needs beyond storage (F-020): the endpoint policy of owner-set URLs. */
 export interface BackgroundConnectionProviders {
@@ -35,11 +37,14 @@ function bounded(value: unknown, low: number, high: number): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= low && value <= high;
 }
 const budgetProblem = 'The daily budget is whole cents from $0.10 to $1,000';
-/** A budget below one request at the key's price would wait for a day that never comes (#854): it is refused when saved. */
-function assertBudgetFitsRequest(price: AiPrice | null, budgetCents: number) {
+/**
+ * A budget below one request at the price of a model that runs on the key would wait for a day that never comes (#854): it is
+ * refused when saved. `model` names the assistant's model when that is the one that does not fit (#909).
+ */
+function assertBudgetFitsRequest(price: AiPrice | null, budgetCents: number, model: string | null = null) {
   const largest = requestReservationMicros(price, PERSONAL_RUN_LIMITS.maxToolInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens);
   if (largest !== null && largest > budgetCents * 10_000)
-    throw new InvalidInputError(`One request on this model can cost up to $${(Math.ceil(largest / 10_000) / 100).toFixed(2)}, so the daily budget must be at least that`, 'AI_BUDGET_TOO_SMALL');
+    throw new InvalidInputError(`One request on ${model ? `${assistantModelName(model)}, your assistant's model on this key,` : 'this model'} can cost up to $${(Math.ceil(largest / 10_000) / 100).toFixed(2)}, so the daily budget must be at least that`, 'AI_BUDGET_TOO_SMALL');
 }
 function connectionName(value: unknown): value is string {
   return typeof value === 'string' && value.trim() === value && value.length >= 1 && value.length <= 80;
@@ -125,7 +130,14 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
         throw new InvalidInputError('Choose another connection for background comparisons by marking it');
       if (change.dailyBudgetCents !== undefined) {
         const key = (await port.list(ownerUserId)).find((item) => item.id === connectionId);
-        if (key) assertBudgetFitsRequest(key.price, change.dailyBudgetCents);
+        if (key) {
+          assertBudgetFitsRequest(key.price, change.dailyBudgetCents);
+          // The assistant may run on another model of this key (F-027 AST-11): one request on that must fit too, or it would
+          // stay paused on a budget too small for it (#909). A model with no table price cannot be reserved at all.
+          const model = await port.assistantModelOn(ownerUserId, key.id);
+          const price = model && model !== key.model ? assistantApiPrice(key.provider, model) : null;
+          if (model && price) assertBudgetFitsRequest(price, change.dailyBudgetCents, model);
+        }
       }
       const updated = typeof connectionId === 'string' && UUID.test(connectionId)
         ? await port.update(ownerUserId, connectionId, { ...(change.name !== undefined ? { name: change.name } : {}),

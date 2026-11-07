@@ -1,0 +1,6 @@
+- A key's daily budget can no longer be lowered below one request of the model the assistant uses on that key; it was accepted, and every request then paused for good. ([#909](https://github.com/ColdPhase/flux/issues/909))
+- The company owner can be added to a space and removed from it in the space's settings, as New space already allows, with no "Only an owner can add, change or remove an owner". ([#905](https://github.com/ColdPhase/flux/issues/905))
+- Connect AI: Escape closes the window at every step, and a plan whose sign-in is not ready says so instead of failing with words nobody can act on. ([#910](https://github.com/ColdPhase/flux/issues/910))
+- An API key's day ends at the next local midnight also on the day the clocks change, and a comparison and a run can no longer both take the last of its budget. ([#910](https://github.com/ColdPhase/flux/issues/910))
+- The agent runtime removes what a person's program left in the shared `/tmp`, also directories with no rights, and a release no longer says everything is deleted while some of it stays; `./flux up` leaves a healthy runtime alone whose log still has an old refusal. ([#910](https://github.com/ColdPhase/flux/issues/910))
+- A deleted space's files leave the disk in one cleanup, not fifty every ten minutes. ([#908](https://github.com/ColdPhase/flux/issues/908))

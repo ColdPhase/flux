@@ -395,9 +395,11 @@ runtime_limits() {
   fi
 }
 # The one line a runtime that refused to start wrote, with the fix; nothing when it did not refuse.
+# A runtime that started again after the fix logs `ready` after the old refusal in the same container's log: only a refusal that is
+# the last of the two is one.
 runtime_refusal() {
   compose_main --profile runtime logs --no-color --no-log-prefix runtime-1 2>/dev/null \
-    | sed -n 's/^{"event":"runtime_refused","message":"\(.*\)"}$/\1/p' | tail -n 1
+    | sed -n -e 's/^{"event":"runtime_refused","message":"\(.*\)"}$/\1/p' -e 's/^{"event":"ready",.*$/READY/p' | tail -n 1 | grep -v '^READY$' || true
 }
 runtime_volumes() {
   docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT" | grep -E "^${PROJECT}_runtime-([1-9][0-9]*-data|tools)\$" || true

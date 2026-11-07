@@ -20,14 +20,17 @@ export interface ApiKeyBudget { dailyBudgetCents: number; timeZone: string }
  * runs and the background comparisons alike, on the day the money was held: a request that waited overnight counts when it
  * starts. A run whose cost is unknown keeps what its reservation still holds counted. Null when the key does not exist. `exceptRunId` leaves one run out (its own reservation, while it is being rechecked).
  */
-export async function apiKeySpendToday(db: Pick<DbExecutor, 'execute'>, connectionId: string, exceptRunId?: string, budget?: ApiKeyBudget): Promise<ApiKeySpend | null> {
+export async function apiKeySpendToday(db: Pick<DbExecutor, 'execute'>, connectionId: string, exceptRunId?: string, budget?: ApiKeyBudget, at?: Date): Promise<ApiKeySpend | null> {
+  const now = at ? sql`${at.toISOString()}::timestamptz` : sql`now()`;
   const key = budget
     ? sql`SELECT ${budget.dailyBudgetCents}::int AS daily_budget_cents, ${budget.timeZone}::text AS time_zone`
     : sql`SELECT daily_budget_cents, time_zone FROM background_compute_connections WHERE id = ${connectionId}`;
   const except = exceptRunId ? sql`AND r.id <> ${exceptRunId}` : sql``;
+  // The next day starts at the next local midnight, not 24 hours on: a day with a clock change has 23 or 25 hours (#910).
   const result = await db.execute(sql`WITH b AS (${key}),
-    k AS (SELECT daily_budget_cents, time_zone, (date_trunc('day', now() AT TIME ZONE time_zone) AT TIME ZONE time_zone) AS start FROM b)
-    SELECT k.daily_budget_cents AS budget, k.time_zone AS zone, (k.start + interval '1 day') AS resets_at,
+    d AS (SELECT daily_budget_cents, time_zone, date_trunc('day', ${now} AT TIME ZONE time_zone) AS local_day FROM b),
+    k AS (SELECT daily_budget_cents, time_zone, (local_day AT TIME ZONE time_zone) AS start, ((local_day + interval '1 day') AT TIME ZONE time_zone) AS next_start FROM d)
+    SELECT k.daily_budget_cents AS budget, k.time_zone AS zone, k.next_start AS resets_at,
       (SELECT COALESCE(sum(r.charged_micros) FILTER (WHERE r.cost_state = 'observed'), 0) + COALESCE(sum(r.reserved_micros) FILTER (WHERE r.cost_state = 'unknown'), 0) FROM personal_runs r
         WHERE r.connection_id = ${connectionId} AND r.engine = 'server' AND r.reserved_at >= k.start ${except})::bigint AS run_charged,
       (SELECT COALESCE(sum(r.reserved_micros) FILTER (WHERE r.cost_state = 'reserved'), 0) FROM personal_runs r

@@ -5,6 +5,7 @@ import type { createDatabase } from '../index.js';
 import { apiKeySpendToday } from './api-key-spend.js';
 
 const c = schema.backgroundComputeConnections;
+const enablements = schema.personalRunEnablements;
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'select' | 'update' | 'insert' | 'transaction' | 'execute'>;
 type ConnectionRow = typeof c.$inferSelect;
 
@@ -85,6 +86,12 @@ export function backgroundConnectionRepository(db: Database) {
           ...(change.usedForBackground ? { usedForBackground: true } : {}) }).where(eq(c.id, connectionId)).returning();
         return metadata(tx, row!);
       });
+    },
+    /** The model the owner's assistant runs on this key (#909): the one a budget must also hold one request of. */
+    async assistantModelOn(ownerUserId: string, connectionId: string): Promise<string | null> {
+      const [row] = await db.select({ model: enablements.assistantModel }).from(enablements)
+        .where(and(eq(enablements.ownerUserId, ownerUserId), eq(enablements.connectionId, connectionId), eq(enablements.engine, 'server')));
+      return row?.model ?? null;
     },
     async revoke(ownerUserId: string, connectionId: string): Promise<boolean> {
       return db.transaction(async (tx) => {

@@ -9,6 +9,8 @@ import { FileReceiveTimeoutError, FileTooLargeError, type FileRepository, type F
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
+/** Batches of retired objects one cleanup sweep removes at most: 5,000 files a sweep, so a deleted space does not take hours to leave the disk. */
+const GARBAGE_BATCHES_PER_SWEEP = 100;
 /** Control, path and bidirectional-override characters a display name may not contain. */
 const UNSAFE_NAME = /[/\\‪-‮⁦-⁩]/;
 const hasControls = (value: string) => [...value].some((char) => {
@@ -312,12 +314,17 @@ export function createFileUseCases(unit: FileUnitOfWork, storage: FileStorage, c
       });
       // Retired objects stay in a durable queue until unlink and directory fsync both succeed.
       // A crash or I/O failure cannot strand an object that cleanup can no longer discover.
-      const garbage = await unit.run((ports) => ports.files.pendingGarbage(limit));
-      const deleted: string[] = [];
-      for (const id of garbage) {
-        try { await storage.remove(id); deleted.push(id); } catch { /* retry the durable tombstone next sweep */ }
+      // A deleted space queues all its files at once (#874): the queue is drained in batches within one sweep, not one batch every ten minutes (#908).
+      for (let batch = 0; batch < GARBAGE_BATCHES_PER_SWEEP; batch += 1) {
+        const garbage = await unit.run((ports) => ports.files.pendingGarbage(limit));
+        const deleted: string[] = [];
+        for (const id of garbage) {
+          try { await storage.remove(id); deleted.push(id); } catch { /* retry the durable tombstone next sweep */ }
+        }
+        if (deleted.length) await unit.run((ports) => ports.files.forgetGarbage(deleted));
+        // A failed object is first in the queue again: leave it for the next sweep. A batch that was not full ended the queue.
+        if (deleted.length < garbage.length || garbage.length < limit) break;
       }
-      if (deleted.length) await unit.run((ports) => ports.files.forgetGarbage(deleted));
       await storage.sweepScratch(FILE_LIMITS.reservationMinutes * MINUTE);
       return removed.length;
     },

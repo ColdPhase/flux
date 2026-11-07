@@ -483,6 +483,57 @@ class ConnectAiJourney(unittest.TestCase):
             expect(window).to_have_count(0)
             page.context.close()
 
+    def test_08f_escape_closes_connect_ai_after_a_step_changed(self) -> None:
+        """#910: the button that held focus goes with its step, and focus must stay in the window, or Escape reaches nothing."""
+        for phone in (False, True):
+            page = self.page("tom", phone=phone)
+            self.stub_runtime(page, RUNTIME_ON)
+            page.route(re.compile(r".*/api/v1/agent-runtime/console$"), lambda route: route.fulfill(status=409, content_type="application/json",
+                       body=json.dumps({"error": "Your runtime is busy with another sign-in", "code": "AGENT_RUNTIME_BUSY"})))
+            page.goto("/settings/agents")
+            connect, _, _ = self.sections(page)
+            window = page.get_by_role("dialog", name="Connect your AI")
+            for choice, heading in (("claude_plan", "Couldn’t connect"), ("api_key", "Use an API key")):
+                connect.get_by_role("button", name="Connect AI", exact=True).click()
+                expect(window).to_be_visible()
+                window.locator(f"[data-choice={choice}]").click()
+                window.get_by_role("button", name="Continue").click()
+                expect(window.get_by_role("heading", name=heading)).to_be_visible()
+                self.assertTrue(page.evaluate("document.activeElement !== document.body && !!document.activeElement.closest('.cai-window, .ui-overlay')"),
+                                f"focus is inside the window at {heading!r}")
+                page.keyboard.press("Escape")
+                expect(window).to_have_count(0)
+            page.context.close()
+
+    def test_08g_a_plan_that_is_not_ready_is_not_offered_and_a_busy_start_says_what_to_do(self) -> None:
+        """#910: while the place to sign in is not ready (it is starting, or the host cannot run it), the plans say so and the sign-in
+        is not offered; a sign-in that still fails because it is starting shows the server's words and who to ask."""
+        starting = {**RUNTIME_ON, "pool": "starting"}
+        page = self.page("tom")
+        self.stub_runtime(page, starting)
+        page.goto("/settings/agents")
+        connect, _, _ = self.sections(page)
+        connect.get_by_role("button", name="Connect AI", exact=True).click()
+        window = page.get_by_role("dialog", name="Connect your AI")
+        for plan in ("claude_plan", "chatgpt_plan"):
+            expect(window.locator(f"[data-choice={plan}] input")).to_be_disabled()
+            expect(window.locator(f"[data-choice={plan}]")).to_contain_text("Not ready yet. If this stays, ask whoever runs Flux.")
+        expect(window.locator("[data-choice=api_key] input")).to_be_checked()
+        window.get_by_role("button", name="Cancel").click()
+        # Ready, but the start fails with the server's own words: they are shown, with who to ask when it stays.
+        page.unroute(re.compile(r".*/api/v1/agent-runtime$"))
+        self.stub_runtime(page, RUNTIME_ON)
+        page.route(re.compile(r".*/api/v1/agent-runtime/console$"), lambda route: route.fulfill(status=503, content_type="application/json",
+                   body=json.dumps({"error": "The agent runtime is starting; try again shortly", "code": "AGENT_RUNTIME_UNAVAILABLE"})))
+        page.reload()
+        connect, _, _ = self.sections(page)
+        connect.get_by_role("button", name="Connect AI", exact=True).click()
+        window = page.get_by_role("dialog", name="Connect your AI")
+        window.locator("[data-choice=claude_plan]").click()
+        window.get_by_role("button", name="Continue").click()
+        expect(window.get_by_role("alert")).to_have_text("The agent runtime is starting; try again shortly. If it stays like this, ask whoever runs Flux.")
+        page.context.close()
+
     def test_08b_a_plan_at_its_limit_says_so_in_one_line_and_nothing_switches(self) -> None:
         """#854: "Claude limit reached, resumes at 14:00", or without a time when the provider gave none. The line stays one
         line beside Change, also on the phone; there is no switch button anywhere on the page."""

@@ -159,4 +159,26 @@ describe('negative-result candidate and budget reservation (#58)', () => {
     assert.deepEqual((await pool.query('SELECT * FROM proactive_comparison_outbox WHERE id=$1', [charged.id])).rows[0], charged);
     assert.equal((await candidate(negative.id))!.reserved_cents, 0);
   });
+
+  test('#910: a comparison reserves under the lock a run holds while it reserves on the key, so the two never both take the last of its budget', async () => {
+    // A run's claim holds the owner's lane lock for its transaction; the comparison's owner lock must wait for it.
+    const run = await pool.connect();
+    try {
+      await run.query('BEGIN');
+      await run.query("SELECT pg_advisory_xact_lock(hashtext('personal-run-lane'), hashtext($1))", [owner.id]);
+      let locked = false;
+      const comparison = db.transaction(async (tx) => {
+        const found = await proactiveOutboxRows(tx).lockOwner(owner.id);
+        locked = true;
+        return found;
+      });
+      await new Promise((wait) => setTimeout(wait, 300));
+      assert.equal(locked, false, 'the comparison waits while a run holds the lane');
+      await run.query('COMMIT');
+      assert.equal(await comparison, true, 'and takes the owner once the run has finished');
+    } finally {
+      await run.query('ROLLBACK').catch(() => undefined);
+      run.release();
+    }
+  });
 });

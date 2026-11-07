@@ -100,9 +100,16 @@ async function asThem(person: Person, script: string, dir: string): Promise<bool
   return done.code === 0 && !done.timedOut;
 }
 
-/** Empties the person's scratch directory after a run: nothing a CLI left there stays. */
+/**
+ * The shell lines that remove `$p`, as the person. A CLI can leave a directory with no rights at all (mode 000, or one it cannot write),
+ * which `rm` cannot open; only its owner can give the rights back, so they come first, and not through a link (#910). `rm` still fails
+ * when anything is left, so the answer says whether it is gone.
+ */
+const REMOVE = '[ -L "$p" ] || chmod -R u+rwx -- "$p" 2>/dev/null; rm -rf -- "$p"';
+
+/** Empties the person's scratch directory after a run: nothing a CLI left there stays. True only when it is a fresh, empty directory again. */
 export async function clearScratch(bindingDir: string, person: Person): Promise<boolean> {
-  return asThem(person, 'rm -rf -- "$1/tmp" && mkdir -m 0700 -- "$1/tmp"', bindingDir);
+  return asThem(person, `p="$1/tmp"; ${REMOVE} && mkdir -m 0700 -- "$p"`, bindingDir);
 }
 
 /** Deletes one CLI's transcripts from its home. `names` are fixed names, never input. */
@@ -110,13 +117,23 @@ export async function clearClientPaths(bindingDir: string, client: RuntimeClient
   return !names.length || asThem(person, `rm -rf -- ${names.map((name) => `"$1/${CLIENT_DIRS[client]}/${name}"`).join(' ')}`, bindingDir);
 }
 
-/** Removes what a person left at the top of the shared `/tmp`, once no process of theirs is left: a user id can go to someone else later. */
-export async function clearLeftovers(tmpDir: string, person: Person): Promise<void> {
-  if (!person) return;
-  for (const entry of await readdir(tmpDir).catch(() => [] as string[])) {
-    const stat = await lstat(join(tmpDir, entry)).catch(() => null);
-    if (stat?.uid === person.uid) await asThem(person, 'rm -rf -- "$1"', join(tmpDir, entry));
+/**
+ * Removes what a person left at the top of the shared `/tmp`, once no process of theirs is left: a user id can go to someone else later.
+ * True only when all of it is gone (and when `/tmp` could be read), so a release does not call itself finished while a file of theirs
+ * stays for the next person with that user id (#910).
+ */
+export async function clearLeftovers(tmpDir: string, person: Person): Promise<boolean> {
+  if (!person) return true;
+  const entries = await readdir(tmpDir).catch(() => null);
+  if (!entries) return false;
+  let clean = true;
+  for (const entry of entries) {
+    const path = join(tmpDir, entry);
+    const stat = await lstat(path).catch(() => null);
+    if (stat?.uid !== person.uid) continue;
+    if (!await asThem(person, `p="$1"; ${REMOVE}`, path) || await lstat(path).then(() => true, () => false)) clean = false;
   }
+  return clean;
 }
 
 /** Deletes one CLI's files from the binding directory and leaves its home empty (sign-out). */

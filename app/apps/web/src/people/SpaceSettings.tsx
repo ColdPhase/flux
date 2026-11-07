@@ -32,12 +32,11 @@ export function SpaceSettings() {
   const shell = useProjectShell();
   const { me, workspace } = useShellData();
   if (!shell) return null;
-  return <SpaceSettingsPage project={shell.project} people={shell.people} meId={me.user.id} meName={me.user.name} companyName={workspace?.name ?? 'the company'}
-    iAmOwner={workspace?.role === 'owner'} />;
+  return <SpaceSettingsPage project={shell.project} people={shell.people} meId={me.user.id} meName={me.user.name} companyName={workspace?.name ?? 'the company'} />;
 }
 
-function SpaceSettingsPage({ project, people, meId, meName, companyName, iAmOwner }: {
-  project: Project; people: ProjectPerson[] | null; meId: string; meName: string; companyName: string; iAmOwner: boolean;
+function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
+  project: Project; people: ProjectPerson[] | null; meId: string; meName: string; companyName: string;
 }) {
   const navigate = useNavigate();
   const revalidator = useRevalidator();
@@ -113,7 +112,8 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName, iAmOwne
       .sort((a, b) => (a.userId === meId ? -1 : b.userId === meId ? 1 : a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'manager' ? -1 : 1));
   })();
 
-  const candidates = (roster?.members ?? []).filter((member) => member.userId !== meId && !grantOf(member.userId) && (member.role !== 'owner' || iAmOwner));
+  // Any company person, the owner too (F-037 "chosen from the company"; the same list New space offers, #905).
+  const candidates = (roster?.members ?? []).filter((member) => member.userId !== meId && !grantOf(member.userId));
 
   async function setRole(row: Row, role: 'manager' | 'contributor') {
     if (busy) return;

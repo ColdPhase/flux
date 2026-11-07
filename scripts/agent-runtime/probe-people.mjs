@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { lstat, readdir, readFile, writeFile } from 'node:fs/promises';
 import { callSupervisor } from '/opt/flux-runtime/packages/runtime-protocol/dist/index.js';
-import { clearClientFiles, clearScratch, freePerson, hasUnconfirmed, PERSON_IDS, recordUnconfirmed } from '/opt/flux-runtime/apps/runtime/dist/supervisor/data.js';
+import { clearClientFiles, clearLeftovers, clearScratch, freePerson, hasUnconfirmed, PERSON_IDS, recordUnconfirmed } from '/opt/flux-runtime/apps/runtime/dist/supervisor/data.js';
 import { runFixed } from '/opt/flux-runtime/apps/runtime/dist/supervisor/process.js';
 import { createSupervisorServer } from '/opt/flux-runtime/apps/runtime/dist/supervisor/server.js';
 
@@ -110,6 +110,26 @@ record('nobody can leave anything in /dev/shm', shm.code !== 0, shm.code);
 // What she leaves in the shared /tmp goes with her: her user id can go to someone else later.
 await runFixed('/bin/sh', ['-c', 'echo left > /tmp/ada-left'], { env: { PATH: '/usr/bin:/bin' }, cwd: '/', timeoutMs: 5_000, person: person(adaStat) });
 record('control: Ada left a file in /tmp', (await lstat('/tmp/ada-left').catch(() => null))?.uid === adaStat.uid);
+
+// A CLI of hers can leave directories nobody can open (mode 000 all the way down) in her scratch and in /tmp; only she can give their
+// rights back, and the next person with her user id must not find them (#910).
+const asAda = (script, ...args) => runFixed('/bin/sh', ['-c', script, 'sh', ...args], { env: { PATH: '/usr/bin:/bin' }, cwd: '/', timeoutMs: 5_000, person: person(adaStat) });
+const closedTree = 'mkdir -p "$1/inner/deeper" && echo left > "$1/inner/deeper/file" && chmod 000 "$1/inner/deeper" "$1/inner" "$1"';
+await asAda(closedTree, `${adaDir}/tmp/closed`);
+record('control: she left a closed directory in her scratch', (await readdir(`${adaDir}/tmp`)).includes('closed'));
+record('the cleanup of her scratch says it worked', await clearScratch(adaDir, person(adaStat)));
+record('a closed directory in her scratch is gone', (await readdir(`${adaDir}/tmp`)).length === 0);
+await asAda(closedTree, '/tmp/ada-closed');
+record('control: she left a closed directory in /tmp', (await lstat('/tmp/ada-closed').catch(() => null))?.uid === adaStat.uid);
+// Something she cannot remove: a root-owned directory with a file inside one of hers.
+await runFixed('/bin/sh', ['-c', `mkdir -p /tmp/ada-stuck/root-owned && echo x > /tmp/ada-stuck/root-owned/file && chown ${adaStat.uid}:${adaStat.gid} /tmp/ada-stuck`],
+  { env: { PATH: '/usr/bin:/bin' }, cwd: '/', timeoutMs: 5_000, person: null });
+record('the cleanup of /tmp says that something stayed', (await clearLeftovers('/tmp', person(adaStat))) === false);
+record('and the closed directory is gone though', (await lstat('/tmp/ada-closed').catch(() => null)) === null);
+const stuck = await call({ kind: 'release', bindingId: ada });
+record('a release does not say deleted while a file of hers stays in /tmp', stuck.ok && stuck.result.deleted === false, JSON.stringify(stuck).slice(0, 200));
+record('and her directory stays, so her user id goes to nobody else', (await readdir('/data')).includes(ada));
+await runFixed('/bin/sh', ['-c', 'rm -rf /tmp/ada-stuck'], { env: { PATH: '/usr/bin:/bin' }, cwd: '/', timeoutMs: 5_000, person: null });
 
 // Releasing Ada leaves Jonas; releasing Jonas ends the process he left behind.
 const releasedAda = await call({ kind: 'release', bindingId: ada });

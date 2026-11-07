@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -18,7 +19,10 @@ case "$*" in
   "volume inspect"*) exit 1 ;;
   "info --format {{.MemTotal}}") echo 4000000000 ;;
   "info --format {{.NCPU}}") echo 2 ;;
-  *" logs "*) [ -z "${STUB_REFUSED:-}" ] || echo '{"event":"runtime_refused","message":"The agent runtime needs kernel.yama.ptrace_scope of 1 or higher"}' ;;
+  *" logs "*)
+    [ -z "${STUB_REFUSED:-}" ] || echo '{"event":"runtime_refused","message":"The agent runtime needs kernel.yama.ptrace_scope of 1 or higher"}'
+    # The same container started again after the fix: its log keeps the old refusal and goes on with `ready`.
+    [ -z "${STUB_READY_AFTER:-}" ] || echo '{"event":"ready","slot":"runtime-1","bootId":"b","enabled":["codex"],"capacity":2}' ;;
 esac
 exit 0
 """
@@ -115,6 +119,32 @@ class RuntimeScriptTest(unittest.TestCase):
         self.log.write_text("")
         self.assertEqual(self.run_script("up").returncode, 0)
         self.assertFalse([call for call in self.calls() if "rm -fs runtime-1" in call], "a healthy runtime is left alone")
+
+    def test_up_leaves_a_healthy_runtime_alone_whose_log_still_has_the_old_refusal(self) -> None:
+        """#910: Compose started the refused container again after the fix, so its log has the refusal and then `ready`: it is not removed."""
+        self.assertEqual(self.run_script("on", "codex").returncode, 0)
+        self.log.write_text("")
+        with mock.patch.dict(os.environ, {"STUB_REFUSED": "1", "STUB_READY_AFTER": "1"}):
+            self.assertEqual(self.run_script("up").returncode, 0)
+        self.assertFalse([call for call in self.calls() if "rm -fs runtime-1" in call], "a runtime that came up after its refusal is left alone")
+        self.assertTrue([call for call in self.calls() if " up -d --wait " in call and "runtime-1" in call], "and up still checks it")
+
+    def test_the_launcher_and_the_script_read_the_log_the_same_way(self) -> None:
+        """#910: `runtime_refusal` of ./flux and of docker/runtime.sh report a refusal only when it is the last of refusal and `ready`."""
+        refused = '{"event":"runtime_refused","message":"The agent runtime needs kernel.yama.ptrace_scope of 1 or higher"}'
+        ready = '{"event":"ready","slot":"runtime-1","bootId":"b","enabled":["codex"],"capacity":2}'
+        cases = (([], ""), ([refused], "ptrace_scope"), ([refused, ready], ""), ([refused, ready, refused], "ptrace_scope"), ([ready], ""))
+        for path, compose in ((ROOT / "flux", "compose_main"), (SCRIPT, "compose")):
+            function = re.search(r"^runtime_refusal\(\) \{\n.*?^\}", path.read_text(), re.M | re.S)
+            self.assertIsNotNone(function, path.name)
+            for lines, expected in cases:
+                (self.dir / "container.log").write_text("".join(f"{line}\n" for line in lines))
+                script = f'{compose}() {{ cat "{self.dir / "container.log"}"; }}\n{function.group(0)}\nruntime_refusal'
+                out = subprocess.run(["sh", "-eu", "-c", script], capture_output=True, text=True)
+                self.assertEqual(out.returncode, 0, out.stderr)
+                self.assertIn(expected, out.stdout, (path.name, lines))
+                if not expected:
+                    self.assertEqual(out.stdout.strip(), "", (path.name, lines))
 
     def test_the_script_never_touches_an_engine_socket(self) -> None:
         text = SCRIPT.read_text()

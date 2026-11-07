@@ -1295,8 +1295,7 @@ applies to a new code made in People. If the answer to the create call was lost,
 once and can't be shown again. Make a new one in People." and offers **New recovery code**.
 
 Project setup's first space keeps its form and is never encrypted. The new space appears in the
-project picker and in Create like any other space. After Done the primary action is **Start the first
-project in Garden club**, which opens New project in that space (`/projects/new?in=<id>`; NS-1).
+project picker and in Create like any other space. After Done the person lands in the new space.
 
 ### Locked
 

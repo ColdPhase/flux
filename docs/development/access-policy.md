@@ -202,7 +202,7 @@ single sign-on as the only way in, nobody makes an invite link (`INVITES_OFF_WIT
 Owners and admins rename the company (`PATCH /api/v1/workspaces/:id`, `workspace.rename`).
 
 **A space's settings (F-037, #874).** A space admin and a company owner or admin (all `project.manage`) rename the space
-(`PATCH /api/v1/projects/:id`, `renameProject`), add and remove its people (`grants`), turn its AI on or off
+(`PATCH /api/v1/projects/:id`, `renameProject`), add and remove its people (`grants`; any company person, an owner too, as in New space, #905), turn its AI on or off
 (`PUT /api/v1/projects/:id/ai-policy`, [AI in a space](#model)) and delete it (`DELETE /api/v1/projects/:id`, `deleteProject`).
 Deleting erases the space in one statement, as every table that names a project cascades (#530, migration 0101), together with its
 notifications and mutes, which name it by source. Its event (`project.deleted.v1`) goes to the people who could open the space,
