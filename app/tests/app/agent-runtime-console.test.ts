@@ -232,7 +232,7 @@ describe('signing in through the console', () => {
     assert.equal(done.ended, 'exited');
     const connection = done.status.connections.claude_code!;
     assert.deepEqual({ ...connection, signedInAt: null }, { state: 'signed_in', signInMethod: 'claude_account', authMethod: 'claude.ai', plan: 'max',
-      accountLabel: 'a***@example.org', signedInAt: null, payer: 'claude_plan', accountChange: null, signOut: null });
+      accountLabel: 'a***@example.org', signedInAt: null, payer: 'claude_plan', accountChange: null, signOut: null, usage: null });
     seen.push(view.raw, JSON.stringify(done));
     const { home } = await bindingOf(ada);
     assert.ok((await readFile(join(home, '.credentials.json'), 'utf8')).includes(secret), 'control: the login is in the slot');

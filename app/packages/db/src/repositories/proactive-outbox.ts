@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { InspectedComparisonSource, ProactiveComparisonProposal } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { prepareReferencedTaskUse } from './task-targets.js';
 import { comparisonSources } from './proactive-sources.js';
 import { currentProjectAiEpoch } from './workspace-ai.js';
+import { apiKeySpendToday } from './api-key-spend.js';
 
 const q = schema.proactiveComparisonOutbox;
 const rules = schema.proactiveComparisonRules;
@@ -193,27 +194,18 @@ export function proactiveOutboxRows(db: DbExecutor) {
         .where(eq(results.id, id)).for('share');
       return row ?? null;
     },
-    async connectionState(ownerId: string) {
-      const [row] = await db.select({ id: connections.id, perRunCents: connections.perRunCents,
-        keyAvailable: sql<boolean>`${connections.encryptedKey} IS NOT NULL` }).from(connections)
-        .where(and(eq(connections.ownerUserId, ownerId), eq(connections.usedForBackground, true), isNull(connections.revokedAt))).for('share');
-      return row ?? null;
-    },
     async connection(ownerId: string) {
       const [row] = await db.select().from(connections)
         .where(and(eq(connections.ownerUserId, ownerId), eq(connections.usedForBackground, true), isNull(connections.revokedAt))).for('share');
       return row ?? null;
     },
-    async usage(ownerId: string, startOfDay: Date, startOfPeriod: Date) {
-      const [row] = await db.select({
-        dayRuns: sql<number>`count(*) FILTER (WHERE ${q.reservedAt} >= ${startOfDay})::int`,
-        periodCents: sql<number>`coalesce(sum(greatest(${q.reservedCents}, coalesce(${q.usageEstimatedCents}, 0))) FILTER (WHERE ${q.reservedAt} >= ${startOfPeriod}), 0)::int`,
-      }).from(q).where(and(eq(q.ownerUserId, ownerId), inArray(q.status, ['reserved', 'unknown', 'completed']),
-        gte(q.reservedAt, startOfPeriod)));
+    /** One comparison of an owner at a time; the key's daily budget is read by `keySpend`. */
+    async inFlight(ownerId: string) {
       const [active] = await db.select({ count: sql<number>`count(*)::int` }).from(q)
         .where(and(eq(q.ownerUserId, ownerId), eq(q.status, 'reserved')));
-      return { dayRuns: row?.dayRuns ?? 0, periodCents: row?.periodCents ?? 0, inFlight: active?.count ?? 0 };
+      return active?.count ?? 0;
     },
+    keySpend: (connectionId: string) => apiKeySpendToday(db, connectionId),
     async reserve(id: string, connectionId: string, cents: number, at: Date) {
       const [row] = await db.update(q).set({ status: 'reserved', connectionId, reservedCents: cents,
         reservedAt: at, updatedAt: at }).where(and(eq(q.id, id), eq(q.status, 'queued'))).returning();

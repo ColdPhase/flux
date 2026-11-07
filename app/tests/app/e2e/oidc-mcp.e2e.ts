@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import http from 'node:http';
 import { after, before, test } from 'node:test';
-import { PERSONAL_RUN_CONSENT_VERSION, personalRunTokenPath } from '@flux/contracts';
+import { personalRunTokenPath } from '@flux/contracts';
 import { createDatabase, personalRunTokenRows } from '@flux/db';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
 import { personalRunUseCases } from '../../../apps/server/src/personal-runs/adapters.js';
@@ -778,7 +778,7 @@ test('standing: removing an already-held Keycloak offline session suspends and g
   connections.connect(state.userId!, modelConnection);
   const runs = personalRunUseCases(db, { connections, queue: queue.factory, providerEnabled: true });
   const principal = { kind: 'human' as const, id: state.userId! };
-  await runs.enable(principal, { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: agent.id, connectionId: modelConnection, perRunCents: 50, dailyCapCents: 1_000 });
+  await runs.enable(principal, { agentId: agent.id, connection: modelConnection, model: 'claude-sonnet-5' });
   const runId = (await runs.invoke(principal, thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Read this thread' })).run.id;
   // The worker's claim and nonce, without launching or simulating a provider answer.
   await pool.query("UPDATE personal_runs SET status = 'reading' WHERE id = $1", [runId]);

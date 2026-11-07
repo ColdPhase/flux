@@ -5,10 +5,10 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import {
-  agentConnectionPath, assistantChangeActionPath, assistantSettingsPath, ASSISTANT_UNIT_CREATE_VIEW, PERSONAL_RUNTIME_CONSENT_VERSION, type AssistantSettings, type Conversation, type Project,
+  agentConnectionPath, assistantChangeActionPath, assistantSettingsPath, ASSISTANT_UNIT_CREATE_VIEW, RUN_TOKEN_LIMITS, RUNTIME_RUN_LIMITS, type AssistantSettings, type Conversation, type Project,
   type Workspace,
 } from '@flux/contracts';
-import { createPersonalRunProcessor, noPersonalConnections, REDACTED_SECRET, sweepWorkspaceAi, type AgentRuntimeConfig, type Principal } from '@flux/core';
+import { createPersonalRunProcessor, MAX_WAITING_REQUESTS, noPersonalConnections, REDACTED_SECRET, sweepWorkspaceAi, type AgentRuntimeConfig, type Principal } from '@flux/core';
 import { accessPorts } from '@flux/db';
 import { setWorkspaceAi } from './support/workspace-ai.js';
 import { callSupervisor, type SupervisorRequest } from '@flux/runtime-protocol';
@@ -111,7 +111,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     const status = await runs.status(human(owner));
     assert.equal(status.setup.runtime.state, 'signed_in');
     assert.equal(status.setup.runtime.payer, 'claude_plan', 'the payer comes from the CLI\'s reported authMethod');
-    await runs.enable(human(owner), { consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId, engine: 'runtime' });
+    await runs.enable(human(owner), { agentId, connection: 'claude_plan', model: 'sonnet' });
   });
   after(async () => {
     await new Promise<void>((done) => manager.close(() => done()));
@@ -122,22 +122,21 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     await resetFake();
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0
       WHERE owner_user_id = $1 AND status IN ('queued', 'reading', 'dispatching')`, [owner.id]);
-    // Each test starts a fresh day: this suite runs more than one day's 20 requests (the cap has its own test).
     await pool.query(`UPDATE personal_runs SET created_at = created_at - interval '2 days' WHERE owner_user_id = $1`, [owner.id]);
   });
 
-  test('the consent names the owner\'s plan; a run reserves no money and needs no API key connection', async () => {
+  test('the assistant runs on the owner\'s Claude plan; a run reserves no money and needs no API key connection (#854)', async () => {
     const status = await runs.status(human(owner));
     assert.equal(status.state, 'ready');
-    assert.equal(status.enablement?.engine, 'runtime');
-    assert.equal(status.enablement?.consent.version, PERSONAL_RUNTIME_CONSENT_VERSION);
-    assert.equal(status.enablement?.consent.payer.organization, 'Your Claude plan');
-    assert.equal(status.enablement?.connectionId, null);
+    assert.deepEqual([status.enablement?.connection, status.enablement?.engine, status.enablement?.model], ['claude_plan', 'runtime', 'sonnet']);
+    assert.equal(status.today, null, 'a plan has no Flux budget: its limits are the provider\'s');
+    const stored = (await pool.query('SELECT connection_id, provider FROM personal_run_enablements WHERE owner_user_id = $1', [owner.id])).rows[0];
+    assert.deepEqual(stored, { connection_id: null, provider: 'anthropic' });
   });
 
   test('AST-2.3: an O-007 comparison rule cannot run on the runtime; enabling one still needs an API-key background connection', async () => {
     const rule = await owner.browser.request('POST', `/api/v1/projects/${place.id}/proactive-comparison-rules`, { body: {
-      agentId, maxRunsPerDay: 1, periodBudgetCents: 100, perRunCents: 10, purpose: 'camera_sensor_comparison', dataScope: 'current_project_published',
+      agentId, purpose: 'camera_sensor_comparison', dataScope: 'current_project_published',
       permittedEffect: 'quiet_project_proposal', trigger: 'human_negative_result' } });
     if (rule.status === 201) {
       const created = rule.json as { id: string; version: number };
@@ -156,7 +155,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.equal(await processor.process(started.run.id), 'completed');
     const stored = await row(started.run.id);
     assert.deepEqual([stored.status, stored.answer_body, stored.end_reason, stored.reserved_micros, stored.cost_state, stored.provider, stored.model],
-      ['completed', 'Done: I read 2 things.', null, 0, 'unknown', 'anthropic', 'claude-code'], 'plan usage is not visible to Flux: unknown, never zero');
+      ['completed', 'Done: I read 2 things.', null, 0, 'unknown', 'anthropic', 'sonnet'], 'plan usage is not visible to Flux: unknown, never zero');
     assert.ok(stored.run_token_closed_at, 'the token was closed');
     // Progress: one owner-only event per Flux tool call, besides the status changes.
     const progress = await pool.query(`SELECT data FROM events WHERE object_id = $1 AND kind = 'assistant_run.changed.v1' ORDER BY seq`, [started.run.id]);
@@ -170,7 +169,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
       '--disable-slash-commands', '--strict-mcp-config', '--mcp-config', run.argv[11]!]);
     assert.ok(run.argv[11]!.startsWith(slot.config.tmpDir), 'the MCP configuration is on tmpfs');
     assert.deepEqual(run.argv.slice(12), ['--allowedTools', ...run.allowed, '--permission-mode', 'dontAsk', '--permission-prompts', 'none',
-      '--no-session-persistence', '--max-turns', '10', '--append-system-prompt', RUN_BRIEF]);
+      '--no-session-persistence', '--max-turns', String(RUNTIME_RUN_LIMITS.maxTurns), '--model', 'sonnet', '--append-system-prompt', RUN_BRIEF]);
     assert.deepEqual([...run.allowed].sort(), tools.map((tool) => `mcp__flux__${tool}`), 'the exact Flux tools, named, no wildcard; the route listed exactly these');
     assert.equal(run.authorization, 'run_token', 'FLUX_RUN_TOKEN reaches the Flux MCP Authorization header');
     assert.ok(run.envNames.includes('FLUX_RUN_TOKEN'));
@@ -260,10 +259,13 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
   });
 
   test('tool results past the route\'s bound end the run in its own state', async () => {
-    // A run's pages stay under the 16 KiB per-call bound (#484), so the run total (64 KiB) is what a long read passes.
+    // A run's pages stay under the per-call bound, so the run total is what a long read passes (#484). It is a safety bound
+    // (#843): this run starts close to it instead of reading 8 MiB.
+    const left = 40 * 1024;
     const read = { name: 'flux_get_doc', args: { projectId: place.id, id: bigDocId } };
     await script({ calls: Array.from({ length: 10 }, () => read), answer: 'read it' });
     const started = await ask();
+    await pool.query('UPDATE personal_runs SET mcp_result_bytes = $1 WHERE id = $2', [RUN_TOKEN_LIMITS.resultBytesPerRun - left, started.run.id]);
     assert.equal(await processor.process(started.run.id), 'cap_reached');
     const stored = await row(started.run.id);
     assert.deepEqual([stored.end_reason, stored.answer_body], ['mcp_results_too_large', null]);
@@ -271,8 +273,8 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.ok(results.length >= 2 && !results[0]!.isError, 'earlier pages were returned');
     const refused = results.find((entry) => entry.isError);
     if (refused) assert.ok(!refused.text.includes('log line. log line.'), 'the over-budget result was not returned');
-    assert.ok(results.filter((entry) => !entry.isError).reduce((sum, entry) => sum + Buffer.byteLength(entry.text), 0) <= 64 * 1024, 'the CLI never received more than the per-run total');
-    assert.ok(results.every((entry) => Buffer.byteLength(entry.text) <= 16 * 1024), 'no single result passed the call bound');
+    assert.ok(results.filter((entry) => !entry.isError).reduce((sum, entry) => sum + Buffer.byteLength(entry.text), 0) <= left, 'the CLI never received more than the per-run total');
+    assert.ok(results.every((entry) => Buffer.byteLength(entry.text) <= RUN_TOKEN_LIMITS.resultBytesPerCall), 'no single result passed the call bound');
   });
 
   test('Stop records requested and acknowledged separately; SIGINT, then SIGTERM for a CLI that ignores it', async () => {
@@ -293,11 +295,13 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
 
   test('a second concurrent run: refused while one is in flight; a busy slot ends a run as slot_busy', async () => {
     const first = await ask();
-    // F-027 A4: one request may wait behind the working one; a third is refused.
+    // Requests wait behind the working one, in order; only the safety bound on waiting requests refuses one (#843).
     const behind = await ask();
     assert.equal(behind.run.status, 'queued');
+    for (let waiting = 2; waiting < MAX_WAITING_REQUESTS; waiting += 1) await ask();
     await assert.rejects(ask(), (error: unknown) => (error as { code?: string }).code === 'PERSONAL_RUN_IN_FLIGHT');
-    await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [behind.run.id]);
+    await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0
+      WHERE owner_user_id = $1 AND status = 'queued' AND id <> $2`, [owner.id, first.run.id]);
     // The slot's lane is serial (sign-in, status, run and sign-out never overlap): a sign-out that is still
     // running makes the run busy at once; it never waits in the lane.
     await scenario('logout_hangs');
@@ -335,7 +339,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     if (results.length > 1) assert.equal(results[1]!.status, 403, 'the next call was refused');
     // Turning the assistant on again revives its connection and switches (A1).
     await runs.remove(human(owner));
-    await runs.enable(human(owner), { consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId, engine: 'runtime' });
+    await runs.enable(human(owner), { agentId, connection: 'claude_plan', model: 'sonnet' });
   });
 
   /** "What it may do" (F-036 AG-3), set by the owner on the assistant's connection. */
@@ -354,7 +358,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.equal(await processor.process(first.run.id), 'completed');
     const [applied] = await changeRows(first.run.id);
     assert.deepEqual([applied!.state, applied!.authority], ['applied', 'owner_request']);
-    assert.deepEqual([applied!.receipt!.engine, applied!.receipt!.payer, applied!.receipt!.runId, applied!.receipt!.ownerUserId], ['runtime', 'Your Claude plan', first.run.id, owner.id], 'owner, engine, payer label and run id');
+    assert.deepEqual([applied!.receipt!.engine, applied!.receipt!.payer, applied!.receipt!.runId, applied!.receipt!.ownerUserId], ['runtime', 'Claude plan', first.run.id, owner.id], 'owner, engine, payer label and run id');
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'Runtime task'`)).rows[0].n, 1);
     await setMode('ask');
     try {
@@ -401,17 +405,98 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     } finally { await setMode('act'); }
   });
 
-  test('runs per day: the 21st request of the day is refused and the assistant shows it is at its daily limit; no API key is used', async () => {
+  test('#843: no runs a day of Flux\'s own: the 51st request of the day starts like the first, on the plan; no API key is used', async () => {
+    await script({ calls: [], answer: 'Done.' });
     const started = await ask();
     assert.equal(await processor.process(started.run.id), 'completed');
-    // Nineteen more started today, as copies of that one (each started and ended).
+    // Fifty started today, as copies of that one (each started and ended).
     await pool.query(`INSERT INTO personal_runs (id, workspace_id, project_id, conversation_id, owner_user_id, agent_id, client_run_id, request_fingerprint, kind,
         prompt, status, cost_state, reserved_micros, provider, model, engine, dispatched_at, completed_at, ai_epoch)
       SELECT gen_random_uuid(), workspace_id, project_id, conversation_id, owner_user_id, agent_id, gen_random_uuid(), request_fingerprint, kind, prompt,
-        'completed', 'unknown', 0, provider, model, engine, now(), now(), ai_epoch FROM personal_runs, generate_series(1, 19) WHERE id = $1`, [started.run.id]);
-    assert.equal((await runs.status(human(owner))).state, 'capped');
-    await assert.rejects(ask(), (error: unknown) => (error as { code?: string }).code === 'PERSONAL_RUN_CAPPED');
+        'completed', 'unknown', 0, provider, model, engine, now(), now(), ai_epoch FROM personal_runs, generate_series(1, 50) WHERE id = $1`, [started.run.id]);
+    assert.equal((await runs.status(human(owner))).state, 'ready', 'there is no daily limit to reach');
+    await resetFake(); await script({ calls: [], answer: 'Done.' });
+    const later = await ask();
+    assert.equal(await processor.process(later.run.id), 'completed');
     assert.equal(compute.dispatched.length, 0);
+  });
+
+  test('#854: the plan\'s limit pauses the request with its reset time; it waits, queued, and starts again by itself; nothing switches', async () => {
+    await scenario('run_plan_limit_soon');
+    const started = await ask();
+    assert.equal(await processor.process(started.run.id), 'unavailable');
+    const ended = await row(started.run.id);
+    assert.equal(ended.end_reason, 'plan_limit');
+    const limited = async () => (await pool.query(`SELECT usage_limit_reached FROM agent_runtime_connections WHERE owner_user_id = $1 AND client = 'claude_code'`, [owner.id])).rows[0].usage_limit_reached;
+    assert.equal(await limited(), true);
+    const resets = ended.plan_limit_resets_at as Date;
+    assert.ok(resets.getTime() > Date.now() + 3_600_000, 'the reset time the CLI reported');
+    const resumed = (await pool.query(`SELECT id, status, end_reason, resume_at, plan_limit_resets_at, prompt, model, engine FROM personal_runs
+      WHERE retry_of_run_id = $1`, [started.run.id])).rows;
+    assert.equal(resumed.length, 1, 'one paused request takes its place');
+    assert.deepEqual([resumed[0].status, resumed[0].end_reason, resumed[0].engine, resumed[0].model, resumed[0].prompt],
+      ['queued', 'plan_limit', 'runtime', ended.model, (await runs.get(human(owner), started.run.id)).prompt]);
+    assert.equal((resumed[0].resume_at as Date).toISOString(), resets.toISOString(), 'it resumes when the plan resets');
+    const view = await runs.get(human(owner), resumed[0].id as string);
+    assert.deepEqual([view.status, view.endReason, view.resumesAt], ['queued', 'plan_limit', resets.toISOString()]);
+    // Before the reset nothing starts it; at the reset it starts like any request, on the same plan.
+    assert.equal(await processor.process(resumed[0].id as string), 'skipped');
+    assert.equal((await calls()).filter((entry) => entry.event === 'run').length, 1, 'the CLI ran once');
+    await pool.query(`UPDATE personal_runs SET resume_at = now() - interval '1 second' WHERE id = $1`, [resumed[0].id]);
+    await resetFake(); await script({ calls: [], answer: 'Done after the reset.' });
+    assert.equal(await processor.process(resumed[0].id as string), 'completed');
+    const done = await row(resumed[0].id as string);
+    assert.deepEqual([done.end_reason, done.answer_body], [null, 'Done after the reset.']);
+    assert.equal(await limited(), false, 'a finished run shows the plan is usable again');
+    assert.equal(compute.dispatched.length, 0, 'no API key request was ever made');
+  });
+
+  test('#854: choosing an API key for the next request does not touch a request already sent to the plan', async () => {
+    await resetFake();
+    await script({ calls: [{ name: 'flux_list_contexts' }, { name: 'flux_list_contexts' }], delayMs: 1_500, answer: 'Done on the plan.' });
+    const started = await ask();
+    const processing = processor.process(started.run.id);
+    await waitFor(async () => (await calls()).some((entry) => entry.event === 'tools_list'), 'the CLI started');
+    await pool.query(`UPDATE personal_run_enablements SET engine = 'server', connection_id = $2 WHERE owner_user_id = $1`, [owner.id, randomUUID()]);
+    try {
+      assert.equal(await processing, 'completed', 'it finishes on the plan it was sent to');
+    } finally {
+      await pool.query(`UPDATE personal_run_enablements SET engine = 'runtime', connection_id = NULL WHERE owner_user_id = $1`, [owner.id]);
+    }
+  });
+
+  test('#854: an owner\'s paused request does not hold back a background run until it can start', async () => {
+    await resetFake();
+    const paused = (await ask('Waits for the reset')).run;
+    await pool.query(`UPDATE personal_runs SET resume_at = now() + interval '1 hour', end_reason = 'plan_limit' WHERE id = $1`, [paused.id]);
+    const background = randomUUID();
+    await pool.query(`INSERT INTO personal_runs SELECT (jsonb_populate_record(r, jsonb_build_object('id', $1::uuid, 'client_run_id', $2::uuid, 'authority', 'owner_schedule',
+      'background_label', 'Every morning', 'resume_at', NULL, 'end_reason', NULL))).* FROM personal_runs r WHERE r.id = $3`, [background, randomUUID(), paused.id]);
+    const busy = () => personalRunWorkerUnitOfWork(db).run((ports) => ports.runs.laneBusy(owner.id, background));
+    assert.equal(await busy(), false, 'it waits for hours, and the schedule need not wait with it');
+    await pool.query(`UPDATE personal_runs SET resume_at = now() - interval '1 second' WHERE id = $1`, [paused.id]);
+    assert.equal(await busy(), true, 'once it can start it goes first');
+    await pool.query('DELETE FROM personal_runs WHERE id = ANY($1::uuid[])', [[paused.id, background]]);
+  });
+
+  test('#854: a plan limit without a time still pauses: the request tries again later, with no time on the line', async () => {
+    await resetFake(); await scenario('run_plan_limit_no_time');
+    const started = await ask();
+    assert.equal(await processor.process(started.run.id), 'unavailable');
+    const [resumed] = (await pool.query(`SELECT id, status, end_reason, resume_at, plan_limit_resets_at FROM personal_runs WHERE retry_of_run_id = $1`, [started.run.id])).rows;
+    assert.deepEqual([resumed.status, resumed.end_reason, resumed.plan_limit_resets_at], ['queued', 'plan_limit', null]);
+    assert.ok((resumed.resume_at as Date).getTime() > Date.now() + 3_600_000, 'it tries again later, by itself');
+    await runs.stop(human(owner), resumed.id as string);
+  });
+
+  test('#854: a request that already changed something is not run again after the plan\'s limit; it ends with its line', async () => {
+    await resetFake();
+    await script({ calls: [{ name: 'flux_create_task', args: { clientCommandId: randomUUID(), task: { title: 'Made before the limit' } } }], limitAfterCalls: true });
+    const started = await ask();
+    assert.equal(await processor.process(started.run.id), 'unavailable');
+    assert.equal((await row(started.run.id)).end_reason, 'plan_limit');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM assistant_changes WHERE run_id = $1`, [started.run.id])).rows[0].n, 1, 'the run made a change');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM personal_runs WHERE retry_of_run_id = $1`, [started.run.id])).rows[0].n, 0, 'a second try would repeat it');
   });
 
   test('AST-9.1 on the runtime: a DM, a private map and another project never reach the CLI\'s MCP results', async () => {
@@ -427,25 +512,26 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     for (const canary of [DM_CANARY, PRIVATE_CANARY, OTHER_CANARY]) assert.ok(!everything.includes(canary), canary);
   });
 
-  test('AST-11: the chosen model reaches the CLI as --model; a change applies to the next request only; a legacy assistant starts with no flag; a model outside the list is refused', async () => {
+  test('AST-11: the chosen model reaches the CLI as --model; a change applies to the next request only; a model outside the list is refused', async () => {
     const argvOf = async () => ((await calls()).find((entry) => entry.event === 'run') as { argv: string[] }).argv;
     const flag = (argv: string[]) => (argv.includes('--model') ? argv[argv.indexOf('--model') + 1] : null);
     await script({ calls: [], answer: 'Done.' });
-    // Turned on with no model named: the account's own default, no flag, recorded as before (AST-11).
+    // Turned on with Sonnet from the Claude plan's group (#854).
     let choice = await runs.model(human(owner));
-    assert.deepEqual([choice.engine, choice.account, choice.company, choice.current, choice.saved], ['runtime', 'claude_plan', 'Claude', 'default', true]);
-    assert.deepEqual(choice.options.map((option) => option.id), ['default', 'sonnet', 'opus', 'haiku']);
-    const legacy = await ask();
-    assert.equal(await processor.process(legacy.run.id), 'completed');
-    assert.equal(flag(await argvOf()), null, 'no model flag for a legacy assistant');
-    assert.equal((await row(legacy.run.id)).model, 'claude-code');
+    assert.deepEqual([choice.current, choice.saved], [{ connection: 'claude_plan', model: 'sonnet' }, true]);
+    assert.deepEqual(choice.groups.map((group) => [group.connection, group.account, group.company, group.options.map((option) => option.id)]),
+      [['claude_plan', 'claude_plan', 'Claude', ['sonnet', 'opus', 'haiku']]], 'one group: the signed-in Claude plan');
+    const first = await ask();
+    assert.equal(await processor.process(first.run.id), 'completed');
+    assert.equal(flag(await argvOf()), 'sonnet');
+    assert.equal((await row(first.run.id)).model, 'sonnet');
 
     // Choosing Opus changes the next request.
-    choice = await runs.chooseModel(human(owner), { model: 'opus' });
-    assert.deepEqual([choice.current, choice.options.map((option) => option.id)], ['opus', ['sonnet', 'opus', 'haiku']], 'the default row is gone after a pick');
+    choice = await runs.chooseModel(human(owner), { connection: 'claude_plan', model: 'opus' });
+    assert.deepEqual(choice.current, { connection: 'claude_plan', model: 'opus' });
     const early = await ask();
     // A change made after it was sent never reaches it; the next request is sent with the new model.
-    await runs.chooseModel(human(owner), { model: 'haiku' });
+    await runs.chooseModel(human(owner), { connection: 'claude_plan', model: 'haiku' });
     const late = await ask();
     await resetFake(); await script({ calls: [], answer: 'Done.' });
     assert.equal(await processor.process(early.run.id), 'completed');
@@ -458,21 +544,23 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
 
     // Anything outside the account's list is a plain error and the previous model stays; nothing is passed to a command.
     for (const bad of ['fable', 'gpt-6.1-sol', 'default', '--dangerously-skip-permissions', 'opus;id', '', 42]) {
-      await assert.rejects(runs.chooseModel(human(owner), { model: bad as string }), (error: unknown) => (error as { code?: string }).code === 'ASSISTANT_MODEL_UNAVAILABLE'
+      await assert.rejects(runs.chooseModel(human(owner), { connection: 'claude_plan', model: bad as string }), (error: unknown) => (error as { code?: string }).code === 'ASSISTANT_MODEL_UNAVAILABLE'
         && (error as Error).message === 'Your Claude plan doesn\'t offer that model. It is still Haiku.', String(bad));
     }
-    assert.equal((await runs.model(human(owner))).current, 'haiku');
+    // A ChatGPT plan the owner is not signed in to offers nothing (#854): never a switch to another vendor.
+    await assert.rejects(runs.chooseModel(human(owner), { connection: 'chatgpt_plan', model: 'gpt-6.1-sol' }), { code: 'ASSISTANT_MODEL_UNAVAILABLE' });
+    assert.deepEqual((await runs.model(human(owner))).current, { connection: 'claude_plan', model: 'haiku' });
   });
 
   test('AST-11: a model the vendor does not accept ends the run as its own state; the setting stays and nothing falls back', async () => {
-    await runs.chooseModel(human(owner), { model: 'opus' });
+    await runs.chooseModel(human(owner), { connection: 'claude_plan', model: 'opus' });
     await scenario('run_model_unavailable');
     const started = await ask();
     assert.equal(await processor.process(started.run.id), 'unavailable');
     const stored = await row(started.run.id);
     assert.deepEqual([stored.end_reason, stored.answer_body, stored.model], ['model_unavailable', null, 'opus']);
     assert.equal((await runs.get(human(owner), started.run.id)).endReason, 'model_unavailable');
-    assert.equal((await runs.model(human(owner))).current, 'opus', 'the setting stays');
+    assert.deepEqual((await runs.model(human(owner))).current, { connection: 'claude_plan', model: 'opus' }, 'the setting stays');
     assert.equal((await calls()).filter((entry) => entry.event === 'run').length, 1, 'no other model was tried');
     assert.equal(compute.dispatched.length, 0);
   });

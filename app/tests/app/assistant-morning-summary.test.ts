@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  ASSISTANT_MORNING_SUMMARY_PATH, NOTIFICATION_PREFERENCES_PATH, PERSONAL_RUN_CONSENT_VERSION, type AssistantMorningSummary, type NotificationPreferences,
+  ASSISTANT_MORNING_SUMMARY_PATH, NOTIFICATION_PREFERENCES_PATH, type AssistantMorningSummary, type NotificationPreferences,
   type Project, type Workspace,
 } from '@flux/contracts';
 import type { PgBoss } from 'pg-boss';
@@ -29,7 +29,7 @@ const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id }
 const DAY = 86_400_000;
 const sent: { name: string; data: Record<string, unknown> }[] = [];
 const boss = { send: async (name: string, data?: object | null) => { sent.push({ name, data: (data ?? {}) as Record<string, unknown> }); return randomUUID(); } } as unknown as Pick<PgBoss, 'send'>;
-const composition = { connections, providerEnabled: true, toolTurns: 1 };
+const composition = { connections, providerEnabled: true };
 const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20 });
 const uow = () => summaryUnitOfWork(db, boss, assistantSummaryStart(db, boss, composition));
 /** The tick's result with `writing` always present. */
@@ -64,7 +64,7 @@ describe('the morning summary written by the assistant (F-027 A8, #408, AST-7.6)
     expectStatus(await me.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, { body: { body: 'Camera fails below 5 lux', clientMessageId: randomUUID() } }), 201);
     const connectionId = randomUUID();
     connections.connect(me.id, connectionId);
-    await personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true }).enable(human(me), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, connectionId, perRunCents: 50, dailyCapCents: 1_000 });
+    await personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true }).enable(human(me), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
     await subscribe(me.browser);
     // What waits in the inbox: two things Ada can read, and one about a project she cannot.
     const source = { workspaceId: ws.id, type: 'project' as const, id: place.id };

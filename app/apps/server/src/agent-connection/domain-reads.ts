@@ -18,9 +18,9 @@ const object = z.object({ projectId: z.uuid(), id: z.uuid() });
 const chunk = { offset: z.int().min(0).max(100_000).default(0), version: z.int().min(1).optional() };
 const TEXT_CHUNK = 20_000;
 /**
- * A personal run's pages (F-022 "Caps"): the route returns at most 16 KiB per tool result, and the run ends
- * when a result is past it. The text page is 12,000 characters, and its encoded bytes (counted as the route
- * counts them: the tool JSON is encoded again in the content) stay under 12 KiB, leaving room for metadata.
+ * A personal run's pages stay small, so a long read costs no more than it must and stays far from the route's safety
+ * bound. The text page is 12,000 characters, and its encoded bytes (counted as the route counts them: the tool JSON
+ * is encoded again in the content) stay under 12 KiB, leaving room for metadata.
  * Collections return at most 10 items per page. Continuation cursors are unchanged.
  */
 const RUN_TEXT_CHUNK = 12_000;

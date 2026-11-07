@@ -46,7 +46,7 @@ test('comparison jumps expose headings below sticky controls on a bounded page a
       try {
         await page.goto(`${origin.origin}/projects/${fixture.projectId}/tasks?view=list`);
         const views = page.getByRole('navigation', { name: 'Task views' });
-        const jumps = page.getByRole('navigation', { name: 'Project work sections' });
+        const jumps = page.getByRole('navigation', { name: 'Space work sections' });
         await jumps.waitFor();
 for (const [label, target, expectedView] of [['Work', 'g-open', 'All']] as const) {
           const phone = width === 390; const mine = page.getByRole('group', { name: 'Whose tasks' });

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import type { AssistantJobSchedule } from '@flux/contracts';
 import { InvalidInputError } from '../../packages/core/src/access/errors.js';
-import { nextRuns, parseCron, previewRuns, scheduleFields, scheduleWords, timeLabel, TOO_OFTEN } from '../../packages/core/src/assistant/schedule.js';
+import { nextRuns, parseCron, previewRuns, scheduleFields, scheduleWords, timeLabel } from '../../packages/core/src/assistant/schedule.js';
 
 // F-027 AST-7 "When" (A8 #408): the schedule picker's kinds and cron become the same calendar, found in the
 // owner's time zone. Pure; the clock is always the `after` argument.
@@ -63,11 +63,9 @@ describe('schedules: next times in the owner\'s own time zone', () => {
     assert.deepEqual(iso(nextRuns({ kind: 'cron', cron: '30 7 * JAN-MAR MON' }, 'UTC', at('2026-12-31T00:00:00Z'), 1)), ['2027-01-04T07:30:00.000Z']);
   });
 
-  test('AST-7.10: more than once an hour is refused with "At most once an hour"', () => {
-    for (const cron of ['*/5 * * * *', '0,30 * * * *', '* * * * *', '0-10 9 * * *']) {
-      assert.throws(() => scheduleFields({ kind: 'cron', cron }), (error: unknown) => error instanceof InvalidInputError && error.message === TOO_OFTEN, cron);
-    }
-    for (const cron of ['0 * * * *', '15 9 * * 1-5', '0 9,10 * * *']) assert.doesNotThrow(() => scheduleFields({ kind: 'cron', cron }), cron);
+  test('C-14: no minimum interval: every minute, or two minutes apart, is a schedule like any other', () => {
+    for (const cron of ['* * * * *', '*/2 * * * *', '0-10 9 * * *', '0,4 9 * * *', '0,58 * * * *', '*/5 * * * *', '0,30 * * * *', '*/15 9-17 * * 1-5', '0 * * * *', '15 9 * * 1-5', '0 9,10 * * *'])
+      assert.doesNotThrow(() => scheduleFields({ kind: 'cron', cron }), cron);
   });
 
   test('cron that is not a schedule is refused in plain words', () => {

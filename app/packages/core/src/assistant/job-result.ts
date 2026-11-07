@@ -3,8 +3,8 @@ import { shortClock } from './schedule.js';
 
 // The plain words of a schedule's history line (F-027 AST-7 "Output", "Failures", "Missed runs"): pure.
 
-/** Why a firing could not be set up before a run: the plain line of its history. */
-export const limitLine = 'Skipped: daily limit';
+/** A firing on an API key whose daily budget is used (#854): the key's one budget is the only limit. */
+export const budgetLine = 'Skipped: not enough left of your API key\'s daily budget';
 
 /** The local time of a moment in a zone, as "9:00" (the words of "Skipped: Flux was off at 9:00"). */
 export function clockIn(at: Date, timeZone: string): string {
@@ -25,18 +25,20 @@ export function resultOf(run: RunRecord, facts: { applied: number; waiting: numb
       return { state: 'done', line: nothingToChange(run.answerBody) ? 'Done: nothing to change' : `Done: ${first}` };
     }
     case 'cap_reached':
-      // A request that never started past its limit is skipped; one that ran and hit a limit kept its changes.
-      return run.dispatchedAt ? { state: 'done', line: facts.applied ? `Stopped at the limit after ${changes(facts.applied)}` : 'Stopped at the limit' } : { state: 'skipped', line: limitLine };
+      // A run that never started at the key's budget is skipped; one that ran and met a bound kept its changes.
+      return run.dispatchedAt ? { state: 'done', line: facts.applied ? `Stopped at the limit after ${changes(facts.applied)}` : 'Stopped at the limit' } : { state: 'skipped', line: budgetLine };
     case 'stopped': return { state: 'skipped', line: facts.applied ? `Stopped after ${changes(facts.applied)}` : 'Stopped' };
     case 'unavailable':
       if (run.endReason === 'plan_limit') {
         const until = run.planLimitResetsAt && run.planLimitResetsAt.getTime() > now.getTime() ? ` until ${clockIn(run.planLimitResetsAt, timeZone)}` : '';
-        return { state: 'skipped', line: `Skipped: plan limit${until}` };
+        return { state: 'skipped', line: `Skipped: ${run.provider === 'openai' ? 'ChatGPT' : 'Claude'} limit reached${until}` };
       }
       if (run.endReason === 'sign_in_again' || run.stoppedAtStage === 'before_dispatch' && run.engine === 'runtime' && !run.dispatchedAt && !run.endReason)
         return { state: 'failed', line: `Sign in to ${run.provider === 'openai' ? 'ChatGPT' : 'Claude'} again` };
       return { state: 'failed', line: 'Couldn\'t run' };
-    case 'provider_failed': return { state: 'failed', line: run.endReason === 'refused' ? 'Refused this request' : 'Stopped answering' };
+    case 'provider_failed':
+      if (run.endReason === 'credits') return { state: 'skipped', line: 'Skipped: API credits used up' };
+      return { state: 'failed', line: run.endReason === 'refused' ? 'Refused this request' : 'Stopped answering' };
     case 'input_too_large': return { state: 'failed', line: 'Too much to read at once' };
     case 'denied': return { state: 'skipped', line: 'Skipped: I lost access to this project' };
     case 'paused': case 'revoked': return { state: 'skipped', line: 'Skipped: your assistant was turned off' };

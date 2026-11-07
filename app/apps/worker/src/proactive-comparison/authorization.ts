@@ -16,10 +16,10 @@ export async function authorizedComparison(db: Executor, candidateId: string, co
     throw new ComparisonStopped('RESERVATION_CHANGED');
   if (lock) await rows.lockOwner(candidate.ownerUserId);
   const rule = await rows.rule(candidate.ruleId);
-  const connection = await rows.connectionState(candidate.ownerUserId);
+  const connection = await rows.connection(candidate.ownerUserId);
   if (!rule || rule.status !== 'enabled' || rule.ownerUserId !== candidate.ownerUserId
     || rule.projectId !== candidate.projectId
-    || !connection || connection.id !== candidate.connectionId || !connection.keyAvailable
+    || !connection || connection.id !== candidate.connectionId || !connection.encryptedKey
     || (expectedRuleVersion !== undefined && rule.version !== expectedRuleVersion))
     throw new ComparisonStopped('AUTHORIZATION_CHANGED');
   // F-029: AI on in the rule's workspace, at the epoch the candidate was admitted under; the input transaction and the

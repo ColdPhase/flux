@@ -74,14 +74,13 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
     try { await action(); setSaved(message); requestAnimationFrame(() => statusRef.current?.focus()); }
     catch (cause) {
       if (cause instanceof ApiError && cause.code === 'AGENT_NOT_FOUND') setError('Choose your own agent with contributor access to this project. A project manager can grant that access.');
-      else if (cause instanceof ApiError && cause.code === 'BACKGROUND_CONNECTION_REQUIRED') setError(<>Mark one of your connections for background suggestions under <Link className="ui-link" to="/settings/ai-connections">AI connections</Link>, then enable the rule.</>);
-      else if (cause instanceof ApiError && cause.code === 'BACKGROUND_PRICE_UNKNOWN') setError(<>That connection has no known price, so nothing can be reserved. Add it again with a price under <Link className="ui-link" to="/settings/ai-connections">AI connections</Link> first.</>);
-      else if (cause instanceof ApiError && cause.code === 'BACKGROUND_BUDGET_TOO_LOW') setError('This rule needs more than your connection allows. Lower the rule’s allowance or raise the connection’s limits.');
+      else if (cause instanceof ApiError && cause.code === 'BACKGROUND_CONNECTION_REQUIRED') setError(<>Mark one of your API keys for background suggestions under <Link className="ui-link" to="/settings/ai-connections">API keys</Link>, then enable the rule.</>);
+      else if (cause instanceof ApiError && cause.code === 'BACKGROUND_PRICE_UNKNOWN') setError(<>That key has no known price, so its daily budget can’t hold. Add it again with a price under <Link className="ui-link" to="/settings/ai-connections">API keys</Link> first.</>);
       else if (cause instanceof ApiError && cause.code === 'BACKGROUND_RUNTIME_UNAVAILABLE') { setRuntime('unavailable'); setError('Background execution is unavailable on this instance. Your rule stays paused.'); }
       else if (cause instanceof ApiError && cause.code === 'VERSION_CONFLICT') {
         setSetup(null); setAgentId(''); setRefresh((value) => value + 1);
         setError('The rule changed. Review its current state before trying again.');
-      } else if (cause instanceof ApiError && cause.status === 400) setError('Check the agent, allowance and daily limit, then try again.');
+      } else if (cause instanceof ApiError && cause.status === 400) setError('Check the agent, then try again.');
       else setError('The change could not be saved. Your current access and the rule may have changed; reload before trying again.');
       requestAnimationFrame(() => errorRef.current?.focus());
     } finally { setBusy(false); }
@@ -90,13 +89,9 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
   function create(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selected || !ready) return;
-    const data = new FormData(event.currentTarget);
-    if (data.get('ruleConsent') !== 'on') return;
     void mutate(async () => {
       const rule = await createBackgroundRule(selected.id, { agentId, trigger: 'human_negative_result',
-        purpose: 'camera_sensor_comparison', dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
-        maxRunsPerDay: Number(data.get('ruleDaily')), periodBudgetCents: Math.round(Number(data.get('rulePeriod')) * 100),
-        perRunCents: Math.round(Number(data.get('rulePerRun')) * 100) });
+        purpose: 'camera_sensor_comparison', dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' });
       setSetup({ ...ready, rules: [...ready.rules, rule] });
     }, 'Paused rule created. No background request was started.');
   }
@@ -114,15 +109,15 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
     {saved ? <p ref={statusRef} className="background-settings__saved" role="status" tabIndex={-1}>{saved}</p> : null}
     {selected && ready ? <>
       <p className="background-settings__help">Scope: human evidence published in <strong>{selected.name}</strong>; no private captures, DMs or other projects. Suggestions are visible to this project's readers.</p>
-      {!writable ? <p className="background-settings__note">Your project access is read-only. You cannot create or change a rule here. Disconnect your connection under AI connections to stop all use of that key.</p> : null}
+      {!writable ? <p className="background-settings__note">Your project access is read-only. You cannot create or change a rule here. Remove the key under API keys to stop all use of it.</p> : null}
       {current ? <>
         <dl className="background-settings__metadata">
           <div><dt>Status</dt><dd>{current.status === 'enabled' ? 'Enabled' : 'Paused'} · version {current.version}</dd></div>
           <div><dt>Your agent</dt><dd>{ready.agents.find((agent) => agent.id === current.agentId)?.name ?? 'Personal agent no longer available'}</dd></div>
-          <div><dt>Rule allowance</dt><dd>{money(current.periodBudgetCents)} over rolling 30 days · up to {current.maxRunsPerDay} requests a UTC day · {money(current.perRunCents)} per request</dd></div>
+          <div><dt>Budget</dt><dd>Counts against your key’s one daily budget{connection ? ` (${money(connection.dailyBudgetCents)})` : ''}</dd></div>
         </dl>
         {current.status === 'paused' ? <p className="background-settings__help">{runtime === 'available'
-          ? 'Your rule is saved and paused. Once enabled, a negative result recorded in this project, or a later change to the evidence it cites, can start a paid comparison for any of the project’s negative results, including earlier ones, on your connection and within the allowance above.'
+          ? 'Your rule is saved and paused. Once enabled, a negative result recorded in this project, or a later change to the evidence it cites, can start a paid comparison for any of the project’s negative results, including earlier ones, on your key and within its daily budget.'
           : 'Background execution is unavailable on this instance. Your rule is saved and paused.'}</p> : null}
         <div className="background-settings__actions">
           {current.status === 'enabled' ? <Button disabled={!writable || busy} onClick={() => void mutate(async () => {
@@ -131,14 +126,14 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
           }, 'Rule paused.')}>Pause rule</Button> : runtime === 'available' ? <Button variant="primary" disabled={!writable || busy} onClick={() => void mutate(async () => {
             const changed = await changeBackgroundRule(current, 'enabled');
             setSetup({ ...ready, rules: ready.rules.map((rule) => rule.id === changed.id ? changed : rule) });
-          }, 'Rule enabled. New or changed negative results in this project can now start comparisons, within your allowance.')}>Enable rule</Button> : <Button disabled>Enable unavailable</Button>}
+          }, 'Rule enabled. New or changed negative results in this project can now start comparisons, within your key’s daily budget.')}>Enable rule</Button> : <Button disabled>Enable unavailable</Button>}
           <Button disabled={!writable || busy} onClick={() => void mutate(async () => {
             const changed = await changeBackgroundRule(current, 'revoked');
             setSetup({ ...ready, rules: ready.rules.map((rule) => rule.id === changed.id ? changed : rule) });
           }, 'Rule revoked permanently. Its history and possible charges remain.')}>Revoke rule</Button>
         </div>
       </> : writable ? <>
-        {ready.rules.length ? <p className="background-settings__note">Your earlier rule is permanently revoked. A fresh rule needs your new scope and allowance confirmation and starts paused.</p> : null}
+        {ready.rules.length ? <p className="background-settings__note">Your earlier rule is permanently revoked. A fresh rule starts paused.</p> : null}
         <details className="background-settings__agent-option" open={ready.agents.length === 0}>
         <summary>{ready.agents.length ? 'Create another personal agent' : 'Create your personal agent'}</summary>
         <form onSubmit={(event) => {
@@ -158,12 +153,8 @@ export function ProjectRuleSettings({ connection }: { connection: BackgroundComp
             <div className="background-settings__select"><label htmlFor="background-rule-agent">Your personal agent</label><Select id="background-rule-agent" value={agentId} required onChange={(next) => setAgentId(next)}>
               <Option value="">Choose your agent</Option>{ready.agents.map((agent) => <Option key={agent.id} value={agent.id}>{agent.name}</Option>)}
             </Select></div>
-            <div className="background-settings__limits">
-              <label>Rule maximum requests a day<input name="ruleDaily" type="number" required min={1} max={3} step={1} defaultValue={connection?.maxRunsPerDay ?? 1} /></label>
-              <label>Rule 30-day allowance (USD)<input name="rulePeriod" type="number" required min="0.05" max="5.00" step="0.01" defaultValue={(Math.min(connection?.periodBudgetCents ?? 100, 500) / 100).toFixed(2)} /></label>
-              <label>Rule per-request allowance (USD)<input name="rulePerRun" type="number" required min="0.05" max="0.50" step="0.01" defaultValue={((connection?.perRunCents ?? 5) / 100).toFixed(2)} /></label>
-            </div>
-            <label className="background-settings__check"><input type="checkbox" name="ruleConsent" required /><span>I choose this personal agent, project scope, quiet effect and allowance. The rule is created paused and cannot start a paid request.</span></label>
+            <p className="background-settings__help">Comparisons count against your key’s one daily budget{connection ? ` (${money(connection.dailyBudgetCents)})` : ''}, with everything else on it.</p>
+            <p className="background-settings__help">Your agent drafts a quiet proposal in this project only. The rule is created paused and starts nothing until you enable it.</p>
             <Button type="submit" variant="primary" disabled={!agentId || busy}>Create paused rule</Button>
           </fieldset>
         </form>

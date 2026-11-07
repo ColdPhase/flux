@@ -44,7 +44,7 @@ export function usageTokensWithin(usage: { inputTokens: number; outputTokens: nu
  * The charge of one completed request within its consented bounds, or null when the reported usage
  * is outside them: more input or output tokens than the request allowed, or a reconciled cost
  * (reported or token-derived) above its reservation. A null charge is never stored: the caller
- * keeps the whole reservation counted as `unknown` and withholds the result (PROV-3).
+ * keeps the reservation counted as `unknown` and withholds the result (PROV-3).
  */
 export function boundedUsageMicros(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>,
   usage: { inputTokens: number; outputTokens: number; reportedCostMicros?: number | null },

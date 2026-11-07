@@ -98,7 +98,7 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
     const titles = new Map([['n-blocked', 'Secret plan of the blocked club'], ['n-open', 'Lamp sensor ordered']]);
     const ports = {
       access,
-      runs: { enablement: async () => ({ status: 'active', engine: 'server', consentProvider: 'anthropic', consentModel: 'm', connectionId: 'c', timeZone: 'UTC',
+      runs: { enablement: async () => ({ status: 'active', engine: 'server', provider: 'anthropic', model: 'm', connectionId: 'c',
         agents: [{ workspaceId: blockedWs, agentId: randomUUID() }, { workspaceId: openWs, agentId: randomUUID() }] }) },
       jobs: { noteVersion: async () => null },
       summaries: { titles: async (ids: string[]) => new Map(ids.map((id) => [id, titles.get(id)!])), firstName: async () => 'Ada',
@@ -146,7 +146,7 @@ describe('workspace AI lock: the remaining S1 surfaces', () => {
     await setWorkspaceAi(ws.id, 'allowed');
     const current = await event(await epoch());
     const { boss } = fakeBoss();
-    await assistantReactionTick({ uow: assistantUnitOfWork(db, boss), startBackground: startBackgroundOf({ connections: scene.connections, providerEnabled: true, toolTurns: 1 }, db, boss) },
+    await assistantReactionTick({ uow: assistantUnitOfWork(db, boss), startBackground: startBackgroundOf({ connections: scene.connections, providerEnabled: true }, db, boss) },
       new Date(future.getTime() + 60_000));
     const line = async (id: string) => (await pool.query('SELECT state, line FROM assistant_reaction_events WHERE id = $1', [id])).rows[0] as { state: string; line: string };
     assert.deepEqual(await line(stale), { state: 'skipped', line: 'Skipped: AI was turned off' });
@@ -297,11 +297,9 @@ describe('workspace AI lock: background comparisons', () => {
     await grant(owner, projectId, peer, 'contributor');
     const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Comparison agent', owner: 'self' } }), 201) as { id: string }).id;
     const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`, { body: { agentId, trigger: 'human_negative_result',
-      purpose: 'camera_sensor_comparison', dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal', maxRunsPerDay: 3, periodBudgetCents: 15, perRunCents: 5 } }), 201) as { id: string };
+      purpose: 'camera_sensor_comparison', dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string };
     expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-      provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'ai-lock-owner-key-'.repeat(4)}END8`, payerOrganization: 'Lock payer', providerWorkspace: 'One',
-      workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
-      maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 15, perRunCents: 5 } }), 201);
+      provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'ai-lock-owner-key-'.repeat(4)}END8`, dailyBudgetCents: 17 } }), 201);
     await pool.query("UPDATE proactive_comparison_rules SET status = 'enabled' WHERE id = $1", [rule.id]);
     material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/materials`,
       { body: { clientMutationId: randomUUID(), title: 'Sensor measurement', body: 'Camera A captured 38% of gestures at 5 lux.' } }), 201) as Material;

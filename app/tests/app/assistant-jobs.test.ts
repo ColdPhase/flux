@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import {
   assistantJobHistoryPath, assistantJobNotePath, assistantJobPath, assistantJobPreviewPath, assistantJobRestorePath, assistantJobRunNowPath, assistantJobsPath,
-  PERSONAL_RUN_CONSENT_VERSION, type AssistantJob, type Conversation, type Project, type Workspace,
+  type AssistantJob, type Conversation, type Project, type Workspace,
 } from '@flux/contracts';
 import type { PgBoss } from 'pg-boss';
 import { assistantTick, createPersonalRunProcessor, PERSONAL_RUN_JOB, type PersonalComputeResult, type Principal } from '@flux/core';
@@ -31,7 +31,7 @@ const sent: { name: string; data: Record<string, unknown> }[] = [];
 const boss = { send: async (name: string, data?: object | null) => { sent.push({ name, data: (data ?? {}) as Record<string, unknown> }); return randomUUID(); } } as unknown as Pick<PgBoss, 'send'>;
 const dispatched = () => sent.filter((job) => job.name === PERSONAL_RUN_JOB).map((job) => job.data.runId as string);
 
-const composition = { connections, providerEnabled: true, toolTurns: 1 };
+const composition = { connections, providerEnabled: true };
 const startBackground = startBackgroundOf(composition, db, boss);
 const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20 });
 const tick = (now: Date) => assistantTick({ uow: assistantUnitOfWork(db, boss), startBackground }, now);
@@ -89,7 +89,7 @@ describe('"On a schedule": the owner\'s schedules and the per-minute tick (F-027
     const connectionId = randomUUID();
     connections.connect(owner.id, connectionId);
     const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
-    await runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, connectionId, perRunCents: 50, dailyCapCents: 1_000 });
+    await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
   });
   after(async () => { await pool.query(`DELETE FROM assistant_jobs WHERE owner_user_id = $1`, [owner.id]); });
   beforeEach(async () => {
@@ -129,11 +129,9 @@ describe('"On a schedule": the owner\'s schedules and the per-minute tick (F-027
     assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM assistant_jobs WHERE owner_user_id = $1`, [owner.id])).rows[0].n), 0);
   });
 
-  test('AST-7.10: more than once an hour is refused with "At most once an hour"; a valid cron shows its words and next three times', async () => {
-    const refused = await owner.browser.request('POST', assistantJobPreviewPath(ws.id, owner.id), { body: { schedule: { kind: 'cron', cron: '*/15 * * * *' }, timeZone: 'UTC' } });
-    assert.deepEqual([refused.status, (refused.json as { code: string }).code], [400, 'ASSISTANT_JOB_TOO_OFTEN']);
-    assert.equal((refused.json as { error?: string }).error ?? (refused.json as { message?: string }).message, 'At most once an hour');
-    assert.equal((await create({ schedule: { kind: 'cron', cron: '0,30 9 * * *' } })).status, 400);
+  test('C-14: no minimum interval, every minute is a schedule like any other; a valid cron shows its words and next three times', async () => {
+    expectStatus(await owner.browser.request('POST', assistantJobPreviewPath(ws.id, owner.id), { body: { schedule: { kind: 'cron', cron: '* * * * *' }, timeZone: 'UTC' } }), 200);
+    expectStatus(await owner.browser.request('POST', assistantJobPreviewPath(ws.id, owner.id), { body: { schedule: { kind: 'cron', cron: '0,1 9 * * *' }, timeZone: 'UTC' } }), 200);
     const preview = expectStatus(await owner.browser.request('POST', assistantJobPreviewPath(ws.id, owner.id),
       { body: { schedule: { kind: 'cron', cron: '0 9 * * 2-4' }, timeZone: 'Europe/Warsaw' } }), 200) as { words: string; next: { label: string }[] };
     assert.equal(preview.words, 'At 9:00 on Tuesday, Wednesday and Thursday');
@@ -277,8 +275,8 @@ describe('"On a schedule": the owner\'s schedules and the per-minute tick (F-027
     const run = (changes: Record<string, unknown>) => ({ status: 'unavailable', answerBody: null, dispatchedAt: null, planLimitResetsAt: null, endReason: null, provider: 'anthropic', engine: 'runtime',
       stoppedAtStage: null, ...changes }) as never;
     const at = new Date('2026-10-17T10:00:00Z');
-    assert.deepEqual(resultOf(run({ endReason: 'plan_limit', planLimitResetsAt: new Date('2026-10-17T14:00:00Z') }), { applied: 0, waiting: 0 }, 'UTC', at), { state: 'skipped', line: 'Skipped: plan limit until 14:00' });
-    assert.deepEqual(resultOf(run({ endReason: 'plan_limit' }), { applied: 0, waiting: 0 }, 'UTC', at), { state: 'skipped', line: 'Skipped: plan limit' });
+    assert.deepEqual(resultOf(run({ endReason: 'plan_limit', planLimitResetsAt: new Date('2026-10-17T14:00:00Z') }), { applied: 0, waiting: 0 }, 'UTC', at), { state: 'skipped', line: 'Skipped: Claude limit reached until 14:00' });
+    assert.deepEqual(resultOf(run({ endReason: 'plan_limit' }), { applied: 0, waiting: 0 }, 'UTC', at), { state: 'skipped', line: 'Skipped: Claude limit reached' });
     assert.deepEqual(resultOf(run({ endReason: 'sign_in_again' }), { applied: 0, waiting: 0 }, 'UTC', at), { state: 'failed', line: 'Sign in to Claude again' });
     assert.deepEqual(resultOf(run({ endReason: 'sign_in_again', provider: 'openai' }), { applied: 0, waiting: 0 }, 'UTC', at), { state: 'failed', line: 'Sign in to ChatGPT again' });
     assert.deepEqual(resultOf(run({ status: 'completed', answerBody: 'Done: nothing to change' }), { applied: 0, waiting: 0 }, 'UTC', at), { state: 'done', line: 'Done: nothing to change' });
@@ -289,7 +287,7 @@ describe('"On a schedule": the owner\'s schedules and the per-minute tick (F-027
 
   test('Run now, pause, edit and delete with Undo: the owner\'s own controls; one run at a time', async () => {
     const { assistantJobUseCases } = await import('../../apps/server/src/assistant/jobs.js');
-    const jobs = assistantJobUseCases(db, boss, { queue: queue.factory, connections, providerEnabled: true, toolTurns: 1 });
+    const jobs = assistantJobUseCases(db, boss, { queue: queue.factory, connections, providerEnabled: true });
     const job = await created({ title: 'Tidy', text: 'Tidy the sensor tasks', schedule: daily(9) });
     const started = await jobs.runNow(human(owner), ws.id, owner.id, job.id);
     assert.deepEqual([started.run.firedBy, started.run.state, started.job.running], ['now', 'running', true]);
@@ -347,28 +345,17 @@ describe('"On a schedule": the owner\'s schedules and the per-minute tick (F-027
     assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM assistant_job_runs WHERE job_id = $1`, [job.id])).rows[0].n), 20);
   });
 
-  test('caps: twelve runs a day for one schedule, and the assistant\'s own background limit across schedules; a skipped time says "Skipped: daily limit"', async () => {
+  test('#843: no runs a day of Flux\'s own: a schedule that already ran many times today fires again, and so do two schedules at once', async () => {
     const job = await created({ schedule: daily(9) });
-    for (let index = 0; index < 12; index++) await pool.query(`INSERT INTO assistant_job_runs (id, job_id, owner_user_id, fired_at, fired_by, state, result_line, finished_at)
+    for (let index = 0; index < 30; index++) await pool.query(`INSERT INTO assistant_job_runs (id, job_id, owner_user_id, fired_at, fired_by, state, result_line, finished_at)
       VALUES ($1, $2, $3, now() - ($4 || ' minutes')::interval, 'now', 'done', 'Done', now())`, [randomUUID(), job.id, owner.id, String(index + 1)]);
     await tick(new Date(tomorrowAt(9).getTime() + 30_000));
-    assert.equal((await runsOf(job.id)).length, 0);
-    assert.equal((await firings(job.id)).at(-1)!.result_line, 'Skipped: daily limit');
-
-    // Across schedules: a limit of 1 background run a day lets the first through.
-    const current = expectStatus(await owner.browser.request('GET', `/api/v1/workspaces/${ws.id}/assistants/${owner.id}/settings`), 200) as { version: number };
-    expectStatus(await owner.browser.request('PATCH', `/api/v1/workspaces/${ws.id}/assistants/${owner.id}/settings`, { body: { backgroundRunsPerDay: 1 }, headers: { 'if-match': `"${current.version}"` } }), 200);
-    try {
-      const first = await created({ title: 'First', schedule: daily(10) });
-      const second = await created({ title: 'Second', schedule: daily(10) });
-      await tick(new Date(tomorrowAt(10).getTime() + 30_000));
-      const lines = [first, second].map(async (item) => (await firings(item.id)).at(-1)!.result_line);
-      const [one, two] = await Promise.all(lines);
-      assert.deepEqual([one, two].sort(), ['', 'Skipped: daily limit']);
-    } finally {
-      const latest = expectStatus(await owner.browser.request('GET', `/api/v1/workspaces/${ws.id}/assistants/${owner.id}/settings`), 200) as { version: number };
-      expectStatus(await owner.browser.request('PATCH', `/api/v1/workspaces/${ws.id}/assistants/${owner.id}/settings`, { body: { backgroundRunsPerDay: 24 }, headers: { 'if-match': `"${latest.version}"` } }), 200);
-    }
+    assert.equal((await runsOf(job.id)).length, 1, 'it fired: thirty earlier runs today are no limit');
+    assert.notEqual((await firings(job.id)).at(-1)!.result_line, 'Skipped: daily limit');
+    const first = await created({ title: 'First', schedule: daily(10) });
+    const second = await created({ title: 'Second', schedule: daily(10) });
+    await tick(new Date(tomorrowAt(10).getTime() + 30_000));
+    for (const item of [first, second]) assert.equal((await runsOf(item.id)).length, 1, `${item.title} fired`);
   });
 
   test('the lane: a background run waits behind the owner\'s own request, never in front of it, and is skipped when it could not start within ten minutes', async () => {
@@ -435,10 +422,10 @@ describe('"On a schedule": the owner\'s schedules and the per-minute tick (F-027
     assert.equal((await list()).filter((item) => item.prepared).length, 1, 'a scheduled run prepared nothing');
     assert.equal((await pool.query(`SELECT answer_body FROM personal_runs WHERE id = (SELECT run_id FROM assistant_job_runs WHERE job_id = $1 LIMIT 1)`, [job.id])).rows[0].answer_body, 'Done.');
     // A garbage block or a bad time is dropped or explained, never turned on.
-    compute.respond = answer('Ok.\n<schedule>{"text":"x","when":{"kind":"cron","cron":"* * * * *"}}</schedule>');
-    const bad = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Every minute' });
+    compute.respond = answer('Ok.\n<schedule>{"text":"x","when":{"kind":"cron","cron":"61 * * * *"}}</schedule>');
+    const bad = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'At minute sixty-one' });
     await processor.process(bad.run.id);
-    assert.match((await pool.query(`SELECT answer_body FROM personal_runs WHERE id = $1`, [bad.run.id])).rows[0].answer_body as string, /couldn't prepare that schedule: At most once an hour/);
+    assert.match((await pool.query(`SELECT answer_body FROM personal_runs WHERE id = $1`, [bad.run.id])).rows[0].answer_body as string, /couldn't prepare that schedule: /);
     assert.equal((await list()).filter((item) => item.prepared).length, 1);
     // The owner's tap turns it on; nothing else can.
     const [ready] = prepared;

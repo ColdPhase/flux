@@ -11,7 +11,7 @@ import type {
 // switches, result caps, place checks and the change log live in one place. Every turn is one
 // provider request with its own input bound and its own reconciliation: the sum of the observed
 // charges is never above the run's reservation, and a request whose usage is outside its bounds
-// is treated as a lost response (the whole reservation stays counted, the answer is withheld).
+// is treated as a lost response (the most it could have cost stays counted, the answer is withheld).
 // Nothing in here retries a request, and no limit falls back to another payer or connection.
 
 /** The parts of a request the input bound counts: the brief, the input, the tool definitions and every earlier turn. */
@@ -63,7 +63,7 @@ export function nextRequestFits(account: RunAccount, price: Pick<AiPrice, 'input
 export type LoopLimit = 'turns' | 'money' | 'input' | 'time';
 
 /** A standing check between turns: null to go on, otherwise the status the run ends in (`gone`: the row is no longer dispatching). */
-export type Gate = () => Promise<{ status: RunEndStatus | 'gone' } | null>;
+export type Gate = (spentMicros: number) => Promise<{ status: RunEndStatus | 'gone' } | null>;
 
 export type LoopEnd =
   /** The model's last answer: it did not ask for more tools. */
@@ -125,7 +125,7 @@ export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
     try {
       result = await compute.dispatch(request, signal);
     } catch {
-      // An unexpected adapter failure is a lost response: the reservation stays counted.
+      // An unexpected adapter failure is a lost response: the most it could have cost stays counted.
       result = { kind: 'failed', reason: 'provider_error', billed: 'unknown' };
     }
     if (result.kind === 'failed') {
@@ -141,7 +141,7 @@ export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
     if (turn >= maxTurns) return { end: { kind: 'limit', limit: 'turns' }, account, turns: turn };
     if (!nextRequestFits(account, price, reservedMicros)) return { end: { kind: 'limit', limit: 'money' }, account, turns: turn };
     if (now() >= deadline) return { end: { kind: 'limit', limit: 'time' }, account, turns: turn };
-    const before = await gate();
+    const before = await gate(account.micros);
     if (before) return { end: { kind: 'halted', status: before.status }, account, turns: turn };
 
     const results: PersonalToolResult[] = [];
@@ -154,7 +154,7 @@ export async function runToolLoop(options: LoopOptions): Promise<LoopResult> {
     request = { ...first, turns: [...done] };
 
     // The next request: the same standing checks, then its own input bound.
-    const next = await gate();
+    const next = await gate(account.micros);
     if (next) return { end: { kind: 'halted', status: next.status }, account, turns: turn };
     let tokens = conservativeTokenEstimate(requestParts(request));
     if (tokens <= PERSONAL_RUN_LIMITS.maxToolInputTokens && compute.countInputTokens) {

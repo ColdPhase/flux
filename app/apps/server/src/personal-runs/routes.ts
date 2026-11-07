@@ -24,7 +24,6 @@ import {
   type PageQuery,
   type RetryAssistantRunCommand,
   type SelectPersonalAgentCommand,
-  type UpdatePersonalRunsCommand,
 } from '@flux/contracts';
 import type { PersonalConnectionLookup, PersonalRuntimeAvailability } from '@flux/core';
 import type { Database } from '@flux/db';
@@ -40,25 +39,19 @@ interface Options {
   /** Production leaves both out: no connection lookup (#124) and the provider switch off. */
   connections?: PersonalConnectionLookup;
   providerEnabled?: boolean;
-  /** The most requests of one run when the worker runs the tool loop (F-027 AST-8, #484). */
-  toolTurns?: number;
-  /** The owner's own Claude Code in the agent runtime (F-022 AIM-3, #280). */
+  /** The owner's own Claude Code and Codex in the agent runtime (F-022 AIM-3, #280). */
   runtime?: PersonalRuntimeAvailability;
 }
 
 const page = { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' } } } as const;
-const cents = (range: { min: number; max: number }) => ({ type: 'integer', minimum: range.min, maximum: range.max }) as const;
 const version = { type: 'integer', minimum: 1 } as const;
-const enable = { type: 'object', required: ['consentVersion', 'agentId'], additionalProperties: false, properties: {
-  consentVersion: { type: 'string', maxLength: 64 }, agentId: { type: 'string' }, connectionId: { type: 'string' }, engine: { type: 'string', enum: ['server', 'runtime'] },
-  perRunCents: cents(PERSONAL_RUN_LIMITS.perRunCents), dailyCapCents: cents(PERSONAL_RUN_LIMITS.dailyCapCents), timeZone: { type: 'string', maxLength: 64 },
-  model: { type: 'string', minLength: 1, maxLength: 200 },
+/** One of the caller's connections (#854): a plan, or an API key's id. */
+const connection = { type: 'string', minLength: 1, maxLength: 64 } as const;
+const model = { type: 'string', minLength: 1, maxLength: 200 } as const;
+const enable = { type: 'object', required: ['agentId', 'connection', 'model'], additionalProperties: false, properties: {
+  agentId: { type: 'string' }, connection, model,
 } } as const;
-const update = { type: 'object', additionalProperties: false, properties: {
-  perRunCents: cents(PERSONAL_RUN_LIMITS.perRunCents), dailyCapCents: cents(PERSONAL_RUN_LIMITS.dailyCapCents),
-  timeZone: { type: 'string', maxLength: 64 }, expectedVersion: version,
-} } as const;
-const chooseModel = { type: 'object', required: ['model'], additionalProperties: false, properties: { model: { type: 'string', minLength: 1, maxLength: 200 } } } as const;
+const chooseModel = { type: 'object', required: ['connection', 'model'], additionalProperties: false, properties: { connection, model } } as const;
 const selectAgent = { type: 'object', required: ['agentId'], additionalProperties: false, properties: { agentId: { type: 'string' } } } as const;
 const invoke = { type: 'object', required: ['clientRunId', 'kind', 'prompt'], additionalProperties: false, properties: {
   clientRunId: { type: 'string' }, kind: { type: 'string', enum: ['ask', 'summarize', 'map_thought'] },
@@ -80,11 +73,11 @@ const ownState: ReplayCheck = async () => undefined;
  * calls one core use case. Nothing here reads an owner, agent or connection from the request:
  * the session is the owner. The server only queues runs; the worker dispatches them.
  */
-export async function personalRunRoutes(app: FastifyInstance, { db, sessions, boss, connections, providerEnabled, toolTurns, runtime }: Options) {
+export async function personalRunRoutes(app: FastifyInstance, { db, sessions, boss, connections, providerEnabled, runtime }: Options) {
   useDomainErrors(app);
   const { principal, command } = commandRunner(db, sessions);
   const queue = pgBossPersonalRunQueue(boss);
-  const composition = { queue, connections, providerEnabled, ...(toolTurns !== undefined ? { toolTurns } : {}), ...(runtime ? { runtime } : {}) };
+  const composition = { queue, connections, providerEnabled, ...(runtime ? { runtime } : {}) };
   const runs = personalRunUseCases(db, composition);
   const proposals = assistantProposalUseCases(db, queue);
   // The owner's schedules and morning summary (F-027 A8) run on the same composition: the same connection, switch and runtime.
@@ -96,17 +89,11 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
       operation: `POST ${PERSONAL_ASSISTANT_PATH}`, scope: 'account', status: 201,
       run: (actor, conn) => personalRunUseCases(conn, composition).enable(actor, request.body), replay: ownState,
     }));
-  app.patch<{ Body: UpdatePersonalRunsCommand }>(PERSONAL_ASSISTANT_PATH, { schema: { body: update } },
-    async (request, reply) => command(request, reply, {
-      operation: `PATCH ${PERSONAL_ASSISTANT_PATH}`, scope: 'account',
-      run: (actor, conn) => personalRunUseCases(conn, composition).update(actor, request.body ?? {}, expectedVersion(request)), replay: ownState,
-    }));
-  // The assistant's model (F-027 AST-11): the caller's own choice and list, never another person's.
-  app.get<{ Querystring: { connectionId?: string } }>(ASSISTANT_MODEL_PATH, { schema: { querystring: { type: 'object', additionalProperties: false, properties: { connectionId: { type: 'string', maxLength: 64 } } } } },
-    async (request, reply) => {
-      reply.header('cache-control', 'no-store');
-      return runs.model(await principal(request), request.query.connectionId);
-    });
+  // The assistant's model (F-027 AST-11, #854): the caller's own choice and every connection's list, never another person's.
+  app.get(ASSISTANT_MODEL_PATH, async (request, reply) => {
+    reply.header('cache-control', 'no-store');
+    return runs.model(await principal(request));
+  });
   app.put<{ Body: ChangeAssistantModelCommand }>(ASSISTANT_MODEL_PATH, { schema: { body: chooseModel } },
     async (request, reply) => command(request, reply, {
       operation: `PUT ${ASSISTANT_MODEL_PATH}`, scope: 'account',

@@ -1,14 +1,14 @@
 import { getCapabilities, getLinkState, startLink, startSso } from '../api/auth';
 import { AiOffEverywhere, AiOffThere, useAllAiBlocked } from '../ai/workspaceAi';
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Form, Link, Outlet, useLocation, useNavigation, useSearchParams } from 'react-router';
-import { aiConnectionLabel, PERSONAL_RUN_LIMITS, type AgentConnection, type BackgroundComputeConnection, type PersonalAssistantStatus, type IdentityCapabilities } from '@flux/contracts';
+import { assistantModelName, type AgentConnection, type BackgroundComputeConnection, type PersonalAssistantStatus, type IdentityCapabilities } from '@flux/contracts';
 import { listAgentConnections } from '../agent-connection/api';
 import { getAssistantStatus } from '../assistant/api';
 import { BACKGROUND_OFF_LINE, backgroundComparisonRuntime, listBackgroundConnections } from '../proactive-comparison/api';
-import { dollars, SERVER_AI_OFF_LINE } from '../assistant/format';
+import { connectionName, SERVER_AI_OFF_LINE } from '../assistant/format';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, Spinner, agentHue, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
-import { RuntimeSection } from '../agent-runtime/RuntimeSection';
+import { ConnectAi } from '../ai/ConnectAi';
 import { WorkspacePeople } from '../people/WorkspacePeople';
 import { AccountEditing } from './AccountEditing';
 import '../agent-connection/connection.css';
@@ -19,7 +19,7 @@ import { setTheme, useTheme, type ThemeChoice } from './theme';
 import './reading.css';
 import './settings.css';
 
-// Settings (F-026, #350; Spokój #513): one calm place with Account, Appearance, Notifications, Agents and AI, Company (F-037,
+// Settings (F-026, #350; Spokój #513): one calm place with Account, Appearance, Notifications, AI, Company (F-037,
 // #874) and Keyboard shortcuts, in that order on every device. On the computer the section list sits beside the
 // page; on the phone Settings is that list (the account card, then the sections) and each section is a page.
 // Keyboard shortcuts appear only where there is a keyboard, so not on touch-only phones and tablets.
@@ -28,7 +28,7 @@ const SECTIONS: { to: string; label: string; match: RegExp }[] = [
   { to: '/settings/account', label: 'Account', match: /^\/settings\/account$/ },
   { to: '/settings', label: 'Appearance', match: /^\/settings(\/appearance)?$/ },
   { to: '/settings/notifications', label: 'Notifications', match: /^\/settings\/notifications/ },
-  { to: '/settings/agents', label: 'Agents and AI', match: /^\/settings\/(agents|assistant|background-compute|ai-connections)/ },
+  { to: '/settings/agents', label: 'AI', match: /^\/settings\/(agents|assistant|background-compute|ai-connections)/ },
   // The company's name and people have one stable place (F-037, #763 PE-1): read-only for members and guests.
   { to: '/settings/company', label: 'Company', match: /^\/settings\/company/ },
   { to: '/settings/shortcuts', label: 'Keyboard shortcuts', match: /^\/settings\/shortcuts$/ },
@@ -191,7 +191,7 @@ function ReduceMotionSwitch() {
 }
 
 const ASSISTANT_STATE: Record<PersonalAssistantStatus['state'], string> = {
-  not_enabled: 'not set up', ready: 'in Flux', paused: 'paused', capped: 'daily limit reached', unavailable: 'unavailable',
+  not_enabled: 'not set up', ready: 'in Flux', paused: 'paused', capped: 'not enough budget left', unavailable: 'unavailable',
 };
 const DESIGNATION: Record<AgentConnection['clientDesignation'], string> = { claude_code: 'Claude Code', codex: 'Codex', other: 'another app' };
 const THEME_LABEL: Record<ThemeChoice, string> = { light: 'Light', dark: 'Dark', system: 'System' };
@@ -226,7 +226,7 @@ function AssistantCard({ userId, status }: { userId: string; status: PersonalAss
         <div className="sset-row__b">
           <h4 className="sset-row__t" id="assistant-card"><span className="sset-row__identity">Your assistant <AgentTag /></span></h4>
           <span className="sset-row__s">{off ? 'In-app AI is off on this Flux server' : `for you · ${status ? ASSISTANT_STATE[status.state] : 'loading'}`}</span>
-          {status?.enablement && !off ? <span className="sset-row__s">Paid by {status.enablement.consent.payer.organization} · {aiConnectionLabel(status.enablement.consent.provider, status.enablement.consent.model)} · Assistant {status.enablement.status === 'active' ? 'on' : 'paused'}</span> : null}
+          {status?.enablement && !off ? <span className="sset-row__s">{assistantModelName(status.enablement.model)} · {connectionName(status.enablement.connection)} · Assistant {status.enablement.status === 'active' ? 'on' : 'paused'}</span> : null}
         </div>
         {off && !status?.enablement ? <Button variant="primary" disabled>Set up</Button>
           : <Link className="ui-btn ui-btn--primary" to="/settings/assistant">{status?.enablement ? 'Manage' : 'Set up'}</Link>}
@@ -235,8 +235,8 @@ function AssistantCard({ userId, status }: { userId: string; status: PersonalAss
         <>
           <ul className="sset-assistant__facts">
             <li>Answers only when you ask it, in a space you choose.</li>
-            <li>Uses your own AI connection. You pay your provider, never Flux.</li>
-            <li>Stops at a daily cap you set (default {dollars(PERSONAL_RUN_LIMITS.dailyCapCents.default)}).</li>
+            <li>Uses a model of one of your connections. You pay your provider, never Flux.</li>
+            <li>Flux adds no limits of its own: your plan’s limits, or your API key’s daily budget.</li>
           </ul>
           <Link className="ui-link sset-assistant__how" to="/settings/assistant/how">How it works</Link>
         </>
@@ -256,13 +256,13 @@ function BackgroundRow({ runtime }: { runtime: 'available' | 'unavailable' | nul
     );
   }
   return <LinkRow to="/settings/background-compute" icon={<Icon name="leaf" size={16} />} title="Background suggestions"
-    detail="Optional comparisons from your own connection and allowance" action="Manage" />;
+    detail="Optional comparisons on one of your API keys" action="Manage" />;
 }
 
 /**
- * Agents and AI, on its own page (Settings → Agents and AI, and the phone's section): the assistant card first,
- * then the sign-in choices with the API key ones under them (#277 Connect AI), background suggestions, and the
- * person's own agent apps with their colours (the only place outside the Agents view where agents have colour).
+ * AI, on its own page (Settings → AI, and the phone's section): Connect AI with every connection (#854), the assistant card,
+ * background suggestions, and the person's own agent apps with their colours (the only place outside the Agents view where
+ * agents have colour).
  */
 function AgentsAndAi() {
   const { me } = useShellData();
@@ -271,23 +271,24 @@ function AgentsAndAi() {
   const [connections, setConnections] = useState<AgentConnection[] | null>(null);
   const [assistant, setAssistant] = useState<PersonalAssistantStatus | null>(null);
   const [runtime, setRuntime] = useState<'available' | 'unavailable' | null>(null);
+  // The caller's own API keys only; the list is owner-scoped on the server. Connect AI shows them.
   const [keys, setKeys] = useState<BackgroundComputeConnection[] | null>(null);
+  const [keysFailed, setKeysFailed] = useState(false);
   const [failed, setFailed] = useState(false);
+  const loadKeys = useCallback((signal?: AbortSignal) => {
+    listBackgroundConnections(signal).then((list) => { setKeys(list); setKeysFailed(false); }, () => { if (!signal?.aborted) { setKeys([]); setKeysFailed(true); } });
+  }, []);
   useEffect(() => {
     if (allOff) return undefined;
     const controller = new AbortController();
     listAgentConnections(controller.signal).then(setConnections, (error: unknown) => { if (!controller.signal.aborted) { setConnections([]); setFailed(!!error); } });
     getAssistantStatus(controller.signal).then(setAssistant, () => undefined);
     backgroundComparisonRuntime(controller.signal).then((answer) => setRuntime(answer.status), () => { if (!controller.signal.aborted) setRuntime('unavailable'); });
-    // The caller's own AI connections only; the list is owner-scoped on the server.
-    listBackgroundConnections(controller.signal).then(setKeys, () => { if (!controller.signal.aborted) setKeys([]); });
+    loadKeys(controller.signal);
     return () => controller.abort();
-  }, [allOff]);
+  }, [allOff, loadKeys]);
   if (allOff) return <AiOffEverywhere />;
   const mine = (connections ?? []).filter((connection) => !connection.revokedAt && connection.ownerUserId === me.user.id);
-  // In-app AI off on this server (#763 SG-2): no provider, no agent sign-in and no background suggestions. The page is
-  // E04's three rows: local co-work, then one status line each; no set-up forms and no API keys nothing could use.
-  const serverOff = assistant?.setup.provider === 'off' && assistant.setup.runtime?.state === 'off' && !assistant.enablement && runtime === 'unavailable' && keys !== null && !keys.length;
   const coWork = (
     <ul className="sset-card" aria-busy={connections === null || undefined}>
       <LinkRow to="/connect-agent" icon={<Icon name="monitor" size={16} />} title="Local co-work on this computer"
@@ -299,6 +300,9 @@ function AgentsAndAi() {
       ))}
     </ul>
   );
+  // In-app AI off on this server (#763 SG-2): no provider, no agent sign-in and no background suggestions. The page is
+  // E04's three rows: local co-work, then one status line each; no Connect AI with choices nothing could use.
+  const serverOff = assistant?.setup.provider === 'off' && assistant.setup.runtime?.state === 'off' && !assistant.enablement && runtime === 'unavailable' && keys !== null && !keys.length;
   if (serverOff) {
     return (
       <div data-ai-settings="server-off">
@@ -311,31 +315,15 @@ function AgentsAndAi() {
       </div>
     );
   }
-  // Other ways to connect: the API key choices (F-027 AST-1.2: shown plainly when sign-in is off).
-  const otherWays = (
-    <>
-      <ul className="sset-card">
-        <LinkRow to="/settings/ai-connections" icon={<Icon name="key" size={16} />} title="Use an API key"
-          detail="Your own key from a provider, with your own limits and payer" action="Manage" />
-        {(keys ?? []).map((key) => (
-          <LinkRow key={key.id} to="/settings/ai-connections" icon={<Icon name="key" size={16} />}
-            title={<>{key.name}<span className="sset-row__meta"> · {aiConnectionLabel(key.provider, key.model)}</span></>}
-            detail={`Paid by ${key.payerOrganization} · Assistant ${assistant?.enablement?.connectionId === key.id ? 'on' : 'off'} · Background suggestions ${key.usedForBackground ? 'on' : 'off'}`} action="Manage" />
-        ))}
-      </ul>
-      {keys !== null && !keys.length ? <p className="sset-note">No AI connection of your own yet. Add one under Use an API key to use your assistant.</p> : null}
-    </>
-  );
   return (
     <>
-      {/* Spokój E04: the assistant card first. Then the one Connect AI entry (F-022 T2, #277; F-027 AST-1): the
-          sign-in choices, with the API key choices under them, and background suggestions. */}
+      {/* #854 (mockup Main): Connect AI first, with every connection and its usage line; then the assistant, which uses one of
+          them; then background suggestions and the person's own agent apps. */}
+      <ConnectAi apiKeys={assistant ? assistant.setup.provider === 'on' : true} keys={keys} keysFailed={keysFailed} onRetryKeys={() => loadKeys()} />
+      <AiOffThere />
       <section aria-labelledby="ai-in-flux">
-        <h3 className="sset-sub" id="ai-in-flux">Agent in Flux</h3>
-        <p className="sset-note sset-note--sub">Works inside Flux when you ask. You choose the AI and who pays for it.</p>
+        <h3 className="sset-sub" id="ai-in-flux">Your assistant</h3>
         <AssistantCard userId={me.user.id} status={assistant} />
-        <AiOffThere />
-        <RuntimeSection otherWays={otherWays} />
         <ul className="sset-card sset-gap">
           <BackgroundRow runtime={runtime} />
         </ul>
@@ -401,7 +389,7 @@ function PhoneSettings() {
         <ul className="sset-card sset-gap">
           <LinkRow to="/settings/appearance" icon={<Icon name="sun" size={16} />} title="Appearance" detail={THEME_LABEL[theme]} />
           <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail="Needs you, quiet hours, morning summary" />
-          <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="Agents and AI" detail={allOff ? 'AI is off' : assistant ? `Assistant ${ASSISTANT_STATE[assistant.state]}` : undefined} />
+          <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="AI" detail={allOff ? 'AI is off' : assistant ? `Assistant ${ASSISTANT_STATE[assistant.state]}` : undefined} />
           <LinkRow to="/settings/company" icon={<Icon name="people" size={16} />} title="Company" detail={workspace ? `${workspace.name} · its people and their roles` : 'Its people and their roles'} />
         </ul>
         <Form method="post" action="/sign-out" className="sset-card sset-gap">
@@ -421,14 +409,14 @@ export function SettingsHome() {
   return phone ? <PhoneSettings /> : <SettingsAppearance />;
 }
 
-/** Settings → Agents and AI on its own page: the assistant, Connect AI, background suggestions and agent apps. */
+/** Settings → AI on its own page: the assistant, Connect AI, background suggestions and agent apps. */
 export function SettingsAgents() {
   // With AI off everywhere the page leads with that, not with an introduction to agents the person has no use for (F-029, #614).
   const allOff = useAllAiBlocked();
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
-        <PageHead title="Agents and AI" lead={allOff ? undefined : 'Your agents work for you and are always marked as agents. Colours appear only here and in the Agents view.'} />
+        <PageHead title="AI" lead={allOff ? undefined : 'Connect your AI once. Your assistant uses it and can do only what you can.'} />
         <AgentsAndAi />
       </div>
     </div>

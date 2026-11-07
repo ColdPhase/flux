@@ -65,7 +65,7 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
   after(() => new Promise<void>((resolve) => server.close(() => resolve())));
   beforeEach(() => { seen = []; resolved.length = 0; handler = (_seen, response) => json(response, 200, message()); });
 
-  test('one bounded Messages request: the connection\'s model, max_tokens 1500, low effort, no tools, the owner\'s key', async () => {
+  test('one bounded Messages request: the connection\'s model, max_tokens 4000, low effort, no tools, the owner\'s key', async () => {
     const result = await compute().dispatch(request, new AbortController().signal);
     assert.deepEqual(result, { kind: 'completed', text: 'Fact: the camera fails below 5 lux [S1].', stopReason: 'end_turn', usage: { inputTokens: 1_200, outputTokens: 80 } });
     assert.equal(seen.length, 1);
@@ -74,7 +74,7 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     assert.equal(sent!.headers['x-api-key'], KEY);
     assert.equal(sent!.headers.authorization, undefined, 'no other credential is sent');
     assert.deepEqual(sent!.body, {
-      model: 'claude-sonnet-5', max_tokens: 1500, system: SYSTEM_PROMPT,
+      model: 'claude-sonnet-5', max_tokens: 4000, system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: request.input }], output_config: { effort: 'low' },
     }, 'no tools, hosted search, MCP or streaming');
     assert.deepEqual(resolved, [KEY_REF]);
@@ -126,6 +126,12 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     }
   });
 
+  test('CA-3: Anthropic\'s answer when the credits ran out is its own failure, and nothing was billed', async () => {
+    handler = (_seen, response) => json(response, 400, { type: 'error', error: { type: 'invalid_request_error',
+      message: 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.' } });
+    assert.deepEqual(await compute().dispatch(request, new AbortController().signal), { kind: 'failed', reason: 'no_credits', billed: 'none' });
+  });
+
   test('Stop aborts the HTTP request; a timeout and a lost connection keep the charge unknown', async () => {
     handler = () => undefined; // never answers
     const controller = new AbortController();
@@ -151,7 +157,7 @@ describe('Anthropic personal compute adapter (#68, local mock server: no provide
     assert.deepEqual(await compute().dispatch(other, new AbortController().signal), { kind: 'failed', reason: 'provider_error', billed: 'none' });
     await assert.rejects(compute().countInputTokens!(other));
     const otherWire = { ...request, connection: { ...request.connection, provider: 'openai' as const } };
-    for (const bad of [{ ...request, model: 'not a model id' }, { ...request, maxTokens: 1_501 }, { ...request, effort: 'high' as 'low' }, otherWire]) {
+    for (const bad of [{ ...request, model: 'not a model id' }, { ...request, maxTokens: 4_001 }, { ...request, effort: 'high' as 'low' }, otherWire]) {
       await assert.rejects(compute().dispatch(bad, new AbortController().signal));
       await assert.rejects(compute().countInputTokens!(bad));
     }

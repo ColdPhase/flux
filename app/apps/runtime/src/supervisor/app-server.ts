@@ -101,6 +101,34 @@ export async function openAppServer(cliPath: string, bindingDir: string, egressH
 /** A plan-limit window as the slot passes it on: the percentage used and when it resets, or unknown. */
 export interface RateLimitReading { limited: boolean | null; resetsAt: string | null }
 
+/**
+ * The plan's remaining usage for Connect AI's line (#854): the most-used window's share left, which window it is and when it
+ * resets. Anything Flux does not recognise is unknown (null), never zero.
+ */
+export interface UsageReading { leftPercent: number; window: 'five_hour' | 'weekly' | null; resetsAt: string | null }
+
+const WINDOWS: Record<number, 'five_hour' | 'weekly'> = { 300: 'five_hour', 10_080: 'weekly' };
+
+/** `account/rateLimits/read` reduced to the window closest to its limit; null when the snapshot is not one Flux knows. */
+export function readUsage(result: unknown): UsageReading | null {
+  const snapshot = isObject(result) && isObject(result.rateLimits) ? result.rateLimits : null;
+  if (!snapshot) return null;
+  let best: UsageReading | null = null;
+  let bestUsed = -1;
+  for (const window of [snapshot.primary, snapshot.secondary].filter(isObject)) {
+    const used = window.usedPercent;
+    if (typeof used !== 'number' || !Number.isFinite(used) || used < 0) return null;
+    if (used <= bestUsed) continue;
+    const minutes = window.windowDurationMins;
+    const resets = window.resetsAt;
+    const ms = typeof resets === 'number' && Number.isFinite(resets) && resets > 0 ? (resets < 1e12 ? resets * 1000 : resets) : null;
+    bestUsed = used;
+    best = { leftPercent: Math.max(0, Math.min(100, Math.round(100 - used))), window: typeof minutes === 'number' ? WINDOWS[minutes] ?? null : null,
+      resetsAt: ms === null ? null : new Date(ms).toISOString() };
+  }
+  return best;
+}
+
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**

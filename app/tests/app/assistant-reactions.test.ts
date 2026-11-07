@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import Fastify from 'fastify';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
-import { ASSISTANT_REACTION_EVENTS, assistantReactionDraftPath, assistantReactionPath, assistantReactionsPath, personalRunTokenPath, NEEDS_YOU_PATH, PERSONAL_RUN_CONSENT_VERSION,
+import { ASSISTANT_REACTION_EVENTS, assistantReactionDraftPath, assistantReactionPath, assistantReactionsPath, personalRunTokenPath, NEEDS_YOU_PATH,
   type AssistantReaction, type AssistantReactionAction, type AssistantReactionEvent, type GithubPullFacts, type Conversation, type NeedsYouResponse, type Project, type Workspace } from '@flux/contracts';
 import { assistantReactionTick, createPersonalRunProcessor, type PersonalComputeResult, type Principal } from '@flux/core';
 import type { PgBoss } from 'pg-boss';
@@ -25,7 +25,7 @@ const queue = new FakeQueue();
 const compute = new FakeCompute();
 const sent: { name: string; data: Record<string, unknown> }[] = [];
 const boss = { send: async (name: string, data?: object) => { sent.push({ name, data: (data ?? {}) as Record<string, unknown> }); return randomUUID(); } } as unknown as Pick<PgBoss, 'send'>;
-const startBackground = startBackgroundOf({ connections, providerEnabled: true, toolTurns: 1 }, db, boss);
+const startBackground = startBackgroundOf({ connections, providerEnabled: true }, db, boss);
 const tick = (at: Date) => assistantReactionTick({ uow: assistantUnitOfWork(db, boss), startBackground }, at);
 const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20 });
 const answer = (text: string): PersonalComputeResult => ({ kind: 'completed', text, stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 20 } });
@@ -68,7 +68,7 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
     thread = expectStatus(await owner.browser.request('POST',`/api/v1/projects/${place.id}/conversations`, { body: { body: 'Sensor calibration notes',clientMessageId:randomUUID() } }),201) as Conversation;
     const agent = expectStatus(await owner.browser.request('POST',`/api/v1/workspaces/${ws.id}/agents`,{body:{name:'Ada assistant',owner:'self'}}),201) as {id:string};
     const connectionId = randomUUID(); connections.connect(owner.id,connectionId);
-    await personalRunUseCases(db,{queue:queue.factory,connections,providerEnabled:true}).enable(human(owner),{consentVersion:PERSONAL_RUN_CONSENT_VERSION,agentId:agent.id,connectionId,perRunCents:50,dailyCapCents:1000});
+    await personalRunUseCases(db,{queue:queue.factory,connections,providerEnabled:true}).enable(human(owner),{ agentId: agent.id, connection: connectionId, model: 'claude-sonnet-5' });
   });
   beforeEach(async () => {
     future = new Date(Date.now()+24*3600_000);
@@ -101,12 +101,12 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
     await tick(new Date(future.getTime()+29*60_000));
     assert.equal((await events()).filter((event)=>event.run_id).length,1);
   });
-  test('owner/day and per-sentence cap record skipped daily limit in history; off and area-off start nothing',async()=>{
-    const rule=await make('blocked','tell',{dailyLimit:1});
+  test('#843: a reaction has no runs a day; off and area-off start nothing',async()=>{
+    const rule=await make('blocked','tell');
     await task(owner,'blocked','No power'); await tick(future); await process(); await tick(future);
     await task(owner,'blocked','No signal'); await tick(future);
-    assert.ok((await events()).some((event)=>event.line==='Skipped: daily limit'));
-    await owner.browser.request('PUT',assistantReactionPath(ws.id,owner.id,rule.id),{body:{projectId:place.id,event:'blocked',action:'tell',enabled:false,dailyLimit:1,expectedVersion:rule.version}});
+    assert.equal((await events()).some((event)=>event.line==='Skipped: daily limit'),false);
+    await owner.browser.request('PUT',assistantReactionPath(ws.id,owner.id,rule.id),{body:{projectId:place.id,event:'blocked',action:'tell',enabled:false,expectedVersion:rule.version}});
     const before=(await events()).length; await task(owner,'blocked','Paused'); assert.equal((await events()).length,before);
   });
   test('tell me folds into the existing blocked Inbox item without another notification or push',async()=>{

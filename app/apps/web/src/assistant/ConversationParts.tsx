@@ -5,7 +5,6 @@ import { ApiError, NetworkError } from '../api/client';
 import { AgentTag, Button, Icon, IconButton, Kreska, useLoopPause, type KreskaExpression } from '../ui';
 import { useSmallMoments } from '../app/smallMoments';
 import { AssistantPanel, companyName } from './AssistantPanel';
-import { DoItAt } from './DoItAt';
 import { AssistantModelControl } from './ModelPicker';
 import { ReadySchedule } from './ReadySchedule';
 import { useShellActions } from '../app/shellContext';
@@ -108,8 +107,6 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss, composerId, chang
         {working && !run.stopRequested ? <Button variant="secondary" icon="stop" busy={busy} onClick={() => void act(onStop)}>Stop</Button> : null}
         {!working && run.endReason === 'sign_in_again' ? <Link className="ui-btn ui-btn--secondary" to="/settings/agents">Sign in</Link> : null}
         {!working && run.endReason === 'model_unavailable' ? <AssistantModelControl variant="action" placement="up" /> : null}
-        {!working && run.endReason === 'plan_limit' && !run.planLimitResetsAt ? <Button variant="secondary" onClick={onDismiss}>Try again later</Button> : null}
-        {!working && run.endReason === 'plan_limit' && run.planLimitResetsAt && run.kind === 'ask' ? <DoItAt run={run} onDone={onDismiss} /> : null}
         {!working && canRetry(run) ? <Button variant="quiet" busy={busy} onClick={() => void act(onRetry)}>Retry</Button> : null}
         {!working ? <IconButton icon="x" label="Dismiss" onClick={dismiss} /> : null}
       </div>

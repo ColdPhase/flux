@@ -56,7 +56,7 @@ export async function requireLiveRun(tx: Transaction, claims: { ownerUserId: str
 type ToolOutput = { content?: unknown; isError?: boolean };
 
 /**
- * Bounds what tools return to a run token (F-022 "Caps"): at most 16 KiB per result and 64 KiB per run,
+ * Bounds what tools return to a run token: `RUN_TOKEN_LIMITS`, per result and per run, safety bounds (#843),
  * counted by the bytes of the result's content. A result past either bound is not returned; the run
  * records which bound it reached, and the worker ends the run in its own state.
  */

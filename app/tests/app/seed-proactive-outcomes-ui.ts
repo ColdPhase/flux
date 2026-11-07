@@ -18,11 +18,9 @@ try {
     { body: { name: 'Lamp comparison assistant', owner: 'self' } }), 201) as { id: string };
   const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/proactive-comparison-rules`,
     { body: { agentId: agent.id, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
-      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal', maxRunsPerDay: 3, periodBudgetCents: 50, perRunCents: 5 } }), 201) as { id: string };
+      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string };
   const connection = expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-    provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'ui-controlled-fixture-'.repeat(4)}Z9Q7`, payerOrganization: 'Lamp research group', providerWorkspace: 'Bedside prototype',
-    workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true,
-    projectDataDisclosureAcknowledged: true, maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 5,
+    provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'ui-controlled-fixture-'.repeat(4)}Z9Q7`, dailyBudgetCents: 50,
   } }), 201) as { id: string };
   // Controlled local compute only; the real worker cannot enable this rule.
   await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [rule.id]);

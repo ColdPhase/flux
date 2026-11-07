@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { ASSISTANT_RUN_CHANGED_EVENT, RUNTIME_RUN_LIMITS, type AssistantRunEndReason } from '@flux/contracts';
 import { ForbiddenError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
@@ -5,7 +6,7 @@ import type {
   PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalRuntimeEnd, PersonalRuntimeEvent, PersonalRuntimeRunRequest,
   RunChanges, RunEndStatus, RunRecord,
 } from './ports.js';
-import { updateAndAnnounce } from './progress.js';
+import { announce, updateAndAnnounce } from './progress.js';
 import { redactSecrets } from './redaction.js';
 import { runtimeModelFlag } from './model.js';
 import { answerWithSchedule } from './schedule-request.js';
@@ -16,10 +17,11 @@ import { answerWithSchedule } from './schedule-request.js';
 // route with the run's token, which reaches only the run's place, lists exactly the run's tools (from the
 // owner's switches) and bounds what tools return. The same standing checks as an API-key run hold before
 // the CLI starts, while it runs (stop, revocation, a result bound) and inside the commit transaction. A run
-// costs no money in Flux: its caps are runs per day, the slot's serial lane, two timeouts, turns, MCP result
-// size and answer size. Every end has its own state (`endReason`); nothing falls back to an API key, and a
-// broken stream ends `unknown` and is never rerun. The committed answer has token-shaped strings and the
-// run token itself removed.
+// costs no money in Flux and has no Flux limit (#843): the plan's own limits apply, and the clock, steps,
+// MCP result size and answer size are technical safety bounds nobody meets in normal use. Every end has its
+// own state (`endReason`); nothing falls back to another connection, and a broken stream ends `unknown` and
+// is never rerun. A request that meets the plan's limit pauses: it waits, queued, and starts again by itself
+// when the plan resets (#854). The committed answer has token-shaped strings and the run token removed.
 
 export type RuntimeRunOutcome = RunRecord['status'] | 'skipped';
 type Stage = 'before_read' | 'before_dispatch' | 'before_commit';
@@ -33,8 +35,9 @@ export interface RuntimeRunDeps {
   tokens?: PersonalRunTokenIssuer | undefined;
   stopPollMs: number;
   hooks: { afterDispatch?: (run: RunRecord) => Promise<void> };
-  /** Lower caps for tests; production uses RUNTIME_RUN_LIMITS (F-022 "Caps"). */
+  /** Lower bounds for tests; production uses RUNTIME_RUN_LIMITS (#843: safety bounds only). */
   caps?: Partial<RuntimeCaps>;
+  now?: () => number;
 }
 
 /** The CLI's start-up tool list may name only the run's exact Flux tools (and `EndConversation`), and only a connected Flux server. */
@@ -111,6 +114,8 @@ function endChanges(reason: AssistantRunEndReason | 'stopped' | 'unavailable', p
       return ended('provider_failed', null, { ...used, endReason: reason });
     // F-029: the CLI was stopped because AI was turned off in the run's workspace.
     case 'ai_off': return ended('ai_off', 'before_commit', used);
+    // A plan has no budget or API credits; an API key's run never comes here.
+    case 'budget': case 'credits': return ended('provider_failed', null, used);
   }
 }
 
@@ -118,7 +123,42 @@ function isAccessDenial(error: unknown) {
   return error instanceof NotFoundError || error instanceof ForbiddenError;
 }
 
-export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, caps: lowered = {} }: RuntimeRunDeps) {
+/**
+ * Automatic resumes of one request in a row (#854): a request that meets the plan's limit again right after its reset
+ * waits for the owner instead of looping. A technical safety bound.
+ */
+export const MAX_AUTO_RESUMES = 3;
+
+/** How long a request waits to try again when the plan gave no reset time (#854): the longest usual window is five hours. */
+export const PLAN_RETRY_MS = 2 * 3600_000;
+
+/**
+ * The plan's limit paused an owner's request (#854): it waits, queued, and starts again by itself when the plan resets, or
+ * tries again later when the CLI gave no time. At most {@link MAX_AUTO_RESUMES} times in a row. A schedule's firing is not
+ * resumed (its next firing is its next chance), and neither is a request that already changed something: a second try would
+ * repeat it, so it ends with its line and how many changes were made. Inside the ending transaction.
+ */
+async function pauseUntilReset(ports: PersonalRunPorts, run: RunRecord, resetsAt: Date | null | undefined, now: number): Promise<void> {
+  if (run.authority !== 'owner_request' || await ports.runs.changeCount(run.id)) return;
+  const known = resetsAt && resetsAt.getTime() > now ? resetsAt : null;
+  let depth = 0;
+  for (let earlier = run; earlier.retryOfRunId && depth < MAX_AUTO_RESUMES; depth++) {
+    const previous = await ports.runs.findRun(earlier.retryOfRunId);
+    if (!previous || previous.endReason !== 'plan_limit') break;
+    earlier = previous;
+  }
+  if (depth >= MAX_AUTO_RESUMES) return;
+  const resumed = await ports.runs.insertRun({
+    id: randomUUID(), workspaceId: run.workspaceId, projectId: run.projectId, conversationId: run.conversationId, ownerUserId: run.ownerUserId,
+    agentId: run.agentId, connectionId: run.connectionId, clientRunId: randomUUID(), requestFingerprint: run.requestFingerprint, kind: run.kind,
+    prompt: run.prompt, targetSketchId: run.targetSketchId, targetThoughtId: run.targetThoughtId, continuesRunId: run.continuesRunId, retryOfRunId: run.id,
+    reservedMicros: 0, provider: run.provider, model: run.model, aiEpoch: run.aiEpoch, engine: 'runtime',
+    resumeAt: known ?? new Date(now + PLAN_RETRY_MS), endReason: 'plan_limit', planLimitResetsAt: known,
+  });
+  await announce(ports, resumed);
+}
+
+export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, hooks, caps: lowered = {}, now = Date.now }: RuntimeRunDeps) {
   const caps: RuntimeCaps = {
     maxTurns: Math.min(lowered.maxTurns ?? RUNTIME_RUN_LIMITS.maxTurns, RUNTIME_RUN_LIMITS.maxTurns),
     wallClockSeconds: Math.min(lowered.wallClockSeconds ?? RUNTIME_RUN_LIMITS.wallClockSeconds, RUNTIME_RUN_LIMITS.wallClockSeconds),
@@ -131,7 +171,8 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
     const ai = await ports.access.workspaceAi(run.workspaceId, { lock });
     if (ai.state !== 'allowed' || ai.epoch !== run.aiEpoch) return 'ai_off';
     const enablement = await ports.runs.enablement(run.ownerUserId, { lock });
-    if (!enablement || enablement.engine !== 'runtime' || enablement.agents.find((agent) => agent.workspaceId === run.workspaceId)?.agentId !== run.agentId) return 'revoked';
+    // A request already sent keeps its connection: choosing another for the next one does not touch it.
+    if (!enablement || enablement.agents.find((agent) => agent.workspaceId === run.workspaceId)?.agentId !== run.agentId) return 'revoked';
     if (enablement.status === 'paused') return 'paused';
     const owner: Principal = { kind: 'human', id: run.ownerUserId };
     const agent: Principal = { kind: 'agent', id: run.agentId };
@@ -140,8 +181,6 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
     if (ports.runs.assistantConnectionLive && !(await ports.runs.assistantConnectionLive(run.ownerUserId, run.workspaceId))) return 'revoked';
     if (!(await ports.access.canUseProject(owner, 'write', run.projectId, { lock })) || !(await ports.access.canUseProject(agent, 'read', run.projectId, { lock })))
       return 'denied';
-    if (stage === 'before_dispatch' && ports.runs.runtimeRunsToday
-      && await ports.runs.runtimeRunsToday(run.ownerUserId, enablement.timeZone, run.id) >= RUNTIME_RUN_LIMITS.runsPerDay) return 'cap_reached';
     return null;
   }
   const checked = (ports: PersonalRunPorts, run: RunRecord, stage: Stage, lock: boolean) =>
@@ -187,11 +226,14 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       const claimed = await uow.run(async (ports) => {
         const run = await ports.runs.findRun(id, { lock: true });
         if (!run || run.status !== 'queued') return null;
+        // A request paused by the plan's limit waits for the plan's reset (#854).
+        if (run.resumeAt && run.resumeAt.getTime() > now()) return null;
         // One lane per owner: a request behind the one that is working waits for it to end (AST-6 queue).
         if (await ports.runs.laneBusy(run.ownerUserId, run.id)) return null;
         const refusal = await checked(ports, run, 'before_read', true);
         if (refusal) return { done: true as const, status: (await updateAndAnnounce(ports, run.id, ended(refusal, 'before_read', free))).status };
-        return { done: false as const, run: await updateAndAnnounce(ports, run.id, { status: 'reading' }) };
+        return { done: false as const, run: await updateAndAnnounce(ports, run.id, {
+          status: 'reading', ...(run.resumeAt ? { resumeAt: null, endReason: null, planLimitResetsAt: null } : {}) }) };
       });
       if (!claimed) return 'skipped';
       if (claimed.done) return claimed.status;
@@ -282,7 +324,11 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         if (current.mcpLimit) return save(ended('cap_reached', 'before_commit', { ...used, endReason: 'mcp_results_too_large' }));
         // Access, pause, removal or a revoked connection after the start: nothing is posted.
         if (refusal) return save(ended(refusal, 'before_commit', used));
-        if (end.kind === 'ended') return save(endChanges(end.reason, end.planResetsAt));
+        if (end.kind === 'ended') {
+          const status = await save(endChanges(end.reason, end.planResetsAt));
+          if (end.reason === 'plan_limit') await pauseUntilReset(ports, current, end.planResetsAt, now());
+          return status;
+        }
         const bytes = Buffer.byteLength(end.text, 'utf8');
         if (bytes > caps.maxAnswerBytes) return save(ended('cap_reached', null, { ...used, endReason: 'answer_too_large' }));
         // AIM-3 "Committed answer": token patterns and the exact run token become "[removed: looked like a secret]".

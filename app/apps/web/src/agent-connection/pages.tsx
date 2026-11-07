@@ -60,7 +60,7 @@ async function requirePerson(request: Request) {
   return me;
 }
 
-/** Settings → Agents and AI → Connect your agent: where a person manages their connections inside the app (#763 AG-2). */
+/** Settings → AI → Connect your agent: where a person manages their connections inside the app (#763 AG-2). */
 export const CONNECT_AGENT_SETTINGS = '/settings/agents/connect';
 
 /**
@@ -420,7 +420,7 @@ export function AgentConnectionSettings() {
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in connection-settings">
-        <Link className="connection-settings__back" to="/settings/agents"><Icon name="chevron-left" size={14} />Agents and AI</Link>
+        <Link className="connection-settings__back" to="/settings/agents"><Icon name="chevron-left" size={14} />AI</Link>
         <AgentConnectionPage />
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { BACKGROUND_COMPARISON_LIMITS, BACKGROUND_CONSENT_VERSIONS, maxRequestMicros, type AiPrice } from '@flux/contracts';
+import { BACKGROUND_COMPARISON_LIMITS, maxRequestMicros, type AiPrice } from '@flux/contracts';
 
 /** A possible charge, never permission to reuse an old access decision. */
 export type ReservationResult =
@@ -7,12 +7,11 @@ export type ReservationResult =
       'SOURCE_SCOPE_UNVERIFIED' | 'CONNECTION_REQUIRED' | 'CONNECTION_PRICE_UNKNOWN' | 'BUDGET_EXHAUSTED' | 'OWNER_IN_FLIGHT' | 'QUIET_WINDOW' };
 
 type Candidate = { id: string; status: string; ruleId: string; ownerUserId: string; projectId: string; resultId: string; sourceFingerprint: string };
-type Rule = { id: string; version: number; status: string; ownerUserId: string; projectId: string; agentId: string;
-  maxRunsPerDay: number; periodBudgetCents: number; perRunCents: number };
+type Rule = { id: string; version: number; status: string; ownerUserId: string; projectId: string; agentId: string };
 type Result = { projectId: string; finding: string; createdByKind: string; createdById: string };
-type Connection = { id: string; encryptedKey: string | null; periodDays: number; consentVersion: string;
-  maxRunsPerDay: number; periodBudgetCents: number; perRunCents: number;
-  inputPriceMicrosPerMTok: number | null; outputPriceMicrosPerMTok: number | null };
+type Connection = { id: string; encryptedKey: string | null; inputPriceMicrosPerMTok: number | null; outputPriceMicrosPerMTok: number | null };
+/** Today's use of a key's one daily budget (#854), by everything that runs on it. */
+type KeySpend = { budgetCents: number; chargedMicros: number; reservedMicros: number };
 type Source = { type: string; id: string; version: number | null; sketchId?: string };
 
 export interface ReservationPorts {
@@ -27,7 +26,8 @@ export interface ReservationPorts {
     sourceCurrent(projectId: string, source: Source): Promise<boolean>;
     ready(id: string, now: Date): Promise<boolean>;
     connection(ownerId: string): Promise<Connection | null>;
-    usage(ownerId: string, startOfDay: Date, startOfPeriod: Date): Promise<{ dayRuns: number; periodCents: number; inFlight: number }>;
+    inFlight(ownerId: string): Promise<number>;
+    keySpend(connectionId: string): Promise<KeySpend | null>;
     reserve(id: string, connectionId: string, cents: number, at: Date): Promise<unknown | null>;
     cancel(id: string, reason: string): Promise<void>;
   };
@@ -38,7 +38,6 @@ export interface ReservationUnitOfWork {
 }
 
 const blocked = (reason: Extract<ReservationResult, { status: 'blocked' }>['reason']): ReservationResult => ({ status: 'blocked', reason });
-const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The reservation of one bounded comparison request at the connection's price (PROV-3): its largest
@@ -102,15 +101,10 @@ export function reservationUseCases(unit: ReservationUnitOfWork) {
         if (connection.inputPriceMicrosPerMTok === null || connection.outputPriceMicrosPerMTok === null) return refuse('CONNECTION_PRICE_UNKNOWN');
         const reserveCents = comparisonReservationCents({ inputMicrosPerMTok: connection.inputPriceMicrosPerMTok,
           outputMicrosPerMTok: connection.outputPriceMicrosPerMTok });
-        if (connection.periodDays !== 30 || !(BACKGROUND_CONSENT_VERSIONS as readonly string[]).includes(connection.consentVersion)
-          || Math.min(rule.perRunCents, connection.perRunCents) < reserveCents)
-          return refuse('BUDGET_EXHAUSTED');
-        const utcDay = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-        const periodStart = new Date(now.getTime() - 30 * DAY_MS);
-        const usage = await rows.usage(candidate.ownerUserId, utcDay, periodStart);
-        if (usage.inFlight) return blocked('OWNER_IN_FLIGHT');
-        if (usage.dayRuns >= Math.min(rule.maxRunsPerDay, connection.maxRunsPerDay)
-          || usage.periodCents + reserveCents > Math.min(rule.periodBudgetCents, connection.periodBudgetCents))
+        if (await rows.inFlight(candidate.ownerUserId)) return blocked('OWNER_IN_FLIGHT');
+        // The key's one daily budget (#854): a comparison counts with everything else that runs on the key.
+        const spend = await rows.keySpend(connection.id);
+        if (!spend || spend.chargedMicros + spend.reservedMicros + reserveCents * 10_000 > spend.budgetCents * 10_000)
           return refuse('BUDGET_EXHAUSTED');
         const taskFence = await rows.prepareTaskUse(candidate.projectId, [{ type: 'result', id: candidate.resultId }, ...snapshot.sources]);
         const retained = await rows.lockCandidate(candidate.id);

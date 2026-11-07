@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FLUX_TOOL_NAME, INIT_NAME, type RunOutcome, type SupervisorRequest, type SupervisorResult } from '@flux/runtime-protocol';
-import { openAppServer, readRateLimits } from './app-server.js';
+import { openAppServer, readRateLimits, readUsage, type UsageReading } from './app-server.js';
 import type { Outcome, Send, SupervisorConfig } from './handlers.js';
 import { CLIENT_DIRS, cliEnvironment, CODEX_FEATURE_REVIEW, codexRunOverrides, RUN_TEMPLATES } from './templates.js';
 
@@ -125,14 +125,18 @@ async function codexPreflight(config: SupervisorConfig, dir: string, request: Ru
   }
 }
 
-/** Step two of a Codex plan limit: `account/rateLimits/read` for the reset time; unreadable is unknown (null). */
-async function codexResetTime(config: SupervisorConfig, dir: string): Promise<string | null> {
+/**
+ * After a Codex run: `account/rateLimits/read` once, for the plan's remaining usage (#854) and, at a plan limit, its reset
+ * time. Unreadable is unknown (null).
+ */
+async function codexRateLimits(config: SupervisorConfig, dir: string): Promise<{ resetsAt: string | null; usage: UsageReading | null }> {
   let session;
   try {
     session = await openAppServer(config.cliPaths.codex, dir, config.egressHost, { timeoutMs: APP_SERVER_TIMEOUT_MS });
-    return readRateLimits(await session.request('account/rateLimits/read', {})).resetsAt;
+    const read = await session.request('account/rateLimits/read', {});
+    return { resetsAt: readRateLimits(read).resetsAt, usage: readUsage(read) };
   } catch {
-    return null;
+    return { resetsAt: null, usage: null };
   } finally {
     session?.close();
   }
@@ -333,8 +337,12 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
     child.on('error', () => settle(null));
     child.on('close', (code) => settle(code));
   });
-  // Codex's plan limit, step two: the reset time from the allowlisted app-server, in the same serial lane.
-  if (codex && result.outcome === 'plan_limit') result.resetsAt = await codexResetTime(config, dir);
+  // Codex, step two: the plan's usage and, at a plan limit, the reset time from the allowlisted app-server, in the same lane.
+  if (codex && result.outcome !== 'local_tool' && result.outcome !== 'stopped') {
+    const read = await codexRateLimits(config, dir);
+    if (result.outcome === 'plan_limit') result.resetsAt = read.resetsAt;
+    result.usage = read.usage;
+  }
   active.delete(config);
   await rm(runDir, { recursive: true, force: true }).catch(() => undefined);
   await removeTranscripts(dir, request.client);

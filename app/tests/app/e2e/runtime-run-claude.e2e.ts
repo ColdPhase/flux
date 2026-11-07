@@ -5,7 +5,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { PERSONAL_RUN_CONSENT_VERSION, personalRunTokenPath, RUNTIME_RUN_LIMITS, type Conversation } from '@flux/contracts';
+import { personalRunTokenPath, RUNTIME_RUN_LIMITS, type Conversation } from '@flux/contracts';
 import { personalRunTokenRows } from '@flux/db';
 import { RUN_BRIEF } from '../../../apps/runtime/src/supervisor/run.js';
 import { cliEnvironment, RUN_TEMPLATES } from '../../../apps/runtime/src/supervisor/templates.js';
@@ -40,7 +40,7 @@ test('the pinned real claude, run with the runtime\'s exact argv, shows only the
   const connectionId = randomUUID();
   connections.connect(owner.id, connectionId);
   const runs = personalRunUseCases(db, { queue: new FakeQueue().factory, connections, providerEnabled: true });
-  await runs.enable({ kind: 'human', id: owner.id }, { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, connectionId });
+  await runs.enable({ kind: 'human', id: owner.id }, { agentId, connection: connectionId, model: 'claude-sonnet-5' });
   const started = await runs.invoke({ kind: 'human', id: owner.id }, thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Which projects can you see?' });
   await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [started.run.id]);
   const nonce = randomBytes(32).toString('hex');

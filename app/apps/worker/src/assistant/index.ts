@@ -16,7 +16,6 @@ import { personalRunPorts } from '../personal-runs/adapters.js';
 export interface AssistantTickComposition {
   connections: PersonalConnectionLookup;
   providerEnabled: boolean;
-  toolTurns?: number;
   runtime?: PersonalRuntimeAvailability;
 }
 
@@ -49,7 +48,7 @@ export function startBackgroundOf(composition: AssistantTickComposition, db: Dat
   const runs = createPersonalRunUseCases({
     uow: { run: (work) => db.transaction((tx) => work(personalRunPorts(tx, queueIn(tx, boss)))) },
     connections: composition.connections, providerEnabled: composition.providerEnabled,
-    ...(composition.toolTurns !== undefined ? { toolTurns: composition.toolTurns } : {}), ...(composition.runtime ? { runtime: composition.runtime } : {}),
+    ...(composition.runtime ? { runtime: composition.runtime } : {}),
   });
   return runs.startBackground;
 }
@@ -57,8 +56,8 @@ export function startBackgroundOf(composition: AssistantTickComposition, db: Dat
 /** The hook of #350's tick: starts the assistant's run for a person's morning summary in the claim's own transaction. */
 export function assistantSummaryStart(db: Database, boss: Pick<PgBoss, 'send'>, composition: AssistantTickComposition): AssistantSummaryStart {
   const startBackground = startBackgroundOf(composition, db, boss);
-  return (tx, summary, userId, day, now) => startAssistantSummary({ ...personalRunPorts(tx, queueIn(tx, boss)), jobs: assistantJobRows(tx), summaries: assistantSummaryRows(tx) },
-    summary, startBackground, userId, day, now);
+  return (tx, summary, userId, day, now, timeZone) => startAssistantSummary({ ...personalRunPorts(tx, queueIn(tx, boss)), jobs: assistantJobRows(tx), summaries: assistantSummaryRows(tx) },
+    summary, startBackground, userId, day, now, timeZone);
 }
 
 /** Closes the summaries whose run ended: the line on Home and its one push, or the plain summary. */

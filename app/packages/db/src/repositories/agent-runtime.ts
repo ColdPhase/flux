@@ -24,6 +24,8 @@ export interface RuntimeBindingRow {
 }
 type ReserveOutcome = { kind: 'reserved' | 'existing'; binding: RuntimeBindingRow } | { kind: 'full' } | { kind: 'starting' };
 export interface RuntimeConnectionRow {
+  /** The provider's remaining usage as the last run saw it (#854); null before any. */
+  usage: { leftPercent: number | null; window: 'five_hour' | 'weekly' | null; resetsAt: Date | null; limitReached: boolean; readAt: Date } | null;
   client: AgentRuntimeClient; bindingId: string; state: AgentRuntimeConnectionState; signInMethod: AgentRuntimeSignInMethod | null;
   authMethod: string | null; plan: string | null; accountLabel: string | null; signedInAt: Date | null;
   accountChangedAt: Date | null; previousAccountLabel: string | null; signedOutAt: Date | null; signOutFailed: boolean | null;
@@ -81,15 +83,20 @@ const BINDING_COLUMNS = sql`id, owner_user_id, slot, state, created_at, last_use
 
 type ConnectionRecord = { client: AgentRuntimeClient; binding_id: string; state: AgentRuntimeConnectionState; sign_in_method: AgentRuntimeSignInMethod | null;
   auth_method: string | null; plan_label: string | null; account_label: string | null; signed_in_at: Date | string | null;
-  account_changed_at: Date | string | null; previous_account_label: string | null; signed_out_at: Date | string | null; sign_out_failed: boolean | null };
+  account_changed_at: Date | string | null; previous_account_label: string | null; signed_out_at: Date | string | null; sign_out_failed: boolean | null;
+  usage_left_percent: number | null; usage_window: 'five_hour' | 'weekly' | null; usage_resets_at: Date | string | null; usage_limit_reached: boolean;
+  usage_read_at: Date | string | null };
 const maybeDate = (value: Date | string | null) => (value === null ? null : date(value));
 const connection = (row: ConnectionRecord): RuntimeConnectionRow => ({
   client: row.client, bindingId: row.binding_id, state: row.state, signInMethod: row.sign_in_method, authMethod: row.auth_method, plan: row.plan_label,
   accountLabel: row.account_label, signedInAt: maybeDate(row.signed_in_at), accountChangedAt: maybeDate(row.account_changed_at),
   previousAccountLabel: row.previous_account_label, signedOutAt: maybeDate(row.signed_out_at), signOutFailed: row.sign_out_failed,
+  usage: row.usage_read_at === null ? null : { leftPercent: row.usage_left_percent, window: row.usage_window, resetsAt: maybeDate(row.usage_resets_at),
+    limitReached: row.usage_limit_reached, readAt: date(row.usage_read_at) },
 });
 const CONNECTION_COLUMNS = sql`client, binding_id, state, sign_in_method, auth_method, plan_label, account_label, signed_in_at,
-  account_changed_at, previous_account_label, signed_out_at, sign_out_failed`;
+  account_changed_at, previous_account_label, signed_out_at, sign_out_failed, usage_left_percent, usage_window, usage_resets_at,
+  usage_limit_reached, usage_read_at`;
 
 async function ownerLock(tx: Exec, ownerUserId: string) {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`agent-runtime-owner:${ownerUserId}`}))`);

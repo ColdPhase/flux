@@ -41,8 +41,8 @@ export function BackgroundUsage({ usage, busy, error, refresh, historyRef }: {
       <Button busy={busy} onClick={refresh}>Refresh usage</Button>
     </div>
     <dl className="background-settings__metadata">
-      <div><dt>Attempts today · UTC</dt><dd>{usage.startedRequestsToday}{usage.currentLimits ? ` / ${usage.currentLimits.maxRunsPerDay} requests` : ' requests'}</dd></div>
-      <div><dt>Counted · 30 days</dt><dd>{money(usage.conservativeCountedCents)}{usage.currentLimits ? ` / ${money(usage.currentLimits.periodBudgetCents)} allowance` : ''}</dd></div>
+      <div><dt>Attempts today · UTC</dt><dd>{usage.startedRequestsToday} requests</dd></div>
+      <div><dt>Counted · 30 days</dt><dd>{money(usage.conservativeCountedCents)}{usage.dailyBudgetCents !== null ? ` · your key’s daily budget is ${money(usage.dailyBudgetCents)}` : ''}</dd></div>
       <div><dt>Observed estimate</dt><dd>{money(usage.observedEstimatedCents)}</dd></div>
       <div><dt>Unknown possible</dt><dd>{money(usage.unknownPossibleCents)}</dd></div>
       <div><dt>In progress</dt><dd>{money(usage.inFlightCents)} reserved</dd></div>

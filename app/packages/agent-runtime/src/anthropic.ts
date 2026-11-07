@@ -60,6 +60,8 @@ export function failureOf(error: unknown, signal: AbortSignal): Extract<Personal
   if (error instanceof Anthropic.APIConnectionTimeoutError) return { kind: 'failed', reason: 'timeout', billed: 'unknown' };
   if (error instanceof Anthropic.APIConnectionError) return { kind: 'failed', reason: 'provider_error', billed: 'unknown' };
   if (error instanceof Anthropic.RateLimitError) return { kind: 'failed', reason: 'rate_limited', billed: 'unknown' };
+  // The organization's API credits ran out, monthly plan credits included (CA-3): one line, and nothing switches.
+  if (error instanceof Anthropic.BadRequestError && /credit balance/i.test(error.message)) return { kind: 'failed', reason: 'no_credits', billed: 'none' };
   if (error instanceof Anthropic.APIError && (error.status === 529 || error.status === 503)) return { kind: 'failed', reason: 'overloaded', billed: 'unknown' };
   return { kind: 'failed', reason: 'provider_error', billed: 'unknown' };
 }

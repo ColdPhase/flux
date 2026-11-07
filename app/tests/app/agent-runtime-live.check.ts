@@ -4,8 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import WebSocket from 'ws';
 import {
   AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH, assistantRunPath, backgroundComputeConnectionsPath,
-  conversationAssistantRunsPath, PERSONAL_ASSISTANT_PATH, PERSONAL_RUNTIME_CONSENT_VERSION,
-  type AgentRuntimeConsoleServerMessage, type AgentRuntimeStatus, type AssistantRun, type PersonalAssistantStatus,
+  conversationAssistantRunsPath, PERSONAL_ASSISTANT_PATH, type AgentRuntimeConsoleServerMessage, type AgentRuntimeStatus, type AssistantRun, type PersonalAssistantStatus,
 } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
 import { apiUrl, publicOrigin, signIn } from './support/http.js';
@@ -304,7 +303,7 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     const agent = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string };
     const assistant = await someone.browser.request('GET', PERSONAL_ASSISTANT_PATH);
     assert.equal((assistant.json as PersonalAssistantStatus).setup.runtime.state, 'signed_in', 'the API sees the owner signed in to Claude Code');
-    const enabled = await someone.browser.request('POST', PERSONAL_ASSISTANT_PATH, { body: { consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId: agent.id, engine: 'runtime' } });
+    const enabled = await someone.browser.request('POST', PERSONAL_ASSISTANT_PATH, { body: { agentId: agent.id, connection: 'claude_plan', model: 'sonnet' } });
     assert.equal(enabled.status, 201, enabled.text);
     const started = expectStatus(await someone.browser.request('POST', conversationAssistantRunsPath(thread.id),
       { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Which projects can you see?' } }), 202) as AssistantRun;
@@ -352,7 +351,7 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     const thread = expectStatus(await someone.browser.request('POST', `/api/v1/projects/${project.id}/conversations`,
       { body: { body: 'Camera fails below 5 lux', clientMessageId: randomUUID() } }), 201) as { id: string };
     const agent = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My Codex assistant', owner: 'self' } }), 201) as { id: string };
-    const enabled = await someone.browser.request('POST', PERSONAL_ASSISTANT_PATH, { body: { consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId: agent.id, engine: 'runtime' } });
+    const enabled = await someone.browser.request('POST', PERSONAL_ASSISTANT_PATH, { body: { agentId: agent.id, connection: 'chatgpt_plan', model: 'gpt-6.1-sol' } });
     assert.equal(enabled.status, 201, enabled.text);
     const started = expectStatus(await someone.browser.request('POST', conversationAssistantRunsPath(thread.id),
       { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Which projects can you see?' } }), 202) as AssistantRun;

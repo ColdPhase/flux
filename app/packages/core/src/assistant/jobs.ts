@@ -11,7 +11,7 @@ import type { EnablementRecord, PersonalRunPorts } from '../personal-runs/ports.
 import { redactSecrets } from '../personal-runs/redaction.js';
 import { isId } from '../work/validation.js';
 import type { AssistantJobPorts, AssistantJobUnitOfWork, JobRecord, JobRunRecord } from './jobs-ports.js';
-import { clockIn, limitLine } from './job-result.js';
+import { clockIn } from './job-result.js';
 import { settleOwnerRuns } from './job-settle.js';
 import { nextRuns, previewRuns, scheduleFields, scheduleWords } from './schedule.js';
 
@@ -79,14 +79,14 @@ function normalize(input: { title?: unknown; text?: unknown; schedule?: unknown;
 }
 
 /** The account a note about background use is shown for: the signed-in CLI, or the API key connection. */
-export function accountKey(enablement: Pick<EnablementRecord, 'engine' | 'consentProvider' | 'connectionId'>): string {
-  return enablement.engine === 'runtime' ? `runtime:${enablement.consentProvider === 'openai' ? 'codex' : 'claude_code'}` : `server:${enablement.connectionId ?? 'none'}`;
+export function accountKey(enablement: Pick<EnablementRecord, 'engine' | 'provider' | 'connectionId'>): string {
+  return enablement.engine === 'runtime' ? `runtime:${enablement.provider === 'openai' ? 'codex' : 'claude_code'}` : `server:${enablement.connectionId ?? 'none'}`;
 }
 
 /** What the sheet shows before *Turn on* (AST-2 "The first time … this note shows once per account"). */
-export function backgroundNote(enablement: Pick<EnablementRecord, 'engine' | 'consentProvider' | 'consentModel'>, accepted: string | null): AssistantBackgroundNote {
+export function backgroundNote(enablement: Pick<EnablementRecord, 'engine' | 'provider'>, accepted: string | null): AssistantBackgroundNote {
   if (enablement.engine === 'runtime') {
-    const codex = enablement.consentProvider === 'openai';
+    const codex = enablement.provider === 'openai';
     const plan = codex ? 'ChatGPT plan' : 'Claude plan';
     return {
       version: ASSISTANT_BACKGROUND_NOTE_VERSION, meta: `Runs on your ${plan}`, credits: null,
@@ -94,7 +94,7 @@ export function backgroundNote(enablement: Pick<EnablementRecord, 'engine' | 'co
         : `Runs on your ${plan} while you're away. ${codex ? 'OpenAI' : 'Anthropic'} may limit this use without notice. If your plan says no, it skips that time and tells you.`,
     };
   }
-  return { version: ASSISTANT_BACKGROUND_NOTE_VERSION, meta: `Runs on your ${AI_PROVIDERS[enablement.consentProvider].label} API key`, credits: null, note: null };
+  return { version: ASSISTANT_BACKGROUND_NOTE_VERSION, meta: `Runs on your ${AI_PROVIDERS[enablement.provider].label} API key`, credits: null, note: null };
 }
 
 export interface JobDeps {
@@ -121,9 +121,6 @@ export async function fireJob(ports: AssistantJobPorts, startBackground: JobDeps
   }
   if (options.late) return end(row, 'skipped', `Skipped: Flux was off at ${clockIn(firedAt, job.timeZone)}`);
   await ports.runs.enablement(job.ownerUserId, { lock: true });
-  const settings = await ports.jobs.backgroundLimit(job.ownerUserId, job.workspaceId);
-  if (await ports.jobs.runsTodayForJob(job.id, job.timeZone) >= ASSISTANT_JOB_LIMITS.runsPerDay
-    || settings !== null && await ports.jobs.backgroundRunsToday(job.ownerUserId, job.timeZone) >= settings) return end(row, 'skipped', limitLine);
   const posts = job.postToConversation && !!job.conversationId;
   const conversationId = posts ? job.conversationId : await ports.jobs.anchorConversation(job.projectId);
   if (!conversationId) return end(row, 'skipped', 'Skipped: start a conversation in this project first');

@@ -80,10 +80,9 @@ class AssistantScreen(unittest.TestCase):
         stub = copy.deepcopy(self.api(page, "GET", "/api/v1/personal-assistant", status=200))
         stub["setup"] = {"provider": "off", "connection": "none", "runtime": {"state": runtime, "payer": "claude_plan", "accountLabel": "a***@example.test", "client": "claude_code"}}
         if enabled:
-            stub.update(state="paused" if paused else "ready", unavailableReason=None, today={"chargedMicros": 0, "reservedMicros": 0, "capCents": 100, "resetsAt": NOW}, enablement={
-                "ownerUserId": ADA["id"], "connectionId": None, "engine": "runtime", "status": "active", "perRunCents": 6, "dailyCapCents": 100, "timeZone": "UTC",
-                "consent": {"version": "f-022-runtime-2026-10-16", "acceptedAt": NOW, "provider": "anthropic", "model": "claude-code",
-                            "payer": {"organization": "Your Claude plan", "workspace": "a***@example.test"}},
+            # The Claude plan (#854): no budget of Flux's, so no `today`.
+            stub.update(state="paused" if paused else "ready", unavailableReason=None, today=None, enablement={
+                "ownerUserId": ADA["id"], "connection": "claude_plan", "engine": "runtime", "status": "active", "model": "sonnet",
                 "agents": [{"workspaceId": self.ids["workspace"], "agentId": self.ids["agent"]}], "version": 1, "createdAt": NOW, "updatedAt": NOW})
         else:
             stub.update(state="not_enabled", unavailableReason=None, enablement=None, today=None)
@@ -94,7 +93,7 @@ class AssistantScreen(unittest.TestCase):
         world = {"status": self.status(page, enabled=enabled, runtime=runtime), "patches": [], "pauses": [],
                  "agents": {"projectId": self.ids["project"], "connections": []},
                  "settings": {"workspaceId": self.ids["workspace"], "ownerUserId": ADA["id"], "agentId": self.ids["agent"], "connectionId": self.ids["agent"], "mayDo": "act",
-                              "backgroundRunsPerDay": 24, "version": 1, "createdAt": NOW, "updatedAt": NOW}}
+                              "version": 1, "createdAt": NOW, "updatedAt": NOW}}
 
         def status(route: Route) -> None:
             self.json(route, world["status"]) if route.request.method == "GET" else route.continue_()
@@ -195,8 +194,8 @@ class AssistantScreen(unittest.TestCase):
                 page.goto("/settings/assistant")
                 expect(page.get_by_role("heading", name=re.compile("Ada.s assistant"))).to_be_visible()
                 expect(page.get_by_text("for you · in Flux")).to_be_visible()
-                expect(page.get_by_text("Claude · your subscription")).to_be_visible()
-                expect(page.get_by_text("Flux can't see your plan's limits.")).to_be_visible()
+                expect(page.locator(".aset-screen__account")).to_contain_text("Claude plan")
+                expect(page.get_by_text("Flux adds no limits of its own. If your plan’s limit is reached, it pauses and resumes by itself.").first).to_be_visible()
                 expect(page.get_by_role("switch", name="Your assistant is on")).to_have_attribute("aria-checked", "true")
                 group = page.get_by_role("radiogroup", name="What it may do")
                 for label, checked in (("Only read", "false"), ("Do it and tell me", "true"), ("Ask me first", "false")):

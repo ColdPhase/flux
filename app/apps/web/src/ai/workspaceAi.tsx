@@ -134,7 +134,7 @@ export function AiOffThere({ className = 'sset-note' }: { className?: string }) 
   ))}</>;
 }
 
-/** Settings → Agents and AI while AI is off in every workspace: one line each, and where an owner or admin turns it back on. */
+/** Settings → AI while AI is off in every workspace: one line each, and where an owner or admin turns it back on. */
 export function AiOffEverywhere() {
   const shell = useShell();
   const { openDetails } = useShellActions();

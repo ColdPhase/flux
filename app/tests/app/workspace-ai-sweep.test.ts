@@ -334,11 +334,9 @@ describe('workspace AI lock: a comparison in flight and a comparison publish aga
     await grant(owner, projectId, peer, 'contributor');
     const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Comparison agent', owner: 'self' } }), 201) as { id: string }).id;
     const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`, { body: { agentId, trigger: 'human_negative_result',
-      purpose: 'camera_sensor_comparison', dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal', maxRunsPerDay: 3, periodBudgetCents: 50, perRunCents: 5 } }), 201) as { id: string };
+      purpose: 'camera_sensor_comparison', dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string };
     expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
-      provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'ai-sweep-owner-key-'.repeat(4)}END8`, payerOrganization: 'Lock payer', providerWorkspace: 'One',
-      workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true, providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
-      maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 50, perRunCents: 5 } }), 201);
+      provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'ai-sweep-owner-key-'.repeat(4)}END8`, dailyBudgetCents: 50 } }), 201);
     await pool.query("UPDATE proactive_comparison_rules SET status = 'enabled' WHERE id = $1", [rule.id]);
     material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/materials`,
       { body: { clientMutationId: randomUUID(), title: 'Sensor measurement', body: 'Camera A captured 38% of gestures at 5 lux.' } }), 201) as Material;

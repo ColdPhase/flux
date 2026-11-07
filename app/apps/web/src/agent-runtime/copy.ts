@@ -1,4 +1,5 @@
 import type { AgentRuntimePayer, AgentRuntimeSignInMethod, ClaudeCodeSignInMethod, CodexSignInMethod } from '@flux/contracts';
+import type { ConsoleOutcome } from './SignInConsole';
 
 // The words for the runtime (F-022, F-023 FF-1): plain, what happens and why. Product names appear as
 // plain text, never as logos.
@@ -22,6 +23,23 @@ export const SIGN_IN_PROBLEM: Record<'device_auth_disabled' | 'code_expired', { 
     href: 'https://chatgpt.com/#settings/Security' },
   code_expired: { text: 'That code has expired. Codes work once, for a few minutes.', action: 'Get a new code' },
 };
+
+const SIGN_IN_ERRORS: Record<string, string> = {
+  busy: 'Your runtime is busy with another sign-in or task. Try again in a moment.',
+  unavailable: 'The runtime could not confirm the operation. Check its current state before trying again.',
+  refused: 'This sign-in could not start. It may have expired or belong to another session.',
+  cancelled: 'You cancelled the sign-in. Runtime access stays disabled until cleanup is confirmed; both clients may need to sign in again.',
+  superseded: 'This sign-in result is no longer current and was not accepted. Check the current runtime state before starting again.',
+  ended: 'The sign-in connection ended before its result was confirmed. Flux is recovering the runtime safely; both clients may need to sign in again.',
+};
+
+/** Why a sign-in did not end signed in, in one line (the pages and the Connect AI window). */
+export function signInFailure(outcome: Pick<ConsoleOutcome, 'error' | 'ended'>, cli: 'Claude Code' | 'Codex'): string {
+  if (outcome.error) return SIGN_IN_ERRORS[outcome.error] ?? SIGN_IN_ERRORS.ended!;
+  if (outcome.ended === 'timed_out') return `The sign-in ran for 15 minutes and was stopped. ${cli} did not report a login.`;
+  return cli === 'Codex' ? 'Codex ended without reporting a login, so you are not signed in.'
+    : 'Claude Code ended without reporting a login, so you are not signed in. If the code was refused, try again and paste the whole code.';
+}
 
 /** F-027 AST-1: plain account labels for a signed-in Claude Code or Codex account. */
 export const accountLabel = (method: AgentRuntimeSignInMethod | null) => (

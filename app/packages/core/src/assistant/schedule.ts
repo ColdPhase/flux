@@ -6,10 +6,10 @@ import { InvalidInputError } from '../access/errors.js';
 // next times are found on the owner's calendar in their own time zone. A time that does not exist on a day (clocks
 // jump forward) runs at the first valid minute after the gap; a repeated time runs once, at its first occurrence.
 
-export const TOO_OFTEN = 'At most once an hour';
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
+
 const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const SHORT_WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -96,12 +96,8 @@ export function scheduleFields(schedule: AssistantJobSchedule): CronFields | nul
       const hours = range(Math.floor(from / 60), Math.floor(to / 60)).filter((hour) => hour * 60 + (from % 60) <= to);
       return { minutes: [from % 60], hours, days: range(1, 31), months: range(1, 12), weekdays: [1, 2, 3, 4, 5], domAny: true, dowAny: false };
     }
-    case 'cron': {
-      const fields = parseCron(schedule.cron);
-      // The one-hour minimum of Anthropic's own Routines (AST-7 "Spacing and caps"): more than one minute fires twice in an hour.
-      if (fields.minutes.length > 1) throw new InvalidInputError(TOO_OFTEN, 'ASSISTANT_JOB_TOO_OFTEN');
-      return fields;
-    }
+    // No minimum interval (AG-9, C-14): a schedule fires at most on the minute's tick.
+    case 'cron': return parseCron(schedule.cron);
     case 'once': return null;
     default: throw invalid('Choose how often it should run');
   }

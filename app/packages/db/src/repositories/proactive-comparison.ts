@@ -11,7 +11,6 @@ function view(row: RuleRow): ProactiveComparisonRule {
   return {
     id: row.id, projectId: row.projectId, ownerUserId: row.ownerUserId, agentId: row.agentId,
     trigger: row.triggerKind, purpose: row.purpose, dataScope: row.dataScope, permittedEffect: row.permittedEffect,
-    maxRunsPerDay: row.maxRunsPerDay, periodBudgetCents: row.periodBudgetCents, perRunCents: row.perRunCents,
     status: row.status, version: row.version, createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(), revokedAt: row.revokedAt?.toISOString() ?? null,
   };
@@ -27,24 +26,21 @@ export function proactiveRuleRows(db: DbExecutor) {
         .where(and(eq(schema.agents.id, agentId), eq(schema.agents.ownerUserId, ownerId), isNull(schema.agents.revokedAt)));
       return Boolean(row);
     },
-    async backgroundBudget(ownerId: string) {
+    /** The owner's background API key: its one daily budget and its price (#854); null without one. */
+    async backgroundKey(ownerId: string) {
       const c = schema.backgroundComputeConnections;
-      const [row] = await db.select({ maxRunsPerDay: c.maxRunsPerDay, periodDays: c.periodDays,
-        periodBudgetCents: c.periodBudgetCents, perRunCents: c.perRunCents,
+      const [row] = await db.select({ dailyBudgetCents: c.dailyBudgetCents,
         inputPriceMicrosPerMTok: c.inputPriceMicrosPerMTok, outputPriceMicrosPerMTok: c.outputPriceMicrosPerMTok,
         priceSource: c.priceSource, priceCheckedOn: c.priceCheckedOn }).from(c)
         .where(and(eq(c.ownerUserId, ownerId), eq(c.usedForBackground, true), isNull(c.revokedAt))).for('share');
       if (!row) return null;
-      return { maxRunsPerDay: row.maxRunsPerDay, periodDays: row.periodDays, periodBudgetCents: row.periodBudgetCents,
-        perRunCents: row.perRunCents, price: connectionPrice(row) };
+      return { dailyBudgetCents: row.dailyBudgetCents, price: connectionPrice(row) };
     },
     async create(input: { id: string; workspaceId: string; projectId: string; ownerUserId: string; command: CreateProactiveComparisonRule }): Promise<ProactiveComparisonRule | 'EXISTS'> {
       const [row] = await db.insert(table).values({
         id: input.id, workspaceId: input.workspaceId, projectId: input.projectId, ownerUserId: input.ownerUserId,
         agentId: input.command.agentId, triggerKind: input.command.trigger, purpose: input.command.purpose,
         dataScope: input.command.dataScope, permittedEffect: input.command.permittedEffect,
-        maxRunsPerDay: input.command.maxRunsPerDay, periodBudgetCents: input.command.periodBudgetCents,
-        perRunCents: input.command.perRunCents,
       }).onConflictDoNothing().returning();
       return row ? view(row) : 'EXISTS';
     },

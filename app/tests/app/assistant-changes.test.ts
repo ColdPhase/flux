@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
   agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantChangeLine, assistantRunChangesPath, assistantRunChangesActionPath, assistantSettingsPath, conversationAssistantChangesPath,
-  NEEDS_YOU_PATH, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUN_LIMITS, personalRunTokenPath,
+  NEEDS_YOU_PATH, personalRunTokenPath,
   type AgentMayDo, type AssistantChange, type AssistantRunUndone, type AssistantSettings, type Conversation, type NeedsYouResponse, type Project, type Workspace,
 } from '@flux/contracts';
 import { createPersonalRunProcessor, recoverPersonalRuns, type PersonalComputeResult, type Principal } from '@flux/core';
@@ -30,7 +30,7 @@ import { ensureWorkspaceAiAllowed, setWorkspaceAi } from './support/workspace-ai
 const connections = new FakeConnections();
 const compute = new FakeCompute();
 const queue = new FakeQueue();
-const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true, toolTurns: PERSONAL_RUN_LIMITS.maxTurns });
+const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
 const tokens = runTokenIssuer(db, apiUrl);
 const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20,
   tools: mcpToolHost(tokens, `${apiUrl}/mcp`), tokens });
@@ -109,7 +109,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
       { body: { body: 'Please tidy the sensor tasks', clientMessageId: randomUUID() } }), 201) as Conversation;
     const connectionId = randomUUID();
     connections.connect(owner.id, connectionId);
-    await runs.enable(human(owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, connectionId, perRunCents: 50, dailyCapCents: 1_000 });
+    await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
     // Jonas's workspace: Ada is a member and contributes to "Shared rig"; Jonas manages it.
     jonasWs = await createWorkspace(peer, 'Jonas lab');
     await addMember(peer, jonasWs.id, owner, 'member');
@@ -257,6 +257,15 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     assert.notEqual((await pool.query(`SELECT status FROM project_work_items WHERE id = $1`, [theirsTask.id])).rows[0].status, 'done');
   });
 
+  test('#843: a run has no change limit of its own: the 21st change in one run applies like the first', async () => {
+    const run = await liveRun();
+    for (let i = 1; i <= 21; i += 1) assert.ok(JSON.parse(text((await run.call('flux_create_task', { task: { title: `Batch task ${i}` } })).message)).workId, `change ${i} applies`);
+    const rows = await changesOf(run.runId);
+    assert.equal(rows.filter((row) => row.state === 'applied').length, 21);
+    assert.equal(rows.some((row) => row.state === 'waiting'), false);
+    await complete(run.runId);
+  });
+
   test('AST-6.7: a person\'s edit between the run\'s read and its write makes that write "Skipped #4: Jonas changed it while I worked"; nothing is retried', async () => {
     const mine = await task(owner, 'Measure the beam angle');
     const run = await liveRun();
@@ -393,7 +402,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     const run = await liveRun();
     await run.call('flux_create_task', { task: { title: 'Committed one' } });
     await run.call('flux_create_task', { task: { title: 'Committed two' } });
-    await pool.query(`UPDATE personal_runs SET updated_at = now() - interval '1 hour' WHERE id = $1`, [run.runId]);
+    await pool.query(`UPDATE personal_runs SET updated_at = now() - interval '2 hours' WHERE id = $1`, [run.runId]);
     assert.ok(await recoverPersonalRuns(personalRunWorkerUnitOfWork(db)) >= 1);
     const items = await listRun(run.runId);
     assert.equal(items.length, 2);
@@ -421,17 +430,16 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     await complete(run.runId);
     const [row] = await changesOf(run.runId);
     assert.deepEqual([row!.receipt!.ownerUserId, row!.receipt!.agentId, row!.receipt!.runId, typeof row!.receipt!.engine], [owner.id, agentId, run.runId, 'string']);
-    assert.equal(row!.receipt!.payer, `Payer org of ${owner.id}`, 'the payer label of the owner\'s consent');
+    assert.equal(row!.receipt!.payer, 'Anthropic API key', 'the connection the run is paid by');
     const everything = JSON.stringify((await pool.query(`SELECT * FROM assistant_changes WHERE run_id = $1`, [run.runId])).rows);
     assert.ok(!everything.includes('sk-ant-'), 'no seeded secret in the change log');
     assert.ok(!everything.includes(run.token), 'no run token in the change log');
   });
 
-  test('AST-6.8: a request behind the working one waits in the lane, starts when it ends, and a third is refused; others see nothing of it', async () => {
+  test('AST-6.8: a request behind the working one waits in the lane and starts when it ends; others see nothing of it', async () => {
     const first = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Tidy the project' });
     const behind = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Turn this into tasks' });
     assert.equal(behind.run.status, 'queued');
-    await assert.rejects(runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'A third' }), { code: 'PERSONAL_RUN_IN_FLIGHT' });
     await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [first.run.id]);
     assert.equal(await processor.process(behind.run.id), 'skipped', 'it waits while the first works');
     assert.equal((await pool.query(`SELECT status FROM personal_runs WHERE id = $1`, [behind.run.id])).rows[0].status, 'queued');

@@ -5,7 +5,7 @@ import {
   assistantJobRunNowPath, assistantJobsPath, type AssistantMorningSummary, type CreateAssistantJob, type SetMorningSummaryByAssistant, type UpdateAssistantJob,
 } from '@flux/contracts';
 import {
-  createAssistantJobs, createPersonalRunUseCases, setMorningSummaryByAssistant, todaysSummary, type AssistantReactionUnitOfWork, type PersonalConnectionLookup,
+  createAssistantJobs, createPersonalRunUseCases, noPersonalConnections, setMorningSummaryByAssistant, todaysSummary, type AssistantReactionUnitOfWork, type PersonalConnectionLookup,
   type PersonalRuntimeAvailability,
 } from '@flux/core';
 import { assistantReactionRows, assistantJobRows, assistantSummaryRows, notificationPreferenceRows, personalRunRows, pushSubscriptionRepository, type Database } from '@flux/db';
@@ -25,7 +25,6 @@ interface Composition {
   queue: PersonalRunQueueFactory;
   connections?: PersonalConnectionLookup;
   providerEnabled?: boolean;
-  toolTurns?: number;
   runtime?: PersonalRuntimeAvailability;
 }
 
@@ -47,9 +46,9 @@ export function assistantJobUnitOfWork(db: Database, queue: PersonalRunQueueFact
   }) };
 }
 
-export function assistantJobUseCases(db: Database, boss: Pick<PgBoss, 'send'>, { queue, connections, providerEnabled = false, toolTurns, runtime }: Composition) {
-  const runs = createPersonalRunUseCases({ uow: personalRunUnitOfWork(db, queue), connections: connections ?? { resolve: async () => null }, providerEnabled,
-    ...(toolTurns !== undefined ? { toolTurns } : {}), ...(runtime ? { runtime } : {}) });
+export function assistantJobUseCases(db: Database, boss: Pick<PgBoss, 'send'>, { queue, connections, providerEnabled = false, runtime }: Composition) {
+  const runs = createPersonalRunUseCases({ uow: personalRunUnitOfWork(db, queue), connections: connections ?? noPersonalConnections, providerEnabled,
+    ...(runtime ? { runtime } : {}) });
   return createAssistantJobs({ uow: assistantJobUnitOfWork(db, queue, boss), startBackground: runs.startBackground });
 }
 

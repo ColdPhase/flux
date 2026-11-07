@@ -186,7 +186,7 @@
 .connection-settings .connection__head h1 { font-size: var(--fs-xl); }
 /* Links on the page line up on the left, under the content they belong to (#763 AG-6). */
 .connection > .ui-btn--link, .connection__saved > .ui-btn--link { align-self: flex-start; }
-@media (max-width: 640px) { .connection-settings__back { display: none; } /* the phone header's Back leads to Agents and AI */ }
+@media (max-width: 640px) { .connection-settings__back { display: none; } /* the phone header's Back leads to AI */ }
 
 /* A label sits close to its own field and apart from the one above (#763 SP-2). */
 .connection__create .connection__label { margin: 8px 0 -6px; }

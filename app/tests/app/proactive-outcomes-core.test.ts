@@ -48,7 +48,7 @@ function scene(items: ProactiveComparisonOutcome[] = [insufficient]) {
         return { asOf: at.toISOString(), utcDayStartsAt: '2026-09-30T00:00:00Z',
           rollingPeriodStartsAt: '2026-08-31T08:00:00Z', startedRequestsToday: 0,
           conservativeCountedCents: 0, observedEstimatedCents: 0, unknownPossibleCents: 0,
-          inFlightCents: 0, currentLimits: null, candidates: [] } satisfies BackgroundComputeUsage;
+          inFlightCents: 0, dailyBudgetCents: null, candidates: [] } satisfies BackgroundComputeUsage;
       },
       async usageContext(place, resultId) {
         calls.push(`context:${place}:${resultId}`);

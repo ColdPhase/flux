@@ -216,7 +216,7 @@ function Body({ onClose, scope, projects, initial, job, turnOn, onSaved }: {
                 aria-invalid={previewError ? true : undefined} aria-describedby={`${titleId}-cron`} onChange={(event) => set({ cron: event.target.value })} />
             </label>
             <p id={`${titleId}-cron`} className="asched__cronnote" role={previewError ? 'alert' : undefined}>
-              {previewError ? previewError : cronOn && preview ? `In words: ${preview.words}` : 'Five fields: minute, hour, day of month, month, day of week. At most once an hour.'}
+              {previewError ? previewError : cronOn && preview ? `In words: ${preview.words}` : 'Five fields: minute, hour, day of month, month, day of week.'}
             </p>
             <label className="asched__field">
               <span className="asched__label">Post the result in</span>

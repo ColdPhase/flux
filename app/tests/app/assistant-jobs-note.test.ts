@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import { ASSISTANT_BACKGROUND_NOTE_VERSION, PERSONAL_RUNTIME_CONSENT_VERSION, type Project, type Workspace } from '@flux/contracts';
+import { ASSISTANT_BACKGROUND_NOTE_VERSION, type Project, type Workspace } from '@flux/contracts';
 import { noPersonalConnections, type AgentRuntimeConfig, type Principal } from '@flux/core';
 import { assistantJobUseCases } from '../../apps/server/src/assistant/jobs.js';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
@@ -36,7 +36,7 @@ describe('the note about background use of a subscription (F-027 A8, AST-2.1)', 
     await pool.query(`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, sign_in_method, auth_method, account_label, signed_in_at)
       VALUES ($1, $2, $3, 'claude_code', 'signed_in', 'claude_account', 'claude.ai', 'o***@example.org', now())`, [randomUUID(), owner.id, bindingId]);
     await personalRunUseCases(db, { queue: queue.factory, connections: noPersonalConnections, providerEnabled: false, runtime })
-      .enable(human(owner), { consentVersion: PERSONAL_RUNTIME_CONSENT_VERSION, agentId, engine: 'runtime' });
+      .enable(human(owner), { agentId, connection: 'claude_plan', model: 'sonnet' });
   });
 
   after(async () => { await pool.query(`DELETE FROM assistant_jobs WHERE owner_user_id = $1`, [owner.id]); });

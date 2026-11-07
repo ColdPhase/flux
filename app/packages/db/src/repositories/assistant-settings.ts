@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
-import type { AgentConnection, AgentMcpPolicy, AssistantSettings, UpdateAssistantSettings } from '@flux/contracts';
+import type { AgentConnection, AgentMcpPolicy, AssistantSettings } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 import { lockAssistantOwner } from './assistant-lock.js';
@@ -17,7 +17,7 @@ export interface AssistantAuthority {
 }
 const view = (row: SettingsRow, connection: { mayDo: AssistantSettings['mayDo'] }): AssistantSettings => ({
   workspaceId: row.workspaceId, ownerUserId: row.ownerUserId, agentId: row.agentId, connectionId: row.connectionId,
-  mayDo: connection.mayDo, backgroundRunsPerDay: row.backgroundRunsPerDay,
+  mayDo: connection.mayDo,
   version: row.version, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
 });
 async function connectionView(tx: Transaction, row: SettingsRow): Promise<AgentConnection | null> {
@@ -71,18 +71,6 @@ export function assistantSettingsRows(tx: Transaction, authority: AssistantAutho
       await lockAssistantOwner(tx, ownerUserId);
       await tx.update(schema.agentConnections).set({ revokedAt: new Date(), updatedAt: new Date() })
         .where(and(eq(schema.agentConnections.ownerUserId, ownerUserId), eq(schema.agentConnections.computeSource, 'owner_assistant')));
-    },
-    async save(ownerUserId: string, workspaceId: string, expected: number, input: UpdateAssistantSettings) {
-      await lockAssistantOwner(tx, ownerUserId);
-      const row = await settings(ownerUserId, workspaceId, true);
-      const connection = row ? await connectionView(tx, row) : null;
-      if (!row || !connection) return null;
-      const current = view(row, connection);
-      if (current.version !== expected) return { conflict: current };
-      const [saved] = await tx.update(schema.assistantSettings).set({ version: current.version + 1, updatedAt: new Date(),
-        ...(input.backgroundRunsPerDay === undefined ? {} : { backgroundRunsPerDay: input.backgroundRunsPerDay }),
-      }).where(eq(schema.assistantSettings.connectionId, row.connectionId)).returning();
-      return view(saved!, connection);
     },
   };
 }

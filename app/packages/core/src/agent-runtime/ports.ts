@@ -52,7 +52,12 @@ export interface RuntimeBindingRow {
   releaseReason: AgentRuntimeReleaseReason | null;
 }
 
+/** The provider's remaining usage of a plan, as the last run saw it (#854); display facts only. */
+export interface RuntimeUsageRow { leftPercent: number | null; window: 'five_hour' | 'weekly' | null; resetsAt: Date | null; limitReached: boolean; readAt: Date }
+
 export interface RuntimeConnectionRow {
+  /** Null when the provider reported nothing yet. */
+  usage?: RuntimeUsageRow | null;
   client: AgentRuntimeClient;
   bindingId: string;
   state: AgentRuntimeConnectionState;

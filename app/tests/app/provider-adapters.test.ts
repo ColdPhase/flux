@@ -160,7 +160,7 @@ for (const wire of WIRES) {
           : providerPersonalCompute({ enabled: true, resolveKey: resolveKeyFor(wire.key), policy, baseUrls: { anthropic: target.replace(/\/v1$/, '') } });
         assert.deepEqual(await compute.dispatch(refused, new AbortController().signal), { kind: 'failed', reason: 'provider_error', billed: 'none' }, target);
       }
-      for (const bad of [request(wire, { model: 'not a model' }), request(wire, { maxTokens: 1_501 }), request(wire, { effort: 'high' as 'low' })])
+      for (const bad of [request(wire, { model: 'not a model' }), request(wire, { maxTokens: 4_001 }), request(wire, { effort: 'high' as 'low' })])
         await assert.rejects(personal(wire).dispatch(bad, new AbortController().signal));
       assert.equal((await sent()).length, 0, 'no request reached any provider');
     });

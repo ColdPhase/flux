@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
 import type { AiPrice, AiProviderKind } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
@@ -14,12 +14,23 @@ export interface PersonalConnectionRow {
   ownerUserId: string;
   status: 'active';
   keyRef: string;
-  payer: { organization: string; workspace: string };
+  /** The owner's label for the key, e.g. "Work OpenRouter". */
+  name: string;
   provider: AiProviderKind;
   model: string;
   baseUrl: string | null;
   price: AiPrice | null;
+  createdAt: Date;
+  dailyBudgetCents: number;
+  timeZone: string;
 }
+
+type Row = typeof c.$inferSelect;
+const connectionOf = (row: Row): PersonalConnectionRow => ({
+  id: row.id, ownerUserId: row.ownerUserId, status: 'active', keyRef: row.id, name: row.name,
+  provider: row.provider, model: row.model, baseUrl: row.baseUrl, price: connectionPrice(row), createdAt: row.createdAt,
+  dailyBudgetCents: row.dailyBudgetCents, timeZone: row.timeZone,
+});
 
 /**
  * The production lookup of the assistant's connection (#68 "Switching production on" step 1, F-020
@@ -34,13 +45,14 @@ export function personalConnectionLookup(db: Database) {
         .where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), isNotNull(c.encryptedKey),
           ...(connectionId !== undefined ? [eq(c.id, connectionId)] : [])))
         .orderBy(desc(c.createdAt), desc(c.id)).limit(1);
-      if (!row) return null;
-      const connection: PersonalConnectionRow = {
-        id: row.id, ownerUserId: row.ownerUserId, status: 'active', keyRef: row.id,
-        payer: { organization: row.payerOrganization, workspace: row.providerWorkspace },
-        provider: row.provider, model: row.model, baseUrl: row.baseUrl, price: connectionPrice(row),
-      };
-      return connection;
+      return row ? connectionOf(row) : null;
+    },
+    /** Every active key of the owner, in the order they were added (Connect AI's order, #854). */
+    async list(ownerUserId: string): Promise<PersonalConnectionRow[]> {
+      const rows = await db.select().from(c)
+        .where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), isNotNull(c.encryptedKey)))
+        .orderBy(asc(c.createdAt), asc(c.id));
+      return rows.map(connectionOf);
     },
   };
 }

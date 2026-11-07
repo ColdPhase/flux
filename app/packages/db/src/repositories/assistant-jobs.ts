@@ -11,7 +11,6 @@ import { notificationRows } from './push.js';
 
 const j = schema.assistantJobs;
 const jr = schema.assistantJobRuns;
-const runs = schema.personalRuns;
 type JobRow = typeof j.$inferSelect;
 type JobRunRow = typeof jr.$inferSelect;
 type NewJobRow = Pick<JobRow, 'id' | 'workspaceId' | 'ownerUserId' | 'projectId' | 'title' | 'text' | 'timeZone' | 'conversationId' | 'postToConversation' | 'enabled' | 'prepared' | 'nextRunAt'>
@@ -20,7 +19,6 @@ type JobChanges = Partial<Pick<JobRow, 'projectId' | 'title' | 'text' | 'timeZon
   | 'nextRunAt' | 'lastRunAt' | 'failureStreak' | 'deletedAt'>> & { schedule?: AssistantJobSchedule };
 
 const toJob = (row: JobRow) => ({ ...row, schedule: row.schedule as unknown as AssistantJobSchedule });
-const startOfDay = (timeZone: string) => sql`(date_trunc('day', now() AT TIME ZONE ${timeZone}) AT TIME ZONE ${timeZone})`;
 
 export function assistantJobRows(db: DbExecutor) {
   async function find(id: string, options: { lock?: boolean } = {}) {
@@ -108,22 +106,6 @@ export function assistantJobRows(db: DbExecutor) {
       await db.execute(sql`DELETE FROM assistant_job_runs WHERE job_id = ${jobId} AND state <> 'running' AND id NOT IN
         (SELECT id FROM assistant_job_runs WHERE job_id = ${jobId} ORDER BY fired_at DESC, id DESC LIMIT ${keep})`);
     },
-    async runsTodayForJob(jobId: string, timeZone: string) {
-      const [row] = await db.select({ total: sql<number>`count(*)::int` }).from(jr)
-        .where(and(eq(jr.jobId, jobId), sql`${jr.state} <> 'skipped'`, sql`${jr.startedAt} >= ${startOfDay(timeZone)}`));
-      return row?.total ?? 0;
-    },
-    async backgroundRunsToday(ownerUserId: string, timeZone: string) {
-      const [row] = await db.select({ total: sql<number>`count(*)::int` }).from(runs)
-        .where(and(eq(runs.ownerUserId, ownerUserId), inArray(runs.kind, ['scheduled', 'morning_summary', 'reaction']), sql`${runs.createdAt} >= ${startOfDay(timeZone)}`));
-      return row?.total ?? 0;
-    },
-    async backgroundLimit(ownerUserId: string, workspaceId: string) {
-      const [row] = await db.select({ limit: schema.assistantSettings.backgroundRunsPerDay }).from(schema.assistantSettings)
-        .where(and(eq(schema.assistantSettings.ownerUserId, ownerUserId), eq(schema.assistantSettings.workspaceId, workspaceId)));
-      return row?.limit ?? null;
-    },
-
     async noteVersion(ownerUserId: string, accountKey: string) {
       const [row] = await db.select({ version: schema.assistantBackgroundNotes.noteVersion }).from(schema.assistantBackgroundNotes)
         .where(and(eq(schema.assistantBackgroundNotes.ownerUserId, ownerUserId), eq(schema.assistantBackgroundNotes.accountKey, accountKey)));

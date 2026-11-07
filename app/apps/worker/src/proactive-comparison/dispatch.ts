@@ -109,9 +109,10 @@ export async function dispatchProactiveComparison(input: { db: Database; candida
     if (!usage) throw new Stop('INVALID_OBSERVED_USAGE');
     const observed = usage;
     return await input.db.transaction(async (tx): Promise<Outcome> => {
-      const { rows, candidate, rule, connection } = await authorizedComparison(tx, input.candidateId,
+      const { rows, candidate, rule } = await authorizedComparison(tx, input.candidateId,
         reservation.connectionId, prepared.ruleVersion, true);
-      if (observed.estimatedCents > Math.min(rule.perRunCents, connection.perRunCents))
+      // A response may not cost more than was reserved for it against the key's daily budget (#854).
+      if (observed.estimatedCents > candidate.reservedCents)
         throw new Stop('OBSERVED_COST_OVER_CEILING', observed);
       if (!answer) {
         const created = await rows.completeInsufficient({ candidateId: candidate.id, id: randomUUID(),

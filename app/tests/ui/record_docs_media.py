@@ -217,7 +217,7 @@ def highlights(browser: Browser, ids: dict, request: APIRequestContext) -> None:
     shoot(page, "highlight-home", {"x": 400, "y": 30, "width": 880, "height": cards["y"] + cards["height"] + 20 - 30})
     window.close()
 
-    # 3. Your own agent, with your permission: Settings > Agents and AI > connect.
+    # 3. Your own agent, with your permission: Settings > AI > connect.
     window = context(browser, size={"width": 1440, "height": 1300})
     page = window.new_page()
     page.goto("/settings/agents/connect")

@@ -114,7 +114,7 @@ gh attestation verify oci://ghcr.io/coldphase/flux-agent-runtime@sha256:<runtime
 
 ## Assistant on your own AI key (optional)
 
-Owners connect their own AI provider in **Settings → Agents and AI**. Two switches decide whether this
+Owners connect their own AI provider in **Settings → AI**. Two switches decide whether this
 installation lets the assistant and background suggestions run; both are off while empty. Set them in
 `.env`; `compose.yaml` passes them to `api` and `worker`:
 

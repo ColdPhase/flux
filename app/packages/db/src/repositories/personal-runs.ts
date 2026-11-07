@@ -4,6 +4,7 @@ import { and, asc, desc, eq, inArray, isNotNull, notInArray, or, sql, type SQL }
 import type { AgentMayDo } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { apiKeySpendToday } from './api-key-spend.js';
 
 /**
  * Drizzle rows for personal assistant runs (issue #68, O-008): enablements, their per-workspace
@@ -20,14 +21,15 @@ type SourceRef =
   | { type: 'message'; id: string; revision: number }
   | { type: 'work'; id: string; revision: number }
   | { type: 'thought'; id: string; sketchId: string; revision: number };
-type NewEnablement = Omit<EnablementRow, 'status' | 'version' | 'consentedAt' | 'createdAt' | 'updatedAt' | 'engine' | 'assistantModel'> & { engine?: EnablementRow['engine']; assistantModel?: string | null };
-type EnablementChanges = Partial<Pick<EnablementRow, 'perRunCents' | 'dailyCapCents' | 'timeZone' | 'status' | 'assistantModel'>>;
+type NewEnablement = Pick<EnablementRow, 'ownerUserId' | 'connectionId' | 'provider' | 'engine'> & { assistantModel: string };
+type EnablementChanges = Partial<Pick<EnablementRow, 'status' | 'assistantModel' | 'connectionId' | 'provider' | 'engine'>>;
 type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
-  | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: RunRow['engine']; silent?: boolean; authority?: RunRow['authority']; backgroundLabel?: string | null };
+  | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: RunRow['engine']; silent?: boolean; authority?: RunRow['authority']; backgroundLabel?: string | null;
+    resumeAt?: Date | null; endReason?: RunRow['endReason']; planLimitResetsAt?: Date | null };
 type RunChanges = Partial<Pick<RunRow, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'costState' | 'chargedMicros' | 'inputTokens'
   | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'committedAt' | 'dispatchedAt' | 'completedAt' | 'endReason' | 'planLimitResetsAt'
-  | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent'> & { answerSources: SourceRef[] }>;
+  | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros'> & { answerSources: SourceRef[] }>;
 type NewProposal = Pick<ProposalRow, 'id' | 'workspaceId' | 'projectId' | 'runId' | 'ownerUserId' | 'fact' | 'interpretation'
   | 'resultTitle' | 'resultFinding' | 'resultEvidence' | 'finishesWorkId'>;
 type ProposalChanges = Partial<Pick<ProposalRow, 'status' | 'decidedBy' | 'decidedAt' | 'resultId'>>;
@@ -40,6 +42,16 @@ const p = schema.assistantProposals;
 const NOTHING_TO_CHANGE = '^\\W*done\\W*\\s*nothing to change\\W*$';
 const IN_FLIGHT: ('queued' | 'reading' | 'dispatching')[] = ['queued', 'reading', 'dispatching'];
 const FINISHED_WORK: ('done' | 'not_pursued')[] = ['done', 'not_pursued'];
+
+/**
+ * A queued run left behind: not one paused until a limit resets (#854), and not one waiting its turn behind the owner's
+ * working run, whose clock may be an hour (#843).
+ */
+const waitingTooLong = (olderThanSeconds: number) => sql`((personal_runs.resume_at IS NULL OR personal_runs.resume_at < now() - (${olderThanSeconds}::int * interval '1 second'))
+  AND NOT EXISTS (SELECT 1 FROM personal_runs w WHERE w.owner_user_id = personal_runs.owner_user_id AND w.status IN ('reading', 'dispatching')))`;
+
+/** What a run lost with its worker keeps counted: what it had spent and the most one more request could have cost, never more than it held (#854). */
+const lostReservation = sql<number>`LEAST(${r.reservedMicros}, ${r.chargedMicros} + COALESCE(${r.largestRequestMicros}, ${r.reservedMicros}))`;
 
 function toRun(row: RunRow) {
   const { answerSources, ...rest } = row;
@@ -95,22 +107,16 @@ export function personalRunRows(db: DbExecutor) {
         .onConflictDoUpdate({ target: [a.ownerUserId, a.workspaceId], set: { agentId, createdAt: new Date() } });
     },
 
-    /**
-     * Charged micros of observed runs plus held reservations (in-flight and unknown runs) since
-     * the start of the owner's local day; released runs cost nothing.
-     */
-    async spendToday(ownerUserId: string, timeZone: string, exceptRunId?: string) {
-      const start = sql`(date_trunc('day', now() AT TIME ZONE ${timeZone}) AT TIME ZONE ${timeZone})`;
-      const result = await db.execute(sql`SELECT
-          COALESCE(sum(charged_micros) FILTER (WHERE cost_state = 'observed'), 0)::int AS charged,
-          COALESCE(sum(reserved_micros) FILTER (WHERE cost_state IN ('reserved', 'unknown')), 0)::int AS reserved,
-          (${start} + interval '1 day') AS resets_at
-        FROM personal_runs
-        WHERE owner_user_id = ${ownerUserId} AND created_at >= ${start}
-          ${exceptRunId ? sql`AND id <> ${exceptRunId}` : sql``}`);
-      const row = result.rows[0] as { charged: number; reserved: number; resets_at: Date | string };
-      return { chargedMicros: Number(row.charged), reservedMicros: Number(row.reserved), resetsAt: new Date(row.resets_at) };
+    /** The person's own time zone (their notification settings'; UTC when unset): a schedule they ask for runs in it. */
+    async personTimeZone(userId: string) {
+      const [row] = await db.select({ zone: schema.notificationPreferences.timeZone }).from(schema.notificationPreferences)
+        .where(eq(schema.notificationPreferences.userId, userId));
+      return row?.zone ?? 'UTC';
     },
+
+    /** Today's use of an API key's one daily budget (#854), in the key's time zone; the key's own budget is passed in. */
+    keySpend: (connection: { id: string; dailyBudgetCents: number; timeZone: string }, exceptRunId?: string) =>
+      apiKeySpendToday(db, connection.id, exceptRunId, { dailyBudgetCents: connection.dailyBudgetCents, timeZone: connection.timeZone }),
 
     async locateConversation(conversationId: string) {
       const [row] = await db.select({ workspaceId: schema.projectConversations.workspaceId, projectId: schema.projectConversations.projectId })
@@ -127,9 +133,14 @@ export function personalRunRows(db: DbExecutor) {
 
     /** Working runs (any kind) and the owner's own queued requests: at most one of each (AST-6 queue). Queued background runs have their own limit. */
     async inFlightCount(ownerUserId: string) {
-      const rows = await db.select({ id: r.id }).from(r).where(and(eq(r.ownerUserId, ownerUserId),
-        or(inArray(r.status, ['reading', 'dispatching']), and(eq(r.status, 'queued'), eq(r.authority, 'owner_request'))))).limit(3);
-      return rows.length;
+      const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(r).where(and(eq(r.ownerUserId, ownerUserId),
+        or(inArray(r.status, ['reading', 'dispatching']), and(eq(r.status, 'queued'), eq(r.authority, 'owner_request')))));
+      return row?.count ?? 0;
+    },
+
+    async changeCount(runId: string) {
+      const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.assistantChanges).where(eq(schema.assistantChanges.runId, runId));
+      return row?.count ?? 0;
     },
 
     /**
@@ -141,7 +152,9 @@ export function personalRunRows(db: DbExecutor) {
       if (busy.length) return true;
       const [self] = await db.select({ authority: r.authority }).from(r).where(eq(r.id, exceptRunId));
       if (!self || self.authority === 'owner_request') return false;
-      return (await db.select({ id: r.id }).from(r).where(and(eq(r.ownerUserId, ownerUserId), eq(r.status, 'queued'), eq(r.authority, 'owner_request'))).limit(1)).length > 0;
+      // A paused request of the owner's holds nothing back until it can start.
+      return (await db.select({ id: r.id }).from(r).where(and(eq(r.ownerUserId, ownerUserId), eq(r.status, 'queued'), eq(r.authority, 'owner_request'),
+        sql`(${r.resumeAt} IS NULL OR ${r.resumeAt} <= now())`)).limit(1)).length > 0;
     },
 
     /** The run holding this owner's lane, if any: what a queued request is waiting behind. */
@@ -153,6 +166,7 @@ export function personalRunRows(db: DbExecutor) {
     /** Queued runs whose owner's lane is free, owner requests first and then oldest first: the next starts when the one before it ends. */
     async startableQueued(limit: number) {
       const rows = await db.execute(sql`SELECT DISTINCT ON (q.owner_user_id) q.id FROM personal_runs q WHERE q.status = 'queued'
+        AND (q.resume_at IS NULL OR q.resume_at <= now())
         AND NOT EXISTS (SELECT 1 FROM personal_runs a WHERE a.owner_user_id = q.owner_user_id AND a.status IN ('reading', 'dispatching'))
         ORDER BY q.owner_user_id, (q.authority <> 'owner_request'), q.created_at, q.id LIMIT ${limit}`);
       return (rows.rows as { id: string }[]).map((row) => row.id);
@@ -180,9 +194,9 @@ export function personalRunRows(db: DbExecutor) {
     async endStale(ownerUserId: string, olderThanSeconds: number) {
       const stale = and(eq(r.ownerUserId, ownerUserId), sql`${r.updatedAt} < now() - (${olderThanSeconds}::int * interval '1 second')`);
       const undispatched = await db.update(r).set({ status: 'unavailable', costState: 'released', chargedMicros: 0, completedAt: new Date(), updatedAt: new Date() })
-        .where(and(stale, inArray(r.status, ['queued', 'reading']))).returning();
+        .where(and(stale, or(eq(r.status, 'reading'), and(eq(r.status, 'queued'), waitingTooLong(olderThanSeconds))))).returning();
       // A runtime run whose worker vanished may have changed things through its token: its end is unknown, never rerun.
-      const lost = await db.update(r).set({ status: 'provider_failed', costState: 'unknown', completedAt: new Date(), updatedAt: new Date(),
+      const lost = await db.update(r).set({ status: 'provider_failed', costState: 'unknown', chargedMicros: 0, reservedMicros: lostReservation, completedAt: new Date(), updatedAt: new Date(),
         endReason: sql`CASE WHEN ${r.engine} = 'runtime' THEN 'unknown' ELSE ${r.endReason} END` })
         .where(and(stale, eq(r.status, 'dispatching'))).returning();
       return [...undispatched, ...lost].map(toRun);
@@ -194,9 +208,11 @@ export function personalRunRows(db: DbExecutor) {
         status: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'provider_failed' ELSE 'unavailable' END`,
         costState: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'unknown' ELSE 'released' END`,
         endReason: sql`CASE WHEN ${r.status} = 'dispatching' AND ${r.engine} = 'runtime' THEN 'unknown' ELSE ${r.endReason} END`,
+        reservedMicros: sql`CASE WHEN ${r.status} = 'dispatching' THEN ${lostReservation} ELSE ${r.reservedMicros} END`,
         chargedMicros: 0, completedAt: new Date(), updatedAt: new Date(),
       }).where(sql`${r.id} IN (SELECT id FROM personal_runs WHERE status IN (${sql.join(IN_FLIGHT.map((state) => sql`${state}`), sql`, `)})
         AND updated_at < now() - (${olderThanSeconds}::int * interval '1 second')
+        AND (status <> 'queued' OR ${waitingTooLong(olderThanSeconds)})
         ORDER BY updated_at, id LIMIT ${limit} FOR UPDATE SKIP LOCKED)`).returning();
       return rows.map(toRun);
     },
@@ -290,15 +306,6 @@ export function personalRunRows(db: DbExecutor) {
         .innerJoin(schema.agentConnections, eq(schema.agentConnections.id, schema.assistantSettings.connectionId))
         .where(and(eq(schema.assistantSettings.ownerUserId, ownerUserId), eq(schema.assistantSettings.workspaceId, workspaceId)));
       return row?.mayDo ?? null;
-    },
-
-    async runtimeRunsToday(ownerUserId: string, timeZone: string, exceptRunId?: string) {
-      const start = sql`(date_trunc('day', now() AT TIME ZONE ${timeZone}) AT TIME ZONE ${timeZone})`;
-      const result = await db.execute(sql`SELECT count(*)::int AS runs FROM personal_runs
-        WHERE owner_user_id = ${ownerUserId} AND engine = 'runtime' AND created_at >= ${start}
-          AND (dispatched_at IS NOT NULL OR status IN ('queued', 'reading', 'dispatching'))
-          ${exceptRunId ? sql`AND id <> ${exceptRunId}` : sql``}`);
-      return Number((result.rows[0] as { runs: number }).runs);
     },
 
     async listProposals(projectId: string, window: Window) {

@@ -128,14 +128,25 @@ class CodexSignIn(unittest.TestCase):
         expect(page).not_to_have_url(re.compile(r"/sign-up(?:\?|$)"))
         type(self).state = page.context.storage_state()
 
-    def test_02_settings_offers_sign_in_with_chatgpt_as_a_link(self) -> None:
+    def test_02_connect_ai_signs_in_to_chatgpt_in_its_window(self) -> None:
+        """#854: the device code is a step of the one window; a sign-in in progress ends only through its own Cancel."""
         for phone in (True, False):
-            page, _ = self.stubbed(phone=phone, script=[])
+            page, received = self.stubbed(phone=phone, script=[{"t": "state", "state": "running"}, {"t": "device", "url": "https://auth.openai.com/codex/device", "code": CODE}])
             page.goto("/settings/agents")
-            link = page.get_by_role("link", name=re.compile("^Sign in with ChatGPT"))
-            expect(link).to_have_attribute("href", "/settings/agents/codex")
-            expect(page.get_by_role("link", name=re.compile("^Sign in with Claude"))).to_be_visible()
+            connect = page.get_by_role("region", name="Connect AI", exact=True)
+            connect.get_by_role("button", name="Connect AI", exact=True).click()
+            window = page.get_by_role("dialog", name="Connect your AI")
+            expect(window.locator("[data-choice=claude_plan]")).to_be_visible()
+            expect(window.locator("[data-choice=chatgpt_plan]")).to_contain_text("ChatGPT plan")
+            window.locator("[data-choice=chatgpt_plan]").click()
+            window.get_by_role("button", name="Continue").click()
+            expect(window.locator(".rt-device__code")).to_have_text(CODE)
+            self.assertIn({"ticket": {"client": "codex", "method": "device_code"}}, received)
+            page.keyboard.press("Escape")
+            expect(window.locator(".rt-device__code")).to_be_visible()
+            expect(page).to_have_url(re.compile(r"/settings/agents$"))
             self.no_sideways_scroll(page)
+            shot(page, f"connect-ai-window-code-{'phone-390' if phone else 'desktop-1440'}")
 
     def test_03_the_card_shows_the_code_large_with_copy_and_open_and_no_paste(self) -> None:
         """AST-1.6: the code at large size with "Copy and open ChatGPT"; nothing to paste back; the terminal under Show details."""
@@ -218,11 +229,13 @@ class CodexSignIn(unittest.TestCase):
         for dark in (False, True):
             page, _ = self.stubbed(phone=True, script=[], status=SIGNED_IN, dark=dark)
             page.goto("/settings/agents")
-            block = page.get_by_label("Codex in Flux", exact=True)
-            expect(block).to_contain_text("Codex in Flux · signed in")
+            row = page.get_by_role("region", name="Connect AI", exact=True).locator("li[data-connection=chatgpt_plan]")
+            expect(row.locator(".sset-row__t")).to_have_text("ChatGPT plan · Connected")
+            row.get_by_role("link", name="Change ChatGPT plan").click()
+            block = page.locator("section.rt")
+            expect(block.get_by_role("heading", name="ChatGPT plan · connected")).to_be_visible()
             expect(block).to_contain_text("ChatGPT · your subscription")
-            expect(block.get_by_role("button", name="Sign out of ChatGPT")).to_be_visible()
-            expect(page.get_by_role("link", name=re.compile("^Sign in with ChatGPT"))).to_have_count(0)
+            expect(block.get_by_role("button", name="Sign out", exact=True)).to_be_visible()
             self.no_sideways_scroll(page)
             shot(page, f"codex-signed-in-settings-phone-390-{'dark' if dark else 'light'}")
             page.context.close()

@@ -321,10 +321,10 @@ class PhoneShellJourney(unittest.TestCase):
         page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
-        # Spokój E04p: the account, then Appearance, Notifications and Agents and AI as rows; Keyboard shortcuts only with a keyboard.
+        # Spokój E04p: the account, then Appearance, Notifications and AI as rows; Keyboard shortcuts only with a keyboard.
         expect(page.locator('a[href="/settings/account"]')).to_have_count(1)
         self.assertEqual([text.split("\n")[0] for text in page.locator("ul.sset-card a.sset-row").all_inner_texts()],
-                         ["Appearance", "Notifications", "Agents and AI", "Company"])
+                         ["Appearance", "Notifications", "AI", "Company"])
         page.get_by_role("link", name=re.compile("^Appearance")).click()
         expect(page).to_have_url(f"{ORIGIN}/settings/appearance")
         expect(page.get_by_role("radiogroup", name="Theme")).to_be_visible()
@@ -334,7 +334,7 @@ class PhoneShellJourney(unittest.TestCase):
         page.locator("header").get_by_role("button", name="Back", exact=True).click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         for title, url, heading in (("Notifications", "/settings/notifications", "Settings"),
-                                    ("Agents and AI", "/settings/agents", "Settings"),
+                                    ("AI", "/settings/agents", "Settings"),
                                     ("Account", "/settings/account", "Settings")):
             page.locator(f'a[href="{url}"]').click()
             expect(page).to_have_url(f"{ORIGIN}{url}")
@@ -343,10 +343,10 @@ class PhoneShellJourney(unittest.TestCase):
             self.assertGreaterEqual(min(self.box(back)["width"], self.box(back)["height"]), 44)
             back.click()
             expect(page).to_have_url(f"{ORIGIN}/settings")
-        page.get_by_role("link", name=re.compile("^Agents and AI")).click()
+        page.get_by_role("link", name=re.compile(r"^AI\b")).click()
         expect(page.get_by_role("link", name=re.compile("^Local co-work on this computer"))).to_be_visible()
         page.get_by_role("link", name=re.compile("^Local co-work on this computer")).click()
-        # #763 AG-2: Connect your agent is a Settings page, with the way back to Agents and AI first on the left.
+        # #763 AG-2: Connect your agent is a Settings page, with the way back to Settings › AI first on the left.
         expect(page).to_have_url(f"{ORIGIN}/settings/agents/connect")
         page.locator("header").get_by_role("button", name="Back", exact=True).click()
         expect(page).to_have_url(f"{ORIGIN}/settings/agents")

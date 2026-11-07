@@ -36,14 +36,10 @@ async function fixture() {
     { body: { name: 'Comparison agent', owner: 'self' } }), 201) as { id: string }).id;
   const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`,
     { body: { agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
-      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal',
-      maxRunsPerDay: 3, periodBudgetCents: 15, perRunCents: 5 } }), 201) as { id: string; version: number };
+      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string; version: number };
   const connection = expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
     provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'cancellation-fixture-'.repeat(4)}END8`,
-    payerOrganization: 'Local fixture payer', providerWorkspace: 'Local fixture workspace',
-    workspaceScopedKeyConfirmed: true, payerAuthorityConfirmed: true,
-    providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
-    maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 15, perRunCents: 5,
+    dailyBudgetCents: 17,
   } }), 201) as { id: string };
   // Production activation still fails closed. This fixture enables only its isolated rule.
   await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [rule.id]);

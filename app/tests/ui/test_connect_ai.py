@@ -1,13 +1,13 @@
-"""Browser tests for one Connect AI entry for both AI modes (F-022 T2, #277).
+"""Browser tests for Connect AI in Settings › AI (#854, #843; F-036 CA-1 to CA-3; earlier F-022 T2, #277).
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose application
 (composed with the TEST-ONLY anthropic-mock fixture key connection that test_personal_assistant uses; no
-model is called). Settings -> Agents and AI shows two sections, Agent in Flux and Your agent app. With the
-runtime on (a stubbed status, F-027 AST-1.1) the sign-in choices come first, Sign in with Claude and Sign in
-with ChatGPT, and the API key choices sit under a folded "Other ways to connect". With the runtime off
-(AST-1.2) one plain sentence says so and the API key choices show. The page uses no jargon (AST-10.2).
-Details and the assistant's empty state link there; the project Agents view shows each entry's mode; and a
-second member never sees, or can change, the first member's connections, keys or the runtime.
+model is called). Settings › AI shows Connect AI first: one row per connection a person holds at the same time
+(a Claude plan, a ChatGPT plan, API keys), each with one usage line and "Change" on the right; then the assistant,
+which uses one of them; then their own agent app. The check stack runs without the agent runtime, so the plans are
+rendered from a stubbed runtime status (wording and layout, not sign-in). Flux shows no limits of its own and never
+offers to switch a connection. Details link there; the project Agents view shows each MCP entry; and a second member
+never sees, or can change, the first member's connections, keys or the runtime.
 
 Two members share one workspace: Ines (owner of an MCP connection and of the assistant) and Tom (nothing
 connected, the no-AI journey).
@@ -20,8 +20,9 @@ import os
 import re
 import time
 import unittest
+from datetime import datetime, timedelta, timezone
 
-from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
+from playwright.sync_api import Browser, BrowserContext, Locator, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
@@ -34,35 +35,38 @@ STAMP = int(time.time() * 1000)
 INES = {"name": "Ines Moreau", "email": f"ines.connect+{STAMP}@example.test"}
 TOM = {"name": "Tom Reyes", "email": f"tom.connect+{STAMP}@example.test"}
 CONNECTION = "Ines desk laptop"
-CONSENT = "o-008-2026-10-02"
-MODE_B = "Your agent app (MCP)"  # the project Agents view keeps its label
-MODE_B_PAGE = "Your agent app"  # Settings -> Agents and AI, plain words (F-027 AST-10.2)
-MODE_A = "Agent in Flux"
-OFF_SENTENCE = "Signing in with your Claude or ChatGPT subscription isn’t turned on for this Flux server."
+KEY_NAME = "Ines lab key"
+MODE_B_PAGE = "Your agent app"  # Settings › AI, plain words (F-027 AST-10.2)
 # F-027 AST-10.2: words no Flux screen shows. "API" is allowed in "API key", "API keys", "API credits", and the
 # payer labels "API billing" that the #277 change list names.
 JARGON = re.compile(r"\b(scopes?|grants?|MCP|tokens?|capabilit(?:y|ies)|execut(?:e|ion)|runtimes?|transports?|OAuth|"
                     r"policy|policies|proposals?|payloads?|slots?|jobs?|reactions?|cron)\b|\bAPI\b(?!\s+(?:keys?|credits|billing)\b)", re.I)
+# Words of a limit Flux would set itself, or of a switch to another payer; none may appear (#843, #854).
+FLUX_LIMITS = re.compile(r"(?i)\b(runs? a day|requests? a day|per run|changes per run|per request|allowance|switch to|use another|instead)\b")
 RUNTIME_ON = {"enabled": True, "clients": {"claude_code": "available", "codex": "available"}, "commercialTerms": None,
               "idleReleaseDays": None, "pool": "available", "binding": None, "lastRelease": None,
               "connections": {"claude_code": None, "codex": None}}
-# F-027 AST-1 "Which account should I use?", as the spec words it (docs/product/assistant.md). The page uses the typographic
-# apostrophe, so the comparison reads both as one.
-WHICH_ACCOUNT = (
-    "Claude Max and Team plans include monthly API credits. Anthropic recommends an API key for work that runs on its own, and a key from "
-    "your Claude Console organization uses those credits (about 5 minutes in the Claude Console).",
-    "Using Flux for work? In the EU and Switzerland, Claude's personal plans (Pro, Max) are for non-business use. A Team plan or an API key covers work.",
-)
+SOON = (datetime.now(timezone.utc) + timedelta(hours=3)).isoformat().replace("+00:00", "Z")
+LATER = (datetime.now(timezone.utc) + timedelta(days=3)).isoformat().replace("+00:00", "Z")
 
 
-def signed_in(method: str, payer: str, auth: str) -> dict:
+def usage(left: int | None, window: str | None = None, resets: str | None = None, reached: bool = False) -> dict:
+    return {"leftPercent": left, "window": window, "resetsAt": resets, "limitReached": reached, "readAt": "2026-10-16T10:30:00.000Z"}
+
+
+def signed_in(method: str, payer: str, auth: str, at: str, used: dict | None = None) -> dict:
     return {"state": "signed_in", "signInMethod": method, "authMethod": auth, "plan": None, "accountLabel": None,
-            "signedInAt": "2026-10-16T10:05:00.000Z", "payer": payer, "accountChange": None, "signOut": None}
+            "signedInAt": at, "payer": payer, "accountChange": None, "signOut": None, "usage": used}
 
 
-def runtime_signed_in(claude: tuple[str, str, str], codex: tuple[str, str, str]) -> dict:
+def runtime_signed_in(claude: dict | None, codex: dict | None) -> dict:
+    """Both plans signed in (or one of them), with what each provider reported."""
     return {**RUNTIME_ON, "binding": {"state": "active", "boundAt": "2026-10-16T10:00:00.000Z", "lastUsedAt": None, "idleReleaseAt": None},
-            "connections": {"claude_code": signed_in(*claude), "codex": signed_in(*codex)}, "auth": {}}
+            "connections": {"claude_code": claude, "codex": codex}, "auth": {}}
+
+
+CLAUDE = signed_in("claude_account", "claude_plan", "claude.ai", "2026-10-16T10:05:00.000Z")
+CODEX = signed_in("device_code", "chatgpt_plan", "chatgpt", "2026-10-16T10:07:00.000Z", usage(48, "weekly", LATER))
 
 
 class ConnectAiJourney(unittest.TestCase):
@@ -115,6 +119,40 @@ class ConnectAiJourney(unittest.TestCase):
     def no_horizontal_scroll(self, page: Page) -> None:
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
 
+    def above(self, first, second) -> bool:
+        a = first.bounding_box()
+        b = second.bounding_box()
+        self.assertIsNotNone(a, "first element is visible")
+        self.assertIsNotNone(b, "second element is visible")
+        return a["y"] < b["y"]
+
+    def stub_runtime(self, page: Page, status: dict | None = None) -> None:
+        """A stubbed runtime status (the check suite runs with it off); the sign-in pages are not read here."""
+        page.route(re.compile(r".*/api/v1/agent-runtime$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(status or RUNTIME_ON)))
+
+    def sections(self, page: Page) -> tuple[Locator, Locator, Locator]:
+        return (page.get_by_role("region", name="Connect AI", exact=True), page.get_by_role("region", name="Your assistant", exact=True),
+                page.get_by_role("region", name=MODE_B_PAGE, exact=True))
+
+    def assert_change_beside_the_text(self, row: Locator) -> None:
+        """#854: "Change" sits on the right of its row, vertically centred, and never overlaps the name or the usage line."""
+        geometry = row.evaluate("""row => {
+          const box = (node) => { const r = node.getBoundingClientRect(); return {left: r.left, right: r.right, top: r.top, bottom: r.bottom}; };
+          const change = row.querySelector('.cai__change');
+          const texts = [...row.querySelectorAll('.sset-row__t, .cai__usage-text')].map((node) => {
+            const range = document.createRange(); range.selectNodeContents(node);
+            const rects = [...range.getClientRects()];
+            return {right: Math.max(...rects.map((r) => r.right)), top: Math.min(...rects.map((r) => r.top)), bottom: Math.max(...rects.map((r) => r.bottom))};
+          });
+          return {row: box(row), change: box(change), texts};
+        }""")
+        change, row_box = geometry["change"], geometry["row"]
+        for text in geometry["texts"]:
+            self.assertLessEqual(text["right"], change["left"] - 4, f"the text ends before Change: {geometry}")
+        self.assertLessEqual(row_box["right"] - change["right"], 24, f"Change is at the right of its row: {geometry}")
+        middle = (row_box["top"] + row_box["bottom"]) / 2
+        self.assertAlmostEqual((change["top"] + change["bottom"]) / 2, middle, delta=2, msg=f"Change is vertically centred: {geometry}")
+
     def test_01_two_members_one_connection(self) -> None:
         for key, person in (("ines", INES), ("tom", TOM)):
             page = self.page(None)
@@ -135,57 +173,57 @@ class ConnectAiJourney(unittest.TestCase):
                               "scopes": ["flux.context.read", "flux.proposal.write"], "name": CONNECTION, "clientDesignation": "codex"}, status=201)
         type(self).ids = {"workspace": ws["id"], "project": project["id"], "agent": agent["id"], "connection": connection["id"]}
 
-    def test_02_settings_has_two_sections_and_the_runtime_off_copy(self) -> None:
+    def test_02_settings_ai_puts_connect_ai_first_then_the_assistant_and_the_agent_app(self) -> None:
+        """#854 (mockup Main): with nothing connected yet, Connect AI opens its window with the three kinds of connection. The check
+        stack does not run the plans, so they say so in their row; an API key is offered. The assistant and the agent app follow."""
         page = self.page("ines")
         page.goto("/settings/agents")
-        expect(page.get_by_role("heading", level=2, name="Agents and AI")).to_be_visible()
-        flux = page.get_by_role("region", name=MODE_A, exact=True)
-        app = page.get_by_role("region", name=MODE_B_PAGE, exact=True)
-        expect(flux).to_be_visible()
-        expect(app).to_be_visible()
-        # Agent in Flux: the assistant, and the instance's switch said in one plain sentence (AST-1.2).
-        card = flux.get_by_role("region", name=re.compile("^Your assistant"))
+        expect(page.get_by_role("heading", level=2, name="AI", exact=True)).to_be_visible()
+        connect, assistant, app = self.sections(page)
+        expect(connect).to_contain_text("Plans can run side by side. Each agent uses one.")
+        expect(connect.get_by_role("button", name="Connect another")).to_have_count(0)
+        connect.get_by_role("button", name="Connect AI", exact=True).click()
+        window = page.get_by_role("dialog", name="Connect your AI")
+        expect(window).to_contain_text("Flux adds no limits of its own.")
+        for kind, title in (("claude_plan", "Claude plan"), ("chatgpt_plan", "ChatGPT plan")):
+            row = window.locator(f"[data-choice={kind}]")
+            expect(row).to_contain_text(title)
+            expect(row).to_contain_text("Not offered on this Flux server")
+            expect(row.locator("input")).to_be_disabled()
+        api_key = window.locator("[data-choice=api_key]")
+        expect(api_key).to_contain_text("API key")
+        expect(api_key.locator("input")).to_be_checked()
+        window.get_by_role("button", name="Cancel").click()
+        expect(window).to_have_count(0)
+        card = assistant.get_by_role("region", name=re.compile("^Your assistant"))
         expect(card.get_by_role("link", name="Set up", exact=True)).to_have_attribute("href", "/settings/assistant")
         expect(card.get_by_role("link", name="How it works")).to_have_attribute("href", "/settings/assistant/how")
-        expect(flux).to_contain_text(OFF_SENTENCE)
-        expect(flux.get_by_role("link", name=re.compile("^Sign in with"))).to_have_count(0)
-        expect(flux.get_by_text("Sign in with Claude", exact=True)).to_have_count(0)
-        expect(flux.get_by_text("Sign in with ChatGPT", exact=True)).to_have_count(0)
-        # The API key choices are shown plainly when sign-in is off, and lead to the one AI connections page (#513).
-        api_key = flux.get_by_role("link", name=re.compile("^Use an API key"))
-        expect(api_key).to_be_visible()
-        expect(api_key).to_have_attribute("href", "/settings/ai-connections")
-        # AI setup starts with the assistant card (Spokój E04, #513 M4); the ways to connect follow it.
-        self.assertTrue(self.above(card, flux.get_by_text(OFF_SENTENCE)), "the assistant card comes before the ways to connect")
-        self.assertTrue(self.above(card, api_key))
-        # Your agent app: mode (b) connections; no client guide with command-line words on this page.
+        self.assertTrue(self.above(connect, assistant), "Connect AI comes first")
+        self.assertTrue(self.above(assistant, app), "then the assistant, then the agent app")
+        # Your agent app: MCP connections; no client guide with command-line words on this page.
         # #763 SG-6: the client and its Agent tag first, the device in the meta line ("Codex · for you · Ines desk laptop").
         expect(app.get_by_role("link", name=re.compile(f"^Codex.*for you · {CONNECTION}"))).to_have_attribute("href", "/connect-agent")
         expect(app.get_by_role("link", name="Local co-work on this computer")).to_have_attribute("href", "/connect-agent")
         expect(app).not_to_contain_text("claude mcp add")
-        for text in (page.locator("main, .pane-in").first.inner_text(),):
-            self.assertNotRegex(text, r"(?i)three ways", "no copy counts the ways wrongly")
+        for region in (connect, assistant):
+            self.assertIsNone(FLUX_LIMITS.search(region.inner_text()), f"no Flux limit or switch: {region.inner_text()!r}")
         shot(page, "connect-ai-desktop-1440")
 
-    def test_03_phone_width_keeps_both_sections_readable(self) -> None:
+    def test_03_phone_width_keeps_every_section_readable(self) -> None:
         page = self.page("ines", phone=True)
         page.goto("/settings/agents")
-        expect(page.get_by_role("region", name=MODE_A, exact=True)).to_be_visible()
-        expect(page.get_by_role("region", name=MODE_B_PAGE, exact=True)).to_be_visible()
-        # #513 M4: on the phone the whole assistant card is on the first screen, before the ways to connect.
-        card = page.get_by_role("region", name=re.compile("^Your assistant"))
-        expect(card.get_by_role("link", name="How it works")).to_be_visible()
-        card_box = card.bounding_box()
-        self.assertIsNotNone(card_box)
-        self.assertLessEqual(card_box["y"] + card_box["height"], PHONE["height"], f"the assistant card fits the first screen: {card_box}")
-        self.assertTrue(self.above(card, page.get_by_text(OFF_SENTENCE)))
+        connect, assistant, app = self.sections(page)
+        expect(connect).to_be_visible()
+        expect(assistant).to_be_visible()
+        expect(app).to_be_visible()
+        self.assertTrue(self.above(connect, assistant))
         self.no_horizontal_scroll(page)
         shot(page, "connect-ai-phone-390")
         page.goto("/settings")
-        expect(page.get_by_role("link", name=re.compile("^Agents and AI"))).to_be_visible()
+        expect(page.get_by_role("link", name=re.compile("^AI\\b"))).to_have_attribute("href", "/settings/agents")
         self.no_horizontal_scroll(page)
 
-    def test_04_details_and_the_assistant_empty_state_link_there(self) -> None:
+    def test_04_details_link_to_settings_ai(self) -> None:
         page = self.page("tom")
         # The private note composer lives in the Sketchbook (New > Private note opens it).
         page.goto("/map")
@@ -197,19 +235,15 @@ class ConnectAiJourney(unittest.TestCase):
         expect(link).to_have_attribute("href", "/settings/agents")
         link.click()
         expect(page).to_have_url(re.compile(r"/settings/agents$"))
-        page.goto("/settings/assistant")
-        empty = page.get_by_role("link", name="Ways to connect")
-        expect(empty).to_have_attribute("href", "/settings/agents")
-        empty.click()
-        expect(page.get_by_role("region", name=MODE_A, exact=True)).to_be_visible()
+        expect(page.get_by_role("region", name="Connect AI", exact=True)).to_be_visible()
 
     def test_05_no_ai_journey_nothing_connected(self) -> None:
         page = self.page("tom")
         page.goto("/settings/agents")
-        flux = page.get_by_role("region", name=MODE_A, exact=True)
-        app = page.get_by_role("region", name=MODE_B_PAGE, exact=True)
-        expect(flux).to_contain_text("not set up")
-        expect(flux).to_contain_text(OFF_SENTENCE)
+        connect, assistant, app = self.sections(page)
+        expect(connect.locator("li[data-connection]")).to_have_count(0)
+        expect(connect.get_by_role("button", name="Connect AI", exact=True)).to_be_visible()
+        expect(assistant).to_contain_text("not set up")
         expect(app.get_by_role("link", name="Local co-work on this computer")).to_be_visible()
         expect(app.locator(".sset-row__identity")).to_have_count(0)
         expect(page.get_by_text("Your connected agents could not be listed")).to_have_count(0)
@@ -227,8 +261,10 @@ class ConnectAiJourney(unittest.TestCase):
         self.assertEqual(status["state"], "not_enabled")
         assistant = self.api(ines, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents", {"name": "Ines personal assistant", "owner": "self"}, status=201)
         type(self).ids["assistant_agent"] = assistant["id"]
-        self.api(ines, "POST", "/api/v1/personal-assistant", {"consentVersion": CONSENT, "agentId": assistant["id"], "perRunCents": 8,
-                 "dailyCapCents": 100, "timeZone": "Europe/Warsaw"}, status=201)
+        # #854: the model of a connection, Connect AI's default here (the TEST-ONLY fixture key); nothing else to agree to.
+        choice = self.api(ines, "GET", "/api/v1/personal-assistant/model", status=200)
+        self.assertIsNotNone(choice["default"])
+        self.api(ines, "POST", "/api/v1/personal-assistant", {"agentId": assistant["id"], **choice["default"]}, status=201)
         ines.goto(f"/projects/{self.ids['project']}/agents")
         rows = ines.get_by_role("list", name="Agents in this project").get_by_role("listitem")
         # Project lists contain only MCP connections, even for the assistant owner (#522).
@@ -237,23 +273,26 @@ class ConnectAiJourney(unittest.TestCase):
         expect(ines.get_by_role("region", name="Assistant join requests")).to_have_count(0)
         expect(rows.filter(has_text=CONNECTION)).to_have_count(1)
         expect(rows.filter(has_text=CONNECTION)).to_contain_text("for Ines")
-        # Settings keeps the owner’s assistant and payer reachable.
+        # Settings keeps the owner’s assistant, its model and its connection reachable.
         ines.goto("/settings/agents")
-        flux = ines.get_by_role("region", name=MODE_A, exact=True)
-        expect(flux).to_contain_text("Paid by")
-        expect(flux).to_contain_text("Assistant on")
+        _, section, _ = self.sections(ines)
+        expect(section).to_contain_text("· API key · Assistant on")
 
     def test_07_a_second_member_never_sees_or_changes_the_first_members_connections(self) -> None:
+        ines = self.page("ines")
+        key = self.api(ines, "POST", "/api/v1/background-compute-connections", {"name": KEY_NAME, "provider": "anthropic", "model": "claude-sonnet-5",
+                       "apiKey": f"sk-ant-api03-{'connect-ai-ui-key-' * 3}CA01", "dailyBudgetCents": 750, "timeZone": "Europe/Warsaw"}, status=201)
+        type(self).ids["key"] = key["id"]
         tom = self.page("tom")
         # What Tom sees: his own page, and the shared project's Agents view with Ines's connection read-only; not her assistant or keys.
         tom.goto("/settings/agents")
-        flux = tom.get_by_role("region", name=MODE_A, exact=True)
-        app = tom.get_by_role("region", name=MODE_B_PAGE, exact=True)
+        connect, assistant, app = self.sections(tom)
         expect(app).not_to_contain_text(CONNECTION)
         expect(app).not_to_contain_text("Ines")
-        expect(flux).not_to_contain_text("Ines")
-        expect(flux).not_to_contain_text("Assistant on")
-        expect(flux).not_to_contain_text("Paid by")
+        expect(assistant).not_to_contain_text("Ines")
+        expect(assistant).not_to_contain_text("Assistant on")
+        expect(connect).not_to_contain_text(KEY_NAME)
+        expect(connect.locator("li[data-connection]")).to_have_count(0)
         # The project lists Ines's MCP agent to Tom with its owner, read-only: no stop, hand-off or revoke control.
         tom.goto(f"/projects/{self.ids['project']}/agents")
         rows = tom.get_by_role("list", name="Agents in this project").get_by_role("listitem")
@@ -269,16 +308,21 @@ class ConnectAiJourney(unittest.TestCase):
         own = self.api(tom, "GET", "/api/v1/agent-connections", status=200)
         self.assertEqual([item for item in own if item["id"] == self.ids["connection"]], [])
         self.assertEqual(self.api(tom, "GET", "/api/v1/personal-assistant", status=200)["enablement"], None, "Tom has no assistant of his own")
+        self.assertEqual([item for item in self.api(tom, "GET", "/api/v1/background-compute-connections", status=200) if item["id"] == key["id"]], [])
+        changed = tom.request.fetch(f"{ORIGIN}/api/v1/background-compute-connections/{key['id']}", method="PATCH",
+                                    headers={"origin": ORIGIN, "content-type": "application/json"}, data=json.dumps({"dailyBudgetCents": 100000}))
+        self.assertIn(changed.status, (403, 404), changed.text())
         runtime = self.api(tom, "GET", "/api/v1/agent-runtime", status=200)
         self.assertIsNone(runtime.get("binding"))
         self.assertNotIn(INES["id"], json.dumps(runtime))
         revoke = tom.request.fetch(f"{ORIGIN}/api/v1/agent-connections/{self.ids['connection']}", method="DELETE", headers={"origin": ORIGIN})
         self.assertIn(revoke.status, (403, 404), revoke.text())
-        # Control: the connection is still Ines's and still live.
-        ines = self.page("ines")
+        # Control: the connection and the key are still Ines's and unchanged.
         live = [item for item in self.api(ines, "GET", "/api/v1/agent-connections", status=200) if item["id"] == self.ids["connection"]]
         self.assertEqual(len(live), 1)
         self.assertIsNone(live[0].get("revokedAt"))
+        mine = [item for item in self.api(ines, "GET", "/api/v1/background-compute-connections", status=200) if item["id"] == key["id"]]
+        self.assertEqual([item["dailyBudgetCents"] for item in mine], [750])
 
     def assert_phone_roster_summary(self, page: Page, count: int) -> None:
         unit = "client" if count == 1 else "clients"
@@ -367,136 +411,144 @@ class ConnectAiJourney(unittest.TestCase):
                         expect(page.get_by_role("region", name="Your assistant’s project access")).to_have_count(0)
                         shot(page, f"assistant-own-settings-{'phone-390' if phone else 'desktop-1440'}-{UI_BROWSER}")
 
-    def stub_runtime_on(self, page: Page, status: dict | None = None) -> None:
-        """A stubbed status with the runtime on (the check suite runs with it off); the sign-in pages are not read here."""
-        page.route(re.compile(r".*/api/v1/agent-runtime$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(status or RUNTIME_ON)))
-
-    def test_08_runtime_on_puts_the_sign_in_choices_first_at_both_widths(self) -> None:
-        """AST-1.1: Sign in with Claude and Sign in with ChatGPT come first; API keys only under a folded "Other ways to connect"."""
+    def test_08_several_connections_side_by_side_each_with_one_usage_line(self) -> None:
+        """#854 (mockups Main and ConnectAI): a Claude plan, a ChatGPT plan and an API key at the same time, in the order they were
+        made. Each row: its name and state, one usage line (the provider's remaining usage, "Plan limits apply" when it reported
+        none, or the key's daily budget) and "Change" on the right, vertically centred, never over the text."""
         for phone in (False, True):
             width = "phone-390" if phone else "desktop-1440"
             page = self.page("ines", phone=phone)
-            self.stub_runtime_on(page)
+            self.stub_runtime(page, runtime_signed_in(CLAUDE, CODEX))
             page.goto("/settings/agents")
-            flux = page.get_by_role("region", name=MODE_A, exact=True)
-            expect(flux.get_by_role("heading", name=re.compile(r"Claude Code and Codex in Flux.*Claude Code not signed in.*Codex not signed in"))).to_be_visible()
-            claude = flux.get_by_role("link", name=re.compile("^Sign in with Claude"))
-            chatgpt = flux.get_by_role("link", name=re.compile("^Sign in with ChatGPT"))
-            assistant = flux.get_by_role("region", name=re.compile("^Your assistant"))
-            expect(claude).to_be_visible()
-            expect(chatgpt).to_be_visible()
-            # They open the guided sign-in; they are the first two choices of the list, and the only sign-in ones.
-            expect(claude).to_have_attribute("href", "/settings/agents/claude-code")
-            expect(chatgpt).to_have_attribute("href", "/settings/agents/codex")
-            choices = flux.locator("ul.rt-choices > li")
-            expect(choices).to_have_count(2)
-            expect(choices.nth(0)).to_contain_text("Sign in with Claude")
-            expect(choices.nth(1)).to_contain_text("Sign in with ChatGPT")
-            expect(flux).not_to_contain_text(OFF_SENTENCE)
-            self.assertTrue(self.above(claude, chatgpt), "Sign in with Claude is above Sign in with ChatGPT")
-            # Spokój E04 (#513 M4): AI setup starts with the assistant card; the sign-in choices follow it, still
-            # before every API key choice (AST-1.1).
-            self.assertTrue(self.above(assistant, claude), "the assistant card is above the sign-in choices")
-            # Negative control: the same check must reject the reverse order of two elements that are really in that order.
-            self.assertFalse(self.above(chatgpt, claude), "negative control: reversed order is rejected")
-            # The API key choices are folded under "Other ways to connect" and not visible until opened.
-            other = flux.locator("details.rt-more").filter(has_text="Other ways to connect")
-            expect(other.locator("summary")).to_have_text("Other ways to connect")
-            self.assertFalse(other.evaluate("d => d.open"), "Other ways to connect starts folded")
-            api = flux.get_by_role("link", name=re.compile("^Use an API key"))
-            expect(api).to_be_hidden()
-            which = flux.locator("details").filter(has_text="Which account should I use?")
-            self.assertFalse(which.evaluate("d => d.open"), "Which account should I use? starts folded")
+            connect, assistant, _ = self.sections(page)
+            rows = connect.locator("li[data-connection]")
+            expect(rows).to_have_count(3)
+            expect(rows.nth(0)).to_have_attribute("data-connection", "claude_plan")
+            expect(rows.nth(1)).to_have_attribute("data-connection", "chatgpt_plan")
+            expect(rows.nth(2)).to_have_attribute("data-connection", "api_key")
+            expect(rows.nth(0).locator(".sset-row__t")).to_have_text("Claude plan · Connected")
+            expect(rows.nth(0).locator(".cai__usage-text")).to_have_text("Plan limits apply")
+            expect(rows.nth(0).locator(".cai__bar")).to_have_count(0)
+            expect(rows.nth(1).locator(".sset-row__t")).to_have_text("ChatGPT plan · Connected")
+            expect(rows.nth(1).locator(".cai__usage-text")).to_have_text(re.compile(r"^48% of your weekly limit left · resets \S+"))
+            expect(rows.nth(2).locator(".sset-row__t")).to_have_text(f"{KEY_NAME} · Connected")
+            expect(rows.nth(2).locator(".cai__usage-text")).to_have_text("$0.00 of $7.50 today")
+            for index, to in enumerate(("/settings/agents/claude-code", "/settings/agents/codex", f"/settings/ai-connections?key={self.ids['key']}")):
+                change = rows.nth(index).get_by_role("link", name=re.compile("^Change "))
+                expect(change).to_have_count(1)
+                expect(change).to_have_attribute("href", to)
+                self.assert_change_beside_the_text(rows.nth(index))
+            # Nothing offers to move work to another connection, and no limit of Flux's own is shown.
+            self.assertIsNone(FLUX_LIMITS.search(connect.inner_text()), connect.inner_text())
+            expect(connect.get_by_role("button", name=re.compile("switch", re.I))).to_have_count(0)
             self.no_horizontal_scroll(page)
-            shot(page, f"connect-ai-runtime-on-{width}")
-            other.locator("summary").click()
-            expect(api).to_be_visible()
-            self.assertTrue(self.above(claude, api), "API key choices come after the sign-in choices")
-            self.assertTrue(self.above(chatgpt, api), "and after the ChatGPT one")
-            # Which account should I use? is one folded line in plain words, exactly the spec's copy (AST-1).
-            which.locator("summary").click()
-            notes = which.locator("p")
-            expect(notes).to_have_count(len(WHICH_ACCOUNT))
-            for index, text in enumerate(WHICH_ACCOUNT):
-                self.assertEqual(notes.nth(index).inner_text().replace("’", "'"), text)
-            self.no_horizontal_scroll(page)
-            shot(page, f"connect-ai-runtime-on-{width}-open")
+            shot(page, f"connect-ai-three-{width}")
+            # "Connect another" offers only what is not connected yet: another API key.
+            connect.get_by_role("button", name="Connect another").click()
+            window = page.get_by_role("dialog", name="Connect your AI")
+            expect(window.locator("[data-choice]")).to_have_count(1)
+            expect(window.locator("[data-choice=api_key] input")).to_be_checked()
+            window.get_by_role("button", name="Cancel").click()
+            expect(window).to_have_count(0)
+            expect(connect.get_by_role("button", name="Connect another")).to_be_visible()
             page.context.close()
 
-    def test_08b_runtime_off_says_so_once_and_shows_the_api_key_choices_at_both_widths(self) -> None:
-        """AST-1.2: with the runtime off (the check stack's own setting, no stub) the page shows one plain sentence and the API key
-        choices, in the open; no sign-in button is shown. Nothing on Home or in the assistant's set-up promises the plan."""
+    def test_08d_connect_ai_is_one_window_in_steps(self) -> None:
+        """#854 (the guide, mockup ConnectAI): choose, sign in, fail and enter a key in one window, without leaving Settings."""
         for phone in (False, True):
-            page = self.page("ines", phone=phone)
+            page = self.page("tom", phone=phone)
+            self.stub_runtime(page, RUNTIME_ON)
+            page.route(re.compile(r".*/api/v1/agent-runtime/console$"), lambda route: route.fulfill(status=409, content_type="application/json",
+                       body=json.dumps({"error": "Your runtime is busy with another sign-in", "code": "AGENT_RUNTIME_BUSY"})))
             page.goto("/settings/agents")
-            flux = page.get_by_role("region", name=MODE_A, exact=True)
-            sentence = flux.get_by_text(OFF_SENTENCE, exact=True)
-            expect(sentence).to_have_count(1)
-            self.assertEqual(sentence.evaluate("el => el.tagName"), "P", "the sentence is one plain paragraph")
-            self.assertEqual(flux.locator("p", has_text="Signing in with").count(), 1, "and the page says it once")
-            self.assertIsNone(re.search(r"Sign in\b", flux.inner_text()), "no sign-in wording at all while the runtime is off")
-            expect(flux.get_by_role("button", name=re.compile("^Sign in", re.I))).to_have_count(0)
-            expect(flux.get_by_role("link", name=re.compile("^Sign in", re.I))).to_have_count(0)
-            expect(flux.locator("ul.rt-choices")).to_have_count(0)
-            api = flux.get_by_role("link", name=re.compile("^Use an API key"))
-            expect(api).to_be_visible()  # shown plainly: not inside a folded "Other ways to connect"
-            expect(api).to_have_attribute("href", "/settings/ai-connections")
-            self.assertEqual(api.evaluate("el => !!el.closest('details')"), False, "the API key choice is not folded away")
-            expect(flux.get_by_text("Other ways to connect")).to_have_count(0)
-            self.assertTrue(self.above(sentence, api), "the sentence comes before the API key choices")
+            connect, _, _ = self.sections(page)
+            connect.get_by_role("button", name="Connect AI", exact=True).click()
+            window = page.get_by_role("dialog", name="Connect your AI")
+            expect(window.get_by_role("heading", name="Connect your AI")).to_be_visible()
+            expect(window.locator("[data-choice]")).to_have_count(3)
+            window.locator("[data-choice=claude_plan]").click()
+            window.get_by_role("button", name="Continue").click()
+            expect(window.get_by_role("heading", name="Couldn’t connect")).to_be_visible()
+            expect(window.get_by_role("alert")).to_contain_text("busy")
+            expect(window.get_by_role("button", name="Try again")).to_be_visible()
+            shot(page, f"connect-ai-window-failed-{'phone' if phone else 'desktop'}")
+            window.get_by_role("button", name="Use an API key").click()
+            expect(window.get_by_role("heading", name="Use an API key")).to_be_visible()
+            expect(window.get_by_label("Daily budget (USD)", exact=True)).to_have_value("5.00")
+            expect(page).to_have_url(re.compile(r"/settings/agents$"))
             self.no_horizontal_scroll(page)
-            for path, heading in (("/", page.get_by_role("heading", level=1, name="Home")), ("/settings/assistant", page.get_by_role("heading", name="Your assistant", exact=True))):
-                page.goto(path)
-                expect(heading).to_be_visible()
-                text = page.locator("main, .pane-in").first.inner_text()
-                self.assertIsNone(re.search(r"plan you already (have|pay for)", text), f"{path} does not promise the plan you already have")
+            window.get_by_role("button", name="Cancel").click()
+            expect(window.locator("[data-choice=api_key]")).to_be_visible()
+            window.get_by_role("button", name="Cancel").click()
+            expect(window).to_have_count(0)
             page.context.close()
 
-    def test_08c_plain_account_labels_with_the_payer_text_as_the_longer_line(self) -> None:
-        """AST-1 plain account labels: Claude / ChatGPT subscription, Anthropic Console API billing, OpenAI API key. The F-022 payer
-        text stays as the longer line of the account row."""
+    def test_08b_a_plan_at_its_limit_says_so_in_one_line_and_nothing_switches(self) -> None:
+        """#854: "Claude limit reached, resumes at 14:00", or without a time when the provider gave none. The line stays one
+        line beside Change, also on the phone; there is no switch button anywhere on the page."""
         cases = (
-            (runtime_signed_in(("claude_account", "claude_plan", "claude.ai"), ("device_code", "chatgpt_plan", "chatgpt")),
-             "Claude · your subscription", "ChatGPT · your subscription",
-             "Your Claude plan (plan limits or paid extra usage, not visible to Flux).", "Your ChatGPT plan (plan limits or credits, not visible to Flux)."),
-            (runtime_signed_in(("console", "anthropic_console", "api_key"), ("api_key", "openai_api", "api_key")),
-             "Anthropic Console · API billing", "OpenAI · API key",
-             "Your Anthropic Console organization (API billing, cost not reported to Flux).", "Your OpenAI API organization (API billing, cost not reported to Flux)."),
+            (usage(None, None, SOON, reached=True), re.compile(r"^Claude limit reached, resumes \S+")),
+            (usage(None, None, None, reached=True), re.compile(r"^Claude limit reached$")),
         )
         for phone in (False, True):
-            for index, (status, claude_label, codex_label, claude_payer, codex_payer) in enumerate(cases):
+            for index, (reported, line) in enumerate(cases):
                 page = self.page("ines", phone=phone)
-                self.stub_runtime_on(page, status)
+                claude = signed_in("claude_account", "claude_plan", "claude.ai", "2026-10-16T10:05:00.000Z", reported)
+                self.stub_runtime(page, runtime_signed_in(claude, None))
                 page.goto("/settings/agents")
-                flux = page.get_by_role("region", name=MODE_A, exact=True)
-                expect(flux.get_by_role("heading", name=re.compile(r"Claude Code and Codex in Flux.*Claude Code signed in.*Codex signed in"))).to_be_visible()
-                mine = flux.get_by_role("list", name="Your sign-in")
-                codex = flux.get_by_label("Codex in Flux").get_by_role("list", name="Your Codex sign-in")
-                expect(mine).to_contain_text(claude_label)
-                expect(mine).to_contain_text(claude_payer)
-                expect(codex).to_contain_text(codex_label)
-                expect(codex).to_contain_text(codex_payer)
-                self.assertEqual(mine.locator("li").first.locator("b").inner_text(), claude_label, "the label leads its row")
-                self.assertEqual(codex.locator("li").first.locator("b").inner_text(), codex_label)
-                self.assertGreater(len(claude_payer), len(claude_label), "the payer text is the longer line")
-                self.assertIsNone(JARGON.search(claude_label + " " + codex_label), "and the labels use no jargon")
+                connect, _, _ = self.sections(page)
+                row = connect.locator("li[data-connection=claude_plan]")
+                expect(row.locator(".cai__usage-text")).to_have_text(line)
+                self.assert_change_beside_the_text(row)
+                expect(page.get_by_role("button", name=re.compile("switch|use another|instead", re.I))).to_have_count(0)
+                expect(page.get_by_role("link", name=re.compile("switch|use another|instead", re.I))).to_have_count(0)
                 self.no_horizontal_scroll(page)
-                if index == 1:
-                    shot(page, f"connect-ai-labels-{'phone-390' if phone else 'desktop-1440'}")
+                if index == 0:
+                    shot(page, f"connect-ai-claude-limit-{'phone-390' if phone else 'desktop-1440'}")
                 page.context.close()
+
+    def test_08c_a_plan_to_sign_in_again_keeps_its_row(self) -> None:
+        expired = {**CLAUDE, "state": "sign_in_again"}
+        page = self.page("ines")
+        self.stub_runtime(page, runtime_signed_in(expired, None))
+        page.goto("/settings/agents")
+        connect, _, _ = self.sections(page)
+        row = connect.locator("li[data-connection=claude_plan]")
+        expect(row.locator(".sset-row__t")).to_have_text("Claude plan · Sign in again")
+        expect(row.locator(".cai__usage-text")).to_have_text("Sign in again to keep using it")
+        expect(row.get_by_role("link", name="Change Claude plan")).to_have_attribute("href", "/settings/agents/claude-code")
+
+    def test_08e_a_failed_read_of_the_plans_says_so_and_never_calls_them_not_offered(self) -> None:
+        """#854: a plan is called "Not offered" only when the server says so; a failed read has its own line with Try again."""
+        page = self.page("tom")
+        page.route(re.compile(r".*/api/v1/agent-runtime$"), lambda route: route.fulfill(status=500, content_type="application/json", body="{}"))
+        page.goto("/settings/agents")
+        connect, _, _ = self.sections(page)
+        expect(connect).to_contain_text("Your plans could not be read.")
+        connect.get_by_role("button", name="Connect AI", exact=True).click()
+        window = page.get_by_role("dialog", name="Connect your AI")
+        expect(window.locator("[data-choice=claude_plan]")).to_contain_text("Flux couldn’t check this just now")
+        expect(window.locator("[data-choice=claude_plan]")).not_to_contain_text("Not offered")
+        window.get_by_role("button", name="Cancel").click()
+        page.unroute(re.compile(r".*/api/v1/agent-runtime$"))
+        self.stub_runtime(page, RUNTIME_ON)
+        connect.get_by_role("button", name="Try again").click()
+        expect(connect).not_to_contain_text("Your plans could not be read.")
+        page.context.close()
 
     def test_09_the_page_uses_no_jargon_words_with_runtime_on_or_off(self) -> None:
         """AST-10.2 (#277): no visible text on the page uses the listed words; scanner negative control first."""
         self.assertIsNotNone(JARGON.search("Ask the MCP server"), "negative control: the scanner flags a jargon word")
         self.assertIsNotNone(JARGON.search("Your runtime"), "negative control: the scanner flags runtime")
         self.assertIsNone(JARGON.search("Use an API key. API keys and API credits, API billing, Claude · your subscription"), "allowed API phrases pass")
+        self.assertIsNotNone(FLUX_LIMITS.search("20 requests a day"), "negative control: the limit scanner flags a Flux limit")
         for runtime_on in (False, True):
             for phone in (False, True):
                 page = self.page("ines", phone=phone)
                 if runtime_on:
-                    self.stub_runtime_on(page)
+                    self.stub_runtime(page, runtime_signed_in(CLAUDE, CODEX))
                 page.goto("/settings/agents")
-                expect(page.get_by_role("region", name=MODE_A, exact=True)).to_be_visible()
+                expect(page.get_by_role("region", name="Connect AI", exact=True)).to_be_visible()
                 page.get_by_role("region", name=MODE_B_PAGE, exact=True).get_by_text("Local co-work on this computer").wait_for()
                 for details in page.locator("details").all():
                     details.locator("summary").click()
@@ -532,19 +584,19 @@ class ConnectAiJourney(unittest.TestCase):
         for phone in (False, True):
             on = self.page("ines", phone=phone)
             on.goto("/settings/agents")
-            live = on.get_by_role("region", name=re.compile("^Your assistant"))
+            live = on.get_by_role("region", name=re.compile("^Your assistant Agent"))
             # test_06 turned Ines's assistant on, so the live card offers Manage.
             step = live.get_by_role("link", name="Manage", exact=True)
             expect(step).to_be_visible()
             expect(live.locator(".sset-assistant__facts li")).to_have_count(3)
             real = self.api(on, "GET", "/api/v1/personal-assistant", status=200)
             self.assertIsNotNone(real["enablement"], "test_06 turned Ines's assistant on")
-            off = {**real, "state": "unavailable", "setup": {"provider": "off", "connection": "none"}}
+            off = {**real, "state": "unavailable", "setup": {**real["setup"], "provider": "off", "connection": "none", "runtime": None}}
             # Nothing set up: Set up stays where it is, dimmed.
             page = self.page("ines", phone=phone)
             stub(page, {**off, "enablement": None})
             page.goto("/settings/agents")
-            card = page.get_by_role("region", name=re.compile("^Your assistant"))
+            card = page.get_by_role("region", name=re.compile("^Your assistant Agent"))
             one_off_line(card, "Set up")
             expect(card.get_by_role("link")).to_have_count(0)
             dimmed = card.get_by_role("button", name="Set up", exact=True)
@@ -555,20 +607,12 @@ class ConnectAiJourney(unittest.TestCase):
             managed = self.page("ines", phone=phone)
             stub(managed, off)
             managed.goto("/settings/agents")
-            card = managed.get_by_role("region", name=re.compile("^Your assistant"))
+            card = managed.get_by_role("region", name=re.compile("^Your assistant Agent"))
             one_off_line(card, "Manage")
             manage = card.get_by_role("link", name="Manage", exact=True)
             expect(manage).to_have_attribute("href", "/settings/assistant")
             expect(card.get_by_role("button", name="Set up")).to_have_count(0)
             same_place(step.bounding_box(), manage.bounding_box())
-
-    def above(self, first, second) -> bool:
-        a = first.bounding_box()
-        b = second.bounding_box()
-        self.assertIsNotNone(a, "first element is visible")
-        self.assertIsNotNone(b, "second element is visible")
-        return a["y"] < b["y"]
-
 
 
     def test_10_phone_counts_clients_and_refreshes_after_final_mcp_revocation(self) -> None:

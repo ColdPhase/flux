@@ -88,7 +88,7 @@ describe('tool calling on every provider wire format (AST-8.1; local mock, docum
         assert.equal(sent!.body.tool_choice, undefined, 'the model chooses (auto); a forced choice is refused by some current models');
         for (const hosted of ['web_search_options', 'plugins', 'stream']) assert.equal(sent!.body[hosted], undefined, `no ${hosted}`);
         assert.equal(sent!.body.model, wire.model);
-        assert.equal(sent!.body.max_tokens ?? sent!.body.max_completion_tokens, 1_500);
+        assert.equal(sent!.body.max_tokens ?? sent!.body.max_completion_tokens, PERSONAL_RUN_LIMITS.maxOutputTokens);
         assert.equal(result.kind, 'completed');
         if (result.kind !== 'completed') return;
         assert.equal(result.stopReason, 'tool_use');

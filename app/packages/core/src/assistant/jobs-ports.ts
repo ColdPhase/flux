@@ -79,12 +79,6 @@ export interface AssistantJobRepository {
   openRuns(limit: number, ownerUserId?: string): Promise<JobRunRecord[]>;
   /** History beyond the newest `keep` goes. */
   trimRuns(jobId: string, keep: number): Promise<void>;
-  /** Firings of one schedule that started a run since the start of the owner's local day (a skipped one does not count). */
-  runsTodayForJob(jobId: string, timeZone: string): Promise<number>;
-  /** Scheduled and morning-summary runs of the owner since the start of their local day. */
-  backgroundRunsToday(ownerUserId: string, timeZone: string): Promise<number>;
-  /** The owner's "background runs a day" (assistant settings), or null without settings. */
-  backgroundLimit(ownerUserId: string, workspaceId: string): Promise<number | null>;
 
   /** The note about background use was accepted for this account (AST-2.1): its version, or null. */
   noteVersion(ownerUserId: string, accountKey: string): Promise<string | null>;

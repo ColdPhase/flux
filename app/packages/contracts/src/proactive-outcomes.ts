@@ -68,7 +68,8 @@ export interface BackgroundComputeUsage {
   observedEstimatedCents: number;
   unknownPossibleCents: number;
   inFlightCents: number;
-  currentLimits: { maxRunsPerDay: number; periodDays: 30; periodBudgetCents: number; perRunCents: number } | null;
+  /** The background API key's one daily budget (#854); null without a background key. */
+  dailyBudgetCents: number | null;
   candidates: BackgroundComputeCandidateUsage[];
 }
 

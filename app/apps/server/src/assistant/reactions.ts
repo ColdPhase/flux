@@ -11,7 +11,7 @@ export function registerAssistantReactionRoutes(app: FastifyInstance, uow: Assis
   const body = { type: 'object', additionalProperties: false, required: ['projectId', 'event', 'action', 'enabled'], properties: {
     projectId: { type: 'string', format: 'uuid' }, event: { type: 'string', enum: ASSISTANT_REACTION_EVENTS.map((item) => item.id) },
     action: { type: 'string', enum: Object.keys(ASSISTANT_REACTION_ACTIONS) }, enabled: { type: 'boolean' },
-    dailyLimit: { type: 'integer', minimum: 1, maximum: 24 }, expectedVersion: { type: 'integer', minimum: 1 }, noteVersion: { type: 'string', maxLength: 64 },
+    expectedVersion: { type: 'integer', minimum: 1 }, noteVersion: { type: 'string', maxLength: 64 },
   } } as const;
   type Params = { workspace: string; owner: string; id: string };
   const path = assistantReactionsPath(':workspace', ':owner');

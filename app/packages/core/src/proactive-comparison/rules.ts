@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import type { AiPrice, CreateProactiveComparisonRule, ProactiveComparisonRule } from '@flux/contracts';
 import { ConflictError, InvalidInputError, NotFoundError, VersionConflictError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
-import { comparisonReservationCents } from './reservation.js';
 
 export interface RuleAccess {
   requireProject(principal: Principal, projectId: string, action: 'read' | 'write'): Promise<{ workspaceId: string }>;
@@ -10,8 +9,8 @@ export interface RuleAccess {
 export interface RuleRows {
   /** The agent is personal to the caller and currently has a contributor grant here. */
   agentMayPropose(ownerId: string, projectId: string, agentId: string): Promise<boolean>;
-  backgroundBudget(ownerId: string): Promise<{ maxRunsPerDay: number; periodDays: number; periodBudgetCents: number; perRunCents: number;
-    price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null } | null>;
+  /** The owner's background API key: its one daily budget and its price (#854). */
+  backgroundKey(ownerId: string): Promise<{ dailyBudgetCents: number; price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'> | null } | null>;
   create(input: { id: string; workspaceId: string; projectId: string; ownerUserId: string; command: CreateProactiveComparisonRule }): Promise<ProactiveComparisonRule | 'EXISTS'>;
   list(ownerId: string, projectId: string): Promise<ProactiveComparisonRule[]>;
   find(ownerId: string, ruleId: string): Promise<ProactiveComparisonRule | null>;
@@ -26,7 +25,6 @@ function owner(principal: Principal): string {
   return principal.id;
 }
 function uuid(id: string): boolean { return typeof id === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id); }
-function bounded(n: number, lo: number, hi: number): boolean { return Number.isInteger(n) && n >= lo && n <= hi; }
 
 /**
  * `runtimeAvailable` is true only when the operator switched background comparisons on
@@ -39,10 +37,8 @@ export function proactiveRuleUseCases(unit: RuleUnitOfWork, { runtimeAvailable =
       const ownerUserId = owner(principal);
       if (!uuid(projectId) || !command || !uuid(command.agentId)
         || command.trigger !== 'human_negative_result' || command.purpose !== 'camera_sensor_comparison'
-        || command.dataScope !== 'current_project_published' || command.permittedEffect !== 'quiet_project_proposal'
-        || !bounded(command.maxRunsPerDay, 1, 3) || !bounded(command.periodBudgetCents, 5, 500)
-        || !bounded(command.perRunCents, 5, 50) || command.perRunCents > command.periodBudgetCents)
-        throw new InvalidInputError('A scoped comparison rule with bounded run and period limits is required');
+        || command.dataScope !== 'current_project_published' || command.permittedEffect !== 'quiet_project_proposal')
+        throw new InvalidInputError('A scoped comparison rule is required');
       return unit.run(async ({ access, rules }) => {
         const { workspaceId } = await access.requireProject(principal, projectId, 'write');
         if (!await rules.agentMayPropose(ownerUserId, projectId, command.agentId))
@@ -74,14 +70,10 @@ export function proactiveRuleUseCases(unit: RuleUnitOfWork, { runtimeAvailable =
         if (status === 'enabled') {
           if (!await rules.agentMayPropose(ownerUserId, current.projectId, current.agentId))
             throw new NotFoundError('Personal project agent', 'AGENT_NOT_FOUND');
-          const budget = await rules.backgroundBudget(ownerUserId);
-          if (!budget) throw new ConflictError('Connect an authorized background compute source before enabling', 'BACKGROUND_CONNECTION_REQUIRED');
-          // PROV-3: without a known price nothing can be reserved, so the connection cannot be enabled.
-          if (!budget.price) throw new ConflictError('The connection has no known price', 'BACKGROUND_PRICE_UNKNOWN');
-          if (budget.periodDays !== 30 || current.maxRunsPerDay > budget.maxRunsPerDay
-            || current.periodBudgetCents > budget.periodBudgetCents || current.perRunCents > budget.perRunCents
-            || comparisonReservationCents(budget.price) > Math.min(current.perRunCents, budget.perRunCents))
-            throw new ConflictError('The rule exceeds the owner-approved background budget', 'BACKGROUND_BUDGET_TOO_LOW');
+          const key = await rules.backgroundKey(ownerUserId);
+          if (!key) throw new ConflictError('Connect an API key for background suggestions before enabling', 'BACKGROUND_CONNECTION_REQUIRED');
+          // PROV-3: without a known price nothing can be reserved, so the key cannot be used.
+          if (!key.price) throw new ConflictError('The connection has no known price', 'BACKGROUND_PRICE_UNKNOWN');
           // Key custody and consent are necessary, but a worker with reservation,
           // interruption and current-access checks must run before activation (#58).
           if (!runtimeAvailable) throw new ConflictError('Background execution is not available yet', 'BACKGROUND_RUNTIME_UNAVAILABLE');

@@ -2,7 +2,7 @@ import { RUN_CAP_BOUNDS, createRuntimeManagerClient, streamManagerRun, type Mana
 import {
   clientAvailability, type AgentRuntimeConfig, type PersonalRuntime, type PersonalRuntimeEnd, type PersonalRuntimeEvent,
 } from '@flux/core';
-import { personalRuntimeRow, touchRuntimeBinding, type Database } from '@flux/db';
+import { personalRuntimeRow, recordRuntimeUsage, touchRuntimeBinding, type Database } from '@flux/db';
 
 // The worker's side of a personal run on the owner's own Claude Code or Codex (F-022 AIM-3 "Run", #280, #281): it asks
 // runtime-manager to run the CLI in the owner's own slot and binding directory, read from the database for
@@ -51,8 +51,19 @@ export function managerPersonalRuntime(config: AgentRuntimeConfig, db: Database)
         idleSeconds: Math.min(Math.max(request.caps.idleSeconds, RUN_CAP_BOUNDS.idleSeconds.min), RUN_CAP_BOUNDS.idleSeconds.max),
         maxAnswerBytes: Math.min(Math.max(request.caps.maxAnswerBytes, RUN_CAP_BOUNDS.maxAnswerBytes.min), RUN_CAP_BOUNDS.maxAnswerBytes.max),
       };
-      const outcome = await streamManagerRun(manager, target.slot, { kind: 'run', bindingId: target.bindingId, client: target.client ?? 'claude_code', runId: request.runId,
+      const client = target.client ?? 'claude_code';
+      const outcome = await streamManagerRun(manager, target.slot, { kind: 'run', bindingId: target.bindingId, client, runId: request.runId,
         prompt: request.prompt, runToken: request.runToken, tools: request.tools, caps, ...(request.model ? { model: request.model } : {}) }, (frame) => onEvent(eventOf(frame)));
+      // Connect AI's usage line (#854): what the provider reported (Codex's own read), or the limit the run met.
+      if (outcome.ok) {
+        const result = outcome.result;
+        const usage = result.outcome === 'plan_limit'
+          ? { leftPercent: 0, window: result.usage?.window ?? null, resetsAt: result.resetsAt ? new Date(result.resetsAt) : null, limitReached: true }
+          : result.usage ? { leftPercent: result.usage.leftPercent, window: result.usage.window, resetsAt: result.usage.resetsAt ? new Date(result.usage.resetsAt) : null, limitReached: result.usage.leftPercent === 0 }
+            // A finished run shows the plan is usable again, even before the reset it stated.
+            : result.outcome === 'completed' ? { leftPercent: null, window: null, resetsAt: null, limitReached: false } : null;
+        if (usage) await recordRuntimeUsage(db, target.bindingId, client, usage).catch(() => undefined);
+      }
       return endOf(outcome);
     },
     async stop(target, runId) {

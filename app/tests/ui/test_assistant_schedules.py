@@ -173,7 +173,9 @@ class AssistantSchedules(unittest.TestCase):
         project = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Gesture lamp", "visibility": "restricted"}, status=201)
         thread = self.api(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": "Camera or ToF sensor for the bedside lamp?", "clientMessageId": str(uuid.uuid4())}, status=201)
         agent = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Ada's assistant", "owner": "self"}, status=201)
-        status = self.api(page, "POST", "/api/v1/personal-assistant", {"consentVersion": "o-008-2026-10-02", "agentId": agent["id"], "perRunCents": 20, "dailyCapCents": 200, "timeZone": ZONE}, status=201)
+        # #854: the model of a connection (Connect AI's default: the TEST-ONLY fixture key); nothing else to agree to.
+        default = self.api(page, "GET", "/api/v1/personal-assistant/model", status=200)["default"]
+        status = self.api(page, "POST", "/api/v1/personal-assistant", {"agentId": agent["id"], **default}, status=201)
         self.assertEqual(status["state"], "ready")
         type(self).ids = {"workspace": ws["id"], "project": project["id"], "conversation": thread["id"], "agent": agent["id"]}
 
@@ -272,12 +274,16 @@ class AssistantSchedules(unittest.TestCase):
                 text = dialog.inner_text()
                 self.assertIsNone(FORBIDDEN.search(text), FORBIDDEN.search(text))
                 shot(page, f"schedules-sheet-{self.tag(phone, dark)}")
-                # More: the expression, shown back in words and as the next three times; more than once an hour is refused in place.
+                # More: the expression, shown back in words and as the next three times. Flux sets no runs a day and no minimum
+                # interval (#843, C-14): only an expression that is not a schedule is refused in place.
                 dialog.locator("summary").click()
                 cron = dialog.get_by_label("Cron expression")
-                cron.fill("*/15 * * * *")
-                expect(dialog.locator(".asched__cronnote")).to_have_text("At most once an hour")
+                cron.fill("61 * * * *")
+                expect(dialog.locator(".asched__cronnote")).to_have_text(re.compile(r"outside 0.59"))
                 expect(dialog.get_by_role("button", name="Turn on")).to_be_disabled()
+                cron.fill("* * * * *")
+                expect(dialog.locator(".asched__cronnote")).to_have_text(re.compile(r"^In words: "))
+                expect(dialog.get_by_role("button", name="Turn on")).to_be_enabled()
                 cron.fill("0 9 * * 2-4")
                 expect(dialog.locator(".asched__cronnote")).to_have_text("In words: At 9:00 on Tuesday, Wednesday and Thursday")
                 expect(dialog.locator(".asched__next")).to_have_text(re.compile(rf"^Next: {LABEL}, {LABEL}, {LABEL}$"))
@@ -597,44 +603,44 @@ class AssistantSchedules(unittest.TestCase):
                     expect(fold.locator(f"[data-answer-run='{run}']")).to_be_visible()
                 self.no_horizontal_scroll(page)
 
-    def test_13_a_plan_limit_offers_do_it_at_the_reset_time_and_makes_a_one_off(self) -> None:
-        """AST-7 "Do it later": one tap makes a one-off schedule of the same request, posting in its conversation."""
+    def test_13_a_plan_limit_pauses_the_request_until_the_reset_and_makes_no_schedule(self) -> None:
+        """#854: a request that meets the plan's limit waits and starts again by itself at the reset; one calm line says when.
+        Nothing switches to another connection, and no one-off schedule is needed (the earlier "Do it at" is gone)."""
         for phone in (False, True):
             with self.subTest(phone=phone):
                 page = self.page(phone=phone)
                 self.clear(page)
                 real = self.api(page, "GET", "/api/v1/personal-assistant", status=200)
                 stub = json.loads(json.dumps(real))
-                stub["setup"] = {"provider": "off", "connection": "none", "runtime": {"state": "signed_in", "payer": "claude_plan", "accountLabel": "a***@example.test"}}
-                stub["enablement"].update(engine="runtime", connectionId=None)
-                reset = datetime.now(ZoneInfo("UTC")) + timedelta(hours=2)
+                stub["setup"] = {"provider": "off", "connection": "none",
+                                 "runtime": {"state": "signed_in", "payer": "claude_plan", "accountLabel": "a***@example.test", "client": "claude_code"}}
+                stub["enablement"].update(engine="runtime", connection="claude_plan", model="sonnet")
+                stub["today"] = None
+                reset = (datetime.now(ZoneInfo("UTC")) + timedelta(hours=2)).replace(second=0, microsecond=0)
+                at = reset.strftime("%Y-%m-%dT%H:%M:%S.000Z")
                 run = {"id": str(uuid.uuid4()), "clientRunId": str(uuid.uuid4()), "workspaceId": self.ids["workspace"], "projectId": self.ids["project"], "conversationId": self.ids["conversation"],
-                       "kind": "ask", "prompt": "Summarize the sensor notes", "target": None, "continuesRunId": None, "retryOfRunId": None, "status": "unavailable", "stoppedAtStage": None,
-                       "stopRequested": False, "stopAcknowledged": False, "engine": "runtime", "endReason": "plan_limit", "planLimitResetsAt": reset.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
+                       "kind": "ask", "prompt": "Summarize the sensor notes", "target": None, "continuesRunId": None, "retryOfRunId": str(uuid.uuid4()), "status": "queued", "stoppedAtStage": None,
+                       "stopRequested": False, "stopAcknowledged": False, "engine": "runtime", "runtimeClient": "claude_code", "endReason": "plan_limit", "planLimitResetsAt": at, "resumesAt": at,
                        "cost": {"state": "reserved", "reservedMicros": 0, "chargedMicros": 0, "inputTokens": None, "outputTokens": None},
-                       "answer": None, "createdAt": "2026-10-16T09:00:00.000Z", "dispatchedAt": "2026-10-16T09:00:01.000Z", "completedAt": "2026-10-16T09:01:00.000Z"}
+                       "answer": None, "createdAt": "2026-10-16T09:00:00.000Z", "dispatchedAt": None, "completedAt": None}
                 page.route("**/api/v1/personal-assistant", lambda route: self.json(route, stub) if route.request.method == "GET" else route.continue_())
                 page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-runs$"), lambda route: self.json(route, run, 202))
+                # The paused request stays queued: every read of it says so until the reset.
+                page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), lambda route: self.json(route, run))
+                page.route(re.compile(r".*/api/v1/assistant-runs\?limit=\d+$"), lambda route: self.json(route, {"items": [run], "total": 1, "limit": 10, "offset": 0}))
                 page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
                 page.locator("#thread-composer").fill("/ai Summarize the sensor notes")
                 page.get_by_role("button", name="Send to your assistant").click()
                 working = page.locator(".assistant-working")
-                clock = reset.astimezone(ZoneInfo(ZONE)).strftime("%H:%M")
-                expect(working).to_contain_text(f"until {clock}.")
-                button = working.get_by_role("button", name=f"Do it at {clock}")
-                expect(button).to_be_visible()
-                self.assertGreaterEqual(button.bounding_box()["height"], 32)
-                shot(page, f"schedules-do-it-at-{self.tag(phone)}")
-                button.click()
-                expect(working).to_contain_text(f"I’ll do it at {clock}.")
-                jobs = self.jobs(page)
-                self.assertEqual(len(jobs), 1)
-                self.assertEqual([jobs[0]["schedule"]["kind"], jobs[0]["text"], jobs[0]["conversationId"], jobs[0]["enabled"]], ["once", "Summarize the sensor notes", self.ids["conversation"], True])
-                self.assertTrue(jobs[0]["words"].startswith("Once, "))
-                self.assertEqual(jobs[0]["schedule"]["at"], reset.strftime("%Y-%m-%dT%H:%M:%S.000Z"), "it runs at the plan's reset time")
+                local = reset.astimezone(ZoneInfo(ZONE))
+                today = datetime.now(ZoneInfo(ZONE)).date()
+                words = f"at {local:%H:%M}" if local.date() == today else f"tomorrow at {local:%H:%M}"
+                expect(working).to_contain_text(f"Claude limit reached, resumes {words}")
+                expect(working.get_by_role("button", name=re.compile(r"^Do it at|switch|another|instead", re.I))).to_have_count(0)
+                shot(page, f"schedules-plan-limit-paused-{self.tag(phone)}")
+                self.assertEqual(self.jobs(page), [], "no schedule is made for a paused request")
                 self.no_horizontal_scroll(page)
         self.clear(self.page())
-
 
 if __name__ == "__main__":
     unittest.main()

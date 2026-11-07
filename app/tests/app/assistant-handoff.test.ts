@@ -180,7 +180,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     await scene.complete(live.runId);
   });
 
-  test('AST-6.4: after Stop the next hand-off is refused with 403 while independent recipient work goes on', async () => {
+  test('AST-6.4: after Stop the next hand-off is refused with 403 while independent recipient work goes on (#843: no change limit)', async () => {
     const running = await scene.liveRun();
     const mine = await scene.task(scene.owner, 'Stopped after one');
     const stopper = await recipient(scene.owner, 'Codex two');

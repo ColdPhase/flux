@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
   assistantChangeActionPath, assistantChangeLine, assistantRunChangesActionPath, assistantRunChangesPath, conversationAssistantActivityPath,
-  conversationAssistantChangesPath, NEEDS_YOU_PATH, ASSISTANT_WORKING_EVENT, PERSONAL_RUN_CONSENT_VERSION, type AssistantActivity, type AssistantChange,
+  conversationAssistantChangesPath, NEEDS_YOU_PATH, ASSISTANT_WORKING_EVENT, type AssistantActivity, type AssistantChange,
   type AssistantRun, type AssistantRunUndone, type NeedsYouResponse,
 } from '@flux/contracts';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
@@ -156,6 +156,24 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     }
   });
 
+  test('#843: Apply all applies every waiting change of the run in one tap, with no change limit; nothing runs a model', async () => {
+    await scene.setMayDo('ask');
+    const live = await scene.liveRun();
+    for (let i = 1; i <= 22; i += 1) assert.match(text((await live.call('flux_create_task', { task: { title: `Allowance task ${i}` } })).message), /^Waiting for /);
+    await scene.complete(live.runId);
+    const runsBefore = Number((await pool.query(`SELECT count(*)::int AS n FROM personal_runs`)).rows[0].n);
+    const all = expectStatus(await run('POST', assistantRunChangesActionPath(live.runId, 'apply'), scene.owner), 200) as { changes: { change: AssistantChange; message: string | null }[] };
+    assert.equal(all.changes.filter((entry) => entry.change.state === 'applied_after_wait').length, 22, 'all twenty-two, in one Apply');
+    assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title LIKE 'Allowance task %'`)).rows[0].n), 22);
+    const log = await changesOf(live.runId);
+    assert.ok(log.every((item) => item.state === 'applied_after_wait' && item.authority === 'owner_approval' && item.decided_by === scene.owner.id));
+    assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM personal_runs`)).rows[0].n), runsBefore, 'no new run, no model request');
+    // An approved change keeps its source history and is an ordinary conditional Undo.
+    const taken = expectStatus(await run('POST', assistantRunChangesActionPath(live.runId, 'undo'), scene.owner), 200) as AssistantRunUndone;
+    assert.equal(taken.undone, 22);
+    assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title LIKE 'Allowance task %' AND creation_reverted_at IS NULL`)).rows[0].n), 0, 'every created task was taken back');
+  });
+
   test('AST-6.2: Undo of done-when, prerequisites, who a task waits for and a map\'s name; each is a new version, and an edit since says "Changed since. Open it"', async () => {
     const criteria = await scene.task(scene.owner, 'Probe calibration');
     const edited = await scene.task(scene.owner, 'Lamp wiring');
@@ -257,6 +275,14 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     assert.equal(rest.undone, 1);
   });
 
+  test('#843 (background): a scheduled or reaction run has no change limit either; its twelfth change applies like its first', async () => {
+    const live = await scene.liveRun();
+    await pool.query(`UPDATE personal_runs SET authority = 'owner_schedule', background_label = 'Morning summary' WHERE id = $1`, [live.runId]);
+    for (let i = 1; i <= 12; i += 1) assert.ok(JSON.parse(text((await live.call('flux_create_task', { task: { title: `Background task ${i}` } })).message)).workId, `change ${i} applies`);
+    assert.ok((await changesOf(live.runId)).every((item) => item.state === 'applied' && item.wait_reason === null));
+    await scene.complete(live.runId);
+  });
+
   test('AST-6.8: the owner\'s own request goes before background runs; behind one it says what it waits for; others see only that her assistant is working', async () => {
     const owner = human_(scene.owner);
     const uow = personalRunWorkerUnitOfWork(db);
@@ -268,7 +294,10 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     assert.deepEqual(mine.run.behind, { runId: summary.run.id, authority: 'owner_schedule', label: 'Morning summary' });
     const read = expectStatus(await scene.owner.browser.request('GET', `/api/v1/assistant-runs/${mine.run.id}`), 200) as AssistantRun;
     assert.deepEqual(read.behind?.label, 'Morning summary');
-    await assert.rejects(scene.runs.invoke(owner, scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'A third' }), { code: 'PERSONAL_RUN_IN_FLIGHT' });
+    // #843: no Flux limit of two; a third request waits its turn as well (only a runaway client meets the safety bound).
+    const third = await scene.runs.invoke(owner, scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'A third' });
+    assert.equal(third.run.status, 'queued');
+    await scene.runs.stop(owner, third.run.id);
     // Everyone in the place sees only that it is working (names, no detail), and nothing of the runs themselves.
     for (const who of [scene.peer, scene.viewer, scene.guest, scene.admin]) {
       const activity = expectStatus(await who.browser.request('GET', conversationAssistantActivityPath(scene.thread.id)), 200) as AssistantActivity;
@@ -322,7 +351,7 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     const refused = await apply(scene.owner, row.id, { expectedVersion: row.version });
     assert.ok(refused.status === 403 || refused.status === 404 || refused.status === 409, `refused (${refused.status})`);
     assert.notEqual((await scene.taskRow(theirs.id)).status, 'done');
-    await scene.runs.enable(human_(scene.owner), { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId: scene.agentId, connectionId: scene.connectionId, perRunCents: 50, dailyCapCents: 1_000 });
+    await scene.runs.enable(human_(scene.owner), { agentId: scene.agentId, connection: scene.connectionId, model: 'claude-sonnet-5' });
     const again = await apply(scene.owner, row.id, { expectedVersion: row.version });
     assert.ok(again.status >= 400, 'the old intent is not revived');
     assert.notEqual((await scene.taskRow(theirs.id)).status, 'done');

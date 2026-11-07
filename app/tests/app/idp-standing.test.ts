@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { describe, test } from 'node:test';
-import { BACKGROUND_CONSENT_VERSION, PERSONAL_RUN_CONSENT_VERSION, PERSONAL_RUNTIME_CONSENT_VERSION } from '@flux/contracts';
 import { idpStandingRepository, schema } from '@flux/db';
 import type { OidcConfig } from '../../apps/server/src/identity/config.js';
 import { createIdpStanding, openToken, sealKey, sealToken, signInAgainMessage } from '../../apps/server/src/identity/standing.js';
@@ -83,7 +82,7 @@ async function proactiveRule(userId: string, status: 'enabled' | 'paused' | 'rev
   await db.insert(schema.workspaces).values({ id: workspaceId, name: 'Standing fixture', createdBy: userId });
   await db.insert(schema.projects).values({ id: projectId, workspaceId, name: 'Standing fixture', createdBy: userId });
   await db.insert(schema.agents).values({ id: agentId, workspaceId, name: 'Standing agent', ownerUserId: userId, createdBy: userId });
-  await db.insert(schema.proactiveComparisonRules).values({ id: ruleId, workspaceId, projectId, ownerUserId: userId, agentId, maxRunsPerDay: 3, periodBudgetCents: 15, perRunCents: 5, status });
+  await db.insert(schema.proactiveComparisonRules).values({ id: ruleId, workspaceId, projectId, ownerUserId: userId, agentId, status });
   return { workspaceId, projectId, ruleId };
 }
 /** A candidate in the given status under a paused rule, so only the candidate can make the person eligible. */
@@ -96,8 +95,7 @@ async function proactiveCandidate(userId: string, status: 'queued' | 'reserved' 
   if (reserved) {
     connectionId = randomUUID();
     await db.insert(schema.backgroundComputeConnections).values({ id: connectionId, ownerUserId: userId, provider: 'anthropic', model: 'claude-sonnet-5', name: 'Standing fixture',
-      payerOrganization: 'owner', providerWorkspace: 'owner', encryptedKey: 'sealed-fixture', keyLastFour: '0000', keyFingerprint: randomUUID().replaceAll('-', '').slice(0, 16), maxRunsPerDay: 3, periodDays: 30, periodBudgetCents: 15, perRunCents: 5,
-      consentVersion: BACKGROUND_CONSENT_VERSION });
+      encryptedKey: 'sealed-fixture', keyLastFour: '0000', keyFingerprint: randomUUID().replaceAll('-', '').slice(0, 16), dailyBudgetCents: 15 });
   }
   const notRun = status === 'not_run' ? { usageInputTokens: 0, usageOutputTokens: 0, usageEstimatedCents: 0, failureCode: 'NO_SOURCES', finishedAt: new Date() } : {};
   await db.insert(schema.proactiveComparisonOutbox).values({ aiEpoch: 1, id: randomUUID(), ruleId, ownerUserId: userId, projectId, resultId, status, connectionId,
@@ -451,9 +449,8 @@ describe('the check', () => {
     ]);
     const userId = await person(id, { session: false });
     await db.insert(schema.personalRunEnablements).values({
-      ownerUserId: userId, consentVersion: engine === 'runtime' ? PERSONAL_RUNTIME_CONSENT_VERSION : PERSONAL_RUN_CONSENT_VERSION,
-      consentProvider: 'anthropic', consentModel: 'fixture',
-      consentPayerOrganization: 'owner', consentPayerWorkspace: 'owner', engine,
+      ownerUserId: userId, provider: 'anthropic', engine, connectionId: engine === 'server' ? randomUUID() : null,
+      assistantModel: engine === 'runtime' ? 'sonnet' : 'claude-sonnet-5',
     });
     await service.recordSignIn(userId, 'kept-offline-token');
     await due(userId);

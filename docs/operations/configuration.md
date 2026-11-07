@@ -390,7 +390,7 @@ Host port of TURN/TLS. Keep 443 for a public deployment.
 
 ## AI providers
 
-Owners connect their own AI provider in **Settings → Agents and AI**. These switches decide what the instance allows. Both Compose files pass the switches to `api` and `worker`; the assistant and background suggestions also need the key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below).
+Owners connect their own AI provider in **Settings → AI**. These switches decide what the instance allows. Both Compose files pass the switches to `api` and `worker`; the assistant and background suggestions also need the key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below).
 
 ### `FLUX_BACKGROUND_KEY_HOST_FILE`
 

@@ -229,7 +229,7 @@ describe('workspace AI lock: switch and cutover', () => {
   test('a schedule time missed while AI is off never fires; the next time after re-enable does', async () => {
     const sent: { name: string; data: Record<string, unknown> }[] = [];
     const boss = { send: async (name: string, data?: object | null) => { sent.push({ name, data: (data ?? {}) as Record<string, unknown> }); return randomUUID(); } } as unknown as Pick<PgBoss, 'send'>;
-    const tick = (now: Date) => assistantTick({ uow: assistantUnitOfWork(db, boss), startBackground: startBackgroundOf({ connections: scene.connections, providerEnabled: true, toolTurns: 1 }, db, boss) }, now);
+    const tick = (now: Date) => assistantTick({ uow: assistantUnitOfWork(db, boss), startBackground: startBackgroundOf({ connections: scene.connections, providerEnabled: true }, db, boss) }, now);
     const day = 86_400_000;
     const base = new Date(Date.now() + 3 * day);
     const at = (days: number, minutes = 0) => new Date(Date.UTC(base.getUTCFullYear(), base.getUTCMonth(), base.getUTCDate() + days, 9, minutes));

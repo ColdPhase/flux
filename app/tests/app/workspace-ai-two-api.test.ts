@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { PgBoss } from 'pg-boss';
-import { PERSONAL_RUN_CONSENT_VERSION, workspaceAiPolicyPath, type Conversation, type Workspace } from '@flux/contracts';
+import { workspaceAiPolicyPath, type Conversation, type Workspace } from '@flux/contracts';
 import { PERSONAL_RUN_JOB, testFixturePersonalConnections } from '@flux/core';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { connectionString, db, pool } from './support/db.js';
@@ -51,7 +51,7 @@ describe('workspace AI lock across the api, api2 and worker containers', { skip:
       { body: { body: 'The camera fails below 5 lux', clientMessageId: randomUUID() } }), 201) as Conversation;
     const connectionId = (await testFixturePersonalConnections.resolve(owner.id))!.id;
     expectStatus(await owner.browser.request('POST', '/api/v1/personal-assistant',
-      { body: { consentVersion: PERSONAL_RUN_CONSENT_VERSION, agentId, connectionId, perRunCents: 50, dailyCapCents: 1_000 } }), 201);
+      { body: { agentId, connection: connectionId, model: 'claude-sonnet-5' } }), 201);
     second = new Browser(api2Url, publicOrigin);
     for (const [name, value] of owner.browser.cookies) second.cookies.set(name, value);
     const connection = expect(await owner.browser.request('POST', '/api/v1/agent-connections',

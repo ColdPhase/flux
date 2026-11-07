@@ -77,6 +77,9 @@ export const RUN_OUTCOMES = [
 ] as const;
 export type RunOutcome = (typeof RUN_OUTCOMES)[number];
 
+/** A plan's remaining usage, as the slot passes it on (#854): the most-used window's share left, which window, when it resets. */
+export interface RunUsage { leftPercent: number; window: 'five_hour' | 'weekly' | null; resetsAt: string | null }
+
 /** A name in the CLI's start-up list (a tool, or an MCP server), reduced by the slot; never its arguments. */
 export const INIT_NAME = /^[A-Za-z0-9_.:-]{1,128}$/;
 export const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{3})?Z$/;
@@ -89,7 +92,9 @@ export type RunFrame =
 export type SupervisorResult =
   | { kind: 'bind'; bindingId: string }
   /** The CLI's answer (at most the run's answer size) only when `completed`. */
-  | { kind: 'run'; runId: string; outcome: RunOutcome; answer: string | null; resetsAt: string | null; turns: number }
+  | { kind: 'run'; runId: string; outcome: RunOutcome; answer: string | null; resetsAt: string | null; turns: number;
+    /** Codex only: the plan's remaining usage as its app-server reported it after the run (#854); display facts only. */
+    usage?: RunUsage | null }
   | { kind: 'status'; slot: SlotReport }
   | { kind: 'status'; client: ClientStatus }
   | { kind: 'logout'; client: RuntimeClient; logout: StepOutcome }
@@ -151,10 +156,11 @@ const isClientStatus = object({
 }) as unknown as Check<ClientStatus>;
 
 const nullableIso = nullable(str(ISO_INSTANT, 30));
+const isRunUsage = object({ leftPercent: int(0, 100), window: nullable(oneOf(['five_hour', 'weekly'] as const)), resetsAt: nullableIso }) as unknown as Check<RunUsage>;
 const RESULTS: Check<SupervisorResult>[] = [
   object({ kind: literal('bind'), bindingId: str(BINDING_ID, 36) }),
   object({ kind: literal('run'), runId: str(UUID, 36), outcome: oneOf(RUN_OUTCOMES), answer: nullable(text(RUN_CAP_BOUNDS.maxAnswerBytes.max)),
-    resetsAt: nullableIso, turns: int(0, 1000) }),
+    resetsAt: nullableIso, turns: int(0, 1000) }, { usage: nullable(isRunUsage) }),
   object({ kind: literal('status'), slot: isSlotReport }),
   object({ kind: literal('status'), client: isClientStatus }),
   object({ kind: literal('logout'), client, logout: outcome }),

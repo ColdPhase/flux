@@ -7,10 +7,11 @@ export const ASSISTANT_JOB_LIMITS = {
   title: 60,
   /** The owner's sentence: the instruction the run gets (the same bound as any assistant request). */
   text: 4000,
-  /** Schedules per owner (enabled or not). */
-  perOwner: 20,
-  /** Runs a day for one schedule (AST-7 "Spacing and caps"), within the assistant's background runs a day. */
-  runsPerDay: 12,
+  /**
+   * Schedules per owner (enabled or not): a technical safety bound nobody meets in normal use (#843). Flux sets no runs a
+   * day for a schedule or for background work; the plan's own limits or the API key's daily budget apply.
+   */
+  perOwner: 200,
   /** History kept per schedule (AST-7 "history (last 20)"). */
   history: 20,
   /** A run that could not start within this many minutes of its time is skipped (AST-7 "Missed runs"). */
@@ -134,7 +135,7 @@ export const assistantJobRunNowPath = (workspaceId: string, ownerUserId: string,
 export const assistantJobRestorePath = (workspaceId: string, ownerUserId: string, jobId: string) => `${assistantJobPath(workspaceId, ownerUserId, jobId)}/restore`;
 export const assistantJobHistoryPath = (workspaceId: string, ownerUserId: string, jobId: string) => `${assistantJobPath(workspaceId, ownerUserId, jobId)}/history`;
 export const assistantJobNotePath = (workspaceId: string, ownerUserId: string) => `/api/v1/workspaces/${workspaceId}/assistants/${ownerUserId}/background-note`;
-/** The cron preview of *More*: refuses more than once an hour, shows the next three times in words. */
+/** The cron preview of *More*: refuses more than once every five minutes, shows the next three times in words. */
 export const assistantJobPreviewPath = (workspaceId: string, ownerUserId: string) => `${assistantJobsPath(workspaceId, ownerUserId)}/preview`;
 
 export interface AssistantJobPreview {

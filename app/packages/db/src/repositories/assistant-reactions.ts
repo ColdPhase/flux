@@ -5,7 +5,7 @@ import type { DbExecutor } from './push.js';
 
 type Rule = Omit<AssistantReaction, 'last'> & { ownerUserId: string };
 type Event = { id: string; reactionId: string; ownerUserId: string; objectId: string; sourceId: string; action: AssistantReactionAction; event: import('@flux/contracts').AssistantReactionEvent; reactionVersion: number; state: 'queued' | 'proof' | 'running' | 'done' | 'skipped' | 'failed'; runId: string | null; createdAt: Date; data: Record<string, unknown> | null; aiEpoch: number };
-const ruleColumns = sql`r.id,r.workspace_id AS "workspaceId",r.project_id AS "projectId",p.name AS "projectName",r.owner_user_id AS "ownerUserId",r.event,r.action,r.enabled,r.daily_limit AS "dailyLimit",r.version`;
+const ruleColumns = sql`r.id,r.workspace_id AS "workspaceId",r.project_id AS "projectId",p.name AS "projectName",r.owner_user_id AS "ownerUserId",r.event,r.action,r.enabled,r.version`;
 const eventColumns = sql`e.id,e.reaction_id AS "reactionId",e.owner_user_id AS "ownerUserId",e.object_id AS "objectId",e.source_id AS "sourceId",e.action,e.event,e.reaction_version AS "reactionVersion",e.state,e.run_id AS "runId",e.created_at AS "createdAt",e.data,e.ai_epoch::int AS "aiEpoch"`;
 
 /** Persistence only: core authorizes the owner, project and switched-on area before reading event data. */
@@ -23,11 +23,11 @@ export function assistantReactionRows(db: DbExecutor) {
     },
     find,
     async save(owner: string, workspace: string, id: string | null, command: SaveAssistantReaction): Promise<Rule> {
-      if (id) await db.execute(sql`UPDATE assistant_reactions SET project_id=${command.projectId},event=${command.event},action=${command.action},enabled=${command.enabled},daily_limit=${command.dailyLimit ?? 10},version=version+1,updated_at=now() WHERE id=${id} AND owner_user_id=${owner}`);
+      if (id) await db.execute(sql`UPDATE assistant_reactions SET project_id=${command.projectId},event=${command.event},action=${command.action},enabled=${command.enabled},version=version+1,updated_at=now() WHERE id=${id} AND owner_user_id=${owner}`);
       else {
         id = randomUUID();
-        await db.execute(sql`INSERT INTO assistant_reactions(id,workspace_id,project_id,owner_user_id,event,action,enabled,daily_limit) VALUES
-          (${id},${workspace},${command.projectId},${owner},${command.event},${command.action},${command.enabled},${command.dailyLimit ?? 10})`);
+        await db.execute(sql`INSERT INTO assistant_reactions(id,workspace_id,project_id,owner_user_id,event,action,enabled) VALUES
+          (${id},${workspace},${command.projectId},${owner},${command.event},${command.action},${command.enabled})`);
       }
       return (await find(id))!;
     },
@@ -36,10 +36,6 @@ export function assistantReactionRows(db: DbExecutor) {
     async running(reaction: string): Promise<boolean> { return !!await one(sql`SELECT id FROM assistant_reaction_events WHERE reaction_id=${reaction} AND state='running' LIMIT 1`); },
     async debounced(owner: string, object: string, since: Date): Promise<boolean> {
       return !!await one(sql`SELECT id FROM assistant_reaction_events WHERE owner_user_id=${owner} AND object_id=${object} AND run_id IS NOT NULL AND started_at>${since} LIMIT 1`);
-    },
-    async countToday(reaction: string, zone: string): Promise<number> {
-      return Number((await one<{ count: number }>(sql`SELECT count(*)::int AS count FROM assistant_reaction_events WHERE reaction_id=${reaction} AND run_id IS NOT NULL
-        AND started_at>=(date_trunc('day',now() AT TIME ZONE ${zone}) AT TIME ZONE ${zone})`))?.count ?? 0);
     },
     async facts(event: Event, rule: Rule) {
       if (rule.event === 'mentioned') {

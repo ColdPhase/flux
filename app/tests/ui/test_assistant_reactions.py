@@ -49,7 +49,7 @@ class AssistantReactions(unittest.TestCase):
                     # Each viewport starts with the empty response, while saves/toggles use the real owner API.
                     rules = self.api(page, 'GET', self.path, status=200)['items']
                     for rule in rules:
-                        self.api(page, 'PUT', f"{self.path}/{rule['id']}", {**{key: rule[key] for key in ('projectId','event','action','dailyLimit')}, 'enabled': False, 'expectedVersion':rule['version']}, status=200)
+                        self.api(page, 'PUT', f"{self.path}/{rule['id']}", {**{key: rule[key] for key in ('projectId','event','action')}, 'enabled': False, 'expectedVersion':rule['version']}, status=200)
                     # A new project supplies an empty real collection without deleting another viewport's history.
                     project = self.api(page,'POST',f"/api/v1/workspaces/{self.ids['workspace']}/projects",{'name':{(False,False):'Low-light calibration',(False,True):'Connector bench test',(True,False):'Sensor verification',(True,True):'Assembly check'}[(phone,dark)],'visibility':'workspace'},status=201)
                     rows = []

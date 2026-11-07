@@ -1,6 +1,6 @@
 import { workRows, accessReader, type Database } from '@flux/db';
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, backgroundComparisonRuntimePath, backgroundComputeUsagePath,
+import { AI_BASE_URL_MAX_LENGTH, AI_MODEL_LISTS_PATH, API_KEY_DAILY_BUDGET_CENTS, AI_PRICE_MAX_MICROS_PER_MTOK, AI_PROVIDER_KINDS, backgroundComparisonRuntimePath, backgroundComputeUsagePath,
   proactiveComparisonOutcomePath, proactiveComparisonOutcomesPath, proactiveComparisonProposalsPath, WORK_LIMITS, type AiModelListQuery,
   type BackgroundComparisonRuntime, type ConnectBackgroundComputeCommand, type UpdateBackgroundComputeConnectionCommand, type CreateProactiveComparisonRule } from '@flux/contracts';
 import { backgroundConnectionRepository, comparisonProposalView, proactiveOutboxRows, proactiveRuleRows, sealBackgroundKey } from '@flux/db';
@@ -31,6 +31,7 @@ export function comparisonRuleUseCases(db: Database, runtimeAvailable: boolean) 
 }
 
 const microsPerMTok = { type: 'integer', minimum: 0, maximum: AI_PRICE_MAX_MICROS_PER_MTOK };
+const dailyBudget = { type: 'integer', minimum: API_KEY_DAILY_BUDGET_CENTS.min, maximum: API_KEY_DAILY_BUDGET_CENTS.max };
 
 export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env),
   comparisonsEnabled }: Options) {
@@ -55,10 +56,9 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
     throw error;
   });
   app.post<{ Body: ConnectBackgroundComputeCommand }>('/api/v1/background-compute-connections', {
+    // An API key and its one daily budget (#854): no set-up attestations and no allowance of its own.
     schema: { body: { type: 'object', additionalProperties: false,
-      required: ['provider', 'model', 'apiKey', 'payerOrganization', 'providerWorkspace', 'workspaceScopedKeyConfirmed',
-        'payerAuthorityConfirmed', 'providerBillingAcknowledged', 'projectDataDisclosureAcknowledged',
-        'maxRunsPerDay', 'periodDays', 'periodBudgetCents', 'perRunCents'],
+      required: ['provider', 'apiKey', 'dailyBudgetCents'],
       properties: {
         name: { type: 'string', minLength: 1, maxLength: 80 },
         useForBackground: { type: 'boolean' },
@@ -68,13 +68,8 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
         price: { type: 'object', additionalProperties: false, required: ['inputMicrosPerMTok', 'outputMicrosPerMTok'],
           properties: { inputMicrosPerMTok: microsPerMTok, outputMicrosPerMTok: microsPerMTok } },
         apiKey: { type: 'string', minLength: 8, maxLength: 512 },
-        payerOrganization: { type: 'string', minLength: 2, maxLength: 120 },
-        providerWorkspace: { type: 'string', minLength: 2, maxLength: 120 },
-        workspaceScopedKeyConfirmed: { const: true }, payerAuthorityConfirmed: { const: true },
-        providerBillingAcknowledged: { const: true }, projectDataDisclosureAcknowledged: { const: true },
-        maxRunsPerDay: { type: 'integer', minimum: 1, maximum: 3 }, periodDays: { const: 30 },
-        periodBudgetCents: { type: 'integer', minimum: 5, maximum: 1000 },
-        perRunCents: { type: 'integer', minimum: 5, maximum: 50 },
+        dailyBudgetCents: dailyBudget,
+        timeZone: { type: 'string', minLength: 1, maxLength: 64 },
       } } },
   }, async (request, reply) => reply.code(201).send(await connections.connect(
     (await sessions.requirePrincipal(request)).principal, request.body)));
@@ -86,7 +81,7 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
     (await sessions.requirePrincipal(request)).principal));
   app.patch<{ Params: { connectionId: string }; Body: UpdateBackgroundComputeConnectionCommand }>('/api/v1/background-compute-connections/:connectionId', {
     schema: { body: { type: 'object', additionalProperties: false, minProperties: 1, properties: {
-      name: { type: 'string', minLength: 1, maxLength: 80 }, usedForBackground: { const: true } } } },
+      name: { type: 'string', minLength: 1, maxLength: 80 }, dailyBudgetCents: dailyBudget, usedForBackground: { const: true } } } },
   }, async (request) => connections.update((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.body));
   // A provider's models, listed by this server without a key and through the endpoint guard (PROV-1).
   app.post<{ Body: AiModelListQuery }>(AI_MODEL_LISTS_PATH, {

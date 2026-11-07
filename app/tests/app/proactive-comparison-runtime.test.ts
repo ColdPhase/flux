@@ -24,12 +24,10 @@ const { db, pool } = createDatabase(connectionString);
 after(() => pool.end());
 
 const ruleBody = (agentId: string) => ({ agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
-  dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal', maxRunsPerDay: 1, periodBudgetCents: 25, perRunCents: 5 });
+  dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' });
 const connectionBody = {
   provider: 'anthropic', model: 'claude-sonnet-5', apiKey: `sk-ant-api03-${'owner-budget-key-'.repeat(4)}END9`,
-  payerOrganization: 'Example payer org', providerWorkspace: 'Dedicated maker workspace', workspaceScopedKeyConfirmed: true,
-  payerAuthorityConfirmed: true, providerBillingAcknowledged: true, projectDataDisclosureAcknowledged: true,
-  maxRunsPerDay: 1, periodDays: 30, periodBudgetCents: 50, perRunCents: 5,
+  dailyBudgetCents: 50,
 };
 // No candidate is ready in these tests, so the provider is never called.
 const neverCalled = {} as ComparisonProvider;
