@@ -7,7 +7,7 @@ import { chromium, type Browser, type Page } from 'playwright';
 import type { BackgroundComputeUsage, Page as OutcomePage, ProactiveComparisonOutcome } from '@flux/contracts';
 
 const fixture = JSON.parse(readFileSync('/state/proactive-outcomes-ui.json', 'utf8')) as {
-  email: string; viewerEmail: string; password: string; projectId: string; proposalId: string; insufficientId: string; ownerId: string;
+  email: string; viewerEmail: string; viewerId: string; password: string; projectId: string; proposalId: string; insufficientId: string; ownerId: string;
 };
 const upstream = new URL(process.env.FLUX_API_URL ?? 'http://api:8080');
 const origin = new URL(process.env.FLUX_PUBLIC_ORIGIN ?? 'http://127.0.0.1:18089');
@@ -266,7 +266,10 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
     const work = await api(page, 'GET', `/api/v1/projects/${fixture.projectId}/work?limit=100`);
     assert.equal((work.data as { items: unknown[] }).items.length, 1, 'insufficient evidence never creates work');
     assert.equal(((await api(page, 'GET', '/api/v1/background-compute-usage')).data as BackgroundComputeUsage).startedRequestsToday, 3, 'inspect and dismiss start no paid request');
-    // A local accounting reference is not a grant to reopen its project source.
+    // A local accounting reference is not a grant to reopen its project source. A space always keeps an admin (C-16), so the
+    // owner can be kept out of it only once another person administers it. Leaving would not do: a company owner still reaches it.
+    assert.equal((await api(page, 'POST', `/api/v1/projects/${fixture.projectId}/grants`,
+      { principal: { kind: 'human', id: fixture.viewerId }, role: 'manager' })).status, 201);
     assert.equal((await api(page, 'POST', `/api/v1/projects/${fixture.projectId}/grants`,
       { principal: { kind: 'human', id: fixture.ownerId }, role: 'denied' })).status, 201);
     await page.goto(`${origin.origin}/settings/background-compute`);

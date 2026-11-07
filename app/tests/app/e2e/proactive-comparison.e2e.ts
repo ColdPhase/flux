@@ -268,9 +268,11 @@ test('owner-only API key setup saves one daily budget, clears keys and preserves
   assert.equal(await page.getByRole('dialog', { name: 'Account', exact: true }).count(), 0);
   await page.getByRole('link', { name: 'AI', exact: true }).first().click();
   await page.waitForURL(/\/settings\/agents$/);
-  // The row is followed by keyboard, as the menu link was: its section settles in while its reads arrive.
-  await page.getByRole('link', { name: /^Background suggestions/ }).focus();
-  await page.keyboard.press('Enter');
+  // This stack leaves background suggestions off (Spokój E04 ③): the row is one status line, not a link, once the server
+  // has answered. The page itself stays reachable by its address, which is what the rest of this test uses.
+  await page.getByText('not available until your admin turns it on', { exact: false }).waitFor();
+  assert.equal(await page.getByRole('link', { name: /^Background suggestions/ }).count(), 0, 'an off server offers no link to a page it cannot use');
+  await page.goto(`${origin.origin}/settings/background-compute`);
   await page.getByRole('heading', { name: 'Your background suggestions', exact: true }).waitFor();
   assert.match(await page.getByRole('note').innerText(), /not available/);
   // #513, #854: the keys and their form live on one API keys page, linked beside the status line.

@@ -78,11 +78,12 @@ try {
     // The same marker check_application.sh looks for in the API, worker and provider-mock logs.
     const key = `local-${'owner-budget-key-'.repeat(3)}RT58`;
     const model = 'llama3.1:8b';
-    // $10/M input and $40/M output: 8,000 × $10/M + 1,200 × $40/M reserves 13 cents per request.
+    // $10/M input and $40/M output: 8,000 × $10/M + 1,200 × $40/M reserves 13 cents per comparison request. The key's daily budget
+    // must also hold the largest request its model can make (#854), $0.80 at this price, so it is $1.00.
     const connection = expectStatus(await owner.browser.request('POST', '/api/v1/background-compute-connections', { body: {
       name: 'Lab comparison endpoint', provider: 'openai_compatible', model, baseUrl: `${MOCK}/openai/v1`, apiKey: key,
       price: { inputMicrosPerMTok: 10_000_000, outputMicrosPerMTok: 40_000_000 }, useForBackground: true,
-      dailyBudgetCents: 50 } }), 201) as BackgroundComputeConnection;
+      dailyBudgetCents: 100 } }), 201) as BackgroundComputeConnection;
     const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/proactive-comparison-rules`, { body: {
       agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison', dataScope: 'current_project_published',
       permittedEffect: 'quiet_project_proposal' } }), 201) as ProactiveComparisonRule;
