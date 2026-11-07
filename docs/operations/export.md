@@ -15,8 +15,8 @@ private or internal data that a [backup](backup-restore.md) keeps.
 | `GET /api/v1/projects/:projectId/export?format=bundle` | The bundle (`application/gzip`, `Content-Disposition: attachment`) | Same. |
 | `./flux export <project id or exact name> [--as EMAIL] [--output FILE]` | The bundle in `exports/` | The operator, acting as the account `--as` names, by default the workspace's first owner. |
 
-`project.manage` belongs to workspace owners and admins, unless an explicit deny on the project
-applies ([access policy](../development/access-policy.md#rules)). An invisible project answers
+`project.manage` belongs to a space's admins and to the company's owners and admins
+([access policy](../development/access-policy.md#rules)). An invisible project answers
 `404`, a visible one the caller may not manage `403`, a missing session `401`. The command line
 runs the same core use case as the API inside the API container, as that account, so the
 policy decides there too (`--as` a member without `project.manage` is refused). Responses carry
@@ -64,8 +64,8 @@ names.
 | `provenance` | `exportedBy` (with name), `instanceOrigin` (`FLUX_PUBLIC_ORIGIN`), database `schemaVersion`, `reimportSupported: false`. |
 | `excluded` | The list below, repeated in every export. |
 | `project` | Id, name, visibility, creation time, workspace id and name. |
-| `people` | Everyone who can read the project now, with `access` (`manager`, `contributor`, `viewer`) and `workspaceRole`, decided by the access policy. |
-| `grants` | Explicit project grants, including `denied`. |
+| `people` | Everyone who can read the project now, with `access` (`manager` or `contributor`; format 1's schema still lists `viewer`, which a space no longer has) and `workspaceRole`, decided by the access policy. |
+| `grants` | Explicit project grants (`manager` or `contributor`; format 1's schema still lists `viewer` and `denied`, which no grant has any more). |
 | `actors` | Names of every person and agent referenced anywhere in the export. |
 | `conversations` | Each conversation with all messages in sequence: author, text, cited material or doc version, time. A message made by a saved blocker, a published result or a public handoff also has `contribution` (`{ "kind": "blocker" \| "handoff" }` or `{ "kind": "result", "resultId" }`); ordinary messages omit it. |
 | `agentThreads` | Task-bound agents-space conversation history, with `workId` and the same ordered message/author/source/files fields. Additive in format1; readers ignore unknown fields. |

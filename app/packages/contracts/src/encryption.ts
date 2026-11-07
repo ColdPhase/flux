@@ -214,7 +214,7 @@ export const EVENT_DATA_TOKENS = [
   'invitation', 'left', 'link_added', 'link_removed', 'link_updated', 'manager', 'map', 'material', 'member', 'mention', 'mentions', 'message',
   'not_pursued', 'open', 'owner', 'pair', 'password', 'person', 'private', 'project', 'proposed', 'question', 'recovery', 'rejoined',
   'related', 'renamed', 'reply', 'restart', 'restricted', 'result', 'review', 'self', 'sketch', 'source', 'still_applies',
-  'superseded', 'thought', 'thought_added', 'thought_removed', 'thought_updated', 'thoughts_moved', 'viewer', 'wiki', 'work',
+  'superseded', 'thought', 'thought_added', 'thought_removed', 'thought_updated', 'thoughts_moved', 'wiki', 'work',
   'workspace',
 ] as const;
 

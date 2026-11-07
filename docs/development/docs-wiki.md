@@ -165,7 +165,7 @@ field is never covered. Targets are 44 px on touch.
 
 ## Tests and evidence
 
-`app/tests/app/docs.test.ts` (API, two people, a viewer, an outsider and an agent principal:
+`app/tests/app/docs.test.ts` (API, two people, an outsider and an agent principal:
 access, version immutability and citations, If-Match 428/409 and a concurrent race, idempotent
 retries, links and backlinks across all target types without cross-project leaks, sanitization,
 Add to docs with result section rewrite and decision references, the F-034 migration, events and the workspace list filter), `app/tests/app/returns.test.ts`

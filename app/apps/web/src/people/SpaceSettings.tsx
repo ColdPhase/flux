@@ -91,7 +91,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
   const grantOf = (id: string) => roster?.grants.find((grant) => grant.principal.kind === 'human' && grant.principal.id === id) ?? null;
   const myGrant = manager ? grantOf(meId) : null;
   // "Leave space" is for someone added to the space; a company admin who only reaches it, or anyone in Everyone, has nothing to leave.
-  const canLeave = !everyone && (manager ? !!myGrant && myGrant.role !== 'denied' : true);
+  const canLeave = !everyone && (manager ? !!myGrant : true);
 
   const rows: Row[] = (() => {
     if (manager && roster) {
@@ -103,7 +103,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
         ? roster.members.filter((member) => member.role !== 'guest' || grantOf(member.userId)).map((member) => fromMember(member, grantOf(member.userId)))
         : roster.grants.flatMap((grant) => {
           const member = grant.principal.kind === 'human' ? memberOf(grant.principal.id) : null;
-          return member && grant.role !== 'denied' ? [fromMember(member, grant)] : [];
+          return member ? [fromMember(member, grant)] : [];
         });
       return list.sort((a, b) => (a.userId === meId ? -1 : b.userId === meId ? 1 : a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'manager' ? -1 : 1));
     }

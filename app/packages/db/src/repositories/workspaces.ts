@@ -103,12 +103,6 @@ export function workspaceRepository(db: DbExecutor) {
         .where(and(eq(schema.projectGrants.workspaceId, workspaceId), eq(schema.projectGrants.userId, userId), eq(schema.projectGrants.role, 'manager')));
     },
 
-    /** Someone who became a company owner or admin reaches every space again: a deny a space admin gave them while they were a member goes. */
-    async liftDeniedGrants(workspaceId: string, userId: string) {
-      await db.delete(schema.projectGrants)
-        .where(and(eq(schema.projectGrants.workspaceId, workspaceId), eq(schema.projectGrants.userId, userId), eq(schema.projectGrants.role, 'denied')));
-    },
-
     /** Whether the account is in the workspace now. */
     async isMember(workspaceId: string, userId: string) {
       const [row] = await db.select({ userId: schema.workspaceMembers.userId }).from(schema.workspaceMembers)

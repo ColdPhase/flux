@@ -197,13 +197,6 @@ export function AgentConnectionPage() {
   const agentSpace = quick && !chosenAgent ? workspaceId : chosenAgent?.workspaceId;
   // An agent is connected only to a space whose AI is on (AG-10); the one that is off is simply not offered.
   const eligibleProjects = projects.filter((project) => project.workspaceId === agentSpace && project.ai !== 'blocked');
-  const writes = scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute');
-
-  /** The agent has exactly your rights (F-036 AG-3): it may use a project you can read, and act where you can write. */
-  function canSelect(project: Project) {
-    return !writes || project.access !== 'viewer';
-  }
-
   async function addPersonalAgent(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!workspaceId || !agentName.trim()) return;
@@ -292,10 +285,6 @@ export function AgentConnectionPage() {
     <div className="connection__checks">{ALL_SCOPES.map((scope) => <label key={scope}>
       <input type="checkbox" checked={scopes.includes(scope)} onChange={(event) => {
         setScopes((current) => event.target.checked ? [...current, scope] : current.filter((item) => item !== scope));
-        if ((scope === 'flux.proposal.write' || scope === 'flux.action.execute') && event.target.checked && !oauthQuery) setProjectIds((current) => current.filter((id) => {
-          const project = eligibleProjects.find((item) => item.id === id);
-          return project && project.access !== 'viewer';
-        }));
       }} />
       <span><strong>{SCOPE_LABELS[scope].title}</strong><small>{SCOPE_LABELS[scope].description}</small></span>
     </label>)}</div>
@@ -375,10 +364,9 @@ export function AgentConnectionPage() {
       <fieldset className="connection__group" disabled={busy || (!agentId && !quick)}>
         <legend>Projects</legend>
         <div className="connection__checks">{eligibleProjects.map((project) => {
-          const selectable = canSelect(project);
           return <div className="connection__project" key={project.id}><label>
-            <input type="checkbox" disabled={!selectable || (projectIds.length >= 50 && !projectIds.includes(project.id))} checked={projectIds.includes(project.id) && selectable} onChange={(event) => { setMissing(null); setProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id)); }} />
-            <span><strong>{project.name}</strong><small>{project.access === 'viewer' ? 'You can read here, so your agent can only read' : 'Your agent can do here what you can'}</small></span>
+            <input type="checkbox" disabled={projectIds.length >= 50 && !projectIds.includes(project.id)} checked={projectIds.includes(project.id)} onChange={(event) => { setMissing(null); setProjectIds((current) => event.target.checked ? [...current, project.id] : current.filter((id) => id !== project.id)); }} />
+            <span><strong>{project.name}</strong><small>Your agent can do here what you can</small></span>
           </label></div>;
         })}</div>
         {projectIds.length >= 50 ? <p>One selection can include up to 50 projects.</p> : null}

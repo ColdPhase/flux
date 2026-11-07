@@ -109,8 +109,8 @@ export async function readHandoffPacket(db: Database, principal: Principal, work
 /**
  * Cancels an open request at the version this person saw. The request row is locked and re-read, so a cancel and a
  * concurrent claim, deferral, response or supersession serialize on it: whichever commits first wins, and the other is
- * told the committed state. A repeated cancel succeeds without a change. Writing in the project is required, so a viewer or
- * a person whose access was just removed is refused before the request's state is revealed.
+ * told the committed state. A repeated cancel succeeds without a change. Writing in the project is required, so a person
+ * whose access was just removed is refused before the request's state is revealed.
  */
 export async function cancelCoWorkRequest(db: Database, principal: Principal, workId: string, requested: string,
   command: CancelCoWorkRequestCommand): Promise<TaskCoordinationRequest> {
@@ -122,7 +122,7 @@ export async function cancelCoWorkRequest(db: Database, principal: Principal, wo
       SELECT workspace_id, project_id FROM project_work_items WHERE id = ${workId.toLowerCase()}::uuid`)).rows[0];
     if (!located) throw new NotFoundError('Work item', 'WORK_NOT_FOUND');
     const projectId = located.project_id, workspaceId = located.workspace_id;
-    // The same 404 for an unknown task and for one the person cannot read; 403 for a viewer. Access rows are locked against
+    // The same 404 for an unknown task and for one the person cannot read. Access rows are locked against
     // a concurrent removal.
     const access = await evaluateProject(principal, 'project.write', projectId, accessReader(tx), { lock: true });
     if (!access.visible) throw new NotFoundError('Work item', 'WORK_NOT_FOUND');

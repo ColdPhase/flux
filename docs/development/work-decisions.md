@@ -33,9 +33,8 @@ replacements of the same rule at once: one wins, the other gets `409 SUPERSEDED_
 [O-009](../product/decision-authority.md) (proposed) records the rule this code enforces:
 
 - **Who accepts.** One signed-in person whose current project level is contributor or manager.
-  That covers owners and admins unless they are denied, members with project write and a guest with a
-  contributor grant. The proposer may accept their own proposal.
-- **Who is refused.** A viewer gets `403`. A person without access, denied or gone gets `404`. An
+  That covers owners and admins, members of the space and a guest with a contributor grant. The proposer may accept their own proposal.
+- **Who is refused.** A person without access, removed from the space or gone gets `404`. An
   agent gets `403 DECISION_NEEDS_PERSON`, whoever owns it and whatever its grant.
 - **Paths that never accept.** The assistant in Flux has no decision path: its proposals are results
   only. MCP has no accepting tool and no `decision.*` operation other than `decision.propose`, so a
@@ -92,7 +91,7 @@ The receipt is separate from the 24-hour `Idempotency-Key` response cache and fr
 **Due date.** `dueOn` is a calendar day, `YYYY-MM-DD`, with no time zone and no time, so it is the same day for everyone.
 It must be a real date from 1970 to 9999 (`2026-02-31` is `400 INVALID_INPUT`); `null` clears it. Create takes it and
 `PATCH` changes it like any other field: a versioned change that honours `If-Match` (409 `VERSION_CONFLICT`) and
-`clientCommandId`, needs write access (a viewer gets 403) and leaves the task's other fields alone. The list rows, the
+`clientCommandId`, needs access to the space and leaves the task's other fields alone. The list rows, the
 work detail and the task carry it. MCP does not take or show it yet. It is stored in `project_work_items.due_on`
 (migration 0112).
 
@@ -142,14 +141,14 @@ revalidation and polling and does not subscribe to the stream yet.
 
 ## Tests
 
-`app/tests/app/work.test.ts` (API, two people, viewer, outsider and an agent principal through the
+`app/tests/app/work.test.ts` (API, two people, outsider and an agent principal through the
 use cases), `app/tests/app/decision-authority.test.ts` (#250: the O-009 role matrix, the MCP agent path
 and the database invariant), the "#250 AC-3" case in `app/tests/app/personal-runs.test.ts` (the assistant
-path), `app/tests/ui/test_decision_authority.py` (#250: a viewer sees who decides, a contributor accepts)
+path), `app/tests/ui/test_decision_authority.py` (#250: a contributor accepts; the viewer's "Who decides" note went with the viewer role, #903)
 and `app/tests/ui/test_work_decisions.py` (Playwright: create from a message, keyboard
 propose/accept, negative result by the second person, pivot with parking, phone) and
 `app/tests/ui/test_decision_surfaces.py` (#692, #693: the proposal form keeps the panel's rhythm of
 28 px between sections and 8 px inside one; the proposal's title and Accept block paint no surface of
 their own and start on one left edge, at 390 and 1440, light and dark). Screenshots:
-`docs/design/work-decisions/` (the viewer's **Who decides** note: `decision-desktop-1440-viewer.png`,
+`docs/design/work-decisions/` (the former viewer's **Who decides** note, removed with the viewer role in #903: `decision-desktop-1440-viewer.png`,
 `decision-phone-390-viewer.png`).

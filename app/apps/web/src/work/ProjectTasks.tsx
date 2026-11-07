@@ -117,9 +117,9 @@ function rememberMode(userId: string, mode: Mode) {
  * primary action, "+ Task". The search filters the board's loaded cards; the List is read in bounded pages from
  * the server, so its search is dimmed rather than removed, which keeps every other control where it is.
  */
-function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, phone }: {
+function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
   mode: Mode; onMode: (mode: Mode) => void; query: string; onQuery: (query: string) => void;
-  mine: boolean; onMine: (mine: boolean) => void; writable: boolean; onNew: () => void; phone: boolean;
+  mine: boolean; onMine: (mine: boolean) => void; onNew: () => void; phone: boolean;
 }) {
   const { actionSlot } = useShellActions();
   // The header holds it where the panel docks beside the board (a computer); a tablet's panel overlays, so it stays here.
@@ -158,10 +158,10 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, writable, onNew, 
       </div>
       {/* The one primary action sits at the right of the header row, as drawn, so it keeps its place when a panel docks and
           the board narrows (#763 C4, Spokój rule 7). A phone keeps it in its toolbar. */}
-      {writable ? (() => {
+      {(() => {
         const add = <Button variant="secondary" icon="plus" className="tb-add" onClick={onNew}><span className="ui-vh">New </span>Task</Button>;
         return !phone && docks && actionSlot ? createPortal(add, actionSlot) : add;
-      })() : null}
+      })()}
     </div>
   );
 }
@@ -236,7 +236,6 @@ export function ProjectTasks() {
   const load = useCallback((signal: AbortSignal) => getProjectWorkView(project.id, query, signal), [project.id, query]);
   const { page: read, refresh: refreshPage } = useProjectWorkPage(project.id, selector, load);
   const data = read.phase === 'ready' || read.phase === 'refreshing' ? read.value : null;
-  const writable = (data?.summary.access ?? project.access) !== 'viewer';
   const counts = data ? mine ? data.summary.mine : data.summary.all : null;
   const viewKey = taskViewKey(me.user.id, project.id, status, mine);
   const readingKey = listing ? `${viewKey}:reading:${cursor ?? 'first'}` : `${taskViewKey(me.user.id, project.id, null, mine)}:board:reading`;
@@ -355,12 +354,12 @@ export function ProjectTasks() {
   const startNew = () => openCreate({ kind: 'task', projectId: project.id });
   // New → Task (an old ?new=task link) opens the same window once, then drops the parameter.
   useEffect(() => {
-    if (search.get('new') !== 'task' || !writable) return;
+    if (search.get('new') !== 'task') return;
     const next = new URLSearchParams(search);
     next.delete('new');
     setSearch(next, { replace: true, state: location.state });
     openCreate({ kind: 'task', projectId: project.id });
-  }, [search, writable, setSearch, openCreate, project.id, location.state]);
+  }, [search, setSearch, openCreate, project.id, location.state]);
 
   useEffect(() => {
     const refresh = () => { if (document.visibilityState === 'visible') revalidator.revalidate(); };
@@ -378,17 +377,16 @@ export function ProjectTasks() {
   const groupCount = (id: GroupId, visible: number) => visible ? counts?.[id] ?? 0 : 0;
   // A task opened from its row brings its title: the panel's loading state shows it in its own place (#863 rule 6).
   const openObject = (kind: WorkObjectType, id: string, title?: string) => () => { saveReading(); openDetails({ kind, id, ...(title ? { title } : {}) }); };
-  const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable={writable} muted={muted} onOpen={openObject('work', item.id, item.title)} onChange={changeState} />;
+  const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable muted={muted} onOpen={openObject('work', item.id, item.title)} onChange={changeState} />;
   const summaryCounts = data ? mine ? data.summary.mine : data.summary.all : null;
   // What the board leaves to other places, one step away: work a pivot set aside, and decisions that wait in the Inbox.
   const parkedCount = summaryCounts?.parked ?? 0;
   const waiting = summaryCounts?.needs ?? 0;
-  // Only people who can accept find a decision in their Inbox; others are told one waits.
-  const inboxLink = !waiting ? null : writable ? (
+  const inboxLink = !waiting ? null : (
     <RefLink className="tb-also__b tb-also__b--need" to="/inbox?show=decisions">
       {`${waiting} ${waiting === 1 ? 'decision needs' : 'decisions need'} you in the Inbox`}
     </RefLink>
-  ) : <span className="tb-also__b">{`${waiting} waiting for a decision`}</span>;
+  );
   const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean)
     && !outcomes.some((outcome) => outcome.kind === 'comparison' ? outcome.proposal.status === 'proposed' : outcome.status === 'open');
   const emptyContinuation = data !== null && cursor !== null && !data.items.length;
@@ -401,7 +399,7 @@ export function ProjectTasks() {
       resultTitles={resultTitles}
       workCount={data?.summary.workTotal ?? 0}
       workJumpId={data?.summary.all.in_progress ? 'g-progress' : data?.summary.all.blocked ? 'g-blocked' : data?.summary.all.open ? 'g-open' : data?.summary.all.parked ? 'g-parked' : 'g-finished'}
-      jumpToSection={jumpToSection} writable={writable} refresh={() => { if (listing) refresh(); else refreshBoard(); revalidator.revalidate(); }}
+      jumpToSection={jumpToSection} writable refresh={() => { if (listing) refresh(); else refreshBoard(); revalidator.revalidate(); }}
       openResult={(id) => openDetails({ kind: 'result', id, projectId: project.id })}
       openWork={(item) => openDetails({ kind: 'work', id: item.id, projectId: project.id, title: item.title })} />
     </div>
@@ -413,13 +411,13 @@ export function ProjectTasks() {
   if (retired) return <Navigate to="/inbox?show=decisions" replace state={location.state} />;
   return (
     <div className="tb-root">
-      <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} writable={writable} onNew={startNew} phone={phone} />
+      <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} onNew={startNew} phone={phone} />
       <div className="pane-scroll" ref={scroller} data-own-place="">
       {!listing ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>
           {parkedCount || waiting ? <nav className="tb-also" aria-label="Also elsewhere">{inboxLink}{parkedCount ? <button type="button" className="tb-also__b" onClick={() => setView({ mode: 'list', status: 'parked' })}>{parkedCount} parked by a pivot</button> : null}</nav> : null}
           <div className="tb-aside">{proposals}</div>
-          <TaskBoard project={project} openRead={read} meId={me.user.id} mine={mine} query={boardSearch.trim().toLowerCase()} writable={writable}
+          <TaskBoard project={project} openRead={read} meId={me.user.id} mine={mine} query={boardSearch.trim().toLowerCase()} writable
             revision={boardRevision}
             openWork={(id, title) => { saveReading(); openDetails({ kind: 'work', id, title }); }} refresh={refreshBoard}
             showInList={(group) => { if (isGroup(group)) setView({ mode: 'list', status: group }); }}

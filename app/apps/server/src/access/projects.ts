@@ -110,7 +110,7 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
         type: 'object', required: ['principal', 'role'], additionalProperties: false,
         properties: {
           principal: { type: 'object', required: ['kind', 'id'], additionalProperties: false, properties: { kind: { type: 'string', enum: ['human'] }, id: { type: 'string', minLength: 1 } } },
-          role: { type: 'string', enum: ['manager', 'contributor', 'viewer', 'denied'] },
+          role: { type: 'string', enum: ['manager', 'contributor'] },
         },
       },
     },

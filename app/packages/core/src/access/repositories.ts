@@ -35,8 +35,6 @@ export interface WorkspaceRepository {
   insertMember(row: { workspaceId: string; userId: string; role: WorkspaceRole; createdBy: string }): Promise<MemberRecord | null>;
   /** Someone who became a guest is no longer a space admin: their `manager` grants become plain membership. */
   endSpaceAdmin(workspaceId: string, userId: string): Promise<void>;
-  /** Someone who became a company owner or admin reaches every space again: a deny a space admin gave them goes (P3 of #890). */
-  liftDeniedGrants(workspaceId: string, userId: string): Promise<void>;
   isMember(workspaceId: string, userId: string): Promise<boolean>;
   /** Remembers someone who left or was removed, for Restore. */
   recordRemoved(workspaceId: string, userId: string, removedBy: string): Promise<void>;

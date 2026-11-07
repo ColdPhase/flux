@@ -388,7 +388,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
   only the label. Preserve map position/selection and return focus on close.
 - Saving is atomic and checks the label the person opened. A conflict shows the current
   saved label, keeps the draft, and requires explicit review before retry. Network errors
-  retain the draft. Viewers cannot edit; phone layouts retain S15's view/add boundary.
+  retain the draft. Phone layouts retain S15's view/add boundary.
 
 ### Kept map and board behaviour
 

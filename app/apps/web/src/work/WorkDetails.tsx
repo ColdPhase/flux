@@ -283,15 +283,14 @@ function InDocs({ object, kind, project, relations, notYet, named }: { object: {
   // A page the result's own text names (it wrote it) is listed too, as "named here" (#763 FT-6).
   const docs = [...linkedDocs, ...[...(named ?? new Map<string, string>())].filter(([id]) => !linkedDocs.some((doc) => doc.id === id))
     .map(([id, title]) => ({ id, title, role: 'named' as const }))];
-  const writable = project.access !== 'viewer';
   return (
     <section className="details__sec" aria-labelledby={`wd-docs-${object.id}`}>
       <h4 id={`wd-docs-${object.id}`}>In the Wiki</h4>
       {docs.length ? (
         <ul className="wd-links">{docs.map((doc) => <li key={doc.id}><RefLink className="wd-link" to={`/projects/${project.id}/docs/${doc.id}`}><span>{doc.title}</span>{doc.role === 'source' ? <small>added</small> : doc.role === 'named' ? <small>named in this result</small> : <small>mentioned</small>}<Icon name="chevron-right" size={14} /></RefLink></li>)}</ul>
       ) : <p className="wd-muted">{emptyLinks(relations, 'Not in the Wiki yet.')}</p>}
-      {writable && kind && notYet ? <div className="wd-actions wd-actions--hint"><Button variant="secondary" icon="doc" disabled aria-describedby={`wd-docs-hint-${object.id}`}>Add to a Wiki page</Button><small className="wd-muted" id={`wd-docs-hint-${object.id}`}>{notYet}</small></div> : null}
-      {writable && kind && !notYet ? <div className="wd-actions"><Button variant="secondary" icon="doc" onClick={() => openDetails({ kind: 'add-to-doc', projectId: project.id, from: { type: kind, id: object.id, title: object.title }, inDocs: docs.filter((doc) => doc.role === 'source').map((doc) => doc.id), inDocsComplete: relations.complete })}>Add to a Wiki page</Button></div> : null}
+      {kind && notYet ? <div className="wd-actions wd-actions--hint"><Button variant="secondary" icon="doc" disabled aria-describedby={`wd-docs-hint-${object.id}`}>Add to a Wiki page</Button><small className="wd-muted" id={`wd-docs-hint-${object.id}`}>{notYet}</small></div> : null}
+      {kind && !notYet ? <div className="wd-actions"><Button variant="secondary" icon="doc" onClick={() => openDetails({ kind: 'add-to-doc', projectId: project.id, from: { type: kind, id: object.id, title: object.title }, inDocs: docs.filter((doc) => doc.role === 'source').map((doc) => doc.id), inDocsComplete: relations.complete })}>Add to a Wiki page</Button></div> : null}
     </section>
   );
 }
@@ -308,7 +307,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const { me } = useShellData();
   // A task whose creation was undone (#238) stays as read-only history: no change, live or new-target control.
   const reverted = item.lifecycle?.state === 'creation_reverted' ? item.lifecycle : null;
-  const writable = context.project.access !== 'viewer' && !reverted;
+  const writable = !reverted;
   const { busy, error } = commands.state;
   const { setBusy, setError, setBlocker, isCurrent } = commands;
   const blocker = commands.state.blocker ?? item.blocker ?? '';
@@ -669,7 +668,6 @@ function Prerequisites({ item, openDetails }: { item: OwnWork; openDetails: Retu
 function DecisionPanel({ decision, context, detail, relations, reload, choices, setChoices, revision, commands }: { decision: OwnDecision; context: Context; detail: WorkDetailProjection; relations: DetailRelations; reload: () => void; choices: Record<string, Choice>; setChoices: (update: (current: Record<string, Choice>) => Record<string, Choice>) => void; revision: number; commands: PanelCommands }) {
   const { openDetails } = useShellActions();
   const owners = useAgentOwners(context.project);
-  const writable = context.project.access !== 'viewer';
   const earlier = decision.supersedes ? detail.context.find((item) => item.id === decision.supersedes) : null;
   const later = decision.supersededBy ? detail.context.find((item) => item.id === decision.supersededBy) : null;
   const affected = linked(relations.links, decision.id, 'work', ['affects']);
@@ -730,7 +728,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
           <Sources links={relations.links} id={decision.id} project={context.project} />
         </section>
       ) : null}
-      {decision.status === 'proposed' && writable ? (
+      {decision.status === 'proposed' ? (
         <section className="wd-decide" aria-label="Your answer">
           {pivot ? <p className="wd-muted">Accepting makes this the current rule in place of “{earlier?.title ?? 'the earlier rule'}”, which stays in the history. Choose below what happens to current work.</p> : null}
           <div className="nyc__foot wd-decide__foot">
@@ -744,13 +742,6 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
           {need && notNowPop.mounted ? <NotNowMenu item={need} anchors={notNowAnchors} popProps={notNowPop.props}
             onChoose={(choice) => { setNotNowOpen(false); handlers.snooze(need, choice); }} onClose={() => setNotNowOpen(false)} /> : null}
           {error ? <p className="wd-error" role="alert">{error}</p> : null}
-        </section>
-      ) : null}
-      {decision.status === 'proposed' && !writable ? (
-        // O-009 (#250): a reader without write access sees that the proposal is not binding and who decides it.
-        <section className="details__sec" aria-labelledby="wd-who-decides">
-          <h4 id="wd-who-decides">Who decides</h4>
-          <p>Not accepted yet. A person who can edit {context.project.name} accepts it; agents and assistants can only propose.</p>
         </section>
       ) : null}
       <dl className="wd-rows wd-decision-rows">
@@ -789,7 +780,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
         </section>
       ) : null}
 
-      {pivot && writable ? (
+      {pivot ? (
         <form className="details__sec wd-accept" aria-labelledby="wd-pivot-work" onSubmit={(event) => void accept(event)}>
           <h4 id="wd-pivot-work">What happens to current work?</h4>
           <ChoicePages choices={pivotChoices} label="Pivot work pages" quiet />
@@ -892,7 +883,7 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
   const [supersedes, setSupersedes] = useState('');
   const selected = useNativeOwn(me.user.id, view.projectId, 'decision', supersedes || undefined, !!context, revision);
   const chosen = selected.value?.object.kind === 'decision' ? selected.value.object : null;
-  const canSubmit = !!context && context.project.access !== 'viewer' && !!candidates.page && (!supersedes || chosen?.status === 'accepted');
+  const canSubmit = !!context && !!candidates.page && (!supersedes || chosen?.status === 'accepted');
   const [attempt, setAttempt] = useState(() => crypto.randomUUID());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -968,7 +959,7 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
   const selected = useNativeOwn(me.user.id, view.projectId, 'work', workId || undefined, !!context, revision);
   const chosen = selected.value?.object.kind === 'work' ? selected.value.object : null;
   const finishable = !!chosen && !chosen.parked && chosen.status !== 'not_pursued';
-  const canSubmit = !!context && context.project.access !== 'viewer' && !!candidates.page && (!workId || !!chosen) && (!finishes || finishVersion !== null);
+  const canSubmit = !!context && !!candidates.page && (!workId || !!chosen) && (!finishes || finishVersion !== null);
 
   async function submit(event: FormEvent) {
     event.preventDefault();

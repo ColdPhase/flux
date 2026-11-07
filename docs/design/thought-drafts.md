@@ -116,9 +116,7 @@ draft; nothing shared is written before Save, and Save uses the commands above.
   through the browser's own permission prompt and fills that draft, keeping its
   parent; when the browser refuses, the status says so and nothing changes. The
   toolbar keeps its tools, so phone widths keep their two rows.
-- **Who and when.** Only people who can change the map. A viewer's paste reads
-  nothing, uploads nothing and says “You can look at this map but not add to
-  it”. While an edit or another draft is open, paste says to finish or cancel it
+- **Who and when.** Only people in the space. While an edit or another draft is open, paste says to finish or cancel it
   first. With clipboard text and an image together, the image wins.
 - **Lines.** Lines are trimmed and empty ones dropped. One line is the ordinary
   draft with that text. Several lines become one draft with one row per future

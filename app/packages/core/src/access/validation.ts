@@ -6,7 +6,7 @@ import { InvalidInputError } from './errors.js';
 
 export const ROLES: readonly WorkspaceRole[] = ['owner', 'admin', 'member', 'guest'];
 export const PROJECT_VISIBILITIES: readonly ProjectVisibility[] = ['workspace', 'restricted'];
-export const GRANT_ROLES: readonly ProjectGrantRole[] = ['manager', 'contributor', 'viewer', 'denied'];
+export const GRANT_ROLES: readonly ProjectGrantRole[] = ['manager', 'contributor'];
 export const DRAFT_VISIBILITIES: readonly DraftVisibility[] = ['private', 'project', 'workspace'];
 const MAX_BODY = 100_000;
 

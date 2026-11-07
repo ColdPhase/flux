@@ -67,7 +67,7 @@ function GithubProjectSettings({ shell }: { shell: ProjectShell }) {
             {shell.project.access === 'manager' ? <Button variant="secondary" disabled={busy} onClick={() => void disconnect(binding.id)}>Disconnect</Button> : null}</li>)}</ul> : <p>{error ? 'Repository access could not be verified. Refresh access or reconnect your account.' : 'No repositories connected to this space yet.'}</p>}</section>
           {shell.project.access === 'manager' ? <RepositoryPicker projectId={projectId} onBound={refresh} /> : null}
           {shell.project.access === 'manager' && bindings.length ? <RuleDefault projectId={projectId} current={ruleDefault} onSaved={(value) => setSavedDefault({ value })} /> : null}
-          {bindings.length ? <PullReferences projectId={projectId} bindings={bindings} canLink={shell.project.access !== 'viewer'} ruleDefault={ruleDefault} /> : null}
+          {bindings.length ? <PullReferences projectId={projectId} bindings={bindings} canLink ruleDefault={ruleDefault} /> : null}
         </>}
     <p className="github-settings__note">Linked PRs move a task only when someone who can edit it turns that on in the task’s Details, or links a required PR while this space’s default below is on. A merge never checks off written criteria. An agent that holds a task hears about its linked PRs at its next safe point.</p>
   </div></div>;
@@ -120,7 +120,7 @@ function PullReferences({ projectId, bindings, canLink, ruleDefault }: { project
   const revalidator = useRevalidator();
   const identityReady = navigation.state === 'idle' && revalidator.state === 'idle';
   const choices = useWorkChoices(me.user.id, projectId, identityReady ? { purpose: 'choices', choice: 'doc_refs', kind: 'work', q: search.trim() || undefined } : null);
-  const canCommit = identityReady && choices.read.phase === 'ready' && choices.page?.summary.access !== 'viewer';
+  const canCommit = identityReady && choices.read.phase === 'ready';
   const tasks = choices.page?.items ?? [];
   // One explicitly chosen identity is private form state, never a growing page cache.
   const [chosen, setChosen] = useState<{ id: string; title: string } | null>(null);

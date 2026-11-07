@@ -234,7 +234,7 @@ export interface PersonalRunAccess {
    * Throws NotFoundError when the project is invisible and ForbiddenError when `write` is not
    * allowed. Inside a commit pass `lock`, so a concurrent revocation waits or is seen.
    */
-  requireProject(principal: Principal, action: 'read' | 'write', projectId: string, options?: { lock?: boolean }): Promise<{ workspaceId: string; level: 'viewer' | 'contributor' | 'manager' }>;
+  requireProject(principal: Principal, action: 'read' | 'write', projectId: string, options?: { lock?: boolean }): Promise<{ workspaceId: string; level: 'contributor' | 'manager' }>;
   /** Whether the principal may `read` or `write` the project now; never throws for invisible ones. */
   canUseProject(principal: Principal, action: 'read' | 'write', projectId: string, options?: { lock?: boolean }): Promise<boolean>;
   /** `agent.invoke`: only the person who owns the unrevoked agent. Throws the policy's 404/403. */

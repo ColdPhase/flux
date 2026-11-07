@@ -704,7 +704,7 @@ function AppLayoutContent() {
       : dmViews ? { items: dmViews, label: 'Direct message views' }
         : null;
   const viewName = activeProject ? PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))] : null;
-  const addViewItems: { label: string; run: () => void }[] = project && shownProjectViews && projectId && project.project.access !== 'viewer'
+  const addViewItems: { label: string; run: () => void }[] = project && shownProjectViews && projectId
     ? addableViews(shownProjectViews).filter((view) => !(aiOff && view === 'agents')).map((view) => ({ label: `Add ${VIEW_LABEL[view]}`, run: () => void addView(projectId, view) })) : [];
   const moreItems: MoreItem[] = [
     // A header with no room for them (Spokój rule 3) moves the people and Together here; the views stay in the row.

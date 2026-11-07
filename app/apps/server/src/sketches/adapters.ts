@@ -88,7 +88,6 @@ export function sketchPromotion(tx: Database): SketchPromotion {
       if (target.kind === 'existing') {
         const project = await getProject(principal, target.projectId, tx, accessPorts);
         if (project.workspaceId !== workspaceId) throw new RuleViolationError('The space belongs to another company', 'CROSS_WORKSPACE');
-        if (project.access === 'viewer') throw new ForbiddenError('Not allowed to perform this action on the space');
         const people = await listProjectPeople(principal, project.id, tx, accessPorts);
         return { people: people.filter((p) => p.kind === 'human').map((p): PromotionPerson => ({ id: p.id, name: p.name, reason: 'project' })), projectName: project.name };
       }

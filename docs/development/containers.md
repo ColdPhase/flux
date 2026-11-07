@@ -309,7 +309,7 @@ boss)` from `app/apps/server/src/push` (the core use case `createNotification`):
 recipient must be allowed `<type>.read` on the source at that moment, otherwise
 nothing is stored (`404 SOURCE_NOT_FOUND`). The inbox list and unread count apply
 the access policy's `visibleFilter` per workspace, and `GET`/`POST .../:id` call
-`authorize` again, so a revoked grant, an explicit deny, a draft made private or
+`authorize` again, so a revoked grant, a draft made private or
 removal from the workspace hides the row (`404`) until access returns. The row is
 stored in the same transaction as one `push.send` job per subscription with an
 active session (5 retries, exponential backoff up to 10 minutes, for

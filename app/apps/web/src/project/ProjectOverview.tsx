@@ -213,7 +213,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   // One native row window for every matching role, including Related-only objects.
   // Conversation scope covers all native messages, independently of its source-count window.
   const rows = read.page?.items ?? [];
-  const stateParts = messageMode || !current.summary ? [] : summaryStateParts(current.summary, current.summary.access !== 'viewer');
+  const stateParts = messageMode || !current.summary ? [] : summaryStateParts(current.summary);
   const aggregateKeys = new Set(['work', 'blocked', 'open', 'history']);
   const totalsByTarget = new Map(stateParts.filter((part) => aggregateKeys.has(part.key)).map((part) => [`${part.open.kind}:${part.open.id}`, part]));
   const withProjectTotal = (row: Row): Row => {
@@ -224,7 +224,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   const decisions = rows.filter((item): item is DecisionRowProjection => item.kind === 'decision');
   const results = rows.filter((item): item is ResultRowProjection => item.kind === 'result');
   const workRow = (item: WorkRowProjection): Row => ({ key: `work:${item.id}`, native: item, icon: 'tasks', kind: 'Task', title: item.title, sub: dotted([STATUS_LABEL[item.status], item.owner ? byline(item.owner) : null, item.parked ? 'parked' : null]), open: { kind: 'work', id: item.id } });
-  const decisionRow = (item: DecisionRowProjection): Row => ({ key: `decision:${item.id}`, native: item, icon: 'rule', kind: item.status === 'accepted' ? 'Accepted decision' : item.status === 'proposed' ? 'Proposed decision' : 'Replaced decision', title: item.title, sub: decisionLine(item).split(' · ').slice(1).join(' · ') || undefined, need: item.status === 'proposed' && project.access !== 'viewer', open: { kind: 'decision', id: item.id } });
+  const decisionRow = (item: DecisionRowProjection): Row => ({ key: `decision:${item.id}`, native: item, icon: 'rule', kind: item.status === 'accepted' ? 'Accepted decision' : item.status === 'proposed' ? 'Proposed decision' : 'Replaced decision', title: item.title, sub: decisionLine(item).split(' · ').slice(1).join(' · ') || undefined, need: item.status === 'proposed', open: { kind: 'decision', id: item.id } });
   const resultRow = (item: ResultRowProjection): Row => ({ key: `result:${item.id}`, native: item, icon: 'result', kind: 'Result', title: item.title, sub: dotted([`${item.finding === 'negative' ? 'Negative' : 'Positive'} result`, byline(item.createdBy)]), open: { kind: 'result', id: item.id } });
   const linked = [...decisions.filter((item) => item.status === 'proposed').map(decisionRow), ...decisions.filter((item) => item.status !== 'proposed').map(decisionRow), ...work.map(workRow), ...results.map(resultRow)].map(withProjectTotal);
   const linkedIds = new Set(linked.map((row) => row.key));
@@ -331,7 +331,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
           {/* One page is not paginated (#512, AC-6). */}
           {multiPage(read.page) ? <WorkPagination page={read.page} busy={read.objectBusy} label="Overview object pages" onCursor={read.moveObjects} onRefresh={read.refreshObjects} /> : null}
         </> : undefined}
-        empty={read.page?.total === 0 ? (project.access !== 'viewer' ? 'Nothing linked yet. Any message can become a task, a decision or a result.' : 'Nothing linked yet.') : read.page && !rows.length ? 'No linked objects on this page. Return to the previous page or refresh.' : undefined} />
+        empty={read.page?.total === 0 ? 'Nothing linked yet. Any message can become a task, a decision or a result.' : read.page && !rows.length ? 'No linked objects on this page. Return to the previous page or refresh.' : undefined} />
       {projectMode
         ? <NowSection projectId={project.id} tasks={nowTasks} rules={summaryState?.rules ?? (summaryState?.rule ? [summaryState.rule] : [])} lines={nowLines} others={nowOthers} />
         : state.length ? <Rows label={conversation ? 'Elsewhere in this space' : 'Now in this space'} rows={state} /> : null}
@@ -343,9 +343,9 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
       </div> : null}
       <Rows label="Sources" rows={[...sources.values()]} />
       {projectMode ? <Rows label="In this space" rows={inProject} /> : <>
-        <Rows label={messageMode ? 'On a map' : 'Maps'} rows={sketchRows} empty={!messageMode && noLinkedContext && sketches?.total === 0 ? <>No maps yet. <Link to={`${base}/map`}>Open the Map</Link> {project.access === 'viewer' ? 'to browse saved maps.' : 'to think out loud together.'}</> : undefined} />
+        <Rows label={messageMode ? 'On a map' : 'Maps'} rows={sketchRows} empty={!messageMode && noLinkedContext && sketches?.total === 0 ? <>No maps yet. <Link to={`${base}/map`}>Open the Map</Link> to think out loud together.</> : undefined} />
         {moreSketches ? <p className="ov-more"><Link to={`${base}/map`}>All {sketches.total} maps</Link></p> : null}
-        <Rows label="Wiki" rows={[...docRows.values()]} empty={!messageMode && noLinkedContext && docs?.length === 0 ? <>No Wiki pages yet. <Link to={`${base}/docs`}>Open the Wiki</Link> {project.access === 'viewer' ? 'to read saved documents.' : 'to keep what you learn.'}</> : undefined} />
+        <Rows label="Wiki" rows={[...docRows.values()]} empty={!messageMode && noLinkedContext && docs?.length === 0 ? <>No Wiki pages yet. <Link to={`${base}/docs`}>Open the Wiki</Link> to keep what you learn.</> : undefined} />
         {moreDocs ? <p className="ov-more"><Link to={`${base}/docs`}>All {docs.length} Wiki pages</Link></p> : null}
       </>}
 

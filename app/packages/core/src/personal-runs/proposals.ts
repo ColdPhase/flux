@@ -45,7 +45,7 @@ async function visible(ports: PersonalRunPorts, principal: Principal, proposalId
 }
 
 /** Authority over the target: finishing an owned work item needs its owner or a manager. */
-function requireAuthority(principal: Principal, proposal: ProposalRecord, level: 'viewer' | 'contributor' | 'manager',
+function requireAuthority(principal: Principal, proposal: ProposalRecord, level: 'contributor' | 'manager',
   work: { ownerUserId: string | null } | null) {
   if (!proposal.finishesWorkId || level === 'manager') return;
   if (work?.ownerUserId && work.ownerUserId !== principal.id)

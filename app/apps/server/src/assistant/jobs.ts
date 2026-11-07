@@ -18,7 +18,7 @@ import { registerAssistantReactionRoutes } from './reactions.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 
 // "On a schedule" for its owner (F-027 AST-7, A8 #408). Every route resolves the owner from the session and the owner in the
-// path must be that person: another member, a viewer or a guest gets the same 404 as for a schedule that does not exist. The
+// path must be that person: another member or a guest gets the same 404 as for a schedule that does not exist. The
 // server only prepares, changes and starts schedules; the worker's per-minute tick fires them.
 
 interface Composition {

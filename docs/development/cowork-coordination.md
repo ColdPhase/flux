@@ -1091,7 +1091,7 @@ Agent decision under the delegated authority; additive HTTP for people (no MCP t
 - **Cancel (`POST .../requests/:requestId/cancel`, `{ expectedVersion }`).** One action for a person, not an agent tool. A
   project manager, or the owner of the sender's or the recipient's agent, who can still write in the project, closes an
   open request (`queued`, `deferred` or `claimed`, not expired) at the version they saw. Authorization precedes the state: a
-  viewer or a contributor who owns neither agent gets 403 `COWORK_CANCEL_NOT_ALLOWED` and learns nothing; a stranger or a
+  contributor who owns neither agent gets 403 `COWORK_CANCEL_NOT_ALLOWED` and learns nothing; a stranger or a
   removed reader gets 404. A wrong version is 409 `COWORK_VERSION_CONFLICT`; a closed one 409 `COWORK_REQUEST_CLOSED`; an
   expired one 409 `COWORK_REQUEST_EXPIRED`. A repeated cancel of an already cancelled request succeeds without a change.
   The request becomes `cancelled` (reason `cancelled_by_person`, `cancelled_by` the person), the version advances and one

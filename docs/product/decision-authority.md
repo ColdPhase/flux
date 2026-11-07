@@ -22,13 +22,13 @@ runs, O-008/F-020) does not propose decisions. Its only consequential output is 
 assistant proposal for a *result*, and a person with authority over the result decides it.
 
 **DA-2 — Accepting.** One signed-in person accepts. At the moment of acceptance,
-that person's project access level must be contributor or manager, as the
+that person's project access level must be contributor or manager (a space has only those two roles since #903), as the
 [access policy](../development/access-policy.md#rules) computes it from current rows.
 That includes:
 
-- workspace owners and admins (managers of every project, unless they hold an explicit `denied` grant);
-- members on a workspace-visible project, unless a `viewer` or `denied` grant narrows them;
-- any person, member or guest, with an explicit `contributor` grant.
+- workspace owners and admins (managers of every project);
+- members on a workspace-visible project;
+- any person, member or guest, with an explicit grant.
 
 The proposer may accept their own proposal. Flux records the person as the one who
 decided.
@@ -37,8 +37,7 @@ decided.
 
 | Caller | Response |
 | --- | --- |
-| A viewer | `403` |
-| A person with no access, a `denied` grant, or who left the workspace | `404`, the same as a missing decision |
+| A person with no access, who was removed from the space, or who left the workspace | `404`, the same as a missing decision |
 | An agent, whatever its grant or owner (a person-owned agent of a manager, or a workspace-owned agent) | `403 DECISION_NEEDS_PERSON` |
 | The assistant in Flux | No path. It writes no decision rows, and a decision-shaped proposal block in its output is dropped. |
 | An MCP connection | No tool and no agent operation accepts; a standing grant cannot name acceptance (`400`). |
@@ -86,7 +85,7 @@ account (`decided_by REFERENCES auth_users`).
 | --- | --- |
 | **A. A person with current project write access** (chosen) | It matches the role model and the merged #101 behaviour. People can explain it ("who can edit the project decides"), and one policy computes it for the API, MCP, the worker and the UI. It needs no new object, migration or UI. |
 | B. Managers only | Too narrow for the creative side projects of F-012. A two-person project whose second person is a contributor could not decide during the owner's absence, which breaks the #14 journey. |
-| C. Workspace members only (no guests) | It adds a second axis beside the project grant. A guest reaches a project only through an explicit grant, and the manager already chooses `contributor` or `viewer`. Cost: a guest who should contribute but never decide cannot be expressed (see revisit). |
+| C. Workspace members only (no guests) | It adds a second axis beside the project grant. A guest reaches a project only through an explicit grant, and the manager already chooses `contributor` or `manager`. Cost: a guest who should contribute but never decide cannot be expressed (see revisit). |
 | D. Never the proposer (four eyes) | It blocks solo projects and small teams. The proposer and the decider are both shown, so self-acceptance is visible, not hidden. |
 | E. Named decision owners with delegation (the #14/#16 vocabulary) | It needs a decision-owner role, a delegation object (scope, expiry, revocation, audit), checks at acceptance and UI to grant and show it. No v0.1 journey needs authority narrower than write access. Deferred under DA-5. |
 | F. Agent acceptance under a scoped, expiring standing grant | Rejected under DA-5. |
@@ -113,7 +112,7 @@ the question is about Flux's own role model.
 | The REST API resolves only browser session cookies, and only to `kind: 'human'`. MCP bearers resolve to `kind: 'agent'`. | `app/apps/server/src/identity/session.ts`, `app/apps/server/src/agent-connection/context.ts` |
 | MCP decision tools are `flux_list_decisions`, `flux_get_decision` and `flux_propose_decision`. `AGENT_OPERATIONS` has `decision.propose` and nothing else for decisions, and the standing-grant route validates against that list. | `app/apps/server/src/agent-connection/{domain-reads,work-actions,routes}.ts`, `app/packages/contracts/src/agent-execution.ts` |
 | Assistant proposals carry only a result (`change.type: 'result'`). Accepting one records a result as the accepting person and never touches decisions. | `app/packages/core/src/personal-runs/{proposals,validation}.ts` |
-| The Details panel shows Accept only when `project.access !== 'viewer'`, but before #250 it told a viewer nothing about who decides. | `app/apps/web/src/work/WorkDetails.tsx` |
+| The Details panel once showed Accept only when `project.access !== 'viewer'`, and told a viewer who decides (#250); the viewer role and that note went with #903. | `app/apps/web/src/work/WorkDetails.tsx` |
 | The #14 journey and the #16 specification describe Jo delegating "bounded project decision authority" to Ari, with "scope and expiry enforced". The coverage ledger lists §8.6 as a gap that includes delegation. | [journeys](journeys-and-vocabulary.md), [specification](application-specification.md), [ledger](foundation-coverage.md) |
 
 ## Effect on earlier records
@@ -126,7 +125,7 @@ the question is about Flux's own role model.
   access at acceptance (DA-2) in place of "delegation scope and expiry are enforced".
   "An agent suggestion has no acceptance authority" stands, and DA-4 strengthens it.
 - **Coverage ledger §8.6.** The test "reject unauthorized or expired delegation" becomes:
-  reject acceptance by viewers, people without access, people who were denied or left,
+  reject acceptance by people without access, people who were removed or left,
   agents and the assistant, and show that a refusal changes nothing. Expired delegation
   is out of scope under DA-5.
 - **Release matrix ([#249](https://github.com/ColdPhase/flux/issues/249)).** The §8.6

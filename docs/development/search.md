@@ -35,7 +35,7 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
   project, DM or sketch, disappears with it. Moving a thought on the map does not reindex it. The
   migration indexes what already exists.
 - **Rows hold content, not permissions.** Who may read a row is decided at query time from its
-  `audience_key`, so a revoked grant, a left DM, a deny grant or a membership removal applies on
+  `audience_key`, so a revoked grant, a left DM or a membership removal applies on
   the next search without touching the index. A sketch's scope and a draft's visibility are
   read from their own rows by the policy.
 - **Old citations still resolve.** Every material and doc version has its own row. A search that
@@ -170,7 +170,7 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   filters by their ids; private drafts and sketches reaching only their author, and a group DM
   hidden from the workspace owner; people for members but not guests; type filters and counts;
   an edit searchable at once and an old material version; docs as drafts and published, at the
-  version that matched and once per doc; revocation by a deny grant and by
+  version that matched and once per doc; revocation by removing a grant and by
   leaving a DM on the very next search; ranking and typo tolerance; injection-safe queries; and
   sealed keyset pagination (another reader, another query or filter, or a forged cursor get
   `400`). **Saturation:** 300 hidden project messages, 100 thoughts in another person's private

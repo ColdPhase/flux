@@ -10,7 +10,7 @@ export const COWORK_OPEN_REQUEST_STATES: readonly CoWorkRequestState[] = ['queue
 
 export interface CoWorkCancelActor {
   userId: string;
-  /** May write in the project now (a viewer never cancels). */
+  /** May write in the project now. */
   writer: boolean;
   /** Is a project manager now. */
   manager: boolean;

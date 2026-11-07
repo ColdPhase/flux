@@ -359,6 +359,8 @@ const baseExportSchema = {
     provenance: object({ exportedBy: ref('namedActor'), instanceOrigin: nullable(text), schemaVersion: count, reimportSupported: { const: false } }),
     excluded: list(text),
     project: object({ id, name: text, visibility: { enum: ['workspace', 'restricted'] }, createdAt: time, workspace: object({ id, name: text }) }),
+    // Format 1 is a pinned public contract (EXT-2): its enums only grow. Spaces have two roles since #903, so a new export never
+    // writes `viewer` or `denied`; they stay listed until a breaking change makes a format 2.
     people: list(object({
       kind: { enum: ['human', 'agent'] }, id, name: text, access: { enum: ['manager', 'contributor', 'viewer'] },
       workspaceRole: nullable({ enum: ['owner', 'admin', 'member', 'guest'] }),

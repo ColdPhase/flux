@@ -198,7 +198,7 @@ author and time from the message itself. `GET …/sketches?dmId=` lists one DM's
       `participants`, and a future v2 API defaults to `none` (#236). A `none` preview's token
       used by a request that omits `participants` gets `409 PROMOTION_CHANGED` if the default
       grant changes the previewed audience; when both audiences are equal the token still applies.
-    - For an existing project the caller can change (`project.write`; a viewer gets `403`), the
+    - For an existing project the caller can change (`project.write`; someone outside the space gets `404`), the
       readers are the people in `listProjectPeople`.
   - `leftOut`: participants who would not see the copy.
   - `content`: thoughts, links, and how many thoughts came from messages.

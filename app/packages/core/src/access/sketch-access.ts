@@ -30,7 +30,7 @@ export function policySketchAccess(access: AccessReader): SketchAccess {
   return {
     async requireSketch(principal, action, sketchId, options) {
       const write = await evaluateSketch(principal, 'sketch.write', sketchId, access, { lock: options?.lock });
-      // Visible sketches remain readable even when writing is denied (viewer or closed DM).
+      // Visible sketches remain readable even when writing is refused (a closed DM).
       enforce(action === 'sketch.read' ? { ...write, allowed: write.visible } : write, 'sketch');
       return write.allowed ? 'write' : 'read';
     },

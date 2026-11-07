@@ -327,7 +327,6 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const authorOf = useMemo(() => rootAuthor(roots, author), [roots, author]);
   const rootMessageIds = useMemo(() => new Set(roots.map((root) => root.message.id)), [roots]);
   const navigate = useNavigate();
-  const writable = project.access !== 'viewer';
   const feedRef = useRef<HTMLDivElement>(null);
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
   const attachFeed = useCallback((node: HTMLDivElement | null) => { feedRef.current = node; setFeedNode(node); }, []);
@@ -711,9 +710,8 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
             </ol>
           ) : null}
           {/* Until someone writes, the stream says so, below any task announcements: they are not messages. */}
-          {roots.length || stream.hasOlder || outbox.pending.length ? null : writable
-            ? <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write a thought. You don’t need a topic or a ready plan. {audience === 'Only you' ? 'Only you see it for now; people you add to the space will see it too.' : `Everyone in ${project.name} sees it.`} Any message can later become a task, a decision or a thought on the map.</p></EmptyState>
-            : <EmptyState icon="chat" title="No messages yet"><p>You have read access to {project.name}. Messages appear here when someone writes. You can browse saved tasks, maps, docs and sources.</p></EmptyState>}
+          {roots.length || stream.hasOlder || outbox.pending.length ? null
+            : <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write a thought. You don’t need a topic or a ready plan. {audience === 'Only you' ? 'Only you see it for now; people you add to the space will see it too.' : `Everyone in ${project.name} sees it.`} Any message can later become a task, a decision or a thought on the map.</p></EmptyState>}
         </section>
       </div>
     </div>
@@ -898,7 +896,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
   const stored = 'pending' in props ? null : props;
   const message = stored?.root.message;
   const name = stored && message ? stored.author(message) : '';
-  const writable = !!stored && stored.project.access !== 'viewer';
+  const writable = !!stored;
   const mapDraft = useAddToMap(stored?.project ?? null);
   const addToMap = stored && message ? () => mapDraft({ messageId: message.id, body: message.body }) : undefined;
   const actions = stored && message ? {
