@@ -2,7 +2,7 @@
 
 Actual authenticated routes and data, Chromium and WebKit, on the computer (1440 x 900), a tablet (820 x 1180) and a
 phone (390 x 844) that reports the installed display mode. Following a reference (a wiki card, a task chip, a linked
-decision, a search result, an Inbox item) pushes one history entry that carries its origin; the destination shows one
+decision, a search result opened from ⌘K, an Inbox item) pushes one history entry that carries its origin; the destination shows one
 "‹ <origin>" control; going back (the control, browser Back) restores the origin as it was left: route and filters,
 open thread or panel, the message in view at the same offset (also when messages arrived meanwhile), the unsent draft.
 The origin is only in the browser's history entry, never on the server, so there is no API path to check.
@@ -162,14 +162,14 @@ class ReturnToOrigin(unittest.TestCase):
                        {"body": f"Reply {index:02}: the range, the angle and the dark.\n" + lines(2, "Thought"), "clientMessageId": str(uuid.uuid4())}, 201)["id"] for index in range(1, replies + 1)]
         return {"id": dm, "roots": ids, "replies": answers, "partner": tag}
 
-    def jump_to_search(self, page, query="shade"):
-        """⌘K, a query, "See all results": the Search page, opened as a reference from wherever the person was reading."""
+    def jump_to_search(self, page, query="order first"):
+        """⌘K, a query, a result: the message it names is opened as a reference from wherever the person was reading (#870: Search is a dialog, there is no results page)."""
         page.evaluate("() => document.activeElement && document.activeElement.blur()")
         page.keyboard.press("Control+k")
-        palette = page.get_by_role("dialog", name="Jump to")
-        palette.locator("input").fill(query)
-        palette.locator(".jump__all").click()
-        expect(page).to_have_url(f"{ORIGIN}/search?q={query}")
+        palette = page.get_by_role("dialog", name="Search", exact=True)
+        palette.get_by_role("combobox", name="Search", exact=True).fill(query)
+        palette.locator("[role=option].sr").first.click()
+        expect(page).to_have_url(re.compile(r"/conversations/[0-9a-f-]{36}#message-"))
 
     # ---- harness ----
 
@@ -474,64 +474,6 @@ class ReturnToOrigin(unittest.TestCase):
             with self.subTest(engine=engine):
                 self.tasks_journey(engine, "desktop")
 
-    # ---- search, a result, and back ----
-
-    def search_rows(self, page, size):
-        """The results: the Results region's Messages group, or on the phone the one search's result options
-        (its `/search` is the round Search sheet's body in place, 20 results at once, #763 SE-2)."""
-        if size == "phone":
-            return page.get_by_role("listbox", name="Results").locator("[role=option].sr")
-        return page.get_by_role("region", name="Results").locator("section[aria-label='Messages']").locator("a.sr")
-
-    def search_journey(self, engine, size):
-        page = self.page(engine, size)
-        tap = size != "desktop"
-        page.goto("/search?q=shade")
-        rows = self.search_rows(page, size)
-        if size != "phone":
-            group = page.get_by_role("region", name="Results").locator("section[aria-label='Messages']")
-            expect(rows.first).to_be_visible()
-            self.activate(group.get_by_role("button", name=re.compile(r"^Show \d+ more")), tap)
-        expect(rows).to_have_count(20)
-        pick = rows.nth(15)
-        pick.scroll_into_view_if_needed()
-        page.locator("#content .pane-scroll").evaluate("el => { el.scrollTop += 30; }")
-        page.wait_for_timeout(600)
-        label = pick.inner_text()
-        before = self.row_offset(pick)
-        self.assertGreater(page.locator("#content .pane-scroll").evaluate("el => el.scrollTop"), 100)
-        self.assertEqual(self.origin_back(page).count(), 0)
-        history = page.evaluate("history.length")
-        self.activate(pick, tap)
-        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/conversations/[0-9a-f-]{36}#message-"))
-        self.assertEqual(page.evaluate("history.length"), history + 1)
-        if size == "desktop":
-            back = self.origin_back(page, "Search")
-        else:
-            # The thread a result leads to is the one panel, a modal sheet or overlay here that covers the header: the panel's own
-            # back carries the way to the search.
-            back = page.locator("#details .ui-panel__back")
-            expect(back).to_have_text("Search")
-        expect(back).to_have_count(1)
-        shot(page, f"592-search-result-{engine}-{size}")
-        self.activate(back, tap)
-        expect(page).to_have_url(f"{ORIGIN}/search?q=shade")
-        rows = self.search_rows(page, size)
-        expect(rows).to_have_count(20)
-        expect(page.get_by_role("combobox" if size == "phone" else "searchbox")).to_have_value("shade")
-        if size == "phone":
-            # Met again by Back, the phone's search is a list to read on: its field does not take focus (no keyboard).
-            expect(page.get_by_role("combobox")).not_to_be_focused()
-        row = rows.nth(15)
-        self.assertEqual(row.inner_text(), label)
-        page.wait_for_timeout(900)
-        self.assert_same(before, self.row_offset(row), "the result stays where it was in the list")
-
-    def test_07_search_result_back(self):
-        for engine in self.browsers:
-            with self.subTest(engine=engine):
-                self.search_journey(engine, "desktop")
-
     # ---- the Inbox, an item, and back ----
 
     def inbox_journey(self, engine, size):
@@ -589,10 +531,8 @@ class ReturnToOrigin(unittest.TestCase):
                 card.click()
                 places["wiki card"] = self.box(self.origin_back(page, "Conversation"))
                 page.go_back()
-                page.goto("/search?q=shade")
-                page.get_by_role("region", name="Results").locator("a.sr").first.click()
-                expect(page).to_have_url(re.compile(r"/conversations/"))
-                places["search result"] = self.box(self.origin_back(page, "Search"))
+                self.jump_to_search(page)
+                places["search result"] = self.box(self.origin_back(page, "Conversation"))
                 page.goto("/inbox")
                 page.get_by_role("tab", name=re.compile(r"^Decisions")).click()
                 page.locator(".nyc").first.get_by_role("button", name="Discuss").click()
@@ -637,36 +577,6 @@ class ReturnToOrigin(unittest.TestCase):
                 expect(page.get_by_role("heading", name="Something went wrong")).to_have_count(0)
 
     # ---- a replace on the destination keeps the way back ----
-
-    def test_14_a_replace_on_the_destination_keeps_the_way_back(self):
-        for engine in self.browsers:
-            with self.subTest(engine=engine):
-                page = self.page(engine)
-                page.goto(f"/projects/{self.project}")
-                self.wait_stream(page)
-                # ⌘K → "See all results" opens the Search page as a reference; typing and filtering there replace its entry.
-                page.keyboard.press("Control+k")
-                palette = page.get_by_role("dialog", name="Jump to")
-                palette.locator("input").fill("shade")
-                palette.locator(".jump__all").click()
-                expect(page).to_have_url(f"{ORIGIN}/search?q=shade")
-                back = self.origin_back(page, "Conversation")
-                expect(back).to_have_count(1)
-                before = self.box(back)
-                page.get_by_role("searchbox").fill("shade lamp")
-                page.wait_for_function("() => new URLSearchParams(location.search).get('q') === 'shade lamp'")
-                page.get_by_role("group", name="Kind of result").get_by_role("button", name=re.compile(r"^Messages")).click()
-                page.wait_for_function("() => new URLSearchParams(location.search).get('type') === 'message'")
-                page.wait_for_timeout(500)
-                expect(self.origin_back(page, "Conversation")).to_have_count(1)
-                self.assertEqual(self.box(self.origin_back(page, "Conversation")), before, "the control stays in its place")
-                self.assertIsNotNone(page.evaluate("(history.state && history.state.usr && history.state.usr.origin) || null"), "the entry still names where it was followed from")
-                # A reload keeps it, and it leads back to the conversation.
-                page.reload()
-                back = self.origin_back(page, "Conversation")
-                expect(back).to_have_count(1)
-                back.click()
-                expect(page).to_have_url(f"{ORIGIN}/projects/{self.project}")
 
     def test_15_closing_an_agents_thread_keeps_the_way_back_to_tasks(self):
         for engine in self.browsers:
@@ -747,49 +657,6 @@ class ReturnToOrigin(unittest.TestCase):
 
     # ---- the origin is a material or a direct message that closed meanwhile ----
 
-    def test_17_a_material_that_closed_has_no_control_and_back_lands_on_a_parent_with_a_note(self):
-        for engine in self.browsers:
-            with self.subTest(engine=engine):
-                room = self.make_project(f"Material room {engine}")
-                material = api(self.contexts["ada"], "POST", f"/api/v1/projects/{room['id']}/materials",
-                               {"title": f"Wiring notes {engine}", "body": "Which wire goes to which pin.", "clientMutationId": str(uuid.uuid4())}, 201)["materialId"]
-                page = self.page(engine, who="jonas")
-                page.goto(f"/materials/{material}")
-                expect(page.get_by_role("heading", name=f"Wiring notes {engine}")).to_be_visible()
-                self.jump_to_search(page)
-                expect(self.origin_back(page, "Wiki")).to_have_count(1)
-                # Ada takes Jonas's access away; he reloads the search and goes back.
-                response = self.contexts["ada"].request.delete(f"{ORIGIN}/api/v1/projects/{room['id']}/grants/{room['grant']}", headers={"origin": ORIGIN})
-                self.assertIn(response.status, (200, 204), response.text())
-                page.reload()
-                expect(page.get_by_role("searchbox")).to_be_visible()
-                expect(self.origin_back(page)).to_have_count(0)
-                page.go_back()
-                expect(page).to_have_url(f"{ORIGIN}/projects")
-                expect(page.get_by_text("That page is no longer available to you.")).to_be_visible()
-                expect(page.get_by_role("heading", name="This place isn’t available")).to_have_count(0)
-                expect(page.get_by_role("heading", name="Something went wrong")).to_have_count(0)
-
-    def test_18_a_direct_message_that_was_left_has_no_control_and_back_lands_on_the_list_with_a_note(self):
-        for engine in self.browsers:
-            with self.subTest(engine=engine):
-                dm = self.make_dm(f"leaver{engine}", 3)
-                page = self.page(engine, who=dm["partner"])
-                page.goto(f"/dm/{dm['id']}")
-                expect(page.locator(".dm__feed")).to_be_visible()
-                self.jump_to_search(page)
-                expect(self.origin_back(page, "Messages")).to_have_count(1)
-                # Jonas leaves the conversation (from another window); the search is reloaded, then Back.
-                left = self.contexts[dm["partner"]].request.post(f"{ORIGIN}/api/v1/dms/{dm['id']}/leave", headers={"origin": ORIGIN, "content-type": "application/json"}, data="{}")
-                self.assertEqual(left.status, 204, left.text())
-                page.reload()
-                expect(page.get_by_role("searchbox")).to_be_visible()
-                expect(self.origin_back(page)).to_have_count(0)
-                page.go_back()
-                expect(page).to_have_url(f"{ORIGIN}/dm")
-                expect(page.get_by_text("That conversation is no longer available to you.")).to_be_visible()
-                expect(page.get_by_role("heading", name="This conversation isn’t available")).to_have_count(0)
-
     # ---- a direct message's feed and its thread keep the reader's place ----
 
     def test_19_a_direct_message_comes_back_to_the_message_that_was_in_view(self):
@@ -820,7 +687,7 @@ class ReturnToOrigin(unittest.TestCase):
                 self.assertGreater(page.evaluate(AWAY, feed), 1000, "no jump to the bottom")
                 # The browser's Back finds the same place.
                 page.go_forward()
-                expect(page).to_have_url(re.compile(r"/search"))
+                expect(page).to_have_url(re.compile(r"/conversations/"))
                 page.go_back()
                 expect(page).to_have_url(f"{ORIGIN}/dm/{dm['id']}")
                 expect(page.locator(target)).to_have_count(1)
@@ -870,12 +737,11 @@ class ReturnToOrigin(unittest.TestCase):
                 self.thread_journey(engine, "phone")
                 self.thread_wiki_journey(engine, "phone")
 
-    def test_13_tablet_and_phone_tasks_search_and_inbox(self):
+    def test_13_tablet_and_phone_tasks_and_inbox(self):
         for engine in self.browsers:
             for size in ("tablet", "phone"):
                 with self.subTest(engine=engine, size=size):
                     self.tasks_journey(engine, size)
-                    self.search_journey(engine, size)
                     self.inbox_journey(engine, size)
 
 

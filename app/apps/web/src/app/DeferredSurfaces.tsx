@@ -8,6 +8,7 @@ import { ReloadRecovery } from './ReloadRecovery';
 import { useShellActions } from './shellContext';
 import { useShellData } from './data';
 import { placeOfPath, useRecentPlaces } from '../search/recent';
+import { useAssistantReady } from '../search/useAssistantReady';
 import { DetailsSkeleton, JumpSkeleton } from './SurfaceSkeletons';
 import { preloadProjectViews } from './viewChunks';
 
@@ -24,7 +25,7 @@ function deferred<P extends object>(load: () => Promise<ComponentType<P>>) {
 }
 type Deferred<P extends object> = ReturnType<typeof deferred<P>>;
 const details = deferred<ComponentProps<typeof Details>>(async () => (await import('./Details')).Details);
-const search = deferred<{ onClose: () => void; userId: string }>(async () => (await import('../search/JumpTo')).JumpToBody);
+const search = deferred<{ onClose: () => void; userId: string; assistantReady: boolean }>(async () => (await import('../search/JumpTo')).JumpToBody);
 /**
  * A deferred surface's component: put in at once when its code has arrived, else `fallback` until it does. It is not a `Suspense` boundary
  * on purpose: React holds a fallback it has shown for about 300 ms before it reveals what replaces it, so a code download that takes
@@ -45,7 +46,7 @@ function Surface<P extends object>({ of, props, fallback }: { of: Deferred<P>; p
 const StageContent = lazy(async () => ({ default: (await import('../live/LiveStage')).LiveStage }));
 
 /**
- * A surface opens with its content (#863 rule 6): the code of Details and Jump to… is fetched before it is asked for, so the panel
+ * A surface opens with its content (#863 rule 6): the code of Details and Search is fetched before it is asked for, so the panel
  * and ⌘K do not open on a fallback that is then replaced. It happens when the browser is idle soon after the shell is up (the first
  * screen is already painted, and the first-load contract of `test_route_chunks` is about what that screen imports), and at once on
  * the first press of anything: a pointer going down, or ⌘ or Ctrl, which is pressed a moment before the K that opens search. Inside a
@@ -124,7 +125,8 @@ export function DeferredDetails(props: ComponentProps<typeof Details>) {
 export interface JumpToProps { open: boolean; onClose: () => void; userId: string }
 
 export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
-  const inProject = !!useParams().projectId;
+  const projectId = useParams().projectId;
+  const inProject = !!projectId;
   useSurfacePreload(inProject);
   const phone = useMediaQuery(MEDIA.phone);
   const { projects, directMessages, lockedWorkspaces } = useShellData();
@@ -132,24 +134,30 @@ export function DeferredJumpTo({ open, onClose, userId }: JumpToProps) {
   const here = placeOfPath(useLocation().pathname)?.key;
   const [requested, setRequested] = useState(open);
   if (open && !requested) setRequested(true);
+  // Whether "Ask my assistant…" has a row is read while the dialog is closed and kept for as long as it is open (#898).
+  const aiAnywhere = projects.some((project) => project.ai !== 'blocked');
+  const assistant = useAssistantReady(aiAnywhere, open);
+  const hereProject = projects.find((project) => project.id === projectId);
+  const aiHere = hereProject ? hereProject.ai !== 'blocked' : aiAnywhere;
+  const [asks, setAsks] = useState(assistant);
   // A body of its own each time the dialog opens, kept through its exit: the content stays mounted while the dialog fades out, so it
   // leaves at the size it had (it used to collapse to nothing on the first frame of its exit), and one that opens again before the exit
   // is over starts afresh.
   const [opens, setOpens] = useState(open ? 1 : 0);
   const [wasOpen, setWasOpen] = useState(open);
-  if (open !== wasOpen) { setWasOpen(open); if (open) setOpens(opens + 1); }
+  if (open !== wasOpen) { setWasOpen(open); if (open) { setOpens(opens + 1); setAsks(assistant); } }
   if (!requested) return null;
   const closer = <Button variant="quiet" onClick={onClose}>Close search</Button>;
   // The recent places the dialog will list (up to four, not the one in view, only those that still exist): what sizes its first list.
   const places = recent.filter((place) => place.key !== here && (!place.key.startsWith('project:') || projects.some((project) => project.id === place.key.split(':')[1]))
     && (!place.key.startsWith('dm:') || directMessages.some((dm) => dm.id === place.key.split(':')[1]))).slice(0, 4).length;
-  // One dialog, once: the code of Jump to… loads inside it, so ⌘K never dims, undims and dims again. Once requested it stays
+  // One dialog, once: the code of Search loads inside it, so ⌘K never dims, undims and dims again. Once requested it stays
   // mounted, so its own exit animation and focus restoration stay intact.
-  const wrap = (content: ReactNode) => <Overlay open={open} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="Jump to" className="jump">{content}{closer}</Overlay>;
+  const wrap = (content: ReactNode) => <Overlay open={open} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="Search" className="jump">{content}{closer}</Overlay>;
   return (
     <SurfaceBoundary label="Search" wrap={wrap}>
-      <Overlay open={open} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="Jump to" className="jump">
-        <Surface key={opens} of={search} props={{ onClose, userId }} fallback={<JumpSkeleton places={places} locked={lockedWorkspaces.length} phone={phone} onClose={onClose} />} />
+      <Overlay open={open} onClose={onClose} placement={phone ? 'bottom' : 'center'} label="Search" className="jump">
+        <Surface key={opens} of={search} props={{ onClose, userId, assistantReady: asks }} fallback={<JumpSkeleton places={places} locked={lockedWorkspaces.length} phone={phone} ask={asks && aiHere} onClose={onClose} />} />
       </Overlay>
     </SurfaceBoundary>
   );

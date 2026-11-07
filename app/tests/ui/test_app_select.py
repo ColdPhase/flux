@@ -2,8 +2,8 @@
 
 Runs with the other tests/ui modules through scripts/check_ui.sh against the running Compose application.
 A native <select> opens the system's list, which ignores the Prostota tokens, the dark theme and the phone sheet.
-Nia has two projects; the search page's Place filter, Settings' Place to mute and the Create window's Project field
-are places that use the shared select (the phone's /search is its one search sheet, without a Place select, #763 SE-2). The tests check what a person and a screen reader meet: the combobox and listbox
+Nia has two projects; Settings' Place to mute and the Create window's Project field
+are places that use the shared select (Search has no filters and no Place select, #870). The tests check what a person and a screen reader meet: the combobox and listbox
 semantics, every key of the select-only combobox pattern, that opening never moves a control, that it works inside
 a dialog (Esc closes the list, not the dialog), that it is the same bottom sheet as the other menus on a phone, the
 tokens in both themes, and axe. FLUX_UI_BROWSER selects chromium (default) or webkit.
@@ -33,6 +33,7 @@ AXE_SHA256 = "c24f097bd2f451d4f933e8bc7d8d539f8672a2ebcb5cc9f9f3eec8ca9470a0c1"
 PASSWORD = "one calm way to choose"
 STAMP = int(time.time() * 1000)
 NIA = {"name": "Nia Berg", "email": f"nia.select+{STAMP}@example.test"}
+NONE = "Choose a space or conversation…"  # the first option of Settings' Place to mute, the computer's host of the select
 
 
 class AppSelect(unittest.TestCase):
@@ -82,15 +83,8 @@ class AppSelect(unittest.TestCase):
             self.assertEqual(response.status, status, response.text())
         return json.loads(response.text()) if response.text() else {}
 
-    def search(self, **kwargs):
-        page = self.page(**kwargs)
-        page.goto("/search?q=lamp")
-        place = page.get_by_role("combobox", name="Place")
-        expect(place).to_be_visible()
-        return page, place
-
     def mute(self, **kwargs):
-        """Settings' "Place to mute": the same select at every width (the search page's Place filter is the computer's only)."""
+        """Settings' "Place to mute": the same select at every width."""
         page = self.page(**kwargs)
         page.goto("/settings/notifications")
         place = page.get_by_role("combobox", name="Place to mute", exact=True)
@@ -117,36 +111,28 @@ class AppSelect(unittest.TestCase):
     # ---------------------------------------------------------------- semantics a screen reader meets
 
     def test_02_it_is_a_combobox_with_a_listbox_and_no_native_select_remains(self) -> None:
-        page, place = self.search()
+        page, place = self.mute()
         expect(page.locator("select")).to_have_count(0)
         expect(place).to_have_attribute("aria-haspopup", "listbox")
         expect(place).to_have_attribute("aria-expanded", "false")
-        expect(place).to_have_text("All places")
+        expect(place).to_have_text(NONE)
         place.click()
         box = listbox_of(place)
         expect(box).to_be_visible()
         self.assertEqual(box.get_attribute("role"), "listbox")
-        self.assertEqual(box.get_attribute("aria-label"), "Place", "the list is named like the control")
+        self.assertEqual(box.get_attribute("aria-label"), "Place to mute", "the list is named like the control")
         names = [o.strip() for o in box.get_by_role("option").all_inner_texts()]
-        self.assertEqual(names, ["All places", "# Gesture lamp", "# Studio notes", "Only you"])
-        expect(box.get_by_role("option", name="All places", exact=True)).to_have_attribute("aria-selected", "true")
-        expect(box.get_by_role("option", name="Only you", exact=True)).to_have_attribute("aria-selected", "false")
+        self.assertEqual(names, [NONE, "# Gesture lamp", "# Studio notes"])
+        expect(box.get_by_role("option", name=NONE, exact=True)).to_have_attribute("aria-selected", "true")
+        expect(box.get_by_role("option", name="# Studio notes", exact=True)).to_have_attribute("aria-selected", "false")
         active = place.get_attribute("aria-activedescendant")
         self.assertTrue(active, "the arrow keys' option is named by aria-activedescendant")
-        self.assertEqual(page.locator(f'[id="{active}"]').inner_text().strip(), "All places")
+        self.assertEqual(page.locator(f'[id="{active}"]').inner_text().strip(), NONE)
         self.assertEqual(place.get_attribute("aria-controls"), box.get_attribute("id"))
-        # The accessibility tree sees a combobox whose list is a listbox of options, one of them selected.
-        expect(box).to_match_aria_snapshot("""
-            - listbox "Place":
-              - option "All places" [selected]
-              - option "# Gesture lamp"
-              - option "# Studio notes"
-              - option "Only you"
-        """)
-        box.get_by_role("option", name="Only you", exact=True).click()
+        box.get_by_role("option", name="# Studio notes", exact=True).click()
         expect(place).to_have_attribute("aria-expanded", "false")
-        expect(place).to_have_text("Only you")
-        expect(page).to_have_url(re.compile(r"place=private"))
+        expect(place).to_have_text("# Studio notes")
+        expect_value(place, f"project:{self.ids['notes']}")
         expect(place).to_be_focused()
 
     def test_03_a_label_names_it_and_groups_are_announced(self) -> None:
@@ -171,25 +157,25 @@ class AppSelect(unittest.TestCase):
     # ---------------------------------------------------------------- the select-only combobox keys
 
     def test_04_keys_open_move_choose_and_close(self) -> None:
-        page, place = self.search()
+        page, place = self.mute()
         active = lambda: page.locator('[role="listbox"] [data-active]')  # noqa: E731
         place.focus()
         # Closed: ArrowDown opens on the chosen option; Escape closes without choosing and returns focus.
         page.keyboard.press("ArrowDown")
         expect(place).to_have_attribute("aria-expanded", "true")
-        expect(active()).to_have_text("All places")
+        expect(active()).to_have_text(NONE)
         page.keyboard.press("ArrowDown")
         expect(active()).to_have_text("# Gesture lamp")
         page.keyboard.press("End")
-        expect(active()).to_have_text("Only you")
+        expect(active()).to_have_text("# Studio notes")
         page.keyboard.press("ArrowDown")
-        expect(active()).to_have_text("Only you")  # the list ends; it does not wrap
+        expect(active()).to_have_text("# Studio notes")  # the list ends; it does not wrap
         page.keyboard.press("Home")
-        expect(active()).to_have_text("All places")
+        expect(active()).to_have_text(NONE)
         page.keyboard.press("Escape")
         expect(place).to_have_attribute("aria-expanded", "false")
         expect(place).to_be_focused()
-        expect(place).to_have_text("All places")
+        expect(place).to_have_text(NONE)
         expect_value(place, "")
         # Enter chooses what the arrows are on; focus stays on the control.
         page.keyboard.press("ArrowDown")
@@ -223,7 +209,7 @@ class AppSelect(unittest.TestCase):
         page.keyboard.press("Alt+ArrowUp")
         expect(place).to_have_text("# Studio notes")
         expect(place).to_have_attribute("aria-expanded", "false")
-        expect(page).to_have_url(re.compile(rf"place=project(%3A|:){self.ids['notes']}"))  # the page has taken the choice
+        expect_value(place, f"project:{self.ids['notes']}")
         page.keyboard.press("ArrowDown")
         expect(place).to_have_attribute("aria-expanded", "true")
         page.keyboard.press("Alt+ArrowDown")
@@ -231,15 +217,15 @@ class AppSelect(unittest.TestCase):
         expect(place).to_have_text("# Studio notes")
 
     def test_05_typing_jumps_to_an_option_and_a_letter_opens_the_closed_list(self) -> None:
-        page, place = self.search()
+        page, place = self.mute()
         active = lambda: page.locator('[role="listbox"] [data-active]')  # noqa: E731
         place.focus()
-        page.keyboard.type("o")  # closed: a letter opens the list on the option it begins
+        page.keyboard.type("#")  # closed: a letter opens the list on the option it begins
         expect(place).to_have_attribute("aria-expanded", "true")
-        expect(active()).to_have_text("Only you")
+        expect(active()).to_have_text("# Gesture lamp")
         page.wait_for_timeout(750)  # the typed letters are forgotten after a moment
-        page.keyboard.type("all")  # several letters narrow down
-        expect(active()).to_have_text("All places")
+        page.keyboard.type("choose a")  # several letters narrow down
+        expect(active()).to_have_text(NONE)
         page.wait_for_timeout(750)
         page.keyboard.type("#")
         expect(active()).to_have_text("# Gesture lamp")
@@ -256,22 +242,22 @@ class AppSelect(unittest.TestCase):
         page.keyboard.press("Escape")
 
     def test_06_tab_chooses_what_the_arrows_are_on_and_moves_on(self) -> None:
-        page, place = self.search()
+        page, place = self.mute()
         place.focus()
         page.keyboard.press("ArrowDown")
         page.keyboard.press("End")
         page.keyboard.press("Tab")
-        expect(place).to_have_text("Only you")
+        expect(place).to_have_text("# Studio notes")
         expect(place).to_have_attribute("aria-expanded", "false")
         expect(place).not_to_be_focused()
 
     def test_07_a_click_outside_closes_it_and_a_second_click_on_it_closes_it(self) -> None:
-        page, place = self.search()
+        page, place = self.mute()
         place.click()
         expect(place).to_have_attribute("aria-expanded", "true")
         page.get_by_role("heading", level=1).first.click()
         expect(place).to_have_attribute("aria-expanded", "false")
-        expect(place).to_have_text("All places")
+        expect(place).to_have_text(NONE)
         place.click()
         expect(place).to_have_attribute("aria-expanded", "true")
         place.click()
@@ -280,16 +266,19 @@ class AppSelect(unittest.TestCase):
     # ---------------------------------------------------------------- nothing moves
 
     def test_08_opening_and_choosing_never_move_a_control(self) -> None:
-        page, place = self.search()
+        page, place = self.mute()
+        # The control is far down Settings: bring it to the top first, so opening is not what scrolls it and its list opens below it.
+        place.evaluate("el => el.scrollIntoView({ block: 'start' })")
+        page.wait_for_timeout(250)
         before = {name: page.locator(selector).first.bounding_box() for name, selector in
-                  (("place", ".search__place .ui-select"), ("chips", ".search__filters"), ("page", "h1"))}
+                  (("place", ".nset__mute .ui-select"), ("row", ".nset__mute"), ("page", "h1"))}
         scroll = page.evaluate("[document.documentElement.scrollWidth, document.documentElement.scrollHeight]")
         place.click()
         box = listbox_of(place)
         expect(box).to_be_visible()
         pop = page.locator(".ui-select__pop")
         opened = {name: page.locator(selector).first.bounding_box() for name, selector in
-                  (("place", ".search__place .ui-select"), ("chips", ".search__filters"), ("page", "h1"))}
+                  (("place", ".nset__mute .ui-select"), ("row", ".nset__mute"), ("page", "h1"))}
         self.assertEqual(before, opened, "opening the list moved nothing")
         self.assertEqual(scroll, page.evaluate("[document.documentElement.scrollWidth, document.documentElement.scrollHeight]"))
         trigger, layer = place.bounding_box(), pop.bounding_box()
@@ -299,7 +288,7 @@ class AppSelect(unittest.TestCase):
         self.assertGreaterEqual(layer["width"], trigger["width"] - 1, "the list is at least as wide as its control")
         page.keyboard.press("End")
         page.keyboard.press("Enter")
-        expect(place).to_have_text("Only you")
+        expect(place).to_have_text("# Studio notes")
         after = place.bounding_box()
         self.assertEqual(before["place"], after, "the control is as wide as its widest option: choosing another never moves or resizes it")
         shot(page, f"app-select-closed-{UI_BROWSER}")
@@ -308,8 +297,8 @@ class AppSelect(unittest.TestCase):
         page = self.page()
         for n in range(14):
             self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": f"Bench {n:02d} sensor", "visibility": "workspace"}, status=201)
-        page.goto("/search?q=lamp")
-        place = page.get_by_role("combobox", name="Place")
+        page.goto("/settings/notifications")
+        place = page.get_by_role("combobox", name="Place to mute", exact=True)
         expect(place).to_be_visible()
         place.focus()
         page.keyboard.press("End")
@@ -319,7 +308,8 @@ class AppSelect(unittest.TestCase):
         layer = pop.bounding_box()
         self.assertLessEqual(layer["y"] + layer["height"], DESKTOP["height"], "the list stays inside the window")
         last = page.locator('[role="listbox"] [data-active]')
-        expect(last).to_have_text("Only you")
+        expect(last).to_have_text(re.compile(r"^# "))
+        self.assertEqual(last.inner_text(), page.locator('[role="listbox"] [role="option"]').last.inner_text(), "the end of the list is the last option")
         expect(last).to_be_in_viewport()
         shot(page, f"app-select-long-{UI_BROWSER}")
         page.keyboard.press("Escape")
@@ -354,7 +344,7 @@ class AppSelect(unittest.TestCase):
     def test_10_the_list_wears_the_tokens_in_both_themes(self) -> None:
         for dark in (False, True):
             with self.subTest(dark=dark):
-                page, place = self.search(dark=dark)
+                page, place = self.mute(dark=dark)
                 place.click()
                 expect(page.locator(".ui-select__pop")).to_be_visible()
                 page.keyboard.press("ArrowDown")
@@ -369,7 +359,6 @@ class AppSelect(unittest.TestCase):
                       optColor: getComputedStyle(option).color, t1: probe('color', '--t1'),
                       activeBg: getComputedStyle(active).backgroundColor, sub: probe('backgroundColor', '--sub'),
                       shadow: getComputedStyle(pop).boxShadow, radius: getComputedStyle(pop).borderTopLeftRadius,
-                      triggerBg: getComputedStyle(document.querySelector('.search__place .ui-select')).backgroundColor,
                     };
                 }""")
                 self.assertEqual(read["popBg"], read["el"], "the list is the --el surface")
@@ -377,7 +366,6 @@ class AppSelect(unittest.TestCase):
                 self.assertEqual(read["activeBg"], read["sub"], "the option under the arrows is the --sub fill")
                 self.assertNotEqual(read["shadow"], "none", "the list lifts with the pop-over shadow")
                 self.assertEqual(read["radius"], "14px")
-                self.assertEqual(read["triggerBg"], read["el"])
                 shot(page, f"app-select-open-{'dark' if dark else 'light'}-{UI_BROWSER}")
 
     # ---------------------------------------------------------------- inside a dialog
@@ -496,7 +484,7 @@ class AppSelect(unittest.TestCase):
         expect(place).to_have_attribute("aria-expanded", "false")
 
     def test_13c_the_focus_ring_is_the_soft_field_ring(self) -> None:
-        page, place = self.search()
+        page, place = self.mute()
         place.focus()
         page.keyboard.press("Tab")
         page.keyboard.press("Shift+Tab")
@@ -520,8 +508,8 @@ class AppSelect(unittest.TestCase):
     def test_14_axe_finds_nothing_on_the_control_or_its_list_at_both_widths_in_both_themes(self) -> None:
         for phone, dark in ((False, False), (False, True), (True, False), (True, True)):
             with self.subTest(phone=phone, dark=dark):
-                page, place = self.mute(phone=True, dark=dark) if phone else self.search(dark=dark)
-                scope = ".nset__mute" if phone else ".search__place"
+                page, place = self.mute(phone=phone, dark=dark)
+                scope = ".nset__mute"
                 self.axe(page, "the closed select", scope)
                 place.click()
                 expect(place).to_have_attribute("aria-expanded", "true")

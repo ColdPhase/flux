@@ -440,14 +440,21 @@ class EncryptedWorkspaces(Base):
                 page.goto("/inbox")
                 expect(page.locator("[data-locked-note]")).to_contain_text(LOCKED_LINE)
                 expect(page.get_by_text("The Inbox could not load")).to_have_count(0)
-                page.goto("/search?q=dock")
+                page.goto("/")
+                expect(page.get_by_role("button", name="Search", exact=True).first).to_be_visible()  # the shortcut works once the shell is up
+                if phone:
+                    page.get_by_role("button", name="Search").first.click()
+                else:
+                    page.keyboard.press("Control+k")
+                page.get_by_role("combobox", name="Search", exact=True).fill("dock")
                 unsearched = page.locator("[data-unsearched]")
                 expect(unsearched).to_have_text(f"{A_NAME} isn’t searched while it waits to be unlocked.")
-                # The computer's Search page has a Results region; the phone's search is Jump to's Results list (#770).
-                results = page.get_by_role("listbox", name="Results") if phone else page.get_by_role("region", name="Results")
+                # Search is one dialog on the computer and the phone: its Results list holds the answer (#770, #870).
+                results = page.get_by_role("listbox", name="Results")
                 expect(results.get_by_text(B_PROJECT).first).to_be_visible()
-                expect(page.locator(".search__problem")).to_have_count(0)
+                expect(page.get_by_role("alert").filter(has_text="Search is unavailable")).to_have_count(0)
                 shot(page, f"search-waiting-{'phone' if phone else 'computer'}")
+                page.keyboard.press("Escape")
                 for place in ("/docs", "/map", "/tasks"):
                     page.goto(place)
                     expect(page.locator("#content")).to_be_visible()
@@ -876,7 +883,7 @@ class EncryptedWorkspaces(Base):
                     page.get_by_role("button", name="Search").first.click()
                 else:
                     page.keyboard.press("Control+k")
-                jump = page.get_by_role("combobox", name="Jump to")
+                jump = page.get_by_role("combobox", name="Search", exact=True)
                 expect(jump).to_be_visible()
                 option = page.get_by_role("option", name=re.compile(f"{A_NAME}.*{LOCKED_LINE}"))
                 expect(option).to_be_visible()

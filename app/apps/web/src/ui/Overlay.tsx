@@ -99,7 +99,7 @@ export function trapTab(event: KeyboardEvent<HTMLElement>, root: HTMLElement | n
   return false;
 }
 
-/** `center` is a floating dialog near the top (the Jump to… palette); the others slide in from their edge. */
+/** `center` is a floating dialog near the top (the Search dialog); the others slide in from their edge. */
 export type OverlayPlacement = 'left' | 'right' | 'bottom' | 'center';
 
 export interface OverlayProps {

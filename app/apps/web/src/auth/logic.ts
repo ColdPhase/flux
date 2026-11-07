@@ -11,7 +11,7 @@ import {
 } from '../api/auth';
 import { ApiError, NetworkError } from '../api/client';
 import { signOutDevice } from '../pwa';
-import { forgetRecentSearches } from '../search/recent';
+import { forgetRecentPlaces } from '../search/recent';
 import { resetStream } from '../api/stream';
 import { forgetThoughtDrafts } from '../sketch/createdDraft';
 import { forgetComposerDrafts } from '../composer/draft';
@@ -245,8 +245,8 @@ export async function signOutAction(): Promise<FormResult | Response> {
   }
   // The event stream's cursor belongs to this account; the next one in this tab starts fresh.
   resetStream();
-  // Recent searches are per account and never outlive the session in this browser (#114).
-  forgetRecentSearches();
+  // Recent places are per account and never outlive the session in this browser (#114).
+  forgetRecentPlaces();
   forgetThoughtDrafts();
   forgetComposerDrafts();
   forgetBrowserDrafts();

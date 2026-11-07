@@ -116,7 +116,7 @@ export interface ShellActions {
   labelPanel(label: string | null): void;
   /** Opens the Create window on the computer, or the Create sheet on the phone (#345): the one way to create. */
   openCreate(request?: CreateRequest): void;
-  /** Opens Jump to… (⌘K), the search across everything the person may open (#114). */
+  /** Opens Search (⌘K), the one search across everything the person may open (#114). */
   openSearch(): void;
   /** Opens the navigation drawer on a narrow screen, where the projects are listed. */
   openNavigation(): void;

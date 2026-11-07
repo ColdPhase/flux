@@ -33,7 +33,7 @@ export function DraftCapture({ draft, parent, saving, canWrite, focusReady = tru
   }, [draft.id, focusReady, saving]);
   const ready = canWrite && !saving && draftReady(draft);
   const keys = (event: KeyboardEvent<HTMLElement>) => {
-    // Unrelated shortcuts (Ctrl/⌘ K opens Jump to… while typing) keep reaching the app.
+    // Unrelated shortcuts (Ctrl/⌘ K opens Search while typing) keep reaching the app.
     if (event.nativeEvent.isComposing) return;
     if (event.key === 'Escape' && !saving) { event.preventDefault(); onCancel(); }
     else if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); if (ready) onSave(); }

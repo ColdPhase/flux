@@ -1,16 +1,18 @@
-"""Browser tests for search (issue #114, AC-4 and AC-6).
+"""Browser tests for search (issue #114, AC-4 and AC-6; one search, #870; the dialog does not move, #898).
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose
 application. Ari owns a studio with a restricted project that Nia works in; Olek is a member who
-is not in that project. Nia searches with Jump to… (Ctrl+K and the sidebar), opens a message, an
-old material version and a rule, uses the search page with its filters and keyboard, and searches
-on the phone. Olek never sees the restricted project, and recent searches go away on sign-out.
+is not in that project. Nia searches with the one Search tool (Ctrl+K, the sidebar and the phone's
+Search), sees the results in groups by kind with no filters, opens a message, an old material
+version and a rule, moves with the keys, and searches on the phone. Olek never sees the restricted
+project, and recent places go away on sign-out. There is no Search page.
 """
 
 from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import time
 import unittest
@@ -18,11 +20,12 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from app_select import choose
-
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 from touch_targets import has_minimum_touch_size
 
+UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
+if UI_BROWSER not in ("chromium", "webkit"):
+    raise ValueError(f"FLUX_UI_BROWSER must be chromium or webkit, got {UI_BROWSER!r}")
 PASSWORD = "finding things calmly"
 STAMP = int(time.time() * 1000)
 PEOPLE = {
@@ -45,7 +48,7 @@ class SearchJourney(unittest.TestCase):
         if UPSTREAM:
             start_forwarder(ORIGIN, UPSTREAM)
         cls.pw = sync_playwright().start()
-        cls.browser = cls.pw.chromium.launch()
+        cls.browser = getattr(cls.pw, UI_BROWSER).launch()
         expect.set_options(timeout=8000)
 
     @classmethod
@@ -87,12 +90,15 @@ class SearchJourney(unittest.TestCase):
         # The shortcut works once the app shell has loaded.
         expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
         page.keyboard.press("Control+k")
-        dialog = page.get_by_role("dialog", name="Jump to")
+        dialog = page.get_by_role("dialog", name="Search", exact=True)
         expect(dialog).to_be_visible()
-        field = dialog.get_by_role("combobox", name="Jump to")
+        field = dialog.get_by_role("combobox", name="Search", exact=True)
         expect(field).to_be_focused()
         field.fill(query)
         return dialog, field
+
+    def groups(self, dialog) -> list[str]:
+        return dialog.locator(".jump__sh").all_inner_texts()
 
     # ---------------------------------------------------------------- a studio with things to find
 
@@ -140,7 +146,7 @@ class SearchJourney(unittest.TestCase):
         type(self).ids = {"workspace": ws["id"], "lamp": p, "thread": thread["id"], "material": material["materialId"], "rule": rule["id"],
                           "sketch": sketch["id"], "thought": thought["thought"]["id"], "dm": dm["id"], "open_thread": open_thread["id"], "doc": doc["id"]}
 
-    # ---------------------------------------------------------------- Jump to…
+    # ---------------------------------------------------------------- Search
 
     def test_02_ctrl_k_searches_as_you_type_and_opens_the_exact_message(self) -> None:
         page = self.page("nia")
@@ -151,9 +157,18 @@ class SearchJourney(unittest.TestCase):
         expect(options.first).to_be_visible()
         expect(dialog.get_by_role("listbox", name="Results")).to_contain_text("Sensor comparison")
         expect(dialog).to_contain_text("Material · version 2, current")
-        expect(dialog).to_contain_text("# Gesture lamp")
+        expect(dialog).to_contain_text("Gesture lamp")
         expect(dialog.locator(".sr__hit").first).to_be_visible()
         self.assertEqual(options.first.get_attribute("aria-selected"), "true")
+        # The results are in groups by kind, in one order, and there is nothing to filter with (#870).
+        order = ["Tasks", "Messages", "Wiki", "Files", "Thoughts", "Spaces", "People"]
+        shown = self.groups(dialog)
+        for name in ("Tasks", "Messages", "Wiki", "Files", "Thoughts"):
+            self.assertIn(name, shown)
+        self.assertEqual(shown, [name for name in order if name in shown], "groups keep the drawn order")
+        self.assertEqual(dialog.get_by_role("group").count(), 0, "no filter chips")
+        expect(dialog.get_by_text("All places")).to_have_count(0)
+        expect(dialog.get_by_role("option", name=re.compile("See all results"))).to_have_count(0)
         shot(page, "search-jump-desktop-1440")
         field.fill("sensor reacts")
         expect(dialog.locator("[role=option].sr").first).to_contain_text("The infrared sensor reacts at 5 lux in the hallway test.")
@@ -167,8 +182,8 @@ class SearchJourney(unittest.TestCase):
         page = self.page("nia")
         page.goto("/")
         page.get_by_role("button", name="Search", exact=True).click()
-        dialog = page.get_by_role("dialog", name="Jump to")
-        field = dialog.get_by_role("combobox", name="Jump to")
+        dialog = page.get_by_role("dialog", name="Search", exact=True)
+        field = dialog.get_by_role("combobox", name="Search", exact=True)
         expect(field).to_be_focused()
         field.fill("humidity")
         option = dialog.locator("[role=option].sr").first
@@ -184,7 +199,7 @@ class SearchJourney(unittest.TestCase):
         dialog.locator("[role=option].sr").first.click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/tasks$"))
         expect(page.get_by_role("complementary", name="Details").or_(page.get_by_role("dialog", name="Details"))).to_contain_text("Use the infrared sensor at night")
-        # A thought opens its sketch with the thought selected; Esc closes Jump to without moving.
+        # A thought opens its sketch with the thought selected; Esc closes Search without moving.
         dialog, field = self.jump(page, "walnut")
         expect(dialog.locator("[role=option].sr").first).to_contain_text("Thought on the map “Sensing options”")
         dialog.locator("[role=option].sr").first.click()
@@ -200,108 +215,85 @@ class SearchJourney(unittest.TestCase):
         page.goto("/")
         dialog, field = self.jump(page, "spare sensor")
         first = dialog.locator("[role=option].sr").first
-        expect(first).to_contain_text("Direct message")
-        expect(first).to_contain_text("Ari Nowak")
+        expect(first).to_contain_text("With Ari Nowak")
+        self.assertIn("Messages", self.groups(dialog))
         dialog.locator("[role=option].sr").first.click()
         expect(page).to_have_url(re.compile(rf"/dm/{self.ids['dm']}#message-"))
         expect(page.locator(".dm-msg.is-arrived")).to_contain_text("spare sensor")
         dialog, field = self.jump(page, "brass collar")
         first = dialog.locator("[role=option].sr").first
-        expect(first).to_contain_text("Wiki page · published")
+        expect(first).to_contain_text("brass collar")
+        self.assertIn("Wiki", self.groups(dialog))
         dialog.locator("[role=option].sr").first.click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/docs/{self.ids['doc']}(/versions/1)?$"))
         expect(page.get_by_role("heading", name="Lamp wiring guide").first).to_be_visible()
         dialog, field = self.jump(page, "zeppelin")
-        expect(dialog).to_contain_text("Nothing you can open matches “zeppelin”.")
+        expect(dialog.locator(".jump__none")).to_contain_text("Nothing matches “zeppelin”")
+        expect(dialog.locator(".jump__none .kreska")).to_have_attribute("data-expression", "looking")
         shot(page, "search-jump-desktop-1440-empty")
 
-    # ---------------------------------------------------------------- the search page
-
-    def test_05_search_page_filters_counts_and_keyboard(self) -> None:
+    def test_05_the_keys_move_and_open_and_the_hint_is_one_plain_sentence(self) -> None:
         page = self.page("nia")
         page.goto("/")
         dialog, field = self.jump(page, "sensor")
-        see_all = dialog.get_by_role("option", name=re.compile("See all results"))
-        expect(see_all).to_be_visible()
-        see_all.click()
-        expect(page).to_have_url(re.compile(r"/search\?q=sensor$"))
-        expect(page.get_by_role("heading", level=1, name="Search")).to_be_visible()
-        results = page.get_by_role("region", name="Results")
-        expect(results.get_by_role("link").first).to_be_visible()
-        chips = page.get_by_role("group", name="Kind of result")
-        expect(chips.get_by_role("button", name=re.compile(r"^All"))).to_have_attribute("aria-pressed", "true")
-        expect(chips.get_by_role("button", name=re.compile(r"^Messages"))).to_contain_text("6")
-        expect(chips.get_by_role("button", name=re.compile(r"^Wiki"))).to_contain_text("1")
-        shot(page, "search-page-desktop-1440")
-        tasks = chips.get_by_role("button", name=re.compile(r"^Tasks"))
-        tasks.click()
-        expect(tasks).to_have_attribute("aria-pressed", "true")
-        expect(page).to_have_url(re.compile(r"type=work"))
-        expect(results.get_by_role("link")).to_have_count(1)
-        expect(results).to_contain_text("Mount the infrared sensor in the lamp base")
-        tasks.click()
-        expect(tasks).to_have_attribute("aria-pressed", "false")
-        expect(page).not_to_have_url(re.compile(r"type=work"))
-        choose(page.get_by_role("combobox", name="Place"), label="Only you")
-        expect(results.get_by_role("link")).to_have_count(1)
-        expect(results).to_contain_text("Sensor questions for Ari")
-        expect(results).to_contain_text("Only you")
-        # The announced status counts in the singular for one result (#217).
-        expect(page.locator('p.ui-vh[role="status"]')).to_have_text("1 result")
-        choose(page.get_by_role("combobox", name="Place"), label="All places")
-        # Wait for the results of every place: a row that is on screen while they load is gone once they are grouped.
-        expect(results).to_have_attribute("aria-busy", "false")
-        expect(results.get_by_role("link").nth(1)).to_be_visible()
-        # ↓ from the field moves through the results; ↑ from the first returns to the field.
-        search_box = page.get_by_role("searchbox", name="Search Flux")
-        search_box.focus()
-        page.keyboard.press("ArrowDown")
-        expect(results.get_by_role("link").first).to_be_focused()
-        page.keyboard.press("ArrowDown")
-        expect(results.get_by_role("link").nth(1)).to_be_focused()
-        page.keyboard.press("ArrowUp")
-        page.keyboard.press("ArrowUp")
-        expect(search_box).to_be_focused()
-        search_box.fill("walnut veneer")
-        expect(results.get_by_role("link")).to_have_count(1)
-        expect(page).to_have_url(re.compile(r"q=walnut\+veneer|q=walnut%20veneer"))
-        results.get_by_role("link").first.click()
+        options = dialog.get_by_role("option")
+        expect(options.first).to_be_visible()
+        # ↓ moves the selection down the rows, ↑ back, and ↑ from the first wraps to the last.
+        self.assertEqual(field.get_attribute("aria-activedescendant"), options.nth(0).get_attribute("id"))
+        field.press("ArrowDown")
+        field.press("ArrowDown")
+        self.assertEqual(options.nth(2).get_attribute("aria-selected"), "true")
+        self.assertEqual(field.get_attribute("aria-activedescendant"), options.nth(2).get_attribute("id"))
+        field.press("ArrowUp")
+        field.press("ArrowUp")
+        field.press("ArrowUp")
+        self.assertEqual(options.nth(options.count() - 1).get_attribute("aria-selected"), "true")
+        # The footer says what the tool finds in one sentence, with none of the old words, and names the keys.
+        foot = dialog.locator(".jump__foot")
+        expect(foot).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages and thoughts you can see.")
+        hint = foot.locator(".jump__hint-line").inner_text().lower()
+        for word in ("material", "version", "rule"):
+            self.assertNotIn(word, hint)
+        expect(foot).to_contain_text("move")
+        expect(foot).to_contain_text("open")
+        # Enter opens the first result of a narrower search.
+        field.fill("walnut veneer")
+        expect(options).to_have_count(1)
+        expect(options.first).to_have_attribute("aria-selected", "true")
+        field.press("Enter")
+        expect(dialog).to_be_hidden()
         expect(page).to_have_url(re.compile(rf"/map/{self.ids['sketch']}#thought-"))
 
     def test_06_a_member_outside_the_project_never_sees_it(self) -> None:
         page = self.page("olek")
-        page.goto("/search?q=sensor")
-        results = page.get_by_role("region", name="Results")
-        expect(results.get_by_role("link")).to_have_count(1)
-        expect(results).to_contain_text("The workshop is on Thursday, bring a sensor kit.")
-        chips = page.get_by_role("group", name="Kind of result")
-        expect(chips.get_by_role("button")).to_have_count(2)  # All 1 · Messages 1
+        page.goto("/")
+        dialog, field = self.jump(page, "sensor")
+        options = dialog.locator("[role=option].sr")
+        expect(options).to_have_count(1)
+        expect(options.first).to_contain_text("The workshop is on Thursday, bring a sensor kit.")
+        self.assertEqual(self.groups(dialog), ["Messages"])
         content = page.content()
         for hidden in ["Gesture lamp", "infrared", "Sensor comparison", "spare sensor", "Sensor questions", self.ids["lamp"]]:
             self.assertNotIn(hidden, content)
-        page.goto(f"/search?q=sensor&place=project:{self.ids['lamp']}")
-        expect(page.get_by_role("heading", name="Nothing matches “sensor”")).to_be_visible()
 
-    def test_07_recent_searches_are_per_account_and_cleared_on_sign_out(self) -> None:
+    def test_07_recent_places_are_per_account_and_cleared_on_sign_out(self) -> None:
         page = self.page("nia")
         page.goto("/")
         dialog, field = self.jump(page, "hallway")
         expect(dialog.locator("[role=option].sr").first).to_be_visible()
         dialog.locator("[role=option].sr").first.click()
-        # The search itself is remembered for the Search page; ⌘K's empty state lists the places opened (F-026 E02).
+        # Search does not remember what was typed; its empty state lists the places opened (F-026 E02).
         dialog, field = self.jump(page, "")
         expect(dialog.get_by_role("listbox", name="Recent places and actions")).to_contain_text("Home")
         page.keyboard.press("Escape")
-        stored = page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.search.recent.'))")
-        self.assertEqual(stored, [f"flux.search.recent.{PEOPLE['nia']['id']}"])
-        page.goto("/search")
-        expect(page.get_by_role("heading", level=2, name="Recent searches")).to_be_visible()
-        expect(page.locator(".search__recent")).to_contain_text("hallway")
+        self.assertEqual(page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.search.recent.'))"), [])
+        stored = page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.places.recent.'))")
+        self.assertEqual(stored, [f"flux.places.recent.{PEOPLE['nia']['id']}"])
         page.get_by_role("button", name=re.compile("Nia Berg")).click()
         page.get_by_role("dialog", name="Account").get_by_role("button", name="Sign out").click()
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
-        self.assertEqual(page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.search.recent.'))"), [])
-        # Signing in again (the stored session ended) starts with no recent searches.
+        self.assertEqual(page.evaluate("Object.keys(localStorage).filter((k) => k.startsWith('flux.places.recent.'))"), [])
+        # Signing in again (the stored session ended) starts with no recent places.
         page.get_by_label("Email").fill(PEOPLE["nia"]["email"])
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
@@ -309,7 +301,13 @@ class SearchJourney(unittest.TestCase):
         type(self).states["nia"] = page.context.storage_state()
         dialog, field = self.jump(page, "")
         expect(dialog).not_to_contain_text("hallway")
-        expect(dialog).to_contain_text("Only what you can open is searched.")
+        expect(dialog.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages and thoughts you can see.")
+
+    def test_07a_there_is_no_search_page(self) -> None:
+        page = self.page("nia")
+        page.goto("/search?q=sensor")
+        expect(page.get_by_text("This page doesn’t exist")).to_be_visible()
+        expect(page.get_by_role("dialog", name="Search", exact=True)).to_have_count(0)
 
     # ---------------------------------------------------------------- phone
 
@@ -323,9 +321,9 @@ class SearchJourney(unittest.TestCase):
         page = self.page("nia", phone=True)
         page.goto("/")
         page.get_by_role("button", name="Search", exact=True).click()
-        dialog = page.get_by_role("dialog", name="Jump to")
+        dialog = page.get_by_role("dialog", name="Search", exact=True)
         # The sheet first opens around a loading line; the real one replaces it when the search code arrives.
-        field = dialog.get_by_role("combobox", name="Jump to")
+        field = dialog.get_by_role("combobox", name="Search", exact=True)
         expect(field).to_be_visible()
         box = dialog.bounding_box()
         assert box is not None
@@ -333,6 +331,9 @@ class SearchJourney(unittest.TestCase):
         field.fill("sensor")
         options = dialog.get_by_role("option")
         expect(options.first).to_be_visible()
+        # One tool: the same grouped results as the computer's, and no chips to choose a kind with (#870).
+        self.assertIn("Messages", self.groups(dialog))
+        self.assertEqual(dialog.get_by_role("group").count(), 0, "no filter chips on the phone")
         cancel = dialog.get_by_role("button", name="Cancel")
         # Read a settled sheet rather than accepting a genuinely undersized target by rounding.
         dialog.evaluate("el => Promise.all(el.getAnimations({subtree: true}).filter(a => a.effect?.getTiming().iterations !== Infinity).map(a => a.finished))")
@@ -352,24 +353,22 @@ class SearchJourney(unittest.TestCase):
         options.filter(has_text="Mount the infrared sensor").first.click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}/tasks$"))
         expect(page.get_by_role("dialog", name="Details")).to_contain_text("Mount the infrared sensor in the lamp base")
-        # /search on the phone is the same search as the sheet (#763 SE-2): its chips, its results, Cancel.
-        page.goto("/search?q=sensor")
-        results = page.get_by_role("listbox", name="Results")
-        expect(results.locator("[role=option].sr").first).to_be_visible()
-        expect(page.get_by_role("group", name="Search in")).to_be_visible()
-        self.no_horizontal_scroll(page)
-        for index in range(min(results.locator("[role=option].sr").count(), 3)):
-            option_box = results.locator("[role=option].sr").nth(index).bounding_box()
-            assert option_box is not None
-            self.assertGreaterEqual(option_box["height"], 44)
-        shot(page, "search-page-phone-390")
+        # With no recent places yet, the sentence that says what it finds is above the list, with none of the old words.
+        fresh = self.page("olek", phone=True)
+        fresh.goto("/")
+        fresh.get_by_role("button", name="Search", exact=True).click()
+        sheet = fresh.get_by_role("dialog", name="Search", exact=True)
+        hint = sheet.locator(".jump__hint")
+        expect(hint).to_have_text("Finds spaces, people, messages, tasks, Wiki pages and thoughts you can see.")
+        self.no_horizontal_scroll(fresh)
+        shot(fresh, "search-jump-phone-390-empty")
 
-    def test_09_dark_desktop_page(self) -> None:
+    def test_09_dark_desktop_dialog(self) -> None:
         page = self.page("nia", dark=True)
-        page.goto("/search?q=infrared")
-        expect(page.get_by_role("region", name="Results").get_by_role("link").first).to_be_visible()
-        shot(page, "search-page-desktop-1440-dark")
-
+        page.goto("/")
+        dialog, field = self.jump(page, "infrared")
+        expect(dialog.locator("[role=option].sr").first).to_be_visible()
+        shot(page, "search-jump-desktop-1440-dark")
 
     def test_10_an_old_message_opens_exactly_even_outside_the_first_window(self) -> None:
         """More messages than one window (50) arrive after the target, in a DM and in a project."""
@@ -396,7 +395,7 @@ class SearchJourney(unittest.TestCase):
             if "oak" in query:
                 shot(page, "search-open-old-dm-message-desktop-1440")
 
-    def test_11_task_number_leads_jump_to_even_on_a_busy_project(self) -> None:
+    def test_11_task_number_leads_search_even_on_a_busy_project(self) -> None:
         owner = self.page("ari")
         place = self.api(owner, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects",
                          {"name": "Hedge sensor calibration", "visibility": "restricted"}, status=201)
@@ -415,8 +414,8 @@ class SearchJourney(unittest.TestCase):
                 page.goto(f"/projects/{place['id']}/tasks")
                 expect(page.locator(".tb-card, .ws-task").first).to_be_visible()  # the phone lists rows, the computer shows the board
                 page.keyboard.press("Control+k")
-                dialog = page.get_by_role("dialog", name="Jump to")
-                field = dialog.get_by_role("combobox", name="Jump to")
+                dialog = page.get_by_role("dialog", name="Search", exact=True)
+                field = dialog.get_by_role("combobox", name="Search", exact=True)
                 for query in ("#2", "2", " #2 "):
                     field.fill(query)
                     expect(dialog.locator("[role=option].sr").first).to_contain_text(target["title"])
@@ -430,17 +429,20 @@ class SearchJourney(unittest.TestCase):
 
                 details.get_by_role("button", name="Close details").click()
                 page.keyboard.press("Control+k")
-                dialog = page.get_by_role("dialog", name="Jump to")
-                field = dialog.get_by_role("combobox", name="Jump to")
+                dialog = page.get_by_role("dialog", name="Search", exact=True)
+                field = dialog.get_by_role("combobox", name="Search", exact=True)
                 field.fill("#12")
                 expect(dialog.locator("[role=option].sr").first).to_contain_text(tasks[11]["title"])
                 shot(page, f"task-number-12-palette-{'phone-390' if phone else 'desktop-1440'}")
                 page.keyboard.press("Escape")
 
                 for number in (12, 26):
-                    page.goto(f"/search?q=%23{number}&type=work&place=project:{place['id']}")
-                    # The phone's /search is its one search (#763 SE-2): results are the sheet's options.
-                    result = page.locator("[role=option].sr" if phone else "a.sr").first
+                    page.goto(f"/projects/{place['id']}/tasks")
+                    expect(page.locator(".tb-card, .ws-task").first).to_be_visible()
+                    page.keyboard.press("Control+k")
+                    dialog = page.get_by_role("dialog", name="Search", exact=True)
+                    dialog.get_by_role("combobox", name="Search", exact=True).fill(f"#{number}")
+                    result = dialog.locator("[role=option].sr").first
                     expect(result).to_contain_text(tasks[number - 1]["title"])
                     expect(result).to_contain_text(f"#{number}")
                     shot(page, f"task-number-{number}-search-{'phone-390' if phone else 'desktop-1440'}")
@@ -487,32 +489,95 @@ class SearchJourney(unittest.TestCase):
         page.goto("/")
         expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
         dialog, field = self.jump(page, "gesture lamp")
-        project = dialog.get_by_role("option").filter(has_text="Space").filter(has_text="Gesture lamp").first
-        expect(project).to_contain_text("Gesture lamp")
-        expect(dialog.get_by_role("option").first).to_contain_text("New task")
+        project = dialog.locator("[role=option].sr").filter(has_text="Gesture lamp").first
+        expect(project).to_be_visible()
+        self.assertIn("Spaces", self.groups(dialog))
+        expect(dialog.get_by_role("option", name=re.compile("New task"))).to_have_count(0)  # no Create group
         shot(page, "search-project-jump-desktop-1440")
         project.click()
         expect(dialog).to_be_hidden()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['lamp']}"))
         expect(page.get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
 
-        page.goto("/search?q=lamp&type=project")
-        results = page.get_by_role("region", name="Results")
-        expect(results.get_by_role("link")).to_have_count(1)
-        expect(results).to_contain_text("Gesture lamp")
-        chips = page.get_by_role("group", name="Kind of result")
-        expect(chips.get_by_role("button", name=re.compile("^Spaces"))).to_have_attribute("aria-pressed", "true")
-
-        # Olek is not in the restricted project: the name finds nothing, on the palette or the page.
+        # Olek is not in the restricted project: the name finds nothing.
         olek = self.page("olek")
         olek.goto("/")
         expect(olek.get_by_role("button", name="Search", exact=True)).to_be_visible()
         dialog, _ = self.jump(olek, "gesture lamp")
-        expect(dialog).to_contain_text("Nothing you can open matches")
-        expect(dialog.get_by_role("option").filter(has_text="Space").filter(has_text="Gesture lamp")).to_have_count(0)
-        olek.goto("/search?q=gesture%20lamp")
-        expect(olek.get_by_role("heading", name=re.compile("Nothing matches"))).to_be_visible()
+        expect(dialog.locator(".jump__none")).to_contain_text("Nothing matches")
+        expect(dialog.locator("[role=option].sr").filter(has_text="Gesture lamp")).to_have_count(0)
         self.assertNotIn("Gesture lamp", olek.content())
+
+
+    # ---------------------------------------------------------------- the dialog does not move (#898)
+
+    SAMPLE = """() => {
+        window.__dialog = []; const start = performance.now();
+        const tick = () => {
+            const dialog = document.querySelector('[role="dialog"][aria-label="Search"]');
+            if (dialog) {
+                const box = dialog.getBoundingClientRect();
+                window.__dialog.push({ at: Math.round(performance.now() - start), height: Math.round(box.height * 100) / 100, offset: dialog.offsetTop,
+                                       options: dialog.querySelectorAll('[role=option]').length, skeleton: !!dialog.querySelector('.jump-skeleton') });
+            }
+            if (performance.now() - start < 2200) requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
+    }"""
+
+    def assistant_page(self, delay_ms: int) -> Page:
+        """Nia with an assistant that is ready, whose status the page gets `delay_ms` after the server answers (the one read ⌘K used to make once it was open)."""
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, storage_state=self.states["nia"], locale="en-GB", service_workers="block")
+        self.addCleanup(context.close)
+        context.add_init_script(f"""
+            const real = window.fetch.bind(window);
+            window.fetch = (input, init) => {{
+                const url = typeof input === 'string' ? input : input.url;
+                if (new URL(url, location.href).pathname !== '/api/v1/personal-assistant' || (init && init.method && init.method !== 'GET')) return real(input, init);
+                return real(input, init).then(async (response) => {{
+                    const body = await response.json();
+                    await new Promise((resolve) => setTimeout(resolve, {delay_ms}));
+                    return new Response(JSON.stringify({{ ...body, state: 'ready' }}), {{ status: 200, headers: {{ 'content-type': 'application/json' }} }});
+                }});
+            }};""")
+        page = context.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
+        return page
+
+    def measure_open(self, page: Page) -> list[dict]:
+        """Opens Search and reads the dialog's box on every frame for two seconds, from the frame it appears in."""
+        page.evaluate(self.SAMPLE)
+        page.keyboard.press("Control+k")
+        dialog = page.get_by_role("dialog", name="Search", exact=True)
+        expect(dialog.get_by_role("combobox", name="Search", exact=True)).to_be_visible()
+        page.wait_for_timeout(2300)
+        return page.evaluate("window.__dialog")
+
+    def test_13_the_dialog_is_its_final_size_when_it_opens_and_does_not_move(self) -> None:
+        for delay in (0, 1800):
+            with self.subTest(status_arrives_after_ms=delay):
+                page = self.assistant_page(delay)
+                page.goto("/")
+                expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
+                page.wait_for_timeout(500 if delay else 1200)  # a status that is ready, or one that is still on its way
+                samples = self.measure_open(page)
+                self.assertGreater(len(samples), 20, "the dialog was sampled on its frames")
+                self.assertEqual({sample["height"] for sample in samples}, {samples[0]["height"]}, f"the dialog never changes height: {samples[:3]} … {samples[-3:]}")
+                self.assertEqual({sample["offset"] for sample in samples}, {samples[0]["offset"]}, "and its place in the layout never changes (its 8 px entry travel is a transform)")
+                dialog = page.get_by_role("dialog", name="Search", exact=True)
+                ask = dialog.get_by_role("option", name=re.compile("Ask my assistant"))
+                if delay == 0:
+                    expect(ask).to_have_count(1)  # known before the dialog opened: the row is in it from the first frame
+                else:
+                    expect(ask).to_have_count(0)  # still unknown when it opened: it is not added to a dialog that is on screen
+                    page.keyboard.press("Escape")
+                    expect(dialog).to_be_hidden()
+                    page.wait_for_timeout(2300)
+                    page.keyboard.press("Control+k")
+                    expect(dialog.get_by_role("option", name=re.compile("Ask my assistant"))).to_have_count(1)  # the next time it is there
+                shot(page, f"search-open-stable-desktop-1440-{delay}")
 
 
 if __name__ == "__main__":

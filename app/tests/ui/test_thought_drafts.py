@@ -579,7 +579,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         field = self.capture(page)
         field.fill("Ask Jonas about the radar module")
         field.press("Control+k")
-        jump = page.get_by_role("dialog", name="Jump to")
+        jump = page.get_by_role("dialog", name="Search", exact=True)
         expect(jump).to_be_visible()
         page.keyboard.press("Escape")
         expect(jump).to_have_count(0)

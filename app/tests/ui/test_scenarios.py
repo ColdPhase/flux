@@ -22,7 +22,7 @@ people in them would, in the browser:
    the camera work and keeping the sensor order.
 4. Return after the pivot without AI (test_4): Ada comes back to Home and the project and finds the new
    direction, the previous rule, the parked work and the work that still applies, with no AI.
-5. Inbox, search and the wiki (test_5): the inbox, Jump to and the search page find the items; the wiki
+5. Inbox, search and the wiki (test_5): the inbox and Search find the items; the wiki
    page gets a second version citing the new rule, and its first version stays as written.
 6. Export and audience (test_6): Ada's project export holds the conversation, the attachment, the map,
    the work, both rules, the result, the page and their links, and nothing private. A member reads the
@@ -617,8 +617,13 @@ class ScenarioJourney:
             projects = self.project_list(other)
             expect(projects.get_by_role("link", name=re.compile(f"^{MARKET}"))).to_be_visible()
             expect(projects.get_by_text(LAMP)).to_have_count(0)
-            other.goto("/search?q=gestures")
-            expect(other.get_by_role("heading", name="Nothing matches “gestures”")).to_be_visible()
+            if self.phone:
+                other.get_by_role("button", name="Search", exact=True).tap()
+            else:
+                other.keyboard.press("Control+k")
+            hidden = other.get_by_role("dialog", name="Search", exact=True)
+            hidden.get_by_role("combobox", name="Search", exact=True).fill("gestures")
+            expect(hidden.get_by_role("heading", name="Nothing matches “gestures”")).to_be_visible()
             self.assertNotIn(LAMP, other.content())
 
     # ---------------------------------------------------------------- scenario 2: thinking and execution
@@ -1098,28 +1103,21 @@ class ScenarioJourney:
         page.goto(f"/inbox/{note['id']}")
         expect(page).to_have_url(re.compile(rf"/dm/{s['dm']}#message-"))
 
-        # Search: Jump to, then the full results, find the run, the result, the page and the map.
+        # Search finds the run, the result, the page and the map, in groups by kind (#870).
         page.goto(f"/projects/{lamp}")
         if self.phone:
             page.get_by_role("button", name="Search", exact=True).tap()
         else:
             expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
             page.keyboard.press("Control+k")
-        dialog = page.get_by_role("dialog", name="Jump to")
-        dialog.get_by_role("combobox", name="Jump to").fill("lux")
+        dialog = page.get_by_role("dialog", name="Search", exact=True)
+        dialog.get_by_role("combobox", name="Search", exact=True).fill("lux")
         expect(dialog.get_by_role("listbox", name="Results")).to_contain_text(RESULT)
-        if self.phone:
-            # The phone has one search (#763 SE-2): the sheet is the whole answer, and /search is the same search in place.
-            expect(dialog.get_by_role("option", name=re.compile("See all results"))).to_have_count(0)
-            page.keyboard.press("Escape")
-            page.goto("/search?q=lux")
-            expect(page.get_by_role("listbox", name="Results")).to_contain_text(RESULT)
-        else:
-            self.tap(dialog.get_by_role("option", name=re.compile("See all results")))
-            expect(page).to_have_url(re.compile(r"/search\?q=lux"))
-            chips = page.get_by_role("group", name="Kind of result")
-            for kind in ("Messages", "Wiki", "Results", "Map"):
-                expect(chips.get_by_role("button", name=re.compile(f"^{kind}"))).to_be_visible()
+        # One tool on both devices: the sheet and the dialog are the whole answer, with no "See all results" and no chips.
+        expect(dialog.get_by_role("option", name=re.compile("See all results"))).to_have_count(0)
+        self.assertEqual(dialog.get_by_role("group").count(), 0)
+        for group in ("Messages", "Wiki", "Tasks", "Thoughts"):
+            self.assertIn(group, dialog.locator(".jump__sh").all_inner_texts())
         self.shot(page, "5-search")
         kinds = lambda q: {item["kind"] for item in self.api("ada", "GET", f"/api/v1/search?q={urllib.parse.quote(q)}&limit=50", status=200)["items"]}  # noqa: E731
         self.assertTrue({"message", "result", "doc", "thought"} <= kinds("lux"), kinds("lux"))

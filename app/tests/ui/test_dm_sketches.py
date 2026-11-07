@@ -565,26 +565,38 @@ class DmSketchJourney(unittest.TestCase):
     def test_04b_search_finds_the_dm_sketch_and_opens_it_in_the_dm(self) -> None:
         page = self.page("jo")
         # "60 GHz radar sees through the shade" is Kai's thought in the DM sketch; its copy lives in Gesture lamp.
-        page.goto(f"/search?q=shade&place=dm:{self.dm_id}")
-        results = page.get_by_role("region", name="Results")
-        expect(results.get_by_role("link")).to_have_count(1)
-        expect(results).to_contain_text("60 GHz radar")
-        expect(results).to_contain_text("Kai Lind")
-        results.get_by_role("link").first.click()
+        page.goto("/")
+        expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
+
+        def search(who: Page, query: str):
+            who.keyboard.press("Control+k")
+            dialog = who.get_by_role("dialog", name="Search", exact=True)
+            dialog.get_by_role("combobox", name="Search", exact=True).fill(query)
+            return dialog
+
+        # Across every place: the DM thought and the project copy, each opening where it lives.
+        dialog = search(page, "shade")
+        rows = dialog.locator("[role=option].sr")
+        expect(rows).to_have_count(2)
+        in_dm = rows.filter(has_text="With Kai Lind")
+        expect(in_dm).to_have_count(1)
+        expect(in_dm).to_contain_text("60 GHz radar")
+        self.assertIn("Thoughts", dialog.locator(".jump__sh").all_inner_texts())
+        shot(page, "dm-sketch-search")
+        in_dm.click()
         expect(page).to_have_url(re.compile(rf"/dm/{self.dm_id}/sketches/{self.sketch_id}#thought-[0-9a-f-]{{36}}$"))
         expect(page.locator(".sk-aud")).to_contain_text("in this direct message")
-        # Across every place: the DM thought and the project copy, each opening where it lives.
-        page.goto("/search?q=shade")
-        expect(results.get_by_role("link")).to_have_count(2)
-        hrefs = sorted(results.get_by_role("link").evaluate_all("(links) => links.map((a) => a.getAttribute('href'))"))
-        self.assertTrue(any(h.startswith(f"/dm/{self.dm_id}/sketches/{self.sketch_id}#thought-") for h in hrefs), hrefs)
-        self.assertTrue(any(h.startswith(f"{self.copy_path.split('/map/')[0]}/map/") or h.startswith("/map/") for h in hrefs if not h.startswith("/dm/")), hrefs)
+        dialog = search(page, "shade")
+        dialog.locator("[role=option].sr").filter(has_not_text="With Kai Lind").click()
+        expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}#thought-"))
+        self.assertNotIn("/dm/", page.url)
         # Mo is outside the DM and the project: nothing, not even a count.
         mo = self.page("mo")
-        mo.goto("/search?q=shade")
-        expect(mo.get_by_role("heading", name="Nothing matches “shade”")).to_be_visible()
+        mo.goto("/")
+        expect(mo.get_by_role("button", name="Search", exact=True)).to_be_visible()
+        hidden = search(mo, "shade")
+        expect(hidden.get_by_role("heading", name="Nothing matches “shade”")).to_be_visible()
         self.assertNotIn("radar", mo.content())
-        shot(page, "dm-sketch-search")
 
     # ---------------------------------------------------------------- leaving
 

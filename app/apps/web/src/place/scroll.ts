@@ -50,7 +50,7 @@ export function restoreTop(find: () => HTMLElement | null, top: number, ms = 300
 interface PaneSnap { top: number }
 
 /**
- * A page that scrolls in `.pane-scroll` (Search, the Inbox, a wiki page, a material, and most pages that read) comes back
+ * A page that scrolls in `.pane-scroll` (the Inbox, a wiki page, a material, and most pages that read) comes back
  * scrolled as it was left. The one tracker listens at the shell's pane, so no page has to know about it.
  */
 export function usePaneMemory(paneRef: RefObject<HTMLElement | null>, location: Location, type: NavigationType) {

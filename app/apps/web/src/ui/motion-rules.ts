@@ -64,7 +64,7 @@ export function routeView(pathname: string): string {
   if (dm) return `/dm/${dm[1]}${dm[2] ?? ''}`;
   const material = /^\/materials\/([^/]+)/.exec(path);
   if (material) return `/materials/${material[1]}`;
-  const place = /^\/(tasks|map|docs|search|inbox|dm|projects)(?:\/|$)/.exec(path);
+  const place = /^\/(tasks|map|docs|inbox|dm|projects)(?:\/|$)/.exec(path);
   if (place && !path.startsWith('/dm/new')) return `/${place[1]}`;
   return path;
 }

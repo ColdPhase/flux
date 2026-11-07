@@ -315,8 +315,12 @@ class ConnectedFlow(unittest.TestCase):
 
     def test_10_search_snippets_show_no_flux_links(self) -> None:
         page = self.page()
-        page.goto(f"/search?q={'evening before'}")
-        results = page.locator(".sr")
+        page.goto("/")
+        expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
+        page.keyboard.press("Control+k")
+        dialog = page.get_by_role("dialog", name="Search", exact=True)
+        dialog.get_by_role("combobox", name="Search", exact=True).fill("evening before")
+        results = dialog.locator(".sr")
         expect(results.first).to_be_visible()
         for text in results.all_inner_texts():
             self.assertNotIn("flux:", text)
