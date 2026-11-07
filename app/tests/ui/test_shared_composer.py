@@ -322,8 +322,12 @@ class SharedComposerJourney(unittest.TestCase):
         expect(page.get_by_text("A's held private bytes")).to_have_count(0)
         self.open_thread(page, project, a)
         expect(self.box(page)).to_have_value("")
-        # Held after the server stored it: A's thread shows the message once, never twice.
-        expect(page.locator("#details").get_by_role("region", name="Activity").get_by_text("A's held private bytes")).to_have_count(1)
+        # Held after the server stored it: Details lists the stored message once in its activity; the queued copy stays in "Messages you
+        # are sending" until the server answers, so there is never a second stored copy. (The Agents view merged the two; Details, which
+        # has shown its queue apart from its activity since #264, does not.)
+        activity = page.locator("#details").get_by_role("region", name="Activity")
+        expect(activity.locator(".wd-act").get_by_text("A's held private bytes")).to_have_count(1)
+        expect(activity.locator(".wd-pending").get_by_text("A's held private bytes")).to_have_count(1)
         pending[0][0].fulfill(response=pending[0][1])
         self.stored(page)
         expect(page.locator("#details").get_by_role("region", name="Activity").get_by_text("A's held private bytes")).to_have_count(1)
