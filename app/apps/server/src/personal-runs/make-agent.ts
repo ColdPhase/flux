@@ -1,14 +1,16 @@
 import { FIRST_AGENT_NAME, type CreateMyAgentCommand, type MyAgent } from '@flux/contracts';
 import { createAgent, DomainError, InvalidInputError, type Principal } from '@flux/core';
-import { accessPorts, type Database } from '@flux/db';
+import { accessPorts, lockAssistantOwner, type Database } from '@flux/db';
 import { personalRunUseCases, type PersonalRunComposition } from './adapters.js';
 
 /**
  * Makes one of the caller's agents in the caller's transaction (F-036 AG-1): its identity and its setup together or not at all. With
  * `agentId` the identity already exists and only the setup is made; otherwise a new identity is made in `workspaceId`, called
- * `name`, or Assistant when it is the caller's first.
+ * `name`, or Assistant when it is the caller's first. The caller's lock comes first, so two requests at once (two tabs, two
+ * connections) cannot both find no agent and each make one.
  */
 export async function makeAgent(tx: Database, composition: PersonalRunComposition, actor: Principal, body: CreateMyAgentCommand): Promise<MyAgent> {
+  if (actor.id) await lockAssistantOwner(tx, actor.id);
   const uses = personalRunUseCases(tx, composition);
   let agentId = body.agentId;
   if (!agentId) {
@@ -32,6 +34,7 @@ export function firstAgentMaker(db: Database, composition: PersonalRunCompositio
     try {
       await db.transaction(async (tx) => {
         const scoped = tx as unknown as Database;
+        await lockAssistantOwner(scoped, ownerUserId);
         if (await personalRunUseCases(scoped, composition).hadAnAgent(actor)) return;
         // The person's own workspace, the oldest where they are not a guest: the company on a Flux with one company.
         const home = (await accessPorts.workspaces(scoped).forMember(ownerUserId)).find((place) => place.role !== 'guest');

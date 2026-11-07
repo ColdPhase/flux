@@ -18,16 +18,18 @@ const keyBody = (name: string, suffix: string) => ({ name, provider: 'anthropic'
 const mine = async (who: Person) => (expectStatus(await who.browser.request('GET', '/api/v1/my-agents'), 200) as { items: MyAgent[] }).items;
 
 describe('the first agent comes with the first connection (#857)', { skip: !live && 'needs FLUX_TEST_PERSONAL_RUNS=anthropic-mock' }, () => {
-  let owner: Person; let member: Person; let guest: Person; let alone: Person; let ws: Workspace;
+  let owner: Person; let member: Person; let guest: Person; let alone: Person; let racer: Person; let ws: Workspace;
 
   before(async () => {
     owner = await person('first-agent-owner');
     member = await person('first-agent-member');
     guest = await person('first-agent-guest');
     alone = await person('first-agent-alone');
+    racer = await person('first-agent-racer');
     ws = await workspace(owner, 'First agent club');
     await addMember(owner, ws.id, member, 'member');
     await addMember(owner, ws.id, guest, 'guest');
+    await addMember(owner, ws.id, racer, 'member');
   });
 
   test('saving the first key gives the person Assistant, once; a second key does not add another', async () => {
@@ -67,5 +69,11 @@ describe('the first agent comes with the first connection (#857)', { skip: !live
     expectStatus(await guest.browser.request('POST', '/api/v1/my-agents', { body: { workspaceId: ws.id } }), 403);
     expectStatus(await alone.browser.request('POST', path, { body: keyBody('Lone key', 'FA06') }), 201);
     assert.deepEqual(await mine(alone), [], 'nowhere to make it');
+  });
+
+  test('two connections made at once give one Assistant, not two', async () => {
+    const both = await Promise.all([1, 2, 3].map((n) => racer.browser.request('POST', path, { body: keyBody(`Racing key ${n}`, `FB0${n}`) })));
+    for (const response of both) assert.ok(response.status === 201, `each key is saved: ${response.status}`);
+    assert.deepEqual((await mine(racer)).map((agent) => agent.name), ['Assistant']);
   });
 });
