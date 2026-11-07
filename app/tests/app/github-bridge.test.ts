@@ -10,7 +10,7 @@ import { githubWebhookRoutes } from '../../apps/server/src/github/webhook.js';
 import { githubTransport } from '../../apps/server/src/github/http.js';
 import { agentConnection } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
-import { addMember, expectStatus, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { setSpaceAi } from './support/space-ai.js';
 
 // #479 AC-3/AC-4: the #153 current-recipient bridge (docs/development/github-integration/README.md "#153 current-recipient
@@ -51,6 +51,8 @@ test('#479: a linked PR event reaches the task\'s current holder once, echoes ar
   // Standing grants need project management, so Marek is a workspace admin; he still is not the private binding's author.
   await addMember(hubert, ws.id, marek, 'admin');
   const p = await project(hubert, ws.id, 'Printer firmware', 'restricted');
+  // An admin's agents work only in the spaces the admin was added to (C-15, #934).
+  await grant(hubert, p.id, marek, 'contributor');
   const makeAgent = async (who: Person, name: string) => {
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name, owner: 'self' } }), 201) as Agent;
     return { agent, connected: await agentConnection(pool, who.browser, agent.id, [p.id]) };

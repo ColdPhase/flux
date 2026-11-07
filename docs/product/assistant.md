@@ -102,6 +102,11 @@ own.
 AI is on (AG-10). A DM between people is not in a space; AG-4 governs AI there. Every read and
 change is checked at the moment it happens; when the owner loses access, the agent loses it on
 its next call. There are no agent project grants, no access requests and no manager approvals.
+An agent sees what its owner sees in the sidebar: a company owner or admin reaches every space
+themselves, but their agents (server agents, local clients and `/ai`) read, search and act only in
+the spaces the person was added to ([C-15](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override),
+Hubert, 2026-11-07). After the person adds themselves to another space with Add me, their agents
+work there too.
 
 **What it may do.** One row on each agent's page:
 

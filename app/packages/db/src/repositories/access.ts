@@ -141,25 +141,44 @@ function humanLevel(userId: string, role: WorkspaceRole | null, projectId: SQLWr
 }
 
 /**
+ * The person whose membership counts for an actor: the person themself, or an agent's owner (an agent has no standing of its own,
+ * F-036 AG-3). Null for an agent without a current owner.
+ */
+function personOf(actor: AccessActor): AccessActor | null {
+  if (actor.principal.kind === 'human') return actor;
+  if (!actor.agent) return null;
+  return { principal: { kind: 'human', id: actor.agent.ownerUserId }, workspaceId: actor.workspaceId, role: actor.agent.ownerRole, agent: null, active: actor.active };
+}
+
+/**
  * SQL expression for the actor's access level (0–2) to the project identified by
  * `projectId` whose visibility column/expression is `visibility`. Composable into lists.
- * An agent's level is its owner's current level, never more and never less (F-036 AG-3).
+ * An agent's level is its owner's current level, never more and never less (F-036 AG-3), in the spaces its owner belongs to: a company
+ * owner or admin reaches every space themselves, but their agents work only in the spaces the person was added to (C-15, #934), until
+ * the person adds themselves to another with Add me.
  */
 export function projectLevelSql(actor: AccessActor, projectId: SQLWrapper, visibility: SQLWrapper): SQL {
   if (!actor.active) return sql`0`;
   if (actor.principal.kind === 'human') return humanLevel(actor.principal.id, actor.role, projectId, visibility);
-  if (!actor.agent) return sql`0`;
-  const level = humanLevel(actor.agent.ownerUserId, actor.agent.ownerRole, projectId, visibility);
+  const person = personOf(actor);
+  if (!person) return sql`0`;
+  const level = humanLevel(person.principal.id, person.role, projectId, visibility);
+  // Only a company owner or admin has a level in a space they were not added to; for anyone else the level already says "belongs".
+  const belongs = isManager(person.role) ? projectMemberSql(person, projectId, visibility) : sql`true`;
   // F-037, AG-10: no agent reads or acts in a space whose AI is off, whatever its owner may do there.
-  return sql`(CASE WHEN EXISTS (SELECT 1 FROM project_ai_policies ai WHERE ai.project_id = ${projectId} AND ai.state = 'allowed') THEN ${level} ELSE 0 END)`;
+  return sql`(CASE WHEN EXISTS (SELECT 1 FROM project_ai_policies ai WHERE ai.project_id = ${projectId} AND ai.state = 'allowed') AND ${belongs} THEN ${level} ELSE 0 END)`;
 }
 
-/** Whether the actor belongs to the space, not only reaches it: a company owner or admin without a grant does not (F-037). */
+/**
+ * Whether the actor belongs to the space, not only reaches it: a company owner or admin without a grant does not (F-037). An agent
+ * belongs where its owner does.
+ */
 export function projectMemberSql(actor: AccessActor, projectId: SQLWrapper, visibility: SQLWrapper): SQL {
-  if (actor.principal.kind !== 'human' || !actor.active) return sql`true`;
-  const everyone = actor.role === 'guest' ? sql`false` : sql`${visibility} = 'workspace'`;
+  const person = personOf(actor);
+  if (!person || !actor.active) return sql`true`;
+  const everyone = person.role === 'guest' ? sql`false` : sql`${visibility} = 'workspace'`;
   // Nested: Drizzle would write a column at the top level of a selected expression without its table, and `id` here would mean the grant's.
-  const added = sql`EXISTS (SELECT 1 FROM project_grants g WHERE g.project_id = ${projectId} AND g.user_id = ${actor.principal.id})`;
+  const added = sql`EXISTS (SELECT 1 FROM project_grants g WHERE g.project_id = ${projectId} AND g.user_id = ${person.principal.id})`;
   return sql`(${everyone} OR ${added})`;
 }
 
@@ -240,11 +259,12 @@ export async function visibleFilter(principal: AccessPrincipal, workspaceId: str
 /**
  * `visibleFilter` limited to the spaces the person belongs to (F-037, coordinator default, #874): search, the Inbox and Needs you
  * show a company owner or admin only what is in spaces they were added to, though they can reach every other space (Settings ›
- * Company lists those). Drafts and sketches outside any space are unchanged; direct messages are not spaces.
+ * Company lists those). So do their agents (C-15, #934): an agent belongs where its owner does. Drafts and sketches outside any
+ * space are unchanged; direct messages are not spaces.
  */
 export async function memberFilter(principal: AccessPrincipal, workspaceId: string, kind: 'project' | 'draft' | 'sketch', db: DbExecutor): Promise<SQL> {
   const base = await visibleFilter(principal, workspaceId, kind, db);
-  if (principal.kind !== 'human') return base;
+  if (principal.kind !== 'human' && principal.kind !== 'agent') return base;
   const actor = await loadActor(principal, workspaceId, db);
   if (kind === 'project') return and(base, projectMemberSql(actor, schema.projects.id, schema.projects.visibility))!;
   if (kind === 'draft') return and(base, sql`(${schema.drafts.projectId} IS NULL OR ${projectMemberSql(actor, schema.drafts.projectId, draftProjectVisibility)})`)!;
