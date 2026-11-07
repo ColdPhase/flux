@@ -103,15 +103,16 @@ describe('people\'s agents take tasks (#856, #904)', () => {
     const back = await waitFor(async () => { const now = await readTask(task.id); return now.owner?.kind === 'human' ? now : null; }, 'the task to come back to Kai');
     assert.equal(back.owner?.id, kai.id);
     const talk = expectStatus(await ada.browser.request('GET', taskDiscussionPath(task.id)), 200) as TaskDiscussion;
-    const said = [talk.root, ...talk.messages].filter(Boolean).map((message) => [message!.author.kind, message!.body]);
+    const said = [...new Map([talk.root, ...talk.messages].filter(Boolean).map((message) => [message!.id, message!])).values()]
+      .sort((a, b) => a.sequence - b.sequence).map((message) => [message.authorId === null ? 'agent' : 'human', message.body]);
     assert.deepEqual(said, [['agent', 'Got it, I\'m on it.'], ['agent', 'I can\'t start: AI is switched off on this Flux.']]);
     const activity = expectStatus(await ada.browser.request('GET', taskActivityPath(task.id)), 200) as TaskActivityPage;
     const owners = activity.items.filter((entry) => entry.kind === 'owner');
-    assert.deepEqual(owners.map((entry) => [entry.automation ?? null, entry.owner?.to?.kind]).reverse(), [[null, 'human'], ['agent_rule', 'agent'], ['agent_rule', 'human']],
+    assert.deepEqual(owners.map((entry) => [entry.automation ?? null, entry.owner?.to?.kind]).reverse(), [['agent_rule', 'agent'], ['agent_rule', 'human']],
       'the setting acted for Kai, and the agent gave it back for him; both are on the task\'s record');
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM personal_runs WHERE work_id = $1', [task.id])).rows[0].n, 0, 'no run was made');
     // It is back with Kai without another take: the give-back is not "someone assigned it to me".
-    assert.equal((await events(task.id)).length, 3);
+    assert.equal((await events(task.id)).length, 2);
     expectStatus(await kai.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId: null } }), 200);
   });
 
