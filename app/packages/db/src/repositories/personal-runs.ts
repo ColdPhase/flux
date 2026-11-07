@@ -5,6 +5,7 @@ import type { AgentMayDo } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { apiKeySpendToday } from './api-key-spend.js';
+import { lockAssistantOwner } from './assistant-lock.js';
 
 /**
  * Drizzle rows for personal assistant runs (issue #68, O-008): enablements, their per-workspace
@@ -59,10 +60,19 @@ function toRun(row: RunRow) {
 
 export function personalRunRows(db: DbExecutor) {
   /**
+   * The per-owner lock of the one lock order (#921): the owner, ascending when there are several, before the space's task-graph
+   * lock, before the task and run rows. It is `lockAssistantOwner`, a transaction-scoped advisory lock keyed by the owner, that
+   * every writer of the owner's agents also takes first; it replaces the `personal_run_enablements` row of one setup per owner.
+   */
+  const lockOwner = (ownerUserId: string) => lockAssistantOwner(db, ownerUserId);
+
+  /**
    * The AI setup of one of the owner's agents: the one named, else their first (Assistant, which answers `/ai`). A deleted agent has
-   * none. `lock` holds the agent's row until the unit of work ends: it serializes the owner's requests to that agent.
+   * none. `lock` takes the owner's lock (above) and then holds the agent's row until the unit of work ends, so the owner's requests
+   * to their agents are serialized; the caller takes the task-graph lock after this call, never before.
    */
   async function enablement(ownerUserId: string, options: { lock?: boolean; agentId?: string; workspaceId?: string } = {}) {
+    if (options.lock) await lockOwner(ownerUserId);
     const query = db.select({ row: e }).from(e).innerJoin(ag, eq(ag.id, e.agentId))
       .where(and(eq(e.ownerUserId, ownerUserId), isNull(ag.revokedAt), options.agentId ? eq(e.agentId, options.agentId) : undefined,
         options.workspaceId ? eq(e.workspaceId, options.workspaceId) : undefined))
@@ -89,6 +99,7 @@ export function personalRunRows(db: DbExecutor) {
 
   return {
     enablement,
+    lockOwner,
     async needsCurrentGithubFacts(runId: string) {
       return (await db.execute(sql`SELECT e.id FROM assistant_reaction_events e JOIN assistant_reactions r ON r.id=e.reaction_id WHERE e.run_id=${runId} AND e.event='pr_ready' LIMIT 1`)).rows.length > 0;
     },

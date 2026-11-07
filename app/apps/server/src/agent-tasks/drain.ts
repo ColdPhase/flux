@@ -22,9 +22,10 @@ import { workUseCases } from '../work/adapters.js';
 // the event is still done; anything else (a deadlock, a lost connection) rolls the whole event back and it is tried again, a little
 // later each time. An event that fails every time is not left silent: the task's owner is told in the task and gets it back (`giveUp`).
 //
-// Locks, in the one order the worker and the work and run use cases already take them: the enablement rows of the people whose
-// agents may start a run (ascending), then the space's task-graph lock, then the task and run rows. The worker checks the
-// owner's enablement before it fences the task (processor.ts `recheck`, then `prepareTaskUse`), a person's own request does the same
+// Locks, in the one order the worker and the work and run use cases already take them: the per-owner lock (`lockAssistantOwner`,
+// which `enablement(..., { lock })` takes first) of the people whose agents may start a run (ascending), then the space's task-graph
+// lock, then the task and run rows. The worker checks the
+// owner's setup before it fences the task (processor.ts `recheck`, then `prepareTaskUse`), a person's own request does the same
 // (service.ts `start`), and task-targets.ts records it ("authority fences, then graphs, then tasks"). An event that took the graph
 // first would wait for a row the worker holds while the worker waits for the graph: a deadlock, the loser's dispatch lost.
 
@@ -73,7 +74,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
 
   /**
    * The locks of an event, in the one order (see the top of this file): what names the owners is read without a lock, their
-   * enablement rows are locked (ascending), and only then the task graph. Returns false when the task is gone.
+   * per-owner locks are taken (ascending), and only then the task graph. Returns false when the task is gone.
    */
   async function lockInOrder(tx: Transaction, event: Event): Promise<boolean> {
     const rows = agentTaskRows(tx);
@@ -94,7 +95,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
         if (asked) owners.add(asked.ownerUserId);
       }
     }
-    for (const owner of [...owners].sort()) await personalRunRows(tx).enablement(owner, { lock: true });
+    for (const owner of [...owners].sort()) await personalRunRows(tx).lockOwner(owner);
     await workRows(tx).lockTaskGraphs([work.projectId]);
     return true;
   }
