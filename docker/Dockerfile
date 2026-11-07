@@ -81,7 +81,7 @@ COPY --from=build /app/apps/runtime/dist ./apps/runtime/dist
 COPY --from=runtime-hardening-build /native/protect.node ./apps/runtime/native/protect.node
 COPY --from=build /app/apps/runtime/keys ./apps/runtime/keys
 COPY --from=production-dependencies /app/apps/runtime/node_modules ./apps/runtime/node_modules
-RUN mkdir -p /data /opt/flux-tools /opt/flux-runtime/codex/bin && chown node:node /data /opt/flux-tools && chmod 0700 /data
+RUN mkdir -p /data /opt/flux-tools /opt/flux-runtime/codex/bin && chown node:node /opt/flux-tools && chmod 0711 /data
 USER node
 CMD ["node", "--disable-sigusr1", "apps/runtime/dist/supervisor/main.js"]
 

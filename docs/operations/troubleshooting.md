@@ -77,8 +77,8 @@ The `migrate` log then reads `Applied migration 0002_first_time_user.sql` and `F
 
 Every Compose network takes one subnet from the Docker daemon's address pools, and a stock daemon has
 about 31 (15 `/16` networks in `172.17.0.0/12` and 16 `/20` networks in `192.168.0.0/16`). A Flux project
-uses 2 networks (`default` and the internal `keyring`); with the agent runtime on it uses 10 (the runtime's
-control, API, install and egress networks and one per slot).
+uses 2 networks (`default` and the internal `keyring`); with the agent runtime on it uses 7 (the runtime's
+control, API, install, egress and own networks).
 
 When the pools are gone, `./flux up` stops with Compose's line
 `all predefined address pools have been fully subnetted` and then explains it. One instance on its own

@@ -31,8 +31,8 @@ was not measured).
 They are not a capacity measurement for many people; watch `docker stats` on your instance and raise
 a limit if a container is killed for memory.
 
-The optional [agent runtime](agent-runtime.md) adds a manager, an egress proxy and four slots of up
-to 2 GB each while people use them. Optional [live media](../development/live-media.md) adds a
+The optional [agent runtime](agent-runtime.md) adds a manager, an egress proxy and about 1 GB for
+each agent while it runs; an idle person costs nothing. About 2 agents run at once on 4 GB. Optional [live media](../development/live-media.md) adds a
 LiveKit server whose CPU and bandwidth grow with each call.
 
 ## Software

@@ -3,9 +3,10 @@ import {
   CONSOLE_LIMITS, ConsoleFrameReader, ConsoleLink, encodeControl, encodeOutput, parseSupervisorRequest,
   type ClientStatus, type SupervisorError, type SupervisorFrame, type SupervisorRequest,
 } from '@flux/runtime-protocol';
-import { openBinding } from './data.js';
+import { clearLeftovers, clearScratch, openBinding } from './data.js';
 import { claudeSignInReader, deviceSignInReader } from './device.js';
 import { clientStatus, installedClient, type SupervisorConfig } from './handlers.js';
+import { asPerson, endProcesses, type Person } from './process.js';
 import { realClock, signalGroup, spawnPty as nodePty, type PtyProcess } from './pty.js';
 import { cliEnvironment, loginArgv } from './templates.js';
 
@@ -15,10 +16,18 @@ import { cliEnvironment, loginArgv } from './templates.js';
 // shell, with the clean CLI environment plus TERM. It relays the PTY's output and the owner's input,
 // in memory only, and never logs either. The PTY ends when the command exits, when the connection
 // closes, or after 15 minutes. Completion is reported only from the CLI's own status command, run
-// after the login command ended. The console holds the slot's serial lane for its whole life, so a
-// sign-in never overlaps a status, a run or a sign-out.
+// after the login command ended. The console holds the person's serial lane for its whole life, so a
+// sign-in never overlaps a status, a run or a sign-out of theirs.
 
 export interface ConsoleLane { readonly busy: boolean; tryRun(task: () => Promise<void>): Promise<void> | null }
+
+/** What a console needs from the server: the person's lane, whether they are being removed, and where their consoles are listed. */
+export interface ConsoleHost {
+  laneOf(bindingId: string): ConsoleLane;
+  removing(bindingId: string): boolean;
+  /** Registers a way to end this console; a release ends them first, so it never waits for a console's 15 minutes. */
+  opened(bindingId: string, end: () => void): () => void;
+}
 
 /** Bounded physical lane wait only; API admission requires settled work or full recovery first. */
 const LANE_WAIT_MS = 3_000;
@@ -29,7 +38,7 @@ type Ending = 'exited' | 'timed_out' | 'disconnected';
 /** How long a process group gets after SIGHUP/SIGTERM before SIGKILL. */
 export const CONSOLE_KILL_GRACE_MS = 2_000;
 
-export function serveConsole(config: SupervisorConfig, lane: ConsoleLane, socket: Duplex, head: Buffer, openConsoles: Set<() => void> = new Set()): void {
+export function serveConsole(config: SupervisorConfig, host: ConsoleHost, socket: Duplex, head: Buffer): void {
   const clock = config.clock ?? realClock;
   const spawn = config.spawnPty ?? nodePty;
   const lifetimeMs = config.consoleLifetimeMs ?? CONSOLE_LIMITS.lifetimeMs;
@@ -38,11 +47,15 @@ export function serveConsole(config: SupervisorConfig, lane: ConsoleLane, socket
   const refuse = (code: SupervisorError) => { send({ t: 'error', code }); link.close(); };
   let opened = false;
   let running: { pty: PtyProcess; stop: (why: Ending) => void } | null = null;
+  let closed: (() => void) | null = null;
   const openTimer = clock.setTimeout(() => { if (!opened) { opened = true; refuse('invalid_request'); } }, CONSOLE_LIMITS.openWithinMs);
 
   async function start(request: LoginRequest) {
     send({ t: 'accepted', kind: 'login', bootId: config.bootId });
     if (!config.enabled.includes(request.client)) { refuse('client_off'); return; }
+    if (host.removing(request.bindingId)) { refuse('busy'); return; }
+    const lane = host.laneOf(request.bindingId);
+    closed = host.opened(request.bindingId, () => link.destroy());
     for (const waitUntil = Date.now() + LANE_WAIT_MS; lane.busy && link.open && Date.now() < waitUntil;) await new Promise((resume) => setTimeout(resume, 100));
     if (!link.open) return;
     const ran = lane.tryRun(async () => {
@@ -50,16 +63,21 @@ export function serveConsole(config: SupervisorConfig, lane: ConsoleLane, socket
       // cancellation/release could drain and remove the previous binding.
       if (!link.open) return;
       if (request.bootId !== config.bootId) { refuse('invalid_request'); return; }
-      const binding = await openBinding(config.dataDir, request.bindingId);
+      const binding = await openBinding(config.dataDir, request.bindingId, config.separate);
       if (!binding.ok) { refuse(binding.code); return; }
       if (!(await installedClient(config, request.client))) { refuse('not_installed'); return; }
-      await login(request, binding.dir);
+      await login(request, binding.dir, binding.person);
     });
     if (!ran) refuse('busy');
     else await ran;
   }
 
-  function login(request: LoginRequest, dir: string): Promise<void> {
+  /** What a sign-in left goes with it: no process of theirs, and nothing in their scratch or the shared /tmp. */
+  async function tidy(dir: string, person: Person) {
+    if (await endProcesses(person)) { await clearScratch(dir, person); await clearLeftovers(config.tmpDir, person); }
+  }
+
+  function login(request: LoginRequest, dir: string, person: Person): Promise<void> {
     return new Promise((done) => {
       if (!link.open) { done(); return; }
       let ending: Ending | null = null;
@@ -68,6 +86,7 @@ export function serveConsole(config: SupervisorConfig, lane: ConsoleLane, socket
       const pty = spawn(config.cliPaths[request.client], loginArgv(request.client, request.method), {
         cols: request.cols, rows: request.rows, cwd: dir,
         env: { ...cliEnvironment(request.client, dir, config.egressHost), TERM: 'xterm-256color', COLORTERM: 'truecolor' },
+        ...asPerson(person),
       });
       const stop = (why: Ending) => {
         if (ending) return;
@@ -97,17 +116,18 @@ export function serveConsole(config: SupervisorConfig, lane: ConsoleLane, socket
         signalGroup(pty.pid, 'SIGKILL');
         running = null;
         const how = ending ?? 'exited';
-        if (how === 'disconnected' || !link.open) { done(); return; }
+        if (how === 'disconnected' || !link.open) { void tidy(dir, person).finally(done); return; }
         send({ t: 'console', state: how });
-        void finish(request, dir, how, how === 'exited' ? exitCode : null).finally(done);
+        void finish(request, dir, person, how, how === 'exited' ? exitCode : null).finally(done);
       });
       send({ t: 'console', state: 'started' });
     });
   }
 
-  async function finish(request: LoginRequest, dir: string, ended: 'exited' | 'timed_out', exitCode: number | null) {
+  async function finish(request: LoginRequest, dir: string, person: Person, ended: 'exited' | 'timed_out', exitCode: number | null) {
     let status: ClientStatus;
-    try { status = await clientStatus(config, request.client, dir); } catch { refuse('internal'); return; }
+    try { status = await clientStatus(config, request.client, dir, person); } catch { refuse('internal'); return; }
+    await tidy(dir, person);
     send({ t: 'result', result: { kind: 'login', client: request.client, ended, exitCode: exitCode === null ? null : Math.max(-1, Math.min(255, exitCode)), status } });
     link.close();
   }
@@ -128,10 +148,8 @@ export function serveConsole(config: SupervisorConfig, lane: ConsoleLane, socket
     if (frame.type === 'input') running.pty.write(frame.data);
     else running.pty.resize(frame.cols, frame.rows);
   });
-  const end = () => link.destroy();
-  openConsoles.add(end);
   link.onEnd(() => {
-    openConsoles.delete(end);
+    closed?.();
     clock.clearTimeout(openTimer);
     running?.stop('disconnected');
   });

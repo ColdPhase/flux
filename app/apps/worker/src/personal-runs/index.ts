@@ -21,6 +21,11 @@ export { mcpToolHost } from './mcp-session.js';
 export { runTokenIssuer } from './run-tokens.js';
 export { managerPersonalRuntime } from './runtime-engine.js';
 
+/** How many runs one poll of the queue may start. */
+const RUNS_STARTED_PER_POLL = 16;
+/** How long a stopping worker gives the runs in progress. */
+const STOP_WAIT_MS = 5_000;
+
 /**
  * Consumes `personal-run.dispatch.v1` (#68). The payload is a run id only; the processor rechecks
  * the owner's enablement, connection, agent and project access before reading, before dispatch
@@ -40,16 +45,30 @@ export async function registerPersonalRunWorker(boss: PgBoss, db: Database, opti
     ...(options.tokens ? { tokens: options.tokens } : {}),
     ...(options.runtime ? { runtime: options.runtime } : {}),
   });
-  await boss.work<{ runId: string }>(PERSONAL_RUN_JOB, async (jobs) => {
+  // A run may take an hour, and many people's agents run at once (#860): the job only starts it, and one long run never holds
+  // up the next person's. Who may start is decided in the claim. A worker that dies mid-run is covered by the recovery below.
+  const running = new Set<Promise<void>>();
+  await boss.work<{ runId: string }>(PERSONAL_RUN_JOB, { batchSize: RUNS_STARTED_PER_POLL }, async (jobs) => {
     for (const job of jobs) {
-      const outcome = await processor.process(job.data.runId);
-      console.log(JSON.stringify({ job: PERSONAL_RUN_JOB, id: job.id, runId: job.data.runId, outcome }));
+      const run: Promise<void> = processor.process(job.data.runId)
+        .then((outcome) => { console.log(JSON.stringify({ job: PERSONAL_RUN_JOB, id: job.id, runId: job.data.runId, outcome })); })
+        .catch((error: unknown) => { console.error(`${PERSONAL_RUN_JOB} failed`, job.data.runId, error); })
+        .then(startNextRequests)
+        .catch((error: unknown) => { console.error('Could not start the next requests', error); })
+        .finally(() => { running.delete(run); });
+      running.add(run);
     }
-    await startNextRequests();
   });
   // The lane is free again: the owner's next queued request starts. A duplicate job is harmless (only a queued run is claimed).
   async function startNextRequests() {
     for (const runId of await uow.run((ports) => ports.runs.startableQueued(20))) await boss.send(PERSONAL_RUN_JOB, { runId });
   }
-  return startPersonalRunRecovery({ recover: async () => { const ended = await recoverPersonalRuns(uow); await startNextRequests(); return ended; } });
+  const recovery = startPersonalRunRecovery({ recover: async () => { const ended = await recoverPersonalRuns(uow); await startNextRequests(); return ended; } });
+  return {
+    async stop() {
+      await recovery.stop();
+      // Short runs finish; a long one is left to the recovery of the next worker, like a crash.
+      await Promise.race([Promise.allSettled(running), new Promise((resume) => setTimeout(resume, STOP_WAIT_MS).unref())]);
+    },
+  };
 }

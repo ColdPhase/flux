@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Exercise the agent runtime of a downloaded, digest-pinned release (#358 AC-3) in one isolated project, with the
 # REAL runtime image and no vendor account: off by default; claude_code refused without the Commercial Terms
-# date; switch-on with Codex; the slots' `docker inspect` limits and no engine socket; no Claude Code in the
-# image and the pinned Codex in it; a slot cannot reach the database or the API; off keeps the slot volumes;
-# purge (the off -> purge path) removes every runtime container and volume. A bound slot's sign-out and reuse
+# date; switch-on with Codex; the runtime's `docker inspect` limits and no engine socket; no Claude Code in the
+# image and the pinned Codex in it; the runtime cannot reach the database or the API; off keeps its volume;
+# purge (the off -> purge path) removes every runtime container and volume. A person's sign-out and reuse
 # need a vendor login, so they are NOT covered here (scripts/check_agent_runtime.sh covers them with fake
 # CLIs against the source stack). The host needs Linux Yama ptrace_scope >= 1 (docs/operations/agent-runtime.md).
 # Port defaults to 18083; set FLUX_SMOKE_RUNTIME_PORT when it is taken.
@@ -43,13 +43,13 @@ app_image=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["ima
 runtime_image=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runtime_image"])' "$assets/release.json")
 codex_tag=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["runtime_codex"])' "$assets/release.json")
 
-step "0. Host: Linux Yama ptrace_scope >= 1 for the slots (read in the engine's kernel with the runtime image itself)"
+step "0. Host: Linux Yama ptrace_scope >= 1 for the runtime (read in the engine's kernel with the runtime image itself)"
 docker pull --quiet "$runtime_image" >/dev/null
 scope=$(docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges \
   --entrypoint cat "$runtime_image" /proc/sys/kernel/yama/ptrace_scope 2>/dev/null || true)
 case "$scope" in
   1|2|3) echo "kernel.yama.ptrace_scope=$scope" ;;
-  *) echo "smoke_runtime: this engine's kernel has no Yama ptrace_scope of 1 or higher (got '${scope:-none}'); every slot would refuse to start. Use a Linux host with kernel.yama.ptrace_scope=1." >&2; exit 3 ;;
+  *) echo "smoke_runtime: this engine's kernel has no Yama ptrace_scope of 1 or higher (got '${scope:-none}'); the runtime would refuse to start. Use a Linux host with kernel.yama.ptrace_scope=1." >&2; exit 3 ;;
 esac
 
 step "1. Both Compose files are valid together; the runtime is off by default"
@@ -71,16 +71,16 @@ grep -q 'Commercial Terms' "$state_dir/refusal.err" || fail "the refusal does no
 grep -q '^FLUX_AGENT_RUNTIME=$' "$env_file" || fail "the refused switch changed FLUX_AGENT_RUNTIME"
 [ -z "$(runtime_containers)" ] || fail "runtime containers exist after the refused switch"
 
-step "3. Switch on with Codex: services run, runtime-install is a no-op, slots are free"
+step "3. Switch on with Codex: services run, runtime-install is a no-op, the runtime is empty and says how many agents fit"
 runtime_sh on codex
-for service in runtime-manager runtime-egress runtime-1 runtime-2 runtime-3 runtime-4; do
+for service in runtime-manager runtime-egress runtime-1; do
   [ -n "$(compose ps -q --status running "$service")" ] || fail "$service is not running"
 done
 [ "$(docker inspect -f '{{.State.ExitCode}}' "$(compose ps -aq runtime-install)")" = 0 ] || fail "runtime-install did not exit 0"
-slots=$(runtime_sh status)
-printf '%s\n' "$slots"
-[ "$(printf '%s\n' "$slots" | grep -c $'^runtime-[1-4]\tboot .*\tempty')" = 4 ] || fail "the four slots are not all reported empty"
-grep -q '^FLUX_RUNTIME_SECRET_4=[0-9a-f]\{64\}$' "$env_file" || fail "runtime.sh did not generate the slot secrets"
+report=$(runtime_sh status)
+printf '%s\n' "$report"
+[ "$(printf '%s\n' "$report" | grep -c $'^runtime-1\tboot .*\t0 people, 0 other\t[1-9][0-9]* at once')" = 1 ] || fail "the runtime is not reported empty with a number of agents"
+grep -q '^FLUX_RUNTIME_SECRET_1=[0-9a-f]\{64\}$' "$env_file" || fail "runtime.sh did not generate the runtime's secret"
 
 step "4. docker inspect: limits and security options on every runtime service; no engine socket, no host path"
 # shellcheck disable=SC2046
@@ -101,22 +101,22 @@ docker run --rm --network none --entrypoint sh "$runtime_image" -c '
   [ -z "$(ls -A /opt/flux-tools)" ]' || fail "Claude Code (or a tools directory entry) is in the runtime image"
 echo "Codex $codex_version is pinned; the image holds no Claude Code and an empty /opt/flux-tools"
 
-step "6. A slot cannot reach the database, the API, the worker or another slot"
+step "6. The runtime cannot reach the database, the API or the worker"
 compose exec -T runtime-1 node -e '
   const net = require("node:net");
-  const targets = [["db", 5432], ["api", 8080], ["worker", 8080], ["runtime-2", 8080], ["1.1.1.1", 443]];
+  const targets = [["db", 5432], ["api", 8080], ["worker", 8080], ["1.1.1.1", 443]];
   let open = 0, left = targets.length;
   for (const [host, port] of targets) {
     const socket = net.connect({ host, port, timeout: 3000 });
     const done = (reached) => { socket.destroy(); if (reached) { open += 1; console.error("REACHED " + host + ":" + port); } if (--left === 0) process.exit(open ? 1 : 0); };
     socket.on("connect", () => done(true)); socket.on("error", () => done(false)); socket.on("timeout", () => done(false));
-  }' || fail "a slot reached something outside its own network"
-echo "runtime-1 reaches none of db, api, worker, runtime-2 or the internet"
+  }' || fail "the runtime reached something outside its own network"
+echo "runtime-1 reaches none of db, api, worker or the internet"
 
-step "7. Switch off keeps the slot volumes; off -> purge removes every runtime container and volume"
+step "7. Switch off keeps the runtime's volume; off -> purge removes every runtime container and volume"
 runtime_sh off
 [ -z "$(runtime_containers)" ] || fail "runtime containers remain after off: $(runtime_containers)"
-[ "$(runtime_volumes | grep -c -- '-data$')" = 4 ] || fail "off must keep the four slot volumes"
+[ "$(runtime_volumes | grep -c -- '-data$')" = 1 ] || fail "off must keep the runtime's volume"
 curl --fail --show-error --silent "http://127.0.0.1:$port/api/v1/health" >/dev/null
 runtime_sh purge -y
 [ -z "$(runtime_containers)" ] || fail "runtime containers remain after purge"

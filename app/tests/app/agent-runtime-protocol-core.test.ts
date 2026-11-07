@@ -114,7 +114,7 @@ describe('the bounded reader of supervisor streams', () => {
   const frames: SupervisorFrame[] = [
     { t: 'accepted', kind: 'release', bootId: randomUUID() },
     { t: 'step', step: 'logout', outcome: 'ok', client: 'claude_code' },
-    { t: 'result', result: { kind: 'release', bindingId: randomUUID(), logout: { claude_code: 'ok', codex: 'not_installed' }, dataEmpty: true, exiting: true } },
+    { t: 'result', result: { kind: 'release', bindingId: randomUUID(), logout: { claude_code: 'ok', codex: 'not_installed' }, deleted: true } },
   ];
   const stream = Buffer.from(frames.map(encodeFrame).join(''));
   const limits = { lineBytes: 1024, totalBytes: 16 * 1024, frames: 16 };

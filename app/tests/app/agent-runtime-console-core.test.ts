@@ -319,7 +319,7 @@ describe('the PTY ends on exit, on disconnect and after 15 minutes', () => {
       assert.deepEqual((await calls(home)).map((entry) => entry.argv), [['auth', 'login']], 'the second never started');
       const pid = (await calls(home))[0]!.pid;
       const released = await callSupervisor(target(slot), { kind: 'release', bindingId });
-      assert.ok(released.ok && released.result.kind === 'release' && released.result.dataEmpty, JSON.stringify(released));
+      assert.ok(released.ok && released.result.kind === 'release' && released.result.deleted, JSON.stringify(released));
       await first.ended;
       assert.equal(alive(pid), false);
     } finally { await slot.close(); }
@@ -334,10 +334,10 @@ test('late destructive auth targets cannot reach a fresh boot/binding on the sam
     const oldBoot=slot.config.bootId;
     const stale={ kind:'logout' as const,bindingId:oldBinding,bootId:oldBoot,client:'claude_code' as const };
     const released=await callSupervisor(target(slot),{ kind:'release',bindingId:oldBinding });
-    assert.ok(released.ok && released.result.kind==='release' && released.result.dataEmpty);
+    assert.ok(released.ok && released.result.kind==='release' && released.result.deleted);
     assert.deepEqual(await readdir(slot.config.dataDir),[]);
     const freshConfig={ ...slot.config,bootId:randomUUID() };
-    fresh=createSupervisorServer(freshConfig,()=>undefined).server;
+    fresh=createSupervisorServer(freshConfig).server;
     await new Promise<void>(done=>fresh!.listen(0,'127.0.0.1',done));
     const port=(fresh.address() as AddressInfo).port;
     const freshTarget={ host:'127.0.0.1',port,secret:freshConfig.secret },bindingId=randomUUID();
@@ -349,7 +349,7 @@ test('late destructive auth targets cannot reach a fresh boot/binding on the sam
     assert.ok(result(login)?.kind==='login');
     const home=join(freshConfig.dataDir,bindingId,'claude'),file=join(home,'.credentials.json');
     const credentialBefore=await readFile(file,'utf8'),callsBefore=await calls(home);
-    assert.deepEqual(await callSupervisor(target(slot),stale),{ ok:false,code:'busy' },'old supervisor stays closed to auth');
+    assert.deepEqual(await callSupervisor(target(slot),stale),{ ok:false,code:'no_binding' },'a released person has no binding left to reach');
     assert.deepEqual(await callSupervisor(freshTarget,stale),{ ok:false,code:'invalid_request' },'old boot is refused before effects');
     assert.deepEqual(await callSupervisor(freshTarget,{ ...stale,bindingId }),{ ok:false,code:'invalid_request' },'even guessed new binding cannot revive an old boot target');
     assert.equal(await readFile(file,'utf8'),credentialBefore);

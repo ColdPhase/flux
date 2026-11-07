@@ -160,19 +160,19 @@ database: without it the stored AI connections cannot be opened and each owner c
 ## Agent runtime (optional)
 
 Off by default and not needed for Flux itself. It lets people on this Flux sign in with their own
-ChatGPT (Codex) and Claude (Claude Code) subscriptions; Flux runs each person's official CLI in an
-isolated slot. Read the [operator guide](https://github.com/ColdPhase/flux/blob/main/docs/operations/agent-runtime.md)
+ChatGPT (Codex) and Claude (Claude Code) subscriptions; Flux runs each person's official CLI,
+isolated from everyone else. Read the [operator guide](https://github.com/ColdPhase/flux/blob/main/docs/operations/agent-runtime.md)
 first (its commands for a source checkout are `./flux ...`; here the same steps are `sh runtime.sh ...`).
 
-- **Linux host requirement.** Every slot needs the Linux kernel setting `kernel.yama.ptrace_scope` of 1 or
-  higher (check: `cat /proc/sys/kernel/yama/ptrace_scope`); a missing policy or `0` stops the slot
-  before it listens. Docker Desktop is unsupported (its kernel has no Yama). The engine must support
+- **Linux host requirement.** The runtime needs the Linux kernel setting `kernel.yama.ptrace_scope` of 1 or
+  higher (check: `cat /proc/sys/kernel/yama/ptrace_scope`). A missing policy or `0` stops the runtime with one
+  clear message and the fix, and `sh runtime.sh up` fails; there is no restart loop. Docker Desktop is unsupported (its kernel has no Yama). The engine must support
   `internal` networks, a read-only root filesystem, dropped capabilities and process, memory and CPU limits.
 - **Your duty for Claude Code.** Flux never ships Claude Code in an image. Enabling it installs
   Anthropic's signed official release into a volume and needs your own agreement to Anthropic's
   Commercial Terms with Anthropic. Pass the date you agreed: Flux records the statement, it does not check it.
   Codex needs no statement; its pinned release is part of the runtime image.
-- **You can read every owner's login.** The CLIs keep each owner's login in that owner's slot volume, readable by
+- **You can read every owner's login.** The CLIs keep each owner's login in the runtime's volume, readable by
   host root and by anyone who can read your disks or snapshots. Offer the runtime only where owners trust you.
 
 Switch it on (the script writes `FLUX_AGENT_RUNTIME`, generates the missing secrets in `.env`, pulls the
@@ -181,7 +181,7 @@ runtime image by its digest and starts the runtime services next to Flux):
 ```sh
 sh runtime.sh on codex                                       # or claude_code, or claude_code,codex
 sh runtime.sh on claude_code,codex --commercial-terms 2026-10-05   # the date you agreed with Anthropic
-sh runtime.sh status        # the four slots and what each reports
+sh runtime.sh status        # who is in it, and how many agents run at once
 ```
 
 Once it is on, **always use `sh runtime.sh up` or pass both files**. A plain `docker compose --env-file .env -f compose.yaml up`
@@ -191,20 +191,21 @@ recreates `api` and `worker` without the runtime settings, which switches it off
 docker compose --env-file .env -f compose.yaml -f compose.runtime.yaml --profile runtime ps
 ```
 
-What runs: `runtime-manager` (no database, no Docker access), `runtime-egress` (the slots' only way out:
+What runs: `runtime-manager` (no database, no Docker access), `runtime-egress` (the runtime's only way out:
 HTTPS to the hosts of the enabled CLIs and Flux's `/mcp`), the one-shot `runtime-install` (a no-op unless
-`claude_code` is enabled) and four slots `runtime-1` to `runtime-4`. Each slot has a non-root user, a read-only root
-filesystem, no capabilities, no new privileges, 2 GiB of memory without swap, one CPU, 256 processes, its own volume and
-its own internal network. No service mounts a Docker or Podman socket. A pool of four fills for good unless
-you release bindings: `sh runtime.sh release runtime-<n>` signs that owner's CLIs out, deletes their login files and frees
-the slot. More than four slots are not covered by the release assets.
+`claude_code` is enabled) and one `runtime-1` for everyone. Each person's CLIs run under their own user id with no
+capabilities; only its supervisor starts as root inside the container, with six capabilities. It has a read-only root
+filesystem, no new privileges, its own volume and its own internal network. `runtime.sh` gives it the server's memory less
+1.25 GiB and all its CPUs but one; how many agents run at once follows from the memory, about 2 on 4 GB, and the others wait.
+Set `FLUX_RUNTIME_MAX_RUNS`, `FLUX_RUNTIME_MEMORY` or `FLUX_RUNTIME_CPUS` in `.env` to choose yourself. No service mounts a
+Docker or Podman socket. `sh runtime.sh release <email>` signs that person's CLIs out and deletes their login files.
 
-- **Switch off:** `sh runtime.sh off` stops the runtime services; slot volumes and logins stay.
-- **Remove the logins for good:** `sh runtime.sh purge` signs every CLI out (best effort), deletes the slot volumes and
+- **Switch off:** `sh runtime.sh off` stops the runtime services; their volumes and logins stay.
+- **Remove the logins for good:** `sh runtime.sh purge` signs every CLI out (best effort), deletes the runtime's volumes and
   the tools volume. Then keep the runtime off. Run it before `down -v` if you uninstall.
-- **Backups never contain a slot volume** (the logins must not travel in backups and cannot be moved between
-  machines). A restore reconciles the restored bindings with the slots when the worker starts. A disk or
-  host snapshot does capture the slot volumes. Add `-f compose.runtime.yaml` to the backup, upgrade and restore
+- **Backups never contain the runtime's volume** (the logins must not travel in backups and cannot be moved between
+  machines). A restore reconciles the restored bindings with the runtime when the worker starts. A disk or
+  host snapshot does capture that volume. Add `-f compose.runtime.yaml` to the backup, upgrade and restore
   commands below while the runtime is on, or use `sh runtime.sh up` instead of their last `up`.
 
 ## Calls and screen sharing (optional)

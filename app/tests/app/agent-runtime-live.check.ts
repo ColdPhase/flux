@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile, writeFile } from 'node:fs/promises';
 import WebSocket from 'ws';
 import {
-  AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH, assistantRunPath, backgroundComputeConnectionsPath,
+  AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH, assistantRunPath,
   conversationAssistantRunsPath, PERSONAL_ASSISTANT_PATH, type AgentRuntimeConsoleServerMessage, type AgentRuntimeStatus, type AssistantRun, type PersonalAssistantStatus,
 } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
@@ -13,8 +13,8 @@ import { pastedLine } from './support/runtime-login.js';
 
 // F-022 T3 (#278): the API side of scripts/check_agent_runtime.sh, against a stack whose runtime profile
 // runs with the TEST ONLY fake CLIs. One step per call; owners are kept in /state between steps. Steps
-// print KEY=value lines the script reads. The database is read only to name slots for the script and to
-// prove one owner's requests never touch another owner's slot.
+// print KEY=value lines the script reads. The database is read only to name bindings for the script and to
+// prove one owner's requests never touch another owner's.
 
 const stateFile = `${process.env.FLUX_TEST_STATE_DIR ?? '/state'}/runtime-live.json`;
 type State = Record<string, { email: string; id: string }>;
@@ -22,6 +22,25 @@ const load = async (): Promise<State> => JSON.parse(await readFile(stateFile, 'u
 const save = async (state: State) => writeFile(stateFile, JSON.stringify(state));
 const { pool } = createDatabase(process.env.DATABASE_URL!);
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
+
+/**
+ * The one company (F-037): the first account set it up, and a later one joins as a member. `./flux` is no test deployment, so
+ * nobody can make a workspace of their own here.
+ */
+async function company(someone: Person): Promise<{ id: string }> {
+  const listed = async (who: Person) => expectStatus(await who.browser.request('GET', '/api/v1/workspaces'), 200) as { id: string; role: string }[];
+  const [own] = await listed(someone);
+  if (own) return own;
+  for (const label of Object.keys(await load())) {
+    const known = await owner(label);
+    const [ws] = await listed(known);
+    if (ws?.role === 'owner') {
+      expectStatus(await known.browser.request('POST', `/api/v1/workspaces/${ws.id}/members`, { body: { email: someone.email, role: 'member' } }), 201);
+      return ws;
+    }
+  }
+  throw new Error('no account owns the company');
+}
 
 async function owner(label: string): Promise<Person> {
   const state = await load();
@@ -55,8 +74,7 @@ async function bindingOf(id: string) {
   return rows[0] ?? null;
 }
 const slotRow = async (slot: string) => (await pool.query<{ state: string; boot_id: string | null }>('SELECT state, boot_id FROM agent_runtime_slots WHERE slot = $1', [slot])).rows[0];
-const readySlots = async () => (await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM agent_runtime_slots s WHERE state = 'ready'
-  AND NOT EXISTS (SELECT 1 FROM agent_runtime_bindings b WHERE b.slot = s.slot AND b.state <> 'released')`)).rows[0]!.n;
+const readySlots = async () => (await pool.query<{ n: number }>(`SELECT count(*)::int AS n FROM agent_runtime_slots WHERE state = 'ready'`)).rows[0]!.n;
 
 async function bind(label: string) {
   const someone = await owner(label);
@@ -158,12 +176,11 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     assert.equal(run.output, '');
     console.log('CROSS=refused');
   },
-  /** Disconnect retains an unknown claim until full release, empty data and a fresh boot/binding. */
+  /** Disconnect retains an unknown claim until a full release of that person, then a fresh binding. */
   async 'console-leave'(label) {
     const someone = await owner(label!);
     const issued = await ticket(someone, 'claude_account');
     const before = (await bindingOf(someone.id))!;
-    const bootBefore = (await slotRow(before.slot))!.boot_id;
     const left = await runConsole(someone, issued, null);
     assert.ok(left.output.includes(PROMPT));
     const immediate = await someone.browser.request('POST', AGENT_RUNTIME_CONSOLE_PATH, { body: { client: 'claude_code', method: 'console' } });
@@ -171,8 +188,8 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
       // A fast worker may already have recovered it; success must name a genuinely new binding.
       assert.notEqual((await bindingOf(someone.id))?.id, before.id, 'never admit another console on the uncertain binding');
     } else assert.ok([409, 503].includes(immediate.status), immediate.text);
-    await until('confirmed full cleanup and fresh supervisor', () => slotRow(before.slot),
-      row => Boolean(row && row.boot_id !== bootBefore && ['ready', 'held'].includes(row.state)));
+    await until('confirmed full cleanup', async () => (await pool.query<{ state: string }>('SELECT state FROM agent_runtime_bindings WHERE id = $1', [before.id])).rows[0]?.state,
+      (state) => state === 'released');
     const freshTicket = await ticket(someone, 'console');
     const fresh = (await bindingOf(someone.id))!;
     assert.notEqual(fresh.id, before.id);
@@ -182,7 +199,7 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     const done = next.messages.at(-1);
     assert.ok(done?.t === 'done' && done.disposition === 'accepted' && done.signedIn);
     console.log('LEFT=yes');
-    console.log('RECOVERY=fresh-boot-and-binding');
+    console.log('RECOVERY=fresh-binding');
   },
   /** No request accepts a setup-token, auth.json, session or API key. */
   async 'console-no-fields'(label) {
@@ -202,7 +219,7 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     expectStatus(await someone.browser.request('POST', AGENT_RUNTIME_BINDING_PATH), 409);
     console.log('OFF=reported');
   },
-  /** Waits until `count` slots are bound or bindable (the worker saw them through runtime-manager). */
+  /** Waits until `count` runtimes are ready (the worker saw them through runtime-manager). */
   async 'wait-ready'(count) {
     const n = Number(count);
     await until(`${n} ready slots`, readySlots, (ready) => ready >= n, 180);
@@ -215,11 +232,12 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     console.log(`READY=${await readySlots()}`);
   },
   async bind(label) { await bind(label!); },
-  /** Two owners get two slots; A cannot reach, start, inspect or sign in to B's slot by any API input. */
+  /** Two owners share one runtime; A cannot reach, start, inspect or sign in to B's place by any API input. */
   async 'two-owners'() {
     const a = await bind('A');
     const b = await bind('B');
-    assert.notEqual(a.binding.slot, b.binding.slot, 'two owners, two slots');
+    assert.equal(a.binding.slot, b.binding.slot, 'one runtime for everyone (#860)');
+    assert.notEqual(a.binding.id, b.binding.id, 'each with their own place');
     const before = await pool.query('SELECT id, slot, state, owner_user_id FROM agent_runtime_bindings ORDER BY id');
     const attempts: [string, string, unknown][] = [
       ['POST', AGENT_RUNTIME_BINDING_PATH, { slot: b.binding.slot }], ['POST', AGENT_RUNTIME_BINDING_PATH, { bindingId: b.binding.id }],
@@ -245,19 +263,18 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     console.log(`A_SLOT=${a.binding.slot}`);
     console.log(`B_SLOT=${b.binding.slot}`);
   },
-  /** With every slot bound, another owner sees the pool full and keeps server connections and mode (b). */
-  async 'pool-full'(label) {
+  /** There is no fixed number of people: however many have a place, the next one gets theirs. */
+  async 'room-for-everyone'(label) {
     const someone = await owner(label!);
-    const full = await status(someone);
-    assert.equal(full.pool, 'full');
-    assert.equal(full.binding, null);
-    const refused = expectStatus(await someone.browser.request('POST', AGENT_RUNTIME_BINDING_PATH), 409) as { code: string };
-    assert.equal(refused.code, 'AGENT_RUNTIME_POOL_FULL');
-    expectStatus(await someone.browser.request('GET', backgroundComputeConnectionsPath), 200);
-    expectStatus(await someone.browser.request('GET', '/api/v1/agent-connections'), 200);
-    console.log('POOL=full');
+    const available = await status(someone);
+    assert.equal(available.pool, 'available');
+    assert.equal(available.binding, null);
+    expectStatus(await someone.browser.request('POST', AGENT_RUNTIME_BINDING_PATH), 200);
+    console.log('PLACES=open');
   },
-  /** Prints the owner's slot and binding for the script. */
+  /** The e-mail of an owner, for the operator's `./flux runtime release`. */
+  async 'email-of'(label) { console.log(`EMAIL=${(await owner(label!)).email}`); },
+  /** Prints the owner's runtime and binding for the script. */
   async 'slot-of'(label) {
     const binding = await bindingOf((await owner(label!)).id);
     console.log(`SLOT=${binding?.slot ?? ''}`);
@@ -265,14 +282,14 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     console.log(`STATE=${binding?.state ?? ''}`);
   },
   async boot(slot) { console.log(`BOOT=${(await slotRow(slot!))?.boot_id ?? ''}`); },
-  /** Remove runtime: wait for the release to finish and the slot to come back with a new boot id. */
+  /** Remove runtime: wait for the release to finish; the runtime goes on, on the same boot (#860). */
   async remove(label, slot, bootBefore) {
     const someone = await owner(label!);
     assert.equal((await someone.browser.request('DELETE', AGENT_RUNTIME_BINDING_PATH)).status, 202);
     const released = await until(`${label}'s release`, () => status(someone), (view) => view.binding === null && view.lastRelease?.reason === 'owner');
-    const row = await until(`${slot} back in the pool on a new boot`, () => slotRow(slot!), (value) => value?.state === 'ready' && value.boot_id !== bootBefore, 120);
+    const row = await slotRow(slot!);
+    assert.deepEqual([row?.state, row?.boot_id], ['ready', bootBefore]);
     console.log(`SIGN_OUT_FAILED=${released.lastRelease!.signOutFailed}`);
-    console.log(`NEW_BOOT=${row!.boot_id}`);
   },
   async 'expect-slot-state'(slot, state) {
     await until(`${slot} ${state}`, () => slotRow(slot!), (value) => value?.state === state, 120);
@@ -291,13 +308,13 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
   /** Seeded-secret absence: the fake login's marker never reaches the database. */
   /**
    * T5 (#280): the owner (signed in to the fake Claude Code) turns the assistant on with Claude Code and asks
-   * in a project conversation. The real worker runs the CLI in their slot; it reads Flux through
+   * in a project conversation. The real worker runs the CLI under their own user id; it reads Flux through
    * runtime-egress's /mcp forwarder with the run token, and its answer is committed for the conversation.
    */
   async 'runtime-run'(label) {
     const someone = await owner(label!);
-    const ws = expectStatus(await someone.browser.request('POST', '/api/v1/workspaces', { body: { name: 'Runtime run' } }), 201) as { id: string };
-    const project = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Lamp sensor', visibility: 'workspace' } }), 201) as { id: string };
+    const ws = await company(someone);
+    const project = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Lamp sensor', visibility: 'restricted' } }), 201) as { id: string };
     const thread = expectStatus(await someone.browser.request('POST', `/api/v1/projects/${project.id}/conversations`,
       { body: { body: 'Camera fails below 5 lux', clientMessageId: randomUUID() } }), 201) as { id: string };
     const agent = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string };
@@ -338,7 +355,7 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
   },
   /**
    * T6 (#281): the same owner turns the assistant on again, now with Codex (the CLI they signed in to last), and
-   * asks. The real worker runs the fake `codex exec --json` in their slot through runtime-egress's /mcp.
+   * asks. The real worker runs the fake `codex exec --json` under their own user id through runtime-egress's /mcp.
    */
   async 'codex-run'(label) {
     const someone = await owner(label!);
@@ -346,11 +363,13 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     assert.ok(removed.status === 204 || removed.status === 404, removed.text);
     const before = expectStatus(await someone.browser.request('GET', PERSONAL_ASSISTANT_PATH), 200) as PersonalAssistantStatus;
     assert.deepEqual([before.setup.runtime.state, before.setup.runtime.client, before.setup.runtime.payer], ['signed_in', 'codex', 'chatgpt_plan']);
-    const ws = expectStatus(await someone.browser.request('POST', '/api/v1/workspaces', { body: { name: 'Codex run' } }), 201) as { id: string };
-    const project = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Lamp sensor', visibility: 'workspace' } }), 201) as { id: string };
+    const ws = await company(someone);
+    const project = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Lamp sensor', visibility: 'restricted' } }), 201) as { id: string };
     const thread = expectStatus(await someone.browser.request('POST', `/api/v1/projects/${project.id}/conversations`,
       { body: { body: 'Camera fails below 5 lux', clientMessageId: randomUUID() } }), 201) as { id: string };
-    const agent = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My Codex assistant', owner: 'self' } }), 201) as { id: string };
+    // One company, so the assistant keeps the identity of the run before.
+    const agents = expectStatus(await someone.browser.request('GET', `/api/v1/workspaces/${ws.id}/agents`), 200) as { id: string; name: string; ownerUserId?: string }[];
+    const agent = agents.find((item) => item.name === 'My assistant')!;
     const enabled = await someone.browser.request('POST', PERSONAL_ASSISTANT_PATH, { body: { agentId: agent.id, connection: 'chatgpt_plan', model: 'gpt-6.1-sol' } });
     assert.equal(enabled.status, 201, enabled.text);
     const started = expectStatus(await someone.browser.request('POST', conversationAssistantRunsPath(thread.id),

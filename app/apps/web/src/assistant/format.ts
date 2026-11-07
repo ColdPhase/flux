@@ -92,6 +92,8 @@ export function pausedLine(run: Pick<AssistantRun, 'endReason' | 'resumesAt' | '
 /** The owner's working line while a run is in flight. */
 export function workingText(run: AssistantRun) {
   if (run.stopRequested) return 'Stopping… nothing will be posted.';
+  // #860: the server runs as many agents as fit in its memory; the others wait for room.
+  if (run.endReason === 'no_room') return 'Waiting for room on the server';
   // A request paused by its connection's limit says when it starts again (#854); there is no button to switch.
   const paused = pausedLine(run);
   if (paused) return paused;

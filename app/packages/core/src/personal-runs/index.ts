@@ -2,7 +2,7 @@ export * from './ports.js';
 export * from './service.js';
 export * from './processor.js';
 export * from './proposals.js';
-export { recoverPersonalRuns } from './recovery.js';
+export { recoverLostRuntimeRuns, recoverPersonalRuns } from './recovery.js';
 export {
   connectionCallsTools, costMicros, parseOutput, requestInput, runChargeMicros, runReservationMicros, SYSTEM_PROMPT, budgetedReservationMicros, TOOL_SYSTEM_PROMPT,
   type SuppliedSource,

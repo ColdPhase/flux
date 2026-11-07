@@ -453,6 +453,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         // A request paused by the key's daily budget waits for its resume time (#854).
         if (run.resumeAt && run.resumeAt.getTime() > now()) return null;
         // One lane per owner: a request behind the one that is working waits for it to end (AST-6 queue).
+        await ports.runs.lockLane(run.ownerUserId);
         if (await ports.runs.laneBusy(run.ownerUserId, run.id)) return null;
         const checked = await recheck(ports, connections, compute, run, 'before_read', true).catch((error: unknown) => {
           if (isAccessDenial(error)) return { refusal: 'denied' as const };

@@ -1,4 +1,4 @@
-// Run as the CLI uid in the Docker slot. Probes report only access outcomes, never bytes.
+// Run as a person's own user id in the runtime container. Probes report only access outcomes, never bytes.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -14,7 +14,8 @@ async function inspectorAvailable() {
 
 async function signalInspector(pid, expected) {
   assert.equal(await inspectorAvailable(), false, 'no inspector before the signal');
-  process.kill(pid, 'SIGUSR1');
+  // The supervisor runs under another user id (#860): the kernel refuses the signal outright.
+  try { process.kill(pid, 'SIGUSR1'); } catch (error) { assert.equal(error.code, 'EPERM'); assert.equal(expected, false); return; }
   let available = false;
   for (let attempt = 0; attempt < 25; attempt++) {
     await setTimeout(20);
@@ -45,14 +46,14 @@ if (process.argv[2] === 'supervisor') {
   assert.equal(matches.length, 1, 'exactly one running supervisor');
   assert.deepEqual(await accessProcess(matches[0]), { environ: false, memory: false });
   await signalInspector(matches[0], false);
-  console.log('CLI uid cannot read supervisor environment, write its memory or open its inspector');
+  console.log('A person\'s user id cannot read the supervisor\'s environment, write its memory, signal it or open its inspector');
 } else {
   const native = process.argv[2];
   assert.ok(native?.endsWith('protect.node'));
   for (const mode of ['unprotected', 'native-only', 'hardened']) {
     const protectedProcess = mode !== 'unprotected';
     // The attacker is the child's parent, so this control exercises the stricter case even
-    // at ptrace_scope=1. In a slot the CLI is merely another process with the same uid.
+    // at ptrace_scope=1.
     const code = `${protectedProcess ? 'require(process.argv[1]);' : ''} process.stdout.write('ready\\n'); setInterval(() => {}, 1000);`;
     const child = spawn(process.execPath, [...(mode === 'hardened' ? ['--disable-sigusr1'] : []), '-e', code, native], { stdio: ['ignore', 'pipe', 'pipe'] });
     const exited = once(child, 'exit');

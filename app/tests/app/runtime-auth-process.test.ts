@@ -1,11 +1,10 @@
 import assert from 'node:assert/strict';
 import { fork, type ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { test } from 'node:test';
-import { createServer, type Server } from 'node:http';
-import { createSupervisorServer } from '../../apps/runtime/src/supervisor/server.js';
+import { createServer } from 'node:http';
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
 import { AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_PATH, type AgentRuntimeConsoleServerMessage, type AgentRuntimeStatus } from '@flux/contracts';
 import { agentRuntimeStore } from '@flux/db';
@@ -179,7 +178,7 @@ test('API crash with an undelivered old logout requires full recovery; late logo
   await new Promise<void>(r=>manager.listen(0,'127.0.0.1',r));
   const managerUrl=`http://127.0.0.1:${(manager.address()as{port:number}).port}`;
   const config={clients:['claude_code']as const,commercialTermsAgreedOn:null,idleDays:null,manager:{url:managerUrl,secret:managerSecret}};
-  const children:ChildProcess[]=[],sockets:WebSocket[]=[];let ownerId:string|undefined,fresh:Server|undefined,pending:Promise<unknown>|undefined;
+  const children:ChildProcess[]=[],sockets:WebSocket[]=[];let ownerId:string|undefined,pending:Promise<unknown>|undefined;
   try{
     const port=runtimeManagerPort(createRuntimeManagerClient(config.manager)),store=agentRuntimeStore(db);
     await reconcileAgentRuntime({config:{...config,clients:[...config.clients]},store,manager:port});
@@ -205,23 +204,19 @@ test('API crash with an undelivered old logout requires full recovery; late logo
     const blocked=(await b.request('GET',AGENT_RUNTIME_PATH)).json as AgentRuntimeStatus;
     assert.equal(blocked.binding?.recovery,true);assert.equal(blocked.connections.claude_code,null);
     await reconcileAgentRuntime({config:{...config,clients:[...config.clients]},store,manager:port});
-    assert.equal(slot.released,1,'real supervisor release confirmed full deletion');
-    const freshConfig={...slot.config,bootId:randomUUID()};
-    fresh=createSupervisorServer(freshConfig,()=>undefined).server;
-    await new Promise<void>(r=>fresh!.listen(0,'127.0.0.1',r));target.port=(fresh.address()as{port:number}).port;
-    await reconcileAgentRuntime({config:{...config,clients:[...config.clients]},store,manager:port});
+    assert.deepEqual(await readdir(slot.config.dataDir),[],'real supervisor release confirmed full deletion');
     await signin(b);
     const current=(await pool.query<{id:string}>('SELECT id FROM agent_runtime_bindings WHERE owner_user_id=$1 AND state=\'active\'',[ownerId])).rows[0].id;
-    assert.notEqual(current,old);assert.notEqual(freshConfig.bootId,slot.config.bootId);
+    assert.notEqual(current,old);
     const file=join(slot.config.dataDir,current,'claude','.credentials.json'),before=await readFile(file,'utf8');
     release();await until(()=>lateCode!==undefined);
-    assert.equal(lateCode,'invalid_request','late real HTTP logout meets the new supervisor boot fence before effects');
+    assert.equal(lateCode,'no_binding','a late real HTTP logout names a binding that no longer exists, so it reaches nothing');
     assert.equal(await readFile(file,'utf8'),before,'fresh credential survived the obsolete destructive request');
     assert.equal(((await b.request('GET',AGENT_RUNTIME_PATH)).json as AgentRuntimeStatus).connections.claude_code?.state,'signed_in');
   }finally{
     release();await pending?.catch(()=>undefined);for(const ws of sockets)ws.terminate();await Promise.all(children.map(stop));
     manager.closeAllConnections();await new Promise<void>(r=>manager.close(()=>r()));
-    if(fresh){fresh.closeAllConnections();await new Promise<void>(r=>fresh!.close(()=>r()));}await slot.close();
+    await slot.close();
     if(ownerId)await pool.query('DELETE FROM auth_users WHERE id=$1',[ownerId]);await pool.query('DELETE FROM agent_runtime_slots WHERE slot=$1',[slot.config.slot]);
   }
 });
@@ -257,7 +252,7 @@ test('well-shaped console result for another status client is refused without pe
       const signup=await browser.request('POST','/api/auth/sign-up/email',{body:{email:`client-frame-${randomUUID()}@example.test`,password:'correct horse battery staple',name:'Client frame owner'}});
       assert.equal(signup.status,200);const owner=(signup.json as{user:{id:string}}).user.id;owners.push(owner);
       const binding=randomUUID(),bootId=randomUUID();
-      await pool.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES($1,'held',$2)`,[names[index],bootId]);
+      await pool.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES($1,'ready',$2)`,[names[index],bootId]);
       await pool.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES($1,$2,$3,'active')`,[binding,owner,names[index]]);
       const issue=await browser.request('POST',AGENT_RUNTIME_CONSOLE_PATH,{body:{client:'claude_code',method:'sso'}});assert.equal(issue.status,200,JSON.stringify(fixture.diagnostics));
       const view=await socket(browser);sockets.push(view.ws);view.ws.send(JSON.stringify({t:'attach',ticket:(issue.json as{ticket:string}).ticket,cols:60,rows:20}));

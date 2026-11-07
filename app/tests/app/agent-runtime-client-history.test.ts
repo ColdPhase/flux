@@ -19,7 +19,7 @@ async function owned(work: (c: { ownerUserId: string; sessionId: string; binding
   const slot = `runtime-${600 + Math.floor(Math.random() * 99)}`;
   await pool.query(`INSERT INTO auth_sessions(id, user_id, token, expires_at) VALUES ($1,$2,$3,clock_timestamp()+interval '1 hour')`,
     [sessionId, owner.id, `test-cookie-${randomUUID()}`]);
-  await pool.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES ($1,'held',$2)`, [slot, boot]);
+  await pool.query(`INSERT INTO agent_runtime_slots(slot,state,boot_id) VALUES ($1,'ready',$2)`, [slot, boot]);
   await pool.query(`INSERT INTO agent_runtime_bindings(id,owner_user_id,slot,state) VALUES ($1,$2,$3,'active')`, [bindingId, owner.id, slot]);
   try {
     await work({ ownerUserId: owner.id, sessionId, bindingId, slot, boot });
@@ -74,9 +74,9 @@ test('a status that reports a login records it even when no console was claimed 
 test('the worker\'s release: not_installed is confirmed only against the history, through the PostgreSQL store', () => owned(async (c) => {
   const dirs: string[] = [c.bindingId];
   const manager: RuntimeManagerPort = {
-    async slots() { return { ok: true, value: [{ slot: c.slot, reachable: true as const, bootId: c.boot, bindings: [...dirs], other: 0 }] }; },
+    async slots() { return { ok: true, value: [{ slot: c.slot, reachable: true as const, bootId: c.boot, bindings: [...dirs], other: 0, capacity: 2, running: [] }] }; },
     async bind() { return { ok: true, value: undefined }; },
-    async release() { dirs.length = 0; return { ok: true, value: { dataEmpty: true, logoutFailed: false, notInstalled: ['claude_code', 'codex'] } }; },
+    async release() { dirs.length = 0; return { ok: true, value: { deleted: true, logoutFailed: false, notInstalled: ['claude_code', 'codex'] } }; },
     async status() { return { ok: false, code: 'x' }; },
     async logout() { return { ok: false, code: 'x' }; },
   };
@@ -91,9 +91,9 @@ test('the worker\'s release: not_installed is confirmed only against the history
 test('the worker\'s release is confirmed when the slot finds nothing and the history has no login (negative control)', () => owned(async (c) => {
   const dirs: string[] = [c.bindingId];
   const manager: RuntimeManagerPort = {
-    async slots() { return { ok: true, value: [{ slot: c.slot, reachable: true as const, bootId: c.boot, bindings: [...dirs], other: 0 }] }; },
+    async slots() { return { ok: true, value: [{ slot: c.slot, reachable: true as const, bootId: c.boot, bindings: [...dirs], other: 0, capacity: 2, running: [] }] }; },
     async bind() { return { ok: true, value: undefined }; },
-    async release() { dirs.length = 0; return { ok: true, value: { dataEmpty: true, logoutFailed: false, notInstalled: ['claude_code', 'codex'] } }; },
+    async release() { dirs.length = 0; return { ok: true, value: { deleted: true, logoutFailed: false, notInstalled: ['claude_code', 'codex'] } }; },
     async status() { return { ok: false, code: 'x' }; },
     async logout() { return { ok: false, code: 'x' }; },
   };
@@ -126,7 +126,7 @@ test('purge: a client the slots reported not_installed is confirmed only against
   for (const scenario of cases) {
     // Purge updates every binding. Roll back the whole fixture, including nested adapter transactions.
     await assert.rejects(db.transaction(async (tx) => {
-      await tx.execute(sql`INSERT INTO agent_runtime_slots(slot, state) VALUES ('runtime-998', 'held')`);
+      await tx.execute(sql`INSERT INTO agent_runtime_slots(slot, state) VALUES ('runtime-998', 'ready')`);
       await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES (${bindingId}, ${owner.id}, 'runtime-998', 'active')`);
       for (const client of scenario.history) await tx.execute(sql`INSERT INTO agent_runtime_client_history(binding_id, client) VALUES (${bindingId}, ${client})`);
       const purgeId = await agentRuntimeOperations(tx).beginPurge();

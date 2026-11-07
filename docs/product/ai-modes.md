@@ -60,12 +60,19 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
 
 - **No Docker API.** No Flux service has access to a Docker or Podman API, and no Compose file
   mounts a socket.
-- **One isolated runtime per person.** People cannot reach each other's runtime, credentials or
-  runs. Each person's CLI homes live in their own directory (a UUID name, mode `0700`, credential
-  files `0600` checked by `stat`, no symlinks). The container runs as non-root with a read-only
-  root filesystem, `cap_drop: ALL`, `no-new-privileges`, no host mounts, and memory, CPU and pid
-  limits.
-- **A small supervisor** beside the CLI accepts only a closed set of requests (bind, login, status,
+- **One isolated place per person, in one runtime** (#860). People cannot reach each other's
+  credentials, processes or runs. Each person has their own user id in the runtime, and their CLI
+  homes live in their own directory (a UUID name, mode `0700`, owned by that id, credential files
+  `0600` checked by `stat`, no symlinks), so the kernel keeps them apart. Their CLIs run under that id
+  with no capabilities. The container has a read-only root filesystem, `no-new-privileges`, no host
+  mounts, and memory, CPU and pid limits. Only its supervisor starts as root inside it, with the six
+  capabilities that giving people their own ids takes (`CHOWN`, `DAC_OVERRIDE`, `FOWNER`, `KILL`,
+  `SETGID`, `SETUID`). Whatever lies inside a person's directory is written and deleted as that
+  person, who has no rights outside their own files, so a link they planted leads nowhere. Root
+  touches only the directory itself, and only once no process of theirs is left. People share
+  one network namespace and `/proc`: a person's process can see another's command line (never its
+  environment or memory) and reach their loopback ports. Flux passes no secret on a command line.
+- **A small supervisor** accepts only a closed set of requests (bind, login, status,
   run, stop, logout, release), builds every command from a fixed template with a clean
   environment, makes itself non-dumpable, and accepts only its own secret. Linux Yama
   `ptrace_scope` must be at least 1. A host that fails a runtime requirement stops the runtime with
@@ -78,13 +85,14 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   no CLI process and no model calls while it waits. Idle and per-run CPU and memory are measured
   against the 2 vCPU / 4 GB target (#862, [F-038](decisions.md#f-038--a-simpler-flux)), and the
   operator guide states what each active agent needs.
-- **One lane per person and CLI.** Sign-in, status, runs and sign-out of one CLI never overlap,
-  which also prevents refresh-token races.
+- **One lane per person.** A person's sign-in, status, runs and sign-out never overlap, which also
+  prevents refresh-token races. One person's lane never waits for another's.
 
 ## RT-4 — Network
 
-- A runtime's network is internal. It reaches only the runtime egress, never another person's
-  runtime, the database, Redis, the worker, the LAN or the cloud metadata address.
+- A runtime's network is internal. It reaches only the runtime egress, never the database, Redis,
+  the worker, the LAN or the cloud metadata address. Inside the runtime people share a network
+  namespace ([RT-3](#rt-3--isolation-and-capacity)).
 - The egress allows:
   - the vendor hosts each CLI documents (Claude Code: `api.anthropic.com`, `claude.ai`,
     `claude.com`, `platform.claude.com`; Codex: `auth.openai.com`, `chatgpt.com`,

@@ -10,9 +10,9 @@ import {
   type RuntimeAuthActor, type RuntimeAuthKind, type RuntimeAuthOperation,
 } from './auth.js';
 
-// The owner's runtime (F-022 "One slot per owner"). The caller is always the session's own user: no
-// input selects an owner, a slot or a binding, so one owner can never reach, start, inspect or sign in
-// to another's slot through these use cases. A workspace role gives no access to any slot.
+// The owner's runtime (F-022, #860: one isolated directory and user id per person). The caller is always the session's own
+// user: no input selects an owner, a runtime or a binding, so one owner can never reach, start, inspect or sign in to another's
+// through these use cases. A workspace role gives no access to any of them.
 //
 // Sign-in (T4 #279): the console runs in the owner's slot; these use cases name the slot and binding
 // for the console, and record only what the CLI's own status reported afterwards: display facts, the
@@ -75,9 +75,9 @@ export function usageView(usage: RuntimeUsageRow | null, now = Date.now()): Agen
 
 export interface AgentRuntimeUseCases {
   status(ownerUserId: string): Promise<AgentRuntimeStatus>;
-  /** Binds a free slot to the owner (idempotent), or binds their slot again after *Sign in again*. */
+  /** Gives the owner their place in the runtime (idempotent), or makes it again after *Sign in again*. */
   bind(ownerUserId: string): Promise<AgentRuntimeStatus>;
-  /** *Remove runtime*: the worker signs out, deletes the directory and frees the slot. */
+  /** *Remove runtime*: the worker signs out and deletes the directory. */
   remove(ownerUserId: string): Promise<AgentRuntimeStatus>;
   /** Where the owner's sign-in console runs: their own slot, bound first if needed. */
   consoleTarget(ownerUserId: string, client: AgentRuntimeClient): Promise<{ slot: string; bindingId: string }>;
@@ -122,7 +122,7 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
   async function status(ownerUserId: string): Promise<AgentRuntimeStatus> {
     if (!enabled) return off();
     const view = await store.ownerView(ownerUserId);
-    const pool = view.slots.ready > 0 ? 'available' : view.slots.total > 0 && view.slots.held >= view.slots.total ? 'full' : 'starting';
+    const pool = view.slots.ready > 0 ? 'available' : 'starting';
     const connections = noConnections();
     if (view.binding) for (const row of await store.connections(ownerUserId)) if (row.bindingId === view.binding.id) connections[row.client] = connectionView(row);
     return {
@@ -141,16 +141,13 @@ export function agentRuntimeUseCases(config: AgentRuntimeConfig, store: AgentRun
   async function bindDirectory(binding: RuntimeBindingRow) {
     const outcome = await manager!.bind(binding.slot, binding.id);
     if (outcome.ok) { await store.activate(binding.id); return; }
-    if (binding.state === 'binding') {
-      await store.abandon(binding.id, outcome.code === 'data_not_empty' ? { state: 'out_of_pool', reason: 'data_not_empty' } : { state: 'unknown' });
-    }
-    throw new ServiceUnavailableError('The agent runtime could not prepare your slot; try again shortly', AGENT_RUNTIME_ERRORS.unavailable);
+    if (binding.state === 'binding') await store.abandon(binding.id);
+    throw new ServiceUnavailableError('The agent runtime could not get your place ready; try again shortly', AGENT_RUNTIME_ERRORS.unavailable);
   }
 
   async function bind(ownerUserId: string) {
     requireOn();
     const reserved = await store.reserve(ownerUserId, randomUUID());
-    if (reserved.kind === 'full') throw new ConflictError('Every agent runtime slot on this instance is in use', AGENT_RUNTIME_ERRORS.poolFull);
     if (reserved.kind === 'starting') throw new ServiceUnavailableError('The agent runtime is starting; try again shortly', AGENT_RUNTIME_ERRORS.unavailable);
     const { binding } = reserved;
     if (binding.state === 'releasing') throw new ConflictError('Your agent runtime is being removed', AGENT_RUNTIME_ERRORS.releasing);

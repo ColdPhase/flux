@@ -45,11 +45,9 @@ profile=()
 if [ "${FLUX_POOLS_RUNTIME:-0}" = 1 ]; then
   files+=(-f /compose/compose.source.runtime.yaml)
   profile=(--profile runtime)
-  services+=(runtime-manager runtime-egress runtime-1 runtime-2 runtime-3 runtime-4)
+  services+=(runtime-manager runtime-egress runtime-1)
   in_dind sh -c "printf '%s\n' '  runtime-install: {image: flux-stub, pull_policy: never, command: [/x]}' '  runtime-manager: {image: flux-stub, pull_policy: never, command: [/x]}' \
-    '  runtime-egress: {image: flux-stub, pull_policy: never, command: [/x]}' '  runtime-1: {image: flux-stub, pull_policy: never, command: [/x]}' \
-    '  runtime-2: {image: flux-stub, pull_policy: never, command: [/x]}' '  runtime-3: {image: flux-stub, pull_policy: never, command: [/x]}' \
-    '  runtime-4: {image: flux-stub, pull_policy: never, command: [/x]}' >> /stub.yaml"
+    '  runtime-egress: {image: flux-stub, pull_policy: never, command: [/x]}' '  runtime-1: {image: flux-stub, pull_policy: never, command: [/x]}' >> /stub.yaml"
 fi
 echo "daemon: $dind_image, pools: ${*:-stock}; files: ${files[*]}${profile[*]:+ ${profile[*]}}"
 projects=0

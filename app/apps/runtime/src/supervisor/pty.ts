@@ -13,10 +13,11 @@ export interface PtyProcess {
   resize(cols: number, rows: number): void;
 }
 
-export type SpawnPty = (file: string, args: readonly string[], options: { cols: number; rows: number; cwd: string; env: Record<string, string> }) => PtyProcess;
+export type SpawnPty = (file: string, args: readonly string[], options: { cols: number; rows: number; cwd: string; env: Record<string, string>; uid?: number; gid?: number }) => PtyProcess;
 
 export const spawnPty: SpawnPty = (file, args, options) => {
-  const pty = spawnNodePty(file, [...args], { name: 'xterm-256color', cols: options.cols, rows: options.rows, cwd: options.cwd, env: options.env });
+  const pty = spawnNodePty(file, [...args], { name: 'xterm-256color', cols: options.cols, rows: options.rows, cwd: options.cwd, env: options.env,
+    ...(options.uid !== undefined && options.gid !== undefined ? { uid: options.uid, gid: options.gid } : {}) });
   return {
     pid: pty.pid,
     onData: (listener) => { pty.onData(listener); },

@@ -54,12 +54,12 @@ try {
   for (const key of stillOn) failures.push(`override did not switch off: ${key}`);
   report.offApplied = Object.keys(CODEX_FEATURE_REVIEW).length - stillOn.length;
 
-  const withOverrides = await openAppServer(codex, home, '127.0.0.1', { timeoutMs: 30_000, overrides });
+  const withOverrides = await openAppServer(codex, home, '127.0.0.1', { timeoutMs: 30_000, person: null, overrides });
   const read = await withOverrides.request('config/read', {}) as { config?: unknown };
   withOverrides.close();
   report.configReadReflectsOverrides = effectiveConfigHolds(read?.config, tools, mcpUrl);
   if (!report.configReadReflectsOverrides) failures.push('config/read does not reflect the -c overrides');
-  const plain = await openAppServer(codex, home, '127.0.0.1', { timeoutMs: 30_000 });
+  const plain = await openAppServer(codex, home, '127.0.0.1', { timeoutMs: 30_000, person: null });
   const bare = await plain.request('config/read', {}) as { config?: unknown };
   report.refusedCommandExec = await plain.request('command/exec', { command: ['true'] }).then(() => false, (error: Error) => error.name === 'AppServerMethodRefused');
   plain.close();

@@ -94,7 +94,7 @@ export interface AgentRuntimeStatus {
   commercialTerms: { agreedOn: string; recordedAt: string } | null;
   idleReleaseDays: number | null;
   /** `full`: every slot is bound to someone; `server` connections and mode (b) still work. */
-  pool: 'off' | 'available' | 'full' | 'starting';
+  pool: 'off' | 'available' | 'starting';
   binding: AgentRuntimeBinding | null;
   /**
    * The caller's last released binding, so they are told when the operator or the idle policy released
@@ -161,7 +161,6 @@ export type AgentRuntimeConsoleError = 'busy' | 'unavailable' | 'refused' | 'end
 
 export const AGENT_RUNTIME_ERRORS = {
   off: 'AGENT_RUNTIME_OFF',
-  poolFull: 'AGENT_RUNTIME_POOL_FULL',
   unavailable: 'AGENT_RUNTIME_UNAVAILABLE',
   releasing: 'AGENT_RUNTIME_RELEASING',
   clientUnavailable: 'AGENT_RUNTIME_CLIENT_UNAVAILABLE',

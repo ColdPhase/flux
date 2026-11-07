@@ -59,7 +59,7 @@ describe('runtime-manager with two slots', () => {
     assert.ok(view.ok);
     assert.deepEqual(view.value.map((entry) => entry.reachable && entry.bindings), [[], [bindingId]]);
     const released = await port.release('runtime-2', bindingId);
-    assert.deepEqual(released, { ok: true, value: { dataEmpty: true, logoutFailed: false, notInstalled: [] } });
+    assert.deepEqual(released, { ok: true, value: { deleted: true, logoutFailed: false, notInstalled: [] } });
   });
 
   test('checks every request against the closed set before forwarding it', async () => {
@@ -93,7 +93,7 @@ describe('runtime-manager with two slots', () => {
         // durable client history, #480); with files failed; missing/unsafe bindings give skipped.
         const expected = { never_installed: { logoutFailed: false, notInstalled: ['claude_code', 'codex'] }, missing_cli: { logoutFailed: true, notInstalled: ['codex'] },
           missing_binding: { logoutFailed: true, notInstalled: [] }, unsafe_binding: { logoutFailed: true, notInstalled: [] } }[scenario];
-        assert.deepEqual(await port.release('runtime-1', binding), { ok: true, value: { dataEmpty: true, ...expected } });
+        assert.deepEqual(await port.release('runtime-1', binding), { ok: true, value: { deleted: true, ...expected } });
       } finally { manager.close(); await slot.close(); }
     }
   });
@@ -116,7 +116,7 @@ describe('runtime-manager with two slots', () => {
       assert.ok(logout.ok && logout.result.kind === 'logout');
       assert.equal(logout.result.logout, 'failed');
       assert.deepEqual(await readdir(home), [], 'the failed sign-out still deletes the files');
-      assert.deepEqual(await port.release('runtime-1', binding), { ok: true, value: { dataEmpty: true, logoutFailed: true, notInstalled: ['codex'] } });
+      assert.deepEqual(await port.release('runtime-1', binding), { ok: true, value: { deleted: true, logoutFailed: true, notInstalled: ['codex'] } });
     } finally { manager.close(); await slot.close(); }
   });
 
@@ -174,8 +174,8 @@ describe('the manager\'s reader of a misbehaving supervisor', () => {
   };
   const bootId = randomUUID();
   const accepted = encodeFrame({ t: 'accepted', kind: 'status', bootId });
-  const report = { kind: 'status', slot: { slot: 'runtime-1', bootId, data: { empty: true, bindings: [], other: 0 }, tmpEmpty: true,
-    installed: { claude_code: true, codex: false }, enabled: ['claude_code'], busy: false } };
+  const report = { kind: 'status', slot: { slot: 'runtime-1', bootId, data: { bindings: [], other: 0 },
+    installed: { claude_code: true, codex: false }, enabled: ['claude_code'], capacity: 2, running: [] } };
 
   test('accepts only accepted → steps → one result of the request\'s kind → end', async () => {
     answer = ndjson(200, accepted + encodeFrame({ t: 'result', result: report }));

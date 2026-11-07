@@ -167,7 +167,7 @@ export function cliEnvironment(client: RuntimeClient, bindingDir: string, egress
     PATH: '/opt/flux-tools/claude/bin:/opt/flux-runtime/codex/bin:/usr/local/bin:/usr/bin:/bin',
     HOME: `${bindingDir}/home`,
     LANG: 'C.UTF-8',
-    TMPDIR: '/tmp',
+    TMPDIR: `${bindingDir}/tmp`,
     HTTPS_PROXY: proxy, https_proxy: proxy,
     NO_PROXY: egressHost, no_proxy: egressHost,
   };

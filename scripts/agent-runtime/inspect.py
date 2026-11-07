@@ -1,10 +1,11 @@
 """Checks `docker inspect` of a running agent runtime (F-022 T3 #278) against the decided limits.
 
 Usage: docker inspect <every container of the project> | python3 inspect.py <compose project> [<checkout directory>]
-Each slot (runtime-<n>): user 1000:1000, read-only root, cap_drop ALL, no-new-privileges, not
-privileged, an init, 2 GiB memory without swap, one CPU, 256 pids, a 128 MiB tmpfs /tmp, rotated
-json-file logs (3 x 10 MB), restart always, only its own data volume and the read-only tools volume,
-and only its own network. runtime-manager and runtime-egress: read-only, cap_drop ALL,
+The runtime (runtime-<n>): root inside the container with exactly the six capabilities that give each person their own
+user id (#860), read-only root, cap_drop ALL, no-new-privileges, not privileged, an init, a memory limit without
+swap, a CPU limit, 2048 pids, a 256 MiB tmpfs /tmp, rotated json-file logs (3 x 10 MB), restart
+unless-stopped, a health check, only its own data volume and the read-only tools volume, and only its own
+network. runtime-manager and runtime-egress: user 1000:1000, read-only, cap_drop ALL, no capabilities,
 no-new-privileges, no mounts. No container of the project mounts a container engine socket, directly
 or through a directory that holds one (/var/run, /run): a bind mount must come from inside the
 checkout directory given as the optional second argument, anything else is refused.
@@ -20,6 +21,7 @@ import sys
 project = sys.argv[1]
 checkout = os.path.realpath(sys.argv[2]) if len(sys.argv) > 2 else None
 containers = json.load(sys.stdin)
+PERSON_CAPABILITIES = ["CHOWN", "DAC_OVERRIDE", "FOWNER", "KILL", "SETGID", "SETUID"]
 failures: list[str] = []
 checked: list[str] = []
 
@@ -47,21 +49,22 @@ for container in containers:
         expect(service, "privileged", host["Privileged"], False)
         expect(service, "read-only root", host["ReadonlyRootfs"], True)
         expect(service, "cap_drop", host["CapDrop"], ["ALL"])
-        expect(service, "cap_add", host.get("CapAdd") or [], [])
         expect(service, "no-new-privileges", "no-new-privileges:true" in (host.get("SecurityOpt") or []), True)
-        expect(service, "user", container["Config"]["User"], "1000:1000")
         expect(service, "devices", host.get("Devices") or [], [])
         expect(service, "pid mode", host.get("PidMode") or "", "")
     if re.fullmatch(r"runtime-[1-9][0-9]*", service):
         checked.append(service)
-        expect(service, "memory", host["Memory"], 2 * 1024**3)
-        expect(service, "memory+swap", host["MemorySwap"], 2 * 1024**3)
-        expect(service, "CPUs", host["NanoCpus"], 1_000_000_000)
-        expect(service, "pids", host["PidsLimit"], 256)
-        expect(service, "tmpfs", host.get("Tmpfs"), {"/tmp": "rw,nosuid,nodev,size=128m,mode=1777"})
+        expect(service, "user", container["Config"]["User"], "0:0")
+        expect(service, "cap_add", sorted(name.removeprefix("CAP_") for name in host.get("CapAdd") or []), PERSON_CAPABILITIES)
+        expect(service, "a memory limit", host["Memory"] > 0, True)
+        expect(service, "memory+swap", host["MemorySwap"], host["Memory"])
+        expect(service, "a CPU limit", host["NanoCpus"] > 0, True)
+        expect(service, "pids", host["PidsLimit"], 2048)
+        expect(service, "tmpfs", host.get("Tmpfs"), {"/tmp": "rw,nosuid,nodev,size=256m,mode=1777", "/dev/shm": "ro,nosuid,nodev,noexec,size=4k"})
+        expect(service, "health check", bool((container["Config"].get("Healthcheck") or {}).get("Test")), True)
         expect(service, "log driver", host["LogConfig"]["Type"], "json-file")
         expect(service, "log rotation", host["LogConfig"]["Config"], {"max-file": "3", "max-size": "10m"})
-        expect(service, "restart", host["RestartPolicy"]["Name"], "always")
+        expect(service, "restart", host["RestartPolicy"]["Name"], "unless-stopped")
         expect(service, "init", host.get("Init"), True)
         mounts = sorted((m["Type"], m.get("Name", ""), m["Destination"], m["RW"]) for m in container["Mounts"])
         expect(service, "mounts", mounts, sorted([("volume", f"{project}_{service}-data", "/data", True),
@@ -69,6 +72,8 @@ for container in containers:
         expect(service, "networks", sorted(container["NetworkSettings"]["Networks"]), [f"{project}_{service}"])
     elif service in ("runtime-manager", "runtime-egress"):
         checked.append(service)
+        expect(service, "user", container["Config"]["User"], "1000:1000")
+        expect(service, "cap_add", host.get("CapAdd") or [], [])
         expect(service, "mounts", container["Mounts"], [])
         expect(service, "networks hold no database network", f"{project}_default" in container["NetworkSettings"]["Networks"], False)
 

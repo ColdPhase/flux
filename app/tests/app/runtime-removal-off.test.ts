@@ -23,7 +23,7 @@ test('actual off-server removal refuses before changing a saved binding, connect
     admission: (await pool.query('SELECT * FROM agent_runtime_auth_admission ORDER BY singleton')).rows,
   });
   try {
-    await pool.query("INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'held')", [slot]);
+    await pool.query("INSERT INTO agent_runtime_slots(slot, state) VALUES ($1, 'ready')", [slot]);
     await pool.query(`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state) VALUES ($1, $2, $3, 'active')`,
       [binding, owner.id, slot]);
     await pool.query(`INSERT INTO agent_runtime_connections(id, owner_user_id, binding_id, client, state, signed_out_at, sign_out_failed)

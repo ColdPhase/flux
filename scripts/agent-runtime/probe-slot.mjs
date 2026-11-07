@@ -1,5 +1,5 @@
-// Escape attempts from inside a runtime slot (F-022 T3 #278), run by scripts/check_agent_runtime.sh as
-// the slot's own user: `docker exec -i <slot> node --input-type=module - < probe-slot.mjs`. Targets come
+// Escape attempts from inside the runtime (F-022 T3 #278), run by scripts/check_agent_runtime.sh as a
+// person's own user id: `docker exec -i -u <id> <runtime> node --input-type=module - < probe-slot.mjs`. Targets come
 // from FLUX_PROBE_* variables the script read with `docker inspect`. Every attempt must fail; the only
 // ways out are runtime-egress's CONNECT to an allowed vendor host and its /mcp route to the API.
 import { lookup } from 'node:dns/promises';
@@ -38,13 +38,13 @@ function raw(port, text, ms = 15000) {
   });
 }
 
-// Controls: the probe does see what a slot may reach.
+// Controls: the probe does see what the runtime may reach.
 const egressOpen = await tcp('runtime-egress', 3128);
 record('control: runtime-egress is reachable', egressOpen === 'open', egressOpen);
 const egressName = await lookup('runtime-egress').then(() => 'resolved', (error) => error.code);
 record('control: runtime-egress resolves', egressName === 'resolved', egressName);
 
-for (const name of ['db', 'api', 'worker', 'migrate', 'runtime-2', 'runtime-5', 'runtime-install', 'mailpit']) {
+for (const name of ['db', 'api', 'worker', 'migrate', 'runtime-install', 'mailpit']) {
   const outcome = await lookup(name).then(() => 'resolved', (error) => error.code);
   record(`name ${name} does not resolve`, outcome !== 'resolved', outcome);
 }
@@ -55,8 +55,6 @@ const targets = [
   ['the API on runtime-control', env.FLUX_PROBE_API_CONTROL, 8080],
   ['the worker', env.FLUX_PROBE_WORKER, 8080],
   ['runtime-manager on runtime-control', env.FLUX_PROBE_MANAGER_CONTROL, 7600],
-  ['another slot', env.FLUX_PROBE_OTHER_SLOT, 7700],
-  ['the extra slot', env.FLUX_PROBE_EXTRA_SLOT, 7700],
   ['the cloud metadata address', '169.254.169.254', 80],
   ['the internet without the proxy', '1.1.1.1', 443],
   ['the host on its default-bridge address', env.FLUX_PROBE_GATEWAY, 22],
@@ -68,15 +66,15 @@ for (const [name, host, port] of targets) {
   const outcome = await tcp(host, port);
   record(`${name} (${host}:${port}) is unreachable`, nothingListens.has(name) ? unreachable(outcome) : outcome !== 'open', outcome);
 }
-// runtime-manager is on this network to call the supervisor, but listens on none of the slot networks.
+// runtime-manager is on this network to call the supervisor, but does not listen here.
 const manager = await tcp('runtime-manager', 7600);
-record('runtime-manager listens on no slot network', manager === 'refused' || unreachable(manager), manager);
+record('runtime-manager does not listen on the runtime network', manager === 'refused' || unreachable(manager), manager);
 // runtime-egress's installer proxy listens only on the runtime-install network.
 const install = await tcp('runtime-egress', 3129);
-record('the installer proxy is not on a slot network', install !== 'open', install);
+record('the installer proxy is not on the runtime network', install !== 'open', install);
 
 const connectStatus = (target) => raw(3128, `CONNECT ${target} HTTP/1.1\r\nHost: ${target}\r\n\r\n`);
-for (const target of ['example.com:443', 'downloads.claude.ai:443', 'db:5432', 'api:8080', '169.254.169.254:80', 'runtime-2:7700', 'api.anthropic.com:80']) {
+for (const target of ['example.com:443', 'downloads.claude.ai:443', 'db:5432', 'api:8080', '169.254.169.254:80', 'runtime-1:7700', 'api.anthropic.com:80']) {
   const status = await connectStatus(target);
   record(`egress refuses CONNECT ${target}`, status === 403, status);
 }

@@ -1,8 +1,8 @@
 """No Compose file in the repository gives a container the Docker or Podman API (F-022 T3, #278).
 
 F-022 rejects every design in which a Flux service can reach a container engine's API: a socket proxy
-or a validating proxy still leaves one gap away from root on the host. The agent runtime is a fixed
-pool of Compose-declared slots instead. This test reads every Compose file in the repository and fails
+or a validating proxy still leaves one gap away from root on the host. The agent runtime is one
+Compose-declared service instead, where each person has their own user id (#860). This test reads every Compose file in the repository and fails
 if any of them mounts an engine socket or points DOCKER_HOST anywhere, and fails if a deployable one
 shares the host's PID, IPC or network namespace, runs privileged or maps host devices. Standard library
 only.
@@ -24,7 +24,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SKIP = {".git", ".worktrees", ".harness", "node_modules", "dist"}
-COMPOSE_NAME = re.compile(r"(^|[./-])(compose|docker-compose)[^/]*\.ya?ml$|runtime-slot[^/]*\.ya?ml$")
+COMPOSE_NAME = re.compile(r"(^|[./-])(compose|docker-compose)[^/]*\.ya?ml$")
 
 SOCKET = re.compile(r"(docker|podman|containerd|crio|cri-dockerd)\.sock|/var/run/docker\b|/run/podman\b|/run/user/[^/\s]+/(docker|podman)", re.I)
 # A host path mounted into a container comes from the checkout (a relative path, or an operator secret file
@@ -180,7 +180,7 @@ def compose_files() -> list[Path]:
 class ContainerIsolationTest(unittest.TestCase):
     def test_compose_files_are_found(self) -> None:
         names = {path.relative_to(ROOT).as_posix() for path in compose_files()}
-        for expected in ("docker/compose.yaml", "docker/compose.source.yaml", "docker/compose.runtime.test.yaml", "docker/runtime-slot.example.yaml", "docker/compose.runtime.yaml"):
+        for expected in ("docker/compose.yaml", "docker/compose.source.yaml", "docker/compose.runtime.test.yaml", "docker/compose.runtime.yaml"):
             self.assertIn(expected, names)
 
     def test_no_compose_file_mounts_an_engine_socket(self) -> None:
@@ -304,11 +304,9 @@ class ContainerIsolationTest(unittest.TestCase):
     def test_runtime_networks_are_internal_without_a_host_address(self) -> None:
         text = (ROOT / "docker" / "compose.source.yaml").read_text(encoding="utf-8")
         networks = text.split("\nnetworks:\n", 1)[1]
-        for name in ("runtime-control", "runtime-api", "runtime-install", "runtime-1", "runtime-2", "runtime-3", "runtime-4"):
+        for name in ("runtime-control", "runtime-api", "runtime-install", "runtime-1"):
             self.assertRegex(networks, rf"\n  {name}:\n    internal: true\n    driver_opts: \*runtime-network-opts\n", name)
         self.assertIn('x-runtime-network-opts: &runtime-network-opts\n  com.docker.network.bridge.inhibit_ipv4: "true"', text)
-        example = (ROOT / "docker" / "runtime-slot.example.yaml").read_text(encoding="utf-8")
-        self.assertIn('  runtime-5:\n    internal: true\n    driver_opts:\n      com.docker.network.bridge.inhibit_ipv4: "true"', example)
 
     def test_the_application_image_stays_the_last_dockerfile_stage(self) -> None:
         # Builds without --target (Compose's migrate service, the release workflow) take the last stage.
@@ -326,27 +324,39 @@ class ContainerIsolationTest(unittest.TestCase):
         code = "\n".join(line for line in overlay.splitlines() if not line.lstrip().startswith("#"))
         self.assertNotRegex(code, r"(?m)^\s*build\s*:")
         self.assertRegex(code, r"x-runtime-hardening: &runtime-hardening\n  profiles: \[\"runtime\"\]")
-        for service in ("runtime-install", "runtime-manager", "runtime-egress", "runtime-1", "runtime-2", "runtime-3", "runtime-4"):
+        for service in ("runtime-install", "runtime-manager", "runtime-egress", "runtime-1"):
             block = re.search(rf"^  {service}:\n((?:    .*\n|\n)+)", code, re.M)
             self.assertIsNotNone(block, service)
             self.assertRegex(block.group(1), r"<<: \*runtime-(hardening|slot)", service)
         networks = "\n" + code.split("\nnetworks:\n", 1)[1] + "\n"
-        for name in ("runtime-control", "runtime-api", "runtime-install", "runtime-1", "runtime-2", "runtime-3", "runtime-4"):
+        for name in ("runtime-control", "runtime-api", "runtime-install", "runtime-1"):
             self.assertRegex(networks, rf"\n  {name}:\n    internal: true\n    driver_opts: \*runtime-network-opts\n", name)
         self.assertIn('inhibit_ipv4: "true"', code)
-        # The slot settings are the source stack's (docker compose config is compared by scripts/release/compare_runtime_overlay.py).
+        # The runtime's settings are the source stack's (docker compose config is compared by scripts/release/compare_runtime_overlay.py).
         source = (ROOT / "docker" / "compose.source.yaml").read_text(encoding="utf-8")
-        for setting in ("mem_limit: 2g", "memswap_limit: 2g", "cpus: 1", "pids_limit: 256", "restart: always",
-                        'user: "1000:1000"', "read_only: true", "cap_drop: [ALL]"):
+        for setting in ("mem_limit: ${FLUX_RUNTIME_MEMORY:-2560m}", "memswap_limit: ${FLUX_RUNTIME_MEMORY:-2560m}", "cpus: ${FLUX_RUNTIME_CPUS:-1}", "pids_limit: 2048",
+                        'user: "0:0"', "cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID]", "restart: unless-stopped",
+                        '"test", "-f", "/tmp/.flux-runtime-ready"', 'user: "1000:1000"', "read_only: true", "cap_drop: [ALL]"):
             self.assertIn(setting, source)
             self.assertIn(setting, code)
         # Off by default: the release's runtime switch is empty unless the operator sets it; it is never defaulted on.
         self.assertNotRegex(code, r"FLUX_AGENT_RUNTIME: \$\{FLUX_AGENT_RUNTIME:-[^}]")
 
+    def test_one_runtime_serves_everyone_with_no_fixed_pool(self) -> None:
+        # #860: no second runtime service, volume, network or secret; no restart that a refused runtime could loop in; nothing but
+        # the runtime holds capabilities.
+        for name in ("compose.source.yaml", "compose.runtime.yaml"):
+            text = (ROOT / "docker" / name).read_text(encoding="utf-8")
+            self.assertNotRegex(text, r"runtime-[2-9]|FLUX_RUNTIME_SECRET_[2-9]|FLUX_RUNTIME_SLOT_[2-9]", name)
+            self.assertNotIn("restart: always", text, name)
+            self.assertEqual(len(re.findall(r"^\s*cap_add:", text, re.M)), 1, name)
+            self.assertIn("FLUX_RUNTIME_MAX_RUNS: ${FLUX_RUNTIME_MAX_RUNS:-}", text, name)
+        self.assertFalse((ROOT / "docker" / "runtime-slot.example.yaml").exists())
+
     def test_runtime_services_are_only_in_the_runtime_profile(self) -> None:
         text = (ROOT / "docker" / "compose.source.yaml").read_text(encoding="utf-8")
         self.assertRegex(text, r"x-runtime-hardening: &runtime-hardening\n  profiles: \[\"runtime\"\]")
-        for service in ("runtime-install", "runtime-manager", "runtime-egress", "runtime-1", "runtime-2", "runtime-3", "runtime-4"):
+        for service in ("runtime-install", "runtime-manager", "runtime-egress", "runtime-1"):
             block = re.search(rf"^  {service}:\n((?:    .*\n|\n)+)", text, re.M)
             self.assertIsNotNone(block, service)
             self.assertRegex(block.group(1), r"<<: \*runtime-(hardening|slot)", service)

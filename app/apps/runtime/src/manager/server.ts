@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import {
-  callSupervisor, encodeFrame, managerSlotsPath, parseSupervisorRequest, REQUEST_LIMITS, SLOT_NAME, SUPERVISOR_ERRORS,
+  callSupervisor, encodeFrame, managerSlotsPath, parseSupervisorRequest, REPORT_FRAME_LIMITS, REQUEST_LIMITS, SLOT_NAME, SUPERVISOR_ERRORS,
   type ManagedSlot, type ManagerError, type RunFrame, type SupervisorCallOutcome, type SupervisorError, type SupervisorRequest, type SupervisorTarget,
 } from '@flux/runtime-protocol';
 import { authorized } from '../shared/auth.js';
@@ -16,13 +16,13 @@ import { relayConsole } from './console.js';
 export interface ManagerConfig {
   secret: string;
   slots: Map<string, SupervisorTarget>;
-  call?: (target: SupervisorTarget, request: SupervisorRequest, options?: { onRun?: (frame: RunFrame) => void }) => Promise<SupervisorCallOutcome>;
+  call?: (target: SupervisorTarget, request: SupervisorRequest, options?: { onRun?: (frame: RunFrame) => void; limits?: typeof REPORT_FRAME_LIMITS }) => Promise<SupervisorCallOutcome>;
   log?: (event: Record<string, unknown>) => void;
 }
 
 const STATUS: Record<string, number> = {
   unauthorized: 502, unknown_request: 400, invalid_request: 400, unknown_slot: 404, busy: 409, client_off: 409, not_installed: 409,
-  data_not_empty: 409, no_binding: 409, binding_mismatch: 409, binding_unsafe: 409, binding_too_large: 409, not_available: 501,
+  no_binding: 409, binding_mismatch: 409, binding_unsafe: 409, binding_too_large: 409, not_available: 501,
   internal: 502, unreachable: 503, timeout: 504, protocol: 502,
 };
 
@@ -50,7 +50,7 @@ export async function listSlots(config: ManagerConfig): Promise<ManagedSlot[]> {
   const call = config.call ?? callSupervisor;
   const names = [...config.slots.keys()].sort((a, b) => Number(a.slice(8)) - Number(b.slice(8)));
   return Promise.all(names.map(async (slot): Promise<ManagedSlot> => {
-    const outcome = await call(config.slots.get(slot)!, { kind: 'status' });
+    const outcome = await call(config.slots.get(slot)!, { kind: 'status' }, { limits: REPORT_FRAME_LIMITS });
     if (outcome.ok && outcome.result.kind === 'status' && 'slot' in outcome.result) {
       // A slot that reports another slot's name is answering for something it is not.
       if (outcome.result.slot.slot !== slot) return { slot, reachable: false, error: 'protocol' };

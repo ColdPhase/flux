@@ -1,10 +1,12 @@
 import { spawn } from 'node:child_process';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { FLUX_TOOL_NAME, INIT_NAME, type RunOutcome, type SupervisorRequest, type SupervisorResult } from '@flux/runtime-protocol';
 import { openAppServer, readRateLimits, readUsage, type UsageReading } from './app-server.js';
+import { clearClientPaths, clearLeftovers, clearScratch } from './data.js';
 import type { Outcome, Send, SupervisorConfig } from './handlers.js';
-import { CLIENT_DIRS, cliEnvironment, CODEX_FEATURE_REVIEW, codexRunOverrides, RUN_TEMPLATES } from './templates.js';
+import { asPerson, endProcesses, type Person } from './process.js';
+import { cliEnvironment, CODEX_FEATURE_REVIEW, codexRunOverrides, RUN_TEMPLATES } from './templates.js';
 
 // One run of the owner's CLI in their binding directory (F-022 AIM-3 "Run" and "Hardening", T5 #280).
 //
@@ -40,15 +42,42 @@ export const APP_SERVER_TIMEOUT_MS = 15_000;
 
 type RunRequest = Extract<SupervisorRequest, { kind: 'run' }>;
 
-/** The run in each slot (a supervisor process serves one), if any: one at a time, because the slot's lane is serial. */
-const active = new WeakMap<SupervisorConfig, { runId: string; stop: () => void }>();
+/** The runs in progress, each person's lane holding at most one. */
+const active = new WeakMap<SupervisorConfig, Map<string, { bindingId: string; stop: () => void }>>();
+const runsOf = (config: SupervisorConfig) => {
+  let runs = active.get(config);
+  if (!runs) { runs = new Map(); active.set(config, runs); }
+  return runs;
+};
 
-/** Stop for the run in this slot: SIGINT, then SIGTERM, then kill. */
-export function stopRun(config: SupervisorConfig, runId: string): 'stopping' | 'not_running' {
-  const current = active.get(config);
-  if (!current || current.runId !== runId) return 'not_running';
-  current.stop();
+/** Stop for one run of this person: SIGINT, then SIGTERM, then kill. */
+export function stopRun(config: SupervisorConfig, runId: string, bindingId: string): 'stopping' | 'not_running' | 'binding_mismatch' {
+  const run = runsOf(config).get(runId);
+  if (!run) return 'not_running';
+  if (run.bindingId !== bindingId) return 'binding_mismatch';
+  run.stop();
   return 'stopping';
+}
+
+/** How long a finished run stays in the report: its worker may still be committing the answer. */
+const REPORTED_AFTER_END_MS = 2 * 60_000;
+const finishedRuns = new WeakMap<SupervisorConfig, Map<string, number>>();
+const finishedOf = (config: SupervisorConfig) => {
+  let finished = finishedRuns.get(config);
+  if (!finished) { finished = new Map(); finishedRuns.set(config, finished); }
+  return finished;
+};
+
+/** The runs this supervisor has, and the ones that ended a moment ago. A row the report leaves out has lost its run (#860). */
+export function reportedRuns(config: SupervisorConfig): string[] {
+  const finished = finishedOf(config);
+  for (const [runId, at] of finished) if (Date.now() - at > REPORTED_AFTER_END_MS) finished.delete(runId);
+  return [...new Set([...runsOf(config).keys(), ...finished.keys()])];
+}
+
+/** Stops what a person has running: a release does not wait out a run. */
+export function stopPersonRuns(config: SupervisorConfig, bindingId: string): void {
+  for (const run of runsOf(config).values()) if (run.bindingId === bindingId) run.stop();
 }
 
 /**
@@ -87,10 +116,6 @@ export function classifyError(text: string): { outcome: RunOutcome; resetsAt: st
   return { outcome: 'crashed', resetsAt: null };
 }
 
-async function removeTranscripts(dir: string, client: RunRequest['client']) {
-  for (const name of TRANSCRIPT_DIRS[client]) await rm(join(dir, CLIENT_DIRS[client], name), { recursive: true, force: true }).catch(() => undefined);
-}
-
 const isObject = (value: unknown): value is Record<string, unknown> => typeof value === 'object' && value !== null && !Array.isArray(value);
 
 /**
@@ -112,10 +137,10 @@ export function effectiveConfigHolds(config: unknown, tools: readonly string[], 
     && listed.length === tools.length && listed.every((tool, index) => tool === tools[index]);
 }
 
-async function codexPreflight(config: SupervisorConfig, dir: string, request: RunRequest, mcpUrl: string): Promise<'ok' | 'local_tool' | 'crashed'> {
+async function codexPreflight(config: SupervisorConfig, dir: string, person: Person, request: RunRequest, mcpUrl: string): Promise<'ok' | 'local_tool' | 'crashed'> {
   let session;
   try {
-    session = await openAppServer(config.cliPaths.codex, dir, config.egressHost, { timeoutMs: APP_SERVER_TIMEOUT_MS, overrides: codexRunOverrides(request.tools, mcpUrl, RUN_BRIEF) });
+    session = await openAppServer(config.cliPaths.codex, dir, config.egressHost, { timeoutMs: APP_SERVER_TIMEOUT_MS, overrides: codexRunOverrides(request.tools, mcpUrl, RUN_BRIEF), person });
     const read = await session.request('config/read', {});
     return effectiveConfigHolds(isObject(read) ? read.config : null, request.tools, mcpUrl) ? 'ok' : 'local_tool';
   } catch {
@@ -129,10 +154,10 @@ async function codexPreflight(config: SupervisorConfig, dir: string, request: Ru
  * After a Codex run: `account/rateLimits/read` once, for the plan's remaining usage (#854) and, at a plan limit, its reset
  * time. Unreadable is unknown (null).
  */
-async function codexRateLimits(config: SupervisorConfig, dir: string): Promise<{ resetsAt: string | null; usage: UsageReading | null }> {
+async function codexRateLimits(config: SupervisorConfig, dir: string, person: Person): Promise<{ resetsAt: string | null; usage: UsageReading | null }> {
   let session;
   try {
-    session = await openAppServer(config.cliPaths.codex, dir, config.egressHost, { timeoutMs: APP_SERVER_TIMEOUT_MS });
+    session = await openAppServer(config.cliPaths.codex, dir, config.egressHost, { timeoutMs: APP_SERVER_TIMEOUT_MS, person });
     const read = await session.request('account/rateLimits/read', {});
     return { resetsAt: readRateLimits(read).resetsAt, usage: readUsage(read) };
   } catch {
@@ -142,26 +167,40 @@ async function codexRateLimits(config: SupervisorConfig, dir: string): Promise<{
   }
 }
 
-export async function runCli(config: SupervisorConfig, request: RunRequest, dir: string, send: Send): Promise<Outcome> {
-  if (active.has(config)) return { error: 'busy' };
+/** Everything a run leaves behind goes once it ended: its processes first, so nothing can swap a path, then its files. */
+async function cleanUp(config: SupervisorConfig, runDir: string, dir: string, person: Person, client: RunRequest['client']) {
+  const quiet = await endProcesses(person);
+  await rm(runDir, { recursive: true, force: true }).catch(() => undefined);
+  if (!quiet) return;
+  await clearClientPaths(dir, client, TRANSCRIPT_DIRS[client], person);
+  await clearScratch(dir, person);
+  await clearLeftovers(config.tmpDir, person);
+}
+
+export async function runCli(config: SupervisorConfig, request: RunRequest, dir: string, person: Person, send: Send): Promise<Outcome> {
+  const runs = runsOf(config);
   const mcpUrl = config.mcpUrl ?? `http://${config.egressHost}:8080/mcp`;
   const runDir = join(config.tmpDir, `run-${request.runId}`);
   await rm(runDir, { recursive: true, force: true });
-  await mkdir(runDir, { mode: 0o700 });
+  await mkdir(runDir);
+  await chmod(runDir, 0o755);
   const mcpConfigPath = join(runDir, 'mcp.json');
-  // The Authorization header names the variable; the token itself is never written to a file or an argument.
-  await writeFile(mcpConfigPath, JSON.stringify({ mcpServers: { flux: { type: 'http', url: mcpUrl, headers: { Authorization: 'Bearer ${FLUX_RUN_TOKEN}' } } } }), { mode: 0o600 });
+  // The Authorization header names the variable; the token itself is never written to a file or an argument, so this
+  // file holds no secret and the person's CLI, under its own user id, may read it.
+  await writeFile(mcpConfigPath, JSON.stringify({ mcpServers: { flux: { type: 'http', url: mcpUrl, headers: { Authorization: 'Bearer ${FLUX_RUN_TOKEN}' } } } }));
+  await chmod(mcpConfigPath, 0o644);
   const argv = RUN_TEMPLATES[request.client]({ tools: request.tools, caps: request.caps, mcpConfigPath, mcpUrl, brief: RUN_BRIEF, model: request.model });
   const codex = request.client === 'codex';
   if (codex) {
-    // Held as the slot's run while the preflight runs, so a second run is refused as busy.
-    active.set(config, { runId: request.runId, stop: () => undefined });
-    const preflight = await codexPreflight(config, dir, request, mcpUrl);
-    if (preflight !== 'ok') {
-      active.delete(config);
-      await rm(runDir, { recursive: true, force: true }).catch(() => undefined);
-      await removeTranscripts(dir, request.client);
-      return { result: { kind: 'run', runId: request.runId, outcome: preflight, answer: null, resetsAt: null, turns: 0 } };
+    let stopAsked = false;
+    runs.set(request.runId, { bindingId: request.bindingId, stop: () => { stopAsked = true; } });
+    const preflight = await codexPreflight(config, dir, person, request, mcpUrl);
+    const early = stopAsked ? 'stopped' : preflight;
+    if (early !== 'ok') {
+      runs.delete(request.runId);
+      finishedOf(config).set(request.runId, Date.now());
+      await cleanUp(config, runDir, dir, person, request.client);
+      return { result: { kind: 'run', runId: request.runId, outcome: early, answer: null, resetsAt: null, turns: 0 } };
     }
   }
   const env = cliEnvironment(request.client, dir, config.egressHost, { FLUX_RUN_TOKEN: request.runToken });
@@ -177,7 +216,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
     let stopping = false;
     let done = false;
     const timers: NodeJS.Timeout[] = [];
-    const child = spawn(config.cliPaths[request.client], argv, { env, cwd: dir, shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(config.cliPaths[request.client], argv, { env, cwd: dir, shell: false, detached: true, stdio: ['pipe', 'pipe', 'pipe'], ...asPerson(person) });
     const killGroup = (signal: NodeJS.Signals) => { try { if (child.pid) process.kill(-child.pid, signal); } catch { /* already gone */ } };
     const later = (ms: number, action: () => void) => { const timer = setTimeout(action, ms); timer.unref(); timers.push(timer); return timer; };
     /** Ends the run in `reason` and the CLI's process group: SIGTERM, then kill. */
@@ -186,7 +225,7 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
       killGroup('SIGTERM');
       later(STOP_GRACE_MS, () => killGroup('SIGKILL'));
     };
-    active.set(config, { runId: request.runId, stop: () => {
+    runs.set(request.runId, { bindingId: request.bindingId, stop: () => {
       if (stopping || done) return;
       stopping = true;
       outcome ??= 'stopped';
@@ -339,12 +378,12 @@ export async function runCli(config: SupervisorConfig, request: RunRequest, dir:
   });
   // Codex, step two: the plan's usage and, at a plan limit, the reset time from the allowlisted app-server, in the same lane.
   if (codex && result.outcome !== 'local_tool' && result.outcome !== 'stopped') {
-    const read = await codexRateLimits(config, dir);
+    const read = await codexRateLimits(config, dir, person);
     if (result.outcome === 'plan_limit') result.resetsAt = read.resetsAt;
     result.usage = read.usage;
   }
-  active.delete(config);
-  await rm(runDir, { recursive: true, force: true }).catch(() => undefined);
-  await removeTranscripts(dir, request.client);
+  runs.delete(request.runId);
+  finishedOf(config).set(request.runId, Date.now());
+  await cleanUp(config, runDir, dir, person, request.client);
   return { result };
 }

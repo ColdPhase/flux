@@ -1,18 +1,17 @@
-import { randomUUID } from 'node:crypto';
 import type { AgentRuntimeConfig } from './config.js';
 import type { AgentRuntimeStore, RuntimeManagerPort, RuntimeSlotRow } from './ports.js';
 
-// The worker's reconciliation of the database's bindings with what each slot holds (F-022 "Backup,
-// restore and cleanup", "Stop, sign-out and removal"). It runs at the worker's start, which is what
-// makes a restore safe, and then every few seconds:
+// The worker's reconciliation of the database's bindings with what each runtime holds (F-022 "Backup,
+// restore and cleanup", "Stop, sign-out and removal"; #860: a runtime holds everyone's directories). It runs at the
+// worker's start, which is what makes a restore safe, and then every few seconds:
 //
-// - a binding marked `releasing` is released in its slot (sign out, delete, confirm /data is empty,
-//   supervisor exits); the slot becomes `wiping` and is `ready` again only once a NEW boot id reports
-//   an empty /data, so the next owner gets a fresh process with an empty /tmp;
+// - a binding marked `releasing` is released (sign out, end the person's processes, delete their directory);
 // - a directory without a binding (after a restore, or an owner deleted) is signed out and deleted the
 //   same way; a binding whose directory is missing shows *Sign in again*;
-// - a slot that cannot confirm an empty /data leaves the pool, and the operator is told;
-// - with the operator's idle policy, a binding unused for that many days is released.
+// - a runtime that holds something it should not leaves use, and the operator is told;
+// - with the operator's idle policy, a binding unused for that many days is released;
+// - each runtime's capacity is recorded: the number of agents that may run at once;
+// - a working run the runtime no longer has is ended, so a lost run does not hold a place on the server.
 
 export interface ReconcileReport {
   error?: string;
@@ -28,16 +27,19 @@ export interface ReconcileReport {
 
 const STALE_RESERVATION_MS = 2 * 60_000;
 
-export async function reconcileAgentRuntime({ config, store, manager, now = () => new Date(), log = () => undefined }: {
-  config: AgentRuntimeConfig; store: AgentRuntimeStore; manager: RuntimeManagerPort; now?: () => Date; log?: (event: Record<string, unknown>) => void;
+export async function reconcileAgentRuntime({ config, store, manager, endLostRuns, now = () => new Date(), log = () => undefined }: {
+  config: AgentRuntimeConfig; store: AgentRuntimeStore; manager: RuntimeManagerPort;
+  /** Ends the working runs of the runtime that are not among `running`. */
+  endLostRuns?: (running: string[]) => Promise<number>;
+  now?: () => Date; log?: (event: Record<string, unknown>) => void;
 }): Promise<ReconcileReport> {
   const report: ReconcileReport = { released: [], logoutFailed: [], orphans: 0, signInAgain: [], ready: [], outOfPool: [], idle: 0 };
-  // Expired/crashed auth commands retain their binding until this existing full
-  // release/new-boot path proves quiescence; never steal their lease in place.
+  // Expired/crashed auth commands retain their binding until a full release proves quiescence
+  // (no process and no file of that person is left); never steal their lease in place.
   await store.recoverAbandonedAuth();
   if (config.idleDays) {
     for (const binding of await store.idleBindings(new Date(now().getTime() - config.idleDays * 86_400_000))) {
-      if (await store.requestRelease({ slot: binding.slot }, 'idle')) report.idle += 1;
+      if (await store.requestRelease({ bindingId: binding.id }, 'idle')) report.idle += 1;
     }
   }
   const sightings = await manager.slots();
@@ -46,13 +48,8 @@ export async function reconcileAgentRuntime({ config, store, manager, now = () =
     return report;
   }
   const known = new Map((await store.slotsWithBindings()).map((entry) => [entry.slot.slot, entry]));
-  const save = async (row: RuntimeSlotRow, read?: RuntimeSlotRow) => {
-    await store.saveSlot(row, read);
-    if (row.state === 'ready') report.ready.push(row.slot);
-    if (row.state === 'out_of_pool') { report.outOfPool.push(row.slot); log({ event: 'slot_out_of_pool', slot: row.slot, reason: row.outOfPoolReason }); }
-  };
   // The sightings were taken before the database was read, so a bind that activated in between is not in
-  // them. Before telling an owner to sign in again, look at the slot once more.
+  // them. Before telling an owner to sign in again, look at the runtime once more.
   const stillMissing = async (slot: string, bindingId: string) => {
     const again = await manager.slots();
     const sighted = again.ok ? again.value.find((entry) => entry.slot === slot) : undefined;
@@ -61,82 +58,54 @@ export async function reconcileAgentRuntime({ config, store, manager, now = () =
   for (const sighting of sightings.value) {
     const entry = known.get(sighting.slot);
     known.delete(sighting.slot);
-    const row: RuntimeSlotRow = entry?.slot ?? { slot: sighting.slot, state: 'unknown', bootId: null, wipeBootId: null, outOfPoolReason: null };
-    const binding = entry?.binding ?? null;
+    const row: RuntimeSlotRow = entry?.slot ?? { slot: sighting.slot, state: 'unknown', bootId: null, outOfPoolReason: null, capacity: null };
+    const bindings = entry?.bindings ?? [];
     if (!sighting.reachable) {
-      if (!entry || row.state === 'ready') await store.saveSlot({ ...row, state: row.state === 'ready' ? 'unknown' : row.state }, entry?.slot);
+      if (!entry || row.state === 'ready') await store.saveSlot({ ...row, state: row.state === 'ready' ? 'unknown' : row.state });
       continue;
     }
-    const seen: RuntimeSlotRow = { ...row, bootId: sighting.bootId };
-    const wiping = (bootId: string): RuntimeSlotRow => ({ ...seen, state: 'wiping', wipeBootId: bootId, outOfPoolReason: null });
-    const outOfPool = (reason: RuntimeSlotRow['outOfPoolReason']): RuntimeSlotRow => ({ ...seen, state: 'out_of_pool', wipeBootId: null, outOfPoolReason: reason });
-
-    if (binding?.state === 'releasing') {
+    for (const binding of bindings) {
+      if (binding.state !== 'releasing') continue;
       const released = await manager.release(sighting.slot, binding.id);
-      if (!released.ok) { log({ event: 'release_pending', slot: sighting.slot, code: released.code }); await store.saveSlot(seen, entry?.slot); continue; }
-      const slot = released.value.dataEmpty ? wiping(sighting.bootId) : outOfPool('data_not_empty');
-      // A client the slot found no CLI and no files for counts as "never had a login" only when the durable
+      if (!released.ok || !released.value.deleted) { log({ event: 'release_pending', slot: sighting.slot, code: released.ok ? 'not_deleted' : released.code }); continue; }
+      // A client the runtime found no CLI and no files for counts as "never had a login" only when the durable
       // history agrees (#480); a missing directory or tools volume must not turn a possible login into a confirmation.
       const loginPossible = released.value.notInstalled.length ? await store.loginPossible(binding.id) : [];
       const logoutFailed = released.value.logoutFailed || released.value.notInstalled.some((client) => loginPossible.includes(client));
-      await store.completeRelease(binding.id, slot, logoutFailed);
+      await store.completeRelease(binding.id, logoutFailed);
       report.released.push(binding.id);
       if (logoutFailed) report.logoutFailed.push(binding.id);
-      if (slot.state === 'out_of_pool') report.outOfPool.push(slot.slot);
-      continue;
     }
-
-    const orphans = sighting.bindings.filter((id) => id !== binding?.id);
-    if (orphans.length) {
-      let dataEmpty = false;
-      let failed = false;
-      for (const id of orphans) {
-        const released = await manager.release(sighting.slot, id);
-        if (!released.ok) { failed = true; break; }
-        report.orphans += 1;
-        dataEmpty = released.value.dataEmpty;
-      }
-      if (binding && !sighting.bindings.includes(binding.id) && binding.state === 'active' && await stillMissing(sighting.slot, binding.id)) {
+    for (const id of sighting.bindings.filter((dir) => !bindings.some((binding) => binding.id === dir))) {
+      const released = await manager.release(sighting.slot, id);
+      if (released.ok && released.value.deleted) report.orphans += 1;
+      else log({ event: 'release_pending', slot: sighting.slot, code: released.ok ? 'not_deleted' : released.code });
+    }
+    for (const binding of bindings) {
+      if (sighting.bindings.includes(binding.id)) continue;
+      if (binding.state === 'active' && await stillMissing(sighting.slot, binding.id)) {
         await store.markSignInAgain(binding.id);
         report.signInAgain.push(binding.id);
+      } else if (binding.state === 'binding') {
+        await store.dropStaleReservation(binding.id, new Date(now().getTime() - STALE_RESERVATION_MS));
       }
-      if (failed) { await store.saveSlot(seen, entry?.slot); continue; }
-      if (binding) await save({ ...seen, state: 'held', wipeBootId: null, outOfPoolReason: null }, entry?.slot);
-      else await save(dataEmpty ? wiping(sighting.bootId) : outOfPool('data_not_empty'), entry?.slot);
-      continue;
     }
-
-    if (binding) {
-      if (!sighting.bindings.includes(binding.id)) {
-        if (binding.state === 'active') {
-          if (!await stillMissing(sighting.slot, binding.id)) continue;
-          await store.markSignInAgain(binding.id);
-          report.signInAgain.push(binding.id);
-        } else if (binding.state === 'binding' && await store.dropStaleReservation(binding.id, new Date(now().getTime() - STALE_RESERVATION_MS))) {
-          continue;
-        }
-      }
-      await save({ ...seen, state: 'held', wipeBootId: null, outOfPoolReason: null }, entry?.slot);
-      continue;
-    }
-
-    if (sighting.other > 0) { await save(outOfPool('data_not_empty'), entry?.slot); continue; }
-    if (row.state === 'wiping') {
-      await save(sighting.bootId !== row.wipeBootId ? { ...seen, state: 'ready', wipeBootId: null } : seen, entry?.slot);
-    } else if (row.state === 'held') {
-      // Its binding is gone (the owner was deleted) and no directory is left: recycle the process
-      // before anyone else binds it.
-      const recycled = await manager.release(sighting.slot, randomUUID());
-      await save(recycled.ok && recycled.value.dataEmpty ? wiping(sighting.bootId) : seen, entry?.slot);
-    } else if (row.state === 'out_of_pool') {
-      // Ready again only after the operator fixed it and the supervisor restarted.
-      await save(row.bootId !== sighting.bootId ? { ...seen, state: 'ready', outOfPoolReason: null } : seen, entry?.slot);
-    } else {
-      await save({ ...seen, state: 'ready', wipeBootId: null, outOfPoolReason: null }, entry?.slot);
-    }
+    const held = sighting.other > 0;
+    const seen: RuntimeSlotRow = { ...row, bootId: sighting.bootId, capacity: sighting.capacity,
+      state: held ? 'out_of_pool' : 'ready', outOfPoolReason: held ? 'data_not_empty' : null };
+    await store.saveSlot(seen);
+    if (held) { report.outOfPool.push(seen.slot); log({ event: 'slot_out_of_pool', slot: seen.slot, reason: seen.outOfPoolReason }); } else report.ready.push(seen.slot);
   }
   for (const { slot } of known.values()) {
-    if (slot.state !== 'out_of_pool') await save({ ...slot, state: 'out_of_pool', wipeBootId: null, outOfPoolReason: 'missing' }, slot);
+    if (slot.state === 'out_of_pool') continue;
+    await store.saveSlot({ ...slot, state: 'out_of_pool', outOfPoolReason: 'missing' });
+    report.outOfPool.push(slot.slot);
+    log({ event: 'slot_out_of_pool', slot: slot.slot, reason: 'missing' });
+  }
+  // Only with every runtime's answer: a runtime that did not answer may still have its runs.
+  if (endLostRuns && sightings.value.length && sightings.value.every((entry) => entry.reachable)) {
+    const lost = await endLostRuns(sightings.value.flatMap((entry) => (entry.reachable ? entry.running : [])));
+    if (lost) log({ event: 'lost_runs_ended', lost });
   }
   return report;
 }

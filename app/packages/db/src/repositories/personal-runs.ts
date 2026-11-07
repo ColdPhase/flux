@@ -44,10 +44,11 @@ const IN_FLIGHT: ('queued' | 'reading' | 'dispatching')[] = ['queued', 'reading'
 const FINISHED_WORK: ('done' | 'not_pursued')[] = ['done', 'not_pursued'];
 
 /**
- * A queued run left behind: not one paused until a limit resets (#854), and not one waiting its turn behind the owner's
- * working run, whose clock may be an hour (#843).
+ * A queued run left behind: not one paused until a limit resets (#854), not one waiting for room on the server (#860), and
+ * not one waiting its turn behind the owner's working run, whose clock may be an hour (#843).
  */
 const waitingTooLong = (olderThanSeconds: number) => sql`((personal_runs.resume_at IS NULL OR personal_runs.resume_at < now() - (${olderThanSeconds}::int * interval '1 second'))
+  AND personal_runs.end_reason IS DISTINCT FROM 'no_room'
   AND NOT EXISTS (SELECT 1 FROM personal_runs w WHERE w.owner_user_id = personal_runs.owner_user_id AND w.status IN ('reading', 'dispatching')))`;
 
 /** What a run lost with its worker keeps counted: what it had spent and the most one more request could have cost, never more than it held (#854). */
@@ -157,18 +158,36 @@ export function personalRunRows(db: DbExecutor) {
         sql`(${r.resumeAt} IS NULL OR ${r.resumeAt} <= now())`)).limit(1)).length > 0;
     },
 
+    /**
+     * Whether the runtime has room for one more agent (#860): fewer runs at work than it reported it can hold. It holds a lock
+     * until the transaction ends, so the caller's claim counts before the next caller reads. Before any report: room, and the
+     * run ends in its own words if the runtime is not there.
+     */
+    async roomForRuntimeRun() {
+      await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext('agent-runtime-room'))`);
+      const rows = await db.execute(sql`SELECT
+        (SELECT count(*)::int FROM personal_runs WHERE engine = 'runtime' AND status IN ('reading', 'dispatching')) AS running,
+        (SELECT sum(capacity)::int FROM agent_runtime_slots WHERE state = 'ready') AS capacity`);
+      const { running, capacity } = rows.rows[0] as { running: number; capacity: number | null };
+      return capacity === null || running < capacity;
+    },
+
     /** The run holding this owner's lane, if any: what a queued request is waiting behind. */
     async workingOf(ownerUserId: string) {
       const [row] = await db.select().from(r).where(and(eq(r.ownerUserId, ownerUserId), inArray(r.status, ['reading', 'dispatching']))).orderBy(asc(r.createdAt)).limit(1);
       return row ? toRun(row) : null;
     },
 
-    /** Queued runs whose owner's lane is free, owner requests first and then oldest first: the next starts when the one before it ends. */
+    /** Queued runs whose owner's lane is free, each owner's requests first, and whoever waited longest first: the next starts when the one before it ends. */
     async startableQueued(limit: number) {
-      const rows = await db.execute(sql`SELECT DISTINCT ON (q.owner_user_id) q.id FROM personal_runs q WHERE q.status = 'queued'
+      // Heads waiting for room stay out of the list until there is room, so they never crowd out a run on an API key.
+      const room = sql`(SELECT count(*) FROM personal_runs w WHERE w.engine = 'runtime' AND w.status IN ('reading', 'dispatching'))
+        < COALESCE((SELECT sum(capacity) FROM agent_runtime_slots WHERE state = 'ready'), 2147483647)`;
+      const rows = await db.execute(sql`SELECT id FROM (SELECT DISTINCT ON (q.owner_user_id) q.id, q.created_at, q.end_reason FROM personal_runs q WHERE q.status = 'queued'
         AND (q.resume_at IS NULL OR q.resume_at <= now())
         AND NOT EXISTS (SELECT 1 FROM personal_runs a WHERE a.owner_user_id = q.owner_user_id AND a.status IN ('reading', 'dispatching'))
-        ORDER BY q.owner_user_id, (q.authority <> 'owner_request'), q.created_at, q.id LIMIT ${limit}`);
+        ORDER BY q.owner_user_id, (q.authority <> 'owner_request'), q.created_at, q.id) next
+        WHERE next.end_reason IS DISTINCT FROM 'no_room' OR ${room} ORDER BY created_at, id LIMIT ${limit}`);
       return (rows.rows as { id: string }[]).map((row) => row.id);
     },
 
@@ -200,6 +219,22 @@ export function personalRunRows(db: DbExecutor) {
         endReason: sql`CASE WHEN ${r.engine} = 'runtime' THEN 'unknown' ELSE ${r.endReason} END` })
         .where(and(stale, eq(r.status, 'dispatching'))).returning();
       return [...undispatched, ...lost].map(toRun);
+    },
+
+    async endLostRuntime(running: readonly string[], olderThanSeconds: number, limit: number) {
+      const rows = await db.update(r).set({
+        status: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'provider_failed' ELSE 'unavailable' END`,
+        costState: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'unknown' ELSE 'released' END`,
+        endReason: sql`CASE WHEN ${r.status} = 'dispatching' THEN 'unknown' ELSE ${r.endReason} END`,
+        chargedMicros: 0, completedAt: new Date(), updatedAt: new Date(),
+      }).where(sql`${r.id} IN (SELECT id FROM personal_runs WHERE engine = 'runtime' AND status IN ('reading', 'dispatching')
+        AND updated_at < now() - (${olderThanSeconds}::int * interval '1 second') AND id <> ALL(${sql.param([...running])}::uuid[])
+        ORDER BY updated_at, id LIMIT ${limit} FOR UPDATE SKIP LOCKED)`).returning();
+      return rows.map(toRun);
+    },
+
+    async lockLane(ownerUserId: string) {
+      await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext('personal-run-lane'), hashtext(${ownerUserId}))`);
     },
 
     async endStaleAny(olderThanSeconds: number, limit: number) {

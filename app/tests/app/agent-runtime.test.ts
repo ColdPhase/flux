@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
 import { sql } from 'drizzle-orm';
 import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_PATH } from '@flux/contracts';
-import { agentRuntimeUseCases, reconcileAgentRuntime, type AgentRuntimeConfig, type DomainError, type RuntimeManagerPort } from '@flux/core';
+import { agentRuntimeUseCases, reconcileAgentRuntime, type AgentRuntimeConfig, type RuntimeManagerPort } from '@flux/core';
 import { agentRuntimeOperations, agentRuntimeStore } from '@flux/db';
 import { Browser } from './support/http.js';
 import { db, insertedHuman, pool } from './support/db.js';
@@ -46,7 +46,7 @@ describe('runtime tables hold display facts only', () => {
   // Every column of every runtime table, reviewed. A new column fails here until it is reviewed: none
   // may hold a vendor credential, a token or a session (F-022 "Secrets and honesty").
   const REVIEWED: Record<string, string[]> = {
-    agent_runtime_slots: ['slot:text', 'state:text', 'boot_id:uuid', 'wipe_boot_id:uuid', 'out_of_pool_reason:text', 'reported_at:timestamp with time zone', 'updated_at:timestamp with time zone'],
+    agent_runtime_slots: ['slot:text', 'state:text', 'boot_id:uuid', 'out_of_pool_reason:text', 'reported_at:timestamp with time zone', 'updated_at:timestamp with time zone', 'capacity:smallint'],
     agent_runtime_bindings: ['id:uuid', 'owner_user_id:text', 'slot:text', 'state:text', 'created_at:timestamp with time zone', 'last_used_at:timestamp with time zone',
       'release_reason:text', 'release_requested_at:timestamp with time zone', 'released_at:timestamp with time zone', 'release_logout_failed:boolean'],
     agent_runtime_connections: ['id:uuid', 'owner_user_id:text', 'binding_id:uuid', 'transport:text', 'client:text', 'state:text', 'sign_in_method:text', 'auth_method:text',
@@ -119,68 +119,52 @@ describe('runtime tables hold display facts only', () => {
 
 describe('the PostgreSQL store under the owner use cases', () => {
   const config: AgentRuntimeConfig = { clients: ['claude_code'], commercialTermsAgreedOn: null, idleDays: null, manager: { url: 'http://unused:1', secret: 'x'.repeat(32) } };
-  const base = 800 + Math.floor(Math.random() * 90);
-  const slots = [`runtime-${base}`, `runtime-${base + 1}`];
+  const slots = [`runtime-${800 + Math.floor(Math.random() * 90)}`];
   const dirs = new Map<string, string[]>(slots.map((slot) => [slot, []]));
   const boots = new Map<string, string>(slots.map((slot) => [slot, randomUUID()]));
   const manager: RuntimeManagerPort = {
-    async slots() { return { ok: true, value: slots.map((slot) => ({ slot, reachable: true as const, bootId: boots.get(slot)!, bindings: [...dirs.get(slot)!], other: 0 })) }; },
-    async bind(slot, id) { if (dirs.get(slot)!.length) return { ok: false, code: 'data_not_empty' }; dirs.get(slot)!.push(id); return { ok: true, value: undefined }; },
-    async release(slot, id) { dirs.set(slot, dirs.get(slot)!.filter((dir) => dir !== id)); boots.set(slot, randomUUID()); return { ok: true, value: { dataEmpty: true, logoutFailed: true, notInstalled: [] } }; },
+    async slots() { return { ok: true, value: slots.map((slot) => ({ slot, reachable: true as const, bootId: boots.get(slot)!, bindings: [...dirs.get(slot)!], other: 0, capacity: 2, running: [] })) }; },
+    async bind(slot, id) { dirs.get(slot)!.push(id); return { ok: true, value: undefined }; },
+    async release(slot, id) { dirs.set(slot, dirs.get(slot)!.filter((dir) => dir !== id)); return { ok: true, value: { deleted: true, logoutFailed: true, notInstalled: [] } }; },
     async status(slot) { return { ok: true, value: { signedIn: false, facts: null, bootId: boots.get(slot)! } }; },
     async logout(slot) { return { ok: true, value: { logout: 'ok', bootId: boots.get(slot)! } }; },
   };
   const store = agentRuntimeStore(db);
 
-  test('two owners racing for the last free slot: exactly one gets it, the other sees the pool full', async () => {
+  test('many owners at once each get a place in the one runtime, and each leaves alone (#860)', async () => {
     try {
       await reconcileAgentRuntime({ config, store, manager });
       const runtime = agentRuntimeUseCases(config, store, manager);
       const [ada, jonas, mia] = await Promise.all([insertedHuman('runtime-ada'), insertedHuman('runtime-jonas'), insertedHuman('runtime-mia')]);
-      // Only our two slots may be bindable in this shared database.
+      // Only our runtime may be bindable in this shared database.
       const others = await pool.query(`SELECT count(*)::int AS n FROM agent_runtime_slots WHERE state = 'ready' AND slot <> ALL($1)`, [slots]);
       assert.equal(others.rows[0].n, 0);
-      await runtime.bind(ada.id);
-      const outcomes = await Promise.allSettled([runtime.bind(jonas.id), runtime.bind(mia.id)]);
-      assert.equal(outcomes.filter((outcome) => outcome.status === 'fulfilled').length, 1);
-      const refused = outcomes.find((outcome) => outcome.status === 'rejected') as PromiseRejectedResult;
-      assert.equal((refused.reason as DomainError).code, 'AGENT_RUNTIME_POOL_FULL');
+      const outcomes = await Promise.allSettled([runtime.bind(ada.id), runtime.bind(jonas.id), runtime.bind(mia.id)]);
+      assert.deepEqual(outcomes.map((outcome) => outcome.status), ['fulfilled', 'fulfilled', 'fulfilled']);
       const bound = await pool.query(`SELECT slot, owner_user_id FROM agent_runtime_bindings WHERE slot = ANY($1) AND state = 'active' ORDER BY slot`, [slots]);
-      assert.equal(new Set(bound.rows.map((row) => row.slot)).size, 2, 'two owners, two slots');
+      assert.equal(bound.rows.length, 3, 'three owners in one runtime');
+      assert.equal(new Set(bound.rows.map((row) => row.slot)).size, 1);
+      const capacity = await pool.query(`SELECT capacity FROM agent_runtime_slots WHERE slot = ANY($1)`, [slots]);
+      assert.equal(capacity.rows[0].capacity, 2);
       // Release with a failed sign-out: the owner is told.
       await runtime.remove(ada.id);
       await reconcileAgentRuntime({ config, store, manager });
       const status = await runtime.status(ada.id);
       assert.equal(status.binding, null);
       assert.deepEqual([status.lastRelease?.reason, status.lastRelease?.signOutFailed], ['owner', true]);
-      // The operator's view and release by slot.
+      // The operator's view and release by a person's e-mail.
+      const emails = await pool.query<{ id: string; email: string }>('SELECT id, email FROM auth_users WHERE id = ANY($1)', [[jonas.id, mia.id]]);
       const listed = (await agentRuntimeOperations(db).list()).filter((row) => slots.includes(row.slot));
-      assert.equal(listed.length, 2);
-      const jonasOrMia = bound.rows.find((row) => row.owner_user_id !== ada.id)!;
-      assert.ok(await agentRuntimeOperations(db).release(jonasOrMia.slot));
+      assert.deepEqual(listed.map((row) => row.email).sort(), emails.rows.map((row) => row.email).sort());
+      assert.equal(listed[0]!.capacity, 2);
+      assert.ok(await agentRuntimeOperations(db).release(emails.rows.find((row) => row.id === jonas.id)!.email));
+      assert.equal(await agentRuntimeOperations(db).release('nobody@example.test'), null);
       await reconcileAgentRuntime({ config, store, manager });
-      assert.equal((await runtime.status(jonasOrMia.owner_user_id)).lastRelease?.reason, 'operator');
+      assert.equal((await runtime.status(jonas.id)).lastRelease?.reason, 'operator');
+      assert.equal((await runtime.status(mia.id)).binding?.state, 'active', 'and the other stays');
     } finally {
       await pool.query('DELETE FROM agent_runtime_bindings WHERE slot = ANY($1)', [slots]);
       await pool.query('DELETE FROM agent_runtime_slots WHERE slot = ANY($1)', [slots]);
-    }
-  });
-});
-
-describe('saving a slot is compare-and-set against what the worker read (#331 m8)', () => {
-  test('a stale decision does not replace a slot a bind has since held', async () => {
-    const slot = `runtime-${900 + Math.floor(Math.random() * 90)}`;
-    const store = agentRuntimeStore(db);
-    const row = { slot, state: 'ready' as const, bootId: randomUUID(), wipeBootId: null, outOfPoolReason: null };
-    try {
-      await store.saveSlot(row);
-      await pool.query(`UPDATE agent_runtime_slots SET state = 'held' WHERE slot = $1`, [slot]);
-      await store.saveSlot({ ...row, state: 'wiping', wipeBootId: randomUUID() }, { state: 'ready', wipeBootId: null });
-      assert.equal((await pool.query(`SELECT state FROM agent_runtime_slots WHERE slot = $1`, [slot])).rows[0].state, 'held');
-      await store.saveSlot({ ...row, state: 'ready' }, { state: 'held', wipeBootId: null });
-      assert.equal((await pool.query(`SELECT state FROM agent_runtime_slots WHERE slot = $1`, [slot])).rows[0].state, 'ready');
-    } finally {
-      await pool.query('DELETE FROM agent_runtime_slots WHERE slot = $1', [slot]);
     }
   });
 });
@@ -194,7 +178,7 @@ describe('purge records confirmed and unconfirmed vendor logout', () => {
       // Purge updates every binding. Roll back the whole test, including nested adapter
       // transactions, so this regression cannot alter other owners' runtime state.
       await assert.rejects(db.transaction(async (tx) => {
-        await tx.execute(sql`INSERT INTO agent_runtime_slots(slot, state) VALUES ('runtime-999', 'held')`);
+        await tx.execute(sql`INSERT INTO agent_runtime_slots(slot, state) VALUES ('runtime-999', 'ready')`);
         await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state)
           VALUES (${randomUUID()}, ${owner.id}, 'runtime-999', 'active')`);
         await tx.execute(sql`INSERT INTO agent_runtime_bindings(id, owner_user_id, slot, state, release_reason, release_requested_at, released_at, release_logout_failed)

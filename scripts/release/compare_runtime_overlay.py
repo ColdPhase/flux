@@ -12,7 +12,7 @@ from __future__ import annotations
 import json
 import sys
 
-RUNTIME = ("runtime-install", "runtime-manager", "runtime-egress", "runtime-1", "runtime-2", "runtime-3", "runtime-4")
+RUNTIME = ("runtime-install", "runtime-manager", "runtime-egress", "runtime-1")
 
 
 def normalized(service: dict) -> dict:

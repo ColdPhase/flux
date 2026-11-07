@@ -44,10 +44,10 @@ class OverlayCompareTest(unittest.TestCase):
 
     def test_every_isolation_difference_is_reported(self) -> None:
         mutations = {
-            "limit": lambda r: r["services"]["runtime-2"].update(mem_limit="8g"),
-            "extra capability": lambda r: r["services"]["runtime-3"].update(cap_add=["NET_ADMIN"]),
+            "limit": lambda r: r["services"]["runtime-1"].update(mem_limit="8g"),
+            "extra capability": lambda r: r["services"]["runtime-1"].update(cap_add=["NET_ADMIN"]),
             "network": lambda r: r["services"]["runtime-1"].update(networks={"default": None}),
-            "writable root": lambda r: r["services"]["runtime-4"].update(read_only=False),
+            "writable root": lambda r: r["services"]["runtime-1"].update(read_only=False),
             "command": lambda r: r["services"]["runtime-manager"].update(command=["sh"]),
             "source build": lambda r: r["services"]["runtime-egress"].update(build={"context": "."}),
             "bind mount": lambda r: r["services"]["runtime-1"].update(volumes=[{"type": "bind", "source": "/run"}]),

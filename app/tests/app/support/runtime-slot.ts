@@ -15,7 +15,6 @@ export const slotSecret = () => randomBytes(24).toString('base64url');
 export interface TestSlot {
   config: SupervisorConfig;
   url: string;
-  released: number;
   close(): Promise<void>;
 }
 
@@ -46,6 +45,9 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
     bootId: randomUUID(),
     dataDir,
     tmpDir,
+    // Unprivileged here; scripts/check_runtime_people.sh proves the separate user ids in a container with the real capabilities.
+    separate: false,
+    capacity: 2,
     enabled: options.enabled ?? ['claude_code', 'codex'],
     cliPaths: withClis
       ? { claude_code: await fakeWrapper(bin, 'claude'), codex: await fakeWrapper(bin, 'codex') }
@@ -56,14 +58,12 @@ export async function startTestSlot(options: { slot?: string; enabled?: RuntimeC
     ...(options.mcpUrl ? { mcpUrl: options.mcpUrl } : {}),
     ...options.console,
   };
-  const state = { released: 0 };
-  const { server } = createSupervisorServer(config, () => { state.released += 1; });
+  const { server } = createSupervisorServer(config);
   await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
   const { port } = server.address() as AddressInfo;
   return {
     config,
     url: `http://127.0.0.1:${port}`,
-    get released() { return state.released; },
     async close() {
       await new Promise<void>((done) => server.close(() => done()));
       await rm(root, { recursive: true, force: true });
