@@ -621,7 +621,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.get_by_role("button", name="Rename map Bike light beam angles")).to_be_visible()
         page.goto(f"/projects/{self.ids['project']}/map/{private['id']}")
         expect(page).to_have_url(f"{ORIGIN}/map/{private['id']}")
-        expect(page.locator(".sk-lead")).to_contain_text("My map")  # a private map is My map (#866)
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()  # a private map is My map (#866)
         expect(page.locator(".sk-aud")).to_contain_text("Only you")
         expect(page.get_by_role("navigation", name="Space views")).to_have_count(0)
         expect(page.locator("header.top h1")).not_to_have_text("Gesture lamp")

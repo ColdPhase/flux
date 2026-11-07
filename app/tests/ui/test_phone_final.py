@@ -389,7 +389,7 @@ class PhoneFinal(unittest.TestCase):
         page.goto("/")
         page.locator(".home__more").get_by_role("link", name="My map").click()
         expect(page).to_have_url(re.compile(rf"{ORIGIN}/map/[0-9a-f-]{{36}}$"))
-        expect(page.locator(".sk-lead")).to_contain_text("My map")
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         page.goto("/")
         page.locator(".home__more").get_by_role("button", name="Details", exact=True).click()
         expect(page.get_by_role("dialog", name="Details")).to_be_visible()

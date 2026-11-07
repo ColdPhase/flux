@@ -581,9 +581,8 @@ class AppShellJourney(unittest.TestCase):
         places.get_by_role("link", name="My map", exact=True).click()
         expect(page).to_have_url(re.compile(rf"^{ORIGIN}/map/[0-9a-f-]{{36}}$"))
         expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
-        lead = page.locator(".sk-lead")
-        expect(lead).to_contain_text("My map")
-        expect(lead).to_contain_text("Only you")
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
+        expect(page.locator(".sk-aud")).to_have_text("Only you")
         expect(page.get_by_text("An empty map.")).to_be_visible()
         shot(page, "desktop-1440-my-map-empty-light")
         my_map = page.url.rsplit("/", 1)[1]
@@ -608,7 +607,7 @@ class AppShellJourney(unittest.TestCase):
         page.go_back()
         expect(page).to_have_url(f"{ORIGIN}/")
         places.get_by_role("link", name="My map", exact=True).click()
-        expect(page.locator(".sk-lead")).to_contain_text("My map")
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
         # Details is in More (#340); the header has no separate Details button on the computer.
@@ -816,7 +815,7 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/map")
         # Mapping itself is covered by tests/ui/test_sketches.py (#69): My map opens at its own address.
         expect(page).to_have_url(re.compile(rf"^{ORIGIN}/map/[0-9a-f-]{{36}}$"))
-        expect(page.locator(".sk-lead")).to_contain_text("My map")
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
 
         narrow = self.page(phone=True, viewport={"width": 360, "height": 780})
         narrow.goto("/tasks")

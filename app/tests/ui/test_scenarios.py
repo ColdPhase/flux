@@ -1153,7 +1153,7 @@ class ScenarioJourney:
         my_map = self.api("ada", "POST", f"/api/v1/workspaces/{s['workspace']}/sketches", {"title": "My map", "scope": "private"}, status=201)
         self.api("ada", "POST", f"/api/v1/sketches/{my_map['id']}/thoughts", {"text": DRAFT, "x": 0, "y": 0}, status=201)
         page.goto(f"/map/{my_map['id']}")
-        expect(page.locator(".sk-lead")).to_contain_text("My map")
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         expect(page.get_by_text(DRAFT)).to_be_visible()
         private = self.api("ada", "GET", "/api/v1/search?q=89+EUR&place=private", status=200)["items"]
         self.assertEqual(len(private), 1, private)

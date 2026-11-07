@@ -109,7 +109,7 @@ class SketchJourney(unittest.TestCase):
         page.get_by_role("navigation", name="Places").get_by_role("link", name="My map").click()
         expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
         type(self).sketch_url = page.url.replace(ORIGIN, "")
-        expect(page.locator(".sk-lead")).to_contain_text("My map")
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         expect(page.get_by_role("link", name="Maps")).to_have_count(0)  # one map, not an item of a list
         expect(page.get_by_role("button", name=re.compile("^Rename map"))).to_have_count(0)  # and it keeps its name
         expect(page.locator(".sk-aud")).to_have_text("Only you")

@@ -655,8 +655,8 @@ function AppLayoutContent() {
     ? { crumb: null, title: 'Your assistant', topic: 'Only you can use it · optional', noDetails: true }
     : activeProject
     ? { crumb: null, title: activeProject.name, topic: audience }
-    : location.pathname === '/map'
-    // The Sketchbook is named as such (#508); its privacy line is the first line of the page, at every width.
+    : /^\/map(\/|$)/.test(location.pathname)
+    // My map (#866) is named in the header at its own address too; its privacy line is the first thing in the map's head.
     ? { crumb: null, title: 'My map', topic: '' }
     : where === 'inbox'
       ? location.pathname.startsWith('/settings/')

@@ -748,9 +748,9 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   const head = (
         <div className="sk-head">
           <p className="sk-lead">
-            {/* My map is one map, not an item of a list (#866): there is nothing to go back to, and it keeps its name. */}
+            {/* My map is one map, not an item of a list (#866): the header names it, there is nothing to go back to, and it keeps its name. */}
             {mine ? null : <><Link to={back} className="sk-back">Maps</Link><span aria-hidden="true" className="sk-sep">·</span></>}
-            {mine ? <span className="sk-title">My map</span> : renaming && canWrite ? (
+            {mine ? null : renaming && canWrite ? (
               <TitleEditor sketch={sketch} onDone={(title) => {
                 setRenaming(false);
                 if (title && title !== sketch.title) { doc.perform([{ kind: 'rename', title }], 'renamed the map'); say(`Renamed to ${quote(title)}`, true); }

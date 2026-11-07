@@ -122,7 +122,7 @@ class SpokojHomeSearch(unittest.TestCase):
             page.goto("/map")
             # One map, shown at its own address, named "My map" and private; its thoughts are what it holds (no list, no notes).
             expect(page).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
-            expect(page.locator(".sk-lead")).to_contain_text("My map")
+            expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
             expect(page.locator(".sk-aud")).to_have_text("Only you")
             expect(page.get_by_text("Beans on the south side")).to_be_visible()
             self.assertEqual(page.locator(".top__views").count(), 0)
@@ -202,7 +202,7 @@ class SpokojHomeSearch(unittest.TestCase):
                 expect(page.get_by_role("heading", level=2, name=re.compile("Good "))).to_be_visible()
                 shot(page, f"spokoj-home-{size}-{theme}")
                 page.goto("/map")
-                expect(page.locator(".sk-lead")).to_contain_text("My map")
+                expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
                 expect(page.get_by_text("Beans on the south side")).to_be_visible()
                 shot(page, f"spokoj-my-map-{size}-{theme}")
                 self.search(page, "radio", phone=phone)
