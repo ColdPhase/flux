@@ -107,6 +107,15 @@ test('two-era HTTP admission keeps exact revisions, notification semantics, mode
     assert.equal((await send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: legacy } })).status, 400);
     assert.equal((await send(JSON.stringify({ padding: 'x'.repeat(5 * 1024 * 1024) }))).status, 413);
   });
+  await t.test('a request over 1 MiB is refused unread, and a tool call with more than 10,000 elements is refused before validation (#877)', async () => {
+    assert.equal((await send(JSON.stringify({ padding: 'x'.repeat(1024 * 1024 + 1) }))).status, 413);
+    const call = (padding: number[]) => ({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'flux_create_task', arguments: { padding } } });
+    const refused = await send(call(new Array<number>(10_001).fill(0)), { 'mcp-protocol-version': legacy });
+    assert.equal(refused.message.result.isError, true); assert.match(refused.message.result.content[0].text, /more than the maximum of 10000 elements/);
+    // Below the limit the arguments reach the tool's own schema, which names the missing fields instead.
+    const reached = await send(call(new Array<number>(100).fill(0)), { 'mcp-protocol-version': legacy });
+    assert.equal(reached.message.result.isError, true); assert.doesNotMatch(reached.message.result.content[0].text, /maximum of/);
+  });
   await t.test('arrays containing otherwise valid writes create no task, receipt or grant debit in either era', async () => {
     const grant = await f.grant('work.create', 'execute', 3);
     const counts = async () => ({ tasks: await f.tasks(), used: await f.used(grant.id), receipts:

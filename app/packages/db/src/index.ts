@@ -31,8 +31,8 @@ export * from './repositories/idp-logout.js';
 export * from './migrations/ledger.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
 export const FLUX_SCHEMA_VERSION = 7;
-// pg-boss 12.35.0 declares schema 43. Update this with the pinned package.
-export const PG_BOSS_SCHEMA_VERSION = 43;
+// pg-boss 12.38.0 declares schema 46. Update this with the pinned package.
+export const PG_BOSS_SCHEMA_VERSION = 46;
 
 // A session left idle inside a transaction for this long is ended by PostgreSQL (#234). Flux never
 // waits on anything outside the database inside a transaction, so only an abandoned client hits it.

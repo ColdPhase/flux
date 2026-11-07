@@ -8,8 +8,8 @@ allowBuilds:
   node-pty: true
 
 patchedDependencies:
-  '@better-auth/oauth-provider@1.7.6': patches/oauth-provider-1.7.6-flux-refresh.patch
-  drizzle-orm@0.45.3: patches/drizzle-orm-0.45.3-flux-pool-release.patch
+  '@better-auth/oauth-provider@1.7.18': patches/oauth-provider-1.7.18-flux-refresh.patch
+  drizzle-orm@0.45.4: patches/drizzle-orm-0.45.4-flux-pool-release.patch
 
 # One stable public codec generation across server, binding and browser.
 overrides:
