@@ -127,7 +127,7 @@ class AgentTakesTask(unittest.TestCase):
         kai = self.page("kai")
         agent = self.api(kai, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Planner", "owner": "self"}, status=201)
         pick = self.api(kai, "GET", "/api/v1/personal-assistant/model", status=200)["default"]
-        self.api(kai, "POST", "/api/v1/personal-assistant", {"agentId": agent["id"], "connection": pick["connection"], "model": pick["model"]}, status=201)
+        self.api(kai, "POST", "/api/v1/my-agents", {"agentId": agent["id"], "connection": pick["connection"], "model": pick["model"]}, status=201)
         type(self).ids = {"workspace": ws["id"], "project": project["id"], "agent": agent["id"]}
 
     # ---------------------------------------------------------------- #904: the Owner field offers your own agents only

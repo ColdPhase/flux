@@ -43,7 +43,7 @@ describe('agents taking tasks beside the worker and the owner\'s own requests', 
     lamp = await createProject(ada, ws.id, 'Lamp', 'workspace');
     agentId = (expectStatus(await kai.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'kai planner', owner: 'self' } }), 201) as { id: string }).id;
     const connection = (await testFixturePersonalConnections.resolve(kai.id))!.id;
-    expectStatus(await kai.browser.request('POST', '/api/v1/personal-assistant', { body: { agentId, connection, model: 'claude-sonnet-5' } }), 201);
+    expectStatus(await kai.browser.request('POST', '/api/v1/my-agents', { body: { agentId, connection, model: 'claude-sonnet-5' } }), 201);
     thread = expectStatus(await kai.browser.request('POST', `/api/v1/projects/${lamp.id}/conversations`, { body: { body: 'The lamp flickers', clientMessageId: randomUUID() } }), 201) as Conversation;
     expectStatus(await kai.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId } }), 200);
     boss = new PgBoss({ connectionString });

@@ -132,7 +132,7 @@ class AgentTaskQuestions(unittest.TestCase):
             page = self.page(key)
             agent = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": name, "owner": "self"}, status=201)
             pick = self.api(page, "GET", "/api/v1/personal-assistant/model", status=200)["default"]
-            self.api(page, "POST", "/api/v1/personal-assistant", {"agentId": agent["id"], "connection": pick["connection"], "model": pick["model"]}, status=201)
+            self.api(page, "POST", "/api/v1/my-agents", {"agentId": agent["id"], "connection": pick["connection"], "model": pick["model"]}, status=201)
             ids["planner" if key == "ada" else "fieldbot"] = agent["id"]
         type(self).ids = ids
 
