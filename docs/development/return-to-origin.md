@@ -21,8 +21,7 @@ the [thread reading-position owner](thread-reading-position-2026-10-16.md), whic
    so Back does not walk through panel toggles. A panel's state is part of the *place* of the entry (below), not an
    entry of its own. Every `replace` on a page a reference leads to carries the entry's state, because a replace with no
    state sets `history.state.usr` to null and the control would vanish while the person is still there: the address
-   cleaners (`?open=`, `?compose=`, `?ask=`, the Inbox redirect, Cancel on a slow route), the Search page's typing and
-   filters, the Agents view's thread and agent panel, a direct-message thread replacing a thread, the Inbox's review
+   cleaners (`?open=`, `?compose=`, `?ask=`, the Inbox redirect, Cancel on a slow route), the Agents view's thread and agent panel, a direct-message thread replacing a thread, the Inbox's review
    close, the Tasks `?new=` cleaner, a saved doc and a live session's redirect. A loader redirect that would drop state
    is a `<Navigate>` instead (a material that is a doc). A new `replace` on such a page must carry `location.state`.
 3. **The place of an entry is kept under the entry's router key.** `place/memory.ts` holds small JSON records in

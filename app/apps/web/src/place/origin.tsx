@@ -51,7 +51,6 @@ export function labelFor(pathname: string): string {
   if (/^\/projects\/[^/]+\/live\//.test(pathname)) return 'Live session';
   if (pathname === '/projects') return 'Spaces';
   if (/^\/projects\/[^/]+\/?$/.test(pathname)) return 'Conversation';
-  if (pathname.startsWith('/search')) return 'Search';
   if (pathname.startsWith('/inbox')) return 'Inbox';
   if (/^\/dm\/[^/]+\/sketches/.test(pathname)) return 'Sketches';
   if (pathname === '/dm' || pathname.startsWith('/dm/')) return 'Messages';

@@ -169,7 +169,6 @@ export const router = createBrowserRouter([
           { path: 'map', ...secondary(async () => ({ Component: (await import('./sketch/SketchIndex')).SketchIndex })) },
           { path: 'map/:sketchId', ...sketch },
           { path: 'docs', ...secondary(async () => ({ Component: (await docViewsPage()).WorkspaceDocs })) },
-          { path: 'search', ...secondary(async () => ({ Component: (await import('./search/SearchPage')).SearchPage })) },
           { path: 'dm', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).DmIndex })) },
           { path: 'dm/new', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).NewDm })) },
           { path: 'dm/:dmId', ...secondary(async () => { const page = await import('./dm/DmConversation'); return { Component: page.DmConversation, loader: page.dmLoader }; }) },

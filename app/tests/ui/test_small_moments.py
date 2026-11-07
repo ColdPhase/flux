@@ -103,15 +103,27 @@ class SmallMomentsJourney(unittest.TestCase):
                     self.assertLess(box["y"] + box["height"], title["y"])
                     shot(page, f"352-inbox-empty-{'phone' if phone else 'desktop'}-{scheme}")
 
+    def search_nothing(self, page, phone: bool):
+        """Opens Search (the phone's button or Ctrl+K) and types words nothing matches."""
+        page.goto("/")
+        if phone:
+            page.get_by_role("button", name="Search", exact=True).click()
+        else:
+            expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
+            page.keyboard.press("Control+k")
+        dialog = page.get_by_role("dialog", name="Search", exact=True)
+        dialog.get_by_role("combobox", name="Search", exact=True).fill("zzqxv")
+        return dialog
+
     def test_02_no_results_looks_aside_and_still_says_so(self) -> None:
         self.ensure_account()
         for phone in (True, False):
             with self.subTest(phone=phone):
                 page = self.page(phone=phone, scheme="dark")
-                page.goto("/search?q=zzqxv")
-                expect(page.get_by_role("heading", name="Nothing matches “zzqxv”")).to_be_visible()
-                # The phone's /search is its one search (#763 SE-2), with the drawn no-results moment.
-                expect(page.locator(".jump__none .kreska" if phone else ".ui-empty--mascot .kreska")).to_have_attribute("data-expression", "looking")
+                dialog = self.search_nothing(page, phone)
+                expect(dialog.get_by_role("heading", name="Nothing matches “zzqxv”")).to_be_visible()
+                # One search on both devices (#870), with the drawn no-results moment.
+                expect(dialog.locator(".jump__none .kreska")).to_have_attribute("data-expression", "looking")
                 shot(page, f"352-no-results-{'phone' if phone else 'desktop'}")
 
     def test_03_offline_line_has_the_sleeping_face_and_unreachable_does_not(self) -> None:
@@ -143,9 +155,10 @@ class SmallMomentsJourney(unittest.TestCase):
         expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_visible()
         expect(page.locator(".kreska")).to_have_count(0)
         expect(page.get_by_text("Enjoy the quiet.")).to_be_visible()
-        page.goto("/search?q=zzqxv")
-        expect(page.get_by_role("heading", name="Nothing matches “zzqxv”")).to_be_visible()
-        expect(page.locator(".ui-empty--mascot")).to_have_count(0)
+        dialog = self.search_nothing(page, False)
+        expect(dialog.get_by_role("heading", name="Nothing matches “zzqxv”")).to_be_visible()
+        expect(dialog.locator(".kreska")).to_have_count(0)
+        page.keyboard.press("Escape")
         # The splash is gone too, and the choice is the page's before React starts.
         self.assertEqual(page.evaluate("document.documentElement.dataset.kreska"), "off")
         page.goto(f"/projects/{self.ids['project']}")
@@ -275,10 +288,12 @@ class SmallMomentsJourney(unittest.TestCase):
     def test_08_reduced_motion_leaves_every_moment_a_static_frame(self) -> None:
         self.ensure_account()
         page = self.page(phone=True, reduced=True)
-        for path, face in (("/inbox", ".nyq__clear .kreska"), ("/search?q=zzqxv", ".jump__none .kreska")):
-            page.goto(path)
-            expect(page.locator(face)).to_be_visible()
-            self.assertEqual(page.evaluate(KRESKA_ANIMATIONS), 0, path)
+        page.goto("/inbox")
+        expect(page.locator(".nyq__clear .kreska")).to_be_visible()
+        self.assertEqual(page.evaluate(KRESKA_ANIMATIONS), 0, "/inbox")
+        self.search_nothing(page, True)
+        expect(page.locator(".jump__none .kreska")).to_be_visible()
+        self.assertEqual(page.evaluate(KRESKA_ANIMATIONS), 0, "search")
         page.goto(f"/projects/{self.ids['project']}")
         expect(page.get_by_role("textbox").first).to_be_visible()
         page.context.set_offline(True)

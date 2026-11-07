@@ -65,7 +65,7 @@ test('a view switch is a different view; a thread, a page or a sketch opened ins
   assert.equal(routeView('/projects/p1/map'), routeView('/projects/p1/map/s2'));
   // Top-level places and Settings sections.
   assert.equal(routeView('/inbox'), routeView('/inbox/n1'));
-  assert.notEqual(routeView('/inbox'), routeView('/search'));
+  assert.notEqual(routeView('/inbox'), routeView('/tasks'));
   assert.notEqual(routeView('/settings'), routeView('/settings/appearance'));
   assert.notEqual(routeView('/settings/appearance'), routeView('/settings/account'));
   assert.equal(routeView('/dm/d1'), routeView('/dm/d1/'));

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -81,10 +81,12 @@ export function agentTaskRows(db: DbExecutor) {
         WHERE EXISTS (SELECT 1 FROM personal_runs WHERE work_id = ${workId}::uuid AND agent_id = ${agentId}::uuid AND status IN ('queued', 'reading', 'dispatching'))`);
     },
 
-    /** The oldest event nobody has handled and that is due, locked until the transaction ends (another API replica skips it). */
+    /**
+     * The oldest event nobody has handled and that is due, locked until the transaction ends (another API replica skips it). One that
+     * has failed `AGENT_TASK_EVENT_ATTEMPTS` times is claimed too: the drain does not try it again, it tells the task's owner.
+     */
     async claimNext() {
-      const [row] = await db.select().from(ev).where(and(isNull(ev.handledAt), lt(ev.attempts, AGENT_TASK_EVENT_ATTEMPTS),
-        or(isNull(ev.nextTryAt), sql`${ev.nextTryAt} <= now()`)))
+      const [row] = await db.select().from(ev).where(and(isNull(ev.handledAt), or(isNull(ev.nextTryAt), sql`${ev.nextTryAt} <= now()`)))
         .orderBy(asc(ev.createdAt), asc(ev.id)).limit(1).for('update', { skipLocked: true });
       return row ?? null;
     },
@@ -94,14 +96,23 @@ export function agentTaskRows(db: DbExecutor) {
     },
 
     /**
-     * After a failed try, in its own transaction: the event stays, counts, and waits a little longer each time before its next try.
-     * Returns how many tries it has had and how long it waits (seconds).
+     * After a failed try, in its own transaction: the event stays, counts, and waits a little longer each time before its next try (the
+     * fifth failure is due at once, for the drain to give it up). Only an event nobody has handled is counted: another replica may have
+     * taken it just after this try failed and done it, and that must not be given up. Null for such an event.
      */
     async failed(id: string) {
-      const [row] = await db.update(ev).set({ attempts: sql`${ev.attempts} + 1`,
-        nextTryAt: sql`now() + (least(power(${ev.attempts} + 1, 2), 60)::int * interval '1 second')` }).where(eq(ev.id, id)).returning({ attempts: ev.attempts });
-      const attempts = row?.attempts ?? AGENT_TASK_EVENT_ATTEMPTS;
-      return { attempts, waitSeconds: Math.min(attempts * attempts, 60) };
+      const [row] = await db.update(ev).set({ attempts: sql`least(${ev.attempts} + 1, 100)`,
+        nextTryAt: sql`now() + (CASE WHEN ${ev.attempts} + 1 = ${AGENT_TASK_EVENT_ATTEMPTS} THEN 0 ELSE least(power(${ev.attempts} + 1, 2), 60)::int END * interval '1 second')` })
+        .where(and(eq(ev.id, id), isNull(ev.handledAt))).returning({ attempts: ev.attempts });
+      return row ? { attempts: row.attempts, waitSeconds: row.attempts === AGENT_TASK_EVENT_ATTEMPTS ? 0 : Math.min(row.attempts * row.attempts, 60) } : null;
+    },
+
+    /** Seconds until the earliest event that failed and waits for its time, or null: what a drain sets its one timer from (also after a restart). */
+    async nextDueIn() {
+      const result = await db.execute<{ wait: number | null }>(sql`SELECT extract(epoch FROM (min(next_try_at) - now()))::float8 AS wait
+        FROM agent_task_events WHERE handled_at IS NULL AND next_try_at > now()`);
+      const wait = result.rows[0]?.wait;
+      return wait === null || wait === undefined ? null : Math.max(0, Number(wait));
     },
 
     /** Who last changed the task's owner (#488 activity): a rule's hand-back by the agent reads differently from a person taking the task back. */

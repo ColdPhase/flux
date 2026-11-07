@@ -22,7 +22,7 @@ export function useWorkspaceEncryption(workspaceId: string | null | undefined): 
   return useSpace(workspaceId)?.encryption ?? null;
 }
 
-/** The workspaces that wait to be unlocked, for the sidebar, Home, Inbox and Jump to. */
+/** The workspaces that wait to be unlocked, for the sidebar, Home, Inbox and Search. */
 export function useLockedWorkspaces(): WorkspaceSummary[] {
   return useShell()?.lockedWorkspaces ?? [];
 }

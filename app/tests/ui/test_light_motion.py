@@ -88,7 +88,7 @@ class LightMotionJourney(unittest.TestCase):
 
     def open_jump(self, page: Page):
         page.keyboard.press("Control+k")
-        dialog = page.get_by_role("dialog", name="Jump to")
+        dialog = page.get_by_role("dialog", name="Search", exact=True)
         expect(dialog).to_be_visible()
         # The first time on a page the dialog is a placeholder until its search chunk arrives, and the chunk's own dialog then takes its
         # place: judge exits only once the real one is up (a WebKit run can be well into its exit when the chunk lands).
@@ -186,7 +186,7 @@ class LightMotionJourney(unittest.TestCase):
         self.prime(page)
         verdict = page.evaluate("""async () => {
           const opener = document.querySelector('.side__search');
-          const dialog = document.querySelector('[role="dialog"][aria-label="Jump to"]');
+          const dialog = document.querySelector('[role="dialog"][aria-label="Search"]');
           const inside = dialog.contains(document.activeElement);
           dialog.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
           // The update React made for the key is committed in the microtask after it: before any timer or frame, never after the exit.
@@ -204,7 +204,7 @@ class LightMotionJourney(unittest.TestCase):
         self.assertTrue(verdict["there"] and verdict["running"] >= 1, f"the surface is still animating out: {verdict}")
         self.assertTrue(verdict["inert"], "and nothing in it can be reached")
         self.assertFalse(verdict["appInert"], "the app is live again at once")
-        expect(page.get_by_role("dialog", name="Jump to")).to_have_count(0)
+        expect(page.get_by_role("dialog", name="Search", exact=True)).to_have_count(0)
 
     def first_k(self, visits: tuple[str, ...], *, phone: bool = False) -> dict:
         """The first ⌘K with the code of the search held, then let go: the dialog's box and where its list starts, on its skeleton and on its content, and how many buttons name a close."""
@@ -225,7 +225,7 @@ class LightMotionJourney(unittest.TestCase):
             expect(page.locator(self.tab(name))).to_have_attribute("aria-current", "page")
         clear(page)
         page.keyboard.press("Control+k")
-        dialog = page.get_by_role("dialog", name="Jump to")
+        dialog = page.get_by_role("dialog", name="Search", exact=True)
         expect(dialog.locator(".jump-skeleton")).to_be_visible()
         self.assertEqual(dialog.locator(".ui-spin").count(), 0, "bars at the dialog's size, not a spinner")
         self.assertEqual(page.locator(".ui-scrim").count(), 1)
@@ -235,10 +235,10 @@ class LightMotionJourney(unittest.TestCase):
         closes = page.get_by_role("button", name="Close search").count()
         while held:
             held.pop().continue_()
-        expect(dialog.get_by_role("combobox", name="Jump to")).to_be_visible()
+        expect(dialog.get_by_role("combobox", name="Search", exact=True)).to_be_visible()
         settled(page)
         after = shape()
-        self.assertEqual(page.get_by_role("dialog", name="Jump to").count(), 1, "still the one dialog")
+        self.assertEqual(page.get_by_role("dialog", name="Search", exact=True).count(), 1, "still the one dialog")
         self.assertEqual(page.locator(".ui-scrim").count(), 1, "and the one scrim")
         scrim = self.by(page, r"ui-scrim", "script")
         self.assertTrue(scrim and all((entry["to"] or {}).get("opacity") == 1 for entry in scrim), f"the scrim only rises: {scrim}")
@@ -265,20 +265,20 @@ class LightMotionJourney(unittest.TestCase):
         settled(page)
         height = dialog.bounding_box()["height"]
         page.evaluate("""() => {
-          const el = document.querySelector('[role="dialog"][aria-label="Jump to"]');
+          const el = document.querySelector('[role="dialog"][aria-label="Search"]');
           const out = window.__exit = []; const start = performance.now();
           const step = () => { if (!el.isConnected || performance.now() - start > 1500) return;
             out.push({ t: performance.now() - start, h: el.getBoundingClientRect().height, o: Number(getComputedStyle(el.closest('.ui-overlay__surface') || el).opacity), input: !!el.querySelector('input') }); requestAnimationFrame(step); };
           requestAnimationFrame(step); }""")
         page.keyboard.press("Escape")
-        expect(page.get_by_role("dialog", name="Jump to")).to_have_count(0)
+        expect(page.get_by_role("dialog", name="Search", exact=True)).to_have_count(0)
         frames = [frame for frame in page.evaluate("window.__exit") if frame["t"] > 0]
         self.assertGreaterEqual(len(frames), 3, f"the exit is seen: {frames}")
         for frame in frames:
             self.assertAlmostEqual(frame["h"], height, delta=1.5, msg=f"it keeps its size while it fades: {frame}")
             self.assertTrue(frame["input"], f"with its content: {frame}")
         self.assertLess(min(frame["o"] for frame in frames), 0.9, f"and it really fades: {frames}")
-        expect(page.get_by_role("dialog", name="Jump to")).to_have_count(0)
+        expect(page.get_by_role("dialog", name="Search", exact=True)).to_have_count(0)
 
     def test_05_rapid_open_and_close_settles_on_the_latest_state(self):
         page = self.page()
@@ -290,7 +290,7 @@ class LightMotionJourney(unittest.TestCase):
                   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
                   const toggle = (open) => {
                     if (open) document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }));
-                    else document.querySelector('[role="dialog"][aria-label="Jump to"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+                    else document.querySelector('[role="dialog"][aria-label="Search"]')?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
                   };
                   for (const open of [true, false, true, false, true, false, true]) { toggle(open); await wait(35); }
                   if (!finalOpen) toggle(false);
@@ -304,7 +304,7 @@ class LightMotionJourney(unittest.TestCase):
                 if final_open:
                     self.assertEqual((state["overlays"], state["state"], state["opacity"], state["surfaceInert"], state["rootInert"]), (1, "open", "1", False, True), state)
                     page.keyboard.press("Escape")
-                    expect(page.get_by_role("dialog", name="Jump to")).to_have_count(0)
+                    expect(page.get_by_role("dialog", name="Search", exact=True)).to_have_count(0)
                 else:
                     self.assertEqual((state["overlays"], state["rootInert"]), (0, False), state)
 
@@ -1234,7 +1234,7 @@ class LightMotionJourney(unittest.TestCase):
         clear(page)
         self.open_jump(page)
         page.keyboard.press("Escape")
-        expect(page.get_by_role("dialog", name="Jump to")).to_have_count(0)
+        expect(page.get_by_role("dialog", name="Search", exact=True)).to_have_count(0)
         page.locator(self.tab("tasks")).click()
         expect(page.locator(self.tab("tasks"))).to_have_attribute("aria-current", "page")
         page.get_by_role("button", name=re.compile(re.escape(self.fx.tasks[0]["title"]))).first.click()
@@ -1325,7 +1325,7 @@ class LightMotionJourney(unittest.TestCase):
         clear(other)
         other.evaluate("Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' })")
         other.keyboard.press("Control+k")
-        expect(other.get_by_role("dialog", name="Jump to")).to_be_visible()
+        expect(other.get_by_role("dialog", name="Search", exact=True)).to_be_visible()
         self.assertEqual([entry for entry in recorded(other) if entry["kind"] == "script"], [], "a hidden page starts no motion")
 
     def test_20b_a_view_fade_in_flight_lands_on_its_end_state_when_the_page_is_hidden(self):

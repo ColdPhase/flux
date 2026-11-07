@@ -280,7 +280,7 @@ class RouteChunksJourney(unittest.TestCase):
                     route.fulfill(status=503, headers={"cache-control": "no-store"}, content_type="text/plain", body="Real refused search delivery")
                 page.route(pattern, refused)
                 page.keyboard.press("Control+k")
-                dialog = page.get_by_role("dialog", name="Jump to", exact=True)
+                dialog = page.get_by_role("dialog", name="Search", exact=True)
                 expect(dialog).to_contain_text("Search couldn’t be loaded")
                 page.unroute(pattern, refused)
                 expect(dialog.get_by_role("button", name="Reload Flux", exact=True)).to_be_disabled()
@@ -690,7 +690,7 @@ class RouteChunksJourney(unittest.TestCase):
                 field = page.get_by_placeholder("Write a note…")
                 field.fill(f"Search download preserves focus {engine}")
                 page.keyboard.press("Control+k")
-                dialog = page.get_by_role("dialog", name="Jump to")
+                dialog = page.get_by_role("dialog", name="Search", exact=True)
                 expect(dialog).to_contain_text("Opening search…")
                 self.request_is_held(page, held)
                 # The dialog is already its final size, not a spinner's 84 px: judged against the real dialog below (and in test_light_motion 04c).
@@ -707,7 +707,7 @@ class RouteChunksJourney(unittest.TestCase):
                 expect(dialog).to_have_count(0)
                 expect(field).to_have_value(f"Search download preserves focus {engine}")
                 page.keyboard.press("Control+k")
-                expect(dialog.get_by_role("combobox", name="Jump to")).to_be_focused()
+                expect(dialog.get_by_role("combobox", name="Search", exact=True)).to_be_focused()
                 self.assertAlmostEqual(dialog.bounding_box()["height"], pending_height, delta=2, msg="the held dialog was the size of the real one")
                 page.keyboard.press("Escape")
                 expect(field).to_be_focused()
@@ -864,8 +864,8 @@ class RouteChunksJourney(unittest.TestCase):
                 self.assertEqual(sorted(got), sorted(self.CODE), "the browser's idle time brought all of it")
                 # With the code here, the first ⌘K is one dialog with its content: no spinner, no placeholder that is replaced.
                 page.keyboard.press("Control+k")
-                dialog = page.get_by_role("dialog", name="Jump to")
-                expect(dialog.get_by_role("combobox", name="Jump to")).to_be_visible()
+                dialog = page.get_by_role("dialog", name="Search", exact=True)
+                expect(dialog.get_by_role("combobox", name="Search", exact=True)).to_be_visible()
                 self.assertEqual(dialog.locator(".ui-spin, .jump-skeleton").count(), 0)
 
 

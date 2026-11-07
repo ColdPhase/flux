@@ -537,8 +537,11 @@ the composer. The right-hand phone above shows the sheet.
 ![One search](screens/desktop-search.webp)
 
 - One dialog over the screen, opened by ⌘K, the sidebar's Search or the phone's Search.
-- Results are grouped by kind (Tasks, Messages, Wiki, Thoughts, Spaces, People), with the match
-  marked. The first result is selected, and `↵` opens it.
+- Results are grouped by kind (Tasks, Messages, Wiki, Files, Thoughts, Spaces, People), with the
+  match marked; decisions and results are listed with Tasks, and maps and drafts with Thoughts.
+  Each row is 48 px: a tile, the matching text and one line of where it lives. The first result is
+  selected, and `↵` opens it. A list that is too long is narrowed by typing more words; there is
+  no second page.
 - The hint is one plain sentence: "Finds spaces, people, messages, tasks, Wiki pages and thoughts
   you can see." There are no filter chips and no Create group.
 

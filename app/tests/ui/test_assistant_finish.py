@@ -164,6 +164,7 @@ class AssistantFinish(unittest.TestCase):
                     page.add_init_script(f"localStorage.setItem('flux.assistant-last-asked.{base.ADA['id']}', JSON.stringify({{projectId: '{self.ids['project']}', conversationId: '{self.ids['conversation']}'}}))")
                 page.goto("/")
                 expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+                base.assistant_known(page)
                 page.keyboard.press("Control+k")
                 option = page.get_by_role("option", name=re.compile("Ask my assistant…"))
                 expect(option).to_be_visible()
@@ -186,12 +187,13 @@ class AssistantFinish(unittest.TestCase):
         self.stub_assistant(page)
         page.goto(f"/projects/{self.ids['project']}")
         expect(page.get_by_role("heading", level=1, name="Gesture lamp")).to_be_visible()
+        base.assistant_known(page)
         page.keyboard.press("Control+k")
         page.get_by_role("option", name=re.compile("Ask my assistant…")).click()
         where = page.get_by_role("group", name="In which conversation?")
         expect(where.get_by_role("button").first).to_contain_text("Camera or ToF sensor")
         where.get_by_role("button", name="Back").click()
-        expect(page.get_by_role("combobox", name="Jump to")).to_be_visible()
+        expect(page.get_by_role("combobox", name="Search", exact=True)).to_be_visible()
 
     # ---------------------------------------------------------------- Journey 6: subscription sign-in off
 

@@ -544,8 +544,8 @@ class TaskAnnouncements(unittest.TestCase):
         page.wait_for_timeout(1200)
         # Search is a link inside the open stream: the thread changes, the stream stays mounted.
         page.keyboard.press("Control+k")
-        dialog = page.get_by_role("dialog", name="Jump to")
-        dialog.get_by_role("combobox", name="Jump to").fill("heavier foot")
+        dialog = page.get_by_role("dialog", name="Search", exact=True)
+        dialog.get_by_role("combobox", name="Search", exact=True).fill("heavier foot")
         expect(dialog.locator("[role=option].sr").first).to_contain_text("heavier foot")
         dialog.locator("[role=option].sr").first.click()
         expect(page).to_have_url(re.compile(f"/conversations/{self.ids['linked']}"))

@@ -43,6 +43,8 @@ export interface TaskAgentFacts {
   waitingChanges: number;
   /** Whether the agent itself last changed the task's owner: a real hand-back, not a person taking the task back. */
   handedBackByAgent?: boolean;
+  /** The name of the person who holds the task, when that is not the agent's owner (someone took it): "the task is with Maja". */
+  taskOwnerName?: string | null;
   /**
    * The other agent this one asked a question and is waiting for (#841), whose owner may stop its answer (the asking owner may not),
    * and the answer's run, which the provider's limit can pause like any other.
@@ -64,6 +66,10 @@ export function taskAgentState(facts: TaskAgentFacts): TaskAgentState {
     agent, line, text, resumesAt: null, stoppedBy: null, canStop: false, canTryAgain: false, canTakeBack: false, canMarkDone: false, runId: run.id, ...extra,
   });
   const mayStop = mine || facts.viewerIsAdmin;
+  // Where the task is after the run stopped: with the agent's owner it went back to them (or is about to: the hand-back is the drain's next
+  // step); if someone else took it, it is theirs.
+  const whereNow = () => holds || task.ownerUserId === agent.owner.id ? ` · the task is back with ${who}`
+    : task.ownerUserId ? ` · the task is with ${task.ownerUserId === viewerId ? 'you' : facts.taskOwnerName ?? 'someone else'}` : '';
   if (facts.waitingForAnswer && holds) {
     const answer = facts.waitingForAnswer;
     const mayStopAnswer = viewerId === answer.ownerId || facts.viewerIsAdmin;
@@ -97,9 +103,9 @@ export function taskAgentState(facts: TaskAgentFacts): TaskAgentState {
   if (run.status === 'stopped') {
     if (task.status === 'done' || task.status === 'not_pursued') return none();
     // AI turned off in the space (C-17): the owner is told here, where they asked, because the agent can no longer write there.
-    if (run.endReason === 'ai_off') return state('stopped', `Stopped: AI was turned off in this space · the task is back with ${who}`);
+    if (run.endReason === 'ai_off') return state('stopped', `Stopped: AI was turned off in this space${whereNow()}`);
     const by = run.stopRequestedBy;
-    return state('stopped', `Stopped by ${by?.id === viewerId ? 'you' : by?.name ?? 'someone'} · the task is back with ${who}`, { stoppedBy: by });
+    return state('stopped', `Stopped by ${by?.id === viewerId ? 'you' : by?.name ?? 'someone'}${whereNow()}`, { stoppedBy: by });
   }
   if (!holds) return none();
   const reason = run.endReason === 'sign_in_again' ? `Sign in to ${vendor(run)} again` : run.status === 'denied' || run.status === 'revoked' ? 'No longer allowed here' : 'Couldn\'t finish';

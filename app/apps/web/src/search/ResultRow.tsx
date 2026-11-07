@@ -1,14 +1,31 @@
-import type { SearchKind, SearchPlace, SearchResult, SearchText, WorkStatus } from '@flux/contracts';
-import { Icon, StatusGlyph, type IconName } from '../ui';
+import { Fragment, type ReactNode } from 'react';
+import type { SearchKind, SearchPlace, SearchResult, SearchText } from '@flux/contracts';
+import { Icon, StatusGlyph, TASK_STATE_WORD, type IconName } from '../ui';
 import { plainSnippet } from './plain';
 
-// One search result in direction C: what it is in human language, the matching text with the
-// matched words marked, and where it lives, who wrote it and when. Shared by Jump to… and the page.
+// One search result as Search.dc.html draws it (#870): a 28 px tile for what it is, the matching text with the matched
+// words marked, and one line of where it lives, who wrote it and when. The results are grouped by kind, in this order.
 
-// A project is drawn as its letter tile, as in the sidebar, so it is recognised across the app.
-const ICONS: Record<Exclude<SearchKind, 'project'>, IconName> = {
-  message: 'chat', dm_message: 'chat', material: 'link', doc: 'doc', work: 'tasks', decision: 'rule', result: 'result',
-  sketch: 'map', thought: 'map', draft: 'edit', person: 'people',
+const GROUPS: { label: string; kinds: SearchKind[] }[] = [
+  { label: 'Tasks', kinds: ['work', 'decision', 'result'] },
+  { label: 'Messages', kinds: ['message', 'dm_message'] },
+  { label: 'Wiki', kinds: ['doc'] },
+  { label: 'Files', kinds: ['material'] },
+  { label: 'Thoughts', kinds: ['thought', 'sketch', 'draft'] },
+  { label: 'Spaces', kinds: ['project'] },
+  { label: 'People', kinds: ['person'] },
+];
+
+/** The results in groups by kind; inside a group they keep the order the server ranked them in. */
+export function groupResults(items: SearchResult[]): { label: string; items: SearchResult[] }[] {
+  return GROUPS.flatMap((group) => {
+    const found = items.filter((item) => group.kinds.includes(item.kind));
+    return found.length ? [{ label: group.label, items: found }] : [];
+  });
+}
+
+const ICONS: Record<Exclude<SearchKind, 'project' | 'message' | 'dm_message'>, IconName> = {
+  work: 'tasks', material: 'link', doc: 'doc', decision: 'rule', result: 'result', sketch: 'map', thought: 'map', draft: 'edit', person: 'people',
 };
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
@@ -26,50 +43,66 @@ export function Highlighted({ parts }: { parts: SearchText }) {
   return <>{parts.map((part, index) => (part.match ? <mark key={index} className="sr__hit">{part.text}</mark> : <span key={index}>{part.text}</span>))}</>;
 }
 
+/** Where a result lives, in a few plain words. */
 export function placeText(place: SearchPlace) {
   switch (place.type) {
-    case 'project': return `# ${place.name}`;
+    case 'project': return place.name;
     case 'dm': return `With ${place.name}`;
     case 'workspace': return place.name;
     default: return 'Only you';
   }
 }
 
-/** A task's text starts with its number ("#12", so that "#12" finds it); the row shows the number beside the title, not again in the snippet. */
-function withoutTaskNumber(snippet: SearchText | null, number: number | undefined): SearchText | null {
-  if (!snippet || number === undefined) return snippet;
-  const [first, ...others] = snippet;
-  const lead = `#${number}`;
-  if (!first || !first.text.startsWith(lead) || /\d/.test(first.text.charAt(lead.length))) return snippet;
-  const kept = [{ ...first, text: first.text.slice(lead.length).replace(/^\s+/, '') }, ...others].filter((part) => part.text);
-  return kept.length ? kept : null;
+/** The initials of an author's name, for the tile of a message ("Ari Nowak (agent)" is "AN"). */
+function initials(author: string | null): string {
+  const words = (author ?? '').replace(/\s*\(agent\)$/, '').split(/\s+/).filter(Boolean);
+  return words.slice(0, 2).map((word) => word[0]!.toUpperCase()).join('');
 }
 
-/** The body of a row; the caller supplies the element (a link on the page, an option in Jump to…). */
-export function ResultBody({ result }: { result: SearchResult }) {
-  // In a DM with the author, "With Ari · Ari" would say the same thing twice.
-  const author = result.kind === 'person' || (result.place.type === 'dm' && result.place.name === result.author) ? null : result.author;
-  const meta = [result.label, placeText(result.place), author].filter(Boolean);
+function Tile({ result }: { result: SearchResult }) {
   const { task } = result;
-  const snippet = withoutTaskNumber(plainSnippet(result.snippet), task?.number);
+  if (task) return <span className="sr__ic sr__ic--work" aria-hidden="true"><StatusGlyph status={task.status} size={14} /></span>;
+  if (result.kind === 'project') return <span className="sr__ic sr__ic--project" aria-hidden="true">{(result.title.map((part) => part.text).join('').trim()[0] ?? '?').toUpperCase()}</span>;
+  if (result.kind === 'message' || result.kind === 'dm_message') {
+    const letters = initials(result.author);
+    return <span className="sr__ic sr__ic--person" aria-hidden="true">{letters || <Icon name="chat" size={14} />}</span>;
+  }
+  return <span className={`sr__ic sr__ic--${result.kind}`} aria-hidden="true"><Icon name={ICONS[result.kind]} size={14} /></span>;
+}
+
+/** The second line: the words the group does not already say, then where it lives and when it was written. */
+function meta(result: SearchResult): ReactNode[] {
+  const place = result.place;
+  // In a DM with the author, "With Ari · Ari" would say the same thing twice.
+  const author = result.author && !(place.type === 'dm' && place.name === result.author) ? result.author : null;
+  const where = placeText(place);
+  const { task } = result;
+  if (task) return [`#${task.number}`, TASK_STATE_WORD[task.status], where];
+  switch (result.kind) {
+    case 'message': case 'dm_message': return [author, where, <time key="at" dateTime={result.at}>{when(result.at)}</time>];
+    case 'doc': {
+      const snippet = plainSnippet(result.snippet);
+      return snippet ? [<span key="snip">“<Highlighted parts={snippet} />”</span>] : [where];
+    }
+    case 'thought': case 'sketch': return place.type === 'private' ? ['My map', 'only you'] : [result.label, where];
+    case 'project': return [];
+    case 'person': return result.label.endsWith('guest') ? ['Guest'] : [];
+    default: return [result.label, where];
+  }
+}
+
+/** The body of a row; the caller supplies the option element. */
+export function ResultBody({ result }: { result: SearchResult }) {
+  const lines = meta(result).filter(Boolean);
+  const plain = result.kind === 'message' || result.kind === 'dm_message';
   return (
     <>
-      {result.kind === 'project'
-        ? <span className="sr__ic sr__ic--project" aria-hidden="true">{(result.title.map((part) => part.text).join('').trim()[0] ?? '?').toUpperCase()}</span>
-        : task ? <span className="sr__ic sr__ic--work" aria-hidden="true"><StatusGlyph status={task.status as WorkStatus} size={14} /></span>
-          : <span className={`sr__ic sr__ic--${result.kind}`} aria-hidden="true"><Icon name={ICONS[result.kind]} size={15} /></span>}
+      <Tile result={result} />
       <span className="sr__main">
-        <span className="sr__title">{task ? <span className="sr__num">#{task.number} </span> : null}<Highlighted parts={result.title} /></span>
-        {snippet ? <span className="sr__snip"><Highlighted parts={snippet} /></span> : null}
-        <span className="sr__meta">
-          {meta.map((item, index) => (
-            <span key={index} className={index === 1 ? 'sr__place' : undefined}>
-              {index === 1 && result.place.type === 'private' ? <Icon name="lock" size={11} /> : null}{item}
-            </span>
-          ))}
-          {result.kind === 'person' ? null : <time dateTime={result.at}>{when(result.at)}</time>}
-        </span>
+        <span className={`sr__title${plain ? ' sr__title--text' : ''}`}><Highlighted parts={result.title} /></span>
+        {lines.length ? <span className="sr__meta">{lines.map((line, index) => <Fragment key={index}>{index ? <span aria-hidden="true"> · </span> : null}<span>{line}</span></Fragment>)}</span> : null}
       </span>
+      <kbd className="sr__enter" aria-hidden="true">↵</kbd>
     </>
   );
 }

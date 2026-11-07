@@ -83,6 +83,7 @@ function handoffLine(row: AssistantChangeRow, units: Map<string, { state: string
   return unit.state === 'completed' ? `${recipient} finished it` : `${recipient} started`;
 }
 const undoOf = (row: AssistantChangeRow) => (row.receipt as { undo?: UndoRecord } | null)?.undo ?? null;
+const isThreadLine = (row: AssistantChangeRow) => { const plan = undoOf(row)?.plan; return plan?.kind === 'removal' && plan.thread === true; };
 /** What was done is the message of the conversation, for everyone who can read it; a waiting change or a refusal is the owner's alone. */
 const isDone = (row: AssistantChangeRow) => row.state === 'applied' || row.state === 'applied_after_wait' || row.state === 'undone'
   || row.state === 'refused' && !!row.refusal?.startsWith('Skipped');
@@ -315,7 +316,9 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       // remove (a result, a decision, a message) is not "changed since"; it is simply not part of an Undo.
       const who = owner(principal);
       const list = (await editableRun(principal, runId)).filter((row) => (row.state === 'applied' || row.state === 'applied_after_wait') && !!undoOf(row)
-        && (row.operation !== 'work.create' || row.ownerUserId === who) && (!REMOVAL_OPERATIONS.has(row.operation) || row.ownerUserId === who)).reverse();
+        && (row.operation !== 'work.create' || row.ownerUserId === who) && (!REMOVAL_OPERATIONS.has(row.operation) || row.ownerUserId === who)
+        // A line the run put in a task's thread is taken back at the line (#923), not with the run's other changes.
+        && !isThreadLine(row)).reverse();
       const changes: AssistantChangeDecision[] = []; const changedSince: string[] = []; let undone = 0;
       // One refusal for the whole message, before anything is undone, rather than half of it.
       for (const row of list) if (REMOVAL_OPERATIONS.has(row.operation)) { await requireAiOn(db, row.projectId); break; }

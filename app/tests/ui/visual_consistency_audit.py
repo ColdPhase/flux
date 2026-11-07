@@ -226,6 +226,15 @@ class Screen:
     isolated: bool = False  # the state persists in the browser (a collapsed sidebar): measure it in its own context
 
 
+# One search (#870): the same dialog on a computer (Ctrl+K) and a phone (the round Search button), with words typed key by key.
+OPEN_SEARCH_WIDE = [("press", "Control+k"), ("wait", "[role='dialog'] input")]
+OPEN_SEARCH_PHONE = [("click", "button[aria-label='Search']"), ("wait", "[role='dialog'] input")]
+
+
+def typed(text: str) -> list:
+    return [("press", char) for char in text]
+
+
 SCREENS = [
     Screen("sign-in", "/sign-in", who="anon"),
     Screen("sign-up", "/sign-up", who="anon"),
@@ -270,8 +279,10 @@ SCREENS = [
     Screen("dm-index", "/dm"),
     Screen("dm", "/dm/{dm}", needs=("dm",)),
     Screen("dm-new", "/dm/new"),
-    Screen("search", "/search?q=sensor"),
-    Screen("search-none", "/search?q=zzqxv"),
+    Screen("search", "/", steps=[*OPEN_SEARCH_WIDE, *typed("sensor"), ("wait", "[role='option'].sr")], only="wide"),
+    Screen("search-phone", "/", steps=[*OPEN_SEARCH_PHONE, *typed("sensor"), ("wait", "[role='option'].sr")], only="phone"),
+    Screen("search-none", "/", steps=[*OPEN_SEARCH_WIDE, *typed("zzqxv"), ("wait", ".jump__none")], only="wide"),
+    Screen("search-none-phone", "/", steps=[*OPEN_SEARCH_PHONE, *typed("zzqxv"), ("wait", ".jump__none")], only="phone"),
     Screen("palette", "/", steps=[("press", "Control+k"), ("wait", "[role='dialog'], [role='combobox']")], only="wide"),
     Screen("create", "/", steps=[("press", "c"), ("wait", "[role='dialog']")], only="wide"),
     Screen("create-phone", "/", steps=[("click", ".phone-fab"), ("wait", "[role='dialog']")], only="phone"),

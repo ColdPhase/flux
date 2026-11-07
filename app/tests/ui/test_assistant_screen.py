@@ -27,6 +27,13 @@ NOW = "2026-10-16T09:00:00.000Z"
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 
 
+def assistant_known(page: Page) -> None:
+    """Search decides whether it has an "Ask my assistant…" row before it opens, from the status read the shell makes as it loads (#898):
+    wait for that read, as a person who presses ⌘K a moment after the page came up would have."""
+    page.wait_for_function("() => performance.getEntriesByType('resource').some((entry) => entry.name.endsWith('/api/v1/personal-assistant'))")
+    page.wait_for_timeout(250)
+
+
 class AssistantScreen(unittest.TestCase):
     """Tests run in name order and share one account."""
 
@@ -183,6 +190,7 @@ class AssistantScreen(unittest.TestCase):
         self.stub_thread(page, [])
         page.goto(self.thread_url())
         expect(page.get_by_placeholder(re.compile("Reply in thread"))).to_be_visible()
+        assistant_known(page)
         page.keyboard.press("Control+k")
         option = page.get_by_role("option", name=re.compile("Ask my assistant…"))
         expect(option).to_be_visible()

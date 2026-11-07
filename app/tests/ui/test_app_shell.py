@@ -546,8 +546,8 @@ class AppShellJourney(unittest.TestCase):
         places = sidebar.get_by_role("navigation", name="Places")
         expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "My tasks", "My map"])
-        # Search and personal settings have their own header; Home is not current there (#184 delta review S1).
-        for path, title in (("/search", "Search"), ("/settings/assistant", "Schedules"), ("/settings/background-compute", "Background suggestions")):
+        # Personal settings have their own header; Home is not current there (#184 delta review S1).
+        for path, title in (("/settings/assistant", "Schedules"), ("/settings/background-compute", "Background suggestions")):
             page.goto(path)
             expect(page.locator("header.top").get_by_role("heading", level=1, name=title)).to_be_visible()
             expect(places.get_by_role("link", name="Home")).not_to_have_attribute("aria-current", "page")
@@ -1177,8 +1177,8 @@ class AppShellJourney(unittest.TestCase):
         """A search result opens a task in Details (`?open=work:<id>`); signing out right away wins."""
         page, project_id, _ = self.person_with_a_task("Rae Lund")
         page.get_by_role("button", name="Search", exact=True).click()
-        dialog = page.get_by_role("dialog", name="Jump to")
-        field = dialog.get_by_role("combobox", name="Jump to")
+        dialog = page.get_by_role("dialog", name="Search", exact=True)
+        field = dialog.get_by_role("combobox", name="Search", exact=True)
         field.fill("dimmer curve")
         expect(dialog.locator("[role=option].sr").first).to_contain_text("Calibrate the dimmer curve")
         dialog.locator("[role=option].sr").first.click()

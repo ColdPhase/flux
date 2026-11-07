@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
-import type { ConversationMessage, NamedPrincipal, ObjectLink, Project, TaskActivityEntry, TaskDiscussion as Discussion, WorkItem, WorkspaceMember } from '@flux/contracts';
-import { AgentIdentity, Avatar, Kreska, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
+import type { AssistantChange, ConversationMessage, NamedPrincipal, ObjectLink, Project, TaskActivityEntry, TaskDiscussion as Discussion, WorkItem, WorkspaceMember } from '@flux/contracts';
+import { AgentIdentity, Avatar, Button, Kreska, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
 import { useComposerScope, type useComposerDraft } from '../composer/draft';
 import { ComposerFiles, MessageContent, hasPhotos } from '../composer/Files';
 import { ComposerAudience, ComposerBox } from '../composer/ComposerBox';
@@ -14,6 +14,8 @@ import { agentDisplayName, FORMER_MEMBER } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { AgentThreadLink } from '../agents/AgentThreadLink';
 import { TaskAgentState } from '../agents/TaskAgentState';
+import { failure, useAssistantChanges } from '../assistant/WaitingChanges';
+import { undoChange } from '../assistant/api';
 import { RefLink } from '../place/origin';
 import { useCreateWorkFromMessage } from './inline';
 import { getTaskActivity } from './api';
@@ -161,6 +163,27 @@ function Face({ actor, mine }: { actor: { kind: 'agent' | 'human'; name: string 
   return actor.kind === 'agent' ? <Kreska size={20} className="wd-act__face" /> : <Avatar name={actor.name} size="sm" tone={mine ? 'me' : 'neutral'} />;
 }
 
+/**
+ * What an agent's line in the thread is, as its run's change (#923, AG-3): its owner can take it back with Undo while no person has
+ * answered it, and everyone then reads "Undone by Jonas" (the line itself is replaced by a tombstone).
+ */
+function PostedLine({ change, onChanged }: { change: AssistantChange; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState('');
+  if (change.state === 'undone') return <p className="assistant-message__line" role="status">Undone by {change.decidedBy?.name ?? 'you'}</p>;
+  if (!change.undoable) return null;
+  const undo = async () => {
+    setBusy(true); setNote('');
+    try { setNote((await undoChange(change)).message ?? ''); } catch (error) { setNote(failure(error)); } finally { setBusy(false); onChanged(); }
+  };
+  return (
+    <p className="assistant-message__line" role="status" aria-live="polite">
+      <Button variant="link" busy={busy} onClick={() => void undo()}>Undo</Button>
+      {note ? <><span aria-hidden="true"> · </span><span>{note}</span></> : null}
+    </p>
+  );
+}
+
 /** The timeline: newest first, each line with its author and time. */
 export function ActivityTimeline({ state, composer, item, project, me, writable, composerId, empty }: {
   state: TaskActivityState; composer: TaskComposerDraft; item: Pick<WorkItem, 'id' | 'version'>; project: Project; me: { id: string; name: string }; writable: boolean; composerId: string;
@@ -173,6 +196,14 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   const headingId = useId();
   const { discussion } = state;
   const thread = discussion?.conversationId ? `/projects/${project.id}/conversations/${discussion.conversationId}` : null;
+  // An agent's line in this thread is its run's change: it is taken back where it stands, not in the state line above.
+  const posts = useAssistantChanges(discussion?.conversationId ?? null, state.lines.length);
+  const posted = useMemo(() => {
+    const byMessage = new Map<string, AssistantChange>();
+    for (const runChanges of posts.byRun.values()) for (const change of runChanges) if (change.objectType === 'message' && change.operation === 'conversation.reply' && change.objectId) byMessage.set(change.objectId, change);
+    return byMessage;
+  }, [posts.byRun]);
+  const inThread = useCallback((change: AssistantChange) => !!change.objectId && change.objectType === 'message' && state.lines.some((line) => line.kind === 'message' && line.message.id === change.objectId), [state.lines]);
   return (
     <section className="details__sec wd-activity" aria-labelledby={headingId}>
       <div className="wd-sechead">
@@ -181,7 +212,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
       </div>
       {state.failed === 'all' ? <p className="wd-error" role="alert">The activity could not be loaded. <button type="button" className="wd-inline" onClick={state.retry}>Retry</button></p>
         : state.loading ? <p className="wd-muted" aria-busy="true">Loading…</p> : null}
-      <TaskAgentState item={item} projectId={project.id} conversationId={discussion?.conversationId ?? null} revision={state.lines.length} onChanged={state.reload} />
+      <TaskAgentState item={item} projectId={project.id} conversationId={discussion?.conversationId ?? null} revision={state.lines.length} onChanged={state.reload} elsewhere={inThread} />
       {state.failed === 'changes' ? <p className="wd-error" role="alert">Some of the history could not be loaded. <button type="button" className="wd-inline" onClick={state.retry}>Retry</button></p> : null}
       {composer.pending.length ? <ol className="wd-pending" aria-label={writable ? 'Messages you are sending' : 'Pending messages kept'}>{composer.pending.map((pending) => (
         <li key={pending.id} id={`pending-${pending.id}`} data-client-message-id={pending.id} data-send-state={pending.state} className={`wd-pending__item is-pending${pending.state === 'failed' ? ' is-failed-send' : ''}`}>
@@ -214,6 +245,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
                     </MessageContent>
                     {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={(resultId) => openDetails({ kind: 'result', id: resultId, projectId: project.id }, { back: 'push' })} /> : null}
                   </div>
+                  {agent && posted.get(message.id) ? <PostedLine change={posted.get(message.id)!} onChanged={() => { void posts.refresh(); state.reload(); }} /> : null}
                 </div>
               </li>
             );
