@@ -93,6 +93,7 @@ export * from './proactive-comparison/recovery.js';
 export * from './proactive-comparison/runtime.js';
 export * from './search/index.js';
 export * from './personal-runs/index.js';
+export * from './agent-tasks/index.js';
 export * from './task-discussions/ports.js';
 export * from './task-discussions/service.js';
 export { derivedUuid, contributionIdentity, messageContribution } from './task-discussions/identity.js';

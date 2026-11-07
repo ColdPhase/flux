@@ -94,10 +94,11 @@ describe('a blocked task waits for a person', () => {
 
   test('an agent-held blocked task is the agent owner\'s item', async () => {
     const agent = expectStatus(await send(kai, 'POST', `/api/v1/workspaces/${ws.id}/agents`, { name: 'Kai bot', owner: 'self' }), 201) as { id: string };
-    const task = await create({ title: 'Calibrate by agent', owner: { kind: 'agent', id: agent.id }, status: 'blocked', blocker: 'Needs the rig' });
+    // Kai gives it to his own agent: nobody gives a task to someone else's (#904).
+    const task = expectStatus(await send(kai, 'POST', `/api/v1/projects/${place.id}/work`, { title: 'Calibrate by agent', owner: { kind: 'agent', id: agent.id }, status: 'blocked', blocker: 'Needs the rig' }), 201) as WorkItem;
     const key = `blocked:${task.id}`;
     assert.equal(find(await queue(kai), key)?.title, `#${task.number} is blocked: Needs the rig`, 'the agent\'s human owner');
-    assert.equal(find(await queue(ada), key), undefined, 'not the person who assigned it');
+    assert.equal(find(await queue(ada), key), undefined, 'not another person');
     assert.equal(find(await queue(viewer), key), undefined);
   });
 

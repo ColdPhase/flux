@@ -148,7 +148,9 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       // Assigned again to someone else since: that later event notifies them instead.
       if (assignee && reachable(assignee) && work.ownerUserId === assignee) result.push({
         userId: assignee, reason: 'assigned', source: { type: 'project', id: work.projectId },
-        title: `${who} assigned you ${quote(excerpt(work.title, 80))}`,
+        // An agent that changes who owns an existing task can only be handing it back to its owner (#856, AG-7): it is ready to check.
+        title: event.kind === 'project.work_updated.v1' && isAgentActor(event.actorId)
+          ? `${quote(excerpt(work.title, 80))} is ready for you to check` : `${who} assigned you ${quote(excerpt(work.title, 80))}`,
         body: `Work in ${work.projectName}`, url: `/projects/${work.projectId}/tasks?open=work:${work.id}`, who,
       });
       // Someone named you as the one a blocked task waits for (#550); not if it was unblocked or re-pointed since.

@@ -10,6 +10,7 @@ import { accessPorts, assertExactMigrationLedger, fileCipherOf, FLUX_SCHEMA_VERS
 import { EDITING_CAPABILITIES_PATH, type EditingCapability } from '@flux/contracts';
 import { registerDatabase } from './plugins/database.js';
 import { aiRoutes } from './access/ai-gate.js';
+import { agentTaskRoutes } from './agent-tasks/routes.js';
 import { startIdentity } from './identity/index.js';
 import { accessRoutes } from './access/routes.js';
 import { sketchRoutes } from './sketches/routes.js';
@@ -303,6 +304,9 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(aiRoutes(assistantRoutes), { db, sessions: identity, boss });
   await app.register(aiRoutes(personalRunRoutes), { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
     runtime: personalRuntimeAvailability(config.agentRuntime, db) });
+  // People's agents take tasks (#856): the setting, the state line and the drain of what the work and the worker wrote.
+  await app.register(aiRoutes(agentTaskRoutes), { db, sessions: identity, boss, connectionString,
+    composition: { connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled, runtime: personalRuntimeAvailability(config.agentRuntime, db) } });
   await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });
   // The `runtime` transport (F-022 AIM-3): off unless the operator set FLUX_AGENT_RUNTIME.

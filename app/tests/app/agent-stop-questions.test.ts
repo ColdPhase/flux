@@ -110,7 +110,8 @@ test('the agent\'s owner and the task\'s creator may stop it; a task it does not
   // A person who owns the agent, though not a manager and not the creator, can stop it. Marek owns a second agent here.
   const mine = expectStatus(await f.marek.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, { body: { name: 'Marek Codex', owner: 'self' } }), 201) as Agent;
   const handed = await f.task(f.hubert, 'Handed to Marek\'s agent');
-  expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/work/${handed.id}`, { body: { owner: { kind: 'agent', id: mine.id }, status: 'in_progress' },
+  // Marek gives the task to his own agent: nobody gives a task to someone else's (#904).
+  expectStatus(await f.marek.browser.request('PATCH', `/api/v1/work/${handed.id}`, { body: { owner: { kind: 'agent', id: mine.id }, status: 'in_progress' },
     headers: { 'if-match': `"${handed.version}"` } }), 200);
   const own = await f.marek.browser.request('POST', `/api/v1/projects/${f.p.id}/agent-stops`, { body: { taskId: handed.id, agentId: mine.id } });
   assert.equal(own.status, 201, own.text);

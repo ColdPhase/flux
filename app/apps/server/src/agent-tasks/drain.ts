@@ -1,0 +1,278 @@
+import { AGENT_TASK_EVENT_ATTEMPTS, agentTaskRows, personalRunRows, workRows, type Database, type Transaction } from '@flux/db';
+import { createPersonalRunUseCases, DomainError, noPersonalConnections, stopRunBy, TAKEN_WORDS, taskRunClientId, taskRunPrompt, uuidFrom, type Principal, type TaskStart, type WorkRecord } from '@flux/core';
+import { personalRunPorts, type PersonalRunComposition, type PersonalRunQueueFactory } from '../personal-runs/adapters.js';
+import { taskDiscussionUseCases } from '../work/task-discussions.js';
+import { workUseCases } from '../work/adapters.js';
+
+// The server's side of people's agents taking tasks (#856, F-036 AG-5). `agent_task_events` holds what happened in the
+// transaction that caused it; this drains it as soon as the API is told (NOTIFY), so a task is taken within seconds and
+// nothing is polled while idle:
+//   `assigned`  a task was given to an agent, or to a person who chose an agent. In the second case the person's setting
+//               gives it to that agent (an owner change on their behalf); in the first the agent says it is on it and its run
+//               is queued. The run is the same run as any other of the agent.
+//   `started`   the agent's run began working: the task is Doing from then, not while it waits for room (AgentStates 1).
+//   `released`  someone took the task away from an agent that was working on it: its run stops.
+//   `finished`  a run on a task ended. The agent's report goes into the task's discussion, and the task follows the agent's
+//               "What it may do": Done with "Do it and tell me", back with its owner to check otherwise (C-1). A task Stopped
+//               or left because AI went off goes back to its owner; a run that failed keeps its task, with Try again.
+// Every step is checked again as the person or agent it acts for: nothing here bypasses the work use cases.
+//
+// An event is one transaction. A rule's refusal (a `DomainError`: the task changed, a person lost access, AI is off) ends that step and
+// the event is still done; anything else (a deadlock, a lost connection) rolls the whole event back and it is tried again, a little
+// later each time. An event that fails every time is not left silent: the task's owner is told in the task and gets it back (`giveUp`).
+//
+// Locks, in the one order the worker and the work and run use cases already take them: the enablement rows of the people whose
+// agents may start a run (ascending), then the space's task-graph lock, then the task and run rows. The worker checks the
+// owner's enablement before it fences the task (processor.ts `recheck`, then `prepareTaskUse`), a person's own request does the same
+// (service.ts `start`), and task-targets.ts records it ("authority fences, then graphs, then tasks"). An event that took the graph
+// first would wait for a row the worker holds while the worker waits for the graph: a deadlock, the loser's dispatch lost.
+
+const human = (id: string): Principal => ({ kind: 'human', id });
+const agent = (id: string): Principal => ({ kind: 'agent', id });
+const FINISHED = new Set(['done', 'not_pursued']);
+const IN_FLIGHT = ['queued', 'reading', 'dispatching'];
+
+type Event = NonNullable<Awaited<ReturnType<ReturnType<typeof agentTaskRows>['claimNext']>>>;
+export interface AgentTaskDrain {
+  /** Handles every event waiting; a call while one is running makes it look again before it stops. */
+  drain(): Promise<void>;
+}
+
+/** The step was refused by the start itself, and the savepoint holding the agent's first words is rolled back with it. */
+class Refused extends Error { constructor(readonly line: string) { super(line); } }
+
+export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactory, composition: Omit<PersonalRunComposition, 'queue'>,
+  log: { warn(object: unknown, message: string): void } = { warn: () => undefined }): AgentTaskDrain {
+
+  /** A step a rule may refuse is logged and left; any other failure is not swallowed: it rolls the event back, to be tried again. */
+  async function attempt<T>(what: string, step: () => Promise<T>): Promise<T | null> {
+    try { return await step(); } catch (error) {
+      if (error instanceof DomainError) { log.warn({ error, what }, 'An agent task step was refused'); return null; }
+      throw error;
+    }
+  }
+
+  async function say(tx: Transaction, work: WorkRecord, as: string, body: string, key: string) {
+    await attempt('say', () => taskDiscussionUseCases(tx as unknown as Database).contribute(agent(as), work.id, { body, clientMessageId: uuidFrom(`agent-task:${key}`) }));
+  }
+
+  /**
+   * The task goes back to the person who owns the agent. `by` is who changes it; `asAgent` names the agent that hands it back for
+   * review, which tells its owner (an Inbox item and a notification, AG-7), and falls back to the person if the agent cannot write.
+   */
+  async function giveBack(tx: Transaction, work: WorkRecord, ownerId: string, by: string, asAgent?: string) {
+    const current = (await workRows(tx).findWork(work.id, { lock: true }))!;
+    if (current.owner?.kind !== 'agent') return;
+    const give = (principal: Principal) => attempt('give back', () => workUseCases(tx as unknown as Database).updateWork(principal, work.id,
+      { owner: { kind: 'human', id: ownerId } }, current.version, 'agent_rule'));
+    if (asAgent && await give(agent(asAgent))) return;
+    await give(human(by));
+  }
+
+  /**
+   * The locks of an event, in the one order (see the top of this file): what names the owners is read without a lock, their
+   * enablement rows are locked (ascending), and only then the task graph. Returns false when the task is gone.
+   */
+  async function lockInOrder(tx: Transaction, event: Event): Promise<boolean> {
+    const rows = agentTaskRows(tx);
+    const work = await workRows(tx).findWork(event.workId);
+    if (!work) return false;
+    const owners = new Set<string>();
+    if (event.kind === 'assigned' && event.ownerAgentId) {
+      const holder = await rows.agent(event.ownerAgentId);
+      if (holder?.ownerUserId) owners.add(holder.ownerUserId);
+    }
+    for (const owner of [...owners].sort()) await personalRunRows(tx).enablement(owner, { lock: true });
+    await workRows(tx).lockTaskGraphs([work.projectId]);
+    return true;
+  }
+
+  /**
+   * An event that failed every time must not leave the task silent: its owner reads that in the task and has the task back.
+   * The agent says it (as it says any refusal) and, if it still held the task, gives it back to its owner and stops its run on it; a
+   * task that is already someone else's, or finished, needs nothing. Its own transaction, graph lock first, like every step on a task.
+   */
+  async function giveUp(event: Event) {
+    await db.transaction(async (tx) => {
+      const rows = agentTaskRows(tx);
+      const work = await workRows(tx).findWork(event.workId);
+      if (!work || FINISHED.has(work.status)) return;
+      await workRows(tx).lockTaskGraphs([work.projectId]);
+      const run = event.runId ? await personalRunRows(tx).findRun(event.runId) : null;
+      const agentId = event.ownerAgentId ?? run?.agentId ?? (event.ownerUserId ? await rows.taking(event.ownerUserId) : null);
+      const holder = agentId ? await rows.agent(agentId) : null;
+      if (!holder?.ownerUserId) return;
+      const current = (await workRows(tx).findWork(work.id, { lock: true }))!;
+      const held = current.owner?.kind === 'agent' && current.owner.id === holder.id;
+      if (!held && !(current.owner?.kind === 'human' && current.owner.id === holder.ownerUserId)) return;
+      await say(tx, current, holder.id, held ? 'I couldn\'t take care of this. It\'s back with you.' : 'I couldn\'t take this. It\'s still with you.', `gave-up:${event.id}`);
+      if (!held) return;
+      await giveBack(tx, current, holder.ownerUserId, holder.ownerUserId);
+      // A rule's hand-back writes no `released` event, and a run still going would report to a task that is no longer its own.
+      const ports = personalRunPorts(tx, queue);
+      for (const going of await rows.runsOfWork(work.id, 8))
+        if (going.agentId === holder.id && IN_FLIGHT.includes(going.status)) await stopRunBy(ports, going.id, holder.ownerUserId);
+    });
+  }
+
+  async function assigned(tx: Transaction, event: Event) {
+    const rows = agentTaskRows(tx);
+    const work = await workRows(tx).findWork(event.workId, { lock: true });
+    if (!work || FINISHED.has(work.status) || work.parked) return;
+    if (event.ownerUserId) {
+      // A person was given the task and chose an agent: their setting gives it to that agent, as them.
+      if (work.owner?.kind !== 'human' || work.owner.id !== event.ownerUserId) return;
+      const agentId = await rows.taking(event.ownerUserId);
+      if (!agentId || !(await rows.isOwnServerAgent(event.ownerUserId, agentId))) return;
+      await attempt('give', () => workUseCases(tx as unknown as Database).updateWork(human(event.ownerUserId!), work.id,
+        { owner: { kind: 'agent', id: agentId } }, work.version, 'agent_rule'));
+      return;
+    }
+    if (!event.ownerAgentId || work.owner?.kind !== 'agent' || work.owner.id !== event.ownerAgentId) return;
+    const holder = await rows.agent(event.ownerAgentId);
+    if (!holder?.ownerUserId || holder.revokedAt) return;
+    const ownerId = holder.ownerUserId;
+    // One run at a time per task: a run still working (a duplicate event, a second click) is the one that counts.
+    const [latest] = await rows.runsOfWork(work.id, 1);
+    if (latest && IN_FLIGHT.includes(latest.status)) return;
+    // An agent that does not run on the server (a local client holding the task by co-work) is not this module's to start.
+    if (!(await rows.isOwnServerAgent(ownerId, holder.id))) return;
+    // The agent says it is on it first: that is what opens the task's discussion, where its run is anchored. No model is called for it.
+    // If the start is then refused, the words are taken back with it, so the discussion opens with the refusal and not with a promise.
+    let refusal: string | null = null;
+    try {
+      await tx.transaction(async (inner) => {
+        const { ports, runs } = useCases(inner);
+        await say(inner, work, holder.id, TAKEN_WORDS, `taken:${event.id}`);
+        const place = await taskDiscussionUseCases(inner as unknown as Database).getDiscussionRoot(human(ownerId), work.id).catch(() => null);
+        const started: TaskStart = place
+          ? await runs.startTask(ports, { ownerUserId: ownerId, agentId: holder.id, workId: work.id, projectId: work.projectId, conversationId: place.conversationId,
+            prompt: taskRunPrompt(work), clientRunId: taskRunClientId(event.id) })
+          : { started: false, line: 'I can\'t start: this task has no discussion yet.' };
+        if (!started.started) throw new Refused(started.line);
+      });
+    } catch (error) {
+      if (!(error instanceof Refused)) throw error;
+      refusal = error.line;
+    }
+    if (refusal !== null) {
+      await say(tx, work, holder.id, refusal, `refused:${event.id}`);
+      await giveBack(tx, work, ownerId, ownerId);
+    }
+  }
+
+  const useCases = (tx: Transaction) => {
+    const ports = personalRunPorts(tx, queue);
+    return { ports, runs: createPersonalRunUseCases({ uow: { run: (job) => job(ports) }, connections: composition.connections ?? noPersonalConnections,
+      providerEnabled: composition.providerEnabled ?? false, ...(composition.runtime ? { runtime: composition.runtime } : {}) }) };
+  };
+
+  /** The agent's run really began: the task is Doing from now (it stayed To do while the agent waited for room). */
+  async function started(tx: Transaction, event: Event) {
+    const run = event.runId ? await personalRunRows(tx).findRun(event.runId) : null;
+    if (!run || run.kind !== 'task' || !run.workId) return;
+    const work = await workRows(tx).findWork(run.workId, { lock: true });
+    if (!work || work.status !== 'open' || work.owner?.kind !== 'agent' || work.owner.id !== run.agentId) return;
+    await attempt('doing', () => workUseCases(tx as unknown as Database).updateWork(agent(run.agentId), work.id, { status: 'in_progress' }, work.version));
+  }
+
+  /** Someone took the task away from an agent while it worked: the run stops (the report would have nowhere to go). */
+  async function released(tx: Transaction, event: Event) {
+    if (!event.ownerAgentId) return;
+    const ports = personalRunPorts(tx, queue);
+    for (const run of await agentTaskRows(tx).runsOfWork(event.workId, 8))
+      if (run.agentId === event.ownerAgentId && IN_FLIGHT.includes(run.status)) await stopRunBy(ports, run.id, event.byKind === 'human' && event.byId ? event.byId : run.ownerUserId);
+  }
+
+  async function finished(tx: Transaction, event: Event) {
+    const rows = agentTaskRows(tx);
+    const run = event.runId ? await personalRunRows(tx).findRun(event.runId, { lock: true }) : null;
+    if (!run || run.kind !== 'task' || !run.workId) return;
+    const work = await workRows(tx).findWork(run.workId, { lock: true });
+    if (!work || FINISHED.has(work.status)) return;
+    // The task is still the agent's. If its owner took it back or gave it away meanwhile, there is nothing to finish.
+    const holds = work.owner?.kind === 'agent' && work.owner.id === run.agentId;
+    const ended = run.status;
+    if (ended === 'completed' || ended === 'truncated') {
+      if (!holds) return;
+      await say(tx, work, run.agentId, run.answerBody ?? '(No answer text.)', `report:${run.id}`);
+      const mayDo = await personalRunRows(tx).assistantMayDo(run.ownerUserId, run.workspaceId);
+      const current = (await workRows(tx).findWork(work.id, { lock: true }))!;
+      // With "Do it and tell me" it marks the task Done; with "Ask me first" or "Only read" it hands it back to check (C-1), which
+      // reaches its owner's Inbox as one item for the run (AG-7).
+      if (mayDo === 'act') await attempt('done', () => workUseCases(tx as unknown as Database).updateWork(agent(run.agentId), work.id, { status: 'done' }, current.version));
+      else await giveBack(tx, work, run.ownerUserId, run.ownerUserId, run.agentId);
+      return;
+    }
+    if (ended === 'stopped') {
+      if (!holds) return;
+      const by = run.stopRequestedBy ? await rows.personName(run.stopRequestedBy) : null;
+      // With AI off the agent cannot write here any more: the state line tells its owner (C-17), and the task goes back.
+      if (run.endReason !== 'ai_off') await say(tx, work, run.agentId, `Stopped${by ? ` by ${by}` : ''}.`, `stopped:${run.id}`);
+      await giveBack(tx, work, run.ownerUserId, run.stopRequestedBy ?? run.ownerUserId);
+      return;
+    }
+    // The provider's limit paused it: its continuation is queued and starts by itself.
+    if (run.endReason === 'plan_limit' && await rows.successor(run.id)) return;
+    if (!holds) return;
+    if (ended === 'paused' || ended === 'revoked' || ended === 'denied') {
+      await say(tx, work, run.agentId, ended === 'paused' ? 'I can\'t work on this: your agent is paused.' : 'I can\'t work on this: I\'m no longer allowed here.', `ended:${run.id}`);
+      await giveBack(tx, work, run.ownerUserId, run.ownerUserId);
+      return;
+    }
+    // A run that failed keeps the task with the agent: its owner chooses Try again or Take it back.
+    await say(tx, work, run.agentId, 'I couldn\'t finish this.', `failed:${run.id}`);
+  }
+
+  let draining = false;
+  let again = false;
+  /** After a failed event: look again when it is due, with no polling in between. */
+  const retryAfter = (seconds: number) => { setTimeout(() => { void drain(); }, seconds * 1000).unref(); };
+
+  async function handleOne(): Promise<boolean> {
+    const claimed: { event: Event | null } = { event: null };
+    try {
+      return await db.transaction(async (tx) => {
+        const rows = agentTaskRows(tx);
+        const event = await rows.claimNext();
+        if (!event) return false;
+        claimed.event = event;
+        if (await lockInOrder(tx, event)) {
+          if (event.kind === 'assigned') await assigned(tx, event);
+          else if (event.kind === 'started') await started(tx, event);
+          else if (event.kind === 'released') await released(tx, event);
+          else await finished(tx, event);
+        }
+        await rows.markHandled(event.id);
+        return true;
+      });
+    } catch (error) {
+      const event = claimed.event;
+      log.warn({ error, event: event?.id }, 'An agent task event failed and will be tried again');
+      if (event) {
+        const { attempts, waitSeconds } = await agentTaskRows(db).failed(event.id).catch(() => ({ attempts: 0, waitSeconds: 5 }));
+        if (attempts >= AGENT_TASK_EVENT_ATTEMPTS) {
+          // Given up: it no longer waits. The task's owner is told in the task (and has it back), and the log keeps the event.
+          log.warn({ event: event.id, kind: event.kind, workId: event.workId }, 'An agent task event was given up after repeated failures');
+          await giveUp(event).catch((cause: unknown) => log.warn({ error: cause, event: event.id }, 'The owner could not be told of the event given up'));
+          await agentTaskRows(db).markHandled(event.id).catch(() => undefined);
+        } else retryAfter(waitSeconds);
+      }
+      return event !== null;
+    }
+  }
+
+  async function drain() {
+    if (draining) { again = true; return; }
+    draining = true;
+    try {
+      do {
+        again = false;
+        while (await handleOne()) { /* each event is its own transaction */ }
+      } while (again);
+      await agentTaskRows(db).prune().catch(() => undefined);
+    } finally { draining = false; }
+  }
+
+  return { drain };
+}

@@ -35,13 +35,13 @@ const account = [
   'auth_session_identities', 'auth_sessions', 'auth_users', 'auth_verifications', 'oauth_access_token', 'oauth_client', 'oauth_client_assertion',
   'oauth_client_resource', 'oauth_consent', 'oauth_grant_authentication', 'oauth_refresh_token', 'oauth_resource', 'jwks', 'push_subscriptions',
   'notification_addresses', 'notification_address_tokens', 'notification_preferences', 'notification_verification_sends', 'github_credentials',
-  'github_oauth_flows',
+  'github_oauth_flows', 'agent_task_taking',
 ] as const;
 const system = [
   'flux_schema_version', 'outbox', 'file_garbage', 'notification_cursor', 'password_attempts', 'encrypted_workspace_creations', 'samples', 'sample_results', 'live_access_fences',
   'live_webhook_events', 'sealed_job_waits', 'workspace_keys', 'workspace_holders', 'workspace_dek_wraps', 'workspace_key_versions',
   'workspace_unlocks', 'workspace_removed_holders', 'workspace_removals', 'workspace_rotation_progress', 'workspace_wrap_grants', 'idempotency_account_operations',
-  'event_data_tokens', 'event_data_keys',
+  'event_data_tokens', 'event_data_keys', 'agent_task_events',
 ] as const;
 const refused = [
   'github_bindings', 'github_bridge_outbox', 'github_deliveries', 'github_processing', 'github_rule_defaults', 'github_task_links',

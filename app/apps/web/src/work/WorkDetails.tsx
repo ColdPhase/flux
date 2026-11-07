@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useRevalidator } from 'react-router';
-import type { Agent, ObjectLink, Project, ProjectPerson, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
+import type { ObjectLink, Project, ProjectPerson, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast, usePop, Select, Option } from '../ui';
@@ -16,7 +16,8 @@ import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import { NotNowButton, NotNowMenu, WaitingLine } from '../notifications/NeedsYouCard';
 import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
-import { acceptDecision, createResult, listAgents, proposeDecision, undoTaskCreation, updateWork } from './api';
+import { acceptDecision, createResult, proposeDecision, undoTaskCreation, updateWork } from './api';
+import { ownTaskAgents } from '../agents/taskAgents';
 import { STATUS_LABEL, decisionLine, firstClause, firstLine, isFinished, linked, resultLine, shortDate, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { getDoc } from '../docs/api';
@@ -45,7 +46,8 @@ interface Context {
   members: WorkspaceMember[];
   /** The people in the space (F-037): the Owner and Waiting-for choices offer these and nobody else, so nobody is given a task unannounced. */
   spacePeople: { userId: string; name: string }[];
-  agents: Agent[];
+  /** Your own agents that run on the server: the only agents the Owner field offers (#904). */
+  agents: { id: string; name: string }[];
 }
 
 const forbidden = (error: unknown) => error instanceof ApiError && error.status === 403 ? [] : Promise.reject(error);
@@ -54,11 +56,11 @@ async function loadContext(projectId: string, signal: AbortSignal): Promise<Cont
   const project = await getProject(projectId, signal);
   const [members, agents, audience] = await Promise.all([
     listWorkspaceMembers(project.workspaceId, signal).catch(forbidden),
-    listAgents(project.workspaceId, signal).catch(forbidden),
+    ownTaskAgents(signal),
     listProjectPeople(projectId, signal).catch(() => [] as ProjectPerson[]),
   ]);
   const spacePeople = audience.filter((person) => person.kind === 'human').map((person) => ({ userId: person.id, name: person.name }));
-  return { project, members, spacePeople, agents: agents.filter((agent) => !agent.revokedAt) };
+  return { project, members, spacePeople, agents };
 }
 
 function readable(error: unknown) {
@@ -425,14 +427,14 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   if (item.owner && !people.some((person) => person.value === ownerValue) && item.owner.kind === 'human') people.push({ value: ownerValue, name: item.owner.name, label: item.owner.name });
   const waitingPeople = people.map((person) => ({ ...person, id: person.value.slice('human:'.length) }));
   if (item.waitingFor && !waitingPeople.some((person) => person.id === item.waitingFor!.id)) waitingPeople.push({ value: `human:${item.waitingFor.id}`, id: item.waitingFor.id, name: item.waitingFor.name, label: item.waitingFor.name });
-  // F-029 (#614): a workspace whose AI is off offers no agent as an owner; a task an agent already owns keeps showing its name.
+  // F-029 (#614): a workspace whose AI is off offers no agent as an owner. #904: only your own agents are offered; a task another
+  // person's agent holds keeps showing its name as the current owner, without being a choice.
   const aiOff = useSpaceAi(context.project.id).blocked;
   const agents = aiOff ? [] : context.agents.map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
-  if (!aiOff && item.owner?.kind === 'agent' && !agents.some((agent) => agent.value === ownerValue)) agents.push({ value: ownerValue, label: `${item.owner.name} (agent)` });
   const ownerOptions = [
     { value: '', label: 'Nobody yet', icon: <Icon name="person" size={16} /> },
     ...people.map(({ name, ...person }) => ({ ...person, group: 'People', icon: <Avatar name={name} size="sm" /> })),
-    ...agents.map((agent) => ({ ...agent, group: 'Agents', icon: <Kreska size={16} /> })),
+    ...agents.map((agent) => ({ ...agent, group: 'Your agents', icon: <Kreska size={16} /> })),
   ];
   const shownOwner = ownerDraft ?? ownerValue;
   const ownerView = shownOwner
