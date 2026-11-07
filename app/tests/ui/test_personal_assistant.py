@@ -245,12 +245,16 @@ class PersonalAssistantJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- turning it on: a model, nothing else (#854)
 
-    def test_04_owner_gets_assistant_from_settings_ai(self) -> None:
+    def test_04_owner_has_assistant_in_settings_ai(self) -> None:
         # The account menu holds Settings and People only (#763 SG-7); the agents are in Settings › AI (#857).
         page = self.page("jo")
         page.goto("/settings/agents")
-        # Connecting AI gives the owner Assistant: Connect AI's default model (the TEST-ONLY fixture key here), nothing to agree to
-        # and no limit of Flux's own to set.
+        # Opening Settings makes no agent: with none yet it says so. Connecting AI gives the owner Assistant on the server; the check
+        # stack's fixture key is not a connection made by the person, so the same first agent is made through the API.
+        expect(page.get_by_text("You have no agents. Make one with New agent.")).to_be_visible()
+        self.api(page, "POST", "/api/v1/my-agents", {"workspaceId": self.ids["workspace"]}, status=201)
+        page.reload()
+        # Connect AI's default model (the TEST-ONLY fixture key here), nothing to agree to and no limit of Flux's own to set.
         row = page.get_by_role("list", name="Your agents").get_by_role("listitem").first
         expect(row).to_contain_text("Assistant")
         expect(row).to_contain_text("Answers /ai")

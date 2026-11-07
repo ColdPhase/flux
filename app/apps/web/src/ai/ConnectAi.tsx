@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useRevalidator } from 'react-router';
 import type { AgentRuntimeStatus, BackgroundComputeConnection } from '@flux/contracts';
 import { getRuntime } from '../agent-runtime/api';
 import { Button, Icon, Spinner } from '../ui';
+import { refreshAssistantModel } from '../assistant/model';
 import { connectionLines, type AiConnectionKind, type AiConnectionLine } from './connections';
 import { ConnectAiWindow } from './ConnectAiWindow';
 import './connect-ai.css';
@@ -42,6 +43,7 @@ export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys }: {
   const [runtime, setRuntime] = useState<AgentRuntimeStatus | null>(null);
   const [runtimeFailed, setRuntimeFailed] = useState(false);
   const [windowOpen, setWindowOpen] = useState(false);
+  const revalidator = useRevalidator();
   const loadRuntime = useCallback((signal?: AbortSignal) => {
     getRuntime(signal).then((next) => { setRuntime(next); setRuntimeFailed(false); }, () => { if (!signal?.aborted) { setRuntime(null); setRuntimeFailed(true); } });
   }, []);
@@ -72,7 +74,11 @@ export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys }: {
         </div>
       ) : null}
       {windowOpen ? <ConnectAiWindow runtime={runtime} runtimeFailed={runtimeFailed} apiKeys={apiKeys} have={have} keys={keys ?? []} onClose={() => setWindowOpen(false)}
-        onConnected={() => { setWindowOpen(false); loadRuntime(); onRetryKeys(); }} /> : null}
+        onConnected={() => {
+          setWindowOpen(false); loadRuntime(); onRetryKeys();
+          // The first connection gives a person their Assistant on the server, so the shell's agents and the models are read again.
+          void revalidator.revalidate(); void refreshAssistantModel();
+        }} /> : null}
     </section>
   );
 }

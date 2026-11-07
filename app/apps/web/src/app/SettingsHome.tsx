@@ -36,9 +36,13 @@ const SECTIONS: { to: string; label: string; match: RegExp }[] = [
   { to: '/settings/shortcuts', label: 'Keyboard shortcuts', match: /^\/settings\/shortcuts$/ },
 ];
 
+/** A guest has no agents and no AI (F-036 AG-2), so Settings shows them no AI section. */
+const isGuest = (workspace: { role?: string | null } | null | undefined) => workspace?.role === 'guest';
+
 /** The section list beside every Settings page on the computer; the phone leads from the Settings page instead. */
 export function SettingsLayout() {
   const { pathname } = useLocation();
+  const { workspace } = useShellData();
   const phone = useMediaQuery(MEDIA.phone);
   // A touch-only tablet has no keyboard to use shortcuts with (AC-1).
   const touch = useMediaQuery(MEDIA.touch);
@@ -46,7 +50,7 @@ export function SettingsLayout() {
     <div className="sset">
       {phone ? null : (
         <nav className="sset__nav" aria-label="Settings sections">
-          {SECTIONS.filter((section) => !touch || section.to !== '/settings/shortcuts').map((section) => (
+          {SECTIONS.filter((section) => (!touch || section.to !== '/settings/shortcuts') && (section.to !== '/settings/agents' || !isGuest(workspace))).map((section) => (
             <Link key={section.to} to={section.to} className="sset__link" aria-current={section.match.test(pathname) ? 'page' : undefined}>
               {section.label}
             </Link>
@@ -303,7 +307,7 @@ function PhoneSettings() {
         <ul className="sset-card sset-gap">
           <LinkRow to="/settings/appearance" icon={<Icon name="sun" size={16} />} title="Appearance" detail={THEME_LABEL[theme]} />
           <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail="Needs you, quiet hours, morning summary" />
-          <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="AI" detail={agents.length ? `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}` : undefined} />
+          {isGuest(workspace) ? null : <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="AI" detail={agents.length ? `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}` : undefined} />}
           <LinkRow to="/settings/company" icon={<Icon name="people" size={16} />} title="Company" detail={workspace ? `${workspace.name} · its people and their roles` : 'Its people and their roles'} />
         </ul>
         <Form method="post" action="/sign-out" className="sset-card sset-gap">
@@ -325,6 +329,18 @@ export function SettingsHome() {
 
 /** Settings → AI on its own page: Connect AI, your agents, background suggestions and agent apps. */
 export function SettingsAgents() {
+  const { workspace } = useShellData();
+  // A guest has no agents and no AI (AG-2): not Connect AI, not Your agents. A direct link says so instead of a page of controls.
+  if (isGuest(workspace)) {
+    return (
+      <div className="pane-scroll">
+        <div className="pane-in sset-in">
+          <PageHead title="AI" />
+          <p className="sset-note" data-ai-settings="guest">Guests don’t have AI. An admin can make you a member.</p>
+        </div>
+      </div>
+    );
+  }
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">

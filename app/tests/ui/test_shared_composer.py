@@ -83,12 +83,16 @@ class SharedComposerJourney(unittest.TestCase):
         and requests are in the task's Details, which these tests use wherever they used the view."""
         page.evaluate("([url]) => { history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }", [f"/projects/{project['id']}/tasks"])
 
-    def open_thread(self, page, project, task):
-        """Opens a task's Details in the same page visit (a task link does the same) and waits for that task's, not the last one's."""
+    def switch_to(self, page, project, task):
+        """Moves to a task's Details in the same page visit (a task link does the same) without waiting for it to show."""
         # A history entry of its own (the router tells entries apart by their key), as a link would make.
         page.evaluate("""([url]) => { const idx = ((history.state && history.state.idx) || 0) + 1;
             history.pushState({ usr: null, key: Math.random().toString(36).slice(2), idx }, '', url); window.dispatchEvent(new PopStateEvent('popstate', { state: history.state })); }""",
                       [f"/projects/{project['id']}/tasks?open=work:{task['id']}"])
+
+    def open_thread(self, page, project, task):
+        """Opens a task's Details in the same page visit and waits for that task's, not the last one's."""
+        self.switch_to(page, project, task)
         expect(page.locator("#details").get_by_role("heading", name=task["title"])).to_be_visible()
         expect(self.box(page)).to_be_visible()
 
@@ -647,6 +651,102 @@ class SharedComposerJourney(unittest.TestCase):
         expect(pane.get_by_label("Reply", exact=True)).to_have_value("")
         self.stored(page)
         self.assertEqual(self.discussion(page, a)["messages"][-1]["source"], {"materialId": recovered['references'][0]['materialId'], "version": 1})
+
+    def test_12_a_slow_switch_between_tasks_never_writes_to_the_wrong_task(self):
+        # A task's composer lives in its Details (F-038); switching tasks while the next one is still being read must leave the old
+        # composer unusable, write nothing anywhere and, on a cancelled or failed switch, change neither task's private draft.
+        page = self.page()
+        self.addCleanup(lambda: page.unroute_all(behavior="ignoreErrors"))
+        project, a, b, _ = self.scene(page)
+        c = self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "A switch nobody finishes"}, 201)
+        d = self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "A task whose read fails"}, 201)
+        roots = [self.root(page, task) for task in (a, b)]
+        for task, root in zip((a, b), roots):
+            pane = self.cite(page, project, root['conversationId'])
+            pane.get_by_label("Reply", exact=True).fill(f"The complete private draft for {task['id']}")
+            self.choose(page, [self.file(f"{task['id']}.bin")], pane)
+            expect(pane.get_by_text("Ready, private", exact=False)).to_have_count(1)
+        before_a, before_b = self.record(page, project, a), self.record(page, project, b)
+        self.open_agents(page, project, a)
+        writes = []
+        page.on("request", lambda request: writes.append(request.url) if request.method == "POST" and ("/files?" in request.url or request.url.endswith("/discussion")) else None)
+
+        def detail(task):
+            return f"**/api/v1/projects/{project['id']}/work-objects/work/{task['id']}*"
+
+        def hold(task):
+            held = []
+            def handler(route):
+                if not held:
+                    held.append((route, route.fetch()))
+                else:
+                    route.continue_()
+            page.route(detail(task), handler)
+            return held
+
+        def wait_held(held):
+            deadline = time.time() + 10
+            while not held and time.time() < deadline:
+                page.wait_for_timeout(50)
+            self.assertTrue(held, "the task's read was held")
+
+        # B is read slowly: A's composer is gone at once, B's is not there yet, and nothing is written meanwhile.
+        held = hold(b)
+        self.switch_to(page, project, b)
+        wait_held(held)
+        expect(self.box(page)).to_have_count(0)
+        expect(self.send_button(page)).to_have_count(0)
+        shot(page, "shared-task-switch-pending-1440")
+        self.assertEqual(self.record(page, project, a), before_a)
+        self.assertEqual(self.record(page, project, b), before_b)
+        self.assertEqual(writes, [])
+        self.assertEqual(len(self.discussion(page, a)['messages']), 1)
+        self.assertEqual(len(self.discussion(page, b)['messages']), 1)
+        held[0][0].fulfill(response=held[0][1])
+        box = self.box(page)
+        expect(box).to_be_enabled()
+        expect(box).to_have_value(before_b['body'])
+        self.assertEqual(self.record(page, project, b), before_b)
+        box.fill("B can be edited only in B's mounted composer")
+        edited_b = self.record(page, project, b)
+        self.assertNotEqual(edited_b['commandId'], before_b['commandId'])
+        self.assertEqual(edited_b['files'], before_b['files'])
+        self.assertEqual(edited_b['references'], before_b['references'])
+        self.assertEqual(self.record(page, project, a), before_a)
+        self.open_thread(page, project, a)
+        expect(self.box(page)).to_have_value(before_a['body'])
+        self.assertEqual(self.record(page, project, a), before_a)
+        page.unroute_all(behavior="ignoreErrors")
+
+        # A switch to C that the person leaves for A before it arrives: C's late answer neither opens C nor touches a draft.
+        held = hold(c)
+        self.switch_to(page, project, c)
+        wait_held(held)
+        expect(self.box(page)).to_have_count(0)
+        self.open_thread(page, project, a)
+        expect(self.box(page)).to_have_value(before_a['body'])
+        held[0][0].fulfill(response=held[0][1])
+        page.wait_for_timeout(300)
+        expect(page.locator("#details").get_by_role("heading", name=a["title"])).to_be_visible()
+        expect(self.box(page)).to_have_value(before_a['body'])
+        self.assertEqual(self.record(page, project, a), before_a)
+        self.assertEqual(self.record(page, project, b), edited_b)
+        page.unroute_all(behavior="ignoreErrors")
+
+        # A read that fails shows an honest failure, never an editable composer of the task before it.
+        def fail(route):
+            route.fulfill(status=503, content_type="application/json", body=json.dumps({"code": "UNAVAILABLE", "message": "Controlled unavailable read"}))
+        page.route(detail(d), fail)
+        self.switch_to(page, project, d)
+        expect(page.locator("#details").get_by_role("heading", name="Not available")).to_be_visible()
+        expect(self.box(page)).to_have_count(0)
+        self.assertEqual(self.record(page, project, a), before_a)
+        self.assertEqual(self.record(page, project, b), edited_b)
+        self.assertEqual(writes, [])
+        page.unroute(detail(d), fail)
+        self.open_agents(page, project, b)
+        expect(self.box(page)).to_have_value(edited_b['body'])
+        self.assertEqual(self.record(page, project, a), before_a)
 
     def test_13_signout_clears_device_visit_and_legacy_drafts_before_a_late_upload(self):
         for refused_write in (False, True):

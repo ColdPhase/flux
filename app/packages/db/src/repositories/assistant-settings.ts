@@ -58,6 +58,10 @@ export function assistantSettingsRows(tx: Transaction, authority: AssistantAutho
     lockOwner: (ownerUserId: string) => lockAssistantOwner(tx, ownerUserId),
     list,
     get,
+    async everHad(ownerUserId: string): Promise<boolean> {
+      const [row] = await tx.select({ agentId: s.agentId }).from(s).where(eq(s.ownerUserId, ownerUserId)).limit(1);
+      return Boolean(row);
+    },
     /** The colour a new agent is given: the least used of the owner's own. */
     async nextColour(ownerUserId: string, workspaceId: string): Promise<AgentColour> {
       return nextAgentColour((await rows(ownerUserId, workspaceId)).map((row) => row.s.colour));

@@ -614,6 +614,12 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       });
     },
 
+    /** Whether the caller has ever had an agent (a deleted one counts): the first agent is made once, when AI is first connected. */
+    async hadAnAgent(principal: Principal): Promise<boolean> {
+      const owner = ownerOf(principal);
+      return uow.run((ports) => agentsOf(ports).everHad(owner));
+    },
+
     /** The caller's own agents, the first being Assistant. */
     async listAgents(principal: Principal): Promise<MyAgent[]> {
       const owner = ownerOf(principal);

@@ -3,7 +3,6 @@ import type { PgBoss } from 'pg-boss';
 import {
   AGENT_COLOURS,
   AGENT_LIMITS,
-  FIRST_AGENT_NAME,
   MY_AGENTS_PATH,
   myAgentMemoryItemPath,
   myAgentMemoryPath,
@@ -31,12 +30,13 @@ import {
   type RetryAssistantRunCommand,
   type UpdateMyAgentCommand,
 } from '@flux/contracts';
-import { createAgent, InvalidInputError, type PersonalConnectionLookup, type PersonalRuntimeAvailability } from '@flux/core';
-import { accessPorts, type Database } from '@flux/db';
+import { type PersonalConnectionLookup, type PersonalRuntimeAvailability } from '@flux/core';
+import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { registerAssistantJobRoutes } from '../assistant/jobs.js';
 import { assistantProposalUseCases, personalRunUseCases, pgBossPersonalRunQueue } from './adapters.js';
+import { makeAgent } from './make-agent.js';
 
 interface Options {
   db: Database;
@@ -113,20 +113,7 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   });
   app.post<{ Body: CreateMyAgentCommand }>(MY_AGENTS_PATH, { schema: { body: createAgentBody } }, async (request, reply) => command(request, reply, {
     operation: `POST ${MY_AGENTS_PATH}`, scope: 'account', status: 201,
-    run: (actor, conn) => conn.transaction(async (tx) => {
-      const scoped = tx as unknown as Database;
-      const uses = personalRunUseCases(scoped, composition);
-      let agentId = request.body.agentId;
-      if (!agentId) {
-        // A new agent: its identity and its setup are made together or not at all. The first is Assistant (F-036 AG-1).
-        if (!request.body.workspaceId) throw new InvalidInputError('workspaceId is required for a new agent');
-        const first = (await uses.listAgents(actor)).length === 0;
-        const name = request.body.name ?? (first ? FIRST_AGENT_NAME : null);
-        if (!name) throw new InvalidInputError('Name the new agent');
-        agentId = (await createAgent(actor, request.body.workspaceId, { name, owner: 'self' }, scoped, accessPorts)).id;
-      }
-      return uses.enable(actor, { ...request.body, agentId });
-    }),
+    run: (actor, conn) => conn.transaction((tx) => makeAgent(tx as unknown as Database, composition, actor, request.body)),
     replay: ownState,
   }));
   app.get<{ Params: { agentId: string } }>(myAgentPath(':agentId'), async (request, reply) => {

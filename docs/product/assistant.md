@@ -65,7 +65,10 @@ own.
 ## AG-1 — Everything is an agent
 
 - A person gets one agent, **Assistant**, when they connect AI. They can add more, such as
-  Planner or Reviewer, and rename or remove any of them.
+  Planner or Reviewer, and rename or remove any of them. Flux makes Assistant once, when the
+  person's first connection is made (an API key saved, or a plan signed in), never when a page
+  opens; someone who deleted their agents is not given Assistant again by a later connection.
+  Settings shows a guest no AI at all (AG-2).
 - Each agent has:
   - a **name**;
   - **saved instructions**, in plain text;

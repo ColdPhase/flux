@@ -133,6 +133,8 @@ export interface ConsoleSessionDeps {
   /** Re-reads the session; the console ends when it is no longer live. */
   sessionAlive: () => Promise<boolean>;
   lifetimeMs?: number;
+  /** Called after a sign-in of the owner's plan was recorded: connecting AI the first time gives the person Assistant (F-036 AG-1). */
+  afterSignIn?: (ownerUserId: string) => Promise<void>;
 }
 
 export function serveBrowserConsole(first: WebSocket, owner: { userId: string; sessionId: string }, deps: ConsoleSessionDeps): void {
@@ -255,6 +257,7 @@ export function serveBrowserConsole(first: WebSocket, owner: { userId: string; s
       const completed = await deps.runtime.recordSignIn(owner.userId, { operation: attachment.operation, method: attachment.ticket.method },
         { signedIn: result.status.signedIn, facts: result.status.facts, bootId: attachment.actualBoot ?? '' });
       settled = completed.disposition === 'accepted';
+      if (settled && completed.signedIn) await deps.afterSignIn?.(owner.userId).catch(() => undefined);
       if (isEnded()) return;
       const message: AgentRuntimeConsoleServerMessage = { t: 'done', ended: result.ended, disposition: completed.disposition, signedIn: completed.signedIn, status: completed.status };
       if (!socket && deps.live?.get(owner.userId) === liveEntry) {

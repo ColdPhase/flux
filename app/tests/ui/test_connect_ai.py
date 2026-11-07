@@ -195,11 +195,10 @@ class ConnectAiJourney(unittest.TestCase):
         expect(api_key.locator("input")).to_be_checked()
         window.get_by_role("button", name="Cancel").click()
         expect(window).to_have_count(0)
-        # Connecting AI gave the person their first agent, Assistant, which answers /ai (#857).
-        row = assistant.get_by_role("list", name="Your agents").get_by_role("listitem").first
-        expect(row).to_contain_text("Assistant")
-        expect(row).to_contain_text("Answers /ai")
-        expect(row.get_by_role("link")).to_have_attribute("href", re.compile(r"^/settings/agents/[0-9a-f-]{36}$"))
+        # Opening Settings makes no agent: Assistant is made on the server when the person connects AI (#857), and this check stack's
+        # fixture key is not a connection the person made.
+        expect(assistant).to_contain_text("You have no agents. Make one with New agent.")
+        expect(assistant.get_by_role("list", name="Your agents")).to_have_count(0)
         self.assertTrue(self.above(connect, assistant), "Connect AI comes first")
         self.assertTrue(self.above(assistant, app), "then the agents, then the agent app")
         # Your agent app: MCP connections; no client guide with command-line words on this page.
@@ -231,16 +230,14 @@ class ConnectAiJourney(unittest.TestCase):
         connect, assistant, app = self.sections(page)
         expect(connect.locator("li[data-connection]")).to_have_count(0)
         expect(connect.get_by_role("button", name="Connect AI", exact=True)).to_be_visible()
-        expect(assistant.get_by_role("list", name="Your agents").get_by_role("listitem")).to_have_count(1)
-        expect(assistant).to_contain_text("Answers /ai")
+        expect(assistant.get_by_role("list", name="Your agents")).to_have_count(0)
+        expect(assistant).to_contain_text("You have no agents. Make one with New agent.")
         expect(app.get_by_role("link", name="Local co-work on this computer")).to_be_visible()
         expect(app.locator(".sset-row__identity")).to_have_count(0)
         expect(page.get_by_text("Your connected agents could not be listed")).to_have_count(0)
 
     def test_06_a_second_agent_is_listed_in_settings_not_among_the_computer_apps(self) -> None:
         ines = self.page("ines")
-        status = self.api(ines, "GET", "/api/v1/personal-assistant", status=200)
-        self.assertEqual(status["state"], "ready", "test_02 opened Settings, which made Ines's first agent, Assistant")
         assistant = self.api(ines, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents", {"name": "Ines personal assistant", "owner": "self"}, status=201)
         type(self).ids["assistant_agent"] = assistant["id"]
         # #854: the model of a connection, Connect AI's default here (the TEST-ONLY fixture key); nothing else to agree to.
@@ -275,7 +272,7 @@ class ConnectAiJourney(unittest.TestCase):
         mine = {item["id"] for item in self.api(tom, "GET", "/api/v1/my-agents", status=200)["items"]}
         hers = {item["id"] for item in self.api(self.page("ines"), "GET", "/api/v1/my-agents", status=200)["items"]}
         self.assertTrue(hers and not (mine & hers), "Tom's agents are his own; none of Ines's")
-        self.assertEqual(self.api(tom, "GET", "/api/v1/personal-assistant", status=200)["enablement"]["ownerUserId"], TOM["id"])
+        self.assertIsNone(self.api(tom, "GET", "/api/v1/personal-assistant", status=200)["enablement"], "Tom has no agent, and Ines's is never his")
         self.assertEqual([item for item in self.api(tom, "GET", "/api/v1/background-compute-connections", status=200) if item["id"] == key["id"]], [])
         changed = tom.request.fetch(f"{ORIGIN}/api/v1/background-compute-connections/{key['id']}", method="PATCH",
                                     headers={"origin": ORIGIN, "content-type": "application/json"}, data=json.dumps({"dailyBudgetCents": 100000}))

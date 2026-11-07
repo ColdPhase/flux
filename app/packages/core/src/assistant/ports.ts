@@ -20,6 +20,8 @@ export interface AssistantIdentityPort {
   /** The owner's live agents, oldest first: the first is Assistant. */
   list(ownerUserId: string, workspaceId?: string): Promise<MyAgent[]>;
   get(ownerUserId: string, agentId: string): Promise<MyAgent | null>;
+  /** Whether the owner has ever had an agent, deleted ones too: Assistant is made once, when they first connect AI (AG-1). */
+  everHad(ownerUserId: string): Promise<boolean>;
   /** Gives an agent identity its AI setup and rights connection, or sets the setup again. */
   ensure(ownerUserId: string, workspaceId: string, agentId: string, setup: AgentSetup): Promise<MyAgent>;
   change(agentId: string, changes: AgentSetupChanges): Promise<void>;
