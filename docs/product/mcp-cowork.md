@@ -7,6 +7,9 @@ pending ([F-036](decisions.md#f-036--simple-ai-everything-is-an-agent)). It repl
 standing scoped autonomy (CO-1, CO-2) and its formal review gate (CO-4, see LC-3), and keeps one
 Flux task and the GitHub binding (CO-3). The earlier text is at [`a82ee012`](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/mcp-cowork.md).
 
+**Implementation.** #859 lands in steps. Step 1 (this text's waiting rules, no standing grants) is built; scopes, capability
+switches and project selection are removed in the next step.
+
 A person's own Claude Code, Codex or other MCP client on their computer connects to Flux for code
 work. **It follows the same rules as their [agents](assistant.md).** The only difference is that
 it changes code on the person's computer, outside Flux (Hubert, 2026-11-03: "it must not be
@@ -35,11 +38,22 @@ complicated or different").
   encrypted space (AG-3, AG-10). A DM between people it opens shows both people the line of AG-4
   ([coordinator default C-2](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 - It has the same "What it may do" row: Only read, Do it and tell me or Ask me first. Deleting
-  anything and other people's things wait for the person's OK, its changes carry Undo, and the
-  never-list holds (AG-3).
+  anything and other people's things wait for the person's OK, and the never-list holds (AG-3).
+  Its changes can be taken back (Undo), but only its messages show the change line and Undo in the
+  app today; a task, page or map change has none yet, and #868 tracks showing them.
 - **Only the person approves.** Approving, editing or skipping a waiting item, Approve all, and
   accepting a decision come only from the person in a signed-in Flux session. The client's grant
   has no tool for them, so a prompt-injected client cannot approve its own wait ([AG-3](assistant.md#ag-3--rights-what-it-may-do-approvals-and-undo)).
+- **What waits.** A local client's changes wait exactly as an agent's do (AG-3), and what waits is one Inbox item per client:
+  "Claude Code on Ada's laptop · 3 things wait for you · Approve all · Open". Its answer to the client is plain words that the
+  change waits; the client does not retry it. What it made carries one change line with Undo on its message in the conversation
+  it posted to, and an Undo takes back that change and never the client's earlier work
+  ([coordinator default C-18](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+  Taking a task, claiming or releasing it, asking a question, writing in the task's agents' thread and linking a pull request are
+  its own work on a task it holds, not changes to anyone's things, so they do not wait; Only read refuses them like any change.
+  Taking back its own unused task (`flux_undo_task_creation`) does not wait either: agents have Undo on their own work, and this is
+  the same take-back. Giving a unit to another person's client (a new child unit or a transfer), and a request to it, are another person's things: they wait like a
+  task for someone else, and Approve repeats the call as the client's own while its claim is still live.
 - Only the person prompts it, from their editor. Flux never starts, wakes or prompts a local
   client, and nothing polls a model while it is idle (F-032).
 - Its messages and changes are labelled "Ada · via Claude Code".

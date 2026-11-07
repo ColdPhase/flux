@@ -5,18 +5,11 @@ import { Icon } from '../ui';
 import { setAgentMayDo } from './api';
 import './connection.css';
 
-/** A local client has nowhere to wait yet (F-036 AG-3, #855), so the server refuses its changes in Ask me first, and the words say so. */
-const CANNOT_WAIT = 'It changes nothing for now: this client can’t wait for your OK yet.';
-
 /**
  * "What it may do" for one agent (F-036 AG-3): Only read, Do it and tell me or Ask me first, as one radio group with arrow keys.
  * The selection is only ever what the server kept, so a failed save leaves it, and focus, where they were.
  */
-export function MayDoChoice({ connectionId, initial, label, labelledBy, canWait = true }: {
-  connectionId: string; initial: AgentMayDo; label?: string; labelledBy?: string;
-  /** The assistant's run can wait for its owner; a local client cannot yet. */
-  canWait?: boolean;
-}) {
+export function MayDoChoice({ connectionId, initial, label, labelledBy }: { connectionId: string; initial: AgentMayDo; label?: string; labelledBy?: string }) {
   const [value, setValue] = useState(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -44,7 +37,7 @@ export function MayDoChoice({ connectionId, initial, label, labelledBy, canWait 
             tabIndex={value === choice ? 0 : -1} onClick={() => { if (value !== choice) void save(choice); }}>{AGENT_MAY_DO_LABELS[choice]}</button>
         ))}
       </div>
-      <span className="may-do__hint">{value === 'ask' && !canWait ? CANNOT_WAIT : AGENT_MAY_DO_HINTS[value]}</span>
+      <span className="may-do__hint">{AGENT_MAY_DO_HINTS[value]}</span>
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
     </>
   );

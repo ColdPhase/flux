@@ -194,8 +194,6 @@ test('ordinary owner switches persist, the same old MCP bearer loses wiki access
       version: f.initial.policy.version + 5, enabledCapabilityIds: [], enabledEntryIds: [], selectedProjectIds: [] });
     await page.reload(); await panel.getByRole('status').getByText('Showing saved permissions', { exact: true }).waitFor();
     assert.ok(await panel.getByRole('button', { name: 'Reload saved permissions', exact: true }).isEnabled());
-    assert.equal((await f.pool.query('SELECT count(*)::int AS n FROM agent_standing_grants WHERE connection_id=$1',
-      [f.connection.connectionId])).rows[0].n, 0, 'switches create no standing authority');
     await capture(page, 'mcp-permissions-all-off-desktop');
   } finally { await context.close(); await browser.close(); await f.pool.end(); }
 });

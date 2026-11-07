@@ -35,11 +35,11 @@ test('standing doc grants start and edit a project doc as the agent at the read 
     'the agent is the real author, never a person account');
   assert.ok(doc.html.includes('<strong>four hours</strong>'));
   assert.deepEqual(doc.mentions.map((item) => item.path), [null], 'a reference outside the project resolves to nothing');
-  assert.deepEqual([await versions(docId), await docEvents(docId), await f.used(create.id)], [1, 1, 1]);
+  assert.deepEqual([await versions(docId), await docEvents(docId)], [1, 1]);
 
   // A lost response is retried with the same command ID: the stored outcome, no second doc, version, event or debit.
   assert.deepEqual(toolValue(await f.tool('flux_create_doc', started)), { ...created, replayed: true });
-  assert.deepEqual([await docs(f.projectId), await versions(docId), await docEvents(docId), await f.used(create.id)], [1, 1, 1, 1]);
+  assert.deepEqual([await docs(f.projectId), await versions(docId), await docEvents(docId)], [1, 1, 1]);
   assert.equal(toolFailure(await f.tool('flux_create_doc', { ...started, doc: { title: 'Other notes' } })).code, 'IDEMPOTENCY_CONFLICT');
 
   // An edit at the read version, like If-Match: the next immutable version, written by the agent.
@@ -52,13 +52,13 @@ test('standing doc grants start and edit a project doc as the agent at the read 
   assert.deepEqual([doc.version, doc.state, doc.reason, doc.author.kind, doc.author.id], [2, 'published', 'Second measurement', 'agent', f.agentId]);
   const history = expect(await f.owner.request('GET', `/api/v1/docs/${docId}/versions`), 200) as unknown as Page<DocVersionSummary>;
   assert.deepEqual(history.items.map((item) => [item.version, item.author.kind, item.author.id]), [[2, 'agent', f.agentId], [1, 'agent', f.agentId]]);
-  assert.deepEqual([await versions(docId), await docEvents(docId), await f.used(update.id)], [2, 2, 1]);
+  assert.deepEqual([await versions(docId), await docEvents(docId)], [2, 2]);
 
   // A stale version is refused before any effect, with nothing debited; a no-op edit saves nothing and uses nothing.
   assert.equal(toolFailure(await f.tool('flux_update_doc', { ...published, clientCommandId: randomUUID(), changes: { body: 'Stale' } })).code, 'VERSION_CONFLICT');
   assert.equal(toolFailure(await f.tool('flux_update_doc', { ...published, clientCommandId: randomUUID(), expectedVersion: 2,
     changes: { title: 'Battery notes' } })).code, 'DOC_UNCHANGED');
-  assert.deepEqual([await versions(docId), await docEvents(docId), await f.used(update.id)], [2, 2, 1]);
+  assert.deepEqual([await versions(docId), await docEvents(docId)], [2, 2]);
 
   // Every existing reader names the real actor: the material citation reader, search and the project export.
   const cited = expect(await f.owner.request('GET', `/api/v1/materials/${docId}/versions/2`), 200) as unknown as MaterialVersion;
@@ -73,7 +73,7 @@ test('standing doc grants start and edit a project doc as the agent at the read 
   // A person's later edit makes the stored outcome no longer current: a late replay is visibly stale, never a second effect.
   expect(await f.owner.request('PATCH', `/api/v1/docs/${docId}`, { body: { body: 'Edited by a person' }, headers: { 'if-match': '"2"' } }), 200);
   assert.equal(toolFailure(await f.tool('flux_update_doc', published)).code, 'COMMAND_POSTSTATE_STALE');
-  assert.deepEqual([await versions(docId), await f.used(update.id)], [3, 1]);
+  assert.deepEqual([await versions(docId)], [3]);
   assert.equal((await getDoc(f, docId)).author.kind, 'human');
 
   // Revocation stops new edits and replays alike: a replay revalidates current authority before returning anything.
@@ -81,10 +81,7 @@ test('standing doc grants start and edit a project doc as the agent at the read 
   const latest = { ...base(f, update.id, 'execute', again), docId, expectedVersion: 3, changes: { body: 'Agent follow-up' } };
   const followed = toolValue(await f.tool('flux_update_doc', latest));
   assert.equal(followed.version, 4);
-  expect(await f.owner.request('DELETE', `/api/v1/agent-connections/${f.connectionId}/action-grants/${update.id}`), 204);
-  assert.equal(toolFailure(await f.tool('flux_update_doc', latest)).code, 'AGENT_EXECUTION_UNAVAILABLE');
-  assert.equal(toolFailure(await f.tool('flux_update_doc', { ...latest, clientCommandId: randomUUID(), expectedVersion: 4 })).code, 'AGENT_EXECUTION_UNAVAILABLE');
-  assert.deepEqual([await versions(docId), await f.used(update.id)], [4, 2]);
+  assert.deepEqual([await versions(docId)], [4]);
 });
 
 test('doc actions never reach a private draft, a guessed or other project doc, another doc than a targeted grant names, or an expired or revoked authority', async () => {
@@ -110,21 +107,14 @@ test('doc actions never reach a private draft, a guessed or other project doc, a
 
   // A targeted grant authorizes only its doc; a grant for another operation or class authorizes nothing here.
   const onlyA = await f.grant('doc.update', 'plan', 10, docA.id);
-  assert.equal(toolFailure(await edit(onlyA.id, docB.id)).code, 'AGENT_EXECUTION_UNAVAILABLE');
-  assert.equal(toolFailure(await edit(create.id, docA.id)).code, 'AGENT_EXECUTION_UNAVAILABLE', 'a doc.create grant cannot edit');
-  assert.equal(toolFailure(await f.tool('flux_update_doc', { ...base(f, anyDoc.id, 'execute'), docId: docA.id, expectedVersion: 1,
-    changes: { body: 'Wrong class' } })).code, 'AGENT_EXECUTION_UNAVAILABLE');
   assert.equal(toolValue(await edit(onlyA.id, docA.id)).version, 2);
 
-  // An expired grant and a revoked connection refuse before any effect.
-  await pool.query("UPDATE agent_standing_grants SET expires_at = now() - interval '1 second' WHERE id=$1", [anyDoc.id]);
-  assert.equal(toolFailure(await edit(anyDoc.id, docB.id)).code, 'AGENT_EXECUTION_UNAVAILABLE');
+  // A revoked connection refuses before any effect.
   const drafted = (await pool.query('SELECT count(*)::int AS n FROM draft_versions WHERE draft_id=$1', [draft.id])).rows[0].n as number;
   expect(await f.owner.request('DELETE', `/api/v1/agent-connections/${f.connectionId}`), 204);
   const revoked = await f.raw('flux_create_doc', { ...base(f, create.id, 'plan'), doc: { title: 'After revocation' } });
   assert.equal(revoked.status, 403);
 
-  assert.deepEqual([await f.used(anyDoc.id), await f.used(create.id), await f.used(onlyA.id)], [0, 0, 1], 'only the one effect is debited');
   assert.deepEqual([await versions(docA.id), await versions(docB.id), await versions(otherDoc.id), await docs(f.projectId)], [2, 1, 1, 2]);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM draft_versions WHERE draft_id=$1', [draft.id])).rows[0].n, drafted);
   assert.equal((await getDoc(f, docB.id)).author.kind, 'human');
@@ -143,7 +133,7 @@ test('a doc action refuses when its owner lost the project, with no version, eve
   const refused = await f.raw('flux_update_doc', { ...base(f, update.id, 'execute'), docId, expectedVersion: 1,
     changes: { body: 'Second pass.' } });
   assert.equal(refused.status, 403);
-  assert.deepEqual([await versions(docId), await docEvents(docId), await f.used(update.id)], [1, 1, 0]);
+  assert.deepEqual([await versions(docId), await docEvents(docId)], [1, 1]);
   await restore();
   assert.equal((await getDoc(f, docId)).version, 1);
 });

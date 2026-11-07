@@ -1,11 +1,9 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { AGENT_MAY_DO, AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type UpdateAgentConnectionCommand, type CreateAgentConnectionCommand, type CreateAgentStandingGrantCommand, type NarrowAgentStandingGrantCommand, type PageQuery } from '@flux/contracts';
+import { AGENT_MAY_DO, type UpdateAgentConnectionCommand, type CreateAgentConnectionCommand, type PageQuery } from '@flux/contracts';
 import { agentProposalRepository, accessReader, type Database } from '@flux/db';
 import { agentConnectionUseCases, agentOauthUseCases, agentProposalUseCases, DomainError, enforce, evaluateProject, recordEvent } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { createAgentConnectionStore } from './store.js';
-import { agentStandingGrants } from './grants.js';
-import { coWorkGrantTargetInTransaction } from '../co-work/grants.js';
 import { oauthFlow, verifiedOauthQuery } from '../identity/oauth-query.js';
 import { eventPorts } from '../events.js';
 
@@ -15,7 +13,6 @@ interface Options { db: Database; sessions: SessionResolver; oauthSecret: string
 export async function agentProposalRoutes(app: FastifyInstance, { db, sessions, oauthSecret, publicOrigin }: Options) {
   const connectionStore = createAgentConnectionStore(db);
   const connections = agentConnectionUseCases(connectionStore);
-  const actionGrants = agentStandingGrants(db, { coordinationTarget: coWorkGrantTargetInTransaction });
   const oauth = agentOauthUseCases(connectionStore);
   const store = agentProposalUseCases(agentProposalRepository(db, {
     async authorizeWrite(principal, projectId, tx) {
@@ -45,35 +42,6 @@ export async function agentProposalRoutes(app: FastifyInstance, { db, sessions, 
     (await sessions.requirePrincipal(request)).principal, request.body)));
   app.get('/api/v1/agent-connections', async (request) => connections.list(
     (await sessions.requirePrincipal(request)).principal));
-  app.post<{ Params: { connectionId: string }; Body: CreateAgentStandingGrantCommand }>('/api/v1/agent-connections/:connectionId/action-grants', {
-    schema: { body: { type: 'object', additionalProperties: false,
-      required: ['clientCommandId', 'projectId', 'operation', 'peerRequestClass', 'maximumUses', 'expiresAt'], properties: {
-        clientCommandId: { type: 'string' }, projectId: { type: 'string' }, operation: { type: 'string', enum: [...AGENT_OPERATIONS] },
-        peerRequestClass: { type: 'string', enum: [...AGENT_PEER_REQUEST_CLASSES] }, objectId: { type: 'string' },
-        maximumUses: { type: 'integer', minimum: 1, maximum: 1000 }, expiresAt: { type: 'string', maxLength: 40 },
-      } } },
-  }, async (request, reply) => reply.code(201).send(await actionGrants.create((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.body)));
-  app.get<{ Params: { connectionId: string }; Querystring: PageQuery }>('/api/v1/agent-connections/:connectionId/action-grants', {
-    schema: { querystring: { type: 'object', additionalProperties: false, properties: {
-      limit: { type: 'integer', minimum: 1, maximum: 50 }, offset: { type: 'integer', minimum: 0, maximum: 10_000 },
-    } } },
-  }, async (request) => actionGrants.list((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.query));
-  app.delete<{ Params: { connectionId: string; grantId: string } }>('/api/v1/agent-connections/:connectionId/action-grants/:grantId',
-    async (request, reply) => {
-      await actionGrants.revoke((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.params.grantId);
-      return reply.code(204).send();
-    });
-  app.patch<{ Params: { connectionId: string; grantId: string }; Body: NarrowAgentStandingGrantCommand }>('/api/v1/agent-connections/:connectionId/action-grants/:grantId', {
-    preValidation: async (request) => {
-      // AJV strips unknown fields; an attempt to change what a grant covers is refused, not silently dropped.
-      if (request.body && typeof request.body === 'object' && Object.keys(request.body).some((key) => key !== 'maximumUses' && key !== 'expiresAt'))
-        throw new DomainError(400, 'GRANT_NOT_NARROWER', 'Only a grant\'s uses and end can be narrowed; grant a new one for another project, change or class');
-    },
-    schema: { body: { type: 'object', additionalProperties: false, minProperties: 1, properties: {
-      maximumUses: { type: 'integer', minimum: 1, maximum: 1000 }, expiresAt: { type: 'string', maxLength: 40 },
-    } } },
-  }, async (request) => actionGrants.narrow((await sessions.requirePrincipal(request)).principal,
-    request.params.connectionId, request.params.grantId, request.body));
   // "What it may do" (F-036 AG-3): a browser session of the owner only; no bearer, run token or MCP client reaches it.
   app.patch<{ Params: { connectionId: string }; Body: UpdateAgentConnectionCommand }>('/api/v1/agent-connections/:connectionId', {
     schema: { body: { type: 'object', required: ['mayDo'], additionalProperties: false, properties: { mayDo: { type: 'string', enum: [...AGENT_MAY_DO] } } } },

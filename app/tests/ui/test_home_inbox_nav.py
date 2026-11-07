@@ -109,7 +109,7 @@ class HomeInboxNav(unittest.TestCase):
     def ask(self, question: str, options: list[str] | None = None) -> dict:
         assert self.agent
         return self.agent.tool("flux_ask_question", {
-            "projectId": self.ids["project"], "runtimeSessionId": self.agent.runtime, "peerRequestClass": "execute", "grantId": self.ids["reply_grant"],
+            "projectId": self.ids["project"], "runtimeSessionId": self.agent.runtime,
             "clientCommandId": str(uuid.uuid4()), "sources": [], "conversationId": self.ids["thread"], "question": question,
             "options": options or ["Per bed", "One value"], "askUserId": self.ids["ada"]})
 
@@ -142,10 +142,6 @@ class HomeInboxNav(unittest.TestCase):
         self.api("ada", "POST", f"/api/v1/work/{task['id']}/discussion", {"body": "Offsets for the probes", "clientMessageId": str(uuid.uuid4())})
         ids["thread"] = self.api("ada", "GET", f"/api/v1/work/{task['id']}/discussion", status=200)["conversationId"]
         type(self).agent = McpAgent(self, "ada", connection["id"], project["id"])
-        grant = self.api("ada", "POST", f"/api/v1/agent-connections/{connection['id']}/action-grants", {
-            "clientCommandId": str(uuid.uuid4()), "projectId": project["id"], "operation": "conversation.reply", "peerRequestClass": "execute",
-            "maximumUses": 10, "expiresAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(time.time() + 3600))}, status=201)
-        ids["reply_grant"] = grant["id"]
         # A second task held by the agent: the working-agent card (S13).
         held = self.api("ada", "POST", f"/api/v1/projects/{project['id']}/work",
                         {"title": "Log the soil moisture at dawn", "status": "in_progress", "owner": {"kind": "agent", "id": agent["id"]}}, status=201)

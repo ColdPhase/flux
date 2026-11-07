@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, AGENT_PEER_REQUEST_CLASSES, type AgentExecutionCommand, type AgentJsonValue,
   type AgentOperation, type AgentPeerRequestClass } from '@flux/contracts';
 import { COWORK_CHECKPOINT_LIMITS, COWORK_DECLINE_REASONS, COWORK_DEFER_BOUNDARIES, COWORK_DEFER_REASONS, InvalidInputError } from '@flux/core';
-import type { Database } from '@flux/db';
+import { assistantChangeRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
 import { ownerAssistantUnitCreationInTransaction } from '../co-work/assistant-units.js';
 import { coWorkClaimCheckpoint, coWorkClaimInTransaction } from '../co-work/claims.js';
 import { COWORK_CLAIM_POLICY, COWORK_RESPONSE_POLICY, coworkPolicies } from '../co-work/policy.js';
@@ -17,15 +17,14 @@ import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
 import { agentSourceCheckpointSchema } from './bootstrap.js';
 
-/** The standing-grant fields of a co-work tool; the class is the role of the unit the command acts on. */
+/** The fields of a co-work tool; the class is the role of the unit the command acts on. */
 const execution = {
   projectId: id,
   runtimeSessionId: id.describe('The runtime ID returned by flux_bootstrap for this client session.'),
-  grantId: id.describe('A live standing grant from flux_bootstrap for this exact operation, project, class and target.'),
   clientCommandId: id.describe('One UUID per intended effect; reuse it only to retry that same effect.'),
-  peerRequestClass: z.enum(AGENT_PEER_REQUEST_CLASSES).describe('The class of the standing grant being used: the unit\'s role.'),
+  peerRequestClass: z.enum(AGENT_PEER_REQUEST_CLASSES).describe('The role of the unit the command acts on.'),
 };
-type Execution = { projectId: string; runtimeSessionId: string; grantId: string; clientCommandId: string;
+type Execution = { projectId: string; runtimeSessionId: string; clientCommandId: string;
   peerRequestClass: AgentPeerRequestClass };
 /** The recipient's live claim on its own unit plus the exact request it acts on. */
 const requestFence = {
@@ -54,15 +53,21 @@ type Source = { materialId: string; version: number };
 const sourceRef = z.union([outcomeRef, z.strictObject({ type: z.literal('github_pr'), bindingId: id, linkId: id,
   headSha: z.string().regex(/^[0-9a-f]{40}$/i) })]);
 
-function command({ projectId, runtimeSessionId, grantId, clientCommandId, peerRequestClass }: Execution, operation: AgentOperation,
+function command({ projectId, runtimeSessionId, clientCommandId, peerRequestClass }: Execution, operation: AgentOperation,
   objectId: string, payload: AgentJsonValue, sources: Source[] = []): AgentExecutionCommand {
-  return { runtimeSessionId, grantId, clientCommandId, projectId, operation, peerRequestClass,
+  return { runtimeSessionId, clientCommandId, projectId, operation, peerRequestClass,
     audience: { kind: 'project', projectId }, objectId, sources, payload };
+}
+
+/** Whether a connection is another person's: what a client gives to it is another person's thing. Unknown connections fall to the ordinary refusal. */
+async function forAnotherPerson(db: Database, claims: FluxMcpClaims, connectionId: string, projectId: string): Promise<boolean> {
+  const connection = await assistantChangeRows(db as DbExecutor).connection(connectionId, projectId);
+  return !!connection && connection.ownerUserId !== claims.ownerUserId;
 }
 
 /**
  * Co-work tools (#153) over the existing internal compositions, one transaction per call. Each composition runs #152's
- * prepare/complete itself (current runtime, grant, command ledger, receipt) and writes no stream event. Unit claims,
+ * prepare/complete itself (current runtime, owner rights, command ledger, receipt) and writes no stream event. Unit claims,
  * renewal, release, completion and transfer are tools since 2026-10-06 ("Unit claims over MCP"); sending a request,
  * the inbox and resolving with evidence (and a review verdict) since 2026-10-17 (docs/development/cowork-coordination.md).
  */
@@ -72,13 +77,13 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
 
   register('cowork.unit.create').registerTool('flux_create_unit', {
-    title: 'Take a task or open a co-work unit on it under a standing grant',
+    title: 'Take a task or open a co-work unit on it',
     description: 'Open one co-work unit (execute, review or plan) on a native task at the exact task version you last read. '
-      + 'Needs a live cowork.unit.create grant whose class is the unit\'s role, and the runtime from flux_bootstrap. A root unit '
+      + 'Needs the runtime from flux_bootstrap. A root unit '
       + '(parent null) opens your own run on the task and is assigned to you; it is refused with COWORK_UNIT_TAKEN while another '
       + 'open unit of that role exists on the task, so it is the atomic way to take a task (or, for a plan unit, to be its sole '
       + 'plan writer). A child unit needs your live claim on a unit of the same task and may be assigned to another eligible '
-      + 'connection. Creating a unit grants nobody a claim: its assignee claims it with its own owner\'s grant. The same unitKey '
+      + 'connection. Creating a unit grants nobody a claim: its assignee claims it as its own owner. The same unitKey '
       + 'returns the existing unit (status existing).',
     inputSchema: z.strictObject({ ...execution,
       taskId: id.describe('The native task the unit is for.'),
@@ -88,10 +93,10 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       parent: z.strictObject({ unitId: id, generation: version, leaseId: id }).nullable()
         .describe('null for a root unit; otherwise your live claim on a unit of the same task.') }),
     annotations,
-  }, ({ taskId, unitKey, expectedTaskVersion, assignmentConnectionId, parent, ...input }) => run(() => {
+  }, ({ taskId, unitKey, expectedTaskVersion, assignmentConnectionId, parent, ...input }) => run(async () => {
     // An assistant run, or the owner's Apply of its saved hand-off, is the only caller of the owner-assistant adapter: the server
     // chose it from the verified run context (claims), never from this input. Every other caller keeps the unchanged ordinary path.
-    if (claims.run || claims.approval) {
+    if (claims.run || claims.approval?.runId) {
       if (parent !== null) throw new InvalidInputError('A hand-off from your assistant has no parent unit');
       return execute(input as unknown as ActionInput, 'cowork.unit.create', taskId,
         { unitKey, expectedTaskVersion, assignmentConnectionId, parent: null, peerRequestClass: input.peerRequestClass },
@@ -102,14 +107,21 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
           return coWorkUnitOutcome(creation, { workspaceId: runtime.workspaceId, projectId: input.projectId });
         });
     }
-    return db.transaction(async (tx) => coWorkUnitCreateInTransaction(tx, claims, command(input, 'cowork.unit.create', taskId,
-      { unitKey, expectedTaskVersion, assignmentConnectionId, parent }), (await coworkPolicies(tx, input.projectId)).unit));
+    const create = async (tx: Transaction) => coWorkUnitCreateInTransaction(tx, claims, command(input, 'cowork.unit.create', taskId,
+      { unitKey, expectedTaskVersion, assignmentConnectionId, parent }), (await coworkPolicies(tx, input.projectId)).unit);
+    // A child unit given to another person's client is another person's thing: it waits for the owner's OK like a task for someone
+    // else (C-18, #859), and Approve repeats this call as the client's own, while its runtime session and parent claim stay live.
+    if (parent !== null && (claims.approval || await forAnotherPerson(db, claims, assignmentConnectionId, input.projectId)))
+      return execute({ ...input, sources: [] } as unknown as ActionInput, 'cowork.unit.create', taskId,
+        { unitKey, expectedTaskVersion, assignmentConnectionId, parent, peerRequestClass: input.peerRequestClass },
+        async ({ transaction, runtime }) => coWorkUnitOutcome(await create(transaction), { workspaceId: runtime.workspaceId, projectId: input.projectId }));
+    return db.transaction(create);
   }));
 
   register('cowork.claim').registerTool('flux_claim_unit', {
-    title: 'Claim your co-work unit under a standing grant',
+    title: 'Claim your co-work unit',
     description: 'Take the live lease on one unit assigned to you, at the unit version you last read: only one connection and '
-      + 'one runtime session hold it, for 300 seconds. Needs a live cowork.claim grant whose class is the unit\'s role, and the '
+      + 'one runtime session hold it, for 300 seconds. Needs the '
       + 'runtime from flux_bootstrap. One connection holds one live unit at a time (COWORK_CONNECTION_BUSY): release or complete '
       + 'it first. The task must be open (COWORK_TASK_CLOSED), and an execute unit needs every prerequisite done '
       + '(TASK_PREREQUISITES_UNMET). The result has the generation and lease ID that later unit and request tools need, and the '
@@ -122,9 +134,8 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
   })));
 
   register('cowork.renew').registerTool('flux_renew_unit', {
-    title: 'Renew your live claim on a co-work unit under a standing grant',
-    description: 'Extend your live lease on your own unit by another 300 seconds from now, before it ends. Needs a live '
-      + 'cowork.renew grant whose class is the unit\'s role. A lease that already ended, another runtime session or a stale '
+    title: 'Renew your live claim on a co-work unit',
+    description: 'Extend your live lease on your own unit by another 300 seconds from now, before it ends. A lease that already ended, another runtime session or a stale '
       + 'version is refused with COWORK_CLAIM_LOST or COWORK_VERSION_CONFLICT: claim the unit again instead. If the task '
       + 'closed or a prerequisite reopened meanwhile, renewal is refused: release the unit with a checkpoint or complete it.',
     inputSchema: z.strictObject({ ...execution, ...unitFence }), annotations,
@@ -132,11 +143,11 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
     coWorkClaimInTransaction(tx, claims, command(input, 'cowork.renew', unitId, { expectedVersion, generation, leaseId }), COWORK_CLAIM_POLICY))));
 
   register('cowork.release').registerTool('flux_release_unit', {
-    title: 'Pause your co-work unit with a checkpoint under a standing grant',
+    title: 'Pause your co-work unit with a checkpoint',
     description: 'Release your live claim at a safe boundary and leave the unit paused with a durable checkpoint: what you '
       + 'observably did (changed artifacts, checks you actually ran), the next action and any blocker. The source material '
       + 'revisions you relied on are recorded with it and must still be current. Never put a prompt, hidden reasoning or a '
-      + 'transcript in it. Needs a live cowork.release grant whose class is the unit\'s role. Whoever claims the unit next '
+      + 'transcript in it. Needs the runtime from flux_bootstrap. Whoever claims the unit next '
       + 'receives this checkpoint.',
     inputSchema: z.strictObject({ ...execution, ...unitFence,
       checkpoint: z.strictObject({ summary: checkpointText(COWORK_CHECKPOINT_LIMITS.summary),
@@ -151,11 +162,11 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       COWORK_CLAIM_POLICY))));
 
   register('cowork.unit.complete').registerTool('flux_complete_unit', {
-    title: 'Complete your co-work unit with its outcome under a standing grant',
+    title: 'Complete your co-work unit with its outcome',
     description: 'Finish your own unit under your live claim, naming its outcome: one exact native record that exists now (a '
       + 'result or message ID, or a material, doc, task or thought at its version). Completion is final. It does not change '
       + 'the task, approve anything or resolve a request. Requests still open on the unit refuse it '
-      + '(COWORK_UNIT_REQUESTS_OPEN): answer or decline them first. Needs a live cowork.unit.complete grant whose class is the '
+      + '(COWORK_UNIT_REQUESTS_OPEN): answer or decline them first. Needs the runtime from flux_bootstrap. '
       + 'unit\'s role.',
     inputSchema: z.strictObject({ ...execution, ...unitFence, outcome: outcomeRef }), annotations,
   }, ({ unitId, expectedVersion, generation, leaseId, outcome, ...input }) => run(() => db.transaction(async (tx) =>
@@ -163,39 +174,44 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       { expectedVersion, generation, leaseId, outcome }), (await coworkPolicies(tx, input.projectId)).unit))));
 
   register('cowork.unit.transfer').registerTool('flux_transfer_unit', {
-    title: 'Hand your co-work unit to another connection under a standing grant',
+    title: 'Hand your co-work unit to another connection',
     description: 'Reassign your own unit, under your live claim, to another live connection of this company that has this '
-      + 'project selected. The unit becomes pending for it and your claim ends; it claims the unit with its own owner\'s '
-      + 'grant and receives the unit\'s last checkpoint. An author never hands review of its own work to itself '
-      + '(COWORK_REVIEW_SEPARATION), and open requests on the unit refuse the transfer (COWORK_UNIT_REQUESTS_OPEN). Needs a live '
-      + 'cowork.unit.transfer grant whose class is the unit\'s role.',
+      + 'project selected. The unit becomes pending for it and your claim ends; it claims the unit as its own owner '
+      + 'and receives the unit\'s last checkpoint. An author never hands review of its own work to itself '
+      + '(COWORK_REVIEW_SEPARATION), and open requests on the unit refuse the transfer (COWORK_UNIT_REQUESTS_OPEN).',
     inputSchema: z.strictObject({ ...execution, ...unitFence,
       assignmentConnectionId: id.describe('The connection that should continue the unit.') }), annotations,
-  }, ({ unitId, expectedVersion, generation, leaseId, assignmentConnectionId, ...input }) => run(() => db.transaction(async (tx) =>
-    coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.transfer', unitId,
-      { expectedVersion, generation, leaseId, assignmentConnectionId }), (await coworkPolicies(tx, input.projectId)).unit))));
+  }, ({ unitId, expectedVersion, generation, leaseId, assignmentConnectionId, ...input }) => run(async () => {
+    const payload = { expectedVersion, generation, leaseId, assignmentConnectionId };
+    const transfer = async (tx: Transaction) => coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.transfer', unitId, payload),
+      (await coworkPolicies(tx, input.projectId)).unit);
+    // Handing the unit to another person's client is giving it another person's work: it waits for the owner's OK (C-18, #859).
+    if (claims.approval || await forAnotherPerson(db, claims, assignmentConnectionId, input.projectId))
+      return execute({ ...input, sources: [] } as unknown as ActionInput, 'cowork.unit.transfer', unitId, payload,
+        async ({ transaction }) => ({ value: { ...await transfer(transaction) } as unknown as { [key: string]: AgentJsonValue }, postconditions: [] }));
+    return db.transaction(transfer);
+  }));
 
   register('cowork.unit.decline').registerTool('flux_decline_unit', {
-    title: 'Hand a unit transferred to you back to the connection that sent it, under a standing grant',
+    title: 'Hand a unit transferred to you back to the connection that sent it',
     description: 'Refuse a unit another connection transferred to you, before you claimed it and so before any artifact of yours '
       + 'exists. It returns paused to the connection that handed it over, with its last checkpoint and instruction untouched, '
       + 'and it can claim it again. Only the latest transfer can be declined, and only while you have not claimed the unit '
       + '(COWORK_DECLINE_REFUSED); open requests on the unit refuse it (COWORK_UNIT_REQUESTS_OPEN). Authorship of anything '
-      + 'already completed never changes. Needs a live cowork.unit.decline grant whose class is the unit\'s role.',
+      + 'already completed never changes. Needs the runtime from flux_bootstrap.',
     inputSchema: z.strictObject({ ...execution, unitId: unitFence.unitId, expectedVersion: unitFence.expectedVersion }), annotations,
   }, ({ unitId, expectedVersion, ...input }) => run(() => db.transaction(async (tx) =>
     coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.decline', unitId, { expectedVersion }),
       (await coworkPolicies(tx, input.projectId)).unit))));
 
   register('cowork.request.respond').registerTool('flux_defer_request', {
-    title: 'Put a queued request off to a safe checkpoint, with a reason, under a standing grant',
+    title: 'Put a queued request off to a safe checkpoint, with a reason',
     description: 'Say honestly why you cannot take a queued request now and when you will: a reason (busy, dependency, offline, '
       + 'capability, policy) and the safe boundary it returns at (after_step, after_tests, after_release, on_dependency, '
       + 'on_resume, on_capability). A dependency reason or boundary names the exact record you wait for. It needs no claim on '
       + 'your unit, so a busy connection never has to take a request to defer it, and nothing interrupts current work. The '
       + 'sender and the task\'s people see it as deferred with that reason; it stays in your inbox and can be claimed later or '
-      + 'deferred again. Claimed requests are answered, declined or released instead. Needs a live cowork.request.respond grant '
-      + 'whose class is your unit\'s role.',
+      + 'deferred again. Claimed requests are answered, declined or released instead.',
     inputSchema: z.strictObject({ ...execution, unitId: id.describe('Your own unit the request is addressed to.'),
       requestId: id, expectedRequestVersion: version.describe('The request version you last read.'),
       reason: z.enum(COWORK_DEFER_REASONS), nextBoundary: z.enum(COWORK_DEFER_BOUNDARIES),
@@ -205,9 +221,9 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       { requestId, expectedRequestVersion, outcome: 'deferred', reason, nextBoundary, dependencyRef }), COWORK_RESPONSE_POLICY))));
 
   register('cowork.request.claim').registerTool('flux_claim_request', {
-    title: 'Pick up a request addressed to your unit under a standing grant',
+    title: 'Pick up a request addressed to your unit',
     description: 'Claim one request addressed to your own unit, at the request version you last read, under your live claim on '
-      + 'that unit. Needs a live cowork.request.claim grant whose class is your unit\'s role, and the runtime from flux_bootstrap. '
+      + 'that unit. Needs the runtime from flux_bootstrap. '
       + 'A request is claimed once per live claim; after your claim is lost it can be claimed again. Without a live unit claim this '
       + 'is refused with COWORK_CLAIM_LOST.',
     inputSchema: z.strictObject({ ...execution, ...requestFence }), annotations,
@@ -216,24 +232,22 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       { generation, leaseId, requestId, expectedRequestVersion }), COWORK_RESPONSE_POLICY))));
 
   register('cowork.request.respond').registerTool('flux_decline_request', {
-    title: 'Decline a request you picked up under a standing grant',
+    title: 'Decline a request you picked up',
     description: 'Decline one request you claimed under your live unit claim, with a bounded reason: capability, policy, scope '
-      + 'or source_changed. The sender sees the outcome; it is never a silent drop. Needs a live cowork.request.respond grant '
-      + 'whose class is your unit\'s role, and the runtime from flux_bootstrap. To answer instead, use flux_resolve_request.',
+      + 'or source_changed. The sender sees the outcome; it is never a silent drop. Needs the runtime from flux_bootstrap. To answer instead, use flux_resolve_request.',
     inputSchema: z.strictObject({ ...execution, ...requestFence, reason: z.enum(COWORK_DECLINE_REASONS) }), annotations,
   }, ({ unitId, generation, leaseId, requestId, expectedRequestVersion, reason, ...input }) => run(() =>
     db.transaction((tx) => coWorkRequestResponseInTransaction(tx, claims, command(input, 'cowork.request.respond', unitId,
       { generation, leaseId, requestId, expectedRequestVersion, outcome: 'declined', reason }), COWORK_RESPONSE_POLICY))));
 
   register('cowork.request.respond').registerTool('flux_resolve_request', {
-    title: 'Answer a request you picked up, naming your evidence, under a standing grant',
+    title: 'Answer a request you picked up, naming your evidence',
     description: 'Resolve one request you claimed under your live unit claim. First record your answer as an ordinary Flux '
       + 'record (flux_record_result, a reply in the task\'s agents\' thread, a doc version), then name it here as evidence: '
       + 'the resolution never carries content of its own. A review request also takes a verdict, passed or changes_requested, '
       + 'pinned to the exact version the request named; a newer version makes that verdict stale, and a new review needs a new '
       + 'request. Other kinds refuse a verdict. The request\'s target and sources must still be current '
-      + '(COWORK_SOURCE_UNAVAILABLE): if they moved on, decline with source_changed. Needs a live cowork.request.respond grant '
-      + 'whose class is your unit\'s role.',
+      + '(COWORK_SOURCE_UNAVAILABLE): if they moved on, decline with source_changed.',
     inputSchema: z.strictObject({ ...execution, ...requestFence, evidence: outcomeRef,
       verdict: z.enum(['passed', 'changes_requested']).optional().describe('Only for a review request.') }), annotations,
   }, ({ unitId, generation, leaseId, requestId, expectedRequestVersion, evidence, verdict, ...input }) => run(() =>
@@ -242,15 +256,14 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
         response: verdict === undefined ? { evidence } : { evidence, verdict } }), COWORK_RESPONSE_POLICY))));
 
   register('cowork.request').registerTool('flux_send_request', {
-    title: 'Ask another connection\'s unit for help, a review, a fix or a hand-off under a standing grant',
+    title: 'Ask another connection\'s unit for help, a review, a fix or a hand-off',
     description: 'Address one durable request from your own claimed unit to another unit of the same run (create it with '
       + 'flux_create_unit first). It names the exact current target (a task, material, doc or thought at its version, a result '
       + 'or message, or a verified PR head), the sources and criteria the recipient needs, and nothing else: no prompt or copied '
       + 'content. One recipient; it is queued until that connection picks it up at a safe point, so it never interrupts its '
       + 'current work. The same intentKey returns the existing request; a newer request of the same kind to the same unit '
       + 'replaces an unclaimed older one. Review needs a recipient other than the author (COWORK_REVIEW_SEPARATION). A run '
-      + 'holds at most 32 requests, 4 levels and 4 review rounds (COWORK_BUDGET_EXHAUSTED). Needs a live cowork.request '
-      + 'grant whose class is your unit\'s role.',
+      + 'holds at most 32 requests, 4 levels and 4 review rounds (COWORK_BUDGET_EXHAUSTED).',
     inputSchema: z.strictObject({ ...execution,
       unitId: id.describe('Your own claimed unit the request comes from.'),
       generation: version.describe('The generation of your live claim on that unit.'),
@@ -269,10 +282,17 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       lifetimeSeconds: z.int().min(60).max(604800).default(86400) }), annotations,
   }, ({ unitId, generation, leaseId, recipientUnitId, expectedRecipientUnitVersion, recipientConnectionId, intentKey, parentRequestId,
     kind, target, sourceRefs, criteriaRefs, priority, peerUnblocking, lifetimeSeconds, ...input }) => run(() =>
-    db.transaction(async (tx) => coWorkRequestInTransaction(tx, claims, command(input, 'cowork.request', unitId, { generation, leaseId,
-      request: { unitId: recipientUnitId, expectedUnitVersion: expectedRecipientUnitVersion, recipientConnectionId, intentKey,
-        parentRequestId, kind, target, sourceRefs, criteriaRefs, priority, peerUnblocking, lifetimeSeconds } } as unknown as AgentJsonValue),
-    (await coworkPolicies(tx, input.projectId)).request))));
+    (async () => {
+      const payload = { generation, leaseId, request: { unitId: recipientUnitId, expectedUnitVersion: expectedRecipientUnitVersion, recipientConnectionId,
+        intentKey, parentRequestId, kind, target, sourceRefs, criteriaRefs, priority, peerUnblocking, lifetimeSeconds } } as unknown as AgentJsonValue;
+      const send = async (tx: Transaction) => coWorkRequestInTransaction(tx, claims, command(input, 'cowork.request', unitId, payload),
+        (await coworkPolicies(tx, input.projectId)).request);
+      // A request to another person's client waits for the owner's OK (C-18, #859), as a unit given to it does.
+      if (claims.approval || await forAnotherPerson(db, claims, recipientConnectionId, input.projectId))
+        return execute({ ...input, sources: [] } as unknown as ActionInput, 'cowork.request', unitId, payload,
+          async ({ transaction }) => ({ value: { ...await send(transaction) } as unknown as { [key: string]: AgentJsonValue }, postconditions: [] }));
+      return db.transaction(send);
+    })()));
 
   const recover = coWorkRecovery(db, cursorSecret);
   tools.forScope('flux.context.read').registerTool('flux_coordination_inbox', {

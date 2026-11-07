@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
-import type { Agent, AgentConnection, AgentExecutionCommand, AgentStandingGrant, CoWorkRequestLimits, ProjectAgents, WorkItem } from '@flux/contracts';
+import type { Agent, AgentConnection, AgentExecutionCommand, CoWorkRequestLimits, ProjectAgents, WorkItem } from '@flux/contracts';
 import { coworkRecoveryRows, coworkRequestRows, createDatabase, schema, sql } from '@flux/db';
 import { coWorkRequestFingerprint, DomainError, normalizeCoWorkRequest } from '@flux/core';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
@@ -74,14 +74,14 @@ async function world() {
 type World = Awaited<ReturnType<typeof world>>;
 type Connected = Awaited<ReturnType<World['connect']>>;
 
-function command(w: World, c: Connected, operation: string, objectId: string, role: Role, grantId: string,
+function command(w: World, c: Connected, operation: string, objectId: string, role: Role, _grantId: string,
   payload: Record<string, unknown>, change: Partial<AgentExecutionCommand> = {}): AgentExecutionCommand {
-  return { runtimeSessionId: c.runtimeId, grantId, clientCommandId: randomUUID(), projectId: w.p.id,
+  return { runtimeSessionId: c.runtimeId, clientCommandId: randomUUID(), projectId: w.p.id,
     operation: operation as AgentExecutionCommand['operation'], peerRequestClass: role, audience: { kind: 'project', projectId: w.p.id },
     objectId, sources: [], payload: payload as AgentExecutionCommand['payload'], ...change };
 }
 async function grantOf(w: World, c: Connected, operation: string, unitId: string | null, role: Role) {
-  return expectStatus(await w.actionGrant(c.who, c.connection.id, operation, unitId, role), 201) as AgentStandingGrant;
+  return expectStatus(await w.actionGrant(c.who, c.connection.id, operation, unitId, role), 201) as { id: string };
 }
 /** A live claim on a unit through the real claim composition and the production graph provider. */
 async function claimUnit(w: World, c: Connected, unitId: string, role: Role, expectedVersion = 1) {
@@ -122,10 +122,9 @@ function rejects(promise: Promise<unknown>, code: string) {
 async function effects(w: World, c: Connected, requestId: string) {
   const [request] = (await pool.query(`SELECT state, version, claimed_generation, reason, next_boundary, dependency_ref, response_ref
     FROM cowork_requests WHERE id=$1`, [requestId])).rows;
-  const used = (await pool.query('SELECT COALESCE(sum(used),0)::int AS n FROM agent_standing_grants WHERE connection_id=$1', [c.connection.id])).rows[0].n;
   const receipts = (await pool.query('SELECT count(*)::int AS n FROM agent_command_receipts WHERE connection_id=$1', [c.connection.id])).rows[0].n;
   const results = (await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id=$1', [w.p.id])).rows[0].n;
-  return { request, used, receipts, results };
+  return { request, receipts, results };
 }
 /** The attempt starts only after the snapshot, so nothing it does can leak into `before`. */
 async function refusedWithoutEffects(w: World, c: Connected, requestId: string, attempt: () => Promise<unknown>, code: string) {
@@ -169,9 +168,7 @@ test('the recipient claims under its live unit fence and resolves with a same-tr
     'SELECT postconditions FROM agent_command_receipts WHERE connection_id=$1 AND operation=$2', [f.marekClaude.connection.id, operation])).rows;
   assert.deepEqual((await receipt('cowork.request.claim')).map((x) => x.postconditions), [[{ kind: 'cowork.request_state', workspaceId: f.w.ws.id,
     projectId: f.w.p.id, connectionId: f.marekClaude.connection.id, unitId: f.reviewUnit, requestId: asked.requestId, role: 'review', version: 2, state: 'claimed' }]]);
-  assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [r.claimGrant.id])).rows[0].used, 1);
   assert.deepEqual(await r.run(takeCommand), taken, 'exact claim replay observes the original effect');
-  assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [r.claimGrant.id])).rows[0].used, 1, 'no second debit');
   await rejects(r.run({ ...takeCommand, payload: { ...(takeCommand.payload as object), expectedRequestVersion: 2 } }), 'IDEMPOTENCY_CONFLICT');
 
   const respondCommand = r.respond(asked.requestId, 2, { outcome: 'resolved', response: { title: 'Findings on A' } });
@@ -189,7 +186,6 @@ test('the recipient claims under its live unit fence and resolves with a same-tr
   const results = (await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id=$1', [f.w.p.id])).rows[0].n;
   assert.deepEqual(await r.run(respondCommand), resolved, 'exact response replay observes; it publishes nothing again');
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_results WHERE project_id=$1', [f.w.p.id])).rows[0].n, results);
-  assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [r.respondGrant.id])).rows[0].used, 1);
   await rejects(r.run(takeCommand), 'COMMAND_POSTSTATE_STALE');
   // Resolved work leaves the pending recovery page and the ready candidates.
   const address = { workspaceId: f.w.ws.id, projectId: f.w.p.id, connectionId: f.marekClaude.connection.id };
@@ -227,10 +223,7 @@ test('claim negative controls: unit fence, addressing, version, state, expiry, s
   await refusedWithoutEffects(w, claude, asked.requestId, () => intruder.run(intruder.take(asked.requestId, 1)), 'COWORK_REQUEST_UNAVAILABLE');
   // Version, class and payload.
   await refuse(r.take(asked.requestId, 2), 'COWORK_VERSION_CONFLICT');
-  expectStatus(await w.actionGrant(w.marek, f.marekClaude.connection.id, 'cowork.request.claim', f.reviewUnit, 'execute'), 404,
-    'an exact target refuses a class that is not the unit role');
-  const wrongClass = await grantOf(w, f.marekClaude, 'cowork.request.claim', null, 'execute');
-  await refuse(r.take(asked.requestId, 1, { grantId: wrongClass.id, peerRequestClass: 'execute' }), 'COWORK_UNIT_NOT_FOUND');
+  await refuse(r.take(asked.requestId, 1, { peerRequestClass: 'execute' }), 'COWORK_UNIT_NOT_FOUND');
   await refuse({ ...r.take(asked.requestId, 1), payload: { ...r.fence, requestId: asked.requestId, expectedRequestVersion: 1, prompt: 'claim it' } }, 'INVALID_INPUT');
   await refuse({ ...r.take(asked.requestId, 1), payload: { ...r.fence, requestId: asked.requestId } }, 'INVALID_INPUT');
   // Changed source: the target task moved to a new version after the request was admitted. (A help request, so it
@@ -316,7 +309,6 @@ test('respond negative controls: unclaimed, lost claim, version, response, sourc
   const stored = await row(asked.requestId);
   assert.equal(stored.reason, 'source_changed'); assert.equal(stored.response_ref, null);
   assert.deepEqual(await r.run(declineCommand), declined, 'a content-free decline replays without source readability');
-  assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [r.respondGrant.id])).rows[0].used, 1);
 });
 
 test('lease loss returns a claimed request to recoverable pending; re-claim under the new generation; receipts follow the rows', async () => {
@@ -422,7 +414,6 @@ test('race: a supersession that commits first closes the request for a concurren
   release.resolve();
   assert.deepEqual((await admission).supersededRequestIds, [older.requestId]);
   await rejects(claim, 'COWORK_REQUEST_CLOSED');
-  assert.deepEqual((await effects(w, f.marekClaude, older.requestId)).used, before.used, 'the losing claim debited nothing');
   assert.equal((await effects(w, f.marekClaude, older.requestId)).receipts, before.receipts);
   assert.equal((await row(older.requestId)).state, 'superseded');
 });
@@ -470,29 +461,9 @@ test('race: two concurrent claims of one request from one session yield exactly 
   release.resolve();
   assert.equal((await first).version, 2);
   await rejects(second, 'COWORK_VERSION_CONFLICT');
-  assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [r.claimGrant.id])).rows[0].used, 1, 'one debit');
   assert.equal((await pool.query("SELECT count(*)::int AS n FROM agent_command_receipts WHERE connection_id=$1 AND operation='cowork.request.claim'",
     [f.marekClaude.connection.id])).rows[0].n, 1, 'one receipt');
   assert.equal((await row(asked.requestId)).version, 2);
-});
-
-test('the grant registry reserves exactly the recipient operations; a request or claim grant cannot stand in for them', async () => {
-  const f = await setup();
-  const { w } = f;
-  const asked = await f.s.send(f.ask());
-  const r = await recipient(w, f.marekClaude, f.reviewUnit);
-  // The sender's own request grant, and the recipient's unit claim grant, are not request-claim grants.
-  const claimGrant = await grantOf(w, f.marekClaude, 'cowork.claim', f.reviewUnit, 'review');
-  await refusedWithoutEffects(w, f.marekClaude, asked.requestId, () => r.run(r.take(asked.requestId, 1, { grantId: claimGrant.id })), 'AGENT_EXECUTION_UNAVAILABLE');
-  await refusedWithoutEffects(w, f.marekClaude, asked.requestId, () => r.run(r.take(asked.requestId, 1, { grantId: r.respondGrant.id })), 'AGENT_EXECUTION_UNAVAILABLE');
-  // The recipient's unit is the only exact target: the sender's unit is refused at grant creation.
-  expectStatus(await w.actionGrant(w.marek, f.marekClaude.connection.id, 'cowork.request.respond', f.senderUnit, 'execute'), 404);
-  await assert.rejects(pool.query(`INSERT INTO agent_standing_grants (id,workspace_id,project_id,connection_id,owner_user_id,client_command_id,
-    request_fingerprint,operation,peer_request_class,maximum_uses,expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,'cowork.request.ack','review',1,now()+interval '1 hour')`,
-  [randomUUID(), w.ws.id, w.p.id, f.marekClaude.connection.id, w.marek.id, randomUUID(), 'a'.repeat(64)]),
-  (error: unknown) => (error as { constraint?: string }).constraint === 'agent_standing_grants_operation_check');
-  const definition = (await pool.query("SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname='agent_standing_grants_operation_check'")).rows[0].d as string;
-  assert.ok(definition.includes("'cowork.request.claim'::text") && definition.includes("'cowork.request.respond'::text"));
 });
 
 test('the Agents view shows each connection its held unit and its open request with the request state (#160 AC-5)', async () => {

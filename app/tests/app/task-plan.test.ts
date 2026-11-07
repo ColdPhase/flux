@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import { agentExecutionUseCases, DomainError, type Principal } from '@flux/core';
-import type { Agent, AgentConnection, AgentStandingGrant, Decision, Material, Page, WorkItem, WorkResult } from '@flux/contracts';
+import type { Agent, AgentConnection, Decision, Material, Page, WorkItem, WorkResult } from '@flux/contracts';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
 import { agentExecutionInTransaction } from '../../apps/server/src/agent-connection/execution.js';
 import { lockProjectTaskGraphs, requireTaskPrerequisitesMet, taskPrerequisiteIds } from '../../apps/server/src/work/task-graph.js';
@@ -629,21 +629,20 @@ async function execution(f: Scene, maximumUses = 3) {
   const claims = { ownerUserId: f.owner.id, connectionId: connection.id, clientId, grantReferenceId: `flux-grant:${bindingId}`, scopes: connection.scopes };
   const { runtime } = await db.transaction((tx) => agentRuntimeInTransaction(tx, claims, randomUUID()));
   const standing = expectStatus(await f.owner.browser.request('POST', `/api/v1/agent-connections/${connection.id}/action-grants`, { body: {
-    clientCommandId: randomUUID(), projectId: f.place.id, operation: 'work.create', peerRequestClass: 'execute', maximumUses, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as AgentStandingGrant;
+    clientCommandId: randomUUID(), projectId: f.place.id, operation: 'work.create', peerRequestClass: 'execute', maximumUses, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as { id: string };
   return { agent, connection, claims, runtime, standing };
 }
 
-test('a standing-grant execution creates criteria, edges, intent, task, notice, debit and receipt in one unit before the single final flush', async () => {
+test('a native execution creates criteria, edges, intent, task, notice and receipt in one unit before the single final flush', async () => {
   const f = await scene();
   const x = await execution(f);
   const prerequisite = await f.create(f.owner, { title: 'Prerequisite for the agent plan', status: 'done' });
   const payload = { title: 'Agent decomposition', criteria: ['Reproducible'], dependencyIds: [prerequisite.id], planIntent: intentOf(f, 'agent-unit') };
-  const command = (clientCommandId = randomUUID()) => ({ runtimeSessionId: x.runtime.id, grantId: x.standing.id, clientCommandId, projectId: f.place.id, operation: 'work.create' as const,
+  const command = (clientCommandId = randomUUID()) => ({ runtimeSessionId: x.runtime.id, clientCommandId, projectId: f.place.id, operation: 'work.create' as const,
     peerRequestClass: 'execute' as const, audience: { kind: 'project' as const, projectId: f.place.id }, objectId: null,
     sources: [{ materialId: f.material.materialId, version: f.material.version }], payload });
   const rows = async () => ({ ...(await f.counts()),
-    receipts: (await pool.query('SELECT count(*)::int AS n FROM agent_command_receipts WHERE connection_id=$1', [x.connection.id])).rows[0].n as number,
-    used: (await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [x.standing.id])).rows[0].used as number });
+    receipts: (await pool.query('SELECT count(*)::int AS n FROM agent_command_receipts WHERE connection_id=$1', [x.connection.id])).rows[0].n as number });
   const run = async (input: ReturnType<typeof command>, phase?: 'before-flush' | 'after-flush') => db.transaction(async (raw) => {
     const { tx, log } = ordered(raw);
     const native = nativeWorkInTransaction(tx);
@@ -662,7 +661,6 @@ test('a standing-grant execution creates criteria, edges, intent, task, notice, 
       const before = log.slice(0, first);
       for (const table of [schema.projectWorkItems, schema.projectTaskDependencies, schema.projectTaskPlanIntents, schema.projectTaskNotices, schema.agentCommandReceipts])
         assert.ok(before.some((entry) => entry.op === 'insert' && entry.table === table), 'an insert into a native table precedes the first event');
-      assert.ok(before.some((entry) => entry.op === 'update' && entry.table === schema.agentStandingGrants), 'the debit precedes the first event');
       for (const entry of log.slice(first)) assert.ok(entry.op === 'insert' && (entry.table === schema.events || entry.table === schema.eventAudience), `only final events follow: ${entry.op}`);
     } else assert.equal(first, -1, 'no event is inserted at all');
     if (phase === 'after-flush') throw new Error('injected failure after the final flush');
@@ -673,25 +671,25 @@ test('a standing-grant execution creates criteria, edges, intent, task, notice, 
   const original = command();
   for (const phase of ['before-flush', 'after-flush'] as const) {
     await assert.rejects(run(original, phase), /injected failure/);
-    assert.deepEqual(await rows(), start, `${phase}: task, notice, edges, intent, events, receipt and debit all roll back`);
+    assert.deepEqual(await rows(), start, `${phase}: task, notice, edges, intent, events and receipt all roll back`);
   }
   const committed = await run(original);
   const task = await f.read((committed.result as { workId: string }).workId);
   assert.deepEqual([task.criteria, task.dependencyIds, task.planIntent, task.createdBy.id], [['Reproducible'], [prerequisite.id], intentOf(f, 'agent-unit'), x.agent.id]);
   assert.equal(committed.events.length, 1);
   const created = await rows();
-  assert.deepEqual(created, { ...start, work: start.work + 1, notices: start.notices + 1, edges: start.edges + 1, intents: start.intents + 1, created: start.created + 1, receipts: 1, used: 1 });
+  assert.deepEqual(created, { ...start, work: start.work + 1, notices: start.notices + 1, edges: start.edges + 1, intents: start.intents + 1, created: start.created + 1, receipts: 1 });
 
   // The same plan intent through another command identity returns the original task and emits no creation event or notice.
   const again = await run(command());
   assert.equal((again.result as { workId: string }).workId, task.id);
   assert.deepEqual(again.events, []);
-  assert.deepEqual(await rows(), { ...created, receipts: 2, used: 2 }, 'a new command debits and records its receipt, but adds no task, notice, edge, intent or event');
+  assert.deepEqual(await rows(), { ...created, receipts: 2 }, 'a new command records its receipt, but adds no task, notice, edge, intent or event');
   assert.deepEqual(await f.read(task.id), task);
   // The original command identity replays its stored receipt without a second effect, event or debit.
   const replayed = await run(original);
   assert.deepEqual([replayed.result, replayed.events], [committed.result, []]);
-  assert.deepEqual(await rows(), { ...created, receipts: 2, used: 2 });
+  assert.deepEqual(await rows(), { ...created, receipts: 2 });
 });
 
 test('database rules: composite foreign keys, no self edge, one edge per pair, bounded criteria and immutable intents', async () => {

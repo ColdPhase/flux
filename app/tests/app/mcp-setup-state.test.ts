@@ -50,7 +50,6 @@ test('setup facts remain owner private; Off and revoke preserve history without 
   const after = expect(await f.owner.request('GET', path), 200);
   assert.deepEqual(after.setup, before.setup, 'Off preserves factual history, not a ready state or restored authority');
   assert.deepEqual((after.policy as { selectedProjectIds: string[] }).selectedProjectIds, []);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_standing_grants WHERE connection_id=$1', [f.connectionId])).rows[0].n, 0);
   expect(await f.owner.request('DELETE', `/api/v1/agent-connections/${f.connectionId}`), 204);
   expect(await f.owner.request('GET', path), 404);
   const history = expect(await f.owner.request('GET', '/api/v1/agent-connections'), 200) as unknown as { id: string; revokedAt: string | null }[];

@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import type { Agent, AgentStandingGrant, WorkItem } from '@flux/contracts';
+import type { Agent, WorkItem } from '@flux/contracts';
 import { pool } from './db.js';
-import { agentConnection } from './mcp-actions.js';
+import { agentConnection, approveWaiting, waits } from './mcp-actions.js';
 import { toolValue } from './mcp.js';
+import { assistantChangeActionPath } from '@flux/contracts';
 import { addMember, expectStatus, person, project, workspace, type Person } from './people.js';
 
 // The shared starting point of the co-work card and concurrency tests (#153, #400): two owners, three real OAuth
@@ -44,13 +45,11 @@ export async function coworkScene() {
   const connect = async (who: Person, name: string) => {
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name, owner: 'self' } }), 201) as Agent;
     const connected = await agentConnection(pool, who.browser, String(agent.id), [p.id], ACTION_SCOPES);
-    const standing = async (operation: string, objectId: string | null, role: Role, maximumUses = 10) =>
-      expectStatus(await who.browser.request('POST', `/api/v1/agent-connections/${connected.connectionId}/action-grants`, { body: {
-        clientCommandId: randomUUID(), projectId: p.id, operation, peerRequestClass: role, maximumUses, ...(objectId ? { objectId } : {}),
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as AgentStandingGrant;
+    // No standing grants (#859): the stub keeps the call sites that name one; the tool helpers drop its id.
+    const standing = async (...named: [operation: string, objectId: string | null, role: Role, maximumUses?: number]) => { void named; return { id: randomUUID() }; };
     /** The command fields of one runtime session of this connection. */
     const sessionOf = (runtimeSessionId: string) => {
-      const base = (grantId: string, role: Role, clientCommandId: string = randomUUID()) => ({ projectId: p.id, runtimeSessionId, grantId,
+      const base = (_grantId: string, role: Role, clientCommandId: string = randomUUID()) => ({ projectId: p.id, runtimeSessionId,
         clientCommandId, peerRequestClass: role });
       const claimUnit = async (unitId: string, role: Role, expectedVersion = 1) => {
         const g = await standing('cowork.claim', unitId, role);
@@ -71,7 +70,6 @@ export async function coworkScene() {
     { body: { title } }), 201) as WorkItem;
   const material = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Review findings', body: 'Two findings, both fixed' } }), 201) as { materialId: string };
-  const used = async (grantId: string) => Number((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [grantId])).rows[0]?.used ?? -1);
   const unit = async (unitId: string) => (await pool.query(
     'SELECT state, generation, version, assignment_connection_id AS assignee, transferred_from_connection_id AS "from", lease_id AS lease FROM cowork_units WHERE id=$1',
     [unitId])).rows[0] as { state: string; generation: number; version: number; assignee: string; from: string | null; lease: string | null };
@@ -89,10 +87,31 @@ export async function coworkScene() {
   /** The holder opens a child unit of `role` on the same task for `assignee` (not yet claimed by it). */
   async function openUnit(holder: Conn, held: { unitId: string; claim: Claim }, t: WorkItem, role: Role, assignee: Conn, key: string) {
     const grantOf = await holder.standing('cowork.unit.create', t.id, role);
-    const created = toolValue(await holder.call('flux_create_unit', { ...holder.base(grantOf.id, role), taskId: t.id, unitKey: key,
+    const answer = await holder.call('flux_create_unit', { ...holder.base(grantOf.id, role), taskId: t.id, unitKey: key,
       expectedTaskVersion: t.version, assignmentConnectionId: assignee.connectionId,
-      parent: { unitId: held.unitId, generation: held.claim.generation, leaseId: held.claim.lease.id } }));
-    return String(created.unitId);
+      parent: { unitId: held.unitId, generation: held.claim.generation, leaseId: held.claim.lease.id } });
+    // A unit for another person's client waits for the holder's owner (C-18, #859), whose Approve opens it.
+    if (assignee.who.id !== holder.who.id) {
+      if (!waits(answer)) throw new Error(`a unit for another person's client should wait: ${JSON.stringify(answer)}`);
+      return String((await approveWaiting(pool, holder.who.browser, holder.connectionId, 'cowork.unit.create')).unitId);
+    }
+    return String(toolValue(answer).unitId);
+  }
+  /**
+   * A request to another person's client waits for its sender's owner (C-18): this approves it and answers as the tool would have
+   * had it not waited. An Approve that is refused answers as a failed tool call, with the owner's words.
+   */
+  async function approvedReply(sender: Conn, recipient: Conn, reply: Reply): Promise<Reply> {
+    if (recipient.who.id === sender.who.id || !waits(reply)) return reply;
+    const [waiting] = (await pool.query(`SELECT id FROM assistant_changes WHERE connection_id = $1 AND operation = 'cowork.request' AND state = 'waiting' ORDER BY created_at DESC`,
+      [sender.connectionId])).rows as { id: string }[];
+    const id = waiting!.id;
+    expectStatus(await sender.who.browser.request('POST', assistantChangeActionPath(id, 'apply'), { body: {} }), 200);
+    const [row] = (await pool.query(`SELECT state, refusal, receipt FROM assistant_changes WHERE id = $1`, [id])).rows as
+      { state: string; refusal: string | null; receipt: { value: unknown } | null }[];
+    return row!.state === 'applied_after_wait'
+      ? { result: { content: [{ type: 'text', text: JSON.stringify(row!.receipt!.value) }] } }
+      : { result: { isError: true, content: [{ type: 'text', text: JSON.stringify({ code: 'ASSISTANT_CHANGE_REFUSED', error: row!.refusal }) }] } };
   }
   /**
    * The author takes `t`, opens a review unit for `reviewer`, which claims it, and a standing request grant is ready: the
@@ -108,12 +127,12 @@ export async function coworkScene() {
         leaseId: held.claim.lease.id, recipientUnitId: reviewUnit, expectedRecipientUnitVersion: reviewClaim.version, recipientConnectionId: reviewer.connectionId,
         intentKey, parentRequestId: null, kind: options.kind ?? 'review', target,
         sourceRefs: options.sourceRefs ?? [{ type: 'material', id: material.materialId, version: 1 }], criteriaRefs: [target], peerUnblocking: true });
-    const send = (intentKey: string, target: Record<string, unknown>, options: { clientCommandId?: string; kind?: string; sourceRefs?: unknown[] } = {}) =>
-      author.call('flux_send_request', sendArgs(intentKey, target, options));
+    const send = async (intentKey: string, target: Record<string, unknown>, options: { clientCommandId?: string; kind?: string; sourceRefs?: unknown[] } = {}) =>
+      approvedReply(author, reviewer, await author.call('flux_send_request', sendArgs(intentKey, target, options)));
     return { held, reviewUnit, reviewClaim, ask, send, sendArgs };
   }
 
-  return { hubert, marek, ada, vera, olga, ws, p, removeAccess, demote, connect, task, material, used, unit, request, take, openUnit, startReview };
+  return { hubert, marek, ada, vera, olga, ws, p, removeAccess, demote, connect, task, material, unit, request, take, openUnit, startReview, approvedReply };
 }
 export type CoworkScene = Awaited<ReturnType<typeof coworkScene>>;
 export type CoworkConn = Awaited<ReturnType<CoworkScene['connect']>>;

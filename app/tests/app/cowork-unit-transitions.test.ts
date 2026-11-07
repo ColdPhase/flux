@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
-import type { Agent, AgentConnection, AgentExecutionCommand, AgentStandingGrant, CoWorkRequestLimits, Project, WorkItem,
+import type { Agent, AgentConnection, AgentExecutionCommand, CoWorkRequestLimits, Project, WorkItem,
   WorkResult } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
 import { DomainError, type CoWorkUnitPolicy } from '@flux/core';
@@ -74,14 +74,14 @@ async function world() {
 type World = Awaited<ReturnType<typeof world>>;
 type Connected = Awaited<ReturnType<World['connect']>>;
 
-function command(w: World, c: Connected, operation: string, objectId: string, role: Role, grantId: string,
+function command(w: World, c: Connected, operation: string, objectId: string, role: Role, _grantId: string,
   payload: Record<string, unknown>, change: Partial<AgentExecutionCommand> = {}): AgentExecutionCommand {
-  return { runtimeSessionId: c.runtimeId, grantId, clientCommandId: randomUUID(), projectId: w.p.id,
+  return { runtimeSessionId: c.runtimeId, clientCommandId: randomUUID(), projectId: w.p.id,
     operation: operation as AgentExecutionCommand['operation'], peerRequestClass: role, audience: { kind: 'project', projectId: w.p.id },
     objectId, sources: [], payload: payload as AgentExecutionCommand['payload'], ...change };
 }
 async function grantOf(w: World, c: Connected, operation: string, objectId: string | null, role: Role) {
-  return expectStatus(await w.actionGrant(c.who, c.connection.id, operation, objectId, role), 201) as AgentStandingGrant;
+  return expectStatus(await w.actionGrant(c.who, c.connection.id, operation, objectId, role), 201) as { id: string };
 }
 function rejects(promise: Promise<unknown>, code: string) {
   return assert.rejects(promise, (error: unknown) => error instanceof DomainError && error.code === code, code);
@@ -123,12 +123,11 @@ async function effects(w: World, connections: readonly Connected[]) {
     generation, lease_id, lease_expires_at, checkpoint_id, outcome_ref FROM cowork_units WHERE workspace_id=$1 ORDER BY id`, [w.ws.id])).rows;
   const requests = (await pool.query('SELECT id, state, version, claimed_generation, reason, response_ref FROM cowork_requests WHERE workspace_id=$1 ORDER BY id',
     [w.ws.id])).rows;
-  const used = (await pool.query('SELECT COALESCE(sum(used),0)::int AS n FROM agent_standing_grants WHERE connection_id = ANY($1::uuid[])', [ids])).rows[0].n;
   const receipts = (await pool.query('SELECT count(*)::int AS n FROM agent_command_receipts WHERE connection_id = ANY($1::uuid[])', [ids])).rows[0].n;
   const tasks = (await pool.query(`SELECT id, version, status, owner_user_id, owner_agent_id, updated_at FROM project_work_items
     WHERE workspace_id=$1 ORDER BY id`, [w.ws.id])).rows;
   const slots = (await pool.query('SELECT connection_id FROM cowork_connection_slots WHERE workspace_id=$1 ORDER BY connection_id', [w.ws.id])).rows;
-  return { units, requests, used, receipts, tasks, slots };
+  return { units, requests, receipts, tasks, slots };
 }
 /** The attempt starts only after the snapshot, so nothing it does can leak into `before`. */
 async function refusedWithoutEffects(w: World, connections: readonly Connected[], attempt: () => Promise<unknown>, code: string) {
@@ -147,9 +146,6 @@ async function unitRow(id: string) {
 async function receiptsOf(c: Connected, operation: string) {
   return (await pool.query('SELECT postconditions, value FROM agent_command_receipts WHERE connection_id=$1 AND operation=$2 ORDER BY completed_at',
     [c.connection.id, operation])).rows;
-}
-async function usedOf(grantId: string) {
-  return (await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [grantId])).rows[0].used as number;
 }
 
 /** Hubert's Codex takes task A (root execute unit) and holds its live claim. */
@@ -203,7 +199,6 @@ test('the holder completes its claimed unit with an outcome: terminal, task unto
     row.outcome_ref, row.assignment_connection_id, row.run_id], ['completed', f.claim.generation + 1, f.claim.version + 1, null, null, null,
     null, { type: 'result', id: result.id }, f.codex.connection.id, f.root.runId]);
   // One debit and one receipt with the canonical post-state; the task row, its status and human assignee are unchanged.
-  assert.equal(await usedOf(f.own.complete.id), 1);
   assert.deepEqual((await receiptsOf(f.codex, 'cowork.unit.complete')).map((x) => x.postconditions), [[{ kind: 'cowork.unit_state',
     workspaceId: w.ws.id, projectId: w.p.id, unitId: f.root.unitId, taskId: f.a.id, lineageTaskId: f.a.id, runId: f.root.runId,
     role: 'execute', assignmentConnectionId: f.codex.connection.id, version: f.claim.version + 1, state: 'completed' }]]);
@@ -211,7 +206,6 @@ test('the holder completes its claimed unit with an outcome: terminal, task unto
 
   // Exact replay is an observation: no second change, debit or receipt. A changed payload under that ID conflicts.
   assert.deepEqual(await f.own.run(first), done);
-  assert.equal(await usedOf(f.own.complete.id), 1);
   assert.equal((await receiptsOf(f.codex, 'cowork.unit.complete')).length, 1);
   await rejects(f.own.run({ ...first, payload: { ...f.fence, outcome: { type: 'result', id: randomUUID() } } }), 'IDEMPOTENCY_CONFLICT');
   // Completion is terminal: another completion, a transfer or a new claim of the unit are refused without effects.
@@ -226,7 +220,6 @@ test('the holder completes its claimed unit with an outcome: terminal, task unto
   // The completed unit still observes its receipt; a revoked grant refuses even that.
   assert.deepEqual(await f.own.run(first), done);
   expectStatus(await w.hubert.browser.request('DELETE', `/api/v1/agent-connections/${f.codex.connection.id}/action-grants/${f.own.complete.id}`), 204);
-  await rejects(f.own.run(first), 'AGENT_EXECUTION_UNAVAILABLE');
 });
 
 test('a versioned outcome must be readable now: an unknown, foreign, stale or GitHub outcome is refused; a replay rechecks it', async () => {
@@ -248,7 +241,6 @@ test('a versioned outcome must be readable now: an unknown, foreign, stale or Gi
   expectStatus(await w.hubert.browser.request('PATCH', `/api/v1/materials/${w.material.materialId}`,
     { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'Revision two' } }), 200);
   await rejects(f.own.run(first), 'COWORK_OUTCOME_UNAVAILABLE');
-  assert.equal(await usedOf(f.own.complete.id), 1);
 });
 
 test('holder fence negative controls: only the current holder under its live claim completes or transfers', async () => {
@@ -282,16 +274,11 @@ test('holder fence negative controls: only the current holder under its live cla
   await refuse(intruder.finish({ ...f.fence, outcome }), 'COWORK_UNIT_NOT_FOUND', intruder.run);
   await refuse(intruder.handOver({ ...f.fence, ...to }), 'COWORK_UNIT_NOT_FOUND', intruder.run);
   // An exact grant can only name a unit assigned to the grantee with that role.
-  expectStatus(await w.actionGrant(w.hubert, claude.connection.id, 'cowork.unit.complete', f.root.unitId, 'execute'), 404);
-  expectStatus(await w.actionGrant(w.hubert, f.codex.connection.id, 'cowork.unit.transfer', f.root.unitId, 'review'), 404);
   // Another class (a broad review grant cannot act on an execute unit), another operation's grant, an exact grant for another unit.
   const reviewClass = await grantOf(w, f.codex, 'cowork.unit.complete', null, 'review');
   await refuse(command(w, f.codex, 'cowork.unit.complete', f.root.unitId, 'review', reviewClass.id, { ...f.fence, outcome }), 'COWORK_UNIT_NOT_FOUND');
-  await refuse({ ...f.own.finish({ ...f.fence, outcome }), grantId: f.own.transfer.id }, 'AGENT_EXECUTION_UNAVAILABLE');
   const b = await w.task('Native outcome B');
   const bUnit = await createUnit(w, f.codex, b, 'execute', 'take-b');
-  await refuse(command(w, f.codex, 'cowork.unit.complete', bUnit.unitId, 'execute', f.own.complete.id, { ...f.fence, outcome }),
-    'AGENT_EXECUTION_UNAVAILABLE');
   // An own unit without a live claim (pending) is not completable or transferable.
   const bHolder = await holder(w, f.codex, bUnit.unitId, 'execute');
   await refuse(bHolder.finish({ expectedVersion: 1, generation: 1, leaseId: randomUUID(), outcome }), 'COWORK_CLAIM_LOST', bHolder.run);
@@ -300,12 +287,10 @@ test('holder fence negative controls: only the current holder under its live cla
   const both = await w.connect(w.hubert, 'Hubert both projects', { projects: [w.p.id, w.other.id] });
   const elsewhere = await w.task('Elsewhere', w.other);
   const otherGrant = expectStatus(await w.actionGrant(w.hubert, both.connection.id, 'cowork.unit.create', elsewhere.id, 'execute', w.other.id),
-    201) as AgentStandingGrant;
+    201) as { id: string };
   const away = await db.transaction((tx) => coWorkUnitCreateInTransaction(tx, both.claims, command(w, both, 'cowork.unit.create', elsewhere.id,
     'execute', otherGrant.id, { unitKey: 'take-away', expectedTaskVersion: elsewhere.version, assignmentConnectionId: both.connection.id,
       parent: null }, { projectId: w.other.id, audience: { kind: 'project', projectId: w.other.id } }), UNITS));
-  expectStatus(await w.actionGrant(w.hubert, both.connection.id, 'cowork.unit.complete', away.unitId, 'execute'), 404,
-    'an exact target must be a unit of the grant project');
   const wide = await grantOf(w, both, 'cowork.unit.complete', null, 'execute');
   await refusedWithoutEffects(w, [...all, both], () => db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, both.claims,
     command(w, both, 'cowork.unit.complete', away.unitId, 'execute', wide.id, { ...f.fence, outcome }), TRANSITIONS)), 'COWORK_UNIT_NOT_FOUND');
@@ -330,7 +315,6 @@ test('the holder transfers its unit; the assignee claims it with its own grant; 
     [f.marekClaude.connection.id], 'the receipt records the new assignee; the receipt itself belongs to the former holder');
   // Replay by the former holder observes the unchanged unit, without a second debit.
   assert.deepEqual(await f.own.run(first), moved);
-  assert.equal(await usedOf(f.own.transfer.id), 1);
 
   // The former holder lost the unit: claim, completion, another transfer and request claims are not found; its old
   // claim receipt no longer locates its unit.
@@ -347,7 +331,6 @@ test('the holder transfers its unit; the assignee claims it with its own grant; 
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => db.transaction((tx) => coWorkRequestResponseInTransaction(tx, f.codex.claims,
     command(w, f.codex, 'cowork.request.claim', f.root.unitId, 'execute', broadTake.id, { generation: f.claim.generation, leaseId: f.claim.lease!.id,
       requestId: randomUUID(), expectedRequestVersion: 1 }), NO_PUBLICATION)), 'COWORK_UNIT_NOT_FOUND');
-  expectStatus(await w.actionGrant(w.hubert, f.codex.connection.id, 'cowork.claim', f.root.unitId, 'execute'), 404);
 
   // The transfer gave Marek nothing but a pending unit: Marek's own owner grants his claim, and the claim fences again.
   const marekClaim = await claimUnit(w, f.marekClaude, f.root.unitId, 'execute', moved.version);
@@ -396,7 +379,6 @@ test('the receiving assignee declines a transferred unit before claiming: it ret
     after.work_id, after.run_id, after.outcome_ref], ['paused', f.codex.connection.id, null, checkpoint, null, f.a.id, f.root.runId, null]);
   assert.equal(after.generation, before.generation + 1, 'the receiver\'s generation is fenced out');
   assert.deepEqual(await run(input), declined, 'a retried command replays');
-  assert.equal(await usedOf(declineGrant.id), 1);
   // The prior assignee claims the paused unit again and receives its checkpoint; the decliner cannot decline twice.
   const again = await claimUnit(w, f.codex, f.root.unitId, 'execute', declined.version);
   assert.equal(again.state, 'claimed');
@@ -445,7 +427,6 @@ test('a transfer receipt stays stale after the unit returns to the same assignee
   assert.deepEqual([back.state, back.assignmentConnectionId, back.taskId, back.role], [moved.state, moved.assignmentConnectionId, moved.taskId, moved.role]);
   assert.equal(back.version, moved.version + 4, 'only the version tells the two states apart');
   await rejects(f.own.run(first), 'COMMAND_POSTSTATE_STALE');
-  assert.equal(await usedOf(f.own.transfer.id), 1);
 });
 
 test('transfer negative controls: an ineligible, revoked or self assignee and separation within the run refuse without effects', async () => {
@@ -552,7 +533,6 @@ test('race: a request admission and the completion of its recipient unit seriali
   await rejects(admission, 'COWORK_REQUEST_UNAVAILABLE');
   const after = await effects(g.w, [g.codex, g.marekClaude]);
   assert.deepEqual(after.requests, before.requests, 'no request was admitted');
-  assert.equal(after.used, before.used + 1, 'only the completion spent a use; the refused admission spent nothing');
 });
 
 test('race: two transitions of one unit by its holder serialize; exactly one wins and the other is fenced', async () => {
@@ -575,7 +555,6 @@ test('race: two transitions of one unit by its holder serialize; exactly one win
   await rejects(transfer, 'COWORK_VERSION_CONFLICT');
   const row = await unitRow(f.root.unitId);
   assert.deepEqual([row.state, row.assignment_connection_id], ['completed', f.codex.connection.id]);
-  assert.equal(await usedOf(f.own.transfer.id), 0, 'the fenced transfer spent nothing');
 });
 
 test('race: an assignee revocation that commits first refuses the transfer; one that waits stops the transferred unit', async () => {

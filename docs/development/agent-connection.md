@@ -1,5 +1,11 @@
 # Personal agent connection (#52)
 
+**v0.2 (#859, F-036):** a local client has no standing grants. It acts with its owner's rights at each call, under the agent's
+"What it may do", and a change that would wait is kept in the change log for its owner's OK
+([mcp-cowork](../product/mcp-cowork.md), [access policy](access-policy.md)). Mentions of standing grants, `grantId` and the
+grants panel below describe v0.1 and are superseded; the scopes, capability switches and project selection are removed in the
+next step of #859.
+
 **Planned extension, 2026-09-30:** [F-016](../product/mcp-cowork.md) extends this
 implemented Claude path with multiple named external connections per owner,
 request-bound authorization in one normal browser login, tested Codex support

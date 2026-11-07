@@ -81,9 +81,8 @@ test('current-source filtering precedes pagination, including a large hidden pre
   assert.equal(unit!.state, 'pending'); assert.equal(unit!.generation, 0); assert.equal(unit!.leaseId, null);
   const facts = (await pool.query(`SELECT (SELECT count(*)::int FROM cowork_requests WHERE project_id=$1) AS pending,
     (SELECT count(*)::int FROM agent_runtime_sessions WHERE connection_id=$2) AS runtimes,
-    (SELECT count(*)::int FROM agent_standing_grants WHERE connection_id=$2) AS grants,
     (SELECT count(*)::int FROM agent_command_receipts WHERE connection_id=$2) AS receipts`, [f.p.id, f.recipient.connection.id])).rows[0];
-  assert.deepEqual(facts, { pending: 57, runtimes: 0, grants: 0, receipts: 0 });
+  assert.deepEqual(facts, { pending: 57, runtimes: 0, receipts: 0 });
 });
 
 test('native immutable and versioned reference packets require every current source, dependency and response', async () => {

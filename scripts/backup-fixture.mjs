@@ -266,19 +266,12 @@ async function seed() {
   assert.equal(await mcpStatus(bearers.live), 200, 'the live connection works');
 
   // Task creation Undo (#238): the agent creates a task natively; Ada undoes it before anyone used it. The reverted
-  // task, its two notices, its receipt and the agent's undo grant must all come back from the backup.
+  // task, its two notices and its receipt must all come back from the backup.
   const actor = (await ada.expect('POST', '/api/v1/agent-connections', { agentId: agent.id, selectedProjectIds: [projectId],
     scopes: ['flux.context.read', 'flux.action.execute'] })).id;
   const actorBearer = await bearerFor(actor, 'flux.context.read flux.action.execute');
   bearers.undo = actorBearer;
-  const expiresAt = new Date(Date.now() + 3_600_000).toISOString();
-  const createGrant = await ada.expect('POST', `/api/v1/agent-connections/${actor}/action-grants`,
-    { clientCommandId: ids(), projectId, operation: 'work.create', peerRequestClass: 'execute', maximumUses: 1, expiresAt });
-  await ada.expect('POST', `/api/v1/agent-connections/${actor}/action-grants`,
-    { clientCommandId: ids(), projectId, operation: 'work.creation.revert', peerRequestClass: 'execute', maximumUses: 1, expiresAt });
-  const runtime = (await mcpTool(actorBearer, 'flux_bootstrap', { projectId, clientSessionId: ids() })).runtime.id;
-  const created = await mcpTool(actorBearer, 'flux_create_task', { projectId, runtimeSessionId: runtime, grantId: createGrant.id,
-    clientCommandId: ids(), peerRequestClass: 'execute', sources: [], task: { title: token('BACKUP-undone-task') } });
+  const created = await mcpTool(actorBearer, 'flux_create_task', { projectId, clientCommandId: ids(), sources: [], task: { title: token('BACKUP-undone-task') } });
   const createdTask = await ada.expect('GET', `/api/v1/work/${created.workId}`);
   assert.deepEqual(createdTask.creationUndo, { eligible: true, reason: 'eligible' }, 'the agent task is unused');
   const undoCommand = ids();

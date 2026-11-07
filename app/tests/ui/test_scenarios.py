@@ -16,8 +16,8 @@ people in them would, in the browser:
    the task and from the map, adds the sensor alternative as a new thought, and writes a wiki page that
    cites the result and the experiment. A task created first is linked to the map later; a removed map
    placement keeps its task; Tasks shows only committed work.
-3. An agent proposes the pivot under a standing grant and a person accepts it (test_3; O-009): Ada grants
-   her MCP connection "Propose decisions" on the Connect page; the agent (a real OAuth bearer) proposes
+3. An agent proposes the pivot as its owner and a person accepts it (test_3; O-009): Ada connects
+   her MCP connection; the agent (a real OAuth bearer) proposes
    "Switch to a ToF distance sensor"; Jonas reaches it from his inbox and accepts it as a pivot, parking
    the camera work and keeping the sensor order.
 4. Return after the pivot without AI (test_4): Ada comes back to Home and the project and finds the new
@@ -954,31 +954,8 @@ class ScenarioJourney:
         mcp = McpAgent(self, "ada", connection["id"], lamp)
         s["agent"], s["agent_id"] = mcp, agent["id"]
 
-        # Before any standing grant the proposal is refused.
-        refused = mcp.rpc("tools/call", {"name": "flux_propose_decision", "arguments": {
-            "projectId": lamp, "runtimeSessionId": mcp.runtime, "grantId": str(uuid.uuid4()), "clientCommandId": str(uuid.uuid4()),
-            "peerRequestClass": "plan", "sources": [], "decision": {"title": D2}}})
-        self.assertTrue(refused.get("error") or (refused.get("result") or {}).get("isError"), "no grant, no proposal")
-
-        # Ada grants "Propose decisions" on the Connect page.
-        page = self.page("ada")
-        page.goto("/connect-agent")
-        expect(page.get_by_role("heading", level=1, name="Your agent connections")).to_be_visible()
-        grants = page.get_by_role("region", name="Standing grants for Desk laptop")
-        self.tap(grants.get_by_role("button", name="Add a grant"))
-        form = grants.get_by_role("form", name="Add a grant to Desk laptop")
-        choose(form.get_by_label("Acts as", exact=True), label="Planning")
-        form.get_by_role("checkbox", name="Propose decisions").check()
-        form.get_by_label("Uses for each change").fill("2")
-        self.shot(page, "3-grant")
-        self.tap(form.get_by_role("button", name="Grant", exact=True))
-        expect(grants.get_by_role("listitem").filter(has_text="Propose decisions")).to_contain_text("2 of 2 uses left")
-        live = [g for g in self.api("ada", "GET", f"/api/v1/agent-connections/{connection['id']}/action-grants?limit=50", status=200)["items"] if not g["revokedAt"]]
-        self.assertEqual([(g["operation"], g["peerRequestClass"], g["projectId"], g["maximumUses"]) for g in live], [("decision.propose", "plan", lamp, 2)])
-
         # The agent proposes the pivot; it stays a proposal and the camera rule stays current.
-        proposed = mcp.tool("flux_propose_decision", {"projectId": lamp, "runtimeSessionId": mcp.runtime, "grantId": live[0]["id"],
-                                                      "clientCommandId": str(uuid.uuid4()), "peerRequestClass": "plan", "sources": [],
+        proposed = mcp.tool("flux_propose_decision", {"projectId": lamp, "clientCommandId": str(uuid.uuid4()), "sources": [],
                                                       "decision": {"title": D2, "rationale": WHY2, "supersedes": s["d1"], "affects": [s["camera_task"]]}})
         d2 = self.api("ada", "GET", f"/api/v1/decisions/{proposed['decisionId']}", status=200)
         self.assertEqual((d2["status"], d2["proposedBy"]["kind"], d2["proposedBy"]["id"], d2["decidedBy"]), ("proposed", "agent", agent["id"], None))

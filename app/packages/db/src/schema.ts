@@ -1,7 +1,7 @@
 import { eq, ne, sql } from 'drizzle-orm';
 import type { InspectedComparisonSource, NotificationSourceRef } from '@flux/contracts';
 import { pgTable, text, timestamp, date, uuid, integer, smallint, jsonb, boolean, bigserial, bigint, index, uniqueIndex, primaryKey, foreignKey, unique, check, type AnyPgColumn, type PgTableExtraConfigValue } from 'drizzle-orm/pg-core';
-import { AGENT_MAY_DO, AGENT_OPERATIONS, AGENT_PEER_REQUEST_CLASSES, type AgentJsonValue, type AgentPostcondition, type CoWorkSourceRef } from '@flux/contracts';
+import { AGENT_MAY_DO, AGENT_OPERATIONS, type AgentJsonValue, type AgentPostcondition, type CoWorkSourceRef } from '@flux/contracts';
 import { AI_PROVIDER_KINDS, ASSISTANT_RUN_END_REASONS, type AiProviderKind } from '@flux/contracts';
 
 export const samples = pgTable('samples', {
@@ -901,37 +901,11 @@ export const agentRuntimeSessions = pgTable('agent_runtime_sessions', {
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
 ]);
 
-/** Explicit owner action ceilings; project contributor rights do not create these grants. */
-export const agentStandingGrants = pgTable('agent_standing_grants', {
-  id: uuid('id').primaryKey(),
-  workspaceId: uuid('workspace_id').notNull(),
-  projectId: uuid('project_id').notNull(),
-  connectionId: uuid('connection_id').notNull(),
-  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
-  clientCommandId: uuid('client_command_id').notNull(),
-  requestFingerprint: text('request_fingerprint').notNull(),
-  operation: text('operation', { enum: AGENT_OPERATIONS }).notNull(),
-  peerRequestClass: text('peer_request_class', { enum: AGENT_PEER_REQUEST_CLASSES }).notNull(),
-  objectId: uuid('object_id'),
-  maximumUses: integer('maximum_uses').notNull(),
-  used: integer('used').notNull().default(0),
-  generation: integer('generation').notNull().default(1),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  revokedAt: timestamp('revoked_at', { withTimezone: true }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [
-  unique().on(table.connectionId, table.id),
-  unique().on(table.connectionId, table.clientCommandId),
-  foreignKey({ columns: [table.workspaceId, table.connectionId, table.projectId], foreignColumns: [agentConnectionProjects.workspaceId, agentConnectionProjects.connectionId, agentConnectionProjects.projectId] }),
-]);
-
-/** One canonical durable command ledger, shared with coordination. No TTL replay cache. */
+/** The durable command ledger of coordination (claims, units, requests) and the task-thread posts. No TTL replay cache. */
 export const agentCommandReceipts = pgTable('agent_command_receipts', {
   connectionId: uuid('connection_id').notNull(),
   clientCommandId: uuid('client_command_id').notNull(),
   runtimeSessionId: uuid('runtime_session_id').notNull(),
-  grantId: uuid('grant_id').notNull(),
-  grantGeneration: integer('grant_generation').notNull(),
   bindingId: uuid('binding_id').notNull().references(() => agentOauthBindings.id),
   bindingGeneration: integer('binding_generation').notNull(),
   fingerprint: text('fingerprint').notNull(),
@@ -943,7 +917,6 @@ export const agentCommandReceipts = pgTable('agent_command_receipts', {
 }, (table) => [
   primaryKey({ columns: [table.connectionId, table.clientCommandId] }),
   foreignKey({ columns: [table.connectionId, table.runtimeSessionId], foreignColumns: [agentRuntimeSessions.connectionId, agentRuntimeSessions.id] }),
-  foreignKey({ columns: [table.connectionId, table.grantId], foreignColumns: [agentStandingGrants.connectionId, agentStandingGrants.id] }),
   // The Agents view's latest-activity read per connection and project (migration 0062, #347).
   index('agent_command_receipts_activity_idx').on(table.connectionId, table.projectId, table.completedAt.desc()),
 ]);
@@ -1936,7 +1909,11 @@ export const assistantChanges = pgTable('assistant_changes', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
-  runId: uuid('run_id').notNull(),
+  /** An assistant run's change; null for a local client's, which names its connection instead (0008, #859). */
+  runId: uuid('run_id'),
+  connectionId: uuid('connection_id').references(() => agentConnections.id, { onDelete: 'cascade' }),
+  /** The conversation a local client's message went to, so its change line shows on that message. */
+  conversationId: uuid('conversation_id'),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   agentId: uuid('agent_id').notNull(),
   clientCommandId: uuid('client_command_id').notNull(),
@@ -1964,9 +1941,15 @@ export const assistantChanges = pgTable('assistant_changes', {
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.runId, table.clientCommandId),
+  uniqueIndex('assistant_changes_connection_command_idx').on(table.connectionId, table.clientCommandId).where(sql`${table.connectionId} IS NOT NULL`),
   index('assistant_changes_run_idx').on(table.runId, table.createdAt),
+  index('assistant_changes_connection_idx').on(table.connectionId, table.createdAt).where(sql`${table.connectionId} IS NOT NULL`),
+  index('assistant_changes_conversation_idx').on(table.conversationId, table.createdAt).where(sql`${table.conversationId} IS NOT NULL`),
+  check('assistant_changes_source_check', sql`num_nonnulls(${table.runId}, ${table.connectionId}) = 1`),
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.runId], foreignColumns: [personalRuns.workspaceId, personalRuns.projectId, personalRuns.id] }).onDelete('cascade'),
+  foreignKey({ name: 'assistant_changes_conversation_fk', columns: [table.workspaceId, table.projectId, table.conversationId],
+    foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
 ]);
 
