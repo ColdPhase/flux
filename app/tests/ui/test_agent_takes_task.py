@@ -137,10 +137,11 @@ class AgentTakesTask(unittest.TestCase):
         type(self).ids["first"] = task["id"]
         for who, expected in (("ada", 0), ("kai", 1)):
             page = self.open_task(who, task["id"])
-            page.get_by_role("button", name="Owner").click()
-            menu = page.get_by_role("listbox")
+            panel = page.get_by_role("complementary", name="Details")
+            panel.get_by_role("button", name="Owner").click()
+            menu = page.get_by_role("menu", name="Owner")
             expect(menu).to_contain_text("People")
-            self.assertEqual(menu.get_by_role("option", name=re.compile(r"Planner")).count(), expected, f"{who}'s Owner choices")
+            self.assertEqual(menu.get_by_role("menuitemradio", name=re.compile(r"Planner")).count(), expected, f"{who}'s Owner choices")
         # Ada cannot give it to Kai's agent by the API either: she reaches it through Kai.
         refused = self.api(self.page("ada"), "PATCH", f"/api/v1/work/{task['id']}", {"owner": {"kind": "agent", "id": self.ids["agent"]}},
                            status=422, headers={"if-match": f"\"{task['version']}\""})

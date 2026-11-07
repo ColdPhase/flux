@@ -518,7 +518,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     for (const ended of await ports.runs.endStale(owner, STALE_AFTER_SECONDS)) await announce(ports, ended);
     if (await waitingRequests(ports, owner) >= MAX_WAITING_REQUESTS) return refused('I can\'t start: I\'m already working on many requests.');
     const admitted = await admit(ports, owner, enablement);
-    if (!admitted.ok) return refused(admitted.problem === 'runtime_sign_in' ? `I can\'t start: sign in to ${admitted.client === 'codex' ? 'ChatGPT' : 'Claude'} again.` : TASK_PROBLEM_LINE[admitted.problem]);
+    if (!admitted.ok) return refused(admitted.problem === 'runtime_sign_in' ? `I can't start: sign in to ${admitted.client === 'codex' ? 'ChatGPT' : 'Claude'} again.` : TASK_PROBLEM_LINE[admitted.problem]);
     const run = await ports.runs.insertRun({
       id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, ownerUserId: owner, agentId: spec.agentId,
       connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `task:${spec.workId}:${spec.clientRunId}`, kind: 'task',

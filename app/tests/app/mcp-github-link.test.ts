@@ -70,10 +70,10 @@ async function scene() {
     return { agent, connected: await agentConnection(pool, who.browser, agent.id, [p.id]) };
   };
   const mine = await makeAgent(hubert, 'Hubert Codex');
-  /** A task; `holder` is the agent it is assigned to, in progress. */
-  const task = async (title: string, holder?: Agent) => {
-    let item = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/work`, { body: { title } }), 201) as WorkItem;
-    if (holder) item = expectStatus(await hubert.browser.request('PATCH', `/api/v1/work/${item.id}`, { body: { owner: { kind: 'agent', id: holder.id }, status: 'in_progress' },
+  /** A task; `holder` is the agent it is assigned to, in progress. A task is given to your own agent (#904), so its owner (`by`) gives it. */
+  const task = async (title: string, holder?: Agent, by: Person = hubert) => {
+    let item = expectStatus(await by.browser.request('POST', `/api/v1/projects/${p.id}/work`, { body: { title } }), 201) as WorkItem;
+    if (holder) item = expectStatus(await by.browser.request('PATCH', `/api/v1/work/${item.id}`, { body: { owner: { kind: 'agent', id: holder.id }, status: 'in_progress' },
       headers: { 'if-match': `"${item.version}"` } }), 200) as WorkItem;
     return item;
   };
@@ -224,7 +224,7 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
     // Marek owns a second agent and, as a workspace admin, may manage the project and authorize its standing grants. Once he is only a
     // member who can read the project, his agent cannot link through his authority any more, whatever its own role.
     const theirs = await s.makeAgent(s.marek, 'Marek Claude');
-    const marekItem = await s.task('Marek\'s task', theirs.agent);
+    const marekItem = await s.task('Marek\'s task', theirs.agent, s.marek);
     const marekGrant = await theirs.connected.grant('work.update', 'execute', 10, marekItem.id);
     assert.equal(toolValue(await s.link(theirs, marekGrant.id, marekItem.id, url(REPO, 92))).number, 92);
     expectStatus(await s.hubert.browser.request('PATCH', `/api/v1/workspaces/${s.ws.id}/members/${s.marek.id}`, { body: { role: 'member' } }), 200);

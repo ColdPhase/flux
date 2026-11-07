@@ -64,10 +64,8 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     // One run at a time per task: a run still working (a duplicate event, a second click) is the one that counts.
     const [latest] = await rows.runsOfWork(work.id, 1);
     if (latest && ['queued', 'reading', 'dispatching'].includes(latest.status)) return;
-    if (!(await rows.isOwnServerAgent(ownerId, holder.id))) {
-      await giveBack(tx, work, ownerId, ownerId);
-      return;
-    }
+    // An agent that does not run on the server (a local client holding the task by co-work) is not this module's to start.
+    if (!(await rows.isOwnServerAgent(ownerId, holder.id))) return;
     const ports = personalRunPorts(tx, queue);
     const runs = createPersonalRunUseCases({ uow: { run: (job) => job(ports) }, connections: composition.connections ?? noPersonalConnections,
       providerEnabled: composition.providerEnabled ?? false, ...(composition.runtime ? { runtime: composition.runtime } : {}) });
