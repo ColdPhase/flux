@@ -12,6 +12,7 @@ import type {
 import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
 import { answerWithSchedule } from './schedule-request.js';
+import { answerWithWebSources } from './web-sources.js';
 import { createRuntimeRunProcessor, type RuntimeCaps } from './runtime-run.js';
 import { reserveOnKey } from './service.js';
 import { updateAndAnnounce } from './progress.js';
@@ -309,7 +310,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       // The same redaction as a runtime answer's (F-022 AIM-3, F-027 AST-9, #484): token-shaped strings never reach the conversation.
       const redacted = redactSecrets(result.text);
       const parsed = parseOutput(redacted.text, sources, !truncated);
-      parsed.body = await answerWithSchedule(ports, run, parsed.body);
+      parsed.body = await answerWithWebSources(ports, run, await answerWithSchedule(ports, run, parsed.body));
       const agent: Principal = { kind: 'agent', id: run.agentId };
       const committedAt = new Date();
       const updated = await updateAndAnnounce(ports, run.id, ended(truncated ? 'truncated' : 'completed', null, {

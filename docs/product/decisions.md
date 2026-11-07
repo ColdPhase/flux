@@ -385,10 +385,18 @@ Not affected: F-010, F-014's draft-before-save thoughts, F-015, F-021, F-031, F-
   [F-038](#f-038--a-simpler-flux)). Always-on agents need capacity per person, measured against
   that target (#860). Flux computes how many agents run at once from memory (about 2 on 4 GB);
   the rest wait, and the operator can change the number in config (Hubert, 2026-11-03, #860).
-- **Web reading.** Read-only web search and page reading widen the runtime's egress beyond the
-  vendors' hosts and bring prompt injection from the open web. Web content is data. Rights,
-  waits, the never-list and Undo are the defence, and a test shows that web content cannot
-  bypass approvals (#856).
+- **Web reading** (#918, built 2026-11-07; the mechanism is an inference of the agents, for push-back). Read-only page reading
+  is a Flux tool, `flux_read_web`: the Flux server fetches the page, GET only, public addresses only, bounded in time and
+  size, with the guard of link cards (F-031).
+  The same tool serves a server run on either engine and a local client, and the runtime's egress stays what it was
+  (the vendors' hosts and Flux's route): a CLI's own web tools would need every public host open through a TLS tunnel, which cannot be
+  held to read-only. Every page a run reads is recorded and its answer ends with the list, in Flux's words. It is off unless the operator
+  sets `FLUX_WEB_READS=on`, like every other outbound path. Web search needs a search provider that no install has by default and is not
+  built yet. **The risk, recorded:** the open web can try to instruct an agent (prompt injection), and an address the agent chooses can
+  carry what it knows to the site's logs. Web content is data. Rights, waits, the never-list and Undo are the defence: only the owner
+  instructs; deleting and other people's things always wait; there is no tool to approve a waiting item, to change access or to send
+  anything out. `tests/app/web-content-cannot-bypass-approvals.test.ts` shows that a page, and another person's task title that
+  becomes a run's request, cannot make an agent act beyond "What it may do" or skip a wait.
 - **Reference: Hermes Agent** (Nous Research, `NousResearch/hermes-agent` at `d9f15af4`,
   reviewed 2026-11-02). It has one model picker, one always-on gateway and almost no limits of
   its own. Its core Claude route poses as Claude Code, and Flux must not copy that.

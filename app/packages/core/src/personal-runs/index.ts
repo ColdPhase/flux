@@ -4,7 +4,7 @@ export * from './processor.js';
 export * from './proposals.js';
 export { recoverLostRuntimeRuns, recoverPersonalRuns } from './recovery.js';
 export {
-  connectionCallsTools, costMicros, parseOutput, requestInput, runChargeMicros, runReservationMicros, SYSTEM_PROMPT, budgetedReservationMicros, TOOL_SYSTEM_PROMPT,
+  connectionCallsTools, costMicros, parseOutput, requestInput, runChargeMicros, runReservationMicros, SYSTEM_PROMPT, budgetedReservationMicros, TOOL_SYSTEM_PROMPT, taskSystemPrompt,
   type SuppliedSource,
 } from './validation.js';
 export { emptyAccount, nextRequestFits, reconcileRequest, requestParts, runToolLoop, type Gate, type LoopEnd, type LoopLimit, type LoopOptions, type LoopResult, type RunAccount } from './tool-loop.js';
@@ -13,3 +13,4 @@ export { TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnecti
 export { apiModelAccount, connectionOnModel, modelGroups, runtimeModelAccount, runtimeModelFlag } from './model.js';
 export { createRuntimeRunProcessor, localToolInInit, runtimePrompt } from './runtime-run.js';
 export { redactSecrets, REDACTED_SECRET } from './redaction.js';
+export { answerWithWebSources, webSourcesLine } from './web-sources.js';

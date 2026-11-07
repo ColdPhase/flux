@@ -98,18 +98,18 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
     `claude.com`, `platform.claude.com`; Codex: `auth.openai.com`, `chatgpt.com`,
     `api.openai.com`); telemetry, feedback uploads and update checks are not allowed;
   - Flux's MCP route, and no other Flux path;
-  - **read-only web reads** for the agents' web search and page reading (AG-8): public addresses
-    only, under the same guard as API base URLs ([CA-4](model-providers.md#ca-4--key-custody-and-endpoints)).
-    Whether this is the CLI's own read-only web tools or a Flux tool is settled in #856; either way
-    nothing is posted or submitted.
+  - nothing else. **Web reads are not through the egress** (#918): an agent reads a page with Flux's own tool `flux_read_web`, which the
+    Flux server runs (GET only, public addresses only, the same guard as API base URLs and link cards:
+    [CA-4](model-providers.md#ca-4--key-custody-and-endpoints)), so a CLI's own web tools stay off and the egress is not widened to
+    every public host, which a TLS tunnel could not hold to read-only. Nothing is posted or submitted.
 - The egress's request parser is size-bounded, minimal and fuzz-tested.
 
 ## RT-5 — Tools: only Flux tools and reading the web
 
 - A server agent has no shell, files, code execution, images, apps, sub-agents or other MCP
-  servers. Its only tools are the run's exact Flux MCP tools and read-only web search and page
-  reading.
-- **Claude Code** runs with every built-in tool removed except the allowed web reading, Flux as
+  servers. Its only tools are the run's exact Flux MCP tools, which include `flux_read_web`, the Flux
+  server's read-only page reading (RT-4): no CLI web tool is on.
+- **Claude Code** runs with every built-in tool removed, Flux as
   the only MCP server (`--strict-mcp-config`, `ENABLE_CLAUDEAI_MCP_SERVERS=false`), the exact Flux
   tools in `--allowedTools`, `dontAsk` with no permission prompts, and no session persistence.
   The first `system/init` event is read back; any other tool or MCP server stops the run with
@@ -118,8 +118,8 @@ not verify it. A paid hosting service run by the Flux project keeps plan sign-in
   `-c` (shell, apps, hooks, goals, plugins, memories and the rest of the reviewed list), Flux as
   the only, required MCP server with exactly the run's tools, and no persistence. A preflight reads
   the effective configuration, and the run's own JSONL is the authoritative check: any item other
-  than a message, reasoning, an allowed web read or an allowed Flux tool call stops the CLI with
-  nothing committed.
+  than a message, reasoning or an allowed Flux tool call stops the CLI with nothing committed
+  (Codex's `web_search` stays disabled).
 - The pinned versions have a flag contract test. A new default-on feature or a changed event
   format keeps runs off until the review list and checks are updated.
 - Transcripts are not kept. An agent's memory is only what its owner told it (AG-1).
