@@ -1,6 +1,6 @@
 import { prepareReferencedTaskUse } from './task-targets.js';
 import { fileRows } from './files.js';
-import { and, asc, desc, eq, inArray, isNotNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
 import type { AgentMayDo } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -14,15 +14,12 @@ import { apiKeySpendToday } from './api-key-spend.js';
  */
 
 type Window = { limit: number; offset: number };
-type EnablementRow = typeof schema.personalRunEnablements.$inferSelect;
 type RunRow = typeof schema.personalRuns.$inferSelect;
 type ProposalRow = typeof schema.assistantProposals.$inferSelect;
 type SourceRef =
   | { type: 'message'; id: string; revision: number }
   | { type: 'work'; id: string; revision: number }
   | { type: 'thought'; id: string; sketchId: string; revision: number };
-type NewEnablement = Pick<EnablementRow, 'ownerUserId' | 'connectionId' | 'provider' | 'engine'> & { assistantModel: string };
-type EnablementChanges = Partial<Pick<EnablementRow, 'status' | 'assistantModel' | 'connectionId' | 'provider' | 'engine'>>;
 type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
   | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { workId?: string | null; askedByRunId?: string | null; exchangeTurn?: number; engine?: RunRow['engine']; silent?: boolean; authority?: RunRow['authority']; backgroundLabel?: string | null;
@@ -34,9 +31,10 @@ type NewProposal = Pick<ProposalRow, 'id' | 'workspaceId' | 'projectId' | 'runId
   | 'resultTitle' | 'resultFinding' | 'resultEvidence' | 'finishesWorkId'>;
 type ProposalChanges = Partial<Pick<ProposalRow, 'status' | 'decidedBy' | 'decidedAt' | 'resultId'>>;
 
-const e = schema.personalRunEnablements;
-const a = schema.personalRunAgents;
+const e = schema.assistantSettings;
+const ag = schema.agents;
 const r = schema.personalRuns;
+const k = schema.agentConnections;
 const p = schema.assistantProposals;
 /** The same words as `nothingToChange` in core (a posting schedule never posts them). */
 const NOTHING_TO_CHANGE = '^\\W*done\\W*\\s*nothing to change\\W*$';
@@ -60,13 +58,19 @@ function toRun(row: RunRow) {
 }
 
 export function personalRunRows(db: DbExecutor) {
-  async function enablement(ownerUserId: string, options: { lock?: boolean } = {}) {
-    const query = db.select().from(e).where(eq(e.ownerUserId, ownerUserId));
-    const [row] = options.lock ? await query.for('update') : await query;
-    if (!row) return null;
-    const agents = await db.select({ workspaceId: a.workspaceId, agentId: a.agentId }).from(a)
-      .where(eq(a.ownerUserId, ownerUserId)).orderBy(asc(a.workspaceId));
-    return { ...row, agents };
+  /**
+   * The AI setup of one of the owner's agents: the one named, else their first (Assistant, which answers `/ai`). A deleted agent has
+   * none. `lock` holds the agent's row until the unit of work ends: it serializes the owner's requests to that agent.
+   */
+  async function enablement(ownerUserId: string, options: { lock?: boolean; agentId?: string; workspaceId?: string } = {}) {
+    const query = db.select({ row: e }).from(e).innerJoin(ag, eq(ag.id, e.agentId))
+      .where(and(eq(e.ownerUserId, ownerUserId), isNull(ag.revokedAt), options.agentId ? eq(e.agentId, options.agentId) : undefined,
+        options.workspaceId ? eq(e.workspaceId, options.workspaceId) : undefined))
+      .orderBy(asc(e.createdAt), asc(e.agentId)).limit(1);
+    const [found] = options.lock ? await query.for('update', { of: e }) : await query;
+    if (!found) return null;
+    const { apiKeyId, model, ...row } = found.row;
+    return { ...row, connectionId: apiKeyId, assistantModel: model };
   }
 
   async function findRun(id: string, options: { lock?: boolean } = {}) {
@@ -87,25 +91,6 @@ export function personalRunRows(db: DbExecutor) {
     enablement,
     async needsCurrentGithubFacts(runId: string) {
       return (await db.execute(sql`SELECT e.id FROM assistant_reaction_events e JOIN assistant_reactions r ON r.id=e.reaction_id WHERE e.run_id=${runId} AND e.event='pr_ready' LIMIT 1`)).rows.length > 0;
-    },
-
-    async insertEnablement(value: NewEnablement) {
-      const [row] = await db.insert(e).values(value).onConflictDoNothing().returning();
-      return row ? { ...row, agents: [] } : null;
-    },
-
-    async updateEnablement(ownerUserId: string, changes: EnablementChanges) {
-      await db.update(e).set({ ...changes, version: sql`${e.version} + 1`, updatedAt: new Date() }).where(eq(e.ownerUserId, ownerUserId));
-      return (await enablement(ownerUserId))!;
-    },
-
-    async deleteEnablement(ownerUserId: string) {
-      return (await db.delete(e).where(eq(e.ownerUserId, ownerUserId)).returning({ ownerUserId: e.ownerUserId })).length > 0;
-    },
-
-    async selectAgent(ownerUserId: string, workspaceId: string, agentId: string) {
-      await db.insert(a).values({ ownerUserId, workspaceId, agentId })
-        .onConflictDoUpdate({ target: [a.ownerUserId, a.workspaceId], set: { agentId, createdAt: new Date() } });
     },
 
     /** The person's own time zone (their notification settings'; UTC when unset): a schedule they ask for runs in it. */
@@ -204,9 +189,9 @@ export function personalRunRows(db: DbExecutor) {
       return toRun(row!);
     },
 
-    async endUndispatched(ownerUserId: string, status: 'paused' | 'revoked') {
+    async endUndispatched(ownerUserId: string, status: 'revoked', agentId?: string) {
       const rows = await db.update(r).set({ status, costState: 'released', chargedMicros: 0, completedAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(r.ownerUserId, ownerUserId), inArray(r.status, ['queued', 'reading']))).returning();
+        .where(and(eq(r.ownerUserId, ownerUserId), agentId ? eq(r.agentId, agentId) : undefined, inArray(r.status, ['queued', 'reading']))).returning();
       return rows.map(toRun);
     },
 
@@ -328,20 +313,28 @@ export function personalRunRows(db: DbExecutor) {
       return row!;
     },
 
-    async assistantConnectionLive(ownerUserId: string, workspaceId: string) {
-      const [row] = await db.select({ id: schema.agentConnections.id }).from(schema.assistantSettings)
-        .innerJoin(schema.agentConnections, eq(schema.agentConnections.id, schema.assistantSettings.connectionId))
-        .where(and(eq(schema.assistantSettings.ownerUserId, ownerUserId), eq(schema.assistantSettings.workspaceId, workspaceId),
-          eq(schema.agentConnections.computeSource, 'owner_assistant'), sql`${schema.agentConnections.revokedAt} IS NULL`));
+    /** The agent's rights connection is live (not revoked with a deleted agent). */
+    async assistantConnectionLive(ownerUserId: string, agentId: string) {
+      const [row] = await db.select({ id: k.id }).from(e).innerJoin(k, eq(k.id, e.connectionId)).innerJoin(ag, eq(ag.id, e.agentId))
+        .where(and(eq(e.ownerUserId, ownerUserId), eq(e.agentId, agentId), eq(k.computeSource, 'owner_assistant'), isNull(k.revokedAt), isNull(ag.revokedAt)));
       return Boolean(row);
     },
 
-    /** The assistant's "What it may do" (F-036 AG-3), or null without an assistant here. */
+    /** The "What it may do" (F-036 AG-3) of the owner's first agent here, or null without one. */
     async assistantMayDo(ownerUserId: string, workspaceId: string): Promise<AgentMayDo | null> {
-      const [row] = await db.select({ mayDo: schema.agentConnections.mayDo }).from(schema.assistantSettings)
-        .innerJoin(schema.agentConnections, eq(schema.agentConnections.id, schema.assistantSettings.connectionId))
-        .where(and(eq(schema.assistantSettings.ownerUserId, ownerUserId), eq(schema.assistantSettings.workspaceId, workspaceId)));
+      const [row] = await db.select({ mayDo: k.mayDo }).from(e).innerJoin(k, eq(k.id, e.connectionId)).innerJoin(ag, eq(ag.id, e.agentId))
+        .where(and(eq(e.ownerUserId, ownerUserId), eq(e.workspaceId, workspaceId), isNull(ag.revokedAt), isNull(k.revokedAt)))
+        .orderBy(asc(e.createdAt), asc(e.agentId)).limit(1);
       return row?.mayDo ?? null;
+    },
+
+    /** What the model is told besides the request (F-036 AG-1): the agent's saved instructions and what its owner asked it to remember. */
+    async agentBrief(agentId: string) {
+      const [row] = await db.select({ name: ag.name, instructions: e.instructions }).from(e).innerJoin(ag, eq(ag.id, e.agentId)).where(eq(e.agentId, agentId));
+      if (!row) return null;
+      const memory = await db.select({ body: schema.agentMemoryItems.body }).from(schema.agentMemoryItems).where(eq(schema.agentMemoryItems.agentId, agentId))
+        .orderBy(asc(schema.agentMemoryItems.createdAt), asc(schema.agentMemoryItems.id));
+      return { name: row.name, instructions: row.instructions, memory: memory.map((item) => item.body) };
     },
 
     async listProposals(projectId: string, window: Window) {

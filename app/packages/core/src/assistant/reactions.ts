@@ -47,10 +47,9 @@ export function createAssistantReactions(uow: AssistantReactionUnitOfWork) {
       return uow.run(async (ports) => {
         const access = await ports.access.requireProject(principal, 'write', command.projectId, { lock: true });
         if (access.workspaceId !== workspace) throw missing();
-        const enablement = await ports.runs.enablement(owner, { lock: true });
+        const enablement = await ports.runs.enablement(owner, { lock: true, workspaceId: workspace });
         if (!enablement) throw new ConflictError('Turn on your assistant first', 'ASSISTANT_NOT_ENABLED');
-        const agent = enablement.agents.find((item) => item.workspaceId === workspace);
-        if (!agent || !(await ports.access.canUseProject({ kind: 'agent', id: agent.agentId }, 'read', command.projectId, { lock: true }))) throw new ConflictError("I'm not in this project yet", 'ASSISTANT_NOT_IN_PROJECT');
+        if (!(await ports.access.canUseProject({ kind: 'agent', id: enablement.agentId }, 'read', command.projectId, { lock: true }))) throw new ConflictError("I'm not in this project yet", 'ASSISTANT_NOT_IN_PROJECT');
         if (command.event === 'pr_ready' && command.enabled && !await ports.reactions.linked(command.projectId)) throw new InvalidInputError('Link this project to GitHub first');
         if (!id && (await ports.reactions.list(owner, workspace)).some((row) => row.projectId === command.projectId && row.event === command.event)) throw new ConflictError('Already set up. Open that sentence to change it.', 'ASSISTANT_WHEN_EXISTS');
         if (id) {
@@ -101,11 +100,10 @@ export async function assistantReactionTick(deps: { uow: AssistantReactionUnitOf
       const ai = await ports.access.spaceAi(rule.projectId, { lock: true });
       if (ai.state !== 'allowed' || ai.epoch !== event.aiEpoch) { await end('Skipped: AI was turned off'); return true; }
       // Serialize this owner's background limits with every schedule and other event.
-      const enabled = await ports.runs.enablement(rule.ownerUserId, { lock: true });
-      if (!enabled || enabled.status !== 'active') { await end('Skipped: your assistant is off or paused'); return true; }
-      const agent = enabled.agents.find((item) => item.workspaceId === rule.workspaceId);
-      if (!agent || !await ports.access.canUseProject({ kind: 'human', id: rule.ownerUserId }, 'read', rule.projectId, { lock: true })
-        || !await ports.access.canUseProject({ kind: 'agent', id: agent.agentId }, 'read', rule.projectId, { lock: true })) { await end('Skipped: this project is no longer available'); return true; }
+      const enabled = await ports.runs.enablement(rule.ownerUserId, { lock: true, workspaceId: rule.workspaceId });
+      if (!enabled) { await end('Skipped: your assistant is off'); return true; }
+      if (!await ports.access.canUseProject({ kind: 'human', id: rule.ownerUserId }, 'read', rule.projectId, { lock: true })
+        || !await ports.access.canUseProject({ kind: 'agent', id: enabled.agentId }, 'read', rule.projectId, { lock: true })) { await end('Skipped: this project is no longer available'); return true; }
       if (!await ports.runs.assistantMayDo?.(rule.ownerUserId, rule.workspaceId)) { await end('Skipped: your assistant is off'); return true; }
       if (await ports.reactions.running(rule.id)) { await end('Skipped: the last run is still working'); return true; }
       if (await ports.reactions.debounced(rule.ownerUserId, event.objectId, new Date(now.getTime() - 30 * 60_000))) { await end('Skipped: already checked in the last 30 minutes'); return true; }

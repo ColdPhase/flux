@@ -3,7 +3,7 @@ import { ASSISTANT_RUN_CHANGED_EVENT, type ConversationMessage, type AssistantAc
 import { useStreamEvents } from '../api/stream';
 import { reply } from '../conversations/api';
 import {
-  acceptProposal, askAssistant, dismissProposal, getAssistantActivity, getAssistantStatus, getRun, listAnswers, listOwnRuns, listProposals, resumeAssistant, retryRun, stopRun,
+  acceptProposal, askAssistant, dismissProposal, getAssistantActivity, getAssistantStatus, getRun, listAnswers, listOwnRuns, listProposals, retryRun, stopRun,
 } from './api';
 import { isWorking } from './format';
 import { aiOffDismissed, dismissAiOff, rememberAskedConversation } from './lastAsked';
@@ -38,7 +38,6 @@ export interface ConversationAssistant {
   stop(): Promise<void>;
   retry(runId: string): Promise<void>;
   dismissRun(): void;
-  resume(): Promise<void>;
   decide(proposal: AssistantProposal, decision: 'accept' | 'dismiss'): Promise<AssistantProposal>;
   refreshStatus(): void;
 }
@@ -194,9 +193,6 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
       track(await retryRun(runId, crypto.randomUUID()));
     },
     dismissRun() { if (run?.endReason === 'ai_off') dismissAiOff(meId, run.id); setRun(null); },
-    async resume() {
-      setStatus(await resumeAssistant());
-    },
     async decide(proposal, decision) {
       const decided = await (decision === 'accept' ? acceptProposal(proposal) : dismissProposal(proposal));
       setProposals((current) => new Map(current).set(decided.id, decided));

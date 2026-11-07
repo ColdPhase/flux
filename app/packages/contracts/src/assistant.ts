@@ -1,5 +1,4 @@
 import { AGENT_MCP_ENTRIES, type AgentMcpCapabilityId, type AgentMcpPolicy } from './agent-mcp-policy.js';
-import type { AgentMayDo } from './agent-proposals.js';
 
 export const ASSISTANT_AREAS = [
   { id: 'tasks', label: 'Read and edit tasks', reads: ['project.work.read', 'project.results.read'],
@@ -75,14 +74,6 @@ export function assistantRunScopes(tools: readonly string[]): string[] {
   return tools.some((name) => effects.has(name)) ? ['flux.context.read', 'flux.action.execute'] : ['flux.context.read'];
 }
 
-/** The owner's assistant settings. Its "What it may do" is the assistant connection's own row (`mayDo`), read here for the screen. */
-export interface AssistantSettings {
-  workspaceId: string; ownerUserId: string; agentId: string; connectionId: string;
-  mayDo: AgentMayDo;
-  version: number; createdAt: string; updatedAt: string;
-}
-export const assistantSettingsPath = (workspaceId: string, ownerUserId: string) =>
-  `/api/v1/workspaces/${workspaceId}/assistants/${ownerUserId}/settings`;
 /** "Tell whoever runs Flux" (F-027 Journey 6): one Needs-you item to the workspace's owners; the body may name the plan (`claude_code`, the default, or `codex`). */
 export const assistantOperatorRequestPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/assistant-operator-requests`;
 

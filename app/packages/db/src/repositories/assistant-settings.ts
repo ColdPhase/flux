@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { and, eq } from 'drizzle-orm';
-import type { AgentConnection, AgentMcpPolicy, AssistantSettings } from '@flux/contracts';
+import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { ASSISTANT_PLAN_MODELS, nextAgentColour, type AgentColour, type AgentConnection, type AgentMayDo, type AgentMcpPolicy, type AgentMemoryItem, type AiProviderKind, type MyAgent } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 import { lockAssistantOwner } from './assistant-lock.js';
@@ -8,69 +8,127 @@ import { assistantProjectIds, initializeAgentMcpPolicy } from './agent-mcp-polic
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
-type SettingsRow = typeof schema.assistantSettings.$inferSelect;
+const s = schema.assistantSettings, a = schema.agents, k = schema.agentConnections, m = schema.agentMemoryItems;
+
 export interface AssistantAuthority {
   requireWorkspace(ownerUserId: string, workspaceId: string, tx: Transaction): Promise<void>;
   requireAgent(ownerUserId: string, workspaceId: string, agentId: string, tx: Transaction): Promise<void>;
-  identityChanged(): never;
   initialPolicy(connection: AgentConnection): AgentMcpPolicy;
 }
-const view = (row: SettingsRow, connection: { mayDo: AssistantSettings['mayDo'] }): AssistantSettings => ({
-  workspaceId: row.workspaceId, ownerUserId: row.ownerUserId, agentId: row.agentId, connectionId: row.connectionId,
-  mayDo: connection.mayDo,
-  version: row.version, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString(),
-});
-async function connectionView(tx: Transaction, row: SettingsRow): Promise<AgentConnection | null> {
-  const [connection] = await tx.select().from(schema.agentConnections).where(and(eq(schema.agentConnections.id, row.connectionId),
-    eq(schema.agentConnections.ownerUserId, row.ownerUserId), eq(schema.agentConnections.computeSource, 'owner_assistant'))).for('share');
-  if (!connection) return null;
-  // The assistant reaches every project its owner can (F-036 AG-3): no project list is stored for it.
-  return { id: connection.id, workspaceId: row.workspaceId, ownerUserId: row.ownerUserId, agentId: connection.agentId,
-    name: connection.name, clientDesignation: connection.clientDesignation, computeSource: connection.computeSource,
-    scopes: [...connection.scopes], selectedProjectIds: await assistantProjectIds(tx, connection.id) ?? [], mayDo: connection.mayDo,
-    revokedAt: connection.revokedAt?.toISOString() ?? null, createdAt: connection.createdAt.toISOString() };
+
+/** What makes an agent run (F-036 AG-1): its model and where it runs, its instructions and its colour. */
+export interface AgentSetup {
+  instructions: string;
+  colour: AgentColour | null;
+  engine: 'server' | 'runtime';
+  /** The API key the model belongs to (`server`); null on a plan. */
+  apiKeyId: string | null;
+  provider: AiProviderKind;
+  model: string | null;
+}
+export type AgentSetupChanges = Partial<Omit<AgentSetup, 'colour'>> & { colour?: AgentColour };
+
+type Row = { s: typeof s.$inferSelect; name: string; mayDo: AgentMayDo };
+const planOf = (provider: AiProviderKind) => (provider === 'openai' ? 'codex' : 'claude_code') as 'claude_code' | 'codex';
+
+function view(row: Row, first: string | undefined): MyAgent {
+  const plan = row.s.engine === 'runtime';
+  return {
+    id: row.s.agentId, workspaceId: row.s.workspaceId, name: row.name, instructions: row.s.instructions, colour: row.s.colour,
+    model: plan
+      ? { connection: planOf(row.s.provider) === 'codex' ? 'chatgpt_plan' : 'claude_plan', model: row.s.model ?? ASSISTANT_PLAN_MODELS[planOf(row.s.provider)].default }
+      : { connection: row.s.apiKeyId ?? '', model: row.s.model ?? '' },
+    mayDo: row.mayDo, connectionId: row.s.connectionId, answersAi: row.s.agentId === first, createdAt: row.s.createdAt.toISOString(),
+  };
 }
 
-/** Transaction-bound persistence of the owner's assistant. Its rights are its owner's; it has no grants, switches or project list. */
+/** Transaction-bound persistence of a person's agents. Their rights are their owner's; they have no grants, switches or project list. */
 export function assistantSettingsRows(tx: Transaction, authority: AssistantAuthority) {
-  const settings = async (ownerUserId: string, workspaceId: string, lock = false) => {
-    await authority.requireWorkspace(ownerUserId, workspaceId, tx);
-    const query = tx.select().from(schema.assistantSettings).where(and(eq(schema.assistantSettings.ownerUserId, ownerUserId),
-      eq(schema.assistantSettings.workspaceId, workspaceId)));
-    return (await (lock ? query.for('update') : query.for('share')))[0] ?? null;
+  /** The owner's live agents with a setup, oldest first: the first is Assistant (F-036 AG-1). */
+  const rows = async (ownerUserId: string, workspaceId?: string, lock = false): Promise<Row[]> => {
+    const query = tx.select({ s, name: a.name, mayDo: k.mayDo }).from(s).innerJoin(a, eq(a.id, s.agentId)).innerJoin(k, eq(k.id, s.connectionId))
+      .where(and(eq(s.ownerUserId, ownerUserId), isNull(a.revokedAt), isNull(k.revokedAt), workspaceId ? eq(s.workspaceId, workspaceId) : undefined))
+      .orderBy(asc(s.createdAt), asc(s.agentId));
+    return lock ? query.for('update', { of: s }) : query.for('share', { of: s });
   };
-  const get = async (ownerUserId: string, workspaceId: string): Promise<AssistantSettings | null> => {
-    await lockAssistantOwner(tx, ownerUserId);
-    const row = await settings(ownerUserId, workspaceId);
-    const connection = row ? await connectionView(tx, row) : null;
-    return row && connection ? view(row, connection) : null;
+  const list = async (ownerUserId: string, workspaceId?: string): Promise<MyAgent[]> => {
+    const found = await rows(ownerUserId, workspaceId);
+    return found.map((row) => view(row, found[0]?.s.agentId));
   };
+  const get = async (ownerUserId: string, agentId: string): Promise<MyAgent | null> => (await list(ownerUserId)).find((agent) => agent.id === agentId) ?? null;
   return {
     lockOwner: (ownerUserId: string) => lockAssistantOwner(tx, ownerUserId),
+    list,
     get,
-    async ensure(ownerUserId: string, workspaceId: string, agentId: string): Promise<AssistantSettings> {
+    /** The colour a new agent is given: the least used of the owner's own. */
+    async nextColour(ownerUserId: string, workspaceId: string): Promise<AgentColour> {
+      return nextAgentColour((await rows(ownerUserId, workspaceId)).map((row) => row.s.colour));
+    },
+    /** Gives an agent identity its AI setup and its rights connection, or sets the setup again on an agent that has them. */
+    async ensure(ownerUserId: string, workspaceId: string, agentId: string, setup: AgentSetup): Promise<MyAgent> {
       await lockAssistantOwner(tx, ownerUserId);
       await authority.requireAgent(ownerUserId, workspaceId, agentId, tx);
-      let row = await settings(ownerUserId, workspaceId, true);
-      // The agent identity is selected at enablement; an engine change never substitutes another one.
-      if (row && row.agentId !== agentId) authority.identityChanged();
-      if (!row) {
-        const connectionId = randomUUID();
-        await tx.insert(schema.agentConnections).values({ id: connectionId, workspaceId, ownerUserId, agentId,
-          name: 'Your assistant', clientDesignation: 'other', computeSource: 'owner_assistant',
-          scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] });
-        [row] = await tx.insert(schema.assistantSettings).values({ workspaceId, ownerUserId, agentId, connectionId }).returning();
+      await authority.requireWorkspace(ownerUserId, workspaceId, tx);
+      const [agent] = await tx.select({ name: a.name }).from(a).where(eq(a.id, agentId));
+      const colour = setup.colour ?? nextAgentColour((await rows(ownerUserId, workspaceId)).map((row) => row.s.colour));
+      const [existing] = await tx.select().from(s).where(eq(s.agentId, agentId)).for('update');
+      let connectionId = existing?.connectionId;
+      if (!existing) {
+        connectionId = randomUUID();
+        await tx.insert(k).values({ id: connectionId, workspaceId, ownerUserId, agentId, name: agent?.name ?? 'Agent', clientDesignation: 'other',
+          computeSource: 'owner_assistant', scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] });
+        await tx.insert(s).values({ workspaceId, ownerUserId, agentId, connectionId, instructions: setup.instructions, colour,
+          engine: setup.engine, apiKeyId: setup.apiKeyId, provider: setup.provider, model: setup.model });
       } else {
-        await tx.update(schema.agentConnections).set({ revokedAt: null, updatedAt: new Date() }).where(eq(schema.agentConnections.id, row.connectionId));
+        await tx.update(k).set({ revokedAt: null, updatedAt: new Date() }).where(eq(k.id, existing.connectionId));
+        await tx.update(s).set({ instructions: setup.instructions, colour, engine: setup.engine, apiKeyId: setup.apiKeyId, provider: setup.provider,
+          model: setup.model, version: sql`${s.version} + 1`, updatedAt: new Date() }).where(eq(s.agentId, agentId));
       }
-      const connection = await connectionView(tx, row!);
-      await initializeAgentMcpPolicy(tx, connection!, authority.initialPolicy);
-      return (await get(ownerUserId, workspaceId))!;
+      const [connection] = await tx.select().from(k).where(eq(k.id, connectionId!));
+      const policyConnection: AgentConnection = { id: connection!.id, workspaceId, ownerUserId, agentId, name: connection!.name, clientDesignation: connection!.clientDesignation,
+        computeSource: connection!.computeSource, scopes: [...connection!.scopes], selectedProjectIds: await assistantProjectIds(tx, connection!.id) ?? [],
+        mayDo: connection!.mayDo, revokedAt: null, createdAt: connection!.createdAt.toISOString() };
+      await initializeAgentMcpPolicy(tx, policyConnection, authority.initialPolicy);
+      return (await get(ownerUserId, agentId))!;
     },
-    async remove(ownerUserId: string): Promise<void> {
+    /** Changes only what is given; the agent's name is the identity's (`rename`). */
+    async change(agentId: string, changes: AgentSetupChanges): Promise<void> {
+      await tx.update(s).set({ ...changes, version: sql`${s.version} + 1`, updatedAt: new Date() }).where(eq(s.agentId, agentId));
+    },
+    async rename(agentId: string, name: string): Promise<void> {
+      await tx.update(a).set({ name, updatedAt: new Date() }).where(eq(a.id, agentId));
+      await tx.update(k).set({ name, updatedAt: new Date() }).where(and(eq(k.agentId, agentId), eq(k.computeSource, 'owner_assistant')));
+    },
+    /** Deleting an agent: it stops acting on its next call, its tasks go back to its owner and its memory goes. */
+    async remove(ownerUserId: string, agentId: string): Promise<void> {
       await lockAssistantOwner(tx, ownerUserId);
-      await tx.update(schema.agentConnections).set({ revokedAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(schema.agentConnections.ownerUserId, ownerUserId), eq(schema.agentConnections.computeSource, 'owner_assistant')));
+      const now = new Date();
+      await tx.update(k).set({ revokedAt: now, updatedAt: now }).where(and(eq(k.agentId, agentId), eq(k.computeSource, 'owner_assistant')));
+      await tx.update(a).set({ revokedAt: now, updatedAt: now }).where(eq(a.id, agentId));
+      await tx.delete(m).where(eq(m.agentId, agentId));
+      const w = schema.projectWorkItems;
+      await tx.update(w).set({ ownerAgentId: null, ownerUserId, version: sql`${w.version} + 1`, updatedAt: now }).where(and(eq(w.ownerAgentId, agentId), sql`${w.status} not in ('done', 'not_pursued')`));
+    },
+    memory: {
+      async list(agentId: string): Promise<AgentMemoryItem[]> {
+        return (await tx.select().from(m).where(eq(m.agentId, agentId)).orderBy(asc(m.createdAt), asc(m.id)))
+          .map((row) => ({ id: row.id, agentId: row.agentId, body: row.body, source: row.source, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() }));
+      },
+      async count(agentId: string): Promise<number> {
+        const [row] = await tx.select({ n: sql<number>`count(*)::int` }).from(m).where(eq(m.agentId, agentId));
+        return row?.n ?? 0;
+      },
+      async add(ownerUserId: string, agentId: string, workspaceId: string, body: string, source: string): Promise<AgentMemoryItem> {
+        const [row] = await tx.insert(m).values({ id: randomUUID(), agentId, workspaceId, ownerUserId, body, source }).returning();
+        return { id: row!.id, agentId, body: row!.body, source: row!.source, createdAt: row!.createdAt.toISOString(), updatedAt: row!.updatedAt.toISOString() };
+      },
+      async edit(agentId: string, itemId: string, body: string): Promise<AgentMemoryItem | null> {
+        const [row] = await tx.update(m).set({ body, updatedAt: new Date() }).where(and(eq(m.agentId, agentId), eq(m.id, itemId))).returning();
+        return row ? { id: row.id, agentId, body: row.body, source: row.source, createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() } : null;
+      },
+      async remove(agentId: string, itemId: string): Promise<boolean> {
+        return (await tx.delete(m).where(and(eq(m.agentId, agentId), eq(m.id, itemId))).returning({ id: m.id })).length > 0;
+      },
     },
   };
 }

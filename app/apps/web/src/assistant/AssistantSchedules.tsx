@@ -24,7 +24,7 @@ const NOTE_REQUIRED = 'ASSISTANT_BACKGROUND_NOTE_REQUIRED';
 type SheetState = { draft: Draft; job: AssistantJob | null; turnOn: boolean };
 
 export function AssistantSchedules({ status, userId }: { status: PersonalAssistantStatus; userId: string }) {
-  const workspaceId = status.enablement?.agents[0]?.workspaceId ?? null;
+  const workspaceId = status.enablement?.workspaceId ?? null;
   const { projects: allProjects } = useShellData();
   const projects = useMemo(() => allProjects.filter((project) => project.workspaceId === workspaceId), [allProjects, workspaceId]);
   const scope = useMemo<ScheduleScope | null>(() => (workspaceId ? { workspaceId, ownerId: userId } : null), [workspaceId, userId]);

@@ -223,7 +223,7 @@ class UpdatePromptReach(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/settings$"))
         page.get_by_role("link", name=re.compile(r"^AI\b")).tap(timeout=5000)
         expect(page).to_have_url(re.compile(r"/settings/agents$"))
-        expect(page.get_by_role("region", name=re.compile("^Your assistant Agent"))).to_be_visible()
+        expect(page.get_by_role("region", name="Your agents", exact=True)).to_be_visible()
         expect(page.get_by_test_id(PROMPT)).to_be_visible()
         page.get_by_role("button", name="Back").tap(timeout=5000)
         expect(page).to_have_url(re.compile(r"/settings$"))

@@ -1,5 +1,5 @@
 import { AI_PROVIDERS } from '@flux/contracts';
-import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -60,20 +60,23 @@ export function assistantChangeRows(db: DbExecutor) {
         computeSource: k.computeSource, name: k.name }).from(k).where(eq(k.id, connectionId)).for('share');
       return row ?? null;
     },
-    /** The assistant and its "What it may do" (F-036 AG-3), read with the connection row `FOR SHARE`, so a concurrent change of it waits. */
-    async settings(ownerUserId: string, workspaceId: string) {
+    /** The agent and its "What it may do" (F-036 AG-3), read with the connection row `FOR SHARE`, so a concurrent change of it waits. A deleted agent has none. */
+    async settings(ownerUserId: string, agentId: string) {
       const s = schema.assistantSettings; const k = schema.agentConnections;
       const [row] = await db.select({ mayDo: k.mayDo, connectionId: s.connectionId, agentId: s.agentId })
-        .from(s).innerJoin(k, eq(k.id, s.connectionId)).where(and(eq(s.ownerUserId, ownerUserId), eq(s.workspaceId, workspaceId))).for('share');
+        .from(s).innerJoin(k, eq(k.id, s.connectionId)).innerJoin(schema.agents, eq(schema.agents.id, s.agentId))
+        .where(and(eq(s.ownerUserId, ownerUserId), eq(s.agentId, agentId), isNull(schema.agents.revokedAt))).for('share', { of: [s, k] });
       return row ?? null;
     },
-    async enablement(ownerUserId: string) {
-      const e = schema.personalRunEnablements;
-      const [row] = await db.select({ status: e.status, createdAt: e.createdAt, engine: e.engine, provider: e.provider }).from(e).where(eq(e.ownerUserId, ownerUserId)).for('share');
+    async enablement(ownerUserId: string, agentId: string) {
+      const e = schema.assistantSettings;
+      const [row] = await db.select({ createdAt: e.createdAt, engine: e.engine, provider: e.provider }).from(e)
+        .innerJoin(schema.agents, eq(schema.agents.id, e.agentId))
+        .where(and(eq(e.ownerUserId, ownerUserId), eq(e.agentId, agentId), isNull(schema.agents.revokedAt))).for('share', { of: e });
       if (!row) return null;
       // Who pays, as the change's receipt names it (#854): the plan of the CLI, or the API key's provider account.
       const payer = row.engine === 'runtime' ? (row.provider === 'openai' ? 'ChatGPT plan' : 'Claude plan') : `${AI_PROVIDERS[row.provider].label} API key`;
-      return { status: row.status, createdAt: row.createdAt, payer };
+      return { createdAt: row.createdAt, payer };
     },
     async byCommand(runId: string, clientCommandId: string): Promise<AssistantChangeRow | null> {
       const [row] = await db.select().from(c).where(and(eq(c.runId, runId), eq(c.clientCommandId, clientCommandId)));

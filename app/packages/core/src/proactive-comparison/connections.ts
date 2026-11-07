@@ -22,7 +22,7 @@ export interface BackgroundConnectionPort {
   update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number; usedForBackground?: true }): Promise<BackgroundComputeConnection | null>;
   revoke(ownerUserId: string, connectionId: string): Promise<boolean>;
   /** The model the owner's assistant uses on this key, or null when it is on another connection or has none stored (#909). */
-  assistantModelOn(ownerUserId: string, connectionId: string): Promise<string | null>;
+  agentModelsOn(ownerUserId: string, connectionId: string): Promise<string[]>;
 }
 /** What a connection save needs beyond storage (F-020): the endpoint policy of owner-set URLs. */
 export interface BackgroundConnectionProviders {
@@ -132,11 +132,12 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
         const key = (await port.list(ownerUserId)).find((item) => item.id === connectionId);
         if (key) {
           assertBudgetFitsRequest(key.price, change.dailyBudgetCents);
-          // The assistant may run on another model of this key (F-027 AST-11): one request on that must fit too, or it would
+          // An agent may run on another model of this key (F-027 AST-11): one request on that must fit too, or it would
           // stay paused on a budget too small for it (#909). A model with no table price cannot be reserved at all.
-          const model = await port.assistantModelOn(ownerUserId, key.id);
-          const price = model && model !== key.model ? assistantApiPrice(key.provider, model) : null;
-          if (model && price) assertBudgetFitsRequest(price, change.dailyBudgetCents, model);
+          for (const model of await port.agentModelsOn(ownerUserId, key.id)) {
+            const price = model !== key.model ? assistantApiPrice(key.provider, model) : null;
+            if (price) assertBudgetFitsRequest(price, change.dailyBudgetCents, model);
+          }
         }
       }
       const updated = typeof connectionId === 'string' && UUID.test(connectionId)

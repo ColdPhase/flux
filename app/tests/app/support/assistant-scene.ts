@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import {
-  agentConnectionPath, assistantSettingsPath, personalRunTokenPath,
-  type AgentMayDo, type AssistantChange, type AssistantSettings, type Conversation, type Project, type Workspace,
+  agentConnectionPath, personalRunTokenPath,
+  type AgentMayDo, type AssistantChange, type Conversation, type Project, type Workspace,
 } from '@flux/contracts';
 import type { Principal } from '@flux/core';
 import { personalRunTokenRows } from '@flux/db';
@@ -22,6 +22,8 @@ import { waitFor } from './wait.js';
 // members, an assistant run that can be made "live" (token minted, MCP calls through the real `/mcp` route) and the helpers to make, read and
 // end things. A fake clock, fake provider and fake CLI stand in for every vendor; nothing here calls one.
 
+import { agentSettings } from './agent-settings.js';
+export { agentSettings, type AgentSettingsView } from './agent-settings.js';
 export const human = (someone: Person): Principal => ({ kind: 'human', id: someone.id });
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 export type Message = Record<string, unknown> | null;
@@ -77,7 +79,7 @@ export async function assistantScene(label: string) {
   connections.connect(owner.id, connectionId);
   await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
 
-  const settings = async () => expectStatus(await owner.browser.request('GET', assistantSettingsPath(ws.id, owner.id)), 200) as unknown as AssistantSettings;
+  const settings = () => agentSettings(owner, ws.id);
   /** The assistant's own agent connection (the S6 policy and the run tokens belong to it). */
   const assistantConnectionId = async () => (await settings()).connectionId;
   /** "What it may do" (F-036 AG-3), set by the owner in their own session. */
@@ -88,7 +90,6 @@ export async function assistantScene(label: string) {
   async function reset() {
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0
       WHERE owner_user_id = $1 AND status IN ('queued', 'reading', 'dispatching')`, [owner.id]);
-    await pool.query(`UPDATE personal_run_enablements SET status = 'active' WHERE owner_user_id = $1`, [owner.id]);
     if ((await settings()).mayDo !== 'act') await setMayDo('act');
   }
   /** A run moved to `reading` (as the worker's claim does), with its token minted. */

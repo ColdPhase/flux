@@ -18,7 +18,7 @@ export type TableClass = 'content' | 'account' | 'system' | 'ai' | 'refused';
 
 const ai = [
   'agent_command_receipts', 'agent_connection_mcp_policies', 'agent_connection_mcp_projects', 'agent_connection_projects', 'agent_connections',
-  'agent_oauth_bindings', 'agent_oauth_flows', 'agent_oauth_selections', 'agent_playbook_acknowledgments',
+  'agent_memory_items', 'agent_oauth_bindings', 'agent_oauth_flows', 'agent_oauth_selections', 'agent_playbook_acknowledgments',
   'agent_proposals', 'agent_questions', 'agent_runtime_auth_admission', 'agent_runtime_auth_operations', 'agent_runtime_bindings',
   'agent_runtime_client_history', 'agent_runtime_connections', 'agent_runtime_console_nonces', 'agent_runtime_operator_statements',
   'agent_runtime_sessions', 'agent_runtime_slots', 'agent_stops', 'agent_pauses', 'agent_thread_artifact_boundaries',
@@ -26,8 +26,8 @@ const ai = [
   'assistant_changes', 'assistant_job_runs', 'assistant_jobs',
   'assistant_morning_summaries', 'assistant_proposals', 'assistant_reaction_events', 'assistant_reaction_notes', 'assistant_reactions',
   'assistant_settings', 'background_compute_connections', 'cowork_checkpoints', 'cowork_connection_slots', 'cowork_delivery_intents',
-  'cowork_request_lineages', 'cowork_requests', 'cowork_review_policies', 'cowork_review_verdicts', 'cowork_units', 'personal_run_agents',
-  'personal_run_enablements', 'personal_runs', 'proactive_comparison_cursor', 'proactive_comparison_insufficient_outcomes',
+  'cowork_request_lineages', 'cowork_requests', 'cowork_review_policies', 'cowork_review_verdicts', 'cowork_units',
+  'personal_runs', 'proactive_comparison_cursor', 'proactive_comparison_insufficient_outcomes',
   'proactive_comparison_outbox', 'proactive_comparison_project_changes', 'proactive_comparison_proposals', 'proactive_comparison_rules',
 ] as const;
 const account = [

@@ -6,7 +6,7 @@ import type { Principal } from '../principal.js';
 import type { JobRetryPolicy } from '../push/config.js';
 import { isId } from '../work/validation.js';
 import type {
-  PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup,
+  AgentBrief, PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup,
   PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunEndStatus, RunRecord,
 } from './ports.js';
 import { connectionOnModel } from './model.js';
@@ -17,7 +17,7 @@ import { reserveOnKey } from './service.js';
 import { updateAndAnnounce } from './progress.js';
 import { requestParts, runToolLoop, type LoopResult, type RunAccount } from './tool-loop.js';
 import {
-  centsToMicros, connectionCallsTools, MORNING_SUMMARY_SYSTEM_PROMPT, parseOutput, requestInput, runChargeMicros, runReservationMicros, runTokensWithinLimits, SYSTEM_PROMPT, taskSystemPrompt, TOOL_SYSTEM_PROMPT, type SuppliedSource,
+  agentBriefText, centsToMicros, connectionCallsTools, MORNING_SUMMARY_SYSTEM_PROMPT, parseOutput, requestInput, runChargeMicros, runReservationMicros, runTokensWithinLimits, SYSTEM_PROMPT, taskSystemPrompt, TOOL_SYSTEM_PROMPT, type SuppliedSource,
 } from './validation.js';
 
 // The worker side of a personal run (`personal-run.dispatch.v1`, O-008 §3–§5). The job payload
@@ -86,7 +86,7 @@ export interface PersonalRunProcessorDeps {
 }
 
 type Stage = 'before_read' | 'before_dispatch' | 'before_commit';
-type Refusal = Extract<RunRecord['status'], 'denied' | 'paused' | 'revoked' | 'unavailable' | 'cap_reached'> | 'ai_off';
+type Refusal = Extract<RunRecord['status'], 'denied' | 'revoked' | 'unavailable' | 'cap_reached'> | 'ai_off';
 
 const MESSAGE_WINDOW = 40;
 const WORK_WINDOW = 20;
@@ -103,14 +103,12 @@ async function recheck(ports: PersonalRunPorts, connections: PersonalConnectionL
   // AG-10, first: AI on in the run's space, at the epoch the run was admitted under (policy row before the others).
   const ai = await ports.access.spaceAi(run.projectId, { lock });
   if (ai.state !== 'allowed' || ai.epoch !== run.aiEpoch) return { refusal: 'ai_off' };
-  const enablement = await ports.runs.enablement(run.ownerUserId, { lock });
-  if (!enablement || enablement.agents.find((agent) => agent.workspaceId === run.workspaceId)?.agentId !== run.agentId) return { refusal: 'revoked' };
-  if (enablement.status === 'paused') return { refusal: 'paused' };
+  if (!(await ports.runs.enablement(run.ownerUserId, { lock, agentId: run.agentId }))) return { refusal: 'revoked' };
   const owner: Principal = { kind: 'human', id: run.ownerUserId };
   const agent: Principal = { kind: 'agent', id: run.agentId };
   if (!(await ports.access.canInvoke(owner, run.agentId, { lock }))) return { refusal: 'revoked' };
   // A run that holds a run token acts as the owner's assistant connection (F-027 AST-3): revoking it ends the run.
-  if (run.runTokenJti && ports.runs.assistantConnectionLive && !(await ports.runs.assistantConnectionLive(run.ownerUserId, run.workspaceId)))
+  if (run.runTokenJti && ports.runs.assistantConnectionLive && !(await ports.runs.assistantConnectionLive(run.ownerUserId, run.agentId)))
     return { refusal: 'revoked' };
   if (!compute.enabled) return { refusal: 'unavailable' };
   // Exactly the connection the run was started on (PROV-1), never the owner's newest or another. Choosing another model
@@ -143,7 +141,7 @@ async function stopped(ports: PersonalRunPorts, run: RunRecord): Promise<RunEndS
 }
 
 /** Reads the project-audience sources of the run as its agent. Private places are never read. */
-async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ sources: SuppliedSource[]; earlier: string | null } | null> {
+async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ sources: SuppliedSource[]; earlier: string | null; brief: AgentBrief | null } | null> {
   const agent: Principal = { kind: 'agent', id: run.agentId };
   // AG-10: the reads run under the policy row's share lock, at the run's admission epoch (a read after the change sees it).
   await ports.access.requireSpaceAi(run.projectId, { lock: true, epoch: run.aiEpoch });
@@ -151,7 +149,8 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
   const sources: SuppliedSource[] = [];
   const next = () => `S${sources.length + 1}`;
   // The morning summary (F-027 AST-7) reads nothing of its own: Flux gives it the facts in its request.
-  if (run.kind === 'morning_summary') return { sources, earlier: null };
+  const brief = await ports.runs.agentBrief(run.agentId);
+  if (run.kind === 'morning_summary') return { sources, earlier: null, brief: null };
   if (run.targetSketchId && run.targetThoughtId) {
     // Agents never see private sketches; the thought must be on a project sketch of this project.
     if (!(await ports.access.canReadSketch(agent, run.targetSketchId))) return null;
@@ -169,7 +168,7 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
     const previous = await ports.runs.findRun(run.continuesRunId);
     if (previous?.ownerUserId === run.ownerUserId && previous.conversationId === run.conversationId) earlier = previous.answerBody;
   }
-  return { sources, earlier };
+  return { sources, earlier, brief };
 }
 
 /**
@@ -180,7 +179,7 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
  * run may no longer send anything. A run with tools has the larger bound (#484).
  */
 async function fit(compute: PersonalCompute, base: Omit<PersonalComputeRequest, 'input'>, run: RunRecord,
-  read: { sources: SuppliedSource[]; earlier: string | null }, beforeCount: () => Promise<PersonalRunOutcome | null>, maxInputTokens: number) {
+  read: { sources: SuppliedSource[]; earlier: string | null; brief?: AgentBrief | null }, beforeCount: () => Promise<PersonalRunOutcome | null>, maxInputTokens: number) {
   let sources = read.sources;
   for (;;) {
     const request = { ...base, input: requestInput(run, sources, read.earlier) };
@@ -347,14 +346,14 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
   }
 
   /** Fits, rechecks and sends the run: one request, or the bounded loop when it has tools. */
-  async function dispatchRun(run: RunRecord, read: { sources: SuppliedSource[]; earlier: string | null }, connection: PersonalConnection,
+  async function dispatchRun(run: RunRecord, read: { sources: SuppliedSource[]; earlier: string | null; brief?: AgentBrief | null }, connection: PersonalConnection,
     session: PersonalToolSession | null, beforeSend: () => Promise<PersonalRunOutcome | null>): Promise<PersonalRunOutcome> {
     let fitted: Awaited<ReturnType<typeof fit>>;
     try {
       fitted = await fit(compute, {
         connection: { id: connection.id, keyRef: connection.keyRef, provider: connection.provider, baseUrl: connection.baseUrl }, model: run.model,
         maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort,
-        system: run.kind === 'morning_summary' ? MORNING_SUMMARY_SYSTEM_PROMPT : run.kind === 'task' || run.kind === 'task_answer' ? taskSystemPrompt(!!session, run.kind === 'task_answer') : session ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT, ...(session ? { tools: session.tools } : {}),
+        system: run.kind === 'morning_summary' ? MORNING_SUMMARY_SYSTEM_PROMPT : [run.kind === 'task' || run.kind === 'task_answer' ? taskSystemPrompt(!!session, run.kind === 'task_answer') : session ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT, agentBriefText(read.brief ?? null)].filter(Boolean).join('\n\n'), ...(session ? { tools: session.tools } : {}),
       }, run, read, beforeSend, personalRunMaxInputTokens(!!session));
     } catch {
       // The preflight count failed (provider down, key refused). Counting is free and nothing

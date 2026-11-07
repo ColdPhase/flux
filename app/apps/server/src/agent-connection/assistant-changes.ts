@@ -415,12 +415,11 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
     // A normally completed or still live source supplies provenance; a stopped, cancelled or failed one supplies nothing.
     if (run.stopRequestedAt || !['reading', 'dispatching', 'completed', 'truncated'].includes(run.status)) throw invalidated('This request was stopped. Ask again');
   }
-  const settings = await rows.settings(claims.ownerUserId, workspaceId);
-  if (!settings || settings.connectionId !== claims.connectionId || settings.agentId !== agentId) throw invalidated('Your assistant is no longer available');
-  const enablement = await rows.enablement(claims.ownerUserId);
-  if (!enablement) throw invalidated('Your assistant is off');
-  if (approval && enablement.status !== 'active') throw new DomainError(409, 'ASSISTANT_PAUSED', 'Your assistant is paused. Resume it, then approve again');
-  if (prepared && enablement.createdAt > prepared.createdAt) throw invalidated('Your assistant was turned off since. Ask again');
+  const settings = await rows.settings(claims.ownerUserId, agentId);
+  if (!settings || settings.connectionId !== claims.connectionId || settings.agentId !== agentId) throw invalidated('This agent is no longer available');
+  const enablement = await rows.enablement(claims.ownerUserId, agentId);
+  if (!enablement) throw invalidated('This agent was deleted');
+  if (prepared && enablement.createdAt > prepared.createdAt) throw invalidated('This agent was set up again since. Ask again');
   const runtime: AuthenticatedAgentRuntime = Object.freeze({ id: run.id, workspaceId, connectionId: claims.connectionId, ownerUserId: claims.ownerUserId,
     agentId, clientId: 'flux-assistant', grantReferenceId: `flux-run:${run.id}`, bindingGeneration: 0, scopes,
     createdAt: now.toISOString(), expiresAt: new Date(now.getTime() + 60_000).toISOString() });

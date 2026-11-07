@@ -111,7 +111,7 @@ export function idpStandingRepository(db: DbExecutor) {
             AND (EXISTS (SELECT 1 FROM auth_sessions x WHERE x.user_id = c.user_id AND x.expires_at > ${at}::timestamptz)
               OR EXISTS (SELECT 1 FROM oauth_refresh_token r WHERE r.user_id = c.user_id AND r.revoked IS NULL AND r.expires_at > ${at}::timestamptz)
               OR EXISTS (SELECT 1 FROM oauth_access_token a WHERE a.user_id = c.user_id AND a.revoked IS NULL AND a.expires_at > ${at}::timestamptz)
-              OR EXISTS (SELECT 1 FROM personal_run_enablements e WHERE e.owner_user_id = c.user_id AND e.status = 'active')
+              OR EXISTS (SELECT 1 FROM assistant_settings e JOIN agents g ON g.id = e.agent_id WHERE e.owner_user_id = c.user_id AND g.revoked_at IS NULL)
               OR EXISTS (SELECT 1 FROM personal_runs p WHERE p.owner_user_id = c.user_id AND p.status IN ('queued', 'reading', 'dispatching'))
               OR EXISTS (SELECT 1 FROM proactive_comparison_rules r WHERE r.owner_user_id = c.user_id AND r.status = 'enabled')
               OR EXISTS (SELECT 1 FROM proactive_comparison_outbox o WHERE o.owner_user_id = c.user_id AND o.status IN ('queued', 'reserved')))

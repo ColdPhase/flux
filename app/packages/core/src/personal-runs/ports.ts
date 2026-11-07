@@ -1,7 +1,7 @@
 import type { MessageFile, MessageContribution } from '@flux/contracts';
 import type {
   AiPrice, AiProviderKind, AgentRuntimePayer, AgentMayDo, AssistantEngine, AssistantProposalStatus, AssistantRunCostState, AssistantRunEndReason,
-  AssistantRunKind, AssistantRunStatus, AssistantSourceRef, PersonalRunEnablementStatus, PersonalRunTokenGrant, ResultFinding,
+  AssistantRunKind, AssistantRunStatus, AssistantSourceRef, AgentColour, PersonalRunTokenGrant, ResultFinding,
 } from '@flux/contracts';
 import type { AssistantIdentityPort } from '../assistant/ports.js';
 import type { Principal } from '../principal.js';
@@ -16,24 +16,25 @@ import type { Paged, PageWindow } from '../work/ports.js';
 
 export interface EnablementRecord {
   ownerUserId: string;
-  /** The API key the assistant's model belongs to (`server`); null on a plan (`runtime`). */
+  agentId: string;
+  workspaceId: string;
+  /** The API key the agent's model belongs to (`server`); null on a plan (`runtime`). */
   connectionId: string | null;
-  /** The provider of the assistant's connection; on a plan it names the CLI (`openai`: Codex, else Claude Code). */
+  /** The provider of the agent's connection; on a plan it names the CLI (`openai`: Codex, else Claude Code). */
   provider: AiProviderKind;
-  status: PersonalRunEnablementStatus;
   /** `runtime`: the owner's own Claude Code or Codex (F-022 AIM-3); `connectionId` is then null. */
   engine: AssistantEngine;
-  /** The assistant's one model, from its connection's list (F-027 AST-11); null reads as that connection's default. */
+  /** The agent's one model, from its connection's list (F-027 AST-11); null reads as that connection's default. */
   assistantModel: string | null;
-  agents: { workspaceId: string; agentId: string }[];
+  instructions: string;
+  colour: AgentColour;
   version: number;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export type NewEnablement = Pick<EnablementRecord, 'ownerUserId' | 'connectionId' | 'provider' | 'engine'> & { assistantModel: string };
-/** Changing the model may move the assistant to another of the owner's connections (#854): engine, key and provider change with it. */
-export type EnablementChanges = Partial<Pick<EnablementRecord, 'status' | 'assistantModel' | 'connectionId' | 'provider' | 'engine'>>;
+/** What a run tells the model besides the request (F-036 AG-1): the agent's name, saved instructions and the items its owner asked it to remember. */
+export interface AgentBrief { name: string; instructions: string; memory: string[] }
 
 /** Today's use of one API key's daily budget (#854), by everything that runs on it. */
 export interface KeySpend { budgetCents: number; chargedMicros: number; reservedMicros: number; resetsAt: Date }
@@ -154,14 +155,9 @@ export interface ThoughtSource { id: string; sketchId: string; version: number; 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link PersonalRunAccess}). */
 export interface PersonalRunRepository {
   prepareTaskUse(projectId: string, conversationId: string, sources?: readonly { type: string; id: string }[]): Promise<{ mark(): Promise<void> }>;
-  enablement(ownerUserId: string, options?: { lock?: boolean }): Promise<EnablementRecord | null>;
-  /** Null when the owner already has one (a concurrent enable). */
-  insertEnablement(enablement: NewEnablement): Promise<EnablementRecord | null>;
-  /** Applies the changes and increments the version; the caller holds the row lock. */
-  updateEnablement(ownerUserId: string, changes: EnablementChanges): Promise<EnablementRecord>;
-  deleteEnablement(ownerUserId: string): Promise<boolean>;
-  /** Sets the owner's assistant agent for a workspace (one per workspace). */
-  selectAgent(ownerUserId: string, workspaceId: string, agentId: string): Promise<void>;
+  /** The AI setup of one of the owner's agents: the one named, else their first (Assistant). A deleted agent has none. */
+  enablement(ownerUserId: string, options?: { lock?: boolean; agentId?: string; workspaceId?: string }): Promise<EnablementRecord | null>;
+  agentBrief(agentId: string): Promise<AgentBrief | null>;
   /**
    * Today's use of an API key's one daily budget (#854), in the key's time zone: what everything on the key was charged,
    * and what work in progress or of unknown cost holds. `exceptRunId` leaves one run out. Null when the key is gone.
@@ -192,7 +188,7 @@ export interface PersonalRunRepository {
    * Ends the owner's queued and reading runs with `status` at zero cost (the reservation is
    * released) and returns them. Dispatching runs are left to the commit recheck.
    */
-  endUndispatched(ownerUserId: string, status: 'paused' | 'revoked'): Promise<RunRecord[]>;
+  endUndispatched(ownerUserId: string, status: 'revoked', agentId?: string): Promise<RunRecord[]>;
   /**
    * Ends the owner's in-flight runs untouched for `olderThanSeconds` (a crashed worker): a queued
    * or reading run as `unavailable` at zero cost, a dispatching one as `provider_failed` with its
@@ -224,14 +220,14 @@ export interface PersonalRunRepository {
   updateProposal(id: string, changes: ProposalChanges): Promise<ProposalRecord>;
   listProposals(projectId: string, page: PageWindow): Promise<Paged<ProposalRecord>>;
   /**
-   * Whether the owner's assistant connection in the workspace (F-027 AST-3) is live. Runs that hold a run
-   * token end `revoked` once it is revoked; older isolated fake repositories may omit it.
+   * Whether the agent's rights connection (F-027 AST-3) is live. Runs that hold a run token end `revoked` once it is revoked
+   * (the agent was deleted); older isolated fake repositories may omit it.
    */
-  assistantConnectionLive?(ownerUserId: string, workspaceId: string): Promise<boolean>;
+  assistantConnectionLive?(ownerUserId: string, agentId: string): Promise<boolean>;
   /** The schedule a run belongs to, for the answer a schedule posts in its conversation (F-027 A8). */
   needsCurrentGithubFacts?(runId: string): Promise<boolean>;
   jobOfRun?(runId: string): Promise<{ id: string; title: string } | null>;
-  /** The assistant's "What it may do" in the workspace (F-036 AG-3); null without an assistant connection. */
+  /** The "What it may do" of the owner's first agent in the workspace (F-036 AG-3); null without one. */
   assistantMayDo?(ownerUserId: string, workspaceId: string): Promise<AgentMayDo | null>;
 }
 

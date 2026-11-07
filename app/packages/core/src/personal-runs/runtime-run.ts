@@ -3,6 +3,7 @@ import { ASSISTANT_RUN_CHANGED_EVENT, RUNTIME_RUN_LIMITS, type AssistantRunEndRe
 import { ForbiddenError, NotFoundError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import type {
+  AgentBrief,
   PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalRuntimeEnd, PersonalRuntimeEvent, PersonalRuntimeRunRequest,
   RunChanges, RunEndStatus, RunRecord,
 } from './ports.js';
@@ -10,6 +11,7 @@ import { announce, updateAndAnnounce } from './progress.js';
 import { redactSecrets } from './redaction.js';
 import { runtimeModelFlag } from './model.js';
 import { answerWithSchedule } from './schedule-request.js';
+import { agentBriefText } from './validation.js';
 
 // A personal run on the owner's own Claude Code in the agent runtime (F-022 AIM-3 "Run", #280; F-027 A2).
 //
@@ -25,7 +27,7 @@ import { answerWithSchedule } from './schedule-request.js';
 
 export type RuntimeRunOutcome = RunRecord['status'] | 'skipped';
 type Stage = 'before_read' | 'before_dispatch' | 'before_commit';
-type Refusal = Extract<RunRecord['status'], 'denied' | 'paused' | 'revoked' | 'unavailable' | 'cap_reached'> | 'ai_off';
+type Refusal = Extract<RunRecord['status'], 'denied' | 'revoked' | 'unavailable' | 'cap_reached'> | 'ai_off';
 
 export type RuntimeCaps = PersonalRuntimeRunRequest['caps'];
 
@@ -51,7 +53,12 @@ export function localToolInInit(event: Extract<PersonalRuntimeEvent, { kind: 'in
  * The request the CLI gets on stdin. The owner's words are data inside it; the place is named by id so
  * the CLI reads it through the run's tools, which follow the owner's switches.
  */
-export function runtimePrompt(run: Pick<RunRecord, 'kind' | 'prompt' | 'projectId' | 'conversationId' | 'targetSketchId' | 'targetThoughtId' | 'silent' | 'workId'>): string {
+export function runtimePrompt(run: Pick<RunRecord, 'kind' | 'prompt' | 'projectId' | 'conversationId' | 'targetSketchId' | 'targetThoughtId' | 'silent' | 'workId'>, brief: AgentBrief | null = null): string {
+  const given = run.kind === 'morning_summary' ? '' : agentBriefText(brief);
+  return given ? `${given}\n\n${requestPrompt(run)}` : requestPrompt(run);
+}
+
+function requestPrompt(run: Pick<RunRecord, 'kind' | 'prompt' | 'projectId' | 'conversationId' | 'targetSketchId' | 'targetThoughtId' | 'silent' | 'workId'>): string {
   if (run.kind === 'morning_summary') {
     return [
       'You write one line for one Flux user, shown under their Home greeting and in one notification.',
@@ -198,15 +205,13 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
     // AG-10, first: AI on in the run's space, at the epoch the run was admitted under.
     const ai = await ports.access.spaceAi(run.projectId, { lock });
     if (ai.state !== 'allowed' || ai.epoch !== run.aiEpoch) return 'ai_off';
-    const enablement = await ports.runs.enablement(run.ownerUserId, { lock });
-    // A request already sent keeps its connection: choosing another for the next one does not touch it.
-    if (!enablement || enablement.agents.find((agent) => agent.workspaceId === run.workspaceId)?.agentId !== run.agentId) return 'revoked';
-    if (enablement.status === 'paused') return 'paused';
+    // A request already sent keeps its connection: choosing another for the next one does not touch it. A deleted agent has no setup.
+    if (!(await ports.runs.enablement(run.ownerUserId, { lock, agentId: run.agentId }))) return 'revoked';
     const owner: Principal = { kind: 'human', id: run.ownerUserId };
     const agent: Principal = { kind: 'agent', id: run.agentId };
     if (!(await ports.access.canInvoke(owner, run.agentId, { lock }))) return 'revoked';
     if (!runtime?.enabled || !tokens) return 'unavailable';
-    if (ports.runs.assistantConnectionLive && !(await ports.runs.assistantConnectionLive(run.ownerUserId, run.workspaceId))) return 'revoked';
+    if (ports.runs.assistantConnectionLive && !(await ports.runs.assistantConnectionLive(run.ownerUserId, run.agentId))) return 'revoked';
     if (!(await ports.access.canUseProject(owner, 'write', run.projectId, { lock })) || !(await ports.access.canUseProject(agent, 'read', run.projectId, { lock })))
       return 'denied';
     return null;
@@ -330,8 +335,9 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
       try {
         // The model is the one recorded when the request was sent (F-027 AST-11), never the owner's current choice.
         const model = runtimeModelFlag(run.model);
+        const brief = await uow.run((ports) => ports.runs.agentBrief(run.agentId)).catch(() => null);
         end = await runtime!.run(target, {
-          runId: run.id, prompt: runtimePrompt(grant.context ? { ...run, prompt: `${run.prompt}\n${grant.context}` } : run), runToken: grant.token, tools: grant.tools, caps, ...(model ? { model } : {}),
+          runId: run.id, prompt: runtimePrompt(grant.context ? { ...run, prompt: `${run.prompt}\n${grant.context}` } : run, brief), runToken: grant.token, tools: grant.tools, caps, ...(model ? { model } : {}),
         }, onEvent);
       } catch {
         // The stream to the slot broke: whether the CLI changed anything is unknown, and it is never rerun.

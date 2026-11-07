@@ -1,5 +1,4 @@
-export { assistantSettingsUseCases } from './service.js';
-export type { AssistantSettingsPort, AssistantIdentityPort } from './ports.js';
+export type { AgentSetup, AgentSetupChanges, AssistantIdentityPort } from './ports.js';
 export { assistantWaitLine, classifyAssistantChange, REFUSALS as ASSISTANT_REFUSALS, type AssistantChangeFacts, type AssistantWaitLineInput, type AssistantChangeOutcome } from './changes.js';
 export { changedParagraphs, fieldWords, restorableFields, undoSentence, type UndoPlan, type UndoRecord } from './undo.js';
 export type { JobRecord, JobRunRecord, AssistantJobRepository, AssistantJobInbox, AssistantJobPorts, AssistantJobUnitOfWork, NewJob, NewJobRun, JobChanges, JobRunChanges, SettledRunFacts } from './jobs-ports.js';

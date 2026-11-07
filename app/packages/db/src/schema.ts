@@ -791,17 +791,46 @@ export const agentConnections = pgTable('agent_connections', {
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
 ]);
 
-/** The owner's assistant: its agent, its connection (which holds "What it may do", 0003/#855) and its background limit. */
+/**
+ * The AI setup of one of a person's agents (F-036 AG-1, #857): its rights connection (which holds "What it may do", 0003/#855),
+ * its saved instructions, its colour and the model it runs on. The first agent of a person answers `/ai`. An agent without a row
+ * here is an identity only (a local client's, or one nobody gave a model).
+ */
 export const assistantSettings = pgTable('assistant_settings', {
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
-  agentId: uuid('agent_id').notNull(), connectionId: uuid('connection_id').notNull().unique(),
+  agentId: uuid('agent_id').notNull().primaryKey(), connectionId: uuid('connection_id').notNull().unique(),
+  /** 0008 (#857): plain text, at most 4000 characters. */
+  instructions: text('instructions').notNull().default(''),
+  /** 0008: one of the agent colours (`AGENT_COLOURS`). */
+  colour: text('colour').$type<import('@flux/contracts').AgentColour>().notNull().default('ink'),
+  /** 0008: `runtime`, the owner's own Claude Code or Codex (a plan); `server`, their API key `apiKeyId`. */
+  engine: text('engine', { enum: ['server', 'runtime'] }).notNull(),
+  apiKeyId: uuid('api_key_id'),
+  /** The provider of the model's connection; on a plan it names the CLI (`openai`: Codex, else Claude Code). */
+  provider: text('provider').$type<AiProviderKind>().notNull(),
+  /** The agent's one model, from its connection's list (F-027 AST-11); null reads as that connection's default. */
+  model: text('model'),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [primaryKey({ columns: [table.workspaceId, table.ownerUserId] }),
+}, (table) => [
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
-  foreignKey({ columns: [table.workspaceId, table.connectionId], foreignColumns: [agentConnections.workspaceId, agentConnections.id] }).onDelete('cascade')]);
+  foreignKey({ columns: [table.workspaceId, table.connectionId], foreignColumns: [agentConnections.workspaceId, agentConnections.id] }).onDelete('cascade'),
+  index('assistant_settings_owner_idx').on(table.ownerUserId, table.createdAt, table.agentId),
+]);
+
+/** What an agent was told to remember (0008, F-036 AG-1). Only its owner reads or changes the list. */
+export const agentMemoryItems = pgTable('agent_memory_items', {
+  id: uuid('id').primaryKey(),
+  agentId: uuid('agent_id').notNull().references(() => assistantSettings.agentId, { onDelete: 'cascade' }),
+  workspaceId: uuid('workspace_id').notNull(),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  body: text('body').notNull(),
+  source: text('source').notNull().default('Added by you'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index('agent_memory_items_agent_idx').on(table.agentId, table.createdAt, table.id)]);
 
 export const agentConnectionProjects = pgTable('agent_connection_projects', {
   workspaceId: uuid('workspace_id').notNull(),
@@ -1750,32 +1779,6 @@ export const notificationEmails = pgTable('notification_emails', {
 }, (table) => [unique().on(table.notificationId, table.addressKind)]);
 
 // Owner-invoked personal assistant runs (migration 0024, #68, O-008). No key material is stored.
-export const personalRunEnablements = pgTable('personal_run_enablements', {
-  ownerUserId: text('owner_user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
-  /** The owner's API key connection the assistant's model belongs to (`server`); null on a plan (`runtime`). */
-  connectionId: uuid('connection_id'),
-  /** 0003 (#854): the provider of the assistant's connection; on a plan it names the CLI (`openai`: Codex, else Claude Code). */
-  provider: text('provider').$type<AiProviderKind>().notNull(),
-  status: text('status', { enum: ['active', 'paused'] }).notNull().default('active'),
-  /** 0100 (F-022 T5): the owner's API key connection (`server`) or their own Claude Code or Codex (`runtime`). */
-  engine: text('engine', { enum: ['server', 'runtime'] }).notNull().default('server'),
-  /** 0110 (F-027 AST-11): the assistant's one model, from its connection's list. */
-  assistantModel: text('assistant_model'),
-  version: integer('version').notNull().default(1),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
-export const personalRunAgents = pgTable('personal_run_agents', {
-  ownerUserId: text('owner_user_id').notNull().references(() => personalRunEnablements.ownerUserId, { onDelete: 'cascade' }),
-  workspaceId: uuid('workspace_id').notNull(),
-  agentId: uuid('agent_id').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [
-  primaryKey({ columns: [table.ownerUserId, table.workspaceId] }),
-  foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
-]);
-
 export const personalRuns = pgTable('personal_runs', {
   /** 0115 (F-029): the workspace AI policy epoch this item was admitted under; no default. */
   aiEpoch: bigint('ai_epoch', { mode: 'number' }).notNull(),

@@ -201,7 +201,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         shot(page, "assistant-1440-not-set-up")
         bar.get_by_role("button", name="Connect your AI").click()
         panel = page.get_by_role("complementary", name="Details")
-        expect(panel.get_by_role("link", name="Set up your assistant in Flux")).to_have_attribute("href", "/settings/assistant")
+        expect(panel.get_by_role("link", name="Ways to connect, in Settings → AI")).to_have_attribute("href", "/settings/agents")
         # Details take the thread's one panel; "back" returns to the reply being written.
         panel.get_by_role("button", name="Thread").click()
         expect(page.get_by_role("complementary", name="Replies")).to_be_visible()
@@ -229,14 +229,10 @@ class PersonalAssistantJourney(unittest.TestCase):
             else:
                 route.continue_()
         page.route("**/api/v1/personal-assistant", fulfil)
-        page.goto("/settings/assistant")
-        expect(page.get_by_role("heading", level=1, name="Your assistant")).to_be_visible()
-        expect(page.get_by_text("Off on this Flux server · ask your admin to turn it on", exact=False)).to_be_visible()
-        expect(page.get_by_role("button", name="Turn on")).to_have_count(0)
-        shot(page, "assistant-1440-settings-provider-off")
         stub.update(state="unavailable", unavailableReason="provider_off", enablement={
-            "ownerUserId": JO["id"], "connection": "00000000-0000-4000-8000-000000000001", "status": "active", "engine": "server",
-            "model": "claude-sonnet-5", "agents": [], "version": 1, "createdAt": "2026-09-30T08:00:00.000Z", "updatedAt": "2026-09-30T08:00:00.000Z"},
+            "ownerUserId": JO["id"], "agentId": "00000000-0000-4000-8000-000000000002", "workspaceId": "00000000-0000-4000-8000-000000000003",
+            "connection": "00000000-0000-4000-8000-000000000001", "engine": "server",
+            "model": "claude-sonnet-5", "version": 1, "createdAt": "2026-09-30T08:00:00.000Z", "updatedAt": "2026-09-30T08:00:00.000Z"},
             today={"chargedMicros": 0, "reservedMicros": 0, "budgetCents": 500, "resetsAt": "2026-09-30T22:00:00.000Z"})
         page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
         self.composer(page).fill("/ai ")
@@ -249,46 +245,30 @@ class PersonalAssistantJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- turning it on: a model, nothing else (#854)
 
-    def test_04_owner_turns_it_on_from_settings_ai(self) -> None:
-        # The account menu holds Settings and People only (#763 SG-7); the assistant is set up in Settings › AI.
+    def test_04_owner_gets_assistant_from_settings_ai(self) -> None:
+        # The account menu holds Settings and People only (#763 SG-7); the agents are in Settings › AI (#857).
         page = self.page("jo")
         page.goto("/settings/agents")
-        page.get_by_role("link", name="Set up", exact=True).click()
-        expect(page).to_have_url(re.compile(r"/settings/assistant$"))
-        expect(page.get_by_role("heading", name="Your assistant is ready")).to_be_visible()
-        # #854: one model from any of Jo's connections, Connect AI's default preselected (the TEST-ONLY fixture key here);
-        # nothing to agree to and no limit of Flux's own to set.
-        model = page.get_by_role("button", name=re.compile(r"^Model: .+\. Change$"))
-        expect(model).to_be_visible()
-        expect(page.get_by_text("Its one daily budget is the only limit.", exact=False)).to_be_visible()
+        # Connecting AI gives the owner Assistant: Connect AI's default model (the TEST-ONLY fixture key here), nothing to agree to
+        # and no limit of Flux's own to set.
+        row = page.get_by_role("list", name="Your agents").get_by_role("listitem").first
+        expect(row).to_contain_text("Assistant")
+        expect(row).to_contain_text("Answers /ai")
+        self.assertRegex(row.locator(".sset-row__ic > .kreska").get_attribute("class") or "", r"kreska--[a-z]+")
         expect(page.get_by_label("Up to per request")).to_have_count(0)
         expect(page.get_by_label("Daily cap")).to_have_count(0)
         expect(page.get_by_role("checkbox")).to_have_count(0)
-        model.click()
-        menu = page.get_by_role("menu", name="Model")
-        expect(menu.get_by_role("group")).to_have_count(1)
-        expect(menu.get_by_role("menuitemradio", checked=True)).to_have_count(1)
-        page.keyboard.press("Escape")
-        shot(page, "assistant-1440-settings-setup")
-        page.get_by_role("button", name="Turn on", exact=True).click()
-        expect(page.get_by_role("switch", name="Your assistant is on")).to_have_attribute("aria-checked", "true")
-        page.locator("details.aset__more > summary").click()
-        expect(page.get_by_role("heading", name="Ready · only you can use it")).to_be_visible()
-        expect(page.get_by_text("of your key’s $5.00 daily budget", exact=False)).to_be_visible()
+        row.get_by_role("link").click()
+        expect(page.get_by_role("heading", level=2, name="Assistant")).to_be_visible()
+        model = page.get_by_role("group", name=re.compile("^Model")).get_by_role("radio", checked=True)
+        expect(model).to_have_count(1)
+        shot(page, "assistant-1440-settings-ready")
         status = self.status(page)
         self.assertEqual((status["state"], status["enablement"]["engine"], status["enablement"]["model"]), ("ready", "server", "claude-sonnet-5"))
         self.assertRegex(status["enablement"]["connection"], r"^[0-9a-f-]{36}$", "the assistant uses the fixture key, Connect AI's default")
         self.assertNotIn("consent", status["enablement"])
         self.assertEqual(status["today"]["budgetCents"], 500)
-        type(self).ids["agent"] = status["enablement"]["agents"][0]["agentId"]
-        shot(page, "assistant-1440-settings-ready")
-        # Settings › AI lists the assistant with its colour, its state, its model and its connection (#350, #854).
-        page.goto("/settings/agents")
-        card = page.get_by_role("region", name=re.compile("^Your assistant Agent"))
-        expect(card).to_contain_text("for you · in Flux")
-        expect(card).to_contain_text("· API key · Assistant on")
-        expect(card.get_by_role("link", name="Manage", exact=True)).to_have_attribute("href", "/settings/assistant")
-        self.assertRegex(card.locator(".sset-row__ic > .kreska").get_attribute("class") or "", r"kreska--[a-z]+")
+        type(self).ids["agent"] = status["enablement"]["agentId"]
         # Kai sees his own, not-set-up state: Jo's assistant is never offered to him.
         kai = self.page("kai")
         self.assertEqual(self.status(kai)["state"], "not_enabled")
@@ -665,34 +645,19 @@ class PersonalAssistantJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- paused and a used budget: explicit and calm
 
-    def test_09_paused_and_a_used_budget_are_explicit(self) -> None:
-        settings = self.page("jo")
-        settings.goto("/settings/assistant")
-        settings.get_by_role("switch", name="Your assistant is on").click()
-        expect(settings.get_by_role("switch", name="Your assistant is on")).to_have_attribute("aria-checked", "false")
-        settings.locator("details.aset__more > summary").click()
-        expect(settings.get_by_role("heading", name="Paused · nothing runs")).to_be_visible()
+    def test_09_a_used_budget_is_explicit(self) -> None:
         jo = self.conversation("jo")
         self.composer(jo).fill("/ai ")
         bar = jo.locator("#project-ask")
-        expect(bar).to_contain_text("Your assistant is paused.")
-        expect(jo.get_by_role("button", name="Send to your assistant")).to_have_attribute("aria-disabled", "true")
-        shot(jo, "assistant-1440-paused")
-        bar.get_by_role("button", name="Resume").click()
         expect(bar).to_contain_text("Answer shown to")
         # #854: an API key's one daily budget. Jo's TEST-ONLY fixture key keeps the default $5, which these runs never reach,
-        # so the used budget is rendered from a stubbed status (wording only; the pause itself is covered through the real
+        # so the used budget is rendered from a stubbed status (wording only; the wait itself is covered through the real
         # worker by personal-runs-providers.test.ts). No button offers another connection or a higher limit.
         real = self.status(jo)
         self.assertEqual(real["today"]["budgetCents"], 500)
         used = {**real, "state": "capped", "today": {**real["today"], "chargedMicros": 5_000_000, "reservedMicros": 0}}
-        for page in (settings, jo):
-            page.route("**/api/v1/personal-assistant", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(used))
-                       if route.request.method == "GET" else route.continue_())
-        settings.reload()
-        settings.locator("details.aset__more > summary").click()
-        expect(settings.get_by_role("heading", name="Not enough budget left · resumes tomorrow")).to_be_visible()
-        expect(settings.get_by_text("$5.00 used of your key’s $5.00 daily budget", exact=False)).to_be_visible()
+        jo.route("**/api/v1/personal-assistant", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(used))
+                 if route.request.method == "GET" else route.continue_())
         jo.reload()
         self.composer(jo).fill("/ai ")
         expect(bar).to_contain_text("Not enough left of your API key’s $5.00 daily budget. A request now starts", timeout=10000)

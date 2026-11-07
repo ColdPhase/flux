@@ -20,6 +20,8 @@ const paths = {
   gear: <><circle cx="8" cy="8" r="2" /><path d="M8 1.75v1.5M8 12.75v1.5M1.75 8h1.5M12.75 8h1.5M3.58 3.58l1.06 1.06M11.36 11.36l1.06 1.06M3.58 12.42l1.06-1.06M11.36 4.64l1.06-1.06" /><circle cx="8" cy="8" r="4.25" /></>,
   clip: <path d="M11.25 7.25l-4.5 4.5a2.12 2.12 0 01-3-3l5.25-5.25a1.41 1.41 0 012 2L5.75 10.75" />,
   people: <><circle cx="6" cy="5.5" r="2.25" /><path d="M2 13c.5-2.2 2-3.5 4-3.5s3.5 1.3 4 3.5" /><path d="M10.5 3.5a2 2 0 010 4M12 9.75c1 .5 1.7 1.6 2 3.25" /></>,
+  /** A pinned row: Assistant stays first in Messages (F-036 AG-4). */
+  pin: <path d="M9.75 2.5l3.75 3.75-1.5.5-2 2 .25 2.5-1 1-2.25-2.25L3 13.5l-.5-.5 3.5-3.25L3.75 7.5l1-1 2.5.25 2-2z" />,
   lock: <><rect x="3.5" y="7" width="9" height="6.5" rx="1.5" /><path d="M5.5 7V5.25a2.5 2.5 0 015 0V7" /></>,
   mail: <><rect x="2" y="3.5" width="12" height="9" rx="1.5" /><path d="M2.5 4.5L8 8.75l5.5-4.25" /></>,
   alert: <><circle cx="8" cy="8" r="6" /><path d="M8 4.75v3.75" /><circle cx="8" cy="11" r=".6" fill="currentColor" /></>,

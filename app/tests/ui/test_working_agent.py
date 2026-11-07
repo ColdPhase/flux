@@ -122,7 +122,7 @@ class WorkingAgentJourney(unittest.TestCase):
         agent = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Garden analyst", "owner": "self"}, 201)
         # #854: the model of a connection (Connect AI's default: the TEST-ONLY fixture key); nothing else to agree to.
         default = self.api(page, "GET", "/api/v1/personal-assistant/model", None, 200)["default"]
-        self.api(page, "POST", "/api/v1/personal-assistant", {"agentId": agent["id"], **default}, 201)
+        self.api(page, "POST", "/api/v1/my-agents", {"agentId": agent["id"], **default}, 201)
         conversation = self.api(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {
             "body": "Which soil sensor should we test in the east garden bed?", "clientMessageId": str(uuid.uuid4())}, 201)
         self.api(page, "POST", f"/api/v1/conversations/{conversation['id']}/messages", {
