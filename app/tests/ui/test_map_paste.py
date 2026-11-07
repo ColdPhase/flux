@@ -329,6 +329,7 @@ class MapPasteJourney(unittest.TestCase):
         private = self.api(page, "POST", f"/api/v1/workspaces/{self.workspace}/sketches", {"title": "Jonas's notes", "scope": "private"}, 201)["id"]
         page.goto(f"/map/{private}")
         expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
+        expect(page.get_by_role("group", name="Map: Jonas's notes")).to_be_visible()  # the map is open, not only its header
         self.paste(page, None, self.image())
         expect(page.locator(".sk-status")).to_contain_text("Images can be added to a space’s maps only")
         self.assertEqual(writes, [])
