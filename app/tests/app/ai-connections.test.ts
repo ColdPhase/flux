@@ -8,8 +8,10 @@ import { AI_MODEL_LISTS_PATH, type AiModelList, type BackgroundComputeConnection
 import { parsePrivateTargets, providerComparison } from '../../packages/agent-runtime/src/index.js';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
 import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
+import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { Browser } from './support/http.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { FakeQueue } from './support/personal-runs.js';
 import type { RecordedProviderRequest } from './support/provider-mock.js';
 
 // Provider-neutral owner AI connections through the running API (#179, F-020 PROV-1/3/4): every
@@ -272,5 +274,32 @@ describe('several connections per owner and the assistant\'s own one (#179 PROV-
       price: { inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 2_000_000 }, apiKey: keys.gemini, useForBackground: false });
     assert.equal(third.usedForBackground, false);
     assert.equal(expectStatus(await owner.browser.request('GET', `${path}/current`), 200), null, 'still none until the owner chooses');
+  });
+});
+
+describe('a budget that one request of the assistant\'s model would not fit is refused when it is saved (#909)', () => {
+  test('a Haiku key at $1.00 with the assistant on Fable: lowering to $0.20 is refused, $0.84 fits, and back on Haiku $0.20 fits', async () => {
+    const owner = await person('budget-assistant-owner');
+    const ws = await workspace(owner, 'Budget assistant club');
+    const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
+    const key = expectStatus(await owner.browser.request('POST', path, { body: { provider: 'anthropic', model: 'claude-haiku-4-5', apiKey: keys.anthropic, dailyBudgetCents: 100 } }), 201) as BackgroundComputeConnection;
+    const runs = personalRunUseCases(db, { queue: new FakeQueue().factory, connections: personalConnectionLookup(db), providerEnabled: true });
+    const me = { kind: 'human', id: owner.id } as const;
+    await runs.enable(me, { agentId, connection: key.id, model: 'claude-haiku-4-5' });
+    const lower = (cents: number) => owner.browser.request('PATCH', `${path}/${key.id}`, { body: { dailyBudgetCents: cents } });
+    // One Haiku request is 64,000 × $1/M + 4,000 × $5/M = 9 cents: with the assistant on Haiku, $0.20 is accepted.
+    expectStatus(await lower(20), 200);
+    expectStatus(await lower(100), 200);
+    // The assistant moves to Fable, whose one request is 64,000 × $10/M + 4,000 × $50/M = 84 cents; it fits $1.00.
+    await runs.chooseModel(me, { connection: key.id, model: 'claude-fable-5-1' });
+    const refused = await lower(20);
+    assert.equal(codeOf(refused), 'AI_BUDGET_TOO_SMALL', refused.text);
+    assert.match((refused.json as { error: string }).error, /Fable 5\.1, your assistant's model on this key, can cost up to \$0\.84/);
+    assert.equal(codeOf(await lower(83)), 'AI_BUDGET_TOO_SMALL');
+    assert.equal((expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[]).find((item) => item.id === key.id)!.dailyBudgetCents, 100, 'the refused budget changed nothing');
+    expectStatus(await lower(84), 200);
+    // Back on the key's own cheap model, a small budget is fine again.
+    await runs.chooseModel(me, { connection: key.id, model: 'claude-haiku-4-5' });
+    expectStatus(await lower(20), 200);
   });
 });

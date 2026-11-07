@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import { createDatabase } from '@flux/db';
+import { apiKeySpendToday, createDatabase } from '@flux/db';
 import { createPersonalRunProcessor, type Principal } from '@flux/core';
 import { type AssistantAnswer, type Conversation, type Page, type Project, type Workspace } from '@flux/contracts';
 import { parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
@@ -344,5 +344,14 @@ describe('no payer switching; the API key\'s one daily budget pauses a request u
     assert.equal((await row(asked.run.id)).status, 'queued');
     await runs.stop(human(owner), asked.run.id);
     await runs.remove(human(owner));
+  });
+
+  test('#910: a key\'s day ends at the next local midnight, also on a day the clocks change', async () => {
+    const resets = async (timeZone: string, at: string) => (await apiKeySpendToday(db, randomUUID(), undefined, { dailyBudgetCents: 500, timeZone }, new Date(at)))!.resetsAt.toISOString();
+    // Warsaw leaves summer time on 25 Oct 2026 (a 25-hour day) and enters it on 28 Mar 2027 (a 23-hour day): 24 hours on would be an hour off.
+    assert.equal(await resets('Europe/Warsaw', '2026-10-25T10:00:00Z'), '2026-10-25T23:00:00.000Z');
+    assert.equal(await resets('Europe/Warsaw', '2027-03-28T10:00:00Z'), '2027-03-28T22:00:00.000Z');
+    assert.equal(await resets('Europe/Warsaw', '2026-11-07T10:00:00Z'), '2026-11-07T23:00:00.000Z');
+    assert.equal(await resets('UTC', '2026-11-07T10:00:00Z'), '2026-11-08T00:00:00.000Z');
   });
 });

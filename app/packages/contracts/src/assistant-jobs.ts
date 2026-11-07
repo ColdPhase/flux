@@ -135,7 +135,7 @@ export const assistantJobRunNowPath = (workspaceId: string, ownerUserId: string,
 export const assistantJobRestorePath = (workspaceId: string, ownerUserId: string, jobId: string) => `${assistantJobPath(workspaceId, ownerUserId, jobId)}/restore`;
 export const assistantJobHistoryPath = (workspaceId: string, ownerUserId: string, jobId: string) => `${assistantJobPath(workspaceId, ownerUserId, jobId)}/history`;
 export const assistantJobNotePath = (workspaceId: string, ownerUserId: string) => `/api/v1/workspaces/${workspaceId}/assistants/${ownerUserId}/background-note`;
-/** The cron preview of *More*: refuses more than once every five minutes, shows the next three times in words. */
+/** The cron preview of *More*: the expression in words and its next three times. Flux sets no minimum between runs (#843). */
 export const assistantJobPreviewPath = (workspaceId: string, ownerUserId: string) => `${assistantJobsPath(workspaceId, ownerUserId)}/preview`;
 
 export interface AssistantJobPreview {

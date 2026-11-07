@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { before, describe, test } from 'node:test';
-import { projectGrantsPath, projectLeavePath, projectPeoplePath, type Project, type ProjectGrant, type ProjectPerson } from '@flux/contracts';
+import { projectGrantPath, projectGrantsPath, projectLeavePath, projectPeoplePath, type Project, type ProjectGrant, type ProjectPerson } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
@@ -126,5 +126,26 @@ describe('a new space starts with any person of the company (D-3)', () => {
     const roles = Object.fromEntries((await pool.query('SELECT user_id, role FROM project_grants WHERE project_id = $1', [made.id])).rows.map((row) => [row.user_id, row.role]));
     assert.deepEqual(roles, { [creator.id]: 'manager', [owner.id]: 'contributor', [other.id]: 'contributor' });
     assert.deepEqual((expectStatus(await creator.browser.request('GET', projectPeoplePath(made.id)), 200) as ProjectPerson[]).map((row) => row.id).sort(), [creator.id, other.id, owner.id].sort());
+  });
+
+  test('the company owner can be added later too, by a space admin who is a plain member or by a company admin, and removed again (#905)', async () => {
+    const [owner, companyAdmin, creator, other] = await Promise.all(['ao-owner', 'ao-admin', 'ao-creator', 'ao-other'].map((label) => person(label)));
+    const wsId = (await workspace(owner, 'Add the owner club')).id;
+    await addMember(owner, wsId, companyAdmin, 'admin');
+    await addMember(owner, wsId, creator, 'member');
+    await addMember(owner, wsId, other, 'member');
+    const space = expectStatus(await creator.browser.request('POST', `/api/v1/workspaces/${wsId}/projects`, { body: { name: 'Owner joins later', visibility: 'restricted' } }), 201) as Project;
+    const add = (who: Person) => who.browser.request('POST', projectGrantsPath(space.id), { body: { principal: { kind: 'human', id: owner.id }, role: 'contributor' } });
+    // The same rule as New space: any company person. Before, a space admin who was a plain member and a company admin got 403 OWNER_REQUIRED.
+    const added = expectStatus(await add(creator), 201) as ProjectGrant;
+    assert.deepEqual([added.principal.id, added.role], [owner.id, 'contributor']);
+    expectStatus(await creator.browser.request('DELETE', projectGrantPath(space.id, added.id)), 204);
+    const again = expectStatus(await add(companyAdmin), 201) as ProjectGrant;
+    expectStatus(await companyAdmin.browser.request('DELETE', projectGrantPath(space.id, again.id)), 204);
+    // What stays: an ordinary member still cannot manage the space, and a space admin who is a plain member cannot keep the owner out of it.
+    assert.equal((await add(other)).status, 404);
+    expectStatus(await add(creator), 201);
+    const shut = await creator.browser.request('POST', projectGrantsPath(space.id), { body: { principal: { kind: 'human', id: owner.id }, role: 'denied' } });
+    assert.equal(code(shut), 'COMPANY_ADMIN_PROTECTED');
   });
 });

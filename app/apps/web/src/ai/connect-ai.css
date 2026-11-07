@@ -18,6 +18,7 @@
 /* The Connect AI window (mockup ConnectAI): one window in steps, a dialog on the computer and a sheet on the phone. */
 .cai-dialog { width: min(480px, calc(100% - 32px)); }
 .cai-window { display: flex; flex-direction: column; gap: 10px; padding: 20px; max-height: calc(100dvh - 96px); overflow-y: auto; }
+.cai-window:focus { outline: none; }
 .cai-sheet .cai-window { padding-top: 28px; }
 .cai-window__title { margin: 0; font-size: var(--fs-title); font-weight: 600; color: var(--t1); }
 .cai-window__lead { margin: 0 0 6px; font-size: var(--fs-sm); line-height: 1.45; color: var(--t2); overflow-wrap: anywhere; }

@@ -6,7 +6,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { callSupervisor, NdjsonReader, parseSupervisorFrame, type ClientStatus, type SupervisorCallOutcome, type SupervisorRequest } from '@flux/runtime-protocol';
-import { clearClientFiles, clearScratch, hasUnconfirmed, recordUnconfirmed } from '../../apps/runtime/src/supervisor/data.js';
+import { clearClientFiles, clearLeftovers, clearScratch, hasUnconfirmed, recordUnconfirmed } from '../../apps/runtime/src/supervisor/data.js';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
 import { CODEX_FEATURE_REVIEW, codexRunOverrides, LOGOUT_TEMPLATES, RUN_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
 import { classifyCodexError, classifyError, effectiveConfigHolds } from '../../apps/runtime/src/supervisor/run.js';
@@ -270,6 +270,49 @@ describe('fixed command templates and a clean CLI environment', () => {
       assert.ok(out.ok, JSON.stringify(out));
       assert.deepEqual(await readdir(join(server.config.dataDir, id, 'tmp')), []);
     } finally { await server.close(); }
+  });
+
+  test('#910: a directory a CLI left with no rights does not stay: the scratch and the shared /tmp are emptied of it', async () => {
+    const server = await startTestSlot();
+    try {
+      const id = randomUUID();
+      assert.ok((await call(server, { kind: 'bind', bindingId: id })).ok);
+      const dir = join(server.config.dataDir, id);
+      // Mode 000 all the way down: `rm -rf` alone cannot open it, only its owner can give the rights back.
+      const closed = async (root: string) => {
+        await mkdir(join(root, 'inner', 'deeper'), { recursive: true });
+        await writeFile(join(root, 'inner', 'deeper', 'file'), 'left');
+        for (const path of [join(root, 'inner', 'deeper'), join(root, 'inner'), root]) await chmod(path, 0);
+      };
+      await closed(join(dir, 'tmp', 'closed'));
+      await writeFile(join(dir, 'tmp', 'plain'), 'left');
+      assert.equal(await clearScratch(dir, null), true);
+      assert.deepEqual(await readdir(join(dir, 'tmp')), [], 'her scratch is a fresh, empty directory');
+      assert.equal(((await lstat(join(dir, 'tmp'))).mode & 0o777), 0o700);
+      const person = { uid: process.getuid!(), gid: process.getgid!() };
+      await closed(join(server.config.tmpDir, 'closed'));
+      await writeFile(join(server.config.tmpDir, 'plain'), 'left');
+      await symlink(join(dir, 'tmp'), join(server.config.tmpDir, 'link'));
+      assert.equal(await clearLeftovers(server.config.tmpDir, person), true);
+      assert.deepEqual(await readdir(server.config.tmpDir), [], 'nothing of theirs stays in /tmp');
+      assert.equal((await lstat(join(dir, 'tmp'))).isDirectory(), true, 'and the link led nowhere');
+    } finally { await server.close(); }
+  });
+
+  test('#910: leftovers that cannot be removed are not reported as removed', { skip: process.getuid?.() === 0 && 'root can remove anything' }, async () => {
+    const server = await startTestSlot();
+    const person = { uid: process.getuid!(), gid: process.getgid!() };
+    try {
+      await writeFile(join(server.config.tmpDir, 'stuck'), 'left');
+      await chmod(server.config.tmpDir, 0o500);
+      assert.equal(await clearLeftovers(server.config.tmpDir, person), false, 'a file of theirs stays, so the answer is no');
+      await chmod(server.config.tmpDir, 0o700);
+      assert.equal(await clearLeftovers(server.config.tmpDir, person), true);
+      assert.deepEqual(await readdir(server.config.tmpDir), []);
+    } finally {
+      await chmod(server.config.tmpDir, 0o700).catch(() => undefined);
+      await server.close();
+    }
   });
 
   test('a run is refused while the binding directory exceeds its size limit', async () => {

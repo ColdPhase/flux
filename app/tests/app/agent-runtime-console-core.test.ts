@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { createServer, request, type Server } from 'node:http';
-import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import type { Duplex } from 'node:stream';
@@ -145,6 +145,34 @@ describe('each sign-in method runs exactly its command in a PTY', () => {
       assert.ok((await readFile(join(home, '.credentials.json'), 'utf8')).includes(secret));
       assert.ok(!login.output.includes(secret) && !JSON.stringify(login.controls).includes(secret), 'no frame carries the login');
       assert.ok(!JSON.stringify(login.controls).includes('Ada.Lovelace'), 'the address never leaves the slot');
+    }));
+  }
+});
+
+describe('what a sign-in leaves behind is cleaned up (#910)', () => {
+  // The shared /tmp part of the same cleanup needs people with their own user ids: scripts/check_runtime_people.sh covers it.
+  for (const ending of ['finishes', 'is cut off'] as const) {
+    test(`a sign-in that ${ending} leaves nothing in the person's scratch, also a directory nobody can open`, () => withSlot(async (slot) => {
+      const { bindingId } = await bound(slot);
+      const scratch = join(slot.config.dataDir, bindingId, 'tmp');
+      const login = await connect(portOf(slot.url), slot.config.secret);
+      login.link.send(open(bindingId, 'claude_account'));
+      await until('the prompt', () => login.output.includes(PROMPT));
+      // What the CLI could have written while it ran.
+      await writeFile(join(scratch, 'note'), 'left by the sign-in');
+      await mkdir(join(scratch, 'closed', 'inner'), { recursive: true });
+      await writeFile(join(scratch, 'closed', 'inner', 'file'), 'left');
+      for (const path of [join(scratch, 'closed', 'inner'), join(scratch, 'closed')]) await chmod(path, 0);
+      assert.deepEqual((await readdir(scratch)).sort(), ['closed', 'note'], 'control: it is there');
+      if (ending === 'finishes') {
+        login.link.send(encodeInput(Buffer.from(pastedLine(login.output, 'fake-code-abc123'))));
+        await login.ended;
+        assert.equal(result(login)?.kind, 'login');
+        assert.deepEqual(await readdir(scratch), [], 'gone before the result reached the owner');
+      } else {
+        login.link.destroy();
+        await until('the scratch to be emptied', async () => (await readdir(scratch)).length === 0, 5_000);
+      }
     }));
   }
 });

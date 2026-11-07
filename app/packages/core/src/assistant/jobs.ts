@@ -322,7 +322,7 @@ export function createAssistantJobs({ uow, startBackground, now: clock = () => n
       });
     },
 
-    /** *More*: the cron expression in words and its next three times; refused with "At most once an hour". */
+    /** *More*: the cron expression in words and its next three times. Flux sets no minimum between runs (#843). */
     async preview(principal: Principal, workspaceId: string, ownerUserId: string, input: { schedule: AssistantJobSchedule; timeZone: string }): Promise<AssistantJobPreview> {
       ownerOf(principal, workspaceId, ownerUserId);
       const at = clock();

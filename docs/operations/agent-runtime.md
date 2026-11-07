@@ -207,7 +207,9 @@ logins. A workspace role gives no access to anyone's place.
 - `./flux runtime status` lists the runtime, its state, how many agents it runs at once and each person's e-mail, and what the
   supervisor reports (boot id, how many people `/data` holds).
 - `./flux runtime release <email>` releases that person's place: the worker stops what they have running, signs their CLIs
-  out, ends their processes and deletes their directory. They see in Settings that the operator released it.
+  out, ends their processes, removes what they left in the shared `/tmp` (directories with no rights too) and deletes their
+  directory. While anything of theirs stays in `/tmp`, the directory stays too, the release is not reported as deleted and
+  their user id goes to nobody else; it is asked again. They see in Settings that the operator released it.
 - **Idle policy** (off by default): `FLUX_AGENT_RUNTIME_IDLE_DAYS=<1–365>` releases a place that had no run for that many days.
   Settings shows the person the date beforehand.
 

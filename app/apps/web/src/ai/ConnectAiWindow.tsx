@@ -1,5 +1,5 @@
-import { lazy, Suspense, useState } from 'react';
-import type { AgentRuntimeClient, AgentRuntimeSignInMethod, AgentRuntimeStatus, BackgroundComputeConnection } from '@flux/contracts';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
+import { AGENT_RUNTIME_ERRORS, type AgentRuntimeClient, type AgentRuntimeSignInMethod, type AgentRuntimeStatus, type BackgroundComputeConnection } from '@flux/contracts';
 import { consoleTicket } from '../agent-runtime/api';
 import { SIGN_IN_PROBLEM, signInFailure } from '../agent-runtime/copy';
 import type { ConsoleOutcome } from '../agent-runtime/SignInConsole';
@@ -47,8 +47,19 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, keys, o
   const [step, setStep] = useState<Step>({ kind: 'choose' });
   // A sign-in that is running ends only through its own Cancel: closing the window would leave the runtime to recover.
   const close = () => { if (step.kind !== 'sign_in') onClose(); };
+  // A step replaces the one before it, and the control that held focus goes with it: focus falls to <body>, where Escape reaches nothing
+  // because the rest of the app is inert (#910). Whenever focus was lost, it comes back to the window, so Escape still closes it.
+  const windowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const active = document.activeElement;
+    if (active && active !== document.body && active.isConnected) return;
+    windowRef.current?.focus({ preventScroll: true });
+  }, [step.kind]);
 
-  const offered = (kind: AiConnectionKind) => (kind === 'api_key' ? apiKeys : !!runtime?.enabled && runtime.clients[PLANS[kind].client] === 'available');
+  // A plan is offered when the server has it and its place to sign in is ready: while it is not (it is starting, or the host cannot run
+  // it), a sign-in could only fail with words nobody can act on (#910).
+  const notReady = !!runtime?.enabled && runtime.pool === 'starting';
+  const offered = (kind: AiConnectionKind) => (kind === 'api_key' ? apiKeys : !!runtime?.enabled && !notReady && runtime.clients[PLANS[kind].client] === 'available');
   const choices = CHOICES.filter((choice) => choice.kind === 'api_key' || !have.has(choice.kind));
   const [chosen, setChosen] = useState<AiConnectionKind | null>(null);
   const selected = chosen && offered(chosen) ? chosen : choices.find((choice) => offered(choice.kind))?.kind ?? null;
@@ -59,7 +70,11 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, keys, o
       const { ticket } = await consoleTicket(PLANS[plan].method, PLANS[plan].client);
       setStep({ kind: 'sign_in', plan, ticket });
     } catch (cause) {
-      setStep({ kind: 'failed', plan, message: cause instanceof ApiError && cause.status < 500 ? cause.message : signInFailure({ error: 'unavailable', ended: null }, PLANS[plan].cli) });
+      // The server's own words say what to do ("starting; try again shortly"); a vague failure says only that the sign-in could not be confirmed.
+      const message = cause instanceof ApiError && cause.status < 500 ? cause.message
+        : cause instanceof ApiError && cause.status === 503 && cause.code === AGENT_RUNTIME_ERRORS.unavailable ? `${cause.message}. If it stays like this, ask whoever runs Flux.`
+          : signInFailure({ error: 'unavailable', ended: null }, PLANS[plan].cli);
+      setStep({ kind: 'failed', plan, message });
     }
   }
   function ended(plan: PlanKind, outcome: ConsoleOutcome) {
@@ -69,7 +84,7 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, keys, o
   }
 
   const body = (
-    <div className="cai-window">
+    <div className="cai-window" ref={windowRef} tabIndex={-1}>
       {step.kind === 'choose' ? (
         <form onSubmit={(event) => { event.preventDefault(); if (selected) { if (selected === 'api_key') setStep({ kind: 'key' }); else void signIn(selected); } }}>
           <h2 className="cai-window__title">Connect your AI</h2>
@@ -83,7 +98,8 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, keys, o
                   <Icon name={choice.icon} size={16} />
                   <span className="cai-window__text">
                     <span className="cai-window__name">{choice.title}</span>
-                    <span className="cai-window__detail">{on ? choice.detail : runtimeFailed && choice.kind !== 'api_key' ? 'Flux couldn’t check this just now' : 'Not offered on this Flux server'}</span>
+                    <span className="cai-window__detail">{on ? choice.detail : runtimeFailed && choice.kind !== 'api_key' ? 'Flux couldn’t check this just now'
+                      : notReady && choice.kind !== 'api_key' ? 'Not ready yet. If this stays, ask whoever runs Flux.' : 'Not offered on this Flux server'}</span>
                   </span>
                 </label>
               );

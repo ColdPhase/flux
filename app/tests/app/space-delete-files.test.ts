@@ -54,3 +54,10 @@ test('deleting a space queues the bytes of its files and the file cleanup remove
   assert.ok(!(await fileRows(db).pendingGarbage(500)).includes(doomed.body.id), 'the queue is empty of them once they are removed');
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM file_garbage WHERE id = ANY($1)', [[doomed.body.id, staged.body.id]])).rows[0].n, 0);
 });
+
+test('a sweep removes the whole queue of a deleted space, not one batch of fifty (#908)', async () => {
+  // A space with many files queues them all when it is deleted; at fifty a sweep and a sweep every ten minutes it took hours to leave the disk.
+  const ids = (await pool.query<{ id: string }>("INSERT INTO file_garbage (id) SELECT gen_random_uuid() FROM generate_series(1, 120) RETURNING id")).rows.map((row) => row.id);
+  await createFileUseCases(fileUnitOfWork(db), await diskFileStorage(filesDir)).cleanup();
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM file_garbage WHERE id = ANY($1)', [ids])).rows[0].n, 0, 'one sweep emptied the queue');
+});

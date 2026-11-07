@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { GrantProjectCommand, ProjectGrant } from '@flux/contracts';
 import { recordEvent } from '../events.js';
 import type { Database, Principal } from '../types.js';
-import { eventPorts, requireRoleAuthority, type DomainEventSink } from './common.js';
+import { eventPorts, type DomainEventSink } from './common.js';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError } from './errors.js';
 import { enforce, evaluateProject, isManager, isUuid } from './policy.js';
 import type { AccessPorts, ProjectRepository } from './repositories.js';
@@ -44,7 +44,8 @@ export async function listProjectGrants(principal: Principal, projectId: string,
 
 /**
  * Creates or replaces the grant of one person on a project. The grantee must be a member of the
- * project's workspace. Grants that affect an owner need an owner. Agents have no grants: an agent
+ * project's workspace; any person in the company can be added, a company owner too, as New space allows (#905). The owner role
+ * itself is not touched, so changing it stays with an owner (`members.ts`). Agents have no grants: an agent
  * has exactly its owner's rights (F-036 AG-3, #855).
  */
 export async function grantProject(principal: Principal, projectId: string, command: GrantProjectCommand, db: Database, ports: GrantPorts, eventSink?: DomainEventSink): Promise<ProjectGrant> {
@@ -59,7 +60,6 @@ export async function grantProject(principal: Principal, projectId: string, comm
     const workspaceId = project!.workspaceId;
     const member = await projects.member(workspaceId, target.id);
     if (!member) throw new RuleViolationError('Only people in the company can be added to a space', 'NOT_A_MEMBER');
-    if (member.role === 'owner') requireRoleAuthority(actor!, 'owner');
     if (role === 'manager' && member.role === 'guest') throw new RuleViolationError('A guest cannot be a space admin', 'GUEST_NOT_SPACE_ADMIN');
     if (role === 'denied') {
       // F-037: the company's owners and admins can change any space, so a space admin who is a plain member cannot shut one out.
@@ -88,10 +88,9 @@ export async function revokeProjectGrant(principal: Principal, projectId: string
   await db.transaction(async (tx) => {
     const projects = ports.projects(tx);
     await projects.lockForGrantChange(projectId);
-    const { actor, project } = enforce(await evaluateProject(principal, 'project.manage', projectId, ports.access(tx), { lock: true }), 'project');
+    const { project } = enforce(await evaluateProject(principal, 'project.manage', projectId, ports.access(tx), { lock: true }), 'project');
     const grant = isUuid(grantId) ? await projects.lockGrant(projectId, grantId) : null;
     if (!grant) throw new NotFoundError('Grant', 'GRANT_NOT_FOUND');
-    if (await projects.memberRole(project!.workspaceId, grant.userId) === 'owner') requireRoleAuthority(actor!, 'owner');
     await requireAnotherSpaceAdmin(projects, principal, projectId, grant);
     await projects.deleteGrant(grantId);
     await recordEvent(eventPorts(ports, tx), principal, project!.workspaceId, 'project.grant_revoked.v1', projectId, { grantId });

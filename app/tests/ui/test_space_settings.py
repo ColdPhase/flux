@@ -160,6 +160,29 @@ class SpaceSettings(unittest.TestCase):
         card.get_by_role("button", name="Create space").click()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
         pid = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
+        type(self).ids["kai_space"] = pid
+        grants = self.api(page, "GET", f"/api/v1/projects/{pid}/grants")
+        self.assertEqual(sorted((g["principal"]["id"], g["role"]) for g in grants), sorted([(self.ids["kai"], "manager"), (self.ids["ada"], "contributor")]))
+
+    def test_01c_a_space_admin_who_is_a_member_removes_and_adds_the_company_owner_later(self) -> None:
+        """#905: Add people offers the company owner like anyone else, and neither adding nor removing them answers OWNER_REQUIRED."""
+        self.ensure_world()
+        pid = self.ids["kai_space"]
+        page = self.page("kai")
+        page.goto(f"/projects/{pid}/settings")
+        expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+        card = page.get_by_role("list", name="People in Kai’s room")
+        expect(card).to_contain_text("Ada Kowalska")
+        card.get_by_role("button", name="Remove Ada Kowalska from Kai’s room").click()
+        card.get_by_role("group", name="Remove Ada Kowalska").get_by_role("button", name="Remove", exact=True).click()
+        expect(page.locator(".spset__status")).to_have_text("Ada was removed from Kai’s room.")
+        expect(card).not_to_contain_text("Ada Kowalska")
+        page.get_by_role("button", name="Add people", exact=True).click()
+        add = page.get_by_role("group", name="Add people")
+        add.get_by_role("checkbox", name=re.compile("Ada Kowalska")).check()
+        add.get_by_role("button", name="Add 1 person").click()
+        expect(page.locator(".spset__status")).to_have_text("Ada is now in Kai’s room.")
+        expect(card).to_contain_text("Ada Kowalska")
         grants = self.api(page, "GET", f"/api/v1/projects/{pid}/grants")
         self.assertEqual(sorted((g["principal"]["id"], g["role"]) for g in grants), sorted([(self.ids["kai"], "manager"), (self.ids["ada"], "contributor")]))
 
@@ -177,6 +200,9 @@ class SpaceSettings(unittest.TestCase):
         page.get_by_role("button", name="Save").click()
         expect(page.locator(".spset__status")).to_have_text("Renamed to Kiln firmware.")
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{pid}")["name"], "Kiln firmware")
+        # The rename reloads the space in the background: wait for its new name to reach the page, so the switch below starts from what
+        # the page holds now and not from a state that is about to be replaced.
+        expect(page.get_by_role("list", name="People in Kiln firmware")).to_be_visible()
         # The AI switch: off since the space was made; on, then off again, each saying so in one line.
         switch = page.get_by_role("switch", name="AI")
         expect(switch).to_have_attribute("aria-checked", "false")

@@ -174,6 +174,9 @@ export function proactiveOutboxRows(db: DbExecutor) {
       return row ?? null;
     },
     async lockOwner(ownerId: string) {
+      // The lock a run takes before it reserves on a key (`lockLane`): a comparison and a run read the key's day one after the other, so
+      // both cannot hold the last of its budget (#910). Taken first, as the run takes it first.
+      await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext('personal-run-lane'), hashtext(${ownerId}))`);
       const [row] = await db.select({ id: schema.authUsers.id }).from(schema.authUsers)
         .where(eq(schema.authUsers.id, ownerId)).for('update');
       return Boolean(row);

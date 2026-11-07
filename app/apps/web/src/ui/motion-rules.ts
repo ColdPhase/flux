@@ -59,12 +59,12 @@ export function cssTimeToMs(value: string): number {
 export function routeView(pathname: string): string {
   const path = pathname.replace(/\/+$/, '') || '/';
   const project = /^\/projects\/([^/]+)(?:\/(tasks|map|docs|agents|github|live))?(?:\/|$)/.exec(path);
-  if (project && path !== '/projects/new') return `/projects/${project[1]}/${project[2] ?? 'conversation'}`;
+  if (project) return `/projects/${project[1]}/${project[2] ?? 'conversation'}`;
   const dm = /^\/dm\/(?!new$)([^/]+)(\/sketches)?(?:\/|$)/.exec(path);
   if (dm) return `/dm/${dm[1]}${dm[2] ?? ''}`;
   const material = /^\/materials\/([^/]+)/.exec(path);
   if (material) return `/materials/${material[1]}`;
   const place = /^\/(tasks|map|docs|search|inbox|dm|projects)(?:\/|$)/.exec(path);
-  if (place && !path.startsWith('/dm/new') && !path.startsWith('/projects/new')) return `/${place[1]}`;
+  if (place && !path.startsWith('/dm/new')) return `/${place[1]}`;
   return path;
 }

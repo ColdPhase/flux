@@ -27,7 +27,7 @@ export function phonePlaces(pathname: string, inboxUnread: number): BottomNavIte
 
 /** Where the dock is not drawn: a conversation (a project's, a direct message), and forms that start something. */
 export function phoneHidesDock(pathname: string): boolean {
-  if (/^\/projects\/new$/.test(pathname) || pathname === '/dm/new') return true;
+  if (pathname === '/dm/new') return true;
   if (/^\/projects\/[^/]+(\/conversations\/[^/]+)?$/.test(pathname)) return true;
   // Spokój (rule 7): a project's views and a direct message's sketches keep the header's Search, not the capsule.
   if (/^\/projects\/[^/]+\/(tasks|map|docs|agents)(\/|$)/.test(pathname)) return true;

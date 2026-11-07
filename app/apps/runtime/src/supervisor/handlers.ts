@@ -169,8 +169,9 @@ export async function handle(config: SupervisorConfig, request: SupervisorReques
       // Nothing of the person may outlive the release: no process (proved by reading them all), then no file.
       const owner = open.ok ? open.person : await ownerOf(config.dataDir, request.bindingId, config.separate);
       const quiet = await endProcesses(owner);
-      if (quiet) await clearLeftovers(config.tmpDir, owner);
-      const removed = quiet && await removeBinding(config.dataDir, request.bindingId);
+      // While something of theirs stays in /tmp their directory stays too, so their user id is given to nobody else and the release is asked again.
+      const cleared = quiet && await clearLeftovers(config.tmpDir, owner);
+      const removed = cleared && await removeBinding(config.dataDir, request.bindingId);
       send({ t: 'step', step: 'delete', outcome: removed ? 'ok' : 'failed' });
       const deleted = removed && !(await dataEntries(config.dataDir)).bindings.includes(request.bindingId);
       send({ t: 'step', step: 'verify', outcome: deleted ? 'ok' : 'failed' });
