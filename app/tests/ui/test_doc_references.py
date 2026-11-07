@@ -210,10 +210,15 @@ class DocReferenceJourney(unittest.TestCase):
         expect(page.locator(".wiki-bar__meta").get_by_text("New page", exact=True)).to_be_visible()
         expect(page.locator(".wiki-doc__crumb")).to_have_text(f"Everyone in {project_name} can read it")
 
-    def navigate_editor(self, page, project, suffix="new"):
+    def navigate_editor(self, page, project, suffix="new", *, loaders_held=False):
         # Actual browser history navigation observed by React Router, preserving the
         # document and component position rather than reloading away the regression.
         page.evaluate("path => { history.pushState({...history.state, key: crypto.randomUUID(), idx: (history.state?.idx ?? 0)+1}, '', path); dispatchEvent(new PopStateEvent('popstate')); }", f"/projects/{project}/docs/{suffix}")
+        if loaders_held:
+            # The test holds the destination's reads (#863 rule 2): the router has not committed, so the loading state stands in the
+            # content area and the editor it left is hidden underneath, not shown. The editor is waited for when the reads are let go.
+            expect(page.locator("#content [data-pending-view]")).to_be_visible()
+            return
         expect(existing_text(page) if LIVE and suffix != "new" else page.get_by_label("Text (Markdown)")).to_be_visible()
 
     def test_04_private_draft_follows_project_and_document_scope_without_document_reload(self):
@@ -376,7 +381,7 @@ class DocReferenceJourney(unittest.TestCase):
                 text.press("Control+s"); page.wait_for_function("window.saveBeforeNavigationHeld === true")
                 key = f"flux:doc-edit:{self.user}:new:{self.project}"
                 attempt = page.evaluate("key => JSON.parse(sessionStorage.getItem(key)).attempt", key)
-                self.navigate_editor(page, self.foreign)
+                self.navigate_editor(page, self.foreign, loaders_held=True)
                 page.wait_for_function("window.destinationLoadersHeld === 2")
                 route, response = saves.pop()
                 with page.expect_request_finished(lambda request: request.method == "POST" and request.url.endswith(f"/{self.project}/docs")):

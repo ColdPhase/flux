@@ -232,12 +232,28 @@ class RequestCardsJourney(unittest.TestCase):
         page, _ = self.cards("hubert", can_cancel=True)
         message = page.locator(f"[data-message-id='{self.ids['first']}']")
         expect(message).to_have_count(0)
+        # The highlight is a soft fill that fades by itself and lasts --dur-highlight, 600 ms at most (#863 rule 5): too short to be
+        # caught by polling for the attribute, so a MutationObserver records when the message is marked and when the mark goes.
+        page.evaluate("""() => {
+          window.__arrived = { marked: null, cleared: null };
+          new MutationObserver((records) => {
+            for (const record of records) {
+              const target = record.target;
+              if (!(target instanceof Element) || !target.hasAttribute('data-message-id')) continue;
+              const now = performance.now();
+              if (target.getAttribute('data-arrived') === 'true') window.__arrived.marked ??= now;
+              else if (window.__arrived.marked !== null) window.__arrived.cleared ??= now;
+            }
+          }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['data-arrived'] });
+        }""")
         page.get_by_role("region", name=REGION).locator("[data-request-id$='000000000001']").get_by_role("button", name="Open original message").click()
         expect(message).to_be_visible()
-        expect(message).to_have_attribute("data-arrived", "true")
         expect(message).to_contain_text("Please compare the second reading with the baseline.")
-        # The highlight is a soft fill that fades by itself (Spokój rule 6).
-        expect(message).not_to_have_attribute("data-arrived", "true", timeout=5000)
+        page.wait_for_function("window.__arrived.cleared !== null", timeout=5000)
+        arrived = page.evaluate("window.__arrived")
+        self.assertIsNotNone(arrived["marked"], "the message was marked as it came into view")
+        self.assertLessEqual(arrived["cleared"] - arrived["marked"], 1000, "the mark fades by itself within the highlight's 600 ms and its timer's slack, not the old 2 s")
+        expect(message).not_to_have_attribute("data-arrived", "true")
         # A link into the thread with #message-… lands on the message too.
         page2, _ = self.cards("hubert", can_cancel=True, open_url=self.thread_url(f"#message-{self.ids['first']}"))
         expect(page2.locator(f"[data-message-id='{self.ids['first']}']")).to_be_visible()
