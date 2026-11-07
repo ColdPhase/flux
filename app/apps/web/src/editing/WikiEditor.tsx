@@ -417,7 +417,8 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
       setSources(found);
       push();
     }, () => { if (!controller.signal.aborted) retry = window.setTimeout(() => void load(), 5000); });
-    rowsRef.current = { ...rowsRef.current, key };
+    // Until this read answers, nothing is called missing: a read cut short by the next change starts again.
+    rowsRef.current = { key, rows: rowsRef.current.rows, read: false };
     void load();
     return () => { controller.abort(); window.clearTimeout(retry); };
   }, [view, revision, focusTick, project.id, push]);
