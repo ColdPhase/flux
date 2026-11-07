@@ -537,10 +537,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     // An answer uses only what every person of the task can see: if one of them can no longer read the space, nothing is answered.
     if (kind === 'task_answer') for (const person of spec.audience ?? [])
       if (!(await ports.access.canUseProject({ kind: 'human', id: person }, 'read', spec.projectId, { lock: true }))) return refused('I can\'t answer: not everyone in this task can read this space.');
-    const enablement = await ports.runs.enablement(owner, { lock: true });
-    if (!enablement) return refused('I can\'t start: your AI is not connected.');
-    if (enablement.status === 'paused') return refused('I can\'t start: your agent is paused.');
-    if (enablement.agents.find((agent) => agent.workspaceId === place.workspaceId)?.agentId !== spec.agentId || !(await ports.access.canInvoke(principal, spec.agentId, { lock: true })))
+    // The agent's own setup (F-036 AG-1) is locked first, the task graph after it (`prepareTaskUse`), as everywhere else.
+    const enablement = await ports.runs.enablement(owner, { lock: true, agentId: spec.agentId });
+    if (!enablement || enablement.workspaceId !== place.workspaceId || !(await ports.access.canInvoke(principal, spec.agentId, { lock: true })))
       return refused('I can\'t start: I\'m not one of your agents here.');
     if (!(await ports.access.canUseProject({ kind: 'agent', id: spec.agentId }, 'read', spec.projectId, { lock: true }))) return refused('I can\'t start: I\'m not in this space.');
     const taskFence = await ports.runs.prepareTaskUse(place.projectId, spec.conversationId);
