@@ -1,0 +1,1 @@
+- Agents can read a public web page, when the operator sets `FLUX_WEB_READS=on` (off by default). The Flux server reads it, read-only and with the same guard as link cards, and the agent's answer ends with the pages it read. What a page says is data and can never make an agent act beyond "What it may do" or skip a wait ([#918](https://github.com/ColdPhase/flux/issues/918)).

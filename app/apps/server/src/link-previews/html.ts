@@ -10,7 +10,7 @@ export interface PagePreview { title: string | null; description: string | null 
 
 const NAMED: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ndash: '–', mdash: '—', hellip: '…', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”', copy: '©', middot: '·', bull: '•' };
 
-function decodeEntities(text: string): string {
+export function decodeEntities(text: string): string {
   return text.replace(/&(?:#(\d{1,7})|#x([0-9a-f]{1,6})|([a-z]{2,8}));/gi, (whole, dec, hex, name) => {
     if (name) return NAMED[name.toLowerCase()] ?? whole;
     const code = dec !== undefined ? Number(dec) : parseInt(hex, 16);
@@ -20,7 +20,7 @@ function decodeEntities(text: string): string {
 
 /** Control characters, line and paragraph separators, the byte order mark and the bidirectional overrides, which can reorder what is read. */
 // eslint-disable-next-line no-control-regex
-const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\ufeff\u202a-\u202e\u2066-\u2069\u200e\u200f]/g;
+export const UNSAFE = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\ufeff\u202a-\u202e\u2066-\u2069\u200e\u200f]/g;
 
 /** One line of plain text: entities decoded once, tags dropped (also those written as entities), unsafe characters and runs of white space collapsed, cut to `max`. */
 export function plainText(raw: string, max: number): string | null {

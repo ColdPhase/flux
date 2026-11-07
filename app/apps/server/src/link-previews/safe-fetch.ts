@@ -21,7 +21,20 @@ export const FETCH_LIMITS = { connectMs: 2_000, totalMs: 3_000, maxBytes: 256 * 
 
 type AddressClass = 'public' | 'private' | 'metadata';
 export type FetchFailure = 'blocked' | 'unreachable' | 'timeout' | 'status' | 'type' | 'redirects' | 'invalid';
-export type FetchResult = { ok: true; url: string; html: string } | { ok: false; reason: FetchFailure };
+/** `type` is the content type of the body that was read (absent from a fake in a test). */
+export type FetchResult = { ok: true; url: string; html: string; type?: string } | { ok: false; reason: FetchFailure };
+
+/**
+ * What a caller reads with the same guard. A link card reads the head of a web page (`text/html`); an agent that reads a page (#918)
+ * also takes plain text and reads more of it (its own `limits`), but every rule above the transport (address, redirects, no credentials) is the same.
+ */
+export interface FetchKind {
+  /** The `Accept` header. */
+  accept: string;
+  /** The content types that are read; anything else is refused as `type`. */
+  types: RegExp;
+}
+export const HTML_KIND: FetchKind = { accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1', types: /^(text\/html|application\/xhtml\+xml)\b/ };
 
 export interface FetchRules {
   resolve: HostResolver;
@@ -90,10 +103,10 @@ function decode(bytes: Buffer, contentType: string): string {
   try { return new TextDecoder(label, { fatal: false }).decode(bytes); } catch { return bytes.toString('utf8'); }
 }
 
-type Hop = { kind: 'page'; html: string } | { kind: 'redirect'; location: string };
+type Hop = { kind: 'page'; html: string; type: string } | { kind: 'redirect'; location: string };
 
 /** One request, no redirect followed. Resolves with the page body or the redirect target; rejects with a `Refused`. */
-function requestOnce(url: URL, rules: FetchRules, signal: AbortSignal, connectTo: { host: string; port: number } | null): Promise<Hop> {
+function requestOnce(url: URL, rules: FetchRules, signal: AbortSignal, connectTo: { host: string; port: number } | null, kind: FetchKind): Promise<Hop> {
   const port = connectTo?.port ?? rules.port(url)!;
   const secure = url.protocol === 'https:';
   return new Promise<Hop>((resolve, reject) => {
@@ -111,7 +124,7 @@ function requestOnce(url: URL, rules: FetchRules, signal: AbortSignal, connectTo
       protocol: url.protocol, hostname: hostOf(url), port, method: 'GET', path: `${url.pathname}${url.search}`, agent: false,
       // The Host header and the certificate name stay the address's own even when a test deployment connects elsewhere.
       servername: secure && !isIP(hostOf(url)) ? hostOf(url) : undefined,
-      headers: { host: url.host, 'user-agent': USER_AGENT, accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1', 'accept-encoding': 'identity', connection: 'close' },
+      headers: { host: url.host, 'user-agent': USER_AGENT, accept: kind.accept, 'accept-encoding': 'identity', connection: 'close' },
       lookup: guardedLookup(rules, connectTo),
     }, (incoming) => {
       const status = incoming.statusCode ?? 0;
@@ -122,7 +135,7 @@ function requestOnce(url: URL, rules: FetchRules, signal: AbortSignal, connectTo
         return location ? done(null, { kind: 'redirect', location }) : done(new Refused('status'));
       }
       if (status !== 200) { incoming.destroy(); return done(new Refused('status')); }
-      if (!/^(text\/html|application\/xhtml\+xml)\b/.test(type)) { incoming.destroy(); return done(new Refused('type')); }
+      if (!kind.types.test(type)) { incoming.destroy(); return done(new Refused('type')); }
       const chunks: Buffer[] = [];
       let size = 0;
       incoming.on('data', (chunk: Buffer) => {
@@ -130,9 +143,9 @@ function requestOnce(url: URL, rules: FetchRules, signal: AbortSignal, connectTo
         chunks.push(chunk.length > room ? chunk.subarray(0, room) : chunk);
         size += Math.min(chunk.length, room);
         // The head of a page is all that is read; the rest is never downloaded.
-        if (size >= rules.limits.maxBytes) { incoming.destroy(); done(null, { kind: 'page', html: decode(Buffer.concat(chunks), type) }); }
+        if (size >= rules.limits.maxBytes) { incoming.destroy(); done(null, { kind: 'page', html: decode(Buffer.concat(chunks), type), type }); }
       });
-      incoming.on('end', () => done(null, { kind: 'page', html: decode(Buffer.concat(chunks), type) }));
+      incoming.on('end', () => done(null, { kind: 'page', html: decode(Buffer.concat(chunks), type), type }));
       incoming.on('error', () => done(settled ? null : new Refused('unreachable')));
     });
     const onAbort = () => done(new Refused('timeout'));
@@ -148,16 +161,16 @@ function requestOnce(url: URL, rules: FetchRules, signal: AbortSignal, connectTo
   });
 }
 
-/** Fetches the page at `address`: the start of its HTML, or why not. Never throws. */
-export async function fetchPage(address: string, rules: FetchRules = PRODUCTION_RULES, connectTo?: (host: string) => { host: string; port: number } | null): Promise<FetchResult> {
+/** Fetches the page at `address`: the start of its body (HTML unless `kind` says otherwise), or why not. Never throws. */
+export async function fetchPage(address: string, rules: FetchRules = PRODUCTION_RULES, connectTo?: (host: string) => { host: string; port: number } | null, kind: FetchKind = HTML_KIND): Promise<FetchResult> {
   const deadline = AbortSignal.timeout(rules.limits.totalMs);
   let url: URL;
   try { url = new URL(address); } catch { return { ok: false, reason: 'invalid' }; }
   try {
     for (let hop = 0; hop <= rules.limits.maxRedirects; hop++) {
       if (literalRefusal(url, rules)) return { ok: false, reason: 'blocked' };
-      const result = await requestOnce(url, rules, deadline, connectTo?.(hostOf(url)) ?? null);
-      if (result.kind === 'page') return { ok: true, url: url.href, html: result.html };
+      const result = await requestOnce(url, rules, deadline, connectTo?.(hostOf(url)) ?? null, kind);
+      if (result.kind === 'page') return { ok: true, url: url.href, html: result.html, type: result.type };
       try { url = new URL(result.location, url); } catch { return { ok: false, reason: 'invalid' }; }
     }
     return { ok: false, reason: 'redirects' };

@@ -210,7 +210,7 @@ describe('the resolver (c-ares, off the shared thread pool)', () => {
 
 describe('redirects', () => {
   test('up to three are followed, a fourth is not', async () => {
-    assert.deepEqual(await fetchPage(at('ok.test', '/r/3'), rules()), { ok: true, url: at('ok.test', '/r/0'), html: page('<title>Arrived</title>') });
+    assert.deepEqual(await fetchPage(at('ok.test', '/r/3'), rules()), { ok: true, url: at('ok.test', '/r/0'), html: page('<title>Arrived</title>'), type: 'text/html' });
     assert.deepEqual(await fetchPage(at('ok.test', '/r/4'), rules()), { ok: false, reason: 'redirects' });
   });
 

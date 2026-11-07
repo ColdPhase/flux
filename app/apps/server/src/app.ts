@@ -45,6 +45,8 @@ import { agentQuestionRoutes } from './agent-connection/agent-questions.js';
 import { agentMcpPolicyRoutes } from './agent-connection/mcp-policy-routes.js';
 import { proactiveComparisonRoutes } from './proactive-comparison/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
+import { webReader as createWebReader } from './web-reads/reader.js';
+import { CLOSED_WORLD_RULES } from './link-previews/safe-fetch.js';
 import { returnRoutes } from './returns/routes.js';
 import { needsYouRoutes } from './needs-you/routes.js';
 import { docRoutes } from './docs/routes.js';
@@ -288,9 +290,12 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(aiRoutes(agentMcpPolicyRoutes), { db, sessions: identity });
   await app.register(aiRoutes(proactiveComparisonRoutes), { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey,
     comparisonsEnabled: config.backgroundComparisons });
+  // The agents' web page reads (#918): the link cards' guard, a test deployment's closed world, and only when the operator turned them on.
+  const webReader = createWebReader({ enabled: config.webReads.enabled, ...(config.linkPreviews.testHosts.size ? { rules: CLOSED_WORLD_RULES,
+    connectTo: (host: string) => config.linkPreviews.testHosts.get(host) ?? null } : {}) });
   registerMcpRoute(app, db, identity.auth, identityConfig.publicOrigin, config.fixture.failureInjection && !!config.fixture.token,
     identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null,
-    identity.confirmation, identityConfig.oidc?.label, githubReadProvider);
+    identity.confirmation, identityConfig.oidc?.label, githubReadProvider, webReader);
   // A personal run's MCP token (F-027 A2): signed here, the authorization server, for the worker only.
   const githubRead = githubReadProvider ? createGithubUseCases(db, githubReadProvider) : null;
   registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin, githubRead ? currentGithubReactionFacts(githubRead) : undefined);

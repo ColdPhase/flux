@@ -2,6 +2,7 @@ import { backgroundComparisonsEnabled, loadAgentRuntimeConfig, loadPushServerCon
 import { loadBackgroundMasterKey } from '@flux/db';
 import { loadIdentityConfig, type IdentityConfig } from './identity/index.js';
 import { loadLinkPreviewsConfig, type LinkPreviewsConfig } from './link-previews/config.js';
+import { loadWebReadsConfig, type WebReadsConfig } from './web-reads/config.js';
 
 /** Test-deployment switches (#88); both are off in a production install. */
 export interface FixtureConfig {
@@ -37,6 +38,8 @@ export interface ServerConfig {
   agentRuntime: AgentRuntimeConfig;
   /** `FLUX_LINK_PREVIEWS=on` (#469): the server may fetch the pages of links in messages for their cards. Off by default. */
   linkPreviews: LinkPreviewsConfig;
+  /** `FLUX_WEB_READS=on` (#918): the agents may read web pages through a Flux tool. Off by default. */
+  webReads: WebReadsConfig;
 }
 
 export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroundKeyPath?: string): ServerConfig {
@@ -61,5 +64,6 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroun
     developmentLiveEditing: env.FLUX_DEVELOPMENT_LIVE_EDITING === 'true',
     agentRuntime: loadAgentRuntimeConfig(env),
     linkPreviews: loadLinkPreviewsConfig(env),
+    webReads: loadWebReadsConfig(env),
   };
 }

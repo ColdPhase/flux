@@ -189,6 +189,11 @@ VARIABLES: dict[str, Var] = {
     "FLUX_LINK_PREVIEWS": Var("collaboration", "`on` · `off`",
         "`on` lets the server fetch the title and description of links in messages for their cards. Only public "
         "`http(s)` addresses on default ports; never in encrypted spaces. A fetch tells the site this server's address.", "on"),
+    "FLUX_WEB_READS": Var("ai", "`on` · `off`",
+        "`on` lets the server read a public web page for an agent that asks for it (the `flux_read_web` tool, read-only, GET only), "
+        "with the guard of link cards: public `http(s)` addresses on default ports, three redirects at most, bounded in time and size. "
+        "The agent's answer lists the pages it read. A read tells the site this server's address, and the open web can try to instruct "
+        "an agent: rights, waits and Undo are the defence. Other values stop the API.", "on"),
     "FLUX_STREAM_HEARTBEAT_MS": Var("collaboration", "integer, ≥ 100 ms",
         "Ping, session recheck and polling interval of the live WebSocket stream. Keep it below your proxy's idle timeout.", "25000"),
     # --- media
