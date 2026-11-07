@@ -1887,7 +1887,7 @@ export const agentTaskTaking = pgTable('agent_task_taking', {
 /** 0008 (#856): what the server must act on, written in the transaction that caused it and drained when the API is told. */
 export const agentTaskEvents = pgTable('agent_task_events', {
   id: uuid('id').primaryKey().defaultRandom(),
-  kind: text('kind', { enum: ['assigned', 'finished'] }).notNull(),
+  kind: text('kind', { enum: ['assigned', 'started', 'finished', 'released'] }).notNull(),
   workId: uuid('work_id').notNull().references(() => projectWorkItems.id, { onDelete: 'cascade' }),
   runId: uuid('run_id').references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
   ownerUserId: text('owner_user_id'),
@@ -1895,6 +1895,7 @@ export const agentTaskEvents = pgTable('agent_task_events', {
   byKind: text('by_kind'),
   byId: text('by_id'),
   attempts: integer('attempts').notNull().default(0),
+  nextTryAt: timestamp('next_try_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   handledAt: timestamp('handled_at', { withTimezone: true }),
 });

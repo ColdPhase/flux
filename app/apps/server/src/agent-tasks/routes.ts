@@ -56,10 +56,12 @@ export async function agentTaskRoutes(app: FastifyInstance, { db, sessions, boss
       const { work, run, rows, agent, admin } = await read(tx, principal, request.params.workId);
       const stopper = run?.stopRequestedBy ? { id: run.stopRequestedBy, name: (await rows.personName(run.stopRequestedBy)) ?? 'Former member' } : null;
       const waiting = run ? await tx.execute<{ n: number }>(rawCount(run.id)) : null;
+      const lastOwner = await rows.lastOwnerChange(work.id);
       return taskAgentState({
         viewerId: principal.id, viewerIsAdmin: admin,
         task: { ownerUserId: work.owner?.kind === 'human' ? work.owner.id : null, ownerAgentId: work.owner?.kind === 'agent' ? work.owner.id : null, status: work.status },
         agent, successor: run ? await rows.successor(run.id) : null, waitingChanges: Number(waiting?.rows[0]?.n ?? 0),
+        handedBackByAgent: lastOwner?.kind === 'agent' && lastOwner.id === agent?.id,
         run: run && { id: run.id, status: run.status, engine: run.engine, provider: run.provider, endReason: run.endReason, resumeAt: run.resumeAt,
           stopRequestedAt: run.stopRequestedAt, stopRequestedBy: stopper, planLimitResetsAt: run.planLimitResetsAt },
       });

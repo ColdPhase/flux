@@ -25,8 +25,9 @@ ALTER TABLE public.personal_runs ADD CONSTRAINT personal_runs_task_check CHECK (
 CREATE INDEX personal_runs_work_idx ON public.personal_runs USING btree (work_id, created_at DESC) WHERE work_id IS NOT NULL;
 
 -- What the server must act on, written in the transaction that caused it: a task was given to an agent, or to a person whose
--- setting names an agent (`assigned`), or a run on a task ended (`finished`). The API drains it as soon as it is told (NOTIFY),
--- so a task is taken within seconds and nothing is polled while idle. `attempts` bounds a row that keeps failing.
+-- setting names an agent (`assigned`), its agent's run began (`started`) or ended (`finished`), or a task was taken away from an agent
+-- (`released`). The API drains it as soon as it is told (NOTIFY), so a task is taken within seconds and nothing is polled while idle.
+-- `attempts` bounds a row that keeps failing; a failed row waits `next_try_at` before its next try.
 CREATE TABLE public.agent_task_events (
     id uuid DEFAULT gen_random_uuid() NOT NULL,
     kind text NOT NULL,
@@ -37,11 +38,12 @@ CREATE TABLE public.agent_task_events (
     by_kind text,
     by_id text,
     attempts smallint DEFAULT 0 NOT NULL,
+    next_try_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     handled_at timestamp with time zone,
     CONSTRAINT agent_task_events_pkey PRIMARY KEY (id),
-    CONSTRAINT agent_task_events_kind_check CHECK (kind = ANY (ARRAY['assigned'::text, 'finished'::text])),
-    CONSTRAINT agent_task_events_shape_check CHECK ((kind = 'finished') = (run_id IS NOT NULL)),
+    CONSTRAINT agent_task_events_kind_check CHECK (kind = ANY (ARRAY['assigned'::text, 'started'::text, 'finished'::text, 'released'::text])),
+    CONSTRAINT agent_task_events_shape_check CHECK ((kind = ANY (ARRAY['started'::text, 'finished'::text])) = (run_id IS NOT NULL)),
     CONSTRAINT agent_task_events_owner_check CHECK (num_nonnulls(owner_user_id, owner_agent_id) <= 1),
     CONSTRAINT agent_task_events_work_fkey FOREIGN KEY (work_id) REFERENCES public.project_work_items(id) ON DELETE CASCADE,
     CONSTRAINT agent_task_events_run_fkey FOREIGN KEY (run_id) REFERENCES public.personal_runs(id) ON DELETE CASCADE
@@ -58,6 +60,19 @@ BEGIN
   RETURN NULL;
 END $$;
 CREATE TRIGGER agent_task_events_notify AFTER INSERT ON public.agent_task_events FOR EACH STATEMENT EXECUTE FUNCTION public.agent_task_events_notify();
+
+-- The task is Doing when its agent's run really starts, not while it waits for room (AgentStates 1).
+CREATE FUNCTION public.personal_run_task_started() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'public', 'pg_temp'
+    AS $$
+BEGIN
+  INSERT INTO agent_task_events (kind, work_id, run_id) VALUES ('started', NEW.work_id, NEW.id);
+  RETURN NULL;
+END $$;
+CREATE TRIGGER personal_run_task_started AFTER UPDATE OF status ON public.personal_runs FOR EACH ROW
+  WHEN (NEW.work_id IS NOT NULL AND NEW.kind = 'task' AND OLD.status = 'queued' AND NEW.status = 'reading')
+  EXECUTE FUNCTION public.personal_run_task_started();
 
 -- Every end of a run on a task is written, whoever ends it: the worker, a sweep, Stop, AI turned off.
 CREATE FUNCTION public.personal_run_task_ended() RETURNS trigger
