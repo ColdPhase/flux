@@ -89,6 +89,13 @@ export interface TaskRunSpec {
   prompt: string;
   /** Deterministic per owner assignment, so a repeated start returns the same run. */
   clientRunId: string;
+  /** `task_answer` (#841): the run answers another agent's question, reads only, and uses only what every person of the task can see. */
+  kind?: 'task' | 'task_answer';
+  askedByRunId?: string;
+  /** How many questions in a row led to this run; the exchange stops at its bound. */
+  exchangeTurn?: number;
+  /** With `task_answer`: the task's people. Each must still be able to read the space, or nothing is answered. */
+  audience?: readonly string[];
 }
 export type TaskStart = { started: true; run: RunRecord; created: boolean } | { started: false; line: string };
 
@@ -508,6 +515,10 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     if (!(await ports.access.canUseProject(principal, 'write', spec.projectId, { lock: true }))) return refused('I can\'t start: you no longer have access to this space.');
     const existing = await ports.runs.runByClientId(owner, spec.clientRunId);
     if (existing) return { started: true, run: existing, created: false };
+    const kind = spec.kind ?? 'task';
+    // An answer uses only what every person of the task can see: if one of them can no longer read the space, nothing is answered.
+    if (kind === 'task_answer') for (const person of spec.audience ?? [])
+      if (!(await ports.access.canUseProject({ kind: 'human', id: person }, 'read', spec.projectId, { lock: true }))) return refused('I can\'t answer: not everyone in this task can read this space.');
     const enablement = await ports.runs.enablement(owner, { lock: true });
     if (!enablement) return refused('I can\'t start: your AI is not connected.');
     if (enablement.status === 'paused') return refused('I can\'t start: your agent is paused.');
@@ -521,9 +532,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     if (!admitted.ok) return refused(admitted.problem === 'runtime_sign_in' ? `I can't start: sign in to ${admitted.client === 'codex' ? 'ChatGPT' : 'Claude'} again.` : TASK_PROBLEM_LINE[admitted.problem]);
     const run = await ports.runs.insertRun({
       id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, ownerUserId: owner, agentId: spec.agentId,
-      connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `task:${spec.workId}:${spec.clientRunId}`, kind: 'task',
+      connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `${kind}:${spec.workId}:${spec.clientRunId}`, kind,
       prompt: spec.prompt, targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine,
-      aiEpoch: ai.epoch, workId: spec.workId,
+      aiEpoch: ai.epoch, workId: spec.workId, ...(spec.askedByRunId ? { askedByRunId: spec.askedByRunId } : {}), exchangeTurn: spec.exchangeTurn ?? 0,
     });
     // A request paused until the key's next day starts by itself then (the worker's queue tick); any other starts now.
     if (!run.resumeAt) await ports.queue.enqueue(run.id);

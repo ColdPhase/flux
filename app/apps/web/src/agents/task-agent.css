@@ -4,3 +4,6 @@
 .wd-agent__text { color: var(--t1); font-weight: 500; overflow-wrap: anywhere; }
 .wd-agent__actions { display: inline-flex; gap: var(--s-2); margin-left: auto; }
 .wd-agent[data-agent-line="failed"] .wd-agent__text { color: var(--t1); }
+
+/* Who is in the task (#841): small faces, then the words. */
+.wd-people { display: inline-flex; align-items: center; gap: 4px; vertical-align: middle; }

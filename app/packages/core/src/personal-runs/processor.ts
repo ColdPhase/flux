@@ -354,7 +354,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       fitted = await fit(compute, {
         connection: { id: connection.id, keyRef: connection.keyRef, provider: connection.provider, baseUrl: connection.baseUrl }, model: run.model,
         maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort,
-        system: run.kind === 'morning_summary' ? MORNING_SUMMARY_SYSTEM_PROMPT : run.kind === 'task' ? taskSystemPrompt(!!session) : session ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT, ...(session ? { tools: session.tools } : {}),
+        system: run.kind === 'morning_summary' ? MORNING_SUMMARY_SYSTEM_PROMPT : run.kind === 'task' || run.kind === 'task_answer' ? taskSystemPrompt(!!session, run.kind === 'task_answer') : session ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT, ...(session ? { tools: session.tools } : {}),
       }, run, read, beforeSend, personalRunMaxInputTokens(!!session));
     } catch {
       // The preflight count failed (provider down, key refused). Counting is free and nothing

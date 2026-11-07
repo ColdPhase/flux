@@ -337,7 +337,8 @@
               "still_applies",
               "about",
               "related",
-              "mentions"
+              "mentions",
+              "part_of"
             ]
           },
           "to": {

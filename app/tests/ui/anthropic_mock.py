@@ -5,7 +5,8 @@ against this server (the `anthropic-mock` Compose service of scripts/check_ui.sh
 provider: nothing here proves compatibility, billing or model behaviour. The tests script its
 next answers through `POST /__script` and read what the adapter sent through `GET /__requests`.
 
-Script fields (all optional): `text` (a template; `{first}`, `{message}` and `{work}` become the
+Script fields (all optional): `rules` (a list of `{"match": "...", "text": "..."}`: the first whose `match` is in the request answers
+with its `text` instead of `text`, so one script can answer several runs differently), `text` (a template; `{first}`, `{message}` and `{work}` become the
 source labels found in the request input; `{second}` is the second message), `delay` (seconds before answering), `status` (an HTTP
 error status to return instead), `stop_reason`, `input_tokens`, `output_tokens`.
 """
@@ -94,7 +95,13 @@ class Handler(BaseHTTPRequestHandler):
             time.sleep(float(current["delay"]))
         if current.get("status"):
             return self.reply(int(current["status"]), {"type": "error", "error": {"type": "api_error", "message": "scripted failure"}})
-        text = str(current["text"]).format(**labels(text_in))
+        wanted = str(current["text"])
+        haystack = json.dumps(body)
+        for rule in current.get("rules") or []:
+            if str(rule.get("match", "")) and str(rule["match"]) in haystack:
+                wanted = str(rule.get("text", ""))
+                break
+        text = wanted.format(**labels(text_in))
         return self.reply(200, {
             "id": f"msg_{uuid.uuid4().hex}", "type": "message", "role": "assistant", "model": body.get("model"),
             "content": [{"type": "text", "text": text}], "stop_reason": current["stop_reason"], "stop_sequence": None,

@@ -10,7 +10,7 @@ import { isAssistantText, redactCall } from './assistant-changes.js';
  * says what the change does and that some changes wait for the owner. The public schema is unchanged.
  */
 const RUN_EFFECT_DESCRIPTIONS: Record<string, string> = {
-  flux_create_task: 'Add one task to this project. A task for another person (ownerUserId) waits for your owner\'s OK.',
+  flux_create_task: 'Add one task to this project. A task for another person (ownerUserId) waits for your owner\'s OK. A task made from a message names it (sourceMessageId). To split a task, make each step a subtask of it (parentTaskId).',
   flux_update_task: 'Change one task at the version you last read (title, outcome, status, blocker, done-when, prerequisites).',
   flux_record_result: 'Record one observed result, optionally finishing one of its tasks at the version you last read.',
   flux_propose_decision: 'Propose one decision. It stays proposed; people decide.',

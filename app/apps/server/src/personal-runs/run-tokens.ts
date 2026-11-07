@@ -48,7 +48,8 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       const policy = await lockAgentMcpPolicy(tx, connectionId);
       if (!policy) return null;
       // The run's exact tools: reads, and the changes unless its "What it may do" is Only read (F-036 AG-3).
-      const readOnly = grant.connection.mayDo === 'read' || run.reactionAction && ['tell', 'draft_reply', 'check_task'].includes(run.reactionAction);
+      // An answer to another agent's question only reads, whatever the agent may do (TA-3: a question is not an instruction).
+      const readOnly = grant.connection.mayDo === 'read' || run.kind === 'task_answer' || run.reactionAction && ['tell', 'draft_reply', 'check_task'].includes(run.reactionAction);
       const tools = assistantRunTools(policy, readOnly ? ['flux.context.read'] : grant.connection.scopes);
       let context: string | undefined;
       if (run.reactionTaskId) {

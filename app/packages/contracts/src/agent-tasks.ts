@@ -41,3 +41,9 @@ export interface TaskAgentState {
   /** The run behind the line; its changes carry Undo. */
   runId: string | null;
 }
+
+/** `GET`: who is in a task (TA-1, C-10): its creator, its owner and anyone who wrote in its thread, with their agents that run on the server. */
+export const taskPeoplePath = (workId: string) => `/api/v1/work/${workId}/people`;
+export interface TaskPeople {
+  people: { id: string; name: string; agents: { id: string; name: string }[] }[];
+}

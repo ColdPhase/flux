@@ -1,6 +1,6 @@
 import type { PgBoss } from 'pg-boss';
 import type { FastifyInstance } from 'fastify';
-import { TASK_TAKING_PATH, taskAgentPath, taskAgentRetryPath, taskAgentStopPath, type SetTaskTaking } from '@flux/contracts';
+import { TASK_TAKING_PATH, taskAgentPath, taskAgentRetryPath, taskAgentStopPath, taskPeoplePath, type SetTaskTaking, type TaskPeople } from '@flux/contracts';
 import { createTaskTaking, enforce, evaluateProject, NotFoundError, ConflictError, ForbiddenError, stopRunBy, taskAgentState, type Principal } from '@flux/core';
 import { agentTaskRows, accessReader, listen, sql, workRows, type Database, type Transaction } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
@@ -42,25 +42,31 @@ export async function agentTaskRoutes(app: FastifyInstance, { db, sessions, boss
     if (!work) throw missing();
     await policyWorkAccess(tx).requireProject(principal, 'read', work.projectId).catch((error) => { throw error instanceof NotFoundError ? missing() : error; });
     const rows = agentTaskRows(tx);
-    const [run] = await rows.runsOfWork(workId, 1);
-    const holder = work.owner?.kind === 'agent' ? work.owner.id : run?.agentId ?? null;
+    const recent = await rows.runsOfWork(workId, 8);
+    const holder = work.owner?.kind === 'agent' ? work.owner.id : recent[0]?.agentId ?? null;
+    // The holder's own latest run says its state; another agent's answer in flight (#841) says it is waiting for it.
+    const run = recent.find((candidate) => candidate.agentId === holder && candidate.kind === 'task') ?? null;
+    const answering = recent.find((candidate) => candidate.kind === 'task_answer' && IN_FLIGHT.includes(candidate.status)) ?? null;
+    const answeringAgent = answering ? await rows.agent(answering.agentId) : null;
     const agent = holder ? await rows.agent(holder) : null;
     const owner = agent?.ownerUserId ? { id: agent.ownerUserId, name: (await rows.personName(agent.ownerUserId)) ?? 'Former member' } : null;
     const admin = (await evaluateProject(principal, 'project.manage', work.projectId, accessReader(tx))).allowed;
-    return { work, run: run && run.agentId === holder ? run : null, rows, agent: agent && owner ? { id: agent.id, name: agent.name, owner } : null, admin };
+    return { work, run, inFlight: recent.find((candidate) => IN_FLIGHT.includes(candidate.status)) ?? null, waitingForAnswer: answering && answeringAgent ? { name: answeringAgent.name, ownerId: answering.ownerUserId,
+        run: { status: answering.status, engine: answering.engine, provider: answering.provider, endReason: answering.endReason, resumeAt: answering.resumeAt } } : null, rows,
+      agent: agent && owner ? { id: agent.id, name: agent.name, owner } : null, admin };
   }
 
   app.get<{ Params: { workId: string } }>(taskAgentPath(':workId'), async (request, reply) => {
     const principal = await who(request);
     const state = await db.transaction(async (tx) => {
-      const { work, run, rows, agent, admin } = await read(tx, principal, request.params.workId);
+      const { work, run, waitingForAnswer, rows, agent, admin } = await read(tx, principal, request.params.workId);
       const stopper = run?.stopRequestedBy ? { id: run.stopRequestedBy, name: (await rows.personName(run.stopRequestedBy)) ?? 'Former member' } : null;
       const waiting = run ? await tx.execute<{ n: number }>(rawCount(run.id)) : null;
       const lastOwner = await rows.lastOwnerChange(work.id);
       return taskAgentState({
         viewerId: principal.id, viewerIsAdmin: admin,
         task: { ownerUserId: work.owner?.kind === 'human' ? work.owner.id : null, ownerAgentId: work.owner?.kind === 'agent' ? work.owner.id : null, status: work.status },
-        agent, successor: run ? await rows.successor(run.id) : null, waitingChanges: Number(waiting?.rows[0]?.n ?? 0),
+        agent, successor: run ? await rows.successor(run.id) : null, waitingChanges: Number(waiting?.rows[0]?.n ?? 0), waitingForAnswer,
         handedBackByAgent: lastOwner?.kind === 'agent' && lastOwner.id === agent?.id,
         run: run && { id: run.id, status: run.status, engine: run.engine, provider: run.provider, endReason: run.endReason, resumeAt: run.resumeAt,
           stopRequestedAt: run.stopRequestedAt, stopRequestedBy: stopper, planLimitResetsAt: run.planLimitResetsAt },
@@ -69,14 +75,30 @@ export async function agentTaskRoutes(app: FastifyInstance, { db, sessions, boss
     return reply.header('cache-control', 'no-store').send(state);
   });
 
+  // Who is in the task and their agents (TA-1): the people of the task, as everyone who can read it sees them.
+  app.get<{ Params: { workId: string } }>(taskPeoplePath(':workId'), async (request, reply) => {
+    const principal = await who(request);
+    const body = await db.transaction(async (tx): Promise<TaskPeople> => {
+      const { work, rows } = await read(tx, principal, request.params.workId);
+      const people: TaskPeople['people'] = [];
+      for (const id of await rows.taskPeople(work.id)) {
+        people.push({ id, name: (await rows.personName(id)) ?? 'Former member', agents: (await rows.ownServerAgents(id)).map(({ id: agentId, name }) => ({ id: agentId, name })) });
+      }
+      return { people: people.sort((a, b) => a.name.localeCompare(b.name)) };
+    });
+    return reply.header('cache-control', 'no-store').send(body);
+  });
+
   // Stop: the agent's owner or the space admin, at any time. The next call of the run is refused, what it changed stays with
   // Undo, and the task goes back to its owner, who is told who stopped it (the state line and the agent's message).
   app.post<{ Params: { workId: string } }>(taskAgentStopPath(':workId'), async (request, reply) => {
     const principal = await who(request);
     await db.transaction(async (tx) => {
-      const { work, run, agent, admin } = await read(tx, principal, request.params.workId);
-      if (!run || !agent || !IN_FLIGHT.includes(run.status) || work.owner?.id !== agent.id) throw new ConflictError('No agent is working on this task', 'AGENT_NOT_WORKING');
-      if (agent.owner.id !== principal.id && !admin) throw new ForbiddenError('Only the agent\'s owner or a space admin can stop it', 'AGENT_STOP_FORBIDDEN');
+      const { work, inFlight: run, agent, admin } = await read(tx, principal, request.params.workId);
+      if (!run || !agent || work.owner?.id !== agent.id) throw new ConflictError('No agent is working on this task', 'AGENT_NOT_WORKING');
+      // The run that is working is stopped by its own agent's owner or a space admin (AG-5): when an agent is waiting for another's answer,
+      // that is the answering agent's owner, not the one who asked.
+      if (run.ownerUserId !== principal.id && !admin) throw new ForbiddenError('Only the owner of the agent that is working, or a space admin, can stop it', 'AGENT_STOP_FORBIDDEN');
       enforce(await evaluateProject(principal, 'project.write', work.projectId, accessReader(tx), { lock: true }), 'project');
       await stopRunBy(personalRunPorts(tx, queue), run.id, principal.id);
     });
@@ -88,9 +110,9 @@ export async function agentTaskRoutes(app: FastifyInstance, { db, sessions, boss
   app.post<{ Params: { workId: string } }>(taskAgentRetryPath(':workId'), async (request, reply) => {
     const principal = await who(request);
     await db.transaction(async (tx) => {
-      const { work, run, rows, agent } = await read(tx, principal, request.params.workId);
+      const { work, inFlight, rows, agent } = await read(tx, principal, request.params.workId);
       if (!agent || agent.owner.id !== principal.id) throw new ForbiddenError('Only the agent\'s owner can try again', 'AGENT_RETRY_FORBIDDEN');
-      if (work.owner?.kind !== 'agent' || work.owner.id !== agent.id || (run && IN_FLIGHT.includes(run.status))) throw new ConflictError('Nothing to try again', 'AGENT_NOT_FAILED');
+      if (work.owner?.kind !== 'agent' || work.owner.id !== agent.id || inFlight) throw new ConflictError('Nothing to try again', 'AGENT_NOT_FAILED');
       await rows.noteAssigned(work.id, { kind: 'agent', id: agent.id }, { kind: 'human', id: principal.id });
     });
     void drain.drain();

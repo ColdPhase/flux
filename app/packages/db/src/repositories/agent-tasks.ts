@@ -117,6 +117,19 @@ export function agentTaskRows(db: DbExecutor) {
       await db.delete(ev).where(sql`${ev.handledAt} < now() - interval '7 days'`);
     },
 
+    /**
+     * The task's people (TA-1, C-10): its creator, its owner and anyone who wrote in its thread. When an agent made or holds the task, its
+     * owner is the person; a message written by an agent adds nobody (C-5).
+     */
+    async taskPeople(workId: string) {
+      const result = await db.execute<{ id: string }>(sql`SELECT DISTINCT uid AS id FROM (
+        SELECT CASE WHEN w.created_by_kind = 'human' THEN w.created_by_id ELSE (SELECT owner_user_id FROM agents WHERE id::text = w.created_by_id) END AS uid FROM project_work_items w WHERE w.id = ${workId}::uuid
+        UNION ALL SELECT COALESCE(w.owner_user_id, (SELECT owner_user_id FROM agents WHERE id = w.owner_agent_id)) FROM project_work_items w WHERE w.id = ${workId}::uuid
+        UNION ALL SELECT m.author_id FROM project_messages m JOIN project_task_discussions d ON d.conversation_id = m.conversation_id WHERE d.work_id = ${workId}::uuid AND m.author_id IS NOT NULL
+      ) people WHERE uid IS NOT NULL`);
+      return result.rows.map((row) => row.id);
+    },
+
     /** The runs on a task, newest first: its state in one plain line is read from the first. */
     runsOfWork(workId: string, limit: number) {
       return db.select().from(r).where(eq(r.workId, workId)).orderBy(desc(r.createdAt), desc(r.id)).limit(limit);

@@ -23,6 +23,7 @@ import { docsLinking } from '../docs/AddToDoc';
 import { getDoc } from '../docs/api';
 import { useAgentOwners } from '../agents/owners';
 import { HandOffDialog } from '../agents/HandOff';
+import { TaskPeople } from '../agents/TaskPeople';
 import { listProjectPeople, useProjectShell } from '../project/data';
 import { useWorkRead } from './useWorkRead';
 import { useNativeOwn, useWorkChoices, useDetailRelations, type DetailRelations, type DetailChoices } from './useDetailReads';
@@ -224,6 +225,8 @@ function OtherRelationships({ object, relations, project }: { object: WorkDetail
     const title = outgoing ? link.toTitle : link.fromTitle;
     if (!outgoing && other.type === 'doc') return [];
     if (outgoing && link.role === 'source' && ['message', 'material', 'thought'].includes(other.type)) return [];
+    // A subtask is listed in its parent's Subtasks (#841); the other way round it is one line, "Part of".
+    if (link.role === 'part_of' && !outgoing) return [];
     if (object.kind === 'work' && ['decision', 'result'].includes(other.type)) return [];
     // Thoughts a task is linked to are listed in its own "Linked thoughts" section.
     if (object.kind === 'work' && other.type === 'thought') return [];
@@ -483,6 +486,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
               </>
               : <span className="wd-value">{item.owner ? ownerView : 'Nobody yet'}</span>}</dd>
           </div>
+          <TaskPeople workId={item.id} revision={item.version} />
           <div className="wd-row">
             <dt>Came from</dt>
             <dd className="wd-from"><CameFrom item={item} links={relations.links} project={context.project} empty={emptyLinks(relations, 'Added directly on the Tasks tab.')} /></dd>
@@ -559,6 +563,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         ) : null}
 
         {item.prerequisites.length ? <Prerequisites item={item} openDetails={(view) => openDetails(view, { back: 'push' })} /> : null}
+        {item.subtasks?.length ? <Subtasks item={item} openDetails={(view) => openDetails(view, { back: 'push' })} /> : null}
 
         <TaskPullRequests item={item} project={context.project} writable={writable} reload={reload} />
 
@@ -659,6 +664,29 @@ function Prerequisites({ item, openDetails }: { item: OwnWork; openDetails: Retu
               <StatusGlyph status={prerequisite.status} size={14} />
               <span>{prerequisite.title}</span>
               <small>{STATUS_LABEL[prerequisite.status]}{prerequisite.parked ? ' · parked' : ''}{prerequisite.met ? '' : ' · waiting'}</small>
+              <Icon name="chevron-right" size={14} />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** The tasks that are part of this one (#841): how many are done, and who has each. The parent does not wait for them. */
+function Subtasks({ item, openDetails }: { item: OwnWork; openDetails: ReturnType<typeof useShellActions>['openDetails'] }) {
+  const subtasks = item.subtasks ?? [];
+  const done = subtasks.filter((subtask) => subtask.status === 'done').length;
+  return (
+    <section className="details__sec" aria-labelledby={`wd-subtasks-${item.id}`} data-subtasks="">
+      <h4 id={`wd-subtasks-${item.id}`}>Subtasks · {done} of {subtasks.length} done</h4>
+      <ul className="wd-links">
+        {subtasks.map((subtask) => (
+          <li key={subtask.id}>
+            <button type="button" className="wd-link" onClick={() => openDetails({ kind: 'work', id: subtask.id, projectId: item.projectId })}>
+              <StatusGlyph status={subtask.status} size={14} />
+              <span>{subtask.title}</span>
+              <small>{STATUS_LABEL[subtask.status]}{subtask.owner ? ` · ${subtask.owner.name}` : ''}</small>
               <Icon name="chevron-right" size={14} />
             </button>
           </li>

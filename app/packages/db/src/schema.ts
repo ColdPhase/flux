@@ -1322,7 +1322,7 @@ export const projectObjectLinks = pgTable('project_object_links', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
-  role: text('role', { enum: ['source', 'affects', 'still_applies', 'about', 'related', 'mentions'] }).notNull(),
+  role: text('role', { enum: ['source', 'affects', 'still_applies', 'about', 'related', 'mentions', 'part_of'] }).notNull(),
   fromType: text('from_type', { enum: ['work', 'decision', 'result', 'doc'] }).notNull(),
   fromId: uuid('from_id').notNull(),
   toType: text('to_type', { enum: ['message', 'thought', 'material', 'work', 'decision', 'result', 'doc', 'sketch'] }).notNull(),
@@ -1815,7 +1815,10 @@ export const personalRuns = pgTable('personal_runs', {
   connectionId: uuid('connection_id'),
   clientRunId: uuid('client_run_id').notNull(),
   requestFingerprint: text('request_fingerprint').notNull(),
-  kind: text('kind', { enum: ['ask', 'summarize', 'map_thought', 'scheduled', 'morning_summary', 'reaction', 'task'] }).notNull(),
+  kind: text('kind', { enum: ['ask', 'summarize', 'map_thought', 'scheduled', 'morning_summary', 'reaction', 'task', 'task_answer'] }).notNull(),
+  /** 0009 (#841): the run that asked this run's question, and how many questions in a row led here. */
+  askedByRunId: uuid('asked_by_run_id').references((): AnyPgColumn => personalRuns.id, { onDelete: 'set null' }),
+  exchangeTurn: smallint('exchange_turn').notNull().default(0),
   /** 0008 (#856): the task a `task` run works on; its place is the task's discussion. */
   workId: uuid('work_id').references((): AnyPgColumn => projectWorkItems.id, { onDelete: 'cascade' }),
   /** 0008 (#856): who pressed Stop, so the owner is told. */
