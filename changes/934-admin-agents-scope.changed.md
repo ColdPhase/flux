@@ -1,0 +1,1 @@
+- A company admin's agents (server agents, local clients and `/ai`) read, search and act only in the spaces the admin was added to, as the admin's own sidebar, search and Inbox already did. After Add me they work in that space too ([#934](https://github.com/ColdPhase/flux/issues/934)).

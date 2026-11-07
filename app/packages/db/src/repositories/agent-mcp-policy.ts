@@ -2,7 +2,7 @@ import { and, eq, isNull } from 'drizzle-orm';
 import type { AgentConnection, AgentMcpCapabilityId, AgentMcpPolicy, SaveAgentMcpPolicy } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
-import { loadActor, visibleProjectsSql } from './access.js';
+import { loadActor, projectMemberSql, visibleProjectsSql } from './access.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -32,7 +32,9 @@ export async function assistantProjectIds(tx: Transaction, connectionId: string)
     source: schema.agentConnections.computeSource }).from(schema.agentConnections).where(eq(schema.agentConnections.id, connectionId));
   if (row?.source !== 'owner_assistant') return null;
   const owner = await loadActor({ kind: 'human', id: row.ownerUserId }, row.workspaceId, tx);
-  return (await tx.select({ id: schema.projects.id }).from(schema.projects).where(visibleProjectsSql(owner))
+  // A company owner or admin reaches every space, but their assistant only the ones they were added to (C-15, #934).
+  return (await tx.select({ id: schema.projects.id }).from(schema.projects)
+    .where(and(visibleProjectsSql(owner), projectMemberSql(owner, schema.projects.id, schema.projects.visibility)))
     .orderBy(schema.projects.id)).map((project) => project.id);
 }
 
