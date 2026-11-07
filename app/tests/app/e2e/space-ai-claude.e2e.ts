@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { createDatabase } from '@flux/db';
-import { workspaceAiPolicyPath, type Workspace } from '@flux/contracts';
+import { projectAiPolicyPath, type Workspace } from '@flux/contracts';
 import { chromium, type Browser as Chromium } from 'playwright';
 import { register, uniqueEmail } from '../support/http.js';
 import { password } from '../support/people.js';
@@ -10,16 +10,17 @@ import { expect } from '../support/mcp.js';
 import { claudeBin, cleanClientHome, clientEvents, connectClient, scopes, seedOauthClient, sh, startFluxProxy, type ClientSpec } from '../support/mcp-client-harness.js';
 
 /**
- * F-029 workspace AI lock, S2 (#614), with the REAL pinned Claude Code (scripts/check_mcp_clients.sh): the client adds Flux
- * with its own `mcp add` and completes Flux's OAuth as the person; it lists and calls Flux's tools while AI is on; after an
- * owner turns AI off, the same connected client gets no Flux tool and no Flux content; after AI is turned on again, the same
- * client, with no new sign-in, works again. The model endpoint is the scripted local mock; no vendor account is used.
+ * AG-10 (F-029 S2, #614; per space under F-037), with the REAL pinned Claude Code (scripts/check_mcp_clients.sh): the client adds
+ * Flux with its own `mcp add` and completes Flux's OAuth as the person; it lists and calls Flux's tools while AI is on; after a
+ * space admin turns AI off in the space, the same connected client gets no content of that space (its sign-in is not lost, so it
+ * keeps its tools); after AI is turned on again, the same client, with no new sign-in, works again. The model endpoint is the
+ * scripted local mock; no vendor account is used.
  */
 after(() => { setTimeout(() => process.exit(process.exitCode ?? 0), 3000); });
 
 const spec: ClientSpec = { key: 'claude-ai-lock', client: 'claude', label: 'Claude Code for the AI lock', designation: 'claude_code', port: 19821 };
 
-test('a connected real Claude Code is refused after AI is turned off and works again after it is turned on', async () => {
+test('a connected real Claude Code gets nothing of a space after its AI is turned off and works again after it is turned on', async () => {
   const { pool } = createDatabase(process.env.DATABASE_URL!);
   const proxy = startFluxProxy(); await proxy.listen();
   const browser: Chromium = await chromium.launch({ headless: true, args: ['--no-sandbox'] });
@@ -50,8 +51,7 @@ test('a connected real Claude Code is refused after AI is turned off and works a
       } finally { await model.close(); }
     }
     const change = async (state: 'allowed' | 'blocked') => {
-      const current = expect(await owner.request('GET', `/api/v1/workspaces/${workspace.id}`), 200) as unknown as Workspace;
-      expect(await owner.request('PUT', workspaceAiPolicyPath(workspace.id), { body: { state }, headers: { 'if-match': `"${current.ai.version}"` } }), 200);
+      expect(await owner.request('PUT', projectAiPolicyPath(projectId), { body: { state } }), 200);
     };
 
     const on = await session();
@@ -60,8 +60,7 @@ test('a connected real Claude Code is refused after AI is turned off and works a
 
     await change('blocked');
     const off = await session();
-    assert.deepEqual(off.offered, [], `no Flux tool is offered while AI is off:\n${off.output}`);
-    assert.ok(!off.results.some((text) => text.includes('Sensor study')), `no Flux content reaches the client:\n${off.output}`);
+    assert.ok(!off.results.some((text) => text.includes('Sensor study')), `no content of the space reaches the client:\n${off.output}`);
 
     await change('allowed');
     const again = await session();

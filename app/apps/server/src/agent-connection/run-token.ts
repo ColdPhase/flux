@@ -1,5 +1,5 @@
 import { RUN_TOKEN_LIMITS } from '@flux/contracts';
-import { DomainError, requireWorkspaceAi } from '@flux/core';
+import { DomainError, requireSpaceAi } from '@flux/core';
 import { personalRunTokenRows, accessReader, type Database, type Transaction } from '@flux/db';
 import { toolError } from './tool-results.js';
 
@@ -48,8 +48,8 @@ export async function requireLiveRun(tx: Transaction, claims: { ownerUserId: str
     || row.projectId !== claims.run.projectId || row.conversationId !== claims.run.conversationId || row.stopRequestedAt !== null
     || (options.newCall && row.mcpLimit !== null)) throw runEnded();
   if (await rows.assistantConnectionId(row.ownerUserId, row.workspaceId) !== claims.connectionId) throw runEnded();
-  // F-029: the run works only while AI is on in its workspace, at the epoch it was admitted under.
-  await requireWorkspaceAi(accessReader(tx), row.workspaceId, { lock: options.lock ?? false, epoch: row.aiEpoch });
+  // AG-10: the run works only while AI is on in its space, at the epoch it was admitted under.
+  await requireSpaceAi(accessReader(tx), row.projectId, { lock: options.lock ?? false, epoch: row.aiEpoch });
   return row;
 }
 

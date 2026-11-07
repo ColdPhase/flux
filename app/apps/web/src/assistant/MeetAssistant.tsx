@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 import type { PersonalAssistantStatus } from '@flux/contracts';
 import { useSmallMoments } from '../app/smallMoments';
 import { Button, Kreska, agentHue } from '../ui';
-import { useAllAiBlocked } from '../ai/workspaceAi';
+import { useAllAiBlocked } from '../ai/spaceAi';
 import { getAssistantStatus } from './api';
 
 // Home's one set-up card (F-027 AST-10 Journey 1, step 1): shown until the assistant is set up or the person

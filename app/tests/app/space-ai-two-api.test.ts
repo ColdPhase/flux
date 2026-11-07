@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { PgBoss } from 'pg-boss';
-import { workspaceAiPolicyPath, type Conversation, type Workspace } from '@flux/contracts';
+import { projectAiPolicyPath, type Conversation, type Project, type Workspace } from '@flux/contracts';
 import { PERSONAL_RUN_JOB, testFixturePersonalConnections } from '@flux/core';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { connectionString, db, pool } from './support/db.js';
@@ -11,9 +11,9 @@ import { beginOauth, expect, mcp, oauthToken } from './support/mcp.js';
 import { expectStatus, person, project, workspace, type Person } from './support/people.js';
 import { FakeQueue } from './support/personal-runs.js';
 import { waitFor } from './support/wait.js';
-import { ensureWorkspaceAiAllowed, setWorkspaceAi, workspaceAiRow } from './support/workspace-ai.js';
+import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 
-// F-029 workspace AI lock, S2 (#614), AC-5 "actual multi-process enforcement and provider-call negative controls".
+// AG-10 (F-029 S2, #614; per space under F-037), AC-5 "actual multi-process enforcement and provider-call negative controls".
 // Three processes of the check stack, one database: the `api` container takes the turn-off, the `api2` container must refuse
 // at once (an MCP tool list, a new run), and the `worker` container must refuse a dispatch of work admitted before AI was
 // turned off, with ZERO requests reaching the mock provider; the same steps while AI is on reach it (the positive control).
@@ -35,17 +35,16 @@ const ended = (id: string) => waitFor(async () => {
   return ['queued', 'reading', 'dispatching'].includes(row.status) ? null : row;
 }, `run ${id} ended by the worker container`, 30_000);
 
-describe('workspace AI lock across the api, api2 and worker containers', { skip: !live && 'needs FLUX_TEST_PERSONAL_RUNS=anthropic-mock' }, () => {
-  let owner: Person; let second: Browser; let ws: Workspace; let thread: Conversation; let agentId: string; let accessToken: string; let boss: PgBoss;
+describe('space AI switch across the api, api2 and worker containers', { skip: !live && 'needs FLUX_TEST_PERSONAL_RUNS=anthropic-mock' }, () => {
+  let owner: Person; let second: Browser; let ws: Workspace; let place: Project; let thread: Conversation; let agentId: string; let accessToken: string; let boss: PgBoss; let bound: { query: string };
   const runs = personalRunUseCases(db, { queue: new FakeQueue().factory, connections: testFixturePersonalConnections, providerEnabled: true });
-  const put = async (state: 'allowed' | 'blocked') => expectStatus(await owner.browser.request('PUT', workspaceAiPolicyPath(ws.id),
-    { body: { state }, headers: { 'if-match': `"${(await workspaceAiRow(ws.id))!.version}"` } }), 200);
+  const put = async (state: 'allowed' | 'blocked') => expectStatus(await owner.browser.request('PUT', projectAiPolicyPath(place.id), { body: { state } }), 200);
   const ask = (who: Browser) => who.request('POST', `/api/v1/conversations/${thread.id}/assistant-runs`, { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'What failed?' } });
 
   before(async () => {
     owner = await person('ai-two-api');
     ws = await workspace(owner, 'Two API club');
-    const place = await project(owner, ws.id, 'Lamp', 'workspace');
+    place = await project(owner, ws.id, 'Lamp', 'workspace');
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'The camera fails below 5 lux', clientMessageId: randomUUID() } }), 201) as Conversation;
@@ -56,6 +55,7 @@ describe('workspace AI lock across the api, api2 and worker containers', { skip:
     for (const [name, value] of owner.browser.cookies) second.cookies.set(name, value);
     const connection = expect(await owner.browser.request('POST', '/api/v1/agent-connections',
       { body: { agentId, selectedProjectIds: [place.id], scopes: ['flux.context.read'] } }), 201);
+    bound = { query: `flux_connection=${String(connection.id)}&flux_project=${place.id}` };
     const clientId = `flux-test-${randomUUID()}`;
     const redirectUri = 'http://127.0.0.1:19737/callback';
     await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types,
@@ -68,10 +68,10 @@ describe('workspace AI lock across the api, api2 and worker containers', { skip:
     boss.on('error', () => undefined);
     await boss.start();
   });
-  after(async () => { await ensureWorkspaceAiAllowed(ws.id); await boss?.stop({ graceful: false }).catch(() => undefined); });
+  after(async () => { await ensureSpaceAiAllowed(place.id); await boss?.stop({ graceful: false }).catch(() => undefined); });
 
   test('control: while AI is on, api2 serves the connection and a run started there reaches the provider through the worker', async () => {
-    assert.ok(lists(await mcp(accessToken, 1, 'tools/list', {}, { base: api2Url })));
+    assert.ok(lists(await mcp(accessToken, 1, 'tools/list', {}, { base: api2Url, ...bound })));
     const calls = await providerCalls();
     const started = expectStatus(await ask(second), 202) as { id: string };
     assert.match((await ended(started.id)).status, /completed|truncated/);
@@ -82,10 +82,10 @@ describe('workspace AI lock across the api, api2 and worker containers', { skip:
     const calls = await providerCalls();
     await put('blocked');
     try {
-      const listed = await mcp(accessToken, 2, 'tools/list', {}, { base: api2Url });
-      assert.deepEqual([listed.status, errorCode(listed.message)], [200, 'WORKSPACE_AI_BLOCKED'], 'api2 has no stale copy of the policy');
+      const listed = await mcp(accessToken, 2, 'tools/list', {}, { base: api2Url, ...bound });
+      assert.deepEqual([listed.status, errorCode(listed.message)], [200, 'SPACE_AI_OFF'], 'api2 has no stale copy of the policy');
       const asked = await ask(second);
-      assert.deepEqual([asked.status, code(asked.json)], [403, 'WORKSPACE_AI_BLOCKED']);
+      assert.deepEqual([asked.status, code(asked.json)], [403, 'SPACE_AI_OFF']);
       assert.equal(await providerCalls(), calls, 'no provider request');
     } finally { await put('allowed'); }
   });
@@ -93,8 +93,8 @@ describe('workspace AI lock across the api, api2 and worker containers', { skip:
   test('the worker container refuses to dispatch work admitted before AI was turned off, even after it is on again', async () => {
     const calls = await providerCalls();
     const stale = await runs.invoke({ kind: 'human', id: owner.id }, thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Old question' });
-    await setWorkspaceAi(ws.id, 'blocked'); // a flip whose sweep never ran
-    await setWorkspaceAi(ws.id, 'allowed');
+    await setSpaceAi(place.id, 'blocked'); // a flip whose sweep never ran
+    await setSpaceAi(place.id, 'allowed');
     await boss.send(PERSONAL_RUN_JOB, { runId: stale.run.id });
     assert.deepEqual(await ended(stale.run.id), { status: 'stopped', end_reason: 'ai_off' });
     assert.equal(await providerCalls(), calls, 'negative control: zero provider requests');

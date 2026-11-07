@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import type { IdentityCapabilities, RemovedPerson } from '@flux/contracts';
 import { getCapabilities } from '../api/auth';
 import { Link, useNavigate, useRevalidator, useSearchParams } from 'react-router';
-import { INVITE_CREATED_EVENT, INVITE_DEFAULT_EXPIRY_DAYS, INVITE_REVOKED_EVENT, WORKSPACE_AI_POLICY_CHANGED_EVENT, type InviteExpiryDays, type InviteRole, type SetWorkspaceAiPolicyResult,
+import { INVITE_CREATED_EVENT, INVITE_DEFAULT_EXPIRY_DAYS, INVITE_REVOKED_EVENT, type InviteExpiryDays, type InviteRole,
   type Workspace, type WorkspaceInvite, type WorkspaceMember, type WorkspaceRole } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { whenPageLive } from '../api/pageLeaving';
@@ -12,7 +12,8 @@ import { Avatar, Button, Icon, Input, Spinner, useRowMotion, useToast, Select, O
 import { isEncryptionEvent, type EncryptedWorkspace } from '../encryption/api';
 import { EncryptionSection } from '../encryption/EncryptionSection';
 import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, createInvite, firstName, getWorkspace, grantPerson, isManagerRole, listRemovedPeople, restorePerson, listInvites, listMembers, problemText, removeMember, renameCompany,
-  revokeInvite, setWorkspaceAi } from './api';
+  revokeInvite } from './api';
+import { DeleteSpaceDialog } from './DeleteSpace';
 import './people.css';
 
 const ROLES: WorkspaceRole[] = ['member', 'guest', 'admin', 'owner'];
@@ -83,14 +84,12 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
     const timer = window.setTimeout(() => setReload((n) => n + 1), 4000);
     return () => window.clearTimeout(timer);
   }, [moving, roster]);
-  // Someone turned AI off or on here (F-029, #614), unlocked, locked, gave an unlock password or changed the key (F-030, #655), or
-  // added, removed or changed someone (whose removal starts a key change): the rows show the state as it is now.
   const [invitesSeen, setInvitesSeen] = useState(0);
-  // Someone turned AI off or on here (F-029, #614), unlocked, locked, gave an unlock password or changed the key (F-030, #655), or
-  // added, removed or changed someone (whose removal starts a key change): the rows show the state as it is now.
+  // Someone unlocked, locked, gave an unlock password or changed the key (F-030, #655), or added, removed or changed someone (whose
+  // removal starts a key change): the rows show the state as it is now.
   useStreamEvents(me.user.id, (event) => {
     if (event.objectId !== workspaceId) return;
-    if (event.kind === WORKSPACE_AI_POLICY_CHANGED_EVENT || isEncryptionEvent(event.kind) || event.kind.startsWith('workspace.member_')) load();
+    if (isEncryptionEvent(event.kind) || event.kind.startsWith('workspace.member_')) load();
     // Someone joined through a link, or a link was made or revoked elsewhere (F-035).
     if (event.kind === 'workspace.member_added.v1' || event.kind === INVITE_CREATED_EVENT || event.kind === INVITE_REVOKED_EVENT) setInvitesSeen((n) => n + 1);
   }, load);
@@ -200,7 +199,6 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
       {workspace.encryption ? <EncryptionSection workspace={workspace} members={members} meId={me.user.id} myRole={myRole} offerCode={offerCode} onChanged={() => { load(); revalidator.revalidate(); }} /> : null}
 
       {/* An encrypted space never has AI and says so in place; the company has no AI switch (F-037: AI is per space). */}
-      {workspace.encryption ? <AiRow workspace={workspace} manager={manager} onChanged={() => { load(); revalidator.revalidate(); }} /> : null}
 
       <Leave workspace={workspace} soleOwner={myRole === 'owner' && owners <= 1} holder={manager} onLeft={onBack} meId={me.user.id} />
       {page ? null : <p className="details__keys"><kbd>]</kbd> toggles this panel · <kbd>Esc</kbd> closes it</p>}
@@ -251,6 +249,7 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const toast = useToast();
   const spaces = reachableSpaces.filter((space) => space.workspaceId === workspaceId);
+  const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
   const join = async (spaceId: string, spaceName: string) => {
     setBusy(spaceId);
     try {
@@ -267,9 +266,12 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
           <li className="people__item" key={space.id}><div className="people__row">
             <span className="people__who"><b>{space.member === false ? space.name : <Link to={`/projects/${space.id}`}>{space.name}</Link>}</b></span>
             {space.member === false ? <Button variant="quiet" className="access__invite" busy={busy === space.id} aria-label={`Add me to ${space.name}`} onClick={() => void join(space.id, space.name)}>Add me</Button> : null}
+            {/* Everyone holds the whole company and cannot be deleted; any other space can be, with a confirmation that names it (F-037). */}
+            {space.visibility === 'workspace' ? null : <Button variant="quiet" className="access__invite" aria-label={`Delete ${space.name}`} onClick={() => setDeleting({ id: space.id, name: space.name })}>Delete…</Button>}
           </div></li>
         ))}
       </ul>
+      <DeleteSpaceDialog space={deleting} onClose={() => setDeleting(null)} onDeleted={(_id, name) => { setDeleting(null); toast({ message: `${name} was deleted.` }); revalidator.revalidate(); }} />
     </section>
   );
 }
@@ -672,112 +674,6 @@ function Leave({ workspace, soleOwner, holder, onLeft, meId }: { workspace: Encr
             </div>
           </div>
         ) : <Button variant="quiet" className="details__leave" onClick={() => setConfirm(true)}>Leave {workspace.name}</Button>}
-      {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
-    </section>
-  );
-}
-
-const turnedOffOn = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
-
-/** "2 runs stopped." for the status line after AI is turned off (the work that was stopped at once); nothing when none was running. */
-function stoppedLine(stopped: SetWorkspaceAiPolicyResult['stopped']) {
-  if (!stopped) return '';
-  const total = stopped.runs + stopped.comparisons + stopped.requests + stopped.units + stopped.sessions;
-  return total ? ` ${total} ${total === 1 ? 'run' : 'runs'} stopped.` : '';
-}
-
-/**
- * AI in this workspace (F-029, #614): one row after the people and before Leave. Owners and admins see the state and one
- * quiet button; it asks first, in place, like Remove and Leave, because turning AI off stops work that cannot be restored.
- * Only the line and the button's label change between states, so the control never moves (Spokój rule 7). Everyone else
- * sees one read-only line while AI is off, and nothing while it is on.
- */
-function AiRow({ workspace, manager, onChanged }: { workspace: EncryptedWorkspace; manager: boolean; onChanged: () => void }) {
-  const ai = workspace.ai;
-  const blocked = ai?.state === 'blocked';
-  const [confirming, setConfirming] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState('');
-  const [stopped, setStopped] = useState(false);
-  const [problem, setProblem] = useState('');
-  const keys = useRef(attemptKeys());
-  const trigger = useRef<HTMLButtonElement>(null);
-  const confirmFirst = useRef<HTMLButtonElement>(null);
-  const lineId = useId();
-  const confirmId = useId();
-  useEffect(() => { if (confirming) confirmFirst.current?.focus(); }, [confirming]);
-  // Another person's change (or this tab's own, once read again) ends a question about the old state.
-  const seen = useRef(ai?.version);
-  useEffect(() => { if (seen.current !== ai?.version) { seen.current = ai?.version; setConfirming(false); } }, [ai?.version]);
-  if (!ai) return null;
-
-  // An encrypted space is always without AI (F-030, #655): everyone reads the same fixed line, in the row's place, and nobody has a switch.
-  if (workspace.encryption || ai.fixed === 'encrypted') {
-    return (
-      <section className="details__sec people__ai" aria-labelledby={`${lineId}-h`} data-ai-row="fixed">
-        <h4 id={`${lineId}-h`}>AI in {workspace.name}</h4>
-        <p className="people__ai-line" id={lineId}>Off · {workspace.name} is encrypted, so AI can never be turned on here.</p>
-      </section>
-    );
-  }
-
-  if (!manager) {
-    return blocked ? (
-      <section className="details__sec people__ai" aria-label={`AI in ${workspace.name}`} data-ai-row="readonly">
-        <p className="ov-note">AI is off in {workspace.name}. Its owners and admins turned it off.</p>
-      </section>
-    ) : null;
-  }
-
-  const target = blocked ? 'allowed' : 'blocked';
-  const when = turnedOffOn.format(new Date(ai.changedAt));
-  const line = blocked
-    ? `Off · turned off${ai.changedBy ? ` by ${ai.changedBy.name}` : ''} on ${when}. No agent or assistant can read or change anything here.`
-    : 'On · agents and assistants can work here.';
-  const closeConfirm = () => { setConfirming(false); requestAnimationFrame(() => trigger.current?.focus({ preventScroll: true })); };
-
-  async function change() {
-    if (busy) return;
-    setBusy(true); setProblem(''); setStatus(''); setStopped(false);
-    try {
-      const result = await setWorkspaceAi(workspace.id, target, ai!.version, keys.current.for(`${target}:${ai!.version}`));
-      keys.current.done();
-      setStatus(target === 'blocked' ? `AI is off in ${workspace.name}.${stoppedLine(result.stopped)}` : `AI is on in ${workspace.name}.`);
-      setStopped(target === 'blocked' && stoppedLine(result.stopped) !== '');
-      closeConfirm();
-      onChanged();
-    } catch (error) {
-      keys.current.done();
-      if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') setProblem('Someone changed this just now.');
-      else if (error instanceof ApiError && error.status === 403) setProblem('Only owners and admins can change this.');
-      else setProblem(problemText(error, { workspace: workspace.name }));
-      closeConfirm();
-      onChanged();
-    } finally { setBusy(false); }
-  }
-
-  return (
-    <section className="details__sec people__ai" aria-labelledby={`${lineId}-h`} data-ai-row={blocked ? 'off' : 'on'}>
-      <h4 id={`${lineId}-h`}>AI in {workspace.name}</h4>
-      <div className="people__ai-row">
-        <p className="people__ai-line" id={lineId}>{line}</p>
-        <Button ref={trigger} variant="secondary" className="people__ai-button" aria-describedby={lineId} aria-expanded={confirming} aria-controls={confirming ? confirmId : undefined}
-          onClick={() => { setStatus(''); setStopped(false); setProblem(''); setConfirming(!confirming); }}>{blocked ? 'Turn on AI' : 'Turn off AI'}</Button>
-      </div>
-      {confirming ? (
-        <div className="details__confirm people__confirm" id={confirmId} role="group" aria-label={blocked ? `Turn on AI in ${workspace.name}` : `Turn off AI in ${workspace.name}`}
-          onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); closeConfirm(); } }}>
-          <p>{blocked
-            ? 'People’s assistants and connected agents can work here again, with the access they had. Nothing that was stopped starts again.'
-            : `No agent or assistant, including each person’s own, can read or change anything in ${workspace.name}. Work they are doing now stops and is not posted. Nothing is deleted.`}</p>
-          <div className="details__actions">
-            <Button ref={confirmFirst} variant="primary" busy={busy} onClick={() => void change()}>{blocked ? 'Turn on AI here' : 'Turn off AI here'}</Button>
-            <Button variant="quiet" onClick={closeConfirm}>{blocked ? 'Keep AI off' : 'Keep AI on'}</Button>
-          </div>
-        </div>
-      ) : null}
-      {/* Announced to everyone; shown only when it says something the row's own line does not (what was stopped). */}
-      <p className={stopped ? 'people__ai-status' : 'ui-vh'} role="status">{status}</p>
       {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
     </section>
   );

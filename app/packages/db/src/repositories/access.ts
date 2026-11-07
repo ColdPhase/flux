@@ -10,7 +10,7 @@ import { keyGate } from './workspace-encryption.js';
  * (who may do what, from facts about the actor and the object); this module reads those facts and builds
  * the list conditions, and makes no decision of its own beyond the actor's standing. It satisfies core's
  * `AccessReader` port structurally (this package does not depend on core), so the shapes below mirror
- * core's `Principal`, `Actor` and `WorkspaceAi`; a mismatch fails to compile where an app passes
+ * core's `Principal`, `Actor` and `SpaceAi`; a mismatch fails to compile where an app passes
  * `accessReader(tx)` to a core function.
  *
  * Every statement here was moved from core's policy: the same locks and the same order of statements inside
@@ -32,14 +32,12 @@ export interface AccessActor {
   role: WorkspaceRole | null;
   agent: { ownerUserId: string; ownerRole: WorkspaceRole | null } | null;
   active: boolean;
-  blockedBy?: 'workspace_ai';
 }
 
-/** Core's `WorkspaceAi`: the workspace AI policy as one check reads it (F-029, #614). */
-export interface AccessWorkspaceAi {
+/** Core's `SpaceAi`: the AI switch of one space as a check reads it (F-029, #614, AG-10). */
+export interface AccessSpaceAi {
   state: 'allowed' | 'blocked';
   epoch: number;
-  version: number;
 }
 
 /** Core's `LoadOptions`. */
@@ -51,7 +49,7 @@ export interface AccessLoadOptions {
 const LEVEL = { none: 0, viewer: 1, contributor: 2, manager: 3 } as const;
 const MANAGER_ROLES: readonly WorkspaceRole[] = ['owner', 'admin'];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const NO_AI_POLICY: AccessWorkspaceAi = { state: 'blocked', epoch: 0, version: 0 };
+const NO_AI_POLICY: AccessSpaceAi = { state: 'blocked', epoch: 0 };
 
 function isUuid(value: unknown): value is string {
   return typeof value === 'string' && UUID.test(value);
@@ -62,14 +60,13 @@ function isManager(role: WorkspaceRole | null) {
 }
 
 /**
- * The workspace's AI policy, read fresh (never cached). With `lock` the row is taken `FOR SHARE`, so the
- * decision is ordered strictly before or after a change, which takes `FOR UPDATE`. A missing row reads as
- * blocked (fail closed). Lock order: the policy row before agent, membership, project and grant rows.
+ * The space's AI switch, read fresh (never cached). With `lock` the row is taken `FOR SHARE`, so the decision is ordered
+ * strictly before or after a change, which takes `FOR UPDATE`. A missing row reads as blocked (fail closed).
  */
-export async function workspaceAi(db: DbExecutor, workspaceId: string, options: { lock?: boolean } = {}): Promise<AccessWorkspaceAi> {
-  if (!isUuid(workspaceId)) return NO_AI_POLICY;
-  const p = schema.workspaceAiPolicies;
-  const query = db.select({ state: p.state, epoch: p.epoch, version: p.version }).from(p).where(eq(p.workspaceId, workspaceId));
+export async function spaceAi(db: DbExecutor, projectId: string, options: { lock?: boolean } = {}): Promise<AccessSpaceAi> {
+  if (!isUuid(projectId)) return NO_AI_POLICY;
+  const p = schema.projectAiPolicies;
+  const query = db.select({ state: p.state, epoch: p.epoch }).from(p).where(eq(p.projectId, projectId));
   const [row] = options.lock ? await query.for('share') : await query;
   return row ?? NO_AI_POLICY;
 }
@@ -82,6 +79,9 @@ export async function workspaceAi(db: DbExecutor, workspaceId: string, options: 
  */
 async function lockProjectAccess(db: DbExecutor, actor: AccessActor, projectId: string): Promise<void> {
   if (!isUuid(projectId)) return;
+  // An agent works in a space only while its AI switch is on (AG-10): the policy row is held `FOR SHARE`, so a decision is
+  // ordered strictly before or after a flip, which takes it `FOR UPDATE`.
+  if (actor.principal.kind === 'agent') await spaceAi(db, projectId, { lock: true });
   // F-030 S2c (delta review P2-A): in an encrypted workspace a write takes the fair key gate before its first row lock,
   // so a rotation's drain (under the exclusive gate) never waits for a project row a writer holds while it queues for
   // the gate, and the project row cannot be skipped forever under load.
@@ -113,8 +113,6 @@ export async function loadActor(principal: AccessPrincipal, workspaceId: string,
   }
   if (principal.kind === 'agent') {
     if (!isUuid(principal.id)) return inactive;
-    // F-029: no agent acts in a workspace whose AI is off (policy row first).
-    if ((await workspaceAi(db, workspaceId, { lock })).state !== 'allowed') return { ...inactive, blockedBy: 'workspace_ai' };
     const query = db.select({ ownerUserId: schema.agents.ownerUserId, revokedAt: schema.agents.revokedAt }).from(schema.agents)
       .where(and(eq(schema.agents.id, principal.id), eq(schema.agents.workspaceId, workspaceId)));
     const [agent] = lock ? await query.for('share') : await query;
@@ -148,7 +146,9 @@ export function projectLevelSql(actor: AccessActor, projectId: SQLWrapper, visib
   if (!actor.active) return sql`0`;
   if (actor.principal.kind === 'human') return humanLevel(actor.principal.id, actor.role, projectId, visibility);
   if (!actor.agent) return sql`0`;
-  return humanLevel(actor.agent.ownerUserId, actor.agent.ownerRole, projectId, visibility);
+  const level = humanLevel(actor.agent.ownerUserId, actor.agent.ownerRole, projectId, visibility);
+  // F-037, AG-10: no agent reads or acts in a space whose AI is off, whatever its owner may do there.
+  return sql`(CASE WHEN EXISTS (SELECT 1 FROM project_ai_policies ai WHERE ai.project_id = ${projectId} AND ai.state = 'allowed') THEN ${level} ELSE 0 END)`;
 }
 
 /** Whether the actor belongs to the space, not only reaches it: a company owner or admin without a grant does not (F-037). */
@@ -236,13 +236,27 @@ export async function visibleFilter(principal: AccessPrincipal, workspaceId: str
 }
 
 /**
+ * `visibleFilter` limited to the spaces the person belongs to (F-037, coordinator default, #874): search, the Inbox and Needs you
+ * show a company owner or admin only what is in spaces they were added to, though they can reach every other space (Settings ›
+ * Company lists those). Drafts and sketches outside any space are unchanged; direct messages are not spaces.
+ */
+export async function memberFilter(principal: AccessPrincipal, workspaceId: string, kind: 'project' | 'draft' | 'sketch', db: DbExecutor): Promise<SQL> {
+  const base = await visibleFilter(principal, workspaceId, kind, db);
+  if (principal.kind !== 'human') return base;
+  const actor = await loadActor(principal, workspaceId, db);
+  if (kind === 'project') return and(base, projectMemberSql(actor, schema.projects.id, schema.projects.visibility))!;
+  if (kind === 'draft') return and(base, sql`(${schema.drafts.projectId} IS NULL OR ${projectMemberSql(actor, schema.drafts.projectId, draftProjectVisibility)})`)!;
+  return and(base, sql`(${schema.sketches.scope} <> 'project' OR ${projectMemberSql(actor, schema.sketches.projectId, sketchProjectVisibility)})`)!;
+}
+
+/**
  * Core's `AccessReader` over one executor. One method is one statement (or the single guarded
  * statement pair of `lockProjectAccess`); core's evaluators call them in the documented lock order.
  * The rows it returns are whole table rows, so core's evaluations carry them to callers unchanged.
  */
 export function accessReader(db: DbExecutor) {
   return {
-    workspaceAi: (workspaceId: string, options: { lock?: boolean } = {}) => workspaceAi(db, workspaceId, options),
+    spaceAi: (projectId: string, options: { lock?: boolean } = {}) => spaceAi(db, projectId, options),
     loadActor: (principal: AccessPrincipal, workspaceId: string, options: AccessLoadOptions = {}) => loadActor(principal, workspaceId, db, options),
 
     /** `draft.create` for an agent: some project of its workspace where it is a contributor now. */

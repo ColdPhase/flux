@@ -5,7 +5,7 @@ import type { Database, Principal } from '../types.js';
 import { eventPorts, requireRoleAuthority, type DomainEventSink } from './common.js';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError } from './errors.js';
 import { enforce, evaluateProject, isManager, isUuid } from './policy.js';
-import type { AccessPorts } from './repositories.js';
+import type { AccessPorts, ProjectRepository } from './repositories.js';
 import type { GrantRecord } from './records.js';
 import { GRANT_ROLES, oneOf } from './validation.js';
 
@@ -23,6 +23,18 @@ function toGrant(row: GrantRecord): ProjectGrant {
     createdBy: row.createdBy,
     createdAt: row.createdAt.toISOString(),
   };
+}
+
+/**
+ * A space always keeps an admin on space-level actions (C-16): nobody leaves, demotes themselves, or is removed or demoted
+ * while they are the last admin by grant. Removing the person from the company, or making them a guest, is not blocked: a company
+ * admin can then add themselves from Settings › Company.
+ */
+export async function requireAnotherSpaceAdmin(projects: Pick<ProjectRepository, 'listGrants'>, principal: Principal, projectId: string, leaving: GrantRecord): Promise<void> {
+  if (leaving.role !== 'manager') return;
+  // The list holds this person's own grant too: they are the last admin when it is the only one.
+  const admins = (await projects.listGrants(principal, projectId)).filter((row) => row.role === 'manager');
+  if (admins.length <= 1) throw new RuleViolationError('Add another admin first: a space always keeps one', 'LAST_SPACE_ADMIN');
 }
 
 export async function listProjectGrants(principal: Principal, projectId: string, db: Database, ports: GrantPorts): Promise<ProjectGrant[]> {
@@ -57,6 +69,7 @@ export async function grantProject(principal: Principal, projectId: string, comm
       }
     }
     const existing = await projects.lockGrantOf(projectId, target.id);
+    if (existing && role !== 'manager') await requireAnotherSpaceAdmin(projects, principal, projectId, existing);
     const written = existing ? await projects.updateGrant(existing.id, role, principal.id)
       : await projects.insertGrant({ id: randomUUID(), workspaceId, projectId, role, createdBy: principal.id, userId: target.id });
     if ('conflict' in written) {
@@ -79,6 +92,7 @@ export async function revokeProjectGrant(principal: Principal, projectId: string
     const grant = isUuid(grantId) ? await projects.lockGrant(projectId, grantId) : null;
     if (!grant) throw new NotFoundError('Grant', 'GRANT_NOT_FOUND');
     if (await projects.memberRole(project!.workspaceId, grant.userId) === 'owner') requireRoleAuthority(actor!, 'owner');
+    await requireAnotherSpaceAdmin(projects, principal, projectId, grant);
     await projects.deleteGrant(grantId);
     await recordEvent(eventPorts(ports, tx), principal, project!.workspaceId, 'project.grant_revoked.v1', projectId, { grantId });
   });

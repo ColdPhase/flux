@@ -279,7 +279,7 @@ class CreateWindow(unittest.TestCase):
             sheet = page.get_by_role("dialog", name="Create")
             expect(sheet).to_be_visible()
             tiles = sheet.locator(".phone-create__grid").get_by_role("button")
-            self.assertEqual([item.strip() for item in tiles.all_inner_texts()], ["Task", "Thought", "Message", "Decision", "File or link", "Sketch"])
+            self.assertEqual([item.strip() for item in tiles.all_inner_texts()], ["Task", "Thought", "Message", "Decision", "File or link", "Sketch", "Space"])
             for tile in tiles.all():
                 self.assertGreaterEqual(tile.bounding_box()["height"], 44)
             shot(page, f"345-create-sheet-390-{scheme}")
@@ -502,7 +502,7 @@ class CreateWindow(unittest.TestCase):
                 expect(sheet.get_by_role("button", name=re.compile("^Remove link to"))).to_be_visible()
                 page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
                 targets = {"Close": sheet.get_by_role("button", name="Close"), "Project picker": sheet.locator(".create__place"),
-                           "Space": sheet.get_by_role("tablist", name="Create").get_by_role("tab", name="Space", exact=True),
+                           "Thought": sheet.get_by_role("tablist", name="Create").get_by_role("tab", name="Thought", exact=True),
                            "Remove link": sheet.get_by_role("button", name=re.compile("^Remove link to"))}
                 for name, target in targets.items():
                     box = target.bounding_box()
@@ -613,13 +613,14 @@ class CreateWindow(unittest.TestCase):
         expect(title_field(page)).to_be_focused()
 
     def test_17_the_kinds_are_tabs_in_one_window_and_the_title_goes_with_the_person(self) -> None:
-        """F-026 S3 / E02: Task is the default; Thought, Message, Decision and Project are tabs with ←/→ in the same window,
-        and the typed text is in each of them (a thought, a message, a decision, a project's name)."""
+        """F-026 S3 / E02: Task is the default; Thought, Message and Decision are tabs with ←/→ in the same window, and the
+        typed text is in each of them. New space is its own window, reached by a button beside the tabs (F-037, S20)."""
         self.ensure_account()
         page = self.page()
         self.open_window(page)
         tabs = window(page).get_by_role("tablist", name="Create")
-        expect(tabs.get_by_role("tab")).to_have_text(["Task", "Thought", "Message", "Decision", "Space"])
+        expect(tabs.get_by_role("tab")).to_have_text(["Task", "Thought", "Message", "Decision"])
+        expect(window(page).get_by_role("button", name="New space", exact=True)).to_be_visible()
         expect(kind_tab(page, "Task")).to_have_attribute("aria-selected", "true")
         expect(window(page).get_by_role("heading")).to_have_count(0)  # the window is named after its tab; no heading repeats it
         expect(window(page).get_by_role("tabpanel")).to_have_count(1)
@@ -627,8 +628,7 @@ class CreateWindow(unittest.TestCase):
         title_field(page).fill(text)
         # The keyboard: ←/→ move between the tabs and keep focus on them; the window and its text stay.
         kind_tab(page, "Task").focus()
-        fields = (("Thought", "Thought", "New thought"), ("Message", "Message", "New message"), ("Decision", "Decision", "New decision"),
-                  ("Space", "Space name", "New space"))
+        fields = (("Thought", "Thought", "New thought"), ("Message", "Message", "New message"), ("Decision", "Decision", "New decision"))
         for tab, label, name in fields:
             page.keyboard.press("ArrowRight")
             expect(kind_tab(page, tab)).to_be_focused()
@@ -645,7 +645,7 @@ class CreateWindow(unittest.TestCase):
         expect(kind_tab(page, "Task")).to_be_focused()
         expect(title_field(page)).to_have_value(text)
         page.keyboard.press("ArrowLeft")
-        expect(kind_tab(page, "Space")).to_have_attribute("aria-selected", "true")
+        expect(kind_tab(page, "Decision")).to_have_attribute("aria-selected", "true")
         page.keyboard.press("Home")
         expect(kind_tab(page, "Task")).to_have_attribute("aria-selected", "true")
         expect(page.get_by_role("dialog")).to_have_count(1)
@@ -732,10 +732,14 @@ class CreateWindow(unittest.TestCase):
         title_field(page).fill(name)
         create_other(page, "Space")
         space = page.get_by_role("dialog", name="New space")
+        # The drawn window: a title, a labelled Name that carries the typed text, People, the AI switch, Cancel and Create space.
+        expect(space.get_by_role("heading", name="New space")).to_be_visible()
         expect(space.get_by_role("textbox", name="Space name", exact=True)).to_have_value(name)
+        expect(space.get_by_text("Name", exact=True)).to_be_visible()
+        expect(space.get_by_role("button", name="Cancel")).to_be_visible()
+        expect(space.get_by_role("tablist")).to_have_count(0)
         expect(space.get_by_role("combobox", name="Start from")).to_have_count(0)
         expect(space.get_by_role("combobox", name="Workspace")).to_have_count(0)
-        expect(space.get_by_role("tabpanel").locator(".create__foot")).to_contain_text("Starts with Conversation, Tasks, Map and Wiki")
         space.get_by_role("button", name=re.compile("^Create space")).click()
         expect(page.get_by_role("heading", level=1, name=name)).to_be_visible()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}"))
@@ -929,9 +933,10 @@ class CreateWindow(unittest.TestCase):
                     kind_tab(page, "Message").click()
                     expect(page.get_by_role("dialog", name="New message").get_by_role("textbox", name="Message", exact=True)).to_be_visible()
                     shot(page, f"521-create-message-{size}-{scheme}-{engine}")
-                    kind_tab(page, "Space").click()
-                    expect(page.get_by_role("dialog", name="New space").get_by_role("textbox", name="Space name", exact=True)).to_be_visible()
-                    shot(page, f"521-create-project-{size}-{scheme}-{engine}")
+                    if not phone:  # the phone reaches New space from its Spaces list
+                        create_other(page, "Space")
+                        expect(page.get_by_role("dialog", name="New space").get_by_role("textbox", name="Space name", exact=True)).to_be_visible()
+                        shot(page, f"521-create-project-{size}-{scheme}-{engine}")
                     page.keyboard.press("Escape")
                     expect(window(page)).to_have_count(0)
                     if phone:
@@ -960,7 +965,7 @@ class CreateWindow(unittest.TestCase):
                 expect(title_field(page)).to_be_visible()
                 title_field(page).fill("Order two spare capacitive probes")
                 boxes: dict[str, dict] = {}
-                for tab in ("Task", "Thought", "Message", "Decision", "Space", "Task"):
+                for tab in ("Task", "Thought", "Message", "Decision", "Task"):
                     kind_tab(page, tab).click()
                     expect(kind_tab(page, tab)).to_have_attribute("aria-selected", "true")
                     page.evaluate(settle)
@@ -991,10 +996,8 @@ class CreateWindow(unittest.TestCase):
         expect(title_field(page)).to_have_value("line one line two")
         kind_tab(page, "Decision").click()
         expect(page.get_by_role("dialog", name="New decision").get_by_role("textbox", name="Decision", exact=True)).to_have_value("line one line two")
-        kind_tab(page, "Space").click()
+        create_other(page, "Space")
         expect(page.get_by_role("dialog", name="New space").get_by_role("textbox", name="Space name", exact=True)).to_have_value("line one line two")
-        kind_tab(page, "Thought").click()
-        expect(thought).to_have_value("line one\nline two")
 
     def test_29_recent_places_leave_with_the_account_on_sign_out(self) -> None:
         """Runs last: the account signs in again and the shared session follows it."""

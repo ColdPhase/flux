@@ -6,7 +6,7 @@ import type { AgentOperation, AgentQuestion, AgentPause, AgentScope, AgentStop, 
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { projectAiBlocked, useShellData } from '../app/data';
-import { AiOffState, AiSurface, isAiBlocked, useWorkspaceAi } from '../ai/workspaceAi';
+import { AiOffState, AiSurface, isAiBlocked, useSpaceAi } from '../ai/spaceAi';
 import { useShellActions } from '../app/shellContext';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageContent } from '../composer/Files';
@@ -731,9 +731,9 @@ const questionLink = (projectId: string, question: AgentQuestion) => question.ta
 export function ProjectAgents() {
   const data = useLoaderData() as ProjectAgentsData | null;
   const shell = useProjectShell();
-  const aiOff = useWorkspaceAi(shell?.project.workspaceId);
+  const aiOff = useSpaceAi(shell?.project.id);
   // The loader answers null for a workspace whose AI is off; the shell says so too, once it has read the policy again.
-  if (!data || aiOff.blocked) return <AiOffState workspaceId={shell?.project.workspaceId} backTo={`/projects/${shell?.project.id ?? ''}`} backLabel="Back to the conversation" />;
+  if (!data || aiOff.blocked) return <AiOffState projectId={shell?.project.id} backTo={`/projects/${shell?.project.id ?? ''}`} backLabel="Back to the conversation" />;
   return <ProjectAgentsLoaded data={data} />;
 }
 
@@ -914,7 +914,7 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
         </ul>
         {policyOpen ? (
           <div id="agents-policy">
-            <AiSurface workspaceId={shell?.project.workspaceId} id="review-rule">
+            <AiSurface projectId={shell?.project.id} id="review-rule">
               <ReviewRule key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'} />
             </AiSurface>
           </div>

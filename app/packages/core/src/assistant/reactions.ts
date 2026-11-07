@@ -97,8 +97,8 @@ export async function assistantReactionTick(deps: { uow: AssistantReactionUnitOf
       const end = (line: string) => ports.reactions.updateEvent(event.id, { state: 'skipped', line, finishedAt: now });
       const rule = await ports.reactions.find(event.reactionId, true);
       if (!rule || !rule.enabled || event.reactionVersion !== rule.version || event.event !== rule.event) { await end('Skipped: turned off'); return true; }
-      // F-029: an event captured before AI was turned off (an older epoch) never runs, even after AI is on again.
-      const ai = await ports.access.workspaceAi(rule.workspaceId, { lock: true });
+      // AG-10: an event captured before AI was turned off (an older epoch) never runs, even after AI is on again.
+      const ai = await ports.access.spaceAi(rule.projectId, { lock: true });
       if (ai.state !== 'allowed' || ai.epoch !== event.aiEpoch) { await end('Skipped: AI was turned off'); return true; }
       // Serialize this owner's background limits with every schedule and other event.
       const enabled = await ports.runs.enablement(rule.ownerUserId, { lock: true });

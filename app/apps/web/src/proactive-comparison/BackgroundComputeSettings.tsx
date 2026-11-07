@@ -4,8 +4,6 @@ import { AI_PROVIDERS, aiConnectionLabel, API_KEY_DAILY_BUDGET_CENTS, type Backg
 import { keyUsageLine } from '../ai/connections';
 import { ApiError } from '../api/client';
 import { Button } from '../ui';
-import { allAiBlocked } from '../app/data';
-import { AiOffEverywhere, useAllAiBlocked } from '../ai/workspaceAi';
 import { BACKGROUND_OFF_LINE, backgroundComparisonRuntime, currentBackgroundUsage, listBackgroundConnections, markBackgroundConnection, revokeBackgroundConnection, updateBackgroundConnection } from './api';
 import { BackgroundUsage } from './BackgroundUsage';
 import { AddKeyForm, BUDGET_PROBLEM, budgetCents, keyFailure, money, type AddKeyFormHandle } from './AddKeyForm';
@@ -15,8 +13,6 @@ import './background.css';
 
 /** Settings → AI → Background suggestions: the status line, local usage and project rules. */
 export async function backgroundComputeLoader({ request }: LoaderFunctionArgs) {
-  // F-029 (#614): with AI off in every workspace the page is the calm "AI is off" message, and nothing is asked for.
-  if (await allAiBlocked()) return null;
   const [connections, usage, runtime] = await Promise.all([
     listBackgroundConnections(request.signal), currentBackgroundUsage(request.signal),
     backgroundComparisonRuntime(request.signal).then((answer) => answer.status, () => 'unavailable' as const),
@@ -26,24 +22,14 @@ export async function backgroundComputeLoader({ request }: LoaderFunctionArgs) {
 
 /** Settings → AI → Your API keys: the owner's own keys, each with its one daily budget, and the form to add one. */
 export async function aiConnectionsLoader({ request }: LoaderFunctionArgs) {
-  if (await allAiBlocked()) return null;
   return { connections: await listBackgroundConnections(request.signal) };
-}
-/** The page for a person whose every workspace has AI off: only where, and who can turn it back on (F-029, #614). */
-function AiOffSettingsPage() {
-  return <div className="pane-scroll"><div className="pane-in sset-in">
-    <AiOffEverywhere />
-    <p className="sset-note"><Link className="ui-link" to="/settings/agents">Back to AI</Link></p>
-  </div></div>;
 }
 /**
  * Owner-only API keys (F-020 PROV-1, Connect AI #854): one or more, each with its own key and one daily budget, the only
  * limit on what runs on it. Background suggestions use the one the owner marks; removing it stops them, with no fallback.
  */
 export function AiConnectionsSettings() {
-  const initial = useLoaderData() as { connections: BackgroundComputeConnection[] } | null;
-  const allOff = useAllAiBlocked();
-  if (!initial || allOff) return <AiOffSettingsPage />;
+  const initial = useLoaderData() as { connections: BackgroundComputeConnection[] };
   return <AiConnectionsPage initial={initial} />;
 }
 
@@ -201,9 +187,7 @@ function BackgroundStatus({ runtime, connection }: { runtime: 'available' | 'una
  * paused or revoked; enabling is dimmed. The keys themselves live on Your API keys.
  */
 export function BackgroundComputeSettings() {
-  const initial = useLoaderData() as { connections: BackgroundComputeConnection[]; usage: BackgroundComputeUsage; runtime: 'available' | 'unavailable' } | null;
-  const allOff = useAllAiBlocked();
-  if (!initial || allOff) return <AiOffSettingsPage />;
+  const initial = useLoaderData() as { connections: BackgroundComputeConnection[]; usage: BackgroundComputeUsage; runtime: 'available' | 'unavailable' };
   return <BackgroundPage initial={initial} />;
 }
 

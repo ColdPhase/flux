@@ -208,8 +208,8 @@ class PhoneFinal(unittest.TestCase):
                 sheet = page.get_by_role("dialog", name="Create")
                 expect(sheet).to_be_visible()
                 names = [text.strip().split("\n")[0] for text in sheet.get_by_role("button").all_inner_texts() if text.strip()]
-                self.assertEqual(names[:6], ["Task", "Thought", "Message", "Decision", "File or link", "Sketch"])
-                for name in ("Task", "Thought", "Message", "Decision", "File or link", "Sketch"):
+                self.assertEqual(names[:7], ["Task", "Thought", "Message", "Decision", "File or link", "Sketch", "Space"])
+                for name in ("Task", "Thought", "Message", "Decision", "File or link", "Sketch", "Space"):
                     self.assertGreaterEqual(min(self.box(sheet.get_by_role("button", name=re.compile(f"^{name}")))["height"], 44), 44)
                 self.assert_no_sideways_scroll(page, size["width"])
                 shot(page, f"341-create-{size['width']}-{'dark' if dark else 'light'}")

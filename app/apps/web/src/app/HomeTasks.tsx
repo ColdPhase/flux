@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { Link } from 'react-router';
 import type { WorkItem } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
 import { Button, EmptyState, Icon, MEDIA, PullToRefresh, Spinner, useMediaQuery } from '../ui';
@@ -25,7 +24,7 @@ interface Loaded { userId: string; items: WorkItem[]; total: number; failed: boo
  */
 export function HomeTasks() {
   const { me, workspaces, projects } = useShellData();
-  const { openNavigation } = useShellActions();
+  const { openNavigation, openCreate } = useShellActions();
   const narrow = useMediaQuery(MEDIA.navDrawer);
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [refresh, setRefresh] = useState(0);
@@ -90,7 +89,7 @@ export function HomeTasks() {
       );
     }
     const action = !projects.length
-      ? <Link className="ui-btn ui-btn--secondary" to="/projects/new"><Icon name="plus" size={14} />Create a space</Link>
+      ? <Button onClick={() => openCreate({ kind: 'project' })}><Icon name="plus" size={14} />Create a space</Button>
       : narrow ? <Button onClick={openNavigation}>Open your spaces</Button> : null;
     return pulling(
       <div className="view-empty">

@@ -8,7 +8,7 @@ import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { OneConversation, type PaneProps } from '../app/OneConversation';
 import { threadObjects } from '../app/objectNotices';
-import { useWorkspaceAi } from '../ai/workspaceAi';
+import { useSpaceAi } from '../ai/spaceAi';
 import { useProjectQuestions } from '../agents/questions';
 import { useAgentOwners } from '../agents/owners';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
@@ -37,7 +37,7 @@ export function ProjectConversation() {
   const data = useLoaderData() as ProjectData;
   const { me } = useShellData();
   // Agents' questions with ready answers (S14): one read of the project's questions for every card below.
-  const aiOn = !useWorkspaceAi(data.project.workspaceId).blocked;
+  const aiOn = !useSpaceAi(data.project.id).blocked;
   useProjectQuestions(data.project.id, me.user.id, aiOn);
   return <div className="project-page">
     <OneConversation key={`${me.user.id}:${data.project.id}`} data={data} Pane={ProjectConversationContent} />

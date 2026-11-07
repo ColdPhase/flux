@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { db, pool } from './support/db.js';
 import { createSealed, passphrase } from './support/encryption.js';
 import { sealedSqlFindings } from './support/sealed-sql-scan.js';
-import { person, workspace, type Person } from './support/people.js';
+import { expectStatus, person, workspace, type Person } from './support/people.js';
 
 // AC-5 of F-030, S2a-1 part (#655; docs/product/encrypted-workspaces.md#inventory): the registry against the LIVE catalog
 // after all migrations (default-deny), each sealed table's plaintext backstop with exactly the registry's columns, the
@@ -174,7 +174,7 @@ describe('F-030 pinned search_path (S2a-2a review P2-1)', () => {
         OR p.proname IN ('workspace_sealed', 'flux_is_sealed', 'search_change_log', 'idempotency_scope_required'))
       ORDER BY 1`)).rows;
     assert.ok(rows.length >= 9, `sealing functions found: ${rows.length}`);
-    for (const name of ['search_put', 'workspace_ai_policy_encrypted', 'flux_sealed_backstop', 'sealed_workspace_no_ai', 'preserve_draft_version',
+    for (const name of ['search_put', 'project_ai_policy_encrypted', 'flux_sealed_backstop', 'sealed_workspace_no_ai', 'preserve_draft_version',
       'search_change_log', 'idempotency_scope_required'])
       assert.ok(rows.some((row) => row.fn.startsWith(`${name}(`)), `${name} is among them`);
     const unpinned = rows.filter((row) => {
@@ -185,6 +185,7 @@ describe('F-030 pinned search_path (S2a-2a review P2-1)', () => {
   });
 
   test('a shadowing workspace_sealed in a schema named after the role, or first in the session\'s path, changes nothing', async () => {
+    const seeded = (expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${A}/projects`, { body: { name: 'Seeds' } }), 201) as { id: string }).id;
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -197,7 +198,7 @@ describe('F-030 pinned search_path (S2a-2a review P2-1)', () => {
       await client.query(`SELECT search_put('probe:y', 'work', $1, 'aud', NULL, 'o', NULL, 1, 'open', 'plain-title', 'plain-body', 'human', 'x', now())`, [A]);
       assert.deepEqual((await client.query(`SELECT sealed, title FROM search_documents WHERE doc_key = 'probe:y'`)).rows[0], { sealed: true, title: '' });
       await client.query('SAVEPOINT t');
-      await assert.rejects(client.query(`UPDATE workspace_ai_policies SET state = 'allowed' WHERE workspace_id = $1`, [A]), { hint: 'WORKSPACE_ENCRYPTED_AI_OFF' });
+      await assert.rejects(client.query(`UPDATE project_ai_policies SET state = 'allowed' WHERE project_id = $1`, [seeded]), { hint: 'WORKSPACE_ENCRYPTED_AI_OFF' });
       await client.query('ROLLBACK TO SAVEPOINT t');
       await assert.rejects(client.query(`INSERT INTO projects (id, workspace_id, name, created_by) VALUES (gen_random_uuid(), $1, 'plain', $2)`, [A, ada.id]),
         { hint: 'WORKSPACE_PLAINTEXT_REFUSED' });

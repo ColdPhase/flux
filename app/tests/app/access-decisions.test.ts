@@ -15,9 +15,9 @@ import {
   policyEventPorts,
   policySketchAccess,
   recordEvents,
-  requireWorkspaceAi,
+  requireSpaceAi,
   visibleWorkspaceOf,
-  WorkspaceAiBlockedError,
+  SpaceAiOffError,
   type AccessReader,
   type Actor,
   type DraftFacts,
@@ -25,7 +25,7 @@ import {
   type Principal,
   type ProjectFacts,
   type SketchFacts,
-  type WorkspaceAi,
+  type SpaceAi,
 } from '@flux/core';
 
 // The access policy's decisions over an in-memory `AccessReader`: no database, no SQL (issues #46, #90).
@@ -41,7 +41,7 @@ const agentOf = (id: string): Principal => ({ kind: 'agent', id });
 interface DraftWorld { draft: DraftFacts; readable: string[]; levels: Record<string, number>; owners: string[] }
 interface World {
   actors: Record<string, Actor>;
-  ai: WorkspaceAi;
+  ai: SpaceAi;
   writableProject: boolean;
   projects: Record<string, { project: ProjectFacts; levels: Record<string, number> }>;
   drafts: Record<string, DraftWorld>;
@@ -54,7 +54,7 @@ interface World {
 
 const member = (principal: Principal, role: WorkspaceRole): Actor => ({ principal, workspaceId: WS, role, agent: null, active: true });
 const emptyWorld = (): World => ({
-  actors: {}, ai: { state: 'allowed', epoch: 1, version: 1 }, writableProject: false, projects: {}, drafts: {}, agents: {}, sketches: {}, dms: {}, runs: {}, names: {},
+  actors: {}, ai: { state: 'allowed', epoch: 1 }, writableProject: false, projects: {}, drafts: {}, agents: {}, sketches: {}, dms: {}, runs: {}, names: {},
 });
 
 /** An `AccessReader` over `world` that records every call, so a test can pin the statement order. */
@@ -66,8 +66,8 @@ function memoryReader(world: World) {
       calls.push(`loadActor${lock(options)}`);
       return world.actors[key(principal)] ?? { principal, workspaceId, role: null, agent: null, active: false };
     },
-    async workspaceAi(_workspaceId, options) {
-      calls.push(`workspaceAi${lock(options)}`);
+    async spaceAi(_projectId, options) {
+      calls.push(`spaceAi${lock(options)}`);
       return world.ai;
     },
     async hasWritableProject() {
@@ -177,7 +177,7 @@ function memoryReader(world: World) {
 
 /** Every agent belongs to one person (F-036); these decisions read only the facts the reader returns, so any owner id will do. */
 const OWNER_OF_AGENTS = 'agent-owner';
-const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.rename', 'workspace.manage_ai', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
+const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.rename', 'workspace.manage_encryption', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
 const workspaceRef = { type: 'workspace', id: WS } as const;
 
 async function workspaceDecisions(principal: Principal, actor: Actor | undefined, writableProject = false) {
@@ -212,7 +212,7 @@ describe('workspace decisions (pure)', () => {
     const active: Actor = { principal: bot, workspaceId: WS, role: null, agent: { ownerUserId: OWNER_OF_AGENTS, ownerRole: 'member' }, active: true };
     assert.deepEqual((await workspaceDecisions(bot, active, false)).allowed, ['workspace.read']);
     assert.deepEqual((await workspaceDecisions(bot, active, true)).allowed, ['workspace.read', 'draft.create']);
-    assert.deepEqual(await workspaceDecisions(bot, { ...active, active: false, blockedBy: 'workspace_ai' }, true), { allowed: [], visible: false });
+    assert.deepEqual(await workspaceDecisions(bot, { ...active, active: false }, true), { allowed: [], visible: false });
   });
 
   test('enforce answers 404 for an invisible object and 403 for a visible one the action is not allowed on', async () => {
@@ -373,11 +373,11 @@ describe('agent, sketch, direct message and assistant run decisions (pure)', () 
     assert.deepEqual(await allowedFor(bot, 'agent.revoke', w), { allowed: false, visible: true });
   });
 
-  test('a revoked agent cannot be invoked and AI turned off stops the owner invoking it', async () => {
+  test('a revoked agent cannot be invoked; an agent belongs to its person, so no space\'s switch stops the owner invoking it', async () => {
     assert.equal((await allowedFor(owner, 'agent.invoke', agentWorld(new Date()))).allowed, false);
     const off = agentWorld();
-    off.ai = { state: 'blocked', epoch: 2, version: 2 };
-    assert.deepEqual(await allowedFor(owner, 'agent.invoke', off), { allowed: false, visible: true });
+    off.ai = { state: 'blocked', epoch: 2 };
+    assert.deepEqual(await allowedFor(owner, 'agent.invoke', off), { allowed: true, visible: true }, 'the switch of a space is checked where the agent works');
     assert.equal((await allowedFor(owner, 'agent.read', off)).allowed, true, 'reading the agent is not AI use');
   });
 
@@ -455,9 +455,9 @@ describe('event and AI decisions (pure)', () => {
     assert.equal(await authorizeEvent(human('stranger'), event, reader), false);
   });
 
-  test('the AI policy change is for people: no agent receives it', async () => {
+  test('the AI switch change is for people: no agent receives it', async () => {
     const { reader } = memoryReader(world());
-    const event = { kind: 'workspace.ai_policy_changed.v1', workspaceId: WS, objectId: WS };
+    const event = { kind: 'project.ai_policy_changed.v1', workspaceId: WS, objectId: projectId };
     assert.equal(await authorizeEvent(owner, event, reader), true);
     assert.equal(await authorizeEvent(bot, event, reader), false);
   });
@@ -471,12 +471,12 @@ describe('event and AI decisions (pure)', () => {
 
   test('AI is required allowed, and at the epoch a queued item was admitted under', async () => {
     const allowed = memoryReader(world());
-    assert.deepEqual(await requireWorkspaceAi(allowed.reader, WS, { lock: true }), { state: 'allowed', epoch: 1, version: 1 });
-    assert.deepEqual(allowed.calls, ['workspaceAi(lock)']);
-    await assert.rejects(requireWorkspaceAi(allowed.reader, WS, { epoch: 2 }), WorkspaceAiBlockedError);
+    assert.deepEqual(await requireSpaceAi(allowed.reader, WS, { lock: true }), { state: 'allowed', epoch: 1 });
+    assert.deepEqual(allowed.calls, ['spaceAi(lock)']);
+    await assert.rejects(requireSpaceAi(allowed.reader, WS, { epoch: 2 }), SpaceAiOffError);
     const off = world();
-    off.ai = { state: 'blocked', epoch: 1, version: 2 };
-    await assert.rejects(requireWorkspaceAi(memoryReader(off).reader, WS), WorkspaceAiBlockedError);
+    off.ai = { state: 'blocked', epoch: 1 };
+    await assert.rejects(requireSpaceAi(memoryReader(off).reader, WS), SpaceAiOffError);
   });
 });
 
@@ -544,7 +544,7 @@ describe('the order of the policy\'s reads and locks (pure)', () => {
     assert.deepEqual(calls, [], 'a malformed sketch id locks nothing');
   });
 
-  test('the event audience takes the AI policy row once, before the first agent candidate, and before any insert', async () => {
+  test('the event audience takes the space\'s AI switch once, before the first agent candidate, and before any insert', async () => {
     const w = world();
     const botA = agentOf(randomUUID());
     const botB = agentOf(randomUUID());
@@ -559,8 +559,8 @@ describe('the order of the policy\'s reads and locks (pure)', () => {
       async insert(event, recipients) { calls.push('insert'); stored.push(...recipients); assert.equal(event.workspaceId, WS); },
     };
     await recordEvents(policyEventPorts(reader, repository), [{ principal: owner, workspaceId: WS, kind: 'project.renamed.v1', objectId: projectId, data: {} }]);
-    assert.deepEqual(calls.filter((call) => call === 'candidates' || call === 'workspaceAi(lock)' || call === 'insert'), ['candidates', 'workspaceAi(lock)', 'insert']);
-    assert.equal(calls.filter((call) => call === 'workspaceAi(lock)').length, 1, 'one lock per workspace, however many agents');
+    assert.deepEqual(calls.filter((call) => call === 'candidates' || call === 'spaceAi(lock)' || call === 'insert'), ['candidates', 'spaceAi(lock)', 'insert']);
+    assert.equal(calls.filter((call) => call === 'spaceAi(lock)').length, 1, 'one lock per space, however many agents');
     assert.deepEqual(stored.sort(), [key(owner), key(botA), key(botB)].sort());
   });
 });

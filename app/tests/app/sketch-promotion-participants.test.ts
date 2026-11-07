@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
-import type { Dm, ProjectGrant, ProjectPerson, PromotedSketch, Sketch, SketchPromotionPreview, Workspace } from '@flux/contracts';
+import type { Dm, ProjectGrant, PromotedSketch, Sketch, SketchPromotionPreview, Workspace } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
 import { addMember, expectStatus, person, project, workspace, type Person } from './support/people.js';
+import { spaceReaders } from './support/space-readers.js';
 
 // Promoting a DM sketch into a new project gives the DM's other people access only when the
 // person chooses it (#188, AC-3). `participants: 'none'` previews and creates a project that only
@@ -66,7 +67,7 @@ describe('DM sketch promotion with an explicit participant choice', () => {
 
     const key = randomUUID();
     const done = expectStatus(await promote(jo, sketch.id, { target: { kind: 'new', name: 'Gesture lamp' }, token: seen.token, participants: 'none' }, { 'idempotency-key': key }), 201, 'promote') as PromotedSketch;
-    const people = expectStatus(await jo.browser.request('GET', `/api/v1/projects/${done.project.id}/people`), 200) as ProjectPerson[];
+    const { people } = await spaceReaders(jo, ws.id, done.project.id);
     assert.deepEqual(new Set(people.map((p) => p.id)), new Set(seen.audience.map((p) => p.id)), 'the preview was exact');
     const grants = expectStatus(await jo.browser.request('GET', `/api/v1/projects/${done.project.id}/grants`), 200) as ProjectGrant[];
     assert.deepEqual(grants.map((g) => [g.principal.id, g.role]), [[jo.id, 'manager']], 'nobody but its creator, the first space admin');

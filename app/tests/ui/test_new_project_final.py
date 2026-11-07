@@ -17,6 +17,7 @@ import uuid
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
+from create_window import create_other, new_space_window, open_create
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "one step to a project"
@@ -101,27 +102,48 @@ class NewProject(unittest.TestCase):
         expect(views.get_by_role("link").first).to_be_visible()
         return [text.strip() for text in views.get_by_role("link").all_inner_texts()]
 
+    def open_window(self, page: Page, phone: bool = False):
+        """New › Space: the one New space window, from New (C) on the computer and from the Spaces list on the phone."""
+        if phone:
+            page.goto("/projects")
+            page.get_by_role("button", name=re.compile("^(New space|Create a space)$")).tap()
+        else:
+            page.goto("/")
+            expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+            open_create(page)
+            create_other(page, "Space")
+        expect(new_space_window(page).get_by_role("heading", name="New space")).to_be_visible()
+        return new_space_window(page)
+
     def create(self, page: Page, name: str) -> str:
-        page.goto("/projects/new")
+        self.open_window(page)
         page.get_by_label("Space name").fill(name)
         page.get_by_role("button", name="Create space").click()
-        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
+        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
         return re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
 
-    def test_01_one_step_a_name_and_nothing_else(self) -> None:
+    def test_01_one_window_a_name_the_people_and_the_ai_switch(self) -> None:
         self.ensure_account()
         for scheme in ("light", "dark"):
             page = self.page(scheme)
-            page.goto("/projects/new")
-            card = page.get_by_role("form", name="New space")
+            window = self.open_window(page)
+            card = window.get_by_role("form", name="New space")
+            expect(card.get_by_label("Space name")).to_be_focused()
+            # The drawn window: a title, a labelled Name, Cancel, no tabs of the Create window.
             expect(card.get_by_role("heading", name="New space")).to_be_visible()
-            expect(card).to_contain_text("One step — add people next")
-            expect(card).to_contain_text("Until you add people, only you and the company’s admins can open it")
-            expect(card).to_contain_text("Every space starts with Conversation, Tasks, Map and Wiki.")
-            # A name is all it asks: no template, no goal, no "Who can see this" step.
+            expect(card.get_by_text("Name", exact=True)).to_be_visible()
+            expect(window.get_by_role("tablist")).to_have_count(0)
+            expect(card).to_contain_text("You’re the admin of this space")
+            expect(card.get_by_role("button", name="Add people")).to_be_visible()
+            # AI starts on; one dark button, Create space, beside Cancel of the same height.
+            expect(card.get_by_role("switch", name="AI")).to_have_attribute("aria-checked", "true")
+            create, cancel = card.get_by_role("button", name="Create space"), card.get_by_role("button", name="Cancel")
+            self.assertEqual(create.bounding_box()["height"], cancel.bounding_box()["height"])
+            # No template, no goal, no "Who can see this" step, and no Encrypted switch yet.
             expect(card.get_by_role("textbox")).to_have_count(1)
             expect(card.get_by_role("radio")).to_have_count(0)
             expect(card).not_to_contain_text("goal")
+            expect(card.get_by_role("switch")).to_have_count(1)
             shot(page, f"874-newspace-1440-{scheme}")
 
     def test_02_a_new_space_has_its_four_views_and_its_creator_is_its_admin(self) -> None:
@@ -144,16 +166,16 @@ class NewProject(unittest.TestCase):
         self.ensure_account()
         for scheme in ("light", "dark"):
             page = self.page(scheme, PHONE)
-            page.goto("/projects/new")
+            self.open_window(page, phone=True)
             expect(page.get_by_label("Space name")).to_be_visible()
             create = page.get_by_role("button", name="Create space")
             self.assertGreaterEqual(create.bounding_box()["height"], 44)
             shot(page, f"874-newspace-390-{scheme}")
         page = self.page("light", PHONE)
-        page.goto("/projects/new")
+        self.open_window(page, phone=True)
         page.get_by_label("Space name").fill("Phone space")
         page.get_by_role("button", name="Create space").tap()
-        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1"))
+        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
         pid = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
         page.goto(f"/projects/{pid}")
         # On the phone the views live in the title's menu (#341).
@@ -162,6 +184,28 @@ class NewProject(unittest.TestCase):
         for name in ("Tasks", "Map", "Wiki"):
             expect(views.get_by_role("link", name=re.compile(f"^{name}"))).to_be_visible()
         shot(page, "874-phone-views-390")
+
+    def test_05b_the_phones_create_sheet_offers_space_and_opens_the_new_space_window(self) -> None:
+        """S3: "+" opens Create everywhere with Space among its tiles. The phone's Create window has no New space button, so the
+        tile is the way to it from here (the Spaces list is the other)."""
+        self.ensure_account()
+        page = self.page("light", PHONE)
+        page.goto("/")
+        page.get_by_role("button", name="Create", exact=True).tap()
+        sheet = page.get_by_role("dialog", name="Create")
+        expect(sheet).to_be_visible()
+        tile = sheet.get_by_role("button", name="Space", exact=True)
+        expect(tile).to_be_visible()
+        self.assertGreaterEqual(tile.bounding_box()["height"], 44)
+        tile.tap()
+        window = new_space_window(page)
+        expect(window.get_by_role("heading", name="New space")).to_be_visible()
+        expect(window.get_by_text("Name", exact=True)).to_be_visible()
+        expect(window.get_by_role("button", name="Cancel")).to_be_visible()
+        expect(sheet).to_have_count(0)
+        window.get_by_label("Space name").fill("Made from the plus")
+        window.get_by_role("button", name="Create space").tap()
+        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
 
     def test_06_the_footer_names_who_can_open_a_new_space(self) -> None:
         """The caption is true: the creator and the company's owners and admins open it at once; a member does not."""

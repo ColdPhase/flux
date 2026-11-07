@@ -217,11 +217,11 @@ first insert takes the sequence lock). Storage is the `EventRepository` port (`c
 Resolved from the allowlist: `app/packages/core/src/access/policy.ts` keeps the actions, `LEVEL`, `isManager`, `accessName`,
 `eventResource`, `enforce` and the decisions (`evaluateWorkspace`, `evaluateProject`, `evaluateDraft`, `evaluateAgent`,
 `evaluateSketch`, `evaluateDm`, `evaluateAssistantRun`, `authorize`, `assertAuthorized`, `authorizeEvent`,
-`visibleWorkspaceOf`, `requireWorkspaceAi`, `dmClosedFor`) over the `AccessReader` port in `access/ports.ts`. Each port method is
+`visibleWorkspaceOf`, `requireSpaceAi`, `dmClosedFor`) over the `AccessReader` port in `access/ports.ts`. Each port method is
 one statement of the former policy, so the evaluators still call them in the documented lock order (the membership/agent rows
-`FOR SHARE` with the AI policy row first for an agent, the draft `FOR UPDATE`, the project and the principal's grants
+`FOR SHARE` with the space's AI policy row first for an agent, the draft `FOR UPDATE`, the project and the principal's grants
 `FOR SHARE` ordered by id, the sketch `FOR NO KEY UPDATE`, the DM row before its participants). The implementation is
-`app/packages/db/src/repositories/access.ts`: `accessReader(db)`, the actor's standing (`loadActor`, `workspaceAi`), the
+`app/packages/db/src/repositories/access.ts`: `accessReader(db)`, the actor's standing (`loadActor`, `spaceAi`), the
 `*Sql` builders with the `LEAST` cap for person-owned agents, and `visibleFilter`, which the server adapters now import from
 `@flux/db`. Evaluations are generic in the row type, so a caller holding that adapter still gets whole table rows
 (`domain.ts`, unchanged except for the reader argument, until #91 split it). `policySketchAccess`, `policyDmAccess`, `policySourceReader`,
@@ -230,11 +230,11 @@ one statement of the former policy, so the evaluators still call them in the doc
 
 Resolved from the allowlist: `app/packages/core/src/access/domain.ts` is gone. Its use cases are one module per capability under
 `app/packages/core/src/access/`, each under 200 lines: `workspaces.ts` (create, list, read), `members.ts` (list, add, change a role,
-remove or leave, with the F-030 key-row lock and the unlock-password rule), `workspace-ai.ts` (the F-029 flip and the turn-off sweep),
-`projects.ts` (create, add a view, list, read, the audience), `grants.ts` (list, set, revoke), `agents.ts` and `drafts.ts`, with the
+remove or leave, with the F-030 key-row lock and the unlock-password rule), `space-ai.ts` (the F-037 per-space AI switch and its turn-off sweep),
+`projects.ts` (create, rename, delete, leave, add a view, list, read, the audience), `grants.ts` (list, set, revoke), `agents.ts` and `drafts.ts`, with the
 validators and `parsePage` in `validation.ts` and the shared event ports and owner rule in `common.ts`. They run over the ports in
-`access/repositories.ts` (`WorkspaceRepository`, `ProjectRepository`, `AgentRepository`, `DraftRepository`, and the F-029/F-030 row
-sets `WorkspaceAiSweepRows` and `WorkspaceEncryptionRows`) and the record types in `access/records.ts`; core presents the records as the
+`access/repositories.ts` (`WorkspaceRepository`, `ProjectRepository`, `AgentRepository`, `DraftRepository`, and the F-037/F-030 row
+sets `SpaceAiSweepRows` and `WorkspaceEncryptionRows`) and the record types in `access/records.ts`; core presents the records as the
 API's shapes. The adapters are `app/packages/db/src/repositories/{workspaces,projects,agents,drafts}.ts`, bundled as `accessPorts`
 (`repositories/access-ports.ts`), which a caller passes right after the database handle:
 `addMember(principal, workspaceId, command, db, accessPorts)`. Every statement moved unchanged and a repository method is one statement (two that always ran together are one method:

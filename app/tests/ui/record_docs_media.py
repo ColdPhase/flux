@@ -123,11 +123,13 @@ def sign_up_page(browser: Browser) -> None:
 def new_project(browser: Browser) -> None:
     window = context(browser)
     page = window.new_page()
-    page.goto("/projects/new")
-    name = page.get_by_label("Space name")
+    page.goto("/")
+    page.keyboard.press("c")
+    window_ = page.get_by_role("dialog", name="New space")
+    name = window_.get_by_label("Name", exact=True)
     expect(name).to_be_visible()
     name.fill("Seed library")
-    shoot(page, "first-project", {"x": 484, "y": 96, "width": 712, "height": 470})
+    shoot(page, "first-project", box(window_, pad=12))
     window.close()
 
 
@@ -270,8 +272,8 @@ def highlights(browser: Browser, ids: dict, request: APIRequestContext) -> None:
     expect(section).to_be_visible()
     section.scroll_into_view_if_needed()
     area = box(section)
-    ai = box(page.get_by_role("region", name=f"AI in {ENCRYPTED['name']}"))
-    shoot(page, "highlight-encrypted", {"x": 496, "y": area["y"] - 24, "width": 680, "height": ai["y"] + ai["height"] + 16 - area["y"] + 24})
+    # F-037: the company has no AI row; an encrypted space says so in its own settings, so the highlight is the Encryption section.
+    shoot(page, "highlight-encrypted", {"x": 496, "y": area["y"] - 24, "width": 680, "height": area["height"] + 48})
     window.close()
 
 

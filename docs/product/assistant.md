@@ -286,7 +286,9 @@ This replaces the workspace AI lock (F-029) under F-037.
   content never reaches a model, including through search or a schedule, and the Owner field
   offers no agents there.
 - One server check covers every AI path and fails closed. Turning AI off stops the agents' runs
-  in that space, cancels their queued work there and deletes nothing. Turning it back on resumes
+  in that space, cancels their queued work there and deletes nothing. A run in progress is asked to
+  stop at once and its next check refuses, so it makes no further change; what it had already
+  written stays, and the owner is told it stopped ([C-17](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). Turning it back on resumes
   each agent's standing setup; nothing that was stopped or missed is replayed, and anything
   waiting still needs its owner's OK.
 - Human work in the space is unchanged, including what agents wrote before.

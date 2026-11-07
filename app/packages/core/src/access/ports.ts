@@ -13,14 +13,12 @@ export interface Actor {
   role: WorkspaceRole | null;
   /** An agent's owner and the owner's role; the agent acts with exactly the owner's rights (F-036 AG-3). */
   agent: { ownerUserId: string; ownerRole: WorkspaceRole | null } | null;
-  /** False for non-members, revoked agents, agents whose owner left, agents of a workspace whose AI is off, and fixtures. */
+  /** False for non-members, revoked agents, agents whose owner left or is a guest, and fixtures. */
   active: boolean;
-  /** Set when an agent is inactive only because AI is turned off in its workspace (F-029). */
-  blockedBy?: 'workspace_ai';
 }
 
-/** The workspace AI policy as one check reads it (F-029, #614). */
-export interface WorkspaceAi { state: 'allowed' | 'blocked'; epoch: number; version: number }
+/** The AI switch of one space as a check reads it (F-029, #614, AG-10). */
+export interface SpaceAi { state: 'allowed' | 'blocked'; epoch: number }
 
 export interface LoadOptions {
   /**
@@ -51,10 +49,10 @@ export interface DmFacts { id: string; workspaceId: string }
 export interface AssistantRunFacts { id: string; workspaceId: string; ownerUserId: string }
 
 export interface ActorReads {
-  /** The principal's current standing in a workspace. With `lock`, membership/agent rows `FOR SHARE` (the AI policy row first for an agent). */
+  /** The principal's current standing in a workspace. With `lock`, membership/agent rows `FOR SHARE`. */
   loadActor(principal: Principal, workspaceId: string, options?: LoadOptions): Promise<Actor>;
-  /** The workspace's AI policy, fresh; a missing row reads as blocked. With `lock`, the row `FOR SHARE`. */
-  workspaceAi(workspaceId: string, options?: { lock?: boolean }): Promise<WorkspaceAi>;
+  /** The space's AI switch, fresh; a missing row reads as blocked. With `lock`, the row `FOR SHARE`. */
+  spaceAi(projectId: string, options?: { lock?: boolean }): Promise<SpaceAi>;
 }
 
 export interface WorkspaceReads {

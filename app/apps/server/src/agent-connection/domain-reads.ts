@@ -63,9 +63,12 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
   () => result(null, async ({ tx, connection, principal, requireProject }) => {
     const projects = [];
     for (const id of [...connection.selectedProjectIds].sort()) {
-      await requireProject(id);
-      const project = await getProject(principal, id, tx, accessPorts);
-      projects.push({ id: project.id, name: project.name, workspaceId: project.workspaceId });
+      // A space the connection cannot use now (AI turned off there, access lost) is left out; the others are still listed (AG-10).
+      try {
+        await requireProject(id);
+        const project = await getProject(principal, id, tx, accessPorts);
+        projects.push({ id: project.id, name: project.name, workspaceId: project.workspaceId });
+      } catch (error) { if (!(error instanceof DomainError)) throw error; }
     }
     return { projects };
   }));
@@ -132,7 +135,7 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
     description: 'Up to 50 messages; resume with afterSequence.',
     inputSchema: z.strictObject({ taskId: z.uuid(), beforeSequence: z.int().min(1).optional(), afterSequence: z.int().min(0).optional() }), annotations },
   async ({ taskId, beforeSequence, afterSequence }) => {
-    // The lookup runs inside the checked transaction (F-029): a blocked workspace answers WORKSPACE_AI_BLOCKED whether or not the task exists.
+    // The lookup runs inside the checked transaction (AG-10): a space with AI off answers SPACE_AI_OFF.
     return result(null, async ({ tx, principal, requireProject }) => {
       const [task] = await tx.select({ projectId: schema.projectWorkItems.projectId }).from(schema.projectWorkItems).where(eq(schema.projectWorkItems.id, taskId));
       if (!task) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');

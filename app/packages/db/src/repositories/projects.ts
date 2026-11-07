@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import { visibleAgentIdentity } from './agents.js';
 import { projectLevelSql, projectMemberSql, visibleProjectsSql, type AccessActor, type AccessPrincipal } from './access.js';
@@ -57,6 +57,49 @@ export function projectRepository(db: DbExecutor) {
       return row ? openRow('projects', row, await sealOf(db, row.workspaceId, { write: false })) : null;
     },
 
+    /** A space's new name (sealed in an encrypted workspace) and its next version. */
+    async rename(projectId: string, workspaceId: string, name: string) {
+      const [row] = await db.update(schema.projects).set({ ...(await sealFor(db, 'projects', workspaceId, { name }, { id: projectId })),
+        version: sql`${schema.projects.version} + 1`, updatedAt: new Date() }).where(eq(schema.projects.id, projectId)).returning();
+      return openRow('projects', row!, await sealOf(db, row!.workspaceId, { write: false }));
+    },
+
+    /** The AI switch of each space, with the name of whoever last changed it. */
+    aiPolicies(projectIds: string[]) {
+      const p = schema.projectAiPolicies;
+      if (!projectIds.length) return Promise.resolve([] as { projectId: string; state: 'allowed' | 'blocked'; changedAt: Date; changedBy: string | null }[]);
+      return db.select({ projectId: p.projectId, state: p.state, changedAt: p.changedAt, changedBy: p.changedBy })
+        .from(p).where(inArray(p.projectId, projectIds));
+    },
+
+    /** The space's AI policy row `FOR UPDATE` (the flip's first lock). */
+    async lockAiPolicy(projectId: string) {
+      const p = schema.projectAiPolicies;
+      const [row] = await db.select().from(p).where(eq(p.projectId, projectId)).for('update');
+      return row ?? null;
+    },
+
+    /** The next state with the next epoch. */
+    async updateAiPolicy(projectId: string, state: 'allowed' | 'blocked', changedBy: string): Promise<{ epoch: number }> {
+      const p = schema.projectAiPolicies;
+      const [updated] = await db.update(p).set({ state, epoch: sql`${p.epoch} + 1`, changedBy, changedAt: new Date() })
+        .where(eq(p.projectId, projectId)).returning({ epoch: p.epoch });
+      return updated!;
+    },
+
+    /**
+     * Erases a whole space (#530, migration 0101: every table that names a project cascades, with no earlier clean-up). A
+     * notification and a mute name a space by source, not by foreign key, so they go with it; the space's files are queued first.
+     */
+    async erase(projectId: string): Promise<void> {
+      // The bytes of every file of the space go with it: they are queued for the file cleanup in this transaction, because once the rows
+      // are gone nothing could find the objects again.
+      await db.execute(sql`INSERT INTO file_garbage (id) SELECT id FROM project_files WHERE project_id = ${projectId} ON CONFLICT DO NOTHING`);
+      await db.execute(sql`DELETE FROM notifications WHERE source_type = 'project' AND source_id = ${projectId}`);
+      await db.execute(sql`DELETE FROM notification_mutes WHERE source_type = 'project' AND source_id = ${projectId}`);
+      await db.delete(schema.projects).where(eq(schema.projects.id, projectId));
+    },
+
     async setViews(projectId: string, views: string[]) {
       const [row] = await db.update(schema.projects).set({ views, version: sql`${schema.projects.version} + 1`, updatedAt: new Date() })
         .where(eq(schema.projects.id, projectId)).returning();
@@ -71,7 +114,8 @@ export function projectRepository(db: DbExecutor) {
       const filter = visibleProjectsSql(actor);
       const [counted] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.projects).where(filter);
       const rows = await db.select({ project: schema.projects, level: projectLevelSql(actor, schema.projects.id, schema.projects.visibility).mapWith(Number),
-        member: projectMemberSql(actor, schema.projects.id, schema.projects.visibility).mapWith(Boolean) })
+        member: projectMemberSql(actor, schema.projects.id, schema.projects.visibility).mapWith(Boolean),
+        ai: sql<'allowed' | 'blocked' | null>`(SELECT ai.state FROM project_ai_policies ai WHERE ai.project_id = ${schema.projects.id})` })
         .from(schema.projects).where(filter)
         .orderBy(asc(schema.projects.createdAt), asc(schema.projects.id))
         .limit(page.limit).offset(page.offset);

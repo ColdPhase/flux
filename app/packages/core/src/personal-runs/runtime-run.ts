@@ -167,8 +167,8 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
   };
   /** The owner's standing at one step, as for an API-key run, without a key connection. */
   async function recheck(ports: PersonalRunPorts, run: RunRecord, stage: Stage, lock: boolean): Promise<Refusal | null> {
-    // F-029, first: AI on in the run's workspace, at the epoch the run was admitted under.
-    const ai = await ports.access.workspaceAi(run.workspaceId, { lock });
+    // AG-10, first: AI on in the run's space, at the epoch the run was admitted under.
+    const ai = await ports.access.spaceAi(run.projectId, { lock });
     if (ai.state !== 'allowed' || ai.epoch !== run.aiEpoch) return 'ai_off';
     const enablement = await ports.runs.enablement(run.ownerUserId, { lock });
     // A request already sent keeps its connection: choosing another for the next one does not touch it.
@@ -260,7 +260,7 @@ export function createRuntimeRunProcessor({ uow, runtime, tokens, stopPollMs, ho
         const end = async (changes: RunChanges) => ({ done: true as const, outcome: (await updateAndAnnounce(ports, run.id, changes)).status as RuntimeRunOutcome });
         if (current.stopRequestedAt) {
           // F-029: a stop request the turn-off sweep made says so.
-          const ai = await ports.access.workspaceAi(current.workspaceId);
+          const ai = await ports.access.spaceAi(current.projectId);
           return end(ended(ai.state !== 'allowed' || ai.epoch !== current.aiEpoch ? 'ai_off' : 'stopped', 'before_dispatch', free));
         }
         const refusal = await checked(ports, current, 'before_dispatch', true);

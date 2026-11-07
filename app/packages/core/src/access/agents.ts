@@ -3,7 +3,7 @@ import type { Agent, CreateAgentCommand } from '@flux/contracts';
 import { recordEvent } from '../events.js';
 import type { Database, Principal } from '../types.js';
 import { eventPorts } from './common.js';
-import { enforce, evaluateAgent, evaluateWorkspace, requireWorkspaceAi } from './policy.js';
+import { enforce, evaluateAgent, evaluateWorkspace } from './policy.js';
 import type { AccessPorts } from './repositories.js';
 import type { AgentRecord } from './records.js';
 import { name, oneOf } from './validation.js';
@@ -29,8 +29,6 @@ export async function createAgent(principal: Principal, workspaceId: string, com
   if (command.owner !== undefined) oneOf(command.owner, ['self'] as const, 'owner');
   return db.transaction(async (tx) => {
     enforce(await evaluateWorkspace(principal, 'agent.create', workspaceId, ports.access(tx), { lock: true }), 'workspace');
-    // F-029: no new agent identity while AI is off in the workspace (revoking and listing stay).
-    await requireWorkspaceAi(ports.access(tx), workspaceId, { lock: true });
     const id = randomUUID();
     const row = await ports.agents(tx).insert({ id, workspaceId, name: agentName, ownerUserId: principal.id, createdBy: principal.id });
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'agent.created.v1', id, { owner: 'self' });

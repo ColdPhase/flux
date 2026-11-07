@@ -5,7 +5,6 @@ import { useFollow } from '../place/origin';
 import type { Agent, SearchResult } from '@flux/contracts';
 import { getAssistantStatus } from '../assistant/api';
 import { AskWhere } from '../assistant/AskWhere';
-import { useBlockedWorkspaceIds } from '../ai/workspaceAi';
 import { useShellData, type WorkspaceSummary } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { Button, Icon, Kreska, MEDIA, Spinner, useMediaQuery, type IconName } from '../ui';
@@ -134,8 +133,7 @@ function JumpBody({ onClose, userId, phone, page }: { onClose: () => void; userI
   const recent = useRecentSearches(userId);
   const recentPlaces = useRecentPlaces(userId);
   const { projects, workspaces, lockedWorkspaces, directMessages } = useShellData();
-  // F-029 (#614): agents, the assistant and the Agents scope exist only where the workspace's AI is on.
-  const aiOff = useBlockedWorkspaceIds();
+  // AG-10: agents, the assistant and the Agents scope exist only where the space's AI is on.
   const { openCreate, openDetails, toggleFocus, toggleSidebar, sidebarHidden } = useShellActions();
   const location = useLocation();
   // The page names its project in its address (`place=project:<id>`); the sheet takes the project in view.
@@ -155,10 +153,10 @@ function JumpBody({ onClose, userId, phone, page }: { onClose: () => void; userI
   // An agent opens in a project of its own workspace: the one in view when it shares it, else the first the person can open.
   const hereSpace = projects.find((project) => project.id === here)?.workspaceId;
   const agentProject = (agent: Agent) => (hereSpace === agent.workspaceId ? here : projects.find((project) => project.workspaceId === agent.workspaceId)?.id) ?? '';
-  const aiSpaces = workspaces.filter((space) => !aiOff.has(space.id));
-  // In a project the search is about its workspace; elsewhere about every workspace whose AI is on.
-  const aiHere = hereSpace ? !aiOff.has(hereSpace) : aiSpaces.length > 0;
-  const agents = useAgents(aiSpaces.map((space) => space.id), aiHere && (scope === 'people' || scope === 'agents')).filter((agent) => agentProject(agent));
+  // In a space the search is about that space; elsewhere about every space whose AI is on.
+  const hereProject = projects.find((project) => project.id === here);
+  const aiHere = hereProject ? hereProject.ai !== 'blocked' : projects.some((project) => project.ai !== 'blocked');
+  const agents = useAgents(workspaces.map((space) => space.id), aiHere && (scope === 'people' || scope === 'agents')).filter((agent) => agentProject(agent));
   const text = query.trim();
   // The phone's Search page met again by Back is a list to read on where it was left: focusing its field would raise the
   // keyboard and lift the view bar, so the list is shorter than the place it is returned to. A first visit starts typing.
@@ -204,7 +202,7 @@ function JumpBody({ onClose, userId, phone, page }: { onClose: () => void; userI
     if (kind === 'dm') { const dm = directMessages.find((item) => item.id === id); return dm ? { label: dm.title, side: 'Message', icon: 'person' } : null; }
     const project = kind === 'project' ? projects.find((item) => item.id === id) : undefined;
     const shown = view ? PROJECT_VIEW[view] : undefined;
-    if (!project || !shown || (view === 'agents' && project.workspaceId && aiOff.has(project.workspaceId))) return null;
+    if (!project || !shown || (view === 'agents' && project.ai === 'blocked')) return null;
     // A Wiki page is named by its own title; the doc it folds its versions into is the place.
     return { label: view === 'docs' && place.title && /\/docs\/[^/]+$/.test(place.path) ? place.title : project.name, side: shown.side, icon: shown.icon };
   };
@@ -315,7 +313,7 @@ function JumpBody({ onClose, userId, phone, page }: { onClose: () => void; userI
     return (
       <div className="jump__in">
         {phone ? <h2 className="jump__title">Ask my assistant</h2> : null}
-        <div className="jump__body"><AskWhere userId={userId} projectId={here} projects={projects.filter((project) => !aiOff.has(project.workspaceId ?? ''))} onOpen={onClose} onBack={() => setPickingWhere(false)} /></div>
+        <div className="jump__body"><AskWhere userId={userId} projectId={here} projects={projects.filter((project) => project.ai !== 'blocked')} onOpen={onClose} onBack={() => setPickingWhere(false)} /></div>
       </div>
     );
   }

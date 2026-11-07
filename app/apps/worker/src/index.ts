@@ -13,7 +13,7 @@ import { registerNotificationEmailWorker, startNotificationGenerator } from './n
 import { personalRunWorkerComposition, registerPersonalRunWorker } from './personal-runs/index.js';
 import { workerRuntimeAvailability } from './personal-runs/runtime-standing.js';
 import { registerComparisonWorker } from './proactive-comparison/index.js';
-import { registerWorkspaceAiSweep } from './workspace-ai/index.js';
+import { registerSpaceAiSweep } from './space-ai/index.js';
 import { startWorkspaceEncryption } from './workspace-encryption/index.js';
 import { comparisonProviders } from './proactive-comparison/providers.js';
 import { drainBacklogs } from './drain-backlogs.js';
@@ -59,7 +59,7 @@ const comparisonsOn = backgroundComparisonsEnabled(process.env);
 await registerComparisonWorker(boss, db, { enabled: comparisonsOn, masterKey: comparisonsOn ? loadBackgroundMasterKey() : null, provider: comparisonProviders(process.env) });
 await registerIdempotencyCleanup(boss, db);
 await registerSearchChangesCleanup(boss, db);
-await registerWorkspaceAiSweep(boss, db);
+await registerSpaceAiSweep(boss, db);
 // Encrypted workspaces (F-030): the keyring heartbeat and the resume job sent with every unlock.
 const encryption = await startWorkspaceEncryption(boss, db, process.env, email.available);
 // The `runtime` transport (F-022 T3): reconciles slot bindings at start and periodically; off by default.

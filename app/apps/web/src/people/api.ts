@@ -14,14 +14,12 @@ import {
   workspaceMembersPath,
   workspaceRemovedPeoplePath,
   workspaceRestorePath,
-  workspaceAiPolicyPath,
   workspacePath,
   type ProjectAccess,
   type ProjectGrant,
   type ProjectGrantRole,
   type ProjectVisibility,
   type RemovedPerson,
-  type SetWorkspaceAiPolicyResult,
   type Workspace,
   type WorkspaceMember,
   type WorkspaceRole,
@@ -48,13 +46,6 @@ export const listRemovedPeople = (workspaceId: string, signal?: AbortSignal) => 
 export const restorePerson = (workspaceId: string, userId: string) => request<WorkspaceMember>(workspaceRestorePath(workspaceId, userId), { method: 'POST' });
 /** Removes someone, or leaves when `userId` is the caller. */
 export const removeMember = (workspaceId: string, userId: string) => request<null>(workspaceMemberPath(workspaceId, userId), { method: 'DELETE' });
-
-/**
- * Turns AI off or on for the whole workspace (F-029, #614): owners and admins only. `If-Match` carries the version the person
- * saw, so a change someone else made meanwhile is a `409 VERSION_CONFLICT`; the Idempotency-Key makes a retry apply once.
- */
-export const setWorkspaceAi = (workspaceId: string, state: 'allowed' | 'blocked', version: number, idempotencyKey: string) =>
-  request<SetWorkspaceAiPolicyResult>(workspaceAiPolicyPath(workspaceId), { method: 'PUT', body: { state }, headers: { 'if-match': `"${version}"`, ...key(idempotencyKey) } });
 
 /** Invite links (F-035): owners and admins create, list and revoke them; whoever has one previews and accepts it. */
 export const listInvites = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceInvite[]>(workspaceInvitesPath(workspaceId), { signal });

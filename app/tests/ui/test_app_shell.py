@@ -1671,10 +1671,10 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_role("button", name="Create space").click()
         expect(page.get_by_role("heading", level=1, name=name)).to_be_visible()
 
-    def hold_details_code(self, page: Page) -> list:
-        """Holds the Details panel's code download (a new project opens that panel by itself)."""
+    def hold_settings_code(self, page: Page) -> list:
+        """Holds the Space settings page's code download (the page that reads a space's people)."""
         held: list = []
-        pattern = re.compile(r"/assets/Details-[^/]+\.js(?:\?.*)?$")
+        pattern = re.compile(r"/assets/SpaceSettings-[^/]+\.js(?:\?.*)?$")
         page.route(pattern, lambda route: held.append(route))
 
         def release() -> None:
@@ -1688,37 +1688,44 @@ class AppShellJourney(unittest.TestCase):
         self.addCleanup(release)
         return held
 
+    def open_settings(self, page: Page) -> None:
+        """⋯ › Settings of the open space (the page's code is what is held)."""
+        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Settings", exact=True).click()
+
     def wait_until_held(self, page: Page, held: list) -> None:
         deadline = time.monotonic() + 5
         while not held:
-            self.assertLess(time.monotonic(), deadline, "the Details code request never arrived")
+            self.assertLess(time.monotonic(), deadline, "the Space settings code request never arrived")
             page.wait_for_timeout(10)
 
-    def test_14a_leaving_while_the_details_panel_is_still_loading_starts_no_request(self) -> None:
+    def test_14a_leaving_while_the_settings_page_is_still_loading_starts_no_request(self) -> None:
         """A page that is being left starts no request, however the app reacts to the leave (#471)."""
-        # A new project opens its Details panel; its code is still downloading when the person
+        # A space's settings page is opened; its code is still downloading when the person
         # follows a link out. The failed download and the address change that comes with the same
-        # commit used to start /me and the project's people after beforeunload.
+        # commit used to start /me and the space's people after beforeunload.
         page = self.page(signed_in=False, service_workers="block")
         page.add_init_script(FETCH_RECORDER)
         started: list[str] = []
         page.on("console", lambda message: started.append(message.text) if message.text.startswith("started-while-leaving ") else None)
-        held = self.hold_details_code(page)
+        held = self.hold_settings_code(page)
         self.sign_up_and_create_project(page, "Sensor study")
+        self.open_settings(page)
         self.wait_until_held(page, held)
         page.goto("/connect-agent")
         expect(page.get_by_role("heading", name="Your agent connections")).to_be_visible()
         page.evaluate("1")  # events of the document that was left have all arrived
         self.assertEqual(started, [], "no request started after beforeunload")
 
-    def test_14b_a_panel_that_mounts_while_the_page_is_left_reads_once_the_page_is_live(self) -> None:
+    def test_14b_a_page_that_mounts_while_the_page_is_left_reads_once_the_page_is_live(self) -> None:
         """Its mount-time reads wait for the grace of a cancelled navigation, and then run (#471)."""
         page = self.page(signed_in=False, service_workers="block")
         page.add_init_script(FETCH_RECORDER)
-        held = self.hold_details_code(page)
+        held = self.hold_settings_code(page)
         self.sign_up_and_create_project(page, "Sensor study")
+        self.open_settings(page)
         self.wait_until_held(page, held)
-        # A leave that is cancelled never reaches pagehide. The panel's code arrives in that moment.
+        # A leave that is cancelled never reaches pagehide. The page's code arrives in that moment.
         start = page.evaluate("() => { window.dispatchEvent(new Event('beforeunload')); return performance.now(); }")
         held[0].continue_()
         page.wait_for_function("(start) => window.__fetches.some(([at, url]) => at >= start && /\\/grants$/.test(url))", arg=start, timeout=6000)
@@ -1726,7 +1733,7 @@ class AppShellJourney(unittest.TestCase):
             "(start) => window.__fetches.filter(([at, url]) => at >= start && /\\/(members|grants)$/.test(url)).map(([at]) => at - start)",
             start,
         )
-        self.assertTrue(reads, "the panel read the project's people after all")
+        self.assertTrue(reads, "the page read the space's people after all")
         self.assertGreaterEqual(min(reads), 990, f"no read started while the leave could still happen: {reads}")
 
     def test_14c_a_read_wanted_while_leaving_runs_when_the_leave_is_cancelled(self) -> None:

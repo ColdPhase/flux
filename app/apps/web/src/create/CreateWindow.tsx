@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
-import { useWorkspaceAi } from '../ai/workspaceAi';
+import { useSpaceAi } from '../ai/spaceAi';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
-import { WORK_LIMITS, WORK_STATUSES, type Agent, type CreateWorkCommand, type ObjectRef, type Project, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
+import { WORK_LIMITS, WORK_STATUSES, type Agent, type CreateWorkCommand, type ObjectRef, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { openDm, sendDmMessage } from '../api/direct-messages';
 import { useIntentKeys } from '../api/intent-keys';
@@ -9,9 +9,12 @@ import { getProject } from '../api/sketches';
 import { noteTitle } from '../captures/store';
 import { createPrivateDraft } from '../drafts/api';
 import { listWorkspaceMembers } from '../project/api';
+import { listProjectPeople } from '../project/data';
 import { useShellData } from '../app/data';
 import { readDraft, useDraft, writeDraft } from '../drafts/store';
-import { useNewProject } from '../project/newProject';
+import { NewSpaceForm } from '../project/NewSpace';
+import '../app/settings.css';
+import '../people/space.css';
 import { AccountChangedError, assertSignedInAs } from '../app/personalSpace';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
 import { searchFlux } from '../search/api';
@@ -24,7 +27,7 @@ import './create.css';
 
 // The one Create window (F-026 S3, #345, #521): the computer's centred window and the phone's bottom sheet hold the
 // same tabs and fields, whether it opens from New / C, Tasks, a message's menu, the Map or ⌘K. Task is the default;
-// Thought, Message, Decision and Project are tabs in the same window, and the typed text goes with the person between them.
+// Thought, Message and Decision are tabs in the same window, and the typed text goes with the person between them; New space is its own window.
 
 const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -32,27 +35,33 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const flat = (text: string) => text.replace(/\s*\n\s*/g, ' ');
 const oneLine = (text: string) => flat(text).trim();
 
-type Kind = 'task' | 'thought' | 'message' | 'decision' | 'project';
+type Kind = 'task' | 'thought' | 'message' | 'decision';
 const KINDS: { id: Kind; label: string; name: string }[] = [
   { id: 'task', label: 'Task', name: 'New task' },
   { id: 'thought', label: 'Thought', name: 'New thought' },
   { id: 'message', label: 'Message', name: 'New message' },
   { id: 'decision', label: 'Decision', name: 'New decision' },
-  { id: 'project', label: 'Space', name: 'New space' },
 ];
+/** The New space window is not one of the four panels: it has its own title, Name and Cancel (F-037, S20). */
+type Shown = Kind | 'space';
 
 /** Mounted once by the shell; `request` is what the person asked to create, or null while closed. */
 export function CreateHost({ request, onClose }: { request: CreateRequest | null; onClose: () => void }) {
   const phone = useMediaQuery(MEDIA.phone);
   // Each opening starts on Task (F-026 S3), or on Project while the person has none, since a task needs one (#763 FR-2);
   // the window is named after the tab it shows, so no heading repeats the tab.
-  const { projects } = useShellData();
-  const opening: Kind = request?.kind === 'project' || !projects.length ? 'project' : request?.kind === 'decision' ? 'decision' : 'task';
-  const [chosen, setChosen] = useState<{ request: CreateRequest | null; kind: Kind }>({ request: null, kind: 'task' });
+  const { projects, workspace } = useShellData();
+  // A guest cannot start spaces, so with none of their own they open on Task like anyone else.
+  const opening: Shown = request?.kind === 'project' || (!projects.length && workspace?.role !== 'guest') ? 'space' : request?.kind === 'decision' ? 'decision' : 'task';
+  const [chosen, setChosen] = useState<{ request: CreateRequest | null; kind: Shown; name?: string }>({ request: null, kind: 'task' });
   const kind = chosen.request === request ? chosen.kind : opening;
+  const navigate = useNavigate();
   return (
-    <Overlay open={request !== null} onClose={onClose} placement={phone ? 'bottom' : 'center'} label={KINDS.find((item) => item.id === kind)!.name} className="create">
-      {request ? <CreateBody request={request} phone={phone} kind={kind} onKind={(next) => setChosen({ request, kind: next })} onClose={onClose} /> : null}
+    <Overlay open={request !== null} onClose={onClose} placement={phone ? 'bottom' : 'center'} label={kind === 'space' ? 'New space' : KINDS.find((item) => item.id === kind)!.name}
+      className={kind === 'space' ? 'newspace-win' : 'create'}>
+      {request ? (kind === 'space'
+        ? <NewSpaceForm initialName={chosen.request === request && chosen.name !== undefined ? chosen.name : oneLine(request.title ?? '').slice(0, WORK_LIMITS.title)} onCancel={onClose} onCreated={(project) => { onClose(); void navigate(`/projects/${project.id}`); }} />
+        : <CreateBody request={request} phone={phone} kind={kind} onKind={(next) => setChosen({ request, kind: next })} onSpace={(name) => setChosen({ request, kind: 'space', name })} onClose={onClose} />) : null}
     </Overlay>
   );
 }
@@ -69,7 +78,7 @@ interface Carried {
 /** A panel's ids and whether its tab is the selected one. */
 interface PanelIds { id: string; tab: string; field: string; active: boolean }
 
-function CreateBody({ request, phone, kind, onKind, onClose }: { request: CreateRequest; phone: boolean; kind: Kind; onKind: (kind: Kind) => void; onClose: () => void }) {
+function CreateBody({ request, phone, kind, onKind, onSpace, onClose }: { request: CreateRequest; phone: boolean; kind: Kind; onKind: (kind: Kind) => void; onSpace: (name: string) => void; onClose: () => void }) {
   const { me, projects } = useShellData();
   const location = useLocation();
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
@@ -110,13 +119,13 @@ function CreateBody({ request, phone, kind, onKind, onClose }: { request: Create
         <div className="create__kinds" onClick={pointerOnTab}>
           <Tabs variant="segmented" className="create__tabs" label="Create" items={KINDS} value={kind} onChange={(id) => onKind(id as Kind)} panelIdPrefix={prefix} />
         </div>
+        <Button variant="quiet" className="create__space-link" onClick={() => onSpace(oneLine(carried.text).slice(0, WORK_LIMITS.title))}>New space</Button>
         <button type="button" className="create__x" aria-label="Close" onClick={onClose}><Icon name="x" size={18} /></button>
       </div>
       <TaskForm {...shared} ids={ids('task')} request={request} prefilled={prefilled} />
       <ThoughtForm {...shared} ids={ids('thought')} />
       <MessageForm {...shared} ids={ids('message')} />
       <DecisionForm {...shared} ids={ids('decision')} request={request} />
-      <ProjectForm {...shared} ids={ids('project')} />
     </div>
   );
 }
@@ -218,7 +227,7 @@ function savedForm(records: Unresolved[], title: string, sources: ObjectRef[] | 
   return match?.form ?? null;
 }
 
-interface Context { project: Project; members: WorkspaceMember[]; agents: Agent[] }
+interface Context { project: Project; members: { userId: string; name: string }[]; agents: Agent[] }
 const forbidden = (error: unknown) => (error instanceof ApiError && error.status === 403 ? [] : Promise.reject(error));
 
 function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProject, onClose }: PanelProps & { request: CreateRequest; prefilled: boolean }) {
@@ -274,10 +283,12 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
     if (!projectId) return undefined;
     const controller = new AbortController();
     void getProject(projectId, controller.signal).then(async (project) => {
-      const [members, agents] = await Promise.all([
-        listWorkspaceMembers(project.workspaceId, controller.signal).catch(forbidden),
+      // The Owner choice offers the people in the space and nobody else (F-037), so nobody is given a task unannounced.
+      const [audience, agents] = await Promise.all([
+        listProjectPeople(projectId, controller.signal).catch(() => [] as ProjectPerson[]),
         listAgents(project.workspaceId, controller.signal).catch(forbidden),
       ]);
+      const members = audience.filter((person) => person.kind === 'human').map((person) => ({ userId: person.id, name: person.name }));
       setContext({ projectId, value: { project, members, agents: agents.filter((agent) => !agent.revokedAt) } });
     }).catch(() => { if (!controller.signal.aborted) setContext({ projectId, value: null }); });
     return () => controller.abort();
@@ -288,7 +299,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
   const people = useMemo(() => (loaded?.members.length ? loaded.members.map((m) => ({ value: `human:${m.userId}`, label: m.userId === me.user.id ? `${m.name} (you)` : m.name }))
     : [{ value: `human:${me.user.id}`, label: `${me.user.name} (you)` }]), [loaded, me.user.id, me.user.name]);
   // F-029 (#614): no agent owners while the workspace's AI is off.
-  const aiOff = useWorkspaceAi(loaded?.project.workspaceId).blocked;
+  const aiOff = useSpaceAi(loaded?.project.id).blocked;
   const agents = (aiOff ? [] : loaded?.agents ?? []).map((agent) => ({ value: `agent:${agent.id}`, label: `${agent.name} (agent)` }));
   const waitingLabel = people.find((o) => o.value === waiting)?.label.replace(/ \((you|agent)\)$/, '') ?? 'No one';
   const ownerLabel = [...people, ...agents].find((o) => o.value === owner)?.label.replace(/ \((you|agent)\)$/, '') ?? 'No owner';
@@ -353,7 +364,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
 
   if (noPlace) return (
     <Panel ids={ids} where={where} onSubmit={() => undefined} foot={<><p className="create__note">A task belongs to a space</p><Go label="Create task" busy={false} ready={false} phone={phone} /></>}>
-      <p className="create__note">There is no space yet. Make one in the Space tab, then add its tasks here.</p>
+      <p className="create__note">There is no space yet. Make one with New space, then add its tasks here.</p>
     </Panel>
   );
   return (
@@ -589,33 +600,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
           onClose();
           openDetails({ kind: 'propose-decision', projectId: project.id, ...(title ? { title } : {}), ...(source ? { source: { messageId: source.ref.id, text: source.label } } : {}) });
         }}>Replace an accepted decision…</button>
-      </> : <p className="create__note">There is no space yet. Make one in the Space tab, then propose its decisions here.</p>}
-    </Panel>
-  );
-}
-
-/** Space: a name in one step (F-037), the same as New space; every space starts with Conversation, Tasks, Map and Wiki. */
-function ProjectForm({ ids, phone, carried, onClose }: PanelProps) {
-  const go = useNavigate();
-  const { audience, busy, error, ready, create } = useNewProject();
-  const name = oneLine(carried.text);
-  const canCreate = ready(name) && name.length <= WORK_LIMITS.title && !busy;
-  async function submit() {
-    if (!canCreate) return;
-    const snapshot = carried.begin();
-    const project = await create(name);
-    if (!project) return;
-    carried.made(snapshot);
-    onClose();
-    // Only its creator is in a new space; its people open next, to add others (#188).
-    go(`/projects/${project.id}?new=1&open=people`);
-  }
-  return (
-    <Panel ids={ids} where={<span>{audience}</span>} onSubmit={() => void submit()} foot={<><p className="create__note">Starts with Conversation, Tasks, Map and Wiki</p><Go label="Create space" busy={busy} ready={canCreate} phone={phone} /></>}>
-      <input id={ids.field} className="create__name" aria-label="Space name" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy} placeholder="Space name, e.g. Volunteer sign-up app"
-        onChange={(event) => carried.set(event.target.value)} />
-      <TooLong text={name} limit={WORK_LIMITS.title} />
-      {error ? <p className="create__error" role="alert">{error}</p> : null}
+      </> : <p className="create__note">There is no space yet. Make one with New space, then propose its decisions here.</p>}
     </Panel>
   );
 }

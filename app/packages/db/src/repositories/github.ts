@@ -214,11 +214,11 @@ export function githubRows(db: DbExecutor,options:{taskFence?:()=>import('./task
         WHERE r.workspace_id = ${binding.workspaceId}::uuid AND r.project_id = ${binding.projectId}::uuid AND r.work_id = ${link.taskId}::uuid
           AND r.kind = 'review' AND r.state IN ('queued', 'deferred', 'claimed', 'resolved') AND r.target->>'type' = 'github_pr'
           AND r.target->>'linkId' = ${link.id} AND r.target->>'headSha' = ${headSha} LIMIT 1`)).rows.length > 0;
-      // F-029 (#614): the holder is an AI principal, so the bridge is an agent's event audience. The policy row is read
-      // FOR SHARE, ordering this delivery strictly before or after a flip; while AI is off, or for a unit admitted under an
-      // older epoch (not yet stopped by the sweep), nobody receives it, so no event of the blocked period reaches an agent.
-      const [policy] = (await db.execute<{ epoch: string }>(sql`SELECT epoch FROM workspace_ai_policies
-        WHERE workspace_id = ${binding.workspaceId}::uuid AND state = 'allowed' FOR SHARE`)).rows;
+      // F-029 (#614, AG-10): the holder is an AI principal, so the bridge is an agent's event audience. The space's policy row is
+      // read FOR SHARE, ordering this delivery strictly before or after a flip; while AI is off in the space, or for a unit
+      // admitted under an older epoch (not yet stopped by the sweep), nobody receives it, so no event of the blocked period reaches an agent.
+      const [policy] = (await db.execute<{ epoch: string }>(sql`SELECT epoch FROM project_ai_policies
+        WHERE project_id = ${binding.projectId}::uuid AND state = 'allowed' FOR SHARE`)).rows;
       if (echo) state = 'suppressed_echo';
       else if (policy) {
         const [holder] = (await db.execute<{ id: string; owner_user_id: string }>(sql`SELECT c.id, c.owner_user_id FROM cowork_units u

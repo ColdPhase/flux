@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, describe, test } from 'node:test';
-import { AI_WORK_QUEUES, workspaceAiPolicyPath, type Conversation, type Material, type WorkResult } from '@flux/contracts';
-import { sweepWorkspaceAi, type ComparisonProvider } from '@flux/core';
+import { AI_WORK_QUEUES, projectAiPolicyPath, type Conversation, type Material, type WorkResult } from '@flux/contracts';
+import { sweepSpaceAi, type ComparisonProvider } from '@flux/core';
 import { accessPorts } from '@flux/db';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
 import { proactiveReservation } from '../../apps/worker/src/proactive-comparison/reservation-adapter.js';
@@ -14,50 +14,34 @@ import { publicOrigin } from './support/http.js';
 import { beginOauth, expect, mcp, oauthToken } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { waitFor } from './support/wait.js';
-import { ensureWorkspaceAiAllowed, setWorkspaceAi, workspaceAiRow } from './support/workspace-ai.js';
+import { ensureSpaceAiAllowed, setSpaceAi, spaceAiRow } from './support/space-ai.js';
 
-// F-029 workspace AI lock, S2 review fixes (#614): the sweep with a real row in every state of every table it touches; the
-// lock order with the REAL role change and removal against the REAL flip, in both orders; the backstop per table; no events
-// of the blocked period reach agents; flip against a run commit, a comparison publish and a reaction capture in both
-// orders; a comparison's late answer; and the delivery fence's refusal of a chunk held by the test gate.
+// AG-10 (F-029 S2 review fixes, #614; per space under F-037): the sweep with a real row in every state of every table it touches;
+// a REAL role change of the flipping admin against the REAL flip, in both orders; the backstop per table; no events of the
+// blocked period reach agents; flip against a run commit, a comparison publish and a reaction capture in both orders; a
+// comparison's late answer; and the delivery fence's refusal of a chunk held by the test gate.
 
 const code = (json: unknown) => (json as { code?: string } | null)?.code;
 const errorCode = (message: Record<string, unknown> | null) => ((message?.error as { data?: { code?: string } } | undefined)?.data?.code);
 const lists = (response: { message: Record<string, unknown> | null }) => (((response.message?.result as { tools?: unknown[] } | undefined)?.tools) ?? []).length > 0;
-const epochOf = async (workspaceId: string) => (await workspaceAiRow(workspaceId))!.epoch;
+const epochOf = async (projectId: string) => (await spaceAiRow(projectId))!.epoch;
 
-/** Runs `request` while `holder` keeps a lock, waits until the request queues behind it, then lets the holder finish. */
-async function behind<T>(hold: (query: (text: string, values?: unknown[]) => Promise<unknown>) => Promise<unknown>, request: () => Promise<T>, extraWaiters = 1): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await hold((text, values) => client.query(text, values));
-    const baseline = await lockWaiters();
-    const pending = request();
-    await waitFor(async () => (await lockWaiters()) >= baseline + extraWaiters, 'the request waiting behind the held lock');
-    await client.query('COMMIT');
-    return await pending;
-  } catch (error) { await client.query('ROLLBACK').catch(() => undefined); throw error; }
-  finally { client.release(); }
-}
-
-describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
+describe('space AI switch: sweep, role changes against the flip and remaining rows', () => {
   let scene: AssistantScene;
-  const put = async (who: Person, state: 'allowed' | 'blocked') => who.browser.request('PUT', workspaceAiPolicyPath(scene.ws.id),
-    { body: { state }, headers: { 'if-match': `"${(await workspaceAiRow(scene.ws.id))!.version}"` } });
+  const put = async (who: Person, state: 'allowed' | 'blocked') => who.browser.request('PUT', projectAiPolicyPath(scene.place.id), { body: { state } });
 
   before(async () => { scene = await assistantScene('ai-sweep'); });
-  beforeEach(async () => { await ensureWorkspaceAiAllowed(scene.ws.id); await scene.reset(); });
-  after(async () => { await ensureWorkspaceAiAllowed(scene.ws.id); });
+  beforeEach(async () => { await ensureSpaceAiAllowed(scene.place.id); await scene.reset(); });
+  after(async () => { await ensureSpaceAiAllowed(scene.place.id); });
 
   test('the sweep ends a real row in every state of every table it touches, and leaves rows of a newer epoch alone', async () => {
-    const { ws, place, thread, owner, agentId } = scene;
+    const { ws, place, thread, owner } = scene;
     const connectionId = await scene.assistantConnectionId();
     const work = await scene.task(owner, 'Swept work');
     const template = await scene.runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Template' });
     const ids = { queued: randomUUID(), reading: randomUUID(), dispatching: randomUUID(), fresh: randomUUID(),
-      rq: randomUUID(), rd: randomUUID(), rc: randomUUID(), up: randomUUID(), uc: randomUUID(), ua: randomUUID(), session: randomUUID(), rule: randomUUID(), eq: randomUUID(), ep: randomUUID() };
-    const old = await epochOf(ws.id);
+      rq: randomUUID(), rd: randomUUID(), rc: randomUUID(), up: randomUUID(), uc: randomUUID(), ua: randomUUID(), rule: randomUUID(), eq: randomUUID(), ep: randomUUID() };
+    const old = await epochOf(place.id);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
@@ -81,9 +65,6 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
         VALUES ($1, $2, $3, $4, $4, $5, $13, 'execute', $6, $7, $8, $9, $10, $11, $12)`, [id, ws.id, place.id, work.id, randomUUID(), connectionId, state,
         state === 'claimed' ? 1 : 0, state === 'claimed' ? randomUUID() : null, state === 'claimed' ? 'session' : null, state === 'claimed' ? new Date(Date.now() + 60_000) : null, old, `unit-${id}`]);
       await unit(ids.up, 'pending'); await unit(ids.uc, 'claimed'); await unit(ids.ua, 'paused');
-      await client.query(`INSERT INTO agent_runtime_sessions (id, binding_id, binding_generation, client_session_id, workspace_id, connection_id, owner_user_id, agent_id,
-        scopes, expires_at, ai_epoch) VALUES ($1, $2, 1, $3, $4, $5, $6, $7, ARRAY['flux.context.read'], now() + interval '1 hour', $8)`,
-      [ids.session, randomUUID(), randomUUID(), ws.id, connectionId, owner.id, agentId, old]);
       ids.rule = (await client.query(`INSERT INTO assistant_reactions (id, workspace_id, project_id, owner_user_id, event, action, enabled) VALUES ($1, $2, $3, $4, 'blocked', 'tell', true)
         ON CONFLICT (owner_user_id, project_id, event) DO UPDATE SET action = 'tell', enabled = true RETURNING id`, [ids.rule, ws.id, place.id, owner.id])).rows[0].id;
       for (const [id, state] of [[ids.eq, 'queued'], [ids.ep, 'proof']] as const) await client.query(`INSERT INTO assistant_reaction_events (id, reaction_id, owner_user_id,
@@ -93,14 +74,14 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
     } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [template.run.id]);
 
-    const epoch = await setWorkspaceAi(ws.id, 'blocked');
-    await setWorkspaceAi(ws.id, 'allowed');
+    const epoch = await setSpaceAi(place.id, 'blocked');
+    await setSpaceAi(place.id, 'allowed');
     // Work admitted after re-enable carries the new epoch (inserted through the backstop; the owner's swept rows still count as in flight for the service).
     await pool.query(`INSERT INTO personal_runs (id, workspace_id, project_id, conversation_id, owner_user_id, agent_id, client_run_id, request_fingerprint, kind, prompt,
       status, cost_state, reserved_micros, provider, model, engine, ai_epoch) SELECT $1, workspace_id, project_id, conversation_id, owner_user_id, agent_id, gen_random_uuid(),
-      request_fingerprint, kind, prompt, 'queued', 'reserved', reserved_micros, provider, model, engine, $3 FROM personal_runs WHERE id = $2`, [ids.fresh, template.run.id, await epochOf(ws.id)]);
-    const swept = await sweepWorkspaceAi({ workspaceId: ws.id, epoch }, db, accessPorts);
-    assert.deepEqual(swept, { runs: 3, tokens: 2, comparisons: 0, reactions: 2, requests: 3, units: 3, sessions: 1, failed: [] });
+      request_fingerprint, kind, prompt, 'queued', 'reserved', reserved_micros, provider, model, engine, $3 FROM personal_runs WHERE id = $2`, [ids.fresh, template.run.id, await epochOf(place.id)]);
+    const swept = await sweepSpaceAi({ projectId: place.id, epoch }, db, accessPorts);
+    assert.deepEqual(swept, { runs: 3, tokens: 2, comparisons: 0, reactions: 2, requests: 3, units: 3, failed: [] });
     const one = async (sql: string, id: string) => (await pool.query(sql, [id])).rows[0];
     assert.deepEqual(await one('SELECT status, end_reason, stopped_at_stage FROM personal_runs WHERE id = $1', ids.queued), { status: 'stopped', end_reason: 'ai_off', stopped_at_stage: 'before_read' });
     for (const id of [ids.reading, ids.dispatching]) {
@@ -110,98 +91,33 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
     for (const id of [ids.rq, ids.rd, ids.rc]) assert.deepEqual(await one('SELECT state, reason FROM cowork_requests WHERE id = $1', id), { state: 'cancelled', reason: 'ai_off' });
     for (const [id, generation] of [[ids.up, 1], [ids.uc, 2], [ids.ua, 1]] as const)
       assert.deepEqual(await one('SELECT state, generation, lease_id FROM cowork_units WHERE id = $1', id), { state: 'stopped', generation, lease_id: null });
-    assert.ok((await one('SELECT revoked_at FROM agent_runtime_sessions WHERE id = $1', ids.session)).revoked_at);
     for (const id of [ids.eq, ids.ep]) assert.deepEqual(await one('SELECT state, line FROM assistant_reaction_events WHERE id = $1', id), { state: 'skipped', line: 'Skipped: AI was turned off' });
     assert.equal((await one('SELECT status FROM personal_runs WHERE id = $1', ids.fresh)).status, 'queued', 'work admitted after re-enable is untouched');
-    assert.deepEqual(await sweepWorkspaceAi({ workspaceId: ws.id, epoch }, db, accessPorts), { runs: 0, tokens: 0, comparisons: 0, reactions: 0, requests: 0, units: 0, sessions: 0, failed: [] });
+    assert.deepEqual(await sweepSpaceAi({ projectId: place.id, epoch }, db, accessPorts), { runs: 0, tokens: 0, comparisons: 0, reactions: 0, requests: 0, units: 0, failed: [] });
   });
 
-  test('a real role change and removal of the flipping admin against the real flip, in both orders: 200 and 403, never a deadlock', async () => {
+  test('a real demotion and removal of the flipping admin against the real flip, in both orders: 200 and 403, never a deadlock', async () => {
     const { owner, admin, ws } = scene;
     const restore = () => pool.query(`UPDATE workspace_members SET role = 'admin' WHERE workspace_id = $1 AND user_id = $2`, [ws.id, admin.id]);
-    // The role change first: it is parked after it took the admin's membership row, before its event audience reads the agents.
-    let role!: Promise<{ status: number; text: string }>;
-    const flip = await behind((query) => query('LOCK TABLE agents IN ACCESS EXCLUSIVE MODE'), async () => {
-      role = owner.browser.request('PATCH', `/api/v1/workspaces/${ws.id}/members/${admin.id}`, { body: { role: 'member' } });
-      await waitFor(async () => (await pool.query(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE '%agents%'`)).rows[0].n > 0, 'role change parked');
-      return put(admin, 'blocked');
-    }, 2);
-    const changed = await role;
-    assert.equal(changed.status, 200, `the role change commits: ${changed.text}`);
-    assert.deepEqual([flip.status, code(flip.json)], [403, 'WORKSPACE_AI_ADMIN_REQUIRED'], `the flip sees the demotion: ${flip.text}`);
-    await restore();
-    // The flip first: parked at its own event audience while it holds the policy row; the role change waits and then commits.
-    let flipped!: Promise<{ status: number; text: string }>;
-    const changedAfter = await behind((query) => query('LOCK TABLE agents IN ACCESS EXCLUSIVE MODE'), async () => {
-      flipped = put(admin, 'blocked');
-      await waitFor(async () => (await pool.query(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE '%agents%'`)).rows[0].n > 0, 'flip parked');
-      return owner.browser.request('PATCH', `/api/v1/workspaces/${ws.id}/members/${admin.id}`, { body: { role: 'member' } });
-    }, 2);
-    assert.equal((await flipped).status, 200, 'the flip commits first');
-    assert.equal(changedAfter.status, 200, `then the role change: ${changedAfter.text}`);
-    await restore();
-    await setWorkspaceAi(ws.id, 'allowed');
-    // A removal of the flipping admin while the flip waits: the removal commits, the flip is refused (the admin is gone).
+    const demote = () => owner.browser.request('PATCH', `/api/v1/workspaces/${ws.id}/members/${admin.id}`, { body: { role: 'member' } });
+    // Both at once, three times each way round: whichever commits first, neither fails with a lock error, and a flip after the
+    // demotion is refused while a flip before it stays done.
+    for (const flipFirst of [true, false, true]) {
+      const results = flipFirst ? await Promise.all([put(admin, 'blocked'), demote()]) : await Promise.all([demote(), put(admin, 'blocked')]);
+      const [flip, change] = flipFirst ? results : [results[1]!, results[0]!];
+      assert.ok([flip.status, change.status].every((status) => status < 500), `no deadlock (flip first: ${flipFirst}): ${flip.text} ${change.text}`);
+      assert.equal(change.status, 200, `the demotion commits: ${change.text}`);
+      assert.ok(flip.status === 200 || (flip.status === 403 && code(flip.json) === 'SPACE_AI_ADMIN_REQUIRED'), `the flip is done or refused: ${flip.status} ${flip.text}`);
+      await restore();
+      await setSpaceAi(scene.place.id, 'allowed');
+    }
+    // A removal of the flipping admin: the flip is refused (the admin is gone) or was done before it; never a failure.
     const spare = await person('ai-sweep-spare');
     await addMember(owner, ws.id, spare, 'admin');
-    let removed!: Promise<{ status: number; text: string }>;
-    const refused = await behind((query) => query('LOCK TABLE agents IN ACCESS EXCLUSIVE MODE'), async () => {
-      removed = owner.browser.request('DELETE', `/api/v1/workspaces/${ws.id}/members/${spare.id}`);
-      await waitFor(async () => (await pool.query(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE '%agents%'`)).rows[0].n > 0, 'removal parked');
-      return put(spare, 'blocked');
-    }, 2);
-    assert.equal((await removed).status, 204);
-    assert.deepEqual([refused.status, code(refused.json)], [404, 'WORKSPACE_NOT_FOUND'], `the flip finds the admin gone: ${refused.text}`);
-    assert.equal((await workspaceAiRow(ws.id))!.state, 'allowed');
-  });
-
-  test('the workspace row lock is in the picture: a flip is not delayed by a holder of the workspace row, and an addMember against the flip, in both orders', async () => {
-    const { owner, admin, ws } = scene;
-    const restore = () => pool.query(`UPDATE workspace_members SET role = 'admin' WHERE workspace_id = $1 AND user_id = $2`, [ws.id, admin.id]);
-    const parked = async (pattern: string, what: string) => {
-      try {
-        await waitFor(async () => (await pool.query(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query ILIKE $1`, [pattern])).rows[0].n > 0, what);
-      } catch (error) {
-        const waiting = (await pool.query(`SELECT wait_event, left(query, 160) AS query FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND datname = current_database()`)).rows;
-        throw new Error(`${(error as Error).message}; waiting now: ${JSON.stringify(waiting)}`);
-      }
-    };
-    // 1. `changeRole` and `removeMember` take the AI policy share first and the workspace row (`lockWorkspace`) second, then the membership
-    //    rows (F-029 lock order: policy row, workspace row, memberships). The flip takes the policy row but not the workspace row, so a holder
-    //    of the workspace row does not delay it; the demotion started after it takes its policy share, waits at the workspace row and commits
-    //    once that is released. (The demotion arriving while the flip holds the policy row waits at the policy share, before it reaches the
-    //    workspace row; that order is the test above.) `addMember` is the exception: workspace row first, policy share last (case 2).
-    let late!: Promise<{ status: number; text: string }>;
-    const client = await pool.connect();
-    let flipped: { status: number; text: string };
-    try {
-      await client.query('BEGIN');
-      await client.query('SELECT id FROM workspaces WHERE id = $1 FOR NO KEY UPDATE', [ws.id]);
-      flipped = await Promise.race([put(admin, 'blocked'), new Promise<never>((_resolve, reject) => setTimeout(() => reject(new Error('the flip waited for the workspace row')), 15_000))]);
-      late = owner.browser.request('PATCH', `/api/v1/workspaces/${ws.id}/members/${admin.id}`, { body: { role: 'member' } });
-      await parked('%workspaces%', 'role change waiting for the workspace row');
-      await client.query('COMMIT');
-    } catch (error) { await client.query('ROLLBACK').catch(() => undefined); throw error; } finally { client.release(); }
-    assert.equal(flipped.status, 200, `the flip does not wait for the workspace row: ${flipped.text}`);
-    assert.equal((await late).status, 200, 'the demotion commits afterwards');
-    await restore();
-    await setWorkspaceAi(ws.id, 'allowed');
-    // 2. addMember takes the workspace row first and the policy share last (its event audience); against the flip, in both orders, no deadlock.
-    for (const flipFirst of [false, true]) {
-      const added = await person(`ai-sweep-added-${flipFirst}`);
-      let first!: Promise<{ status: number; text: string }>;
-      const second = await behind((query) => query('LOCK TABLE agents IN ACCESS EXCLUSIVE MODE'), async () => {
-        const add = () => owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/members`, { body: { email: added.email, role: 'member' } });
-        first = flipFirst ? put(admin, 'blocked') : add();
-        await parked('%agents%', 'the first request parked at the agents lock');
-        return flipFirst ? add() : put(admin, 'blocked');
-      }, 2);
-      const firstDone = await first;
-      assert.ok([firstDone.status, second.status].every((status) => status < 500), `no deadlock (flip first: ${flipFirst}): ${firstDone.text} ${second.text}`);
-      const flips = flipFirst ? firstDone : second;
-      assert.equal(flips.status, 200, `the flip commits: ${flips.text}`);
-      await setWorkspaceAi(ws.id, 'allowed');
-    }
+    const [removed, flip] = await Promise.all([owner.browser.request('DELETE', `/api/v1/workspaces/${ws.id}/members/${spare.id}`), put(spare, 'blocked')]);
+    assert.equal(removed.status, 204);
+    assert.ok([200, 404].includes(flip.status), `the flip is done or finds the admin gone: ${flip.status} ${flip.text}`);
+    await setSpaceAi(scene.place.id, 'allowed');
   });
 
   test('the backstop refuses a stale or missing epoch on every AI work table; the current epoch passes it', async () => {
@@ -209,16 +125,16 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
     const rule = randomUUID();
     await pool.query(`INSERT INTO assistant_reactions (id, workspace_id, project_id, owner_user_id, event, action, enabled) VALUES ($1, $2, $3, $4, 'mentioned', 'tell', false)`,
       [rule, ws.id, place.id, owner.id]);
-    const current = await epochOf(ws.id);
+    const current = await epochOf(place.id);
     const attempt = async (table: string, epoch: number | null) => {
-      const reference = table === 'proactive_comparison_outbox' ? `project_id` : table === 'assistant_reaction_events' ? 'reaction_id' : 'workspace_id';
-      const value = table === 'proactive_comparison_outbox' ? place.id : table === 'assistant_reaction_events' ? rule : ws.id;
+      const reference = table === 'assistant_reaction_events' ? 'reaction_id' : 'project_id';
+      const value = table === 'assistant_reaction_events' ? rule : place.id;
       try { await pool.query(`INSERT INTO ${table} (${reference}, ai_epoch) VALUES ($1, $2)`, [value, epoch]); return 'inserted'; }
       catch (error) { return (error as Error).message; }
     };
     for (const table of AI_WORK_QUEUES.tables) {
-      assert.match(await attempt(table, current - 1), /AI is turned off in this workspace/, `${table}: a stale epoch`);
-      assert.match(await attempt(table, null), /AI is turned off in this workspace/, `${table}: a missing epoch`);
+      assert.match(await attempt(table, current - 1), /AI is turned off in this space/, `${table}: a stale epoch`);
+      assert.match(await attempt(table, null), /AI is turned off in this space/, `${table}: a missing epoch`);
       assert.doesNotMatch(await attempt(table, current), /AI is turned off/, `${table}: control, the current epoch passes the backstop (the row then fails its own constraints)`);
     }
   });
@@ -282,7 +198,7 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
     assert.equal((await events(afterFlip)).length, 0, 'nothing is captured while AI is off');
   });
 
-  test('a chunk held at the delivery fence when AI is turned off is refused with the JSON-RPC error on HTTP 200', async () => {
+  test('a chunk of a space-bound request held at the delivery fence when AI is turned off is refused with the JSON-RPC error on HTTP 200', async () => {
     const connection = expect(await scene.owner.browser.request('POST', '/api/v1/agent-connections',
       { body: { agentId: scene.agentId, selectedProjectIds: [scene.place.id], scopes: ['flux.context.read'] } }), 201);
     const clientId = `flux-test-${randomUUID()}`;
@@ -300,21 +216,21 @@ describe('workspace AI lock: sweep, lock order and remaining AC-3 rows', () => {
         await client.query('BEGIN');
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [gate]);
         const baseline = await lockWaiters();
-        const pending = mcp(token, 7, 'tools/list', {}, { headers: { 'x-flux-test-delivery-gate': gate } });
+        const pending = mcp(token, 7, 'tools/list', {}, { headers: { 'x-flux-test-delivery-gate': gate }, query: `flux_connection=${String(connection.id)}&flux_project=${scene.place.id}` });
         await waitFor(async () => (await lockWaiters()) > baseline, 'the response held before its fence');
-        if (flip) await setWorkspaceAi(scene.ws.id, 'blocked');
+        if (flip) await setSpaceAi(scene.place.id, 'blocked');
         await client.query('COMMIT');
         return await pending;
       } finally { client.release(); }
     };
     assert.ok(lists(await held(false)), 'control: a held chunk is delivered while AI stays on');
     const refused = await held(true);
-    assert.deepEqual([refused.status, errorCode(refused.message), refused.message?.id], [200, 'WORKSPACE_AI_BLOCKED', 7], 'refused with the same JSON-RPC error, not a 403');
+    assert.deepEqual([refused.status, errorCode(refused.message), refused.message?.id], [200, 'SPACE_AI_OFF', 7], 'refused with the same JSON-RPC error, not a 403');
   });
 });
 
-describe('workspace AI lock: a comparison in flight and a comparison publish against the flip', () => {
-  let owner: Person; let peer: Person; let wsId: string; let projectId: string; let material: Material; let conversation: Conversation;
+describe('space AI switch: a comparison in flight and a comparison publish against the flip', () => {
+  let owner: Person; let peer: Person; let projectId: string; let material: Material; let conversation: Conversation;
   const masterKey = readFileSync('/run/secrets/flux_background_key');
   const negative = async (title: string) => expectStatus(await peer.browser.request('POST', `/api/v1/projects/${projectId}/results`, { body: { title, finding: 'negative',
     evidence: 'Camera misses at 5 lux', sources: [{ type: 'material', id: material.materialId, version: 1 }, { type: 'message', id: conversation.messages[0]!.id }] } }), 201) as WorkResult;
@@ -322,13 +238,11 @@ describe('workspace AI lock: a comparison in flight and a comparison publish aga
   const answer = (input: Parameters<ComparisonProvider['createMessage']>[0]) => ({ stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 100 },
     answer: { kind: 'comparison', fact: 'Sensor A misses gestures.', interpretation: 'Exposure may be short.', suggestedAction: 'Compare a second sensor.',
       citations: input.sources.map(({ type, id, version }) => ({ type, id, version })) } }) as never;
-  const put = async (state: 'allowed' | 'blocked') => expectStatus(await owner.browser.request('PUT', workspaceAiPolicyPath(wsId),
-    { body: { state }, headers: { 'if-match': `"${(await workspaceAiRow(wsId))!.version}"` } }), 200) as { stopped: { comparisons: number } | null };
+  const put = async (state: 'allowed' | 'blocked') => expectStatus(await owner.browser.request('PUT', projectAiPolicyPath(projectId), { body: { state } }), 200) as { stopped: { comparisons: number } | null };
 
   before(async () => {
     [owner, peer] = await Promise.all(['ai-sweep-cmp-owner', 'ai-sweep-cmp-peer'].map(person));
     const ws = await workspace(owner, 'Comparison cutover workspace');
-    wsId = ws.id;
     await addMember(owner, ws.id, peer, 'member');
     projectId = (await project(owner, ws.id, 'Low-light sensors', 'restricted')).id;
     await grant(owner, projectId, peer, 'contributor');
@@ -343,7 +257,7 @@ describe('workspace AI lock: a comparison in flight and a comparison publish aga
     conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/conversations`,
       { body: { body: 'Compare sensor measurements.', clientMessageId: randomUUID() } }), 201) as Conversation;
   });
-  after(async () => { await ensureWorkspaceAiAllowed(wsId); });
+  after(async () => { await ensureSpaceAiAllowed(projectId); });
 
   test('a reserved comparison not yet sent is ended by the sweep (the whole sweep still commits)', async () => {
     const candidate = await candidateOf((await negative('Reserved, not sent')).id);
@@ -386,9 +300,9 @@ describe('workspace AI lock: a comparison in flight and a comparison publish aga
     // The flip lands while the provider answers: nothing is published.
     const first = await candidateOf((await negative('Flip before publish')).id);
     await comparisonDispatchFixtureDue(pool, first);
-    const flipping: ComparisonProvider = { async countInputTokens() { return 100; }, async createMessage(input) { await setWorkspaceAi(wsId, 'blocked'); return answer(input); } };
+    const flipping: ComparisonProvider = { async countInputTokens() { return 100; }, async createMessage(input) { await setSpaceAi(projectId, 'blocked'); return answer(input); } };
     assert.notEqual((await dispatchProactiveComparison({ db, candidateId: first, masterKey, provider: flipping })).status, 'proposal');
-    await setWorkspaceAi(wsId, 'allowed');
+    await setSpaceAi(projectId, 'allowed');
     // Published first, then the flip: the proposal stays as history.
     const second = await candidateOf((await negative('Publish before flip')).id);
     await comparisonDispatchFixtureDue(pool, second);

@@ -1,4 +1,4 @@
-import { accessPorts, needsYouRows, returnRows, visibleFilter, accessReader, type Database } from '@flux/db';
+import { accessPorts, needsYouRows, returnRows, memberFilter, accessReader, type Database } from '@flux/db';
 import {
   createNeedsYou,
   evaluateProject,
@@ -21,7 +21,7 @@ export function policyNeedsYouAccess(db: Database): NeedsYouAccess {
       return (await listWorkspaces(principal, db, accessPorts)).map((workspace) => workspace.id);
     },
     async visibleProjects(principal, workspaceId) {
-      return returns.projectIdsWhere(workspaceId, await visibleFilter(principal, workspaceId, 'project', db));
+      return returns.projectIdsWhere(workspaceId, await memberFilter(principal, workspaceId, 'project', db));
     },
     async canAccept(principal, projectId) {
       return principal.kind === 'human' && (await evaluateProject(principal, 'project.write', projectId, accessReader(db))).allowed;

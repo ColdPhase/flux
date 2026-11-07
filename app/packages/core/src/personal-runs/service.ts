@@ -355,8 +355,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       if (error instanceof NotFoundError) throw new NotFoundError('Conversation', 'CONVERSATION_NOT_FOUND');
       throw error;
     }
-    // F-029: no run, and no replay of an earlier one, while AI is off in this workspace.
-    const { epoch: aiEpoch } = await ports.access.requireWorkspaceAi(place.workspaceId, { lock: true });
+    // AG-10: no run, and no replay of an earlier one, while AI is off in this space.
+    const { epoch: aiEpoch } = await ports.access.requireSpaceAi(place.projectId, { lock: true });
     // The owner's row lock serializes this owner's invocations: same-key retries and the budget reservation cannot race.
     const enablement = await ports.runs.enablement(owner, { lock: true });
     refuseForeignIds(request.claimed, owner, enablement, place.workspaceId);
@@ -422,9 +422,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const principal: Principal = { kind: 'human', id: owner };
     const place = await ports.runs.locateConversation(spec.conversationId);
     if (!place || place.projectId !== spec.projectId) return skipped('Skipped: this project has no conversation yet');
-    // F-029: nothing starts in a workspace whose AI is off (the tick does not fire there; this is the backstop).
-    const ai = await ports.access.workspaceAi(place.workspaceId, { lock: true });
-    if (ai.state !== 'allowed') return skipped('Skipped: AI is off in this company');
+    // AG-10: nothing starts in a space whose AI is off (the tick does not fire there; this is the backstop).
+    const ai = await ports.access.spaceAi(place.projectId, { lock: true });
+    if (ai.state !== 'allowed') return skipped('Skipped: AI is off in this space');
     // The assistant changes things as the owner's: the owner must still be able to write here.
     if (!(await ports.access.canUseProject(principal, 'write', spec.projectId, { lock: true }))) return skipped('Skipped: you no longer have access to this project');
     const existing = await ports.runs.runByClientId(owner, spec.clientRunId);

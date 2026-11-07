@@ -2,8 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import { requireMcpAuth } from '@better-auth/mcp';
 import type { AgentScope } from '@flux/contracts';
 import { AGENT_MCP_ENTRIES, agentScopeRefusal, assistantRunTools } from '@flux/contracts';
-import { enforce, evaluateProject, isUuid, requireAgentMcpEntry, requireWorkspaceAi, WorkspaceAiBlockedError } from '@flux/core';
-import { agentConnectionWorkspaceId, lockAgentMcpPolicy, loadActor, workspaceAi, accessReader, type Database, type Transaction } from '@flux/db';
+import { enforce, evaluateProject, isUuid, requireAgentMcpEntry, requireSpaceAi, SpaceAiOffError } from '@flux/core';
+import { agentConnectionWorkspaceId, lockAgentMcpPolicy, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import type { Confirmation } from '../identity/confirmation.js';
 import { createFluxMcpServer } from './mcp-tools.js';
@@ -16,16 +16,17 @@ import { createFluxMcpHandler } from './mcp-protocol.js';
 import { requireLiveRun, runTokenClaims, type RunTokenClaims } from './run-token.js';
 
 /**
- * F-029: a connection of a workspace whose AI is off gets this refusal, before any tool, resource or prompt. It is a
- * JSON-RPC error on HTTP 200, not 401/403: real clients read 401/403 from /mcp as a lost sign-in and drop the connection's
- * tokens (observed with Claude Code, 2026-10-23), so after AI is turned on again the person would have to connect again.
- * The connection is not lost; it is only refused while AI is off.
+ * AG-10: a request bound to a space, or a run's token, gets this refusal while AI is off in that space, before any tool,
+ * resource or prompt. It is a JSON-RPC error on HTTP 200, not 401/403: real clients read 401/403 from /mcp as a lost sign-in and
+ * drop the connection's tokens (observed with Claude Code, 2026-10-23), so after AI is turned on again the person would have to
+ * connect again. The connection is not lost; it is only refused while AI is off in that space. Every other tool call is checked
+ * against the space it names.
  */
 async function aiBlockedResponse(request: Request): Promise<Response> {
   const id = await request.clone().json().then((body: { id?: unknown }) => (typeof body?.id === 'string' || typeof body?.id === 'number' ? body.id : null))
     .catch(() => null);
-  return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'AI is turned off in this company',
-    data: { code: 'WORKSPACE_AI_BLOCKED' } }, id }), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
+  return new Response(JSON.stringify({ jsonrpc: '2.0', error: { code: -32000, message: 'AI is off in this space',
+    data: { code: 'SPACE_AI_OFF' } }, id }), { status: 200, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } });
 }
 
 /** The only remote MCP entry point. A new tool server is bound to each verified bearer request. */
@@ -60,12 +61,6 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
         'www-authenticate': `Bearer resource_metadata="${publicOrigin}/.well-known/oauth-protected-resource/mcp", error="invalid_token", error_description="${description}"`,
       } });
     }
-    // F-029: whatever the token, grant or role, nothing is served for a workspace whose AI is off.
-    const blocked = await db.transaction(async (tx) => {
-      const workspaceId = await agentConnectionWorkspaceId(tx, connectionId, ownerUserId);
-      return workspaceId !== null && (await workspaceAi(tx, workspaceId, { lock: true })).state !== 'allowed';
-    });
-    if (blocked) return aiBlockedResponse(request);
     // A signed JWT remains valid until expiry, so revocation must be checked
     // against the live connection before even listing tools.
     let dispatch: McpDispatch;
@@ -83,12 +78,12 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
           typeof referenceId === 'string' ? referenceId : connectionId);
         if (!grant || grant.connection.id !== connectionId || grant.clientId !== null && grant.clientId !== token.client_id)
           throw new Error('Invalid grant');
-        await requireWorkspaceAi(accessReader(tx), grant.connection.workspaceId, { lock: true });
         const policy = await lockAgentMcpPolicy(tx, connectionId);
         if (!policy) throw new Error('Policy unavailable');
         if (boundProjectId && (!grant.connection.selectedProjectIds.includes(boundProjectId) || !policy.selectedProjectIds.includes(boundProjectId)))
           throw new Error('Bound project unavailable');
         if (boundProjectId) {
+          await requireSpaceAi(accessReader(tx), boundProjectId, { lock: true });
           const checked = enforce(await evaluateProject({ kind: 'agent', id: grant.connection.agentId }, 'project.read', boundProjectId, accessReader(tx), { lock: true }), 'project');
           if (checked.project!.workspaceId !== grant.connection.workspaceId) throw new Error('Bound project unavailable');
         }
@@ -103,7 +98,7 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
         return createMcpDispatch(policy.version);
       });
     } catch (error) {
-      if (error instanceof WorkspaceAiBlockedError) return aiBlockedResponse(request);
+      if (error instanceof SpaceAiOffError) return aiBlockedResponse(request);
       return new Response(JSON.stringify({ error: 'Agent connection is unavailable' }), {
         status: 403, headers: { 'content-type': 'application/json' },
       });
@@ -118,10 +113,9 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
     // Protected bytes are handed to the transport only while the live policy and access still hold.
     const referenceId = typeof token.flux_grant_reference === 'string' ? token.flux_grant_reference : connectionId;
     const fence = { async check(tx: Transaction) {
-      // F-029, first and unconditionally: no byte, not even a tool list or a refusal, after AI is turned off.
-      const fencedWorkspace = await agentConnectionWorkspaceId(tx, connectionId, ownerUserId);
-      if (!fencedWorkspace) throw new Error('Connection unavailable');
-      await requireWorkspaceAi(accessReader(tx), fencedWorkspace, { lock: true });
+      // AG-10, first: no byte, not even a tool list or a refusal, of a space-bound request after its AI is turned off.
+      if (boundProjectId) await requireSpaceAi(accessReader(tx), boundProjectId, { lock: true });
+      if (!await agentConnectionWorkspaceId(tx, connectionId, ownerUserId)) throw new Error('Connection unavailable');
       // Nothing more reaches a run token once its run ended, was stopped or its token closed.
       if (run) await requireLiveRun(tx, { ownerUserId, connectionId, run }, { newCall: false, lock: true });
       const store = createAgentConnectionStore(tx);

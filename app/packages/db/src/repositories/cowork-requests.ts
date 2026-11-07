@@ -4,7 +4,7 @@ import { coWorkRequestStatus, type CoWorkEnqueueCommand, type CoWorkRequestLimit
 import { prepareReferencedTaskUse, referencedTaskIds } from './task-targets.js';
 import type { TaskUseFence } from './task-use.js';
 import * as schema from '../schema.js';
-import { aiEpochIsCurrent, currentAiEpoch } from './workspace-ai.js';
+import { aiEpochIsCurrent, currentAiEpoch } from './space-ai.js';
 import type { DbExecutor } from './push.js';
 
 const requests = schema.coworkRequests;
@@ -22,7 +22,7 @@ function record(row: Row): CoWorkRequestRecord {
 }
 function addressed(address: Address) {
   return and(eq(requests.workspaceId, address.workspaceId), eq(requests.projectId, address.projectId),
-    eq(requests.recipientConnectionId, address.connectionId), aiEpochIsCurrent(requests.aiEpoch, requests.workspaceId));
+    eq(requests.recipientConnectionId, address.connectionId), aiEpochIsCurrent(requests.aiEpoch, requests.projectId));
 }
 const unit = schema.coworkUnits;
 const projection = { request: requests, unitState: unit.state, unitGeneration: unit.generation,
@@ -104,7 +104,7 @@ export function coworkRequestRows(tx: DbExecutor) {
         reviewRequests: lineage.reviewRequests + (input.kind === 'review' ? 1 : 0) }).where(eq(lineages.id, lineage.id));
       const [created] = await tx.insert(requests).values({ id: randomUUID(), lineageId: lineage.id,
         workspaceId: sender.workspaceId, projectId: sender.projectId, taskId: unit.taskId, unitId: unit.id,
-        aiEpoch: currentAiEpoch(sender.workspaceId),
+        aiEpoch: currentAiEpoch(sender.projectId),
         senderConnectionId: origin.id, recipientConnectionId: recipient.id, senderOwnerId: origin.ownerUserId, recipientOwnerId: recipient.ownerUserId,
         intentKey: input.intentKey, fingerprint, parentRequestId: input.parentRequestId, kind: input.kind,
         target: input.target, sourceRefs: input.sourceRefs, criteriaRefs: input.criteriaRefs, depth, reviewRound,
@@ -123,7 +123,7 @@ export function coworkRequestRows(tx: DbExecutor) {
         FROM cowork_requests request WHERE delivery.id = ${deliveryIntentId} AND delivery.request_id = request.id
           AND request.workspace_id = ${recipient.workspaceId} AND request.project_id = ${recipient.projectId}
           AND request.recipient_connection_id = ${recipient.connectionId}
-          AND request.ai_epoch = ${currentAiEpoch(sql`request.workspace_id`)} RETURNING delivery.id`);
+          AND request.ai_epoch = ${currentAiEpoch(sql`request.project_id`)} RETURNING delivery.id`);
       return result.rows.length === 1;
     },
     async defer(recipient: Address, requestId: string, expectedVersion: number,
@@ -171,7 +171,7 @@ export function coworkRequestRows(tx: DbExecutor) {
       const rows = await tx.select({ ...projection, score }).from(requests).innerJoin(schema.coworkUnits, eq(schema.coworkUnits.id, requests.unitId))
         .where(and(addressed(recipient), inArray(requests.state, pending), gt(requests.expiresAt, sql`clock_timestamp()`),
           eq(schema.coworkUnits.assignmentConnectionId, recipient.connectionId), inArray(schema.coworkUnits.state, ['pending', 'paused', 'claimed']),
-          aiEpochIsCurrent(schema.coworkUnits.aiEpoch, schema.coworkUnits.workspaceId),
+          aiEpochIsCurrent(schema.coworkUnits.aiEpoch, schema.coworkUnits.projectId),
           sql`(${schema.coworkUnits.state} <> 'claimed' OR ${schema.coworkUnits.leaseExpiresAt} <= clock_timestamp())`, after))
         .orderBy(desc(score), asc(requests.createdAt), asc(requests.id)).limit(pageLimit(limit));
       const last = rows.at(-1);

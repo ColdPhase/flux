@@ -3,7 +3,7 @@ import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, ne, sql } from 'driz
 import * as schema from '../schema.js';
 import { openRows } from '../sealing.js';
 import { assignmentNotificationActive } from './notification-lifecycle.js';
-import { hiddenWhileAiOff, notificationHiddenWhileAiOff } from './workspace-ai.js';
+import { hiddenWhileAiOff, notificationHiddenWhileAiOff } from './space-ai.js';
 import type { DbExecutor } from './push.js';
 
 /**

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router';
-import { useAllAiBlocked } from '../ai/workspaceAi';
+import { useAllAiBlocked } from '../ai/spaceAi';
 import { Icon } from '../ui';
 import { getMorningSummary } from './scheduleApi';
 import './schedules.css';

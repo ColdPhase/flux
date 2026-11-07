@@ -1,7 +1,7 @@
 import { and, eq, gt, sql } from 'drizzle-orm';
 import type { PgBoss } from 'pg-boss';
 import { schema, accessReader, type Database } from '@flux/db';
-import { assertAuthorized, createNotification, isUuid, NotFoundError, type Principal } from '@flux/core';
+import { assertAuthorized, ConflictError, createNotification, isUuid, NotFoundError, type Principal } from '@flux/core';
 import { notificationUnitOfWork, pgBossQueue } from '../push/adapters.js';
 
 /**
@@ -15,6 +15,9 @@ export function assistantOperatorUseCases(db: Database, boss: Pick<PgBoss, 'send
       if (principal.kind !== 'human' || !isUuid(workspaceId)) throw new NotFoundError('Company', 'WORKSPACE_NOT_FOUND');
       return db.transaction(async (tx) => {
         await assertAuthorized(principal, 'workspace.read', { type: 'workspace', id: workspaceId }, accessReader(tx));
+        // AI is always off in an encrypted workspace (F-030): there is nothing for the operator to turn on for it.
+        const [company] = await tx.select({ encrypted: schema.workspaces.encrypted }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
+        if (company?.encrypted) throw new ConflictError('AI is always off in an encrypted workspace', 'WORKSPACE_ENCRYPTED_AI_OFF');
         const [asker] = await tx.select({ name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, principal.id));
         const first = (asker?.name ?? 'Someone').trim().split(/\s+/)[0] || 'Someone';
         const title = `${first} would like to use their ${plan} plan here`.slice(0, 200);

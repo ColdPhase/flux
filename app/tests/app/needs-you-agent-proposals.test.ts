@@ -7,7 +7,7 @@ import type { Material, NeedsYouResponse, Project, Workspace } from '@flux/contr
 import { eventPorts } from '../../apps/server/src/events.js';
 import { db } from './support/db.js';
 import { expectStatus, person } from './support/people.js';
-import { ensureWorkspaceAiAllowed, setWorkspaceAi } from './support/workspace-ai.js';
+import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 
 // #661: a suggestion an agent makes through MCP is a "Needs you" item for the person who connected the agent.
 const store = agentProposalUseCases(agentProposalRepository(db, {
@@ -43,10 +43,10 @@ test('an agent suggestion reaches its owner in Needs you, can be answered, and h
     suggestedAction: 'Compare sensor B', source: { materialId: material.materialId, title: 'Low light', version: 1 } });
   assert.equal((await list(other)).items.some((entry) => entry.key === key), false, 'only the person who connected the agent is asked');
 
-  await setWorkspaceAi(ws.id, 'blocked');
+  await setSpaceAi(project.id, 'blocked');
   assert.equal((await list()).items.some((entry) => entry.key === key), false, 'hidden while AI is off');
   expectStatus(await owner.browser.request('POST', `/api/v1/needs-you/${encodeURIComponent(key)}`, { body: { action: 'done' } }), 404);
-  await ensureWorkspaceAiAllowed(ws.id);
+  await ensureSpaceAiAllowed(project.id);
 
   expectStatus(await owner.browser.request('POST', `/api/v1/needs-you/${encodeURIComponent(key)}`, { body: { action: 'decline' } }), 200);
   assert.equal((await list()).items.some((entry) => entry.key === key), false);

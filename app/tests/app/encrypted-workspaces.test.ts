@@ -45,11 +45,9 @@ describe('F-030 creation (fixture route)', () => {
     assert.equal(view.encryption?.canUnlock, true);
     assert.equal(view.encryption?.recoveryCode, true);
     assert.equal(view.encryption?.unlockedBy?.id, ada.id);
-    assert.deepEqual({ state: view.ai.state, fixed: view.ai.fixed }, { state: 'blocked', fixed: 'encrypted' });
     assert.match(recovery, /^([0-9A-HJKMNP-TV-Z]{4}-){7}[0-9A-HJKMNP-TV-Z]{4}$/);
     const plain = await readWorkspace(ada.browser, B);
     assert.equal(plain.encryption, null);
-    assert.equal(plain.ai.fixed, null);
     assert.equal((await readWorkspace(cy.browser, A)).encryption?.myPassword, false, 'members get false');
 
     const creationId = randomUUID();
@@ -427,13 +425,13 @@ describe('F-030 tampered key rows', () => {
 });
 
 describe('F-030 AI forced off', () => {
-  test('the policy is blocked at creation; PUT ai-policy gives 409; a direct update to allowed is refused by the trigger', async () => {
-    assert.equal((await pool.query('SELECT state FROM workspace_ai_policies WHERE workspace_id = $1', [A])).rows[0].state, 'blocked');
-    const version = (await readWorkspace(ada.browser, A)).ai.version;
-    const response = await ada.browser.request('PUT', `/api/v1/workspaces/${A}/ai-policy`, { body: { state: 'allowed', expectedVersion: version } });
+  test('the switch of a space is blocked at creation; PUT ai-policy gives 409; a direct update to allowed is refused by the trigger', async () => {
+    const space = (expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${A}/projects`, { body: { name: 'Switch' } }), 201) as { id: string; ai: string }).id;
+    assert.equal((await pool.query('SELECT state FROM project_ai_policies WHERE project_id = $1', [space])).rows[0].state, 'blocked');
+    const response = await ada.browser.request('PUT', `/api/v1/projects/${space}/ai-policy`, { body: { state: 'allowed' } });
     assert.equal(response.status, 409, response.text);
     assert.equal(codeOf(response), 'WORKSPACE_ENCRYPTED_AI_OFF');
-    await assert.rejects(pool.query(`UPDATE workspace_ai_policies SET state = 'allowed' WHERE workspace_id = $1`, [A]), { hint: 'WORKSPACE_ENCRYPTED_AI_OFF' });
+    await assert.rejects(pool.query(`UPDATE project_ai_policies SET state = 'allowed' WHERE project_id = $1`, [space]), { hint: 'WORKSPACE_ENCRYPTED_AI_OFF' });
     await assert.rejects(pool.query(`UPDATE workspaces SET encrypted = false WHERE id = $1`, [A]), { hint: 'WORKSPACE_ENCRYPTION_IMMUTABLE' });
   });
 
@@ -469,18 +467,18 @@ describe('F-030 AI forced off', () => {
     }
   });
 
-  test('an F-029 gated route answers 403 WORKSPACE_AI_BLOCKED in A and works in B', async () => {
+  test('a gated AI route answers 403 SPACE_AI_OFF in A and works in B', async () => {
     for (const [ws, status] of [[A, 403], [B, 200]] as const) {
       const project = (expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${ws}/projects`, { body: { name: 'Robots' } }), 201) as { id: string }).id;
       const response = await ada.browser.request('GET', `/api/v1/projects/${project}/agents`);
       assert.equal(response.status, status, response.text);
-      if (status === 403) assert.equal(codeOf(response), 'WORKSPACE_AI_BLOCKED');
+      if (status === 403) assert.equal(codeOf(response), 'SPACE_AI_OFF');
     }
   });
 
-  test('#68: a personal assistant run is refused in A (403 WORKSPACE_AI_BLOCKED) with no run or usage row, and reaches its own checks in B', async () => {
+  test('#68: a personal assistant run is refused in A (403 SPACE_AI_OFF) with no run or usage row, and reaches its own checks in B', async () => {
     const before = Number((await pool.query('SELECT count(*) FROM personal_runs WHERE owner_user_id = $1', [ada.id])).rows[0].count);
-    for (const [ws, status, code] of [[A, 403, 'WORKSPACE_AI_BLOCKED'], [B, 409, 'PERSONAL_RUN_NOT_ENABLED']] as const) {
+    for (const [ws, status, code] of [[A, 403, 'SPACE_AI_OFF'], [B, 409, 'PERSONAL_RUN_NOT_ENABLED']] as const) {
       const project = (expectStatus(await ada.browser.request('POST', `/api/v1/workspaces/${ws}/projects`, { body: { name: 'Assistant' } }), 201) as { id: string }).id;
       const thread = expectStatus(await ada.browser.request('POST', `/api/v1/projects/${project}/conversations`,
         { body: { body: 'Camera or ToF sensor?', clientMessageId: randomUUID() } }), 201) as { id: string };

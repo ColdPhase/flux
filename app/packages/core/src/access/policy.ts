@@ -1,11 +1,11 @@
 import type { ProjectAccess, WorkspaceRole } from '@flux/contracts';
 import type { Principal } from '../principal.js';
-import { ForbiddenError, NotFoundError, WorkspaceAiBlockedError } from './errors.js';
+import { ForbiddenError, NotFoundError, SpaceAiOffError } from './errors.js';
 import type {
-  AccessReader, ActorReads, Actor, AgentFacts, AssistantRunFacts, DmFacts, DraftFacts, LoadOptions, ProjectFacts, SketchFacts, WorkspaceAi,
+  AccessReader, ActorReads, Actor, AgentFacts, AssistantRunFacts, DmFacts, DraftFacts, LoadOptions, ProjectFacts, SketchFacts, SpaceAi,
 } from './ports.js';
 
-export type { Actor, LoadOptions, WorkspaceAi } from './ports.js';
+export type { Actor, LoadOptions, SpaceAi } from './ports.js';
 
 /**
  * # Flux access policy
@@ -68,7 +68,7 @@ export type { Actor, LoadOptions, WorkspaceAi } from './ports.js';
  *   does not leak; visible objects with a forbidden action get {@link ForbiddenError} (403).
  */
 
-export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.rename', 'workspace.manage_ai', 'workspace.manage_encryption', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
+export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.rename', 'workspace.manage_encryption', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
 export const PROJECT_ACTIONS = ['project.read', 'project.write', 'project.manage'] as const;
 export const DRAFT_ACTIONS = ['draft.read', 'draft.write', 'draft.share', 'draft.move'] as const;
 export const AGENT_ACTIONS = ['agent.read', 'agent.revoke', 'agent.invoke'] as const;
@@ -101,14 +101,13 @@ export interface Decision {
 }
 
 /**
- * The single AI check of every entry point (F-029): throws {@link WorkspaceAiBlockedError} unless AI is
- * allowed in the workspace and, when `epoch` is given (a queued item's admission epoch), still at it.
- * Returns the policy, whose `epoch` a new AI work item records. The policy row is read fresh; with `lock`
- * it is held `FOR SHARE`, ordered before the agent, membership, project and grant rows.
+ * The single AI check of every entry point (F-029, AG-10): throws {@link SpaceAiOffError} unless AI is on in the
+ * space and, when `epoch` is given (a queued item's admission epoch), still at it. Returns the switch, whose `epoch` a new
+ * AI work item records. The policy row is read fresh; with `lock` it is held `FOR SHARE`.
  */
-export async function requireWorkspaceAi(reader: Pick<ActorReads, 'workspaceAi'>, workspaceId: string, options: { lock?: boolean; epoch?: number } = {}): Promise<WorkspaceAi> {
-  const ai = await reader.workspaceAi(workspaceId, options);
-  if (ai.state !== 'allowed' || (options.epoch !== undefined && options.epoch !== ai.epoch)) throw new WorkspaceAiBlockedError();
+export async function requireSpaceAi(reader: Pick<ActorReads, 'spaceAi'>, projectId: string, options: { lock?: boolean; epoch?: number } = {}): Promise<SpaceAi> {
+  const ai = await reader.spaceAi(projectId, options);
+  if (ai.state !== 'allowed' || (options.epoch !== undefined && options.epoch !== ai.epoch)) throw new SpaceAiOffError();
   return ai;
 }
 
@@ -221,7 +220,6 @@ export async function evaluateWorkspace(principal: Principal, action: ActionsByR
       break;
     case 'workspace.manage_members':
     case 'workspace.rename':
-    case 'workspace.manage_ai':
     case 'workspace.manage_encryption':
       allowed = human && isManager(actor.role);
       break;
@@ -293,8 +291,6 @@ export async function evaluateAgent<A extends AgentFacts = AgentFacts>(principal
   if (!visible) return { ...none, actor };
   // `agent.invoke` (#68, O-008): only the owning person, while the agent is not revoked. A
   // workspace role never lets anyone else use a person's assistant or its payer.
-  // F-029: nobody invokes an agent of a workspace whose AI is off.
-  if (action === 'agent.invoke' && ownedByCaller && (await reader.workspaceAi(agent.workspaceId, options)).state !== 'allowed') return { allowed: false, visible, actor, agent };
   const allowed = action === 'agent.invoke' ? ownedByCaller && !agent.revokedAt
     : action === 'agent.read' || ownedByCaller || isManager(actor.role);
   return { allowed, visible, actor, agent };
@@ -449,8 +445,13 @@ export function eventResource(event: EventRef): ResourceRef | null {
  * kinds and events without a workspace are never delivered.
  */
 export async function authorizeEvent(principal: Principal, event: EventRef, reader: AccessReader): Promise<boolean> {
-  // F-029: the AI policy change is for the workspace's people; no agent ever receives it.
-  if (event.kind === 'workspace.ai_policy_changed.v1' && principal.kind !== 'human') return false;
+  // AG-10: the AI switch change is for the space's people; no agent ever receives it.
+  if (event.kind === 'project.ai_policy_changed.v1' && principal.kind !== 'human') return false;
+  // A deleted space can no longer be read: once it is gone, its event goes to the people stored in its audience (decided while the
+  // space still existed, by the ordinary rules below), so their lists drop it.
+  if (event.kind === 'project.deleted.v1' && event.workspaceId && isUuid(event.objectId) && !(await reader.locateProject(event.objectId))) {
+    return principal.kind === 'human' && (await reader.loadActor(principal, event.workspaceId)).active;
+  }
   const resource = eventResource(event);
   if (!resource) return false;
   const decision = await evaluate(principal, READ_ACTION[resource.type], resource, reader);

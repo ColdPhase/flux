@@ -36,8 +36,6 @@ export interface OverviewView {
   messageId?: string;
   /** One already loaded native message; never a project collection or an authority proof. */
   selection?: { accountId: string; projectId: string; message: ConversationMessage };
-  /** `people` scrolls to "Who can see this" and moves focus there (#188): the header's audience line. */
-  focus?: 'people';
 }
 
 /** The people of one workspace (#188): members and roles; owners and admins add and manage them. */

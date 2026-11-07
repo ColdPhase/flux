@@ -1,4 +1,4 @@
-import { searchRows, sealedSearchRows, type SearchExecutor, type SQL, visibleFilter, accessReader, type Database } from '@flux/db';
+import { searchRows, sealedSearchRows, type SearchExecutor, type SQL, visibleFilter, memberFilter, accessReader, type Database } from '@flux/db';
 import {
   authorize,
   createSearchUseCases,
@@ -20,10 +20,11 @@ import {
  * type adds one entry here and one in `@flux/db`'s search rows.
  */
 const POLICY_AUDIENCES: Record<SearchAudienceType, (principal: Principal, workspaceId: string, db: Database) => Promise<SQL | null | false>> = {
-  project: (principal, workspaceId, db) => visibleFilter(principal, workspaceId, 'project', db),
+  // F-037 (coordinator default): a company admin finds only what is in the spaces they were added to.
+  project: (principal, workspaceId, db) => memberFilter(principal, workspaceId, 'project', db),
   dm: (principal, workspaceId, db) => visibleFilter(principal, workspaceId, 'dm', db),
-  sketch: (principal, workspaceId, db) => visibleFilter(principal, workspaceId, 'sketch', db),
-  draft: (principal, workspaceId, db) => visibleFilter(principal, workspaceId, 'draft', db),
+  sketch: (principal, workspaceId, db) => memberFilter(principal, workspaceId, 'sketch', db),
+  draft: (principal, workspaceId, db) => memberFilter(principal, workspaceId, 'draft', db),
   // People are found by whoever may read the workspace's members.
   members: async (principal, workspaceId, db) =>
     (await authorize(principal, 'workspace.read_members', { type: 'workspace', id: workspaceId }, accessReader(db))).allowed ? null : false,

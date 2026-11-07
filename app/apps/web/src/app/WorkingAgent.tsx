@@ -12,7 +12,7 @@ import { stopFailure, stopAgentWork } from '../agents/stop';
 import { holdsLine, pausedLine, workingLine } from '../agents/status';
 import { useShellData } from './data';
 import { RefLink } from '../place/origin';
-import { useAllAiBlocked, useProjectAiBlocked } from '../ai/workspaceAi';
+import { useAllAiBlocked, useProjectAiBlocked } from '../ai/spaceAi';
 
 const POLL_WHILE_WORKING_MS = 3000;
 interface WorkingSnapshot { identity: string; run: AssistantRun | null; stopping: boolean; failed: boolean }

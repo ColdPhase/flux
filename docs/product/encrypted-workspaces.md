@@ -200,8 +200,8 @@ CREATE TABLE sealed_job_waits (            -- work that needs a DEK and arrived 
 -- notifications.reason: the CHECK (0015, extended since) gains 'security'.
 ```
 
-- The F-029 trigger that writes the new workspace's `workspace_ai_policies` row writes `'blocked'`
-  when `NEW.encrypted`, and a `BEFORE UPDATE` trigger on `workspace_ai_policies` refuses `'allowed'`
+- The trigger that writes each new space's `project_ai_policies` row (F-037) writes `'blocked'`
+  when `NEW.encrypted`, and a `BEFORE UPDATE` trigger on `project_ai_policies` refuses `'allowed'`
   for a sealed workspace (`WORKSPACE_ENCRYPTED_AI_OFF`). See [AI forced off](#ai-forced-off).
 - `idempotency_keys.workspace_id` already exists (nullable, migration 0004). The command runner
   (`apps/server/src/http/commands.ts`, `runCommand`) fills it only when the route declares a `scope`.
@@ -448,7 +448,7 @@ password), `PUT …/unlock-password` (`currentPassword` or `recoveryCode`) and `
 Each of them is an online guessing oracle for a hijacked or impersonated session, and each costs an
 Argon2id derivation, so they share **one** limiter and **one** semaphore. Creating an encrypted space
 (`POST /api/v1/encrypted-workspaces`) checks nothing but runs two derivations, so it shares the
-semaphore and has its own limit (S3 security review: any signed-in person can create one, and a
+semaphore and has its own limit (S3 security review: before F-037 any signed-in person could create one, and a
 flood of creations held the semaphore so that owners' unlocks answered `503`).
 
 - **Limiter.** `password_attempts` counts checks per person and workspace across all four routes.
@@ -1076,7 +1076,7 @@ not only warned about.
 | Notification generation (worker) | An event of a locked sealed workspace is recorded in `sealed_job_waits` (`notifications.generate`, `{ eventId }`) and the cursor moves on, so other workspaces never wait. |
 | `draft.summarize.v1` | The handler records a wait and completes the job. |
 | Push and e-mail sends | Go out. Their text is content-free and never needs the key. |
-| `idempotency.cleanup.v1`, `workspace-ai.sweep.v1` | Run. They read no sealed column. |
+| `idempotency.cleanup.v1`, `space-ai.sweep.v1` | Run. They read no sealed column. |
 | AI jobs | Never exist (F-029). |
 | **After unlock** | `workspace-encryption.resume.v1` replays that workspace's waits in creation order and deletes each once handled. Notifications are unique per `(user_id, event_id)`, so a replay never duplicates. |
 
@@ -1236,7 +1236,7 @@ access and, while locked, shows the locked state.
 
 ## AI forced off
 
-- At creation the policy row is `blocked` (trigger above) and stays so. `PUT /api/v1/workspaces/:id/ai-policy`
+- At creation the policy row is `blocked` (trigger above) and stays so. `PUT /api/v1/projects/:id/ai-policy`
   answers `409 WORKSPACE_ENCRYPTED_AI_OFF` before any other check that could pass. The database
   trigger refuses `allowed` as a backstop. Every F-029 enforcement point then applies unchanged:
   no agent, assistant, MCP client, run, schedule, reaction, comparison or event audience for an agent.
@@ -1415,7 +1415,7 @@ route.
 | --- | --- | --- | --- |
 | AC-1 | S1 | Crypto: envelope round trip. A ciphertext moved to another row, column, table or workspace fails, as do a tampered tag, a wrong key version and a wrong DEK. Wraps use the stored KDF parameters, and a wrong password fails the tag. Recovery code normalisation. A sealed digest round trip compares equal in RAM, and two equal inputs give different stored values. Sealing a DEK to a holder's public key and opening it with the private key; the wrong holder, the wrong version or a changed ephemeral key fails. Holder MAC, the public key in the private key's AAD, the confirmation and the commitment chain each reject a changed value. File object round trip, truncation and tampering refused before any byte is returned. | `tests/app/encryption-crypto.test.ts` |
 | AC-2 | S1 | Lifecycle: create, unlock with the right password (`200`), the wrong one (`400`), the sixth failure by one person (`429`) while another admin can still unlock, the recovery code. A non-holder admin gets `409`. A member, a guest and an agent get `403`. A promoted admin with only a session gets `403 UNLOCK_PASSWORD_GRANT_REQUIRED`; after a holder's grant (wrong holder password `400`) or with the recovery code they can set one, the grant is consumed, an expired grant is refused, and the other holders get the `security` notification. Change password (needs the current one), new recovery code (the old one stops working), demotion deletes the wrap, `409 LAST_UNLOCK_PASSWORD`, `PASSWORD_TOO_WEAK` under 20 characters and for `abcdefghabcdefghabcd`. **One limiter:** five wrong secrets spread over unlock, a grant, a password change and a new recovery code give `429` on all four; a third concurrent derivation waits for the shared semaphore, Lock now gives `423` on the next content call. The create retry with the same `creationId` has no code; a different name gives `409`. **Floods (S3 review):** the sixth creation by one person in 15 minutes gives `429 CREATION_RATE_LIMITED` with `Retry-After`, and a retry of an earlier `creationId` still answers `200`; a person's second derivation in flight gives `503 UNLOCK_BUSY` at once; while one account floods creations, and while an owner repeats new recovery codes with the right password (counted, so the sixth gives `429`), another owner's unlock answers `200`. | `tests/app/encrypted-workspaces.test.ts` |
-| AC-2 | S1 | AI forced off: the policy is `blocked` at creation; `PUT ai-policy` gives `409`; a direct SQL update to `allowed` is refused by the trigger. A direct SQL insert into every AI-class table for A is refused by `sealed_workspace_no_ai`, while the same insert for B passes. The F-029 gated-route list gives `403 WORKSPACE_AI_BLOCKED` in A and works in B. | same, with `workspace-ai-routes.test.ts` cases |
+| AC-2 | S1 | AI forced off: the policy is `blocked` at creation; `PUT ai-policy` of a space gives `409`; a direct SQL update to `allowed` is refused by the trigger. A direct SQL insert into every AI-class table for A is refused by `sealed_workspace_no_ai`, while the same insert for B passes. The F-029 gated-route list gives `403 WORKSPACE_AI_BLOCKED` in A and works in B. | same, with `workspace-ai-routes.test.ts` cases |
 | AC-2 | S1 | Keyring and swap: a wrong token, a malformed or oversized body all get a fixed answer with nothing echoed or logged; token comparison is `timingSafeEqual`. The keyring refuses to start with swap possible (S1: the keyring process run with fake cgroup and `/proc/swaps` files under the test-only `FLUX_TEST_SWAP_ROOT`, because Docker refuses a mount over `/proc`; it gives no more power than `FLUX_SWAP_ACKNOWLEDGED`). An API that fails `swapSafety()` answers `503 SWAP_UNSAFE` for unlock and creation; `FLUX_SWAP_ACKNOWLEDGED=encrypted-swap` lets it pass. Every Compose file with `api` has the keyring or `FLUX_KEYRING: off`; `./flux upgrade` adds a missing token. | `tests/app/encryption-keyring.test.ts`, `tests/test_compose_keyring.py` |
 | AC-3 | S1 | **Restart is locked.** Unlock A and write. `docker compose restart` of the whole stack makes A's content routes answer `423` and `encryption.state = 'locked'`, and unlock works again. Restarting only `api` keeps A unlocked. Restarting only `keyring` locks A within 5 s, with one `workspace.locked.v1 { reason: 'restart' }`. | `app/tests/app/encryption-restart.check.ts`, called by `check_application.sh` |
 | AC-4 | S1 | **Multiple processes.** Two API containers, the worker and the keyring (pattern of the [two-API fixture](../development/live-editing-two-api.md)). Unlock on API-1, then read on API-2 at once. Lock on API-2, then API-1's next write gives `423`. The test stack runs PostgreSQL with `log_statement = all` and `log_parameter_max_length = -1`, and the **whole PostgreSQL log** of the run is scanned for the DEK, the subkeys, the KEK, the passwords and the recovery code (hex, base64, base64url, and the texts as typed). S1 needs no key hook: the test derives the KEKs, holder private keys, DEKs and subkeys from the passwords, the code and the stored rows, as the API does. The boot key never leaves the keyring process. There must be zero hits; the API, worker and keyring logs are scanned too (`scripts/check_encryption.sh`). | `tests/app/live/encryption-two-api.test.ts`, `docker/compose.encryption.test.yaml` |
@@ -1532,7 +1532,7 @@ token alone is not enough (S1 review): a real deployment never holds a half-seal
     registers (a test-deployment listing with each route's body and query schema), fills its parameters, body and
     query with a locked space's objects, and expects `423`, a metadata route of `LOCKED_ALLOWED_ROUTES` (now also the
     content-free Inbox rows, Needs you keys and the always-empty agent list), a cross-workspace read naming the space,
-    or a refusal of a feature the space does not offer (`WORKSPACE_AI_BLOCKED`, `GITHUB_UNAVAILABLE`); a request
+    or a refusal of a feature the space does not offer (`SPACE_AI_OFF`, `GITHUB_UNAVAILABLE`); a request
     refused as invalid input before any read is counted. The live Wiki and map room upgrades answer `423` too. Never a `500`, a canary or
     an envelope. AC-10 is case 3 of `scripts/check_backup.sh` (`FLUX_BACKUP_CASES=encryption` runs it alone). The rest
     of AC-7 for S2a's canaries is `scripts/check_encryption_scan.sh`: `pg_dump` (pg-boss included), the raw

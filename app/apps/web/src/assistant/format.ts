@@ -141,6 +141,8 @@ export function endedText(run: AssistantRun, changed = 0): string | null {
 }
 
 function endedWords(run: AssistantRun): string | null {
+  // AG-10: turning AI off in the space stops a run at once, and its owner is told in the thread where they asked.
+  if (run.endReason === 'ai_off') return 'AI was turned off in this space, so your assistant stopped.';
   if (run.endReason === 'mcp_results_too_large') return 'This needed more reading than one request can carry. Nothing was posted.';
   if (run.endReason === 'budget') return 'Not enough left of your API key’s daily budget. Nothing more was sent today.';
   if (run.endReason === 'credits') return 'API credits used up. API requests stop until your next monthly credits arrive.';
@@ -161,7 +163,7 @@ function endedWords(run: AssistantRun): string | null {
   }
 }
 
-export const canRetry = (run: AssistantRun) => run.status === 'provider_failed' || run.status === 'stopped'
+export const canRetry = (run: AssistantRun) => run.endReason !== 'ai_off' && (run.status === 'provider_failed' || run.status === 'stopped')
   || (onRuntime(run) && (run.endReason === 'slot_busy' || run.endReason === 'wall_clock' || run.endReason === 'max_turns' || run.endReason === 'plan_limit'));
 
 export type AskState =

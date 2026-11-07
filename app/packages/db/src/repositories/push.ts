@@ -2,7 +2,7 @@ import { and, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { assignmentNotificationActive, assignmentNotificationReverted } from './notification-lifecycle.js';
 import * as schema from '../schema.js';
-import { hiddenWhileAiOff, notificationHiddenWhileAiOff } from './workspace-ai.js';
+import { hiddenWhileAiOff, notificationHiddenWhileAiOff } from './space-ai.js';
 
 /**
  * Drizzle persistence adapters for notifications and Web Push (issues #41, #46). They satisfy

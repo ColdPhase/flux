@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import type { ConversationMessage, Dm, ProjectPerson, PromotedSketch, SearchResponse, Sketch, SketchDetail, SketchPage, SketchPromotionPreview, Workspace } from '@flux/contracts';
+import type { ConversationMessage, Dm, PromotedSketch, SearchResponse, Sketch, SketchDetail, SketchPage, SketchPromotionPreview, Workspace } from '@flux/contracts';
 import { authorize, createAgent, createSketchUseCases, type Principal, type SketchUnitOfWork } from '@flux/core';
 import { accessPorts, accessReader } from '@flux/db';
 import { sketchPorts } from '../../apps/server/src/sketches/adapters.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, removeMember, workspace, type Person } from './support/people.js';
+import { spaceReaders } from './support/space-readers.js';
 import { StreamClient } from './support/stream.js';
 
 // Sketches bound to a direct message over HTTP (issue #96): a foreign key to the DM, an audience
@@ -253,9 +254,7 @@ describe('DM sketches', () => {
    * access of their own (F-036 AG-1, AG-3). Every agent listed must read through one of those people, so naming them leaves nobody out.
    */
   async function projectReaders(who: Person, projectId: string) {
-    const listed = expectStatus(await who.browser.request('GET', `/api/v1/projects/${projectId}/people`), 200) as ProjectPerson[];
-    const people = listed.filter((p) => p.kind === 'human');
-    const agents = listed.filter((p) => p.kind === 'agent');
+    const { people, agents } = await spaceReaders(who, ws.id, projectId);
     for (const agent of agents) assert.ok(people.some((p) => p.id === agent.agentOwner?.id), `${agent.name} reads through a person the preview names`);
     return { people, agents };
   }

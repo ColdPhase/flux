@@ -1,6 +1,6 @@
 import { and, eq, or, sql, type SQL } from 'drizzle-orm';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
-import { markAllNotificationsRead, notificationRows, pushSubscriptionRepository, schema, type DbExecutor, visibleFilter, accessReader, type Database } from '@flux/db';
+import { markAllNotificationsRead, notificationRows, pushSubscriptionRepository, schema, type DbExecutor, visibleFilter, memberFilter, accessReader, type Database } from '@flux/db';
 import {
   DRAFT_SUMMARY_JOB,
   PUSH_SEND_JOB,
@@ -32,8 +32,9 @@ async function inboxAudience(db: DbExecutor, userId: string): Promise<SQL> {
   for (const workspaceId of await rows.workspaceIdsForRecipient(userId)) {
     const workspace = await reader.canRead(userId, { type: 'workspace', id: workspaceId });
     if (!workspace.visible) continue;
-    const projects = await visibleFilter(principal, workspaceId, 'project', db);
-    const drafts = await visibleFilter(principal, workspaceId, 'draft', db);
+    // F-037 (coordinator default): a company admin's Inbox holds only what is in the spaces they were added to.
+    const projects = await memberFilter(principal, workspaceId, 'project', db);
+    const drafts = await memberFilter(principal, workspaceId, 'draft', db);
     const dms = await visibleFilter(principal, workspaceId, 'dm', db);
     // Each set starts from the distinct sources of the reader's own notifications of that kind in
     // this workspace and keeps those that pass the policy's filter, looked up one by one by

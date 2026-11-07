@@ -24,7 +24,7 @@ import {
   type UndoTaskCreationCommand,
   type UndoTaskCreationResult,
 } from '@flux/contracts';
-import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError, WorkspaceAiBlockedError } from '../access/errors.js';
+import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError, SpaceAiOffError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import type { ActorRef, DecisionRecord, NativeCommandReceipt, ObjectLinkRecord, NewObjectLink, ResultRecord, TaskPlanRecord, WorkChanges, WorkPorts, WorkRecord, WorkRepository, WorkUnitOfWork } from './ports.js';
 import { assertNoDependencyCycle, assertPrerequisitesMet, creationFingerprint, decidePlanIntent, directPrerequisiteIds, ELIGIBLE_STATUSES,
@@ -210,7 +210,7 @@ function requireDependencyScope(projectIds: readonly string[], projectId: string
 
 async function requireOwner(ports: WorkPorts, projectId: string, owner: ActorRef | null) {
   // F-029: no task is handed to an agent while AI is off in the workspace (people stay assignable).
-  if (owner?.kind === 'agent' && !(await ports.access.aiAllowed(projectId))) throw new WorkspaceAiBlockedError();
+  if (owner?.kind === 'agent' && !(await ports.access.aiAllowed(projectId))) throw new SpaceAiOffError();
   if (owner && !(await ports.access.canRead(owner, projectId)))
     throw new RuleViolationError('The owner needs current access to this space', 'OWNER_WITHOUT_ACCESS');
 }

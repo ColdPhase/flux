@@ -141,15 +141,16 @@ class PeopleJourney(unittest.TestCase):
             choose(form.get_by_label("Role"), label=role)
         form.get_by_role("button", name=re.compile("^Add to ")).click()
 
-    def access_region(self, page: Page):
-        return page.get_by_role("region", name="People", exact=True)
+    def settings_page(self, page: Page, project_id: str) -> None:
+        """A space's settings (F-037, #874): ⋯ › Settings in its header, at its own address."""
+        page.goto(f"/projects/{project_id}")
+        page.get_by_role("button", name="More", exact=True).click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Settings", exact=True).click()
+        expect(page).to_have_url(re.compile(rf"/projects/{project_id}/settings$"))
+        expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
 
-    def manage_access(self, region) -> None:
-        """"Change people" in the sentence shows each person's Change button (#512, AC-5)."""
-        toggle = region.get_by_role("button", name="Change people", exact=True)
-        if toggle.get_attribute("aria-expanded") != "true":
-            toggle.click()
-            expect(toggle).to_have_attribute("aria-expanded", "true")
+    def people_card(self, page: Page, name: str | None = None):
+        return page.get_by_role("list", name=re.compile(f"^People in {re.escape(name or '')}"))
 
     def sidebar_projects(self, page: Page):
         return page.get_by_role("navigation", name="Spaces")
@@ -286,127 +287,110 @@ class PeopleJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- AC-2/AC-3 project access
 
-    def test_05_a_new_project_opens_who_can_see_this_and_gives_access(self) -> None:
+    def test_05_a_new_space_takes_its_people_and_its_settings_give_access(self) -> None:
+        """F-037: New space is a name, people chosen from the company and the AI switch; its settings add, change and remove people."""
         page = self.page("ada")
         page.goto("/")
         page.get_by_role("complementary", name="Sidebar").get_by_role("button", name="New", exact=True).click()
         create_other(page, "Space")
-        expect(page.get_by_text("Until you add people, only you and the company’s admins can open it")).to_be_visible()
+        window = page.get_by_role("dialog", name="New space")
+        expect(window).to_contain_text("You’re the admin of this space")
         page.get_by_label("Space name").fill(RESTRICTED)
-        page.get_by_role("button", name="Create space").click()
-        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}\?new=1$"))
+        window.get_by_role("button", name="Add people").click()
+        picker = window.get_by_role("group", name=re.compile("^People in "))
+        # Everyone in the company but Ada herself is offered, a guest too.
+        expect(picker.get_by_role("checkbox")).to_have_count(3)
+        picker.get_by_role("checkbox", name=re.compile("Kai Tanaka")).check()
+        expect(window.get_by_role("list", name="Chosen people")).to_contain_text("Kai Tanaka")
+        expect(window.get_by_role("switch", name="AI")).to_have_attribute("aria-checked", "true")
+        window.get_by_role("button", name=re.compile("^Create space")).click()
+        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
         type(self).kiln = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
-        region = self.access_region(page)
-        expect(region.get_by_role("heading", name="People", exact=True)).to_be_focused()
-        expect(region).to_contain_text("Only the people listed here can open it.")
-        expect(page.locator(".top__audience")).to_contain_text("Only you")
-
-        region.get_by_role("button", name="Add people").click()
-        give = region.get_by_role("group", name="Add people")
-        expect(give.get_by_label("Person")).to_be_focused()
-        # Only people who can't see it yet are offered: not Ada herself.
-        options = app_labels(give.get_by_label("Person"))
-        self.assertEqual(sorted(o.split(" · ")[0] for o in options[1:]), ["Kai Tanaka", "Lee Moreno", "Mia Novak (guest)"])
-        choose(give.get_by_label("Person"), value=self.ids["kai"])
-        expect(give).to_contain_text("Only Kai Tanaka is added. Kai will read and write in Kiln controller")
-        # The two roles share the form's width, each on one line, and say which is chosen (F-037: member or admin).
-        access = give.get_by_role("group", name="Role")
-        expect(access.get_by_role("radio", name="Member")).to_be_checked()
-        width = access.bounding_box()["width"]
-        for name in ("Member", "Admin"):
-            choice = access.locator("label", has_text=name).bounding_box()
-            self.assertGreater(choice["width"], width * 0.4, f"{name} has room")
-            self.assertLess(choice["height"], 40, f"{name} stays on one line")
-        access.get_by_text("Admin", exact=True).click()
-        expect(give).to_contain_text("Kai will be an admin of Kiln controller, adding and removing its people.")
-        access.get_by_text("Member", exact=True).click()
-        shot(page, "people-desktop-1440-give-access")
-        give.get_by_role("button", name="Add Kai").click()
-        expect(region.locator(".people__done")).to_have_text("Kai is now a member of Kiln controller.")
-        kai_row = region.get_by_role("list", name=f"People who can see {RESTRICTED}").get_by_role("listitem").filter(has_text="Kai Tanaka")
-        expect(kai_row).to_contain_text("Member")
-        expect(page.locator(".top__audience")).to_contain_text("Kai and you · only you two")
         status, grants = self.api(page, f"/api/v1/projects/{self.kiln}/grants")
-        self.assertEqual(status, 200)
-        # F-037: Ada started the space, so she is its admin by her own grant.
         self.assertEqual(sorted((g["principal"]["id"], g["role"]) for g in grants), sorted([(self.ids["kai"], "contributor"), (self.ids["ada"], "manager")]))
+
+        self.settings_page(page, self.kiln)
+        card = self.people_card(page, RESTRICTED)
+        expect(card.get_by_role("listitem")).to_have_count(2)
+        expect(card.get_by_role("listitem").filter(has_text="Ada Kowalska")).to_contain_text("Admin")
+        expect(card.get_by_role("listitem").filter(has_text="Kai Tanaka")).to_contain_text("Member")
+        # Add people: only people who are not in it yet are offered.
+        page.get_by_role("button", name="Add people", exact=True).click()
+        add = page.get_by_role("group", name="Add people")
+        expect(add.get_by_role("checkbox")).to_have_count(2)
+        add.get_by_role("checkbox", name=re.compile("Lee Moreno")).check()
+        shot(page, "people-desktop-1440-give-access")
+        add.get_by_role("button", name="Add 1 person").click()
+        expect(page.locator(".spset__status")).to_have_text("Lee is now in Kiln controller.")
+        expect(card.get_by_role("listitem").filter(has_text="Lee Moreno")).to_contain_text("Member")
+        status, grants = self.api(page, f"/api/v1/projects/{self.kiln}/grants")
+        self.assertEqual(sorted(g["principal"]["id"] for g in grants), sorted([self.ids["kai"], self.ids["lee"], self.ids["ada"]]))
         self.no_horizontal_scroll(page, DESKTOP["width"])
         shot(page, "people-desktop-1440-project-access")
 
-        # Kai sees it; Lee (a member) and Mia (a guest) see nothing, not even its title.
+        # Kai sees it; Mia (a guest who was not added) sees nothing, not even its title.
         kai = self.page("kai")
         kai.goto("/")
         expect(self.sidebar_projects(kai).get_by_role("link", name=RESTRICTED)).to_be_visible()
         self.assertEqual(self.api(kai, f"/api/v1/projects/{self.kiln}")[0], 200)
-        for who in ("lee", "mia"):
-            other = self.page(who)
-            other.goto("/")
-            # No space of theirs: Home says they are in Riverside and, for a member, offers a space of their own (F-037), and
-            # the sidebar has no empty Spaces section.
-            first = other.get_by_role("region", name="You’re in Riverside Makers")
-            expect(first).to_be_visible()
-            expect(first.get_by_role("button", name="Start a space")).to_have_count(1 if who == "lee" else 0)
-            expect(self.sidebar_projects(other)).to_have_count(0)
-            expect(other.get_by_text(RESTRICTED)).to_have_count(0)
-            self.assertEqual(self.api(other, f"/api/v1/projects/{self.kiln}")[0], 404)
-            other.goto(f"/search?q={RESTRICTED.replace(' ', '+')}")
-            expect(other.get_by_role("heading", name=f"Nothing matches “{RESTRICTED}”")).to_be_visible()
-            status, found = self.api(other, f"/api/v1/search?q={RESTRICTED.replace(' ', '+')}")
-            self.assertEqual(status, 200)
-            self.assertNotIn(RESTRICTED, json.dumps(found))
+        other = self.page("mia")
+        other.goto("/")
+        first = other.get_by_role("region", name="You’re in Riverside Makers")
+        expect(first).to_be_visible()
+        expect(self.sidebar_projects(other)).to_have_count(0)
+        expect(other.get_by_text(RESTRICTED)).to_have_count(0)
+        self.assertEqual(self.api(other, f"/api/v1/projects/{self.kiln}")[0], 404)
+        other.goto(f"/search?q={RESTRICTED.replace(' ', '+')}")
+        expect(other.get_by_role("heading", name=f"Nothing matches “{RESTRICTED}”")).to_be_visible()
+        status, found = self.api(other, f"/api/v1/search?q={RESTRICTED.replace(' ', '+')}")
+        self.assertEqual(status, 200)
+        self.assertNotIn(RESTRICTED, json.dumps(found))
 
-    def test_06_change_and_remove_a_grant(self) -> None:
+    def test_06_change_and_remove_a_person_in_the_settings(self) -> None:
         page = self.page("ada")
-        page.goto(f"/projects/{self.kiln}")
-        page.locator(".top__audience").click()
-        region = self.access_region(page)
-        expect(region.get_by_role("heading", name="People", exact=True)).to_be_focused()
-        self.manage_access(region)
-        region.get_by_role("button", name="Change Kai Tanaka’s role").click()
-        editor = region.get_by_role("group", name="Change Kai Tanaka’s role")
-        expect(editor.get_by_label("Role")).to_be_focused()
-        choose(editor.get_by_label("Role"), label="Admin")
-        expect(editor).to_contain_text("Kai Tanaka will be an admin of Kiln controller: they add and remove its people and change it.")
-        editor.get_by_role("button", name="Make Kai an admin").click()
-        expect(region.locator(".people__done")).to_have_text("Kai is now an admin of Kiln controller.")
+        self.settings_page(page, self.kiln)
+        card = self.people_card(page, RESTRICTED)
+        choose(card.get_by_label("Role of Kai Tanaka"), label="Admin")
+        expect(page.locator(".spset__status")).to_have_text("Kai is now an admin of Kiln controller.")
         self.assertEqual(self.api(self.page("kai"), f"/api/v1/projects/{self.kiln}")[1]["access"], "manager")
 
-        region.get_by_role("button", name="Change Kai Tanaka’s role").click()
-        choose(editor.get_by_label("Role"), label="Remove")
-        expect(editor).to_contain_text("Kai Tanaka is removed from Kiln controller at once and no longer sees it, not even its name.")
-        editor.get_by_role("button", name="Remove Kai").click()
-        expect(region.locator(".people__done")).to_have_text("Kai was removed from Kiln controller.")
-        expect(region.get_by_text("Kai Tanaka")).to_have_count(0)
-        expect(page.locator(".top__audience")).to_contain_text("Only you")
+        # Removing someone waits for an OK: it names what happens, and Keep leaves them be.
+        card.get_by_role("button", name="Remove Kai Tanaka from Kiln controller").click()
+        confirm = card.get_by_role("group", name="Remove Kai Tanaka")
+        expect(card).to_contain_text("Kai stops seeing Kiln controller at once, not even its name.")
+        confirm.get_by_role("button", name="Keep").click()
+        self.assertEqual(self.api(self.page("kai"), f"/api/v1/projects/{self.kiln}")[0], 200)
+        card.get_by_role("button", name="Remove Kai Tanaka from Kiln controller").click()
+        card.get_by_role("group", name="Remove Kai Tanaka").get_by_role("button", name="Remove", exact=True).click()
+        expect(page.locator(".spset__status")).to_have_text("Kai was removed from Kiln controller.")
+        expect(card.get_by_text("Kai Tanaka")).to_have_count(0)
         self.assertEqual(self.api(self.page("kai"), f"/api/v1/projects/{self.kiln}")[0], 404)
         status, grants = self.api(page, f"/api/v1/projects/{self.kiln}/grants")
-        self.assertEqual((status, [(g["principal"]["id"], g["role"]) for g in grants]), (200, [(self.ids["ada"], "manager")]))
+        self.assertEqual((status, sorted((g["principal"]["id"], g["role"]) for g in grants)), (200, sorted([(self.ids["ada"], "manager"), (self.ids["lee"], "contributor")])))
 
     def test_07_a_space_for_everyone_holds_the_whole_company_and_only_admins_change_its_people(self) -> None:
-        """F-037: in a space like Everyone every member is in it; nobody is kept out, and a member reads its people."""
+        """F-037: in a space like Everyone every member is in it; nobody is kept out, and a member reads it."""
         page = self.page("ada")
         type(self).garden = self.post(page, f"/api/v1/workspaces/{self.riverside}/projects", {"name": OPEN, "visibility": "workspace"})["id"]
         lee = self.page("lee")
         self.assertEqual(self.api(lee, f"/api/v1/projects/{self.garden}")[1]["access"], "contributor")
-        page.goto(f"/projects/{self.garden}")
-        page.locator(".top__audience").click()
-        region = self.access_region(page)
-        expect(region.get_by_role("heading", name="People", exact=True)).to_be_focused()
-        expect(region).to_contain_text("Everyone in Riverside Makers is in this space; guests only when added.")
-        expect(region.get_by_role("listitem").filter(has_text="Lee Moreno")).to_contain_text("Member")
-        self.manage_access(region)
-        region.get_by_role("button", name="Change Lee Moreno’s role").click()
-        editor = region.get_by_role("group", name="Change Lee Moreno’s role")
-        self.assertEqual(app_labels(editor.get_by_label("Role")), ["Admin"])
-        editor.get_by_role("button", name="Cancel").click()
+        self.settings_page(page, self.garden)
+        expect(page.get_by_text("Everyone in Riverside Makers is in this space.", exact=False).first).to_be_visible()
+        card = self.people_card(page, OPEN)
+        expect(card.get_by_role("listitem").filter(has_text="Lee Moreno")).to_contain_text("Member")
+        # Everyone has no list to add to and cannot be left or deleted; an admin can make a member an admin, and take it back.
+        expect(page.get_by_role("button", name="Add people", exact=True)).to_have_count(0)
+        expect(page.get_by_role("button", name="Delete space…")).to_have_count(0)
+        expect(page.get_by_role("button", name="Leave space")).to_have_count(0)
+        self.assertEqual(app_labels(card.get_by_label("Role of Lee Moreno")), ["Admin", "Member"])
         # A member sees the same people, read-only.
         kai = self.page("kai")
-        kai.goto(f"/projects/{self.garden}")
-        kai.locator(".top__audience").click()
-        theirs = self.access_region(kai)
-        expect(theirs.get_by_role("button", name=re.compile("^Change (people|.*’s role)"))).to_have_count(0)
-        expect(theirs.get_by_role("button", name="Add people")).to_have_count(0)
-        expect(theirs).to_contain_text("Everyone in Riverside Makers is in this space; guests only when added.")
+        kai.goto(f"/projects/{self.garden}/settings")
+        expect(kai.get_by_role("heading", name="Space settings")).to_be_visible()
+        theirs = self.people_card(kai, OPEN)
+        expect(theirs.get_by_role("combobox")).to_have_count(0)
+        expect(kai.get_by_role("button", name=re.compile("^(Add people|Delete space)"))).to_have_count(0)
+        expect(kai.get_by_role("switch", name="AI")).to_be_disabled()
         shot(kai, "people-desktop-1440-project-access-read-only")
 
     def test_08_promote_a_dm_sketch_with_and_without_giving_access(self) -> None:
@@ -502,14 +486,11 @@ class PeopleJourney(unittest.TestCase):
             self.no_horizontal_scroll(page, PHONE["width"])
             shot(page, f"people-phone-390-{theme}")
 
-            page.goto(f"/projects/{self.garden}")
-            # Everyone in the company is in it: never "only you two", since whoever joins Riverside Makers reads it too.
-            open_details(page, tap=True)
-            region = self.access_region(page)
-            expect(page.locator(".ov-audience")).not_to_contain_text("only")
-            self.manage_access(region)
-            region.get_by_role("button", name="Change Kai Tanaka’s role").click()
-            expect(region.get_by_role("group", name="Change Kai Tanaka’s role")).to_be_visible()
+            page.goto(f"/projects/{self.garden}/settings")
+            # Everyone in the company is in it: the settings say so, and nothing overflows on a phone.
+            expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+            card = self.people_card(page, OPEN)
+            expect(card.get_by_label("Role of Kai Tanaka")).to_be_visible()
             self.no_horizontal_scroll(page, PHONE["width"])
             shot(page, f"people-phone-390-{theme}-project-access")
 

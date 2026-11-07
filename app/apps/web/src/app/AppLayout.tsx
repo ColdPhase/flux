@@ -21,7 +21,7 @@ import { RouteOriginBack, useGoToOrigin, useRouteOrigin } from '../place/origin'
 import { restoreTop, usePaneMemory } from '../place/scroll';
 import { Sidebar } from './Sidebar';
 import { startCapture, viewIndex } from './views';
-import { PROJECT_VIEWS, WORKSPACE_AI_POLICY_CHANGED_EVENT, type ProjectViewId } from '@flux/contracts';
+import { PROJECT_VIEWS, SPACE_AI_POLICY_CHANGED_EVENT, type ProjectViewId } from '@flux/contracts';
 import { addProjectView } from '../project/api';
 import { addableViews, audienceLine, shownViews, useProjectShell } from '../project/data';
 import { useDmSketchCount } from '../dm/useDmSketchCount';
@@ -35,7 +35,7 @@ import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext
 import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
 import { ProjectAgentStop } from './WorkingAgent';
-import { useWorkspaceAi } from '../ai/workspaceAi';
+import { useSpaceAi } from '../ai/spaceAi';
 import { useFocus } from './focus';
 import { FocusPill, HeaderFaces, MoreMenu, NeedsYouChip, type MoreItem } from './HeaderParts';
 import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, PhoneTitleMenu, phoneHidesDock, phoneOffersCreate, phonePlaces, type PhoneMenuItem } from './PhoneChrome';
@@ -93,7 +93,7 @@ const KEPT_VIEWS = new Set(['work', 'decision', 'result', 'overview', 'recap', '
 const persistable = (view: DetailsView): DetailsView | null => {
   if (view === 'place' || view === 'connect-ai') return view;
   if (typeof view !== 'object' || !KEPT_VIEWS.has(view.kind)) return null;
-  return view.kind === 'overview' ? { kind: 'overview', ...(view.messageId ? { messageId: view.messageId } : {}), ...(view.focus ? { focus: view.focus } : {}) } : view;
+  return view.kind === 'overview' ? { kind: 'overview', ...(view.messageId ? { messageId: view.messageId } : {}) } : view;
 };
 const placeOfDetails = (open: boolean, view: DetailsView, trail: { label: string; view: DetailsView }[]): DetailsPlace => {
   const shown = persistable(view);
@@ -257,7 +257,7 @@ function AppLayoutContent() {
     // AI reads) must not start one read after another: at most one in a few seconds, as for `423` below.
     let lastAiRefusal = 0;
     const aiBlocked = () => { if (Date.now() - lastAiRefusal < 3000) return; lastAiRefusal = Date.now(); refresh(); };
-    window.addEventListener('flux:workspace-ai-blocked', aiBlocked);
+    window.addEventListener('flux:space-ai-off', aiBlocked);
     // F-030 (#655): a place answered `423` because its encrypted workspace locked since the shell last read it. A workspace the
     // shell already shows as locked teaches nothing new: the locked panel's own reads answer `423` again, and each answer must
     // not start another read. A shell that still shows it unlocked is read again, at most once in a few seconds.
@@ -272,14 +272,15 @@ function AppLayoutContent() {
     window.addEventListener('focus', back);
     document.addEventListener('visibilitychange', back);
     return () => {
-      window.removeEventListener('flux:workspace-ai-blocked', aiBlocked);
+      window.removeEventListener('flux:space-ai-off', aiBlocked);
       window.removeEventListener(WORKSPACE_LOCKED_DOM_EVENT, locked);
       window.removeEventListener('focus', back);
       document.removeEventListener('visibilitychange', back);
     };
   }, [revalidate]);
   useStreamEvents(me.user.id, (event) => {
-    if (event.kind === WORKSPACE_AI_POLICY_CHANGED_EVENT) { revalidator.revalidate(); return; }
+    // A space's AI switch, name or existence changed (AG-10): the sidebar, its header and its views read them again at once.
+    if (event.kind === SPACE_AI_POLICY_CHANGED_EVENT || event.kind === 'project.renamed.v1' || event.kind === 'project.deleted.v1') { revalidator.revalidate(); return; }
     // An encrypted workspace was unlocked or locked (F-030, #655): its places turn into the locked panel, or back, without a reload.
     if (isEncryptionEvent(event.kind)) { revalidator.revalidate(); return; }
     // Access was given or taken (#763 FT-8): Home, Projects and the sidebar list the person's projects again at once.
@@ -392,8 +393,8 @@ function AppLayoutContent() {
   }, [panelScrollTo]);
   usePaneMemory(paneRef, location, navType);
   // `?open=work:<id>` (a notification's link, #116, a search result, #114, or a doc reference, #112)
-  // opens that object in Details on its project; `?open=people` (a new project, #188) opens its
-  // "Who can see this". Each address is handled once, and the flag leaves it without reloading the
+  // opens that object in Details on its project; `?open=people` (an agent's request to join, #763) opens its
+  // Details, where the request is answered. Each address is handled once, and the flag leaves it without reloading the
   // page's data: that navigation finishes at once, so no load of this page is left running that
   // could land after the person has moved on or signed out.
   const navigate = useNavigate();
@@ -430,7 +431,7 @@ function AppLayoutContent() {
     // The entry keeps its state, so the origin it was followed from survives the flag leaving the address (#592).
     navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: location.state });
     shell.openDetails(match ? { kind: match[1]!.toLowerCase() as 'work' | 'decision' | 'result', id: match[2]!.toLowerCase() }
-      : propose ? { kind: 'propose-decision', projectId: propose } : { kind: 'overview', focus: 'people' });
+      : propose ? { kind: 'propose-decision', projectId: propose } : { kind: 'overview' });
   }, [location.key, location.search, location.pathname, location.hash, location.state, navigate, shell, projectId]);
   // A return to a place that is gone lands on its nearest parent with one line saying so (#592); the line is said once.
   const notedAt = useRef<string | null>(null);
@@ -543,7 +544,7 @@ function AppLayoutContent() {
   const homeRoot = where === 'home' && location.pathname === '/';
   const activeProject = reachableSpaces.find((project) => project.id === projectId);
   // F-029 (#614): a project of a workspace whose AI is off has no Agents view and offers none to add (Spokój rule 7: nothing else moves).
-  const aiOff = useWorkspaceAi(activeProject?.workspaceId).blocked;
+  const aiOff = useSpaceAi(activeProject?.id).blocked;
   // The Conversation tab returns to the conversation that was open before Tasks, Map, Docs or project
   // settings (GitHub), and the
   // Map tab to the sketch (or list) that was open there.
@@ -573,8 +574,8 @@ function AppLayoutContent() {
   const places = phonePlaces(location.pathname, inboxUnread);
   const audienceOpen = project?.project.visibility === 'workspace';
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with space access';
-  // The audience line leads to "Who can see this", where managers change it (#188).
-  const openAudience = () => shell.openDetails({ kind: 'overview', focus: 'people' });
+  // The audience line leads to the space's settings, where its people are and its admins change them (F-037, #874).
+  const openAudience = () => { if (projectId) void navigate(`/projects/${projectId}/settings`); };
   const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
   // A task, decision or result opens in the one detail panel with its kind as a chip (F-026 S4).
   const ownedShown = isOwned(detailsView) && owned ? owned : null;
@@ -677,8 +678,6 @@ function AppLayoutContent() {
         ? { crumb: null, title: 'My tasks', topic: 'Assigned to you, in every space' }
       : location.pathname === '/docs'
         ? { crumb: null, title: 'Wiki', topic: 'Pages of every space you are in', noDetails: true }
-      : location.pathname === '/projects/new'
-        ? { crumb: null, title: 'New space', topic: '', noDetails: true }
       : notFound
         ? { crumb: null, title: 'Page not found', topic: '', noDetails: true }
       : { crumb: workspace?.name ?? null, title: 'Home', topic: 'What needs you and where you left off' };
@@ -711,6 +710,7 @@ function AppLayoutContent() {
     // A header with no room for them (Spokój rule 3) moves the people and Together here; the views stay in the row.
     ...(project?.people ? [{ label: 'Who can see this', run: openAudience, narrow: true }] : []),
     ...(activeProject ? [{ label: 'Together', node: <LiveEntry variant="more" /> }] : []),
+    ...(activeProject && projectId ? [{ label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
     ...('noDetails' in place ? [] : [{ label: activeProject ? 'Space details' : activeDm ? 'Message info' : 'Details', run: () => shell.openDetails('place') }]),
     ...(activeProject && projectId ? [{ label: 'What matters', run: () => shell.openDetails({ kind: 'recap', projectId }) }] : []),
     ...addViewItems,
@@ -769,12 +769,12 @@ function AppLayoutContent() {
   const tabletMenu = tablet && !phone && !focusing && !!activeProject && projectMenu.length > 0;
   const mainPlace = ['/projects', '/inbox', '/search', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);
-  const backOnly = settingsPage || location.pathname === '/projects/new' || dmId === 'new' || homePage;
+  const backOnly = settingsPage || dmId === 'new' || homePage;
   const phoneHeader = (
     <header className={`phead${mainPlace ? ' phead--large' : ''}`}>
       {backOnly ? (
         <>{phoneBack(settingsPage ? settingsParent : homePage ? '/' : '/projects')}
-          <div className="phead__id"><div className="phead__title"><h1>{location.pathname === '/projects/new' ? 'New space' : place.title}</h1></div></div></>
+          <div className="phead__id"><div className="phead__title"><h1>{place.title}</h1></div></div></>
       ) : activeProject && projectViews ? (
         <>{routeOrigin ? phoneBack('/projects') : <PhoneBack onBack={() => goBackAPlace('/projects')} />}
           <PhoneTitleMenu title={place.title} items={projectMenu} onDetails={detailsEntry}

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import Fastify from 'fastify';
-import { AI_HTTP_ROUTES, INBOX_PATH, NEEDS_YOU_PATH, type AiRouteRule, type AiScopeKind, type InboxResponse } from '@flux/contracts';
+import { AI_HTTP_ROUTES, INBOX_PATH, NEEDS_YOU_PATH, assistantJobsPath, type AiRouteRule, type AiScopeKind, type InboxResponse } from '@flux/contracts';
 import type { Database } from '@flux/db';
 import { aiRoutes } from '../../apps/server/src/access/ai-gate.js';
 import { buildApp } from '../../apps/server/src/app.js';
@@ -11,28 +11,30 @@ import type { SessionResolver } from '../../apps/server/src/identity/index.js';
 import { assistantScene, human, type AssistantScene } from './support/assistant-scene.js';
 import { pool } from './support/db.js';
 import { expectStatus } from './support/people.js';
-import { ensureWorkspaceAiAllowed, setWorkspaceAi } from './support/workspace-ai.js';
+import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 
-// F-029 workspace AI lock, S1 (#614): every gated route of AI_HTTP_ROUTES answers 403 WORKSPACE_AI_BLOCKED in a workspace
-// whose AI is off, writing nothing; the same call in a workspace with AI on is the positive control, and a person who is not
-// a member of the blocked workspace learns nothing about it. Every AI module route is classified, or the API does not start.
+// AG-10 (F-029 S1, #614; per space under F-037): every gated route of AI_HTTP_ROUTES answers 403 SPACE_AI_OFF in a space whose
+// AI is off, writing nothing; the same call in a space with AI on is the positive control, and a person who cannot open the
+// blocked space learns nothing about it. Every AI module route is classified, or the API does not start.
 // A task is not handed to an agent, and AI-origin Inbox items are left out of lists, counts and direct reads, while AI is off.
 
 type Objects = Record<AiScopeKind, string>;
 const code = (json: unknown) => (json as { code?: string } | null)?.code;
 
-/** One object of every kind a gated route names, in the scene's workspace (rows written directly where no API makes one). */
+/** One object of every kind a gated route names, in the scene's space (rows written directly where no API makes one). */
 async function objectsOf(scene: AssistantScene): Promise<Objects> {
   const { owner, ws, place, thread, agentId } = scene;
   const work = await scene.task(owner, 'Calibrate the probes');
   const run = await scene.runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Look around' });
   await pool.query(`UPDATE personal_runs SET status = 'completed', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [run.run.id]);
+  const job = expectStatus(await owner.browser.request('POST', assistantJobsPath(ws.id, owner.id),
+    { body: { projectId: place.id, text: 'List what moved', schedule: { kind: 'weekly', at: '16:00', weekday: 5 }, timeZone: 'UTC' } }), 201) as { id: string };
   const ids = { change: randomUUID(), proposal: randomUUID(), question: randomUUID(), rule: randomUUID(), comparison: randomUUID(),
-    outcome: randomUUID(), job: randomUUID(), notification: randomUUID() };
+    outcome: randomUUID(), job: job.id, notification: randomUUID() };
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    // Test fixture only: foreign keys are not what these rows exercise (only their workspace is read).
+    // Test fixture only: foreign keys are not what these rows exercise (only their space is read).
     await client.query(`SET LOCAL session_replication_role = replica`);
     await client.query(`INSERT INTO assistant_changes (id, workspace_id, project_id, run_id, owner_user_id, agent_id, client_command_id, fingerprint, tool, operation,
       object_type, state, policy_version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'flux_update_task', 'work.update', 'work', 'skipped', 1)`,
@@ -50,7 +52,7 @@ async function objectsOf(scene: AssistantScene): Promise<Objects> {
       [ids.notification, owner.id, ws.id, place.id]);
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
-  return { workspace: ws.id, project: place.id, conversation: thread.id, work: work.id, agent: agentId, connection: await scene.assistantConnectionId(),
+  return { project: place.id, conversation: thread.id, work: work.id,
     run: run.run.id, assistant_proposal: ids.proposal, assistant_change: ids.change, agent_question: ids.question, comparison_rule: ids.rule,
     comparison_proposal: ids.comparison, comparison_outcome: ids.outcome, assistant_job: ids.job, notification: ids.notification };
 }
@@ -67,7 +69,7 @@ function requestFor(route: string, rule: Extract<AiRouteRule, { gate: 'gated' }>
 
 const gatedRoutes = Object.entries(AI_HTTP_ROUTES).filter((entry): entry is [string, Extract<AiRouteRule, { gate: 'gated' }>] => entry[1].gate === 'gated');
 
-describe('workspace AI lock: HTTP routes', () => {
+describe('space AI switch: HTTP routes', () => {
   let blocked: AssistantScene; let allowed: AssistantScene; let a: Objects; let b: Objects;
 
   before(async () => {
@@ -76,58 +78,58 @@ describe('workspace AI lock: HTTP routes', () => {
     a = await objectsOf(blocked);
     b = await objectsOf(allowed);
   });
-  beforeEach(async () => { if (blocked) await ensureWorkspaceAiAllowed(blocked.ws.id); });
-  after(async () => { await ensureWorkspaceAiAllowed(blocked.ws.id); });
+  beforeEach(async () => { if (blocked) await ensureSpaceAiAllowed(blocked.place.id); });
+  after(async () => { await ensureSpaceAiAllowed(blocked.place.id); });
 
   test('every gated route refuses while AI is off and writes nothing; AI on and outsiders are unaffected', async () => {
-    assert.ok(gatedRoutes.length >= 50, `the manifest gates the AI routes (${gatedRoutes.length})`);
+    assert.ok(gatedRoutes.length >= 30, `the manifest gates the AI routes (${gatedRoutes.length})`);
     const counts = async () => (await pool.query(`SELECT
       (SELECT count(*) FROM personal_runs WHERE workspace_id = $1) AS runs, (SELECT count(*) FROM agent_connections WHERE workspace_id = $1) AS connections,
       (SELECT count(*) FROM assistant_jobs WHERE workspace_id = $1) AS jobs, (SELECT count(*) FROM assistant_reactions WHERE workspace_id = $1) AS reactions,
       (SELECT count(*) FROM events WHERE workspace_id = $1) AS events`, [blocked.ws.id])).rows[0];
-    await setWorkspaceAi(blocked.ws.id, 'blocked');
+    await setSpaceAi(blocked.place.id, 'blocked');
     const before = await counts();
     const failures: string[] = [];
     for (const [route, rule] of gatedRoutes) {
       const off = requestFor(route, rule, a, blocked.owner.id);
       const refused = await blocked.owner.browser.request(off.method, off.path, off.body ? { body: off.body } : {});
-      if (refused.status !== 403 || code(refused.json) !== 'WORKSPACE_AI_BLOCKED') failures.push(`${route}: ${refused.status} ${refused.text.slice(0, 120)}`);
-      // A person outside the blocked workspace learns nothing about it.
+      if (refused.status !== 403 || code(refused.json) !== 'SPACE_AI_OFF') failures.push(`${route}: ${refused.status} ${refused.text.slice(0, 120)}`);
+      // A person outside the blocked space learns nothing about it.
       const outsider = await allowed.owner.browser.request(off.method, off.path, off.body ? { body: off.body } : {});
-      if (code(outsider.json) === 'WORKSPACE_AI_BLOCKED') failures.push(`${route}: an outsider was told AI is off`);
+      if (code(outsider.json) === 'SPACE_AI_OFF') failures.push(`${route}: an outsider was told AI is off`);
       // The positive control: the same call where AI is on is not refused for AI.
       const on = requestFor(route, rule, b, allowed.owner.id);
       const answered = await allowed.owner.browser.request(on.method, on.path, on.body ? { body: on.body } : {});
-      if (code(answered.json) === 'WORKSPACE_AI_BLOCKED') failures.push(`${route}: refused where AI is on`);
+      if (code(answered.json) === 'SPACE_AI_OFF') failures.push(`${route}: refused where AI is on`);
     }
     assert.deepEqual(failures, []);
     assert.deepEqual(await counts(), before, 'no run, connection, schedule, reaction, policy or event was written');
   });
 
   test('a narrowing call is not refused: pausing a comparison rule, turning off a reaction', async () => {
-    await setWorkspaceAi(blocked.ws.id, 'blocked');
+    await setSpaceAi(blocked.place.id, 'blocked');
     const pause = await blocked.owner.browser.request('PATCH', `/api/v1/proactive-comparison-rules/${a.comparison_rule}`, { body: { expectedVersion: 1, status: 'paused' } });
-    assert.notEqual(code(pause.json), 'WORKSPACE_AI_BLOCKED', 'pausing stays possible');
+    assert.notEqual(code(pause.json), 'SPACE_AI_OFF', 'pausing stays possible');
     const enable = await blocked.owner.browser.request('PATCH', `/api/v1/proactive-comparison-rules/${a.comparison_rule}`, { body: { expectedVersion: 1, status: 'enabled' } });
-    assert.equal(code(enable.json), 'WORKSPACE_AI_BLOCKED', 'turning it on is refused');
+    assert.equal(code(enable.json), 'SPACE_AI_OFF', 'turning it on is refused');
   });
 
   test('a task is not handed to an agent while AI is off; people stay assignable', async () => {
-    await setWorkspaceAi(blocked.ws.id, 'blocked');
+    await setSpaceAi(blocked.place.id, 'blocked');
     const task = await blocked.task(blocked.owner, 'Hand this off');
     const handoff = await blocked.owner.browser.request('PATCH', `/api/v1/work/${task.id}`,
       { body: { owner: { kind: 'agent', id: blocked.agentId } }, headers: { 'if-match': `"${task.version}"` } });
-    assert.deepEqual([handoff.status, code(handoff.json)], [403, 'WORKSPACE_AI_BLOCKED']);
+    assert.deepEqual([handoff.status, code(handoff.json)], [403, 'SPACE_AI_OFF']);
     expectStatus(await blocked.owner.browser.request('PATCH', `/api/v1/work/${task.id}`,
       { body: { owner: { kind: 'human', id: blocked.peer.id } }, headers: { 'if-match': `"${task.version}"` } }), 200);
     const control = await allowed.task(allowed.owner, 'Hand this off');
     const allowedHandoff = await allowed.owner.browser.request('PATCH', `/api/v1/work/${control.id}`,
       { body: { owner: { kind: 'agent', id: allowed.agentId } }, headers: { 'if-match': `"${control.version}"` } });
-    assert.notEqual(code(allowedHandoff.json), 'WORKSPACE_AI_BLOCKED', 'control: the same hand-off where AI is on');
+    assert.notEqual(code(allowedHandoff.json), 'SPACE_AI_OFF', 'control: the same hand-off where AI is on');
   });
 
   test('AI-origin Inbox items leave lists, counts and direct reads while AI is off; people\'s items stay', async () => {
-    await setWorkspaceAi(blocked.ws.id, 'allowed');
+    await setSpaceAi(blocked.place.id, 'allowed');
     const { owner, ws, place, agentId } = blocked;
     const eventId = randomUUID(); const aiNote = randomUUID(); const humanNote = randomUUID();
     await pool.query(`INSERT INTO events (id, workspace_id, kind, object_id, actor_id, data) VALUES ($1, $2, 'project.agent_question_asked.v1', $3, $4, '{}')`,
@@ -140,7 +142,7 @@ describe('workspace AI lock: HTTP routes', () => {
     const on = await inbox();
     assert.ok(on.items.some((item) => item.id === aiNote) && on.items.some((item) => item.id === humanNote), 'control: both are listed while AI is on');
     assert.ok((await needsYou()).includes(`note:${aiNote}`));
-    await setWorkspaceAi(ws.id, 'blocked');
+    await setSpaceAi(place.id, 'blocked');
     const off = await inbox();
     assert.ok(!off.items.some((item) => item.id === aiNote), 'the AI-origin item is left out');
     assert.ok(off.items.some((item) => item.id === humanNote), 'a person\'s item stays');

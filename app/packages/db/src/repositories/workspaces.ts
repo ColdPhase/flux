@@ -1,11 +1,11 @@
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
 import type { WorkspaceRole } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { isUuid } from './uuid.js';
 
 /**
- * Workspace, membership and AI policy rows for the use cases in `packages/core/src/access/{workspaces,members,workspace-ai}.ts`
+ * Workspace and membership rows for the use cases in `packages/core/src/access/{workspaces,members}.ts`
  * (issues #46, #91). It satisfies core's `WorkspaceRepository` port structurally (this package does not depend on
  * core) and makes no access decision: core evaluates the policy first and holds the locks these methods take in
  * the order it documents. Each method is the statement the use case ran before, unchanged. Bind it to the
@@ -60,29 +60,6 @@ export function workspaceRepository(db: DbExecutor) {
       return row ?? null;
     },
 
-    /** The AI policy rows of the workspaces, with the name of whoever last changed each. */
-    aiPolicies(workspaceIds: string[]) {
-      const p = schema.workspaceAiPolicies;
-      return db.select({ workspaceId: p.workspaceId, state: p.state, version: p.version, changedAt: p.changedAt,
-        changedBy: p.changedBy, changedByName: schema.authUsers.name }).from(p)
-        .leftJoin(schema.authUsers, eq(schema.authUsers.id, p.changedBy)).where(inArray(p.workspaceId, workspaceIds));
-    },
-
-    /** The workspace's AI policy row `FOR UPDATE` (the flip's first lock). */
-    async lockAiPolicy(workspaceId: string) {
-      const p = schema.workspaceAiPolicies;
-      const [row] = await db.select().from(p).where(eq(p.workspaceId, workspaceId)).for('update');
-      return row ?? null;
-    },
-
-    /** The next state with the next epoch and version. */
-    async updateAiPolicy(workspaceId: string, state: 'allowed' | 'blocked', changedBy: string): Promise<{ epoch: number }> {
-      const p = schema.workspaceAiPolicies;
-      const [updated] = await db.update(p).set({ state, epoch: sql`${p.epoch} + 1`, version: sql`${p.version} + 1`, changedBy, changedAt: new Date() })
-        .where(eq(p.workspaceId, workspaceId)).returning({ epoch: p.epoch });
-      return updated!;
-    },
-
     members(workspaceId: string) {
       return db.select({ member: schema.workspaceMembers, email: schema.authUsers.email, name: schema.authUsers.name })
         .from(schema.workspaceMembers)
@@ -124,6 +101,12 @@ export function workspaceRepository(db: DbExecutor) {
     async endSpaceAdmin(workspaceId: string, userId: string) {
       await db.update(schema.projectGrants).set({ role: 'contributor', updatedAt: new Date() })
         .where(and(eq(schema.projectGrants.workspaceId, workspaceId), eq(schema.projectGrants.userId, userId), eq(schema.projectGrants.role, 'manager')));
+    },
+
+    /** Someone who became a company owner or admin reaches every space again: a deny a space admin gave them while they were a member goes. */
+    async liftDeniedGrants(workspaceId: string, userId: string) {
+      await db.delete(schema.projectGrants)
+        .where(and(eq(schema.projectGrants.workspaceId, workspaceId), eq(schema.projectGrants.userId, userId), eq(schema.projectGrants.role, 'denied')));
     },
 
     /** Whether the account is in the workspace now. */

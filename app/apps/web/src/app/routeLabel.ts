@@ -11,7 +11,6 @@ export function routeLabel(pathname: string): string {
   if (pathname === '/settings/assistant') return 'your assistant';
   if (pathname.startsWith('/settings/notifications')) return 'notification settings';
   if (pathname.startsWith('/settings')) return 'settings';
-  if (pathname === '/projects/new') return 'a new space';
   if (pathname === '/projects') return 'projects';
   if (/(?:\/map|\/sketches)(\/|$)/.test(pathname)) return 'the map';
   if (/(?:\/docs|\/materials)(\/|$)/.test(pathname)) return 'the wiki';

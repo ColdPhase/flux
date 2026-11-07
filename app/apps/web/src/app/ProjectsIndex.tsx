@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router';
 import { useProjectNews } from './projectNews';
-import { Avatar, Icon, MEDIA, useMediaQuery } from '../ui';
+import { Avatar, Button, Icon, MEDIA, useMediaQuery } from '../ui';
 import { useShellData } from './data';
+import { useShellActions } from './shellContext';
 import './settings.css';
 
 /**
@@ -12,6 +13,7 @@ import './settings.css';
  */
 export function ProjectsIndex() {
   const { projects, directMessages, lockedWorkspaces } = useShellData();
+  const { openCreate } = useShellActions();
   const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
   const phone = useMediaQuery(MEDIA.phone);
   return (
@@ -19,7 +21,7 @@ export function ProjectsIndex() {
       <div className="pane-in set">
         <div className="proj-index__head">
           <p className="proj-index__lead">Each space has one conversation, a map, tasks, a wiki and its agents.</p>
-          <Link to="/projects/new" className="ui-btn ui-btn--secondary"><Icon name="plus" />New space</Link>
+          <Button variant="secondary" onClick={() => openCreate({ kind: 'project' })}><Icon name="plus" />New space</Button>
         </div>
         {projects.length || lockedWorkspaces.length ? (
           <ul className="set-card" aria-label="Spaces">
@@ -53,7 +55,7 @@ export function ProjectsIndex() {
         ) : (
           <div className="proj-index__empty">
             <p>No spaces yet. Create one, or it appears here when someone adds you to theirs.</p>
-            <Link to="/projects/new" className="ui-btn ui-btn--primary"><Icon name="plus" />Create a space</Link>
+            <Button variant="primary" onClick={() => openCreate({ kind: 'project' })}><Icon name="plus" />Create a space</Button>
           </div>
         )}
         {/* Direct messages live in Projects on the phone, below the spaces (F-026 S2). */}
