@@ -15,7 +15,7 @@ import unittest
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, open_map_options, show_map_as, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, box, open_map_options, own_company, show_map_as, shot, start_forwarder
 
 PASSWORD = "sketching all afternoon"
 EMAIL = f"kai.lind+{int(time.time() * 1000)}@example.test"
@@ -100,6 +100,9 @@ class SketchJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        # F-037: a person who signs up after the company was set up is in no company until invited, and a private map lives
+        # in a company. The test deployment's fixture route gives this person one of their own.
+        own_company(page)
         type(self).state = page.context.storage_state()
 
         page.get_by_role("navigation", name="Places").get_by_role("link", name="My map").click()
