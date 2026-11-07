@@ -1,5 +1,5 @@
 import { useEffect, useId, useState } from 'react';
-import { AI_PROVIDER_KINDS, AI_PROVIDERS, AI_PRICE_TABLE, apiKeyDefaultModel, BACKGROUND_COMPARISON_LIMITS, maxRequestMicros, tablePrice,
+import { AI_PROVIDER_KINDS, AI_PROVIDERS, AI_PRICE_TABLE, apiKeyDefaultModel, tablePrice,
   type AiModelList, type AiPrice, type AiProviderKind, type BackgroundComputeConnection } from '@flux/contracts';
 import { Button, Select, Option } from '../ui';
 import { listAiModels } from './api';
@@ -14,7 +14,6 @@ import { listAiModels } from './api';
 const usd = (micros: number) => String(micros / 1_000_000);
 
 const perMillion = (micros: number) => `$${(micros / 1_000_000).toFixed(micros % 10_000 === 0 ? 2 : 4)}`;
-const cents = (micros: number) => `$${(Math.ceil(micros / 10_000) / 100).toFixed(2)}`;
 
 export function priceSourceText(price: AiPrice) {
   return price.source === 'table' ? `Flux price table, checked ${price.checkedOn}` : 'Entered by you';
@@ -22,13 +21,6 @@ export function priceSourceText(price: AiPrice) {
 
 export const priceText = (price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>) =>
   `${perMillion(price.inputMicrosPerMTok)} input · ${perMillion(price.outputMicrosPerMTok)} output per 1M tokens`;
-
-/** The O-007 reservation of one comparison request at a price: its largest cost, at least $0.05. */
-export function comparisonReserveText(price: Pick<AiPrice, 'inputMicrosPerMTok' | 'outputMicrosPerMTok'>) {
-  const micros = Math.max(BACKGROUND_COMPARISON_LIMITS.minimumReserveCents * 10_000,
-    maxRequestMicros(price, BACKGROUND_COMPARISON_LIMITS.maxInputTokens, BACKGROUND_COMPARISON_LIMITS.maxOutputTokens));
-  return cents(micros);
-}
 
 const listFailure: Record<Exclude<AiModelList['status'], 'listed'>, string> = {
   needs_key: 'This provider lists its models only with your key, which this page never uses. Type the model id from the provider’s documentation.',

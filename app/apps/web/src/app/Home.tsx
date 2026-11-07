@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import type { ReturnNextStep, WorkItem } from '@flux/contracts';
 import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
-import { MorningLine } from '../assistant/MorningLine';
 import { NeedsYouCard } from '../notifications/NeedsYouCard';
 import { useNeedsYou } from '../notifications/needsYou';
 import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
@@ -131,7 +130,6 @@ export function Home() {
     <div className="pane-scroll"><div className="pane-in home">
       <p className="home__date">{dateFormat.format(now)}</p>
       <h2 className="home__hello">{greeting(now.getHours())}, {firstName}</h2>
-      <MorningLine />
 
       {phone ? <ContinueCard userId={me.user.id} workspaceIds={workspaceIds} /> : null}
       {/* Without a sidebar (phone, narrow drawer) Home carries the working agents with Stop, under Continue as drawn (S13). */}

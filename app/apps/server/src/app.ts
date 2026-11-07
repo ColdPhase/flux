@@ -42,7 +42,7 @@ import { agentProposalRoutes } from './agent-connection/routes.js';
 import { projectAgentRoutes } from './agent-connection/project-agents.js';
 import { agentStopRoutes } from './agent-connection/agent-stops.js';
 import { agentQuestionRoutes } from './agent-connection/agent-questions.js';
-import { proactiveComparisonRoutes } from './proactive-comparison/routes.js';
+import { aiKeyRoutes } from './ai-keys/routes.js';
 import { registerMcpRoute } from './agent-connection/mcp-route.js';
 import { webReader as createWebReader } from './web-reads/reader.js';
 import { CLOSED_WORLD_RULES } from './link-previews/safe-fetch.js';
@@ -61,11 +61,10 @@ import { exportRoutes } from './export/routes.js';
 import { agentRuntimeRoutes } from './agent-runtime/routes.js';
 import { typingRoutes } from './typing/routes.js';
 import { typingTaskDiscussion } from './typing/tasks.js';
-import { currentGithubReactionFacts } from './assistant/reactions.js';
 import { githubCredentials } from './github/credentials.js';
 import { githubProvider } from './github/provider.js';
 import { githubTransport } from './github/http.js';
-import { createGithubUseCases, type Provider as GithubUnitProvider } from './github/adapters.js';
+import { type Provider as GithubUnitProvider } from './github/adapters.js';
 import { githubRoutes } from './github/routes.js';
 import { loadGithubConfig } from './github/config.js';
 import type { ServerConfig } from './config.js';
@@ -293,8 +292,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
   const firstAgent = firstAgentMaker(db, { queue: pgBossPersonalRunQueue(boss), connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
     runtime: personalRuntimeAvailability(config.agentRuntime, db) }, app.log);
-  await app.register(aiRoutes(proactiveComparisonRoutes), { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey,
-    comparisonsEnabled: config.backgroundComparisons, afterConnect: firstAgent });
+  await app.register(aiRoutes(aiKeyRoutes), { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey, afterConnect: firstAgent });
   // The agents' web page reads (#918): the link cards' guard, a test deployment's closed world, and only when the operator turned them on.
   const webReader = createWebReader({ enabled: config.webReads.enabled, ...(config.linkPreviews.testHosts.size ? { rules: CLOSED_WORLD_RULES,
     connectTo: (host: string) => config.linkPreviews.testHosts.get(host) ?? null } : {}) });
@@ -302,8 +300,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     identity.standing && identityConfig.oidc ? { checker: identity.standing, label: identityConfig.oidc.label } : null,
     identity.confirmation, identityConfig.oidc?.label, githubReadProvider, webReader);
   // A personal run's MCP token (F-027 A2): signed here, the authorization server, for the worker only.
-  const githubRead = githubReadProvider ? createGithubUseCases(db, githubReadProvider) : null;
-  registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin, githubRead ? currentGithubReactionFacts(githubRead) : undefined);
+  registerPersonalRunTokenRoute(app, db, identity.auth, identityConfig.publicOrigin);
   await app.register(returnRoutes, { db, sessions: identity });
   await app.register(needsYouRoutes, { db, sessions: identity });
   await app.register(docRoutes, { db, sessions: identity });

@@ -137,12 +137,11 @@ function AppLayoutContent() {
   // render and its children already see their own entry.
   setCurrentEntry(entryOf(location));
   const routeOrigin = useRouteOrigin();
-  const backgroundSettings = location.pathname === '/settings/background-compute';
   const aiConnections = location.pathname === '/settings/ai-connections';
   // A page inside Settings (#266 PF-5): on the phone its header leads back instead of opening the drawer.
   const settingsPage = /^\/settings\/./.test(location.pathname);
   // Back from a direct link goes to the page that leads there: the AI pages to Settings › AI (#513).
-  const settingsParent = /^\/settings\/(assistant|background-compute|ai-connections|agents\/connect)(\/|$)/.test(location.pathname) ? '/settings/agents' : '/settings';
+  const settingsParent = /^\/settings\/(assistant|ai-connections|agents\/connect)(\/|$)/.test(location.pathname) ? '/settings/agents' : '/settings';
   const navDrawer = useMediaQuery(MEDIA.navDrawer);
   const tablet = useMediaQuery(MEDIA.tablet);
   const phone = useMediaQuery(MEDIA.phone);
@@ -350,7 +349,7 @@ function AppLayoutContent() {
     setShownPath(location.pathname);
     // A link in the panel that leads to a thread or back to a task keeps the panel (its state says so).
     const keep = (location.state as { keepPanel?: boolean } | null)?.keepPanel === true;
-    if (((panelMode !== 'docked' && !keep) || backgroundSettings || aiConnections) && detailsOpen) setDetailsOpen(false);
+    if (((panelMode !== 'docked' && !keep) || aiConnections) && detailsOpen) setDetailsOpen(false);
     // A docked panel that shows an object or a form of the place being left does not follow the person to another place
     // (#763 H11-8): it closes and its "‹ back" trail goes with it, so Details opened there is that place's. The place's
     // own Details ('place') reads the new place by itself; a view-owned thread or agent is closed by its view.
@@ -620,8 +619,6 @@ function AppLayoutContent() {
     ? { crumb: null, title: 'Spaces', topic: 'Every space you can open', noDetails: true }
     : /^\/settings(\/(appearance|account|company|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
     ? { crumb: null, title: 'Settings', topic: 'Appearance, notifications and AI', noDetails: true }
-    : backgroundSettings
-    ? { crumb: null, title: 'Background suggestions', topic: 'Your usage and space rules', noDetails: true }
     : aiConnections
     ? { crumb: null, title: 'Your API keys', topic: 'Each with one daily budget', noDetails: true }
     : location.pathname === '/settings/assistant'

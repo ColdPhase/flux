@@ -33,36 +33,15 @@ export async function projectReferences(projectId: string) {
 }
 
 /**
- * Rows of the features that 0101 lets leave with their project: receipts, grants, discussions, drafts, proactive rows;
+ * Rows of the features that 0101 lets leave with their project: receipts, grants, discussions and drafts;
  * and the task activity of 0112 (#488), which follows its task.
  */
-export const erasedWithProject = ['agent_command_receipts', 'project_task_discussions', 'drafts', 'proactive_comparison_rules',
-  'proactive_comparison_proposals', 'proactive_comparison_insufficient_outcomes', 'project_task_activity'] as const;
+export const erasedWithProject = ['agent_command_receipts', 'project_task_discussions', 'drafts', 'project_task_activity'] as const;
 
-export async function seedDraftAndProactive(f: ThreadNativeScene, resultId: string) {
+export async function seedDraft(f: ThreadNativeScene) {
   const owner = (await pool.query<{ created_by: string }>('SELECT created_by FROM projects WHERE id=$1', [f.projectId])).rows[0]!.created_by;
   await pool.query(`INSERT INTO drafts(id,workspace_id,project_id,owner_user_id,title,visibility,created_by) VALUES($1,$2,$3,$4,'A project draft','project',$4)`,
     [randomUUID(), f.workspaceId, f.projectId, owner]);
-  const rule = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/proactive-comparison-rules`,
-    { body: { agentId: f.agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison', dataScope: 'current_project_published',
-      permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string };
-  // Terminal zero-cost candidates need no provider connection; one stays unanswered, two carry an outcome.
-  const candidate = async (n: number) => {
-    const id = randomUUID();
-    await pool.query(`INSERT INTO proactive_comparison_outbox(id,rule_id,owner_user_id,project_id,result_id,source_fingerprint,status,
-      failure_code,usage_input_tokens,usage_output_tokens,usage_estimated_cents,finished_at,inspected_sources,ai_epoch)
-      VALUES($1,$2,$3,$4,$5,$6,'not_run','TEST',0,0,0,now(),'[]',1)`, [id, rule.id, owner, f.projectId, resultId, String(n).repeat(64)]);
-    return id;
-  };
-  await candidate(1);
-  const [forProposal, forOutcome] = [await candidate(2), await candidate(3)];
-  const proposal = randomUUID(), outcome = randomUUID();
-  await pool.query(`INSERT INTO proactive_comparison_proposals(id,outbox_id,owner_user_id,agent_id,project_id,result_id,source_fingerprint,sources,fact,interpretation,suggested_action,provider,model)
-    VALUES($1,$2,$3,$4,$5,$6,$7,'[]','Fact','Interpretation','Action','anthropic','claude-sonnet-5')`, [proposal, forProposal, owner, f.agentId, f.projectId, resultId, '2'.repeat(64)]);
-  await pool.query('UPDATE proactive_comparison_outbox SET proposal_id=$1 WHERE id=$2', [proposal, forProposal]);
-  await pool.query(`INSERT INTO proactive_comparison_insufficient_outcomes(id,outbox_id,owner_user_id,agent_id,project_id,result_id,reason)
-    VALUES($1,$2,$3,$4,$5,$6,'Not enough evidence')`, [outcome, forOutcome, owner, f.agentId, f.projectId, resultId]);
-  await pool.query('UPDATE proactive_comparison_outbox SET insufficient_outcome_id=$1 WHERE id=$2', [outcome, forOutcome]);
 }
 
 export async function upload(f: ThreadNativeScene, text: string) {
@@ -87,8 +66,8 @@ export async function fullProject() {
     { body: { title: 'Erasure notes', body: `[The task](flux:work/${task.id}) has a measured note.`, state: 'published' } }), 201);
   expect(await f.owner.request('PATCH', `/api/v1/materials/${f.source.materialId}`,
     { body: { clientMutationId: randomUUID(), expectedVersion: f.source.version, body: 'A revised release plan.' } }), 200);
-  const result = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/results`,
-    { body: { title: 'Measured', finding: 'positive', evidence: 'Observed behavior', work: [task.id], clientCommandId: randomUUID() } }), 201) as unknown as { id: string };
+  expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/results`,
+    { body: { title: 'Measured', finding: 'positive', evidence: 'Observed behavior', work: [task.id], clientCommandId: randomUUID() } }), 201);
   expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/decisions`,
     { body: { title: 'Keep the rule', rationale: 'Observed data', affects: [task.id] } }), 201);
   const map = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/sketches`,
@@ -102,7 +81,7 @@ export async function fullProject() {
   const file = await upload(f, `erasure ${randomUUID()}`);
   expect(await f.owner.request('POST', `/api/v1/work/${task.id}/discussion`,
     { body: { body: 'A published work product', attachmentIds: [file.id], clientMessageId: randomUUID() } }), 201);
-  await seedDraftAndProactive(f, result.id);
+  await seedDraft(f);
   return { ...f, task };
 }
 

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { assertExactMigrationLedger, assertKnownMigrationVersions, assertMigrationSqlLedgerChange, assertMigrationStepLedger, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { PgBoss } from 'pg-boss';
 import { SEARCH_CHANGES_CLEANUP_JOB, SPACE_AI_SWEEP_JOB, WORKSPACE_ENCRYPTION_RESUME_JOB } from '@flux/contracts';
-import { ASSISTANT_TICK_JOB, ASSISTANT_TICK_QUEUE, ASSISTANT_TICK_RETRY, COMPARISON_JOB_QUEUE, COMPARISON_JOB_RETRY, COMPARISON_RECOVERY_JOB, COMPARISON_TICK_JOB, NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
+import { ASSISTANT_TICK_JOB, ASSISTANT_TICK_QUEUE, ASSISTANT_TICK_RETRY, NOTIFICATION_EMAIL_JOB, NOTIFICATION_EMAIL_QUEUE, PERSONAL_RUN_JOB, PERSONAL_RUN_QUEUE, PUSH_SEND_JOB, PUSH_SEND_QUEUE } from '@flux/core';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -50,7 +50,7 @@ try {
   // Every queue wakes its worker by NOTIFY when a job is ready (the worker listens, #862), so the worker only polls as a backstop.
   // Existing queues keep their stored policy; updateQueue applies the reviewed retry bounds and the wake-up to them too.
   const wake = { notify: true };
-  for (const queue of ['sample.process', 'draft.summarize.v1', 'idempotency.cleanup.v1', 'notification.morning-summary.v1']) {
+  for (const queue of ['sample.process', 'draft.summarize.v1', 'idempotency.cleanup.v1']) {
     await boss.createQueue(queue, wake);
     await boss.updateQueue(queue, wake);
   }
@@ -63,11 +63,6 @@ try {
   // "On a schedule" (F-027 A8): the per-minute tick is one active job at a time across workers.
   await boss.createQueue(ASSISTANT_TICK_JOB, { ...ASSISTANT_TICK_QUEUE, ...wake });
   await boss.updateQueue(ASSISTANT_TICK_JOB, { ...ASSISTANT_TICK_RETRY, ...wake });
-  // Background comparisons (#58): created always, scheduled only when the operator switches them on.
-  for (const queue of [COMPARISON_TICK_JOB, COMPARISON_RECOVERY_JOB]) {
-    await boss.createQueue(queue, { ...COMPARISON_JOB_QUEUE, ...wake });
-    await boss.updateQueue(queue, { ...COMPARISON_JOB_RETRY, ...wake });
-  }
   // AG-10: the turn-off sweep, retried so a lost job cannot leave queued AI work behind (the sweep is idempotent).
   await boss.createQueue(SPACE_AI_SWEEP_JOB, { retryLimit: 5, retryDelay: 5, ...wake });
   await boss.updateQueue(SPACE_AI_SWEEP_JOB, { retryLimit: 5, retryDelay: 5, ...wake });

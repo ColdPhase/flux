@@ -88,8 +88,6 @@ export interface SpaceAiSweepRows {
   endQueuedRuns(projectId: string, epoch: number): Promise<SweptRun[]>;
   stopInFlightRuns(projectId: string, epoch: number): Promise<SweptRun[]>;
   closeRunTokens(projectId: string, epoch: number): Promise<number>;
-  endComparisons(projectId: string, epoch: number): Promise<number>;
-  skipReactionEvents(projectId: string, epoch: number): Promise<number>;
   cancelRequests(projectId: string, epoch: number): Promise<number>;
   stopUnits(projectId: string, epoch: number): Promise<number>;
 }

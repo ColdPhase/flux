@@ -442,7 +442,7 @@ describe('F-030 AI forced off', () => {
         EXISTS (SELECT 1 FROM pg_trigger t WHERE t.tgrelid = ('public.' || c.table_name)::regclass AND t.tgname = 'a_sealed_workspace_no_ai') AS guarded
       FROM information_schema.tables c JOIN information_schema.columns k ON k.table_schema = 'public' AND k.table_name = c.table_name
       WHERE c.table_schema = 'public' AND c.table_type = 'BASE TABLE' AND (c.table_name LIKE 'agent%' OR c.table_name LIKE 'assistant%'
-        OR c.table_name LIKE 'cowork%' OR c.table_name LIKE 'personal_run%' OR c.table_name LIKE 'proactive_comparison%' OR c.table_name = 'background_compute_connections')
+        OR c.table_name LIKE 'cowork%' OR c.table_name LIKE 'personal_run%' OR c.table_name = 'background_compute_connections')
       GROUP BY c.table_name ORDER BY c.table_name`)).rows as { name: string; ws: boolean; project: boolean; agent: boolean; connection: boolean; guarded: boolean }[];
     const withPath = tables.filter((t) => t.ws || t.project || t.agent || (t.connection && t.name.startsWith('agent')));
     assert.ok(withPath.length >= 30, `AI tables with a workspace path: ${withPath.length}`);

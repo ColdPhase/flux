@@ -46,8 +46,6 @@ export function toNotificationRecord(row: NotificationRow) {
     createdAt: row.createdAt,
     readAt: row.readAt,
     reason: row.reason ?? null,
-    deliveryKind: row.deliveryKind,
-    summarySources: row.summarySources,
   };
 }
 

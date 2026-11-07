@@ -73,36 +73,6 @@ async function accessToken(userId: string, options: { expires: number; revoked?:
     VALUES ($1, $2, $3, $4, now() + ($5 || ' milliseconds')::interval, now(), ${options.revoked ? 'now()' : 'NULL'}, '{offline_access}')`,
   [randomUUID(), randomUUID(), await mcpClient(), userId, String(options.expires)]);
 }
-/** A project and agent owned by the person, with one proactive comparison rule in the given status. */
-async function proactiveRule(userId: string, status: 'enabled' | 'paused' | 'revoked') {
-  const workspaceId = randomUUID();
-  const projectId = randomUUID();
-  const agentId = randomUUID();
-  const ruleId = randomUUID();
-  await db.insert(schema.workspaces).values({ id: workspaceId, name: 'Standing fixture', createdBy: userId });
-  await db.insert(schema.projects).values({ id: projectId, workspaceId, name: 'Standing fixture', createdBy: userId });
-  await db.insert(schema.agents).values({ id: agentId, workspaceId, name: 'Standing agent', ownerUserId: userId, createdBy: userId });
-  await db.insert(schema.proactiveComparisonRules).values({ id: ruleId, workspaceId, projectId, ownerUserId: userId, agentId, status });
-  return { workspaceId, projectId, ruleId };
-}
-/** A candidate in the given status under a paused rule, so only the candidate can make the person eligible. */
-async function proactiveCandidate(userId: string, status: 'queued' | 'reserved' | 'completed' | 'not_run' | 'unknown') {
-  const { workspaceId, projectId, ruleId } = await proactiveRule(userId, 'paused');
-  const resultId = randomUUID();
-  await db.insert(schema.projectResults).values({ id: resultId, workspaceId, projectId, title: 'Low-light trial failed', finding: 'negative', createdByKind: 'human', createdById: userId });
-  const reserved = status === 'reserved' || status === 'unknown' || status === 'completed';
-  let connectionId: string | null = null;
-  if (reserved) {
-    connectionId = randomUUID();
-    await db.insert(schema.backgroundComputeConnections).values({ id: connectionId, ownerUserId: userId, provider: 'anthropic', model: 'claude-sonnet-5', name: 'Standing fixture',
-      encryptedKey: 'sealed-fixture', keyLastFour: '0000', keyFingerprint: randomUUID().replaceAll('-', '').slice(0, 16), dailyBudgetCents: 15 });
-  }
-  const notRun = status === 'not_run' ? { usageInputTokens: 0, usageOutputTokens: 0, usageEstimatedCents: 0, failureCode: 'NO_SOURCES', finishedAt: new Date() } : {};
-  await db.insert(schema.proactiveComparisonOutbox).values({ aiEpoch: 1, id: randomUUID(), ruleId, ownerUserId: userId, projectId, resultId, status, connectionId,
-    sourceFingerprint: randomUUID().replaceAll('-', '') + randomUUID().replaceAll('-', ''),
-    ...(reserved ? { reservedCents: 5, reservedAt: new Date() } : {}), ...notRun });
-}
-
 describe('the sealed provider token', () => {
   test('round-trips, is bound to its person and provider, and does not hold the token in the clear', () => {
     const sealed = sealToken(key, 'u1', 'p1', 'refresh-token-value');
@@ -477,12 +447,6 @@ describe('the check', () => {
     { name: 'a live MCP access token',
       positive: { live: (userId) => accessToken(userId, { expires: 3_600_000 }) },
       idle: { expired: (userId) => accessToken(userId, { expires: -1_000 }), revoked: (userId) => accessToken(userId, { expires: 3_600_000, revoked: true }) } },
-    { name: 'an enabled proactive comparison rule',
-      positive: { enabled: (userId) => proactiveRule(userId, 'enabled').then(() => undefined) },
-      idle: { paused: (userId) => proactiveRule(userId, 'paused').then(() => undefined), revoked: (userId) => proactiveRule(userId, 'revoked').then(() => undefined) } },
-    { name: 'a queued or reserved proactive comparison candidate',
-      positive: { queued: (userId) => proactiveCandidate(userId, 'queued'), reserved: (userId) => proactiveCandidate(userId, 'reserved') },
-      idle: { completed: (userId) => proactiveCandidate(userId, 'completed'), not_run: (userId) => proactiveCandidate(userId, 'not_run'), unknown: (userId) => proactiveCandidate(userId, 'unknown') } },
   ];
   for (const authority of authorities) {
     for (const [kind, give] of Object.entries(authority.positive)) test(`${authority.name} (${kind}) alone keeps the owner checked through suspension and recovery`, async () => {

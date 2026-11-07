@@ -24,11 +24,10 @@ const ai = [
   'agent_runtime_sessions', 'agent_runtime_slots', 'agent_stops', 'agent_pauses', 'agent_thread_artifact_boundaries',
   'agent_thread_artifact_mutations', 'agent_thread_artifact_resets', 'agent_thread_guard_events', 'agents', 'assistant_background_notes',
   'assistant_changes', 'assistant_job_runs', 'assistant_jobs',
-  'agent_task_taking', 'assistant_morning_summaries', 'assistant_proposals', 'assistant_reaction_events', 'assistant_reaction_notes', 'assistant_reactions',
+  'agent_task_taking', 'assistant_proposals',
   'assistant_settings', 'background_compute_connections', 'cowork_checkpoints', 'cowork_connection_slots', 'cowork_delivery_intents',
   'cowork_request_lineages', 'cowork_requests', 'cowork_review_verdicts', 'cowork_units', 'personal_run_web_reads',
-  'personal_runs', 'proactive_comparison_cursor', 'proactive_comparison_insufficient_outcomes',
-  'proactive_comparison_outbox', 'proactive_comparison_project_changes', 'proactive_comparison_proposals', 'proactive_comparison_rules',
+  'personal_runs',
 ] as const;
 const account = [
   'auth_accounts', 'auth_email_claims', 'auth_identity_audit', 'auth_idp_standing', 'auth_link_intents', 'auth_logout_tokens',
@@ -183,7 +182,7 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   map_live_object_versions: { kind: 'an enum' },
   live_editing_intents: { actor_id: 'a principal id', kind: 'an enum', operation: 'an operation name' },
   notifications: { user_id: 'a user id', source_type: 'an enum', title: 'content-free for a sealed workspace (backstopped)',
-    body: 'empty for a sealed workspace (backstopped)', url: 'ids', reason: 'an enum', delivery_kind: 'an enum', summary_sources: 'object refs' },
+    body: 'empty for a sealed workspace (backstopped)', url: 'ids', reason: 'an enum' },
   notification_generation_failures: { last_error: 'an error class and code only for a sealed workspace (error paths, S2a-2)' },
   notification_emails: { user_id: 'a user id', address_kind: 'an enum', address: 'an account e-mail address', status: 'an enum',
     skip_reason: 'a code only for a sealed workspace (error paths, S2a-2)', unsubscribe_hash: 'a token hash', last_error: 'an error class and code only for a sealed workspace (error paths, S2a-2)' },

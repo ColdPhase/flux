@@ -1,9 +1,8 @@
 import assert from 'node:assert/strict';
 import { after, afterEach, before, beforeEach, describe, test } from 'node:test';
 import { tablePrice, type AiProviderKind } from '@flux/contracts';
-import { ComparisonNotSentError, costMicros, SYSTEM_PROMPT, type ComparisonProvider, type ComparisonSource, type PersonalCompute,
-  type PersonalComputeRequest } from '@flux/core';
-import { listProviderModels, parsePrivateTargets, providerComparison, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
+import { costMicros, SYSTEM_PROMPT, type PersonalCompute, type PersonalComputeRequest } from '@flux/core';
+import { listProviderModels, parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
 import type { RecordedProviderRequest } from './support/provider-mock.js';
 
 // The adapter contract suite (F-020 PROV-6): ONE set of cases runs identically against the Docker
@@ -41,15 +40,10 @@ const NAMED_BASE_URLS = { anthropic: `${MOCK}/anthropic`, openai: `${MOCK}/opena
 const resolveKeyFor = (key: string) => async (keyRef: string) => (keyRef === 'owner-key-ref' ? key : null);
 const personal = (wire: WireCase, timeoutMs = 2_000): PersonalCompute => providerPersonalCompute({
   enabled: true, resolveKey: resolveKeyFor(wire.key), policy, baseUrls: NAMED_BASE_URLS, timeoutMs, maxResponseBytes: 1_000_000 });
-const comparison = (timeoutMs = 2_000): ComparisonProvider => providerComparison({ policy, baseUrls: NAMED_BASE_URLS, timeoutMs, maxResponseBytes: 1_000_000 });
 const request = (wire: WireCase, overrides: Partial<PersonalComputeRequest> = {}): PersonalComputeRequest => ({
   connection: { id: 'connection-1', keyRef: 'owner-key-ref', provider: wire.provider, baseUrl: wire.connectionBaseUrl },
   model: wire.model, maxTokens: 1_500, effort: 'low', system: SYSTEM_PROMPT,
   input: 'Task: Answer the request.\nRequest: Where are we?\n\nSources:\n[S1] Message 1 by Kai: Camera fails below 5 lux', ...overrides,
-});
-const source: ComparisonSource = { type: 'result', id: 'result-1', version: 1, text: 'Camera A missed gestures at 5 lux.' };
-const comparisonInput = (wire: WireCase, signal = AbortSignal.timeout(5_000)) => ({
-  apiKey: wire.key, provider: wire.provider, model: wire.model, baseUrl: wire.connectionBaseUrl, sources: [source], signal,
 });
 
 async function control(path: string, body?: unknown) {
@@ -175,43 +169,6 @@ for (const wire of WIRES) {
       } finally {
         for (const name of names) if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name];
       }
-    });
-
-    test('comparison: the same structured request and parsing, usage kept for malformed answers, errors without bodies', async () => {
-      const answer = { outcome: { kind: 'comparison', fact: 'Camera A missed gestures at 5 lux.', interpretation: 'A second sensor may help.',
-        suggestedAction: 'Test another sensor.', citations: [{ type: 'result', id: source.id, version: 1 }] } };
-      await script(wire.wire, { text: JSON.stringify(answer), usage: { input: 300, output: 90 } });
-      const result = await comparison().createMessage({ ...comparisonInput(wire), maxTokens: 1_200, effort: 'low' });
-      assert.deepEqual(result, { stopReason: 'end_turn', usage: { inputTokens: 300, outputTokens: 90 }, answer: answer.outcome });
-      const body = (await sent(wire.wire)).at(-1)!.body as Record<string, unknown>;
-      assert.equal(body[wire.maxTokensField], 1_200);
-      assert.equal(body.tools, undefined);
-      const schema = wire.wire === 'anthropic' ? (body.output_config as { format: { schema: unknown } }).format.schema
-        : (body.response_format as { json_schema: { schema: unknown; strict: boolean } }).json_schema.schema;
-      assert.deepEqual((schema as { required: string[] }).required, ['outcome'], 'the answer schema rides the wire format\'s structured-output field');
-      assert.ok(JSON.stringify(body).includes(source.text));
-      await script(wire.wire, { mode: 'truncated', text: '{"outcome":' });
-      const truncated = await comparison().createMessage({ ...comparisonInput(wire), maxTokens: 1_200, effort: 'low' });
-      assert.deepEqual([truncated.stopReason, truncated.answer, truncated.usage.inputTokens], ['max_tokens', null, 1_200]);
-      await script(wire.wire, { mode: 'refusal' });
-      const refused = await comparison().createMessage({ ...comparisonInput(wire), maxTokens: 1_200, effort: 'low' });
-      assert.deepEqual([refused.stopReason, refused.answer], ['refusal', null]);
-      await script(wire.wire, { text: `invalid JSON with ${wire.key}` });
-      const malformed = await comparison().createMessage({ ...comparisonInput(wire), maxTokens: 1_200, effort: 'low' });
-      assert.deepEqual([malformed.answer, malformed.usage.inputTokens], [null, 1_200]);
-      assert.equal(JSON.stringify(malformed).includes(wire.key), false);
-      await control('/__reset', {});
-      await script(wire.wire, { mode: 'status', status: 503 });
-      await assert.rejects(comparison().createMessage({ ...comparisonInput(wire), maxTokens: 1_200, effort: 'low' }),
-        (error: Error) => !error.message.includes(wire.key) && !String(error.stack).includes(wire.key));
-      assert.equal((await sent(wire.wire)).length, 1, 'no automatic retry');
-    });
-
-    test('comparison: a refused endpoint is a request that was never sent', async () => {
-      const refusedInput = { ...comparisonInput(wire), baseUrl: wire.connectionBaseUrl ? 'https://169.254.169.254/v1' : null };
-      const provider = wire.connectionBaseUrl ? comparison() : providerComparison({ policy, baseUrls: { anthropic: 'https://169.254.169.254' } });
-      await assert.rejects(provider.createMessage({ ...refusedInput, maxTokens: 1_200, effort: 'low' }), ComparisonNotSentError);
-      assert.equal((await sent()).length, 0);
     });
   });
 }

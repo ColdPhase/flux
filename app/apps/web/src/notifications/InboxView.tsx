@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
-import { assistantReactionDraftPath, type AssistantReplyDraft } from '@flux/contracts';
-import { request } from '../api/client';
 import type { NeedsYouItem, NeedsYouKind } from '@flux/contracts';
 import { createPortal } from 'react-dom';
 import { Button, ErrorState, Icon, Kreska, MEDIA, Spinner, Tabs, useMediaQuery, useRowMotion, type TabItem } from '../ui';
@@ -181,9 +179,6 @@ export function InboxOpen() {
     const controller = new AbortController();
     getInboxItem(id, controller.signal).then(async (item) => {
       if (controller.signal.aborted) return;
-      const draft = await request<AssistantReplyDraft>(assistantReactionDraftPath(id), { signal: controller.signal }).catch(() => null);
-      if (controller.signal.aborted) return;
-      if (draft) { navigate(draft.url, { replace: true, state: { focusComposer: true, assistantReplyDraft: { id, ownerId: draft.ownerUserId, body: draft.body, conversationId: draft.conversationId } } }); return; }
       void markInboxRead(item.id).then(announceInboxChange, () => undefined);
       navigate(item.url ?? '/inbox', { replace: true, state: stateRef.current });
     }, () => { if (!controller.signal.aborted) setGone(true); });

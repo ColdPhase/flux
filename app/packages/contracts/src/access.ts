@@ -118,7 +118,7 @@ export const projectAiPolicyPath = (projectId: string) => `${PROJECTS_PATH}/${pr
 export interface SetSpaceAiCommand { state: SpaceAiState }
 /** What turning AI off stopped at once (the worker repeats the same sweep, so a crash cannot skip it). */
 export interface SpaceAiSwept {
-  runs: number; tokens: number; comparisons: number; reactions: number; requests: number; units: number;
+  runs: number; tokens: number; requests: number; units: number;
   /** Steps whose transaction failed (each step is its own transaction, so one cannot stop the others); the job retries them. */
   failed: string[];
 }

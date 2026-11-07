@@ -1,20 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AssistantJob, AssistantMorningSummary, PersonalAssistantStatus } from '@flux/contracts';
+import type { AssistantJob, PersonalAssistantStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
-import { SwitchRow } from '../app/SettingsHome';
-import { getPreferences } from '../notifications/api';
-import { Button, Icon, MEDIA, useMediaQuery, useToast } from '../ui';
+import { Button, Icon, useToast } from '../ui';
 import { ScheduleDetail } from './ScheduleDetail';
-import { MorningSummarySheet, ScheduleSheet } from './ScheduleSheet';
-import {
-  deleteSchedule, getMorningSummary, listSchedules, restoreSchedule, runScheduleNow, setMorningSummary, updateSchedule, type ScheduleScope,
-} from './scheduleApi';
-import { blankDraft, draftOf, shortTime, weeklyReviewDraft, type Draft } from './scheduleForm';
+import { ScheduleSheet } from './ScheduleSheet';
+import { deleteSchedule, listSchedules, restoreSchedule, runScheduleNow, updateSchedule, type ScheduleScope } from './scheduleApi';
+import { blankDraft, draftOf, weeklyReviewDraft, type Draft } from './scheduleForm';
 import './schedules.css';
 
-// "On a schedule" on the assistant screen (F-027 AST-7 and AST-10 "The assistant screen"): the morning summary row, one row per
-// schedule with its words, next time and last result, the empty part's two starters, and "+ Add". Everything is the owner's own;
+// "On a schedule" on the assistant screen (F-027 AST-7 and AST-10 "The assistant screen"): one row per schedule with its
+// words, next time and last result, the empty part's starter, and "+ Add". Everything is the owner's own;
 // the sheet and the panel hold the rest, so this part stays calm. While a run works the list asks again, so "Last: Done" appears
 // by itself.
 
@@ -28,15 +24,9 @@ export function AssistantSchedules({ status, userId }: { status: PersonalAssista
   const { projects: allProjects } = useShellData();
   const projects = useMemo(() => allProjects.filter((project) => project.workspaceId === workspaceId), [allProjects, workspaceId]);
   const scope = useMemo<ScheduleScope | null>(() => (workspaceId ? { workspaceId, ownerId: userId } : null), [workspaceId, userId]);
-  const phone = useMediaQuery(MEDIA.phone);
   const toast = useToast();
   const [jobs, setJobs] = useState<AssistantJob[] | null>(null);
-  const [summary, setSummary] = useState<AssistantMorningSummary | null>(null);
-  // The morning summary row stays where it is for the visit, even after its switch goes off.
-  const [summaryRow, setSummaryRow] = useState(false);
-  const [time, setTime] = useState<string | null>(null);
   const [sheet, setSheet] = useState<SheetState | null>(null);
-  const [summarySheet, setSummarySheet] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [loadFailed, setLoadFailed] = useState(false);
@@ -45,10 +35,9 @@ export function AssistantSchedules({ status, userId }: { status: PersonalAssista
 
   const fetchAll = useCallback((signal?: AbortSignal) => {
     if (!scope) return Promise.resolve();
-    return Promise.all([listSchedules(scope, signal), getMorningSummary(signal).catch(() => null), getPreferences(signal).catch(() => null)]).then(([items, morning, prefs]) => {
+    return listSchedules(scope, signal).then((items) => {
       if (!mounted.current || signal?.aborted) return;
-      setJobs(items); setSummary(morning); setTime(prefs?.morningSummary.at ?? null); setLoadFailed(false);
-      if (morning?.byAssistant) setSummaryRow(true);
+      setJobs(items); setLoadFailed(false);
     }, () => { if (mounted.current && !signal?.aborted) setLoadFailed(true); });
   }, [scope]);
   const reload = useCallback(() => { void fetchAll(); }, [fetchAll]);
@@ -96,20 +85,8 @@ export function AssistantSchedules({ status, userId }: { status: PersonalAssista
       return null;
     } catch (cause) { return failure(cause); }
   }
-  async function toggleSummary(on: boolean) {
-    setError('');
-    try {
-      await setMorningSummary({ on });
-      await fetchAll();
-    } catch (cause) {
-      if (on && cause instanceof ApiError && cause.code === NOTE_REQUIRED) setSummarySheet(true);
-      else setError(failure(cause));
-    }
-  }
-
   const list = jobs ?? [];
   const detail = list.find((job) => job.id === detailId) ?? null;
-  const summaryOn = !!summary?.byAssistant;
   // The empty part offers its starters; once there is a schedule they are gone, and Add stays last.
   const starters = jobs !== null && !list.length;
 
@@ -117,19 +94,14 @@ export function AssistantSchedules({ status, userId }: { status: PersonalAssista
     <>
       <h3 className="aset-screen__h" id="asched-title">On a schedule</h3>
       <section className="sset-card asched__card" aria-labelledby="asched-title">
-        {summaryRow ? (
-          <SwitchRow label={phone ? 'Morning summary · by your assistant' : 'Morning summary · written by your assistant'} checked={summaryOn}
-            detail={`Every day at ${time ? shortTime(time) : '9:00'} (Notifications) · Home`} onChange={(on) => void toggleSummary(on)} />
-        ) : null}
         {list.map((job) => <Row key={job.id} job={job} onOpen={() => setDetailId(job.id)} onToggle={(on) => void toggle(job, on).then((message) => setError(message ?? ''))}
           onTurnOn={() => void toggle(job, true).then((message) => setError(message ?? ''))} />)}
         {jobs === null && !loadFailed ? <div className="sset-row"><span className="sset-row__s" aria-busy="true">Loading…</span></div> : null}
         {loadFailed ? <div className="sset-row"><span className="sset-row__s">Your schedules couldn’t load. <button type="button" className="ui-link" onClick={() => reload()}>Try again</button></span></div> : null}
         {starters ? (
           <div className="sset-row sset-row--stack asched__starters">
-            <span className="sset-row__s">{summaryRow ? 'Try one:' : 'Nothing yet. Try one:'}</span>
+            <span className="sset-row__s">Nothing yet. Try one:</span>
             <div className="asched__chips">
-              {summaryRow ? null : <button type="button" className="asched__chip" onClick={() => setSummarySheet(true)}>Let your assistant write your morning summary</button>}
               <button type="button" className="asched__chip" disabled={!firstProject} onClick={() => openNew(weeklyReviewDraft(firstProject))}>Weekly review on Monday</button>
             </div>
           </div>
@@ -144,7 +116,6 @@ export function AssistantSchedules({ status, userId }: { status: PersonalAssista
       <ScheduleDetail job={detail} scope={scope} onClose={() => setDetailId(null)} onToggle={toggle} onRunNow={runNow} onDelete={remove} onEdit={(job) => openNew(draftOf(job), job, job.prepared)} />
       <ScheduleSheet open={!!sheet} onClose={() => setSheet(null)} scope={scope} projects={projects} initial={sheet?.draft ?? blankDraft(firstProject)} job={sheet?.job ?? null}
         turnOn={sheet?.turnOn ?? true} onSaved={(saved) => { replace(saved); reload(); }} />
-      <MorningSummarySheet open={summarySheet} onClose={() => setSummarySheet(false)} scope={scope} time={time} onDone={() => { setSummaryRow(true); reload(); }} />
     </>
   );
 }

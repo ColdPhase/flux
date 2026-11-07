@@ -5,12 +5,10 @@ import { takeHandedFiles } from '../composer/handoff';
 import { onCite, takeHeldCite } from '../app/citeBus';
 import type { PaneCore } from './paneCore';
 
-type PreparedReply = { id: string; ownerId: string; body: string; conversationId: string };
-
 /**
  * The pane's two drafts (#264): the public one (a new root in the stream, a reply in a thread) and the private
  * prompt to the person's assistant, with which of them the field edits now ("asking"). What arrives from elsewhere
- * joins them here: files from the phone's Create, `?ask=1`, a reply the assistant drafted, and a cited message or thought.
+ * joins them here: files from the phone's Create, `?ask=1`, and a cited message or thought.
  */
 export function useComposerDrafts({ me, project, conversation, composerId, writable, aiOff }: PaneCore) {
   const [asking, setAsking] = useState(false);
@@ -21,16 +19,6 @@ export function useComposerDrafts({ me, project, conversation, composerId, writa
   const composer = asking ? helperComposer : publicComposer;
   const location = useLocation();
   const navigate = useNavigate();
-  const preparedReply = (location.state as { assistantReplyDraft?: PreparedReply } | null)?.assistantReplyDraft;
-  const assistantDraftLabel = !!preparedReply && preparedReply.ownerId === me.user.id && preparedReply.conversationId === conversation?.id && publicComposer.draft.body === preparedReply.body;
-  const loadedReply = useRef<string | null>(null);
-  useEffect(() => {
-    if (!preparedReply || preparedReply.ownerId !== me.user.id || preparedReply.conversationId !== conversation?.id || loadedReply.current === preparedReply.id) return;
-    loadedReply.current = preparedReply.id;
-    // Keep an existing human draft. The assistant's words are offered alongside it, never silently overwrite it.
-    if (!publicComposer.draft.body.trim()) publicComposer.setBody(preparedReply.body);
-    document.getElementById(composerId)?.focus();
-  }, [preparedReply, conversation?.id, publicComposer, composerId, me.user.id]);
   // The phone's "+" Create → File or link (F-026 S2) arrives as ?compose=files|link: the picked files
   // join this project's message draft and the field takes focus, ready for a link or a line. Once.
   const addDraftFiles = publicComposer.addFiles;
@@ -83,7 +71,7 @@ export function useComposerDrafts({ me, project, conversation, composerId, writa
     if (held) citeRef.current(held);
   }, [conversation, writable, project.id]);
   return {
-    asking, setAsking, publicComposer, helperComposer, composer, draft, preparedReply, assistantDraftLabel,
+    asking, setAsking, publicComposer, helperComposer, composer, draft,
     captureScope: useComposerScope(publicComposer.key), captureHelperScope: useComposerScope(helperComposer.key),
     busy: publicComposer.sending, askBusy: helperComposer.sending,
   };

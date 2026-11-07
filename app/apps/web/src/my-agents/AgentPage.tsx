@@ -126,7 +126,7 @@ function AgentSettings({ agent, first }: { agent: MyAgent; first: boolean }) {
       {error ? <p className="nset__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
 
       <Remembers agent={agent} />
-      {first ? <p className="agp__more"><Link className="ui-link" to="/settings/assistant">{agent.name}’s schedules and reactions</Link></p> : null}
+      {first ? <p className="agp__more"><Link className="ui-link" to="/settings/assistant">{agent.name}’s schedules</Link></p> : null}
 
       <div className="agp__delete">
         {confirming ? (

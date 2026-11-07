@@ -1,4 +1,4 @@
-import { backgroundComparisonsEnabled, loadAgentRuntimeConfig, loadPushServerConfig, type AgentRuntimeConfig, type PushServerConfig } from '@flux/core';
+import { loadAgentRuntimeConfig, loadPushServerConfig, type AgentRuntimeConfig, type PushServerConfig } from '@flux/core';
 import { loadBackgroundMasterKey } from '@flux/db';
 import { loadIdentityConfig, type IdentityConfig } from './identity/index.js';
 import { loadLinkPreviewsConfig, type LinkPreviewsConfig } from './link-previews/config.js';
@@ -25,8 +25,6 @@ export interface ServerConfig {
   heartbeatMs: number;
   port: number;
   backgroundMasterKey: Buffer | null;
-  /** `FLUX_BACKGROUND_COMPARISONS=on` (#58): owners may enable comparison rules; the worker runs them. */
-  backgroundComparisons: boolean;
   /** Normal map/wiki collaboration; missing/empty/on enables it, off is the operator opt-out. */
   liveEditing: boolean;
   /**
@@ -59,7 +57,6 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroun
     heartbeatMs,
     port: Number(env.PORT ?? 8080),
     backgroundMasterKey: backgroundKeyPath === undefined ? loadBackgroundMasterKey() : loadBackgroundMasterKey(backgroundKeyPath),
-    backgroundComparisons: backgroundComparisonsEnabled(env),
     liveEditing: liveEditing === 'on',
     developmentLiveEditing: env.FLUX_DEVELOPMENT_LIVE_EDITING === 'true',
     agentRuntime: loadAgentRuntimeConfig(env),

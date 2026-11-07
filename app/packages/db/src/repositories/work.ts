@@ -189,18 +189,13 @@ export function workRows(db: DbExecutor) {
         'parkedByDecisionId', ${w.parkedByDecisionId}, 'parkedAt', ${w.parkedAt})` }).from(w).where(eq(w.id, workId));
       return row?.matches === true;
     },
-    async recordCreationBaseline(work: ReturnType<typeof toWorkRecord>, proposalId?: string) {
-      if (proposalId) {
-        const p = schema.proactiveComparisonProposals;
-        const [bound] = await db.select({ id: p.id }).from(p).where(and(eq(p.id, proposalId), eq(p.projectId, work.projectId), eq(p.status, 'used'), eq(p.usedWorkId, work.id)));
-        if (!bound || work.createdBy.kind !== 'human') throw new Error('Trusted proposal-use origin must be committed in this transaction');
-      }
-      const origin = proposalId ? 'ai_proposal' as const : work.createdBy.kind === 'agent' ? 'native_agent' as const : 'human' as const;
+    async recordCreationBaseline(work: ReturnType<typeof toWorkRecord>) {
+      const origin = work.createdBy.kind === 'agent' ? 'native_agent' as const : 'human' as const;
       const sealedRow = await sealedWork(db, work.id);
       if (sealedRow) {
         // F-030: the baseline of a sealed task is built from the opened row in the application and sealed, never in SQL.
         const seal = await sealOf(db, work.workspaceId, { write: true });
-        await db.update(w).set({ creationOrigin: origin, creationBaselineVersion: work.version, creationProposalId: proposalId ?? null,
+        await db.update(w).set({ creationOrigin: origin, creationBaselineVersion: work.version,
           creationBaseline: sealRow('project_work_items', { id: work.id, creationBaseline: baselineOf(sealedRow) }, seal).creationBaseline })
           .where(and(eq(w.id, work.id), isNull(w.creationBaselineVersion)));
         return;
@@ -209,7 +204,7 @@ export function workRows(db: DbExecutor) {
         creationBaselineVersion: work.version, creationBaseline: sql`jsonb_build_object(
           'title', ${w.title}, 'outcome', ${w.outcome}, 'status', ${w.status}, 'blocker', ${w.blocker},
           'criteria', ${w.criteria}, 'ownerUserId', ${w.ownerUserId}, 'ownerAgentId', ${w.ownerAgentId},
-          'parkedByDecisionId', ${w.parkedByDecisionId}, 'parkedAt', ${w.parkedAt})`, creationProposalId: proposalId ?? null }).where(and(eq(w.id, work.id), isNull(w.creationBaselineVersion)));
+          'parkedByDecisionId', ${w.parkedByDecisionId}, 'parkedAt', ${w.parkedAt})` }).where(and(eq(w.id, work.id), isNull(w.creationBaselineVersion)));
     },
     /** #238: the facts a reader's Undo eligibility is decided from, in one read; no lock and no use mark. */
     async creationUndoFacts(workId: string) {

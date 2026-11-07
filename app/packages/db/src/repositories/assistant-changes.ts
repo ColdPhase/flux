@@ -26,9 +26,8 @@ export type AssistantChangeInView = AssistantChangeRow & { conversationId: strin
 export interface AssistantRunRow {
   id: string; workspaceId: string; projectId: string; conversationId: string; ownerUserId: string; agentId: string;
   status: string; stopRequestedAt: Date | null; engine: 'server' | 'runtime'; completedAt: Date | null;
-  /** What started the run: the owner's request or one of their stored schedules or reactions. */
-  authority: 'owner_request' | 'owner_schedule' | 'owner_reaction';
-  reactionAction?: string | null;
+  /** What started the run: the owner's request or one of their stored schedules. */
+  authority: 'owner_request' | 'owner_schedule';
 }
 /** Who made an object: a person or an agent; both null when unknown. */
 export interface ObjectMaker { userId: string | null; agentId: string | null }
@@ -51,7 +50,7 @@ export function assistantChangeRows(db: DbExecutor) {
       const r = schema.personalRuns;
       const [row] = await db.select({ id: r.id, workspaceId: r.workspaceId, projectId: r.projectId, conversationId: r.conversationId,
         ownerUserId: r.ownerUserId, agentId: r.agentId, status: r.status, stopRequestedAt: r.stopRequestedAt, engine: r.engine,
-        completedAt: r.completedAt, authority: r.authority, reactionAction: sql<string | null>`(SELECT action FROM assistant_reaction_events WHERE run_id=personal_runs.id LIMIT 1)` }).from(r).where(eq(r.id, runId)).for('update');
+        completedAt: r.completedAt, authority: r.authority }).from(r).where(eq(r.id, runId)).for('update');
       return row ?? null;
     },
     /** A local client's connection with its "What it may do", held `FOR SHARE` like the assistant's, so a concurrent change of it waits (#859). */

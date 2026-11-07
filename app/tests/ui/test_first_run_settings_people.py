@@ -241,14 +241,13 @@ class FirstRunSettingsPeople(unittest.TestCase):
 
     # ---------------------------------------------------------------- Settings › AI off on the server (SG-2, SG-7)
 
-    def test_07_settings_ai_is_three_calm_rows_when_the_server_runs_no_ai(self) -> None:
+    def test_07_settings_ai_is_two_calm_rows_when_the_server_runs_no_ai(self) -> None:
         def stub(page: Page) -> None:
             real = self.api(page, "GET", "/api/v1/personal-assistant", status=200)
             off = {**real, "state": "unavailable", "enablement": None,
                    "setup": {"provider": "off", "connection": "none", "runtime": {"state": "off", "payer": None, "accountLabel": None, "client": None}}}
             page.route(re.compile(r".*/api/v1/personal-assistant$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(off))
                        if route.request.method == "GET" else route.continue_())
-            page.route(re.compile(r".*/api/v1/background-comparisons/runtime$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps({"status": "unavailable"})))
 
         for viewport in (DESKTOP, PHONE):
             page = self.page("maria", viewport=viewport)
@@ -260,11 +259,10 @@ class FirstRunSettingsPeople(unittest.TestCase):
             card = calm.get_by_text("Off on this Flux server · ask your admin to turn it on")
             expect(card).to_be_visible()
             expect(page.get_by_role("region", name="Your agents")).to_have_count(0)
-            expect(calm).to_contain_text("Background suggestions")
             expect(page.get_by_role("link", name=re.compile("^Use an API key"))).to_have_count(0)
             expect(page.get_by_text("Which account should I use?")).to_have_count(0)
-            # E04 order: local co-work, the one status line, background suggestions.
-            rows = [page.get_by_text("Local co-work on this computer"), card, page.get_by_text("Background suggestions", exact=True)]
+            # E04 order: local co-work, then the one status line.
+            rows = [page.get_by_text("Local co-work on this computer"), card]
             tops = [row.bounding_box()["y"] for row in rows]
             self.assertEqual(tops, sorted(tops), tops)
             shot(page, f"763-agents-ai-server-off-{'390' if viewport == PHONE else '1440'}-{UI_BROWSER}")
@@ -275,7 +273,6 @@ class FirstRunSettingsPeople(unittest.TestCase):
         page.locator(".me__btn").click()
         menu = page.get_by_role("dialog", name="Account")
         expect(menu.get_by_role("link", name="Your assistant")).to_have_count(0)
-        expect(menu.get_by_role("link", name="Your background suggestions")).to_have_count(0)
         expect(menu.get_by_role("link", name="All settings")).to_be_visible()
         expect(menu.get_by_role("link", name="People")).to_have_count(0)
         self.assertEqual(menu.get_by_role("link").evaluate_all("links => links.map((l) => getComputedStyle(l).textDecorationLine)"), ["none"])
@@ -319,7 +316,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
         for link in nav.get_by_role("link").all():
             box = link.bounding_box()
             self.assertGreaterEqual(box["height"], 44 - 0.001, f"{link.inner_text()}: {box}")
-        for name in ("Quiet hours", "Morning summary"):
+        for name in ("Quiet hours",):
             assert_touch_target(self, page, page.get_by_role("switch", name=name))
         page.goto("/settings/appearance")
         assert_touch_target(self, page, page.get_by_role("switch", name="Kreska in loading and empty screens"))

@@ -10,7 +10,7 @@ import { MaterialTray } from '../materials/MaterialTray';
 import type { ProjectMaterials } from '../materials/useProjectMaterials';
 import { TypingNotice } from '../typing/TypingNotice';
 import type { useTyping } from '../typing/useTyping';
-import { Button, Icon } from '../ui';
+import { Icon } from '../ui';
 import type { PaneCore } from './paneCore';
 import type { AssistantAsk } from './useAssistantAsk';
 import type { useAskBar } from './useAskBar';
@@ -27,7 +27,7 @@ interface Props {
 /** The pane's composer (F-026 S5): sources, the ask bar or who reads this, the field with its "@" and "/" menu, and its notices. */
 export function PaneComposer({ core, drafts, menu, actions, ask, askBar, materials, typing, readFailure, author }: Props) {
   const { me, project, conversation, writable, aiOff, composerId, audience } = core;
-  const { asking, publicComposer, draft, preparedReply, assistantDraftLabel, busy, askBusy } = drafts;
+  const { asking, publicComposer, draft, busy, askBusy } = drafts;
   const { menuOpen, options, activeIndex } = menu;
   const trayOpen = materials.trayOpen;
   const title = conversation ? conversation.firstMessageBody.split('\n')[0] || 'Conversation' : project.name;
@@ -43,8 +43,6 @@ export function PaneComposer({ core, drafts, menu, actions, ask, askBar, materia
     </div>}
     {writable && !asking ? <ComposerFiles state={publicComposer} attach="none" /> : null}
     {/* A tap on the card's empty space goes to the field, as in a messenger (#266 PF-3). */}
-    {writable && assistantDraftLabel ? <p className="assistant-answer__asked">Drafted by your assistant</p> : null}
-    {writable && !aiOff && preparedReply && preparedReply.ownerId === me.user.id && preparedReply.conversationId === conversation?.id && !assistantDraftLabel ? <details className="project-convo__hint"><summary>Review the reply drafted by your assistant</summary><p style={{ whiteSpace: 'pre-wrap' }}>{preparedReply.body}</p><Button variant="secondary" onClick={() => publicComposer.setBody(preparedReply.body)}>Use this draft</Button></details> : null}
     {writable ? <ComposerBox id={composerId} label={asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'} value={draft}
       placeholder={asking ? 'Ask your assistant…' : conversation ? 'Reply in thread…' : 'Message · @ mention · / actions'}
       onChange={(value, position) => menu.changeDraft(value, position)} onSelect={menu.setCaret} onBlur={typing.stop} onKeyDown={actions.onKey} disabled={busy || askBusy}

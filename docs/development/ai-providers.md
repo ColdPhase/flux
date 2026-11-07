@@ -3,8 +3,7 @@
 This page describes how an owner's AI connection reaches any supported provider and model with
 the same Flux path ([F-020](../product/model-providers.md), PROV-1–PROV-6). The owner key custody,
 consent, caps and fail-closed rules are those of
-[background comparison](proactive-comparison.md) (O-007) and [personal runs](personal-runs.md)
-(O-008); this page covers what is provider-specific and what is deliberately not.
+[personal runs](personal-runs.md) (O-008); this page covers what is provider-specific and what is deliberately not.
 
 ## Layout
 

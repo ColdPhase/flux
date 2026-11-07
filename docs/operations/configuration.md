@@ -45,7 +45,6 @@ the variable.
 | [`FLUX_API_MEMORY`](#flux_api_memory) | Memory limits | `1536m` |
 | [`FLUX_AUTH_RATE_LIMIT`](#flux_auth_rate_limit) | Accounts, sign-up and sessions | `true` |
 | [`FLUX_AUTH_SECRET`](#flux_auth_secret) | Accounts, sign-up and sessions | **required** |
-| [`FLUX_BACKGROUND_COMPARISONS`](#flux_background_comparisons) | AI providers | empty |
 | [`FLUX_BACKGROUND_KEY_HOST_FILE`](#flux_background_key_host_file) | AI providers | empty |
 | [`FLUX_BACKUP_DIR`](#flux_backup_dir) | Source checkout, launcher and checks | `backups/` in the checkout |
 | [`FLUX_COWORK_WATCHDOG_SECONDS`](#flux_cowork_watchdog_seconds) | Source checkout, launcher and checks | `300` |
@@ -391,7 +390,7 @@ Host port of TURN/TLS. Keep 443 for a public deployment.
 
 ## AI providers
 
-Owners connect their own AI provider in **Settings → AI**. These switches decide what the instance allows. Both Compose files pass the switches to `api` and `worker`; the assistant and background suggestions also need the key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below).
+Owners connect their own AI provider in **Settings → AI**. These switches decide what the instance allows. Both Compose files pass the switches to `api` and `worker`; the assistant also needs the key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below).
 
 ### `FLUX_WEB_READS`
 
@@ -403,19 +402,13 @@ Owners connect their own AI provider in **Settings → AI**. These switches deci
 
 **Type** absolute host path · **Default** empty · **Used by** api, worker (source)
 
-File with 32 random bytes that seals owners' AI keys for work the worker does on their behalf. Keep it outside the checkout and the database backup. Empty leaves the assistant and background suggestions unavailable. The source Compose file mounts it into `api` and `worker` at `/run/secrets/flux_background_key`; with the release `compose.yaml`, mount the file at that path in both services from a Compose file of your own ([how](release-guide.md#assistant-on-your-own-ai-key-optional)). Example: `/etc/flux/background.key`.
+File with 32 random bytes that seals owners' AI keys for work the worker does on their behalf. Keep it outside the checkout and the database backup. Empty leaves the assistant unavailable. The source Compose file mounts it into `api` and `worker` at `/run/secrets/flux_background_key`; with the release `compose.yaml`, mount the file at that path in both services from a Compose file of your own ([how](release-guide.md#assistant-on-your-own-ai-key-optional)). Example: `/etc/flux/background.key`.
 
 ### `FLUX_PERSONAL_RUNS`
 
 **Type** empty, `off`, `on` · **Default** empty · **Used by** api, worker (release, source)
 
 `on` lets owners run their assistant on their own AI connection. Needs `FLUX_BACKGROUND_KEY_HOST_FILE`. Example: `on`.
-
-### `FLUX_BACKGROUND_COMPARISONS`
-
-**Type** empty, `off`, `on` · **Default** empty · **Used by** api, worker (release, source)
-
-`on` lets owners enable background suggestions, which the worker runs on each owner's own AI connection. Needs `FLUX_BACKGROUND_KEY_HOST_FILE`. Example: `on`.
 
 ### `FLUX_AI_PRIVATE_TARGETS`
 

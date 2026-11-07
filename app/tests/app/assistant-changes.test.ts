@@ -58,17 +58,9 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     expectStatus(await owner.browser.request('PATCH', agentConnectionPath((await settings(workspaceId)).connectionId), { body: { mayDo } }), 200);
   }
   /** A run moved to `reading` (as the worker's claim does), with its token minted. */
-  async function liveRun(conversation = thread, reactionAction?: string) {
+  async function liveRun(conversation = thread) {
     const started = await runs.invoke(human(owner), conversation.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Tidy the project' });
     await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [started.run.id]);
-    if (reactionAction) {
-      const rule=randomUUID();
-      const event=reactionAction==='draft_reply'?'mentioned':reactionAction==='check_task'?'pr_ready':'assigned';
-      await pool.query(`INSERT INTO assistant_reactions(id,workspace_id,project_id,owner_user_id,event,action,enabled) VALUES($1,$2,$3,$4,$5,$6,true)`,[rule,ws.id,place.id,owner.id,event,reactionAction]);
-      // The PR token freshness itself is exercised by A9's nonce-mint test with a real G-1 reader.
-      await pool.query(`INSERT INTO assistant_reaction_events(reaction_id,owner_user_id,object_id,source_id,action,event,reaction_version,state,run_id,ai_epoch) VALUES($1,$2,$3,$4,$5,'assigned',1,'running',$6,1)`,[rule,owner.id,randomUUID(),randomUUID(),reactionAction,started.run.id]);
-      await pool.query(`UPDATE personal_runs SET kind='reaction',authority='owner_reaction',background_label='When assigned' WHERE id=$1`,[started.run.id]);
-    }
     const nonce = randomBytes(32).toString('hex');
     assert.equal(await db.transaction((tx) => personalRunTokenRows(tx).arm(started.run.id, sha256(nonce))), true);
     const response = await fetch(`${apiUrl}${personalRunTokenPath(started.run.id)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce }) });
@@ -474,27 +466,6 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     for (const name of listedEffects) assert.ok(effects.has(name), name);
     assert.equal(listedEffects.length, ASSISTANT_RUN_EFFECT_TOOLS.length, '"Do it and tell me" lists every change tool');
     await complete(run.runId);
-  });
-  test('A9 chosen actions: tell/check/draft have read-only tokens; suggest-plan always waits even in act mode', async () => {
-    for (const action of ['tell','draft_reply','check_task','suggest_plan']) {
-      const run=await liveRun(thread,action);
-      try {
-        if(action==='suggest_plan') {
-          assert.ok(run.tools.includes('flux_create_task'));
-          const response=await run.call('flux_create_task',{task:{title:'Only after the owner applies'}});
-          assert.match(text(response.message),/Waiting for ac-ada/);
-          assert.equal((await changesOf(run.runId))[0]!.wait_reason,'ask');
-          await pool.query(`UPDATE assistant_reactions SET enabled=false WHERE owner_user_id=$1 AND action=$2`,[owner.id,action]);
-          assert.equal((await run.call('flux_create_task',{task:{title:'Turned off must not prepare'}})).status,403);
-          assert.equal((await changesOf(run.runId)).length,1,'turning off a sentence revokes its already-minted token');
-        } else {
-          assert.ok(run.tools.length>0);
-          assert.ok(!run.tools.some((tool)=> (ASSISTANT_RUN_EFFECT_TOOLS as readonly string[]).includes(tool)),action);
-          assert.ok(result((await run.call('flux_reply_in_conversation',{body:'Must not send'})).message)?.isError);
-          assert.equal((await changesOf(run.runId)).length,0);
-        }
-      } finally { await complete(run.runId); await pool.query(`DELETE FROM assistant_reactions WHERE owner_user_id=$1 AND action=$2`,[owner.id,action]); }
-    }
   });
 
 

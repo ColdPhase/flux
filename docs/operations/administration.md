@@ -86,7 +86,7 @@ admins, turn it off or on for that space. There is no switch for the whole Flux:
 - **On again**: assistants and connected agents can work there again with the access they had.
   Nothing that was stopped starts again by itself.
 
-The instance-wide switches for owners' AI connections, the assistant and background suggestions are
+The instance-wide switches for owners' AI connections and the assistant are
 the operator's ([AI providers](configuration.md#ai-providers)), and so is the
 [agent runtime](agent-runtime.md). The space switch can only narrow them. The contract is
 [AI in a space](../product/assistant.md#ag-10--ai-in-a-space).
@@ -112,7 +112,7 @@ agent](../../README.md#connect-your-own-agent) walks through it.
 
 Each person manages their own **Account** (name, email, password and signed-in sessions, which they
 can end), **Appearance** (light, dark or system; text size), **Notifications** (what reaches the
-Inbox, push and email, quiet hours, the morning summary until v0.2 removes it, F-038) and **Keyboard shortcuts**. On a computer,
+Inbox, push and email, quiet hours) and **Keyboard shortcuts**. On a computer,
 Settings opens from your name at the bottom left → **All settings**.
 
 ## What only the operator can do
@@ -121,7 +121,7 @@ Settings opens from your name at the bottom left → **All settings**.
 | --- | --- |
 | Who may create accounts | `FLUX_SIGNUP`, [single sign-on](single-sign-on.md) |
 | Email, push, link cards, live editing | The [configuration reference](configuration.md) |
-| Owners' AI connections, assistant, background suggestions, agent runtime | [AI providers](configuration.md#ai-providers), [agent runtime](agent-runtime.md) |
+| Owners' AI connections, assistant, agent runtime | [AI providers](configuration.md#ai-providers), [agent runtime](agent-runtime.md) |
 | Recover a person's single sign-on link | `./flux identity link` / `unlink` ([single sign-on](single-sign-on.md)) |
 | Export a project as files | `./flux export` ([project export](export.md)); project managers can also export from the app |
 | Backups, restores, upgrades | [Backup and restore](backup-restore.md), [upgrade](upgrade.md) |

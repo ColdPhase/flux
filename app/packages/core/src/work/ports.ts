@@ -245,7 +245,7 @@ export interface WorkRepository extends TaskGraphReader {
   creationUndoReceipt(projectId: string, by: ActorRef, commandId: string): Promise<{ workId: string; fingerprint: string; noticeId: string } | null>;
   revertCreation(work: WorkRecord, by: ActorRef, commandId: string, fingerprint: string): Promise<{ work: WorkRecord; noticeId: string }>;
   creationBaselineMatches(workId: string): Promise<boolean>;
-  recordCreationBaseline(work: WorkRecord, proposalId?: string): Promise<void>;
+  recordCreationBaseline(work: WorkRecord): Promise<void>;
   /**
    * Applies the changes and increments the version; the caller has checked the version. In the same transaction it
    * keeps one activity entry (#488) per field of status, owner, due date and title that really changed, made by `by`
@@ -362,12 +362,6 @@ export interface WorkPorts {
   work: WorkRepository;
   events: WorkEventLog;
   contributions: WorkContributions;
-  backgroundComparison: {
-    prepareHumanNegative(projectId: string, authorId: string): Promise<void>;
-    taskTargets(resultId: string): Promise<readonly string[]>;
-    /** A candidate only: the outbox never grants permission to call a provider. */
-    enqueueHumanNegative(resultId: string, projectId: string, authorId: string): Promise<number>;
-  };
 }
 
 /**

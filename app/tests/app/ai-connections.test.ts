@@ -1,23 +1,18 @@
 import assert from 'node:assert/strict';
-import { createDecipheriv, randomUUID } from 'node:crypto';
+import { createDecipheriv } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { createDatabase, personalConnectionLookup, personalKeyResolver } from '@flux/db';
-import { AI_MODEL_LISTS_PATH, type AiModelList, type BackgroundComputeConnection, type Material, type ProactiveComparisonProposal,
-  type WorkResult } from '@flux/contracts';
-import { parsePrivateTargets, providerComparison } from '../../packages/agent-runtime/src/index.js';
-import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
-import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
+import { AI_MODEL_LISTS_PATH, type AiModelList, type BackgroundComputeConnection } from '@flux/contracts';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { Browser } from './support/http.js';
-import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { expectStatus, person, workspace, type Person } from './support/people.js';
 import { FakeQueue } from './support/personal-runs.js';
 import type { RecordedProviderRequest } from './support/provider-mock.js';
 
 // Provider-neutral owner AI connections through the running API (#179, F-020 PROV-1/3/4): every
 // provider kind is saved the same way under its own key format, model and price source; owner
-// endpoints pass the SSRF guard when saved; a connection without a known price cannot be enabled;
-// the worker dispatches each connection on its own wire format against the Docker provider mock.
+// endpoints pass the SSRF guard when saved; a key whose budget is below one request is refused.
 // Seeded keys carry the marker check_application.sh looks for in the API and worker logs. No real
 // provider is called.
 
@@ -72,16 +67,15 @@ describe('provider-neutral owner AI connections (#179)', () => {
         expect: { provider: 'openai_compatible', model: 'llama3.1:8b', baseUrl: COMPATIBLE, price: { inputMicrosPerMTok: 0, outputMicrosPerMTok: 0, source: 'owner', checkedOn: null } } },
     ];
     for (const { body, key, expect } of cases) {
-      // Each saved connection is marked for background comparisons, so `current` is the one just saved (PROV-1).
-      const response = await owner.browser.request('POST', path, { body: { ...consent, ...body, apiKey: key, useForBackground: true } });
+      const response = await owner.browser.request('POST', path, { body: { ...consent, ...body, apiKey: key } });
       const saved = expectStatus(response, 201, String(body.provider)) as BackgroundComputeConnection;
       for (const [field, value] of Object.entries(expect)) assert.deepEqual(saved[field as keyof BackgroundComputeConnection], value, `${body.provider} ${field}`);
       assert.deepEqual([saved.dailyBudgetCents, saved.today.spentMicros], [50, 0], 'one daily budget, nothing spent yet');
       assert.equal(saved.keyLastFour, key.slice(-4));
       assert.equal(response.text.includes(key), false, 'the key is never returned');
-      const current = await owner.browser.request('GET', `${path}/current`);
-      assert.deepEqual(expectStatus(current, 200), saved);
-      assert.equal(current.text.includes(key), false);
+      const listed = await owner.browser.request('GET', path);
+      assert.deepEqual((expectStatus(listed, 200) as BackgroundComputeConnection[]).find((item) => item.id === saved.id), saved);
+      assert.equal(listed.text.includes(key), false);
       const stored = (await pool.query('SELECT encrypted_key FROM background_compute_connections WHERE id=$1', [saved.id])).rows[0].encrypted_key as string;
       assert.ok(stored.startsWith('v1.') && !stored.includes(key));
       assert.equal(decrypt(stored, owner.id, saved.id), key, 'custody is the same AEAD for every provider');
@@ -90,7 +84,7 @@ describe('provider-neutral owner AI connections (#179)', () => {
   });
 
   test('wrong key formats, models, URLs and prices are refused and nothing is stored', async () => {
-    const before = expectStatus(await owner.browser.request('GET', `${path}/current`), 200) as BackgroundComputeConnection;
+    const before = expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[];
     const refusals: [Record<string, unknown>, string | null][] = [
       [{ provider: 'anthropic', model: 'claude-sonnet-5', apiKey: keys.openai }, 'AI_KEY_FORMAT'],
       [{ provider: 'openai', model: 'gpt-model', apiKey: `sk-admin-${marker.repeat(3)}AD01` }, 'AI_KEY_FORMAT'],
@@ -112,7 +106,7 @@ describe('provider-neutral owner AI connections (#179)', () => {
       if (code) assert.equal(codeOf(response), code, JSON.stringify(body));
       for (const key of Object.values(keys)) assert.equal(response.text.includes(key), false, 'no key in an error body');
     }
-    assert.deepEqual(expectStatus(await owner.browser.request('GET', `${path}/current`), 200), before, 'a refused save changes nothing');
+    assert.deepEqual(expectStatus(await owner.browser.request('GET', path), 200), before, 'a refused save changes nothing');
   });
 
   test('SSRF guard when saved: private, loopback, link-local, ULA and metadata endpoints are refused unless the operator allows them', async () => {
@@ -145,98 +139,15 @@ describe('provider-neutral owner AI connections (#179)', () => {
   });
 });
 
-describe('enabling and dispatch on any provider (#179 PROV-2/PROV-3)', () => {
-  let owner: Person;
-  let peer: Person;
-  let projectId: string;
-  let ruleId: string;
-  let material: Material;
-  const masterKey = readFileSync('/run/secrets/flux_background_key');
-  // The worker's adapter registry, with Anthropic's fixed URL replaced by the mock for this test only.
-  const providers = providerComparison({ policy: parsePrivateTargets(new URL(MOCK).hostname), baseUrls: { anthropic: `${MOCK}/anthropic` }, timeoutMs: 5_000 });
-  // Each new connection is marked for background comparisons (PROV-1: adding one never replaces another).
-  const connect = async (body: Record<string, unknown>) => expectStatus(await owner.browser.request('POST', path,
-    { body: { ...consent, ...body, useForBackground: true } }), 201) as BackgroundComputeConnection;
-  const enable = async () => {
-    const rule = (await pool.query('SELECT version FROM proactive_comparison_rules WHERE id=$1', [ruleId])).rows[0] as { version: number };
-    return owner.browser.request('PATCH', `/api/v1/proactive-comparison-rules/${ruleId}`, { body: { expectedVersion: rule.version, status: 'enabled' } });
-  };
-  const negative = async (title: string) => {
-    const result = expectStatus(await peer.browser.request('POST', `/api/v1/projects/${projectId}/results`, { body: { title, finding: 'negative',
-      evidence: 'Camera misses at 5 lux', sources: [{ type: 'material', id: material.materialId, version: 1 }] } }), 201) as WorkResult;
-    const candidateId = (await pool.query('SELECT id FROM proactive_comparison_outbox WHERE result_id=$1', [result.id])).rows[0].id as string;
-    await comparisonDispatchFixtureDue(pool, candidateId);
-    return { result, candidateId };
-  };
-  const answer = (resultId: string) => JSON.stringify({ outcome: { kind: 'comparison', fact: 'Sensor A misses gestures in low light.',
-    interpretation: 'Exposure may be too short.', suggestedAction: 'Compare a second sensor in the same test.',
-    citations: [{ type: 'result', id: resultId, version: 1 }] } });
-
-  before(async () => {
-    [owner, peer] = await Promise.all(['ai-dispatch-owner', 'ai-dispatch-peer'].map(person));
-    const ws = await workspace(owner, 'Provider-neutral comparison');
-    await addMember(owner, ws.id, peer, 'member');
-    projectId = (await project(owner, ws.id, 'Sensors on any provider', 'restricted')).id;
-    await grant(owner, projectId, peer, 'contributor');
-    const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
-      { body: { name: 'Provider-neutral agent', owner: 'self' } }), 201) as { id: string }).id;
-    ruleId = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/proactive-comparison-rules`,
-      { body: { agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison', dataScope: 'current_project_published',
-        permittedEffect: 'quiet_project_proposal' } }), 201) as { id: string }).id;
-    material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${projectId}/materials`,
-      { body: { clientMutationId: randomUUID(), title: 'Sensor measurement', body: 'Camera A captured 38% of gestures at 5 lux.' } }), 201) as Material;
-  });
-  beforeEach(() => mock('/__reset', {}));
-
-  test('a connection without a known price cannot be enabled; a key whose budget is below one request is refused when saved', async () => {
-    await connect({ provider: 'gemini', model: 'gemini-model', apiKey: keys.gemini });
-    assert.equal(codeOf(await enable()), 'BACKGROUND_PRICE_UNKNOWN');
-    // PROV-3: a provider's own listing or reported cost is never a reservation price.
-    assert.equal((await connect({ provider: 'openrouter', model: 'vendor/priced-model', apiKey: keys.openrouter })).price, null);
-    assert.equal(codeOf(await enable()), 'BACKGROUND_PRICE_UNKNOWN');
+describe('a key whose budget is below one request is refused when saved (#179 PROV-3)', () => {
+  test('a provider\'s own listing or reported cost is never a reservation price', async () => {
+    const owner = await person('ai-budget-owner');
     // 64,000 × $30/M + 4,000 × $60/M = $2.16 per request, above this key's $0.20 daily budget: it would wait for a day that never comes.
-    assert.equal(codeOf(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openai', model: 'gpt-model', useForBackground: true,
+    assert.equal(codeOf(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openai', model: 'gpt-model',
       price: { inputMicrosPerMTok: 30_000_000, outputMicrosPerMTok: 60_000_000 }, apiKey: keys.openai, dailyBudgetCents: 20 } })), 'AI_BUDGET_TOO_SMALL');
-    await connect({ provider: 'anthropic', model: 'claude-sonnet-5', apiKey: keys.anthropic });
-    assert.equal(codeOf(await enable()), 'BACKGROUND_RUNTIME_UNAVAILABLE', 'a priced connection reaches the last gate');
-  });
-
-  test('the worker sends each connection on its own wire format; reservation and usage use its price', async () => {
-    // Controlled local compute only: production activation stays off (see the test above).
-    await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [ruleId]);
-    const runs: { body: Record<string, unknown>; key: string; wire: 'anthropic' | 'openai'; reserved: number; observed: number }[] = [
-      // 8,000 × $10/M + 1,200 × $40/M = $0.128 → 13 cents; 300 × $10/M + 90 × $40/M = $0.0066 → 1 cent.
-      { body: { provider: 'openai_compatible', model: 'llama3.1:8b', baseUrl: COMPATIBLE, price: { inputMicrosPerMTok: 10_000_000, outputMicrosPerMTok: 40_000_000 }, dailyBudgetCents: 100 },
-        key: keys.openai_compatible, wire: 'openai', reserved: 13, observed: 1 },
-      // The table price: $0.028 → O-007's 5-cent floor; 300 × $2/M + 90 × $10/M → 1 cent.
-      { body: { provider: 'anthropic', model: 'claude-sonnet-5' }, key: keys.anthropic, wire: 'anthropic', reserved: 5, observed: 1 },
-    ];
-    for (const run of runs) {
-      await mock('/__reset', {});
-      const connection = await connect({ ...run.body, apiKey: run.key });
-      const { result, candidateId } = await negative(`Low-light failure on ${connection.provider}`);
-      await mock('/__script', { wire: run.wire, text: answer(result.id), usage: { input: 300, output: 90 } });
-      const outcome = await dispatchProactiveComparison({ db, candidateId, masterKey, provider: providers });
-      assert.equal(outcome.status, 'proposal', connection.provider);
-      const sent = (await mock('/__requests')).requests;
-      assert.deepEqual(sent.map((item) => item.wire), run.wire === 'anthropic' ? ['anthropic', 'anthropic'] : ['openai'],
-        'Anthropic adds its token count; the Chat Completions wire format has none');
-      assert.ok(sent.every((item) => item.key === run.key), 'the owner\'s decrypted key, sent only to the provider');
-      const body = sent.at(-1)!.body as Record<string, unknown>;
-      assert.equal(body.model, connection.model);
-      if (run.wire === 'openai') assert.equal((body.response_format as { json_schema: { strict: boolean } }).json_schema.strict, true);
-      const row = (await pool.query('SELECT reserved_cents, usage_input_tokens, usage_output_tokens, usage_estimated_cents, connection_id FROM proactive_comparison_outbox WHERE id=$1',
-        [candidateId])).rows[0];
-      assert.deepEqual(row, { reserved_cents: run.reserved, usage_input_tokens: 300, usage_output_tokens: 90, usage_estimated_cents: run.observed, connection_id: connection.id });
-      const proposals = expectStatus(await peer.browser.request('GET', `/api/v1/projects/${projectId}/proactive-comparison-proposals`), 200) as ProactiveComparisonProposal[];
-      const proposal = proposals.find((item) => item.resultId === result.id)!;
-      assert.deepEqual([proposal.computeSource, proposal.provider, proposal.model], ['owner_background_connection', connection.provider, connection.model]);
-    }
-    // No key in any stored candidate, proposal, event or job.
-    for (const table of ['proactive_comparison_outbox', 'proactive_comparison_proposals', 'events', 'pgboss.job']) {
-      const leaked = await pool.query(`SELECT count(*)::int AS n FROM ${table} t WHERE row_to_json(t)::text LIKE $1`, [`%${marker}%`]);
-      assert.equal(leaked.rows[0].n, 0, table);
-    }
+    // A model without a known price is saved without one; a runtime that needs a price will not use it.
+    assert.equal((expectStatus(await owner.browser.request('POST', path, { body: { ...consent, provider: 'openrouter', model: 'vendor/priced-model',
+      apiKey: keys.openrouter } }), 201) as BackgroundComputeConnection).price, null);
   });
 });
 
@@ -249,7 +160,7 @@ describe('several connections per owner and the assistant\'s own one (#179 PROV-
     const second = await add(owner, { name: 'Home OpenRouter', provider: 'openrouter', model: 'vendor/flux-test-model',
       price: { inputMicrosPerMTok: 3_000_000, outputMicrosPerMTok: 15_000_000 }, apiKey: keys.openrouter });
     const foreign = await add(other, { provider: 'openai', model: 'gpt-model', price: { inputMicrosPerMTok: 1, outputMicrosPerMTok: 1 }, apiKey: keys.openai });
-    assert.deepEqual([first.usedForBackground, second.usedForBackground, second.name], [true, false, 'Home OpenRouter'], 'adding never replaces');
+    assert.equal(second.name, 'Home OpenRouter', 'adding never replaces');
 
     const lookup = personalConnectionLookup(db);
     assert.equal((await lookup.resolve(owner.id))?.id, second.id, 'without a choice: the newest, only to describe enabling');
@@ -268,12 +179,6 @@ describe('several connections per owner and the assistant\'s own one (#179 PROV-
     assert.equal(await lookup.resolve(owner.id, first.id), null, 'a removed connection is gone for the assistant too: no fallback');
     assert.equal(await resolveKey(first.id), null);
     assert.equal((await lookup.resolve(owner.id))?.id, second.id);
-    assert.equal(expectStatus(await owner.browser.request('GET', `${path}/current`), 200), null, 'and background comparisons stop');
-    // "None" stays none: a connection added without the choice never takes over by itself (#192 review B3).
-    const third = await add(owner, { name: 'Spare Gemini', provider: 'gemini', model: 'gemini-flux-test',
-      price: { inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 2_000_000 }, apiKey: keys.gemini, useForBackground: false });
-    assert.equal(third.usedForBackground, false);
-    assert.equal(expectStatus(await owner.browser.request('GET', `${path}/current`), 200), null, 'still none until the owner chooses');
   });
 });
 

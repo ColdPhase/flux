@@ -297,7 +297,6 @@ SCREENS = [
     Screen("settings-codex", "/settings/agents/codex"),
     Screen("settings-shortcuts", "/settings/shortcuts"),
     Screen("settings-assistant", "/settings/assistant"),
-    Screen("settings-background", "/settings/background-compute"),
     Screen("settings-ai-connections", "/settings/ai-connections"),
     Screen("connect-agent", "/connect-agent"),
     Screen("not-found", "/no-such-page-here"),

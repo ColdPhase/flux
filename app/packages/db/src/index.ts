@@ -179,15 +179,9 @@ export function listen(connectionString: string, channel: string, onNotify: (pay
   };
 }
 export * from './repositories/returns.js';
-export * from './repositories/proactive-comparison.js';
 export * from './repositories/background-connections.js';
 export * from './repositories/personal-connections.js';
 export * from './repositories/api-key-spend.js';
-export * from './repositories/proactive-outbox.js';
-export * from './repositories/proactive-outcomes.js';
-export * from './repositories/proactive-scheduling.js';
-export * from './repositories/proactive-recovery.js';
-export { COMPARISON_CONTEXT_LIMITS } from './repositories/proactive-sources.js';
 export * from './background-key-crypto.js';
 export * from './repositories/notifications.js';
 export * from './repositories/needs-you.js';
@@ -196,7 +190,7 @@ export * from './repositories/personal-runs.js';
 export * from './repositories/personal-run-tokens.js';
 export * from './repositories/assistant-changes.js';
 export * from './repositories/assistant-removals.js';
-export { assistantJobRows, assistantSummaryRows } from './repositories/assistant-jobs.js';
+export { assistantJobRows } from './repositories/assistant-jobs.js';
 export * from './repositories/project-export.js';
 export * from './repositories/operations.js';
 
@@ -236,4 +230,3 @@ export { assistantSettingsRows, type AgentSetup, type AgentSetupChanges, type As
 
 
 export { lockAssistantOwner } from './repositories/assistant-lock.js';
-export { assistantReactionRows } from './repositories/assistant-reactions.js';

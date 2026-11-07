@@ -318,7 +318,7 @@ function AiCard({ project, manager, onChanged }: { project: Project; manager: bo
     try {
       const result = await setSpaceAi(project.id, next ? 'allowed' : 'blocked', keys.current.for(String(next)));
       keys.current.done();
-      const stopped = result.stopped ? result.stopped.runs + result.stopped.comparisons + result.stopped.requests + result.stopped.units : 0;
+      const stopped = result.stopped ? result.stopped.runs + result.stopped.requests + result.stopped.units : 0;
       onChanged(next ? 'AI is on in this space.' : `AI is off in this space.${stopped ? ` ${stopped} ${stopped === 1 ? 'run' : 'runs'} stopped.` : ''}`);
     } catch (error) {
       keys.current.done();

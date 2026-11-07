@@ -11,19 +11,17 @@ export interface BackgroundKeySealer {
   seal(plainKey: string, ownerUserId: string, connectionId: string): string;
 }
 export interface BackgroundConnectionPort {
-  /** Adds a connection (PROV-1: it never replaces another). It becomes the background one when asked or when the owner has none. */
+  /** Adds a connection (PROV-1: it never replaces another). */
   add(input: { id: string; ownerUserId: string; encryptedKey: string; keyLastFour: string; keyFingerprint: string;
-    price: AiPrice | null; name: string; useForBackground: boolean; provider: BackgroundComputeConnection['provider']; model: string;
+    price: AiPrice | null; name: string; provider: BackgroundComputeConnection['provider']; model: string;
     baseUrl: string | null; dailyBudgetCents: number; timeZone: string }): Promise<BackgroundComputeConnection>;
-  /** The owner's active connections, background one first, then newest. */
+  /** The owner's active connections, newest first. */
   list(ownerUserId: string): Promise<BackgroundComputeConnection[]>;
-  /** The one background comparisons use, or null. */
-  current(ownerUserId: string): Promise<BackgroundComputeConnection | null>;
   /**
    * `guard` runs inside the change, after the owner's assistant lock and the key's row lock are held, with the models the owner's agents use
    * on this key (none when they are on another connection); it throws to refuse (#909, #915).
    */
-  update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number; usedForBackground?: true },
+  update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number },
     guard?: (agentModels: readonly string[]) => void): Promise<BackgroundComputeConnection | null>;
   revoke(ownerUserId: string, connectionId: string): Promise<boolean>;
 }
@@ -76,8 +74,6 @@ export function validateBackgroundConnection(input: ConnectBackgroundComputeComm
   }
   if (input.name !== undefined && !connectionName(input.name))
     throw new InvalidInputError('A connection name is 1–80 characters without leading or trailing spaces', 'AI_CONNECTION_NAME_INVALID');
-  if (input.useForBackground !== undefined && typeof input.useForBackground !== 'boolean')
-    throw new InvalidInputError('useForBackground is true or false');
   if (input.price !== undefined && !validPrice(input.price))
     throw new InvalidInputError('Prices are whole micro-dollars per 1M tokens, from 0 to 1,000,000,000', 'AI_PRICE_INVALID');
   if (!bounded(input.dailyBudgetCents, API_KEY_DAILY_BUDGET_CENTS.min, API_KEY_DAILY_BUDGET_CENTS.max))
@@ -117,20 +113,17 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
       const keyFingerprint = createHash('sha256').update(input.apiKey).digest('hex').slice(0, 16);
       const name = input.name ?? `${AI_PROVIDERS[input.provider].label} key`.slice(0, 80);
       return port.add({ id, ownerUserId, encryptedKey, keyLastFour: input.apiKey.slice(-4), keyFingerprint, price, name,
-        useForBackground: input.useForBackground === true, provider: input.provider, model, baseUrl, dailyBudgetCents: input.dailyBudgetCents, timeZone });
+        provider: input.provider, model, baseUrl, dailyBudgetCents: input.dailyBudgetCents, timeZone });
     },
     list(principal: Principal): Promise<BackgroundComputeConnection[]> { return port.list(owner(principal)); },
-    current(principal: Principal): Promise<BackgroundComputeConnection | null> { return port.current(owner(principal)); },
     async update(principal: Principal, connectionId: string, change: UpdateBackgroundComputeConnectionCommand): Promise<BackgroundComputeConnection> {
       const ownerUserId = owner(principal);
-      if (!change || typeof change !== 'object' || (change.name === undefined && change.usedForBackground === undefined && change.dailyBudgetCents === undefined))
-        throw new InvalidInputError('Change the name or the daily budget, or choose the connection for background comparisons');
+      if (!change || typeof change !== 'object' || (change.name === undefined && change.dailyBudgetCents === undefined))
+        throw new InvalidInputError('Change the name or the daily budget');
       if (change.name !== undefined && !connectionName(change.name))
         throw new InvalidInputError('A connection name is 1–80 characters without leading or trailing spaces', 'AI_CONNECTION_NAME_INVALID');
       if (change.dailyBudgetCents !== undefined && !bounded(change.dailyBudgetCents, API_KEY_DAILY_BUDGET_CENTS.min, API_KEY_DAILY_BUDGET_CENTS.max))
         throw new InvalidInputError(budgetProblem, 'AI_BUDGET_INVALID');
-      if (change.usedForBackground !== undefined && change.usedForBackground !== true)
-        throw new InvalidInputError('Choose another connection for background comparisons by marking it');
       let guard: ((agentModels: readonly string[]) => void) | undefined;
       if (change.dailyBudgetCents !== undefined) {
         const cents = change.dailyBudgetCents;
@@ -150,8 +143,7 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
       }
       const updated = typeof connectionId === 'string' && UUID.test(connectionId)
         ? await port.update(ownerUserId, connectionId, { ...(change.name !== undefined ? { name: change.name } : {}),
-          ...(change.dailyBudgetCents !== undefined ? { dailyBudgetCents: change.dailyBudgetCents } : {}),
-          ...(change.usedForBackground ? { usedForBackground: true as const } : {}) }, guard)
+          ...(change.dailyBudgetCents !== undefined ? { dailyBudgetCents: change.dailyBudgetCents } : {}) }, guard)
         : null;
       if (!updated) throw new NotFoundError('Background connection', 'BACKGROUND_CONNECTION_NOT_FOUND');
       return updated;

@@ -73,7 +73,7 @@ export function ConnectAi({ apiKeys, keys, keysFailed, onRetryKeys }: {
           <Button variant="primary" onClick={() => setWindowOpen(true)}>Connect AI</Button>
         </div>
       ) : null}
-      {windowOpen ? <ConnectAiWindow runtime={runtime} runtimeFailed={runtimeFailed} apiKeys={apiKeys} have={have} keys={keys ?? []} onClose={() => setWindowOpen(false)}
+      {windowOpen ? <ConnectAiWindow runtime={runtime} runtimeFailed={runtimeFailed} apiKeys={apiKeys} have={have} onClose={() => setWindowOpen(false)}
         onConnected={() => {
           setWindowOpen(false); loadRuntime(); onRetryKeys();
           // The first connection gives a person their Assistant on the server, so the shell's agents and the models are read again.

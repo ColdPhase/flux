@@ -1,42 +1,30 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Navigate, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { Project, ProactiveComparisonOutcome, ProjectWorkViewQuery, WorkCounts, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
+import type { Project, ProjectWorkViewQuery, WorkCounts, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
 import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery, useRowMotion } from '../ui';
 import { getProject } from '../project/api';
 import { useShellActions } from '../app/shellContext';
-import { projectAiBlocked, useShellData } from '../app/data';
-import { isAiBlocked } from '../ai/spaceAi';
+import { useShellData } from '../app/data';
 import { remember } from '../app/remembered';
 import { isFinished } from './format';
 import { TaskRow, type TaskRowProps } from './TaskRow';
 import { useStateChange } from './taskState';
-import { getProjectWorkView, getWorkReferenceRows, workReferenceReadUrl, workViewReadUrl } from './read-api';
-import { useWorkRead } from './useWorkRead';
-import { OPENING_REVEAL_MS } from '../app/messageParts';
+import { getProjectWorkView, workViewReadUrl } from './read-api';
 import { useProjectWorkPage } from './WorkReadContext';
 import { WorkPagination } from './WorkPagination';
 import { useWorkReadingPosition } from './useWorkReadingPosition';
 import { useTaskFeedback } from './useTaskFeedback';
 import { TaskBoard } from './TaskBoard';
-import { useProjectShell } from '../project/data';
-import { ProjectProposals } from '../project/ProjectProposals';
-import { listComparisonOutcomes } from '../project/proposals';
 import { useAgentOwners } from '../agents/owners';
 import './work.css';
 import { RefLink } from '../place/origin';
 
-interface TasksData { project: Project; outcomes: ProactiveComparisonOutcome[] }
+interface TasksData { project: Project }
 
 /** Object rows use their separate bounded page; this loader supplies the project contract. */
 export async function projectTasksLoader({ params, request }: LoaderFunctionArgs): Promise<TasksData> {
-  // F-029 (#614): the comparison outcomes are AI work; a workspace whose AI is off has none to show and is not asked.
-  const blocked = await projectAiBlocked(params.projectId);
-  const [project, outcomes] = await Promise.all([
-    getProject(params.projectId!, request.signal),
-    blocked ? [] : listComparisonOutcomes(params.projectId!, request.signal).catch((error: unknown) => (isAiBlocked(error) ? [] : Promise.reject(error))),
-  ]);
-  return { project, outcomes };
+  return { project: await getProject(params.projectId!, request.signal) };
 }
 
 function Group({ id, title, count, children }: { id: string; title: string; count: number; children: ReactNode }) {
@@ -166,11 +154,6 @@ function Toolbar({ mode, onMode, query, onQuery, mine, onMine, onNew, phone }: {
   );
 }
 
-/** List section anchors (`g-…`) and the List view that holds each of them. */
-const SECTION_GROUP: Record<string, GroupId> = {
-  'g-progress': 'in_progress', 'g-blocked': 'blocked', 'g-open': 'open', 'g-parked': 'parked', 'g-finished': 'finished',
-};
-
 const cursors = new Map<string, string | null>();
 const taskViewKey = (accountId: string, projectId: string, status: GroupId | null, mine: boolean) =>
   `flux:task-view:${accountId}:${projectId}:${status ?? 'all'}:${mine ? 'mine' : 'all'}`;
@@ -188,8 +171,7 @@ function keepCursor(key: string, cursor: string | null) {
 
 /** The project's Tasks tab: committed work as a board or a grouped list, the rules it follows and what was learned. */
 export function ProjectTasks() {
-  const { project, outcomes } = useLoaderData() as TasksData;
-  const shell = useProjectShell();
+  const { project } = useLoaderData() as TasksData;
   const owners = useAgentOwners(project);
   const { openDetails, openCreate } = useShellActions();
   const revalidator = useRevalidator();
@@ -240,53 +222,6 @@ export function ProjectTasks() {
   const viewKey = taskViewKey(me.user.id, project.id, status, mine);
   const readingKey = listing ? `${viewKey}:reading:${cursor ?? 'first'}` : `${taskViewKey(me.user.id, project.id, null, mine)}:board:reading`;
   const saveReading = useWorkReadingPosition(scroller, readingKey, data !== null, data?.summary.observedAt);
-  // The results that proposals and outcomes name (#155): their current titles come from one bounded
-  // reference read (at most 100), not from whichever page of results the List has loaded.
-  const outcomeResults = useMemo(() => [...new Set(outcomes.map((outcome) => outcome.kind === 'comparison' ? outcome.proposal.resultId : outcome.resultId))]
-    .sort().slice(0, 100).map((id) => `result:${id}`).join(','), [outcomes]);
-  const outcomeScope = useMemo(() => outcomeResults ? { accountId: me.user.id, projectId: project.id, selector: workReferenceReadUrl(project.id, outcomeResults) } : null, [me.user.id, project.id, outcomeResults]);
-  const loadOutcomeResults = useCallback((signal: AbortSignal) => getWorkReferenceRows(project.id, outcomeResults, signal), [project.id, outcomeResults]);
-  const outcomeRead = useWorkRead(outcomeScope, loadOutcomeResults, outcomes.length, revalidator.state === 'idle');
-  // A proposal names its result in its first line: proposals are laid out but hidden until those titles
-  // have been read (at most OPENING_REVEAL_MS), so the line never changes under the reader (#155).
-  const [titlesTimedOut, setTitlesTimedOut] = useState(false);
-  useEffect(() => { const timer = window.setTimeout(() => setTitlesTimedOut(true), OPENING_REVEAL_MS); return () => window.clearTimeout(timer); }, []);
-  const [titlesShown, setTitlesShown] = useState(false);
-  if (!titlesShown && (outcomeRead.phase !== 'loading' || titlesTimedOut)) setTitlesShown(true);
-  const jump = useRef<{ routeKey: string; id: string; group: GroupId } | null>(null);
-  // Outcome links refer to the whole project's work in the List. Restore All before
-  // scrolling, since a saved status/mine filter or a search can hide their destination.
-  const jumpToSection = (id: string) => {
-    const group = SECTION_GROUP[id];
-    if (!group) return;
-    saveReading();
-    if (listing) keepCursor(viewKey, cursor);
-    jump.current = { routeKey, id, group };
-    setBoardSearch('');
-    setViewState({ routeKey, status: null, mine: false, cursor: null, mode: 'list' });
-  };
-  useEffect(() => {
-    const target = jump.current;
-    if (!target) return;
-    if (target.routeKey !== routeKey) { jump.current = null; return; }
-    if (read.phase !== 'ready' || mine || cursor) return;
-    if (status !== null && status !== target.group) { jump.current = null; return; }
-    const heading = document.getElementById(target.id);
-    if (!heading && status === null) {
-      // All still has its bounded first page. Select the named group only when
-      // the actual destination lies outside it; never fetch every object to jump.
-      setViewState({ routeKey, status: target.group, mine: false, cursor: null, mode: 'list' });
-      return;
-    }
-    const pane = scroller.current;
-    if (heading && pane) {
-      const controls = pane.querySelector('.ws-task-controls');
-      const inset = (controls?.getBoundingClientRect().height ?? 0) + 12;
-      pane.scrollTo({ top: Math.max(0, pane.scrollTop + heading.getBoundingClientRect().top - pane.getBoundingClientRect().top - inset), behavior: 'instant' });
-    }
-    jump.current = null;
-  }, [routeKey, read.phase, data, status, mine, cursor, view]);
-
   // The chosen view is local state mirrored into the URL with `replaceState`: switching views is
   // instant, and back/forward or a shared link restore it. Kanban or List is a personal choice:
   // the URL names it only when it differs from that choice.
@@ -306,7 +241,6 @@ export function ProjectTasks() {
   }, [viewKey, cursor, mode, listing, viewSearch, me.user.id, project.id, location.search]);
 
   const setView = (next: { status?: GroupId | null; mine?: boolean; mode?: Mode }) => {
-    jump.current = null;
     saveReading();
     if (listing) keepCursor(viewKey, cursor);
     const nextStatus = next.status === undefined ? status : next.status;
@@ -317,13 +251,11 @@ export function ProjectTasks() {
   };
   const chooseMode = (next: Mode) => { setChosen({ userId: me.user.id, mode: next }); rememberMode(me.user.id, next); setView({ mode: next }); };
   const movePage = (nextCursor: string) => {
-    jump.current = null;
     saveReading();
     keepCursor(viewKey, nextCursor);
     setViewState({ ...view, cursor: nextCursor });
   };
   const refresh = () => {
-    jump.current = null;
     saveReading();
     if (listing) keepCursor(viewKey, null);
     setViewState({ ...view, cursor: null });
@@ -387,23 +319,8 @@ export function ProjectTasks() {
       {`${waiting} ${waiting === 1 ? 'decision needs' : 'decisions need'} you in the Inbox`}
     </RefLink>
   );
-  const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean)
-    && !outcomes.some((outcome) => outcome.kind === 'comparison' ? outcome.proposal.status === 'proposed' : outcome.status === 'open');
+  const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean);
   const emptyContinuation = data !== null && cursor !== null && !data.items.length;
-
-  const resultTitles = new Map<string, string>();
-  if (outcomeRead.phase === 'ready' || outcomeRead.phase === 'refreshing') for (const row of outcomeRead.value.items) if (row.kind === 'result') resultTitles.set(row.id, row.title);
-  const proposals = (
-    <div className="ws-proposals-gate" style={titlesShown ? undefined : { visibility: 'hidden' }} aria-busy={titlesShown ? undefined : true}>
-    <ProjectProposals outcomes={outcomes} people={shell?.people ?? null} projectName={project.name}
-      resultTitles={resultTitles}
-      workCount={data?.summary.workTotal ?? 0}
-      workJumpId={data?.summary.all.in_progress ? 'g-progress' : data?.summary.all.blocked ? 'g-blocked' : data?.summary.all.open ? 'g-open' : data?.summary.all.parked ? 'g-parked' : 'g-finished'}
-      jumpToSection={jumpToSection} writable refresh={() => { if (listing) refresh(); else refreshBoard(); revalidator.revalidate(); }}
-      openResult={(id) => openDetails({ kind: 'result', id, projectId: project.id })}
-      openWork={(item) => openDetails({ kind: 'work', id: item.id, projectId: project.id, title: item.title })} />
-    </div>
-  );
 
   // A task that changes state moves to another group, a new one grows in, a finished list collapses its rows (#593 AC-4).
   useRowMotion(scroller, '.ws-task[data-work-id]', (el) => el.dataset.workId, [mode, status ?? 'all', mine, cursor ?? '', phone, read.phase === 'ready' || read.phase === 'refreshing' ? 'ready' : 'loading'].join('|'));
@@ -416,7 +333,6 @@ export function ProjectTasks() {
       {!listing ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>
           {parkedCount || waiting ? <nav className="tb-also" aria-label="Also elsewhere">{inboxLink}{parkedCount ? <button type="button" className="tb-also__b" onClick={() => setView({ mode: 'list', status: 'parked' })}>{parkedCount} parked by a pivot</button> : null}</nav> : null}
-          <div className="tb-aside">{proposals}</div>
           <TaskBoard project={project} openRead={read} meId={me.user.id} mine={mine} query={boardSearch.trim().toLowerCase()} writable
             revision={boardRevision}
             openWork={(id, title) => { saveReading(); openDetails({ kind: 'work', id, title }); }} refresh={refreshBoard}
@@ -425,7 +341,6 @@ export function ProjectTasks() {
         </div>
       ) : (
       <div className="pane-in ws-tasks" data-work-observed-at={data?.summary.observedAt}>
-        {proposals}
         <div className="ws-task-controls">
           {phone ? (
             <div className="ws-mineall" role="group" aria-label="Whose tasks">

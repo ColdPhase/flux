@@ -60,8 +60,8 @@ Separate Docker verification:
   change the migration sources. This is local evidence, not independent release
   or #118 acceptance.
 
-Reproducible application and upgrade commands are documented in
-[the development contract](../../../development/proactive-comparison.md).
+Reproducible application and upgrade commands were documented in the development contract
+(`docs/development/proactive-comparison.md`, removed with the feature in #858).
 The separate local check logs retain their tested revision and working-tree
 scope. Scoped Docker resources were removed after the checks.
 

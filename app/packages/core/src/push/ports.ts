@@ -38,14 +38,10 @@ export interface NotificationRecord {
   readAt: Date | null;
   /** Why it exists (#116); null for notifications created directly through `createNotification`. */
   reason: NotificationReason | null;
-  /** Explicit persisted classification; absence in older port callers means ordinary. */
-  deliveryKind?: 'ordinary' | 'morning_summary';
-  /** Every counted source, including repeated sources for distinct inbox items. */
-  summarySources?: readonly NotificationSourceRef[] | null;
 }
 
 /** `aiOrigin` (F-029) is required of every writer: whether the notification came from AI work, by its actor or source. */
-export type NewNotification = Omit<NotificationRecord, 'createdAt' | 'readAt' | 'reason' | 'deliveryKind' | 'summarySources'> & { aiOrigin: boolean };
+export type NewNotification = Omit<NotificationRecord, 'createdAt' | 'readAt' | 'reason'> & { aiOrigin: boolean };
 
 export interface NotificationRepository {
   insert(notification: NewNotification): Promise<void>;

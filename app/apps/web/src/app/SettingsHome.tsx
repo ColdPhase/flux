@@ -5,7 +5,7 @@ import { Form, Link, Outlet, useLocation, useNavigation, useSearchParams } from 
 import { type AgentConnection, type BackgroundComputeConnection, type PersonalAssistantStatus, type IdentityCapabilities } from '@flux/contracts';
 import { listAgentConnections } from '../agent-connection/api';
 import { getAssistantStatus } from '../assistant/api';
-import { BACKGROUND_OFF_LINE, backgroundComparisonRuntime, listBackgroundConnections } from '../proactive-comparison/api';
+import { listBackgroundConnections } from '../ai/api';
 import { SERVER_AI_OFF_LINE } from '../assistant/format';
 import { AgentsList } from '../my-agents/AgentsList';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, Spinner, agentHue, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
@@ -181,29 +181,14 @@ function ReduceMotionSwitch() {
 const DESIGNATION: Record<AgentConnection['clientDesignation'], string> = { claude_code: 'Claude Code', codex: 'Codex', other: 'another app' };
 const THEME_LABEL: Record<ThemeChoice, string> = { light: 'Light', dark: 'Dark', system: 'System' };
 
-/** Background suggestions: a link when the server runs them, one status line when it does not (Spokój E04 ③). */
-function BackgroundRow({ runtime }: { runtime: 'available' | 'unavailable' | null }) {
-  if (runtime === 'unavailable') {
-    return (
-      <li className="sset-row">
-        <span className="sset-row__ic" aria-hidden="true"><Icon name="leaf" size={16} /></span>
-        <span className="sset-row__b"><span className="sset-row__t">Background suggestions</span><span className="sset-row__s">{BACKGROUND_OFF_LINE}</span></span>
-      </li>
-    );
-  }
-  return <LinkRow to="/settings/background-compute" icon={<Icon name="leaf" size={16} />} title="Background suggestions"
-    detail="Optional comparisons on one of your API keys" action="Manage" />;
-}
-
 /**
  * AI, on its own page (Settings → AI, and the phone's section): Connect AI with every connection (#854), your agents (#857),
- * background suggestions, and the person's own agent apps.
+ * and the person's own agent apps.
  */
 function AgentsAndAi() {
   const { me } = useShellData();
   const [connections, setConnections] = useState<AgentConnection[] | null>(null);
   const [assistant, setAssistant] = useState<PersonalAssistantStatus | null>(null);
-  const [runtime, setRuntime] = useState<'available' | 'unavailable' | null>(null);
   // The caller's own API keys only; the list is owner-scoped on the server. Connect AI shows them.
   const [keys, setKeys] = useState<BackgroundComputeConnection[] | null>(null);
   const [keysFailed, setKeysFailed] = useState(false);
@@ -215,7 +200,6 @@ function AgentsAndAi() {
     const controller = new AbortController();
     listAgentConnections(controller.signal).then(setConnections, (error: unknown) => { if (!controller.signal.aborted) { setConnections([]); setFailed(!!error); } });
     getAssistantStatus(controller.signal).then(setAssistant, () => undefined);
-    backgroundComparisonRuntime(controller.signal).then((answer) => setRuntime(answer.status), () => { if (!controller.signal.aborted) setRuntime('unavailable'); });
     loadKeys(controller.signal);
     return () => controller.abort();
   }, [loadKeys]);
@@ -232,9 +216,9 @@ function AgentsAndAi() {
       ))}
     </ul>
   );
-  // In-app AI off on this server (#763 SG-2): no provider, no agent sign-in and no background suggestions. The page is
-  // E04's three rows: local co-work, then one status line each; no Connect AI with choices nothing could use.
-  const serverOff = assistant?.setup.provider === 'off' && assistant.setup.runtime?.state === 'off' && !assistant.enablement && runtime === 'unavailable' && keys !== null && !keys.length;
+  // In-app AI off on this server (#763 SG-2): no provider and no agent sign-in. The page is E04's two rows: local co-work,
+  // then one status line; no Connect AI with choices nothing could use.
+  const serverOff = assistant?.setup.provider === 'off' && assistant.setup.runtime?.state === 'off' && !assistant.enablement && keys !== null && !keys.length;
   if (serverOff) {
     return (
       <div data-ai-settings="server-off">
@@ -242,19 +226,15 @@ function AgentsAndAi() {
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
         {failed ? <p className="sset-note" role="note">Your connected agents could not be listed. Manage them under Local co-work.</p> : null}
         <p className="sset-note">{SERVER_AI_OFF_LINE}. Your agents wait until it is on.</p>
-        <ul className="sset-card sset-gap"><BackgroundRow runtime={runtime} /></ul>
       </div>
     );
   }
   return (
     <>
       {/* #854, #857 (mockup Main): Connect AI first, with every connection and its usage line; then the person's agents, each
-          using one of them; then background suggestions and the person's own agent apps. */}
+          using one of them; then the person's own agent apps. */}
       <ConnectAi apiKeys={assistant ? assistant.setup.provider === 'on' : true} keys={keys} keysFailed={keysFailed} onRetryKeys={() => loadKeys()} />
       <AgentsList />
-      <ul className="sset-card sset-gap">
-        <BackgroundRow runtime={runtime} />
-      </ul>
       <section aria-labelledby="ai-agent-app">
         <h3 className="sset-sub" id="ai-agent-app">Your agent app</h3>
         <p className="sset-note sset-note--sub">Claude Code, Codex or another app on your own computer, with its own account. Flux never receives its credentials.</p>
@@ -306,7 +286,7 @@ function PhoneSettings() {
         </Link>
         <ul className="sset-card sset-gap">
           <LinkRow to="/settings/appearance" icon={<Icon name="sun" size={16} />} title="Appearance" detail={THEME_LABEL[theme]} />
-          <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail="Needs you, quiet hours, morning summary" />
+          <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail="Needs you and quiet hours" />
           {isGuest(workspace) ? null : <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="AI" detail={agents.length ? `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}` : undefined} />}
           <LinkRow to="/settings/company" icon={<Icon name="people" size={16} />} title="Company" detail={workspace ? `${workspace.name} · its people and their roles` : 'Its people and their roles'} />
         </ul>

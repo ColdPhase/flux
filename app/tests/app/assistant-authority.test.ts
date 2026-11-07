@@ -305,7 +305,7 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [mine.run.id]);
     // Both queued, the background one older: the owner's request is first, and the background run does not pass it.
     const older = await scene.runs.invoke(owner, scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Background first in line' });
-    await pool.query(`UPDATE personal_runs SET authority = 'owner_reaction', background_label = 'Blocked-task watch', created_at = created_at - interval '1 hour' WHERE id = $1`, [older.run.id]);
+    await pool.query(`UPDATE personal_runs SET authority = 'owner_schedule', background_label = 'Blocked-task watch', created_at = created_at - interval '1 hour' WHERE id = $1`, [older.run.id]);
     const newer = await scene.runs.invoke(owner, scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'My request' });
     assert.deepEqual(await uow.run((ports) => ports.runs.startableQueued(50)).then((ids) => ids.filter((id) => [older.run.id, newer.run.id].includes(id))), [newer.run.id]);
     assert.equal(await uow.run((ports) => ports.runs.laneBusy(scene.owner.id, older.run.id)), true, 'the background run waits for the request');

@@ -44,8 +44,6 @@
 .tb-also__b { min-height: 28px; color: var(--t2); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; transition: var(--tr); }
 .tb-also__b:hover { color: var(--t1); text-decoration-color: currentColor; }
 .tb-also__b--need { color: var(--t1); font-weight: 500; }
-.tb-aside { max-width: calc(var(--col) + 2 * var(--space-page)); padding: 0 var(--space-page); }
-.tb-aside:empty { display: none; }
 
 /* ---------- Board ---------- */
 .tb-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }

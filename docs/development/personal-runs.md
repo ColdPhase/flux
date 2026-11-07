@@ -353,10 +353,10 @@ else edited. Nothing that waits ever expires.
   are deleted with the links and notices only they owned. The change row keeps who and when, a hash and length for a message, and
   the event `project.assistant_change_undone.v1` carries ids only. Refused while the workspace's AI is off (F-029, F-030).
 - **The lane.** One working run and one waiting request per owner. `personal_runs.authority`
-  (`owner_request|owner_schedule|owner_reaction`, migration 0108) and `background_label` ("Morning summary") say what
-  started a run; A8 and A9 set the last two. The owner's own requests start before queued background runs, and a
+  (`owner_request|owner_schedule`, migration 0108; `owner_reaction` went with reactions, #858) and `background_label` (a schedule's name) say what
+  started a run; A8 sets the last. The owner's own requests start before queued background runs, and a
   queued request carries `behind` (the working run's authority and label) so its line reads "Next: '…'" or
-  "Finishing your Morning summary first. Yours starts next. · Stop the summary".
+  "Finishing your Daily check first. Yours starts next. · Stop the daily check".
 
 ## WebSocket commands
 

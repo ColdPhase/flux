@@ -113,8 +113,6 @@ export interface NeedsYouItem {
    * One agent run's waiting changes, only for the agent's owner (F-036 AG-7): "Assistant · 3 things wait for you · Approve all · Open".
    */
   assistantChanges?: NeedsYouAssistantChanges | null;
-  assistantNote?: string;
-  assistantDraft?: boolean;
 }
 
 export interface NeedsYouAssistantChanges {

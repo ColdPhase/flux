@@ -93,7 +93,6 @@ services:
       # Private targets an OpenAI-compatible endpoint may reach; empty allows public HTTPS endpoints only.
       FLUX_AI_PRIVATE_TARGETS: ${FLUX_AI_PRIVATE_TARGETS:-}
       FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}
-      FLUX_BACKGROUND_COMPARISONS: ${FLUX_BACKGROUND_COMPARISONS:-}
       # GitHub App integration (#74). All empty reports unavailable.
       FLUX_GITHUB_CLIENT_ID: ${FLUX_GITHUB_CLIENT_ID:-}
       FLUX_GITHUB_CLIENT_SECRET: ${FLUX_GITHUB_CLIENT_SECRET:-}
@@ -151,7 +150,6 @@ services:
       # The same switches and allowlist as the API: the worker runs the assistant and suggestions and checks the allowlist at every request.
       FLUX_AI_PRIVATE_TARGETS: ${FLUX_AI_PRIVATE_TARGETS:-}
       FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}
-      FLUX_BACKGROUND_COMPARISONS: ${FLUX_BACKGROUND_COMPARISONS:-}
       FLUX_KEYRING: ${FLUX_KEYRING:-on}
       FLUX_KEYRING_TOKEN: ${FLUX_KEYRING_TOKEN:-}
       FLUX_KEY_PIN_SECRET: ${FLUX_KEY_PIN_SECRET:-}

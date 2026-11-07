@@ -1,7 +1,6 @@
 import { AI_PROVIDERS, type AiProviderKind, type AiWireFormat } from '@flux/contracts';
-import type { ComparisonProvider, PersonalCompute } from '@flux/core';
+import type { PersonalCompute } from '@flux/core';
 import { anthropicPersonalCompute } from './anthropic.js';
-import { anthropicComparisonProvider, openAiCompatibleComparisonProvider } from './comparison.js';
 import { PUBLIC_ONLY, type AiEndpointPolicy } from './endpoint-policy.js';
 import type { PersonalKeyResolver } from './limits.js';
 import { openAiCompatiblePersonalCompute } from './openai-compatible.js';
@@ -35,21 +34,5 @@ export function providerPersonalCompute(options: ProviderRegistryOptions & { ena
       return adapter.countInputTokens ? adapter.countInputTokens(request) : null;
     },
     dispatch: (request, signal) => adapters[wireOf(request.connection.provider)].dispatch(request, signal),
-  };
-}
-
-/** `ComparisonProvider` over both wire formats, selected by the request's provider kind. */
-export function providerComparison(options: ProviderRegistryOptions = {}): ComparisonProvider {
-  const { policy = PUBLIC_ONLY, baseUrls = {}, timeoutMs, maxResponseBytes } = options;
-  const adapters: Record<AiWireFormat, ComparisonProvider> = {
-    anthropic_messages: anthropicComparisonProvider({ policy, timeoutMs, maxResponseBytes, ...(baseUrls.anthropic ? { baseUrl: baseUrls.anthropic } : {}) }),
-    openai_chat_completions: openAiCompatibleComparisonProvider({ policy, baseUrls, timeoutMs, maxResponseBytes }),
-  };
-  return {
-    async countInputTokens(input) {
-      const adapter = adapters[wireOf(input.provider)];
-      return adapter.countInputTokens ? adapter.countInputTokens(input) : null;
-    },
-    createMessage: (input) => adapters[wireOf(input.provider)].createMessage(input),
   };
 }

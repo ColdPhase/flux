@@ -3,13 +3,13 @@ import type { AssistantBackgroundNote, AssistantJob, AssistantJobPreview, Conver
 import { ApiError } from '../api/client';
 import type { ProjectSummary } from '../app/data';
 import { Button, Icon, IconButton, MEDIA, Overlay, Sheet, useMediaQuery, Select, Option } from '../ui';
-import { getBackgroundNote, previewSchedule, recentConversations, createSchedule, updateSchedule, setMorningSummary, type ScheduleScope } from './scheduleApi';
-import { WEEKDAYS, browserZone, scheduleOf, shortTime, type Draft, type Frequency } from './scheduleForm';
+import { getBackgroundNote, previewSchedule, recentConversations, createSchedule, updateSchedule, type ScheduleScope } from './scheduleApi';
+import { WEEKDAYS, browserZone, scheduleOf, type Draft, type Frequency } from './scheduleForm';
 import './schedules.css';
 
 // The "On a schedule" sheet (F-027 AST-10 "The assistant screen"): what it should do, when, where, the next times, More, the note
 // about background use when this account has not seen it, and [Cancel] [Turn on]. A dialog on the computer, a full sheet with a
-// grabber on the phone. The same frame holds the small morning-summary sheet.
+// grabber on the phone.
 
 /** The frame both sheets share: a dialog on the computer, the full sheet with its grabber on the phone. */
 export function SheetFrame({ open, onClose, label, children }: { open: boolean; onClose: () => void; label: string; children: ReactNode }) {
@@ -240,56 +240,3 @@ function Body({ onClose, scope, projects, initial, job, turnOn, onSaved }: {
     </form>
   );
 }
-
-// ---------------------------------------------------------------------------------------------------------------------
-
-/** "Let your assistant write your morning summary": one small sheet, the note when this account has not seen it, and Turn on. */
-export function MorningSummarySheet({ open, onClose, scope, time, onDone }: {
-  open: boolean; onClose: () => void; scope: ScheduleScope; time: string | null; onDone: () => void;
-}) {
-  return (
-    <SheetFrame open={open} onClose={onClose} label="Morning summary">
-      <SummaryBody onClose={onClose} scope={scope} time={time} onDone={onDone} />
-    </SheetFrame>
-  );
-}
-
-function SummaryBody({ onClose, scope, time, onDone }: { onClose: () => void; scope: ScheduleScope; time: string | null; onDone: () => void }) {
-  const titleId = useId();
-  const [note, setNote] = useBackgroundNote(scope);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    if (busy) return;
-    setBusy(true); setError('');
-    try {
-      await setMorningSummary({ on: true, ...(note?.note ? { noteVersion: note.version } : {}), timeZone: browserZone() });
-      onDone();
-      onClose();
-    } catch (cause) {
-      if (cause instanceof ApiError && cause.code === 'ASSISTANT_BACKGROUND_NOTE_REQUIRED') {
-        getBackgroundNote(scope).then(setNote, () => undefined);
-        setError('Read this first, then turn it on.');
-      } else setError(failureText(cause));
-    } finally { setBusy(false); }
-  };
-  return (
-    <form className="asched asched--small" aria-labelledby={titleId} onSubmit={(event) => void submit(event)}>
-      <header className="asched__head ui-panel__head">
-        <h2 className="asched__title" id={titleId}>Morning summary</h2>
-        <IconButton icon="x" label="Close" onClick={onClose} />
-      </header>
-      <div className="asched__body">
-        <p className="asched__lead">Morning summary · {time ? shortTime(time) : '9:00'}, from Notifications · written by your assistant</p>
-        <NoteLines note={note} />
-        {error ? <p className="asched__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
-      </div>
-      <footer className="asched__foot">
-        <Button variant="quiet" onClick={onClose}>Cancel</Button>
-        <Button variant="primary" type="submit" busy={busy}>Turn on</Button>
-      </footer>
-    </form>
-  );
-}
-

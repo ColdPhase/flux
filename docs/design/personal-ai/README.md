@@ -114,8 +114,8 @@ regression that pins it, and where it stands on `main` at `9c96cbe2` (after #176
 behaviour runs on fake or mock compute in Docker. **No real provider call, billing or
 device is claimed.** Personal runs still fail closed in production until their connection
 lookup is wired to #124's key custody and a real provider pass lands; see
-[personal runs](../../development/personal-runs.md). Owner background rules (#124) are merged
-with production activation still disabled ([proactive comparison](../../development/proactive-comparison.md)).
+[personal runs](../../development/personal-runs.md). Owner background rules (#124) were merged
+with production activation disabled and were retired later (#858).
 
 | Example | Enforced by | Regression | State |
 | --- | --- | --- | --- |

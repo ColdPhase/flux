@@ -27,11 +27,7 @@ const SCOPE_SQL: Record<AiScopeKind, ((id: string) => SQL) | null> = {
   assistant_proposal: (id) => sql`SELECT project_id AS id FROM assistant_proposals WHERE id = ${id}`,
   assistant_change: (id) => sql`SELECT project_id AS id FROM assistant_changes WHERE id = ${id}`,
   agent_question: (id) => sql`SELECT project_id AS id FROM agent_questions WHERE id = ${id}`,
-  comparison_rule: (id) => sql`SELECT project_id AS id FROM proactive_comparison_rules WHERE id = ${id}`,
-  comparison_proposal: (id) => sql`SELECT project_id AS id FROM proactive_comparison_proposals WHERE id = ${id}`,
-  comparison_outcome: (id) => sql`SELECT project_id AS id FROM proactive_comparison_insufficient_outcomes WHERE id = ${id}`,
   assistant_job: (id) => sql`SELECT project_id AS id FROM assistant_jobs WHERE id = ${id}`,
-  notification: (id) => sql`SELECT source_id AS id FROM notifications WHERE id = ${id} AND source_type = 'project'`,
 };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -84,20 +80,6 @@ export function spaceAiSweepRows(db: DbExecutor) {
     async closeRunTokens(projectId: string, epoch: number) {
       return (await db.execute(sql`UPDATE personal_runs SET run_token_closed_at = now(), updated_at = now()
         WHERE project_id = ${projectId} AND ai_epoch < ${epoch} AND run_token_jti IS NOT NULL AND run_token_closed_at IS NULL`)).rowCount ?? 0;
-    },
-    /** Comparisons that have not started their provider request end `not_run`; one in flight is aborted by its watcher. */
-    async endComparisons(projectId: string, epoch: number) {
-      // As every not_run end does (proactive_comparison_outbox_lifecycle_check): the reservation and its connection are released.
-      return (await db.execute(sql`UPDATE proactive_comparison_outbox q SET status = 'not_run', failure_code = 'AI_OFF', reserved_cents = 0,
-        connection_id = NULL, reserved_at = NULL, dispatch_started_at = NULL,
-        usage_input_tokens = 0, usage_output_tokens = 0, usage_estimated_cents = 0, finished_at = now(), updated_at = now()
-        WHERE q.project_id = ${projectId} AND q.ai_epoch < ${epoch}
-          AND (q.status = 'queued' OR (q.status = 'reserved' AND q.dispatch_started_at IS NULL))`)).rowCount ?? 0;
-    },
-    async skipReactionEvents(projectId: string, epoch: number) {
-      return (await db.execute(sql`UPDATE assistant_reaction_events e SET state = 'skipped', line = 'Skipped: AI was turned off', finished_at = now()
-        FROM assistant_reactions r WHERE r.id = e.reaction_id AND r.project_id = ${projectId} AND e.ai_epoch < ${epoch}
-          AND e.state IN ('queued', 'proof')`)).rowCount ?? 0;
     },
     async cancelRequests(projectId: string, epoch: number) {
       return (await db.execute(sql`UPDATE cowork_requests SET state = 'cancelled', reason = 'ai_off', version = version + 1, updated_at = clock_timestamp()

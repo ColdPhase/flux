@@ -408,7 +408,7 @@ class AssistantUndo(unittest.TestCase):
     def test_15_a_request_behind_a_background_run_says_what_it_waits_for_and_can_stop_it(self) -> None:
         page = self.page()
         summary_id = str(uuid.uuid4())
-        behind = {"runId": summary_id, "authority": "owner_schedule", "label": "Morning summary"}
+        behind = {"runId": summary_id, "authority": "owner_schedule", "label": "Daily check"}
         waiting = {**self._run(str(uuid.uuid4()), "queued", "turn this into tasks"), "behind": behind}
         state = {"run": waiting, "stopped": []}
         page.route(re.compile(r".*/api/v1/assistant-runs\?limit=10$"), lambda route: route.fulfill(
@@ -423,18 +423,18 @@ class AssistantUndo(unittest.TestCase):
         page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}/stop$"), stop)
         self.open_conversation(page)
         line = page.locator(".assistant-queued")
-        expect(line).to_contain_text("Finishing your Morning summary first. Yours starts next.")
-        expect(line.get_by_role("button", name="Stop the morning summary")).to_be_visible()
+        expect(line).to_contain_text("Finishing your Daily check first. Yours starts next.")
+        expect(line.get_by_role("button", name="Stop the daily check")).to_be_visible()
         self.no_horizontal_scroll(page)
         shot(page, "assistant-undo-1440-light-background")
-        line.get_by_role("button", name="Stop the morning summary").click()
+        line.get_by_role("button", name="Stop the daily check").click()
         expect(line).to_have_count(0)
         self.assertEqual(state["stopped"], [summary_id], "it stopped the background run, not the request")
         expect(page.locator(".assistant-working")).to_have_count(1)
 
     def test_15b_stopping_the_background_run_fails_in_words(self) -> None:
         page = self.page()
-        behind = {"runId": str(uuid.uuid4()), "authority": "owner_reaction", "label": "Blocked-task watch"}
+        behind = {"runId": str(uuid.uuid4()), "authority": "owner_schedule", "label": "Blocked-task watch"}
         waiting = {**self._run(str(uuid.uuid4()), "queued", "turn this into tasks"), "behind": behind}
         page.route(re.compile(r".*/api/v1/assistant-runs\?limit=10$"), lambda route: route.fulfill(
             status=200, content_type="application/json", body=json.dumps({"items": [waiting], "total": 1, "limit": 10, "offset": 0})))

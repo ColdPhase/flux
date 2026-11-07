@@ -158,7 +158,8 @@ export function projectExportRows(db: DbExecutor) {
           ? { state: 'creation_reverted' as const, noticeId: row.creationReversionNoticeId, revertedAt: iso(row.creationRevertedAt), revertedBy: { kind: row.creationRevertedByKind, id: row.creationRevertedById } }
           : { state: 'active' as const },
         creationHistory: { origin: row.creationOrigin, baselineVersion: row.creationBaselineVersion, baseline: row.creationBaseline,
-          proposalId: row.creationProposalId, firstPersistedUseAt: row.firstPersistedUseAt ? iso(row.firstPersistedUseAt) : null,
+          // No task is made from a background suggestion any more; the v1 export contract keeps the field.
+          proposalId: null, firstPersistedUseAt: row.firstPersistedUseAt ? iso(row.firstPersistedUseAt) : null,
           notices: notices.filter((notice) => notice.workId === row.id).map((notice) => ({ id: notice.id, kind: notice.kind,
             createdBy: { kind: notice.createdByKind, id: notice.createdById }, sources: notice.sources, createdAt: iso(notice.createdAt) })) },
         id: row.id, number: row.number, title: row.title, outcome: row.outcome, status: row.status, blocker: row.blocker,

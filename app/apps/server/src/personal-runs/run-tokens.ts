@@ -1,7 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { assistantRunTools, personalRunTokenPath, RUN_TOKEN_LIMITS, type PersonalRunTokenGrant } from '@flux/contracts';
-import { redactSecrets } from '@flux/core';
 import { personalRunTokenRows, spaceAi, type Database } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
@@ -23,7 +22,7 @@ const RUN_TOKEN_AUTHORIZED_PARTY = 'flux-personal-run';
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const sameHash = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
-export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string, githubFacts?: (ownerUserId: string, taskId: string, linkId?: string) => Promise<unknown>) {
+export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database, auth: FluxAuth, publicOrigin: string) {
   app.post<{ Params: { runId: string }; Body: { nonce: string } }>(personalRunTokenPath(':runId'), {
     schema: { body: { type: 'object', required: ['nonce'], additionalProperties: false, properties: { nonce: { type: 'string', pattern: '^[0-9a-f]{64}$' } } } },
   }, async (request, reply) => {
@@ -34,9 +33,9 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
     const minted = await db.transaction(async (tx) => {
       const rows = personalRunTokenRows(tx);
       const run = await rows.find(runId, { lock: 'update' });
-      if (!run || run.reactionActive === false || (run.status !== 'reading' && run.status !== 'dispatching') || run.stopRequestedAt || run.runTokenJti || !run.runTokenNonceHash
+      if (!run || (run.status !== 'reading' && run.status !== 'dispatching') || run.stopRequestedAt || run.runTokenJti || !run.runTokenNonceHash
         || !sameHash(sha256(request.body.nonce), run.runTokenNonceHash)) return null;
-      // AG-10, first: before any context assembly or outbound call (githubFacts), AI must be on in the run's space at the run's epoch.
+      // AG-10, first: before anything is minted, AI must be on in the run's space at the run's epoch.
       const ai = await spaceAi(tx, run.projectId, { lock: true });
       if (ai.state !== 'allowed' || ai.epoch !== run.aiEpoch) return null;
       const connectionId = await rows.assistantConnectionId(run.ownerUserId, run.agentId);
@@ -47,21 +46,12 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       if (!grant || grant.connection.id !== connectionId || grant.connection.agentId !== run.agentId || grant.connection.computeSource !== 'owner_assistant') return null;
       // The run's exact tools: reads, and the changes unless its "What it may do" is Only read (F-036 AG-3).
       // An answer to another agent's question only reads, whatever the agent may do (TA-3: a question is not an instruction).
-      const readOnly = grant.connection.mayDo === 'read' || run.kind === 'task_answer' || run.reactionAction && ['tell', 'draft_reply', 'check_task'].includes(run.reactionAction);
+      const readOnly = grant.connection.mayDo === 'read' || run.kind === 'task_answer';
       const tools = assistantRunTools(readOnly ? 'read' : grant.connection.mayDo);
-      let context: string | undefined;
-      if (run.reactionTaskId) {
-        if (!githubFacts) return null;
-        try {
-          const text = redactSecrets(JSON.stringify(await githubFacts(run.ownerUserId, run.reactionTaskId, run.reactionLinkId ?? undefined))).text;
-          if (Buffer.byteLength(text, 'utf8') > 16000) return null;
-          context = `<github-facts-data>\n${text}\n</github-facts-data>`;
-        } catch { return null; }
-      }
       const jti = randomUUID();
       const expiresAt = new Date(Date.now() + RUN_TOKEN_LIMITS.lifetimeSeconds * 1000);
       await rows.recordMint(runId, { jti, expiresAt, tools });
-      return { run, connectionId, tools, jti, expiresAt, context };
+      return { run, connectionId, tools, jti, expiresAt };
     });
     if (!minted) return refuse();
     const { baseURL } = await auth.$context;
@@ -74,7 +64,7 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       azp: RUN_TOKEN_AUTHORIZED_PARTY,
       iss: baseURL ?? `${publicOrigin}/api/auth`, aud: `${publicOrigin}/mcp`,
     } } });
-    const grant: PersonalRunTokenGrant = { token, tools: minted.tools, expiresAt: minted.expiresAt.toISOString(), ...(minted.context ? { context: minted.context } : {}) };
+    const grant: PersonalRunTokenGrant = { token, tools: minted.tools, expiresAt: minted.expiresAt.toISOString() };
     return reply.header('cache-control', 'no-store').send(grant);
   });
 }

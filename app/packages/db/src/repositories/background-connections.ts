@@ -20,7 +20,7 @@ export function connectionPrice(row: Pick<ConnectionRow, 'inputPriceMicrosPerMTo
 async function metadata(db: Pick<Database, 'execute'>, row: ConnectionRow): Promise<BackgroundComputeConnection> {
   const spend = await apiKeySpendToday(db, row.id);
   return {
-    id: row.id, ownerUserId: row.ownerUserId, name: row.name, usedForBackground: row.usedForBackground,
+    id: row.id, ownerUserId: row.ownerUserId, name: row.name,
     provider: row.provider, model: row.model, baseUrl: row.baseUrl,
     price: connectionPrice(row),
     keyLastFour: row.keyLastFour, keyFingerprint: row.keyFingerprint,
@@ -33,7 +33,7 @@ async function metadata(db: Pick<Database, 'execute'>, row: ConnectionRow): Prom
 /** What a new key stores beyond its sealed secret. */
 export interface NewApiKeyConnection {
   id: string; ownerUserId: string; encryptedKey: string; keyLastFour: string; keyFingerprint: string;
-  price: AiPrice | null; name: string; useForBackground: boolean;
+  price: AiPrice | null; name: string;
   provider: BackgroundComputeConnection['provider']; model: string; baseUrl: string | null; dailyBudgetCents: number; timeZone: string;
 }
 
@@ -42,19 +42,9 @@ export function backgroundConnectionRepository(db: Database) {
   return {
     async add(input: NewApiKeyConnection): Promise<BackgroundComputeConnection> {
       return db.transaction(async (tx) => {
-        // Serializes one owner's connection changes, so at most one is ever the background connection.
-        await tx.select({ id: schema.authUsers.id }).from(schema.authUsers)
-          .where(eq(schema.authUsers.id, input.ownerUserId)).for('update');
-        const [background] = await tx.select({ id: c.id }).from(c)
-          .where(and(eq(c.ownerUserId, input.ownerUserId), eq(c.usedForBackground, true)));
-        // PROV-1: a new connection never replaces another. Only the owner's very first connection serves
-        // background comparisons by itself; after that the owner chooses, and a chosen "none" stays none.
-        const [existing] = await tx.select({ id: c.id }).from(c)
-          .where(and(eq(c.ownerUserId, input.ownerUserId), isNull(c.revokedAt))).limit(1);
-        const useForBackground = input.useForBackground || !existing;
-        if (useForBackground && background) await tx.update(c).set({ usedForBackground: false }).where(eq(c.id, background.id));
+        await tx.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.id, input.ownerUserId)).for('update');
         const [row] = await tx.insert(c).values({
-          id: input.id, ownerUserId: input.ownerUserId, name: input.name, usedForBackground: useForBackground,
+          id: input.id, ownerUserId: input.ownerUserId, name: input.name,
           provider: input.provider, model: input.model, baseUrl: input.baseUrl,
           inputPriceMicrosPerMTok: input.price?.inputMicrosPerMTok ?? null, outputPriceMicrosPerMTok: input.price?.outputMicrosPerMTok ?? null,
           priceSource: input.price?.source ?? null, priceCheckedOn: input.price?.checkedOn ?? null,
@@ -66,19 +56,15 @@ export function backgroundConnectionRepository(db: Database) {
     },
     async list(ownerUserId: string): Promise<BackgroundComputeConnection[]> {
       const rows = await db.select().from(c).where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt)))
-        .orderBy(desc(c.usedForBackground), desc(c.createdAt), desc(c.id));
+        .orderBy(desc(c.createdAt), desc(c.id));
       return Promise.all(rows.map((row) => metadata(db, row)));
-    },
-    async current(ownerUserId: string): Promise<BackgroundComputeConnection | null> {
-      const [row] = await db.select().from(c).where(and(eq(c.ownerUserId, ownerUserId), eq(c.usedForBackground, true), isNull(c.revokedAt)));
-      return row ? metadata(db, row) : null;
     },
     /**
      * `guard` gets the models the owner's agents run on this key, read under the owner's assistant lock (the one a model change
      * takes first), so a budget saved while an agent moves to another model is checked against the model it ends up on (#909, #915).
      * It throws to refuse the change; nothing is written then.
      */
-    async update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number; usedForBackground?: true },
+    async update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number },
       guard?: (agentModels: readonly string[]) => void): Promise<BackgroundComputeConnection | null> {
       return db.transaction(async (tx) => {
         if (guard) await lockAssistantOwner(tx, ownerUserId);
@@ -92,11 +78,8 @@ export function backgroundConnectionRepository(db: Database) {
             .where(and(eq(settings.ownerUserId, ownerUserId), eq(settings.apiKeyId, connectionId), eq(settings.engine, 'server')));
           guard([...new Set(rows.flatMap((row) => (row.model ? [row.model] : [])))]);
         }
-        if (change.usedForBackground) await tx.update(c).set({ usedForBackground: false })
-          .where(and(eq(c.ownerUserId, ownerUserId), eq(c.usedForBackground, true)));
         const [row] = await tx.update(c).set({ ...(change.name !== undefined ? { name: change.name } : {}),
-          ...(change.dailyBudgetCents !== undefined ? { dailyBudgetCents: change.dailyBudgetCents } : {}),
-          ...(change.usedForBackground ? { usedForBackground: true } : {}) }).where(eq(c.id, connectionId)).returning();
+          ...(change.dailyBudgetCents !== undefined ? { dailyBudgetCents: change.dailyBudgetCents } : {}) }).where(eq(c.id, connectionId)).returning();
         return metadata(tx, row!);
       });
     },
@@ -104,8 +87,7 @@ export function backgroundConnectionRepository(db: Database) {
       return db.transaction(async (tx) => {
         await tx.select({ id: schema.authUsers.id }).from(schema.authUsers)
           .where(eq(schema.authUsers.id, ownerUserId)).for('update');
-        // Removing the background connection stops background comparisons: no other connection takes over.
-        const [row] = await tx.update(c).set({ encryptedKey: null, revokedAt: new Date(), usedForBackground: false })
+        const [row] = await tx.update(c).set({ encryptedKey: null, revokedAt: new Date() })
           .where(and(eq(c.id, connectionId), eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt)))
           .returning({ id: c.id });
         return Boolean(row);

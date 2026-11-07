@@ -18,7 +18,7 @@ import { reserveOnKey } from './service.js';
 import { updateAndAnnounce } from './progress.js';
 import { requestParts, runToolLoop, type LoopResult, type RunAccount } from './tool-loop.js';
 import {
-  agentBriefText, centsToMicros, connectionCallsTools, MORNING_SUMMARY_SYSTEM_PROMPT, parseOutput, requestInput, runChargeMicros, runReservationMicros, runTokensWithinLimits, SYSTEM_PROMPT, taskSystemPrompt, TOOL_SYSTEM_PROMPT, type SuppliedSource,
+  agentBriefText, centsToMicros, connectionCallsTools, parseOutput, requestInput, runChargeMicros, runReservationMicros, runTokensWithinLimits, SYSTEM_PROMPT, taskSystemPrompt, TOOL_SYSTEM_PROMPT, type SuppliedSource,
 } from './validation.js';
 
 // The worker side of a personal run (`personal-run.dispatch.v1`, O-008 §3–§5). The job payload
@@ -149,9 +149,7 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
   await ports.access.requireProject(agent, 'read', run.projectId);
   const sources: SuppliedSource[] = [];
   const next = () => `S${sources.length + 1}`;
-  // The morning summary (F-027 AST-7) reads nothing of its own: Flux gives it the facts in its request.
   const brief = await ports.runs.agentBrief(run.agentId);
-  if (run.kind === 'morning_summary') return { sources, earlier: null, brief: null };
   if (run.targetSketchId && run.targetThoughtId) {
     // Agents never see private sketches; the thought must be on a project sketch of this project.
     if (!(await ports.access.canReadSketch(agent, run.targetSketchId))) return null;
@@ -354,7 +352,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       fitted = await fit(compute, {
         connection: { id: connection.id, keyRef: connection.keyRef, provider: connection.provider, baseUrl: connection.baseUrl }, model: run.model,
         maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort,
-        system: run.kind === 'morning_summary' ? MORNING_SUMMARY_SYSTEM_PROMPT : [run.kind === 'task' || run.kind === 'task_answer' ? taskSystemPrompt(!!session, run.kind === 'task_answer') : session ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT, agentBriefText(read.brief ?? null)].filter(Boolean).join('\n\n'), ...(session ? { tools: session.tools } : {}),
+        system: [run.kind === 'task' || run.kind === 'task_answer' ? taskSystemPrompt(!!session, run.kind === 'task_answer') : session ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT, agentBriefText(read.brief ?? null)].filter(Boolean).join('\n\n'), ...(session ? { tools: session.tools } : {}),
       }, run, read, beforeSend, personalRunMaxInputTokens(!!session));
     } catch {
       // The preflight count failed (provider down, key refused). Counting is free and nothing
@@ -463,7 +461,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
         // Its turn in the owner's lane: it reserves now against what is left of the key's daily budget (#854), or waits for
         // the key's next day when not even one request fits.
         const onModel = connectionOnModel(checked.connection, run.model);
-        const withTools = !!tools && !!onModel && connectionCallsTools(onModel) && run.kind !== 'morning_summary';
+        const withTools = !!tools && !!onModel && connectionCallsTools(onModel);
         const held = onModel ? await reserveOnKey(ports, onModel, withTools, Math.max(1, Math.min(maxTurns, PERSONAL_RUN_LIMITS.maxTurns)), run.id) : null;
         if (!held) return { done: true as const, status: (await updateAndAnnounce(ports, run.id, ended('unavailable', 'before_read', free))).status };
         if ('paused' in held) {
@@ -520,7 +518,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       // to reserve and reconcile against. No host, no tools, or a model marked without tool calling:
       // one request with no tools, as before.
       let session: PersonalToolSession | null = null;
-      if (tools && connection.price && connectionCallsTools(connection) && run.kind !== 'morning_summary') {
+      if (tools && connection.price && connectionCallsTools(connection)) {
         try {
           session = await tools(run, connection);
         } catch {
@@ -536,20 +534,11 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
           session = null;
         }
       }
-      // A ready-PR event needs current G-1 proof at dispatch, including a model without tool calling.
-      const needsGithub = run.kind === 'reaction' && await uow.run(async (ports) => await ports.runs.needsCurrentGithubFacts?.(run.id) ?? false);
-      let context = session?.context;
-      let separateGrant = false;
-      if (needsGithub && !context && !session && tokens) {
-        const grant = await tokens.issue(run.id).catch(() => null);
-        context = grant?.context; separateGrant = !!grant;
-      }
+      const context = session?.context;
       try {
-        if (needsGithub && !context) return uow.run(async (ports) => (await updateAndAnnounce(ports, run.id, ended('unavailable', 'before_dispatch', free))).status);
         return await dispatchRun(context ? { ...run, prompt: `${run.prompt}\n${context}` } : run, read, connection, session, beforeSend);
       } finally {
         await session?.close().catch(() => undefined);
-        if (separateGrant) await tokens?.close(run.id).catch(() => undefined);
       }
     },
   };
