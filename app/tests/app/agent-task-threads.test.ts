@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
-import { assistantRunChangesActionPath, projectWorkDetailPath, taskAgentPath, taskAgentStopPath, taskDiscussionPath, workItemPath,
-  type Conversation, type TaskAgentState, type TaskDiscussion, type WorkDetailProjection, type WorkItem } from '@flux/contracts';
+import { assistantChangeActionPath, assistantRunChangesActionPath, conversationAssistantChangesPath, projectWorkDetailPath, taskAgentPath, taskAgentStopPath, taskDiscussionPath, workItemPath,
+  type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone, type Conversation, type TaskAgentState, type TaskDiscussion, type WorkDetailProjection, type WorkItem } from '@flux/contracts';
 import { agentLabel, answerLines, askableLines, MAX_EXCHANGE_TURNS, resolveAsked, takeAsk, taskAgentState, type Askable, type Principal, type TaskAgentFacts } from '@flux/core';
 import { personalRunPorts, personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
@@ -227,12 +227,51 @@ describe('the exchange through the real drain (#841, N1 to N3)', () => {
     await waitFor(async () => (await pool.query(`SELECT 1 FROM agent_task_events WHERE run_id = $1 AND handled_at IS NOT NULL`, [first.run.id])).rowCount === 1, 'the end of the first run to be handled');
     const state = expectStatus(await ada.browser.request('GET', taskAgentPath(held.task.id)), 200) as TaskAgentState;
     assert.equal(state.line, 'paused_by_limit', state.text);
-    assert.match(state.text, /^Waiting for Assistant to answer · /);
+    assert.ok(state.text.startsWith(`Waiting for Assistant (${names.maja!.split(' ')[0]}'s agent) to answer · `), `whose agent is waited for: ${state.text}`);
     assert.ok(state.resumesAt, 'when it resumes');
     assert.ok(!(await thread(held.task.id)).some((line) => line.includes('didn\'t answer')), 'a paused answer is not "didn\'t answer"');
     assert.equal((await readTask(held.task.id)).owner?.kind, 'agent', 'and the task is still waiting with the agent that asked');
     // It resumes and answers: the answer is posted, not thrown away.
     await pool.query(`UPDATE personal_runs SET status = 'completed', resume_at = NULL, completed_at = now(), committed_at = now(), answer_body = '0.82 V means full.', cost_state = 'released', charged_micros = 0 WHERE id = $1`, [resumed.run.id]);
     await waitFor(async () => (await thread(held.task.id)).includes('0.82 V means full.'), 'the resumed answer to be posted');
+  });
+
+  test('#923: the owner of an agent takes back a line it put in the thread; a person\'s answer to it, or someone else, cannot', async () => {
+    const held = await asked('Undo the answer', '{"agent": "Fieldbot", "question": "Which?"}');
+    await waitFor(async () => (await readTask(held.task.id)).owner?.kind === 'human', 'the first exchange to end');
+    await pool.query('UPDATE project_work_items SET owner_user_id = NULL, owner_agent_id = $2, version = version + 1 WHERE id = $1', [held.task.id, agents.jonas]);
+    const talk = expectStatus(await ada.browser.request('GET', taskDiscussionPath(held.task.id)), 200) as TaskDiscussion;
+    const answer = await db.transaction((tx) => runs.startTask(personalRunPorts(tx, queue.factory), { kind: 'task_answer', ownerUserId: maja.id, agentId: agents.maja!, workId: held.task.id,
+      projectId: space.id, conversationId: talk.conversationId!, prompt: 'Which?', clientRunId: randomUUID(), askedByRunId: held.run.id, exchangeTurn: 1, audience: [ada.id, jonas.id, maja.id] }));
+    assert.ok(answer.started, JSON.stringify(answer));
+    await pool.query(`UPDATE personal_runs SET status = 'completed', completed_at = now(), committed_at = now(), answer_body = 'The 0.82 V reading means full.', cost_state = 'released', charged_micros = 0 WHERE id = $1`, [answer.run.id]);
+    // Posted; then the asker cannot go on (this composition has no provider) and says so, as an agent, and the task goes back to Jonas.
+    await waitFor(async () => (await thread(held.task.id)).includes('The 0.82 V reading means full.') && (await readTask(held.task.id)).owner?.kind === 'human', 'the exchange to end');
+    const changes = async (viewer: Person) => (expectStatus(await viewer.browser.request('GET', conversationAssistantChangesPath(talk.conversationId!)), 200) as { items: AssistantChange[] }).items;
+    const posts = (await changes(maja)).filter((change) => change.operation === 'conversation.reply' && change.runId === answer.run.id);
+    assert.equal(posts.length, 1, 'the answer is its run\'s change');
+    const post = posts[0]!;
+    assert.deepEqual([post.objectType, post.state, post.undoable, post.owner.id], ['message', 'applied', true, maja.id]);
+    assert.equal((await changes(jonas)).find((change) => change.id === post.id)?.undoable, false, 'Jonas can read it, but it is not his to take back');
+    const refused = expectStatus(await jonas.browser.request('POST', assistantChangeActionPath(post.id, 'undo'), { body: {} }), 200) as AssistantChangeDecision;
+    assert.equal(refused.message, `Only ${names.maja} can take back what their agent made`, 'and the server says so');
+    assert.equal(refused.change.state, 'applied');
+    // The run's own Undo leaves a line in a thread to its Undo.
+    expectStatus(await maja.browser.request('POST', assistantRunChangesActionPath(answer.run.id, 'undo'), { body: {} }), 200) as AssistantRunUndone;
+    assert.ok((await thread(held.task.id)).includes('The 0.82 V reading means full.'), 'the run\'s Undo did not take the line');
+    // A person answered Jonas's report: it is used, and the Undo says so.
+    const report = (await changes(jonas)).find((change) => change.operation === 'conversation.reply' && change.runId === held.run.id);
+    assert.ok(report?.undoable, 'Jonas\'s own report is his to take back');
+    // The answer was followed only by agents' lines: Maja takes it back, and the thread says who.
+    const undone = expectStatus(await maja.browser.request('POST', assistantChangeActionPath(post.id, 'undo'), { body: {} }), 200) as AssistantChangeDecision;
+    assert.equal(undone.message, null);
+    const after = (await changes(ada)).find((change) => change.id === post.id)!;
+    assert.deepEqual([after.state, after.line], ['undone', `Undone by ${names.maja}`], 'everyone who reads the task sees who took it back');
+    assert.ok(!(await thread(held.task.id)).includes('The 0.82 V reading means full.'), 'the line is gone from the thread');
+    assert.ok((await thread(held.task.id)).includes('[Removed with Undo]'), 'a tombstone keeps its place');
+    expectStatus(await ada.browser.request('POST', taskDiscussionPath(held.task.id), { body: { body: 'Thanks, I read the report', clientMessageId: randomUUID() } }), 201);
+    const blocked = expectStatus(await jonas.browser.request('POST', assistantChangeActionPath(report!.id, 'undo'), { body: {} }), 200) as AssistantChangeDecision;
+    assert.equal(blocked.message, 'Replies since. Open it');
+    assert.equal(blocked.change.state, 'applied', 'nothing was removed');
   });
 });

@@ -1,7 +1,7 @@
 import type { PgBoss } from 'pg-boss';
 import type { FastifyInstance } from 'fastify';
 import { TASK_TAKING_PATH, taskAgentPath, taskAgentRetryPath, taskAgentStopPath, taskPeoplePath, type SetTaskTaking, type TaskPeople } from '@flux/contracts';
-import { createTaskTaking, enforce, evaluateProject, NotFoundError, ConflictError, ForbiddenError, stopRunBy, taskAgentState, type Principal } from '@flux/core';
+import { agentLabel, createTaskTaking, enforce, evaluateProject, NotFoundError, ConflictError, ForbiddenError, stopRunBy, taskAgentState, type Principal } from '@flux/core';
 import { agentTaskRows, accessReader, listen, sql, workRows, type Database, type Transaction } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { useDomainErrors } from '../http/commands.js';
@@ -48,10 +48,12 @@ export async function agentTaskRoutes(app: FastifyInstance, { db, sessions, boss
     const run = recent.find((candidate) => candidate.agentId === holder && candidate.kind === 'task') ?? null;
     const answering = recent.find((candidate) => candidate.kind === 'task_answer' && IN_FLIGHT.includes(candidate.status)) ?? null;
     const answeringAgent = answering ? await rows.agent(answering.agentId) : null;
+    // Whose agent it is, as the thread says it ("Fieldbot (Carl's agent)"): every person's first agent has the same name.
+    const answeringLabel = answeringAgent ? agentLabel({ name: answeringAgent.name, ownerName: (await rows.personName(answering!.ownerUserId)) ?? 'Former member' }) : null;
     const agent = holder ? await rows.agent(holder) : null;
     const owner = agent?.ownerUserId ? { id: agent.ownerUserId, name: (await rows.personName(agent.ownerUserId)) ?? 'Former member' } : null;
     const admin = (await evaluateProject(principal, 'project.manage', work.projectId, accessReader(tx))).allowed;
-    return { work, run, inFlight: recent.find((candidate) => IN_FLIGHT.includes(candidate.status)) ?? null, waitingForAnswer: answering && answeringAgent ? { name: answeringAgent.name, ownerId: answering.ownerUserId,
+    return { work, run, inFlight: recent.find((candidate) => IN_FLIGHT.includes(candidate.status)) ?? null, waitingForAnswer: answering && answeringLabel ? { name: answeringLabel, ownerId: answering.ownerUserId,
         run: { status: answering.status, engine: answering.engine, provider: answering.provider, endReason: answering.endReason, resumeAt: answering.resumeAt } } : null, rows,
       agent: agent && owner ? { id: agent.id, name: agent.name, owner } : null, admin };
   }
@@ -63,7 +65,10 @@ export async function agentTaskRoutes(app: FastifyInstance, { db, sessions, boss
       const stopper = run?.stopRequestedBy ? { id: run.stopRequestedBy, name: (await rows.personName(run.stopRequestedBy)) ?? 'Former member' } : null;
       const waiting = run ? await tx.execute<{ n: number }>(rawCount(run.id)) : null;
       const lastOwner = await rows.lastOwnerChange(work.id);
+      // Someone who is not the agent's owner may hold the task now (they took it): the line says who.
+      const holderOfTask = work.owner?.kind === 'human' && work.owner.id !== agent?.owner.id ? (await rows.personName(work.owner.id)) ?? 'Former member' : null;
       return taskAgentState({
+        taskOwnerName: holderOfTask,
         viewerId: principal.id, viewerIsAdmin: admin,
         task: { ownerUserId: work.owner?.kind === 'human' ? work.owner.id : null, ownerAgentId: work.owner?.kind === 'agent' ? work.owner.id : null, status: work.status },
         agent, successor: run ? await rows.successor(run.id) : null, waitingChanges: Number(waiting?.rows[0]?.n ?? 0), waitingForAnswer,

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { ASSISTANT_RUN_CHANGED_EVENT, type TaskAgentLine, type TaskAgentState as State, type WorkItem } from '@flux/contracts';
+import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantChange, type TaskAgentLine, type TaskAgentState as State, type WorkItem } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { AgentIdentity, Button, Kreska, type KreskaExpression } from '../ui';
@@ -19,8 +19,10 @@ const FACE: Record<TaskAgentLine, KreskaExpression> = {
 
 const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
-export function TaskAgentState({ item, projectId, conversationId, revision, onChanged }: {
+export function TaskAgentState({ item, projectId, conversationId, revision, onChanged, elsewhere }: {
   item: Pick<WorkItem, 'id' | 'version'>; projectId: string; conversationId: string | null; revision: unknown; onChanged: () => void;
+  /** A change that is shown where it stands (an agent's line in the thread, with its own Undo), not in the run's line. */
+  elsewhere?: (change: AssistantChange) => boolean;
 }) {
   const { me } = useShellData();
   const [state, setState] = useState<State | null>(null);
@@ -37,7 +39,8 @@ export function TaskAgentState({ item, projectId, conversationId, revision, onCh
     if (event.kind === ASSISTANT_RUN_CHANGED_EVENT || (event.objectType === 'project' && event.objectId === projectId && /^project\.(work_|message_|assistant_)/.test(event.kind))) setTick((value) => value + 1);
   }, () => setTick((value) => value + 1));
   const changes = useAssistantChanges(conversationId, `${state?.runId}:${tick}`, !!state?.runId);
-  const runChanges = state?.runId ? changes.byRun.get(state.runId) : undefined;
+  const here = state?.runId ? changes.byRun.get(state.runId)?.filter((change) => !elsewhere?.(change)) : undefined;
+  const runChanges = here?.length ? here : undefined;
 
   const act = useCallback(async (key: string, action: () => Promise<unknown>) => {
     setBusy(key); setError('');

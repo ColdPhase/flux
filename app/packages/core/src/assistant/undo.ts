@@ -16,7 +16,9 @@ export type UndoPlan =
    * only while nobody has used it. `title` is what a map was called when made; `version` what a decision's version was;
    * `finishes` the task a result finished, as it was before.
    */
-  | { kind: 'removal'; title?: string; version?: number; finishes?: { workId: string; status: string; blocker: string | null } }
+  | { kind: 'removal'; title?: string; version?: number; finishes?: { workId: string; status: string; blocker: string | null };
+    /** A line a run put in a task's thread (#923): later lines of other agents in the exchange are not use; a person's are. */
+    thread?: boolean }
   /** A hand-off to the owner's agent: Undo cancels exactly this unit while it is untouched and was never claimed. */
   | { kind: 'handoff'; unitId: string; taskId: string; creationVersion: number };
 

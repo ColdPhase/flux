@@ -35,16 +35,26 @@ another replica holds. Nothing is polled while idle.
 
 An event is one transaction. A rule's refusal (`DomainError`: the task changed, a person lost access, AI is off) ends
 the step and the event is done. Anything else (a deadlock, a lost connection) rolls the whole event back; the drain
-counts the try, waits `tries²` seconds (at most 60) and looks again, with no polling while idle. After five tries the
-event is given up (`AGENT_TASK_EVENT_ATTEMPTS`): the agent says in the task that it could not take care of it and the
-task goes back to its owner (`giveUp`), so a lost assignment is never silent. The retry timer lives in memory (a known
-limit): after a restart the API drains once at start, and an event whose time has not come yet waits for the next NOTIFY.
+counts the try (only while nobody has handled the event: another replica may have taken it a moment after the try failed
+and done it), and it waits `tries²` seconds (1, 4, 9, 16; at most 60). The wait is a row (`next_try_at`), and after every
+drain the API sets one timer from the earliest one waiting (`nextDueIn`), so a wait that was still running when the API
+restarted is found again; nothing is polled while idle.
+
+The fifth failed try (`AGENT_TASK_EVENT_ATTEMPTS`) is due at once and the next claim of the event is `giveUp`, in the same
+transaction that ends the event, so a lost assignment is never silent. The agent says in the task that it could not take care
+of it ("I couldn't take care of this. It's back with you."), the task goes back to its owner and the agent's runs on it stop
+(a person who had chosen an agent whose task the setting could not give reads "I couldn't take this. It's still with you.").
+A `released` event that gave up says nothing: the person took the task away, so only the agent's runs that were going when they
+did stop, whether or not the agent holds the task again. If the give-up fails too, the event stays and is claimed again
+later (the wait grows to a minute); it is never marked handled without having been done.
 
 Every event takes its locks in the one order the worker and the use cases take them: the enablement rows of the people
 whose agents may start a run (ascending), then the space's task-graph lock, then the task and run rows. The worker checks
 the owner's enablement before it fences the task (`recheck`, then `prepareTaskUse`), a person's own assistant request does
 the same (`start`), and `task-targets.ts` records the rule ("authority fences, then graphs, then tasks"). `lockInOrder` in
-`drain.ts` reads who the owners are without a lock, locks their rows, then the graph. The first version took the graph
+`drain.ts` reads who the owners are without a lock, locks their rows, then the graph. For a question between agents the
+owners are the task's people: they are read again under the graph lock (every writer of the thread takes it, so they cannot
+change then) and the event starts over, counted as no failure, if someone wrote in between. The first version took the graph
 first; with the worker running the agent's tasks and the owner asking his own assistant it deadlocked, lost the worker's
 dispatch job and answered 500. `tests/app/agent-task-concurrency.test.ts` runs that burst against the real worker on the
 mock provider and fails on the old order (see the file for how to run it).
@@ -61,8 +71,10 @@ owner. Its answer is not listed again as a conversation answer; the drain posts 
 
 `GET /api/v1/work/:id/agent` returns one line for everyone who can read the task (`taskAgentState`): waiting for
 room, working, waiting for the OK, paused by the provider's limit, failed, stopped (by whom), done, or handed back.
-Stop (`POST …/agent/stop`) is the agent's owner's or a space admin's; Try again (`…/agent/retry`) is the owner's;
-Take it back is the owner changing the Owner field.
+Stop (`POST …/agent/stop`) is the owner's of the agent whose run is working, or a space admin's: for an agent that is
+answering a question it is the answering agent's owner, never the one who asked. Try again (`…/agent/retry`) is the owner's;
+Take it back is the owner changing the Owner field. After a Stop the line says where the task is: "back with" its agent's
+owner, or "with" the person who took it. An agent waited for is named as the thread names it, "Fieldbot (Carl's agent)".
 
 ## Agents together in a task (#841, #844)
 
@@ -71,14 +83,21 @@ Take it back is the owner changing the Owner field.
   its subtasks (that is what prerequisites are for). The task panel lists them as "Subtasks · 1 of 2 done". A subtask for
   another person is a proposal that waits for the owner's OK with Approve all (AG-3); once approved it is that person's
   task, and their own "When someone assigns a task to me" setting decides whether one of their agents takes it.
-- **Questions between agents (TA-3).** An agent's report may end with one `<ask>{"agent": "Fieldbot", "question": "…"}</ask>`
-  block (`packages/core/src/agent-tasks/ask.ts`). The drain posts the report and the question as the agent's messages, checks
+- **Questions between agents (TA-3).** An agent's report may end with one
+  `<ask>{"agent": "Fieldbot", "owner": "Jonas", "question": "…"}</ask>` block (`packages/core/src/agent-tasks/ask.ts`). The owner
+  says whose agent is meant, because every person's first agent has the same name; a name that fits more than one agent, with no
+  owner or an owner that fits two, is not guessed: the thread says so and the task goes back to its owner. The drain posts the report and the question as the agent's messages, checks
   that both owners are among the task's people (`taskPeople`: the creator, the owner, anyone who wrote in the thread; a
   message written by an agent adds nobody) and starts a run of kind `task_answer` for the other agent on its owner's account.
   That run only reads (`readOnly` in the run token), is told the question is data, and is refused unless every person of the
   task can still read the space, so it uses only what all of them can see. Its answer is posted as the other agent's message and
   the asking agent continues with it as a new run. Each step is bounded (`MAX_EXCHANGE_TURNS`); an exchange that cannot
   go on (no such agent in the task, a refusal, no answer, the bound) is said in one line and the task goes back to its owner.
+- **A line an agent put in the thread can be taken back (#923).** The report, the question and the answer of a run are also
+  that run's change (`conversation.reply`, `assistant_changes`, tool `flux_task_post`), so the agent's owner sees Undo under the
+  line, and everyone then reads "Undone by Jonas" over a tombstone. It works while no person has answered the line; other
+  agents' later lines in the exchange (the asker going on with an answer) do not count (`plan.thread`). A run's own Undo leaves
+  these lines to theirs. Status lines ("Got it", "Stopped by Maja", refusals) are not changes.
 - **Who is in the task.** `GET /api/v1/work/:id/people` names the task's people and their agents for the panel's "In this
   task" row.
 - **The message a task came from (#844).** Creating a task from a message stores the message as the task's `source` link;

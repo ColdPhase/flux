@@ -6,6 +6,7 @@ import { taskActivityPath, taskAgentPath, taskAgentRetryPath, taskAgentStopPath,
 import { taskAgentState, taskRunClientId, type Principal, type TaskAgentFacts } from '@flux/core';
 import { createAgentTaskDrain } from '../../apps/server/src/agent-tasks/drain.js';
 import { personalRunPorts, personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
+import { agentTaskRows } from '@flux/db';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeConnections, FakeQueue } from './support/personal-runs.js';
@@ -199,32 +200,82 @@ describe('people\'s agents take tasks (#856, #904)', () => {
     assert.equal((await agentState(ada, task.id)).text, `Stopped: AI was turned off in this space · the task is back with ${kaiName}`, 'everyone who reads the task sees the same line');
   });
 
-  test('an event that fails every time is not silent: the owner reads it in the task and has the task back', async () => {
-    const { task, run } = await heldByAgent(lee, agents.lee!, 'Cannot be marked Doing');
-    // A fault in the database for this one task: it cannot be set to Doing, so every drain fails the `started` event the same way.
-    const name = `atk_fail_${task.id.replace(/-/g, '')}`;
-    await pool.query(`CREATE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected fault'; END $$`);
-    await pool.query(`CREATE TRIGGER ${name} BEFORE UPDATE ON project_work_items FOR EACH ROW WHEN (OLD.id = '${task.id}' AND NEW.status = 'in_progress') EXECUTE FUNCTION ${name}()`);
-    try {
-      await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [run.id]);
-      // The waits between the tries (1, 4, 9 and 16 seconds) are brought forward; the tries are the ones a drain makes.
-      const given = await waitFor(async () => {
-        await pool.query(`UPDATE agent_task_events SET next_try_at = now() WHERE work_id = $1 AND kind = 'started' AND handled_at IS NULL`, [task.id]);
-        await pool.query(`SELECT pg_notify('flux_agent_tasks', '')`);
-        const row = (await pool.query(`SELECT attempts, handled_at FROM agent_task_events WHERE work_id = $1 AND kind = 'started'`, [task.id])).rows[0] as { attempts: number; handled_at: Date | null } | undefined;
-        return row?.handled_at ? row : null;
-      }, 'the event to be given up', 40_000);
-      assert.equal(given.attempts, 5, 'it was tried five times');
-      const back = await waitFor(async () => { const now = await readTask(task.id); return now.owner?.kind === 'human' ? now : null; }, 'the task to come back to Lee');
-      assert.equal(back.owner?.id, lee.id);
-      const talk = expectStatus(await ada.browser.request('GET', taskDiscussionPath(task.id)), 200) as TaskDiscussion;
-      const bodies = [talk.root, ...talk.messages].filter(Boolean).filter((message) => message!.authorId === null).map((message) => message!.body);
-      assert.deepEqual([...new Set(bodies)], ['I couldn\'t take care of this. It\'s back with you.'], 'the agent says it in the task');
-      assert.equal((await waitFor(async () => { const row = await runRow(run.id); return row.status === 'stopped' ? row : null; }, 'the run to stop')).stop_requested_by, lee.id, 'and its run does not go on for a task that is no longer its');
-    } finally {
-      await pool.query(`DROP TRIGGER IF EXISTS ${name} ON project_work_items`);
+  /** Faults in the database for one task or run only: `sql` is the body of a trigger function; it must `RETURN NEW` unless it raises. */
+  async function withFault(name: string, table: string, when: string, body: string, run: () => Promise<void>) {
+    await pool.query(`CREATE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN ${body} RETURN NEW; END $$`);
+    await pool.query(`CREATE TRIGGER ${name} BEFORE UPDATE ON ${table} FOR EACH ROW WHEN (${when}) EXECUTE FUNCTION ${name}()`);
+    try { await run(); } finally {
+      await pool.query(`DROP TRIGGER IF EXISTS ${name} ON ${table}`);
       await pool.query(`DROP FUNCTION IF EXISTS ${name}()`);
     }
+  }
+  /** The tries of an event are brought forward (they wait 1, 4, 9 and 16 seconds); each try is one a drain makes. */
+  const eventNow = async (workId: string, kind: string) => {
+    await pool.query(`UPDATE agent_task_events SET next_try_at = now() WHERE work_id = $1 AND kind = $2 AND handled_at IS NULL`, [workId, kind]);
+    await pool.query(`SELECT pg_notify('flux_agent_tasks', '')`);
+    return (await pool.query(`SELECT attempts, handled_at FROM agent_task_events WHERE work_id = $1 AND kind = $2`, [workId, kind])).rows[0] as { attempts: number; handled_at: Date | null };
+  };
+  const agentLines = async (workId: string) => {
+    const talk = expectStatus(await ada.browser.request('GET', taskDiscussionPath(workId)), 200) as TaskDiscussion;
+    return [talk.root, ...talk.messages].filter((message) => message && message.authorId === null).map((message) => message!.body);
+  };
+
+  test('an event that fails every time is not silent: the owner reads it in the task and has the task back; a give-up that fails is tried again', async () => {
+    const { task, run } = await heldByAgent(lee, agents.lee!, 'Cannot be marked Doing');
+    const seen = new Set<number>();
+    // A fault in the database for this one task: it cannot be set to Doing, so every drain fails the `started` event the same way. A second
+    // one refuses the hand-back until the event has had seven tries, so the give-up itself fails twice before it works.
+    const after = `${task.id.replace(/-/g, '')}`;
+    await withFault(`atk_doing_${after}`, 'project_work_items', `OLD.id = '${task.id}' AND NEW.status = 'in_progress'`, `RAISE EXCEPTION 'injected fault';`, () =>
+      withFault(`atk_back_${after}`, 'project_work_items', `OLD.id = '${task.id}' AND OLD.owner_agent_id IS NOT NULL AND NEW.owner_agent_id IS NULL`,
+        `IF coalesce((SELECT max(attempts) FROM agent_task_events WHERE work_id = OLD.id AND kind = 'started' AND handled_at IS NULL), 99) < 7 THEN RAISE EXCEPTION 'injected fault'; END IF;`, async () => {
+          await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [run.id]);
+          const given = await waitFor(async () => {
+            const row = await eventNow(task.id, 'started');
+            if (!row.handled_at) seen.add(row.attempts);
+            return row.handled_at ? row : null;
+          }, 'the event to be given up', 60_000);
+          assert.equal(given.attempts, 7, 'five tries, then the give-up, which failed twice and worked the third time');
+          assert.ok([...seen].some((attempts) => attempts >= 5), `the event stayed, unhandled, while its give-up failed (saw ${[...seen].join(', ')})`);
+        }));
+    const back = await waitFor(async () => { const now = await readTask(task.id); return now.owner?.kind === 'human' ? now : null; }, 'the task to come back to Lee');
+    assert.equal(back.owner?.id, lee.id);
+    assert.deepEqual(await agentLines(task.id), ['I couldn\'t take care of this. It\'s back with you.'], 'the agent says it in the task, once');
+    assert.equal((await waitFor(async () => { const row = await runRow(run.id); return row.status === 'stopped' ? row : null; }, 'the run to stop')).stop_requested_by, lee.id, 'and its run does not go on for a task that is no longer its own');
+  });
+
+  test('P2: a released event that gives up still stops the run, though the task is back with its owner, and says nothing false', async () => {
+    const { task, run } = await heldByAgent(lee, agents.lee!, 'Taken back, and the stop fails');
+    // The run cannot be stopped until the event has had its five tries (a fault in the database for this one run).
+    await withFault(`atk_stop_${run.id.replace(/-/g, '')}`, 'personal_runs', `OLD.id = '${run.id}' AND NEW.status = 'stopped'`,
+      `IF coalesce((SELECT max(attempts) FROM agent_task_events WHERE work_id = '${task.id}' AND kind = 'released' AND handled_at IS NULL), 99) < 5 THEN RAISE EXCEPTION 'injected fault'; END IF;`, async () => {
+        const current = await readTask(task.id);
+        expectStatus(await lee.browser.request('PATCH', workItemPath(task.id), { body: { owner: { kind: 'human', id: lee.id } }, headers: { 'if-match': `"${current.version}"` } }), 200);
+        const given = await waitFor(async () => { const row = await eventNow(task.id, 'released'); return row.handled_at ? row : null; }, 'the release to be given up', 60_000);
+        assert.equal(given.attempts, 5);
+      });
+    const stopped = await waitFor(async () => { const row = await runRow(run.id); return row.status === 'stopped' ? row : null; }, 'the run to stop');
+    assert.equal(stopped.stop_requested_by, lee.id, 'stopped as the person who took the task back');
+    assert.deepEqual(await agentLines(task.id), [], 'nothing is said: the person took it, and the line "still with you" would be false');
+    assert.equal((await readTask(task.id)).owner?.id, lee.id);
+  });
+
+  test('a retry that is waiting is found without another notification (a drain sets its timer from the database)', async () => {
+    const { task, run } = await heldByAgent(lee, agents.lee!, 'Waits for its time');
+    await pool.query(`INSERT INTO agent_task_events (kind, work_id, run_id, next_try_at) VALUES ('started', $1, $2, now() + interval '3 seconds')`, [task.id, run.id]);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    assert.equal((await readTask(task.id)).status, 'open', 'not before its time');
+    await waitFor(async () => (await readTask(task.id)).status === 'in_progress', 'the task to be Doing when the event is due', 20_000);
+  });
+
+  test('an event another replica handled is not counted as failed, so it is never given up', async () => {
+    const { task, run } = await heldByAgent(lee, agents.lee!, 'Handled meanwhile');
+    const { rows: [event] } = await pool.query(`INSERT INTO agent_task_events (kind, work_id, run_id, next_try_at, handled_at) VALUES ('started', $1, $2, now() + interval '1 hour', now()) RETURNING id`, [task.id, run.id]);
+    assert.equal(await agentTaskRows(db).failed(event.id), null);
+    assert.equal((await pool.query(`SELECT attempts FROM agent_task_events WHERE id = $1`, [event.id])).rows[0].attempts, 0);
+    const open = (await pool.query(`INSERT INTO agent_task_events (kind, work_id, run_id, next_try_at) VALUES ('started', $1, $2, now() + interval '1 hour') RETURNING id`, [task.id, run.id])).rows[0];
+    assert.deepEqual(await agentTaskRows(db).failed(open.id), { attempts: 1, waitSeconds: 1 });
+    await pool.query(`DELETE FROM agent_task_events WHERE id = $1`, [open.id]);
   });
 });
 
@@ -250,6 +301,15 @@ describe('the state line of an agent on a task (#856)', () => {
       ['stopped', 'Stopped: AI was turned off in this space · the task is back with you'], 'C-17: the owner is told');
     assert.deepEqual(line({ run: run({ status: 'stopped', stopRequestedBy: { id: 'maja', name: 'Maja' } }), task: { ownerUserId: 'ada', ownerAgentId: null, status: 'in_progress' } }),
       ['stopped', 'Stopped by Maja · the task is back with you']);
+    // Maja took the task herself: it is not "back with" the agent's owner (#931).
+    assert.deepEqual(line({ run: run({ status: 'stopped', stopRequestedBy: { id: 'maja', name: 'Maja' } }), task: { ownerUserId: 'maja', ownerAgentId: null, status: 'in_progress' }, taskOwnerName: 'Maja' }),
+      ['stopped', 'Stopped by Maja · the task is with Maja']);
+    assert.deepEqual(line({ viewerId: 'maja', run: run({ status: 'stopped', stopRequestedBy: { id: 'maja', name: 'Maja' } }), task: { ownerUserId: 'maja', ownerAgentId: null, status: 'in_progress' }, taskOwnerName: 'Maja' }),
+      ['stopped', 'Stopped by you · the task is with you']);
+    assert.deepEqual(line({ run: run({ status: 'stopped', stopRequestedBy: { id: 'maja', name: 'Maja' } }), task: { ownerUserId: null, ownerAgentId: null, status: 'open' } }),
+      ['stopped', 'Stopped by Maja'], 'a task nobody holds is not said to be anywhere');
+    assert.deepEqual(line({ run: run({ status: 'stopped', stopRequestedBy: { id: 'maja', name: 'Maja' } }) }),
+      ['stopped', 'Stopped by Maja · the task is back with you'], 'while the agent still holds it, the hand-back is the next step');
   });
 
   test('Stop is the owner\'s or a space admin\'s; Try again and Take it back are the owner\'s', () => {
