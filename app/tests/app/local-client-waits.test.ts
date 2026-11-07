@@ -4,10 +4,10 @@ import { before, describe, test } from 'node:test';
 import {
   agentConnectionPath, assistantChangeActionPath, assistantRunChangesActionPath, NEEDS_YOU_PATH, type AssistantRunUndone, type NeedsYouResponse,
 } from '@flux/contracts';
-import { pool } from './support/db.js';
+import { loseSpace, pool } from './support/db.js';
 import { apiUrl, publicOrigin } from './support/http.js';
 import { toolValue } from './support/mcp.js';
-import { actionScene } from './support/mcp-actions.js';
+import { actionScene, agentConnection } from './support/mcp-actions.js';
 import { addMember, expectStatus, grant, person, type Person } from './support/people.js';
 import { text } from './support/assistant-scene.js';
 
@@ -153,7 +153,8 @@ describe('A local client follows the owner\'s rights and waits like the assistan
     assert.equal(undone.undone, 1);
     const states = Object.fromEntries((await rows()).map((row) => [row.id, row.state]));
     assert.deepEqual([states[first!.id], states[second!.id]], ['applied', 'undone']);
-    assert.ok(early && later);
+    assert.deepEqual([(await titled('Earlier task')).map((row) => row.id), (await titled('Later task')).length], [[early], 0], 'the later task is gone and the earlier one stays');
+    assert.notEqual(later, early);
   });
 
   describe('attacks', () => {
@@ -188,15 +189,15 @@ describe('A local client follows the owner\'s rights and waits like the assistan
       await reset();
       await setMayDo('ask');
       await create('Lost access');
-      await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'denied', $4)
-        ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`, [randomUUID(), f.workspaceId, f.projectId, owner.id]);
+      // The scene's owner is the company's owner, who always reaches every space (#903): this puts them where an added-then-removed member is.
+      const restore = await loseSpace(f.projectId, owner.id);
       try {
         const [waiting] = await rows();
         const answer = await decide(owner, waiting!.id, 'apply');
         assert.ok([403, 404, 409].includes(answer.status), `Approve answered ${answer.status}`);
         assert.notEqual((await rows())[0]!.state, 'applied_after_wait');
         assert.equal((await titled('Lost access')).length, 0);
-      } finally { await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2`, [f.projectId, owner.id]); }
+      } finally { await restore(); }
     });
 
     test('Disconnect: the token stops at once and a change that waited can no longer be approved', async () => {
@@ -206,8 +207,13 @@ describe('A local client follows the owner\'s rights and waits like the assistan
       expectStatus(await scene.owner.request('PATCH', agentConnectionPath(scene.connectionId), { body: { mayDo: 'ask' } }), 200);
       const answer = await scene.tool('flux_create_task', { projectId: scene.projectId, clientCommandId: randomUUID(), task: { title: 'Disconnected' } });
       assert.match(text(answer), /^Waiting for /);
+      const waitingItems = async () => (expectStatus(await scene.owner.request('GET', NEEDS_YOU_PATH), 200) as NeedsYouResponse).items.filter((item) => item.key.startsWith('assistant:'));
+      assert.equal((await waitingItems()).length, 1, 'the owner is told one thing waits');
       expectStatus(await scene.owner.request('DELETE', agentConnectionPath(scene.connectionId)), 204);
-      const [waiting] = (await pool.query(`SELECT id FROM assistant_changes WHERE connection_id = $1`, [scene.connectionId])).rows as { id: string }[];
+      const [waiting] = (await pool.query(`SELECT id, state, wait_reason, refusal FROM assistant_changes WHERE connection_id = $1`, [scene.connectionId])).rows as
+        { id: string; state: string; wait_reason: string | null; refusal: string | null }[];
+      assert.deepEqual([waiting!.state, waiting!.wait_reason, waiting!.refusal], ['refused', null, 'Disconnected before you decided'], 'Disconnect closed what waited in the same step');
+      assert.equal((await waitingItems()).length, 0, 'no dead item stays in the Inbox');
       assert.ok([403, 404, 409].includes((await decide(solo, waiting!.id, 'apply')).status));
       assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'Disconnected'`)).rows[0].n), 0);
       assert.notEqual((await scene.raw('flux_list_work', { projectId: scene.projectId })).status, 200, 'the revoked connection is refused before any tool');
@@ -232,5 +238,106 @@ describe('A local client follows the owner\'s rights and waits like the assistan
         headers: { authorization: `Bearer ${f.accessToken}`, origin: publicOrigin, 'content-type': 'application/json' }, body: JSON.stringify({ expectedVersion: 1, title: 'Different' }) });
       assert.ok([401, 403].includes(response.status));
     });
+  });
+});
+
+// Co-work for another person (C-18, #859): a child unit given to another person's client and a request to it are another person's things,
+// like a task for someone else, so they wait for the sender's owner. Taking a task and giving a unit to one's own other client do not.
+describe('co-work for another person\'s client waits for the owner\'s OK', () => {
+  let jonas: Awaited<ReturnType<typeof agentConnection>>;
+  let ownSecond: Awaited<ReturnType<typeof agentConnection>>;
+  let task: { id: string; version: number };
+  let material: string;
+  before(async () => {
+    const make = async (who: Person, name: string) => (expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${f.workspaceId}/agents`, { body: { name, owner: 'self' } }), 201) as { id: string }).id;
+    jonas = await agentConnection(pool, peer.browser, await make(peer, 'Jonas Codex'), [f.projectId]);
+    ownSecond = await agentConnection(pool, f.owner, await make(owner, 'Second client'), [f.projectId]);
+    task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${f.projectId}/work`, { body: { title: 'Shared outcome' } }), 201) as { id: string; version: number };
+    material = String((expectStatus(await owner.browser.request('POST', `/api/v1/projects/${f.projectId}/materials`,
+      { body: { clientMutationId: randomUUID(), title: 'Review criteria', body: 'Exact revision' } }), 201) as { materialId: string }).materialId);
+  });
+  const base = (who: { runtimeSessionId: string }, role: string, clientCommandId: string = randomUUID()) =>
+    ({ projectId: f.projectId, runtimeSessionId: who.runtimeSessionId, clientCommandId, peerRequestClass: role });
+  const unitsOf = async (connectionId: string) => (await pool.query(`SELECT id, state, version FROM cowork_units WHERE assignment_connection_id = $1`, [connectionId])).rows as
+    { id: string; state: string; version: number }[];
+  const requests = async () => Number((await pool.query(`SELECT count(*)::int AS n FROM cowork_requests WHERE work_id = $1`, [task.id])).rows[0].n);
+  const waitingOf = async (operation: string) => (await rows()).filter((row) => row.operation === operation);
+  let root: { unitId: string; version: number }; let claim: { generation: number; version: number; lease: { id: string } };
+  const parent = () => ({ unitId: root.unitId, generation: claim.generation, leaseId: claim.lease.id });
+  const give = (to: { connectionId: string }, key: string, clientCommandId?: string) => f.tool('flux_create_unit', { ...base(f, 'review', clientCommandId),
+    taskId: task.id, unitKey: key, expectedTaskVersion: task.version, assignmentConnectionId: to.connectionId, parent: parent() });
+
+  test('taking a task and a unit for one\'s own other client do not wait; a unit for Jonas\'s client does', async () => {
+    await reset();
+    root = toolValue(await f.tool('flux_create_unit', { ...base(f, 'execute'), taskId: task.id, unitKey: 'take', expectedTaskVersion: task.version,
+      assignmentConnectionId: f.connectionId, parent: null })) as typeof root;
+    claim = toolValue(await f.tool('flux_claim_unit', { ...base(f, 'execute'), unitId: root.unitId, expectedVersion: root.version })) as typeof claim;
+    assert.equal((await rows()).length, 0, 'taking and claiming a task leave no change to decide');
+    const mine = toolValue(await give(ownSecond, 'own-helper')) as { unitId: string };
+    assert.ok(mine.unitId, 'a unit for the owner\'s own other client is made at once');
+    assert.equal((await rows()).length, 0);
+    const answer = await give(jonas, 'review-1');
+    assert.match(text(answer), /^Waiting for /);
+    assert.equal((await unitsOf(jonas.connectionId)).length, 0, 'nothing is given to Jonas\'s client yet');
+    const [waiting] = await waitingOf('cowork.unit.create');
+    assert.deepEqual([waiting!.state, waiting!.wait_reason], ['waiting', 'others']);
+    assert.equal((await inbox()).length, 1, 'one item in the owner\'s Inbox');
+    assert.equal((await peer.browser.request('POST', assistantChangeActionPath(waiting!.id, 'apply'), { body: {} })).status, 404, 'Jonas cannot approve it');
+  });
+
+  test('Approve gives the unit to Jonas\'s client, once; the client\'s retry says it was made', async () => {
+    const [waiting] = await waitingOf('cowork.unit.create');
+    expectStatus(await decide(owner, waiting!.id, 'apply'), 200);
+    const given = await unitsOf(jonas.connectionId);
+    assert.equal(given.length, 1);
+    assert.equal(given[0]!.state, 'pending');
+    assert.equal((await waitingOf('cowork.unit.create'))[0]!.state, 'applied_after_wait');
+    assert.match(text(await give(jonas, 'review-1', waiting!.client_command_id)), /approved this change and it was made/);
+    assert.equal((await unitsOf(jonas.connectionId)).length, 1, 'a retry makes no second unit');
+  });
+
+  test('a request to Jonas\'s client waits; Skip sends nothing; Approve queues it once', async () => {
+    const unit = (await unitsOf(jonas.connectionId))[0]!;
+    const send = (key: string, clientCommandId?: string) => {
+      const target = { type: 'work', id: task.id, version: task.version };
+      return f.tool('flux_send_request', { ...base(f, 'execute', clientCommandId), unitId: root.unitId, generation: claim.generation, leaseId: claim.lease.id,
+        recipientUnitId: unit.id, expectedRecipientUnitVersion: unit.version, recipientConnectionId: jonas.connectionId, intentKey: key, parentRequestId: null,
+        kind: 'review', target, sourceRefs: [{ type: 'material', id: material, version: 1 }], criteriaRefs: [target], peerUnblocking: true });
+    };
+    assert.match(text(await send('ask-1')), /^Waiting for /);
+    assert.equal(await requests(), 0, 'nothing reaches Jonas\'s client yet');
+    const first = (await waitingOf('cowork.request'))[0]!;
+    assert.equal(first.wait_reason, 'others');
+    expectStatus(await decide(owner, first.id, 'skip'), 200);
+    assert.equal(await requests(), 0, 'Skip sends nothing');
+    assert.match(text(await send('ask-2')), /^Waiting for /);
+    const second = (await waitingOf('cowork.request')).find((row) => row.state === 'waiting')!;
+    expectStatus(await decide(owner, second.id, 'apply'), 200);
+    assert.equal(await requests(), 1);
+    assert.equal(((await pool.query(`SELECT state, sender_connection_id FROM cowork_requests WHERE work_id = $1`, [task.id])).rows[0] as { state: string; sender_connection_id: string }).sender_connection_id, f.connectionId);
+    expectStatus(await decide(owner, second.id, 'apply'), 409);
+    assert.equal(await requests(), 1, 'a second Approve queues nothing more');
+  });
+
+  test('Only read refuses both, and nothing waits', async () => {
+    await pool.query(`DELETE FROM assistant_changes WHERE connection_id = $1`, [f.connectionId]);
+    await setMayDo('read');
+    try {
+      const refused = await give(jonas, 'review-read');
+      assert.equal((refused?.result as { isError?: boolean }).isError, true);
+      assert.equal((await rows()).filter((row) => row.state === 'waiting').length, 0);
+    } finally { await setMayDo('act'); }
+  });
+
+  test('Approve fails safe when the sender\'s claim has ended: nothing is given and the change closes', async () => {
+    await pool.query(`DELETE FROM assistant_changes WHERE connection_id = $1`, [f.connectionId]);
+    assert.match(text(await give(jonas, 'review-late')), /^Waiting for /);
+    const [waiting] = await waitingOf('cowork.unit.create');
+    const before = (await unitsOf(jonas.connectionId)).length;
+    await pool.query(`UPDATE cowork_units SET lease_expires_at = now() - interval '1 minute' WHERE id = $1`, [root.unitId]);
+    const answer = expectStatus(await decide(owner, waiting!.id, 'apply'), 403) as { error?: string };
+    assert.ok(answer.error, 'the owner is told why');
+    assert.equal((await waitingOf('cowork.unit.create'))[0]!.state, 'refused');
+    assert.equal((await unitsOf(jonas.connectionId)).length, before, 'no unit was given on a claim that had ended');
   });
 });

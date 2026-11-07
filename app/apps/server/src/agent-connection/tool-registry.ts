@@ -49,8 +49,11 @@ const RUN_PRIVATE: Record<string, { input: z.ZodType; view: string }> = {
   flux_create_unit: { input: ASSISTANT_UNIT_CREATE_INPUT, view: ASSISTANT_UNIT_CREATE_VIEW },
 };
 const RUN_EFFECTS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
-/** The change tools a local client shares with a run. The hand-off (`flux_create_unit`) is a run's only; a client's is a co-work unit. */
-const CHANGE_TOOLS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS.filter((name) => name !== 'flux_create_unit'));
+/**
+ * The change tools a local client shares with a run, and the co-work tools that can give something to another person's client: a unit
+ * assigned or transferred to it and a request to it wait for the owner's OK like a task for someone else (C-18). Their other uses do not wait.
+ */
+const CHANGE_TOOLS = new Set<string>([...ASSISTANT_RUN_EFFECT_TOOLS, 'flux_send_request', 'flux_transfer_unit']);
 const WAITING_NOTE = ' Some changes wait for your owner\'s OK instead of applying (deleting anything, other people\'s things, a task for someone else, '
   + 'and everything when your owner chose Ask me first): the result then says so in plain words. Do not retry it; carry on with other work.';
 type ToolOutput = { content?: { type: string; text?: string }[]; isError?: boolean };

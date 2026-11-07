@@ -8,7 +8,6 @@ import { agentExecutionInTransaction } from '../../apps/server/src/agent-connect
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant as giveAccess, person, project, removeFromSpace, workspace } from './support/people.js';
-import { waitUntilBlockedBy } from './support/locks.js';
 
 async function fixture() {
   // The agent's owner is added to the space, so their access can end (#903); a company owner or admin always reaches every space.

@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import type { Agent, TaskCoordination, WorkItem } from '@flux/contracts';
 import { pool } from './support/db.js';
-import { agentConnection, toolFailure } from './support/mcp-actions.js';
+import { agentConnection, approveRefused, approveWaiting, toolFailure, waits } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
@@ -34,7 +34,18 @@ async function scene() {
       return toolValue(await connected.tool('flux_claim_unit', { ...base(g.id, role), unitId, expectedVersion })) as
         { generation: number; version: number; lease: { id: string } };
     };
-    return { ...connected, standing, base, claimUnit };
+    /** A unit for another person's client waits for the sender's owner (C-18): this approves it as that owner and returns the unit's id. */
+    const give = async (to: { connectionId: string }, args: Record<string, unknown>) => {
+      assert.ok(waits(await connected.tool('flux_create_unit', { ...args, assignmentConnectionId: to.connectionId })), 'a unit for another person\'s client waits');
+      await approveWaiting(pool, who.browser, connected.connectionId, 'cowork.unit.create');
+      return String((await pool.query('SELECT id FROM cowork_units WHERE assignment_connection_id = $1 AND unit_key = $2', [to.connectionId, args.unitKey])).rows[0].id);
+    };
+    /** The same for a request to another person's client: waits, then the owner's Approve queues it. */
+    const sendApproved = async (message: Record<string, unknown> | null) => {
+      assert.ok(waits(message), 'a request to another person\'s client waits');
+      return approveWaiting(pool, who.browser, connected.connectionId, 'cowork.request');
+    };
+    return { ...connected, standing, base, claimUnit, give, sendApproved };
   };
   const task = async (title: string) => expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/work`,
     { body: { title } }), 201) as WorkItem;
@@ -55,10 +66,8 @@ test('a review request travels send -> inbox -> claim -> resolve with a pinned v
   const rootUnit = String(root.unitId);
   const rootClaim = await codex.claimUnit(rootUnit, 'execute');
   const openReview = await codex.standing('cowork.unit.create', a.id, 'review');
-  const review = toolValue(await codex.tool('flux_create_unit', { ...codex.base(openReview.id, 'review'), taskId: a.id, unitKey: 'review',
-    expectedTaskVersion: a.version, assignmentConnectionId: marekClaude.connectionId,
-    parent: { unitId: rootUnit, generation: rootClaim.generation, leaseId: rootClaim.lease.id } }));
-  const reviewUnit = String(review.unitId);
+  const reviewUnit = await codex.give(marekClaude, { ...codex.base(openReview.id, 'review'), taskId: a.id, unitKey: 'review', expectedTaskVersion: a.version,
+    parent: { unitId: rootUnit, generation: rootClaim.generation, leaseId: rootClaim.lease.id } });
   const reviewClaim = await marekClaude.claimUnit(reviewUnit, 'review');
 
   // One standing request grant covers every later request of this unit: no per-request owner prompt.
@@ -69,15 +78,17 @@ test('a review request travels send -> inbox -> claim -> resolve with a pinned v
       recipientConnectionId: marekClaude.connectionId, intentKey, parentRequestId: null, kind, target,
       sourceRefs: [{ type: 'material', id: f.material.materialId, version: 1 }], criteriaRefs: [target], peerUnblocking: true });
   const first = randomUUID();
-  const sent = toolValue(await send('review-1', { type: 'work', id: a.id, version: a.version }, first));
+  const sent = await codex.sendApproved(await send('review-1', { type: 'work', id: a.id, version: a.version }, first));
   assert.equal(sent.status, 'created');
   assert.equal(sent.state, 'queued');
-  // A lost response retried with the same command replays; the same intent under a new command returns the request.
-  assert.deepEqual(toolValue(await send('review-1', { type: 'work', id: a.id, version: a.version }, first)), sent);
-  assert.equal((toolValue(await send('review-1', { type: 'work', id: a.id, version: a.version }))).status, 'existing');
+  // A lost response retried with the same command says it was made; the same intent under a new command returns the request.
+  assert.match(JSON.stringify((await send('review-1', { type: 'work', id: a.id, version: a.version }, first))?.result), /approved this change and it was made/);
+  assert.equal((await codex.sendApproved(await send('review-1', { type: 'work', id: a.id, version: a.version }))).status, 'existing');
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_requests WHERE work_id=$1', [a.id])).rows[0].n, 1, 'retries never duplicate');
-  // A stale target is refused: a request names the current version only.
-  assert.equal(toolFailure(await send('review-old', { type: 'work', id: a.id, version: a.version + 1 })).code, 'COWORK_SOURCE_UNAVAILABLE');
+  // A stale target is refused when the owner approves: a request names the current version only.
+  assert.ok(waits(await send('review-old', { type: 'work', id: a.id, version: a.version + 1 })));
+  await approveRefused(pool, f.hubert.browser, codex.connectionId, 'cowork.request');
+  assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_requests WHERE work_id=$1', [a.id])).rows[0].n, 1, 'a stale request queued nothing');
 
   // The recipient finds it in its inbox; reading is not an acknowledgement.
   const inbox = toolValue(await marekClaude.tool('flux_coordination_inbox', { projectId: f.p.id }));
@@ -130,7 +141,7 @@ test('a review request travels send -> inbox -> claim -> resolve with a pinned v
     [{ verdict: 'passed', current: false, target: { type: 'work', id: a.id, version: a.version } }]);
 
   // The author asks again for the new version under the same standing grant: no other owner prompt or grant.
-  const again = toolValue(await send('review-2', { type: 'work', id: a.id, version: changed.version }));
+  const again = await codex.sendApproved(await send('review-2', { type: 'work', id: a.id, version: changed.version }));
   assert.equal(again.status, 'created');
   coordination = await read();
   assert.deepEqual(coordination.requests.map((r) => [r.state, (r.target as { version: number }).version]),
@@ -189,10 +200,8 @@ test('the recipient defers a queued request with a reason and boundary without c
   const rootUnit = String(root.unitId);
   const rootClaim = await codex.claimUnit(rootUnit, 'execute');
   const openHelp = await codex.standing('cowork.unit.create', a.id, 'plan');
-  const helper = toolValue(await codex.tool('flux_create_unit', { ...codex.base(openHelp.id, 'plan'), taskId: a.id, unitKey: 'help',
-    expectedTaskVersion: a.version, assignmentConnectionId: marekClaude.connectionId,
-    parent: { unitId: rootUnit, generation: rootClaim.generation, leaseId: rootClaim.lease.id } }));
-  const helpUnit = String(helper.unitId);
+  const helpUnit = await codex.give(marekClaude, { ...codex.base(openHelp.id, 'plan'), taskId: a.id, unitKey: 'help', expectedTaskVersion: a.version,
+    parent: { unitId: rootUnit, generation: rootClaim.generation, leaseId: rootClaim.lease.id } });
   const ask = await codex.standing('cowork.request', rootUnit, 'execute');
   const target = { type: 'work', id: a.id, version: a.version };
   const send = async (intentKey: string, kind: string) => { const reply = await codex.tool('flux_send_request', { ...codex.base(ask.id, 'execute'),
@@ -200,7 +209,7 @@ test('the recipient defers a queued request with a reason and boundary without c
     expectedRecipientUnitVersion: await f.unitVersion(helpUnit), recipientConnectionId: marekClaude.connectionId, intentKey, parentRequestId: null,
     kind, target, sourceRefs: [{ type: 'material', id: f.material.materialId, version: 1 }], criteriaRefs: [target], peerUnblocking: false });
     if ((reply?.result as { isError?: boolean } | undefined)?.isError) assert.fail(JSON.stringify(toolFailure(reply)));
-    return toolValue(reply); };
+    return codex.sendApproved(reply); };
   const sent = await send('help-1', 'help');
   const requestId = String(sent.requestId);
   const second = await send('handoff-1', 'handoff');

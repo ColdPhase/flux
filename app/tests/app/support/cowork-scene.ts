@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import type { Agent, WorkItem } from '@flux/contracts';
 import { pool } from './db.js';
-import { agentConnection } from './mcp-actions.js';
+import { agentConnection, approveWaiting, waits } from './mcp-actions.js';
 import { toolValue } from './mcp.js';
+import { assistantChangeActionPath } from '@flux/contracts';
 import { addMember, expectStatus, person, project, workspace, type Person } from './people.js';
 
 // The shared starting point of the co-work card and concurrency tests (#153, #400): two owners, three real OAuth
@@ -86,10 +87,31 @@ export async function coworkScene() {
   /** The holder opens a child unit of `role` on the same task for `assignee` (not yet claimed by it). */
   async function openUnit(holder: Conn, held: { unitId: string; claim: Claim }, t: WorkItem, role: Role, assignee: Conn, key: string) {
     const grantOf = await holder.standing('cowork.unit.create', t.id, role);
-    const created = toolValue(await holder.call('flux_create_unit', { ...holder.base(grantOf.id, role), taskId: t.id, unitKey: key,
+    const answer = await holder.call('flux_create_unit', { ...holder.base(grantOf.id, role), taskId: t.id, unitKey: key,
       expectedTaskVersion: t.version, assignmentConnectionId: assignee.connectionId,
-      parent: { unitId: held.unitId, generation: held.claim.generation, leaseId: held.claim.lease.id } }));
-    return String(created.unitId);
+      parent: { unitId: held.unitId, generation: held.claim.generation, leaseId: held.claim.lease.id } });
+    // A unit for another person's client waits for the holder's owner (C-18, #859), whose Approve opens it.
+    if (assignee.who.id !== holder.who.id) {
+      if (!waits(answer)) throw new Error(`a unit for another person's client should wait: ${JSON.stringify(answer)}`);
+      return String((await approveWaiting(pool, holder.who.browser, holder.connectionId, 'cowork.unit.create')).unitId);
+    }
+    return String(toolValue(answer).unitId);
+  }
+  /**
+   * A request to another person's client waits for its sender's owner (C-18): this approves it and answers as the tool would have
+   * had it not waited. An Approve that is refused answers as a failed tool call, with the owner's words.
+   */
+  async function approvedReply(sender: Conn, recipient: Conn, reply: Reply): Promise<Reply> {
+    if (recipient.who.id === sender.who.id || !waits(reply)) return reply;
+    const [waiting] = (await pool.query(`SELECT id FROM assistant_changes WHERE connection_id = $1 AND operation = 'cowork.request' AND state = 'waiting' ORDER BY created_at DESC`,
+      [sender.connectionId])).rows as { id: string }[];
+    const id = waiting!.id;
+    expectStatus(await sender.who.browser.request('POST', assistantChangeActionPath(id, 'apply'), { body: {} }), 200);
+    const [row] = (await pool.query(`SELECT state, refusal, receipt FROM assistant_changes WHERE id = $1`, [id])).rows as
+      { state: string; refusal: string | null; receipt: { value: unknown } | null }[];
+    return row!.state === 'applied_after_wait'
+      ? { result: { content: [{ type: 'text', text: JSON.stringify(row!.receipt!.value) }] } }
+      : { result: { isError: true, content: [{ type: 'text', text: JSON.stringify({ code: 'ASSISTANT_CHANGE_REFUSED', error: row!.refusal }) }] } };
   }
   /**
    * The author takes `t`, opens a review unit for `reviewer`, which claims it, and a standing request grant is ready: the
@@ -105,9 +127,9 @@ export async function coworkScene() {
         leaseId: held.claim.lease.id, recipientUnitId: reviewUnit, expectedRecipientUnitVersion: reviewClaim.version, recipientConnectionId: reviewer.connectionId,
         intentKey, parentRequestId: null, kind: options.kind ?? 'review', target,
         sourceRefs: options.sourceRefs ?? [{ type: 'material', id: material.materialId, version: 1 }], criteriaRefs: [target], peerUnblocking: true });
-    const send = (intentKey: string, target: Record<string, unknown>, options: { clientCommandId?: string; kind?: string; sourceRefs?: unknown[] } = {}) =>
-      author.call('flux_send_request', sendArgs(intentKey, target, options));
-    return { held, reviewUnit, reviewClaim, ask, send, sendArgs };
+    const send = async (intentKey: string, target: Record<string, unknown>, options: { clientCommandId?: string; kind?: string; sourceRefs?: unknown[] } = {}) =>
+      approvedReply(author, reviewer, await author.call('flux_send_request', sendArgs(intentKey, target, options)));
+    return { held, reviewUnit, reviewClaim, ask, send, sendArgs, approvedReply: (reply: Reply) => approvedReply(author, reviewer, reply) };
   }
 
   return { hubert, marek, ada, vera, olga, ws, p, removeAccess, demote, connect, task, material, unit, request, take, openUnit, startReview };

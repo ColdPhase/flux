@@ -349,10 +349,11 @@ test('review is by a separate non-author: the author, an execution grant, anothe
   assert.deepEqual(view.verdicts.map((v) => v.current), [false]);
   const second = await f.openUnit(codex, review.held, changed, 'review', marekClaude, 'review-b');
   const secondClaim = await marekClaude.claimUnit(second, 'review');
-  const askAgain = await codex.call('flux_send_request', { ...codex.base(review.ask.id, 'execute'), unitId: review.held.unitId, generation: review.held.claim.generation,
+  // A request to another person's client waits for the sender's owner, whose Approve queues it.
+  const askAgain = await review.approvedReply(await codex.call('flux_send_request', { ...codex.base(review.ask.id, 'execute'), unitId: review.held.unitId, generation: review.held.claim.generation,
     leaseId: review.held.claim.lease.id, recipientUnitId: second, expectedRecipientUnitVersion: secondClaim.version, recipientConnectionId: marekClaude.connectionId,
     intentKey: 'review-2', parentRequestId: null, kind: 'review', target: { type: 'work', id: a.id, version: changed.version },
-    sourceRefs: [{ type: 'work', id: a.id, version: changed.version }], criteriaRefs: [{ type: 'work', id: a.id, version: changed.version }], peerUnblocking: true });
+    sourceRefs: [{ type: 'work', id: a.id, version: changed.version }], criteriaRefs: [{ type: 'work', id: a.id, version: changed.version }], peerUnblocking: true }));
   const requestTwo = String(toolValue(askAgain).requestId);
   // Marek\'s agent needs its own grants: the first reviewer\'s do not apply to its unit.
   const mClaim = await marekClaude.standing('cowork.request.claim', second, 'review');

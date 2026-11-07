@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, AGENT_PEER_REQUEST_CLASSES, type AgentExecutionCommand, type AgentJsonValue,
   type AgentOperation, type AgentPeerRequestClass } from '@flux/contracts';
 import { COWORK_CHECKPOINT_LIMITS, COWORK_DECLINE_REASONS, COWORK_DEFER_BOUNDARIES, COWORK_DEFER_REASONS, InvalidInputError } from '@flux/core';
-import type { Database } from '@flux/db';
+import { assistantChangeRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
 import { ownerAssistantUnitCreationInTransaction } from '../co-work/assistant-units.js';
 import { coWorkClaimCheckpoint, coWorkClaimInTransaction } from '../co-work/claims.js';
 import { COWORK_CLAIM_POLICY, COWORK_RESPONSE_POLICY, coworkPolicies } from '../co-work/policy.js';
@@ -59,6 +59,12 @@ function command({ projectId, runtimeSessionId, clientCommandId, peerRequestClas
     audience: { kind: 'project', projectId }, objectId, sources, payload };
 }
 
+/** Whether a connection is another person's: what a client gives to it is another person's thing. Unknown connections fall to the ordinary refusal. */
+async function forAnotherPerson(db: Database, claims: FluxMcpClaims, connectionId: string, projectId: string): Promise<boolean> {
+  const connection = await assistantChangeRows(db as DbExecutor).connection(connectionId, projectId);
+  return !!connection && connection.ownerUserId !== claims.ownerUserId;
+}
+
 /**
  * Co-work tools (#153) over the existing internal compositions, one transaction per call. Each composition runs #152's
  * prepare/complete itself (current runtime, owner rights, command ledger, receipt) and writes no stream event. Unit claims,
@@ -87,10 +93,10 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       parent: z.strictObject({ unitId: id, generation: version, leaseId: id }).nullable()
         .describe('null for a root unit; otherwise your live claim on a unit of the same task.') }),
     annotations,
-  }, ({ taskId, unitKey, expectedTaskVersion, assignmentConnectionId, parent, ...input }) => run(() => {
+  }, ({ taskId, unitKey, expectedTaskVersion, assignmentConnectionId, parent, ...input }) => run(async () => {
     // An assistant run, or the owner's Apply of its saved hand-off, is the only caller of the owner-assistant adapter: the server
     // chose it from the verified run context (claims), never from this input. Every other caller keeps the unchanged ordinary path.
-    if (claims.run || claims.approval) {
+    if (claims.run || claims.approval?.runId) {
       if (parent !== null) throw new InvalidInputError('A hand-off from your assistant has no parent unit');
       return execute(input as unknown as ActionInput, 'cowork.unit.create', taskId,
         { unitKey, expectedTaskVersion, assignmentConnectionId, parent: null, peerRequestClass: input.peerRequestClass },
@@ -101,8 +107,15 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
           return coWorkUnitOutcome(creation, { workspaceId: runtime.workspaceId, projectId: input.projectId });
         });
     }
-    return db.transaction(async (tx) => coWorkUnitCreateInTransaction(tx, claims, command(input, 'cowork.unit.create', taskId,
-      { unitKey, expectedTaskVersion, assignmentConnectionId, parent }), (await coworkPolicies(tx, input.projectId)).unit));
+    const create = async (tx: Transaction) => coWorkUnitCreateInTransaction(tx, claims, command(input, 'cowork.unit.create', taskId,
+      { unitKey, expectedTaskVersion, assignmentConnectionId, parent }), (await coworkPolicies(tx, input.projectId)).unit);
+    // A child unit given to another person's client is another person's thing: it waits for the owner's OK like a task for someone
+    // else (C-18, #859), and Approve repeats this call as the client's own, while its runtime session and parent claim stay live.
+    if (parent !== null && (claims.approval || await forAnotherPerson(db, claims, assignmentConnectionId, input.projectId)))
+      return execute({ ...input, sources: [] } as unknown as ActionInput, 'cowork.unit.create', taskId,
+        { unitKey, expectedTaskVersion, assignmentConnectionId, parent, peerRequestClass: input.peerRequestClass },
+        async ({ transaction, runtime }) => coWorkUnitOutcome(await create(transaction), { workspaceId: runtime.workspaceId, projectId: input.projectId }));
+    return db.transaction(create);
   }));
 
   register('cowork.claim').registerTool('flux_claim_unit', {
@@ -168,9 +181,16 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       + '(COWORK_REVIEW_SEPARATION), and open requests on the unit refuse the transfer (COWORK_UNIT_REQUESTS_OPEN).',
     inputSchema: z.strictObject({ ...execution, ...unitFence,
       assignmentConnectionId: id.describe('The connection that should continue the unit.') }), annotations,
-  }, ({ unitId, expectedVersion, generation, leaseId, assignmentConnectionId, ...input }) => run(() => db.transaction(async (tx) =>
-    coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.transfer', unitId,
-      { expectedVersion, generation, leaseId, assignmentConnectionId }), (await coworkPolicies(tx, input.projectId)).unit))));
+  }, ({ unitId, expectedVersion, generation, leaseId, assignmentConnectionId, ...input }) => run(async () => {
+    const payload = { expectedVersion, generation, leaseId, assignmentConnectionId };
+    const transfer = async (tx: Transaction) => coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.transfer', unitId, payload),
+      (await coworkPolicies(tx, input.projectId)).unit);
+    // Handing the unit to another person's client is giving it another person's work: it waits for the owner's OK (C-18, #859).
+    if (claims.approval || await forAnotherPerson(db, claims, assignmentConnectionId, input.projectId))
+      return execute({ ...input, sources: [] } as unknown as ActionInput, 'cowork.unit.transfer', unitId, payload,
+        async ({ transaction }) => ({ value: { ...await transfer(transaction) } as unknown as { [key: string]: AgentJsonValue }, postconditions: [] }));
+    return db.transaction(transfer);
+  }));
 
   register('cowork.unit.decline').registerTool('flux_decline_unit', {
     title: 'Hand a unit transferred to you back to the connection that sent it',
@@ -262,10 +282,17 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       lifetimeSeconds: z.int().min(60).max(604800).default(86400) }), annotations,
   }, ({ unitId, generation, leaseId, recipientUnitId, expectedRecipientUnitVersion, recipientConnectionId, intentKey, parentRequestId,
     kind, target, sourceRefs, criteriaRefs, priority, peerUnblocking, lifetimeSeconds, ...input }) => run(() =>
-    db.transaction(async (tx) => coWorkRequestInTransaction(tx, claims, command(input, 'cowork.request', unitId, { generation, leaseId,
-      request: { unitId: recipientUnitId, expectedUnitVersion: expectedRecipientUnitVersion, recipientConnectionId, intentKey,
-        parentRequestId, kind, target, sourceRefs, criteriaRefs, priority, peerUnblocking, lifetimeSeconds } } as unknown as AgentJsonValue),
-    (await coworkPolicies(tx, input.projectId)).request))));
+    (async () => {
+      const payload = { generation, leaseId, request: { unitId: recipientUnitId, expectedUnitVersion: expectedRecipientUnitVersion, recipientConnectionId,
+        intentKey, parentRequestId, kind, target, sourceRefs, criteriaRefs, priority, peerUnblocking, lifetimeSeconds } } as unknown as AgentJsonValue;
+      const send = async (tx: Transaction) => coWorkRequestInTransaction(tx, claims, command(input, 'cowork.request', unitId, payload),
+        (await coworkPolicies(tx, input.projectId)).request);
+      // A request to another person's client waits for the owner's OK (C-18, #859), as a unit given to it does.
+      if (claims.approval || await forAnotherPerson(db, claims, recipientConnectionId, input.projectId))
+        return execute({ ...input, sources: [] } as unknown as ActionInput, 'cowork.request', unitId, payload,
+          async ({ transaction }) => ({ value: { ...await send(transaction) } as unknown as { [key: string]: AgentJsonValue }, postconditions: [] }));
+      return db.transaction(send);
+    })()));
 
   const recover = coWorkRecovery(db, cursorSecret);
   tools.forScope('flux.context.read').registerTool('flux_coordination_inbox', {

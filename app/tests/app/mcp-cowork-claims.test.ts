@@ -7,7 +7,7 @@ import { DomainError } from '@flux/core';
 import { coWorkClaimInTransaction } from '../../apps/server/src/co-work/claims.js';
 import { COWORK_CLAIM_POLICY } from '../../apps/server/src/co-work/policy.js';
 import { db, pool } from './support/db.js';
-import { agentConnection, toolFailure } from './support/mcp-actions.js';
+import { agentConnection, approveWaiting, toolFailure, waits } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
@@ -352,8 +352,10 @@ test('release writes a typed checkpoint under the live fence; the next holder, e
   // Transfer to Marek's connection: the former holder loses the unit, the assignee claims it under its own owner's grant
   // and receives the same checkpoint, written by another connection and owner.
   const transferGrant = await codex.standing('cowork.unit.transfer', root.unitId, 'execute');
-  const transferred = toolValue(await codex.tool('flux_transfer_unit', { ...codex.base(transferGrant.id, 'execute'), ...fenceOf(resumed),
-    assignmentConnectionId: marek.connectionId }));
+  // Marek's connection is another person's: the transfer waits for Codex's owner (C-18), whose Approve hands the unit over.
+  assert.ok(waits(await codex.tool('flux_transfer_unit', { ...codex.base(transferGrant.id, 'execute'), ...fenceOf(resumed),
+    assignmentConnectionId: marek.connectionId })), 'a transfer to another person\'s client waits');
+  const transferred = await approveWaiting(pool, f.hubert.browser, codex.connectionId, 'cowork.unit.transfer');
   assert.deepEqual([transferred.state, transferred.assignmentConnectionId, transferred.version], ['pending', marek.connectionId, 5]);
   assert.equal(toolFailure(await claimTool(codex, claimGrant.id, root.unitId, 5)).code, 'COWORK_UNIT_NOT_FOUND');
   const marekGrant = await marek.standing('cowork.claim', root.unitId, 'execute');

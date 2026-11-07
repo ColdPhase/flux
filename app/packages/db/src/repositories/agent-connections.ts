@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, gt, inArray, isNull, or } from 'drizzle-orm';
+import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
 import type { AgentConnection, AgentMcpPolicy, CreateAgentConnectionCommand } from '@flux/contracts';
 // Structural adapter inputs avoid the current core/db build cycle; core owns the port.
 type AgentOauthFlow = { fingerprint: string; clientId: string; scopes: readonly string[]; expiresAt: Date };
@@ -144,11 +144,22 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
       });
     },
 
+    /**
+     * Disconnect. What this client had waiting for its owner can never be approved once the connection is gone, so the same
+     * transaction closes it, and no dead item stays in the Inbox. The connection is locked first, as every change of the client is.
+     */
     revoke(ownerUserId: string, connectionId: string): Promise<boolean> {
-      return db.transaction(async (tx) => (await tx.update(schema.agentConnections)
-        .set({ revokedAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId),
-          isNull(schema.agentConnections.revokedAt))).returning({ id: schema.agentConnections.id })).length > 0);
+      return db.transaction(async (tx) => {
+        const revoked = await tx.update(schema.agentConnections)
+          .set({ revokedAt: new Date(), updatedAt: new Date() })
+          .where(and(eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId),
+            isNull(schema.agentConnections.revokedAt))).returning({ id: schema.agentConnections.id });
+        if (!revoked.length) return false;
+        await tx.update(schema.assistantChanges)
+          .set({ state: 'refused', waitReason: null, refusal: 'Disconnected before you decided', version: sql`${schema.assistantChanges.version} + 1`, updatedAt: new Date() })
+          .where(and(eq(schema.assistantChanges.connectionId, connectionId), isNull(schema.assistantChanges.runId), eq(schema.assistantChanges.state, 'waiting')));
+        return true;
+      });
     },
 
     /**

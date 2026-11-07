@@ -50,14 +50,17 @@ export async function reexecuteChange(db: Database, change: AssistantChangeRow, 
   const call = change.preparedCommand as AssistantCall | null;
   if (!call || change.runId && !settings || !change.runId && !change.connectionId) return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'Your assistant is no longer available' };
   const approval: AssistantApproval = { changeId: change.id, runId: change.runId, purpose: 'owner_approval', decidedBy };
-  // The assistant's change is re-executed as the assistant; a local client's, as the connection that made it (#859).
-  const claims: FluxMcpClaims = { ownerUserId: change.ownerUserId, connectionId: change.runId ? settings!.connectionId : change.connectionId!, clientId: null,
-    grantReferenceId: null, scopes: ['flux.context.read', 'flux.action.execute'], approval };
+  // The assistant's change is re-executed as the assistant; a local client's, as the connection that made it (#859). A client's waiting
+  // co-work call also keeps its sign-in, so Approve repeats it as that client; its runtime session and claim must still be live.
+  const bearer = !change.runId ? call.bearer : undefined;
+  const claims: FluxMcpClaims = { ownerUserId: change.ownerUserId, connectionId: change.runId ? settings!.connectionId : change.connectionId!,
+    clientId: bearer?.clientId ?? null, grantReferenceId: bearer?.grantReferenceId ?? null,
+    scopes: (bearer?.scopes ?? ['flux.context.read', 'flux.action.execute']) as FluxMcpClaims['scopes'], approval };
   const tool = savedTools(db, claims).get(call.tool);
   if (!tool) return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'This kind of change is no longer available' };
   // A saved hand-off is decoded by the exact private view it was prepared with: an unknown or unsupported one needs Ask again,
   // and nothing is rebuilt from guessed fields or a bootstrap (R2).
-  if (call.tool === 'flux_create_unit' && (call.view !== ASSISTANT_UNIT_CREATE_VIEW || !ASSISTANT_UNIT_CREATE_INPUT.safeParse(call.args).success))
+  if (change.runId && call.tool === 'flux_create_unit' && (call.view !== ASSISTANT_UNIT_CREATE_VIEW || !ASSISTANT_UNIT_CREATE_INPUT.safeParse(call.args).success))
     return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'This hand-off can no longer be applied. Ask again' };
   const output = await tool({ ...call.args, assistantCall: call }, {});
   if (!output.isError) return { ok: true };

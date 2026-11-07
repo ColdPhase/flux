@@ -29,6 +29,11 @@ export interface AssistantCall {
   tool: string; args: Record<string, unknown>;
   /** The server-selected run-private view the arguments were validated against (R2); a waiting change decodes with exactly this one. */
   view?: string;
+  /**
+   * The sign-in of the local client that made a waiting co-work call (clientId, grant reference and token scopes, which name no secret): Approve
+   * repeats the call as that client, under its runtime session and claim, which must still be live. Never set for a run.
+   */
+  bearer?: { clientId: string | null; grantReferenceId: string | null; scopes: string[] };
 }
 /** What the run's tool returns instead of an object when its change waits or is deferred: plain words. */
 export interface AssistantText { assistantText: string }
@@ -78,7 +83,7 @@ const OBJECT: Record<string, AssistantObjectType> = {
   'work.create': 'work', 'work.update': 'work', 'result.record': 'result', 'decision.propose': 'decision', 'doc.create': 'doc',
   'doc.update': 'doc', 'map.create': 'map', 'map.rename': 'map', 'map.thought.create': 'thought', 'map.thought.update': 'thought',
   'map.thought.delete': 'thought', 'map.positions.update': 'thought', 'map.link.create': 'link', 'map.link.delete': 'link',
-  'conversation.create': 'message', 'conversation.reply': 'message', 'cowork.unit.create': 'work',
+  'conversation.create': 'message', 'conversation.reply': 'message', 'cowork.unit.create': 'work', 'cowork.request': 'work', 'cowork.unit.transfer': 'work',
 };
 
 interface Target {
@@ -165,7 +170,7 @@ async function withinRunPlace(tx: Transaction, operation: AgentOperation, object
 
 /** Who made the target and how the change reads, read inside the change's transaction. */
 async function describe(tx: Transaction, operation: string, objectId: string | null, payload: Record<string, unknown>,
-  owner: string): Promise<Target> {
+  owner: string, client: boolean): Promise<Target> {
   const rows = assistantChangeRows(tx as DbExecutor);
   // "Yours" is what you or any of your agents made (F-036 Terms), not only this agent.
   const agents = await rows.agentIdsOf(owner);
@@ -264,7 +269,32 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
     }
     case 'conversation.create': case 'conversation.reply':
       return { ...base, objectId: null, title: text((payload as { body?: unknown }).body).slice(0, 80) };
+    case 'cowork.unit.transfer': {
+      const to = typeof payload.assignmentConnectionId === 'string' ? await rows.connection(payload.assignmentConnectionId, null) : null;
+      if (!client || !to || to.computeSource === 'owner_assistant' || to.revokedAt) throw new DomainError(404, 'COWORK_ASSIGNEE_UNAVAILABLE', 'That agent is not available');
+      const forOther = to.ownerUserId !== owner;
+      return { ...base, objectId, title: `unit to ${to.label}`.slice(0, 200), forOther, maker: forOther ? to.ownerUserId : null, recipient: to.label };
+    }
+    case 'cowork.request': {
+      // A local client asks another person's client for something (C-18, #859): another person's thing, so it waits for the owner's OK.
+      const asked = (payload.request ?? {}) as { recipientConnectionId?: unknown; kind?: unknown };
+      const recipient = typeof asked.recipientConnectionId === 'string' ? await rows.connection(asked.recipientConnectionId, null) : null;
+      if (!client || !recipient || recipient.computeSource === 'owner_assistant' || recipient.revokedAt)
+        throw new DomainError(404, 'COWORK_ASSIGNEE_UNAVAILABLE', 'That agent is not available');
+      const forOther = recipient.ownerUserId !== owner;
+      return { ...base, objectId, title: `${typeof asked.kind === 'string' ? asked.kind : 'help'} request to ${recipient.label}`.slice(0, 200), forOther,
+        maker: forOther ? recipient.ownerUserId : null, recipient: recipient.label };
+    }
     case 'cowork.unit.create': {
+      if (client) {
+        // A local client's child unit for another client (C-18, #859): for another person's client it is another person's thing and waits.
+        const task = objectId ? await rows.work(objectId) : null;
+        const to = typeof payload.assignmentConnectionId === 'string' ? await rows.connection(payload.assignmentConnectionId, null) : null;
+        if (!to || to.computeSource === 'owner_assistant' || to.revokedAt) throw new DomainError(404, 'COWORK_ASSIGNEE_UNAVAILABLE', 'That agent is not available');
+        const forOther = to.ownerUserId !== owner;
+        return { ...base, title: task ? `#${task.number} ${task.title}`.slice(0, 200) : '', forOther, maker: forOther ? to.ownerUserId : null, recipient: to.label,
+          beforeVersion: typeof payload.expectedTaskVersion === 'number' ? payload.expectedTaskVersion : task?.version ?? null };
+      }
       // A hand-off is to the owner's own other agent only. A foreign or unavailable recipient is refused before anything waits, so no
       // owner Apply can ever be asked to authorize it. The adapter checks it again under its locks when the unit is opened.
       const work = objectId ? await rows.work(objectId) : null;
@@ -289,7 +319,7 @@ const CHANGES_THINGS: ReadonlySet<string> = new Set(['work.create', 'work.update
 /** Whether this change always waits for the owner's OK (F-036 AG-3): a deletion, or something of another person's. Read inside the change's transaction. */
 export async function alwaysWaits(tx: Transaction, operation: string, objectId: string | null, payload: Record<string, unknown>, owner: string): Promise<boolean> {
   if (!CHANGES_THINGS.has(operation)) return false;
-  const target = await describe(tx, operation, objectId, payload, owner);
+  const target = await describe(tx, operation, objectId, payload, owner, false);
   return target.removal || target.forOther || !target.mine;
 }
 
@@ -465,7 +495,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         for (const source of input.sources ?? []) if (await sourceRows.sourceVersion(authority.workspaceId, input.projectId, source.materialId) !== source.version)
           throw new DomainError(409, 'SOURCE_VERSION_CONFLICT', 'A referenced source changed; recover before continuing');
         const ownerName = (await rows.names([claims.ownerUserId])).get(claims.ownerUserId) ?? 'your owner';
-        described = await describe(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, claims.ownerUserId);
+        described = await describe(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, claims.ownerUserId, !runId);
         const target = described;
         const phrase = `${target.words.phrase} ${target.words.noun}`;
         if (!approval) {
@@ -490,7 +520,8 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
               throw new DomainError(413, 'ASSISTANT_CHANGE_TOO_LARGE', 'This change is too large to keep for your OK');
             await rows.insert({ id: randomUUID(), workspaceId: authority.workspaceId, projectId: input.projectId, ...source, ownerUserId: claims.ownerUserId,
               agentId: authority.agentId, clientCommandId: input.clientCommandId, fingerprint, tool: call.tool, operation, objectType: target.objectType,
-              objectId: target.objectId, objectTitle: target.title, state: 'waiting', waitReason: outcome.reason, preparedCommand: call,
+              objectId: target.objectId, objectTitle: target.title, state: 'waiting', waitReason: outcome.reason,
+              preparedCommand: !runId && operation.startsWith('cowork.') ? { ...call, bearer: { clientId: claims.clientId, grantReferenceId: claims.grantReferenceId, scopes: [...claims.scopes] } } : call,
               policyVersion: authority.policyVersion, beforeVersion: target.beforeVersion, otherUserId: target.maker, createdAt: new Date() });
             await session.flushEvents();
             return { assistantText: `Waiting for ${ownerName}'s OK: ${phrase}${target.title ? ` ${target.title}` : ''}.` };

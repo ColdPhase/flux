@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
-import type { AgentOperation, ExternalClientDesignation } from '@flux/contracts';
+import { assistantChangeActionPath, type AgentOperation, type ExternalClientDesignation } from '@flux/contracts';
 import { publicOrigin, register, uniqueEmail, type Browser } from './http.js';
 import { beginOauth, expect, mcp, oauthToken, toolValue } from './mcp.js';
 
@@ -18,6 +18,44 @@ export function toolFailure(message: Record<string, unknown> | null) {
   const result = message?.result as { isError?: boolean; content?: { text?: string }[] } | undefined;
   assert.equal(result?.isError, true, `expected a tool error: ${JSON.stringify(message)}`);
   return JSON.parse(result!.content![0]!.text ?? '') as { code: string; error: string };
+}
+
+/**
+ * A unit, a transfer or a request for another person's client waits for its sender's owner (C-18, #859): the call answers in plain
+ * words. This is that owner's Approve, in their own signed-in session, of the one such change waiting for `connectionId`; it returns
+ * what the approved call produced (the unit or request), as the call would have answered had it not waited.
+ */
+export async function approveWaiting(pool: Pool, owner: Browser, connectionId: string, operation: AgentOperation): Promise<Record<string, unknown>> {
+  const id = await waitingId(pool, connectionId, operation);
+  expect(await owner.request('POST', assistantChangeActionPath(id, 'apply'), { body: {} }), 200);
+  const [done] = (await pool.query(`SELECT state, receipt FROM assistant_changes WHERE id = $1`, [id])).rows as { state: string; receipt: { value: Record<string, unknown> } }[];
+  assert.equal(done!.state, 'applied_after_wait');
+  return done!.receipt.value;
+}
+
+async function waitingId(pool: Pool, connectionId: string, operation: AgentOperation): Promise<string> {
+  const waiting = (await pool.query(`SELECT id FROM assistant_changes WHERE connection_id = $1 AND operation = $2 AND state = 'waiting' ORDER BY created_at DESC`,
+    [connectionId, operation])).rows as { id: string }[];
+  assert.equal(waiting.length, 1, `one ${operation} waits for its owner`);
+  return waiting[0]!.id;
+}
+
+/**
+ * The owner's Approve of a waiting change that can no longer be made (its target changed, its claim ended): the answer is the plain
+ * words why (403), the change closes as refused, and nothing is made. Returns those words.
+ */
+export async function approveRefused(pool: Pool, owner: Browser, connectionId: string, operation: AgentOperation): Promise<string> {
+  const id = await waitingId(pool, connectionId, operation);
+  const answer = expect(await owner.request('POST', assistantChangeActionPath(id, 'apply'), { body: {} }), 403) as { error?: string };
+  const [row] = (await pool.query(`SELECT state FROM assistant_changes WHERE id = $1`, [id])).rows as { state: string }[];
+  assert.equal(row!.state, 'refused', 'the change is closed, not left waiting');
+  assert.ok(answer.error, 'the owner is told why');
+  return String(answer.error);
+}
+
+/** Whether a tool answered that the change waits for its owner. */
+export function waits(message: Record<string, unknown> | null): boolean {
+  return /Waiting for .+'s OK/.test(JSON.stringify(message?.result ?? null));
 }
 
 /** The tools that still name the runtime session of bootstrap (their receipts are bound to it), and those that name a unit's role. */

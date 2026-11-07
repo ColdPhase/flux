@@ -187,6 +187,8 @@ const PHRASES: Record<string, { phrase: string; verb: string; noun: string }> = 
   'conversation.create': { phrase: 'post', verb: 'Post', noun: 'message' },
   'conversation.reply': { phrase: 'post', verb: 'Post', noun: 'message' },
   'cowork.unit.create': { phrase: 'hand off', verb: 'Hand off', noun: 'task' },
+  'cowork.request': { phrase: 'send', verb: 'Send', noun: 'request' },
+  'cowork.unit.transfer': { phrase: 'hand over', verb: 'Hand over', noun: 'unit' },
 };
 
 /** The run-private view of `flux_create_unit` (AST-3 R2): its strict input has no bootstrap runtime or grant. Stored with a waiting hand-off. */
@@ -228,7 +230,7 @@ export function assistantChangeSummary(changes: readonly Pick<AssistantChange, '
 }
 
 const PAST: Record<string, string> = { add: 'added', change: 'changed', close: 'closed', rename: 'renamed', record: 'recorded', propose: 'proposed',
-  edit: 'edited', remove: 'removed', move: 'moved', post: 'posted', set: 'set', hand: 'handed' };
+  edit: 'edited', remove: 'removed', move: 'moved', post: 'posted', set: 'set', hand: 'handed', send: 'sent' };
 /** "add task" becomes "added task" for a message about what already happened. */
 export function assistantPastPhrase(phrase: string): string {
   const space = phrase.indexOf(' ');

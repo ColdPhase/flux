@@ -38,8 +38,9 @@ complicated or different").
   encrypted space (AG-3, AG-10). A DM between people it opens shows both people the line of AG-4
   ([coordinator default C-2](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 - It has the same "What it may do" row: Only read, Do it and tell me or Ask me first. Deleting
-  anything and other people's things wait for the person's OK, its changes carry Undo, and the
-  never-list holds (AG-3).
+  anything and other people's things wait for the person's OK, and the never-list holds (AG-3).
+  Its changes can be taken back (Undo), but only its messages show the change line and Undo in the
+  app today; a task, page or map change has none yet, and #868 tracks showing them.
 - **Only the person approves.** Approving, editing or skipping a waiting item, Approve all, and
   accepting a decision come only from the person in a signed-in Flux session. The client's grant
   has no tool for them, so a prompt-injected client cannot approve its own wait ([AG-3](assistant.md#ag-3--rights-what-it-may-do-approvals-and-undo)).
@@ -50,6 +51,9 @@ complicated or different").
   ([coordinator default C-18](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
   Taking a task, claiming or releasing it, asking a question, writing in the task's agents' thread and linking a pull request are
   its own work on a task it holds, not changes to anyone's things, so they do not wait; Only read refuses them like any change.
+  Taking back its own unused task (`flux_undo_task_creation`) does not wait either: agents have Undo on their own work, and this is
+  the same take-back. Giving a unit to another person's client (a new child unit or a transfer), and a request to it, are another person's things: they wait like a
+  task for someone else, and Approve repeats the call as the client's own while its claim is still live.
 - Only the person prompts it, from their editor. Flux never starts, wakes or prompts a local
   client, and nothing polls a model while it is idle (F-032).
 - Its messages and changes are labelled "Ada · via Claude Code".

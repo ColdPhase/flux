@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import type { TaskCoordination } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { waitUntilBlockedBy } from './support/locks.js';
+import { approveWaiting, waits } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
 import { expectStatus } from './support/people.js';
 import { coworkScene, failed, failureCode, type CoworkConn, type Reply } from './support/cowork-scene.js';
@@ -112,7 +113,9 @@ test('two sessions of one connection claim a unit at once: one lease; after it l
 });
 
 test('two transfers of one unit at once: exactly one wins, the generation advances once and the holder\'s claim is fenced', async () => {
-  const { f, codex, hubertClaude, marekClaude } = await threeConnections();
+  // Both go to the owner's own clients, so the transfers are made at once: a transfer to another person's client waits for the owner (C-18).
+  const { f, codex, hubertClaude } = await threeConnections();
+  const marekClaude = await f.connect(f.hubert, 'Hubert Second');
   const t = await f.task('Handed over');
   const held = await f.take(codex, t);
   const toMarek = await codex.standing('cowork.unit.transfer', held.unitId, 'execute');
@@ -140,8 +143,10 @@ test('a received unit is declined and claimed at the same time, in both orders: 
     const t = await f.task(title);
     const held = await f.take(codex, t);
     const transfer = await codex.standing('cowork.unit.transfer', held.unitId, 'execute');
-    toolValue(await codex.call('flux_transfer_unit', { ...codex.base(transfer.id, 'execute'), unitId: held.unitId, expectedVersion: held.claim.version,
-      generation: held.claim.generation, leaseId: held.claim.lease.id, assignmentConnectionId: marekClaude.connectionId }));
+    // Marek's client is another person's: the transfer waits for Codex's owner, whose Approve hands the unit over.
+    assert.ok(waits(await codex.call('flux_transfer_unit', { ...codex.base(transfer.id, 'execute'), unitId: held.unitId, expectedVersion: held.claim.version,
+      generation: held.claim.generation, leaseId: held.claim.lease.id, assignmentConnectionId: marekClaude.connectionId })));
+    await approveWaiting(pool, f.hubert.browser, codex.connectionId, 'cowork.unit.transfer');
     const pending = await f.unit(held.unitId);
     const second = await marekClaude.extraSession();
     const claimGrant = await marekClaude.standing('cowork.claim', held.unitId, 'execute');
@@ -168,9 +173,10 @@ test('a received unit is declined and claimed at the same time, in both orders: 
 });
 
 test('duplicate and parallel requests: one command ID is one effect, one intent is one request, and every attempt is accounted for', async () => {
-  const { f, codex, marekClaude } = await threeConnections();
+  // To the owner's own other client, so the requests are made at once: a request to another person's client waits for the owner (C-18).
+  const { f, codex, hubertClaude } = await threeConnections();
   const t = await f.task('Native outcome A');
-  const review = await f.startReview(codex, marekClaude, t);
+  const review = await f.startReview(codex, hubertClaude, t);
   const target = { type: 'work', id: t.id, version: t.version };
   const count = async () => (await pool.query('SELECT count(*)::int AS n FROM cowork_requests WHERE work_id = $1', [t.id])).rows[0].n as number;
 

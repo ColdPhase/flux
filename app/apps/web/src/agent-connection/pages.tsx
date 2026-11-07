@@ -172,7 +172,7 @@ export function AgentConnectionPage() {
   // one click; the person only unticks what the client should not see.
   const [projectIds, setProjectIds] = useState<string[]>(() => {
     const space = agents[0]?.workspaceId ?? workspaces[0]?.id;
-    const here = projects.filter((project) => project.workspaceId === space && project.ai !== 'blocked' && project.access !== 'viewer');
+    const here = projects.filter((project) => project.workspaceId === space && project.ai !== 'blocked');
     return oauthQuery ? here.slice(0, 50).map((project) => project.id) : [];
   });
   const [missing, setMissing] = useState<string | null>(null);

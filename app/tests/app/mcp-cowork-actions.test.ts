@@ -5,7 +5,7 @@ import type { Agent, AgentExecutionCommand, CoWorkRequestLimits, WorkItem } from
 import { COWORK_PLAYBOOK, coworkPlaybookTools } from '@flux/core';
 import { coWorkRequestInTransaction } from '../../apps/server/src/co-work/requests.js';
 import { db, pool } from './support/db.js';
-import { agentConnection, toolFailure } from './support/mcp-actions.js';
+import { agentConnection, approveWaiting, toolFailure, waits } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 
@@ -146,9 +146,11 @@ test('flux_claim_request and flux_decline_request act only on a request addresse
     expectedTaskVersion: a.version, assignmentConnectionId: codex.connectionId, parent: null }));
   const rootClaim = await codex.claimUnit(String(root.unitId), 'execute');
   const reviewGrant = await codex.standing('cowork.unit.create', a.id, 'review');
-  const review = toolValue(await codex.tool('flux_create_unit', { ...codex.base(reviewGrant.id, 'review'), taskId: a.id, unitKey: 'review',
+  // A unit for another person's client waits for the sender's owner (C-18): Approve opens it.
+  assert.ok(waits(await codex.tool('flux_create_unit', { ...codex.base(reviewGrant.id, 'review'), taskId: a.id, unitKey: 'review',
     expectedTaskVersion: a.version, assignmentConnectionId: marekClaude.connectionId,
-    parent: { unitId: root.unitId, generation: rootClaim.generation, leaseId: rootClaim.lease!.id } }));
+    parent: { unitId: root.unitId, generation: rootClaim.generation, leaseId: rootClaim.lease!.id } })), 'a unit for another person\'s client waits');
+  const review = await approveWaiting(pool, f.hubert.browser, codex.connectionId, 'cowork.unit.create');
   assert.deepEqual([review.status, review.role, review.assignmentConnectionId, review.runId], ['created', 'review', marekClaude.connectionId, root.runId]);
   const reviewUnit = String(review.unitId);
 
