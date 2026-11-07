@@ -195,8 +195,8 @@ class AgentTakesTask(unittest.TestCase):
 
     def test_06_with_ask_me_first_the_task_comes_back_to_check(self) -> None:
         kai = self.page("kai")
-        settings = self.api(kai, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/assistants/{KAI['id']}/settings", status=200)
-        self.api(kai, "PATCH", f"/api/v1/agent-connections/{settings['connectionId']}", {"mayDo": "ask"}, status=200)
+        mine = next(item for item in self.api(kai, "GET", "/api/v1/my-agents", status=200)["items"] if item["id"] == self.ids["agent"])
+        self.api(kai, "PATCH", f"/api/v1/agent-connections/{mine['connectionId']}", {"mayDo": "ask"}, status=200)
         mock("/__script", {"reset": True, "text": REPORT})
         task = self.task(self.page("ada"), "Re-check the south barrel wiring", KAI["id"])
         state = self.agent_line(kai, task["id"], "handed_back")
@@ -259,8 +259,8 @@ class AgentTakesTask(unittest.TestCase):
 
     def test_09_a_failed_run_keeps_the_task_and_its_owner_tries_again(self) -> None:
         kai = self.page("kai")
-        settings = self.api(kai, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/assistants/{KAI['id']}/settings", status=200)
-        self.api(kai, "PATCH", f"/api/v1/agent-connections/{settings['connectionId']}", {"mayDo": "act"}, status=200)
+        mine = next(item for item in self.api(kai, "GET", "/api/v1/my-agents", status=200)["items"] if item["id"] == self.ids["agent"])
+        self.api(kai, "PATCH", f"/api/v1/agent-connections/{mine['connectionId']}", {"mayDo": "act"}, status=200)
         mock("/__script", {"reset": True, "status": 500})
         task = self.task(self.page("ada"), "Re-check the north barrel", KAI["id"])
         state = self.agent_line(kai, task["id"], "failed")

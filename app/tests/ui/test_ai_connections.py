@@ -272,7 +272,7 @@ class AiConnectionSettings(unittest.TestCase):
         expect(guide).to_contain_text("Add this Flux address to the client you already use.")
         expect(guide).to_contain_text("This address works only on this computer.")
         expect(guide).not_to_contain_text("Use your self-hosted Flux HTTPS address")
-        expect(guide).to_contain_text("run only the actions you grant")
+        expect(guide).to_contain_text("gets only the access you approve")
         tabs.get_by_role("tab", name="Claude Code", exact=True).click()
         shot(page, "ai-connection-1440-connect-guide")
         tabs.get_by_role("tab", name="Codex", exact=True).click()
