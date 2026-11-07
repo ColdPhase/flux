@@ -372,6 +372,14 @@ describe('grant, agent and draft use cases over in-memory repositories', () => {
     assert.ok(toOwner.calls.includes('projects.insertGrant'), 'the owner was added');
     await revokeProjectGrant(human(OWNER), PROJECT, GRANT, toOwner.db, toOwner.ports);
     assert.ok(toOwner.calls.includes('projects.deleteGrant'), 'and can be removed by whoever manages the space');
+    // Keeping the owner out of the space is another matter: only an owner may (#914).
+    const denyOwner = async (role: WorkspaceRole) => {
+      const s = scene({ role, granteeRole: 'owner' });
+      await grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'denied' }, s.db, s.ports);
+      return s.calls;
+    };
+    await assert.rejects(denyOwner('admin'), (error: unknown) => error instanceof ForbiddenError && error.code === 'OWNER_REQUIRED');
+    assert.ok((await denyOwner('owner')).includes('projects.insertGrant'), 'an owner can');
     const stranger = scene();
     stranger.ports.projects = () => ({ lockForGrantChange: async () => undefined, member: async () => null }) as never;
     await assert.rejects(grantProject(human(OWNER), PROJECT, { principal: { kind: 'human', id: TARGET }, role: 'viewer' }, stranger.db, stranger.ports),

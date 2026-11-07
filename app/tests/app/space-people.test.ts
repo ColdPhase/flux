@@ -148,4 +148,27 @@ describe('a new space starts with any person of the company (D-3)', () => {
     const shut = await creator.browser.request('POST', projectGrantsPath(space.id), { body: { principal: { kind: 'human', id: owner.id }, role: 'denied' } });
     assert.equal(code(shut), 'COMPANY_ADMIN_PROTECTED');
   });
+
+  test('only an owner can keep the company owner out of a space: a company admin gets 403 OWNER_REQUIRED, and the owner can still read it (#914)', async () => {
+    const [owner, second, companyAdmin, creator, bystander] = await Promise.all(['dn-owner', 'dn-second', 'dn-admin', 'dn-creator', 'dn-bystander'].map((label) => person(label)));
+    const wsId = (await workspace(owner, 'Deny the owner club')).id;
+    await addMember(owner, wsId, second, 'owner');
+    await addMember(owner, wsId, companyAdmin, 'admin');
+    await addMember(owner, wsId, creator, 'member');
+    await addMember(owner, wsId, bystander, 'member');
+    const space = expectStatus(await creator.browser.request('POST', `/api/v1/workspaces/${wsId}/projects`, { body: { name: 'Owner stays in', visibility: 'restricted' } }), 201) as Project;
+    const deny = (who: Person, target: Person) => who.browser.request('POST', projectGrantsPath(space.id), { body: { principal: { kind: 'human', id: target.id }, role: 'denied' } });
+    // A company admin manages the space, but cannot shut an owner out of it: the owner would lose the space, Add me and the right to lift the deny.
+    for (const target of [owner, second]) {
+      const refused = await deny(companyAdmin, target);
+      assert.equal(refused.status, 403, refused.text);
+      assert.equal(code(refused), 'OWNER_REQUIRED');
+      assert.equal((await target.browser.request('GET', `/api/v1/projects/${space.id}`)).status, 200, 'the owner still reaches the space');
+    }
+    assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_grants WHERE project_id = $1 AND role = $2', [space.id, 'denied'])).rows[0].n, 0, 'nothing was written');
+    // Another owner can, and a company admin can still deny a plain member.
+    expectStatus(await deny(owner, second), 201);
+    assert.equal((await second.browser.request('GET', `/api/v1/projects/${space.id}`)).status, 404, 'the denied owner is out of that space');
+    expectStatus(await deny(companyAdmin, bystander), 201);
+  });
 });

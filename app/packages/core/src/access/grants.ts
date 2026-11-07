@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { GrantProjectCommand, ProjectGrant } from '@flux/contracts';
 import { recordEvent } from '../events.js';
 import type { Database, Principal } from '../types.js';
-import { eventPorts, type DomainEventSink } from './common.js';
+import { eventPorts, requireRoleAuthority, type DomainEventSink } from './common.js';
 import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError } from './errors.js';
 import { enforce, evaluateProject, isManager, isUuid } from './policy.js';
 import type { AccessPorts, ProjectRepository } from './repositories.js';
@@ -45,7 +45,7 @@ export async function listProjectGrants(principal: Principal, projectId: string,
 /**
  * Creates or replaces the grant of one person on a project. The grantee must be a member of the
  * project's workspace; any person in the company can be added, a company owner too, as New space allows (#905). The owner role
- * itself is not touched, so changing it stays with an owner (`members.ts`). Agents have no grants: an agent
+ * itself is not touched, so changing it stays with an owner (`members.ts`), and so does denying an owner a space. Agents have no grants: an agent
  * has exactly its owner's rights (F-036 AG-3, #855).
  */
 export async function grantProject(principal: Principal, projectId: string, command: GrantProjectCommand, db: Database, ports: GrantPorts, eventSink?: DomainEventSink): Promise<ProjectGrant> {
@@ -64,6 +64,8 @@ export async function grantProject(principal: Principal, projectId: string, comm
     if (role === 'denied') {
       // F-037: the company's owners and admins can change any space, so a space admin who is a plain member cannot shut one out.
       if (isManager(member.role) && !isManager(actor!.role)) throw new ForbiddenError('Only a company owner or admin can keep a company admin out of a space', 'COMPANY_ADMIN_PROTECTED');
+      // Keeping the company owner out of a space would lock them out of it: reading it, adding themselves, lifting the deny and deleting it. Only an owner may.
+      if (member.role === 'owner') requireRoleAuthority(actor!, 'owner');
       if (project!.visibility === 'workspace' && (await ports.workspaces(tx).company())?.id === workspaceId) {
         throw new RuleViolationError('Everyone holds the whole company, so nobody can be kept out of it', 'EVERYONE_HOLDS_EVERYONE');
       }
