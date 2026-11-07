@@ -347,7 +347,7 @@ const baseExportSchema = {
     }),
     result: object({ id, title: text, finding: { enum: ['positive', 'negative'] }, evidence: text, createdBy: ref('actor'), createdAt: time }),
     link: object({
-      id, role: { enum: ['source', 'affects', 'still_applies', 'about', 'related', 'mentions'] },
+      id, role: { enum: ['source', 'affects', 'still_applies', 'about', 'related', 'mentions', 'part_of'] },
       from: object({ type: { enum: ['work', 'decision', 'result', 'doc'] }, id }), to: ref('objectRef'), createdBy: ref('actor'), createdAt: time,
     }),
   },

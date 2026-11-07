@@ -43,6 +43,11 @@ export interface TaskAgentFacts {
   waitingChanges: number;
   /** Whether the agent itself last changed the task's owner: a real hand-back, not a person taking the task back. */
   handedBackByAgent?: boolean;
+  /**
+   * The other agent this one asked a question and is waiting for (#841), whose owner may stop its answer (the asking owner may not),
+   * and the answer's run, which the provider's limit can pause like any other.
+   */
+  waitingForAnswer?: { name: string; ownerId: string; run: { status: string; engine: 'server' | 'runtime'; provider: string; endReason: string | null; resumeAt: Date | null } } | null;
 }
 
 const vendor = (run: { engine: string; provider: string }) => (run.engine === 'runtime' ? (run.provider === 'openai' ? 'ChatGPT' : 'Claude') : 'The API key');
@@ -59,6 +64,15 @@ export function taskAgentState(facts: TaskAgentFacts): TaskAgentState {
     agent, line, text, resumesAt: null, stoppedBy: null, canStop: false, canTryAgain: false, canTakeBack: false, canMarkDone: false, runId: run.id, ...extra,
   });
   const mayStop = mine || facts.viewerIsAdmin;
+  if (facts.waitingForAnswer && holds) {
+    const answer = facts.waitingForAnswer;
+    const mayStopAnswer = viewerId === answer.ownerId || facts.viewerIsAdmin;
+    const resumes = answer.run.status === 'queued' && answer.run.resumeAt && answer.run.endReason !== 'no_room' ? answer.run.resumeAt : null;
+    // A paused answer shows as paused, with when it resumes: it is not "didn't answer".
+    if (resumes) return state('paused_by_limit', `Waiting for ${answer.name} to answer · ${answer.run.engine === 'server' ? 'the daily budget is used' : `${vendor(answer.run)} limit reached`}`,
+      { resumesAt: resumes.toISOString(), canStop: mayStopAnswer });
+    return state('working', `Waiting for ${answer.name} to answer…`, { canStop: mayStopAnswer });
+  }
   if (IN_FLIGHT.has(run.status)) {
     if (!holds) return none();
     if (run.status === 'queued') {

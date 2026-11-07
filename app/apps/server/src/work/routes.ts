@@ -59,7 +59,7 @@ const planIntent = { type: ['object', 'null'], required: ['materialId', 'version
 const createWork = { type: 'object', required: ['title'], additionalProperties: false, properties: {
   title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status, waitingFor: principalRef, dueOn,
   blocker: { type: 'string', maxLength: WORK_LIMITS.blocker }, sources: refs, related: refs, clientCommandId: { type: 'string', format: 'uuid' },
-  criteria, dependencyIds, planIntent,
+  criteria, dependencyIds, planIntent, parentId: { type: 'string', format: 'uuid' },
 } } as const;
 const updateWork = { type: 'object', additionalProperties: false, minProperties: 1, properties: {
   title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status, waitingFor: principalRef, dueOn, restore: { type: 'boolean', enum: [true] },

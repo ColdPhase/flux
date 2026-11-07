@@ -22,6 +22,8 @@ export interface RunTokenRow {
   agentId: string;
   status: typeof r.$inferSelect.status;
   engine: 'server' | 'runtime';
+  /** #841: a `task_answer` run only reads. */
+  kind: typeof r.$inferSelect.kind;
   runTokenNonceHash: string | null;
   runTokenJti: string | null;
   runTokenExpiresAt: Date | null;
@@ -40,7 +42,7 @@ export interface RunTokenRow {
 
 const columns = {
   id: r.id, workspaceId: r.workspaceId, projectId: r.projectId, conversationId: r.conversationId, ownerUserId: r.ownerUserId,
-  agentId: r.agentId, status: r.status, engine: r.engine, runTokenNonceHash: r.runTokenNonceHash, runTokenJti: r.runTokenJti,
+  agentId: r.agentId, status: r.status, engine: r.engine, kind: r.kind, runTokenNonceHash: r.runTokenNonceHash, runTokenJti: r.runTokenJti,
   runTokenExpiresAt: r.runTokenExpiresAt, runTokenClosedAt: r.runTokenClosedAt, runTools: r.runTools, mcpResultBytes: r.mcpResultBytes,
   mcpLimit: r.mcpLimit, stopRequestedAt: r.stopRequestedAt, aiEpoch: r.aiEpoch,
   reactionActive: sql<boolean | null>`(SELECT (a.enabled AND a.version=e.reaction_version) FROM assistant_reaction_events e JOIN assistant_reactions a ON a.id=e.reaction_id WHERE e.run_id=personal_runs.id LIMIT 1)`,

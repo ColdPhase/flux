@@ -1,5 +1,6 @@
 import { AGENT_TASK_EVENT_ATTEMPTS, agentTaskRows, personalRunRows, workRows, type Database, type Transaction } from '@flux/db';
-import { createPersonalRunUseCases, DomainError, noPersonalConnections, stopRunBy, TAKEN_WORDS, taskRunClientId, taskRunPrompt, uuidFrom, type Principal, type TaskStart, type WorkRecord } from '@flux/core';
+import { agentLabel, answerLines, askableLines, createPersonalRunUseCases, DomainError, MAX_EXCHANGE_TURNS, noPersonalConnections, resolveAsked, stopRunBy, TAKEN_WORDS, takeAsk, taskRunClientId,
+  taskRunPrompt, uuidFrom, type AgentQuestion, type Askable, type Principal, type TaskStart, type WorkRecord } from '@flux/core';
 import { personalRunPorts, type PersonalRunComposition, type PersonalRunQueueFactory } from '../personal-runs/adapters.js';
 import { taskDiscussionUseCases } from '../work/task-discussions.js';
 import { workUseCases } from '../work/adapters.js';
@@ -33,6 +34,7 @@ const FINISHED = new Set(['done', 'not_pursued']);
 const IN_FLIGHT = ['queued', 'reading', 'dispatching'];
 
 type Event = NonNullable<Awaited<ReturnType<ReturnType<typeof agentTaskRows>['claimNext']>>>;
+type RunRow = NonNullable<Awaited<ReturnType<ReturnType<typeof personalRunRows>['findRun']>>>;
 export interface AgentTaskDrain {
   /** Handles every event waiting; a call while one is running makes it look again before it stops. */
   drain(): Promise<void>;
@@ -82,6 +84,16 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       const holder = await rows.agent(event.ownerAgentId);
       if (holder?.ownerUserId) owners.add(holder.ownerUserId);
     }
+    if (event.kind === 'finished' && event.runId) {
+      // A run that asked a question, or answers one, starts the other agent's run: the owners of both are locked now, in order.
+      const run = await personalRunRows(tx).findRun(event.runId);
+      if (run && (run.kind === 'task_answer' || run.answerBody?.includes('<ask>'))) {
+        owners.add(run.ownerUserId);
+        for (const person of await rows.taskPeople(event.workId)) owners.add(person);
+        const asked = run.askedByRunId ? await personalRunRows(tx).findRun(run.askedByRunId) : null;
+        if (asked) owners.add(asked.ownerUserId);
+      }
+    }
     for (const owner of [...owners].sort()) await personalRunRows(tx).enablement(owner, { lock: true });
     await workRows(tx).lockTaskGraphs([work.projectId]);
     return true;
@@ -113,6 +125,18 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       for (const going of await rows.runsOfWork(work.id, 8))
         if (going.agentId === holder.id && IN_FLIGHT.includes(going.status)) await stopRunBy(ports, going.id, holder.ownerUserId);
     });
+  }
+
+  /** The agents of the task's other people that an agent may ask (TA-3): both owners are among the task's people. */
+  async function askable(tx: Transaction, workId: string, askerOwner: string): Promise<Askable[]> {
+    const rows = agentTaskRows(tx);
+    const found: Askable[] = [];
+    for (const person of (await rows.taskPeople(workId)).filter((id) => id !== askerOwner)) {
+      const ownerName = (await rows.personName(person)) ?? 'Former member';
+      for (const other of await rows.ownServerAgents(person)) found.push({ id: other.id, name: other.name, ownerId: person, ownerName });
+    }
+    // Always in the same order, so a line that names two agents reads the same each time.
+    return found.sort((a, b) => a.ownerName.localeCompare(b.ownerName) || a.name.localeCompare(b.name));
   }
 
   async function assigned(tx: Transaction, event: Event) {
@@ -147,7 +171,8 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
         const place = await taskDiscussionUseCases(inner as unknown as Database).getDiscussionRoot(human(ownerId), work.id).catch(() => null);
         const started: TaskStart = place
           ? await runs.startTask(ports, { ownerUserId: ownerId, agentId: holder.id, workId: work.id, projectId: work.projectId, conversationId: place.conversationId,
-            prompt: taskRunPrompt(work), clientRunId: taskRunClientId(event.id) })
+            prompt: (taskRunPrompt(work) + askableLines((await askable(inner, work.id, ownerId)).map((other) => ({ name: other.name, owner: other.ownerName })))).slice(0, 3900),
+            clientRunId: taskRunClientId(event.id) })
           : { started: false, line: 'I can\'t start: this task has no discussion yet.' };
         if (!started.started) throw new Refused(started.line);
       });
@@ -187,15 +212,19 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
   async function finished(tx: Transaction, event: Event) {
     const rows = agentTaskRows(tx);
     const run = event.runId ? await personalRunRows(tx).findRun(event.runId, { lock: true }) : null;
-    if (!run || run.kind !== 'task' || !run.workId) return;
+    if (!run || (run.kind !== 'task' && run.kind !== 'task_answer') || !run.workId) return;
     const work = await workRows(tx).findWork(run.workId, { lock: true });
     if (!work || FINISHED.has(work.status)) return;
+    if (run.kind === 'task_answer') return answered(tx, work, run);
     // The task is still the agent's. If its owner took it back or gave it away meanwhile, there is nothing to finish.
     const holds = work.owner?.kind === 'agent' && work.owner.id === run.agentId;
     const ended = run.status;
     if (ended === 'completed' || ended === 'truncated') {
       if (!holds) return;
-      await say(tx, work, run.agentId, run.answerBody ?? '(No answer text.)', `report:${run.id}`);
+      // A report may end with a question for another person's agent (TA-3); the task then waits for the answer instead of finishing.
+      const { body, ask } = takeAsk(run.answerBody ?? '');
+      if (body || !ask) await say(tx, work, run.agentId, body || '(No answer text.)', `report:${run.id}`);
+      if (ask) return asking(tx, work, run, ask);
       const mayDo = await personalRunRows(tx).assistantMayDo(run.ownerUserId, run.workspaceId);
       const current = (await workRows(tx).findWork(work.id, { lock: true }))!;
       // With "Do it and tell me" it marks the task Done; with "Ask me first" or "Only read" it hands it back to check (C-1), which
@@ -222,6 +251,60 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     }
     // A run that failed keeps the task with the agent: its owner chooses Try again or Take it back.
     await say(tx, work, run.agentId, 'I couldn\'t finish this.', `failed:${run.id}`);
+  }
+
+  /** An exchange that stops returns to the people: one line, and the task goes back to its owner. */
+  async function toThePeople(tx: Transaction, work: WorkRecord, asker: { id: string; ownerUserId: string }, line: string, key: string) {
+    await say(tx, work, asker.id, line, key);
+    await giveBack(tx, work, asker.ownerUserId, asker.ownerUserId);
+  }
+
+  /** Agent A asked agent B: both owners must be among the task's people, the exchange is bounded, and B only answers. */
+  async function asking(tx: Transaction, work: WorkRecord, run: RunRow, ask: AgentQuestion) {
+    const asker = { id: run.agentId, ownerUserId: run.ownerUserId };
+    if (run.exchangeTurn >= MAX_EXCHANGE_TURNS) return toThePeople(tx, work, asker, 'We have gone back and forth for long enough. This needs a person.', `asked-out:${run.id}`);
+    const resolved = resolveAsked(ask, await askable(tx, work.id, run.ownerUserId));
+    if ('none' in resolved) return toThePeople(tx, work, asker, `I can't ask ${ask.agent}${ask.owner ? ` (${ask.owner}'s agent)` : ''}: they are not in this task. This needs a person.`, `asked-nobody:${run.id}`);
+    // Never a guess: two agents of that name, and the block did not say whose, is a question for the people.
+    if ('ambiguous' in resolved) return toThePeople(tx, work, asker, `There is more than one agent called ${ask.agent} in this task: ${resolved.ambiguous.map(agentLabel).join(' and ')}. Say whose you mean. This needs a person.`, `asked-ambiguous:${run.id}`);
+    const target = resolved.found;
+    await say(tx, work, run.agentId, `@${agentLabel(target)}, ${ask.question}`, `asked:${run.id}`);
+    const { ports, runs } = useCases(tx);
+    const started = await runs.startTask(ports, { kind: 'task_answer', ownerUserId: target.ownerId, agentId: target.id, workId: work.id, projectId: work.projectId,
+      conversationId: run.conversationId, prompt: ask.question, clientRunId: uuidFrom(`agent-task:answer:${run.id}`), askedByRunId: run.id,
+      exchangeTurn: run.exchangeTurn + 1, audience: await agentTaskRows(tx).taskPeople(work.id) });
+    if (!started.started) await toThePeople(tx, work, asker, `${agentLabel(target)} can't answer now. This needs a person.`, `asked-refused:${run.id}`);
+  }
+
+  /** Agent B's run ended: its answer goes in the discussion as B's, and A, which asked, goes on with it. */
+  async function answered(tx: Transaction, work: WorkRecord, run: RunRow) {
+    const rows = agentTaskRows(tx);
+    // The provider's limit paused the answer: its continuation (a run of the same question) answers when it resumes.
+    if (run.endReason === 'plan_limit' && await rows.successor(run.id)) return;
+    const asked = run.askedByRunId ? await personalRunRows(tx).findRun(run.askedByRunId) : null;
+    if (!asked) return;
+    // A took the task back, or it went elsewhere, while B answered: the answer is still posted (B's owner paid, the people can read it),
+    // but nobody goes on with it.
+    const holds = work.owner?.kind === 'agent' && work.owner.id === asked.agentId;
+    const asker = { id: asked.agentId, ownerUserId: asked.ownerUserId };
+    const label = agentLabel({ name: (await rows.agent(run.agentId))?.name ?? 'The other agent', ownerName: (await rows.personName(run.ownerUserId)) ?? 'Former member' });
+    if (run.status !== 'completed' && run.status !== 'truncated') {
+      // Whoever stopped it is said, as for any run that is stopped (AG-5).
+      if (run.status === 'stopped' && run.endReason !== 'ai_off') {
+        const by = run.stopRequestedBy ? await rows.personName(run.stopRequestedBy) : null;
+        await say(tx, work, run.agentId, `Stopped${by ? ` by ${by}` : ''}.`, `answer-stopped:${run.id}`);
+      }
+      if (holds) await toThePeople(tx, work, asker, `${label} didn't answer. This needs a person.`, `unanswered:${run.id}`);
+      return;
+    }
+    const answer = run.answerBody ?? '(No answer text.)';
+    await say(tx, work, run.agentId, answer, `answer:${run.id}`);
+    if (!holds) return;
+    const { ports, runs } = useCases(tx);
+    const started = await runs.startTask(ports, { ownerUserId: asker.ownerUserId, agentId: asker.id, workId: work.id, projectId: work.projectId, conversationId: run.conversationId,
+      prompt: (asked.prompt.slice(0, 2000) + answerLines({ agent: label, question: run.prompt }, answer)).slice(0, 3900), clientRunId: uuidFrom(`agent-task:continue:${run.id}`),
+      exchangeTurn: run.exchangeTurn });
+    if (!started.started) await toThePeople(tx, work, asker, started.line, `continue-refused:${run.id}`);
   }
 
   let draining = false;

@@ -64,8 +64,28 @@ room, working, waiting for the OK, paused by the provider's limit, failed, stopp
 Stop (`POST …/agent/stop`) is the agent's owner's or a space admin's; Try again (`…/agent/retry`) is the owner's;
 Take it back is the owner changing the Owner field.
 
+## Agents together in a task (#841, #844)
+
+- **Subtasks (TA-2).** A subtask is a task that is part of another: a `part_of` link from the subtask to its parent
+  (`CreateWorkCommand.parentId`; the agent tool `flux_create_task` takes `task.parentTaskId`). The parent does not wait for
+  its subtasks (that is what prerequisites are for). The task panel lists them as "Subtasks · 1 of 2 done". A subtask for
+  another person is a proposal that waits for the owner's OK with Approve all (AG-3); once approved it is that person's
+  task, and their own "When someone assigns a task to me" setting decides whether one of their agents takes it.
+- **Questions between agents (TA-3).** An agent's report may end with one `<ask>{"agent": "Fieldbot", "question": "…"}</ask>`
+  block (`packages/core/src/agent-tasks/ask.ts`). The drain posts the report and the question as the agent's messages, checks
+  that both owners are among the task's people (`taskPeople`: the creator, the owner, anyone who wrote in the thread; a
+  message written by an agent adds nobody) and starts a run of kind `task_answer` for the other agent on its owner's account.
+  That run only reads (`readOnly` in the run token), is told the question is data, and is refused unless every person of the
+  task can still read the space, so it uses only what all of them can see. Its answer is posted as the other agent's message and
+  the asking agent continues with it as a new run. Each step is bounded (`MAX_EXCHANGE_TURNS`); an exchange that cannot
+  go on (no such agent in the task, a refusal, no answer, the bound) is said in one line and the task goes back to its owner.
+- **Who is in the task.** `GET /api/v1/work/:id/people` names the task's people and their agents for the panel's "In this
+  task" row.
+- **The message a task came from (#844).** Creating a task from a message stores the message as the task's `source` link;
+  Details opens it in context and the message shows its task. The agent tool takes `task.sourceMessageId` for the same.
+
 ## Not here
 
 Reports in the agent's private conversation (with the unread dot) belong to the agent conversation of #842/#857; the
-data is the run (`kind = 'task'`) and the discussion message. Reading the web (the runtime's egress) is a separate
-change.
+data is the run (`kind = 'task'`) and the discussion message ([#919](https://github.com/ColdPhase/flux/issues/919)). Reading the
+web (the runtime's egress) is a separate change ([#918](https://github.com/ColdPhase/flux/issues/918)).

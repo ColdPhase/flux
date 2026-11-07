@@ -18,7 +18,7 @@ export interface WorkRelationRead extends WorkReadWindow { selection: { objects:
 export const workReadInvalid = (message: string): never => { throw new InvalidInputError(message, 'INVALID_WORK_READ'); };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const KINDS: readonly WorkObjectType[] = ['work', 'decision', 'result'];
-const ROLES: readonly LinkRole[] = ['source', 'affects', 'still_applies', 'about', 'related', 'mentions'];
+const ROLES: readonly LinkRole[] = ['source', 'affects', 'still_applies', 'about', 'related', 'mentions', 'part_of'];
 
 export function workReadId(value: string | null | undefined): string {
   if (!value || !UUID.test(value)) return workReadInvalid('A native UUID is required');
