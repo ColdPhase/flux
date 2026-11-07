@@ -6,7 +6,7 @@ export type PendingKind = 'feed' | 'list' | 'cards' | 'wiki';
 
 /**
  * The shape of the view a navigation is going to (#863, docs/design/motion.md rule 2): a project's conversation and a direct message are
- * a feed, the Map and the Sketchbook are cards, the Wiki is an index beside a page, everything else (Tasks, Inbox, Settings, …) a list.
+ * a feed, the Map and the Sketchbook are cards, the Wiki is one page (#869), everything else (Tasks, Inbox, Settings, …) a list.
  * `view` is `routeView(path)`.
  */
 export function pendingKind(view: string): PendingKind {
@@ -30,8 +30,7 @@ export function PendingView({ view, name }: { view: string; name: string }) {
     <div className={`pending-view pending-view--${kind}`} data-pending-view={view} aria-hidden="true">
       {kind === 'feed' ? <Opening name={name} /> : kind === 'wiki' ? (
         <div className="pending-view__wiki">
-          <div className="pending-view__index">{bars(7, [70, 55, 82, 48, 64, 76, 52])}</div>
-          <div className="pending-view__page"><b className="pending-view__title" />{bars(9, [100, 94, 98, 86, 100, 92, 70, 96, 60])}</div>
+          <div className="pending-view__page"><b className="pending-view__meta" /><b className="pending-view__title" />{bars(9, [100, 94, 98, 86, 100, 92, 70, 96, 60])}</div>
         </div>
       ) : kind === 'cards' ? (
         <div className="pending-view__cards">{Array.from({ length: 6 }, (_, index) => <div key={index} className="pending-view__card"><b style={{ width: '58%' }} /><b style={{ width: '34%' }} /></div>)}</div>

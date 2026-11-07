@@ -22,8 +22,8 @@ workspaces.md); those sessions remain separate acceptance evidence.
 
 from __future__ import annotations
 
-import os
 import re
+import time
 import unittest
 import uuid
 from unittest import mock
@@ -67,8 +67,6 @@ MAX_STREAM_GAP = 64
 # The most room a long stream's opening adds below its newest message so its top message starts whole (#725;
 # WHOLE_MESSAGE_ROOM in app/apps/web/src/app/messageParts.tsx).
 WHOLE_MESSAGE_ROOM = 48
-# Live editing is the wiki editor whenever it is configured (check_ui.sh sets FLUX_LIVE_EDITING=on by default).
-LIVE = os.environ.get("FLUX_LIVE_EDITING", "on") != "off"
 TARGET = 44
 # Known gaps: criteria the current head does not meet at one fixture, each with the issue that closes it.
 # The journey still measures them, and the matrix fails when one stops showing, so a closed gap must be
@@ -647,14 +645,11 @@ class AdaptiveMatrix(AdaptiveBase):
         # Wiki.
         self.tab(page, "Wiki")
         expect(page.get_by_role("heading", level=2, name=fx.WIKI_PAGE)).to_be_visible()
-        self.primary(page, page.get_by_role("link", name="Edit", exact=True), "Edit")
-        index = page.get_by_role("navigation", name="Wiki pages")
-        self.primary(page, index.get_by_role("link", name=fx.WIKI_PAGE), "the page in the index")
-        self.measure(page, ".doc-prose p, .doc-prose li", "Wiki prose")
-        if width >= 768:
-            nav = index.bounding_box()
-            doc = page.locator(".wiki-doc").bounding_box()
-            self.assertLessEqual(nav["x"] + nav["width"], doc["x"] + 1, f"the page index sits beside the document at {size}")
+        # Two columns at every width: the title switches pages and the page is written where it is read (#869).
+        self.primary(page, page.locator(".wiki-page").get_by_role("heading", level=2).get_by_role("button", name=fx.WIKI_PAGE), "the page switcher")
+        self.primary(page, page.get_by_role("button", name="Page actions"), "Page actions")
+        expect(page.get_by_role("navigation", name="Wiki pages")).to_have_count(0)
+        self.measure(page, ".wiki-editor .cm-line", "Wiki prose")
         self.no_sideways_scroll(page, "Wiki")
         self.shot(page, f"adapt-{size}{tag}-wiki")
 
@@ -1100,28 +1095,26 @@ class AdaptiveTransitions(AdaptiveBase):
         page = self.page(1440, 900, coarse=False)
         doc = self.ids["doc"]
         version = self.api(page, "GET", f"/api/v1/docs/{doc}")["version"]
-        page.goto(f"/projects/{self.ids['project']}/docs/{doc}/edit")
+        page.goto(f"/projects/{self.ids['project']}/docs/{doc}")
         note = "The hold gesture needs a second, slower variant."
-        if LIVE:
-            # The shared working copy: typing is shared as it happens but only Save keeps a version.
-            text = page.locator('.cm-content[aria-label="Shared Markdown"]')
-            expect(page.locator('[data-live-status="live"]')).to_be_visible()
-            text.click()
-            page.keyboard.press("Control+End")
-            page.keyboard.insert_text(f"\n## Unsaved\n\n{note}\n")
-            expect(page.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
-        else:
-            text = page.get_by_label("Text (Markdown)")
-            expect(text).to_be_visible()
-            edited = fx.WIKI_BODY + f"\n## Unsaved\n\n{note}\n"
-            text.fill(edited)
+        # The page is written where it is read; resizing keeps the text and the caret's page (#869).
+        text = page.locator('.cm-content[aria-label="Page text"]')
+        expect(text).to_have_attribute("contenteditable", "true")
+        text.click()
+        page.keyboard.press("Control+End")
+        page.keyboard.insert_text(f"\n## Written while resizing\n\n{note}\n")
         for width, height in ((820, 1180), (390, 844), (844, 390), (390, 844), (1440, 900)):
             self.resize(page, width, height)
-            if LIVE:
-                expect(text, f"the shared page text stays at {width}×{height}").to_contain_text(note)
-            else:
-                expect(text, f"the unsaved page text stays at {width}×{height}").to_have_value(edited)
-        self.assertEqual(self.api(page, "GET", f"/api/v1/docs/{doc}")["version"], version, "resizing saves nothing")
+            expect(text, f"the page text stays at {width}×{height}").to_contain_text(note)
+            self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width, f"no sideways scroll at {width}×{height}")
+        # The text was kept as the next version, once, whatever the window did meanwhile.
+        for _ in range(120):
+            saved = self.api(page, "GET", f"/api/v1/docs/{doc}")
+            if note in saved["body"]:
+                break
+            time.sleep(0.25)
+        self.assertEqual(saved["body"].count(note), 1)
+        self.assertGreater(saved["version"], version)
         # A task open in Details stays the selected object as Details docks, overlays and becomes a sheet.
         page.goto(f"/projects/{self.ids['project']}/tasks")
         expect(page.locator(".tb-board")).to_be_visible()
@@ -1281,7 +1274,7 @@ class AdaptiveReflow(AdaptiveBase):
         if view == "Tasks":
             return [("Create", page.get_by_role("button", name="Create", exact=True))] if phone else [("New Task", page.get_by_role("button", name="New Task", exact=True))]
         if view == "Wiki":
-            return [("Edit", page.get_by_role("link", name="Edit", exact=True))]
+            return [("Page actions", page.get_by_role("button", name="Page actions", exact=True))]
         if view == "Agents":
             return [("Hand off a task", page.get_by_role("button", name="Hand off a task"))]
         return []

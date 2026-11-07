@@ -39,7 +39,7 @@ export function audienceOf(people: ProjectPerson[] | null | undefined, meId: str
  */
 export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
   /** `more`: the header's Together as a row of More (⋯), where a narrow header moves it (Spokój rule 3). */
-  variant?: 'header' | 'inline' | 'menu' | 'more'; anchor?: LiveAnchor | null; onAction?(): void;
+  variant?: 'header' | 'inline' | 'more'; anchor?: LiveAnchor | null; onAction?(): void;
 }) {
   const live = useLive();
   const here = useLiveHere();
@@ -85,16 +85,6 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
     // Explained once, behind the header's "Together" (#189): a task does not repeat it.
     if (variant === 'inline') return null;
     if (variant === 'more') return dimmed('Live sessions are not available on this Flux server.');
-    if (variant === 'menu') return (
-      <div className="lv-menu">
-        <Button variant="quiet" icon="together" className="lv-menu__act" aria-expanded={open}
-          aria-controls={open ? noteId : undefined} onClick={() => setOpen((value) => !value)}>Together</Button>
-        {open ? <div id={noteId} className="lv-menu__note" role="region" aria-label="Live sessions">
-          <b>Live sessions are not available here</b>
-          <p>This Flux server has no media server configured, so voice, camera and screen sharing are off for everyone. Conversations, tasks, maps and docs work as usual.</p>
-        </div> : null}
-      </div>
-    );
     return (
       <span className="lv-entry">
         <Button ref={buttonRef} variant="quiet" icon="together" className="lv-entry__btn" aria-expanded={open} aria-haspopup="dialog" aria-label="Together" onClick={() => setOpen((v) => !v)}>
@@ -130,20 +120,6 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
     <button type="button" role="menuitem" className="newmenu__item top__more-narrow" data-more-row aria-describedby={noteId} onClick={() => { onAction?.(); act(); }}>
       <span>{joinable ? 'Join' : 'Together'}</span><span id={noteId} className="ui-vh">{joinable ? `${label}. Microphone and camera stay off.` : `Work on this ${word} together. ${audience}.`}</span>
     </button>
-  );
-
-  if (variant === 'menu') return (
-    <div className="lv-menu">
-      {others.length && !joinable ? <>
-        <p className="lv-menu__note">Live in this space</p>
-        <ul className="lv-pop__list">{others.map((item) => <OtherSession key={item.id} session={item} nameOf={nameOf} meId={live.meId}
-          onJoin={(resolved) => { onAction?.(); void live.join(item, resolved); }} />)}</ul>
-      </> : null}
-      <Button variant="quiet" icon="together" busy={busy} className="lv-menu__act" onClick={() => { onAction?.(); act(); }}
-        aria-label={joinable ? 'Join' : 'Together'}>
-        <span><b>{joinable ? 'Join' : 'Together'}</b><small>{joinable ? label : `Work on this ${word} together`}. Microphone and camera stay off.</small></span>
-      </Button>
-    </div>
   );
 
   if (variant === 'inline') {

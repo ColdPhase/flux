@@ -23,6 +23,9 @@ from test_app_shell import ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
 from native_touch import native_touch_driver, native_touch_sender
 from native_ime import NativeImeDisplay
 
+# The page's state line once nothing waits to be shared (#869: "Saved · just now").
+SAVED = re.compile(r"^Saved · ")
+
 
 class LiveFixture(unittest.IsolatedAsyncioTestCase):
     async def asyncSetUp(self):
@@ -109,16 +112,16 @@ class LiveFixture(unittest.IsolatedAsyncioTestCase):
 
     async def create_doc(self, body="A saved starting paragraph."):
         doc = await self.api(self.pages["ada"], "POST", f"/api/v1/projects/{self.project}/docs",
-            {"title": "Live field notes", "body": body, "state": "published"}, 201, {"idempotency-key": str(uuid.uuid4())})
+            {"title": "Live field notes", "body": body}, 201, {"idempotency-key": str(uuid.uuid4())})
         self.doc_id = doc["id"]
         self.doc_url = f"/projects/{self.project}/docs/{self.doc_id}"
         return doc
 
     async def editor(self, key):
         page = self.pages[key]
-        await page.goto(self.doc_url + "/edit")
+        await page.goto(self.doc_url)
         await expect(page.locator('[data-live-status="live"]')).to_be_visible()
-        field = page.locator('.cm-content[aria-label="Shared Markdown"]')
+        field = page.locator('.cm-content[aria-label="Page text"]')
         await expect(field).to_have_attribute("contenteditable", "true")
         return field
 
@@ -126,7 +129,18 @@ class LiveFixture(unittest.IsolatedAsyncioTestCase):
         await field.click()
         await page.keyboard.press("Control+End")
         await page.keyboard.type(text)
-        await expect(page.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+        await expect(page.get_by_role("status").filter(has_text=SAVED)).to_be_visible()
+
+    async def saved_doc(self, page, snippet, absent=None, timeout=60.0):
+        """The saved page once a version holds `snippet` (and not `absent`): versions save by themselves when typing rests (#869)."""
+        deadline = time.monotonic() + timeout
+        while True:
+            doc = await self.api(page, "GET", f"/api/v1/docs/{self.doc_id}")
+            if snippet in doc["body"] and (absent is None or absent not in doc["body"]):
+                return doc
+            if time.monotonic() > deadline:
+                raise AssertionError(f"No saved version holds {snippet!r}; version {doc['version']} has {doc['body'][-120:]!r}")
+            await asyncio.sleep(0.25)
 
     async def create_map(self, count=3):
         sketch = await self.api(self.pages["ada"], "POST", f"/api/v1/workspaces/{self.workspace}/sketches",
@@ -226,10 +240,10 @@ class LiveEditingJourney(LiveFixture):
         self.assertEqual(len(captured['pending']), 1)
         original = captured['pending'][0]
         await ada.clock.resume()
-        field = ada.locator('.cm-content[aria-label="Shared Markdown"]')
+        field = ada.locator('.cm-content[aria-label="Page text"]')
         await expect(field).to_have_attribute('contenteditable', 'true')
         await expect(field).to_contain_text('Reloaded before forty milliseconds 🚀.')
-        await expect(ada.get_by_role('status').filter(has_text='All changes shared')).to_be_visible()
+        await expect(ada.get_by_role('status').filter(has_text=SAVED)).to_be_visible()
         actual = [(header, chunk) for header, chunk in sent if header.get('uuid') == original['envelope']['uuid']]
         self.assertTrue(actual, 'Reload retransmitted the sealed original UUID')
         for header, _chunk in actual:
@@ -237,7 +251,8 @@ class LiveEditingJourney(LiveFixture):
         self.assertEqual(b''.join(chunk for _header, chunk in actual), base64.b64decode(original['bytes']))
         live = await self.api(kai, 'GET', f'/api/v1/docs/{self.doc_id}/live')
         self.assertEqual(live['body'].count('Reloaded before forty milliseconds 🚀.'), 1)
-        self.assertEqual((await self.api(kai, 'GET', f'/api/v1/docs/{self.doc_id}'))['version'], 1, 'Reload shares working text but creates no saved version')
+        saved = await self.saved_doc(kai, 'Reloaded before forty milliseconds 🚀.')
+        self.assertEqual(saved['body'].count('Reloaded before forty milliseconds 🚀.'), 1, 'The version that saves it by itself holds it once')
 
     async def test_01_live_characters_named_cursors_own_undo_and_immutable_save(self):
         original = await self.create_doc()
@@ -245,40 +260,39 @@ class LiveEditingJourney(LiveFixture):
         ada_field, kai_field = await self.editor("ada"), await self.editor("kai")
         await self.type_text(ada, ada_field, " Ada’s shared 🚀 notes.")
         await expect(kai_field).to_contain_text("Ada’s shared 🚀 notes.")
-        await expect(kai.locator(".editing-people")).to_contain_text("Ada North")
-        before_save = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}")
-        self.assertEqual(before_save["body"], original["body"], "Typing alone does not rewrite saved citations")
+        # The other person's name and caret are on the page while she writes.
+        await expect(kai.get_by_role("status").filter(has_text="Ada is here too")).to_be_visible()
+        await expect(kai.locator('.editing-caret[aria-label="Ada North\'s cursor"]')).to_have_count(1)
         await self.type_text(kai, kai_field, " Kai’s independent observation.")
         await expect(ada_field).to_contain_text("Kai’s independent observation.")
         await ada_field.click()
         await ada.keyboard.press("Control+z")
         await expect(kai_field).not_to_contain_text("Ada’s shared 🚀 notes.")
         await expect(kai_field).to_contain_text("Kai’s independent observation.")
-        await ada.get_by_label("Reason for this version").fill("Both people reviewed the field notes")
-        await ada.get_by_role("button", name="Save version", exact=True).click()
-        await expect(ada.get_by_role("status").filter(has_text="Version 2 saved")).to_be_visible()
-        saved = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}")
-        self.assertEqual(saved["version"], 2)
-        self.assertIn("Kai’s independent observation.", saved["body"])
+        # Versions save by themselves; the earlier ones never change.
+        saved = await self.saved_doc(kai, "Kai’s independent observation.", absent="Ada’s shared 🚀 notes.")
+        self.assertGreaterEqual(saved["version"], 2)
         immutable = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}/versions/1")
         self.assertEqual(immutable["body"], original["body"])
-        await kai.goto(self.doc_url + "/versions/2")
-        await expect(kai.locator("[data-live-reader]")).to_have_count(0)
+        await kai.goto(self.doc_url + f"/versions/{saved['version']}")
+        await expect(kai.locator(".doc-prose")).to_contain_text("Kai’s independent observation.")
+        await expect(kai.locator('.cm-content')).to_have_count(0)
         self.assertTrue(any(row["header"].get("operation") == "text" for row in self.frames["ada"]), "Real Yjs transport used")
 
-    async def test_02_ordinary_reader_tracks_working_text_and_history_stays_saved(self):
-        original = await self.create_doc()
+    async def test_02_a_person_who_only_reads_sees_typing_and_publishes_no_caret(self):
+        await self.create_doc()
         ada, kai = self.pages["ada"], self.pages["kai"]
         field = await self.editor("ada")
-        await kai.goto(self.doc_url)
-        await expect(kai.locator("[data-live-reader]")).to_be_visible()
-        await self.type_text(ada, field, " Reader sees this **before Save**.")
-        await expect(kai.locator(".doc-prose")).to_contain_text("Reader sees this before Save.")
-        await expect(kai.locator(".editing-people")).to_contain_text("Ada North")
-        self.assertEqual((await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}"))["body"], original["body"])
+        await self.editor("kai")
+        await self.type_text(ada, field, " Reader sees this **as it is typed**.")
+        # Drawn as the page reads: the marks stay out of sight where the reader's caret is not.
+        # One bold span can be drawn in pieces (the writer's underline marks part of it), so its pieces are read together.
+        await kai.wait_for_function("() => [...document.querySelectorAll('.wiki-editor .cm-md-strong')].map((el) => el.textContent).join('') === 'as it is typed'")
+        await expect(kai.get_by_role("status").filter(has_text="Ada is here too")).to_be_visible()
         await kai.goto(self.doc_url + "/versions/1")
         await expect(kai.locator(".doc-prose")).not_to_contain_text("Reader sees this")
-        self.assertFalse(any(row["direction"] == "sent" and row["header"].get("type") == "cursor" for row in self.frames["kai"]), "Reader never publishes writer presence")
+        self.assertFalse(any(row["direction"] == "sent" and row["header"].get("type") == "cursor" for row in self.frames["kai"]),
+                         "A page open without writing publishes no caret")
 
     async def test_03_old_private_draft_never_initializes_shared_replica(self):
         await self.create_doc()
@@ -309,7 +323,7 @@ class LiveEditingJourney(LiveFixture):
         second = sent_replicas()[-1]
         self.assertEqual(first, second)
         await ada.reload()
-        field = ada.locator('.cm-content[aria-label="Shared Markdown"]')
+        field = ada.locator('.cm-content[aria-label="Page text"]')
         await expect(field).to_have_attribute("contenteditable", "true")
         await self.type_text(ada, field, " Fresh reloaded replica.")
         third = sent_replicas()[-1]
@@ -407,14 +421,14 @@ class LiveEditingJourney(LiveFixture):
         await ada.keyboard.press("Control+End")
         await ada.keyboard.insert_text(" Exact recovered text 🚀.")
         await expect(kai.locator(".doc-prose")).to_contain_text("Exact recovered text 🚀.")
-        await expect(ada.get_by_role("status").filter(has_text="waiting to be shared")).to_be_visible()
+        await expect(ada.get_by_role("status").filter(has_text="Saving…")).to_be_visible()
         self.assertIsNotNone(dropped["uuid"], "Real committed update ACK was dropped")
         dropped["active"] = False
         await ada.reload()
-        field = ada.locator('.cm-content[aria-label="Shared Markdown"]')
+        field = ada.locator('.cm-content[aria-label="Page text"]')
         await expect(field).to_have_attribute("contenteditable", "true")
         await expect(field).to_contain_text("Exact recovered text 🚀.")
-        await expect(ada.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+        await expect(ada.get_by_role("status").filter(has_text=SAVED)).to_be_visible()
         self.assertIsNone(await ada.evaluate("key => sessionStorage.getItem(key)", f"flux:wiki-live:{self.ada_id}:{self.doc_id}"))
         live = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}/live")
         self.assertEqual(live["body"].count("Exact recovered text 🚀."), 1)
@@ -423,7 +437,6 @@ class LiveEditingJourney(LiveFixture):
         await self.create_doc()
         ada = self.pages["ada"]
         field = await self.editor("ada")
-        await self.type_text(ada, field, " Shared before uncertain Save.")
         commands = []
         async def lose_response(route):
             commands.append(route.request.post_data_json)
@@ -434,23 +447,24 @@ class LiveEditingJourney(LiveFixture):
             else:
                 await route.continue_()
         await ada.route(f"**/api/v1/docs/{self.doc_id}/live/save", lose_response)
-        await ada.get_by_label("Reason for this version").fill("Exact uncertain snapshot")
-        await ada.get_by_role("button", name="Save version", exact=True).click()
-        await expect(ada.get_by_role("alert")).to_contain_text("reached")
-        await expect(ada.get_by_label("Reason for this version")).to_be_disabled()
-        await ada.get_by_role("button", name="Save version", exact=True).click()
-        await expect(ada.get_by_role("status").filter(has_text="Version 2 saved")).to_be_visible()
+        # The version saves by itself once the typing rests; its answer is lost, and the next try replays the same save.
+        await self.type_text(ada, field, " Shared before uncertain Save.")
+        await self.saved_doc(ada, "Shared before uncertain Save.")
+        deadline = time.monotonic() + 15
+        while len(commands) < 2 and time.monotonic() < deadline:
+            await asyncio.sleep(0.2)
+        self.assertGreaterEqual(len(commands), 2, "the uncertain save is tried again")
         self.assertEqual(commands[0], commands[1], "Original snapshot, metadata, UUID and versions survive uncertain commit")
         doc = await self.api(ada, "GET", f"/api/v1/docs/{self.doc_id}")
         self.assertEqual(doc["version"], 2)
         versions = await self.api(ada, "GET", f"/api/v1/docs/{self.doc_id}/versions")
         self.assertEqual(len(versions["items"]), 2)
+        self.assertEqual(await ada.get_by_role("alert").count(), 0, "A save tried again is quiet")
 
-    async def test_10_definite_save_conflict_releases_attempt_for_explicit_fresh_save(self):
+    async def test_10_definite_save_conflict_is_quiet_and_the_next_save_takes_the_newer_head(self):
         await self.create_doc()
         ada, kai = self.pages["ada"], self.pages["kai"]
         ada_field, kai_field = await self.editor("ada"), await self.editor("kai")
-        await self.type_text(ada, ada_field, " Ada before the snapshot.")
         release = asyncio.Event()
         intercepted = asyncio.Event()
         commands = []
@@ -458,25 +472,24 @@ class LiveEditingJourney(LiveFixture):
             commands.append(route.request.post_data_json)
             if len(commands) == 1:
                 intercepted.set()
-                await asyncio.wait_for(release.wait(), 5)
+                await asyncio.wait_for(release.wait(), 10)
             await route.continue_()
         await ada.route(f"**/api/v1/docs/{self.doc_id}/live/save", hold_first)
-        await ada.get_by_role("button", name="Save version", exact=True).click()
-        await asyncio.wait_for(intercepted.wait(), 5)
+        await self.type_text(ada, ada_field, " Ada before the snapshot.")
+        await asyncio.wait_for(intercepted.wait(), 10)
         try:
             await self.type_text(kai, kai_field, " Kai after that snapshot.")
         finally:
             release.set()
-        await expect(ada.get_by_role("alert")).to_be_visible()
-        await expect(ada.get_by_label("Reason for this version")).to_be_enabled()
-        await expect(ada.locator('[data-live-status="live"]')).to_be_visible()
-        await ada.get_by_role("button", name="Save version", exact=True).click()
-        await expect(ada.get_by_role("status").filter(has_text="Version 2 saved")).to_be_visible()
-        self.assertNotEqual(commands[0]["clientCommandId"], commands[1]["clientCommandId"])
-        self.assertGreater(commands[1]["headSequence"], commands[0]["headSequence"])
-        saved = await self.api(ada, "GET", f"/api/v1/docs/{self.doc_id}")
+        # Ada's save of the older head is refused (the head moved); the newer head is saved, by her or by Kai.
+        saved = await self.saved_doc(ada, "Kai after that snapshot.")
         self.assertIn("Ada before the snapshot.", saved["body"])
-        self.assertIn("Kai after that snapshot.", saved["body"])
+        self.assertEqual(saved["version"], 2, "the refused save made no version")
+        if len(commands) > 1:
+            self.assertNotEqual(commands[0]["clientCommandId"], commands[1]["clientCommandId"])
+            self.assertGreater(commands[1]["headSequence"], commands[0]["headSequence"])
+        await expect(ada.locator('[data-live-status="live"]')).to_be_visible()
+        self.assertEqual(await ada.get_by_role("alert").count(), 0, "A refused save is quiet")
 
     async def test_11_quota_and_concurrent_own_undo_keep_100k_body(self):
         await self.create_doc('A' * 99_999 + 'B')
@@ -537,7 +550,7 @@ class LiveEditingJourney(LiveFixture):
         await field.click()
         await ada.keyboard.press('Control+Home')
         await ada.keyboard.press('Delete')
-        await expect(ada.get_by_role('status').filter(has_text='All changes shared')).to_be_visible()
+        await expect(ada.get_by_role('status').filter(has_text=SAVED)).to_be_visible()
         await expect(field).to_contain_text('A' * 32)
         deleted = await confirmed_body('ada')
         exact_text(deleted['body'], 'A' * 99_998 + 'B')
@@ -558,7 +571,7 @@ class LiveEditingJourney(LiveFixture):
         exact_text(await copied_document(kai, peer), before)
         await expect(field).to_contain_text('BK')
         await expect(peer).to_contain_text('BK')
-        await expect(ada.get_by_role('status').filter(has_text='All changes shared')).to_be_visible()
+        await expect(ada.get_by_role('status').filter(has_text=SAVED)).to_be_visible()
         after_undo = await confirmed_body('ada', exact_local=False)
         exact_text(after_undo['body'], before)
         self.assertEqual(after_undo['generation'], latest['generation'])
@@ -732,10 +745,10 @@ class LiveEditingJourney(LiveFixture):
                     await ada.evaluate('title => { document.title = title; }', previous_title)
 
         await compose(ada_field)
-        await expect(ada.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+        await expect(ada.get_by_role("status").filter(has_text=SAVED)).to_be_visible()
         await expect(kai_field).to_contain_text("日本 notes")
         for page in (ada, kai):
-            text = await page.locator('.cm-content[aria-label="Shared Markdown"]').inner_text()
+            text = await page.locator('.cm-content[aria-label="Page text"]').inner_text()
             self.assertEqual(text.count("日本"), 1, text[-80:])
             self.assertNotIn("にほん", text)
         # Each copy also renders the peer's named cursor label inside the content; compare the text itself.
@@ -756,7 +769,7 @@ class LiveEditingJourney(LiveFixture):
             await ada.keyboard.press('Shift+ArrowLeft')
         await ada.keyboard.press('Backspace')
         await compose(ada_field)
-        await expect(ada.get_by_role('status').filter(has_text='All changes shared')).to_be_visible()
+        await expect(ada.get_by_role('status').filter(has_text=SAVED)).to_be_visible()
         # The peer's100k editor virtualizes the beginning while its caret stays there.
         # Reach the committed end through its real keyboard before inspecting that text.
         await kai_field.click()
@@ -1136,7 +1149,7 @@ class LiveEditingJourney(LiveFixture):
         await ada.keyboard.insert_text("x")
         editor = ada.locator("[data-live-wiki-editor]")
         await expect(editor).to_have_attribute("data-live-input-revision", "1", timeout=3000)
-        await expect(ada.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+        await expect(ada.get_by_role("status").filter(has_text=SAVED)).to_be_visible()
         self.assertEqual(await ada.get_by_role("alert").count(), 0, "No input was refused")
         last = await ada.evaluate("""() => {
           const walker = document.createTreeWalker(document.querySelector('.cm-content'), NodeFilter.SHOW_TEXT);
@@ -1168,7 +1181,7 @@ class LiveEditingJourney(LiveFixture):
         for key in ("Shift+ArrowLeft", "ArrowRight", "ArrowLeft", "Shift+ArrowRight"):
             await ada.keyboard.press(key)
         await ada.keyboard.insert_text("E")
-        await expect(ada.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
+        await expect(ada.get_by_role("status").filter(has_text=SAVED)).to_be_visible()
         arrows = await ada.evaluate("window.__arrows")
         # Control: the document end is still the editor's own move, which the probe sees.
         self.assertEqual(arrows[0], ["End", False, True], arrows)

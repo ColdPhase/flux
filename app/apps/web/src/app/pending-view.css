@@ -12,13 +12,13 @@
 .pending-view__cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; max-width: calc(var(--col) + 220px); margin: 0 auto; padding: 20px 24px; }
 .pending-view__card { display: grid; align-content: center; gap: 12px; height: 132px; padding: 0 18px; border-radius: var(--r-card); background: var(--sub); }
 .pending-view__card b { background: var(--hov); }
-.pending-view__wiki { display: grid; grid-template-columns: 240px minmax(0, 1fr); height: 100%; }
-.pending-view__index { display: grid; align-content: start; gap: 18px; padding: 24px 20px; border-right: 1px solid var(--line); }
-.pending-view__page { display: grid; align-content: start; gap: 16px; max-width: calc(var(--col) + 48px); padding: 28px 24px; }
-.pending-view__title { height: 18px; width: 46%; margin-bottom: 8px; }
+/* The Wiki: one page column, its quiet row, its title and its lines (#869). */
+.pending-view__wiki { height: 100%; }
+.pending-view__page { display: grid; align-content: start; gap: 16px; max-width: 760px; margin: 0 auto; padding: 38px 40px; }
+.pending-view__meta { width: 22%; }
+.pending-view__title { height: 26px; width: 40%; margin: 14px 0 10px; }
 @media (max-width: 640px) {
-  .pending-view__wiki { grid-template-columns: minmax(0, 1fr); }
-  .pending-view__index { display: none; }
+  .pending-view__page { padding: 26px 20px; }
   .pending-view__list, .pending-view__cards { padding: 16px; }
 }
 @media (prefers-reduced-motion: no-preference) {

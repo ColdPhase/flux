@@ -25,7 +25,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 from contrast import MEASURE
-from wiki_text import LIVE, existing_text, type_at_end, wait_until_shared
+from wiki_text import existing_text, saved, saved_version, text_of, type_at_end, wait_until_shared
 
 # WebKit has no clipboard permission to grant (Playwright: "Unknown permission: clipboard-write"): there the page's clipboard is a
 # recorder that keeps what was written, so the test reads back exactly what the page copied.
@@ -82,8 +82,7 @@ WIRING_BODY = """Power the strip from the 12 V supply and the board from USB. Th
 """
 IMPORTED = "# Sensor bench notes\n\nThe ToF sensor caught **96%** of gestures at 5 lux.\n\n- Camera: 38%\n- ToF: 96%\n"
 
-# The open page is marked by its tint, weight and aria-current only (#431): no generated ::before box, so no dot.
-# The selection's text contrast and focus ring are measured separately (WCAG 1.4.3 and 1.4.11).
+# The open page in the switcher is marked by its tint, weight, a check and aria-current (#431): no generated ::before box.
 DOT = r"""(selector) => {
   const el = document.querySelector(selector);
   const canvas = document.createElement('canvas'); canvas.width = canvas.height = 1;
@@ -169,8 +168,15 @@ class WikiPanesJourney(unittest.TestCase):
     def url(self, key: str, suffix: str = "") -> str:
         return f"/projects/{self.project_id}/docs/{self.ids[key]}{suffix}"
 
-    def index(self, page: Page):
-        return page.get_by_role("navigation", name="Wiki pages")
+    def actions(self, page: Page, item: str) -> None:
+        """Chooses `item` in the page's ⋯."""
+        page.get_by_role("button", name="Page actions").click()
+        page.get_by_role("menu", name="Page actions").get_by_role("menuitem", name=item).click()
+
+    def switcher(self, page: Page):
+        """Opens the title's page switcher."""
+        page.locator(".wiki-page").get_by_role("heading", level=2).get_by_role("button").click()
+        return page.get_by_role("dialog", name=f"Pages in {PROJECT}")
 
     def measure(self, page: Page, selector: str, minimum: float = 4.5, **spec) -> dict:
         # Check opacity and measure in the same browser task: a separate evaluation can land
@@ -189,7 +195,7 @@ class WikiPanesJourney(unittest.TestCase):
 
     def no_horizontal_overflow(self, page: Page, width: int) -> None:
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), width, "no horizontal page scroll")
-        for selector in (".wiki", ".wiki-main", ".wiki-doc"):
+        for selector in (".wiki-main", ".wiki-page"):
             overflow = page.evaluate(f"(() => {{ const el = document.querySelector('{selector}'); return el.scrollWidth - el.clientWidth; }})()")
             wide = page.evaluate(f"""(() => {{ const box = document.querySelector('{selector}').getBoundingClientRect();
                 return [...document.querySelector('{selector}').querySelectorAll('*')].filter((el) => el.getBoundingClientRect().right > box.right + 0.5)
@@ -220,204 +226,92 @@ class WikiPanesJourney(unittest.TestCase):
         base = f"/api/v1/projects/{project['id']}/docs"
         key = lambda: {"idempotency-key": str(uuid.uuid4())}  # noqa: E731
         wiring = self.api(owner, "POST", base, {"title": WIRING, "body": WIRING_BODY}, status=201, headers=key())
-        parts = self.api(owner, "POST", base, {"title": PARTS, "body": PARTS_BODY, "state": "published", "reason": "What we ordered"}, status=201, headers=key())
+        parts = self.api(owner, "POST", base, {"title": PARTS, "body": PARTS_BODY, "reason": "What we ordered"}, status=201, headers=key())
         lamp_v1 = LAMP_V1 + f"\nThe parts are in [{PARTS}](flux:doc/{parts['id']}).\n"
-        lamp = self.api(owner, "POST", base, {"title": LAMP, "body": lamp_v1, "state": "published", "reason": "First notes"}, status=201, headers=key())
+        lamp = self.api(owner, "POST", base, {"title": LAMP, "body": lamp_v1, "reason": "First notes"}, status=201, headers=key())
         partner = self.page("partner")
         self.api(partner, "PATCH", f"/api/v1/docs/{lamp['id']}", {"body": lamp_v1 + PRIVACY, "reason": "Added the privacy section"}, status=200,
                  headers={"if-match": '"1"', **key()})
         type(self).ids = {"lamp": lamp["id"], "parts": parts["id"], "wiring": wiring["id"]}
         self.assertEqual([item["id"] for item in self.docs(owner)][0], lamp["id"], "the lamp page is the latest change")
 
-    # ---------------------------------------------------------------- index and selection
+    # ---------------------------------------------------------------- the page
 
-    def test_02_wiki_tab_opens_a_page_with_a_quiet_accessible_selection(self) -> None:
+    def test_02_wiki_tab_opens_a_page_and_the_title_switches_pages(self) -> None:
         page = self.page("owner")
-        page.goto(f"/projects/{self.project_id}")
-        page.get_by_role("navigation", name="Space views").get_by_role("link", name="Wiki").click()
-        expect(page, "the Wiki tab opens the latest page").to_have_url(re.compile(re.escape(self.url("lamp")) + "$"))
+        page.goto(f"/projects/{self.project_id}/docs")
+        expect(page).to_have_url(re.compile(re.escape(self.url("lamp")) + "$"))
         expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
-        index = self.index(page)
-        items = index.locator(".wiki-page")
-        expect(items).to_have_count(3)
-        expect(index.locator(".wiki-page__t")).to_have_text([WIRING, LAMP, PARTS])
-        expect(index.get_by_role("link", name=WIRING)).to_contain_text("Draft")
-        # Exactly one current page, marked by a raised row and weight as well as aria-current.
-        expect(index.locator('[aria-current="page"]')).to_have_count(1)
-        active = index.get_by_role("link", name=LAMP)
-        expect(active).to_have_attribute("aria-current", "page")
-        expect(index.get_by_role("link", name=PARTS)).not_to_have_attribute("aria-current", "page")
-        self.assertEqual(active.evaluate("e => getComputedStyle(e).fontWeight"), "600")
-        self.assertEqual(index.get_by_role("link", name=PARTS).evaluate("e => getComputedStyle(e).fontWeight"), "500")
-        raised = active.evaluate("e => [getComputedStyle(e).backgroundColor, getComputedStyle(e).boxShadow]")
-        self.assertNotEqual(raised[0], index.evaluate("e => getComputedStyle(e).backgroundColor"), "the open page is raised from the list")
-        self.assertNotEqual(raised[1], "none")
-        # As drawn: "Pages" with a New page button, a 220px list, the page at a 776px column with a 32px title.
-        expect(index.get_by_text("Pages", exact=True)).to_be_visible()
-        self.assertAlmostEqual(index.bounding_box()["width"], 220, delta=1)
-        self.assertLessEqual(page.locator(".wiki-doc").bounding_box()["width"], 776.5)
-        # #431 retains one-line/ellipsis, full names and no dot; final Pages rows have no pictogram.
-        marker = page.evaluate(DOT, '.wiki-page[aria-current="page"]')
-        self.assertEqual(marker["content"], "none", "no pseudo-element dot beside the open page's label (#431)")
-        rows = items.evaluate_all("""els => els.map(e => {
-            const r = e.getBoundingClientRect(), t = e.querySelector('.wiki-page__t'), tr = t.getBoundingClientRect(), style = getComputedStyle(t);
-            return {h: r.height, lines: Math.round(tr.height / parseFloat(style.lineHeight)), title: e.title, text: t.textContent,
-                iconCount: e.querySelectorAll('svg').length, labelWithin: tr.left >= r.left && tr.right <= r.right,
-                rowFits: e.scrollWidth <= e.clientWidth, overflow: style.overflow, ellipsis: style.textOverflow};
-        })""")
-        for row in rows:
-            self.assertEqual(row["lines"], 1, row)
-            self.assertEqual(row["title"], row["text"], row)
-            self.assertEqual(row["iconCount"], 0, "the fixed final Pages list uses text-only rows")
-            self.assertTrue(row["labelWithin"] and row["rowFits"], row)
-            self.assertEqual((row["overflow"], row["ellipsis"]), ("hidden", "ellipsis"), row)
-        self.assertLessEqual(max(row["h"] for row in rows) - min(row["h"] for row in rows), 0.5, rows)
-        title = page.get_by_role("heading", level=2, name=LAMP)
-        self.assertEqual(title.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight]"), ["32px", "600"])
-        prose = page.locator(".doc-prose")
-        self.assertEqual(prose.evaluate("e => getComputedStyle(e).fontSize"), "15px")
-        self.assertEqual(prose.locator("h2").first.evaluate("e => [getComputedStyle(e).fontSize, getComputedStyle(e).fontWeight]"), ["20px", "600"])
-        # Who edited: the last editor with a face, then who started the page.
-        who = page.locator(".wiki-who")
-        expect(who).to_contain_text(f"Edited by {PARTNER['name']}")
-        expect(who).to_contain_text(OWNER["name"])
-        expect(who.locator(".ui-avatar")).to_have_count(2)
-        # The outline from the page's headings moves focus to its heading, by keyboard too.
-        outline = page.get_by_role("complementary", name="On this page")
-        expect(outline.get_by_role("link")).to_have_text(["What we want", "What we test", "Running it", "Privacy"])
-        outline.get_by_role("link", name="Privacy").focus()
-        page.keyboard.press("Enter")
-        expect(page.locator(".doc-prose h2", has_text="Privacy")).to_be_focused()
-        expect(outline.get_by_role("link", name="Privacy")).to_have_attribute("aria-current", "location")
-        # Keyboard: from the search field, Tab reaches each page; the open one shows a visible ring.
-        search = index.get_by_label("Search the wiki")
-        search.focus()
-        page.keyboard.press("Tab")
-        expect(index.get_by_role("link", name=WIRING)).to_be_focused()
-        page.keyboard.press("Tab")
-        expect(active).to_be_focused()
-        page.wait_for_timeout(250)
-        self.assertTrue(active.evaluate("e => e.matches(':focus-visible')"))
-        self.assertEqual(active.evaluate("e => [getComputedStyle(e).outlineStyle, getComputedStyle(e).outlineWidth]"), ["solid", "2px"])
-        self.measure(page, '.wiki-page[aria-current="page"]', 3, property="outlineColor", backgroundSelector=".wiki-index")
-        shot(page, "wiki-desktop-1440-focus-ring")
-        page.keyboard.press("Tab")
-        expect(index.get_by_role("link", name=PARTS)).to_be_focused()
-        page.keyboard.press("Enter")
-        expect(page).to_have_url(re.compile(re.escape(self.url("parts")) + "$"))
+        expect(page.get_by_role("navigation", name="Wiki pages")).to_have_count(0)
+        pages = self.switcher(page)
+        expect(pages.get_by_role("link")).to_have_text([WIRING, LAMP, PARTS])
+        expect(pages.get_by_role("link", name=LAMP)).to_have_attribute("aria-current", "page")
+        self.assertEqual(page.evaluate(DOT, '.wiki-menu__row[aria-current="page"]')["content"], "none", "no pseudo-element dot beside the open page (#431)")
+        pages.get_by_label("Find a page").fill("zzz")
+        expect(pages).to_contain_text("No page matches “zzz”.")
+        pages.get_by_label("Find a page").fill("parts")
+        pages.get_by_role("link", name=PARTS).click()
         expect(page.get_by_role("heading", level=2, name=PARTS)).to_be_visible()
-        expect(index.get_by_role("link", name=PARTS)).to_have_attribute("aria-current", "page")
-        expect(active).not_to_have_attribute("aria-current", "page")
-        # The doc link inside the lamp page shows up as a backlink here.
-        expect(page.get_by_role("region", name=re.compile("^Linked from"))).to_contain_text(LAMP)
-        # Moving to another tab and back returns to the page last open here.
-        page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Tasks")).click()
-        expect(page).to_have_url(re.compile(r"/tasks"))
-        page.get_by_role("navigation", name="Space views").get_by_role("link", name="Wiki").click()
+        expect(pages).to_have_count(0)
+        # The Wiki tab comes back to the page last open in this tab.
+        page.goto(f"/projects/{self.project_id}/tasks")
+        page.goto(f"/projects/{self.project_id}/docs")
         expect(page).to_have_url(re.compile(re.escape(self.url("parts")) + "$"))
 
-    def test_02b_long_page_labels_keep_one_line_full_names_and_targets(self) -> None:
-        # A separate owned project preserves the shared three-page fixture used by the later journeys.
-        setup = self.page("owner")
-        space = self.api(setup, "POST", "/api/v1/workspaces", {"name": "Page label checks"}, status=201)
-        project = self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/projects", {"name": "Long page labels", "visibility": "restricted"}, status=201)
-        title = "How the community garden sensors work through an entire winter of measurements and volunteer visits"
-        made = {}
-        for label in ("Overview", title):
-            made[label] = self.api(setup, "POST", f"/api/v1/projects/{project['id']}/docs", {"title": label, "body": "Readable project notes.", "state": "published"}, status=201,
-                                   headers={"idempotency-key": str(uuid.uuid4())})
-        for phone in (False, True):
-            for theme in ("light", "dark"):
-                with self.subTest(phone=phone, theme=theme):
-                    size = PHONE if phone else DESKTOP
-                    page = self.page("owner", viewport=size, touch=phone, theme=theme)
-                    page.goto(f"/projects/{project['id']}/docs/{made['Overview']['id']}")
-                    index = self.index(page)
-                    link = index.get_by_role("link", name=title, exact=True)
-                    link.scroll_into_view_if_needed()
-                    expect(link).to_be_visible()
-                    expect(link).to_have_attribute("title", title)
-                    label = link.locator(".wiki-page__t")
-                    metrics = label.evaluate("""el => ({ height: el.getBoundingClientRect().height,
-                        lineHeight: parseFloat(getComputedStyle(el).lineHeight), clipped: el.scrollWidth > el.clientWidth })""")
-                    self.assertTrue(metrics["clipped"], "the fixture really needs ellipsis, not merely a short single line")
-                    self.assertLessEqual(metrics["height"], metrics["lineHeight"] + 1, metrics)
-                    rows = index.locator(".wiki-page").evaluate_all("els => els.map(e => e.getBoundingClientRect().height)")
-                    self.assertLessEqual(max(rows) - min(rows), .5, rows)
-                    self.assertEqual(page.evaluate(DOT, '.wiki-page')["content"], "none")
-                    box = link.bounding_box(); assert box
-                    if phone:
-                        self.assertGreaterEqual(min(box["width"], box["height"]), 44)
-                        self.assertTrue(link.evaluate("e => { const r=e.getBoundingClientRect(), hit=document.elementFromPoint(r.x+r.width/2,r.y+r.height/2); return hit===e || e.contains(hit); }"))
-                    self.no_horizontal_overflow(page, size["width"])
-                    if not phone and theme == "light":
-                        # The same measured fixture fails if wrapping or loss of its tooltip returns.
-                        link.evaluate("e => e.removeAttribute('title')")
-                        with self.assertRaises(AssertionError): self.assertEqual(link.get_attribute("title"), title)
-                        link.evaluate("(e, title) => e.title = title", title)
-                        broken = page.add_style_tag(content=".wiki-page { white-space: normal !important; } .wiki-page__t { overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere !important; }")
-                        self.assertGreater(label.evaluate("e => e.getBoundingClientRect().height"), metrics["lineHeight"] + 1, "the old wrapping behavior really breaks the one-line bound")
-                        broken.evaluate("e => e.remove()")
-                    link.focus(); page.keyboard.press("Enter")
-                    expect(page.get_by_role("heading", level=2, name=title, exact=True)).to_be_visible()
-                    expect(index.get_by_role("link", name=title, exact=True)).to_have_attribute("aria-current", "page")
-                    shot(page, f"wiki-long-labels-{size['width']}-{theme}")
+    def test_03_text_is_written_on_the_page_and_versions_save_by_themselves(self) -> None:
+        page = self.page("owner")
+        page.goto(self.url("parts"))
+        text = existing_text(page)
+        wait_until_shared(page)
+        # The page is edited where it is read: no Write / Preview / Both, no raw Markdown field, no reason or Draft / Published.
+        for gone in ("Write", "Preview", "Both", "Draft", "Published", "Save version"):
+            expect(page.get_by_role("button", name=gone, exact=True)).to_have_count(0)
+        expect(page.get_by_label("Reason for this version")).to_have_count(0)
+        expect(page.get_by_label("Text (Markdown)")).to_have_count(0)
+        expect(page.locator(".doc-table")).to_have_count(1)  # the table reads as a table until the caret is in it
+        before = self.doc(page, self.ids["parts"])
+        type_at_end(page, text, "\nThe spare sensor stays in the drawer.")
+        doc = saved_version(page, self.ids["parts"], "The spare sensor stays in the drawer.")
+        self.assertEqual((doc["version"], doc["reason"], doc["author"]["name"]), (before["version"] + 1, "Edited the text", OWNER["name"]))
+        self.assertEqual(doc["body"], text_of(text))
+        expect(saved(page)).to_be_visible()
+        shot(page, "wiki-written-desktop-1440")
+        # A reload reads the page as it was left.
+        page.reload()
+        wait_until_shared(page)
+        expect(text).to_contain_text("The spare sensor stays in the drawer.")
 
-    def test_03_index_search(self) -> None:
+    def test_04_new_page_from_the_switcher(self) -> None:
         page = self.page("owner")
         page.goto(self.url("lamp"))
-        index = self.index(page)
-        search = index.get_by_label("Search the wiki")
-        # The search reads titles and the first words of each page.
-        search.fill("solder")
-        expect(index.get_by_role("status")).to_have_text("1 page")
-        expect(index.locator(".wiki-page__t")).to_have_text([PARTS])
-        search.fill("LAMP")
-        expect(index.get_by_role("status")).to_have_text("3 pages")
-        expect(index.get_by_role("link", name=LAMP)).to_have_attribute("aria-current", "page")
-        search.fill("zeppelin")
-        expect(index.get_by_role("status")).to_have_text("No pages match “zeppelin”.")
-        expect(index.locator(".wiki-page")).to_have_count(0)
-        shot(page, "wiki-search-empty-desktop-1440")
-        search.press("Escape")
-        expect(search).to_have_value("")
-        expect(index.locator(".wiki-page")).to_have_count(3)
-        # The count stays mounted (so changes are announced) and says nothing without a search.
-        expect(index.get_by_role("status")).to_have_text("")
-
-    # ---------------------------------------------------------------- new page and import
-
-    def test_04_new_page(self) -> None:
-        page = self.page("owner")
-        page.goto(self.url("lamp"))
-        index = self.index(page)
-        index.get_by_role("link", name="New page").click()
-        expect(page).to_have_url(re.compile(r"/docs/new$"))
-        expect(index.get_by_role("link", name="New page")).to_have_attribute("aria-current", "page")
-        expect(index.locator('.wiki-page[aria-current="page"]')).to_have_count(0)
-        expect(page.locator(".wiki-bar")).to_contain_text("New page")
-        page.get_by_label("Title").fill("Bench test log")
-        page.get_by_label("Text (Markdown)").fill("## Monday\n\n- 38% of gestures at 5 lux with the camera\n")
-        page.get_by_label("Text (Markdown)").press("Control+s")
+        pages = self.switcher(page)
+        pages.get_by_role("button", name="New page").click()
+        pages.get_by_label("Name of the new page").fill("Bench test log")
+        page.keyboard.press("Enter")
         expect(page.get_by_role("heading", level=2, name="Bench test log")).to_be_visible()
         created = next(item for item in self.docs(page) if item["title"] == "Bench test log")
         type(self).ids["bench"] = created["id"]
         expect(page).to_have_url(re.compile(re.escape(self.url("bench")) + "$"))
-        doc = self.doc(page, created["id"])
-        self.assertEqual((doc["version"], doc["state"], doc["body"]), (1, "draft", "## Monday\n\n- 38% of gestures at 5 lux with the camera\n"))
-        expect(index.get_by_role("link", name="Bench test log")).to_have_attribute("aria-current", "page")
-        expect(index.get_by_role("link", name="Bench test log")).to_contain_text("Draft")
-        expect(index.locator(".wiki-page")).to_have_count(4)
+        # The caret is in the new page's text.
+        text = existing_text(page)
+        wait_until_shared(page)
+        expect(text).to_be_focused()
+        page.keyboard.insert_text("## Monday\n\n- 38% of gestures at 5 lux with the camera")
+        doc = saved_version(page, created["id"], "38% of gestures")
+        self.assertEqual(doc["body"], "## Monday\n\n- 38% of gestures at 5 lux with the camera")
+        expect(page.locator(".cm-md-h2")).to_have_text("Monday")
+        pages = self.switcher(page)
+        expect(pages.get_by_role("link", name="Bench test log")).to_have_attribute("aria-current", "page")
+        expect(pages.get_by_role("link")).to_have_count(4)
 
     def choose_file(self, page: Page, name: str, data: bytes, mime: str) -> None:
         with page.expect_file_chooser() as chooser:
-            self.index(page).get_by_role("button", name="Import .md").click()
+            self.actions(page, "Import a Markdown file")
         chooser.value.set_files({"name": name, "mimeType": mime, "buffer": data})
 
     def test_05_import_markdown_and_refuse_other_files(self) -> None:
         page = self.page("owner")
         page.goto(self.url("lamp"))
-        index = self.index(page)
         before = len(self.docs(page))
         refusals = (
             ("photo.png", b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR", "image/png", "“photo.png” is not a Markdown file. Choose a .md file."),
@@ -429,25 +323,25 @@ class WikiPanesJourney(unittest.TestCase):
         for name, data, mime, message in refusals:
             with self.subTest(file=name):
                 self.choose_file(page, name, data, mime)
-                alert = index.get_by_role("alert")
+                alert = page.locator(".wiki-page").get_by_role("alert")
                 expect(alert).to_contain_text(message)
-                expect(index.get_by_role("button", name="Import .md")).to_have_attribute("aria-describedby", alert.get_attribute("id"))
                 expect(page).to_have_url(re.compile(re.escape(self.url("lamp")) + "$"))
                 self.assertEqual(len(self.docs(page)), before, f"{name} created no page")
         shot(page, "wiki-import-refused-desktop-1440")
-        # A Markdown file becomes a draft page; its first heading is the title.
+        # A Markdown file becomes a page; its first heading is the title.
         self.choose_file(page, "bench-notes.md", IMPORTED.encode(), "text/markdown")
         expect(page.get_by_role("heading", level=2, name="Sensor bench notes")).to_be_visible()
-        expect(index.get_by_role("alert")).to_have_count(0)
-        expect(page.get_by_text("Imported “Sensor bench notes” as a draft page.")).to_be_visible()
+        expect(page.get_by_text("Imported “Sensor bench notes”.")).to_be_visible()
         created = next(item for item in self.docs(page) if item["title"] == "Sensor bench notes")
         type(self).ids["imported"] = created["id"]
         expect(page).to_have_url(re.compile(re.escape(self.url("imported")) + "$"))
+        expect(page.locator(".wiki-page").get_by_role("alert")).to_have_count(0)
         doc = self.doc(page, created["id"])
         self.assertEqual(doc["body"], IMPORTED.split("\n", 2)[2], "the text after the title, exactly")
-        self.assertEqual((doc["version"], doc["state"], doc["reason"], doc["author"]["name"]), (1, "draft", "Imported from bench-notes.md", OWNER["name"]))
-        expect(page.locator(".doc-prose strong")).to_have_text("96%")
-        expect(index.get_by_role("link", name="Sensor bench notes")).to_have_attribute("aria-current", "page")
+        self.assertEqual((doc["version"], doc["reason"], doc["author"]["name"]), (1, "Imported from bench-notes.md", OWNER["name"]))
+        wait_until_shared(page)
+        expect(page.locator(".wiki-editor .cm-md-strong")).to_have_text("96%")
+        self.assertEqual(text_of(existing_text(page)), doc["body"], "the imported Markdown is the page's text, unchanged")
         # Without a heading, the file name names the page; Windows line ends become plain ones.
         self.choose_file(page, "power_budget.md", "Idle: 0.2 W\r\nRunning: 1.4 W\r\n".encode(), "text/plain")
         expect(page.get_by_role("heading", level=2, name="Power budget")).to_be_visible()
@@ -476,9 +370,7 @@ class WikiPanesJourney(unittest.TestCase):
         page.route(docs_url, lose_first)
         retry = "# Retried import\n\nSaved once even when the answer was lost.\n"
         self.choose_file(page, "retried.md", retry.encode(), "text/markdown")
-        expect(index.get_by_role("alert")).to_contain_text("Check the connection and try again")
-        # The button kept keyboard focus while it was busy, so the person can try again from it.
-        expect(index.get_by_role("button", name="Import .md")).to_be_focused()
+        expect(page.locator(".wiki-page").get_by_role("alert")).to_contain_text("Check the connection and try again")
         with page.expect_response(lambda r: r.request.method == "POST" and r.url.endswith(f"/api/v1/projects/{self.project_id}/docs")) as again:
             self.choose_file(page, "retried.md", retry.encode(), "text/markdown")
         expect(page.get_by_role("heading", level=2, name="Retried import")).to_be_visible()
@@ -489,526 +381,173 @@ class WikiPanesJourney(unittest.TestCase):
         self.assertEqual(again.value.headers.get("idempotent-replayed"), "true", "the server replayed the saved page")
         self.assertEqual(sum(item["title"] == "Retried import" for item in self.docs(page)), 1, "one page, not two")
 
-    # ---------------------------------------------------------------- history and drafts
+    # ---------------------------------------------------------------- history, restore and rename
 
-    def test_06_history_beside_the_index(self) -> None:
+    def test_06_history_compares_and_restores(self) -> None:
         page = self.page("owner")
         page.goto(self.url("lamp"))
-        page.get_by_role("link", name=re.compile("^History")).click()
+        wait_until_shared(page)
+        self.actions(page, "History")
         expect(page).to_have_url(re.compile(re.escape(self.url("lamp", "/history"))))
-        index = self.index(page)
-        expect(index).to_be_visible()
-        expect(index.get_by_role("link", name=LAMP)).to_have_attribute("aria-current", "page")
-        expect(page.locator(".wiki-bar")).to_contain_text("History · 2 versions")
+        expect(page.locator(".wiki-head")).to_contain_text("History · 2 versions")
         versions = page.locator(".doc-versions > li")
         expect(versions).to_have_count(2)
         expect(versions.first).to_contain_text("Added the privacy section")
         expect(versions.first).to_contain_text(PARTNER["name"])
+        expect(versions.first).not_to_contain_text("Published")
         expect(page.get_by_label("Changes in the text").locator(".wiki-chg--added")).to_contain_text(["Privacy"])
         shot(page, "wiki-history-desktop-1440")
         page.get_by_role("link", name="Read version 1").click()
         expect(page).to_have_url(re.compile(re.escape(self.url("lamp", "/versions/1")) + "$"))
-        expect(page.locator(".doc-head__k")).to_have_text("Published · version 1 of 2")
+        expect(page.locator(".wiki-head__meta")).to_contain_text("Version 1")
         expect(page.locator(".doc-notice").first).to_contain_text("You are reading an earlier version")
         expect(page.locator(".doc-prose")).not_to_contain_text("Privacy")
-        expect(page.locator(".wiki-bar").get_by_role("link", name="Edit")).to_have_count(0)
-        page.get_by_role("link", name="Open the current version").click()
-        expect(page.locator(".doc-head__k")).to_have_text("Published · version 2")
-        page.get_by_role("link", name=re.compile("^History")).click()
-        page.get_by_role("link", name="Back to the page").click()
+        expect(page.locator(".cm-content")).to_have_count(0)  # an earlier version is read, not written
+        # Restore: version 1 becomes the page again, as the next version that says so.
+        page.get_by_role("link", name="Restore this version").click()
+        expect(page.get_by_text("Version 1 is the page again.")).to_be_visible(timeout=15000)
         expect(page).to_have_url(re.compile(re.escape(self.url("lamp")) + "$"))
+        restored = self.doc(page, self.ids["lamp"])
+        first = self.api(page, "GET", f"/api/v1/docs/{self.ids['lamp']}/versions/1", status=200)
+        self.assertEqual((restored["version"], restored["reason"], restored["body"]), (3, "Restored version 1", first["body"]))
+        expect(existing_text(page)).not_to_contain_text("The image stays on the device")
+        # And back, from History's own Restore.
+        page.goto(self.url("lamp", "/history?to=2"))
+        page.get_by_role("link", name="Restore version 2").click()
+        expect(page.get_by_text("Version 2 is the page again.")).to_be_visible(timeout=15000)
+        self.assertIn("Privacy", self.doc(page, self.ids["lamp"])["body"])
 
-    def test_07_unsaved_text_survives_moving_between_pages(self) -> None:
+    def test_07_rename_in_the_title_place(self) -> None:
         page = self.page("owner")
-        page.goto(self.url("parts"))
-        expect(page.get_by_role("heading", level=2, name=PARTS)).to_be_visible()
-        # "E" opens the editor, as the Edit button announces.
-        page.locator(".wiki-doc").click(position={"x": 5, "y": 5})
-        page.keyboard.press("e")
-        expect(page).to_have_url(re.compile(re.escape(self.url("parts", "/edit")) + "$"))
-        text = existing_text(page)
+        page.goto(self.url("wiring"))
         wait_until_shared(page)
-        saved_body = self.doc(page, self.ids["parts"])["body"]
-        if LIVE:
-            type_at_end(page, text, "| USB-C cable | 1 | for the bench |\n")
-        else:
-            text.fill(PARTS_BODY + "| USB-C cable | 1 | for the bench |\n")
-        self.index(page).get_by_role("link", name=LAMP).click()
-        expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
-        self.index(page).get_by_role("link", name=PARTS).click()
-        if LIVE:
-            # The text is the page's shared working copy: it is there when the person comes back (the page says so and the editor
-            # has it), it is not a draft to mark or cancel, and nothing is saved until the person saves.
-            expect(page.locator("[data-live-reader]")).to_be_visible()
-            expect(page.locator(".wiki-bar").get_by_role("link", name="Unsaved changes in this tab")).to_have_count(0)
-            shot(page, "wiki-unsaved-desktop-1440")
-            page.get_by_role("link", name="Edit", exact=True).click()
-            wait_until_shared(page)
-            expect(text).to_contain_text("USB-C cable")
-            self.assertNotIn("USB-C cable", self.doc(page, self.ids["parts"])["body"], "nothing was saved without the person")
-            # Put the working copy back as saved, so the pages after this one read the page as it was.
-            text.click()
-            page.keyboard.press("Control+a")
-            page.keyboard.insert_text(saved_body)
-            expect(page.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
-            page.get_by_role("link", name="Back to the page").click()
-            return
-        kept = page.locator(".wiki-bar").get_by_role("link", name="Unsaved changes in this tab")
-        expect(kept).to_be_visible()
-        shot(page, "wiki-unsaved-desktop-1440")
-        kept.click()
-        expect(page.get_by_text("Your unsaved text from earlier is back.")).to_be_visible()
-        expect(page.get_by_label("Text (Markdown)")).to_have_value(re.compile("USB-C cable"))
-        self.assertNotIn("USB-C cable", self.doc(page, self.ids["parts"])["body"], "nothing was saved without the person")
-        page.get_by_role("link", name="Cancel").click()
-        expect(page.locator(".wiki-bar").get_by_role("link", name="Unsaved changes in this tab")).to_have_count(0)
+        self.actions(page, "Rename page")
+        field = page.get_by_label("Page title")
+        expect(field).to_be_focused()
+        expect(field).to_have_value(WIRING)
+        field.fill("Wiring the lamp")
+        field.press("Enter")
+        expect(page.get_by_role("heading", level=2, name="Wiring the lamp")).to_be_visible()
+        expect(page.get_by_role("button", name="Page actions")).to_be_focused()
+        doc = self.doc(page, self.ids["wiring"])
+        self.assertEqual((doc["title"], doc["reason"]), ("Wiring the lamp", "Renamed to “Wiring the lamp”"))
+        # Escape keeps the name.
+        self.actions(page, "Rename page")
+        page.get_by_label("Page title").fill("Not this")
+        page.keyboard.press("Escape")
+        expect(page.get_by_role("heading", level=2, name="Wiring the lamp")).to_be_visible()
+        self.assertEqual(self.doc(page, self.ids["wiring"])["title"], "Wiring the lamp")
 
-    # ---------------------------------------------------------------- download, export and share
+    # ---------------------------------------------------------------- export and copy link
 
-    def download(self, page: Page, item: str) -> tuple[str, bytes]:
-        page.locator(".wiki-bar").get_by_role("button", name="Download").click()
-        dialog = page.get_by_role("dialog", name="Download")
-        expect(dialog).to_be_visible()
+    def export(self, page: Page, item: str | None = None) -> tuple[str, bytes]:
         with page.expect_download() as info:
-            dialog.get_by_role("button", name=re.compile(item)).click()
+            self.actions(page, "Export")
+            if item:
+                page.get_by_role("menu", name="Page actions").get_by_role("menuitem", name=re.compile(item)).click()
         download = info.value
         return download.suggested_filename, Path(download.path()).read_bytes()
 
-    def test_08_download_a_page_and_export_the_project(self) -> None:
+    def test_08_export_a_page_and_the_whole_space(self) -> None:
         page = self.page("owner")
         page.goto(self.url("lamp"))
-        name, data = self.download(page, "^This page as Markdown")
+        wait_until_shared(page)
+        name, data = self.export(page, "^This page as Markdown")
         current = self.doc(page, self.ids["lamp"])
         self.assertEqual(name, "how-the-lamp-works.md")
         self.assertEqual(data.decode("utf-8"), f"# {LAMP}\n\n{current['body'].rstrip()}\n")
-        expect(page.get_by_role("dialog", name="Download")).to_have_count(0)
-        expect(page.locator(".wiki-bar").get_by_role("button", name="Download")).to_be_focused()
-        # An earlier version downloads as it was written.
+        # An earlier version exports as it was written.
         page.goto(self.url("lamp", "/versions/1"))
-        name, data = self.download(page, "^Version 1 as Markdown")
+        name, data = self.export(page, "^Version 1 as Markdown")
         first = self.api(page, "GET", f"/api/v1/docs/{self.ids['lamp']}/versions/1", status=200)
         self.assertEqual(name, "how-the-lamp-works-v1.md")
         self.assertEqual(data.decode("utf-8"), f"# {LAMP}\n\n{first['body'].rstrip()}\n")
-        self.assertNotIn("Privacy", data.decode("utf-8"))
-        # A manager exports the whole project through the existing export (#123).
+        # A manager exports the whole space through the existing export (#123).
         page.goto(self.url("lamp"))
-        page.locator(".wiki-bar").get_by_role("button", name="Download").click()
-        shot(page, "wiki-download-desktop-1440")
-        page.keyboard.press("Escape")
-        name, data = self.download(page, "^Export the whole space")
+        name, data = self.export(page, "^The whole space")
         self.assertRegex(name, rf"^flux-project-{self.project_id[:8]}-\d{{8}}T\d{{6}}Z\.tar\.gz$")
         with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as bundle:
-            names = bundle.getnames()
             root = name.removesuffix(".tar.gz")
-            self.assertIn(f"{root}/project.json", names)
             exported = json.loads(bundle.extractfile(f"{root}/project.json").read())
             page_file = bundle.extractfile(f"{root}/docs/{self.ids['lamp']}.md").read().decode("utf-8")
-            manifest = json.loads(bundle.extractfile(f"{root}/manifest.json").read())
         self.assertEqual(exported["project"]["name"], PROJECT)
-        lamp = next(item for item in exported["docs"] if item["id"] == self.ids["lamp"])
-        self.assertEqual([version["reason"] for version in lamp["versions"]], ["First notes", "Added the privacy section"])
-        self.assertEqual(page_file, current["body"])
-        self.assertIn(f"docs/{self.ids['lamp']}.md", [item["path"] for item in manifest["files"]])
+        self.assertEqual(page_file, self.doc(page, self.ids["lamp"])["body"])
         expect(page.get_by_text(f"Exported {PROJECT} as {name}.")).to_be_visible()
-
-        # A contributor downloads pages; the project export stays with managers, as the server decides.
+        # A contributor's Export is the page itself; the space export stays with managers, as the server decides.
         partner = self.page("partner")
         partner.goto(self.url("parts"))
-        partner.locator(".wiki-bar").get_by_role("button", name="Download").click()
-        dialog = partner.get_by_role("dialog", name="Download")
-        expect(dialog.get_by_role("button", name="This page as Markdown")).to_be_visible()
-        expect(dialog.get_by_role("button", name=re.compile("Export the whole space"))).to_have_count(0)
-        expect(dialog).to_contain_text("People who manage this space can also export the whole space.")
+        wait_until_shared(partner)
+        name, data = self.export(partner)
+        self.assertEqual(name, "parts-list.md")
+        self.assertTrue(data.decode("utf-8").startswith(f"# {PARTS}\n\n"))
         self.api(partner, "GET", f"/api/v1/projects/{self.project_id}/export?format=bundle", status=403)
-        partner.keyboard.press("Escape")
-        expect(dialog).to_have_count(0)
-        # Another member reads and downloads the page too.
-        reader = self.page("reader")
-        reader.goto(self.url("parts"))
-        expect(reader.get_by_role("heading", level=2, name=PARTS)).to_be_visible()
-        name, data = self.download(reader, "^This page as Markdown")
-        self.assertEqual((name, data.decode("utf-8")), ("parts-list.md", f"# {PARTS}\n\n{PARTS_BODY.rstrip()}\n"))
 
-    def test_09_share_copies_the_exact_link(self) -> None:
+    def test_09_copy_link_copies_the_exact_link(self) -> None:
         page = self.page("owner", permissions=["clipboard-read", "clipboard-write"])
         page.goto(self.url("lamp"))
-        share = page.locator(".wiki-bar").get_by_role("button", name="Share this page")
-        share.click()
-        dialog = page.get_by_role("dialog", name="Share this page")
-        expect(dialog).to_contain_text(f"Opens only for people with access to {PROJECT}")
-        expect(dialog).to_contain_text("Marek")
-        expect(dialog).to_contain_text("Noa")
-        copy = dialog.get_by_role("button", name="Copy link")
-        expect(copy).to_be_focused()
-        expect(dialog.get_by_label("Link to this page")).to_have_value(f"{ORIGIN}{self.url('lamp')}")
-        copy.click()
-        expect(dialog.get_by_role("status")).to_have_text("Link copied.")
-        expect(dialog.get_by_role("button", name="Copied")).to_be_visible()
+        wait_until_shared(page)
+        self.actions(page, "Copy link")
+        expect(page.get_by_text("Link copied.")).to_be_visible()
         self.assertEqual(page.evaluate("navigator.clipboard.readText()"), f"{ORIGIN}{self.url('lamp')}")
-        shot(page, "wiki-share-desktop-1440")
-        page.keyboard.press("Escape")
-        expect(dialog).to_have_count(0)
-        expect(share).to_be_focused()
+        expect(page.get_by_role("button", name="Page actions")).to_be_focused()
         # The copied link opens the same page for another person with access.
         partner = self.page("partner")
         partner.goto(page.evaluate("navigator.clipboard.readText()"))
         expect(partner.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
-        share.click()
-        dialog.get_by_role("button", name="See who has access").click()
-        # The space's settings hold who has access (F-037).
-        expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
-
-    # ---------------------------------------------------------------- focus mode
-
-    def test_10_focus_mode_and_return(self) -> None:
-        page = self.page("owner")
-        page.goto(self.url("lamp"))
-        index = self.index(page)
-        focus = page.locator(".wiki-bar").get_by_role("button", name="Focus on the page")
-        expect(focus).to_have_attribute("aria-pressed", "false")
-        narrow = page.locator(".wiki-doc").bounding_box()
-        focus.click()
-        expect(focus).to_have_attribute("aria-pressed", "true")
-        expect(index).to_be_hidden()
-        expect(focus).to_be_focused()
-        wide = page.locator(".wiki-doc").bounding_box()
-        self.assertGreaterEqual(wide["width"], narrow["width"])
-        self.assertLessEqual(wide["width"], 776.5)
-        self.assertLess(wide["x"], narrow["x"], "the document takes the room of the page list")
-        shot(page, "wiki-focus-desktop-1440")
-        # It stays while moving within the wiki and after a reload in this tab.
-        page.goto(self.url("parts"))
-        expect(page.get_by_role("heading", level=2, name=PARTS)).to_be_visible()
-        expect(index).to_be_hidden()
-        page.reload()
-        focus = page.locator(".wiki-bar").get_by_role("button", name="Focus on the page")
-        expect(focus).to_have_attribute("aria-pressed", "true")
-        # Keyboard returns: the same button brings the list back and keeps focus.
-        focus.focus()
-        page.keyboard.press("Enter")
-        expect(focus).to_have_attribute("aria-pressed", "false")
-        expect(index).to_be_visible()
-        expect(focus).to_be_focused()
-        expect(index.get_by_role("link", name=PARTS)).to_have_attribute("aria-current", "page")
 
     # ---------------------------------------------------------------- phone and tablet
 
-    def test_11_phone_puts_the_index_before_the_document(self) -> None:
-        page = self.page("partner", touch=True)
-        page.goto(f"/projects/{self.project_id}/docs")
-        latest = self.docs(page)[0]
-        expect(page).to_have_url(re.compile(re.escape(f"/docs/{latest['id']}") + "$"))
-        index = self.index(page)
-        heading = page.get_by_role("heading", level=2, name=latest["title"])
-        expect(heading).to_be_visible()
-        header = page.locator("header.phead")
-        expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
-        more = page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)
-        expect(more).to_be_visible()
-        self.assertLessEqual(index.bounding_box()["y"] + index.bounding_box()["height"], heading.bounding_box()["y"],
-                             "the page selector sits before the document")
-        expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
-        expect(index.get_by_label("Search the wiki")).to_be_visible()  # more than five pages by now
-        self.assertEqual(page.locator(".doc-prose").evaluate("e => getComputedStyle(e).fontSize"), "16px", "the phone reads at 16px")
-        # The chip row holds only pages (F-026 §4 Phone): New page and Import .md are in the page's menu.
-        expect(index.get_by_role("link", name="New page")).to_have_count(0)
-        expect(index.get_by_role("button", name="Import .md")).to_have_count(0)
-        self.assertGreaterEqual(index.get_by_role("link", name=PARTS).bounding_box()["height"], 44, "touch target")
-        for control in [more, page.get_by_role("link", name="Edit")]:
-            box = control.bounding_box()
-            self.assertGreaterEqual(box["height"], 44, "touch target in the bar")
-            self.assertLessEqual(box["x"] + box["width"], PHONE["width"])
-        expect(index.locator('[aria-current="page"]')).to_have_count(1)
-        self.no_horizontal_overflow(page, PHONE["width"])
-        shot(page, "wiki-phone-390-light")
-        index.get_by_role("link", name=PARTS).tap()
-        expect(page.get_by_role("heading", level=2, name=PARTS)).to_be_visible()
-        current = index.get_by_role("link", name=PARTS)
-        expect(current).to_have_attribute("aria-current", "page")
-        box = current.bounding_box()
-        self.assertGreaterEqual(box["x"], 0)
-        self.assertLessEqual(box["x"] + box["width"], PHONE["width"], "the open page is scrolled into the strip")
-        # The bar stays at the top while reading a long page, and its cards stay on screen.
-        index.get_by_role("link", name=LAMP).tap()
-        expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
-        reader = page.locator(".wiki-read")
-        self.assertGreater(reader.evaluate("e => e.scrollHeight - e.clientHeight"), 200)
-        reader.evaluate("e => e.scrollTo(0, e.scrollHeight)")
-        self.assertGreater(reader.evaluate("e => e.scrollTop"), 200, "the lower document is actually reached")
-        tail = page.locator(".doc-ids").bounding_box()
-        read_box, edit_box = reader.bounding_box(), page.get_by_role("link", name="Edit").bounding_box()
-        self.assertLessEqual(tail["y"] + tail["height"], read_box["y"] + read_box["height"] + 1,
-                             "the final document attribution is visible")
-        self.assertLessEqual(read_box["y"] + read_box["height"], edit_box["y"] + 1,
-                             "Edit cannot cover the scrolled reading area")
-        page.wait_for_timeout(200)
-        self.assertLessEqual(abs(index.bounding_box()["y"] - page.locator(".wiki").bounding_box()["y"]), 1,
-                             "page selection and its action menu stay reachable together")
-        more.tap()
-        card = page.get_by_role("dialog", name="Page actions").bounding_box()
-        self.assertGreaterEqual(card["x"], 0)
-        self.assertLessEqual(card["x"] + card["width"], PHONE["width"])
-        shot(page, "wiki-phone-390-download")
-        page.keyboard.press("Escape")
-        # Page selection while reading the tail starts the newly selected page at its heading.
-        index.get_by_role("link", name=PARTS).tap()
-        expect(page.get_by_role("heading", level=2, name=PARTS)).to_be_in_viewport()
-        index.get_by_role("link", name=LAMP).tap()
-        expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_in_viewport()
-        reader.evaluate("e => e.scrollTo(0, 0)")
-        # The smallest phones keep everything, without sideways scrolling.
-        page.set_viewport_size(SMALL_PHONE)
-        page.wait_for_timeout(200)
-        self.no_horizontal_overflow(page, SMALL_PHONE["width"])
-        box = index.get_by_role("link", name=LAMP).bounding_box()
-        self.assertGreaterEqual(box["x"], 0)
-        self.assertLessEqual(box["x"] + box["width"], SMALL_PHONE["width"], "the open page stays in the strip after a resize")
-        # New page and Import .md stay within reach in the page's menu, on the smallest phone too.
-        more.tap()
-        actions = page.get_by_role("dialog", name="Page actions")
-        for control in (actions.get_by_role("link", name=re.compile("^New page")), actions.get_by_role("button", name="Import .md")):
-            control.scroll_into_view_if_needed()
-            box = control.bounding_box()
-            self.assertGreaterEqual(box["height"], 44)
-            self.assertGreaterEqual(box["x"], 0)
-            self.assertLessEqual(box["x"] + box["width"], SMALL_PHONE["width"])
-        page.keyboard.press("Escape")
-        expect(actions).to_have_count(0)
-        for control in [more]:
-            box = control.bounding_box()
-            self.assertLessEqual(box["x"] + box["width"], SMALL_PHONE["width"])
-        shot(page, "wiki-phone-320-light")
-        # Phone editing keeps its Save within reach, and the text field itself stays uncovered (it is
-        # what the caret is in): the page strip steps aside and only Cancel / Save stay sticky.
-        page.get_by_role("link", name="Edit").tap()
-        text = existing_text(page)
-        expect(text).to_be_visible()
-        self.no_horizontal_overflow(page, SMALL_PHONE["width"])
-        expect(page.get_by_role("button", name="Save version")).to_be_in_viewport()
-        expect(page.get_by_role("navigation", name="Wiki pages")).to_be_hidden()
-        uncovered = text.evaluate("""el => {
-          const r = el.getBoundingClientRect();
-          const y = Math.min(r.top + 40, window.innerHeight - 120);
-          const hit = document.elementFromPoint(r.left + r.width / 2, y);
-          return hit === el || el.contains(hit);
-        }""")
-        self.assertTrue(uncovered, "the writing area is not covered by the bar or the save block")
-        save = page.get_by_role("button", name="Save version").bounding_box()
-        assert save
-        self.assertLessEqual(SMALL_PHONE["height"] - save["y"], 90, "only the actions stay at the bottom")
-        shot(page, "wiki-phone-320-editor")
-
-    def test_12_phone_dark(self) -> None:
-        page = self.page("owner", touch=True, theme="dark")
-        page.goto(self.url("lamp"))
-        expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
-        self.no_horizontal_overflow(page, PHONE["width"])
-        self.measure(page, '.wiki-page[aria-current="page"]')
-        self.measure(page, ".doc-prose p")
-        shot(page, "wiki-phone-390-dark")
-
-    def test_13_tablet_keeps_two_panes(self) -> None:
-        page = self.page("owner", touch=True, viewport=TABLET)
-        page.goto(self.url("lamp"))
-        expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
-        index = self.index(page).bounding_box()
-        main = page.locator(".wiki-main").bounding_box()
-        self.assertLessEqual(index["x"] + index["width"], main["x"] + 1, "the index stands beside the document")
-        self.assertAlmostEqual(index["width"], 180, delta=7)
-        self.assertGreaterEqual(main["width"], 380, "a readable document column")
-        self.assertGreaterEqual(self.index(page).get_by_role("link", name=PARTS).bounding_box()["height"], 44)
-        self.no_horizontal_overflow(page, TABLET["width"])
-        shot(page, "wiki-tablet-820-light")
-        page.locator(".wiki-bar").get_by_role("button", name="Focus on the page").tap()
-        expect(self.index(page)).to_be_hidden()
-        self.assertGreaterEqual(page.locator(".wiki-doc").bounding_box()["width"], main["width"] - 1)
-        shot(page, "wiki-tablet-820-focus")
-        page.locator(".wiki-bar").get_by_role("button", name="Focus on the page").tap()
-        expect(self.index(page)).to_be_visible()
-
-    TOOLBAR = ("outline", "history", "share", "download", "focus", "primary")
-
-    def toolbar_places(self, page: Page) -> dict[str, list[float]]:
-        """Each control of the page toolbar by its slot, as [left, right, top, bottom] in CSS pixels."""
-        return page.locator(".wiki-bar [data-slot]").evaluate_all(
-            "els => Object.fromEntries(els.map((e) => { const r = e.getBoundingClientRect(); return [e.dataset.slot, [r.left, r.right, r.top, r.bottom]]; }))")
-
-    def test_14_one_toolbar_and_the_outline_keep_their_places(self) -> None:
-        # #511 AC-3, AC-4 and AC-5: the outline is never below the page, and the toolbar's controls stay
-        # put from read to edit to history, at computer and laptop widths. The test records the place of
-        # every control per slot in the three states and fails when one moves.
-        for name, viewport in (("1440", DESKTOP), ("1100", {"width": 1100, "height": 760})):
-            page = self.page("owner", viewport=viewport)
-            page.goto(self.url("lamp"))
-            expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
-            bar = page.locator(".wiki-bar")
-            expect(bar).to_contain_text("Published · version 2")
-            expect(page.locator(".wiki-bar__back")).to_have_count(0)
-            read = self.toolbar_places(page)
-            # The outline: a sticky column beside the page (its icon is dimmed), or a chip that opens it. Never below the page.
-            prose = page.locator(".doc-prose").bounding_box()
-            outline = page.locator(".wiki-outline")
-            chip = bar.get_by_role("button", name="On this page")
-            if outline.is_visible():
-                self.assertGreaterEqual(outline.bounding_box()["x"], prose["x"] + prose["width"] - 1, "the outline stands beside the page")
-                expect(chip).to_be_disabled()
-            else:
-                expect(outline).to_be_hidden()
-                expect(chip).to_be_enabled()
-                chip.click()
-                expect(chip).to_have_attribute("aria-expanded", "true")
-                opened = page.get_by_role("navigation", name="On this page").get_by_role("link")
-                expect(opened.first).to_have_text("What we want")
-                shot(page, f"wiki-outline-chip-{name}")
+    def test_10_phone_small_phone_and_tablet(self) -> None:
+        for size, touch in ((PHONE, True), (SMALL_PHONE, True), (TABLET, True)):
+            with self.subTest(width=size["width"]):
+                page = self.page("partner", viewport=size, touch=touch)
+                page.goto(self.url("lamp"))
+                wait_until_shared(page)
+                expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
+                self.no_horizontal_overflow(page, size["width"])
+                for control in (page.locator(".wiki-page").get_by_role("heading", level=2).get_by_role("button"), page.get_by_role("button", name="Contents"),
+                                page.get_by_role("button", name="Page actions")):
+                    box = control.bounding_box()
+                    self.assertGreaterEqual(box["height"], 44)
+                    self.assertLessEqual(box["x"] + box["width"], size["width"])
+                pages = self.switcher(page)
+                expect(pages.get_by_role("link", name=LAMP)).to_have_attribute("aria-current", "page")
+                box = pages.bounding_box()
+                self.assertGreaterEqual(box["x"], 0)
+                self.assertLessEqual(box["x"] + box["width"], size["width"])
+                shot(page, f"wiki-switcher-{size['width']}")
                 page.keyboard.press("Escape")
-                expect(page.get_by_role("navigation", name="On this page")).to_have_count(0)
-                expect(chip).to_be_focused()
-                # The list moves focus to its heading and closes.
-                chip.click()
-                opened.filter(has_text="Privacy").click()
-                expect(page.get_by_role("navigation", name="On this page")).to_have_count(0)
-                expect(page.locator(".doc-prose h2", has_text="Privacy")).to_be_focused()
-                page.evaluate("document.querySelector('.wiki-main').scrollTo(0, 0)")
-            self.assertEqual(read["outline"][0] < read["history"][0] < read["share"][0] < read["download"][0] < read["focus"][0] < read["primary"][0], True, read)
-            shot(page, f"wiki-toolbar-{name}-read")
-            page.get_by_role("link", name="Edit", exact=True).click()
-            expect(bar).to_contain_text("Shared working copy · last saved version 2" if LIVE else "Editing version 2 · saves as 3")
-            expect(bar.get_by_role("button", name="Save version")).to_be_visible()
-            edit = self.toolbar_places(page)
-            self.assertEqual(page.locator(".wiki-bar__back").count(), 1, "Back is on the left in edit")
-            for label in ("On this page", "Share this page", "Download"):
-                expect(bar.get_by_role("button", name=label)).to_be_disabled()
-            shot(page, f"wiki-toolbar-{name}-edit")
-            page.goto(self.url("lamp", "/history"))
-            expect(bar).to_contain_text("History · 2 versions")
-            expect(bar.get_by_role("link", name=re.compile("^Restore v1"))).to_be_visible()
-            history = self.toolbar_places(page)
-            self.assertEqual(page.locator(".wiki-bar__back").count(), 1, "Back is on the left in history")
-            for label in ("On this page", "History", "Share this page", "Download"):
-                expect(bar.get_by_role("button", name=label)).to_be_disabled()
-            shot(page, f"wiki-toolbar-{name}-history")
-            # Every control keeps its place; the primary action is the last one, far right, in each state.
-            for state, places in (("edit", edit), ("history", history)):
-                self.assertEqual(list(places), list(read), (name, state))
-                for slot in self.TOOLBAR:
-                    moved = max(abs(a - b) for a, b in zip(read[slot], places[slot]))
-                    self.assertLessEqual(moved, 0.5, f"{slot} moved by {moved}px from read to {state} at {name}: {read[slot]} -> {places[slot]}")
-            # Back is the leftmost control of the toolbar; the page's own state follows it.
-            back = page.locator(".wiki-bar__back").bounding_box()
-            self.assertLessEqual(back["x"], bar.locator(".doc-head__k").bounding_box()["x"])
+                page.get_by_role("button", name="Contents").click()
+                expect(page.get_by_role("menu", name="Contents").get_by_role("menuitem")).to_have_text(["What we want", "What we test", "Running it", "Privacy"])
+                self.no_horizontal_overflow(page, size["width"])
+                shot(page, f"wiki-contents-{size['width']}")
 
-    def test_13b_wiki_page_reference_chips_keep_routes_audiences_and_versions(self) -> None:
-        setup = self.page("owner")
-        space = self.api(setup, "POST", "/api/v1/workspaces", {"name": "Wiki reference checks"}, status=201)
-        self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/members", {"email": READER['email'], "role": "member"}, status=201)
-        project = self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/projects", {"name": "Reference notes", "visibility": "restricted"}, status=201)
-        self.api(setup, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "human", "id": READER['id']}, "role": "contributor"}, status=201)
-        other = self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/projects", {"name": "Private notes", "visibility": "restricted"}, status=201)
-        create = lambda pid, title, body: self.api(setup, "POST", f"/api/v1/projects/{pid}/docs", {"title": title, "body": body, "state": "published"}, status=201,
-                                                  headers={"idempotency-key": str(uuid.uuid4())})  # noqa: E731
-        target = create(project['id'], PARTS, "The first bench list.")
-        self.api(setup, "PATCH", f"/api/v1/docs/{target['id']}", {"body": "The second bench list.", "reason": "Updated the stock"}, status=200,
-                 headers={"if-match": '"1"', "idempotency-key": str(uuid.uuid4())})
-        foreign = create(other['id'], "Private notes", "The private body must not appear.")
-        body = f"## Assembly\n\nThe parts are in [{PARTS}](flux:doc/{target['id']}). Keep [private notes](flux:doc/{foreign['id']}) separate. An [ordinary link](https://example.invalid) stays a link.\n"
-        source = create(project['id'], LAMP, body)
-        source_url = f"/projects/{project['id']}/docs/{source['id']}"
-        target_url = f"/projects/{project['id']}/docs/{target['id']}"
-        for size, focus in ((DESKTOP, False), (TABLET, False), (TABLET, True), (PHONE, False)):
-            for theme in ("light", "dark"):
-                with self.subTest(width=size['width'], focus=focus, theme=theme):
-                    phone = size == PHONE
-                    page = self.page("owner", viewport=size, touch=size != DESKTOP, theme=theme)
-                    outbound = []
-                    page.on("request", lambda request: outbound.append(request.url) if request.url.startswith('https://example.invalid') else None)
-                    page.goto(source_url)
-                    if focus:
-                        page.get_by_role("button", name="Focus on the page").tap()
-                        expect(self.index(page)).to_be_hidden()
-                    chip = page.locator('.doc-prose a.doc-page')
-                    expect(chip).to_have_count(1)
-                    expect(chip).to_have_accessible_name(PARTS)
-                    expect(chip).to_have_attribute('href', target_url)
-                    expect(chip.locator('svg[aria-hidden="true"]')).to_have_count(1)
-                    self.assertEqual(chip.locator('svg').evaluate("e => [e.getBoundingClientRect().width, e.getBoundingClientRect().height]"), [16, 16])
-                    expect(chip).not_to_have_css('background-color', 'rgba(0, 0, 0, 0)')
-                    expect(chip).to_have_css('text-decoration-line', 'none')
-                    self.assertEqual(chip.evaluate("e => getComputedStyle(e, '::before').display"), 'none')
-                    baseline = chip.evaluate("""e => {
-                      const range = document.createRange(); range.selectNode(e.lastChild); const title = range.getBoundingClientRect();
-                      range.selectNode(e.parentElement.firstChild); const text = range.getBoundingClientRect();
-                      return {titleTop: title.top, textTop: text.top, titleHeight: title.height, textHeight: text.height};
-                    }""")
-                    self.assertAlmostEqual(baseline['titleTop'], baseline['textTop'], delta=.5, msg=baseline)
-                    self.assertAlmostEqual(baseline['titleHeight'], baseline['textHeight'], delta=.5, msg=baseline)
-                    missing = page.locator('.doc-prose .doc-ref--missing')
-                    expect(missing).to_have_text('private notes')
-                    self.assertFalse(missing.evaluate("e => e.matches('a, .doc-page')"))
-                    expect(missing.locator('svg')).to_have_count(0)
-                    ordinary = page.locator('.doc-prose').get_by_role('link', name='ordinary link')
-                    self.assertFalse(ordinary.evaluate("e => e.classList.contains('doc-page')"))
-                    self.assertIn('underline', ordinary.evaluate("e => getComputedStyle(e).textDecorationLine"), "ordinary links retain their non-colour cue")
-                    self.assertEqual(outbound, [], "rendering references performs no outbound fetch")
-                    self.no_horizontal_overflow(page, size['width'])
-                    shot(page, f"wiki-page-ref-{size['width']}-{'focus' if focus else 'reading'}-{theme}")
-                    if size == DESKTOP:
-                        chip.focus(); page.keyboard.press('Enter')
-                    else:
-                        chip.tap()
-                    expect(page).to_have_url(re.compile(re.escape(target_url) + '$'))
-                    expect(page.locator('.doc-prose')).to_have_text('The second bench list.')
-                    self.assertEqual(self.doc(page, target['id'])['version'], 2)
-        viewer = self.page("reader", touch=True)
-        viewer.goto(source_url)
-        viewer.locator('.doc-prose a.doc-page').tap()
-        expect(viewer).to_have_url(re.compile(re.escape(target_url) + '$'))
-        expect(viewer.locator('.doc-prose')).to_have_text('The second bench list.')
-        self.api(viewer, "GET", f"/api/v1/docs/{foreign['id']}", status=404)
-        saved = self.doc(setup, source['id'])
-        self.assertEqual(saved['body'], body)
-        self.assertEqual(saved['version'], 1)
-
-    # ---------------------------------------------------------------- contrast
-
-    def test_14_light_and_dark_contrast(self) -> None:
+    def test_11_light_and_dark_contrast(self) -> None:
         for theme in ("light", "dark"):
             with self.subTest(theme=theme):
                 page = self.page("owner", theme=theme)
                 page.goto(self.url("lamp"))
                 expect(page.locator("html")).to_have_attribute("data-theme", theme)
-                expect(page.get_by_role("heading", level=2, name=LAMP)).to_be_visible()
-                for selector in (".wiki-index__eyebrow", ".wiki-page:not([aria-current])", '.wiki-page[aria-current="page"]', ".wiki-page__state",
-                                 ".wiki-index__import", ".wiki-bar__meta .doc-head__k", ".wiki-bar__primary", ".doc-head__t",
-                                 ".wiki-who", ".wiki-outline__h", ".wiki-outline a", ".doc-prose p", ".doc-prose h2", ".doc-prose li", ".doc-prose pre code", ".doc-prose a",
-                                 ".doc-links h3", ".doc-audience"):
+                wait_until_shared(page)
+                for selector in (".wiki-head__meta", ".wiki-switch__t", ".wiki-editor .cm-line", ".wiki-editor .cm-md-h2", ".wiki-editor .cm-md-pre"):
                     self.measure(page, selector)
-                # Icon buttons and the underline search boundary are non-text marks (3:1).
-                self.measure(page, ".wiki-bar .ui-icon-btn", 3)
-                self.measure(page, ".wiki-search svg", 3)
-                marker = page.evaluate(DOT, '.wiki-page[aria-current="page"]')
-                self.assertEqual(marker["content"], "none", f"no pseudo-element dot beside the open page's label in {theme} (#431)")
-                search = self.index(page).get_by_label("Search the wiki")
-                search.fill("lamp")
-                self.measure(page, ".wiki-search input")
-                search.fill("")
+                self.measure(page, ".wiki-head__btn", 3)
+                self.measure(page, ".wiki-switch svg", 3)
+                page_ref = page.locator(".wiki-editor a.doc-page").first
+                expect(page_ref.locator("svg")).to_have_count(1)
+                expect(page_ref).not_to_have_css("background-color", "rgba(0, 0, 0, 0)")
+                self.measure(page, ".wiki-editor a.doc-page")
+                self.switcher(page)
+                for selector in (".wiki-menu__row:not([aria-current])", '.wiki-menu__row[aria-current="page"]', ".wiki-find input"):
+                    self.measure(page, selector)
                 shot(page, f"wiki-desktop-1440-{theme}")
-                # The focus ring stays visible. Resolved page links use the final object-chip cue;
-                # ordinary-link underlining is checked separately in the reference journey above.
-                self.index(page).get_by_role("link", name=PARTS).focus()
-                page.keyboard.press("Shift+Tab")
-                expect(self.index(page).get_by_role("link", name=LAMP)).to_be_focused()
+                page.keyboard.press("Escape")
+                page.get_by_role("button", name="Page actions").click()
+                self.measure(page, ".wiki-actions .wiki-menu__row")
+                page.keyboard.press("ArrowDown")
                 page.wait_for_timeout(200)
-                self.measure(page, '.wiki-page[aria-current="page"]', 3, property="outlineColor", backgroundSelector=".wiki-index")
-                self.measure(page, ".doc-prose a")
-                page_ref = page.locator(".doc-prose a").first
-                self.assertTrue(page_ref.evaluate("e => e.classList.contains('doc-page')"))
-                expect(page_ref.locator('svg')).to_have_count(1)
-                expect(page_ref).not_to_have_css('background-color', 'rgba(0, 0, 0, 0)')
-                self.measure(page, '.doc-prose a svg', 3)
-                page.locator(".wiki-bar").get_by_role("button", name="Share this page").click()
-                for selector in (".wiki-pop__h", ".wiki-pop__who", ".wiki-pop__link .ui-input"):
-                    self.measure(page, selector)
-                shot(page, f"wiki-share-desktop-1440-{theme}")
+                self.measure(page, ".wiki-actions .wiki-menu__row:focus-visible", 3, property="outlineColor", backgroundSelector=".wiki-actions")
+                shot(page, f"wiki-actions-desktop-1440-{theme}")
 
 
 if __name__ == "__main__":

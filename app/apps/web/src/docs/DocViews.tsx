@@ -1,68 +1,41 @@
-import { lazy, Suspense, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { unlessLocked } from '../encryption/api';
-import { createPortal } from 'react-dom';
-import { useRegisterLiveHere } from '../live/LiveProvider';
-import { Link, redirect, useLoaderData, useNavigate, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { Doc, DocSummary, DocVersion, DocVersionSummary, ObjectLink, Project } from '@flux/contracts';
-import { EmptyState, Icon, Spinner, Select, Option } from '../ui';
+import { Link, redirect, useLoaderData, useSearchParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
+import type { Doc, DocSummary, DocVersion, DocVersionSummary, LiveDocBootstrap } from '@flux/contracts';
+import { ApiError } from '../api/client';
+import { EmptyState, Icon, Select, Option } from '../ui';
 import { useShellData } from '../app/data';
-import { useShellActions } from '../app/shellContext';
-import { docUrl, getDoc, getVersion, listVersions, listWorkspaceDocs } from './api';
+import { useRegisterLiveHere } from '../live/LiveProvider';
+import { docUrl, getDoc, getLiveDoc, getVersion, listVersions, listWorkspaceDocs } from './api';
 import { diffDocs, diffStats, readableRefs, type DiffRow } from './diff';
-import { draftKey, readKept } from './drafts';
-import { STATE_LABEL, authorLabel, docLinks, kindLabel, longDate, pathOfLink, shortDate } from './format';
+import { authorLabel, longDate, shortDate } from './format';
 import { DocProse } from './DocProse';
-import { DimIcon, DownloadButton, PageMenu, ShareButton, WikiBar, WikiIcon, usePhoneHeader } from './WikiParts';
-import { EditedBy, Outline, OutlineChip, useProse } from './WikiRead';
+import { NoPages, PageFrame, scrollPage, useReferenceClicks } from './WikiParts';
+import { useProse } from './WikiRead';
 import { blockDiff } from './block-diff';
 import { useAgentOwners } from '../agents/owners';
 import { useWiki } from './wiki-context';
+import { editingCapability } from '../editing/capability';
 import './docs.css';
-import { editingCapability, useEditingCapability } from '../editing/capability';
-import type { LiveReadingProps, LiveReadingState } from '../editing/LiveReading';
-import { RefLink } from '../place/origin';
 
-// The current page's shared working copy (#228) loads only with a configured live capability (#239
-// review), so an ordinary wiki never evaluates its CRDT bundle. If that bundle cannot load, the page
-// is read as saved.
-//
-// The reader must not change kind after it is on screen: a Suspense fallback holding the same page is a different place in the
-// tree from the page inside the lazy component, so the swap would rebuild the whole page (its toolbar, an open menu, the focus)
-// a moment after it appeared. The loader therefore has the bundle in hand before the first render (`loadLiveReading`), and the
-// reader then renders it directly; the lazy path below is only for a reader reached some other way.
-type LiveReadingComponent = (props: LiveReadingProps) => ReactNode;
-function SavedReading({ render }: LiveReadingProps) { return <>{render(null)}</>; }
-let loadedLiveReading: LiveReadingComponent | null = null;
-const loadLiveReading = () => import('../editing/LiveReading').then((module) => { loadedLiveReading = module.LiveReading; }, () => { loadedLiveReading = SavedReading; });
-const LiveReading = lazy(() => loadLiveReading().then(() => ({ default: loadedLiveReading! })));
+// A space's Wiki (#112, #869): the page, edited where it is read; an earlier version, read as it was written; and the
+// History with compare and restore. Everything here is visible to the people with access to the space.
 
-// The project wiki (#112, two panes since #136): the reader with links and backlinks, and the
-// version history with a diff, beside the page index (Wiki.tsx). Everything here is visible to the
-// people with access to the project, and says so.
-
-function useRefresh() {
-  const revalidator = useRevalidator();
-  useEffect(() => {
-    const refresh = () => { if (document.visibilityState === 'visible') revalidator.revalidate(); };
-    window.addEventListener('focus', refresh);
-    const interval = window.setInterval(refresh, 20000);
-    return () => { window.removeEventListener('focus', refresh); window.clearInterval(interval); };
-  }, [revalidator]);
-  return revalidator;
-}
-
-function Audience({ project }: { project: Project }) {
-  return <p className="doc-audience"><Icon name="lock" size={13} />{project.name} · Everyone with space access can read these pages</p>;
-}
+/**
+ * The page editor comes with the page: the loader has its code before the first render, so the page never changes kind
+ * after it is on screen. If that code cannot load, the page is read as saved.
+ */
+let editorModule: typeof import('../editing/WikiEditor') | null = null;
+const loadEditor = () => (editorModule ? Promise.resolve() : import('../editing/WikiEditor').then((module) => { editorModule = module; }, () => undefined));
 
 /** A doc of another project is not found here, whatever its id. */
 function inProject(doc: Doc, projectId: string | undefined) {
   if (doc.projectId.toLowerCase() !== (projectId ?? '').toLowerCase()) throw new Response('Not found', { status: 404 });
 }
 
-function isTyping(target: EventTarget | null) {
-  const el = target as HTMLElement | null;
-  return !!el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName) || !!el.closest?.('[role="combobox"], [role="listbox"]'));
+/** The Wiki without a page to open: the space has none yet (otherwise the loader opens one). */
+export function WikiHome() {
+  return <NoPages />;
 }
 
 function DocRow({ doc, showProject }: { doc: DocSummary; showProject?: boolean }) {
@@ -71,7 +44,7 @@ function DocRow({ doc, showProject }: { doc: DocSummary; showProject?: boolean }
       <Link className="doc-item" to={docUrl(doc.projectId, doc.id)}>
         <span className="doc-item__ic" aria-hidden="true"><Icon name="doc" size={16} /></span>
         <span className="doc-item__b">
-          <span className="doc-item__t">{doc.title}{doc.state === 'draft' ? <span className="doc-pill">Draft</span> : null}</span>
+          <span className="doc-item__t">{doc.title}</span>
           <span className="doc-item__s">
             {showProject ? <>{doc.projectName} · </> : null}
             {authorLabel(doc.updatedBy)} · {doc.reason}
@@ -81,37 +54,6 @@ function DocRow({ doc, showProject }: { doc: DocSummary; showProject?: boolean }
         <span className="doc-item__r"><time dateTime={doc.updatedAt}>{shortDate(doc.updatedAt)}</time></span>
       </Link>
     </li>
-  );
-}
-
-/** The wiki without a page to open: the project has none yet (otherwise the loader opens one). */
-export function WikiHome() {
-  const { project, docs, writable, compact, importing, importError, importErrorId, startImport } = useWiki();
-  useRefresh();
-  return (
-    <>
-      <WikiBar meta={<span>Wiki · {docs.length ? `${docs.length} ${docs.length === 1 ? 'page' : 'pages'}` : 'no pages yet'}</span>} />
-      <div className="wiki-doc">
-        {docs.length ? <p className="doc-muted">Choose a page from the list.</p> : (
-          <div className="view-empty"><EmptyState icon="doc" title="No pages yet">
-            <p>{writable
-              ? 'Write down how things work and what you learned: start a new page, or import a Markdown file. A result or decision can start a page from its details, and every change keeps the earlier version.'
-              : `When people in ${project.name} write pages, they appear here.`}</p>
-            {/* On a phone the page list is a chip row of pages only, so the first page starts here. */}
-            {compact && writable ? (
-              <div className="wiki-empty__acts">
-                <Link className="ui-btn ui-btn--primary" to={`/projects/${project.id}/docs/new`}><Icon name="plus" size={16} />New page</Link>
-                <button type="button" className="ui-btn ui-btn--secondary" onClick={startImport} aria-busy={importing || undefined}
-                  aria-disabled={importing || undefined} aria-describedby={importError ? importErrorId : undefined}>
-                  {importing ? <Spinner /> : <WikiIcon name="upload" size={16} />}Import .md
-                </button>
-              </div>
-            ) : null}
-          </EmptyState></div>
-        )}
-        <Audience project={project} />
-      </div>
-    </>
   );
 }
 
@@ -144,19 +86,29 @@ export function WorkspaceDocs() {
   );
 }
 
-interface ReaderData { doc: Doc; shown: DocVersion; historical: boolean }
+/** Live: the room's head read with the page (null when the room is not reachable now, and the editor connects itself). */
+export type PageMode = { live: true; head: LiveDocBootstrap | null } | { live: false };
+interface PageData { doc: Doc; mode: PageMode; restore: DocVersion | null }
 
-export async function docLoader({ params, request }: LoaderFunctionArgs): Promise<ReaderData> {
-  // The capability is known before the first render, so the reader never switches kinds after it.
-  const [doc] = await Promise.all([
+export async function docLoader({ params, request }: LoaderFunctionArgs): Promise<PageData> {
+  const [doc, mode] = await Promise.all([
     getDoc(params.docId!, request.signal),
-    // The shared reader's bundle comes with the page (not for an explicit version, which is read as saved).
-    editingCapability().then((capability) => capability === 'configured' && params.version === undefined ? loadLiveReading() : undefined),
+    // The shared room's head comes with the page, so the editor opens it without a second read.
+    editingCapability().then((capability): Promise<PageMode> | PageMode => capability !== 'configured' ? { live: false }
+      : getLiveDoc(params.docId!, request.signal).then((head) => ({ live: true, head }), (cause: unknown) =>
+        (cause instanceof ApiError && cause.code === 'LIVE_EDITING_DISABLED' ? { live: false } : { live: true, head: null }))),
+    loadEditor(),
   ]);
   inProject(doc, params.projectId);
-  const version = params.version ? Number(params.version) : null;
-  const shown = version && version !== doc.version ? await getVersion(doc.id, version, request.signal) : doc;
-  return { doc, shown, historical: params.version !== undefined };
+  // History's Restore opens the page with the version to bring back (#869).
+  const wanted = Number(new URL(request.url).searchParams.get('restore'));
+  const restore = Number.isInteger(wanted) && wanted >= 1 && wanted < doc.version ? await getVersion(doc.id, wanted, request.signal) : null;
+  return { doc, mode, restore };
+}
+
+/** The open page is its own source: only a move to another page or a restore reads it again. */
+export function docShouldRevalidate({ currentUrl, nextUrl }: ShouldRevalidateFunctionArgs) {
+  return currentUrl.pathname !== nextUrl.pathname || currentUrl.search !== nextUrl.search;
 }
 
 /** A message citing a doc version (#36 citation) opens it in the doc reader. */
@@ -164,185 +116,75 @@ export function redirectDocMaterial(projectId: string, docId: string, version?: 
   return redirect(`/projects/${projectId}/docs/${docId}${version ? `/versions/${version}` : ''}`);
 }
 
-/** Opens a clicked doc reference in the app: work objects in the Details panel, the rest by route. */
-function useReferenceClicks() {
-  const navigate = useNavigate();
-  const { openDetails } = useShellActions();
-  return (event: MouseEvent<HTMLElement>) => {
-    const anchor = (event.target as HTMLElement).closest('a');
-    if (!anchor || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    const type = anchor.dataset.refType;
-    const id = anchor.dataset.refId;
-    if (id && (type === 'work' || type === 'decision' || type === 'result')) {
-      event.preventDefault();
-      openDetails({ kind: type, id });
-      return;
-    }
-    const href = anchor.getAttribute('href') ?? '';
-    if (href.startsWith('/') && !href.startsWith('//')) {
-      event.preventDefault();
-      navigate(href);
-    }
-  };
+/** The page: edited where it is read (#869). */
+export function DocPage() {
+  const { doc, mode, restore } = useLoaderData() as PageData;
+  const { project } = useWiki();
+  const { me } = useShellData();
+  useRegisterLiveHere({ projectId: project.id, context: { type: 'doc', id: doc.id }, label: doc.title },
+    { ref: { type: 'material', id: doc.id, version: doc.version }, label: doc.title, what: `doc · version ${doc.version}` });
+  const Editor = editorModule?.PageEditor;
+  if (!Editor) return <ReadPage doc={doc} shown={doc} notice={<p className="doc-notice" role="alert"><Icon name="alert" size={14} />The editor could not load. Reload to write on this page.</p>} />;
+  return <Editor key={`${me.user.id}:${doc.id}`} doc={doc} project={project} userId={me.user.id} mode={mode} restore={restore} />;
 }
 
-function LinkList({ title, links, end, projectId, empty }: { title: string; links: ObjectLink[]; end: 'from' | 'to'; projectId: string; empty?: string }) {
-  const { openDetails } = useShellActions();
-  if (!links.length && !empty) return null;
-  const id = `doc-links-${title.toLowerCase().replace(/\W+/g, '-')}`;
+interface VersionData { doc: Doc; shown: DocVersion }
+
+export async function docVersionLoader({ params, request }: LoaderFunctionArgs): Promise<VersionData> {
+  const doc = await getDoc(params.docId!, request.signal);
+  inProject(doc, params.projectId);
+  const version = Number(params.version);
+  const shown = Number.isInteger(version) && version >= 1 && version !== doc.version ? await getVersion(doc.id, version, request.signal) : doc;
+  return { doc, shown };
+}
+
+/** An earlier version, read as it was written, with Restore. */
+export function VersionPage() {
+  const { doc, shown } = useLoaderData() as VersionData;
+  const { project } = useWiki();
+  const base = docUrl(project.id, doc.id);
+  useRegisterLiveHere({ projectId: project.id, context: { type: 'doc', id: doc.id }, label: doc.title },
+    { ref: { type: 'material', id: doc.id, version: shown.version }, label: shown.title, what: `doc · earlier version ${shown.version}` });
+  const earlier = shown.version !== doc.version;
   return (
-    <section className="doc-links" aria-labelledby={id}>
-      <h3 id={id}>{title} {links.length ? <span>{links.length}</span> : null}</h3>
-      {!links.length ? <p className="doc-muted">{empty}</p> : (
-        <ul>
-          {links.map((link) => {
-            const ref = end === 'from' ? link.from : link.to;
-            const label = (end === 'from' ? link.fromTitle : link.toTitle) || 'Untitled';
-            const path = pathOfLink(projectId, link, end);
-            const body = <><span className="doc-links__k">{kindLabel(ref.type)}</span><span className="doc-links__t">{label}</span><Icon name="chevron-right" size={14} /></>;
-            return (
-              <li key={link.id}>
-                {path ? <RefLink className="doc-links__a" to={path}>{body}</RefLink>
-                  : ref.type === 'work' || ref.type === 'decision' || ref.type === 'result'
-                    ? <button type="button" className="doc-links__a" onClick={() => openDetails({ kind: ref.type as 'work' | 'decision' | 'result', id: ref.id })}>{body}</button>
-                    : <span className="doc-links__a doc-links__a--static">{body}</span>}
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
+    <ReadPage doc={doc} shown={shown} notice={(
+      <p className="doc-notice"><Icon name="undo" size={14} />{earlier ? 'You are reading an earlier version.' : 'You are reading a saved version.'} It stays as it was written.
+        <Link to={base}>Open the current version</Link>
+        {earlier ? <><Link to={`${base}?restore=${shown.version}`}>Restore this version</Link><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></> : null}</p>
+    )} />
   );
 }
 
-/** Reads a doc, its current or an earlier version, with what it links to and what links here. */
-export function DocReader() {
-  const { doc, historical } = useLoaderData() as ReaderData;
-  const { me } = useShellData();
-  // Load the CRDT-backed reader only when configured, and never for an explicit version URL.
-  const capability = useEditingCapability();
-  if (capability !== 'configured' || historical) return <DocReading live={null} />;
-  if (loadedLiveReading) {
-    const Shared = loadedLiveReading;
-    return <Shared docId={doc.id} userId={me.user.id} render={(live) => <DocReading live={live} />} />;
-  }
-  return <Suspense fallback={<DocReading live={null} />}>
-    <LiveReading docId={doc.id} userId={me.user.id} render={(live) => <DocReading live={live} />} />
-  </Suspense>;
-}
-
-function DocReading({ live }: { live: LiveReadingState | null }) {
-  const { doc, shown, historical } = useLoaderData() as ReaderData;
-  const { project, docs, writable, compact, menuSlot } = useWiki();
-  const { me } = useShellData();
-  const navigate = useNavigate();
-  const revalidator = useRefresh();
+/** A saved version as the server rendered it, read only. */
+function ReadPage({ doc, shown, notice }: { doc: Doc; shown: DocVersion; notice: ReactNode }) {
+  const { project } = useWiki();
   const owners = useAgentOwners(project);
   const [prose, setProse] = useState<HTMLElement | null>(null);
-  const working = live?.working ?? null;
-  const html = working?.html ?? shown.html;
-  const text = working?.text ?? shown.body;
-  const { headings, marks, cards } = useProse(prose, html, project.id, owners);
+  const { headings, marks } = useProse(prose, shown.html, project.id, owners);
   const onClick = useReferenceClicks();
-  const capability = useEditingCapability();
-  const current = !historical && (capability === 'configured' || shown.version === doc.version);
-  const savedVersion = working?.savedVersion ?? doc.version;
-  useEffect(() => {
-    if (!historical && savedVersion > doc.version && revalidator.state === 'idle') revalidator.revalidate();
-  }, [historical, savedVersion, doc.version, revalidator]);
-  const links = docLinks(doc);
-  // F-034: a decision already shown as a card in the page is not listed again under it.
-  const notCard = (link: ObjectLink) => !(link.to.type === 'decision' && cards.has(link.to.id));
-  const sources = links.sources.filter(notCard), mentions = links.mentions.filter(notCard), backlinks = links.backlinks;
+  const landing = useRef<() => void>(() => undefined);
+  useEffect(() => () => landing.current(), []);
   const missing = shown.mentions.filter((item) => !item.path).length;
-  const base = docUrl(project.id, doc.id);
-  const edit = `${base}/edit`;
-  const kept = writable && current && !!readKept(draftKey(me.user.id, doc.id, project.id));
-  useRegisterLiveHere({ projectId: project.id, context: { type: 'doc', id: doc.id }, label: doc.title },
-    { ref: { type: 'material', id: doc.id, version: shown.version }, label: shown.title,
-      what: current ? `doc · version ${shown.version}` : `doc · earlier version ${shown.version}` });
-  useEffect(() => {
-    if (!writable || !current) return;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key.toLowerCase() !== 'e' || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
-      const target = event.target as HTMLElement | null;
-      if (document.getElementById('root')?.hasAttribute('data-modal') || (target && target !== document.body && !target.closest('.wiki-frame, #content'))) return;
-      if (target?.closest('[role="dialog"]')) return;
-      event.preventDefault();
-      navigate(edit);
-    };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [writable, current, edit, navigate]);
-  const historyTo = `${base}/history${current ? '' : `?to=${shown.version}`}`;
-  const historyLabel = `History, ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`;
-  const keptLink = kept ? <Link className="wiki-bar__kept" to={edit}>Unsaved changes in this tab</Link> : null;
-  // An earlier version is read only: on the computer Edit stays in its place, dimmed (#511, AC-4).
-  // Reading needs no dark primary (quiet buttons, #763): Edit is the toolbar's soft-fill button, one height with its icons.
-  // Only the phone floats Edit under the page; a narrow pane beside a panel on a computer or tablet keeps it in the toolbar (#763).
-  const phoneHeader = usePhoneHeader();
-  const floatEdit = compact && phoneHeader;
-  const editButton = !writable ? null : current
-    ? <Link className={`ui-btn ui-btn--soft ${floatEdit ? 'wiki-edit' : 'wiki-bar__primary'}`} data-slot="primary" to={edit} aria-label="Edit" aria-keyshortcuts="e"><Icon name="edit" size={16} /><span className="wiki-bar__label">Edit</span></Link>
-    : floatEdit ? null : <button type="button" className="ui-btn ui-btn--soft wiki-bar__primary" data-slot="primary" aria-label="Edit" disabled><Icon name="edit" size={16} /><span className="wiki-bar__label">Edit</span></button>;
-  // The page's one menu: in the header of a narrow work area beside the computer's views, but never in the phone's header,
-  // which is the same in every view (#507): there it ends the row of page chips, which stays at the top while the page is read.
-  const inStrip = compact && phoneHeader;
-  const pageMenu = compact ? (
-    <PageMenu sharePath={current ? base : `${base}/versions/${shown.version}`} shareVersion={current ? null : shown.version}
-      shown={{ title: shown.title, body: text, version: shown.version, current }}
-      history={<Link className="wiki-pop__item" to={historyTo} aria-label={historyLabel}><WikiIcon name="history" /><span><b>History</b><small>{doc.version} {doc.version === 1 ? 'version' : 'versions'}, {STATE_LABEL[shown.state].toLowerCase()}</small></span></Link>} />
-  ) : null;
+  const go = (id: string) => {
+    const node = prose?.querySelector<HTMLElement>(`#${id}`);
+    const scroller = prose?.closest<HTMLElement>('.wiki-main');
+    if (!node || !scroller) return;
+    landing.current();
+    landing.current = scrollPage(scroller, () => (node.isConnected ? scroller.scrollTop + node.getBoundingClientRect().top - scroller.getBoundingClientRect().top - 24 : null));
+    node.focus({ preventScroll: true });
+  };
   return (
-    <>
-      <WikiBar compactInHeader phoneMeta={<span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>}
-        primary={floatEdit ? undefined : editButton} meta={compact
-          ? <span className="wiki-bar__title"><b>Wiki</b> · {docs.length} {docs.length === 1 ? 'page' : 'pages'}</span>
-          : <><span className="doc-head__k">{STATE_LABEL[shown.state]} · version {shown.version}{current ? '' : ` of ${doc.version}`}</span>{keptLink}</>}>
-        {compact ? (inStrip ? null : pageMenu) : (
-          <>
-            <OutlineChip headings={headings} scroller={prose?.closest<HTMLElement>('.wiki-main') ?? null} />
-            <Link className="ui-icon-btn" data-slot="history" to={historyTo} aria-label={historyLabel} data-tip={`History · ${doc.version} ${doc.version === 1 ? 'version' : 'versions'}`}>
-              <WikiIcon name="history" />
-            </Link>
-            <ShareButton path={current ? base : `${base}/versions/${shown.version}`} version={current ? null : shown.version} />
-            <DownloadButton shown={{ title: shown.title, body: text, version: shown.version, current }} />
-          </>
-        )}
-      </WikiBar>
-      {inStrip && menuSlot ? createPortal(pageMenu, menuSlot) : null}
-      <div className="wiki-read" key={doc.id}>
-        <article className="wiki-doc wiki-doc--read doc" aria-labelledby="doc-title">
-          {compact && keptLink ? <p className="doc-notice">{keptLink}</p> : null}
-          {!current ? (
-            <p className="doc-notice"><Icon name="undo" size={14} />{historical && shown.version === doc.version ? 'You are reading a saved version.' : 'You are reading an earlier version.'} It stays as it was written.
-              <Link to={base}>Open the current version</Link><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></p>
-          ) : null}
-          <header className="doc-head">
-            <h2 id="doc-title" className="doc-head__t">{shown.title}</h2>
-            <EditedBy editor={shown.author} at={shown.createdAt} reason={shown.reason} starter={doc.createdBy} startedAt={doc.startedAt} owners={owners} />
-          </header>
-          {working ? <p className="doc-notice" data-live-reader data-live-generation={working.generation} data-live-sequence={working.sequence}>Shared working copy · last saved version {working.savedVersion}. Sources and citations keep their saved version.{working.presence}</p> : null}
-          {live?.problem ? <p className="doc-notice" role="alert">{live.problem}</p> : null}
-          {text.trim()
-            ? <><DocProse html={html} onReady={setProse} onClick={onClick} />
-              {/* The cards and marks are portals into the page's links: their clicks bubble through React from here, not
-                  through the prose, so a tap on a card's text opens it in place instead of following its address (#763 P2-5). */}
-              <span hidden onClick={onClick}>{marks}</span></>
-            : <p className="doc-muted doc-empty">This page has no text yet.{writable && current ? <> <Link to={edit}>Start writing</Link></> : null}</p>}
-          {missing ? <p className="doc-notice"><Icon name="alert" size={14} />{missing === 1 ? 'One link points' : `${missing} links point`} to something that is not in this space or no longer exists. It shows as plain text.</p> : null}
-          <div className="doc-foot">
-            <LinkList title="Added from" links={sources} end="to" projectId={project.id} />
-            {current ? <LinkList title="Links in this page" links={mentions} end="to" projectId={project.id} /> : null}
-            <LinkList title="Linked from" links={backlinks} end="from" projectId={project.id} empty="Nothing links here yet. Other pages and work can link to this page." />
-            <Audience project={project} />
-            <p className="doc-ids">Started by {authorLabel(doc.createdBy)} · {shortDate(doc.startedAt)}</p>
-          </div>
-        </article>
-        {!compact && headings.length > 1 ? <Outline headings={headings} scroller={prose?.closest<HTMLElement>('.wiki-main') ?? null} /> : null}
-      </div>
-      {floatEdit ? editButton : null}
-    </>
+    <PageFrame docId={doc.id} title={shown.title} headings={headings} onHeading={go}
+      meta={<>Version {shown.version} · <time dateTime={shown.createdAt} title={longDate(shown.createdAt)}>{shortDate(shown.createdAt)}</time> · {authorLabel(shown.author)}</>}
+      shown={{ title: shown.title, body: () => shown.body, version: shown.version, current: shown.version === doc.version }}
+      notices={notice} onBodyClick={onClick}>
+      {shown.body.trim()
+        ? <><DocProse html={shown.html} onReady={setProse} />
+          {/* The cards and marks are portals into the page's links: their clicks bubble through React from here, so a tap on a card's text opens it in place (#763 P2-5). */}
+          <span hidden>{marks}</span></>
+        : <p className="doc-muted doc-empty">This version has no text.</p>}
+      {missing ? <p className="doc-notice"><Icon name="alert" size={14} />{missing === 1 ? 'One link points' : `${missing} links point`} to something that is not in this space or no longer exists. It shows as plain text.</p> : null}
+    </PageFrame>
   );
 }
 
@@ -378,7 +220,7 @@ function DiffView({ rows }: { rows: DiffRow[] }) {
             {row.kind !== 'same' ? <span className="ui-vh">{row.kind === 'added' ? 'Added: ' : 'Removed: '}</span> : null}
             <span className="doc-diff__t">{row.parts.map((part, i) => part.changed && row.kind !== 'same'
               ? (row.kind === 'added' ? <ins key={i}>{part.text}</ins> : <del key={i}>{part.text}</del>)
-              : <span key={i}>{part.text}</span>)}{row.parts.every((part) => !part.text) ? ' ' : null}</span>
+              : <span key={i}>{part.text}</span>)}{row.parts.every((part) => !part.text) ? ' ' : null}</span>
           </li>
         ))}
     </ol>
@@ -395,23 +237,20 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
   }, [from, to]);
   const page = useMemo(() => blockDiff(from?.html ?? '', to.html), [from, to.html]);
   const stats = diffStats(rows);
-  const facts: ReactNode[] = [];
-  if (from && from.title !== to.title) facts.push(<li key="t">Title: <del>{from.title}</del> → <ins>{to.title}</ins></li>);
   return (
     <section className="doc-changes" aria-labelledby="doc-changes-h">
       <header className="doc-changes__top">
-        <h2 id="doc-changes-h">
+        <h3 id="doc-changes-h">
           {from ? <>v{from.version} → v{to.version}</> : <>Version {to.version}, the first</>}
           <span className="doc-changes__stat"> · +{stats.added} −{stats.removed}</span>
-          {from && from.state !== to.state ? <span className="doc-changes__stat"> · {STATE_LABEL[from.state]} → {STATE_LABEL[to.state]}</span> : null}
-        </h2>
+        </h3>
         <div className="doc-seg" role="group" aria-label="Show the changes as">
           <button type="button" aria-pressed={view === 'rendered'} onClick={() => setView('rendered')}>Rendered</button>
           <button type="button" aria-pressed={view === 'markdown'} onClick={() => setView('markdown')}>Markdown</button>
         </div>
       </header>
       <p className="doc-changes__why">{from ? <>From {authorLabel(from.author)}’s version of {longDate(from.createdAt)} to </> : null}{authorLabel(to.author)}’s of {longDate(to.createdAt)} · {to.reason}</p>
-      {facts.length ? <ul className="doc-changes__facts">{facts}</ul> : null}
+      {from && from.title !== to.title ? <ul className="doc-changes__facts"><li>Title: <del>{from.title}</del> → <ins>{to.title}</ins></li></ul> : null}
       {view === 'markdown' ? <DiffView rows={rows} /> : page.changed ? (
         <>
           <section className="doc-changes__page" aria-label="Changes in the text">
@@ -424,10 +263,10 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
   );
 }
 
-/** Every version with its author, time and reason, and what changed between two of them. */
+/** History (⋯ › History): every version with who made it and when, what changed between two, and Restore. */
 export function DocHistory() {
   const { doc, versions, from, to } = useLoaderData() as HistoryData;
-  const { project, writable, compact } = useWiki();
+  const { project } = useWiki();
   const [, setSearch] = useSearchParams();
   const base = docUrl(project.id, doc.id);
   const compare = (next: { from?: number; to?: number }) => {
@@ -435,55 +274,45 @@ export function DocHistory() {
     const source = next.from ?? (next.to ? target - 1 : from?.version ?? target - 1);
     setSearch(source >= 1 && source !== target ? { from: String(source), to: String(target) } : { to: String(target) });
   };
-  // Restore brings back the earlier side of the comparison: the chosen version, or the one before
-  // the current page. It opens the editor with that text; nothing changes until Save version.
+  // Restore brings back the earlier side of the comparison: the chosen version, or the one before the current page.
   const restore = to.version !== doc.version ? to.version : from?.version ?? null;
-  const primary = !writable ? null : restore
-    ? <Link className="ui-btn ui-btn--quiet wiki-bar__primary wiki-bar__restore" data-slot="primary" to={`${base}/edit?restore=${restore}`} aria-label={`Restore v${restore}`}><Icon name="undo" size={14} /><span className="wiki-bar__label">Restore v{restore}</span></Link>
-    : <button type="button" className="ui-btn ui-btn--quiet wiki-bar__primary wiki-bar__restore" data-slot="primary" aria-label="Restore" disabled><Icon name="undo" size={14} /><span className="wiki-bar__label">Restore</span></button>;
   return (
-    <>
-      <WikiBar meta={<span className="doc-head__k">History · {doc.version} {doc.version === 1 ? 'version' : 'versions'}</span>}
-        back={<Link className="ui-btn ui-btn--quiet wiki-bar__back" to={base}><Icon name="chevron-left" size={14} />Back to the page</Link>}
-        primary={primary}>
-        {compact ? null : <>
-          <OutlineChip headings={null} />
-          <DimIcon slot="history" name="history" label="History" />
-          <DimIcon slot="share" name="share" label="Share this page" />
-          <DimIcon slot="download" name="download" label="Download" />
-        </>}
-      </WikiBar>
-      <div className="wiki-doc wiki-doc--wide doc doc-history">
-        <div className="doc-history__grid">
-          <section className="doc-history__list" aria-labelledby="doc-versions-h">
-            <h2 className="doc-group__h" id="doc-versions-h">Versions</h2>
-            <ol className="doc-versions">
-              {versions.map((item) => (
-                <li key={item.version}>
-                  <button type="button" className="doc-version" aria-current={item.version === to.version ? 'true' : undefined} onClick={() => compare({ to: item.version })}>
-                    <span className="doc-version__dot" aria-hidden="true" />
-                    <span className="doc-version__b">
-                      <span className="doc-version__t">{item.reason}</span>
-                      <span className="doc-version__s">v{item.version} · {STATE_LABEL[item.state]} · {authorLabel(item.author)} · {shortDate(item.createdAt)}</span>
-                    </span>
-                  </button>
-                  <Link className="doc-version__open" to={item.version === doc.version ? base : `${base}/versions/${item.version}`} aria-label={`Read version ${item.version}`}>Read</Link>
-                </li>
-              ))}
-            </ol>
-          </section>
-          <div className="doc-history__diff">
-            {to.version > 1 ? (
-              <label className="doc-compare">Compare with
-                <Select value={from?.version ?? ''} onChange={(next) => compare({ from: Number(next) })}>
-                  {versions.filter((item) => item.version < to.version).map((item) => <Option key={item.version} value={item.version}>version {item.version} · {shortDate(item.createdAt)}</Option>)}
-                </Select>
-              </label>
-            ) : null}
-            <Changes from={from} to={to} />
-          </div>
+    <div className="wiki-page wiki-page--wide doc-history">
+      <div className="wiki-head">
+        <Link className="ui-btn ui-btn--quiet wiki-head__back" to={base}><Icon name="chevron-left" size={14} />Back to the page</Link>
+        <p className="wiki-head__meta">History · {doc.version} {doc.version === 1 ? 'version' : 'versions'}</p>
+        {restore ? <Link className="ui-btn ui-btn--soft wiki-head__restore" to={`${base}?restore=${restore}`}><Icon name="undo" size={14} />Restore version {restore}</Link> : null}
+      </div>
+      <h2 className="wiki-title__h wiki-title--plain">{doc.title}</h2>
+      <div className="doc-history__grid">
+        <section className="doc-history__list" aria-labelledby="doc-versions-h">
+          <h3 className="doc-group__h" id="doc-versions-h">Versions</h3>
+          <ol className="doc-versions">
+            {versions.map((item) => (
+              <li key={item.version}>
+                <button type="button" className="doc-version" aria-current={item.version === to.version ? 'true' : undefined} onClick={() => compare({ to: item.version })}>
+                  <span className="doc-version__dot" aria-hidden="true" />
+                  <span className="doc-version__b">
+                    <span className="doc-version__t">{item.reason}</span>
+                    <span className="doc-version__s">v{item.version} · {authorLabel(item.author)} · {shortDate(item.createdAt)}</span>
+                  </span>
+                </button>
+                <Link className="doc-version__open" to={item.version === doc.version ? base : `${base}/versions/${item.version}`} aria-label={`Read version ${item.version}`}>Read</Link>
+              </li>
+            ))}
+          </ol>
+        </section>
+        <div className="doc-history__diff">
+          {to.version > 1 ? (
+            <label className="doc-compare">Compare with
+              <Select value={from?.version ?? ''} onChange={(next) => compare({ from: Number(next) })}>
+                {versions.filter((item) => item.version < to.version).map((item) => <Option key={item.version} value={item.version}>version {item.version} · {shortDate(item.createdAt)}</Option>)}
+              </Select>
+            </label>
+          ) : null}
+          <Changes from={from} to={to} />
         </div>
       </div>
-    </>
+    </div>
   );
 }

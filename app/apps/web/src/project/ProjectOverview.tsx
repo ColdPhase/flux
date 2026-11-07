@@ -262,7 +262,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
     if (object && (!docRows.has(link.from.id) || link.role === 'source')) docRows.set(link.from.id, { key: link.from.id, icon: 'doc', kind: link.role === 'source' ? 'Wiki page · includes it' : 'Wiki page · mentions it', title: link.fromTitle, sub: `“${object.title}”`, to: docUrl(project.id, link.from.id) });
   }
   if (!messageMode) for (const doc of (docs ?? []).slice(0, 3)) {
-    if (!docRows.has(doc.id)) docRows.set(doc.id, { key: doc.id, icon: 'doc', kind: doc.state === 'draft' ? 'Wiki page · draft' : 'Wiki page', title: doc.title, sub: dotted([<>Changed by {doc.updatedBy.kind === 'human' && doc.updatedBy.id === me.user.id ? 'you' : byline(doc.updatedBy)}</>, doc.reason]), to: docUrl(project.id, doc.id) });
+    if (!docRows.has(doc.id)) docRows.set(doc.id, { key: doc.id, icon: 'doc', kind: 'Wiki page', title: doc.title, sub: dotted([<>Changed by {doc.updatedBy.kind === 'human' && doc.updatedBy.id === me.user.id ? 'you' : byline(doc.updatedBy)}</>, doc.reason]), to: docUrl(project.id, doc.id) });
   }
   const moreDocs = !messageMode && docs && docs.length > 3;
   const noLinkedContext = read.objects.phase === 'idle' || read.page && (read.page.total === 0

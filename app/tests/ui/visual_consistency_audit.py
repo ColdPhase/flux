@@ -262,9 +262,8 @@ SCREENS = [
                                     ("click", "button.ov-row:has-text('New space')")]),
     Screen("map", "/projects/{p}/map/{sketch}", needs=("sketch",)),
     Screen("wiki-index", "/projects/{p}/docs"),
-    Screen("wiki-read", "/projects/{p}/docs/{doc}", needs=("doc",)),
+    Screen("wiki-page", "/projects/{p}/docs/{doc}", needs=("doc",)),
     Screen("wiki-with-panel", "/projects/{p}/docs/{doc}?open=work:{task}", needs=("doc", "task")),   # the Wiki narrowed by the one panel
-    Screen("wiki-edit", "/projects/{p}/docs/{doc}/edit", needs=("doc",)),
     Screen("wiki-history", "/projects/{p}/docs/{doc}/history", needs=("doc",)),
     Screen("project-agents", "/projects/{p}/agents"),
     Screen("project-github", "/projects/{p}/github"),

@@ -22,7 +22,7 @@ PASSWORD = "ordinary live-off password"
 WATCH = r"""
 (() => {
   const seen = window.__liveText = [];
-  const words = ['Write together', 'Connecting to the shared working copy', 'Shared working copy', 'Waiting for confirmation', 'Reconnecting to the shared map'];
+  const words = ['Write together', 'Connecting to the shared working copy', 'Shared working copy', 'Waiting for confirmation', 'Reconnecting to the shared map', 'is here too'];
   const check = () => { const text = document.body ? document.body.innerText : ''; for (const word of words) if (text.includes(word) && !seen.includes(word)) seen.push(word); };
   new MutationObserver(check).observe(document, { childList: true, subtree: true, characterData: true });
 })();
@@ -86,22 +86,29 @@ class LiveEditingOffJourney(unittest.TestCase):
         self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Distance sensor", "x": 80, "y": 80})
         type(self).map_url = f"/map/{sketch['id']}"
 
-    def test_02_wiki_reader_and_editor_are_ordinary_from_the_first_render(self) -> None:
+    def test_02_the_wiki_page_is_ordinary_from_the_first_render_and_saves_versions(self) -> None:
         page, live = self.page()
-        shown: list[str] = []
         page.goto(self.doc_url)
         expect(page.get_by_role("heading", level=2, name="Bench notes")).to_be_visible()
-        expect(page.get_by_text("The sensor reads 38% at 5 lux.")).to_be_visible()
-        page.get_by_role("link", name="Edit").click()
-        expect(page.get_by_label("Text (Markdown)")).to_have_value("The sensor reads 38% at 5 lux.")
-        shown.extend(page.evaluate("window.__liveText"))
-        # A directly opened editor is ordinary from its first render too.
-        page.goto(self.doc_url + "/edit")
-        expect(page.get_by_label("Text (Markdown)")).to_have_value("The sensor reads 38% at 5 lux.")
+        text = page.locator('.cm-content[aria-label="Page text"]')
+        expect(text).to_contain_text("The sensor reads 38% at 5 lux.")
+        expect(text).to_have_attribute("contenteditable", "true")
+        expect(page.locator('[data-live-status="ordinary"]')).to_be_visible()
+        # The page is written where it is read, and the text saves as the next version when the typing rests (#869).
+        text.click()
+        page.keyboard.press("Control+End")
+        page.keyboard.insert_text(" Checked twice.")
+        deadline = time.monotonic() + 15
+        while True:
+            doc = self.api(page, "GET", f"/api/v1/docs/{self.doc_url.rsplit('/', 1)[-1]}", status=200)
+            if "Checked twice." in doc["body"] or time.monotonic() > deadline:
+                break
+            time.sleep(0.25)
+        self.assertEqual((doc["body"], doc["version"]), ("The sensor reads 38% at 5 lux. Checked twice.", 2))
+        expect(page.get_by_role("status").filter(has_text=re.compile(r"^Saved · "))).to_be_visible()
         time.sleep(0.5)
-        shown.extend(page.evaluate("window.__liveText"))
-        # Neither a live room request nor live editor text, not even briefly before a fallback.
-        self.assertEqual({"live requests": live, "live text": shown}, {"live requests": [], "live text": []})
+        # Neither a live room request nor live text, not even briefly before a fallback.
+        self.assertEqual({"live requests": live, "live text": page.evaluate("window.__liveText")}, {"live requests": [], "live text": []})
 
     def test_03_map_is_ordinary_with_immediate_undo(self) -> None:
         page, live = self.page()
