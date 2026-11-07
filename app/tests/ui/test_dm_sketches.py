@@ -412,9 +412,9 @@ class DmSketchJourney(unittest.TestCase):
 
         page.wait_for_url(re.compile(rf"/dm/{self.dm_id}/sketches/[0-9a-f-]{{36}}$"))
         type(self).sketch_id = page.url.rsplit("/", 1)[-1]
-        expect(page.get_by_label("Sketch name")).to_be_focused()
+        expect(page.get_by_label("Map name")).to_be_focused()
         page.keyboard.press("Escape")  # keep the proposed name
-        expect(page.get_by_label("Sketch name")).to_have_count(0)
+        expect(page.get_by_label("Map name")).to_have_count(0)
         expect(page.locator(".sk-status")).to_contain_text("Started from 2 messages · only you and Kai can see it")
         expect(page.locator(".sk-aud")).to_contain_text("Only you and Kai, in this direct message")
         expect(page.get_by_role("navigation", name="Direct message views").get_by_role("link", name=re.compile(r"^Sketches"))).to_contain_text("1")

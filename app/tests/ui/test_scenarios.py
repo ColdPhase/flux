@@ -520,7 +520,7 @@ class ScenarioJourney:
         self.tap(bar.get_by_role("button", name="Start sketch from these messages"))
         page.wait_for_url(re.compile(rf"/dm/{dm}/sketches/[0-9a-f-]{{36}}$"))
         dm_sketch = page.url.rsplit("/", 1)[-1]
-        expect(page.get_by_label("Sketch name")).to_be_focused()
+        expect(page.get_by_label("Map name")).to_be_focused()
         page.keyboard.press("Escape")
         expect(page.locator(".sk-status")).to_contain_text("Started from 3 messages · only you and Jonas can see it")
         sketch = self.sketch("ada", dm_sketch)
