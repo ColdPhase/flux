@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, isNull, lt, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, lt, or, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -74,9 +74,17 @@ export function agentTaskRows(db: DbExecutor) {
         SELECT 'assigned', ${workId}::uuid, ${owner.id}, ${by.kind}, ${by.id} WHERE EXISTS (SELECT 1 FROM agent_task_taking WHERE owner_user_id = ${owner.id})`);
     },
 
-    /** The oldest event nobody has handled, locked until the transaction ends (another API replica skips it). */
+    /** A task was taken away from `agentId` by someone else: only when that agent has a run on it in flight, which then has to stop. */
+    async noteReleased(workId: string, agentId: string, by: Actor) {
+      await db.execute(sql`INSERT INTO agent_task_events (kind, work_id, owner_agent_id, by_kind, by_id)
+        SELECT 'released', ${workId}::uuid, ${agentId}::uuid, ${by.kind}, ${by.id}
+        WHERE EXISTS (SELECT 1 FROM personal_runs WHERE work_id = ${workId}::uuid AND agent_id = ${agentId}::uuid AND status IN ('queued', 'reading', 'dispatching'))`);
+    },
+
+    /** The oldest event nobody has handled and that is due, locked until the transaction ends (another API replica skips it). */
     async claimNext() {
-      const [row] = await db.select().from(ev).where(and(isNull(ev.handledAt), lt(ev.attempts, AGENT_TASK_EVENT_ATTEMPTS)))
+      const [row] = await db.select().from(ev).where(and(isNull(ev.handledAt), lt(ev.attempts, AGENT_TASK_EVENT_ATTEMPTS),
+        or(isNull(ev.nextTryAt), sql`${ev.nextTryAt} <= now()`)))
         .orderBy(asc(ev.createdAt), asc(ev.id)).limit(1).for('update', { skipLocked: true });
       return row ?? null;
     },
@@ -85,9 +93,23 @@ export function agentTaskRows(db: DbExecutor) {
       await db.update(ev).set({ handledAt: new Date() }).where(eq(ev.id, id));
     },
 
-    /** After a failed try, in its own transaction: the event stays and counts. */
+    /**
+     * After a failed try, in its own transaction: the event stays, counts, and waits a little longer each time before its next try.
+     * Returns how many tries it has had and how long it waits (seconds).
+     */
     async failed(id: string) {
-      await db.update(ev).set({ attempts: sql`${ev.attempts} + 1` }).where(eq(ev.id, id));
+      const [row] = await db.update(ev).set({ attempts: sql`${ev.attempts} + 1`,
+        nextTryAt: sql`now() + (least(power(${ev.attempts} + 1, 2), 60)::int * interval '1 second')` }).where(eq(ev.id, id)).returning({ attempts: ev.attempts });
+      const attempts = row?.attempts ?? AGENT_TASK_EVENT_ATTEMPTS;
+      return { attempts, waitSeconds: Math.min(attempts * attempts, 60) };
+    },
+
+    /** Who last changed the task's owner (#488 activity): a rule's hand-back by the agent reads differently from a person taking the task back. */
+    async lastOwnerChange(workId: string) {
+      const [row] = await db.select({ kind: schema.projectTaskActivity.actorKind, id: schema.projectTaskActivity.actorId }).from(schema.projectTaskActivity)
+        .where(and(eq(schema.projectTaskActivity.workId, workId), eq(schema.projectTaskActivity.kind, 'owner')))
+        .orderBy(desc(schema.projectTaskActivity.createdAt), desc(schema.projectTaskActivity.id)).limit(1);
+      return row ?? null;
     },
 
     /** Handled events older than a week are not needed again. */

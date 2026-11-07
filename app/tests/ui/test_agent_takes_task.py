@@ -205,6 +205,19 @@ class AgentTakesTask(unittest.TestCase):
         self.assertEqual((current["status"], current["owner"]["kind"], current["owner"]["id"]), ("in_progress", "human", KAI["id"]))
         page = self.open_task("kai", task["id"])
         expect(page.get_by_role("complementary", name="Details").locator(".wd-act__item--message").filter(has_text="the wiring is the problem")).to_be_visible()
+        # AG-7: the hand-back reaches Kai's Inbox as one item for the run (and a notification), not silently.
+        deadline = time.time() + 30
+        items: list[dict] = []
+        while time.time() < deadline and not items:
+            items = [item for item in self.api(kai, "GET", "/api/v1/inbox?limit=50", status=200)["items"] if "ready for you to check" in item["title"] and "Re-check the south barrel wiring" in item["title"]]
+            page.wait_for_timeout(300)
+        self.assertEqual(len(items), 1, "one Inbox item for the run")
+        # Mockup AgentStates 8: "Mark done" closes it from the line once it is checked.
+        line = page.get_by_role("complementary", name="Details").locator("[data-agent-line='handed_back']")
+        expect(line).to_contain_text("Back with you to check")
+        line.get_by_role("button", name="Mark done").click()
+        expect(line).to_have_count(0)
+        self.assertEqual(self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)["status"], "done")
 
     # ---------------------------------------------------------------- Do nothing: the default
 

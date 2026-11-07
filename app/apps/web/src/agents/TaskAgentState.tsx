@@ -49,6 +49,8 @@ export function TaskAgentState({ item, projectId, conversationId, revision, onCh
   if (!state?.line || !state.agent) return runChanges ? <div className="wd-agent"><WaitingChanges changes={runChanges} onChanged={changes.refresh} meId={me.user.id} standalone /></div> : null;
   // At the version it has now: the agent's own finishing may have moved it since this panel was read.
   const takeBack = () => act('back', async () => updateWork(await getWork(item.id), { owner: { kind: 'human', id: me.user.id }, ...(state.line === 'done' ? { status: 'in_progress' as const } : {}) }, crypto.randomUUID()));
+  // Back with you to check (mockup AgentStates 8): the owner closes it from the line once it is checked.
+  const markDone = () => act('done', async () => updateWork(await getWork(item.id), { status: 'done' }, crypto.randomUUID()));
   return (
     <div className="wd-agent" data-agent-line={state.line}>
       <div className="wd-agent__line" role="status" aria-live="polite">
@@ -58,6 +60,7 @@ export function TaskAgentState({ item, projectId, conversationId, revision, onCh
         <span className="wd-agent__actions">
           {state.canStop ? <Button variant="secondary" size="sm" busy={busy === 'stop'} onClick={() => void act('stop', () => stopTaskAgent(item.id))}>Stop</Button> : null}
           {state.canTryAgain ? <Button variant="secondary" size="sm" busy={busy === 'retry'} onClick={() => void act('retry', () => retryTaskAgent(item.id))}>Try again</Button> : null}
+          {state.canMarkDone ? <Button variant="secondary" size="sm" busy={busy === 'done'} onClick={() => void markDone()}>Mark done</Button> : null}
           {state.canTakeBack ? <Button variant="quiet" size="sm" busy={busy === 'back'} onClick={() => void takeBack()}>{state.line === 'done' ? 'Undo' : 'Take it back'}</Button> : null}
         </span>
       </div>

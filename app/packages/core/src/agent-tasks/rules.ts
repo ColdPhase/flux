@@ -41,6 +41,8 @@ export interface TaskAgentFacts {
   successor: { resumeAt: Date | null } | null;
   /** Changes of the run that wait for the owner's OK. */
   waitingChanges: number;
+  /** Whether the agent itself last changed the task's owner: a real hand-back, not a person taking the task back. */
+  handedBackByAgent?: boolean;
 }
 
 const vendor = (run: { engine: string; provider: string }) => (run.engine === 'runtime' ? (run.provider === 'openai' ? 'ChatGPT' : 'Claude') : 'The API key');
@@ -48,13 +50,13 @@ const vendor = (run: { engine: string; provider: string }) => (run.engine === 'r
 /** The state line of an agent on a task: the line, the words, and what this reader may do about it. */
 export function taskAgentState(facts: TaskAgentFacts): TaskAgentState {
   const { task, agent, run, successor, viewerId } = facts;
-  const none = (): TaskAgentState => ({ agent, line: null, text: '', resumesAt: null, stoppedBy: null, canStop: false, canTryAgain: false, canTakeBack: false, runId: run?.id ?? null });
+  const none = (): TaskAgentState => ({ agent, line: null, text: '', resumesAt: null, stoppedBy: null, canStop: false, canTryAgain: false, canTakeBack: false, canMarkDone: false, runId: run?.id ?? null });
   if (!agent || !run) return none();
   const holds = task.ownerAgentId === agent.id;
   const mine = agent.owner.id === viewerId;
   const who = mine ? 'you' : agent.owner.name;
   const state = (line: TaskAgentLine, text: string, extra: Partial<TaskAgentState> = {}): TaskAgentState => ({
-    agent, line, text, resumesAt: null, stoppedBy: null, canStop: false, canTryAgain: false, canTakeBack: false, runId: run.id, ...extra,
+    agent, line, text, resumesAt: null, stoppedBy: null, canStop: false, canTryAgain: false, canTakeBack: false, canMarkDone: false, runId: run.id, ...extra,
   });
   const mayStop = mine || facts.viewerIsAdmin;
   if (IN_FLIGHT.has(run.status)) {
@@ -73,11 +75,15 @@ export function taskAgentState(facts: TaskAgentFacts): TaskAgentState {
   if (facts.waitingChanges > 0) return state('waiting_for_ok', mine ? 'Waiting for your OK' : `Waiting for ${agent.owner.name}'s OK`);
   if (run.status === 'completed' || run.status === 'truncated') {
     if (task.status === 'done' && holds) return state('done', mine ? 'Marked done · you were told' : 'Marked done', { canTakeBack: mine });
-    if (!holds && task.ownerUserId === agent.owner.id && task.status !== 'done' && task.status !== 'not_pursued') return state('handed_back', mine ? 'Back with you to check' : `Back with ${agent.owner.name} to check`);
+    // Back with its owner to check only when the agent handed it back: a person who took the task back says nothing here.
+    if (!holds && facts.handedBackByAgent && task.ownerUserId === agent.owner.id && task.status !== 'done' && task.status !== 'not_pursued')
+      return state('handed_back', mine ? 'Back with you to check' : `Back with ${agent.owner.name} to check`, { canMarkDone: mine });
     return none();
   }
-  if (run.status === 'stopped' && run.endReason !== 'ai_off') {
+  if (run.status === 'stopped') {
     if (task.status === 'done' || task.status === 'not_pursued') return none();
+    // AI turned off in the space (C-17): the owner is told here, where they asked, because the agent can no longer write there.
+    if (run.endReason === 'ai_off') return state('stopped', `Stopped: AI was turned off in this space · the task is back with ${who}`);
     const by = run.stopRequestedBy;
     return state('stopped', `Stopped by ${by?.id === viewerId ? 'you' : by?.name ?? 'someone'} · the task is back with ${who}`, { stoppedBy: by });
   }

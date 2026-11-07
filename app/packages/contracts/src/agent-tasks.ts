@@ -36,6 +36,8 @@ export interface TaskAgentState {
   canStop: boolean;
   canTryAgain: boolean;
   canTakeBack: boolean;
+  /** With `handed_back`: the owner may mark the task done from the line (mockup AgentStates 8). */
+  canMarkDone: boolean;
   /** The run behind the line; its changes carry Undo. */
   runId: string | null;
 }

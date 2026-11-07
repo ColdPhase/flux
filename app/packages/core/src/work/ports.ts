@@ -193,8 +193,8 @@ export interface WorkAccess {
   /** F-029: whether AI is on in the project's workspace (the policy row is held `FOR SHARE`). */
   aiAllowed(projectId: string): Promise<boolean>;
   /**
-   * #904 (AG-5): whether the agent is one of the owner's own agents that run on the server, the owner being the principal (or, for an
-   * agent, the agent's owner). A task is given to your own agent and to nobody else's. Without it no task can be given to an agent.
+   * #904 (AG-5): whether the agent is one of the acting person's own agents, the person being the principal (or, for an agent, the
+   * agent's owner). A task is given to your own agent and to nobody else's. Without it no task can be given to an agent.
    */
   ownsAgent?(principal: Principal, agentId: string): Promise<boolean>;
 }

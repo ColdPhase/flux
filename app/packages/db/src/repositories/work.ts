@@ -425,7 +425,12 @@ export function workRows(db: DbExecutor) {
       }).where(eq(w.id, id)).returning();
       const next = toWorkRecord(openRow('project_work_items', row!, seal));
       await recordTaskActivity(db, previous ? toWorkRecord(previous) : null, next, by, via);
-      if (next.owner && previous && !sameActor(toWorkRecord(previous).owner, next.owner)) await agentTaskRows(db).noteAssigned(id, next.owner, by, via);
+      if (previous && !sameActor(toWorkRecord(previous).owner, next.owner)) {
+        // Taken away from an agent that is working on it by someone else (not by one of its own rules): the run has to stop (#856).
+        const was = toWorkRecord(previous).owner;
+        if (was?.kind === 'agent' && via !== 'agent_rule') await agentTaskRows(db).noteReleased(id, was.id, by);
+        if (next.owner) await agentTaskRows(db).noteAssigned(id, next.owner, by, via);
+      }
       return next;
     },
     /** A task's activity (#488), newest first, by (time, id) so a page boundary never repeats or skips an entry. */
