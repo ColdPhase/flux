@@ -81,7 +81,7 @@ try {
     [proposalId, candidateId, owner.id, agent.id, prj.id, template.result_id, fingerprint]);
     await pool.query('UPDATE proactive_comparison_outbox SET proposal_id=$1 WHERE id=$2', [proposalId, candidateId]);
   }
-  writeFileSync('/state/proactive-outcomes-ui.json', JSON.stringify({ email: owner.email, viewerEmail: viewer.email, password,
+  writeFileSync('/state/proactive-outcomes-ui.json', JSON.stringify({ email: owner.email, viewerEmail: viewer.email, viewerId: viewer.id, password,
     projectId: prj.id, workspaceId: ws.id, ownerId: owner.id, connectionId: connection.id, workId: work.id,
     proposalId: comparison.proposalId, insufficientId: insufficient.outcomeId, messageId: conversation.messages[0]!.id, conversationId: conversation.id }));
   process.stdout.write('Controlled outcome UI fixture ready; no real provider request\n');

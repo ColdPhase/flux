@@ -197,7 +197,9 @@ $compose run --rm test node_modules/.bin/tsx tests/app/session-restart.ts verify
 # F-030 AC-3 (#655): restarts and the lock. A whole-stack restart locks an encrypted workspace (the keyring's boot key is
 # gone); restarting only the API keeps it unlocked; restarting only the keyring locks it within 5 s, with one event.
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts prepare
-$compose restart
+# Not the one-shot migrate: restarted together with db it cannot connect, exits 1, and `up --wait` then refuses with
+# "migrate didn't complete successfully" (#723 review P3; the same list as scripts/check_encryption.sh).
+$compose restart db keyring api api2 worker mailpit
 $compose up -d --wait api api2 worker keyring
 $compose run --rm test node_modules/.bin/tsx tests/app/encryption-restart.check.ts stack-locked
 $compose restart api

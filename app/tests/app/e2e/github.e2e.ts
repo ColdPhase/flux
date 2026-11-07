@@ -106,7 +106,7 @@ test('real settings UI binds, verifies PR links and removes private projections 
   await page.addInitScript(({ projectId }) => sessionStorage.setItem(`flux.project-conversation.${projectId}`, `/projects/${projectId}/github`), { projectId: place.id });
   await page.goto(`/projects/${place.id}/github`);
   await page.getByRole('heading', { name: 'GitHub is not configured on this server' }).waitFor();
-  const views = page.getByRole('navigation', { name: 'Project views', exact: true });
+  const views = page.getByRole('navigation', { name: 'Space views', exact: true });
   assert.equal(await views.locator('[aria-current="page"]').count(), 0, 'settings do not select a conversation tab');
   assert.equal(await views.getByRole('link', { name: 'Conversation', exact: true }).getAttribute('href'), `/projects/${place.id}`, 'a destination remembered under the retired key is ignored');
   await views.getByRole('link', { name: 'Conversation', exact: true }).click();
@@ -174,7 +174,7 @@ test('real settings UI binds, verifies PR links and removes private projections 
       await target.getByRole('link', { name: /#42 · Keep a manual off switch/ }).waitFor();
     }
     assert.ok(await target.locator('body').evaluate((el) => el.scrollWidth) <= width, `${label} has no horizontal overflow`);
-    assert.equal(await target.getByRole('navigation', { name: 'Project views', exact: true }).locator('[aria-current="page"]').count(), 0, `${label} settings do not select a conversation tab`);
+    assert.equal(await target.getByRole('navigation', { name: 'Space views', exact: true }).locator('[aria-current="page"]').count(), 0, `${label} settings do not select a conversation tab`);
     const directory = process.env.FLUX_E2E_EVIDENCE_DIR;
     if (directory) {
       mkdirSync(directory, { recursive: true }); await target.locator('.github-settings').evaluate((el) => { el.parentElement!.scrollTop = 0; });

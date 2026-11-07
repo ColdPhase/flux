@@ -85,6 +85,8 @@ test('a planned task shows its criteria, prerequisite states and plan revision; 
   await heading(page).filter({ hasText: 'Measure gestures at 5 lux' }).waitFor();
   const panel = page.locator('.details.wd');
   const criteria = panel.getByRole('region', { name: 'Done when' });
+  // The panel opens on the row's title at once and fills in the task's criteria when its read returns (#862).
+  await criteria.waitFor();
   assert.deepEqual(await criteria.locator('li').allInnerTexts(), planned.criteria);
   assert.match(await criteria.innerText(), /Flux does not check them off/);
   const waits = panel.getByRole('region', { name: 'Waits for' });
