@@ -231,17 +231,8 @@ class SettingsJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/settings/agents$"))
         cards = page.locator(".sset-card")
         expect(page.get_by_role("link", name=re.compile("^Local co-work on this computer"))).to_have_attribute("href", "/connect-agent")
-        # The assistant card (Spokój AC-3): name, Agent, one status line, three facts and one primary step.
-        card = page.get_by_role("region", name=re.compile("^Your assistant Agent"))
-        expect(card).to_contain_text("for you · not set up")
-        expect(card.locator(".sset-assistant__facts li")).to_have_count(3)
-        expect(card.get_by_role("link", name="How it works")).to_have_attribute("href", "/settings/assistant/how")
-        # #513 M2: the card is one block: no hairline inside it and no browser heading margin above the name.
-        self.assertEqual(card.evaluate("el => [...el.children].map((child) => getComputedStyle(child).borderTopWidth)"), ["0px", "0px", "0px"])
-        self.assertEqual(card.locator("h4").evaluate("el => [getComputedStyle(el).marginTop, getComputedStyle(el).marginBottom]"), ["0px", "0px"])
-        # Agents have their colour here (and only in the Agents section); the Appearance switch's Kreska is monochrome.
-        expect(card.locator(".agent-tag")).to_have_text("Agent")
-        self.assertRegex(card.locator(".sset-row__ic > .kreska").get_attribute("class") or "", r"kreska--(clay|ochre|sage|teal|indigo|plum|rose)")
+        # Your agents (F-036 AG-1, #857): the person's agents, each with its own colour, under Connect AI.
+        expect(page.get_by_role("region", name="Your agents")).to_be_visible()
         # Background suggestions are off on this test server: one status line, no form (Spokój AC-4).
         expect(page.get_by_role("link", name=re.compile("^Background suggestions"))).to_have_count(0)
         expect(page.get_by_text(BACKGROUND_OFF, exact=True)).to_be_visible()
@@ -255,21 +246,6 @@ class SettingsJourney(unittest.TestCase):
         page.goto("/settings")
         self.assertNotRegex(page.get_by_role("switch", name="Kreska in loading and empty screens").locator("xpath=..").locator(".kreska").get_attribute("class") or "", r"kreska--")
         expect(cards.first).to_be_visible()
-        page.goto("/settings/agents")
-        card = page.get_by_role("region", name=re.compile("^Your assistant Agent"))
-        card.get_by_role("link", name="Set up", exact=True).click()
-        expect(page).to_have_url(re.compile(r"/settings/assistant$"))
-        expect(page.locator("header.top").get_by_role("heading", level=1, name="Your assistant")).to_be_visible()
-        expect(page.get_by_role("navigation", name="Settings sections").get_by_role("link", name="AI", exact=True)).to_have_attribute("aria-current", "page")
-        shot(page, "settings-desktop-1440-assistant")
-        # How it works: the costs, data and consent words, on their own page.
-        page.goto("/settings/assistant/how")
-        expect(page.get_by_role("heading", level=2, name="How your assistant works")).to_be_visible()
-        expect(page.get_by_text("What leaves Flux")).to_be_visible()
-        expect(page.get_by_text("Who pays")).to_be_visible()
-        # The AI pages end with the same way back (#513).
-        expect(page.get_by_role("link", name="Back to AI")).to_have_attribute("href", "/settings/agents")
-
     def test_04_keyboard_shortcuts_list_every_key_of_the_guide(self) -> None:
         page = self.page()
         page.goto("/settings/shortcuts")
@@ -366,7 +342,7 @@ class SettingsJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/settings$"))
         page.get_by_role("link", name=re.compile(r"^AI\b")).tap()
         expect(page).to_have_url(re.compile(r"/settings/agents$"))
-        expect(page.get_by_role("region", name=re.compile("^Your assistant Agent"))).to_be_visible()
+        expect(page.get_by_role("region", name="Your agents")).to_be_visible()
         # The page's async reads (connections, assistant, runtime) and its entrance motion settle before the targets are measured.
         page.wait_for_load_state("networkidle")
         page.wait_for_function("document.getAnimations().every((a) => a.playState !== 'running')")
@@ -374,7 +350,7 @@ class SettingsJourney(unittest.TestCase):
         shot(page, "settings-phone-390-agents-light")
         dark_agents = self.page(phone=True, dark=True)
         dark_agents.goto("/settings/agents")
-        expect(dark_agents.get_by_role("region", name=re.compile("^Your assistant Agent"))).to_be_visible()
+        expect(dark_agents.get_by_role("region", name="Your agents")).to_be_visible()
         self.settle(dark_agents)
         shot(dark_agents, "settings-phone-390-agents-dark")
         page.get_by_role("button", name="Back").tap()
@@ -523,17 +499,6 @@ class SettingsJourney(unittest.TestCase):
         other = mouse.new_page()
         other.goto("/settings")
         expect(other.get_by_role("navigation", name="Settings sections").get_by_role("link", name="Keyboard shortcuts")).to_be_visible()
-
-    def test_11_phone_how_it_works_has_its_title_and_leads_back_to_settings_ai(self) -> None:
-        """#513: opened from a link, "How it works" names itself in the phone header, and Back leads to Settings › AI."""
-        page = self.page(phone=True)
-        page.goto("/settings/assistant/how")
-        header = page.locator("header")
-        expect(header.get_by_role("heading", level=1, name="How your assistant works", exact=True)).to_be_visible()
-        expect(page.get_by_text("What leaves Flux")).to_be_visible()
-        header.get_by_role("button", name="Back", exact=True).tap()
-        expect(page).to_have_url(re.compile(r"/settings/agents$"))
-        expect(page.get_by_role("region", name=re.compile("^Your assistant Agent"))).to_be_visible()
 
 
 if __name__ == "__main__":

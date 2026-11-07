@@ -92,12 +92,13 @@ export function personalRunTokenRows(db: DbExecutor) {
     },
 
     /**
-     * The connection of the owner's assistant in a workspace (F-027 AST-3: one per person per workspace). The
-     * mapping never changes once created, so it is read without a lock (S6 writers lock policy, then settings).
+     * The rights connection of one of the owner's agents (F-036 AG-1: each agent has its own). The mapping never changes once
+     * created, so it is read without a lock (S6 writers lock policy, then settings); a deleted agent has none.
      */
-    async assistantConnectionId(ownerUserId: string, workspaceId: string): Promise<string | null> {
+    async assistantConnectionId(ownerUserId: string, agentId: string): Promise<string | null> {
       const [row] = await db.select({ connectionId: schema.assistantSettings.connectionId }).from(schema.assistantSettings)
-        .where(and(eq(schema.assistantSettings.ownerUserId, ownerUserId), eq(schema.assistantSettings.workspaceId, workspaceId)));
+        .innerJoin(schema.agents, eq(schema.agents.id, schema.assistantSettings.agentId))
+        .where(and(eq(schema.assistantSettings.ownerUserId, ownerUserId), eq(schema.assistantSettings.agentId, agentId), isNull(schema.agents.revokedAt)));
       return row?.connectionId ?? null;
     },
   };

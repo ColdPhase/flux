@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantChangeLine, assistantRunChangesPath, assistantRunChangesActionPath, assistantSettingsPath, conversationAssistantChangesPath,
+  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantChangeActionPath, assistantChangeLine, assistantRunChangesPath, assistantRunChangesActionPath, conversationAssistantChangesPath,
   NEEDS_YOU_PATH, personalRunTokenPath,
-  type AgentMayDo, type AssistantChange, type AssistantRunUndone, type AssistantSettings, type Conversation, type NeedsYouResponse, type Project, type Workspace,
+  type AgentMayDo, type AssistantChange, type AssistantRunUndone, type Conversation, type NeedsYouResponse, type Project, type Workspace,
 } from '@flux/contracts';
 import { createPersonalRunProcessor, recoverPersonalRuns, type PersonalComputeResult, type Principal } from '@flux/core';
 import { personalRunTokenRows } from '@flux/db';
@@ -14,6 +14,7 @@ import { needsYouUseCases } from '../../apps/server/src/needs-you/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { mcpToolHost } from '../../apps/worker/src/personal-runs/mcp-session.js';
 import { runTokenIssuer } from '../../apps/worker/src/personal-runs/run-tokens.js';
+import { agentSettings } from './support/agent-settings.js';
 import { db, pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
 import { mcp } from './support/mcp.js';
@@ -51,7 +52,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
   /** Jonas's workspace, where Ada is a member: a project she may only read, and one she contributes to. */
   let jonasWs: Workspace; let shared: Project; let sharedThread: Conversation;
 
-  const settings = async (workspaceId = ws.id) => expectStatus(await owner.browser.request('GET', assistantSettingsPath(workspaceId, owner.id)), 200) as unknown as AssistantSettings;
+  const settings = (workspaceId = ws.id) => agentSettings(owner, workspaceId);
   /** "What it may do" (F-036 AG-3), set on the assistant's connection by its owner. */
   async function setMayDo(mayDo: AgentMayDo, workspaceId = ws.id) {
     expectStatus(await owner.browser.request('PATCH', agentConnectionPath((await settings(workspaceId)).connectionId), { body: { mayDo } }), 200);
@@ -116,7 +117,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     shared = await createProject(peer, jonasWs.id, 'Shared rig', 'restricted');
     await grant(peer, shared.id, owner, 'contributor');
     const jonasAgent = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${jonasWs.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
-    await runs.selectAgent(human(owner), { agentId: jonasAgent });
+    await runs.enable(human(owner), { agentId: jonasAgent });
     // The assistant reaches Shared rig because Ada does (F-036 AG-3): no join request, grant or project list.
     sharedThread = expectStatus(await peer.browser.request('POST', `/api/v1/projects/${shared.id}/conversations`,
       { body: { body: 'Rig notes', clientMessageId: randomUUID() } }), 201) as Conversation;

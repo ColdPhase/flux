@@ -282,19 +282,19 @@ class AiConnectionSettings(unittest.TestCase):
         shot(page, "ai-connection-390-connect-guide-codex")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
         page.set_viewport_size({"width": 1440, "height": 900})
-        page.goto("/settings/assistant")
-        expect(page.get_by_role("heading", level=1, name="Your assistant")).to_be_visible()
+        page.goto("/settings/agents")
+        expect(page.get_by_role("heading", name="Your agents")).to_be_visible()
         self.assertNotIn("Anthropic API key", page.locator("body").inner_text())
 
     def test_08_the_assistant_names_exactly_the_connection_chosen(self) -> None:
-        """#854: with several keys, the model picker groups the models by key and the request names the key and the model
-        chosen, never the server's default. The UI suite runs personal runs on a TEST-ONLY fixture key, so the model choice is
-        stubbed from Ada's two saved keys and the enable request is answered with a refusal."""
+        """#854, #857: with several keys, an agent's model picker groups the models by key and the change names the key and the
+        model chosen, never the server's default. The UI suite runs personal runs on a TEST-ONLY fixture key, so the model choice
+        is stubbed from Ada's two saved keys and the change is answered with a refusal."""
         page = self.page()
         headers = {"origin": ORIGIN}
         ws = page.request.post(f"{ORIGIN}/api/v1/workspaces", data={"name": "Sensor lab"}, headers=headers)
         self.assertEqual(ws.status, 201, ws.text())
-        agent = page.request.post(f"{ORIGIN}/api/v1/workspaces/{ws.json()['id']}/agents", data={"name": "Ada's assistant", "owner": "self"}, headers=headers)
+        agent = page.request.post(f"{ORIGIN}/api/v1/my-agents", data={"workspaceId": ws.json()["id"], "name": "Planner"}, headers=headers)
         self.assertEqual(agent.status, 201, agent.text())
         owned = page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").json()
         self.assertEqual(len(owned), 2, "the endpoint and the Anthropic key from the earlier tests")
@@ -304,30 +304,24 @@ class AiConnectionSettings(unittest.TestCase):
         sent: list[dict] = []
 
         def fulfil(route) -> None:
-            if route.request.method == "POST":
+            if route.request.method == "PATCH":
                 sent.append(json.loads(route.request.post_data or "{}"))
                 route.fulfill(status=409, content_type="application/json", body=json.dumps({"code": "PERSONAL_RUN_CONNECTION_REQUIRED", "message": "Stubbed refusal"}))
             else:
                 route.continue_()
 
-        page.route("**/api/v1/personal-assistant", fulfil)
+        page.route(re.compile(r".*/api/v1/my-agents/[0-9a-f-]{36}$"), fulfil)
         page.route("**/api/v1/personal-assistant/model", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(choice))
                    if route.request.method == "GET" else route.continue_())
-        page.goto("/settings/assistant")
-        model = page.get_by_role("button", name=re.compile(r"^Model: .+\. Change$"))
-        expect(model).to_have_accessible_name(f"Model: {owned[-1]['model']} · {owned[-1]['name']}. Change")
-        model.click()
-        menu = page.get_by_role("menu", name="Model")
+        page.goto(f"/settings/agents/{agent.json()['id']}")
         for item in owned:
-            expect(menu.get_by_role("group", name=item["name"])).to_be_visible()
+            expect(page.get_by_role("radiogroup", name=item["name"])).to_be_visible()
         chosen = owned[0]
-        menu.get_by_role("group", name=chosen["name"]).get_by_role("menuitemradio").click()
-        expect(model).to_have_accessible_name(f"Model: {chosen['model']} · {chosen['name']}. Change")
-        shot(page, "ai-connections-1440-assistant-model-chosen")
-        page.get_by_role("button", name="Turn on", exact=True).click()
+        page.get_by_role("radiogroup", name=chosen["name"]).get_by_role("radio").click()
         expect(page.get_by_role("alert")).to_be_visible()
+        shot(page, "ai-connections-1440-agent-model-chosen")
         self.assertEqual(len(sent), 1)
-        self.assertEqual((sent[0].get("connection"), sent[0].get("model")), (chosen["id"], chosen["model"]), "the request names the key chosen")
+        self.assertEqual((sent[0].get("connection"), sent[0].get("model")), (chosen["id"], chosen["model"]), "the change names the key chosen")
 
     def test_09_every_entry_point_opens_the_one_api_keys_page(self) -> None:
         """#513 B2, #854: Connect AI's "API key" choice and each key's Change lead to one API keys page, titled as such, with

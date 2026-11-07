@@ -28,12 +28,12 @@ export function SummaryByAssistant({ byAssistant, at, onApplied }: { byAssistant
     return () => controller.abort();
   }, [allOff]);
   // The company's assistant (AG-10): AI is on or off per space, so the assistant itself is not tied to one.
-  const workspaceId = status?.enablement?.agents[0]?.workspaceId;
+  const workspaceId = status?.enablement?.workspaceId;
   if (allOff || !status?.enablement || !workspaceId) return null;
   const scope = { workspaceId, ownerId: me.user.id };
   const first = me.user.name.trim().split(/\s+/)[0] || me.user.name;
   if (byAssistant) {
-    return <p className="nset__assistant-summary" data-ai-surface="summary-by-assistant">Written by {first}&apos;s assistant · <Link className="ui-link" to="/settings/assistant">Change ›</Link></p>;
+    return <p className="nset__assistant-summary" data-ai-surface="summary-by-assistant">Written by {first}&apos;s assistant · <Link className="ui-link" to="/settings/agents">Change ›</Link></p>;
   }
   const turnOn = async () => {
     setError('');

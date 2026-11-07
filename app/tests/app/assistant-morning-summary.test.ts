@@ -164,16 +164,15 @@ describe('the morning summary written by the assistant (F-027 A8, #408, AST-7.6)
     assert.equal((await runsOf()).at(-1)!.status, 'stopped');
     assert.equal(pushes(), 1);
 
-    const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
     const before = (await runsOf()).length;
-    await runs.pause(human(me));
+    await pool.query(`UPDATE agents SET revoked_at = now() WHERE owner_user_id = $1`, [me.id]);
     try {
       sent.length = 0;
       assert.deepEqual(await send(morning(4)), { sent: 1, empty: 0, writing: 0 });
       assert.equal(pushes(), 1);
-      assert.equal((await runsOf()).length, before, 'no run was started for a paused assistant');
+      assert.equal((await runsOf()).length, before, 'no run was started without an agent');
     } finally {
-      await runs.resume(human(me));
+      await pool.query(`UPDATE agents SET revoked_at = NULL WHERE owner_user_id = $1`, [me.id]);
     }
   });
 });

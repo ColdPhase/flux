@@ -5,7 +5,7 @@ import type { createDatabase } from '../index.js';
 import { apiKeySpendToday } from './api-key-spend.js';
 
 const c = schema.backgroundComputeConnections;
-const enablements = schema.personalRunEnablements;
+const settings = schema.assistantSettings;
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'select' | 'update' | 'insert' | 'transaction' | 'execute'>;
 type ConnectionRow = typeof c.$inferSelect;
 
@@ -87,11 +87,11 @@ export function backgroundConnectionRepository(db: Database) {
         return metadata(tx, row!);
       });
     },
-    /** The model the owner's assistant runs on this key (#909): the one a budget must also hold one request of. */
-    async assistantModelOn(ownerUserId: string, connectionId: string): Promise<string | null> {
-      const [row] = await db.select({ model: enablements.assistantModel }).from(enablements)
-        .where(and(eq(enablements.ownerUserId, ownerUserId), eq(enablements.connectionId, connectionId), eq(enablements.engine, 'server')));
-      return row?.model ?? null;
+    /** The models the owner's agents run on this key (#909, #857): a budget must also hold one request of each. */
+    async agentModelsOn(ownerUserId: string, connectionId: string): Promise<string[]> {
+      const rows = await db.select({ model: settings.model }).from(settings)
+        .where(and(eq(settings.ownerUserId, ownerUserId), eq(settings.apiKeyId, connectionId), eq(settings.engine, 'server')));
+      return [...new Set(rows.flatMap((row) => (row.model ? [row.model] : [])))];
     },
     async revoke(ownerUserId: string, connectionId: string): Promise<boolean> {
       return db.transaction(async (tx) => {

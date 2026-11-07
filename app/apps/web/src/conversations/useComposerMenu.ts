@@ -54,7 +54,7 @@ export function useComposerMenu({ me, people, conversation, writable, aiOff, com
     const after = draft.slice(caret);
     if (option.assistant) {
       changeDraft(before + after, before.length);
-      if (option.assistant === 'setup') navigate('/settings/assistant');
+      if (option.assistant === 'setup') navigate('/settings/agents');
       else { setAsking(true); ask.setAskFailure(''); requestAnimationFrame(() => document.getElementById(composerId)?.focus()); }
       return;
     }

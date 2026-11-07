@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunTools, assistantSettingsPath, compileAssistantAreas, DEFAULT_ASSISTANT_AREAS, PERSONAL_RUN_LIMITS,
-  personalRunTokenPath, RUN_TOKEN_LIMITS, type AgentMayDo, type AssistantSettings, type Conversation, type Project, type Workspace,
+  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunTools, compileAssistantAreas, DEFAULT_ASSISTANT_AREAS, PERSONAL_RUN_LIMITS,
+  personalRunTokenPath, RUN_TOKEN_LIMITS, type AgentMayDo, type Conversation, type Project, type Workspace,
 } from '@flux/contracts';
 import { createPersonalRunProcessor, type PersonalComputeResult, type PersonalToolCall, type Principal } from '@flux/core';
 import { personalRunTokenRows } from '@flux/db';
@@ -11,6 +11,7 @@ import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapter
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { mcpToolHost } from '../../apps/worker/src/personal-runs/mcp-session.js';
 import { runTokenIssuer } from '../../apps/worker/src/personal-runs/run-tokens.js';
+import { agentSettings } from './support/agent-settings.js';
 import { db, pool } from './support/db.js';
 import { apiUrl, publicOrigin } from './support/http.js';
 import { mcp } from './support/mcp.js';
@@ -60,7 +61,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
   const DM_CANARY = `dm-canary-${randomBytes(4).toString('hex')}`;
   const PRIVATE_CANARY = `private-sketch-canary-${randomBytes(4).toString('hex')}`;
 
-  const settings = async () => expectStatus(await owner.browser.request('GET', assistantSettingsPath(ws.id, owner.id)), 200) as unknown as AssistantSettings;
+  const settings = () => agentSettings(owner, ws.id);
   /** "What it may do" (F-036 AG-3), set by the owner in their own session. */
   async function setMayDo(mayDo: AgentMayDo) {
     expectStatus(await owner.browser.request('PATCH', agentConnectionPath((await settings()).connectionId), { body: { mayDo } }), 200);
@@ -253,6 +254,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const restore = async () => {
       // Turning the assistant on again revives the same connection and switches (A1).
       await runs.remove(human(owner)).catch(() => undefined);
+      agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
       const connectionId = randomUUID();
       connections.connect(owner.id, connectionId);
       await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
@@ -338,6 +340,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
   test('AST-8.3: a model marked without tool calling gets one request with no tools and no token', async () => {
     const connectionId = randomUUID();
     await runs.remove(human(owner));
+    agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
     connections.connect(owner.id, connectionId, { toolCalling: false });
     await runs.enable(human(owner), { agentId, connection: connectionId, model: 'claude-sonnet-5' });
     compute.respond = async () => ({ kind: 'completed', text: 'Fact: one answer [S1].', stopReason: 'end_turn', usage: { inputTokens: 500, outputTokens: 20 } });

@@ -348,7 +348,7 @@ input::placeholder, textarea::placeholder { color: var(--t3); opacity: 1; }
 /* Agent colours, only where a hue is passed (the Agents section): the lines take it, the face 12% of it. */
 .kreska--clay { color: var(--agent-clay); } .kreska--ochre { color: var(--agent-ochre); } .kreska--sage { color: var(--agent-sage); }
 .kreska--teal { color: var(--agent-teal); } .kreska--indigo { color: var(--agent-indigo); } .kreska--plum { color: var(--agent-plum); }
-.kreska--rose { color: var(--agent-rose); }
+.kreska--rose { color: var(--agent-rose); } .kreska--ink { color: var(--inv); }
 .kreska[class*="kreska--"] .kreska__frame { fill: currentColor; fill-opacity: .12; }
 /* Motion only where it says something true: the brow waves while thinking, dots flow while loading,
    the eyes blink slowly while working. Reduced motion, the system's or the person's own, shows the static frame (see the end of this file). */

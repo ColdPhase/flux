@@ -159,11 +159,11 @@ const viewOne = async (ports: AssistantJobPorts, id: string, at: Date) => (await
 
 /** The owner's enablement and the project: the assistant must be in it, and the owner must be able to write there. */
 async function placeOf(ports: AssistantJobPorts, principal: Principal, projectId: string) {
-  const enablement = await ports.runs.enablement(principal.id, { lock: false });
-  if (!enablement) throw new ConflictError('Turn on your assistant first', 'ASSISTANT_NOT_ENABLED');
   const { workspaceId } = await ports.access.requireProject(principal, 'write', projectId);
-  const agentId = enablement.agents.find((agent) => agent.workspaceId === workspaceId)?.agentId;
-  if (!agentId || !(await ports.access.canUseProject({ kind: 'agent', id: agentId }, 'read', projectId))) {
+  const enablement = await ports.runs.enablement(principal.id, { lock: false, workspaceId });
+  if (!enablement) throw new ConflictError('Turn on your assistant first', 'ASSISTANT_NOT_ENABLED');
+  const agentId = enablement.agentId;
+  if (!(await ports.access.canUseProject({ kind: 'agent', id: agentId }, 'read', projectId))) {
     throw new ConflictError('I\'m not in this project yet.', 'ASSISTANT_NOT_IN_PROJECT');
   }
   return { enablement, workspaceId };

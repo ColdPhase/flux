@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router';
 import type { ReturnNextStep, WorkItem } from '@flux/contracts';
 import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
-import { MeetAssistantCard } from '../assistant/MeetAssistant';
 import { MorningLine } from '../assistant/MorningLine';
 import { NeedsYouCard } from '../notifications/NeedsYouCard';
 import { useNeedsYou } from '../notifications/needsYou';
@@ -209,7 +208,6 @@ export function Home() {
         </section>
       </div>
 
-      <MeetAssistantCard userId={me.user.id} />
 
       <p className="home__more"><Link to="/tasks">All my tasks</Link><Link to="/map">My map</Link><Link to="/docs">Wiki</Link><button type="button" onClick={() => openDetails()}>Details</button></p>
       </>}

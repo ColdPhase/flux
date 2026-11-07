@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { AGENT_MCP_ENTRIES, ASSISTANT_CHANGE_LIMITS, assistantChangeWords, assistantWorkChangeArgs, type AgentJsonValue, type AgentOperation, type AgentPostcondition,
   type AgentScope, type AssistantObjectType, type AuthenticatedAgentRuntime } from '@flux/contracts';
-import { agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, lockAgentMcpPolicy, sketchRows, type AssistantChangeRow, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
+import { agentProjectObjectRows, assistantChangeRows, assistantRemovalRows, lockAgentMcpPolicy, sketchRows, type DbExecutor, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
 import { ASSISTANT_REFUSALS, changedParagraphs, classifyAssistantChange, DomainError, fieldWords, type UndoRecord, evaluateProject, redactSecrets } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
@@ -325,7 +325,7 @@ interface Authority {
 
 /** The checks every agent change repeats, live: the binding, the S6 entry, the run's place and the owner's current rights. */
 async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectId: string, tool: string, run: Authority['run'] | null,
-  approval: AssistantApproval | undefined, prepared: AssistantChangeRow | null): Promise<Authority> {
+  approval: AssistantApproval | undefined): Promise<Authority> {
   const rows = assistantChangeRows(tx as DbExecutor);
   let agentId: string; let workspaceId: string;
   // The owner's own rights now, which are the agent's: outside them nothing can be changed or prepared (AG-3).
@@ -357,12 +357,10 @@ async function currentAuthority(tx: Transaction, claims: FluxMcpClaims, projectI
     // A normally completed or still live source supplies provenance; a stopped, cancelled or failed one supplies nothing.
     if (run.stopRequestedAt || !['reading', 'dispatching', 'completed', 'truncated'].includes(run.status)) throw invalidated('This request was stopped. Ask again');
   }
-  const settings = await rows.settings(claims.ownerUserId, workspaceId);
-  if (!settings || settings.connectionId !== claims.connectionId || settings.agentId !== agentId) throw invalidated('Your assistant is no longer available');
-  const enablement = await rows.enablement(claims.ownerUserId);
-  if (!enablement) throw invalidated('Your assistant is off');
-  if (approval && enablement.status !== 'active') throw new DomainError(409, 'ASSISTANT_PAUSED', 'Your assistant is paused. Resume it, then approve again');
-  if (prepared && enablement.createdAt > prepared.createdAt) throw invalidated('Your assistant was turned off since. Ask again');
+  const settings = await rows.settings(claims.ownerUserId, agentId);
+  if (!settings || settings.connectionId !== claims.connectionId || settings.agentId !== agentId) throw invalidated('This agent is no longer available');
+  const enablement = await rows.enablement(claims.ownerUserId, agentId);
+  if (!enablement) throw invalidated('This agent was deleted');
   const now = new Date();
   const runtime: AuthenticatedAgentRuntime = Object.freeze({ id: run.id, workspaceId, connectionId: claims.connectionId, ownerUserId: claims.ownerUserId,
     agentId, clientId: 'flux-assistant', grantReferenceId: `flux-run:${run.id}`, bindingGeneration: 0, scopes: ['flux.context.read', 'flux.action.execute'] as AgentScope[],
@@ -409,7 +407,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
                 : stored.state === 'skipped' ? 'Your owner skipped this change' : stored.refusal ?? 'This change is waiting for your owner\'s OK' };
           }
         }
-        authority = await currentAuthority(tx, claims, input.projectId, call.tool, runRow, approval, prepared);
+        authority = await currentAuthority(tx, claims, input.projectId, call.tool, runRow, approval);
         // Objects stay in their space: on Approve a miss means the target is gone, which reads "Changed since you asked".
         if (!await withinRunPlace(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, { workspaceId: authority.workspaceId, projectId: input.projectId }))
           throw approval ? new DomainError(404, 'OBJECT_NOT_FOUND', 'Project object not found') : outsideRunPlace();

@@ -127,9 +127,9 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.equal(await runCount(hubert.id), 0, 'a refused invoke writes no run and reserves nothing');
     assert.equal((expectStatus(await maurycy.browser.request('GET', '/api/v1/personal-assistant'), 200) as PersonalAssistantStatus).state, 'not_enabled');
     // Without a connection of one's own there is no model to pick (#854); nothing else is asked.
-    const enable = await maurycy.browser.request('POST', '/api/v1/personal-assistant', { body: { agentId: agents.maurycy, connection: randomUUID(), model: 'claude-sonnet-5' } });
+    const enable = await maurycy.browser.request('POST', '/api/v1/my-agents', { body: { agentId: agents.maurycy, connection: randomUUID(), model: 'claude-sonnet-5' } });
     assert.equal((enable.json as { code: string }).code, 'ASSISTANT_MODEL_UNAVAILABLE', enable.text);
-    const foreign = await maurycy.browser.request('POST', '/api/v1/personal-assistant', { body: { agentId: agents.hubert, connection: 'claude_plan', model: 'sonnet' } });
+    const foreign = await maurycy.browser.request('POST', '/api/v1/my-agents', { body: { agentId: agents.hubert, connection: 'claude_plan', model: 'sonnet' } });
     assert.equal(foreign.status, 403, 'another person\'s agent cannot be enabled');
 
     // In the fake composition: no connection means an explicit unavailable state, never a fallback.
@@ -252,7 +252,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.match(compute.dispatched.at(-1)!.input, /Selected map thought: ToF sensor: swipe \+ hold/);
   });
 
-  test('AC-2: denied, stopped-before-read, paused, capped and revoked runs cost zero; a retry key never charges twice', async () => {
+  test('AC-2: denied, stopped-before-read, capped and revoked runs cost zero; a retry key never charges twice', async () => {
     const clientRunId = randomUUID();
     const first = await runs.invoke(human(hubert), thread.id, { clientRunId, kind: 'summarize', prompt: 'Summarize' });
     const again = await runs.invoke(human(hubert), thread.id, { clientRunId, kind: 'summarize', prompt: 'Summarize' });
@@ -288,26 +288,22 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     await keepHubertOut();
     assert.equal(await processor.process(denied.run.id), 'denied');
     await letHubertBack();
-    // Paused: queued work ends at once; a paused assistant refuses new work.
-    const paused = await ask(hubert);
-    assert.equal((await runs.pause(human(hubert))).state, 'paused');
-    await assert.rejects(ask(hubert), { code: 'PERSONAL_RUN_PAUSED' });
-    await runs.resume(human(hubert));
     // Disconnected before dispatch.
     const disconnected = await ask(hubert);
     connections.disconnect(hubert.id);
     assert.equal(await processor.process(disconnected.run.id), 'unavailable');
     connections.connect(hubert.id, hubertConnection);
-    // Revoked: the enablement and its consent are removed.
+    // Deleted: queued work ends at once, and a person without an agent has none to ask.
     const revoked = await ask(hubert);
-    expectStatus(await hubert.browser.request('DELETE', '/api/v1/personal-assistant'), 204);
+    expectStatus(await hubert.browser.request('DELETE', `/api/v1/my-agents/${agents.hubert}`), 204);
     await assert.rejects(ask(hubert), { code: 'PERSONAL_RUN_NOT_ENABLED' });
+    agents.hubert = (await post<{ id: string }>(hubert, `/api/v1/workspaces/${ws.id}/agents`, { name: 'hubert assistant', owner: 'self' })).id;
     await enable(hubert, 'hubert', hubertConnection);
-    for (const run of [denied, paused, disconnected, revoked]) {
+    for (const run of [denied, disconnected, revoked]) {
       const stored = await row(run.run.id);
       assert.deepEqual([stored.cost_state, stored.charged_micros, stored.answer_body], ['released', 0, null], `${stored.status} costs nothing`);
     }
-    assert.deepEqual([(await row(paused.run.id)).status, (await row(revoked.run.id)).status], ['paused', 'revoked']);
+    assert.equal((await row(revoked.run.id)).status, 'revoked');
     assert.equal(compute.dispatched.length, dispatchedBefore + 1, 'none of them reached the provider');
 
     // A run reserves, when it starts, its largest possible cost at the key's price (F-020 PROV-3): one request of
@@ -448,13 +444,13 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.equal(events.rows[0].n, 0);
   });
 
-  test('AC-6: nothing leaves for preflight counting once the grant, a Stop or a pause arrives after the read', async () => {
+  test('AC-6: nothing leaves for preflight counting once the grant, a Stop or a deletion of the agent arrives after the read', async () => {
     const countsFor = (prompt: string) => compute.counted.filter((request) => request.input.includes(`Request: ${prompt}`)).length;
     const dispatched = compute.dispatched.length;
     const cases: [string, (runId: string) => Promise<unknown>, string, () => Promise<unknown>][] = [
       ['grant revoked', () => keepHubertOut(), 'denied', () => letHubertBack()],
       ['stopped', (runId) => runs.stop(human(hubert), runId), 'stopped', async () => undefined],
-      ['paused', () => runs.pause(human(hubert)), 'paused', () => runs.resume(human(hubert))],
+      ['deleted', () => pool.query('UPDATE agents SET revoked_at = now() WHERE id = $1', [agents.hubert]), 'revoked', () => pool.query('UPDATE agents SET revoked_at = NULL WHERE id = $1', [agents.hubert])],
     ];
     for (const [label, change, status, undo] of cases) {
       const prompt = `Preflight ${label} ${randomUUID()}`;
@@ -639,11 +635,12 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       await assert.rejects(ask(hubert), { code: 'PERSONAL_RUN_UNAVAILABLE' });
       // Picking a model of another key moves the assistant there (#854): the enablement stores that key and its provider.
       await runs.chooseModel(human(hubert), { connection: newer, model: 'vendor/newer-model' });
-      const stored = await pool.query('SELECT connection_id, provider, assistant_model FROM personal_run_enablements WHERE owner_user_id = $1', [hubert.id]);
+      const stored = await pool.query('SELECT api_key_id AS connection_id, provider, model AS assistant_model FROM assistant_settings WHERE agent_id = $1', [agents.hubert]);
       assert.deepEqual(stored.rows, [{ connection_id: newer, provider: 'openrouter', assistant_model: 'vendor/newer-model' }]);
     } finally {
       hooks.afterDispatch = previous;
-      await hubert.browser.request('DELETE', '/api/v1/personal-assistant');
+      await hubert.browser.request('DELETE', `/api/v1/my-agents/${agents.hubert}`);
+      agents.hubert = (await post<{ id: string }>(hubert, `/api/v1/workspaces/${ws.id}/agents`, { name: 'hubert assistant', owner: 'self' })).id;
       connections.disconnect(hubert.id, newer);
       connections.disconnect(hubert.id, latest);
       await enable(hubert, 'hubert', hubertConnection);

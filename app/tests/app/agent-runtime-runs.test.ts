@@ -5,7 +5,7 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import {
-  agentConnectionPath, assistantChangeActionPath, assistantSettingsPath, ASSISTANT_UNIT_CREATE_VIEW, RUN_TOKEN_LIMITS, RUNTIME_RUN_LIMITS, type AssistantSettings, type Conversation, type Project,
+  agentConnectionPath, assistantChangeActionPath, ASSISTANT_UNIT_CREATE_VIEW, RUN_TOKEN_LIMITS, RUNTIME_RUN_LIMITS, type Conversation, type Project,
   type Workspace,
 } from '@flux/contracts';
 import { createPersonalRunProcessor, MAX_WAITING_REQUESTS, noPersonalConnections, recoverLostRuntimeRuns, recoverPersonalRuns, REDACTED_SECRET, sweepSpaceAi, type AgentRuntimeConfig, type Principal } from '@flux/core';
@@ -19,6 +19,7 @@ import { personalRuntimeAvailability } from '../../apps/server/src/personal-runs
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { runTokenIssuer } from '../../apps/worker/src/personal-runs/run-tokens.js';
 import { managerPersonalRuntime } from '../../apps/worker/src/personal-runs/runtime-engine.js';
+import { agentSettings } from './support/agent-settings.js';
 import { db, pool } from './support/db.js';
 import { agentConnection } from './support/mcp-actions.js';
 import { apiUrl } from './support/http.js';
@@ -63,7 +64,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     return (await pool.query(`SELECT status, end_reason, answer_body, answer_redacted, plan_limit_resets_at, stop_requested_at, stop_acknowledged_at, cost_state,
       reserved_micros, engine, run_token_closed_at, provider, model FROM personal_runs WHERE id = $1`, [runId])).rows[0] as Record<string, unknown>;
   }
-  const settings = async () => expectStatus(await owner.browser.request('GET', assistantSettingsPath(ws.id, owner.id)), 200) as unknown as AssistantSettings;
+  const settings = () => agentSettings(owner, ws.id);
   async function filesUnder(dir: string): Promise<string[]> {
     const out: string[] = [];
     for (const entry of await readdir(dir, { withFileTypes: true }).catch(() => [])) {
@@ -197,7 +198,7 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.equal(status.state, 'ready');
     assert.deepEqual([status.enablement?.connection, status.enablement?.engine, status.enablement?.model], ['claude_plan', 'runtime', 'sonnet']);
     assert.equal(status.today, null, 'a plan has no Flux budget: its limits are the provider\'s');
-    const stored = (await pool.query('SELECT connection_id, provider FROM personal_run_enablements WHERE owner_user_id = $1', [owner.id])).rows[0];
+    const stored = (await pool.query('SELECT api_key_id AS connection_id, provider FROM assistant_settings WHERE owner_user_id = $1 ORDER BY created_at DESC LIMIT 1', [owner.id])).rows[0];
     assert.deepEqual(stored, { connection_id: null, provider: 'anthropic' });
   });
 
@@ -281,11 +282,11 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
   test('the answer is withheld when access changed after the run started (the commit recheck)', async () => {
     const recheck = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections: noPersonalConnections, compute,
       runtime: managerPersonalRuntime(config, db), tokens: runTokenIssuer(db, apiUrl), stopPollMs: 50, runtimeCaps: { idleSeconds: 5, wallClockSeconds: 10 },
-      hooks: { afterDispatch: async () => { await pool.query(`UPDATE personal_run_enablements SET status = 'paused' WHERE owner_user_id = $1`, [owner.id]); } } });
+      hooks: { afterDispatch: async () => { await pool.query(`UPDATE agents SET revoked_at = now() WHERE owner_user_id = $1`, [owner.id]); } } });
     const started = await ask();
-    assert.equal(await recheck.process(started.run.id), 'paused');
+    assert.equal(await recheck.process(started.run.id), 'revoked', 'an agent deleted while it worked commits nothing');
     assert.equal((await row(started.run.id)).answer_body, null);
-    await pool.query(`UPDATE personal_run_enablements SET status = 'active' WHERE owner_user_id = $1`, [owner.id]);
+    await pool.query(`UPDATE agents SET revoked_at = NULL WHERE owner_user_id = $1`, [owner.id]);
   });
 
   test('no local tool remains: an extra tool or MCP server in system/init stops the run with no answer', async () => {
@@ -404,8 +405,9 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.equal((await row(started.run.id)).answer_body, null);
     const results = (await calls()).filter((entry) => entry.event === 'tool_result') as { status: number }[];
     if (results.length > 1) assert.equal(results[1]!.status, 403, 'the next call was refused');
-    // Turning the assistant on again revives its connection and switches (A1).
+    // A deleted agent is gone for good (#857): the owner makes another and gives it the plan.
     await runs.remove(human(owner));
+    agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
     await runs.enable(human(owner), { agentId, connection: 'claude_plan', model: 'sonnet' });
   });
 
@@ -524,11 +526,11 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     const started = await ask();
     const processing = processor.process(started.run.id);
     await waitFor(async () => (await calls()).some((entry) => entry.event === 'tools_list'), 'the CLI started');
-    await pool.query(`UPDATE personal_run_enablements SET engine = 'server', connection_id = $2 WHERE owner_user_id = $1`, [owner.id, randomUUID()]);
+    await pool.query(`UPDATE assistant_settings SET engine = 'server', api_key_id = $2 WHERE agent_id = $1`, [owner.id, randomUUID()]);
     try {
       assert.equal(await processing, 'completed', 'it finishes on the plan it was sent to');
     } finally {
-      await pool.query(`UPDATE personal_run_enablements SET engine = 'runtime', connection_id = NULL WHERE owner_user_id = $1`, [owner.id]);
+      await pool.query(`UPDATE assistant_settings SET engine = 'runtime', api_key_id = NULL WHERE agent_id = $1`, [owner.id]);
     }
   });
 

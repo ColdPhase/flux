@@ -131,7 +131,7 @@ class ConnectAiJourney(unittest.TestCase):
         page.route(re.compile(r".*/api/v1/agent-runtime$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(status or RUNTIME_ON)))
 
     def sections(self, page: Page) -> tuple[Locator, Locator, Locator]:
-        return (page.get_by_role("region", name="Connect AI", exact=True), page.get_by_role("region", name="Your assistant", exact=True),
+        return (page.get_by_role("region", name="Connect AI", exact=True), page.get_by_role("region", name="Your agents", exact=True),
                 page.get_by_role("region", name=MODE_B_PAGE, exact=True))
 
     def assert_change_beside_the_text(self, row: Locator) -> None:
@@ -195,11 +195,13 @@ class ConnectAiJourney(unittest.TestCase):
         expect(api_key.locator("input")).to_be_checked()
         window.get_by_role("button", name="Cancel").click()
         expect(window).to_have_count(0)
-        card = assistant.get_by_role("region", name=re.compile("^Your assistant"))
-        expect(card.get_by_role("link", name="Set up", exact=True)).to_have_attribute("href", "/settings/assistant")
-        expect(card.get_by_role("link", name="How it works")).to_have_attribute("href", "/settings/assistant/how")
+        # Connecting AI gave the person their first agent, Assistant, which answers /ai (#857).
+        row = assistant.get_by_role("list", name="Your agents").get_by_role("listitem").first
+        expect(row).to_contain_text("Assistant")
+        expect(row).to_contain_text("Answers /ai")
+        expect(row.get_by_role("link")).to_have_attribute("href", re.compile(r"^/settings/agents/[0-9a-f-]{36}$"))
         self.assertTrue(self.above(connect, assistant), "Connect AI comes first")
-        self.assertTrue(self.above(assistant, app), "then the assistant, then the agent app")
+        self.assertTrue(self.above(assistant, app), "then the agents, then the agent app")
         # Your agent app: MCP connections; no client guide with command-line words on this page.
         # #763 SG-6: the client and its Agent tag first, the device in the meta line ("Codex · for you · Ines desk laptop").
         expect(app.get_by_role("link", name=re.compile(f"^Codex.*for you · {CONNECTION}"))).to_have_attribute("href", "/connect-agent")
@@ -243,7 +245,8 @@ class ConnectAiJourney(unittest.TestCase):
         connect, assistant, app = self.sections(page)
         expect(connect.locator("li[data-connection]")).to_have_count(0)
         expect(connect.get_by_role("button", name="Connect AI", exact=True)).to_be_visible()
-        expect(assistant).to_contain_text("not set up")
+        expect(assistant.get_by_role("list", name="Your agents").get_by_role("listitem")).to_have_count(1)
+        expect(assistant).to_contain_text("Answers /ai")
         expect(app.get_by_role("link", name="Local co-work on this computer")).to_be_visible()
         expect(app.locator(".sset-row__identity")).to_have_count(0)
         expect(page.get_by_text("Your connected agents could not be listed")).to_have_count(0)
@@ -258,25 +261,26 @@ class ConnectAiJourney(unittest.TestCase):
     def test_06_the_project_lists_only_mcp_while_own_assistant_stays_in_settings(self) -> None:
         ines = self.page("ines")
         status = self.api(ines, "GET", "/api/v1/personal-assistant", status=200)
-        self.assertEqual(status["state"], "not_enabled")
+        self.assertEqual(status["state"], "ready", "test_02 opened Settings, which made Ines's first agent, Assistant")
         assistant = self.api(ines, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents", {"name": "Ines personal assistant", "owner": "self"}, status=201)
         type(self).ids["assistant_agent"] = assistant["id"]
         # #854: the model of a connection, Connect AI's default here (the TEST-ONLY fixture key); nothing else to agree to.
         choice = self.api(ines, "GET", "/api/v1/personal-assistant/model", status=200)
         self.assertIsNotNone(choice["default"])
-        self.api(ines, "POST", "/api/v1/personal-assistant", {"agentId": assistant["id"], **choice["default"]}, status=201)
+        self.api(ines, "POST", "/api/v1/my-agents", {"agentId": assistant["id"], **choice["default"]}, status=201)
         ines.goto(f"/projects/{self.ids['project']}/agents")
         rows = ines.get_by_role("list", name="Agents in this project").get_by_role("listitem")
         # Project lists contain only MCP connections, even for the assistant owner (#522).
         expect(rows).to_have_count(1)
-        expect(ines.get_by_text("Ines personal assistant", exact=False)).to_have_count(0)
+        expect(rows.get_by_text("Ines personal assistant", exact=False)).to_have_count(0)  # the sidebar lists it under Messages (#857); the project view does not
         expect(ines.get_by_role("region", name="Assistant join requests")).to_have_count(0)
         expect(rows.filter(has_text=CONNECTION)).to_have_count(1)
         expect(rows.filter(has_text=CONNECTION)).to_contain_text("for Ines")
         # Settings keeps the owner’s assistant, its model and its connection reachable.
         ines.goto("/settings/agents")
         _, section, _ = self.sections(ines)
-        expect(section).to_contain_text("· API key · Assistant on")
+        expect(section.get_by_role("list", name="Your agents")).to_contain_text("Ines personal assistant")
+        expect(section).to_contain_text("Test fixture key")
 
     def test_07_a_second_member_never_sees_or_changes_the_first_members_connections(self) -> None:
         ines = self.page("ines")
@@ -307,7 +311,10 @@ class ConnectAiJourney(unittest.TestCase):
         # What Tom's API calls return and refuse.
         own = self.api(tom, "GET", "/api/v1/agent-connections", status=200)
         self.assertEqual([item for item in own if item["id"] == self.ids["connection"]], [])
-        self.assertEqual(self.api(tom, "GET", "/api/v1/personal-assistant", status=200)["enablement"], None, "Tom has no assistant of his own")
+        mine = {item["id"] for item in self.api(tom, "GET", "/api/v1/my-agents", status=200)["items"]}
+        hers = {item["id"] for item in self.api(self.page("ines"), "GET", "/api/v1/my-agents", status=200)["items"]}
+        self.assertTrue(hers and not (mine & hers), "Tom's agents are his own; none of Ines's")
+        self.assertEqual(self.api(tom, "GET", "/api/v1/personal-assistant", status=200)["enablement"]["ownerUserId"], TOM["id"])
         self.assertEqual([item for item in self.api(tom, "GET", "/api/v1/background-compute-connections", status=200) if item["id"] == key["id"]], [])
         changed = tom.request.fetch(f"{ORIGIN}/api/v1/background-compute-connections/{key['id']}", method="PATCH",
                                     headers={"origin": ORIGIN, "content-type": "application/json"}, data=json.dumps({"dailyBudgetCents": 100000}))
@@ -381,7 +388,7 @@ class ConnectAiJourney(unittest.TestCase):
                     expect(rows).to_contain_text(CONNECTION)
                     expect(rows).to_contain_text("for Ines Moreau")
                     expect(rows).to_contain_text("Codex")
-                    expect(page.get_by_text("Ines personal assistant", exact=False)).to_have_count(0)
+                    expect(rows.get_by_text("Ines personal assistant", exact=False)).to_have_count(0)
                     if phone:
                         self.assert_phone_roster_summary(page, 1)
                         page.locator(".phead__menu").click()
@@ -397,18 +404,19 @@ class ConnectAiJourney(unittest.TestCase):
                     else:
                         expect(panel.get_by_role("button", name=re.compile("Stop|Take back|Revoke|Remove|Hand off|^Ask ", re.I))).to_have_count(0)
                         view = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/agents", status=200)
-                        self.assertEqual(len(view["connections"]), 1)
-                        self.assertFalse(any(connection.get("assistant") for connection in view["connections"]))
+                        # Tom has his own Assistant now (Settings gave him one): it is his alone and Ines's is not here.
+                        others = [connection for connection in view["connections"] if not connection.get("assistant")]
+                        self.assertEqual(len(others), 1)
+                        self.assertLessEqual(len([connection for connection in view["connections"] if connection.get("assistant")]), 1)
                         people = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/people", status=200)
                         self.assertNotIn(self.ids["assistant_agent"], [person["id"] for person in people])
                         self.assertIn(self.ids["agent"], [person["id"] for person in people])
                     self.no_horizontal_scroll(page)
                     shot(page, f"agent-visibility-{who}-{'phone-390' if phone else 'desktop-1440'}-{UI_BROWSER}")
                     if who == "ines":
-                        page.goto("/settings/assistant")
-                        expect(page.get_by_role("heading", name="Your assistant", exact=True)).to_be_visible()
-                        page.locator("details.aset__more > summary").click()
-                        expect(page.get_by_role("region", name="Your assistant’s project access")).to_have_count(0)
+                        page.goto("/settings/agents")
+                        expect(page.get_by_role("heading", name="Your agents", exact=True)).to_be_visible()
+                        expect(page.get_by_role("region", name="Your agents", exact=True)).to_contain_text("Ines personal assistant")
                         shot(page, f"assistant-own-settings-{'phone-390' if phone else 'desktop-1440'}-{UI_BROWSER}")
 
     def test_08_several_connections_side_by_side_each_with_one_usage_line(self) -> None:
@@ -607,64 +615,6 @@ class ConnectAiJourney(unittest.TestCase):
                 match = JARGON.search(text)
                 self.assertIsNone(match, f"jargon on the page (runtime {'on' if runtime_on else 'off'}): {match and match.group(0)}")
                 page.context.close()
-
-    def test_10_the_assistant_card_says_in_one_line_when_in_app_ai_is_off(self) -> None:
-        """#513 AC-3 (M5): with in-app AI off on the server (a stubbed status), the card says so once, in its status
-        line, with no facts and no "How it works". With nothing set up, Set up stays in its place, dimmed (Spokój
-        rule 7); an assistant that is set up keeps its Manage link there."""
-        def stub(page: Page, body: dict) -> None:
-            page.route(re.compile(r".*/api/v1/personal-assistant$"), lambda route: route.fulfill(
-                status=200, content_type="application/json", body=json.dumps(body)) if route.request.method == "GET" else route.continue_())
-
-        def one_off_line(card, step: str) -> None:
-            expect(card).to_contain_text("In-app AI is off on this Flux server")
-            text = card.inner_text()
-            self.assertEqual(len(re.findall(r"(?i)\boff\b", text)), 1, f"the off state is said once: {text!r}")
-            lines = [" ".join(line.split()) for line in text.splitlines()]
-            self.assertEqual([line for line in lines if line and line not in ("Your assistant", "Agent", "Your assistant Agent", step)],
-                             ["In-app AI is off on this Flux server"], f"one line besides the name, the Agent tag and {step}: {text!r}")
-            expect(card.locator(".sset-assistant__facts")).to_have_count(0)
-            expect(card.get_by_role("link", name="How it works")).to_have_count(0)
-
-        def same_place(a: dict | None, b: dict | None) -> None:
-            self.assertIsNotNone(a)
-            self.assertIsNotNone(b)
-            self.assertAlmostEqual(a["y"], b["y"], delta=1, msg=f"the step keeps its row: {a} vs {b}")
-            self.assertAlmostEqual(a["x"] + a["width"], b["x"] + b["width"], delta=1, msg=f"the step keeps its right edge: {a} vs {b}")
-
-        for phone in (False, True):
-            on = self.page("ines", phone=phone)
-            on.goto("/settings/agents")
-            live = on.get_by_role("region", name=re.compile("^Your assistant Agent"))
-            # test_06 turned Ines's assistant on, so the live card offers Manage.
-            step = live.get_by_role("link", name="Manage", exact=True)
-            expect(step).to_be_visible()
-            expect(live.locator(".sset-assistant__facts li")).to_have_count(3)
-            real = self.api(on, "GET", "/api/v1/personal-assistant", status=200)
-            self.assertIsNotNone(real["enablement"], "test_06 turned Ines's assistant on")
-            off = {**real, "state": "unavailable", "setup": {**real["setup"], "provider": "off", "connection": "none", "runtime": None}}
-            # Nothing set up: Set up stays where it is, dimmed.
-            page = self.page("ines", phone=phone)
-            stub(page, {**off, "enablement": None})
-            page.goto("/settings/agents")
-            card = page.get_by_role("region", name=re.compile("^Your assistant Agent"))
-            one_off_line(card, "Set up")
-            expect(card.get_by_role("link")).to_have_count(0)
-            dimmed = card.get_by_role("button", name="Set up", exact=True)
-            expect(dimmed).to_be_disabled()
-            same_place(step.bounding_box(), dimmed.bounding_box())
-            shot(page, f"connect-ai-assistant-off-{'phone-390' if phone else 'desktop-1440'}")
-            # Set up already: Manage stays, so the person can still pause or remove it.
-            managed = self.page("ines", phone=phone)
-            stub(managed, off)
-            managed.goto("/settings/agents")
-            card = managed.get_by_role("region", name=re.compile("^Your assistant Agent"))
-            one_off_line(card, "Manage")
-            manage = card.get_by_role("link", name="Manage", exact=True)
-            expect(manage).to_have_attribute("href", "/settings/assistant")
-            expect(card.get_by_role("button", name="Set up")).to_have_count(0)
-            same_place(step.bounding_box(), manage.bounding_box())
-
 
     def test_10_phone_counts_clients_and_refreshes_after_final_mcp_revocation(self) -> None:
         owner = self.page("ines", phone=True)

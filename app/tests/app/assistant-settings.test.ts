@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { DEFAULT_ASSISTANT_AREAS, agentConnectionPath, assistantSettingsPath,
-  compileAssistantAreas, type AgentConnection, type AssistantSettings, type ProjectAgents } from '@flux/contracts';
+import { DEFAULT_ASSISTANT_AREAS, MY_AGENTS_PATH, agentConnectionPath, myAgentPath,
+  compileAssistantAreas, type AgentConnection, type MyAgent, type ProjectAgents } from '@flux/contracts';
 import { authorize } from '@flux/core';
 import { accessReader } from '@flux/db';
-import { assistantSettingsUseCases, createPersonalRunUseCases, type Principal } from '@flux/core';
+import { createPersonalRunUseCases, type Principal } from '@flux/core';
 import { personalRunUnitOfWork, personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
+import { agentSettings } from './support/agent-settings.js';
 import { db, pool } from './support/db.js';
 import { person, workspace, project, addMember, expectStatus, type Person } from './support/people.js';
 import { beginOauth, mcp, oauthToken, toolValue } from './support/mcp.js';
@@ -15,10 +16,7 @@ import { FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { barrier, waitUntilBlockedBy } from './support/locks.js';
 
 const principal = (owner: Person): Principal => ({ kind: 'human', id: owner.id });
-const settings = async (owner: Person, workspaceId: string, status = 200) => {
-  const response = await owner.browser.request('GET', assistantSettingsPath(workspaceId, owner.id));
-  return { response, body: expectStatus(response, status) as unknown as AssistantSettings };
-};
+const settings = async (owner: Person, workspaceId: string) => ({ body: await agentSettings(owner, workspaceId) });
 async function setup(label: string) {
   const manager = await person(`assistant-manager-${label}`);
   const owner = await person(`assistant-${label}`); const ws = await workspace(manager, 'Assistant workspace');
@@ -57,7 +55,7 @@ test('#522: private assistant discovery is owner-only while an MCP connection sh
   assert.equal((await people(f.manager)).some((row) => row.id === f.agent.id), false, 'private identity absent from another member’s project people');
   assert.equal((await agents(f.manager)).some((row) => row.id === f.agent.id), false, 'private identity absent from another member’s workspace agent picker');
   assert.equal((await people(f.owner)).some((row) => row.id === f.agent.id), true, 'own identity remains available for own authorized use');
-  expectStatus(await f.manager.browser.request('GET', assistantSettingsPath(f.ws.id, f.owner.id)), 404);
+  expectStatus(await f.manager.browser.request('GET', myAgentPath(f.agent.id)), 404);
 
   const external = expectStatus(await f.owner.browser.request('POST', '/api/v1/agent-connections', { body: {
     agentId: f.agent.id, selectedProjectIds: [f.managed.id], scopes: ['flux.context.read'], name: 'Ines coding client', clientDesignation: 'codex',
@@ -74,8 +72,10 @@ test('#522: private assistant discovery is owner-only while an MCP connection sh
 test('enablement creates one identity and settings with "Do it and tell me"; it reaches exactly what its owner can; engine changes retain it', async () => {
   const f = await setup('identity'); const saved = (await settings(f.owner, f.ws.id)).body;
   assert.equal(saved.mayDo, 'act');
-  assert.deepEqual(Object.keys(saved).sort(), ['agentId', 'connectionId', 'createdAt', 'mayDo', 'ownerUserId', 'updatedAt', 'version', 'workspaceId'],
-    'no approval mode, switches, change or background-run limit, or project list (F-036, #843)');
+  const agent = expectStatus(await f.owner.browser.request('GET', myAgentPath(f.agent.id)), 200) as unknown as MyAgent;
+  assert.deepEqual(Object.keys(agent).sort(), ['answersAi', 'colour', 'connectionId', 'createdAt', 'id', 'instructions', 'mayDo', 'model', 'name', 'workspaceId'],
+    'a name, instructions, colour and model, and no approval mode, switches, change or background-run limit, or project list (F-036, #843, #857)');
+  assert.deepEqual([agent.name, agent.instructions, agent.colour, agent.answersAi], ['Owner assistant', '', 'ink', true], 'the first agent answers /ai and is drawn in ink');
   const row = (await pool.query('SELECT compute_source, may_do FROM agent_connections WHERE id=$1', [saved.connectionId])).rows[0];
   assert.deepEqual([row.compute_source, row.may_do], ['owner_assistant', 'act']);
   assert.equal((await pool.query("SELECT count(*)::int n FROM agent_connections WHERE owner_user_id=$1 AND workspace_id=$2 AND compute_source='owner_assistant'", [f.owner.id, f.ws.id])).rows[0].n, 1);
@@ -87,18 +87,17 @@ test('enablement creates one identity and settings with "Do it and tell me"; it 
   assert.deepEqual(await read(later.id), { allowed: true, visible: true }, 'a later project its owner can open, at once, with no join');
   const engine = f.connections.connect(f.owner.id, randomUUID(), { provider: 'openai', model: 'fixture-engine' });
   assert.equal((await settings(f.owner, f.ws.id)).body.connectionId, saved.connectionId, 'payer/engine lookup does not replace identity');
-  await f.runs.remove(principal(f.owner));
-  const changedEngine = await f.runs.enable(principal(f.owner), { agentId: f.agent.id, connection: engine.id, model: engine.model });
-  assert.equal(changedEngine.enablement!.connection, engine.id);
-  assert.equal((await pool.query('SELECT provider FROM personal_run_enablements WHERE owner_user_id=$1', [f.owner.id])).rows[0].provider, 'openai');
-  assert.equal((await settings(f.owner, f.ws.id)).body.connectionId, saved.connectionId, 're-enable reuses the one identity');
+  // The API container's own lookup does not hold this test's fake keys, so the owner's choice goes through the fake composition.
+  await f.runs.chooseModel(principal(f.owner), { connection: engine.id, model: engine.model, agentId: f.agent.id });
+  assert.equal((await pool.query('SELECT provider FROM assistant_settings WHERE agent_id=$1', [f.agent.id])).rows[0].provider, 'openai');
+  assert.equal((await settings(f.owner, f.ws.id)).body.connectionId, saved.connectionId, 'choosing another model keeps the one rights connection');
 });
 
 test('only the owner reads the settings and sets "What it may do"; each choice is kept; nothing else can be saved', async () => {
   const f = await setup('settings'); const original = (await settings(f.owner, f.ws.id)).body;
   const other = await person('assistant-other'); const admin = await person('assistant-admin');
   await addMember(f.manager, f.ws.id, other, 'member'); await addMember(f.manager, f.ws.id, admin, 'admin');
-  const endpoint = assistantSettingsPath(f.ws.id, f.owner.id);
+  const endpoint = myAgentPath(f.agent.id);
   const mayDo = agentConnectionPath(original.connectionId);
   for (const intruder of [other, admin, f.manager]) {
     expectStatus(await intruder.browser.request('GET', endpoint), 404);
@@ -116,18 +115,14 @@ test('only the owner reads the settings and sets "What it may do"; each choice i
   // Nothing is left to save here (#843, F-036): the settings are read, and "What it may do" is the connection's own row.
   const kept = (await settings(f.owner, f.ws.id)).body;
   for (const removed of [{ backgroundRunsPerDay: 7 }, { approvalMode: 'ask' }, { changesPerRun: 7 }, { areas: { wiki: 'off' } }, { projectMode: 'chosen' }])
-    expectStatus(await f.owner.browser.request('PATCH', endpoint, { body: removed, headers: { 'if-match': String(kept.version) } }), 404);
+    expectStatus(await f.owner.browser.request('PATCH', endpoint, { body: removed }), 400);
   assert.deepEqual((await settings(f.owner, f.ws.id)).body, kept);
 });
 
-test('agent principals cannot enter the settings port, even if they copy an owner id', async () => {
-  let accessed = false;
-  const usecases = assistantSettingsUseCases({
-    get: async () => { accessed = true; return null; },
-  });
-  const ownerId = randomUUID(); const workspaceId = randomUUID();
-  await assert.rejects(usecases.get({ kind: 'agent', id: ownerId }, workspaceId, ownerId), /not found/i);
-  assert.equal(accessed, false, 'no owner data is read before refusing the principal');
+test('agent principals cannot enter a person\'s agents, even if they copy an owner id', async () => {
+  const f = await setup('agent-principal');
+  await assert.rejects(f.runs.listAgents({ kind: 'agent', id: f.owner.id }), /signed-in person/i);
+  await assert.rejects(f.runs.getAgent({ kind: 'agent', id: f.owner.id }, f.agent.id), /signed-in person/i);
 });
 
 test('a failure after assistant identity creation rolls back enablement, its connection and settings together', async () => {
@@ -142,7 +137,6 @@ test('a failure after assistant identity creation rolls back enablement, its con
     } })),
   } });
   await assert.rejects(runs.enable(principal(owner), { agentId: agent.id, ...connections.latest(owner.id) }), /intentional atomic rollback/);
-  assert.equal((await pool.query('SELECT 1 FROM personal_run_enablements WHERE owner_user_id=$1', [owner.id])).rowCount, 0);
   assert.equal((await pool.query("SELECT 1 FROM agent_connections WHERE owner_user_id=$1 AND compute_source='owner_assistant'", [owner.id])).rowCount, 0);
   assert.equal((await pool.query('SELECT 1 FROM assistant_settings WHERE owner_user_id=$1', [owner.id])).rowCount, 0);
   void managed;
@@ -173,7 +167,7 @@ test('"Only read" set from another API process keeps reads, and a bearer credent
   }
   assert.equal(toolValue((await mcp(token!, 801, 'tools/call', { name: 'flux_get_doc', arguments: { projectId: f.managed.id, id: doc.id } })).message).title, 'Assistant protected Wiki');
   const signedOut = new Browser();
-  expectStatus(await signedOut.request('GET', assistantSettingsPath(f.ws.id, f.owner.id), { headers: { authorization: `Bearer ${token!}` } }), 401);
+  expectStatus(await signedOut.request('GET', MY_AGENTS_PATH, { headers: { authorization: `Bearer ${token!}` } }), 401);
   expectStatus(await signedOut.request('PATCH', agentConnectionPath(initial.connectionId), { headers: { authorization: `Bearer ${token!}` }, body: { mayDo: 'act' } }), 401);
   const attempted = await beginOauth(f.owner.browser, clientId, redirect, { scope: `${scopes.join(' ')} offline_access` });
   expectStatus(await f.owner.browser.request('POST', `/api/v1/agent-connections/${initial.connectionId}/select-for-oauth`,
@@ -217,7 +211,7 @@ test('removal and concurrent enablement take the owner lock before the enablemen
     assert.equal((enableError as { code?: string } | null)?.code, 'PERSONAL_RUN_ALREADY_ENABLED',
       'enablement keeps its ordinary conflict instead of becoming a PostgreSQL deadlock victim');
     assert.equal(removeError, null, 'removal completes after enablement releases the owner lock');
-    assert.equal((await pool.query('SELECT 1 FROM personal_run_enablements WHERE owner_user_id=$1', [f.owner.id])).rowCount, 0);
+    assert.notEqual((await pool.query('SELECT revoked_at FROM agents WHERE id=$1', [f.agent.id])).rows[0].revoked_at, null, 'the agent is deleted');
     const retained = (await pool.query(`SELECT c.revoked_at FROM assistant_settings s
       JOIN agent_connections c ON c.id=s.connection_id WHERE s.owner_user_id=$1`, [f.owner.id])).rows;
     assert.equal(retained.length, 1, 'removal preserves the workspace assistant identity and settings');

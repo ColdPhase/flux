@@ -5,15 +5,24 @@ import { ApiError } from '../api/client';
 import { openDm } from '../api/direct-messages';
 import { listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
-import { Avatar, Button, EmptyState, Icon } from '../ui';
+import { Avatar, Button, EmptyState, Icon, Kreska } from '../ui';
 import { audienceOf } from './names';
 import './dm.css';
 
 /** The rows of conversations with people; Home's Projects shows them on the phone (#341). */
 export function DmRows() {
-  const { directMessages } = useShellData();
+  const { directMessages, agents } = useShellData();
   return (
     <ul className="dm-index" aria-label="Conversations">
+      {/* Your agents come first, Assistant at the top (F-036 AG-4). */}
+      {agents.map((agent, index) => (
+        <li key={agent.id}>
+          <Link to={`/agents/${agent.id}`} className="dm-index__item" data-agent={agent.id}>
+            <Kreska size={36} hue={agent.colour} />
+            <span className="dm-index__text"><b>{agent.name}</b><span>{index === 0 ? 'Your agent · answers /ai' : 'Your agent'}</span></span>
+          </Link>
+        </li>
+      ))}
       {directMessages.map((dm) => (
         <li key={dm.id}>
           <Link to={`/dm/${dm.id}`} className="dm-index__item">
@@ -29,8 +38,8 @@ export function DmRows() {
 
 /** Direct messages (#107): the list of conversations with people, outside any project. */
 export function DmIndex() {
-  const { directMessages } = useShellData();
-  if (!directMessages.length) {
+  const { directMessages, agents } = useShellData();
+  if (!directMessages.length && !agents.length) {
     return (
       <div className="pane-scroll"><div className="pane-in">
         <div className="view-empty">

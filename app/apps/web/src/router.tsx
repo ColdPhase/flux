@@ -175,6 +175,8 @@ export const router = createBrowserRouter([
           { path: 'dm/:dmId', ...secondary(async () => { const page = await import('./dm/DmConversation'); return { Component: page.DmConversation, loader: page.dmLoader }; }) },
           { path: 'dm/:dmId/sketches', ...secondary(async () => ({ Component: (await import('./dm/DmSketches')).DmSketches })) },
           { path: 'dm/:dmId/sketches/:sketchId', ...sketch },
+          // An agent is a private conversation in Messages (F-036 AG-4, #857).
+          { path: 'agents/:agentId', ...secondary(async () => ({ Component: (await import('./my-agents/AgentConversation')).AgentConversation })) },
           { path: 'inbox', ...secondary(async () => ({ Component: (await import('./notifications/InboxView')).InboxView })) },
           { path: 'inbox/:id', ...secondary(async () => ({ Component: (await import('./notifications/InboxView')).InboxOpen })) },
           // Settings (#350, F-026): every earlier address still opens its section.
@@ -195,9 +197,11 @@ export const router = createBrowserRouter([
               // #763 AG-2: managing your agent connections is a Settings page; `/connect-agent` without a client's sign-in leads here.
               { path: 'agents/connect', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConnectionSettings, loader: page.agentConnectionLoader }; }) },
               { path: 'agents/codex', ...secondary(async () => ({ Component: (await import('./agent-runtime/CodexSignIn')).CodexSignIn })) },
+              // One of your agents (F-036 AG-1, #857).
+              { path: 'agents/:agentId', ...secondary(async () => ({ Component: (await import('./my-agents/AgentPage')).AgentPage })) },
               { path: 'shortcuts', ...secondary(async () => ({ Component: (await settingsPage()).KeyboardShortcuts })) },
+              // Assistant's schedules and reactions, until #858 moves schedules into its conversation and removes reactions.
               { path: 'assistant', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantSettings })) },
-              { path: 'assistant/how', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantHowItWorks })) },
               { path: 'background-compute', ...secondary(async () => { const page = await import('./proactive-comparison/BackgroundComputeSettings'); return { Component: page.BackgroundComputeSettings, loader: page.backgroundComputeLoader }; }) },
               { path: 'ai-connections', ...secondary(async () => { const page = await import('./proactive-comparison/BackgroundComputeSettings'); return { Component: page.AiConnectionsSettings, loader: page.aiConnectionsLoader }; }) },
             ],

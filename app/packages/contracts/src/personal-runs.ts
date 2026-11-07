@@ -6,17 +6,13 @@ import type { ResultFinding } from './work.js';
 /**
  * Owner-invoked personal assistant runs (issue #68; Connect AI, #854).
  *
- * A person turns their own assistant on with a model from one of their Connect AI connections (a Claude plan, a ChatGPT
- * plan or an API key) and invokes it in a project conversation. There is no consent screen per use and no Flux limit;
+ * A person's agents (#857) each run on a model from one of their Connect AI connections (a Claude plan, a ChatGPT
+ * plan or an API key); their first agent, Assistant, is invoked in a project conversation. There is no consent screen per use and no Flux limit;
  * an API key keeps its one daily budget. Invocation, stop and retry resolve the owner, agent and connection only from
  * the authenticated session; no id in a request body selects them. The answer is shown to that conversation's audience
  * as "<owner>'s assistant". Cost, the connection and hidden sources are never shown to anyone but the owner.
  */
 export const PERSONAL_ASSISTANT_PATH = '/api/v1/personal-assistant';
-export const PERSONAL_ASSISTANT_PAUSE_PATH = `${PERSONAL_ASSISTANT_PATH}/pause`;
-export const PERSONAL_ASSISTANT_RESUME_PATH = `${PERSONAL_ASSISTANT_PATH}/resume`;
-/** Chooses the owner's assistant agent for the agent's workspace (one per workspace). */
-export const PERSONAL_ASSISTANT_AGENTS_PATH = `${PERSONAL_ASSISTANT_PATH}/agents`;
 export const ASSISTANT_RUNS_PATH = '/api/v1/assistant-runs';
 export const assistantRunPath = (runId: string) => `${ASSISTANT_RUNS_PATH}/${runId}`;
 export const assistantRunStopPath = (runId: string) => `${assistantRunPath(runId)}/stop`;
@@ -128,39 +124,36 @@ export const PERSONAL_RUN_LIMITS = {
 /** The input bound of one request of a run: the larger one when the run can call tools (#484). */
 export const personalRunMaxInputTokens = (tools: boolean): number => (tools ? PERSONAL_RUN_LIMITS.maxToolInputTokens : PERSONAL_RUN_LIMITS.maxInputTokens);
 
-export type PersonalRunEnablementStatus = 'active' | 'paused';
-
 /**
  * One of a person's Connect AI connections (#854): their Claude plan (`claude_plan`), their ChatGPT plan (`chatgpt_plan`)
  * or one of their API keys (the key connection's id).
  */
 export type AiConnectionRef = 'claude_plan' | 'chatgpt_plan' | (string & {});
 
-/** The owner's assistant: on (or paused) with a model of one of their connections. */
+/** The AI setup of one of the owner's agents: the model it runs on and the connection that model belongs to. */
 export interface PersonalRunEnablement {
   ownerUserId: string;
-  /** The connection the assistant's model belongs to. */
+  agentId: string;
+  workspaceId: string;
+  /** The connection the agent's model belongs to. */
   connection: AiConnectionRef;
-  status: PersonalRunEnablementStatus;
   /** Where runs go: the owner's API key (`server`) or their own Claude Code or Codex in the runtime. */
   engine: AssistantEngine;
-  /** The assistant's model, an id from its connection's list (F-027 AST-11). */
+  /** The agent's model, an id from its connection's list (F-027 AST-11). */
   model: string;
-  /** The owner's assistant agent per workspace; its project grants bound what a run may read. */
-  agents: { workspaceId: string; agentId: string }[];
   version: number;
   createdAt: string;
   updatedAt: string;
 }
 
 /** `capped`: the assistant's API key used its daily budget; it resumes the next day (#854). */
-export type PersonalAssistantState = 'not_enabled' | 'ready' | 'paused' | 'capped' | 'unavailable';
+export type PersonalAssistantState = 'not_enabled' | 'ready' | 'capped' | 'unavailable';
 /** `price_unknown`: the API key's model has no known price, so its daily budget cannot hold (PROV-3). */
 export type PersonalAssistantUnavailableReason = 'no_connection' | 'connection_changed' | 'provider_off' | 'price_unknown'
   /** A runtime assistant: the operator switched sign-in off, or the owner must sign in again. */
   | 'runtime_off' | 'runtime_sign_in';
 
-/** `GET /api/v1/personal-assistant`: only ever the caller's own state. */
+/** `GET /api/v1/personal-assistant`: only ever the caller's own state: that of their first agent (Assistant, which answers `/ai`) and of this Flux. */
 export interface PersonalAssistantStatus {
   state: PersonalAssistantState;
   unavailableReason: PersonalAssistantUnavailableReason | null;
@@ -188,21 +181,6 @@ export interface PersonalAssistantStatus {
    * Null on a plan (its limits are the provider's) and without an assistant.
    */
   today: { chargedMicros: number; reservedMicros: number; budgetCents: number; resetsAt: string } | null;
-}
-
-/** `POST /api/v1/personal-assistant`: the model and its connection; nothing else to agree to or set (#854). */
-export interface EnablePersonalRunsCommand {
-  /** The caller's own, unrevoked person-owned agent. */
-  agentId: string;
-  /** One of the caller's own connections. */
-  connection: AiConnectionRef;
-  /** An id from that connection's model list. */
-  model: string;
-}
-
-/** `PUT /api/v1/personal-assistant/agents`: the caller's own agent for that agent's workspace. */
-export interface SelectPersonalAgentCommand {
-  agentId: string;
 }
 
 /**

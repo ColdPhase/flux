@@ -175,8 +175,8 @@ class AssistantSchedules(unittest.TestCase):
         agent = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Ada's assistant", "owner": "self"}, status=201)
         # #854: the model of a connection (Connect AI's default: the TEST-ONLY fixture key); nothing else to agree to.
         default = self.api(page, "GET", "/api/v1/personal-assistant/model", status=200)["default"]
-        status = self.api(page, "POST", "/api/v1/personal-assistant", {"agentId": agent["id"], **default}, status=201)
-        self.assertEqual(status["state"], "ready")
+        self.api(page, "POST", "/api/v1/my-agents", {"agentId": agent["id"], **default}, status=201)
+        self.assertEqual(self.api(page, "GET", "/api/v1/personal-assistant", status=200)["state"], "ready")
         type(self).ids = {"workspace": ws["id"], "project": project["id"], "conversation": thread["id"], "agent": agent["id"]}
 
     # ---------------------------------------------------------------- the empty part and its two starters
@@ -479,7 +479,7 @@ class AssistantSchedules(unittest.TestCase):
                 switch.click()
                 note = page.get_by_text("Written by Ada's assistant")
                 expect(note).to_be_visible()
-                expect(note.get_by_role("link", name="Change ›")).to_have_attribute("href", "/settings/assistant")
+                expect(note.get_by_role("link", name="Change ›")).to_have_attribute("href", "/settings/agents")
                 expect(switch).to_have_count(0)
                 self.assertTrue(self.api(page, "GET", "/api/v1/assistant/morning-summary", status=200)["byAssistant"])
                 # The same row on the assistant screen says when.

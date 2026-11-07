@@ -547,7 +547,7 @@ class AppShellJourney(unittest.TestCase):
         expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "My tasks", "My map"])
         # Search and personal settings have their own header; Home is not current there (#184 delta review S1).
-        for path, title in (("/search", "Search"), ("/settings/assistant", "Your assistant"), ("/settings/background-compute", "Background suggestions")):
+        for path, title in (("/search", "Search"), ("/settings/assistant", "Schedules"), ("/settings/background-compute", "Background suggestions")):
             page.goto(path)
             expect(page.locator("header.top").get_by_role("heading", level=1, name=title)).to_be_visible()
             expect(places.get_by_role("link", name="Home")).not_to_have_attribute("aria-current", "page")
@@ -861,7 +861,7 @@ class AppShellJourney(unittest.TestCase):
         ask.click()
         panel = page.get_by_role("complementary", name="Details")
         expect(panel.get_by_role("heading", name="Connect your AI")).to_be_visible()
-        expect(panel.get_by_role("link", name="Set up your assistant in Flux")).to_have_attribute("href", "/settings/assistant")
+        expect(panel.get_by_role("link", name="Ways to connect, in Settings → AI")).to_have_attribute("href", "/settings/agents")
         expect(panel.get_by_role("link", name="Set up or revoke an MCP client connection")).to_have_attribute("href", "/connect-agent")
         expect(panel).to_contain_text("Claude Code, Codex or another MCP client")
         self.assertNotIn("Anthropic API key", panel.inner_text())
