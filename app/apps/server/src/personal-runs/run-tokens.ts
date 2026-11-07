@@ -39,7 +39,7 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       // AG-10, first: before any context assembly or outbound call (githubFacts), AI must be on in the run's space at the run's epoch.
       const ai = await spaceAi(tx, run.projectId, { lock: true });
       if (ai.state !== 'allowed' || ai.epoch !== run.aiEpoch) return null;
-      const connectionId = await rows.assistantConnectionId(run.ownerUserId, run.workspaceId);
+      const connectionId = await rows.assistantConnectionId(run.ownerUserId, run.agentId);
       if (!connectionId) return null;
       // The live connection and its owner's standing, exactly as the MCP route checks them. A read-only run token needs read
       // access only: the assistant reaches what its owner can (F-036 AG-3).

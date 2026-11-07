@@ -49,7 +49,7 @@ describe('space AI switch across the api, api2 and worker containers', { skip: !
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'The camera fails below 5 lux', clientMessageId: randomUUID() } }), 201) as Conversation;
     const connectionId = (await testFixturePersonalConnections.resolve(owner.id))!.id;
-    expectStatus(await owner.browser.request('POST', '/api/v1/personal-assistant',
+    expectStatus(await owner.browser.request('POST', '/api/v1/my-agents',
       { body: { agentId, connection: connectionId, model: 'claude-sonnet-5' } }), 201);
     second = new Browser(api2Url, publicOrigin);
     for (const [name, value] of owner.browser.cookies) second.cookies.set(name, value);

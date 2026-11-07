@@ -69,12 +69,11 @@ export function summaryLine(answer: string | null): string | null {
 export async function startAssistantSummary(ports: AssistantSummaryPorts, summary: SummaryPorts, startBackground: (ports: PersonalRunPorts, spec: BackgroundRunSpec) => Promise<BackgroundStart>,
   userId: string, day: string, now: Date, timeZone = 'UTC'): Promise<boolean> {
   const enablement = await ports.runs.enablement(userId);
-  if (!enablement || enablement.status !== 'active') return false;
+  if (!enablement) return false;
   // The note about background use was shown and accepted when the person turned this on (AST-2.1): without it, no run.
   if (backgroundNote(enablement, await ports.jobs.noteVersion(userId, accountKey(enablement))).note !== null) return false;
   // AG-10: nothing of a space whose AI is off is given to the run, and the run is anchored only in a space whose AI is on.
-  const workspaceId = enablement.agents[0]?.workspaceId;
-  if (!workspaceId) return false;
+  const workspaceId = enablement.workspaceId;
   const aiOn = new Map<string, boolean>();
   const allowed = async (projectId: string) => {
     if (!aiOn.has(projectId)) aiOn.set(projectId, (await ports.access.spaceAi(projectId, { lock: true })).state === 'allowed');
@@ -169,7 +168,7 @@ export async function setMorningSummaryByAssistant(ports: MorningSummarySettingP
   const stored = await ports.prefs.lock(userId);
   if (input.on) {
     const enablement = await ports.runs.enablement(userId);
-    if (!enablement || enablement.status !== 'active') throw new ConflictError('Turn on your assistant first', 'ASSISTANT_NOT_ENABLED');
+    if (!enablement) throw new ConflictError('Turn on your assistant first', 'ASSISTANT_NOT_ENABLED');
     const key = accountKey(enablement);
     const note = backgroundNote(enablement, await ports.jobs.noteVersion(userId, key));
     if (note.note !== null) {

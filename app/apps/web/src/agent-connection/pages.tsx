@@ -73,9 +73,11 @@ export async function agentConnectionEntryLoader(args: LoaderFunctionArgs): Prom
 
 export async function agentConnectionLoader({ request }: LoaderFunctionArgs): Promise<ConnectionData> {
   const me = await requirePerson(request);
-  const [connections, accessible] = await Promise.all([
+  const [owned, accessible] = await Promise.all([
     listAgentConnections(request.signal), listAccessibleProjects(request.signal),
   ]);
+  // The connections of the person's own agents (they answer inside Flux) are theirs to change on the agent's page, not here.
+  const connections = owned.filter((connection) => connection.computeSource !== 'owner_assistant');
   const byWorkspace = await Promise.all(accessible.workspaces.map(async (workspace) => {
     try { return await apiRequest<Agent[]>(workspaceAgentsPath(workspace.id), { signal: request.signal }); }
     catch (error) { if (error instanceof ApiError && error.status === 403) return []; throw error; }

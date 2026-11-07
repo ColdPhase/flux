@@ -1,11 +1,12 @@
 import { getCapabilities, getLinkState, startLink, startSso } from '../api/auth';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Form, Link, Outlet, useLocation, useNavigation, useSearchParams } from 'react-router';
-import { assistantModelName, type AgentConnection, type BackgroundComputeConnection, type PersonalAssistantStatus, type IdentityCapabilities } from '@flux/contracts';
+import { type AgentConnection, type BackgroundComputeConnection, type PersonalAssistantStatus, type IdentityCapabilities } from '@flux/contracts';
 import { listAgentConnections } from '../agent-connection/api';
 import { getAssistantStatus } from '../assistant/api';
 import { BACKGROUND_OFF_LINE, backgroundComparisonRuntime, listBackgroundConnections } from '../proactive-comparison/api';
-import { connectionName, SERVER_AI_OFF_LINE } from '../assistant/format';
+import { SERVER_AI_OFF_LINE } from '../assistant/format';
+import { AgentsList } from '../my-agents/AgentsList';
 import { AgentTag, Avatar, Button, Icon, Kreska, MEDIA, Spinner, agentHue, setReduceMotion, useMediaQuery, useReduceMotion } from '../ui';
 import { ConnectAi } from '../ai/ConnectAi';
 import { WorkspacePeople } from '../people/WorkspacePeople';
@@ -172,60 +173,8 @@ function ReduceMotionSwitch() {
   return <SwitchRow label="Reduce motion" checked={reduce} onChange={setReduceMotion} />;
 }
 
-const ASSISTANT_STATE: Record<PersonalAssistantStatus['state'], string> = {
-  not_enabled: 'not set up', ready: 'in Flux', paused: 'paused', capped: 'not enough budget left', unavailable: 'unavailable',
-};
 const DESIGNATION: Record<AgentConnection['clientDesignation'], string> = { claude_code: 'Claude Code', codex: 'Codex', other: 'another app' };
 const THEME_LABEL: Record<ThemeChoice, string> = { light: 'Light', dark: 'Dark', system: 'System' };
-
-/**
- * The assistant card (Spokój E04): Kreska, name, "Agent", one status line, three short facts and one
- * primary step. Costs, data and consent live in the set-up step and on "How it works".
- */
-function AssistantCard({ userId, status }: { userId: string; status: PersonalAssistantStatus | null }) {
-  // In-app AI off on this server (AC-3): the card says so in its one status line. Manage stays for an assistant
-  // that is set up; with nothing set up, Set up stays in its place, dimmed. With no way at all to run it on this
-  // server (no provider and no agent sign-in), the card is that one line and nothing to press (#763 SG-2, Spokój E04 ③).
-  const off = status?.setup.provider === 'off';
-  const unavailable = off && status?.setup.runtime?.state === 'off' && !status.enablement;
-  if (unavailable) {
-    return (
-      <section className="sset-card sset-assistant" aria-labelledby="assistant-card" data-assistant="server-off">
-        <div className="sset-assistant__head">
-          <span className="sset-row__ic" aria-hidden="true"><Kreska size={26} expression="asleep" /></span>
-          <div className="sset-row__b">
-            <h4 className="sset-row__t" id="assistant-card"><span className="sset-row__identity">Your assistant <AgentTag /></span></h4>
-            <span className="sset-row__s">{SERVER_AI_OFF_LINE}</span>
-          </div>
-        </div>
-      </section>
-    );
-  }
-  return (
-    <section className="sset-card sset-assistant" aria-labelledby="assistant-card">
-      <div className="sset-assistant__head">
-        <span className="sset-row__ic" aria-hidden="true"><Kreska size={26} hue={agentHue(`assistant:${userId}`)} /></span>
-        <div className="sset-row__b">
-          <h4 className="sset-row__t" id="assistant-card"><span className="sset-row__identity">Your assistant <AgentTag /></span></h4>
-          <span className="sset-row__s">{off ? 'In-app AI is off on this Flux server' : `for you · ${status ? ASSISTANT_STATE[status.state] : 'loading'}`}</span>
-          {status?.enablement && !off ? <span className="sset-row__s">{assistantModelName(status.enablement.model)} · {connectionName(status.enablement.connection)} · Assistant {status.enablement.status === 'active' ? 'on' : 'paused'}</span> : null}
-        </div>
-        {off && !status?.enablement ? <Button variant="primary" disabled>Set up</Button>
-          : <Link className="ui-btn ui-btn--primary" to="/settings/assistant">{status?.enablement ? 'Manage' : 'Set up'}</Link>}
-      </div>
-      {off ? null : (
-        <>
-          <ul className="sset-assistant__facts">
-            <li>Answers only when you ask it, in a space you choose.</li>
-            <li>Uses a model of one of your connections. You pay your provider, never Flux.</li>
-            <li>Flux adds no limits of its own: your plan’s limits, or your API key’s daily budget.</li>
-          </ul>
-          <Link className="ui-link sset-assistant__how" to="/settings/assistant/how">How it works</Link>
-        </>
-      )}
-    </section>
-  );
-}
 
 /** Background suggestions: a link when the server runs them, one status line when it does not (Spokój E04 ③). */
 function BackgroundRow({ runtime }: { runtime: 'available' | 'unavailable' | null }) {
@@ -242,9 +191,8 @@ function BackgroundRow({ runtime }: { runtime: 'available' | 'unavailable' | nul
 }
 
 /**
- * AI, on its own page (Settings → AI, and the phone's section): Connect AI with every connection (#854), the assistant card,
- * background suggestions, and the person's own agent apps with their colours (the only place outside the Agents view where
- * agents have colour).
+ * AI, on its own page (Settings → AI, and the phone's section): Connect AI with every connection (#854), your agents (#857),
+ * background suggestions, and the person's own agent apps.
  */
 function AgentsAndAi() {
   const { me } = useShellData();
@@ -266,7 +214,8 @@ function AgentsAndAi() {
     loadKeys(controller.signal);
     return () => controller.abort();
   }, [loadKeys]);
-  const mine = (connections ?? []).filter((connection) => !connection.revokedAt && connection.ownerUserId === me.user.id);
+  // An agent's own connection (it answers inside Flux) is not an app on the person's computer.
+  const mine = (connections ?? []).filter((connection) => !connection.revokedAt && connection.ownerUserId === me.user.id && connection.computeSource !== 'owner_assistant');
   const coWork = (
     <ul className="sset-card" aria-busy={connections === null || undefined}>
       <LinkRow to="/connect-agent" icon={<Icon name="monitor" size={16} />} title="Local co-work on this computer"
@@ -287,23 +236,20 @@ function AgentsAndAi() {
         {coWork}
         {connections === null ? <p className="sset-note"><Spinner label="Loading your agents" /></p> : null}
         {failed ? <p className="sset-note" role="note">Your connected agents could not be listed. Manage them under Local co-work.</p> : null}
-        <div className="sset-gap"><AssistantCard userId={me.user.id} status={assistant} /></div>
+        <p className="sset-note">{SERVER_AI_OFF_LINE}. Your agents wait until it is on.</p>
         <ul className="sset-card sset-gap"><BackgroundRow runtime={runtime} /></ul>
       </div>
     );
   }
   return (
     <>
-      {/* #854 (mockup Main): Connect AI first, with every connection and its usage line; then the assistant, which uses one of
-          them; then background suggestions and the person's own agent apps. */}
+      {/* #854, #857 (mockup Main): Connect AI first, with every connection and its usage line; then the person's agents, each
+          using one of them; then background suggestions and the person's own agent apps. */}
       <ConnectAi apiKeys={assistant ? assistant.setup.provider === 'on' : true} keys={keys} keysFailed={keysFailed} onRetryKeys={() => loadKeys()} />
-      <section aria-labelledby="ai-in-flux">
-        <h3 className="sset-sub" id="ai-in-flux">Your assistant</h3>
-        <AssistantCard userId={me.user.id} status={assistant} />
-        <ul className="sset-card sset-gap">
-          <BackgroundRow runtime={runtime} />
-        </ul>
-      </section>
+      <AgentsList />
+      <ul className="sset-card sset-gap">
+        <BackgroundRow runtime={runtime} />
+      </ul>
       <section aria-labelledby="ai-agent-app">
         <h3 className="sset-sub" id="ai-agent-app">Your agent app</h3>
         <p className="sset-note sset-note--sub">Claude Code, Codex or another app on your own computer, with its own account. Flux never receives its credentials.</p>
@@ -342,14 +288,8 @@ export function SettingsAppearance() {
  * list (Keyboard shortcuts only with a keyboard, so not here), and Sign out.
  */
 function PhoneSettings() {
-  const { me, workspace } = useShellData();
+  const { me, workspace, agents } = useShellData();
   const theme = useTheme();
-  const [assistant, setAssistant] = useState<PersonalAssistantStatus | null>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    getAssistantStatus(controller.signal).then(setAssistant, () => undefined);
-    return () => controller.abort();
-  }, []);
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
@@ -362,7 +302,7 @@ function PhoneSettings() {
         <ul className="sset-card sset-gap">
           <LinkRow to="/settings/appearance" icon={<Icon name="sun" size={16} />} title="Appearance" detail={THEME_LABEL[theme]} />
           <LinkRow to="/settings/notifications" icon={<Icon name="bell" size={16} />} title="Notifications" detail="Needs you, quiet hours, morning summary" />
-          <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="AI" detail={assistant ? `Assistant ${ASSISTANT_STATE[assistant.state]}` : undefined} />
+          <LinkRow to="/settings/agents" icon={<Icon name="spark" size={16} />} title="AI" detail={agents.length ? `${agents.length} ${agents.length === 1 ? 'agent' : 'agents'}` : undefined} />
           <LinkRow to="/settings/company" icon={<Icon name="people" size={16} />} title="Company" detail={workspace ? `${workspace.name} · its people and their roles` : 'Its people and their roles'} />
         </ul>
         <Form method="post" action="/sign-out" className="sset-card sset-gap">
@@ -382,12 +322,12 @@ export function SettingsHome() {
   return phone ? <PhoneSettings /> : <SettingsAppearance />;
 }
 
-/** Settings → AI on its own page: the assistant, Connect AI, background suggestions and agent apps. */
+/** Settings → AI on its own page: Connect AI, your agents, background suggestions and agent apps. */
 export function SettingsAgents() {
   return (
     <div className="pane-scroll">
       <div className="pane-in sset-in">
-        <PageHead title="AI" lead="Connect your AI once. Your assistant uses it and can do only what you can." />
+        <PageHead title="AI" lead="Your AI works as agents. Each one has a name, instructions, a model and what it remembers, and can do only what you can." />
         <AgentsAndAi />
       </div>
     </div>

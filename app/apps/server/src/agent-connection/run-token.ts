@@ -47,7 +47,7 @@ export async function requireLiveRun(tx: Transaction, claims: { ownerUserId: str
     || row.runTokenJti !== claims.run.jti || row.runTokenClosedAt !== null || !row.runTokenExpiresAt || row.runTokenExpiresAt.getTime() <= Date.now()
     || row.projectId !== claims.run.projectId || row.conversationId !== claims.run.conversationId || row.stopRequestedAt !== null
     || (options.newCall && row.mcpLimit !== null)) throw runEnded();
-  if (await rows.assistantConnectionId(row.ownerUserId, row.workspaceId) !== claims.connectionId) throw runEnded();
+  if (await rows.assistantConnectionId(row.ownerUserId, row.agentId) !== claims.connectionId) throw runEnded();
   // AG-10: the run works only while AI is on in its space, at the epoch it was admitted under.
   await requireSpaceAi(accessReader(tx), row.projectId, { lock: options.lock ?? false, epoch: row.aiEpoch });
   return row;

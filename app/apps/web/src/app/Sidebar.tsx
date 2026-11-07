@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { Link, NavLink, useLocation, useNavigation } from 'react-router';
 import { useProjectNews } from './projectNews';
-import { Avatar, FluxLogo, Icon, IconButton, choosesInPlace, useTravelingHighlight } from '../ui';
+import { Avatar, FluxLogo, Icon, IconButton, Kreska, choosesInPlace, useTravelingHighlight } from '../ui';
+import type { MyAgent } from '@flux/contracts';
 import { type DirectMessageSummary, type ProjectSummary, type WorkspaceSummary } from './data';
 import { placeOf } from './place';
 import { UserMenu } from './UserMenu';
@@ -14,6 +15,8 @@ export interface SidebarProps {
   workspace: WorkspaceSummary | null;
   projects: ProjectSummary[];
   directMessages: DirectMessageSummary[];
+  /** The person's agents, the first (Assistant) pinned at the top of Messages. */
+  agents?: MyAgent[];
   user: { name: string; email: string };
   session: { expiresAt: string };
   /** In the drawer: a close button and closing after navigation. */
@@ -42,7 +45,7 @@ function LockTile({ size = 20 }: { size?: number }) {
  * the account and Settings. Collapsed, it is the 64px rail of icons. A space has one conversation (UI116-1): its roots
  * and threads live in its Conversation view, not in this list. A space never reveals another's contents.
  */
-export function Sidebar({ projects, directMessages, user, session, onClose, titleId, inboxUnread = 0, collapsed = false, onToggleCollapsed }: SidebarProps) {
+export function Sidebar({ projects, directMessages, agents = [], user, session, onClose, titleId, inboxUnread = 0, collapsed = false, onToggleCollapsed }: SidebarProps) {
   const { openSearch, openCreate } = useShellActions();
   // Encrypted spaces that wait to be unlocked (F-030, #655): one row each, in place of their projects.
   const locked = useLockedWorkspaces();
@@ -80,7 +83,7 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
     observer.observe(band);
     for (const child of band.children) observer.observe(child);
     return () => observer.disconnect();
-  }, [collapsed, onClose, projects.length, directMessages.length]);
+  }, [collapsed, onClose, projects.length, directMessages.length, agents.length]);
   const railProjects = useRef<HTMLElement>(null);
   const railGlide = useRef<HTMLSpanElement>(null);
   const glideRailTo = useTravelingHighlight(railProjects, railGlide, ['.side__rail-project[data-pending]', '.side__rail-project.is-open']);
@@ -136,6 +139,11 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
         </nav>
         <nav className="side__rail-dms" aria-label="Private conversations">
           <Link to="/dm" className="side__ib" aria-label="Messages" aria-current={location.pathname === '/dm' ? 'page' : undefined}><Icon name="chat" size={18} /></Link>
+          {agents.map((agent) => (
+            <NavLink key={agent.id} to={`/agents/${agent.id}`} end={false} className="side__rail-dm side__rail-agent" aria-label={`${agent.name}, your agent`} title={`${agent.name} · Your agent`}>
+              <Kreska size={28} hue={agent.colour} />
+            </NavLink>
+          ))}
           {directMessages.map((dm) => (
             <NavLink key={dm.id} to={`/dm/${dm.id}`} end={false} className="side__rail-dm"
               aria-label={dm.hasNew ? `${dm.title}, new messages` : dm.title} title={`${dm.title} · ${dm.audience}`}>
@@ -235,8 +243,16 @@ export function Sidebar({ projects, directMessages, user, session, onClose, titl
             <h2 className="side__h" id="side-dms"><Link to="/dm" className="side__h-link" aria-current={location.pathname === '/dm' ? 'page' : undefined} onClick={navigate}>Messages</Link></h2>
             {onClose ? <Link to="/dm/new" className="side__add" aria-label="New message" onClick={navigate}><Icon name="plus" size={14} /></Link> : null}
           </div>
-          {directMessages.length ? (
+          {directMessages.length || agents.length ? (
             <ul className="side__list">
+              {agents.map((agent, index) => (
+                <li key={agent.id}>
+                  <NavLink to={`/agents/${agent.id}`} end={false} className="side__item side__dm side__agent" onClick={navigate} title={`${agent.name} · Your agent`} data-agent={agent.id}>
+                    <Kreska size={20} hue={agent.colour} /><span className="side__label">{agent.name}</span>
+                    {index === 0 ? <Icon name="pin" size={12} className="side__pin" aria-label="Pinned" /> : null}
+                  </NavLink>
+                </li>
+              ))}
               {directMessages.map((dm) => (
                 <li key={dm.id}>
                   <NavLink to={`/dm/${dm.id}`} end={false} className="side__item side__dm" onClick={navigate} title={`${dm.title} · ${dm.audience}`}>

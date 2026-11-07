@@ -104,6 +104,13 @@ class AssistantModel(unittest.TestCase):
         expect(menu).to_be_visible()
         return menu
 
+    def open_panel(self, page: Page):
+        """The assistant's details panel in a conversation; the model list lives there and in the ask bar (#857: the agent's own page picks by connection)."""
+        self.stub_thread(page, [self.answer(base.ADA["id"], "Ada Brandt", "Ada's assistant")])
+        page.goto(self.thread_url())
+        page.get_by_role("button", name="Ada's assistant", exact=True).click()
+        return page.get_by_role("group", name="Ada's assistant, details")
+
     def inside(self, page: Page, locator) -> None:
         box = locator.bounding_box()
         size = page.viewport_size
@@ -113,149 +120,6 @@ class AssistantModel(unittest.TestCase):
         self.assertLessEqual(box["y"] + box["height"], size["height"] + 0.5)
 
     # ---------------------------------------------------------------- AST-11.6: the ready card
-
-    def test_02_the_ready_card_preselects_the_default_and_turn_on_sends_the_pick(self) -> None:
-        for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
-            with self.subTest(phone=phone, dark=dark):
-                page = self.page(phone=phone, dark=dark)
-                world = self.stub_assistant(page, enabled=False)
-                model = self.stub_model(page, saved=False, current="sonnet")
-                enabled = self.status(page, enabled=True)
-                posted: list[dict] = []
-
-                def enable(route: Route) -> None:
-                    if route.request.method == "POST":
-                        posted.append(json.loads(route.request.post_data or "{}"))
-                        world["status"] = enabled
-                        self.json(route, enabled)
-                    else:
-                        self.json(route, world["status"])
-                page.route("**/api/v1/personal-assistant", enable)
-                page.goto("/settings/assistant")
-                card = page.get_by_role("region", name="Your assistant is ready")
-                expect(card).to_contain_text("Model: Sonnet")
-                menu = self.open_list(page, card)
-                items = menu.get_by_role("menuitemradio")
-                expect(items).to_have_count(3)
-                expect(items.nth(0)).to_have_attribute("aria-checked", "true")
-                expect(items.nth(0)).to_contain_text("Sonnet")
-                expect(items.nth(0)).to_contain_text("Everyday work")
-                expect(items.nth(1)).to_contain_text("Opus")
-                expect(items.nth(2)).to_contain_text("Quick, simple requests")
-                for index in range(3):
-                    self.assertGreaterEqual(items.nth(index).bounding_box()["height"], 44)
-                self.inside(page, menu)
-                self.assertIsNone(FORBIDDEN.search(menu.inner_text()), FORBIDDEN.search(menu.inner_text()))
-                shot(page, f"model-ready-list-{self.tag(phone, dark)}")
-                items.nth(1).click()
-                expect(menu).to_have_count(0)
-                expect(card.get_by_role("button", name="Model: Opus. Change")).to_be_visible()
-                self.assertEqual(model["puts"], [], "nothing is saved before Turn on")
-                self.no_horizontal_scroll(page)
-                shot(page, f"model-ready-{self.tag(phone, dark)}")
-                card.get_by_role("button", name="Turn on", exact=True).click()
-                expect(page.get_by_role("switch", name="Your assistant is on")).to_be_visible()
-                self.assertEqual((posted[0]["connection"], posted[0]["model"]), ("claude_plan", "opus"))
-
-    def test_03_turn_on_sends_the_default_when_nothing_was_picked(self) -> None:
-        page = self.page()
-        world = self.stub_assistant(page, enabled=False)
-        self.stub_model(page, saved=False, current="sonnet")
-        enabled = self.status(page, enabled=True)
-        posted: list[dict] = []
-
-        def enable(route: Route) -> None:
-            if route.request.method == "POST":
-                posted.append(json.loads(route.request.post_data or "{}"))
-                world["status"] = enabled
-                self.json(route, enabled)
-            else:
-                self.json(route, world["status"])
-        page.route("**/api/v1/personal-assistant", enable)
-        page.goto("/settings/assistant")
-        page.get_by_role("region", name="Your assistant is ready").get_by_role("button", name="Turn on", exact=True).click()
-        expect(page.get_by_role("switch", name="Your assistant is on")).to_be_visible()
-        self.assertEqual(posted[0]["model"], "sonnet")
-
-    # ---------------------------------------------------------------- AST-11.6: Settings
-
-    def test_04_settings_shows_the_model_on_the_account_line_and_a_change_is_saved_and_confirmed(self) -> None:
-        for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
-            with self.subTest(phone=phone, dark=dark):
-                page = self.page(phone=phone, dark=dark)
-                self.stub_assistant(page)
-                model = self.stub_model(page)
-                page.goto("/settings/assistant")
-                row = page.locator(".aset-screen__account")
-                expect(row).to_contain_text("Claude plan")
-                expect(row).to_contain_text("Model: Sonnet")
-                expect(row).to_contain_text("Flux adds no limits of its own.")
-                self.assertGreaterEqual(row.get_by_role("button", name="Model: Sonnet. Change").bounding_box()["height"], 44)
-                self.no_horizontal_scroll(page)
-                shot(page, f"model-settings-{self.tag(phone, dark)}")
-                menu = self.open_list(page, row)
-                self.inside(page, menu)
-                menu.get_by_role("menuitemradio", name=re.compile("Opus")).click()
-                expect(row.get_by_role("button", name="Model: Opus. Change")).to_be_visible()
-                expect(row.get_by_role("status")).to_have_text("Model: Opus. It applies from your next request.")
-                self.assertEqual(model["puts"], [{"connection": "claude_plan", "model": "opus"}])
-                page.reload()
-                expect(page.locator(".aset-screen__account")).to_contain_text("Model: Opus")
-                self.assertIsNone(FORBIDDEN.search(page.locator(".pane-in").inner_text()))
-
-    def test_05_a_request_that_is_working_keeps_its_model_and_the_confirmation_says_so(self) -> None:
-        page = self.page()
-        self.stub_assistant(page)
-        self.stub_model(page)
-        run = {"id": str(uuid.uuid4()), "clientRunId": str(uuid.uuid4()), "workspaceId": self.ids["workspace"], "projectId": self.ids["project"],
-               "conversationId": self.ids["conversation"], "kind": "ask", "prompt": "Tidy this project's tasks", "target": None, "continuesRunId": None,
-               "retryOfRunId": None, "status": "dispatching", "stoppedAtStage": None, "stopRequested": False, "stopAcknowledged": False, "engine": "runtime",
-               "model": "sonnet", "runtimeClient": "claude_code", "endReason": None, "planLimitResetsAt": None,
-               "cost": {"state": "reserved", "reservedMicros": 0, "chargedMicros": 0, "inputTokens": None, "outputTokens": None},
-               "answer": None, "createdAt": NOW, "dispatchedAt": NOW, "completedAt": None}
-        page.route(re.compile(r".*/api/v1/assistant-runs\?limit=\d+$"), lambda route: self.json(route, {"items": [run], "total": 1, "limit": 10, "offset": 0}))
-        page.goto("/settings/assistant")
-        row = page.locator(".aset-screen__account")
-        self.open_list(page, row)
-        page.get_by_role("menuitemradio", name=re.compile("Opus")).click()
-        expect(row.get_by_role("status")).to_have_text("Model: Opus from your next request. The one running keeps Sonnet.")
-
-    # ---------------------------------------------------------------- AST-11.6: the conversation, two taps, one value everywhere
-
-    def test_06_from_the_ask_bar_the_model_is_two_taps_and_the_same_value_shows_in_settings_and_the_panel(self) -> None:
-        for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
-            with self.subTest(phone=phone, dark=dark):
-                page = self.page(phone=phone, dark=dark)
-                self.stub_assistant(page)
-                model = self.stub_model(page)
-                self.stub_thread(page, [self.answer(base.ADA["id"], "Ada Brandt", "Ada's assistant")])
-                page.goto(f"{self.thread_url()}?ask=1")
-                bar = self.ask_bar(page)
-                expect(bar).to_be_visible()
-                chip = bar.get_by_role("button", name="Model: Sonnet. Change")
-                expect(chip).to_have_text("Sonnet")
-                # 44 px CSS; Chromium can report 43.99994 at the bottom of a phone viewport (layout noise, #249).
-                self.assertTrue(has_minimum_touch_size(chip.bounding_box()["height"]), chip.bounding_box())
-                self.assertTrue(has_minimum_touch_size(chip.bounding_box()["width"]), chip.bounding_box())
-                shot(page, f"model-chip-{self.tag(phone, dark)}")
-                taps = 0
-                chip.click(); taps += 1                                                             # 1
-                menu = page.get_by_role("menu", name="Model")
-                expect(menu).to_be_visible()
-                self.inside(page, menu)
-                shot(page, f"model-chip-list-{self.tag(phone, dark)}")
-                menu.get_by_role("menuitemradio", name=re.compile("Haiku")).click(); taps += 1      # 2
-                self.assertEqual(taps, 2)
-                expect(bar.get_by_role("button", name="Model: Haiku. Change")).to_have_text("Haiku")
-                self.assertEqual(model["puts"], [{"connection": "claude_plan", "model": "haiku"}])
-                # One value everywhere: the panel, then Settings, show the same model.
-                bar.get_by_role("button", name="Stop asking your assistant").click()
-                page.get_by_role("button", name="Ada's assistant", exact=True).click()
-                panel = page.get_by_role("group", name="Ada's assistant, details")
-                expect(panel.get_by_role("button", name="Model: Haiku. Change")).to_be_visible()
-                panel.get_by_role("button", name="Close").click()
-                page.goto("/settings/assistant")
-                expect(page.locator(".aset-screen__account")).to_contain_text("Model: Haiku")
 
     def test_07_the_panel_changes_the_model_too_and_a_colleague_sees_no_control(self) -> None:
         page = self.page()
@@ -284,31 +148,6 @@ class AssistantModel(unittest.TestCase):
         expect(other.get_by_test_id("model-control")).to_have_count(0)
 
     # ---------------------------------------------------------------- AST-11.7: plain errors, the previous model stays
-
-    def test_08_a_refused_change_says_so_plainly_and_the_previous_model_stays(self) -> None:
-        page = self.page(phone=True)
-        self.stub_assistant(page)
-        model = self.stub_model(page, refuse={"code": "ASSISTANT_MODEL_UNAVAILABLE", "message": "Your Claude plan doesn't offer that model. It is still Sonnet."})
-        page.goto("/settings/assistant")
-        row = page.locator(".aset-screen__account")
-        self.open_list(page, row)
-        page.get_by_role("menuitemradio", name=re.compile("Opus")).click()
-        expect(row.get_by_role("alert")).to_have_text("Your Claude plan doesn't offer that model. It is still Sonnet.")
-        expect(row.get_by_role("button", name="Model: Sonnet. Change")).to_be_visible()
-        self.assertEqual(model["puts"], [{"connection": "claude_plan", "model": "opus"}])
-        shot(page, "model-refused-390-light")
-        # Offline: the same promise.
-        page2 = self.page()
-        self.stub_assistant(page2)
-        self.stub_model(page2)
-        page2.goto("/settings/assistant")
-        row2 = page2.locator(".aset-screen__account")
-        expect(row2.get_by_role("button", name="Model: Sonnet. Change")).to_be_visible()
-        page2.context.set_offline(True)
-        self.open_list(page2, row2)
-        page2.get_by_role("menuitemradio", name=re.compile("Haiku")).click()
-        expect(row2.get_by_role("alert")).to_have_text("Offline. It is still Sonnet.")
-        expect(row2.get_by_role("button", name="Model: Sonnet. Change")).to_be_visible()
 
     def test_09_a_model_the_vendor_does_not_accept_offers_another_one_in_the_same_line(self) -> None:
         page = self.page()
@@ -341,8 +180,7 @@ class AssistantModel(unittest.TestCase):
         page = self.page()
         self.stub_assistant(page)
         world = self.stub_model(page, more=[(CHATGPT_PLAN, CODEX)])
-        page.goto("/settings/assistant")
-        row = page.locator(".aset-screen__account")
+        row = self.open_panel(page)
         control = row.get_by_role("button", name="Model: Sonnet · Claude plan. Change")
         control.click()
         menu = page.get_by_role("menu", name="Model")
@@ -362,8 +200,7 @@ class AssistantModel(unittest.TestCase):
         page = self.page()
         self.stub_assistant(page)
         self.stub_model(page, current="claude-sonnet-5", options=API, group=KEY)
-        page.goto("/settings/assistant")
-        row = page.locator(".aset-screen__account")
+        row = self.open_panel(page)
         menu = self.open_list(page, row, "Sonnet 5")
         astra = menu.get_by_role("menuitemradio", name=re.compile("GPT-6 Astra"))
         expect(astra).to_contain_text("Can answer but can't make changes")
@@ -374,7 +211,7 @@ class AssistantModel(unittest.TestCase):
         page = self.page()
         self.stub_assistant(page)
         model = self.stub_model(page)
-        page.goto("/settings/assistant")
+        self.open_panel(page)
         control = page.get_by_role("button", name="Model: Sonnet. Change")
         expect(control).to_have_attribute("aria-haspopup", "menu")
         expect(control).to_have_attribute("aria-expanded", "false")

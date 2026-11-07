@@ -160,92 +160,6 @@ class AssistantScreen(unittest.TestCase):
         agent = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Ada's assistant", "owner": "self"}, status=201)
         type(self).ids = {"workspace": ws["id"], "project": project["id"], "conversation": thread["id"], "agent": agent["id"]}
 
-    def test_02_home_offers_the_assistant_once_and_not_now_is_remembered(self) -> None:
-        for phone in (False, True):
-            with self.subTest(phone=phone):
-                page = self.page(phone=phone)
-                self.stub_assistant(page, enabled=False)
-                page.goto("/")
-                card = page.get_by_role("region", name="Meet your assistant")
-                expect(card).to_contain_text("It works inside Flux with the Claude or ChatGPT plan you already have.")
-                expect(card.get_by_role("link", name="Set up")).to_have_attribute("href", "/settings/assistant")
-                self.no_horizontal_scroll(page)
-                shot(page, f"home-card-{self.tag(phone)}")
-                card.get_by_role("button", name="Not now").click()
-                expect(card).to_have_count(0)
-                page.reload()
-                expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-                expect(page.get_by_role("region", name="Meet your assistant")).to_have_count(0)
-
-    def test_03_without_subscription_sign_in_the_card_promises_no_plan(self) -> None:
-        page = self.page()
-        world = self.stub_assistant(page, enabled=False, runtime="off")
-        world["status"]["setup"]["provider"] = "on"
-        page.goto("/")
-        card = page.get_by_role("region", name="Meet your assistant")
-        expect(card).to_contain_text("It works inside Flux with your AI account.")
-        expect(card).not_to_contain_text("plan you already have")
-
-    def test_04_the_screen_has_the_account_and_what_it_may_do(self) -> None:
-        for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
-            with self.subTest(phone=phone, dark=dark):
-                page = self.page(phone=phone, dark=dark)
-                world = self.stub_assistant(page)
-                page.goto("/settings/assistant")
-                expect(page.get_by_role("heading", name=re.compile("Ada.s assistant"))).to_be_visible()
-                expect(page.get_by_text("for you · in Flux")).to_be_visible()
-                expect(page.locator(".aset-screen__account")).to_contain_text("Claude plan")
-                expect(page.get_by_text("Flux adds no limits of its own. If your plan’s limit is reached, it pauses and resumes by itself.").first).to_be_visible()
-                expect(page.get_by_role("switch", name="Your assistant is on")).to_have_attribute("aria-checked", "true")
-                group = page.get_by_role("radiogroup", name="What it may do")
-                for label, checked in (("Only read", "false"), ("Do it and tell me", "true"), ("Ask me first", "false")):
-                    expect(group.get_by_role("radio", name=label)).to_have_attribute("aria-checked", checked)
-                expect(page.get_by_text("Makes new things and changes yours at once, then tells you, with Undo.")).to_be_visible()
-                expect(page.get_by_role("switch", name="Read and edit the Wiki")).to_have_count(0)
-                expect(page.get_by_test_id("assistant-can")).to_have_text("Agents never have more rights than you. Deleting and other people's things always wait for your OK.")
-                # Targets of at least 44 px, no horizontal scroll, the rest folded under More.
-                self.assertGreaterEqual(group.get_by_role("radio").first.bounding_box()["height"], 44)
-                row = page.get_by_role("switch", name="Your assistant is on").locator("xpath=ancestor::*[contains(@class,'sset-row')][1]")
-                self.assertGreaterEqual(row.bounding_box()["height"], 44)
-                expect(page.locator("details.aset__more")).not_to_have_attribute("open", "")
-                self.no_horizontal_scroll(page)
-                shot(page, f"screen-{self.tag(phone, dark)}")
-                self.assertEqual(world["patches"], [])
-                text = page.locator(".pane-in").inner_text()
-                self.assertIsNone(FORBIDDEN.search(text), FORBIDDEN.search(text))
-
-    def test_05_only_read_is_one_tap_and_the_hint_follows(self) -> None:
-        page = self.page()
-        world = self.stub_assistant(page)
-        page.goto("/settings/assistant")
-        page.get_by_role("radio", name="Only read").click()
-        expect(page.get_by_role("radio", name="Only read")).to_have_attribute("aria-checked", "true")
-        expect(page.get_by_text("Reads and answers. It changes nothing.")).to_be_visible()
-        self.assertEqual(world["patches"], [{"mayDo": "read"}])
-
-    def test_06_what_it_may_do_is_a_radio_group_with_arrow_keys(self) -> None:
-        page = self.page()
-        world = self.stub_assistant(page)
-        page.goto("/settings/assistant")
-        first = page.get_by_role("radio", name="Do it and tell me")
-        first.focus()
-        page.keyboard.press("ArrowRight")
-        expect(page.get_by_role("radio", name="Ask me first")).to_have_attribute("aria-checked", "true")
-        expect(page.get_by_text("Every change waits for your OK.")).to_be_visible()
-        expect(page.get_by_role("radio", name="Ask me first")).to_be_focused()
-        self.assertEqual(world["patches"][-1], {"mayDo": "ask"})
-
-    def test_07_one_switch_pauses_and_resumes_everything(self) -> None:
-        page = self.page(phone=True)
-        world = self.stub_assistant(page)
-        page.goto("/settings/assistant")
-        power = page.get_by_role("switch", name="Your assistant is on")
-        power.click()
-        expect(power).to_have_attribute("aria-checked", "false")
-        power.click()
-        expect(power).to_have_attribute("aria-checked", "true")
-        self.assertEqual(world["pauses"], ["pause", "resume"])
-
     def test_08_at_my_assistant_comes_first_and_starts_an_ask(self) -> None:
         for phone in (False, True):
             with self.subTest(phone=phone):
@@ -263,18 +177,6 @@ class AssistantScreen(unittest.TestCase):
                 expect(page.get_by_placeholder("Ask your assistant…")).to_be_visible()
                 self.stub_thread(page, [])
 
-    def test_09_at_my_assistant_leads_to_set_up_when_it_is_not_set_up(self) -> None:
-        page = self.page()
-        self.stub_assistant(page, enabled=False)
-        self.stub_thread(page, [])
-        page.goto(self.thread_url())
-        page.get_by_placeholder(re.compile("Reply in thread")).fill("@my")
-        option = page.get_by_role("listbox", name="Mention").get_by_role("option").first
-        expect(option).to_contain_text("My assistant")
-        expect(option).to_contain_text("Set up")
-        option.click()
-        expect(page).to_have_url(re.compile(r"/settings/assistant$"))
-
     def test_10_command_k_asks_my_assistant_in_the_open_thread(self) -> None:
         page = self.page()
         self.stub_assistant(page)
@@ -287,33 +189,6 @@ class AssistantScreen(unittest.TestCase):
         option.click()
         expect(page.get_by_placeholder("Ask your assistant…")).to_be_visible()
         expect(page).to_have_url(re.compile(r"/conversations/[0-9a-f-]{36}$"))
-
-    def test_11_the_panel_shows_now_recent_can_and_pauses_in_two_taps(self) -> None:
-        for phone in (False, True):
-            with self.subTest(phone=phone):
-                page = self.page(phone=phone)
-                world = self.stub_assistant(page)
-                self.stub_thread(page, [self.answer(ADA["id"], "Ada Brandt", "Ada's assistant")])
-                page.goto(self.thread_url())
-                header = page.locator(".assistant-answer__asked")
-                expect(header).to_contain_text("for you · Claude")
-                page.get_by_role("button", name="Ada's assistant", exact=True).click()
-                panel = page.get_by_role("group", name="Ada's assistant, details")
-                for heading in ("Now", "Recent", "What it may do"):
-                    expect(panel.get_by_role("heading", name=heading, exact=True)).to_be_visible()
-                expect(panel.get_by_test_id("assistant-can")).to_have_text("Do it and tell me. Agents never have more rights than you. Deleting and other people's things always wait for your OK.")
-                shot(page, f"panel-{self.tag(phone)}")
-                expect(panel.get_by_role("button", name="Pause my assistant")).to_have_count(0)
-                panel.get_by_role("button", name="More").click()
-                expect(panel.get_by_role("menuitem", name=re.compile("Manage"))).to_be_visible()
-                panel.get_by_role("menuitem", name="Pause my assistant").click()
-                self.assertEqual(world["pauses"], ["pause"])
-                panel.get_by_role("button", name="More").click()
-                expect(panel.get_by_role("menuitem", name="Resume my assistant")).to_be_visible()
-                self.assertIsNone(FORBIDDEN.search(panel.inner_text()))
-                panel.get_by_role("menuitem", name="Resume my assistant").click()
-                panel.get_by_role("button", name="Message").click()
-                expect(page.get_by_placeholder("Ask your assistant…")).to_be_visible()
 
     def test_12_everyone_sees_the_company_and_who_pays_in_the_header(self) -> None:
         page = self.page()

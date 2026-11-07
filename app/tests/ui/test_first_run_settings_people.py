@@ -255,24 +255,19 @@ class FirstRunSettingsPeople(unittest.TestCase):
             calm = page.locator("[data-ai-settings='server-off']")
             expect(calm).to_be_visible()
             expect(calm.get_by_role("link", name=re.compile("^Local co-work on this computer"))).to_be_visible()
-            card = page.get_by_role("region", name=re.compile("^Your assistant Agent"))
-            expect(card).to_contain_text("Off on this Flux server · ask your admin to turn it on")
-            expect(card.get_by_role("button")).to_have_count(0)
-            expect(card.get_by_role("link")).to_have_count(0)
+            card = calm.get_by_text("Off on this Flux server · ask your admin to turn it on")
+            expect(card).to_be_visible()
+            expect(page.get_by_role("region", name="Your agents")).to_have_count(0)
             expect(calm).to_contain_text("Background suggestions")
             expect(page.get_by_role("link", name=re.compile("^Use an API key"))).to_have_count(0)
             expect(page.get_by_text("Which account should I use?")).to_have_count(0)
-            # E04 order: local co-work, the assistant, background suggestions.
+            # E04 order: local co-work, the one status line, background suggestions.
             rows = [page.get_by_text("Local co-work on this computer"), card, page.get_by_text("Background suggestions", exact=True)]
             tops = [row.bounding_box()["y"] for row in rows]
             self.assertEqual(tops, sorted(tops), tops)
             shot(page, f"763-agents-ai-server-off-{'390' if viewport == PHONE else '1440'}-{UI_BROWSER}")
         page = self.page("maria")
         stub(page)
-        page.goto("/settings/assistant")
-        expect(page.locator("[data-assistant='server-off']")).to_contain_text("Off on this Flux server · ask your admin to turn it on")
-        expect(page.locator("[data-assistant='server-off']").get_by_role("button")).to_have_count(0)
-        expect(page.get_by_role("link", name="Back to AI")).to_be_visible()
         # The account menu holds Settings only (the company's people are in Settings › Company), never features that may be off.
         page.goto("/")
         page.locator(".me__btn").click()

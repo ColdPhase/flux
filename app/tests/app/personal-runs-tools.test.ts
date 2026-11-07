@@ -64,7 +64,8 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
 
   /** The owner's assistant on a fresh connection (its daily budget, if given, is the only limit). */
   async function useConnection(model: Parameters<FakeConnections['connect']>[2] = {}) {
-    await runs.remove(human(owner)).catch(() => undefined);
+    // Deleting an agent is for good (#857): the next connection gets a new agent.
+    if (await runs.remove(human(owner)).then(() => true, () => false)) agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
     const connectionId = randomUUID();
     // Turned on with room for one request; the test's own budget stands for what is left of the day.
     connections.connect(owner.id, connectionId, { ...model, dailyBudgetCents: 1_000 });
@@ -282,7 +283,7 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
 
   test('#854: choosing a model on another connection does not touch a request already sent; it finishes on its own key', async () => {
     await useConnection({});
-    const { connectionId } = (await pool.query('SELECT connection_id AS "connectionId" FROM personal_run_enablements WHERE owner_user_id = $1', [owner.id])).rows[0];
+    const { connectionId } = (await pool.query('SELECT api_key_id AS "connectionId" FROM assistant_settings WHERE agent_id = $1', [agentId])).rows[0];
     const other = randomUUID();
     connections.connect(owner.id, other, {});
     compute.respond = async () => {

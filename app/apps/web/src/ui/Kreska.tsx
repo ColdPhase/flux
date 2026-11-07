@@ -56,9 +56,9 @@ function extra(kind: Extra | undefined, size: number): ReactNode {
   }
 }
 
-/** The seven muted agent colours (equal lightness, OKLCH), shown only in the Agents section. */
+/** The seven muted agent colours (equal lightness, OKLCH). Each agent has its own (F-036 AG-1), and ink is a first agent's. */
 export const AGENT_HUES = ['clay', 'ochre', 'sage', 'teal', 'indigo', 'plum', 'rose'] as const;
-export type AgentHue = (typeof AGENT_HUES)[number];
+export type AgentHue = (typeof AGENT_HUES)[number] | 'ink';
 
 /** A stable colour for an agent: the same agent always gets the same one. */
 export function agentHue(agentId: string): AgentHue {
@@ -70,7 +70,7 @@ export function agentHue(agentId: string): AgentHue {
 export interface KreskaProps {
   expression?: KreskaExpression;
   size?: number;
-  /** The agent's colour; pass it only inside the Agents section. Everywhere else agents are monochrome. */
+  /** The agent's own colour (final design §2): it shows everywhere the agent appears. Without one the face is plain. */
   hue?: AgentHue;
   /** An accessible name; without one the face is decorative and the text beside it names the agent. */
   label?: string;
