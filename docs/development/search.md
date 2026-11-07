@@ -141,16 +141,23 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
 
 ## Web
 
-- **Jump to… (⌘K / Ctrl+K)**, `app/apps/web/src/search/JumpTo.tsx`. The sidebar shows "Jump to… ⌘K" at
-  the top, as in direction C; the shortcut works everywhere in the app, also while typing. It is a
-  floating dialog near the top on desktop and a full-screen sheet on the phone (opened from the
-  navigation drawer). It searches as you type (140 ms debounce), shows up to eight results as a
-  combobox listbox (↑/↓ move, Enter opens, Esc closes and returns focus) and ends with "See all
-  results". Only the answer to the latest request is shown.
-- **Search page** `/search?q=&type=&place=`, `app/apps/web/src/search/SearchPage.tsx`: the field, kind
-  chips with their visible counts, a place menu (your projects, your DMs, "Only you"), results as
-  links (↓ from the field moves into them, ↑ from the first returns), and "Show more results" with
-  the cursor.
+- **Search (⌘K / Ctrl+K)**, `app/apps/web/src/search/JumpTo.tsx`, is the one search (#870): ⌘K, the
+  sidebar's Search and the phone's round Search button open the same dialog (a floating one near the
+  top on the computer, a full-screen sheet on the phone), as `Search.dc.html` draws it. There is no
+  Search page and no `/search` route. It searches as you type (140 ms debounce), lists up to 20 results as
+  a combobox listbox in groups by kind (Tasks with decisions and results, Messages, Wiki, Files, Thoughts
+  with maps and drafts, Spaces, People; the groups keep that order and a group keeps the server's
+  ranking), and has no filter chips, no place filter and no Create group. ↑/↓ move, Enter opens the
+  selected row (the first is selected), Esc closes and returns focus. A longer list is narrowed by typing
+  more words. The footer (on the phone, the line above the list when there are no recent places) says
+  what it finds in one sentence: "Finds spaces, people, messages, tasks, Wiki pages and thoughts you
+  can see." With no text it lists the recent places and a few actions (`recent.ts`). A row is 48 px: a tile
+  for the kind, the matching text with the words marked, and one line of where it lives (`ResultRow.tsx`).
+  Only the answer to the latest request is shown. The API keeps its `type`, `place` and `counts`: the
+  Create window's duplicate check and the MCP `flux_search_project` tool use them.
+- **It opens at its final size** (#898): whether "Ask my assistant…" has a row is read while the dialog
+  is closed (`useAssistantReady`, at load and each time it closes) and kept while it is open, and the
+  skeleton counts the same rows, so nothing is added to the dialog after it is on screen.
 - **Opening a result** goes to the exact object: a message or DM message opens on that whole
   message (`#message-<id>`, highlighted and focused), a material or doc at the matched version, a thought
   selected in its sketch (`#thought-<id>`), a private draft on Home (`#draft-<id>`), a person to a
@@ -158,9 +165,9 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   older than the conversation's first window is reached by paging back (`app/apps/web/src/app/seekMessage.ts`,
   pages of 100 through the same authorized DM and conversation reads, at most 10,000 messages) and
   then shown and focused. Drafts shared with a project have no view of their own yet and open Home.
-- **Recent searches** (`app/apps/web/src/search/recent.ts`) are kept in this browser only, per account
-  (`flux.search.recent.<userId>`, the person's own words, never results), and every account's list
-  is removed on sign-out.
+- **Recent places** (`app/apps/web/src/search/recent.ts`) are kept in this browser only, per account
+  (`flux.places.recent.<userId>`), and every account's list is removed on sign-out. What is typed in
+  Search is not remembered.
 
 ## Tests
 
@@ -168,7 +175,7 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   a restricted project, a member outside it and a guest. It covers every kind and its label, place
   and target; the restricted project and a DM leaking nothing to an outsider, including when he
   filters by their ids; private drafts and sketches reaching only their author, and a group DM
-  hidden from the workspace owner; people for members but not guests; type filters and counts;
+  hidden from the workspace owner; people for members but not guests; the API's type filters and counts;
   an edit searchable at once and an old material version; docs as drafts and published, at the
   version that matched and once per doc; revocation by removing a grant and by
   leaving a DM on the very next search; ranking and typo tolerance; injection-safe queries; and
@@ -184,9 +191,10 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   wall-clock sanity bound remains, because other test files share the database; the insider sees
   the hidden rows with `more`.
 - `app/tests/ui/test_search.py` (in `./scripts/check_ui.sh`) covers Ctrl+K search as you type and
-  opening the exact message, the sidebar entry, arrow keys, an old material version, a rule in
-  Details, a thought selected in its sketch, Esc, a DM message, no results, the search page with
-  chips, counts, the place menu and keyboard movement, an outsider seeing only the open project,
-  recent searches per account and their removal on sign-out, a DM message and a project message
-  with 130 newer messages after them (outside the first window) opening exactly, and the phone (full-screen sheet from
-  the drawer, 44 px targets, no horizontal scroll). Screenshots: [`docs/design/search/`](../design/search/).
+  opening the exact message, the sidebar entry, results in groups by kind with no chips, the keys, an old
+  material version, a rule in Details, a thought selected in its sketch, Esc, a DM message, no results,
+  the one-sentence hint, an outsider seeing only the open project, recent places per account and their
+  removal on sign-out, that there is no Search page, a DM message and a project message with 130 newer
+  messages after them (outside the first window) opening exactly, task numbers, projects by name, the
+  phone (full-screen sheet, 44 px targets, no horizontal scroll), and that the dialog has its final size
+  on every frame after it opens, with a ready assistant (#898). Screenshots: [`docs/design/search/`](../design/search/).

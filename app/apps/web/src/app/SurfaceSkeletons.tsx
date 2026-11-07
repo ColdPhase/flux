@@ -1,4 +1,5 @@
 import { Icon } from '../ui';
+import { SEARCH_HINT } from '../search/hint';
 import '../search/search.css';
 import './surface-skeletons.css';
 
@@ -39,12 +40,13 @@ export function DetailsSkeleton({ title }: { title?: string }) {
 }
 
 /**
- * Jump to… (⌘K) while its code arrives, in the final size by construction: it is the dialog's own markup and classes (`search/search.css` is
+ * Search (⌘K) while its code arrives, in the final size by construction: it is the dialog's own markup and classes (`search/search.css` is
  * loaded with it) with bars where the labels are. What decides the dialog's height is known before the code is here: the number of recent
- * places (up to four, minus the one in view), the spaces waiting to be unlocked, and the four actions (two on the phone), and on the phone the
- * row of scope chips. The close control sits in the field row, as the real one does.
+ * places (up to four, minus the one in view), the spaces waiting to be unlocked, and the actions (Go to Inbox; on the computer Focus mode
+ * and the sidebar; and "Ask my assistant…" when it is ready), and on the computer the footer's sentence. The close control sits in the
+ * field row, as the real one does.
  */
-export function JumpSkeleton({ places, locked, phone, onClose }: { places: number; locked: number; phone: boolean; onClose: () => void }) {
+export function JumpSkeleton({ places, locked, phone, ask, onClose }: { places: number; locked: number; phone: boolean; ask: boolean; onClose: () => void }) {
   const bars = (count: number, offset: number) => Array.from({ length: count }, (_, index) => (
     <li key={index} className="jump__opt jump-skeleton__opt"><i /><b style={{ width: `${[46, 58, 38, 52, 44, 60, 40][(index + offset) % 7]}%` }} /></li>
   ));
@@ -57,19 +59,20 @@ export function JumpSkeleton({ places, locked, phone, onClose }: { places: numbe
         <span className="jump-skeleton__input"><b /></span>
         <button type="button" className="jump__close" onClick={onClose}>{phone ? 'Cancel' : <><span className="ui-vh">Close</span><kbd aria-hidden="true">Esc</kbd></>}</button>
       </div>
-      {/* The phone's scope chips: a 58 px row whatever their number (44 px chips), so a few bars stand for them. */}
-      {phone ? <div className="jump__chips" aria-hidden="true">{[0, 1, 2, 3].map((chip) => <span key={chip} className="jump__chip jump-skeleton__chip"><b /></span>)}</div> : null}
       <div className="jump__body" aria-hidden="true">
-        {places ? null : <p className="jump__hint">Find a message, a material and each of its versions, a task, a rule, a result, a thought or a person. Only what you can open is searched.</p>}
+        {phone && !places ? <p className="jump__hint">{SEARCH_HINT}</p> : null}
         <ul className="jump__list">
           {places ? <><li className="jump__sh">Recent</li>{bars(places, 0)}</> : null}
           {locked ? <><li className="jump__sh">Waiting to be unlocked</li>{bars(locked, 3)}</> : null}
-          <li className="jump__sh">Actions</li>{bars(phone ? 2 : 4, 1)}
+          <li className="jump__sh">Actions</li>{bars((phone ? 1 : 3) + (ask ? 1 : 0), 1)}
         </ul>
       </div>
-      <p className="jump__foot" aria-hidden="true">
-        <span className="jump__keyhint"><kbd>↑</kbd><kbd>↓</kbd> move</span><span className="jump__keyhint"><kbd>↵</kbd> open</span><span><kbd>#</kbd> task number</span><span><kbd>@</kbd> people and agents</span><span className="jump__keyhint"><kbd>Esc</kbd> close</span>
-      </p>
+      {phone ? null : (
+        <p className="jump__foot" aria-hidden="true">
+          <span className="jump__hint-line">{SEARCH_HINT}</span>
+          <span className="jump__keyhint"><kbd>↑</kbd><kbd>↓</kbd> move</span><span className="jump__keyhint"><kbd>↵</kbd> open</span>
+        </p>
+      )}
     </div>
   );
 }

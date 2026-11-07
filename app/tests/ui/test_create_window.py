@@ -1,6 +1,6 @@
 """One way to create, one search (#345, F-026 S3 and S16): the Create window on the computer and the sheet on
 the phone open from the same places with the same fields; a task made from a message keeps it as its source and
-puts one line in the conversation; ⌘K finds and creates, with `@` for people and agents and `#` for tasks.
+puts one line in the conversation; ⌘K only finds (it has no Create group, #870), and a task number finds the task.
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose app.
 """
@@ -81,7 +81,6 @@ class CreateWindow(unittest.TestCase):
         workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": "Garden sensors"}, 201)
         project = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Community garden sensors", "visibility": "restricted"}, 201)
         other = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Cargo bike co-op", "visibility": "restricted"}, 201)
-        self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/agents", {"name": "Probe helper", "owner": "self"}, 201)
         thread = self.api(page, "POST", f"/api/v1/projects/{project['id']}/conversations", {"body": SEED, "clientMessageId": str(uuid.uuid4())}, 201)
         type(self).ids = {"workspace": workspace["id"], "project": project["id"], "other": other["id"], "thread": thread["id"]}
         # The thread's first message is the one a task is made from.
@@ -208,42 +207,40 @@ class CreateWindow(unittest.TestCase):
         expect(page.locator(".convo-notice")).to_have_count(before + 1)
         expect(page.locator(f'.convo-notice[data-work-id="{made[0]["id"]}"] .convo-notice__what')).to_contain_text("made a task from")
 
-    # ---------------------------------------------------------------- AC-3: ⌘K finds and creates
+    # ---------------------------------------------------------------- AC-3: ⌘K finds (no Create group, #870)
 
     def jump(self, page: Page, query: str):
         page.keyboard.press("Control+k")
-        palette = page.get_by_role("dialog", name="Jump to")
+        palette = page.get_by_role("dialog", name="Search", exact=True)
         expect(palette).to_be_visible()
-        field = palette.get_by_role("combobox", name="Jump to")
+        field = palette.get_by_role("combobox", name="Search", exact=True)
         expect(field).to_be_focused()
         field.fill(query)
         return palette, field
 
-    def test_06_command_k_offers_create_actions_and_opens_the_window_with_the_text(self) -> None:
+    def test_06_command_k_has_no_create_group_and_the_empty_one_lists_its_actions(self) -> None:
         self.ensure_account()
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}")
         expect(page.get_by_role("heading", level=1, name="Community garden sensors")).to_be_visible()
         palette, field = self.jump(page, "probes")
         options = palette.get_by_role("option")
-        expect(options.first).to_have_text(re.compile("New task “probes”"))
+        expect(palette.locator("[role=option].sr").first).to_be_visible()
+        expect(options.first).to_have_class(re.compile(r"\bsr\b"))  # the first row is a result: nothing is offered above them
         self.assertEqual(options.first.get_attribute("aria-selected"), "true")
-        expect(palette.get_by_role("option", name="New thought on the Map")).to_be_visible()
-        expect(palette.get_by_role("option", name="Propose a decision")).to_be_visible()
+        for name in (re.compile("^New task"), "New thought on the Map", "Propose a decision"):
+            expect(palette.get_by_role("option", name=name)).to_have_count(0)
         shot(page, "345-palette-1440")
-        field.press("Enter")
-        expect(palette).to_have_count(0)
-        expect(title_field(page)).to_have_value("probes")
         page.keyboard.press("Escape")
-        # With no query: the four actions with their keys (E02); Go to Inbox runs.
+        # With no query: the actions with their keys (E02), none of them creates; Go to Inbox runs.
         palette, field = self.jump(page, "")
-        for name in ("New task", "Go to Inbox", "Focus mode", "Hide the sidebar"):
+        for name in ("Go to Inbox", "Focus mode", "Hide the sidebar"):
             expect(palette.get_by_role("option", name=name, exact=True)).to_be_visible()
-        expect(palette.get_by_role("option", name="New thought on the Map")).to_have_count(0)
+        expect(palette.get_by_role("option", name=re.compile("^New "))).to_have_count(0)
         palette.get_by_role("option", name="Go to Inbox", exact=True).click()
         expect(page).to_have_url(re.compile(r"/inbox$"))
 
-    def test_07_at_finds_agents_and_hash_finds_tasks_by_number_with_the_keyboard_only(self) -> None:
+    def test_07_hash_finds_tasks_by_number_with_the_keyboard_only(self) -> None:
         self.ensure_account()
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks")
@@ -258,15 +255,9 @@ class CreateWindow(unittest.TestCase):
         expect(palette.get_by_role("option", name=re.compile("^New task"))).to_have_count(0)
         field.press("Enter")
         expect(page).to_have_url(re.compile(r"/tasks\?open=work:|/tasks$"))
-        palette, field = self.jump(page, "@probe")
-        agent = palette.get_by_role("option", name=re.compile("Probe helper"))
-        expect(agent).to_be_visible()
-        field.press("Enter")
-        expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/agents$"))
-        # The footer names both scopes.
+        # The footer says what Search finds in one sentence; there are no scopes to name.
         palette, field = self.jump(page, "")
-        expect(palette).to_contain_text("people and agents")
-        expect(palette).to_contain_text("task number")
+        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages and thoughts you can see.")
 
     # ---------------------------------------------------------------- the phone's sheet
 
@@ -305,48 +296,35 @@ class CreateWindow(unittest.TestCase):
 
     # ---------------------------------------------------------------- the phone's Search (S-P-Search, S-P-NoResults)
 
-    def test_09_phone_search_has_scope_chips_a_create_action_and_a_calm_no_match_state(self) -> None:
+    def test_09_phone_search_has_no_chips_and_no_create_action_and_a_calm_no_match_state(self) -> None:
         self.ensure_account()
         for scheme in ("light", "dark"):
             page = self.page(scheme, phone=True)
             self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": f"Order the probes {scheme}", "clientCommandId": str(uuid.uuid4())}, 201)
             page.goto(f"/projects/{self.ids['project']}/tasks")
             page.get_by_role("button", name="Search", exact=True).tap()
-            sheet = page.get_by_role("dialog", name="Jump to")
+            sheet = page.get_by_role("dialog", name="Search", exact=True)
             expect(sheet).to_be_visible()
             expect(sheet.get_by_role("heading", name="Search")).to_be_visible()
-            chips = sheet.get_by_role("group", name="Search in")
-            # The sheet opens on its skeleton (#863 rule 6), which already has the "Search" title: the chips are the loaded content, so wait for them.
-            expect(chips.get_by_role("button")).to_have_text(["All", "Tasks", "People", "Agents", "Wiki"])
+            field = sheet.get_by_role("combobox", name="Search", exact=True)
+            expect(field).to_be_visible()
             self.at_rest(page)
-            for chip in chips.get_by_role("button").all():
-                self.assertGreaterEqual(chip.bounding_box()["height"], 44)
-            field = sheet.get_by_role("combobox", name="Jump to")
+            # One tool, as on the computer: no chips to choose a kind with, and Cancel closes the sheet.
+            self.assertEqual(sheet.get_by_role("group").count(), 0)
+            expect(sheet.get_by_role("button", name="Cancel")).to_be_visible()
             field.fill("probes")
-            # All: the create action first, then tasks, then everything else.
-            expect(sheet.get_by_role("option", name=re.compile("^New task “probes”"))).to_be_visible()
+            # The results come in groups, with no create action above them.
             expect(sheet.locator("[role=option].sr").filter(has_text=f"Order the probes {scheme}")).to_be_visible()
-            shot(page, f"345-phone-search-390-{scheme}")
-            chips.get_by_role("button", name="Tasks").tap()
-            expect(chips.get_by_role("button", name="Tasks")).to_have_attribute("aria-pressed", "true")
             expect(sheet.get_by_role("option", name=re.compile("^New task"))).to_have_count(0)
-            expect(sheet.locator("[role=option].sr").filter(has_text=f"Order the probes {scheme}")).to_be_visible()
-            chips.get_by_role("button", name="Agents").tap()
-            field.fill("probe")
-            expect(sheet.get_by_role("option", name=re.compile("Probe helper"))).to_be_visible()
-            chips.get_by_role("button", name="All").tap()
+            self.assertIn("Tasks", sheet.locator(".jump__sh").all_inner_texts())
+            shot(page, f"345-phone-search-390-{scheme}")
             field.fill("zzqxunmatched")
             none = sheet.locator(".jump__none")
-            expect(none.get_by_role("heading", name="No match in this space")).to_be_visible()
+            expect(none.get_by_role("heading", name="Nothing matches “zzqxunmatched”")).to_be_visible()
             expect(none.locator(".kreska")).to_have_count(1)
-            expect(sheet.get_by_role("option", name=re.compile("^New task “zzqxunmatched”"))).to_be_visible()
+            expect(none.get_by_role("button")).to_have_count(0)  # nothing to widen: Search already covers everything you can open
+            expect(sheet.get_by_role("option")).to_have_count(0)
             shot(page, f"345-phone-search-nomatch-390-{scheme}")
-            none.get_by_role("button", name="Search all spaces").tap()
-            expect(sheet.get_by_role("group", name="Search where").get_by_role("button", name="All spaces")).to_have_attribute("aria-pressed", "true")
-            expect(none).to_have_count(0)
-            # The create action opens the sheet with the text.
-            sheet.get_by_role("option", name=re.compile("^New task “zzqxunmatched”")).tap()
-            expect(title_field(page)).to_have_value("zzqxunmatched")
 
     def test_13_the_window_project_picker_moves_the_task_to_the_chosen_project(self) -> None:
         self.ensure_account()
@@ -416,24 +394,6 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual(len(stored), 1, "one persisted task")
         self.assertEqual((stored[0]["outcome"], stored[0]["status"]), ("Done when both kits are counted", "in_progress"))
         self.assertEqual(notices(page), before + 1, "one notice")
-        # From the palette: the typed title is the command.
-        page = self.page()
-        page.goto(f"/projects/{self.ids['project']}")
-        keys = []
-        self.lose_first_response(page, keys)
-        expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
-        palette, field = self.jump(page, "Lost response from the palette")
-        field.press("Enter")
-        title_field(page)
-        submit_button(page).click()
-        expect(dialog(page).get_by_role("alert")).to_have_text("The response was lost")
-        page.keyboard.press("Escape")
-        palette, field = self.jump(page, "Lost response from the palette")
-        field.press("Enter")
-        submit_button(page).click()
-        expect(dialog(page)).to_have_count(0)
-        self.assertEqual(keys[0], keys[1])
-        self.assertEqual(len([item for item in self.work(page) if item["title"] == "Lost response from the palette"]), 1)
         # From a blank form: details, status and owner survive too (the title-only control).
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks")
@@ -541,13 +501,13 @@ class CreateWindow(unittest.TestCase):
         page.keyboard.press("Escape")
         expect(new).to_be_focused()
         palette, field = self.jump(page, "probes")
-        # Create rows first; arrows reach the results and Enter opens the highlighted one.
+        # The first result is selected; arrows move through the results and Enter opens the highlighted one.
         selected = lambda: palette.locator("[role=option][aria-selected=true]")  # noqa: E731
         expect(palette.locator("[role=option].sr").first).to_be_visible()
-        for _ in range(4):  # three create rows, then the first result
-            field.press("ArrowDown")
         expect(selected()).to_have_class(re.compile(r"\bsr\b"))
-        self.assertEqual(page.evaluate("document.activeElement === document.querySelector('[role=dialog][aria-label=\"Jump to\"] input')"), True, "focus stays in the field")
+        field.press("ArrowDown")
+        expect(palette.locator("[role=option]").nth(1)).to_have_attribute("aria-selected", "true")
+        self.assertEqual(page.evaluate("document.activeElement === document.querySelector('[role=dialog][aria-label=\"Search\"] input')"), True, "focus stays in the field")
         field.press("Enter")
         expect(palette).to_have_count(0)
 
@@ -810,7 +770,7 @@ class CreateWindow(unittest.TestCase):
         self.visit(page, "/", "Home")
         palette, field = self.jump(page, "")
         expect(palette.get_by_role("listbox", name="Actions")).to_be_visible()
-        expect(palette.get_by_role("option")).to_have_text([re.compile("^New task"), re.compile("^Go to Inbox"), re.compile("^Focus mode"), re.compile("^Hide the sidebar")])
+        expect(palette.get_by_role("option")).to_have_text([re.compile("^Go to Inbox"), re.compile("^Focus mode"), re.compile("^Hide the sidebar")])
         page.keyboard.press("Escape")
         expect(palette).to_have_count(0)
         # Places by identity, most recent first: a second visit moves a place up once, a doc's version is its doc (named by
@@ -827,13 +787,13 @@ class CreateWindow(unittest.TestCase):
         palette, field = self.jump(page, "")
         listbox = palette.get_by_role("listbox", name="Recent places and actions")
         self.assertEqual(self.option_names(listbox), ["How the garden sensors work · Wiki", "Community garden sensors · Tasks", "Cargo bike co-op · Conversation", "Home",
-                                                      "New task", "Go to Inbox", "Focus mode", "Hide the sidebar"])
+                                                      "Go to Inbox", "Focus mode", "Hide the sidebar"])
         options = listbox.get_by_role("option")
         expect(options.first.locator(".jump__side")).to_have_text("Wiki")
         expect(options.nth(3).locator(".jump__side")).to_have_count(0)
         expect(listbox.locator(".jump__sh")).to_have_text(["Recent", "Actions"])
-        expect(options.nth(5).locator(".jump__key")).to_have_text(["G", "I"])
-        expect(palette.locator(".jump__foot")).to_have_text(re.compile(r"# task number.*@ people and agents"))
+        expect(options.nth(4).locator(".jump__key")).to_have_text(["G", "I"])
+        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages and thoughts you can see.")
         shot(page, "521-empty-palette-1440-light")
         # ↑↓ move (and wrap), Enter opens, Esc closes.
         selected = palette.locator("[role=option][aria-selected=true]")
@@ -894,10 +854,10 @@ class CreateWindow(unittest.TestCase):
         page.goto(f"/projects/{self.ids['project']}/tasks")
         expect(page.get_by_role("button", name="Search", exact=True)).to_be_visible()
         page.get_by_role("button", name="Search", exact=True).tap()
-        sheet = page.get_by_role("dialog", name="Jump to")
+        sheet = page.get_by_role("dialog", name="Search", exact=True)
         listbox = sheet.get_by_role("listbox", name="Recent places and actions")
         # The same recent places and actions; the phone has no sidebar to hide and no focus mode, and no keys to press.
-        self.assertEqual(self.option_names(listbox), ["Cargo bike co-op · Conversation", "Home", "New task", "Go to Inbox"])
+        self.assertEqual(self.option_names(listbox), ["Cargo bike co-op · Conversation", "Home", "Go to Inbox"])
         expect(listbox.locator(".jump__keys").first).to_be_hidden()
         self.at_rest(page)
         for option in listbox.get_by_role("option").all():
@@ -943,7 +903,7 @@ class CreateWindow(unittest.TestCase):
                         page.get_by_role("button", name="Search", exact=True).tap()
                     else:
                         page.keyboard.press("Control+k")
-                    expect(page.get_by_role("dialog", name="Jump to").get_by_role("listbox", name="Recent places and actions")).to_be_visible()
+                    expect(page.get_by_role("dialog", name="Search", exact=True).get_by_role("listbox", name="Recent places and actions")).to_be_visible()
                     shot(page, f"521-empty-palette-{size}-{scheme}-{engine}")
 
     def test_27_the_window_and_its_controls_keep_their_place_across_the_tabs(self) -> None:
@@ -1022,7 +982,7 @@ class CreateWindow(unittest.TestCase):
         palette, field = self.jump(page, "")
         expect(palette.get_by_role("listbox", name="Actions")).to_be_visible()
         expect(palette.get_by_role("option", name=re.compile("Cargo bike co-op|^Home"))).to_have_count(0)
-        expect(palette).to_contain_text("Only what you can open is searched.")
+        expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages and thoughts you can see.")
 
     def test_20_a_guest_sees_why_the_message_tab_has_no_one_to_pick_and_cannot_send(self) -> None:
         """#555: a guest cannot list the space's people (403), so the Message tab says what a guest can do, not that nobody is there."""

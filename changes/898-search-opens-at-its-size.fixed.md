@@ -1,0 +1,1 @@
+- Search no longer grows after it opens when your assistant is ready: whether "Ask my assistant…" has a row is known before the dialog opens, so it is its final size on the first frame ([#898](https://github.com/ColdPhase/flux/issues/898)).

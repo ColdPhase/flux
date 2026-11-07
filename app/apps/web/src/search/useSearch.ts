@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { SearchFilterType, SearchResponse, SearchResult } from '@flux/contracts';
+import { useEffect, useRef, useState } from 'react';
+import type { SearchResponse, SearchResult } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { searchFlux } from './api';
 
@@ -13,29 +13,25 @@ const DEBOUNCE_MS = 140;
 
 /**
  * Searches as the person types. Only the answer to the latest request is ever shown: an older
- * answer that arrives late is dropped, so results never mix queries, filters or accounts.
+ * answer that arrives late is dropped, so results never mix queries or accounts.
  */
-export function useSearch(query: string, options: { type?: SearchFilterType | null; place?: string | null; limit?: number; initial?: { answer: SearchResponse; items: SearchResult[] } | null } = {}) {
-  const { type = null, place = null, limit, initial = null } = options;
-  const [attempt, setAttempt] = useState(0);
+export function useSearch(query: string, limit: number): SearchState {
   const text = query.trim();
-  const key = JSON.stringify([text, type, place, limit ?? null, attempt]);
+  const key = JSON.stringify([text, limit]);
   // What arrived last, and for which request; the visible state is derived from it.
-  // `initial` is what this same request showed when the person left (#592): it shows at once while the read is made again.
-  const [loaded, setLoaded] = useState<{ key: string; answer: SearchResponse; items: SearchResult[] } | { key: string; failed: string } | null>(() => initial && text ? { key, ...initial } : null);
-  const [lastAnswer, setLastAnswer] = useState<SearchResponse | null>(initial?.answer ?? null);
-  const [moreBusy, setMoreBusy] = useState(false);
+  const [loaded, setLoaded] = useState<{ key: string; answer: SearchResponse } | { key: string; failed: string } | null>(null);
+  const [lastAnswer, setLastAnswer] = useState<SearchResponse | null>(null);
   const latest = useRef(key);
   useEffect(() => { latest.current = key; }, [key]);
 
   useEffect(() => {
-    if (!text) return;
+    if (!text) return undefined;
     const controller = new AbortController();
     const timer = window.setTimeout(() => {
-      searchFlux({ q: text, type, place, limit }, controller.signal)
+      searchFlux({ q: text, limit }, controller.signal)
         .then((answer) => {
           if (latest.current !== key) return;
-          setLoaded({ key, answer, items: answer.items });
+          setLoaded({ key, answer });
           setLastAnswer(answer);
         })
         .catch((cause: unknown) => {
@@ -45,25 +41,9 @@ export function useSearch(query: string, options: { type?: SearchFilterType | nu
         });
     }, DEBOUNCE_MS);
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [key, text, type, place, limit]);
+  }, [key, text, limit]);
 
-  let state: SearchState;
-  if (!text) state = { status: 'idle' };
-  else if (loaded?.key === key) state = 'failed' in loaded ? { status: 'failed', message: loaded.failed } : { status: 'ready', answer: loaded.answer, items: loaded.items };
-  else state = { status: 'loading', previous: lastAnswer };
-
-  const loadMore = useCallback(async () => {
-    if (!loaded || loaded.key !== key || 'failed' in loaded || !loaded.answer.next || moreBusy) return;
-    setMoreBusy(true);
-    try {
-      const page = await searchFlux({ q: text, type, place, limit, cursor: loaded.answer.next });
-      if (latest.current !== key) return;
-      setLoaded({ key, answer: { ...loaded.answer, next: page.next }, items: [...loaded.items, ...page.items] });
-    } catch {
-      if (latest.current === key) setLoaded({ key, failed: 'Could not load more results.' });
-    } finally { setMoreBusy(false); }
-  }, [loaded, key, moreBusy, text, type, place, limit]);
-
-  const retry = useCallback(() => setAttempt((value) => value + 1), []);
-  return { state, loadMore, moreBusy, retry };
+  if (!text) return { status: 'idle' };
+  if (loaded?.key === key) return 'failed' in loaded ? { status: 'failed', message: loaded.failed } : { status: 'ready', answer: loaded.answer, items: loaded.answer.items };
+  return { status: 'loading', previous: lastAnswer };
 }

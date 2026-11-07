@@ -424,7 +424,7 @@ class MotionEvidence(unittest.TestCase):
             key = "document.dispatchEvent(new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, bubbles: true }))"
             out["ac1-dialog-in"] = self.sample(page, f"() => {{ {key}; }}", {"surface": ".ui-overlay__surface", "scrim": ".ui-scrim"})
             self.beat(page, 400)
-            out["ac1-dialog-out"] = self.sample(page, "() => { document.querySelector('[role=dialog][aria-label=\"Jump to\"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); }", {"surface": ".ui-overlay__surface", "scrim": ".ui-scrim"})
+            out["ac1-dialog-out"] = self.sample(page, "() => { document.querySelector('[role=dialog][aria-label=\"Search\"]').dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); }", {"surface": ".ui-overlay__surface", "scrim": ".ui-scrim"})
             self.beat(page, 400)
             out["ac3-view-switch"] = self.sample(page, f"() => {{ document.querySelector(\"{TABS} a[href*='/tasks']\").click(); }}",
                                                  {"content": "#content", "header": "header.top", "sidebar": ".app__side", "tabs": TABS}, 800)

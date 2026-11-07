@@ -11,7 +11,7 @@ Ada owns a project in which her own agent ("Ada's Claude Code") works on a task 
 - NV-4/IN-5: at 768 px the Inbox header keeps ⋯ on screen and the filters head the list.
 - NV-5/NV-6: the phone's Projects lists DMs in the projects' card with whole dates, and projects with letter tiles.
 - AG-1: the Connect page never scrolls sideways at 1440 px.
-- SE-2: the phone has one search: the round Search sheet and `/search` share the chips, Cancel and results.
+- SE-2, #870: the phone has one search: the round Search sheet, the computer's dialog in full, with no chips, Cancel and grouped results.
 
 Run in Chromium and WebKit (FLUX_UI_BROWSER). Screenshots (763b-*.png) go to FLUX_UI_SCREENSHOT_DIR when set.
 """
@@ -393,32 +393,28 @@ class HomeInboxNav(unittest.TestCase):
         page = self.page(phone=True)
         page.goto("/")
         page.get_by_role("button", name="Search", exact=True).click()
-        sheet = page.get_by_role("dialog", name="Jump to")
-        chips = sheet.get_by_role("group", name="Search in").get_by_role("button")
-        expect(chips.first).to_be_visible()
-        sheet_chips = [text.strip() for text in chips.all_inner_texts()]
-        page.keyboard.press("Escape")
-        page.goto("/search?q=probes")
-        expect(page.get_by_role("dialog", name="Jump to")).to_have_count(0)
-        group = page.get_by_role("group", name="Search in")
-        expect(group.get_by_role("button")).to_have_count(len(sheet_chips))
-        self.assertEqual([text.strip() for text in group.get_by_role("button").all_inner_texts()], sheet_chips, "the same chips")
-        field = page.get_by_role("combobox", name="Jump to")
-        expect(field).to_have_value("probes")
-        expect(page.get_by_role("listbox", name="Results").locator("[role=option].sr").first).to_contain_text("probes")
-        expect(page.get_by_role("button", name="Cancel")).to_be_visible()
+        sheet = page.get_by_role("dialog", name="Search", exact=True)
+        field = sheet.get_by_role("combobox", name="Search", exact=True)
+        expect(field).to_be_focused()
+        # The sheet is the one tool, as on the computer: no chips to choose a kind with, and Cancel closes it.
+        self.assertEqual(sheet.get_by_role("group").count(), 0)
+        field.fill("probes")
+        expect(sheet.locator("[role=option].sr").first).to_contain_text("probes")
+        expect(sheet.get_by_role("button", name="Cancel")).to_be_visible()
         self.no_sideways_scroll(page)
-        shot(page, "search-page-390")
-        # A task-number address opens on the Tasks chip, in its project.
-        page.goto(f"/search?q=%23{self.ids['task_number']}&type=work&place=project:{self.ids['project']}")
-        expect(page.get_by_role("group", name="Search in").get_by_role("button", name="Tasks")).to_have_attribute("aria-pressed", "true")
-        expect(page.locator("[role=option].sr").first).to_contain_text("Calibrate the probes")
+        shot(page, "search-sheet-390")
+        # A task number finds the task, in its project.
+        field.fill(f"#{self.ids['task_number']}")
+        expect(sheet.locator("[role=option].sr").first).to_contain_text("Calibrate the probes")
         # Nothing matches: the drawn calm moment, and Cancel leads back.
-        page.goto("/")
-        page.goto("/search?q=zzqxv")
-        expect(page.get_by_role("heading", name="Nothing matches “zzqxv”")).to_be_visible()
-        page.get_by_role("button", name="Cancel").click()
+        field.fill("zzqxv")
+        expect(sheet.get_by_role("heading", name="Nothing matches “zzqxv”")).to_be_visible()
+        sheet.get_by_role("button", name="Cancel").click()
+        expect(sheet).to_have_count(0)
         expect(page).to_have_url(re.compile(r"/$"))
+        # There is no page to go to.
+        page.goto("/search?q=probes")
+        expect(page.get_by_text("This page doesn’t exist")).to_be_visible()
 
 
 if __name__ == "__main__":

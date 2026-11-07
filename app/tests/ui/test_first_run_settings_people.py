@@ -127,7 +127,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
         self.assertEqual([(space["name"], space["role"]) for space in self.workspaces(page)], [("Maria’s company", "owner")], "starting a space makes no workspace")
 
-    def test_02_new_with_no_space_opens_on_space_and_command_k_offers_a_space(self) -> None:
+    def test_02_new_with_no_space_opens_on_space_and_command_k_does_not_create(self) -> None:
         self.sign_up("nobody", "Nia Empty")
         page = self.page("nobody")
         self.api(page, "POST", "/api/v1/workspaces", {"name": "Nia’s company"}, status=201)
@@ -139,16 +139,18 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(window(page).get_by_role("tablist")).to_have_count(0)
         page.keyboard.press("Escape")
         expect(window(page)).to_have_count(0)
+        # Search finds; it has no Create row, with a space or without one (#870).
         page.keyboard.press("Control+k")
-        palette = page.get_by_role("dialog", name="Jump to")
+        palette = page.get_by_role("dialog", name="Search", exact=True)
         expect(palette).to_be_visible()
-        expect(palette.get_by_role("option", name=re.compile("^New task"))).to_have_count(0)
-        expect(palette.get_by_role("option", name=re.compile("^New space"))).to_have_count(1)
-        palette.get_by_role("combobox", name="Jump to").fill("Seed swap")
-        expect(palette.get_by_role("option", name=re.compile("^New task"))).to_have_count(0)
-        palette.get_by_role("option", name=re.compile("^New space “Seed swap”")).click()
+        expect(palette.get_by_role("option", name=re.compile("^New "))).to_have_count(0)
+        palette.get_by_role("combobox", name="Search", exact=True).fill("Seed swap")
+        expect(palette.get_by_role("option", name=re.compile("^New "))).to_have_count(0)
+        page.keyboard.press("Escape")
+        expect(palette).to_have_count(0)
+        page.keyboard.press("c")
         expect(window(page)).to_have_accessible_name("New space")
-        expect(window(page).get_by_label("Space name")).to_have_value("Seed swap")
+        window(page).get_by_label("Space name").fill("Seed swap")
         # With a space the window starts on Task again (F-026 S3).
         window(page).get_by_role("button", name=re.compile("^Create space")).click()
         expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))

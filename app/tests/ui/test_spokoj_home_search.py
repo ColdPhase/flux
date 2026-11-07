@@ -1,9 +1,9 @@
-"""Browser tests for Spokój on Home, the Sketchbook and search results (#508, #514).
+"""Browser tests for Spokój on Home, the Sketchbook and search results (#508, #514, #870).
 
 One account in one workspace with a project, a Wiki page written in Markdown, a task, sketches (one empty,
 one with a thought) and notes. Home has no views bar and keeps its quiet links; the Sketchbook is named
-"Sketchbook", hides empty sketches and formats note meta without "You · v1"; search results are grouped,
-show one plain line per snippet, number their tasks and keep the place filter in the chip row.
+"Sketchbook", hides empty sketches and formats note meta without "You · v1"; Search lists its results in groups
+by kind, each row 48 px with one plain line, numbers its tasks and has no filters to keep in place.
 """
 
 from __future__ import annotations
@@ -146,58 +146,64 @@ class SpokojHomeSearch(unittest.TestCase):
         self.assertIsNone(re.search(r"\b0\d:\d\d", meta.inner_text()), meta.inner_text())
         expect(meta.locator(".note__num").first).to_be_visible()
 
-    # ---------------------------------------------------------------- search results (#514)
+    # ---------------------------------------------------------------- search results (#514, #870)
 
-    def test_05_results_are_grouped_with_show_more_and_plain_snippets(self) -> None:
+    def search(self, page: Page, query: str, *, phone: bool = False):
+        page.goto("/")
+        expect(page.get_by_role("button", name="Search", exact=True).first).to_be_visible()
+        if phone:
+            page.get_by_role("button", name="Search", exact=True).click()
+        else:
+            page.keyboard.press("Control+k")
+        dialog = page.get_by_role("dialog", name="Search", exact=True)
+        dialog.get_by_role("combobox", name="Search", exact=True).fill(query)
+        expect(dialog.locator("[role=option].sr").first).to_be_visible()
+        return dialog
+
+    def test_05_results_are_grouped_with_plain_one_line_rows(self) -> None:
         page = self.page()
-        page.goto("/search?q=radio")
-        results = page.get_by_role("region", name="Results")
-        expect(results.get_by_role("link").first).to_be_visible()
-        for label in ("Wiki", "Tasks"):
-            expect(page.get_by_role("region", name="Results").get_by_role("heading", level=2, name=label)).to_be_visible()
-        wiki = page.get_by_role("region", name="Results").locator("section[aria-label='Wiki']")
-        expect(wiki.get_by_role("link")).to_have_count(3)
-        expect(wiki.get_by_role("button", name=re.compile(r"^Show \d+ more$"))).to_be_visible()
-        wiki.get_by_role("button", name=re.compile(r"^Show \d+ more$")).click()
-        expect(wiki.get_by_role("link")).to_have_count(5)
-        task = results.locator(".sr").filter(has_text="Check the radio at the gateway")
-        expect(task.locator(".sr__num")).to_contain_text("#1")
-        self.assertEqual(task.locator(".sr__snip").count(), 0, "the task's number is not repeated as its snippet")
-        guide = results.locator(".sr").filter(has_text="Radio guide")
-        snippet = guide.locator(".sr__snip")
-        expect(snippet).to_be_visible()
-        text = snippet.inner_text()
+        dialog = self.search(page, "radio")
+        headings = dialog.locator(".jump__sh").all_inner_texts()
+        for label in ("Tasks", "Messages", "Wiki", "Thoughts"):
+            self.assertIn(label, headings)
+        rows = dialog.locator("[role=option].sr")
+        # Every kind of result is one row of one height: the tile, the matching text and one line under it.
+        for index in range(rows.count()):
+            self.assertAlmostEqual(rows.nth(index).bounding_box()["height"], 48, delta=2)
+        notes = rows.filter(has_text="Radio note")
+        expect(notes).to_have_count(4)
+        task = rows.filter(has_text="Check the radio at the gateway")
+        expect(task.locator(".sr__meta")).to_contain_text("#1")
+        expect(task.locator(".sr__meta")).to_contain_text("Radio garden")
+        guide = rows.filter(has_text="Radio guide")
+        meta = guide.locator(".sr__meta")
+        expect(meta).to_be_visible()
+        text = meta.inner_text()
         for markup in ("##", "|", "**", "](", "`", "\n"):
             self.assertNotIn(markup, text)
-        expect(snippet.locator(".sr__hit").first).to_be_visible()
+        expect(meta.locator(".sr__hit").first).to_be_visible()
+        # A thought on a private map says where it is, once.
+        thought = rows.filter(has_text="Radio range along the hedge")
+        expect(thought.locator(".sr__meta")).to_have_text("My map · only you")
         shot(page, "spokoj-search-desktop")
 
-    def test_06_the_place_filter_is_the_last_chip_and_stays_put(self) -> None:
+    def test_06_nothing_in_the_dialog_has_a_filter_to_keep_in_place(self) -> None:
         page = self.page()
-        page.goto("/search?q=radio")
-        expect(page.get_by_role("region", name="Results").get_by_role("link").first).to_be_visible()
-        chips = page.get_by_role("group", name="Kind of result")
-        expect(chips.get_by_role("button", name=re.compile(r"^Wiki"))).to_be_visible()
-        expect(page.locator(".search__filters > *").last.get_by_role("combobox", name="Place")).to_be_visible()
-        expect(page.locator(".search__filters .ui-select")).to_have_count(1)
-        place = page.get_by_role("combobox", name="Place")
-        before = place.bounding_box()
-        chips.get_by_role("button", name=re.compile(r"^Tasks")).click()
-        expect(chips.get_by_role("button", name=re.compile(r"^Tasks"))).to_have_attribute("aria-pressed", "true")
-        after = place.bounding_box()
-        self.assertEqual((before["x"], before["y"]), (after["x"], after["y"]), "the place filter does not move when the kind changes")
-        # A map thought shows the sketch it is in.
-        page.goto("/search?q=radio")
-        thought = page.get_by_role("region", name="Results").locator(".sr").filter(has_text="Radio range along the hedge")
-        expect(thought.locator(".sr__meta")).to_contain_text("Thought on the map “Bed layout”")
+        dialog = self.search(page, "radio")
+        self.assertEqual(dialog.get_by_role("group").count(), 0, "no chips")
+        self.assertEqual(dialog.get_by_role("combobox").count(), 1, "the field is the only combobox: no Place filter")
+        expect(dialog.get_by_text("Show 2 more")).to_have_count(0)
+        before = dialog.get_by_role("combobox", name="Search", exact=True).bounding_box()
+        dialog.get_by_role("combobox", name="Search", exact=True).fill("radio garden")
+        expect(dialog.locator("[role=option].sr").first).to_be_visible()
+        after = dialog.get_by_role("combobox", name="Search", exact=True).bounding_box()
+        self.assertEqual((before["x"], before["y"]), (after["x"], after["y"]), "the field does not move when the words change")
 
     def test_07_on_the_phone_search_is_the_one_search_and_fits(self) -> None:
-        # The phone has one search (#763 SE-2): /search is the round Search sheet's body, with its scope chips.
+        # The phone has one search: the round Search button's sheet, the same body as the computer's dialog, with no chips.
         page = self.page(phone=True)
-        page.goto("/search?q=radio")
-        expect(page.get_by_role("listbox", name="Results").locator("[role=option].sr").first).to_be_visible()
-        chips = page.get_by_role("group", name="Search in")
-        expect(chips.get_by_role("button", name="All")).to_have_attribute("aria-pressed", "true")
+        dialog = self.search(page, "radio", phone=True)
+        self.assertEqual(dialog.get_by_role("group").count(), 0)
         shot(page, "spokoj-search-phone")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
 
@@ -216,10 +222,7 @@ class SpokojHomeSearch(unittest.TestCase):
                 expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
                 expect(page.get_by_role("list", name="Your sketches")).to_contain_text("Bed layout")
                 shot(page, f"spokoj-sketchbook-{size}-{theme}")
-                page.goto("/search?q=radio")
-                # The phone's /search is its one search (#763 SE-2); the computer keeps the whole results page.
-                results = page.get_by_role("listbox", name="Results").locator("[role=option].sr") if phone else page.get_by_role("region", name="Results").get_by_role("link")
-                expect(results.first).to_be_visible()
+                self.search(page, "radio", phone=phone)
                 shot(page, f"spokoj-search-{size}-{theme}")
 
 if __name__ == "__main__":

@@ -99,7 +99,7 @@ export function remember(slot: string, value: unknown, at: Entry = entry) {
 }
 
 const forgetters = new Set<() => void>();
-/** A cache that lives beside the places (the last search answer, the last Inbox list) registers how it is emptied with them. */
+/** A cache that lives beside the places (the last Inbox list) registers how it is emptied with them. */
 export function onPlacesForgotten(forget: () => void) { forgetters.add(forget); }
 
 /**
@@ -155,7 +155,7 @@ export function useReturning(): boolean {
 
 /**
  * `useState` for a small piece of a screen's state that a return should find as it was left: the filter an
- * Inbox shows, the groups a search opened. It is kept under the entry's key as it changes.
+ * Inbox shows. It is kept under the entry's key as it changes.
  */
 export function usePlaceState<T>(slot: string, initial: () => T, arrival: Entry | null, valid: (value: unknown) => value is T): [T, Dispatch<SetStateAction<T>>] {
   const [value, setValue] = useState<T>(() => {

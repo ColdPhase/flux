@@ -176,7 +176,7 @@ export function LockedBoundary() {
   return <LockedSpace workspaceId={lockedWorkspaceId(error)} />;
 }
 
-/** The Inbox's and Jump to's quiet line about spaces that wait to be unlocked: what is in them is not listed, and not searched (F-030, #655). */
+/** The Inbox's and Search's quiet line about spaces that wait to be unlocked: what is in them is not listed, and not searched (F-030, #655). */
 export function LockedSpacesNote() {
   const locked = useLockedWorkspaces();
   if (!locked.length) return null;

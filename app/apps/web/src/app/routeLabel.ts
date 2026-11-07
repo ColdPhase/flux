@@ -18,7 +18,6 @@ export function routeLabel(pathname: string): string {
   if (/\/agents(\/|$)/.test(pathname)) return 'agents';
   if (/\/github(\/|$)/.test(pathname)) return 'GitHub settings';
   if (/\/live(\/|$)/.test(pathname)) return 'the live session';
-  if (pathname.startsWith('/search')) return 'search';
   if (pathname.startsWith('/inbox')) return 'the inbox';
   if (pathname.startsWith('/dm')) return 'direct messages';
   if (pathname.startsWith('/projects/')) return 'the conversation';

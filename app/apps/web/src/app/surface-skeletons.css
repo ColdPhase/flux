@@ -19,11 +19,9 @@
 .wd-skeleton__sec { display: grid; gap: 14px; margin-top: 22px; }
 .wd-skeleton__sec i:first-child { width: 80px; }
 .wd-skeleton__sec i:last-child { width: 70%; }
-/* Jump to… while its code arrives: the dialog's own classes (search/search.css) give its size; these are the bars. */
+/* Search while its code arrives: the dialog's own classes (search/search.css) give its size; these are the bars. */
 .jump-skeleton__input { display: flex; align-items: center; flex: 1; min-width: 0; height: var(--ctl); }
 .jump-skeleton__input b { width: 44%; }
 .jump-skeleton b, .jump-skeleton i { display: block; border-radius: var(--r-pill); background: var(--sub); }
 .jump-skeleton b { height: 10px; }
 .jump-skeleton__opt i { flex: none; width: 15px; height: 15px; }
-.jump-skeleton__chip { display: inline-flex; align-items: center; }
-.jump-skeleton__chip b { width: 30px; }

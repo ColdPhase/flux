@@ -442,7 +442,7 @@ function AppLayoutContent() {
     toast({ message: state.note });
     navigate({ pathname: location.pathname, search: location.search, hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: { ...state, note: undefined } });
   }, [location.key, location.state, location.pathname, location.search, location.hash, navigate, toast]);
-  // ⌘K / Ctrl+K opens Jump to… from anywhere, also while typing, as the sidebar hint says.
+  // ⌘K / Ctrl+K opens Search from anywhere, also while typing, as the sidebar hint says.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       // A surface with its own Ctrl+K (the doc editor's link picker) handles it first.
@@ -649,8 +649,6 @@ function AppLayoutContent() {
     ? { crumb: null, title: 'Background suggestions', topic: 'Your usage and space rules', noDetails: true }
     : aiConnections
     ? { crumb: null, title: 'Your API keys', topic: 'Each with one daily budget', noDetails: true }
-    : location.pathname === '/search'
-    ? { crumb: null, title: 'Search', topic: 'Only what you can open is searched', noDetails: true }
     : location.pathname === '/settings/assistant/how'
     ? { crumb: null, title: 'How your assistant works', topic: 'Only you can use it · optional', noDetails: true }
     : location.pathname === '/settings/assistant'
@@ -682,7 +680,7 @@ function AppLayoutContent() {
         ? { crumb: null, title: 'Page not found', topic: '', noDetails: true }
       : { crumb: workspace?.name ?? null, title: 'Home', topic: 'What needs you and where you left off' };
   // The phone Wiki is drawn with its title as the view menu and no chip row of views (F-026 §4, #354).
-  // A place without its own Details (Search, Inbox, the DM list) never keeps the generic panel open.
+  // A place without its own Details (Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
   // The computer's header is one row (F-026 §4): the name, the place's views as a segmented control,
@@ -767,7 +765,7 @@ function AppLayoutContent() {
     return view ? [{ id, label: view.label, to: view.to, icon, note, current: currentProjectView === id }] : [];
   }) : [];
   const tabletMenu = tablet && !phone && !focusing && !!activeProject && projectMenu.length > 0;
-  const mainPlace = ['/projects', '/inbox', '/search', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
+  const mainPlace = ['/projects', '/inbox', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);
   const backOnly = settingsPage || dmId === 'new' || homePage;
   const phoneHeader = (
