@@ -1,27 +1,14 @@
-diff --git a/dist/introspect-CbYi2MJT.mjs b/dist/introspect-CbYi2MJT.mjs
---- a/dist/introspect-CbYi2MJT.mjs
-+++ b/dist/introspect-CbYi2MJT.mjs
-@@ -240 +240 @@
+diff --git a/dist/authorize-BzDrbYtI.mjs b/dist/authorize-BzDrbYtI.mjs
+--- a/dist/authorize-BzDrbYtI.mjs
++++ b/dist/authorize-BzDrbYtI.mjs
+@@ -406 +406 @@ async function resolveAccessTokenClaims(input) {
 -	const { ctx, opts, user, client, scopes, resources, referenceId, metadata, grantType, sessionId, perRequestClaims, resourcePolicyClaims } = input;
 +	const { ctx, opts, user, client, scopes, resources, referenceId, metadata, grantType, sessionId, authorizationCodeId, perRequestClaims, resourcePolicyClaims } = input;
-@@ -257,0 +258,3 @@
+@@ -423,0 +424,3 @@ async function resolveAccessTokenClaims(input) {
 +		// Flux #310: provenance belongs to a minted authorization-code family, never shared consent.
 +		sessionId,
 +		authorizationCodeId,
-@@ -804,0 +808,9 @@
-+// Flux #228: Drizzle wraps the PostgreSQL error in a public Error.cause.
-+// Only this precise competing seed insert is an initialization no-op.
-+function isConcurrentResourceIdentifierInsert(error) {
-+	for (let depth = 0; depth < 4 && error && typeof error === "object"; depth++) {
-+		if (error.code === "23505" && error.constraint === "oauth_resource_identifier_unique") return true;
-+		error = error.cause;
-+	}
-+	return false;
-+}
-@@ -848 +860 @@
--				if (/unique|duplicate|UNIQUE/i.test(message)) {
-+				if (isConcurrentResourceIdentifierInsert(err) || /unique|duplicate|UNIQUE/i.test(message)) {
-@@ -1498 +1510,7 @@
+@@ -1675 +1678,7 @@ async function createOpaqueAccessToken(ctx, opts, user, client, scopes, payload,
 -async function invalidateRefreshFamily(ctx, clientId, userId) {
 +async function invalidateRefreshFamily(ctx, clientId, userId, refreshToken) {
 +	// Flux #152: a client/user pair can contain several independent connections.
@@ -30,23 +17,29 @@ diff --git a/dist/introspect-CbYi2MJT.mjs b/dist/introspect-CbYi2MJT.mjs
 +	const family = refreshToken.authorizationCodeId ? {
 +		field: "authorizationCodeId", value: refreshToken.authorizationCodeId
 +	} : { field: "id", value: refreshToken.id };
-@@ -1507 +1525 @@
+@@ -1684 +1693 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
 -		}]
 +		}, family]
-@@ -1525 +1543 @@
+@@ -1702 +1711 @@ async function invalidateRefreshFamily(ctx, clientId, userId) {
 -		}]
 +		}, family]
-@@ -1848,0 +1867 @@
+@@ -2025,0 +2035 @@ async function createUserTokens(ctx, opts, params) {
 +		authorizationCodeId: params.authorizationCodeId,
-@@ -2147,0 +2167,8 @@
+@@ -2335,0 +2346,8 @@ async function handleRefreshTokenGrant(ctx, opts) {
 +			// Cached rotation responses must recheck Flux's current connection authority.
 +			const user = await ctx.context.internalAdapter.findUserById(refreshToken.userId);
 +			if (!user) throw new APIError("BAD_REQUEST", { error: "invalid_grant" });
 +			if (opts.customAccessTokenClaims) await opts.customAccessTokenClaims({
 +				user, referenceId: refreshToken.referenceId, scopes: requestedScopes ?? scopes,
-+			sessionId: refreshToken.sessionId, authorizationCodeId: refreshToken.authorizationCodeId,
++				sessionId: refreshToken.sessionId, authorizationCodeId: refreshToken.authorizationCodeId,
 +				resources: resources ?? refreshToken.resources, metadata: parseClientMetadata(client.metadata)
 +			});
-@@ -2160 +2187 @@
+@@ -2348 +2366 @@ async function handleRefreshTokenGrant(ctx, opts) {
 -		await invalidateRefreshFamily(ctx, client_id, refreshToken.userId);
 +		await invalidateRefreshFamily(ctx, client_id, refreshToken.userId, refreshToken);
+@@ -6231 +6249 @@ async function revokeRefreshToken(ctx, opts, token, clientId) {
+-		await invalidateRefreshFamily(ctx, clientId, refreshToken.userId);
++		await invalidateRefreshFamily(ctx, clientId, refreshToken.userId, refreshToken);
+@@ -6252 +6270 @@ async function revokeRefreshToken(ctx, opts, token, clientId) {
+-		await invalidateRefreshFamily(ctx, clientId, refreshToken.userId);
++		await invalidateRefreshFamily(ctx, clientId, refreshToken.userId, refreshToken);

@@ -119,7 +119,7 @@ during the offline install, after the source copy.
 The API and worker share `createDatabase` (`app/packages/db/src/index.ts`): a
 `pg` pool with a 1.5 s connection timeout and a 2 s client read timeout. On a slow
 or stalled database a read timeout can fire while PostgreSQL still runs the
-statement, so `patches/drizzle-orm-0.45.3-flux-pool-release.patch` destroys a
+statement, so `patches/drizzle-orm-0.45.4-flux-pool-release.patch` destroys a
 pooled client whose `BEGIN` or `ROLLBACK` failed instead of leaking it or returning
 it to the pool with an open transaction ([#234](https://github.com/ColdPhase/flux/issues/234)).
 Each connection also sets `idle_in_transaction_session_timeout` to 60 s, so PostgreSQL
@@ -128,6 +128,15 @@ anything outside the database inside a transaction. Each connection also sets `j
 Flux's statements are short, and when an access filter inflated a plan's estimate past
 `jit_above_cost`, PostgreSQL compiled for 50–300 ms to run a few milliseconds
 ([#298](performance-2026-10.md)). pg-boss keeps its own pool.
+
+A database restart ends every connection with an `error` event (`57P01`), and an event with no
+listener stops a Node process. `createDatabase` therefore gives every pool a listener (the caller's
+`onError`, by default one `console.error` line) and keeps one on every connection that is checked
+out, so a short outage logs, drops the dead connections and recovers on the next query instead of
+restarting the API or the worker ([#889](https://github.com/ColdPhase/flux/issues/889)).
+`./scripts/check_database_outage.sh` stops and starts the database under a running API and worker
+and fails if either restarted or the API does not answer its health check again; the full
+`check_application.sh` ends with the same check.
 
 The connection timeout bounds the whole wait for a client: queued behind the pool's
 10 busy clients (the `pg` default size) or opening a new connection.

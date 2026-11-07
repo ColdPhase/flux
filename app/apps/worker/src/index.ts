@@ -25,7 +25,6 @@ const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
 const { pool, db } = createDatabase(connectionString);
 assertExactMigrationLedger(await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION), await readAppliedMigrationVersions(pool));
-pool.on('error', (error) => console.error('Database connection interrupted', error));
 // Idle polling (#862): every queue is created with `notify` (tooling/migrate.ts), so a job wakes its worker over LISTEN/NOTIFY and a worker
 // polls only as a 30 s backstop for delayed jobs and retries. The scheduler's cron worker looks every 15 s (a schedule fires up to 15 s
 // late), and Flux uses no job flows, so pg-boss's flow resolver looks once a minute. The LISTEN connection is checked every 30 s.

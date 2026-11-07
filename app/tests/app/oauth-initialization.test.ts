@@ -65,7 +65,9 @@ test('simultaneous identity initialization survives a real competing resource in
   }
 });
 
-test('an unrelated real resource primary-key conflict still fails initialization', {timeout:10_000}, async()=>{
+// Better Auth 1.7.18 logs a failed startup seed and retries it on the first resource access instead of failing initialization
+// (the loser of the identifier race above re-reads the row). The conflict below is not an identifier race, so nothing is seeded.
+test('an unrelated real resource primary-key conflict seeds nothing and does not stop initialization', {timeout:10_000}, async()=>{
   const database=createDatabase(connectionString);const query=database.pool.query;const occupied=randomUUID();
   const origin=`https://init-negative-${randomUUID()}.example.test`;const resource=`${origin}/mcp`;
   const config=loadIdentityConfig({FLUX_PUBLIC_ORIGIN:origin,FLUX_AUTH_SECRET:randomBytes(32).toString('hex'),FLUX_AUTH_RATE_LIMIT:'false'});
@@ -82,7 +84,7 @@ test('an unrelated real resource primary-key conflict still fails initialization
   } as typeof database.pool.query;
   try{
     const auth=createAuth({db:database.db,config,mailer:null,oauthRequests:createOauthRequests()});
-    await assert.rejects(auth.$context,error=>{const pg=postgresError(error);return pg?.code==='23505'&&pg.constraint==='oauth_resource_pkey';});
+    await auth.$context;
     assert.equal(attempts,1);assert.equal(Number((await pool.query('SELECT count(*)::int n FROM oauth_resource WHERE identifier=$1',[resource])).rows[0].n),0);
   }finally{database.pool.query=query;await database.pool.end();}
 });

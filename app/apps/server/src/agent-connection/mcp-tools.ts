@@ -19,7 +19,7 @@ import { toolError, toolResult } from './tool-results.js';
 import { boundRunResult } from './run-token.js';
 import { eventPorts } from '../events.js';
 import type { McpDispatch } from './mcp-dispatch.js';
-import { FLUX_MCP_PROTOCOL_VERSIONS } from './mcp-protocol.js';
+import { MCP_MAX_TOOL_INPUT_ELEMENTS, FLUX_MCP_PROTOCOL_VERSIONS } from './mcp-protocol.js';
 
 export type { FluxMcpClaims } from './context.js';
 
@@ -47,6 +47,7 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { disp
   const run = claims.run;
   const server = new McpServer({ name: 'flux', version: '0.1.0' }, {
     instructions: run ? RUN_SERVER_INSTRUCTIONS : coworkServerInstructions(), supportedProtocolVersions: [...FLUX_MCP_PROTOCOL_VERSIONS],
+    maxToolInputElements: MCP_MAX_TOOL_INPUT_ELEMENTS,
   });
   const tools = agentToolRegistry(server, claims.dispatch, run ? (result) => boundRunResult(db, run.id, result as { content?: unknown }) : undefined, claims.scopes, run ? { projectId: run.projectId } : undefined);
   registerAgentPlaybook(run ? toolsOnly(server) : server, tools, db, claims);

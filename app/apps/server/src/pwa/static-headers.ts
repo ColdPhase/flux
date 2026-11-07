@@ -6,16 +6,16 @@ import { basename } from 'node:path';
  * revalidated so a deployment is picked up; the service worker in particular is always fetched
  * fresh (browsers also bypass the HTTP cache for it, but proxies may not).
  */
-export function setStaticHeaders(res: { setHeader(name: string, value: string): unknown }, filePath: string) {
+export function setStaticHeaders(reply: { header(name: string, value: string): unknown }, filePath: string) {
   // A precompressed copy (`sw.js.br`, #266) gets the headers of the file it stands for.
   const name = basename(filePath).replace(/\.(?:br|gz)$/, '');
   // The same URL answers Brotli, gzip or plain bytes (#266), so every cache must key on the encoding.
-  res.setHeader('Vary', 'Accept-Encoding');
+  reply.header('Vary', 'Accept-Encoding');
   if (/[/\\]assets[/\\]/.test(filePath)) {
-    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    reply.header('Cache-Control', 'public, max-age=31536000, immutable');
     return;
   }
-  res.setHeader('Cache-Control', 'no-cache');
+  reply.header('Cache-Control', 'no-cache');
   // Content types come from @fastify/send (application/javascript, application/manifest+json).
-  if (name === 'sw.js') res.setHeader('Service-Worker-Allowed', '/');
+  if (name === 'sw.js') reply.header('Service-Worker-Allowed', '/');
 }

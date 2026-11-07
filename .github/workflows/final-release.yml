@@ -42,7 +42,7 @@ jobs:
       version: ${{ steps.check.outputs.version }}
       platforms: ${{ steps.check.outputs.platforms }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -110,11 +110,11 @@ jobs:
       digest: ${{ steps.build.outputs.digest }}
       runtime_digest: ${{ steps.build_runtime.outputs.digest }}
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.candidate.outputs.source_sha }}
           persist-credentials: false
-      - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
         # Only when arm64 is requested (v0.1 builds linux/amd64 natively and needs no emulator).
         if: contains(needs.candidate.outputs.platforms, 'linux/arm64')
         with:
@@ -123,18 +123,18 @@ jobs:
           image: docker.io/tonistiigi/binfmt:qemu-v10.2.3@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
           platforms: arm64
           cache-image: false
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
           version: v0.37.1
           driver-opts: image=moby/buildkit:v0.33.0@sha256:6c2fa84a6b61ccd72899dde4239f8d5717f05f9a8ca6f3cad185fb1a95a94de3
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
       - name: Build and push the untagged candidate manifest
         id: build
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           # The same inputs as the source Compose and the PR check: docker/Dockerfile with app/ as
           # the context; its final (runtime) stage is the image that api, worker and migrate run.
@@ -174,7 +174,7 @@ jobs:
           assert wanted <= platforms, (wanted, platforms)
           PY
       - name: Generate image SPDX SBOM
-        uses: anchore/sbom-action@006b7ce8314066bdf1765b4500370d40fa6917a3 # v0.24.2
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           image: ghcr.io/coldphase/flux@${{ steps.build.outputs.digest }}
           output-file: sbom.spdx.json
@@ -183,7 +183,7 @@ jobs:
           upload-release-assets: false
       - name: Build and push the untagged agent-runtime manifest
         id: build_runtime
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           # The separate slot/installer image (#358): the supervisor with process hardening and the pinned
           # official Codex, from the same Dockerfile and context. Claude Code is never in it.
@@ -241,14 +241,14 @@ jobs:
             echo "$platform: $version, no Claude Code"
           done
       - name: Generate agent-runtime image SPDX SBOM
-        uses: anchore/sbom-action@006b7ce8314066bdf1765b4500370d40fa6917a3 # v0.24.2
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26 # v0.24.2
         with:
           image: ghcr.io/coldphase/flux-agent-runtime@${{ steps.build_runtime.outputs.digest }}
           output-file: sbom-agent-runtime.spdx.json
           format: spdx-json
           upload-artifact: false
           upload-release-assets: false
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-sbom
           path: |
@@ -265,7 +265,7 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.candidate.outputs.source_sha }}
           persist-credentials: false
@@ -280,7 +280,7 @@ jobs:
           python3 scripts/security_scan.py image --platforms "$RELEASE_PLATFORMS" --report-dir security-reports \
             --cache "$RUNNER_TEMP/trivy" --summary-file security-reports/summary.md \
             "ghcr.io/coldphase/flux@$IMAGE_DIGEST" "ghcr.io/coldphase/flux-agent-runtime@$RUNTIME_DIGEST"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: release-scan
@@ -296,11 +296,11 @@ jobs:
       contents: read
       packages: read
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.candidate.outputs.source_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-sbom
           path: release-input
@@ -322,7 +322,7 @@ jobs:
           python3 ../scripts/release/verify_assets.py . \
             --version "$RELEASE_VERSION" --source-sha "$CANDIDATE_SHA" --digest "$IMAGE_DIGEST" \
             --platforms "$RELEASE_PLATFORMS"
-      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -344,7 +344,7 @@ jobs:
         run: bash scripts/release/smoke_runtime.sh release-assets "$RUNNER_TEMP/flux-runtime-smoke" "fluxruntime${{ github.run_id }}"
       # No asset name starts with a period (prepare_assets.py enforces it): upload-artifact skips
       # hidden files and GitHub renames them as Release assets.
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-assets
           path: release-assets/*
@@ -358,11 +358,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ needs.candidate.outputs.source_sha }}
           persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-assets
           path: release-assets

@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyReply } from 'fastify';
+import type { FastifyError, FastifyInstance, FastifyReply } from 'fastify';
 import { liveDocPath, liveDocEnrollPath, liveDocSavePath, liveDocReceiptPath, liveMapPath, liveMapGesturePath, liveMapUndoPath,
   type EnrollLiveDoc, type SaveSharedDoc,type LiveMapGesture,type UndoLiveMap } from '@flux/contracts';
 import { DomainError, InvalidInputError, ServiceUnavailableError } from '@flux/core';
@@ -39,7 +39,7 @@ function send(reply: FastifyReply, body: unknown, lifetime: EditingHTTPLifetime)
 }
 /** Live routes share the operator's production capability and current domain authority. */
 export async function editingRoutes(app: FastifyInstance, { sessions, authority, outputBudget,maps=null }: Options) {
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error: FastifyError, _request, reply) => {
     if (error instanceof EditingTransactionError) return reply.code(503).send({ code: 'EDITING_OUTCOME_UNKNOWN', error: error.message, outcome: 'unknown', retryable: true });
     if (error instanceof DomainError) return reply.code(error.status).send({ code: error.code, error: error.message, outcome: 'refused' });
     if (error.statusCode === 401) return reply.code(401).send({ code: 'UNAUTHENTICATED', error: 'Authentication required', outcome: 'refused' });

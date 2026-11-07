@@ -1,5 +1,14 @@
-import { createMcpHandler, DEFAULT_MAX_REQUEST_BODY_SIZE, isJsonContentType, isLegacyRequest,
+import { createMcpHandler, isJsonContentType, isLegacyRequest,
   isSpecType, readRequestBody, type McpServer } from '@modelcontextprotocol/server';
+
+/**
+ * What one MCP request may carry (#877, GHSA-46jr-4wx8-v453). The SDK's own default is 4 MiB, and a body of that size made of tiny
+ * array elements can exhaust memory while it is validated. The largest text a tool takes is 100,000 characters (up to 400 KB), so
+ * 1 MiB leaves room, and the longest array a tool declares holds 50 elements, so 10,000 elements and members together is far above
+ * any real call. A request over the first is answered 413 before it is parsed; one over the second is refused before validation.
+ */
+export const MCP_MAX_REQUEST_BODY_BYTES = 1024 * 1024;
+export const MCP_MAX_TOOL_INPUT_ELEMENTS = 10_000;
 
 export const FLUX_MCP_PROTOCOL_VERSIONS = ['2025-06-18', '2026-07-28'] as const;
 const legacyVersion = FLUX_MCP_PROTOCOL_VERSIONS[0]!;
@@ -39,11 +48,11 @@ function refusedScope(body: unknown, refusal: object) {
 
 export function createFluxMcpHandler(factory: () => McpServer,
   options: { refuseTool?: (name: string) => boolean; refuseScope?: (name: string) => object | null } = {}) {
-  const handler = createMcpHandler(factory, { legacy: 'stateless' });
+  const handler = createMcpHandler(factory, { legacy: 'stateless', maxRequestBodySize: MCP_MAX_REQUEST_BODY_BYTES });
   return { async fetch(request: Request): Promise<Response> {
     if (request.method !== 'POST' || !isJsonContentType(request.headers.get('content-type'))) return handler.fetch(request);
     // Use the SDK limit before parsing. Pass the already bounded body to both classification and serving.
-    const read = await readRequestBody(request.clone(), DEFAULT_MAX_REQUEST_BODY_SIZE);
+    const read = await readRequestBody(request.clone(), MCP_MAX_REQUEST_BODY_BYTES);
     if (read.tooLarge) return handler.fetch(request);
     let body: unknown;
     try { body = JSON.parse(read.text); } catch { return handler.fetch(request); }
@@ -59,7 +68,7 @@ export function createFluxMcpHandler(factory: () => McpServer,
       const refusal = typeof name === 'string' ? options.refuseScope(name) : null;
       if (refusal) return refusedScope(body, refusal);
     }
-    if (!await isLegacyRequest(request, body)) return handler.fetch(request, { parsedBody: body });
+    if (!await isLegacyRequest(request, body, { maxRequestBodySize: MCP_MAX_REQUEST_BODY_BYTES })) return handler.fetch(request, { parsedBody: body });
     const rpc = object(body);
     if (!rpc) return handler.fetch(request, { parsedBody: body });
     const header = request.headers.get('mcp-protocol-version');

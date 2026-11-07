@@ -158,6 +158,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal(signed.flux_run_id, runId);
     assert.deepEqual(signed.flux_place, { project: place.id, conversation: thread.id });
     assert.equal(signed.aud, `${publicOrigin}/mcp`);
+    assert.equal(signed.azp, 'flux-personal-run', 'the MCP resource server requires an authorized party (Better Auth 1.7.18)');
     assert.equal(signed.scope, 'flux.context.read flux.action.execute', 'reads and changes (A3)');
     assert.ok((signed.exp as number) - (signed.iat as number) <= RUN_TOKEN_LIMITS.lifetimeSeconds, 'no longer than the run\'s clock');
     assert.deepEqual(grant.tools, assistantRunTools(compileAssistantAreas(DEFAULT_ASSISTANT_AREAS), ['flux.context.read', 'flux.action.execute']));

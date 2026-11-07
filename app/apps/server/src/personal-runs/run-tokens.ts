@@ -19,6 +19,7 @@ import { createAgentConnectionStore } from '../agent-connection/store.js';
 // than the run's clock.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const RUN_TOKEN_AUTHORIZED_PARTY = 'flux-personal-run';
 const sha256 = (value: string) => createHash('sha256').update(value).digest('hex');
 const sameHash = (a: string, b: string) => a.length === b.length && timingSafeEqual(Buffer.from(a), Buffer.from(b));
 
@@ -69,6 +70,9 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       sub: minted.run.ownerUserId, flux_owner_user_id: minted.run.ownerUserId, flux_connection_id: minted.connectionId,
       scope: assistantRunScopes(minted.tools).join(' '), flux_run_id: minted.run.id, flux_place: { project: minted.run.projectId, conversation: minted.run.conversationId },
       jti: minted.jti, iat: Math.floor(Date.now() / 1000), exp: Math.floor(minted.expiresAt.getTime() / 1000),
+      // The MCP resource server requires an `azp` (the party the token was issued to) since Better Auth 1.7.18. A run token has no
+      // OAuth client, so it names its issuer's own flow; no client of that id exists, so nothing else accepts it as a client's.
+      azp: RUN_TOKEN_AUTHORIZED_PARTY,
       iss: baseURL ?? `${publicOrigin}/api/auth`, aud: `${publicOrigin}/mcp`,
     } } });
     const grant: PersonalRunTokenGrant = { token, tools: minted.tools, expiresAt: minted.expiresAt.toISOString(), ...(minted.context ? { context: minted.context } : {}) };
