@@ -1,5 +1,5 @@
 import { AI_PROVIDERS } from '@flux/contracts';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 
@@ -12,6 +12,15 @@ import type { DbExecutor } from './push.js';
 const c = schema.assistantChanges;
 export type AssistantChangeRow = typeof c.$inferSelect;
 export type NewAssistantChangeRow = typeof c.$inferInsert;
+/**
+ * What Approve all, Skip all and Undo act on (#859). A run's changes are one group. A local client has no run: what waits for its owner
+ * is one group per client (one Inbox item, "Approve all"), and what it did is one group per change, so an Undo takes back that change
+ * and never the client's earlier work.
+ */
+export const changeGroup = (row: Pick<AssistantChangeRow, 'id' | 'runId' | 'connectionId' | 'state'>): string =>
+  row.runId ?? (row.state === 'waiting' ? row.connectionId! : row.id);
+/** A change as the owner's views read it: with the conversation it shows in and the name of its agent. */
+export type AssistantChangeInView = AssistantChangeRow & { conversationId: string; agentName: string };
 
 export interface AssistantRunRow {
   id: string; workspaceId: string; projectId: string; conversationId: string; ownerUserId: string; agentId: string;
@@ -26,6 +35,15 @@ export interface ObjectMaker { userId: string | null; agentId: string | null }
 const first = async <T>(db: DbExecutor, query: ReturnType<typeof sql>) => ((await db.execute(query)).rows[0] as T | undefined) ?? null;
 
 export function assistantChangeRows(db: DbExecutor) {
+  /** A change with its run's conversation (or the one a client's message went to) and its agent's name; the runs it joins may be absent. */
+  const viewRows = async (where: ReturnType<typeof and>): Promise<AssistantChangeInView[]> => {
+    const r = schema.personalRuns; const k = schema.agentConnections;
+    const rows = await db.select({ change: c, conversationId: sql<string | null>`COALESCE(${r.conversationId}, ${c.conversationId})`, clientName: k.name })
+      .from(c).leftJoin(r, eq(r.id, c.runId)).leftJoin(k, eq(k.id, c.connectionId)).where(where).orderBy(asc(c.createdAt), asc(c.id)).limit(500);
+    return rows.map((row) => ({ ...row.change, conversationId: row.conversationId ?? '', agentName: row.clientName ?? 'Assistant' }));
+  };
+  const conversationMatch = (conversationId: string) =>
+    sql`(${c.conversationId} = ${conversationId} OR ${c.runId} IN (SELECT id FROM personal_runs WHERE conversation_id = ${conversationId}))`;
   return {
     /** The run row, held for this transaction: change counting and the run's state are decided under it. */
     async lockRun(runId: string): Promise<AssistantRunRow | null> {
@@ -33,6 +51,13 @@ export function assistantChangeRows(db: DbExecutor) {
       const [row] = await db.select({ id: r.id, workspaceId: r.workspaceId, projectId: r.projectId, conversationId: r.conversationId,
         ownerUserId: r.ownerUserId, agentId: r.agentId, status: r.status, stopRequestedAt: r.stopRequestedAt, engine: r.engine,
         completedAt: r.completedAt, authority: r.authority, reactionAction: sql<string | null>`(SELECT action FROM assistant_reaction_events WHERE run_id=personal_runs.id LIMIT 1)` }).from(r).where(eq(r.id, runId)).for('update');
+      return row ?? null;
+    },
+    /** A local client's connection with its "What it may do", held `FOR SHARE` like the assistant's, so a concurrent change of it waits (#859). */
+    async lockClient(connectionId: string) {
+      const k = schema.agentConnections;
+      const [row] = await db.select({ id: k.id, ownerUserId: k.ownerUserId, workspaceId: k.workspaceId, agentId: k.agentId, mayDo: k.mayDo, revokedAt: k.revokedAt,
+        computeSource: k.computeSource, name: k.name }).from(k).where(eq(k.id, connectionId)).for('share');
       return row ?? null;
     },
     /** The assistant and its "What it may do" (F-036 AG-3), read with the connection row `FOR SHARE`, so a concurrent change of it waits. */
@@ -52,6 +77,10 @@ export function assistantChangeRows(db: DbExecutor) {
     },
     async byCommand(runId: string, clientCommandId: string): Promise<AssistantChangeRow | null> {
       const [row] = await db.select().from(c).where(and(eq(c.runId, runId), eq(c.clientCommandId, clientCommandId)));
+      return row ?? null;
+    },
+    async byConnectionCommand(connectionId: string, clientCommandId: string): Promise<AssistantChangeRow | null> {
+      const [row] = await db.select().from(c).where(and(eq(c.connectionId, connectionId), eq(c.clientCommandId, clientCommandId)));
       return row ?? null;
     },
     /** The size the `prepared_command` CHECK measures: the jsonb value's text. */
@@ -76,21 +105,21 @@ export function assistantChangeRows(db: DbExecutor) {
       const [updated] = await db.update(c).set({ ...patch, version: sql`${c.version} + 1`, updatedAt: new Date() }).where(eq(c.id, id)).returning();
       return updated!;
     },
-    async forRun(runId: string): Promise<AssistantChangeRow[]> {
-      return db.select().from(c).where(eq(c.runId, runId)).orderBy(asc(c.createdAt), asc(c.id));
+    /** Every change of one group (see `changeGroup`). */
+    async forRun(groupId: string): Promise<AssistantChangeInView[]> {
+      return viewRows(or(eq(c.runId, groupId), and(eq(c.connectionId, groupId), eq(c.state, 'waiting')), and(eq(c.id, groupId), sql`${c.runId} IS NULL`)));
     },
-    async forConversation(ownerUserId: string, conversationId: string): Promise<(AssistantChangeRow & { conversationId: string })[]> {
-      const r = schema.personalRuns;
-      const rows = await db.select({ change: c, conversationId: r.conversationId }).from(c).innerJoin(r, eq(r.id, c.runId))
-        .where(and(eq(c.ownerUserId, ownerUserId), eq(r.conversationId, conversationId))).orderBy(asc(c.createdAt), asc(c.id)).limit(500);
-      return rows.map((row) => ({ ...row.change, conversationId: row.conversationId }));
+    /** One change as the owner's views read it. */
+    async findInView(id: string): Promise<AssistantChangeInView | null> {
+      return (await viewRows(eq(c.id, id)))[0] ?? null;
+    },
+    /** The owner's changes of one conversation: those of its runs, and a local client's own messages there. */
+    async forConversation(ownerUserId: string, conversationId: string): Promise<AssistantChangeInView[]> {
+      return viewRows(and(eq(c.ownerUserId, ownerUserId), conversationMatch(conversationId)));
     },
     /** Every change of one conversation's runs, whoever owns them: the use case shows each viewer only what is theirs to see. */
-    async forConversationAll(conversationId: string): Promise<(AssistantChangeRow & { conversationId: string })[]> {
-      const r = schema.personalRuns;
-      const rows = await db.select({ change: c, conversationId: r.conversationId }).from(c).innerJoin(r, eq(r.id, c.runId))
-        .where(eq(r.conversationId, conversationId)).orderBy(asc(c.createdAt), asc(c.id)).limit(500);
-      return rows.map((row) => ({ ...row.change, conversationId: row.conversationId }));
+    async forConversationAll(conversationId: string): Promise<AssistantChangeInView[]> {
+      return viewRows(conversationMatch(conversationId));
     },
     /** The project a conversation belongs to, for the read check before its message is shown. */
     async conversationPlace(conversationId: string): Promise<{ projectId: string; workspaceId: string } | null> {
@@ -107,17 +136,14 @@ export function assistantChangeRows(db: DbExecutor) {
         .orderBy(asc(schema.authUsers.name));
       return rows;
     },
-    async conversationOf(runId: string): Promise<string | null> {
-      const [row] = await db.select({ id: schema.personalRuns.conversationId }).from(schema.personalRuns).where(eq(schema.personalRuns.id, runId));
+    /** The conversation a group shows in: its run's, or none for a local client's group. */
+    async conversationOf(groupId: string): Promise<string | null> {
+      const [row] = await db.select({ id: schema.personalRuns.conversationId }).from(schema.personalRuns).where(eq(schema.personalRuns.id, groupId));
       return row?.id ?? null;
     },
-    /** The owner's waiting changes, oldest first: the Inbox shows one item per run (F-036 AG-7), as soon as something waits. */
-    async inbox(ownerUserId: string): Promise<(AssistantChangeRow & { conversationId: string })[]> {
-      const r = schema.personalRuns;
-      const rows = await db.select({ change: c, conversationId: r.conversationId }).from(c).innerJoin(r, eq(r.id, c.runId))
-        .where(and(eq(c.ownerUserId, ownerUserId), eq(c.state, 'waiting')))
-        .orderBy(asc(c.createdAt), asc(c.id)).limit(500);
-      return rows.map((row) => ({ ...row.change, conversationId: row.conversationId }));
+    /** The owner's waiting changes, oldest first: the Inbox shows one item per run or per local client (F-036 AG-7), as soon as something waits. */
+    async inbox(ownerUserId: string): Promise<AssistantChangeInView[]> {
+      return viewRows(and(eq(c.ownerUserId, ownerUserId), eq(c.state, 'waiting')));
     },
     /** A task with what Undo compares: done-when, who it waits for and its prerequisites (ascending). */
     async work(id: string) {

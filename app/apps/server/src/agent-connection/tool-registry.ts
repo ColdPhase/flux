@@ -5,9 +5,9 @@ import type { McpDispatch } from './mcp-dispatch.js';
 import { isAssistantText, redactCall } from './assistant-changes.js';
 
 /**
- * The run-private view of a change tool (F-027 A3, R2): an assistant run names no runtime, standing grant
- * or request class (the run is its authority), its project defaults to the run's place, and the description
- * says what the change does and that some changes wait for the owner. The public schema is unchanged.
+ * The run-private view of a change tool (F-027 A3, R2): an assistant run cites no sources (the run is its authority), its project
+ * defaults to the run's place, and the description says what the change does and that some changes wait for the owner. A local
+ * client sees the public schema, with the same note about waiting.
  */
 const RUN_EFFECT_DESCRIPTIONS: Record<string, string> = {
   flux_create_task: 'Add one task to this project. A task for another person (ownerUserId) waits for your owner\'s OK. A task made from a message names it (sourceMessageId). To split a task, make each step a subtask of it (parentTaskId).',
@@ -27,7 +27,7 @@ const RUN_EFFECT_DESCRIPTIONS: Record<string, string> = {
   flux_start_conversation: 'Start a conversation in this project.',
   flux_reply_in_conversation: 'Reply in one conversation of this project.',
   flux_create_unit: 'Hand one task to one of your owner\'s own agents (execute, review or plan) at the task version you last read. The authority is this run: '
-    + 'there is no bootstrap and no standing grant. The agent still has to claim it with its own grant. It may need your owner\'s OK first; the result then says so.',
+    + 'there is no bootstrap. The agent still has to claim it itself. It may need your owner\'s OK first; the result then says so.',
 };
 /**
  * The strict run-private input of `flux_create_unit` (`assistant-unit-create/v1`, R2): exactly the existing intent fields. There is no
@@ -49,6 +49,10 @@ const RUN_PRIVATE: Record<string, { input: z.ZodType; view: string }> = {
   flux_create_unit: { input: ASSISTANT_UNIT_CREATE_INPUT, view: ASSISTANT_UNIT_CREATE_VIEW },
 };
 const RUN_EFFECTS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
+/** The change tools a local client shares with a run. The hand-off (`flux_create_unit`) is a run's only; a client's is a co-work unit. */
+const CHANGE_TOOLS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS.filter((name) => name !== 'flux_create_unit'));
+const WAITING_NOTE = ' Some changes wait for your owner\'s OK instead of applying (deleting anything, other people\'s things, a task for someone else, '
+  + 'and everything when your owner chose Ask me first): the result then says so in plain words. Do not retry it; carry on with other work.';
 type ToolOutput = { content?: { type: string; text?: string }[]; isError?: boolean };
 /** A waiting or deferred change answers the run in plain words, not as an object. */
 function plainWords(output: ToolOutput): ToolOutput {
@@ -89,16 +93,18 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, boun
         if (!entry || entry.requiredScope !== requiredScope || entry.operation !== (effect?.operation ?? null))
           throw new Error('A Flux tool must match its exact registered permission');
         dispatch.declare('tool', name);
-        if (run && effect && RUN_EFFECTS.has(name)) {
+        if (effect && (CHANGE_TOOLS.has(name) || run && RUN_EFFECTS.has(name))) {
           const original = callback as (...args: unknown[]) => unknown;
-          const shape = config.inputSchema as unknown as z.ZodObject<Record<string, z.ZodType>>;
-          const private_ = RUN_PRIVATE[name];
-          config = { ...config, description: RUN_EFFECT_DESCRIPTIONS[name] ?? config.title,
-            inputSchema: (private_?.input ?? shape.omit({ runtimeSessionId: true, grantId: true, peerRequestClass: true, sources: true })
-              .extend({ projectId: z.uuid().optional(), clientCommandId: z.uuid().describe('New for each change; reuse only to retry it.') })) as unknown as I };
+          const private_ = run ? RUN_PRIVATE[name] : undefined;
+          if (run) {
+            const shape = config.inputSchema as unknown as z.ZodObject<Record<string, z.ZodType>>;
+            config = { ...config, description: RUN_EFFECT_DESCRIPTIONS[name] ?? config.title,
+              inputSchema: (private_?.input ?? shape.omit({ sources: true })
+                .extend({ projectId: z.uuid().optional(), clientCommandId: z.uuid().describe('New for each change; reuse only to retry it.') })) as unknown as I };
+          } else config = { ...config, description: `${config.description}${WAITING_NOTE}` };
           callback = (async (args: Record<string, unknown>, extra: unknown) => {
-            // AIM-3 redaction before anything is prepared, stored or written (AST-9.2).
-            const redacted = redactCall({ ...args, projectId: args.projectId ?? run.projectId, ...(private_ ? {} : { sources: [] }) });
+            // AIM-3 redaction before anything is prepared, stored or written (AST-9.2): the call a waiting change keeps is the redacted one.
+            const redacted = redactCall({ ...args, ...(run ? { projectId: args.projectId ?? run.projectId } : {}), ...(run && !private_ ? { sources: [] } : {}) });
             return plainWords(await original({ ...redacted, assistantCall: { tool: name, args: redacted, ...(private_ ? { view: private_.view } : {}) } }, extra) as ToolOutput);
           }) as unknown as ToolCallback<I>;
         }

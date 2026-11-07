@@ -303,27 +303,9 @@ test('three named connections share one actual client; same-session choices, ref
     assert.equal(listed.status, 200);
     assert.deepEqual((toolValue(listed.message).projects as { id: string }[]).map((p) => p.id), [connection.projectId]);
   }
-  const manifestGrants: Record<string, unknown>[] = [];
-  for (let i = 0; i < 4; i++) manifestGrants.push(expect(await owner.request('POST', `/api/v1/agent-connections/${a.id}/action-grants`, { body: {
-    clientCommandId: randomUUID(), projectId: a.projectId, operation: 'work.create', peerRequestClass: 'plan', maximumUses: 1,
-    expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
-  } }), 201));
-  await pool.query('UPDATE agent_standing_grants SET used=maximum_uses WHERE id=$1', [manifestGrants[1]!.id]);
-  await pool.query("UPDATE agent_standing_grants SET expires_at=now()-interval '1 second' WHERE id=$1", [manifestGrants[2]!.id]);
-  expect(await owner.request('DELETE', `/api/v1/agent-connections/${a.id}/action-grants/${manifestGrants[3]!.id}`), 204);
-  const liveManifest = toolValue((await mcp(tokensA.access_token, 60, 'tools/call', { name: 'flux_bootstrap', arguments: {
-    projectId: a.projectId, clientSessionId: randomUUID(), grantLimit: 1,
-  } })).message).grants as { items: { id: string; remainingUses: number }[]; total: number; nextOffset: number | null };
-  assert.equal(liveManifest.total, 2); assert.equal(liveManifest.items.length, 1); assert.equal(liveManifest.nextOffset, 1);
-  const allManifest = toolValue((await mcp(tokensA.access_token, 61, 'tools/call', { name: 'flux_bootstrap', arguments: {
-    projectId: a.projectId, clientSessionId: randomUUID(), grantLimit: 50,
-  } })).message).grants as { items: { id: string; remainingUses: number }[] };
-  assert.deepEqual(new Set(allManifest.items.map((row) => row.id)), new Set(manifestGrants.slice(0, 2).map((row) => row.id)));
-  assert.equal(allManifest.items.find((row) => row.id === manifestGrants[1]!.id)?.remainingUses, 0, 'exhausted live grants explain receipt observation without authorizing new actions');
   const anotherConnection = toolValue((await mcp(tokensB.access_token, 62, 'tools/call', { name: 'flux_bootstrap', arguments: {
     projectId: b.projectId, clientSessionId: randomUUID(),
   } })).message);
-  assert.equal((anotherConnection.grants as { total: number }).total, 0, 'the same actual OAuth client cannot see another connection manifest');
   assert.equal((anotherConnection.runtime as { connectionId: string }).connectionId, b.id);
   const hiddenBootstrap = await mcp(tokensB.access_token, 63, 'tools/call', { name: 'flux_bootstrap', arguments: {
     projectId: a.projectId, clientSessionId: randomUUID(),

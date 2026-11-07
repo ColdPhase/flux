@@ -103,7 +103,6 @@ export * from './typing/index.js';
 export * from './co-work/index.js';
 export * from './github/index.js';
 export * from './agent-connection/execution.js';
-export * from './agent-connection/grants.js';
 export * from './agent-connection/orientation.js';
 export * from './agent-connection/playbook.js';
 export type { DocLiveVersions, LiveDocHead } from './editing/doc-ports.js';

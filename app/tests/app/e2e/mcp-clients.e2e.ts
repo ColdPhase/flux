@@ -8,6 +8,7 @@ import { register, uniqueEmail } from '../support/http.js';
 import { password } from '../support/people.js';
 import { startClientModelMock, type MockPlan } from '../support/client-model-mock.js';
 import { expect } from '../support/mcp.js';
+import { withoutGrant } from '../support/mcp-actions.js';
 import { claudeBin, cleanClientHome, clientEvents, connectClient, scopes, seedOauthClient, sh, startFluxProxy, type ClientHome, type ClientSpec } from '../support/mcp-client-harness.js';
 
 /**
@@ -75,10 +76,6 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
     }
     const clientIds: Record<string, string> = {};
     for (const spec of specs) clientIds[spec.key] = await seedOauthClient(pool, spec);
-    // A standing grant for the first connection: the one place the shared domain is written to.
-    const grant = expect(await owner.request('POST', `/api/v1/agent-connections/${connections['codex-laptop']}/action-grants`, { body: {
-      clientCommandId: randomUUID(), projectId: projects.study, operation: 'work.create', peerRequestClass: 'execute', maximumUses: 2,
-      expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as { id: string };
 
     // --- Each client's own commands: add, authenticate through Flux's OAuth, then ask it for its MCP status.
     const homes: Record<string, ClientHome> = {};
@@ -151,12 +148,11 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       assert.deepEqual([...seen['claude-laptop']!.names].sort(), [...seen['codex-desktop']!.names].sort(), 'both clients offer the same shared tool set');
     });
 
-    await t.test('one connection writes a task under a standing grant; the others read it from the shared project', async () => {
+    await t.test('one connection writes a task as its owner; the others read it from the shared project', async () => {
       const title = `Compare against the baseline ${randomUUID().slice(0, 8)}`;
       const created = await session(specs[0]!, () => codexScript(`
         const boot = JSON.parse((await tools.mcp__flux__flux_bootstrap({ projectId: ${JSON.stringify(projects.study)}, clientSessionId: ${JSON.stringify(randomUUID())} })).content[0].text);
-        text(JSON.stringify(await tools.mcp__flux__flux_create_task({ projectId: ${JSON.stringify(projects.study)}, runtimeSessionId: boot.runtime.id, grantId: ${JSON.stringify(grant.id)},
-          clientCommandId: ${JSON.stringify(randomUUID())}, peerRequestClass: 'execute', task: { title: ${JSON.stringify(title)} } })));`));
+        text(JSON.stringify(await tools.mcp__flux__flux_create_task({ projectId: ${JSON.stringify(projects.study)}, clientCommandId: ${JSON.stringify(randomUUID())}, task: { title: ${JSON.stringify(title)} } })));`));
       // The authenticated bootstrap envelope the real client received names the connection's capabilities and the trusted playbook
       // reference (#160's Start/Resume consumes it; instruction loading by a model is not claimed here).
       const boot = json(created.calls.find((call) => call.tool === 'flux_bootstrap'));
@@ -180,7 +176,9 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
     // Each invocation below is a fresh actual native process, using its own saved OAuth home and a scripted model.
     // This verifies native domain composition, including the addressed review below, not integrated Start/Resume,
     // interruption of an active native turn, an idle adapter or model obedience to the trusted playbook.
-    async function native(spec: Spec, name: string, args: Record<string, unknown>) {
+    async function native(spec: Spec, name: string, given: Record<string, unknown>) {
+      // There are no standing grants (#859): the fields a tool no longer takes are dropped here.
+      const args = withoutGrant(name, given);
       const result = await session(spec, spec.client === 'codex'
         ? () => codexScript(`text(JSON.stringify(await tools[${JSON.stringify(`mcp__flux__${name}`)}](${JSON.stringify(args)})));`)
         : outputs => outputs.length === 0 ? [name, JSON.stringify(args)] : []);
@@ -190,10 +188,7 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
     }
     for (const spec of specs) await t.test(`${spec.label}: native task/unit progress, quiet renewal, persisted checkpoint replay and a fresh-process reconnect`, async () => {
       const human = people[spec.agent]; const connectionId = connections[spec.key]!;
-      const standing = async (operation: string, objectId?: string) => String(expect(await human.request('POST',
-        `/api/v1/agent-connections/${connectionId}/action-grants`, { body: { clientCommandId: randomUUID(), projectId: projects.study,
-          operation, peerRequestClass: 'execute', maximumUses: 5, ...(objectId ? { objectId } : {}),
-          expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201).id);
+      const standing = async (...named: [operation: string, objectId?: string]) => { void named; return randomUUID(); }; // no standing grants (#859)
       const boot = await native(spec, 'flux_bootstrap', { projectId: projects.study, clientSessionId: randomUUID() });
       assert.ok(!(boot.gaps as string[]).includes('coordination_unavailable'), 'request admission, inbox and resolution are available');
       const runtimeSessionId = (boot.runtime as { id: string }).id;
@@ -221,7 +216,6 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       assert.equal(parked.state, 'paused');
       assert.deepEqual(await native(spec, 'flux_release_unit', release), parked, 'a lost-response retry from a fresh native process replays the same persisted checkpoint');
       assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_checkpoints WHERE unit_id=$1', [unitId])).rows[0].n, 1);
-      assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [releaseGrant])).rows[0].used, 1);
       const reconnected = await native(spec, 'flux_bootstrap', { projectId: projects.study, clientSessionId: randomUUID() });
       const nextSession = (reconnected.runtime as { id: string }).id;
       assert.notEqual(nextSession, runtimeSessionId);
@@ -244,10 +238,7 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       const actor = async (spec: Spec) => {
         const boot = await native(spec, 'flux_bootstrap', { projectId: projects.study, clientSessionId: randomUUID() });
         const runtimeSessionId = (boot.runtime as { id: string }).id;
-        const standing = async (operation: string, role: Role, objectId?: string, maximumUses = 5) =>
-          String(expect(await people[spec.agent].request('POST', `/api/v1/agent-connections/${connections[spec.key]}/action-grants`,
-            { body: { clientCommandId: randomUUID(), projectId: projects.study, operation, peerRequestClass: role,
-              maximumUses, ...(objectId ? { objectId } : {}), expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201).id);
+        const standing = async (...named: [operation: string, role: Role, objectId?: string, maximumUses?: number]) => { void named; return randomUUID(); }; // no standing grants (#859)
         const base = (grantId: string, peerRequestClass: Role) => ({ projectId: projects.study, runtimeSessionId,
           grantId, peerRequestClass, clientCommandId: randomUUID() });
         return { standing, base, call: (name: string, args: Record<string, unknown>) => native(spec, name, args) };
@@ -285,7 +276,6 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
         recipientUnitId: reviewId, expectedRecipientUnitVersion: recipientVersion, recipientConnectionId: connections[recipient.key],
         intentKey, parentRequestId: null, kind: 'review', target: target(version), sourceRefs: [target(version)],
         criteriaRefs: [target(version)], peerUnblocking: true });
-      const used = async (id: string) => (await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [id])).rows[0].used;
       const read = async () => expect(await owner.request('GET', `/api/v1/work/${task.workId}/coordination`), 200) as unknown as TaskCoordination;
       const inbox = async (spec: Spec) => (await native(spec, 'flux_coordination_inbox', { projectId: projects.study })).requests as
         { id: string; state: string; status: string; reason: string | null; nextBoundary: string | null }[];
@@ -296,7 +286,6 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       const sent = await author.call('flux_send_request', input);
       assert.deepEqual([sent.status, sent.state], ['created', 'queued']);
       assert.deepEqual(await author.call('flux_send_request', input), sent, 'fresh-process lost-ACK retry replays the request');
-      assert.equal(await used(askGrant), 1, 'a replay spends no second standing use');
       assert.equal((await author.call('flux_send_request', { ...input, clientCommandId: randomUUID() })).status, 'existing');
       assert.equal(await requestCount(), 1, 'one intent has one durable request');
       assert.deepEqual((await inbox(recipient)).map(row => [row.id, row.state, row.status]), [[sent.requestId, 'queued', 'queued']]);
@@ -307,7 +296,6 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
       const deferred = await reviewer.call('flux_defer_request', deferInput);
       assert.equal(deferred.state, 'deferred');
       assert.deepEqual(await reviewer.call('flux_defer_request', deferInput), deferred, 'deferral replays without a second effect');
-      assert.equal(await used(respondGrant), 1);
       assert.deepEqual(await busyState(), beforeBusy, 'inbox reads and deferral leave the other task live with the same lease and version');
       assert.deepEqual((await inbox(recipient)).map(row => [row.id, row.state, row.status]), [[sent.requestId, 'deferred', 'deferred']]);
       const card = (await read()).requests.find(row => row.id === sent.requestId)!;
@@ -350,20 +338,16 @@ test('real pinned Codex and Claude Code clients: two owners, both native client 
         workId: task.workId, expectedVersion: task.version, changes: { outcome: 'Compare the readings in sensor units; the second reading is 21 units.' } });
       assert.notEqual(changed.version, task.version);
       assert.equal((await read()).verdicts[0]!.current, false, 'the exact old-version verdict remains in history and becomes stale');
-      const grantsBefore = (await pool.query('SELECT count(*)::int AS n FROM agent_standing_grants WHERE project_id=$1', [projects.study])).rows[0].n;
       const freshInput = send('review-2', changed.version, reviewHeld.version);
       const fresh = await author.call('flux_send_request', freshInput);
       assert.equal(fresh.status, 'created');
       assert.deepEqual(await author.call('flux_send_request', freshInput), fresh, 'retrying the fresh review keeps its delivery');
-      assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_standing_grants WHERE project_id=$1', [projects.study])).rows[0].n, grantsBefore,
-        'the existing request, claim, response and publication grants cover the fresh assessment');
       assert.deepEqual((await inbox(recipient)).map(row => row.id), [fresh.requestId]);
       const secondEvidence = await finishReview(fresh, 'passed', 'The updated comparison now names sensor units and the observed 21-unit reading.');
       const coordination = await read();
       assert.deepEqual(coordination.verdicts.map(row => [row.verdict, row.current, row.target, row.evidenceRef]),
         [['passed', true, target(changed.version), secondEvidence], ['changes_requested', false, target(task.version), firstEvidence]]);
       assert.equal(await requestCount(), 2, 'exactly two bounded review requests, with no review loop');
-      assert.deepEqual([await used(askGrant), await used(respondGrant), await used(requestClaimGrant), await used(resultGrant)], [3, 3, 2, 3]);
       assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts WHERE work_id=$1', [task.workId])).rows[0].n, 2);
       assert.deepEqual(await inbox(recipient), [], 'both addressed requests are resolved');
       assert.deepEqual(await inbox(unaddressed), [], 'the third connection never receives another connection\'s request');

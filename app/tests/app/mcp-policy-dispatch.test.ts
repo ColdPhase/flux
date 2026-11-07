@@ -165,8 +165,6 @@ test('removed owner membership refuses project-independent resources and runtime
   await f.save({ enabledCapabilityIds: [], enabledEntryIds: [], selectedProjectIds: [] });
   assert.deepEqual(expect(await f.owner.request('GET', agentMcpPolicyPath(f.connectionId)), 200).connection, original,
     'removal-only management changes no original consent');
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_standing_grants WHERE connection_id=$1',
-    [f.connectionId])).rows[0].n, 0, 'management creates no execution authority');
 });
 
 

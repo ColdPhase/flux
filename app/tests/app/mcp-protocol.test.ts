@@ -118,7 +118,7 @@ test('two-era HTTP admission keeps exact revisions, notification semantics, mode
   });
   await t.test('arrays containing otherwise valid writes create no task, receipt or grant debit in either era', async () => {
     const grant = await f.grant('work.create', 'execute', 3);
-    const counts = async () => ({ tasks: await f.tasks(), used: await f.used(grant.id), receipts:
+    const counts = async () => ({ tasks: await f.tasks(), receipts:
       (await pool.query('SELECT count(*)::int AS n FROM agent_command_receipts WHERE connection_id=$1', [f.connectionId])).rows[0].n });
     const before = await counts();
     for (const version of [legacy, modern]) {

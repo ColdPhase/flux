@@ -58,7 +58,7 @@
     },
     {
       "name": "flux_add_thought",
-      "title": "Add a thought to a project map under a standing grant",
+      "title": "Add a thought to a project map",
       "requiredScope": "flux.action.execute",
       "operation": "map.thought.create",
       "classes": [
@@ -79,27 +79,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -196,11 +179,8 @@
         },
         "required": [
           "clientCommandId",
-          "grantId",
           "mapId",
-          "peerRequestClass",
           "projectId",
-          "runtimeSessionId",
           "thought"
         ],
         "additionalProperties": false
@@ -208,7 +188,7 @@
     },
     {
       "name": "flux_ask_question",
-      "title": "Ask a person a question with ready answers under a standing grant",
+      "title": "Ask a person a question with ready answers",
       "requiredScope": "flux.action.execute",
       "operation": "conversation.reply",
       "classes": [
@@ -229,27 +209,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -275,6 +238,11 @@
               ],
               "additionalProperties": false
             }
+          },
+          "runtimeSessionId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "conversationId": {
             "type": "string",
@@ -305,9 +273,7 @@
         "required": [
           "clientCommandId",
           "conversationId",
-          "grantId",
           "options",
-          "peerRequestClass",
           "projectId",
           "question",
           "runtimeSessionId"
@@ -338,18 +304,6 @@
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantLimit": {
-            "default": 20,
-            "type": "integer",
-            "minimum": 1,
-            "maximum": 50
-          },
-          "grantOffset": {
-            "default": 0,
-            "type": "integer",
-            "minimum": 0,
-            "maximum": 10000
           },
           "includeWorkRecovery": {
             "type": "boolean"
@@ -515,7 +469,7 @@
     },
     {
       "name": "flux_claim_request",
-      "title": "Pick up a request addressed to your unit under a standing grant",
+      "title": "Pick up a request addressed to your unit",
       "requiredScope": "flux.action.execute",
       "operation": "cowork.request.claim",
       "classes": [
@@ -538,11 +492,6 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -590,7 +539,6 @@
           "clientCommandId",
           "expectedRequestVersion",
           "generation",
-          "grantId",
           "leaseId",
           "peerRequestClass",
           "projectId",
@@ -603,7 +551,7 @@
     },
     {
       "name": "flux_claim_unit",
-      "title": "Claim your co-work unit under a standing grant",
+      "title": "Claim your co-work unit",
       "requiredScope": "flux.action.execute",
       "operation": "cowork.claim",
       "classes": [
@@ -626,11 +574,6 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -662,7 +605,6 @@
         "required": [
           "clientCommandId",
           "expectedVersion",
-          "grantId",
           "peerRequestClass",
           "projectId",
           "runtimeSessionId",
@@ -673,7 +615,7 @@
     },
     {
       "name": "flux_complete_unit",
-      "title": "Complete your co-work unit with its outcome under a standing grant",
+      "title": "Complete your co-work unit with its outcome",
       "requiredScope": "flux.action.execute",
       "operation": "cowork.unit.complete",
       "classes": [
@@ -696,11 +638,6 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -799,7 +736,6 @@
           "clientCommandId",
           "expectedVersion",
           "generation",
-          "grantId",
           "leaseId",
           "outcome",
           "peerRequestClass",
@@ -847,7 +783,7 @@
     },
     {
       "name": "flux_create_doc",
-      "title": "Start a project wiki doc under a standing grant",
+      "title": "Start a project wiki doc",
       "requiredScope": "flux.action.execute",
       "operation": "doc.create",
       "classes": [
@@ -868,27 +804,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -948,17 +867,14 @@
         "required": [
           "clientCommandId",
           "doc",
-          "grantId",
-          "peerRequestClass",
-          "projectId",
-          "runtimeSessionId"
+          "projectId"
         ],
         "additionalProperties": false
       }
     },
     {
       "name": "flux_create_map",
-      "title": "Create a project map under a standing grant",
+      "title": "Create a project map",
       "requiredScope": "flux.action.execute",
       "operation": "map.create",
       "classes": [
@@ -979,27 +895,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -1034,10 +933,7 @@
         },
         "required": [
           "clientCommandId",
-          "grantId",
-          "peerRequestClass",
           "projectId",
-          "runtimeSessionId",
           "title"
         ],
         "additionalProperties": false
@@ -1107,7 +1003,7 @@
     },
     {
       "name": "flux_create_task",
-      "title": "Create a project task under a standing grant",
+      "title": "Create a project task",
       "requiredScope": "flux.action.execute",
       "operation": "work.create",
       "classes": [
@@ -1128,27 +1024,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -1274,10 +1153,7 @@
         },
         "required": [
           "clientCommandId",
-          "grantId",
-          "peerRequestClass",
           "projectId",
-          "runtimeSessionId",
           "task"
         ],
         "additionalProperties": false
@@ -1285,7 +1161,7 @@
     },
     {
       "name": "flux_create_unit",
-      "title": "Take a task or open a co-work unit on it under a standing grant",
+      "title": "Take a task or open a co-work unit on it",
       "requiredScope": "flux.action.execute",
       "operation": "cowork.unit.create",
       "classes": [
@@ -1308,11 +1184,6 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -1387,7 +1258,6 @@
           "assignmentConnectionId",
           "clientCommandId",
           "expectedTaskVersion",
-          "grantId",
           "parent",
           "peerRequestClass",
           "projectId",
@@ -1400,7 +1270,7 @@
     },
     {
       "name": "flux_decline_request",
-      "title": "Decline a request you picked up under a standing grant",
+      "title": "Decline a request you picked up",
       "requiredScope": "flux.action.execute",
       "operation": "cowork.request.respond",
       "classes": [
@@ -1423,11 +1293,6 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -1484,7 +1349,6 @@
           "clientCommandId",
           "expectedRequestVersion",
           "generation",
-          "grantId",
           "leaseId",
           "peerRequestClass",
           "projectId",
@@ -1498,7 +1362,7 @@
     },
     {
       "name": "flux_decline_unit",
-      "title": "Hand a unit transferred to you back to the connection that sent it, under a standing grant",
+      "title": "Hand a unit transferred to you back to the connection that sent it",
       "requiredScope": "flux.action.execute",
       "operation": "cowork.unit.decline",
       "classes": [
@@ -1521,11 +1385,6 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -1557,7 +1416,6 @@
         "required": [
           "clientCommandId",
           "expectedVersion",
-          "grantId",
           "peerRequestClass",
           "projectId",
           "runtimeSessionId",
@@ -1568,7 +1426,7 @@
     },
     {
       "name": "flux_defer_request",
-      "title": "Put a queued request off to a safe checkpoint, with a reason, under a standing grant",
+      "title": "Put a queued request off to a safe checkpoint, with a reason",
       "requiredScope": "flux.action.execute",
       "operation": "cowork.request.respond",
       "classes": [
@@ -1591,11 +1449,6 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -1717,7 +1570,6 @@
         "required": [
           "clientCommandId",
           "expectedRequestVersion",
-          "grantId",
           "nextBoundary",
           "peerRequestClass",
           "projectId",
@@ -1990,7 +1842,7 @@
     },
     {
       "name": "flux_link_pull_request",
-      "title": "Link a pull request to the task you hold under a standing grant",
+      "title": "Link a pull request to the task you hold",
       "requiredScope": "flux.action.execute",
       "operation": "work.update",
       "classes": [
@@ -2016,22 +1868,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "workId": {
             "type": "string",
@@ -2054,8 +1894,6 @@
         },
         "required": [
           "clientCommandId",
-          "grantId",
-          "peerRequestClass",
           "projectId",
           "pullRequestUrl",
           "runtimeSessionId",
@@ -2066,7 +1904,7 @@
     },
     {
       "name": "flux_link_thoughts",
-      "title": "Link two thoughts on a project map under a standing grant",
+      "title": "Link two thoughts on a project map",
       "requiredScope": "flux.action.execute",
       "operation": "map.link.create",
       "classes": [
@@ -2087,27 +1925,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -2157,11 +1978,8 @@
         "required": [
           "clientCommandId",
           "fromId",
-          "grantId",
           "mapId",
-          "peerRequestClass",
           "projectId",
-          "runtimeSessionId",
           "toId"
         ],
         "additionalProperties": false
@@ -2436,7 +2254,7 @@
     },
     {
       "name": "flux_move_thoughts",
-      "title": "Move thoughts on a project map under a standing grant",
+      "title": "Move thoughts on a project map",
       "requiredScope": "flux.action.execute",
       "operation": "map.positions.update",
       "classes": [
@@ -2457,27 +2275,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -2549,19 +2350,16 @@
         },
         "required": [
           "clientCommandId",
-          "grantId",
           "mapId",
           "moves",
-          "peerRequestClass",
-          "projectId",
-          "runtimeSessionId"
+          "projectId"
         ],
         "additionalProperties": false
       }
     },
     {
       "name": "flux_post_agent_thread",
-      "title": "Write to a task's agents' thread under a standing grant",
+      "title": "Write to a task's agents' thread",
       "requiredScope": "flux.action.execute",
       "operation": "conversation.reply",
       "classes": [
@@ -2582,27 +2380,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -2629,6 +2410,11 @@
               "additionalProperties": false
             }
           },
+          "runtimeSessionId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
           "taskId": {
             "type": "string",
             "format": "uuid",
@@ -2648,8 +2434,6 @@
         "required": [
           "body",
           "clientCommandId",
-          "grantId",
-          "peerRequestClass",
           "projectId",
           "runtimeSessionId",
           "taskId"
@@ -2709,7 +2493,7 @@
     },
     {
       "name": "flux_propose_decision",
-      "title": "Propose a project decision under a standing grant",
+      "title": "Propose a project decision",
       "requiredScope": "flux.action.execute",
       "operation": "decision.propose",
       "classes": [
@@ -2730,27 +2514,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -2813,10 +2580,7 @@
         "required": [
           "clientCommandId",
           "decision",
-          "grantId",
-          "peerRequestClass",
-          "projectId",
-          "runtimeSessionId"
+          "projectId"
         ],
         "additionalProperties": false
       }
@@ -2864,7 +2628,7 @@
     },
     {
       "name": "flux_record_result",
-      "title": "Record a project result under a standing grant",
+      "title": "Record a project result",
       "requiredScope": "flux.action.execute",
       "operation": "result.record",
       "classes": [
@@ -2884,26 +2648,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute"
-            ]
           },
           "sources": {
             "default": [],
@@ -2997,18 +2745,15 @@
         },
         "required": [
           "clientCommandId",
-          "grantId",
-          "peerRequestClass",
           "projectId",
-          "result",
-          "runtimeSessionId"
+          "result"
         ],
         "additionalProperties": false
       }
     },
     {
       "name": "flux_release_unit",
-      "title": "Pause your co-work unit with a checkpoint under a standing grant",
+      "title": "Pause your co-work unit with a checkpoint",
       "requiredScope": "flux.action.execute",
       "operation": "cowork.release",
       "classes": [
@@ -3031,11 +2776,6 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -3269,7 +3009,6 @@
           "clientCommandId",
           "expectedVersion",
           "generation",
-          "grantId",
           "leaseId",
           "peerRequestClass",
           "projectId",
@@ -3281,7 +3020,7 @@
     },
     {
       "name": "flux_remove_thought",
-      "title": "Remove a thought from a project map under a standing grant",
+      "title": "Remove a thought from a project map",
       "requiredScope": "flux.action.execute",
       "operation": "map.thought.delete",
       "classes": [
@@ -3302,27 +3041,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -3368,11 +3090,8 @@
         "required": [
           "clientCommandId",
           "expectedVersion",
-          "grantId",
           "mapId",
-          "peerRequestClass",
           "projectId",
-          "runtimeSessionId",
           "thoughtId"
         ],
         "additionalProperties": false
@@ -3380,7 +3099,7 @@
     },
     {
       "name": "flux_rename_map",
-      "title": "Rename a project map under a standing grant",
+      "title": "Rename a project map",
       "requiredScope": "flux.action.execute",
       "operation": "map.rename",
       "classes": [
@@ -3401,27 +3120,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -3467,11 +3169,8 @@
         "required": [
           "clientCommandId",
           "expectedVersion",
-          "grantId",
           "mapId",
-          "peerRequestClass",
           "projectId",
-          "runtimeSessionId",
           "title"
         ],
         "additionalProperties": false
@@ -3479,7 +3178,7 @@
     },
     {
       "name": "flux_renew_unit",
-      "title": "Renew your live claim on a co-work unit under a standing grant",
+      "title": "Renew your live claim on a co-work unit",
       "requiredScope": "flux.action.execute",
       "operation": "cowork.renew",
       "classes": [
@@ -3502,11 +3201,6 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -3549,7 +3243,6 @@
           "clientCommandId",
           "expectedVersion",
           "generation",
-          "grantId",
           "leaseId",
           "peerRequestClass",
           "projectId",
@@ -3561,7 +3254,7 @@
     },
     {
       "name": "flux_reply_in_conversation",
-      "title": "Reply in a project conversation under a standing grant",
+      "title": "Reply in a project conversation",
       "requiredScope": "flux.action.execute",
       "operation": "conversation.reply",
       "classes": [
@@ -3582,27 +3275,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -3672,18 +3348,15 @@
         "required": [
           "clientCommandId",
           "conversationId",
-          "grantId",
           "message",
-          "peerRequestClass",
-          "projectId",
-          "runtimeSessionId"
+          "projectId"
         ],
         "additionalProperties": false
       }
     },
     {
       "name": "flux_resolve_request",
-      "title": "Answer a request you picked up, naming your evidence, under a standing grant",
+      "title": "Answer a request you picked up, naming your evidence",
       "requiredScope": "flux.action.execute",
       "operation": "cowork.request.respond",
       "classes": [
@@ -3706,11 +3379,6 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -3822,7 +3490,6 @@
           "evidence",
           "expectedRequestVersion",
           "generation",
-          "grantId",
           "leaseId",
           "peerRequestClass",
           "projectId",
@@ -3887,7 +3554,7 @@
     },
     {
       "name": "flux_send_request",
-      "title": "Ask another connection's unit for help, a review, a fix or a hand-off under a standing grant",
+      "title": "Ask another connection's unit for help, a review, a fix or a hand-off",
       "requiredScope": "flux.action.execute",
       "operation": "cowork.request",
       "classes": [
@@ -3910,11 +3577,6 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -4288,7 +3950,6 @@
           "criteriaRefs",
           "expectedRecipientUnitVersion",
           "generation",
-          "grantId",
           "intentKey",
           "kind",
           "leaseId",
@@ -4308,7 +3969,7 @@
     },
     {
       "name": "flux_start_conversation",
-      "title": "Start a project conversation under a standing grant",
+      "title": "Start a project conversation",
       "requiredScope": "flux.action.execute",
       "operation": "conversation.create",
       "classes": [
@@ -4329,27 +3990,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -4413,18 +4057,15 @@
         },
         "required": [
           "clientCommandId",
-          "grantId",
           "message",
-          "peerRequestClass",
-          "projectId",
-          "runtimeSessionId"
+          "projectId"
         ],
         "additionalProperties": false
       }
     },
     {
       "name": "flux_transfer_unit",
-      "title": "Hand your co-work unit to another connection under a standing grant",
+      "title": "Hand your co-work unit to another connection",
       "requiredScope": "flux.action.execute",
       "operation": "cowork.unit.transfer",
       "classes": [
@@ -4447,11 +4088,6 @@
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
           "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
@@ -4500,7 +4136,6 @@
           "clientCommandId",
           "expectedVersion",
           "generation",
-          "grantId",
           "leaseId",
           "peerRequestClass",
           "projectId",
@@ -4533,27 +4168,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -4580,6 +4198,11 @@
               "additionalProperties": false
             }
           },
+          "runtimeSessionId": {
+            "type": "string",
+            "format": "uuid",
+            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+          },
           "workId": {
             "type": "string",
             "format": "uuid",
@@ -4594,8 +4217,6 @@
         "required": [
           "clientCommandId",
           "expectedVersion",
-          "grantId",
-          "peerRequestClass",
           "projectId",
           "runtimeSessionId",
           "workId"
@@ -4605,7 +4226,7 @@
     },
     {
       "name": "flux_unlink_thoughts",
-      "title": "Remove a link between thoughts under a standing grant",
+      "title": "Remove a link between thoughts",
       "requiredScope": "flux.action.execute",
       "operation": "map.link.delete",
       "classes": [
@@ -4626,27 +4247,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -4686,19 +4290,16 @@
         },
         "required": [
           "clientCommandId",
-          "grantId",
           "linkId",
           "mapId",
-          "peerRequestClass",
-          "projectId",
-          "runtimeSessionId"
+          "projectId"
         ],
         "additionalProperties": false
       }
     },
     {
       "name": "flux_update_doc",
-      "title": "Edit a project wiki doc under a standing grant",
+      "title": "Edit a project wiki doc",
       "requiredScope": "flux.action.execute",
       "operation": "doc.update",
       "classes": [
@@ -4719,27 +4320,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -4808,17 +4392,14 @@
           "clientCommandId",
           "docId",
           "expectedVersion",
-          "grantId",
-          "peerRequestClass",
-          "projectId",
-          "runtimeSessionId"
+          "projectId"
         ],
         "additionalProperties": false
       }
     },
     {
       "name": "flux_update_task",
-      "title": "Change a project task under a standing grant",
+      "title": "Change a project task",
       "requiredScope": "flux.action.execute",
       "operation": "work.update",
       "classes": [
@@ -4839,27 +4420,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -4967,10 +4531,7 @@
           "changes",
           "clientCommandId",
           "expectedVersion",
-          "grantId",
-          "peerRequestClass",
           "projectId",
-          "runtimeSessionId",
           "workId"
         ],
         "additionalProperties": false
@@ -4978,7 +4539,7 @@
     },
     {
       "name": "flux_update_thought",
-      "title": "Change a thought on a project map under a standing grant",
+      "title": "Change a thought on a project map",
       "requiredScope": "flux.action.execute",
       "operation": "map.thought.update",
       "classes": [
@@ -4999,27 +4560,10 @@
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
           },
-          "runtimeSessionId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "grantId": {
-            "type": "string",
-            "format": "uuid",
-            "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
           "clientCommandId": {
             "type": "string",
             "format": "uuid",
             "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-          },
-          "peerRequestClass": {
-            "type": "string",
-            "enum": [
-              "execute",
-              "plan"
-            ]
           },
           "sources": {
             "default": [],
@@ -5105,11 +4649,8 @@
           "changes",
           "clientCommandId",
           "expectedVersion",
-          "grantId",
           "mapId",
-          "peerRequestClass",
           "projectId",
-          "runtimeSessionId",
           "thoughtId"
         ],
         "additionalProperties": false
@@ -5155,8 +4696,6 @@
     ]
   },
   "errorCodes": [
-    "AGENT_ASKS_FIRST",
-    "AGENT_CHANGE_WAITS",
     "AGENT_EXECUTION_UNAVAILABLE",
     "AGENT_ONLY_READS",
     "AGENT_THREAD_TURN_LIMIT",
@@ -5190,7 +4729,6 @@
       "contractVersion",
       "coverage",
       "gaps",
-      "grants",
       "observedAt",
       "playbookAcknowledgment",
       "project",

@@ -23,12 +23,12 @@ export function agentThreadGuardRows(tx: DbExecutor) {
       return !!row;
     },
     async debit(fence: TaskUseFence, task: { id: string; workspaceId: string; projectId: string }, conversationId: string,
-      messageId: string, runtime: AuthenticatedAgentRuntime, command: { clientCommandId: string; grantId: string }) {
+      messageId: string, runtime: AuthenticatedAgentRuntime, command: { clientCommandId: string }) {
       if (!fence.ids.includes(task.id) || !fence.projectIds.includes(task.projectId)) throw new Error('Native turn is outside the retained task fence');
       await tx.execute(sql`INSERT INTO agent_thread_guard_events(workspace_id, project_id, task_id, conversation_id,
-        message_id, kind, turn_count, author_agent_id, connection_id, client_command_id, runtime_session_id, grant_id, transaction_id)
+        message_id, kind, turn_count, author_agent_id, connection_id, client_command_id, runtime_session_id, transaction_id)
         VALUES(${task.workspaceId},${task.projectId},${task.id},${conversationId},${messageId},'agent_message',0,
-          ${runtime.agentId},${runtime.connectionId},${command.clientCommandId},${runtime.id},${command.grantId},txid_current())`);
+          ${runtime.agentId},${runtime.connectionId},${command.clientCommandId},${runtime.id},txid_current())`);
     },
   };
 }

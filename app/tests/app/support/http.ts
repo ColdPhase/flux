@@ -31,6 +31,13 @@ export class Browser {
   }
 
   async request(method: string, path: string, options: RequestOptions = {}): Promise<ClientResponse> {
+    // Standing grants are gone (#859) and so are their routes. The tests still written around a grant (cowork admission, claims, requests)
+    // set one up through this route: it answers like the old API did, with a stub, and checks nothing. A test of what a grant refused is deleted.
+    if (/\/api\/v1\/agent-connections\/[^/]+\/action-grants/.test(path)) {
+      const status = method === 'POST' ? 201 : method === 'DELETE' ? 204 : 200;
+      const json = method === 'POST' ? { id: crypto.randomUUID(), used: 0, revokedAt: null } : null;
+      return { status, headers: new Headers(), setCookies: [], json, text: json ? JSON.stringify(json) : '' };
+    }
     const headers: Record<string, string> = { ...options.headers };
     const origin = options.origin === undefined ? this.defaultOrigin : options.origin;
     if (origin !== null) headers.origin = origin;

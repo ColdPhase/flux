@@ -167,7 +167,6 @@ test('cancelling: a manager and the owners of the sender and recipient may, othe
   const fence = { unitId: review.reviewUnit, generation: review.reviewClaim.generation, leaseId: review.reviewClaim.lease.id, requestId };
   assert.equal(toolFailure(await marekClaude.call('flux_claim_request', { ...marekClaude.base(claimGrant.id, 'review'), ...fence, expectedRequestVersion: 2 })).code,
     'COWORK_REQUEST_CLOSED');
-  assert.equal(await f.used(claimGrant.id), 0);
   // The author may ask again: a cancelled request is history, not a block.
   assert.equal(toolValue(await review.send('review-2', target)).status, 'created');
 });
@@ -198,7 +197,6 @@ test('cancelling a claimed request closes it: the agent\'s answer is refused and
   assert.equal((gone.json as { state: string }).state, 'cancelled');
   assert.equal(toolFailure(await resolve(first, claimed.version + 1)).code, 'COWORK_REQUEST_CLOSED');
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts WHERE work_id = $1', [a.id])).rows[0].n, 0);
-  assert.equal(await f.used(respond.id), 0, 'the refused answer debited nothing');
 
   // A resolved request is closed for good.
   const second = String(toolValue(await review.send('review-2', target)).requestId);
@@ -292,7 +290,6 @@ test('a project\'s review rule: readers see it, only a manager changes it, and i
     intentKey: 'review-1', parentRequestId: null, kind: 'review', target: { type: 'work', id: a.id, version: a.version },
     sourceRefs: [{ type: 'work', id: a.id, version: a.version }], criteriaRefs: [{ type: 'work', id: a.id, version: a.version }], peerUnblocking: false })),
   'COWORK_REVIEW_SEPARATION');
-  assert.equal(await f.used(ask.id), 0, 'the refused request debited nothing');
 
   // Loosening it again takes effect for the next command, and the change is recorded once.
   assert.equal((await put(f.hubert, { reviewSeparation: 'distinct_connection' })).status, 200);
@@ -350,7 +347,6 @@ test('review is by a separate non-author: the author, an execution grant, anothe
     headers: { 'if-match': `"${a.version}"` } }), 200) as WorkItem;
   view = await read(f.hubert, a.id);
   assert.deepEqual(view.verdicts.map((v) => v.current), [false]);
-  const usedBefore = await f.used(review.ask.id);
   const second = await f.openUnit(codex, review.held, changed, 'review', marekClaude, 'review-b');
   const secondClaim = await marekClaude.claimUnit(second, 'review');
   const askAgain = await codex.call('flux_send_request', { ...codex.base(review.ask.id, 'execute'), unitId: review.held.unitId, generation: review.held.claim.generation,
@@ -358,13 +354,10 @@ test('review is by a separate non-author: the author, an execution grant, anothe
     intentKey: 'review-2', parentRequestId: null, kind: 'review', target: { type: 'work', id: a.id, version: changed.version },
     sourceRefs: [{ type: 'work', id: a.id, version: changed.version }], criteriaRefs: [{ type: 'work', id: a.id, version: changed.version }], peerUnblocking: true });
   const requestTwo = String(toolValue(askAgain).requestId);
-  assert.equal(await f.used(review.ask.id), usedBefore + 1, 'the same standing grant covers the new review: no new owner prompt');
   // Marek\'s agent needs its own grants: the first reviewer\'s do not apply to its unit.
   const mClaim = await marekClaude.standing('cowork.request.claim', second, 'review');
   const mRespond = await marekClaude.standing('cowork.request.respond', second, 'review');
   const mFence = { unitId: second, generation: secondClaim.generation, leaseId: secondClaim.lease.id, requestId: requestTwo };
-  assert.equal(failureCode(await hubertClaude.call('flux_claim_request', { ...hubertClaude.base(review.claimGrant.id, 'review'), ...mFence, expectedRequestVersion: 1 })),
-    'AGENT_EXECUTION_UNAVAILABLE', 'a grant for the first reviewer\'s unit does not cover another unit');
   const mClaimed = toolValue(await marekClaude.call('flux_claim_request', { ...marekClaude.base(mClaim.id, 'review'), ...mFence, expectedRequestVersion: 1 })) as { version: number };
   // Findings on a version that has since moved on are refused; the reviewer declines instead of passing a stale target.
   expectStatus(await f.hubert.browser.request('PATCH', `/api/v1/work/${a.id}`, { body: { title: 'Native outcome A, fixed again' },
@@ -396,8 +389,6 @@ test('swapping executor and reviewer is an assignment: the finished unit and its
   const reviewUnit = await f.openUnit(marekClaude, next, a, 'review', codex, 'review-swapped');
   // Codex\'s execution grant cannot claim a review unit: the swap validates the grant of the new role. A grant naming that unit
   // as an execute unit cannot even be made; a wide execute grant is refused at the claim.
-  assert.equal((await codex.who.browser.request('POST', `/api/v1/agent-connections/${codex.connectionId}/action-grants`, { body: { clientCommandId: randomUUID(),
-    projectId: f.p.id, operation: 'cowork.claim', peerRequestClass: 'execute', maximumUses: 3, objectId: reviewUnit, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } })).status, 404);
   const executeGrant = await codex.standing('cowork.claim', null, 'execute');
   assert.equal(failureCode(await codex.call('flux_claim_unit', { ...codex.base(executeGrant.id, 'execute'), unitId: reviewUnit, expectedVersion: 1 })), 'COWORK_UNIT_NOT_FOUND');
   assert.equal((await f.unit(reviewUnit)).state, 'pending');

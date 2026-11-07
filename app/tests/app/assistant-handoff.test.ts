@@ -57,13 +57,12 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.deepEqual(Object.keys(listed.inputSchema.properties).sort(), ['assignmentConnectionId', 'clientCommandId', 'expectedTaskVersion', 'parent', 'peerRequestClass', 'projectId', 'taskId', 'unitKey']);
     assert.equal(listed.inputSchema.additionalProperties, false);
     assert.ok(!('runtimeSessionId' in listed.inputSchema.properties) && !('grantId' in listed.inputSchema.properties) && !('sources' in listed.inputSchema.properties));
-    assert.match(listed.description, /authority is this run: there is no bootstrap and no standing grant/);
+    assert.match(listed.description, /authority is this run: there is no bootstrap/);
     assert.ok(!listed.description.includes('flux_bootstrap'));
     // The same tool for an ordinary bearer keeps its public contract, bootstrap fields and description.
     const ordinary = ((await mcp(codex.accessToken, 1, 'tools/list')).message?.result as { tools: { name: string; description: string; inputSchema: { required?: string[]; properties: Record<string, unknown> } }[] }).tools
       .find((tool) => tool.name === 'flux_create_unit')!;
-    assert.ok(ordinary.inputSchema.required?.includes('runtimeSessionId') && ordinary.inputSchema.required.includes('grantId'));
-    assert.match(ordinary.description, /live cowork\.unit\.create grant/);
+    assert.ok(ordinary.inputSchema.required?.includes('runtimeSessionId') && !ordinary.inputSchema.required.includes('grantId'));
     assert.ok(!ordinary.description.includes('authority is this run'));
     await scene.complete(live.runId);
     // "What it may do" is Only read: no hand-off tool, and a forced call changes nothing (F-036 AG-3).
@@ -89,13 +88,9 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.equal(row!.receipt!.assistantConnectionId, assistantConnection);
     assert.equal(row!.receipt!.ownerUserId, scene.owner.id);
     assert.equal((row!.receipt!.undo as { plan: { kind: string; unitId: string } }).plan.unitId, unit!.id);
-    assert.equal(Number((await pool.query(`SELECT count(*)::int AS n FROM agent_standing_grants WHERE connection_id = ANY($1)`, [[assistantConnection, codex.connectionId]])).rows[0].n), 0, 'no standing grant was made or used');
-    // The recipient cannot start without its own grant and claim; with them it can, and the unit is then its own.
-    const unclaimed = await claim(codex, randomUUID(), unit!.id, 1);
-    assert.equal((unclaimed as { result?: { isError?: boolean } }).result?.isError, true);
+    // Opening the unit is not a claim: the recipient claims it itself, and the unit is then its own.
     assert.deepEqual((await units(task.id)).map((item) => [item.state, item.generation]), [['pending', 0]]);
-    const grant = await codex.grant('cowork.claim', 'execute', 5, unit!.id);
-    assert.equal(toolValue(await claim(codex, grant.id, unit!.id, 1)).state, 'claimed');
+    assert.equal(toolValue(await claim(codex, randomUUID(), unit!.id, 1)).state, 'claimed');
     // The message's change line names the hand-off, with where it stands, in the owner's words for the agent.
     await scene.complete(live.runId);
     const listed = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items;
@@ -298,7 +293,6 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.equal(refused.change.state, 'applied');
     const after = (await units(late.id))[0]!;
     assert.deepEqual([after.state, after.generation, after.version, after.lease_id], [before.state, before.generation, before.version, claimed.lease.id]);
-    assert.equal(Number((await pool.query(`SELECT used FROM agent_standing_grants WHERE id = $1`, [grant.id])).rows[0].used), 1, 'the recipient\'s grant and its use are untouched');
     // As a whole message: one that cannot be taken back is reported with the rest.
     const all = expectStatus(await scene.owner.browser.request('POST', assistantRunChangesActionPath(live.runId, 'undo'), { body: {} }), 200) as AssistantRunUndone;
     assert.equal(all.undone, 0);
@@ -428,7 +422,6 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     // Its own root with its own grant still works, as before.
     const own = toolValue(await codex.tool('flux_create_unit', { ...base, clientCommandId: randomUUID(), assignmentConnectionId: codex.connectionId })) as { status: string };
     assert.equal(own.status, 'created');
-    assert.equal(Number((await pool.query(`SELECT used FROM agent_standing_grants WHERE id = $1`, [grant.id])).rows[0].used), 1, 'the external creator still spends its own grant');
   });
 
   test('AST-3.2/AST-5.4: owner Apply and the run share the use cases; another owner, an admin or a stranger cannot approve a hand-off', async () => {

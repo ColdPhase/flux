@@ -47,8 +47,6 @@ test('ordinary owner can save all Off and empty projects, read them back, and re
   assert.equal(row.version, 3);
   assert.deepEqual(row.enabled_capability_ids, restored.policy.enabledCapabilityIds);
   assert.deepEqual(row.enabled_entry_ids, restored.policy.enabledEntryIds);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_standing_grants WHERE connection_id=$1', [f.connection.id])).rows[0].n, 0,
-    'saving switches never creates standing authority');
 });
 
 test('another owner or workspace administrator cannot manage this personal policy and signed-out access is refused', async () => {

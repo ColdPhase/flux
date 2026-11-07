@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import type { ProjectAgents } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
-import { expect, toolValue } from './support/mcp.js';
+import { expect } from './support/mcp.js';
 import { actionScene } from './support/mcp-actions.js';
 import { addMember, expectStatus, grant, removeFromSpace, person } from './support/people.js';
 
@@ -55,29 +55,6 @@ test('project readers see every current connection with owner, client and truthf
   assert.equal(denied.status, 404);
   assert.equal((denied.json as { code: string }).code, 'PROJECT_NOT_FOUND');
   assert.equal((await outsider.browser.request('GET', '/api/v1/projects/not-a-uuid/agents')).status, 404);
-});
-
-test('a completed native action becomes the last activity; closing the session leaves the connection offline', async () => {
-  const f = await actionScene(pool);
-  const create = await f.grant('work.create', 'plan');
-  const created = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
-    grantId: create.id, clientCommandId: randomUUID(), peerRequestClass: 'plan', sources: [f.source],
-    task: { title: 'Measure the remote lamp', criteria: ['Both readings are recorded'] } }));
-  assert.equal(created.replayed, false);
-  assert.ok(created.workId);
-  const after = expectStatus(await f.owner.request('GET', `/api/v1/projects/${f.projectId}/agents`), 200) as ProjectAgents;
-  const activity = after.connections.find((item) => item.id === f.connectionId)!.lastActivity;
-  assert.equal(activity?.operation, 'work.create');
-  assert.ok(activity && Math.abs(Date.parse(activity.at) - Date.now()) < 60_000);
-  // CW-8: the recent list names the object the action made, for the reader's app to link.
-  const recent = after.connections.find((item) => item.id === f.connectionId)!.recentActivity;
-  assert.deepEqual(recent?.map((item) => [item.operation, item.object]), [['work.create', { kind: 'work', id: created.workId }]]);
-
-  await pool.query('UPDATE agent_runtime_sessions SET revoked_at=now() WHERE connection_id=$1', [f.connectionId]);
-  const closed = expectStatus(await f.owner.request('GET', `/api/v1/projects/${f.projectId}/agents`), 200) as ProjectAgents;
-  const offline = closed.connections.find((item) => item.id === f.connectionId)!;
-  assert.deepEqual({ state: offline.state, session: offline.session, operation: offline.lastActivity?.operation },
-    { state: 'offline', session: null, operation: 'work.create' });
 });
 
 test('a revoked connection or a revoked agent is not listed', async () => {

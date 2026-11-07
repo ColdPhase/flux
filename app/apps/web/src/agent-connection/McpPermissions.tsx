@@ -48,7 +48,7 @@ function describe(cause: unknown) {
   return 'Permissions could not be saved. Reload saved permissions before trying again.';
 }
 
-/** Ordinary owner session. Draft controls change no consent, project grant or action authority. */
+/** Ordinary owner session. Draft controls change no consent or action authority. */
 export function McpPermissions({ connection, projectNames }: { connection: AgentConnection; projectNames: Map<string, string> }) {
   const id = useId();
   const [settings, setSettings] = useState<McpPermissionSettings | null>(null);
@@ -157,7 +157,7 @@ export function McpPermissions({ connection, projectNames }: { connection: Agent
             const reason = !supported ? 'Requires a new connection with your consent' : !availabilityKnown ? 'Saved access needs refreshing'
               : !settings.policy.enabledCapabilityIds.includes(capability)
               ? 'Saved: Off' : partial ? 'Saved: some tools are off' : available ? 'Saved: available'
-                : group.title === 'Act' ? 'Saved: each action also needs a current grant and agent session' : 'Saved: check selected projects and related permissions';
+                : group.title === 'Act' ? 'Saved: each action also follows its “What it may do”' : 'Saved: check selected projects and related permissions';
             return <label className="mcp-permissions__row" key={capability}>
               <span><strong>{LABEL[capability] ?? 'Unavailable capability'}</strong><small>{reason}</small>
                 {availabilityKnown && prerequisites.length ? <small>Related tools also need: {prerequisites.map((required) => LABEL[required] ?? 'an unavailable permission').join(', ')}.</small> : null}</span>
@@ -167,7 +167,7 @@ export function McpPermissions({ connection, projectNames }: { connection: Agent
           })}
         </fieldset>
       </details>)}
-      <p className="mcp-permissions__note">Action switches work within the grants you already gave this agent. Flux checks current access and limits on each action.</p>
+      <p className="mcp-permissions__note">Action switches work within your own rights and this agent’s “What it may do”. Flux checks current access on each action.</p>
       <div className="mcp-permissions__actions">
         <Button type="submit" variant="primary" busy={busy} disabled={!dirty || needsReload}>Save permissions</Button>
         <Button disabled={!dirty || busy || needsReload} onClick={() => { setDraft(inputOf(settings.policy)); setStatus('Showing saved permissions'); }}>Discard changes</Button>

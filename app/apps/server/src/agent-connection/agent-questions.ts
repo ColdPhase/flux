@@ -8,7 +8,7 @@ import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, requires, useDomainErrors } from '../http/commands.js';
 import { conversationStore } from '../conversation/store.js';
 import { transactionEventSession } from '../work/transaction-events.js';
-import { actionAnnotations as annotations, actionId as id, actionInput, nativeActionExecutor } from './action-execution.js';
+import { actionAnnotations as annotations, actionId as id, coordinationExecutor, coordinationInput } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
@@ -68,20 +68,20 @@ export async function agentQuestionRoutes(app: FastifyInstance, { db, sessions }
   }));
 }
 
-const execution = actionInput(['execute', 'plan']);
+const execution = coordinationInput();
 
 /**
  * `flux_ask_question` (#347 S14): a question with two to four ready answers, posted as the agent's message in a project
- * conversation under the existing `conversation.reply` grant. Only the asked person's answer ends it.
+ * conversation. It is the agent's own question, not a change to a person's things, so it does not wait. Only the asked person's answer ends it.
  */
 export function registerAgentQuestionActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
-  const execute = nativeActionExecutor(db, claims);
+  const execute = coordinationExecutor(db, claims);
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
   tools.forScope('flux.action.execute', { operation: 'conversation.reply', classes: AGENT_OPERATION_CLASSES['conversation.reply'] }).registerTool('flux_ask_question', {
-    title: 'Ask a person a question with ready answers under a standing grant',
+    title: 'Ask a person a question with ready answers',
     description: 'Ask one person in an existing project conversation (including a task\'s discussion thread) a question and offer two to four '
-      + 'ready answers; they answer with one tap or in their own words, and their answer is the next message of the thread. Needs a live '
-      + 'conversation.reply grant and the runtime from flux_bootstrap. The question is your message; the person gets a question notification. '
+      + 'ready answers; they answer with one tap or in their own words, and their answer is the next message of the thread. Needs the '
+      + 'runtime from flux_bootstrap. The question is your message; the person gets a question notification. '
       + 'An answer never grants you anything. Ask only what you truly cannot decide, and carry on with other authorized work meanwhile.',
     inputSchema: z.strictObject({ ...execution,
       conversationId: id.describe('A conversation of this project, from flux_list_conversations or a task.'),

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { Agent, AgentStandingGrant, WorkItem } from '@flux/contracts';
+import type { Agent, WorkItem } from '@flux/contracts';
 import { pool } from './db.js';
 import { agentConnection } from './mcp-actions.js';
 import { toolValue } from './mcp.js';
@@ -44,13 +44,11 @@ export async function coworkScene() {
   const connect = async (who: Person, name: string) => {
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name, owner: 'self' } }), 201) as Agent;
     const connected = await agentConnection(pool, who.browser, String(agent.id), [p.id], ACTION_SCOPES);
-    const standing = async (operation: string, objectId: string | null, role: Role, maximumUses = 10) =>
-      expectStatus(await who.browser.request('POST', `/api/v1/agent-connections/${connected.connectionId}/action-grants`, { body: {
-        clientCommandId: randomUUID(), projectId: p.id, operation, peerRequestClass: role, maximumUses, ...(objectId ? { objectId } : {}),
-        expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as AgentStandingGrant;
+    // No standing grants (#859): the stub keeps the call sites that name one; the tool helpers drop its id.
+    const standing = async (...named: [operation: string, objectId: string | null, role: Role, maximumUses?: number]) => { void named; return { id: randomUUID() }; };
     /** The command fields of one runtime session of this connection. */
     const sessionOf = (runtimeSessionId: string) => {
-      const base = (grantId: string, role: Role, clientCommandId: string = randomUUID()) => ({ projectId: p.id, runtimeSessionId, grantId,
+      const base = (_grantId: string, role: Role, clientCommandId: string = randomUUID()) => ({ projectId: p.id, runtimeSessionId,
         clientCommandId, peerRequestClass: role });
       const claimUnit = async (unitId: string, role: Role, expectedVersion = 1) => {
         const g = await standing('cowork.claim', unitId, role);
@@ -71,7 +69,6 @@ export async function coworkScene() {
     { body: { title } }), 201) as WorkItem;
   const material = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Review findings', body: 'Two findings, both fixed' } }), 201) as { materialId: string };
-  const used = async (grantId: string) => Number((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [grantId])).rows[0]?.used ?? -1);
   const unit = async (unitId: string) => (await pool.query(
     'SELECT state, generation, version, assignment_connection_id AS assignee, transferred_from_connection_id AS "from", lease_id AS lease FROM cowork_units WHERE id=$1',
     [unitId])).rows[0] as { state: string; generation: number; version: number; assignee: string; from: string | null; lease: string | null };
@@ -113,7 +110,7 @@ export async function coworkScene() {
     return { held, reviewUnit, reviewClaim, ask, send, sendArgs };
   }
 
-  return { hubert, marek, ada, vera, olga, ws, p, removeAccess, demote, connect, task, material, used, unit, request, take, openUnit, startReview };
+  return { hubert, marek, ada, vera, olga, ws, p, removeAccess, demote, connect, task, material, unit, request, take, openUnit, startReview };
 }
 export type CoworkScene = Awaited<ReturnType<typeof coworkScene>>;
 export type CoworkConn = Awaited<ReturnType<CoworkScene['connect']>>;

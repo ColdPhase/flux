@@ -170,7 +170,7 @@ test('the real OAuth/MCP standing-grant doc adapter obeys the same dirty fence b
       grantId: standing.id, clientCommandId: randomUUID(), peerRequestClass: 'plan', sources: [], docId: doc.id, expectedVersion: 1, changes });
     assert.equal(toolFailure(result).code, 'DOC_LIVE_WORKING_COPY_CHANGED');
   }
-  assert.equal(await f.used(standing.id), 0); assert.deepEqual(await unchangedState(doc.id), before);
+ assert.deepEqual(await unchangedState(doc.id), before);
 });
 
 test('a live Save first use latches monotonically after the mention is removed, so task Undo stays refused', async () => {

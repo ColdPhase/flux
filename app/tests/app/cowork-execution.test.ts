@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import { eq } from 'drizzle-orm';
-import type { Agent, AgentConnection, AgentExecutionCommand, AgentStandingGrant, WorkItem } from '@flux/contracts';
+import type { Agent, AgentConnection, AgentExecutionCommand, WorkItem } from '@flux/contracts';
 import { coworkUnitRows, createDatabase, schema } from '@flux/db';
 import { DomainError } from '@flux/core';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
@@ -40,9 +40,9 @@ async function fixture(maximumUses = 1, seconds = 30) {
   const grant = async (operation: 'claim' | 'renew' | 'release' = 'claim', objectId: string | null = unitId, role: 'execute' | 'review' | 'plan' = 'execute') =>
     expectStatus(await owner.browser.request('POST', `/api/v1/agent-connections/${connection.id}/action-grants`,
       { body: { clientCommandId: randomUUID(), projectId: p.id, operation: `cowork.${operation}`, ...(objectId ? { objectId } : {}),
-        peerRequestClass: role, maximumUses, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as AgentStandingGrant;
+        peerRequestClass: role, maximumUses, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as { id: string };
   const ceiling = await grant();
-  const command: AgentExecutionCommand = { runtimeSessionId: runtime.id, grantId: ceiling.id, clientCommandId: randomUUID(),
+  const command: AgentExecutionCommand = { runtimeSessionId: runtime.id, clientCommandId: randomUUID(),
     projectId: p.id, operation: 'cowork.claim', peerRequestClass: 'execute', audience: { kind: 'project', projectId: p.id },
     objectId: unitId, sources: [{ materialId: source.materialId, version: 1 }], payload: { expectedVersion: 1 } };
   const preparations: { observation: boolean }[] = [];
@@ -93,12 +93,10 @@ test('actual concurrent claim commands share one lease/effect/ledger and exhaust
   await new Promise((resolve) => setTimeout(resolve, Math.max(0, a.lease!.expiresAt.getTime() - Date.now()) + 25));
   assert.deepEqual(await f.run(), a, 'historical expiry is observed; replay cannot renew/reacquire');
   assert.equal((await f.state()).version, 2); assert.equal((await f.state()).generation, 1);
-  assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [f.ceiling.id])).rows[0].used, 1);
   const receipts = await pool.query('SELECT * FROM agent_command_receipts WHERE connection_id=$1', [f.connection.id]);
   assert.equal(receipts.rows.length, 1); assert.equal(receipts.rows[0].runtime_session_id, f.runtime.id);
   assert.equal(receipts.rows[0].postconditions[0].leaseExpiresAt, a.lease!.expiresAt.toISOString());
   assert.deepEqual(f.preparations.map((item) => item.observation).sort(), [false, true, true]);
-  await rejects(f.run({ ...f.command, clientCommandId: randomUUID() }), 'AGENT_EXECUTION_UNAVAILABLE');
 });
 
 test('changed command payload/session/operation conflicts without changing the original claim', async () => {
@@ -106,16 +104,14 @@ test('changed command payload/session/operation conflicts without changing the o
   await rejects(f.run({ ...f.command, payload: { expectedVersion: 2 } }), 'IDEMPOTENCY_CONFLICT');
   const other = await db.transaction((tx) => agentRuntimeInTransaction(tx, f.claims, randomUUID()));
   await rejects(f.run({ ...f.command, runtimeSessionId: other.runtime.id }), 'IDEMPOTENCY_CONFLICT');
-  const grant = await f.grant('renew');
-  await rejects(f.run({ ...f.command, grantId: grant.id, operation: 'cowork.renew',
+  await rejects(f.run({ ...f.command, operation: 'cowork.renew',
     payload: { expectedVersion: first.version, generation: first.generation, leaseId: first.lease!.id } }), 'IDEMPOTENCY_CONFLICT');
   assert.equal((await f.state()).version, 2); assert.equal((await f.state()).leaseId, first.lease!.id);
 });
 
 test('renewal and checkpoint-backed release use one shared ledger and make earlier receipts visibly stale', async () => {
   const f = await fixture(); const first = await f.run();
-  const renewGrant = await f.grant('renew');
-  const renew = { ...f.command, grantId: renewGrant.id, clientCommandId: randomUUID(), operation: 'cowork.renew' as const,
+  const renew = { ...f.command, clientCommandId: randomUUID(), operation: 'cowork.renew' as const,
     payload: { expectedVersion: first.version, generation: first.generation, leaseId: first.lease!.id } };
   const renewed = await f.run(renew); assert.equal(renewed.lease!.id, first.lease!.id); assert.equal(renewed.generation, first.generation);
   assert.deepEqual(await f.run(renew), renewed);
@@ -126,8 +122,7 @@ test('renewal and checkpoint-backed release use one shared ledger and make earli
     assert.equal(await locked!.insertCheckpoint({ id: checkpointId, generation: renewed.generation, leaseId: renewed.lease!.id,
       runtimeSessionId: f.runtime.id, progress: { sources: f.command.sources, nextAction: 'Continue native task' } }), checkpointId);
   });
-  const releaseGrant = await f.grant('release');
-  const release = { ...f.command, grantId: releaseGrant.id, clientCommandId: randomUUID(), operation: 'cowork.release' as const,
+  const release = { ...f.command, clientCommandId: randomUUID(), operation: 'cowork.release' as const,
     payload: { expectedVersion: renewed.version, generation: renewed.generation, leaseId: renewed.lease!.id, checkpointId } };
   await rejects(f.run({ ...release, sources: [] }), 'COWORK_CHECKPOINT_SOURCES_REQUIRED');
   assert.equal((await f.state()).state, 'claimed', 'failed source coverage rolls back the release');
@@ -141,7 +136,6 @@ test('outer failure rolls back the actual claim, use debit and receipt as one tr
   const f = await fixture();
   await assert.rejects(f.run(f.command, { failAfter: true }), /Injected failure after claim\/debit\/receipt/);
   const unit = await f.state(); assert.equal(unit.state, 'pending'); assert.equal(unit.version, 1); assert.equal(unit.generation, 0); assert.equal(unit.leaseId, null);
-  assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [f.ceiling.id])).rows[0].used, 0);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_command_receipts WHERE connection_id=$1', [f.connection.id])).rows[0].n, 0);
   await f.run();
 });
@@ -154,8 +148,8 @@ test('current grant revoke, source edit and wrong actual client deny successful 
     { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'Changed current source' } }), 200);
   await rejects(f.run(), 'SOURCE_VERSION_CONFLICT');
   const separate = await fixture(); await separate.run();
-  expectStatus(await separate.owner.browser.request('DELETE', `/api/v1/agent-connections/${separate.connection.id}/action-grants/${separate.ceiling.id}`), 204);
-  await rejects(separate.run(), 'AGENT_EXECUTION_UNAVAILABLE');
+  await pool.query('UPDATE agent_connections SET revoked_at = now() WHERE id = $1', [separate.connection.id]);
+  await rejects(separate.run(), 'CONNECTION_NOT_FOUND');
 });
 
 test('runtime expiry during an actual connection-slot lock wait rolls back the late claim and ledger', async () => {
@@ -174,17 +168,11 @@ test('runtime expiry during an actual connection-slot lock wait rolls back the l
   finally { release.resolve(); await holder; }
   await rejects(waiter, 'AGENT_EXECUTION_UNAVAILABLE');
   assert.equal((await f.state()).state, 'pending');
-  assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [f.ceiling.id])).rows[0].used, 0);
 });
 
 test('exact actual role and strict payload fields fail closed before any claim receipt', async () => {
   const f = await fixture();
-  expectStatus(await f.owner.browser.request('POST', `/api/v1/agent-connections/${f.connection.id}/action-grants`,
-    { body: { clientCommandId: randomUUID(), projectId: f.p.id, operation: 'cowork.claim', objectId: f.unitId,
-      peerRequestClass: 'review', maximumUses: 1, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 404,
-  'an exact target cannot receive the wrong role grant');
-  const review = await f.grant('claim', null, 'review');
-  await rejects(f.run({ ...f.command, grantId: review.id, peerRequestClass: 'review' }), 'COWORK_UNIT_NOT_FOUND');
+  await rejects(f.run({ ...f.command, peerRequestClass: 'review' }), 'COWORK_UNIT_NOT_FOUND');
   await rejects(f.run({ ...f.command, payload: { expectedVersion: 1, prompt: 'invented authority' } }), 'INVALID_INPUT');
   await assert.rejects(f.run(f.command, { policy: { ...f.policy, prepareTaskLocks: undefined } as unknown as CoWorkClaimPolicy }), /providers are required/);
   assert.equal((await f.state()).state, 'pending');
@@ -200,10 +188,8 @@ test('a current authorized assignee can recover a historical foreign-connection 
   await db.update(schema.coworkUnits).set({ state: 'paused', generation: 1, version: 2, checkpointId }).where(eq(schema.coworkUnits.id, f.unitId));
   const recovered = await f.run({ ...f.command, payload: { expectedVersion: 2 } });
   assert.equal(recovered.checkpointId, checkpointId); assert.equal(recovered.generation, 2);
-  const grant = await f.grant('release');
-  await rejects(f.run({ ...f.command, grantId: grant.id, clientCommandId: randomUUID(), operation: 'cowork.release',
+  await rejects(f.run({ ...f.command, clientCommandId: randomUUID(), operation: 'cowork.release',
     payload: { expectedVersion: recovered.version, generation: recovered.generation, leaseId: recovered.lease!.id, checkpointId } }),
   'COWORK_CHECKPOINT_STALE');
   assert.equal((await f.state()).state, 'claimed');
-  assert.equal((await pool.query('SELECT used FROM agent_standing_grants WHERE id=$1', [grant.id])).rows[0].used, 0);
 });

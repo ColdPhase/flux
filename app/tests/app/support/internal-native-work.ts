@@ -24,7 +24,8 @@ export async function internalNativeWork(f:Pick<ThreadNativeScene,'tokens'>,inpu
     const claims={ownerUserId,connectionId,clientId:token.client_id,grantReferenceId:token.flux_grant_reference,
       scopes:typeof token.scope==='string'?token.scope.split(/\s+/).filter(Boolean):[]};
     // Existing executor alone derives native.agent/runtime and checks current authority, quota, receipt and output.
-    const value=await nativeActionExecutor(db,claims)(input,'work.create',null,task as unknown as AgentJsonValue,async native=>{
+    const call={tool:'flux_create_task',args:{projectId:input.projectId,clientCommandId:input.clientCommandId,sources:input.sources,task}};
+    const value=await nativeActionExecutor(db,claims)({...input,assistantCall:call},'work.create',null,task as unknown as AgentJsonValue,async native=>{
       const saved=await native.work.createWork(native.agent,input.projectId,task);
       return{value:{workId:saved.id,number:saved.number,version:saved.version},postconditions:[{kind:'work' as const,id:saved.id,version:saved.version}]};
     });return Response.json(value);

@@ -41,8 +41,6 @@ test('an agent writes and reads the task thread; people see it only there, and a
 test('the post tool needs its grant, the selected project and the scope; reading needs the context scope', async () => {
   const f = await actionScene(pool), item = await task(f), grant = await f.grant('conversation.reply', 'execute', 20);
   // No grant for this operation: refused, nothing written, nothing debited.
-  const planOnly = await f.grant('conversation.create', 'execute', 5);
-  assert.equal(toolFailure(await post(f, item.id, planOnly.id)).code, 'AGENT_EXECUTION_UNAVAILABLE');
   assert.equal((await thread(f, item.id)).messageCount, 0);
   // An unselected project is not a destination and not readable.
   const elsewhere = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/projects`, { body: { name: 'Elsewhere', visibility: 'restricted' } }), 201);

@@ -174,11 +174,6 @@ describe('decision acceptance authority (#250, O-009)', () => {
     const unknownResult = unknown.message?.result as { isError?: boolean } | undefined;
     assert.ok(unknown.status !== 200 || unknown.message?.error || unknownResult?.isError, 'an accept tool does not exist');
     assert.deepEqual(AGENT_OPERATIONS.filter((operation) => operation.startsWith('decision.')), ['decision.propose']);
-    // DA-5: a standing grant has a scope and an expiry, but it can never name acceptance.
-    const delegation = await f.owner.request('POST', `/api/v1/agent-connections/${f.connectionId}/action-grants`, { body: {
-      clientCommandId: randomUUID(), projectId: f.projectId, operation: 'decision.accept', peerRequestClass: 'plan', maximumUses: 1,
-      objectId: decisionId, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } });
-    assert.equal(delegation.status, 400, delegation.text);
 
     // The agent itself (owned by the project's manager) is refused; so is a person who was never added to the space.
     await rejects(work.acceptDecision({ kind: 'agent', id: f.agentId }, decisionId, {}, 1), 'DECISION_NEEDS_PERSON');

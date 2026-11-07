@@ -1,36 +1,37 @@
 import { z } from 'zod';
 import type { AgentExecutionCommand, AgentJsonValue, AgentOperation, AgentPostcondition, AuthenticatedAgentRuntime,
   ObjectRef } from '@flux/contracts';
-import { sketchRows, type DbExecutor, type Database, type Transaction } from '@flux/db';
-import { agentExecutionUseCases, DomainError, requestHash, type Principal } from '@flux/core';
+import { sketchRows, type Database, type Transaction } from '@flux/db';
+import { agentExecutionUseCases, requestHash, type Principal } from '@flux/core';
 import { nativeConversationsInEventSession } from '../conversation/store.js';
 import { nativeDocsInEventSession } from '../docs/adapters.js';
-import { nativeMapRoomExists, prepareNativeMap } from '../editing/native-map-journal.js';
-import { nativeCapacityRefusal, nativeSketchInEventSession } from '../sketches/adapters.js';
+import { nativeSketchInEventSession } from '../sketches/adapters.js';
 import { nativeWorkInEventSession } from '../work/adapters.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 import type { FluxMcpClaims } from './context.js';
 import { agentExecutionInTransaction } from './execution.js';
-import { alwaysWaits, assistantChangeExecutor, type AssistantCall } from './assistant-changes.js';
+import { assistantChangeExecutor, type AssistantCall } from './assistant-changes.js';
 
 export const actionId = z.uuid();
 export const actionVersion = z.int().min(1).max(2_147_483_647);
-/** The standing-grant execution fields every native action tool takes. */
-export const actionInput = <C extends readonly ['execute', ...('execute' | 'plan')[]]>(classes: C) => ({
+/** What every change tool of a person's things takes: the project, one UUID per intended effect and the exact material revisions it cites. */
+export const actionInput = () => ({
   projectId: actionId,
-  runtimeSessionId: actionId.describe('The runtime ID returned by flux_bootstrap for this client session.'),
-  grantId: actionId.describe('A live standing grant from flux_bootstrap for this exact operation, project, class and target.'),
   clientCommandId: actionId.describe('One UUID per intended effect; reuse it only to retry that same effect.'),
-  peerRequestClass: z.enum(classes).describe('The class of the standing grant being used.'),
   /** Exact current material revisions the action relies on; each must still be current when it commits. */
   sources: z.array(z.strictObject({ materialId: actionId, version: actionVersion })).max(50).default([]),
 });
+/** What a coordination command also names: the runtime of this client session from flux_bootstrap, which its receipt is bound to. */
+export const coordinationInput = () => ({
+  ...actionInput(),
+  runtimeSessionId: actionId.describe('The runtime ID returned by flux_bootstrap for this client session.'),
+});
 export const actionAnnotations = { readOnlyHint: false, destructiveHint: false, idempotentHint: true };
 
-export type ActionInput = { projectId: string; runtimeSessionId: string; grantId: string; clientCommandId: string;
-  peerRequestClass: 'execute' | 'plan'; sources: { materialId: string; version: number }[];
-  /** Set only by the run-private tool mapping (F-027 A3): the exact call an assistant run made. */
+export type ActionInput = { projectId: string; clientCommandId: string; sources: { materialId: string; version: number }[];
+  /** Set by the change tool's wrapper (tool-registry): the exact call, kept redacted when the change waits for its owner. */
   assistantCall?: AssistantCall };
+export type CoordinationActionInput = ActionInput & { runtimeSessionId: string };
 export interface NativeActions {
   work: ReturnType<typeof nativeWorkInEventSession>;
   maps: ReturnType<typeof nativeSketchInEventSession>;
@@ -48,34 +49,37 @@ export interface NativeActions {
   mapCheckpoint(mapId: string): Promise<Extract<AgentPostcondition, { kind: 'map_checkpoint' }>>;
 }
 export type Produced<T> = { value: T; postconditions: AgentPostcondition[] };
+type Execute<I> = <T extends { [key: string]: AgentJsonValue }>(input: I, operation: AgentOperation, objectId: string | null,
+  payload: AgentJsonValue, effect: (native: NativeActions) => Promise<Produced<T>>) => Promise<T & { replayed: boolean }>;
 
 /** The authorized material revisions become the object's sources; nothing else is linked implicitly. */
 export const materialSources = (input: ActionInput): { sources?: ObjectRef[] } => input.sources.length
   ? { sources: input.sources.map((source) => ({ type: 'material' as const, id: source.materialId, version: source.version })) } : {};
 
 /**
- * One caller-owned transaction per native action: the #152 receipt port authorizes the exact runtime,
- * grant, target and source versions; the canonical native command changes the project as the agent;
- * the produced post-state is checked, the grant debited and the receipt stored; only then is the single
- * final event batch flushed. A retry with the same command ID returns the stored outcome without a
- * second effect, debit or event.
+ * The effect path of a change to a person's things, for the assistant's runs and for a local client alike (F-036 AG-3, mcp-cowork
+ * LC-2): the owner's rights now, "What it may do", and the change log in the same transaction. It applies the change, makes it wait
+ * for the owner's OK (deleting, other people's things, a task for someone else, everything under Ask me first), or refuses it. The
+ * result of a waiting change is plain words, which the tool wrapper hands back as text.
  */
-export function nativeActionExecutor(db: Database, claims: FluxMcpClaims, privateTarget?: 'task-agent-thread/v1') {
-  // An assistant run (or the owner's Apply of its saved change) uses the run's authority and the change log (F-027 A3).
-  if (claims.run || claims.approval) return assistantChangeExecutor(db, claims) as unknown as ReturnType<typeof standingExecutor>;
-  return standingExecutor(db, claims, privateTarget);
+export function nativeActionExecutor(db: Database, claims: FluxMcpClaims): Execute<ActionInput> {
+  return assistantChangeExecutor(db, claims) as unknown as Execute<ActionInput>;
 }
 
-function standingExecutor(db: Database, claims: FluxMcpClaims, privateTarget?: 'task-agent-thread/v1') {
-  return async function execute<T extends { [key: string]: AgentJsonValue }>(input: ActionInput, operation: AgentOperation,
+/**
+ * The effect path of coordination (a question, a task-thread post, a pull request link, undoing one's own unused task): the agent's
+ * own words or claim on a task, not a change to anyone's things, so nothing waits. One caller-owned transaction: the owner's rights
+ * and the runtime are checked, the canonical command runs as the agent, its produced post-state is checked and the receipt stored;
+ * only then is the single final event batch flushed. A retry with the same command ID returns the stored outcome without a second
+ * effect or event.
+ */
+export function coordinationExecutor(db: Database, claims: FluxMcpClaims, privateTarget?: 'task-agent-thread/v1'): Execute<CoordinationActionInput> {
+  return async function execute<T extends { [key: string]: AgentJsonValue }>(input: CoordinationActionInput, operation: AgentOperation,
     objectId: string | null, payload: AgentJsonValue, effect: (native: NativeActions) => Promise<Produced<T>>) {
-    const command: AgentExecutionCommand = { runtimeSessionId: input.runtimeSessionId, grantId: input.grantId,
-      clientCommandId: input.clientCommandId, projectId: input.projectId, operation, peerRequestClass: input.peerRequestClass,
-      audience: { kind: 'project', projectId: input.projectId }, objectId, sources: input.sources, payload };
-    // Only a map with an established live room takes the live preparation; an ordinary map is not charged or queued.
-    const live=operation.startsWith('map.')&&objectId!==null&&await nativeMapRoomExists(db as DbExecutor,objectId);
-    const releases=new Set<()=>void>();if(live)releases.add(await prepareNativeMap({claims,command}).catch((error:unknown)=>{throw nativeCapacityRefusal(error);}));
-    try {return await db.transaction(async (tx) => {
+    const command: AgentExecutionCommand = { runtimeSessionId: input.runtimeSessionId, clientCommandId: input.clientCommandId,
+      projectId: input.projectId, operation, peerRequestClass: 'execute', audience: { kind: 'project', projectId: input.projectId },
+      objectId, sources: input.sources, payload };
+    return db.transaction(async (tx) => {
       const session = transactionEventSession(tx);
       let replayed = false;
       const value = await agentExecutionUseCases(agentExecutionInTransaction(tx, claims, {}, privateTarget)).run(command, async (scope) => {
@@ -83,10 +87,8 @@ function standingExecutor(db: Database, claims: FluxMcpClaims, privateTarget?: '
           replayed = true;
           return { value: scope.replay.value, postconditions: scope.replay.postconditions };
         }
-        // Deleting and other people's things always wait for the owner (F-036 AG-3), and a local client has nowhere to wait yet: refused, not made.
-        if (await alwaysWaits(tx, operation, objectId, (payload ?? {}) as Record<string, unknown>, claims.ownerUserId))
-          throw new DomainError(403, 'AGENT_CHANGE_WAITS', 'Deleting and other people\'s things wait for your owner\'s OK, and this client cannot wait yet: nothing was changed');
-        return effect({ work: nativeWorkInEventSession(tx, session), maps: nativeSketchInEventSession(tx, session,{prepared:live,commandId:input.clientCommandId,operation:`native-agent:${operation}`,fingerprint:requestHash(command),retainUntil:release=>releases.add(release)}),
+        return effect({ work: nativeWorkInEventSession(tx, session),
+          maps: nativeSketchInEventSession(tx, session, { prepared: false, commandId: input.clientCommandId, operation: `native-agent:${operation}`, fingerprint: requestHash(command), retainUntil: () => undefined }),
           docs: nativeDocsInEventSession(tx, session), conversations: nativeConversationsInEventSession(tx, session),
           transaction: tx, events: session, agent: { kind: 'agent', id: scope.context.agentId }, runtime: scope.context,
           async mapCheckpoint(mapId) {
@@ -97,6 +99,6 @@ function standingExecutor(db: Database, claims: FluxMcpClaims, privateTarget?: '
       });
       await session.flushEvents();
       return { ...(value as T), replayed };
-    });} finally {for(const release of releases)release();}
+    });
   };
 }

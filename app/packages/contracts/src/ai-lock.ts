@@ -37,10 +37,6 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   // External agent connections and consent (F-016, #52/#152).
   'POST /api/v1/agent-connections': exempt(PERSON),
   'GET /api/v1/agent-connections': exempt('The owner\'s own connections, so they can see and remove them'),
-  'POST /api/v1/agent-connections/:connectionId/action-grants': exempt(PERSON),
-  'GET /api/v1/agent-connections/:connectionId/action-grants': exempt('The owner\'s own grants, so they can see and remove them'),
-  'DELETE /api/v1/agent-connections/:connectionId/action-grants/:grantId': exempt(REDUCES),
-  'PATCH /api/v1/agent-connections/:connectionId/action-grants/:grantId': exempt(PERSON),
   // "What it may do" (F-036 #855): a setting of the agent itself, which belongs to a person.
   'PATCH /api/v1/agent-connections/:connectionId': exempt(PERSON),
   'DELETE /api/v1/agent-connections/:connectionId': exempt(REDUCES),
