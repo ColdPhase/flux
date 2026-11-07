@@ -38,8 +38,9 @@ export const previewDoc = (projectId: string, body: string, signal?: AbortSignal
   request<DocPreview>(projectDocPreviewPath(projectId), { method: 'POST', body: { body }, signal });
 export const createDoc = (projectId: string, command: CreateDocCommand, idempotencyKey: string) =>
   request<Doc>(projectDocsPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });
-export const updateDoc = (id: string, version: number, command: UpdateDocCommand, idempotencyKey: string) =>
-  request<Doc>(docPath(id), { method: 'PATCH', body: command, headers: { ...ifMatch(version), ...key(idempotencyKey) } });
+/** `keepalive`: the page is being left, and the version is saved anyway. */
+export const updateDoc = (id: string, version: number, command: UpdateDocCommand, idempotencyKey: string, keepalive = false) =>
+  request<Doc>(docPath(id), { method: 'PATCH', body: command, keepalive, headers: { ...ifMatch(version), ...key(idempotencyKey) } });
 export const addDocSection = (id: string, version: number, from: DocSectionSource, idempotencyKey: string, under?: string) =>
   request<Doc>(docSectionsPath(id), { method: 'POST', body: { from, ...(under ? { under } : {}) }, headers: { ...ifMatch(version), ...key(idempotencyKey) } });
 

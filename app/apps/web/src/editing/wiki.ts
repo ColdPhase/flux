@@ -14,6 +14,8 @@ export interface WriterRange { actor: NamedPrincipal; anchor: string; head: stri
 
 /** How long the person's own text rests before it becomes a version, and the least time between two of their versions (#869). */
 export const AUTOSAVE = { idleMs: 2000, spacingMs: 30_000, retryMs: 2000 } as const;
+/** How long an own receipt may run ahead of other people's updates before the room is read again (they come on the same socket). */
+const GAP_MS = 3000;
 
 /**
  * The Y.Doc is an editor instance. A socket reconnect renews it; a reload creates another.
@@ -44,10 +46,12 @@ export class SharedWiki {
   stale = false;
   /** The last confirmed sequence that holds this editor's own text. */
   private ownSequence = 0;
+  /** The highest sequence an own receipt confirmed while other people's earlier updates were still on their way. */
+  private aheadSequence = 0;
+  private gapTimer: number | null = null;
   private lastInputAt = 0;
   private lastOwnSaveAt = 0;
   private saveRetryAt = 0;
-  private autosaving = false;
   inputRevision = 0;
   sealedRevision = 0;
   sealedBatches: { from: number; to: number; commandId: string }[] = [];
@@ -113,6 +117,11 @@ export class SharedWiki {
   get hasPrivateArchive() { return this.archivedRecovery !== null; }
   get pendingBytes() { return this.unsealedBytes + [...this.pending.values()].reduce((total, item) => total + item.bytes.length * 3 / 4 + new TextEncoder().encode(JSON.stringify(item.envelope)).length + 32, 0); }
   get editable() { return !!(this.writer && this.status === 'live' && this.head?.canWrite && !this.recovering); }
+  /**
+   * Whether the person can type: also while a short reconnect runs. Text typed then waits as pending input and is shared
+   * when the room is back (#946 review B1: a read-only editor took the focus away and dropped the keystrokes).
+   */
+  get writable() { return !!(this.writer && (this.status === 'live' || this.status === 'reconnecting') && this.head?.canWrite && !this.recovering); }
   subscribe(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   refuseInput(message: string) { this.problem = message; this.changed(); }
   private changed() { for (const listener of this.listeners) listener(); }
@@ -214,11 +223,15 @@ export class SharedWiki {
     }
   }
   private connect() {
-    this.connection?.close(); this.sent.clear(); this.activeCommand = null;
+    this.connection?.close(); this.sent.clear(); this.activeCommand = null; this.clearGap();
     this.connection = new EditingConnection('wiki', this.id, this.head.generation, this.appliedSequence, this.receive, this.disconnected);
   }
+  private clearGap() {
+    if (this.gapTimer !== null) window.clearTimeout(this.gapTimer);
+    this.gapTimer = null; this.aheadSequence = 0;
+  }
   private disconnected = () => {
-    this.seal();
+    this.seal(); this.clearGap();
     if (this.stopped || this.status === 'private') return;
     this.status = 'reconnecting'; this.peers.clear(); this.changed();
     if (this.reconnectTimer !== null) return;
@@ -330,6 +343,7 @@ export class SharedWiki {
         this.writers = [...this.writers, ...ranges.map((range) => ({ actor: message.actor, anchor: encode64(Y.encodeRelativePosition(Y.createRelativePositionFromTypeIndex(this.text, range.from))), head: encode64(Y.encodeRelativePosition(Y.createRelativePositionFromTypeIndex(this.text, range.to))) }))].slice(-100);
         this.appliedSequence = message.sequence; this.head.sequence = message.sequence; this.head.hash = message.hash;
         this.savedAt = Date.now();
+        if (this.appliedSequence >= this.aheadSequence && this.gapTimer !== null) this.clearGap();
         break;
       }
       case 'ack': {
@@ -352,7 +366,12 @@ export class SharedWiki {
         if (!this.pending.size) { this.recovering = false; this.privateBody = this.archivedRecovery?.body ?? null; this.privatePending = this.archivedRecovery?.pending ?? []; }
         this.persist(); this.sendNow();
         if (this.cursorWaiting && this.editable) this.publishCursor();
-        if (message.sequence > this.appliedSequence) { this.disconnected(); return; }
+        // Own text confirmed ahead of other people's earlier updates: those come next on this ordered socket. The room is
+        // read again only if they do not come in time (an update out of order reconnects at once, above).
+        if (message.sequence > this.appliedSequence) {
+          this.aheadSequence = Math.max(this.aheadSequence, message.sequence);
+          this.gapTimer ??= window.setTimeout(() => { this.gapTimer = null; if (this.appliedSequence < this.aheadSequence) this.disconnected(); }, GAP_MS);
+        }
         break;
       }
       case 'preview':
@@ -408,26 +427,29 @@ export class SharedWiki {
    * Saves the person's text as a version when it has rested (see AUTOSAVE). `leaving`: the page closes, so the save
    * goes now and outlives the page.
    */
-  async autosave(leaving = false) {
-    if (this.autosaving || this.stopped || !this.writer || !this.editable || !this.settledText || !this.head) return;
+  autosave(leaving = false): Promise<void> {
+    // A save already running is the one this asks for, unless the page is being left: then one more follows it.
+    if (this.running) return leaving ? this.running.then(() => this.autosave(true)) : this.running;
+    // The head is saved only once it holds this editor's own confirmed text (no update still on its way).
+    if (!this.writer || !this.head?.canWrite || !this.settledText || !this.initialized || this.status === 'private' || this.appliedSequence < this.aheadSequence) return Promise.resolve();
+    if (!leaving && (this.stopped || !this.editable)) return Promise.resolve();
     const now = Date.now();
-    if (this.head.sequence <= this.head.savedSequence && !this.saveAttempt) return;
+    if (this.head.sequence <= this.head.savedSequence && !this.saveAttempt) return Promise.resolve();
     const mine = this.ownUnsaved || !!this.saveAttempt;
     // Text nobody here wrote is saved only by an editor alone in the room, once the room has had time to show who is in it.
     const others = [...this.peers.values()].some((peer) => peer.actor.id !== this.userId);
-    if (!mine && (others || leaving || now - this.openedAt < AUTOSAVE.idleMs * 2)) return;
+    if (!mine && (others || leaving || now - this.openedAt < AUTOSAVE.idleMs * 2)) return Promise.resolve();
     if (!leaving) {
-      if (now < this.saveRetryAt || now - this.lastInputAt < AUTOSAVE.idleMs) return;
-      if (this.ownUnsaved && this.lastOwnSaveAt && now - this.lastOwnSaveAt < AUTOSAVE.spacingMs) return;
+      if (now < this.saveRetryAt || now - this.lastInputAt < AUTOSAVE.idleMs) return Promise.resolve();
+      if (this.ownUnsaved && this.lastOwnSaveAt && now - this.lastOwnSaveAt < AUTOSAVE.spacingMs) return Promise.resolve();
     }
-    this.autosaving = true;
-    try {
-      const prior = this.saveAttempt;
-      await this.save(prior ? { title: prior.title, reason: prior.reason } : {}, undefined, leaving);
-      this.lastOwnSaveAt = Date.now();
-    } catch { this.saveRetryAt = Date.now() + AUTOSAVE.retryMs; }
-    finally { this.autosaving = false; }
+    const prior = this.saveAttempt;
+    this.running = this.save(prior ? { title: prior.title, reason: prior.reason } : {}, undefined, leaving)
+      .then(() => { this.lastOwnSaveAt = Date.now(); }, () => { this.saveRetryAt = Date.now() + AUTOSAVE.retryMs; })
+      .finally(() => { this.running = null; });
+    return this.running;
   }
+  private running: Promise<void> | null = null;
   private openedAt = Date.now();
   /** Every change of this editor is confirmed, so the head holds it. */
   private get settledText() { return !this.pending.size && !this.unsealed.length; }
@@ -454,12 +476,13 @@ export class SharedWiki {
     this.saveAttempt = null; this.persist(); this.changed(); return receipt;
   }
   destroy() {
-    // Leaving the page saves the person's resting text at once; the request outlives this editor.
-    if (this.ownUnsaved && this.settledText && this.editable && !this.saveAttempt) void this.autosave(true);
+    // Leaving the page saves the person's resting text at once, after a save still running; the request outlives this editor.
+    const last = this.autosave(true);
     this.persist(); this.stopped = true; this.abort.abort(); this.connection?.close();
     window.removeEventListener('pagehide', this.leaving); window.removeEventListener('beforeunload', this.leaving);
-    for (const timer of [this.sendTimer, this.reconnectTimer, this.cursorTimer, this.batchTimer]) if (timer !== null) window.clearTimeout(timer);
+    for (const timer of [this.sendTimer, this.reconnectTimer, this.cursorTimer, this.batchTimer, this.gapTimer]) if (timer !== null) window.clearTimeout(timer);
     window.clearInterval(this.presenceTimer); window.clearInterval(this.renewalTimer); this.document.off('update', this.localUpdate);
-    this.undo?.destroy(); this.document.destroy(); this.listeners.clear();
+    this.listeners.clear();
+    void last.finally(() => { this.undo?.destroy(); this.document.destroy(); });
   }
 }

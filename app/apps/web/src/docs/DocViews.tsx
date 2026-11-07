@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { unlessLocked } from '../encryption/api';
-import { Link, redirect, useLoaderData, useSearchParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
+import { Link, redirect, useLoaderData, useNavigate, useSearchParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
 import type { Doc, DocSummary, DocVersion, DocVersionSummary, LiveDocBootstrap } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { EmptyState, Icon, Select, Option } from '../ui';
@@ -88,7 +88,7 @@ export function WorkspaceDocs() {
 
 /** Live: the room's head read with the page (null when the room is not reachable now, and the editor connects itself). */
 export type PageMode = { live: true; head: LiveDocBootstrap | null } | { live: false };
-interface PageData { doc: Doc; mode: PageMode; restore: DocVersion | null }
+interface PageData { doc: Doc; mode: PageMode }
 
 export async function docLoader({ params, request }: LoaderFunctionArgs): Promise<PageData> {
   const [doc, mode] = await Promise.all([
@@ -100,13 +100,10 @@ export async function docLoader({ params, request }: LoaderFunctionArgs): Promis
     loadEditor(),
   ]);
   inProject(doc, params.projectId);
-  // History's Restore opens the page with the version to bring back (#869).
-  const wanted = Number(new URL(request.url).searchParams.get('restore'));
-  const restore = Number.isInteger(wanted) && wanted >= 1 && wanted < doc.version ? await getVersion(doc.id, wanted, request.signal) : null;
-  return { doc, mode, restore };
+  return { doc, mode };
 }
 
-/** The open page is its own source: only a move to another page or a restore reads it again. */
+/** The open page is its own source: only a move to another page reads it again. */
 export function docShouldRevalidate({ currentUrl, nextUrl }: ShouldRevalidateFunctionArgs) {
   return currentUrl.pathname !== nextUrl.pathname || currentUrl.search !== nextUrl.search;
 }
@@ -118,14 +115,14 @@ export function redirectDocMaterial(projectId: string, docId: string, version?: 
 
 /** The page: edited where it is read (#869). */
 export function DocPage() {
-  const { doc, mode, restore } = useLoaderData() as PageData;
+  const { doc, mode } = useLoaderData() as PageData;
   const { project } = useWiki();
   const { me } = useShellData();
   useRegisterLiveHere({ projectId: project.id, context: { type: 'doc', id: doc.id }, label: doc.title },
     { ref: { type: 'material', id: doc.id, version: doc.version }, label: doc.title, what: `doc · version ${doc.version}` });
   const Editor = editorModule?.PageEditor;
   if (!Editor) return <ReadPage doc={doc} shown={doc} notice={<p className="doc-notice" role="alert"><Icon name="alert" size={14} />The editor could not load. Reload to write on this page.</p>} />;
-  return <Editor key={`${me.user.id}:${doc.id}`} doc={doc} project={project} userId={me.user.id} mode={mode} restore={restore} />;
+  return <Editor key={`${me.user.id}:${doc.id}`} doc={doc} project={project} userId={me.user.id} mode={mode} />;
 }
 
 interface VersionData { doc: Doc; shown: DocVersion }
@@ -150,7 +147,7 @@ export function VersionPage() {
     <ReadPage doc={doc} shown={shown} notice={(
       <p className="doc-notice"><Icon name="undo" size={14} />{earlier ? 'You are reading an earlier version.' : 'You are reading a saved version.'} It stays as it was written.
         <Link to={base}>Open the current version</Link>
-        {earlier ? <><Link to={`${base}?restore=${shown.version}`}>Restore this version</Link><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></> : null}</p>
+        {earlier ? <><RestoreButton docUrl={base} version={shown.version} quiet /><Link to={`${base}/history?from=${shown.version}&to=${doc.version}`}>What changed since</Link></> : null}</p>
     )} />
   );
 }
@@ -263,6 +260,19 @@ function Changes({ from, to }: { from: DocVersion | null; to: DocVersion }) {
   );
 }
 
+/**
+ * Restore is an action, not an address (#946 review): the page opens with the version to bring back in its navigation
+ * state, which no link can carry, and the page makes it the next version.
+ */
+function RestoreButton({ docUrl: base, version, quiet = false }: { docUrl: string; version: number; quiet?: boolean }) {
+  const navigate = useNavigate();
+  return (
+    <button type="button" className={quiet ? 'ui-link wiki-restore-link' : 'ui-btn ui-btn--soft wiki-head__restore'} onClick={() => navigate(base, { state: { restore: version } })}>
+      {quiet ? null : <Icon name="undo" size={14} />}{quiet ? 'Restore this version' : `Restore version ${version}`}
+    </button>
+  );
+}
+
 /** History (⋯ › History): every version with who made it and when, what changed between two, and Restore. */
 export function DocHistory() {
   const { doc, versions, from, to } = useLoaderData() as HistoryData;
@@ -281,7 +291,7 @@ export function DocHistory() {
       <div className="wiki-head">
         <Link className="ui-btn ui-btn--quiet wiki-head__back" to={base}><Icon name="chevron-left" size={14} />Back to the page</Link>
         <p className="wiki-head__meta">History · {doc.version} {doc.version === 1 ? 'version' : 'versions'}</p>
-        {restore ? <Link className="ui-btn ui-btn--soft wiki-head__restore" to={`${base}?restore=${restore}`}><Icon name="undo" size={14} />Restore version {restore}</Link> : null}
+        {restore ? <RestoreButton docUrl={base} version={restore} /> : null}
       </div>
       <h2 className="wiki-title__h wiki-title--plain">{doc.title}</h2>
       <div className="doc-history__grid">

@@ -110,6 +110,24 @@ class LiveEditingOffJourney(unittest.TestCase):
         # Neither a live room request nor live text, not even briefly before a fallback.
         self.assertEqual({"live requests": live, "live text": page.evaluate("window.__liveText")}, {"live requests": [], "live text": []})
 
+    def test_02b_leaving_at_once_saves_the_text(self) -> None:
+        # #946 review: without live editing the text saves when the page is left, before the typing has rested.
+        page, _ = self.page()
+        page.goto(self.doc_url)
+        text = page.locator('.cm-content[aria-label="Page text"]')
+        expect(text).to_have_attribute("contenteditable", "true")
+        text.focus()
+        page.keyboard.press("Control+End")
+        page.keyboard.insert_text(" Left at once.")
+        page.get_by_role("navigation", name="Space views").get_by_role("link", name="Conversation").click()
+        deadline = time.monotonic() + 10
+        while True:
+            doc = self.api(page, "GET", f"/api/v1/docs/{self.doc_url.rsplit('/', 1)[-1]}", status=200)
+            if "Left at once." in doc["body"] or time.monotonic() > deadline:
+                break
+            time.sleep(0.25)
+        self.assertIn("Left at once.", doc["body"])
+
     def test_03_map_is_ordinary_with_immediate_undo(self) -> None:
         page, live = self.page()
         page.goto(self.map_url)

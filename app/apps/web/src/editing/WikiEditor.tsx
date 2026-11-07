@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
-import { useLocation, useNavigate, useRevalidator } from 'react-router';
+import { Link, useLocation, useNavigate, useRevalidator } from 'react-router';
 import * as Y from 'yjs';
 import { Compartment, EditorSelection, EditorState, Prec, StateEffect, StateField, type Extension, type Range } from '@codemirror/state';
 import { Decoration, Direction, EditorView, RectangleMarker, drawSelection, keymap, layer, placeholder, type DecorationSet, type LayerMarker } from '@codemirror/view';
@@ -9,7 +9,7 @@ import { DOC_LIMITS, docRef, type Doc, type DocMention, type DocVersion, type Li
 import { Button, useToast } from '../ui';
 import { useAgentOwners } from '../agents/owners';
 import { LinkPicker, type PickedRef } from '../docs/LinkPicker';
-import { docUrl, getDoc } from '../docs/api';
+import { docUrl, getDoc, getVersion } from '../docs/api';
 import { ago } from '../docs/format';
 import type { PageMode } from '../docs/DocViews';
 import { Faces, PageFrame, hereToo, scrollPage, useNow, useReferenceClicks } from '../docs/WikiParts';
@@ -237,7 +237,7 @@ function binding(source: Source): Extension {
   const history = (run: ((view: EditorView) => boolean) | undefined, view: EditorView) => {
     // A peer can fill space left by our old deletion. Undo/redo is synchronous: if its result exceeds the body quota,
     // reverse it before this fixed batch seals or a browser paint occurs. Only the final valid merged update leaves.
-    if (!run || !source.editable || source.pendingBytes + DOC_LIMITS.body * 8 + 65536 > 1024 * 1024) return false;
+    if (!run || !source.writable || source.pendingBytes + DOC_LIMITS.body * 8 + 65536 > 1024 * 1024) return false;
     const undos = source.undo.undoStack.length, redos = source.undo.redoStack.length;
     const result = run(view);
     if (source.text.length > DOC_LIMITS.body) {
@@ -257,7 +257,7 @@ function binding(source: Source): Extension {
     }))),
     EditorState.transactionFilter.of((transaction) => {
       if (transaction.isUserEvent('input') || transaction.isUserEvent('delete') || transaction.isUserEvent('undo') || transaction.isUserEvent('redo')) {
-        if (!source.editable) return [];
+        if (!source.writable) return [];
         if (transaction.newDoc.length > DOC_LIMITS.body) { source.refuseInput('The shared text limit is 100,000 characters. This input was not shared.'); return []; }
         let units = 0;
         transaction.changes.iterChanges((from, to, _fromNew, _toNew, insert) => { units += to - from + insert.length; });
@@ -276,14 +276,14 @@ function binding(source: Source): Extension {
   ];
 }
 
-interface PageEditorProps { doc: Doc; project: Project; userId: string; mode: PageMode; restore: DocVersion | null }
+interface PageEditorProps { doc: Doc; project: Project; userId: string; mode: PageMode }
 
 /**
  * The Wiki page, edited where it is read (#869). The text is the page's Markdown, drawn as the page (livePreview);
  * with live editing it is the shared room's Y.Text (#228), typing is seen as it happens and versions save by
  * themselves; without it, this tab's copy saves as the next version a moment after typing rests.
  */
-export function PageEditor({ doc, project, userId, mode, restore }: PageEditorProps) {
+export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
   const shared = useSharedWiki(mode.live ? doc.id : null, userId, true, mode.live ? mode.head : null);
   const ordinary = !mode.live || shared?.status === 'unavailable';
   const local = useLocalWiki(ordinary ? doc : null, userId);
@@ -349,13 +349,14 @@ export function PageEditor({ doc, project, userId, mode, restore }: PageEditorPr
   const text = source?.text;
   useEffect(() => {
     if (!view) return;
+    const refocus = view.hasFocus;
     view.dispatch({ effects: [collab.reconfigure([]), editability.reconfigure([EditorView.editable.of(false), EditorState.readOnly.of(true)])] });
     if (!source || !text) return;
     // Only what differs is replaced, so the caret keeps its place when a room is opened afresh.
     const change = difference(view.state.doc.toString(), text.toString());
     if (change) view.dispatch({ changes: change });
     view.dispatch({ effects: collab.reconfigure(binding(source)) });
-    let scheduled = false, gone = false, editable: boolean | null = null;
+    let scheduled = false, gone = false, editable: boolean | null = null, hadFocus = refocus;
     const update = () => {
       if (scheduled) return;
       scheduled = true;
@@ -364,10 +365,17 @@ export function PageEditor({ doc, project, userId, mode, restore }: PageEditorPr
         scheduled = false;
         if (gone) return;
         const effects: StateEffect<unknown>[] = [];
-        if (editable !== source.editable) { editable = source.editable; effects.push(editability.reconfigure([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)])); }
+        if (editable !== source.writable) {
+          // Focus the page had when it stopped taking input comes back with the input (an ended reconnect, a reopened room).
+          if (!source.writable && view.hasFocus) hadFocus = true;
+          editable = source.writable;
+          effects.push(editability.reconfigure([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]));
+        }
         if (source instanceof SharedWiki) effects.push(remoteMarks.of(marks(source)), remoteCaretsChanged.of(carets(source)));
         if (effects.length) view.dispatch({ effects });
-        if (editable && wantsCaret.current) { wantsCaret.current = false; view.focus(); }
+        if (editable && (wantsCaret.current || (hadFocus && (!document.activeElement || document.activeElement === document.body)))) {
+          wantsCaret.current = false; hadFocus = false; view.focus();
+        }
       });
     };
     const unsubscribe = source.subscribe(update); update();
@@ -451,12 +459,21 @@ export function PageEditor({ doc, project, userId, mode, restore }: PageEditorPr
   };
 
   // History's Restore: the earlier version becomes the page again, for everyone writing here, as the next version.
+  // It comes in the navigation's state (a button's action), never in an address.
+  const restoreWanted = (location.state as { restore?: number } | null)?.restore;
+  const [restore, setRestore] = useState<DocVersion | null>(null);
+  useEffect(() => {
+    if (!restoreWanted || !Number.isInteger(restoreWanted) || restoreWanted < 1) return;
+    const controller = new AbortController();
+    getVersion(doc.id, restoreWanted, controller.signal).then(setRestore, () => { if (!controller.signal.aborted) setError('That version could not be read. Try again from History.'); });
+    return () => controller.abort();
+  }, [restoreWanted, doc.id]);
   const restoring = useRef<number | null>(null);
   useEffect(() => {
     if (!restore || restoring.current === restore.version || !source?.editable) return;
     restoring.current = restore.version;
     const base = docUrl(project.id, doc.id);
-    const done = (message: string) => { toast({ message }); navigate(base, { replace: true }); };
+    const done = (message: string) => { toast({ message }); navigate(base, { replace: true, state: null }); };
     void (async () => {
       try {
         if (source instanceof LocalWiki) await source.restore(restore);
@@ -468,7 +485,7 @@ export function PageEditor({ doc, project, userId, mode, restore }: PageEditorPr
         done(`Version ${restore.version} is the page again.`);
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : 'The version could not be restored.');
-        navigate(base, { replace: true });
+        navigate(base, { replace: true, state: null });
       }
     })();
   }, [restore, source, source?.editable, project.id, doc.id, navigate, toast, title]);
@@ -506,6 +523,7 @@ export function PageEditor({ doc, project, userId, mode, restore }: PageEditorPr
     {conflict ? (
       <div className="doc-notice doc-conflict" role="alert">
         <p><b>{conflict.author.name}</b> saved this page while you were writing. Your text is still here.</p>
+        <p>“Keep my text” saves your text as the next version, in place of theirs. <Link to={`${docUrl(project.id, doc.id)}/history?from=${local?.base ?? conflict.version - 1}&to=${conflict.version}`}>See their change</Link></p>
         <Button variant="secondary" onClick={() => local?.keepMine()}>Keep my text</Button>
         <Button variant="quiet" onClick={() => local?.takeTheirs()}>Use their version</Button>
       </div>

@@ -120,7 +120,7 @@ class DocsJourney(unittest.TestCase):
     def tab(self, page: Page, name: str):
         return page.get_by_role("navigation", name="Space views").get_by_role("link", name=name)
 
-    def saved_doc(self, page: Page, snippet: str, timeout: float = 45.0, doc_id: str | None = None) -> dict:
+    def saved_doc(self, page: Page, snippet: str, timeout: float = 60.0, doc_id: str | None = None) -> dict:
         """The page once a saved version holds `snippet`: versions save by themselves when the typing rests (#869)."""
         deadline = time.monotonic() + timeout
         while True:
@@ -229,6 +229,10 @@ class DocsJourney(unittest.TestCase):
         conflict = page.get_by_role("alert").filter(has_text="saved this page while you were writing")
         expect(conflict).to_contain_text(OWNER["name"])
         expect(conflict).to_contain_text("Your text is still here")
+        # What Keep does, and theirs to compare first (#946 review B2).
+        expect(conflict).to_contain_text("“Keep my text” saves your text as the next version, in place of theirs.")
+        expect(conflict.get_by_role("link", name="See their change")).to_have_attribute(
+            "href", f"/projects/{self.project_id}/docs/{self.doc_id}/history?from={before['version']}&to={before['version'] + 1}")
         expect(page.get_by_role("status").filter(has_text="Not saved · this page changed")).to_be_visible()
         shot(page, "docs-conflict-desktop-1440")
         self.assertEqual(self.doc(page)["version"], before["version"] + 1, "the stale save changed nothing")
@@ -236,7 +240,7 @@ class DocsJourney(unittest.TestCase):
         conflict.get_by_role("button", name="Keep my text").click()
         expect(conflict).to_have_count(0)
         self.type_end(page, "\n## Open questions\n\n- Does the sensor see through a frosted shade?\n")
-        deadline = time.monotonic() + 30
+        deadline = time.monotonic() + 60  # the next version follows the 30 s spacing
         while True:
             current = self.doc(page)
             if ("Kai checked the power readings." in current["body"] and "frosted shade" in current["body"]) or time.monotonic() > deadline:
@@ -455,7 +459,7 @@ class DocsJourney(unittest.TestCase):
         page.emulate_media(color_scheme="light")
 
         # Restore brings the earlier text back as the page, for everyone writing in it, as the next version that says so.
-        page.get_by_role("link", name="Restore version 1").click()
+        page.get_by_role("button", name="Restore version 1").click()
         expect(page.get_by_text("Version 1 is the page again.")).to_be_visible(timeout=15000)
         expect(page).to_have_url(re.compile(re.escape(f"/docs/{doc['id']}") + "$"))
         restored = self.doc(owner, doc["id"])

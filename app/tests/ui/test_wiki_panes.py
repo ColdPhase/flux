@@ -404,7 +404,7 @@ class WikiPanesJourney(unittest.TestCase):
         expect(page.locator(".doc-prose")).not_to_contain_text("Privacy")
         expect(page.locator(".cm-content")).to_have_count(0)  # an earlier version is read, not written
         # Restore: version 1 becomes the page again, as the next version that says so.
-        page.get_by_role("link", name="Restore this version").click()
+        page.get_by_role("button", name="Restore this version").click()
         expect(page.get_by_text("Version 1 is the page again.")).to_be_visible(timeout=15000)
         expect(page).to_have_url(re.compile(re.escape(self.url("lamp")) + "$"))
         restored = self.doc(page, self.ids["lamp"])
@@ -413,7 +413,7 @@ class WikiPanesJourney(unittest.TestCase):
         expect(existing_text(page)).not_to_contain_text("The image stays on the device")
         # And back, from History's own Restore.
         page.goto(self.url("lamp", "/history?to=2"))
-        page.get_by_role("link", name="Restore version 2").click()
+        page.get_by_role("button", name="Restore version 2").click()
         expect(page.get_by_text("Version 2 is the page again.")).to_be_visible(timeout=15000)
         self.assertIn("Privacy", self.doc(page, self.ids["lamp"])["body"])
 

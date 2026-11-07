@@ -491,6 +491,62 @@ class LiveEditingJourney(LiveFixture):
         await expect(ada.locator('[data-live-status="live"]')).to_be_visible()
         self.assertEqual(await ada.get_by_role("alert").count(), 0, "A refused save is quiet")
 
+    async def test_10b_two_people_type_at_the_same_moment_and_nothing_is_lost(self):
+        # #946 review B1: an own receipt can arrive before the other person's earlier update. The editor waits for that
+        # update on the socket instead of reconnecting, keeps taking input and keeps its focus.
+        for base, ada_steps, kai_steps in (("Alpha paragraph start. Middle words here.", 22, 22),
+                                           ("Alpha paragraph start.\n\nSecond paragraph here.", 22, 46)):
+            with self.subTest(base=base):
+                await self.create_doc(base)
+                ada, kai = self.pages["ada"], self.pages["kai"]
+                ada_field, kai_field = await self.editor("ada"), await self.editor("kai")
+                for page, field, steps in ((ada, ada_field, ada_steps), (kai, kai_field, kai_steps)):
+                    await field.focus()
+                    await page.keyboard.press("Control+Home")
+                    for _ in range(steps):
+                        await page.keyboard.press("ArrowRight")
+                a_text, k_text = " AAAA aaaa AAAA aaaa", " KKKK kkkk KKKK kkkk"
+                await asyncio.gather(ada.keyboard.type(a_text, delay=35), kai.keyboard.type(k_text, delay=35))
+                await asyncio.gather(ada.keyboard.type(" a2a2a2", delay=20), kai.keyboard.type(" k2k2k2", delay=20))
+                for field in (ada_field, kai_field):
+                    await expect(field).to_be_focused()
+                    await expect(field).to_have_attribute("contenteditable", "true")
+                for page in (ada, kai):
+                    await expect(page.locator('[data-live-pending="0"]')).to_be_visible(timeout=15000)
+                live = (await self.api(ada, "GET", f"/api/v1/docs/{self.doc_id}/live"))["body"]
+                ours, theirs = a_text + " a2a2a2", k_text + " k2k2k2"
+                self.assertIn(ours, live, "every one of Ada's keystrokes, in order")
+                self.assertIn(theirs, live, "every one of Kai's keystrokes, in order")
+                self.assertEqual(live.replace(ours, "").replace(theirs, ""), base)
+                for page in (ada, kai):
+                    await page.wait_for_function("(body) => document.querySelector('.cm-content').cmTile?.root?.view?.state.doc.toString() === body", arg=live, timeout=10000)
+
+    async def test_10c_leaving_right_after_typing_saves_the_version_even_during_a_save(self):
+        # #946 review: a leave while a save of an older text runs is followed by one more save, so the version holds it all.
+        await self.create_doc()
+        ada = self.pages["ada"]
+        field = await self.editor("ada")
+        release = asyncio.Event()
+        held = []
+        async def hold_first(route):
+            held.append(route.request.post_data_json)
+            if len(held) == 1:
+                await asyncio.wait_for(release.wait(), 20)
+            await route.continue_()
+        await ada.route(f"**/api/v1/docs/{self.doc_id}/live/save", hold_first)
+        await self.type_text(ada, field, " First part.")
+        deadline = time.monotonic() + 10
+        while not held and time.monotonic() < deadline:
+            await asyncio.sleep(0.1)
+        self.assertTrue(held, "the version saved by itself started")
+        await self.type_text(ada, field, " Second part, then left.")
+        await expect(ada.locator('[data-live-pending="0"]')).to_be_visible()
+        # An in-app move away while the first save still waits.
+        await ada.get_by_role("navigation", name="Space views").get_by_role("link", name="Conversation").click()
+        release.set()
+        saved = await self.saved_doc(ada, "Second part, then left.", timeout=15)
+        self.assertIn("First part.", saved["body"])
+
     async def test_11_quota_and_concurrent_own_undo_keep_100k_body(self):
         await self.create_doc('A' * 99_999 + 'B')
         ada, kai = self.pages['ada'], self.pages['kai']
