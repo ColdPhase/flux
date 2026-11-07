@@ -480,11 +480,9 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await capture('scoped-owner-decision-details', '.details .agent-for');
     await page.keyboard.press('Escape');
     await page.locator('#details').waitFor({ state: 'detached' });
-    await page.locator(`a[href^="/projects/${place.id}/agents"]`).click();
-    // A task's thread opens from `?task=` (an agent's task link does the same); stay inside this page visit.
-    await page.getByRole('heading', { level: 1, name: 'Agents' }).waitFor();
-    await page.evaluate((url) => { history.pushState({}, '', url); window.dispatchEvent(new PopStateEvent('popstate')); }, `/projects/${place.id}/agents?task=${task.id}`);
-    await page.waitForURL((url) => url.pathname === `/projects/${place.id}/agents` && url.searchParams.get('task') === task.id);
+    // The agents' thread is a row in the task's Details (a space has no Agents view, #857): open it there.
+    await page.goto(`/projects/${place.id}/tasks?open=work:${task.id}`);
+    await page.getByRole('button', { name: /^Agents’ thread/ }).click();
     await page.locator('.agents-msg__meta .agent-for').waitFor();
     assert.equal(await page.locator('.agents-msg__meta .agent-for').innerText(), 'for Scoped Casey');
     await assertAuthorColumn(page.locator('.agents-msg').first(), 1440);
@@ -493,6 +491,9 @@ test('native agent owners retry failed reads, fence stale permission answers and
     assert.ok(messageBody && messageMeta && Math.abs(messageBody.x - messageMeta.x) <= 1,
       'the actual Agents reply starts in its author content column');
     await capture('scoped-owner-agents-thread', '.agents-msg__meta .agent-for');
+    await page.keyboard.press('Escape');
+    await page.locator('#details').waitFor({ state: 'detached' });
+    await page.goto(`/projects/${place.id}/tasks`);
     await page.locator(`a[data-tab="tasks"][href^="/projects/${place.id}/tasks"]`).click();
     await page.getByRole('radio', { name: 'List', exact: true }).click();
     await row.locator('.agent-for').waitFor();

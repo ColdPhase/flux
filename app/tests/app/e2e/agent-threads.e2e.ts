@@ -63,7 +63,7 @@ async function session(who: Person, width: number) {
   const response = await context.request.post('/api/auth/sign-in/email', { data: { email: who.email, password }, headers: { origin: origin.origin } });
   assert.equal(response.status(), 200, await response.text()); return context;
 }
-test('task Details links to the agents’ thread with its message count and opens it in the Agents tab (#400)', { timeout: 120_000 }, async () => {
+test('task Details names the agents’ thread with its message count and opens it in place (#400, #857)', { timeout: 120_000 }, async () => {
   const f = await fixture();
   expectStatus(await f.owner.browser.request('POST', f.path, { body: { body: 'Both measurements are repeatable.', clientMessageId: randomUUID() } }), 201);
   for (const width of [1440, 390]) {
@@ -72,38 +72,17 @@ test('task Details links to the agents’ thread with its message count and open
     try {
       await page.goto(`/projects/${f.place.id}/tasks?open=work:${f.task.id}`);
       await page.locator(`[data-detail-kind="work"][data-detail-id="${f.task.id}"]`).waitFor();
-      const link = page.locator(`[data-agent-thread-link="${f.task.id}"]`);
-      await link.waitFor();
-      // The link shows at once; its count follows the read of the thread (AgentThreadLink), so this retries until the count is there.
-      await expect(link, 'Details names the thread with its message count').toHaveText(/Agents’ thread · \d+ messages?/, { timeout: 15_000 });
-      assert.equal(await page.locator('[data-agent-thread-task]').count(), 0, 'Details itself holds no thread panel');
-      // The thread's task comes a moment late (a busy server): a phone sheet that closed because its link was followed
-      // must not take the thread out of the address meanwhile, so the thread still opens and stays (#249).
-      await page.route((url) => url.pathname.endsWith(`/work-objects/work/${f.task.id}`) || url.searchParams.get('choice') === 'pivot_work',
-        async (route) => { await new Promise((resolve) => setTimeout(resolve, 1500)); await route.continue().catch(() => undefined); });
-      await link.click();
-      await page.waitForURL(new RegExp(`/agents\\?thread=${f.task.id}`));
+      const row = page.getByRole('button', { name: /^Agents’ thread/ });
+      await row.waitFor();
+      // The row shows at once; its count follows the read of the thread, so this retries until the count is there.
+      await expect(row, 'Details names the thread with its message count').toHaveText(/Agents’ thread · \d+ messages?/, { timeout: 15_000 });
+      assert.equal(await row.getAttribute('aria-expanded'), 'false', 'the thread is a collapsed row');
+      const before = page.url();
+      await row.click();
       await page.getByRole('region', { name: /^Agents’ thread of/ }).waitFor();
-      assert.equal(await page.evaluate(() => new URLSearchParams(location.search).get('thread')), f.task.id, 'the address keeps the thread');
-      await page.unrouteAll({ behavior: 'ignoreErrors' });
+      assert.equal(await row.getAttribute('aria-expanded'), 'true');
+      assert.equal(page.url(), before, 'the thread opens in place: the address does not change');
       assert.deepEqual(errors, []);
     } finally { await context.close(); }
   }
-});
-
-// #752: under load the full check timed out waiting for this thread. The thread the address names waited for the
-// Agents task list page as well as its own read; a slow or failed list kept it closed. It opens on its own read now.
-test('a thread the address names opens on its own read while the Agents task list is still on its way (#752)', { timeout: 120_000 }, async () => {
-  const f = await fixture();
-  const context = await session(f.writer, 1440); const page = await context.newPage(); const errors: string[] = [];
-  page.on('pageerror', e => errors.push(e.message));
-  const held: { abort(): Promise<void> }[] = []; let listAsked = false;
-  try {
-    // The list page of open tasks is held for the whole visit; nothing else is.
-    await page.route((url) => url.searchParams.get('choice') === 'pivot_work', (route) => { listAsked = true; held.push({ abort: () => route.abort() }); });
-    await page.goto(`/projects/${f.place.id}/agents?thread=${f.task.id}`);
-    await page.getByRole('region', { name: `Agents’ thread of ${f.task.title}`, exact: true }).waitFor();
-    assert.ok(listAsked, 'the Agents list page was asked for and is still held');
-    assert.deepEqual(errors, []);
-  } finally { await page.unrouteAll({ behavior: 'ignoreErrors' }); for (const route of held) await route.abort().catch(() => undefined); await context.close(); }
 });
