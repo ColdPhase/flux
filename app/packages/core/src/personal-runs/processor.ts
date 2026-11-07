@@ -17,7 +17,7 @@ import { reserveOnKey } from './service.js';
 import { updateAndAnnounce } from './progress.js';
 import { requestParts, runToolLoop, type LoopResult, type RunAccount } from './tool-loop.js';
 import {
-  centsToMicros, connectionCallsTools, MORNING_SUMMARY_SYSTEM_PROMPT, parseOutput, requestInput, runChargeMicros, runReservationMicros, runTokensWithinLimits, SYSTEM_PROMPT, TOOL_SYSTEM_PROMPT, type SuppliedSource,
+  centsToMicros, connectionCallsTools, MORNING_SUMMARY_SYSTEM_PROMPT, parseOutput, requestInput, runChargeMicros, runReservationMicros, runTokensWithinLimits, SYSTEM_PROMPT, taskSystemPrompt, TOOL_SYSTEM_PROMPT, type SuppliedSource,
 } from './validation.js';
 
 // The worker side of a personal run (`personal-run.dispatch.v1`, O-008 §3–§5). The job payload
@@ -354,7 +354,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       fitted = await fit(compute, {
         connection: { id: connection.id, keyRef: connection.keyRef, provider: connection.provider, baseUrl: connection.baseUrl }, model: run.model,
         maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort,
-        system: run.kind === 'morning_summary' ? MORNING_SUMMARY_SYSTEM_PROMPT : session ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT, ...(session ? { tools: session.tools } : {}),
+        system: run.kind === 'morning_summary' ? MORNING_SUMMARY_SYSTEM_PROMPT : run.kind === 'task' ? taskSystemPrompt(!!session) : session ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT, ...(session ? { tools: session.tools } : {}),
       }, run, read, beforeSend, personalRunMaxInputTokens(!!session));
     } catch {
       // The preflight count failed (provider down, key refused). Counting is free and nothing

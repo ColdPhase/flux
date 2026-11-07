@@ -1,3 +1,4 @@
+import { TaskTaking } from '../agents/TaskTaking';
 import { getCapabilities, getLinkState, startLink, startSso } from '../api/auth';
 import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Form, Link, Outlet, useLocation, useNavigation, useSearchParams } from 'react-router';
@@ -389,6 +390,7 @@ export function SettingsAgents() {
       <div className="pane-in sset-in">
         <PageHead title="AI" lead="Connect your AI once. Your assistant uses it and can do only what you can." />
         <AgentsAndAi />
+        <TaskTaking />
       </div>
     </div>
   );
