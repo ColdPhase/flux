@@ -23,13 +23,31 @@ owner, only when the server has something to do (an agent owner, or a person who
 writes a `finished` row when a run with a `work_id` leaves `queued`/`reading`/`dispatching`, whoever ended it
 (worker, sweep, Stop, AI turned off). Both inserts `NOTIFY flux_agent_tasks`; the API listens
 (`apps/server/src/agent-tasks/routes.ts`) and drains (`drain.ts`), one event per transaction, skipping rows
-another replica holds. Nothing is polled while idle, and a row that keeps failing is left after five tries.
+another replica holds. Nothing is polled while idle.
 
 | Event | What the drain does |
 | --- | --- |
 | `assigned` to a person | Their setting names an agent: the task is given to it as an owner change on their behalf (`agent_rule`). |
 | `assigned` to an agent | The agent says "Got it, I'm on it." in the task's discussion (this opens it and anchors the run), then `startTask` queues a run of kind `task` (`personal_runs.work_id`). The task becomes Doing. A run that cannot start is said in plain words and the task goes back to its owner. |
 | `finished` | The run's report is posted in the discussion as the agent's message. With "Do it and tell me" the agent marks the task Done; with "Ask me first" or "Only read" the task goes back to its owner to check (C-1). Stopped, paused, revoked or denied: back to the owner with one line. Failed: the agent keeps the task; its owner chooses Try again or Take it back. The provider's limit: the run that continues it is already queued (#854). |
+
+## Locks and tries
+
+An event is one transaction. A rule's refusal (`DomainError`: the task changed, a person lost access, AI is off) ends
+the step and the event is done. Anything else (a deadlock, a lost connection) rolls the whole event back; the drain
+counts the try, waits `tries²` seconds (at most 60) and looks again, with no polling while idle. After five tries the
+event is given up (`AGENT_TASK_EVENT_ATTEMPTS`): the agent says in the task that it could not take care of it and the
+task goes back to its owner (`giveUp`), so a lost assignment is never silent. The retry timer lives in memory (a known
+limit): after a restart the API drains once at start, and an event whose time has not come yet waits for the next NOTIFY.
+
+Every event takes its locks in the one order the worker and the use cases take them: the enablement rows of the people
+whose agents may start a run (ascending), then the space's task-graph lock, then the task and run rows. The worker checks
+the owner's enablement before it fences the task (`recheck`, then `prepareTaskUse`), a person's own assistant request does
+the same (`start`), and `task-targets.ts` records the rule ("authority fences, then graphs, then tasks"). `lockInOrder` in
+`drain.ts` reads who the owners are without a lock, locks their rows, then the graph. The first version took the graph
+first; with the worker running the agent's tasks and the owner asking his own assistant it deadlocked, lost the worker's
+dispatch job and answered 500. `tests/app/agent-task-concurrency.test.ts` runs that burst against the real worker on the
+mock provider and fails on the old order (see the file for how to run it).
 
 ## The run
 

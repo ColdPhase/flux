@@ -198,6 +198,34 @@ describe('people\'s agents take tasks (#856, #904)', () => {
     const kaiName = (await pool.query('SELECT name FROM auth_users WHERE id = $1', [kai.id])).rows[0].name as string;
     assert.equal((await agentState(ada, task.id)).text, `Stopped: AI was turned off in this space · the task is back with ${kaiName}`, 'everyone who reads the task sees the same line');
   });
+
+  test('an event that fails every time is not silent: the owner reads it in the task and has the task back', async () => {
+    const { task, run } = await heldByAgent(lee, agents.lee!, 'Cannot be marked Doing');
+    // A fault in the database for this one task: it cannot be set to Doing, so every drain fails the `started` event the same way.
+    const name = `atk_fail_${task.id.replace(/-/g, '')}`;
+    await pool.query(`CREATE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected fault'; END $$`);
+    await pool.query(`CREATE TRIGGER ${name} BEFORE UPDATE ON project_work_items FOR EACH ROW WHEN (OLD.id = '${task.id}' AND NEW.status = 'in_progress') EXECUTE FUNCTION ${name}()`);
+    try {
+      await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [run.id]);
+      // The waits between the tries (1, 4, 9 and 16 seconds) are brought forward; the tries are the ones a drain makes.
+      const given = await waitFor(async () => {
+        await pool.query(`UPDATE agent_task_events SET next_try_at = now() WHERE work_id = $1 AND kind = 'started' AND handled_at IS NULL`, [task.id]);
+        await pool.query(`SELECT pg_notify('flux_agent_tasks', '')`);
+        const row = (await pool.query(`SELECT attempts, handled_at FROM agent_task_events WHERE work_id = $1 AND kind = 'started'`, [task.id])).rows[0] as { attempts: number; handled_at: Date | null } | undefined;
+        return row?.handled_at ? row : null;
+      }, 'the event to be given up', 40_000);
+      assert.equal(given.attempts, 5, 'it was tried five times');
+      const back = await waitFor(async () => { const now = await readTask(task.id); return now.owner?.kind === 'human' ? now : null; }, 'the task to come back to Lee');
+      assert.equal(back.owner?.id, lee.id);
+      const talk = expectStatus(await ada.browser.request('GET', taskDiscussionPath(task.id)), 200) as TaskDiscussion;
+      const bodies = [talk.root, ...talk.messages].filter(Boolean).filter((message) => message!.authorId === null).map((message) => message!.body);
+      assert.deepEqual([...new Set(bodies)], ['I couldn\'t take care of this. It\'s back with you.'], 'the agent says it in the task');
+      assert.equal((await waitFor(async () => { const row = await runRow(run.id); return row.status === 'stopped' ? row : null; }, 'the run to stop')).stop_requested_by, lee.id, 'and its run does not go on for a task that is no longer its');
+    } finally {
+      await pool.query(`DROP TRIGGER IF EXISTS ${name} ON project_work_items`);
+      await pool.query(`DROP FUNCTION IF EXISTS ${name}()`);
+    }
+  });
 });
 
 describe('the state line of an agent on a task (#856)', () => {

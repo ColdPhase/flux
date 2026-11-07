@@ -19,9 +19,13 @@ import { workUseCases } from '../work/adapters.js';
 //
 // An event is one transaction. A rule's refusal (a `DomainError`: the task changed, a person lost access, AI is off) ends that step and
 // the event is still done; anything else (a deadlock, a lost connection) rolls the whole event back and it is tried again, a little
-// later each time. Every event takes its locks in one order, before it reads or writes anything else: the space's task-graph lock,
-// then the enablement rows of the people whose agents may start a run (ascending), then the task and run rows. The work use cases and
-// the worker take the same locks in the same order, so two drains, a drain and a person's request or the worker cannot wait for each other.
+// later each time. An event that fails every time is not left silent: the task's owner is told in the task and gets it back (`giveUp`).
+//
+// Locks, in the one order the worker and the work and run use cases already take them: the enablement rows of the people whose
+// agents may start a run (ascending), then the space's task-graph lock, then the task and run rows. The worker checks the
+// owner's enablement before it fences the task (processor.ts `recheck`, then `prepareTaskUse`), a person's own request does the same
+// (service.ts `start`), and task-targets.ts records it ("authority fences, then graphs, then tasks"). An event that took the graph
+// first would wait for a row the worker holds while the worker waits for the graph: a deadlock, the loser's dispatch lost.
 
 const human = (id: string): Principal => ({ kind: 'human', id });
 const agent = (id: string): Principal => ({ kind: 'agent', id });
@@ -65,19 +69,45 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     await give(human(by));
   }
 
-  /** The locks of an event, in the one order (see the top of this file). Returns false when the task is gone. */
+  /**
+   * The locks of an event, in the one order (see the top of this file): what names the owners is read without a lock, their
+   * enablement rows are locked (ascending), and only then the task graph. Returns false when the task is gone.
+   */
   async function lockInOrder(tx: Transaction, event: Event): Promise<boolean> {
     const rows = agentTaskRows(tx);
     const work = await workRows(tx).findWork(event.workId);
     if (!work) return false;
-    await workRows(tx).lockTaskGraphs([work.projectId]);
     const owners = new Set<string>();
     if (event.kind === 'assigned' && event.ownerAgentId) {
       const holder = await rows.agent(event.ownerAgentId);
       if (holder?.ownerUserId) owners.add(holder.ownerUserId);
     }
     for (const owner of [...owners].sort()) await personalRunRows(tx).enablement(owner, { lock: true });
+    await workRows(tx).lockTaskGraphs([work.projectId]);
     return true;
+  }
+
+  /**
+   * An event that failed every time must not leave the task silent: its owner reads that in the task and has the task back.
+   * The agent says it (as it says any refusal) and, if it still held the task, gives it back to its owner; a task that is already
+   * someone else's, or finished, needs nothing. Its own transaction, graph lock first, like every step on a task.
+   */
+  async function giveUp(event: Event) {
+    await db.transaction(async (tx) => {
+      const rows = agentTaskRows(tx);
+      const work = await workRows(tx).findWork(event.workId);
+      if (!work || FINISHED.has(work.status)) return;
+      await workRows(tx).lockTaskGraphs([work.projectId]);
+      const run = event.runId ? await personalRunRows(tx).findRun(event.runId) : null;
+      const agentId = event.ownerAgentId ?? run?.agentId ?? (event.ownerUserId ? await rows.taking(event.ownerUserId) : null);
+      const holder = agentId ? await rows.agent(agentId) : null;
+      if (!holder?.ownerUserId) return;
+      const current = (await workRows(tx).findWork(work.id, { lock: true }))!;
+      const held = current.owner?.kind === 'agent' && current.owner.id === holder.id;
+      if (!held && !(current.owner?.kind === 'human' && current.owner.id === holder.ownerUserId)) return;
+      await say(tx, current, holder.id, held ? 'I couldn\'t take care of this. It\'s back with you.' : 'I couldn\'t take this. It\'s still with you.', `gave-up:${event.id}`);
+      if (held) await giveBack(tx, current, holder.ownerUserId, holder.ownerUserId);
+    });
   }
 
   async function assigned(tx: Transaction, event: Event) {
@@ -217,8 +247,9 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       if (event) {
         const { attempts, waitSeconds } = await agentTaskRows(db).failed(event.id).catch(() => ({ attempts: 0, waitSeconds: 5 }));
         if (attempts >= AGENT_TASK_EVENT_ATTEMPTS) {
-          // Given up: it is written down and no longer waits, so a lost assignment is in the log and not silent.
+          // Given up: it no longer waits. The task's owner is told in the task (and has it back), and the log keeps the event.
           log.warn({ event: event.id, kind: event.kind, workId: event.workId }, 'An agent task event was given up after repeated failures');
+          await giveUp(event).catch((cause: unknown) => log.warn({ error: cause, event: event.id }, 'The owner could not be told of the event given up'));
           await agentTaskRows(db).markHandled(event.id).catch(() => undefined);
         } else retryAfter(waitSeconds);
       }
