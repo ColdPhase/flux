@@ -219,5 +219,47 @@ class AgentTakesTask(unittest.TestCase):
         self.assertEqual(self.api(kai, "GET", f"/api/v1/work/{task['id']}/agent", status=200)["line"], None)
 
 
+    # ---------------------------------------------------------------- Stop: the owner or a space admin, and the owner is told who
+
+    def test_08_a_space_admin_stops_the_agent_and_the_owner_is_told_who(self) -> None:
+        kai = self.page("kai")
+        self.api(kai, "PUT", "/api/v1/me/task-taking", {"agentId": self.ids["agent"]}, status=200)
+        mock("/__script", {"reset": True, "text": REPORT, "delay": 20})
+        task = self.task(self.page("ada"), "Weigh the full barrel on Thursday", KAI["id"])
+        self.agent_line(kai, task["id"], "working")
+        # Ada owns the space: she may stop Kai's agent, though she may not prompt it.
+        page = self.open_task("ada", task["id"])
+        line = page.get_by_role("complementary", name="Details").locator("[data-agent-line='working']")
+        line.get_by_role("button", name="Stop").click()
+        state = self.agent_line(kai, task["id"], "stopped")
+        self.assertEqual(state["text"], "Stopped by Ada Kowalska · the task is back with you")
+        self.assertEqual(state["stoppedBy"]["id"], ADA["id"])
+        current = self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)
+        self.assertEqual((current["owner"]["kind"], current["owner"]["id"]), ("human", KAI["id"]), "back with Kai, and not taken again by his own setting")
+        mock("/__script", {"reset": True})
+        page.wait_for_timeout(1500)
+        self.assertEqual(self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)["owner"]["kind"], "human")
+        view = self.open_task("kai", task["id"])
+        expect(view.get_by_role("complementary", name="Details").locator(".wd-act__item--message").filter(has_text="Stopped by Ada Kowalska.")).to_be_visible()
+
+    # ---------------------------------------------------------------- failed: Try again, or Take it back
+
+    def test_09_a_failed_run_keeps_the_task_and_its_owner_tries_again(self) -> None:
+        kai = self.page("kai")
+        settings = self.api(kai, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/assistants/{KAI['id']}/settings", status=200)
+        self.api(kai, "PATCH", f"/api/v1/agent-connections/{settings['connectionId']}", {"mayDo": "act"}, status=200)
+        mock("/__script", {"reset": True, "status": 500})
+        task = self.task(self.page("ada"), "Re-check the north barrel", KAI["id"])
+        state = self.agent_line(kai, task["id"], "failed")
+        self.assertEqual((state["canTryAgain"], state["canTakeBack"]), (True, True))
+        self.assertEqual(self.api(self.page("ada"), "GET", f"/api/v1/work/{task['id']}/agent", status=200)["canTryAgain"], False, "only the owner tries again")
+        mock("/__script", {"reset": True, "text": REPORT})
+        page = self.open_task("kai", task["id"])
+        line = page.get_by_role("complementary", name="Details").locator("[data-agent-line='failed']")
+        expect(line).to_contain_text("Couldn't finish")
+        line.get_by_role("button", name="Try again").click()
+        self.agent_line(kai, task["id"], "done")
+
+
 if __name__ == "__main__":
     unittest.main()
