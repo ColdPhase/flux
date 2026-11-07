@@ -48,7 +48,7 @@ const changesOf = async (runId: string) => (await pool.query(`SELECT * FROM assi
 describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A3, #403)', () => {
   let owner: Person; let peer: Person; let outsider: Person; let stranger: Person; let ws: Workspace; let place: Project;
   let thread: Conversation; let agentId: string;
-  /** Jonas's workspace, where Ada is a member: a project she may only read, and one she contributes to. */
+  /** Jonas's workspace, where Ada is a member and contributes to one project. */
   let jonasWs: Workspace; let shared: Project; let sharedThread: Conversation;
 
   const settings = async (workspaceId = ws.id) => expectStatus(await owner.browser.request('GET', assistantSettingsPath(workspaceId, owner.id)), 200) as unknown as AssistantSettings;
@@ -217,10 +217,10 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     // Skip closes it; a later Approve cannot revive it.
     expectStatus(await owner.browser.request('POST', assistantChangeActionPath(declined!.id, 'skip'), { body: {} }), 200);
     expectStatus(await owner.browser.request('POST', assistantChangeActionPath(declined!.id, 'apply'), { body: {} }), 409);
-    // Ada lost write access: refused, nothing changes; getting it back cannot revive the saved change.
-    await pool.query(`UPDATE project_grants SET role = 'viewer' WHERE project_id = $1 AND user_id = $2`, [shared.id, owner.id]);
+    // Ada was removed from the space: refused, nothing changes; being added back cannot revive the saved change.
+    await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2`, [shared.id, owner.id]);
     assert.equal((await owner.browser.request('POST', assistantChangeActionPath(lost!.id, 'apply'), { body: {} })).status, 403);
-    await pool.query(`UPDATE project_grants SET role = 'contributor' WHERE project_id = $1 AND user_id = $2`, [shared.id, owner.id]);
+    await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) SELECT $1, workspace_id, id, $2, 'contributor', $2 FROM projects WHERE id = $3`, [randomUUID(), owner.id, shared.id]);
     expectStatus(await owner.browser.request('POST', assistantChangeActionPath(lost!.id, 'apply'), { body: {} }), 409);
     assert.equal((await pool.query(`SELECT title FROM project_work_items WHERE id = $1`, [clean.id])).rows[0].title, 'Jonas cleans the lens');
     assert.deepEqual((await changesOf(rig.runId)).map((row) => row.state), ['refused', 'refused', 'skipped']);

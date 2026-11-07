@@ -109,7 +109,7 @@ const details = (page: Page) => page.locator('#details');
 test('task Details: turn the rule on, see sourced automatic changes, resume after a manual change and finish when ready (desktop, 390 px)', { timeout: 120_000 }, async () => {
   const owner = await person('Ada Lind'); const viewer = await person('Jonas Berg');
   const ws = await workspace(owner, 'Lamp workshop'); await addMember(owner, ws.id, viewer, 'member');
-  const place = await project(owner, ws.id, 'Gesture lamp', 'restricted'); await grant(owner, place.id, viewer, 'viewer');
+  const place = await project(owner, ws.id, 'Gesture lamp', 'restricted'); await grant(owner, place.id, viewer, 'contributor');
   const task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: {
     title: 'Keep a manual off switch when calibration fails', criteria: ['The lamp turns off by hand after a failed calibration'] } }), 201) as WorkItem;
   provider.readers.add(owner.id);

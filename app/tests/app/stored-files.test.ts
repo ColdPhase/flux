@@ -13,7 +13,7 @@ import { FILE_LIMITS, type Conversation, type ConversationMessage, type Conversa
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import { exportUseCases } from '../../apps/server/src/export/adapters.js';
 import { fileUnitOfWork } from '../../apps/server/src/files/adapters.js';
-import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
 import { db } from './support/db.js';
 
 const filesDir = process.env.FLUX_TEST_FILES_DIR ?? '/data/files';
@@ -29,7 +29,7 @@ async function scene() {
   for (const other of [writer, reader, outsider]) await addMember(owner, ws.id, other, 'member');
   const place = await project(owner, ws.id, 'Private file conversation', 'restricted');
   await grant(owner, place.id, writer, 'contributor');
-  await grant(owner, place.id, reader, 'viewer');
+  await grant(owner, place.id, reader, 'contributor');
   return { owner, writer, reader, outsider, ws, place };
 }
 async function upload(who: Person, projectId: string, bytes: Uint8Array, uploadId: string = randomUUID(), name = 'pomysł.txt') {
@@ -168,7 +168,7 @@ test('files-only roots, ordinary replies and task replies retain exact order and
   assert.deepEqual(roots.roots.find((item) => item.message.id === root.id)?.message, root, 'stream root has the same ordered stored files');
   assert.deepEqual(roots.roots.find((item) => item.message.id === started.messages[0]!.id)?.message.files, started.messages[0]!.files);
   assert.deepEqual(expectStatus(await f.writer.browser.request('POST', `/api/v1/work/${task.id}/discussion`, { body: taskCommand }), 201), root);
-  await grant(f.owner, f.place.id, f.writer, 'denied');
+  await removeFromSpace(f.owner, f.place.id, f.writer);
   assert.equal((await download(f.writer, staged.body.id)).status, 404);
   assert.equal((await f.writer.browser.request('POST', `/api/v1/work/${task.id}/discussion`, { body: taskCommand })).status, 404);
 });
@@ -188,7 +188,7 @@ test('foreign, revoked, missing and same-size corrupt staged bytes cannot create
   await rm(objectPath(file.id));
   assert.equal((await send(f.writer)).status, 404);
   await writeFile(objectPath(file.id), 'data');
-  await grant(f.owner, f.place.id, f.writer, 'denied');
+  await removeFromSpace(f.owner, f.place.id, f.writer);
   assert.equal((await send(f.writer)).status, 404);
   const [row] = await db.select().from(schema.projectFiles).where(eq(schema.projectFiles.id, file.id));
   assert.equal(row!.messageId, null);
@@ -240,7 +240,7 @@ test('upload and upload retry reauthorize after streaming; an in-flight replay r
   const reserved = await fileRows(db).stagedBytes(f.place.id, { kind: 'human', id: f.writer.id }, new Date());
   assert.equal(reserved, bytes.length, 'digest-only replay creates no second disk copy');
   assert.equal((await upload(f.writer, f.place.id, bytes, original.uploadId, original.name)).body.code, 'UPLOAD_IN_PROGRESS');
-  await grant(f.owner, f.place.id, f.writer, 'denied');
+  await removeFromSpace(f.owner, f.place.id, f.writer);
   resume();
   await assert.rejects(replay, NotFoundError);
   assert.equal(await fileRows(db).stagedBytes(f.place.id, { kind: 'human', id: f.writer.id }, new Date()), bytes.length,

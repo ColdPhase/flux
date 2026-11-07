@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
 import type { AcceptInviteResult, InvitePreview, NeedsYouResponse, ProjectGrant, WorkspaceInvite } from '@flux/contracts';
-import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, project, removeFromSpace, workspace, type Person } from './support/people.js';
 
 // #763 first-time user study (docs/agents/release-acceptance/evidence/first-time-user.md):
 // FT-1 (replaced by F-036, #855) nobody asks a manager to let an agent in: it has its owner's rights;
@@ -15,7 +15,7 @@ const needsYou = async (who: Person) => expectStatus(await who.browser.request('
 const inbox = async (who: Person) => (expectStatus(await who.browser.request('GET', '/api/v1/inbox'), 200) as { items: { title: string; url: string | null; readAt: string | null }[] }).items;
 const agentOf = async (who: Person, workspaceId: string, name: string) =>
   (expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${workspaceId}/agents`, { body: { name, owner: 'self' } }), 201) as { id: string }).id;
-const ask = (who: Person, projectId: string, agentId: string, role?: 'viewer' | 'contributor') =>
+const ask = (who: Person, projectId: string, agentId: string, role?: 'contributor') =>
   who.browser.request('POST', `/api/v1/projects/${projectId}/agent-requests`, { body: { agentId, ...(role ? { role } : {}) } });
 const grantsOf = async (manager: Person, projectId: string) => expectStatus(await manager.browser.request('GET', `/api/v1/projects/${projectId}/grants`), 200) as ProjectGrant[];
 
@@ -37,11 +37,12 @@ describe('F-036 #855: nobody asks a manager to let an agent in', () => {
 });
 
 describe('#763 FT-2: a member\'s agent can be given the work of a task where its owner writes', () => {
-  test('the owner adds standing grants where they write; once their access is narrowed to reading, it is refused', async () => {
+  test('the owner adds standing grants where they write; once they are removed from the space, it is refused', async () => {
     const [anna, dev] = await Promise.all(['FT2 Anna', 'FT2 Dev'].map(person));
     const space = (await workspace(anna, 'Grant space')).id;
     await addMember(anna, space, dev, 'member');
-    const app = await project(anna, space, 'Grant app', 'workspace');
+    const app = await project(anna, space, 'Grant app', 'restricted');
+    await grant(anna, app.id, dev, 'contributor');
     const task = expectStatus(await anna.browser.request('POST', `/api/v1/projects/${app.id}/work`, { body: { title: 'Write the FAQ page' } }), 201) as { id: string };
     const agentId = await agentOf(dev, space, 'Dev agent');
     const connection = expectStatus(await dev.browser.request('POST', '/api/v1/agent-connections', { body: { agentId, name: 'Dev laptop', selectedProjectIds: [app.id],
@@ -53,8 +54,8 @@ describe('#763 FT-2: a member\'s agent can be given the work of a task where its
       ['cowork.unit.complete'], ['result.record'], ['conversation.reply'], ['doc.create']] as const) {
       expectStatus(await create(operation, objectId), 201, `${operation} by a writing member`);
     }
-    // When the owner may only read here, their agent may only read too (F-036 AG-3): the member can add no more.
-    await grant(anna, app.id, dev, 'viewer');
+    // When the owner no longer has the space, their agent has nothing there either (F-036 AG-3): the member can add no more.
+    await removeFromSpace(anna, app.id, dev);
     const refused = await create('work.update', task.id);
     assert.ok([403, 404].includes(refused.status), refused.text);
     const after = (expectStatus(await dev.browser.request('GET', `/api/v1/agent-connections/${connection.id}/action-grants`), 200) as { total: number }).total;

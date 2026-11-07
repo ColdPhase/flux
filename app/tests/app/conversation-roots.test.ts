@@ -51,7 +51,7 @@ describe('project conversation roots', () => {
     expect(await owner.browser.request('POST', `/api/v1/projects/${project.id}/grants`,
       { body: { principal: { kind: 'human', id: partner.id }, role: 'contributor' } }), 201);
     expect(await owner.browser.request('POST', `/api/v1/projects/${project.id}/grants`,
-      { body: { principal: { kind: 'human', id: reader.id }, role: 'viewer' } }), 201);
+      { body: { principal: { kind: 'human', id: reader.id }, role: 'contributor' } }), 201);
   });
 
   test('an empty project has an empty stream', async () => {
@@ -158,15 +158,14 @@ describe('project conversation roots', () => {
     expect(await roots(partner, '', other.id), 404, 'a project without access');
   });
 
-  test('outsiders, revoked and denied people read nothing', async () => {
+  test('outsiders and people who were removed read nothing', async () => {
     expect(await roots(outsider), 404, 'outsider');
     expect(await outsider.browser.request('GET', `/api/v1/projects/${project.id}/conversation-roots?limit=1`), 404);
-    expect(await reader.browser.request('POST', `/api/v1/projects/${project.id}/conversations`,
-      { body: { body: 'A reader cannot start a root', clientMessageId: randomUUID() } }), 403);
-    expect(await owner.browser.request('POST', `/api/v1/projects/${project.id}/grants`,
-      { body: { principal: { kind: 'human', id: reader.id }, role: 'denied' } }), 201);
-    expect(await roots(reader), 404, 'denied');
     const grants = expect(await owner.browser.request('GET', `/api/v1/projects/${project.id}/grants`), 200) as { id: string; principal: { id: string } }[];
+    const readerGrant = grants.find((grant) => grant.principal.id === reader.id);
+    assert.ok(readerGrant);
+    expect(await owner.browser.request('DELETE', `/api/v1/projects/${project.id}/grants/${readerGrant.id}`), 204);
+    expect(await roots(reader), 404, 'removed');
     const partnerGrant = grants.find((grant) => grant.principal.id === partner.id);
     assert.ok(partnerGrant);
     expect(await owner.browser.request('DELETE', `/api/v1/projects/${project.id}/grants/${partnerGrant.id}`), 204);

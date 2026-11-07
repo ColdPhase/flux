@@ -19,7 +19,7 @@ test('recipient pages only current, readable presentation refs after hidden sour
     const ws = await workspace(owner, 'Live feed');
     await addMember(owner, ws.id, recipient, 'member');
     const place = await project(owner, ws.id, 'Presentation project', 'restricted');
-    await grant(owner, place.id, recipient, 'viewer');
+    await grant(owner, place.id, recipient, 'contributor');
     const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
       body: { body: 'Private body one', clientMessageId: randomUUID() },
     }), 201) as Conversation;
@@ -116,7 +116,7 @@ test('recipient pages only current, readable presentation refs after hidden sour
         const waiting = get(recipient.id, session.id).then((response) => { settled = true; return response; });
         await new Promise((resolve) => setTimeout(resolve, 50));
         assert.equal(settled, false);
-        await locker.query("UPDATE project_grants SET role = 'denied' WHERE project_id = $1 AND user_id = $2",
+        await locker.query('DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2',
           [place.id, recipient.id]);
         await locker.query('COMMIT');
         assert.equal((await waiting).statusCode, 404);

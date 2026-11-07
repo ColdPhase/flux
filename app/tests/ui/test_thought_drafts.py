@@ -132,7 +132,7 @@ class ThoughtDraftJourney(unittest.TestCase):
     def setUp(self):
         self.owner = self.page()
         self.project = self.api(self.owner, "POST", f"/api/v1/workspaces/{self.workspace}/projects", {"name": "Quiet gesture lamp", "visibility": "restricted"}, 201)["id"]
-        for who, role in (("writer", "contributor"), ("viewer", "viewer")):
+        for who, role in (("writer", "contributor"), ("viewer", "contributor")):
             self.grant(who, role)
         self.sketch = self.new_sketch("Bedside sensing directions")
         self.parent = self.api(self.owner, "POST", f"/api/v1/sketches/{self.sketch}/thoughts", {"text": "Capture a gesture without recording camera images", "x": 0, "y": 0}, 201)["thought"]["id"]
@@ -141,6 +141,11 @@ class ThoughtDraftJourney(unittest.TestCase):
 
     def grant(self, who, role):
         self.api(self.owner, "POST", f"/api/v1/projects/{self.project}/grants", {"principal": {"kind": "human", "id": self.people[who]["id"]}, "role": role}, 201)
+
+    def remove(self, who):
+        grants = self.api(self.owner, "GET", f"/api/v1/projects/{self.project}/grants")
+        gone = next(item for item in grants if item["principal"]["id"] == self.people[who]["id"])
+        self.api(self.owner, "DELETE", f"/api/v1/projects/{self.project}/grants/{gone['id']}", None, 204)
 
     def new_sketch(self, title):
         return self.api(self.owner, "POST", f"/api/v1/workspaces/{self.workspace}/sketches", {"title": title, "scope": "project", "projectId": self.project}, 201)["id"]
@@ -299,39 +304,15 @@ class ThoughtDraftJourney(unittest.TestCase):
         self.assertEqual(len(self.stored(peer)["thoughts"]), 1)
         self.assertEqual(self.stored(peer)["links"], [])
 
-    def test_05_lost_permission_and_revocation_recover_private_text_even_after_reload(self):
+    def test_05_removal_from_the_space_recovers_private_text_even_after_reload(self):
         page = self.page("writer")
         self.open(page)
         self.capture(page, child=True).fill("PRIVATE unsaved calibration idea")
-        # Keep an old authorized read while the real backend checks current write permission.
-        get_path = f"**/api/v1/sketches/{self.sketch}"
-        page.route(get_path, lambda route: route.fulfill(json=self.before))
-        # The permission is lowered while the save is on its way, so the real backend refuses this very write. A live
-        # map would otherwise report the lost write first and disable Save before the click (timing, not behaviour).
-        save_path = f"**/api/v1/sketches/{self.sketch}/thoughts"
-
-        def lower_then_send(route):
-            self.grant("writer", "viewer")
-            route.continue_()
-
-        page.route(save_path, lower_then_send)
-        page.get_by_role("button", name="Save thought", exact=True).click()
-        expect(page.locator(".sk-status")).to_contain_text("draft is kept")
-        page.unroute(save_path, lower_then_send)
-        expect(page.get_by_label("Thought text")).to_have_value("PRIVATE unsaved calibration idea")
-        self.assertEqual(self.stored(self.owner), self.before)
-        page.unroute(get_path)
-        page.reload()
-        expect(page.get_by_role("button", name="Save thought", exact=True)).to_be_disabled()
-        self.grant("writer", "denied")
+        self.remove("writer")
         page.reload()
         expect(page.get_by_label("Recoverable thought draft")).to_have_value("PRIVATE unsaved calibration idea")
         self.assertNotIn(self.before["title"], page.locator("main").inner_text())
         self.assertEqual(self.stored(self.owner), self.before)
-        reader = self.page("viewer")
-        self.open(reader)
-        expect(reader.get_by_role("form", name="New thought draft")).to_have_count(0)
-        expect(reader.get_by_role("toolbar", name="Sketch tools")).to_have_count(0)
 
     def test_06_f2_cancel_multiline_and_real_concurrent_edit_are_recoverable(self):
         page = self.owner

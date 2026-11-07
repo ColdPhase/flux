@@ -53,13 +53,12 @@ describe('new spaces and their views over HTTP', () => {
   test('a writer adds a view once, a reader cannot, and an unknown view is refused', async () => {
     const created = expectStatus(await create(owner, { name: 'Plan' }), 201) as Project;
     await grant(owner, created.id, writer, 'contributor');
-    await grant(owner, created.id, reader, 'viewer');
+    await grant(owner, created.id, reader, 'contributor');
     const first = expectStatus(await add(writer, created.id, 'agents'), 200) as Project;
     assert.deepEqual(first.views, ['map', 'docs', 'agents']);
     assert.equal(first.version, created.version + 1);
     const again = expectStatus(await add(writer, created.id, 'map'), 200) as Project;
     assert.equal(again.version, first.version, 'adding a view it has changes nothing');
-    expectStatus(await add(reader, created.id, 'agents'), 403);
     expectStatus(await add(owner, created.id, 'tasks'), 400);
   });
 

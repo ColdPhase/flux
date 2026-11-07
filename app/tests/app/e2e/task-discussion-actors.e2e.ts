@@ -10,7 +10,7 @@ import { taskDiscussionPath, type ConversationMessage, type WorkItem } from '@fl
 import { workUseCases } from '../../../apps/server/src/work/adapters.js';
 import { taskDiscussionUseCases } from '../../../apps/server/src/work/task-discussions.js';
 import { db, pool } from '../support/db.js';
-import { addMember, expectStatus, grant, password, person, project, workspace, type Person } from '../support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, password, person, project, workspace, type Person } from '../support/people.js';
 
 // Genuine trusted core agent writes plus real authenticated Chromium rendering/replies.
 // This does not certify an external MCP client or built-in instruction activation.
@@ -207,7 +207,7 @@ test('agent root renders without a human DM link, real human reply persists, and
     const ws = await workspace(owner, 'Actual task authors');
     await addMember(owner, ws.id, reader, 'member');
     const place = await project(owner, ws.id, 'Measured trial', 'restricted');
-    await grant(owner, place.id, reader, 'viewer');
+    await grant(owner, place.id, reader, 'contributor');
     const task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, {
       body: { title: 'Inspect the actual trial', clientCommandId: randomUUID() },
     }), 201) as WorkItem;
@@ -381,7 +381,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     await addMember(owner, ws.id, guest, 'guest');
     const place = await project(owner, ws.id, 'Owner scope', 'restricted');
     await grant(owner, place.id, casey, 'contributor');
-    await grant(owner, place.id, guest, 'viewer');
+    await grant(owner, place.id, guest, 'contributor');
     // Casey's agent has Casey's rights (F-036 AG-3): the manager watching this page changes them by changing Casey's access.
     const agent = expectStatus(await casey.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
       body: { name: 'Scoped analyst', owner: 'self' },
@@ -392,10 +392,10 @@ test('native agent owners retry failed reads, fence stale permission answers and
     const proposal = await work.proposeDecision(actor, place.id, { title: 'Scoped agent decision', rationale: 'Measured by an actual authorized actor' });
     await taskDiscussionUseCases(db).contribute(actor, task.id, { body: 'Current scoped agent reply', clientMessageId: randomUUID() });
     const elsewhere = await project(owner, ws.id, 'Other owner scope', 'restricted');
-    await grant(owner, elsewhere.id, guest, 'viewer');
+    await grant(owner, elsewhere.id, guest, 'contributor');
     await grant(owner, elsewhere.id, casey, 'contributor');
     const otherTask = await work.createWork({ kind: 'human', id: owner.id }, elsewhere.id, { title: 'Other scoped task', owner: actor });
-    await grant(owner, elsewhere.id, casey, 'denied');
+    await removeFromSpace(owner, elsewhere.id, casey);
     const context = await signedIn(owner, 1440);
     const page = await context.newPage();
     const capture = async (name: string, ownerSelector: string) => {
@@ -562,7 +562,7 @@ test('native agent owners retry failed reads, fence stale permission answers and
     try {
       await page.evaluate(() => window.dispatchEvent(new Event('focus')));
       await fixturePhase(gotHeld, 'authorized answer held');
-      await grant(owner, place.id, casey, 'denied');
+      await removeFromSpace(owner, place.id, casey);
       await page.waitForFunction((id) => !document.querySelector(`[data-work-id="${id}"] .agent-for`), task.id);
       await fixturePhase(gotCurrentRead, 'delivered current answer without agent');
       release();

@@ -192,7 +192,7 @@ class FilesReferencesPhotos(unittest.TestCase):
         pid = project["id"]
         post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["jonas"]}, "role": "contributor"})
         post("ada", f"/api/v1/workspaces/{ws['id']}/members", {"email": PEOPLE["ida"][1], "role": "member"})
-        post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["ida"]}, "role": "viewer"})
+        post("ada", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["ida"]}, "role": "contributor"})
 
         def root(who: str, body: str, files: list[tuple[str, bytes]]) -> str:
             ids = [upload(who, name, data) for name, data in files]
@@ -525,25 +525,6 @@ class FilesReferencesPhotos(unittest.TestCase):
                 if not phone:
                     _, viewer = self.open_in(page, thread, "Open photo IMG_2050.png")
                     self.create_task_from(page, viewer, self.ids["task-root"])
-            with self.subTest(phone=phone, surface="reader"):
-                page = self.page("ida", phone=phone)
-                page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation:two']}")
-                _, viewer = self.open_in(page, page.locator(".thread__root"), "Open photo IMG_2041.png, 1 of 2")
-                expect(viewer.get_by_role("button", name="Save")).to_have_count(0)
-                expect(viewer.get_by_role("link", name="Save")).to_be_visible()
-                for name in ("Reply", "Create task"):  # a reader cannot reply or add work
-                    expect(viewer.get_by_role("button", name=name, exact=True)).to_have_count(0)
-                page.keyboard.press("Escape")
-            with self.subTest(phone=phone, surface="stream-reader"):
-                page = self.page("ida", phone=phone)
-                page.goto(f"/projects/{self.ids['project']}")
-                _, viewer = self.open_in(page, self.message(page, "two"), "Open photo IMG_2041.png, 1 of 2")
-                for name in ("Reply", "Create task"):  # the stream offers no reply either: it does not navigate to one
-                    expect(viewer.get_by_role("button", name=name, exact=True)).to_have_count(0)
-                expect(viewer.get_by_role("link", name="Save")).to_be_visible()
-                page.keyboard.press("Escape")
-                expect(viewer).to_have_count(0)
-                self.assertEqual(urlparse(page.url).path, f"/projects/{self.ids['project']}", "the stream stays where it is")
 
     def test_narrow_media_widths_and_viewport_bounds(self) -> None:
         for width in (320, 375, 390):
@@ -1017,8 +998,9 @@ class FilesReferencesPhotos(unittest.TestCase):
         self.addCleanup(owner.close)
         photo = self.ids["photo"]
         self.assertEqual(page.request.get(f"/api/v1/files/{photo}").status, 200)
-        grant = owner.request.post(f"/api/v1/projects/{self.ids['project']}/grants", data={"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "denied"}, headers={"origin": ORIGIN})
-        self.assertIn(grant.status, (200, 201), grant.text())
+        grants = owner.request.get(f"/api/v1/projects/{self.ids['project']}/grants").json()
+        removed = owner.request.delete(f"/api/v1/projects/{self.ids['project']}/grants/{next(item['id'] for item in grants if item['principal']['id'] == self.ids['jonas'])}", headers={"origin": ORIGIN})
+        self.assertEqual(removed.status, 204, removed.text())
         self.addCleanup(lambda: owner.request.post(f"/api/v1/projects/{self.ids['project']}/grants", data={"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "contributor"}, headers={"origin": ORIGIN}))
         self.assertIn(page.request.get(f"/api/v1/files/{photo}").status, (403, 404), "the download refuses")
         # The page still on screen reads the photo again for the viewer: it shows nothing of it.

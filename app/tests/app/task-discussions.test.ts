@@ -8,7 +8,7 @@ import type { GeneratorEvent } from '@flux/core';
 import { projectExportPath, type Conversation, type ConversationMessage, type Material, type Page,
   type ConversationSummary, type ProjectExport, type ReturnSummary, type SearchResponse, type TaskDiscussion, type WorkItem } from '@flux/contracts';
 import { taskDiscussionInTransaction, taskDiscussionUnitOfWork, taskDiscussionUseCases } from '../../apps/server/src/work/task-discussions.js';
-import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
 import { backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import { transactionEventSession } from '../../apps/server/src/work/transaction-events.js';
@@ -21,7 +21,7 @@ async function scene() {
   for (const other of [writer, reader, outsider]) await addMember(owner, ws.id, other, 'member');
   const place = await project(owner, ws.id, 'Trial discussion', 'restricted');
   await grant(owner, place.id, writer, 'contributor');
-  await grant(owner, place.id, reader, 'viewer');
+  await grant(owner, place.id, reader, 'contributor');
   const task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, {
     body: { title: 'Compare current measurements', clientCommandId: randomUUID() },
   }), 201) as WorkItem;
@@ -114,7 +114,7 @@ test('conversation task binding is current, absent on ordinary threads, read-onl
   const nonTask = expectStatus(await f.reader.browser.request('GET', `/api/v1/conversations/${ordinary.id}`), 200) as Conversation;
   assert.equal(Object.hasOwn(nonTask, 'task'), false);
   assert.deepEqual(await f.counts(), before);
-  await grant(f.owner, f.place.id, f.reader, 'denied');
+  await removeFromSpace(f.owner, f.place.id, f.reader);
   const afterRevocation = await f.counts();
   const revoked = await f.reader.browser.request('GET', `/api/v1/conversations/${root.conversationId}`);
   const unknown = await f.reader.browser.request('GET', `/api/v1/conversations/${randomUUID()}`);
@@ -135,9 +135,8 @@ test('durable task retries recheck access and conflict on changed payload, task 
   }), 201) as WorkItem;
   assert.equal((await f.writer.browser.request('POST', `/api/v1/work/${other.id}/discussion`, { body: command })).status, 409);
   assert.equal((await f.writer.browser.request('POST', `/api/v1/projects/${f.place.id}/conversations`, { body: command })).status, 409);
-  assert.equal((await f.reader.browser.request('POST', f.path, { body: command })).status, 403);
   assert.equal((await f.outsider.browser.request('GET', f.path)).status, 404);
-  await grant(f.owner, f.place.id, f.writer, 'denied');
+  await removeFromSpace(f.owner, f.place.id, f.writer);
   assert.equal((await f.writer.browser.request('POST', f.path, { body: command })).status, 404);
   assert.equal((await f.writer.browser.request('GET', f.path)).status, 404);
   assert.equal((await f.read()).messages.length, 1);
@@ -566,18 +565,11 @@ const rootIdentity = (f: Awaited<ReturnType<typeof scene>>, sent: ConversationMe
 test('a task in a hidden project is indistinguishable from an unknown task, including its error code', async () => {
   const f = await scene();
   const stranger = await person('root-stranger');
-  const open = await project(f.owner, f.ws.id, 'Workspace-visible discussion', 'workspace');
-  const visibleTask = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${open.id}/work`, {
-    body: { title: 'Visible to members', clientCommandId: randomUUID() },
-  }), 201) as WorkItem;
-  const denied = await person('root-denied');
-  await addMember(f.owner, f.ws.id, denied, 'member');
-  await grant(f.owner, open.id, denied, 'denied');
   const before = await rowsOf(f);
   const use = taskDiscussionUseCases(db);
   const unknown = randomUUID();
   const cases: Array<[string, Person, string]> = [['restricted project, member without a grant', f.outsider, f.task.id],
-    ['restricted project, not a workspace member', stranger, f.task.id], ['denied grant on a visible project', denied, visibleTask.id]];
+    ['restricted project, not a workspace member', stranger, f.task.id]];
   for (const [label, who, workId] of cases) {
     const missing = await who.browser.request('GET', `/api/v1/work/${unknown}/discussion`);
     assert.equal(missing.status, 404, label);
@@ -602,8 +594,6 @@ test('a task in a hidden project is indistinguishable from an unknown task, incl
         { status: hiddenError.status, code: hiddenError.code, message: hiddenError.message }, label);
     }
   }
-  // A visible task the caller may not change stays an honest 403, not a 404.
-  assert.equal((await f.reader.browser.request('POST', f.path, { body: { body: 'Viewer text', clientMessageId: randomUUID() } })).status, 403);
   assert.deepEqual(await rowsOf(f), before);
 });
 
@@ -666,13 +656,13 @@ test('getDiscussionRoot follows current policy: viewers and guests with access r
   const rejected = (who: Person) => assert.rejects(use.getDiscussionRoot(human(who), f.task.id),
     (error) => error instanceof NotFoundError && error.status === 404 && error.code === 'WORK_NOT_FOUND');
   await rejected(guest);
-  await grant(f.owner, f.place.id, guest, 'viewer');
+  await grant(f.owner, f.place.id, guest, 'contributor');
   assert.deepEqual(await use.getDiscussionRoot(human(guest), f.task.id), expected);
   assert.deepEqual(await use.getDiscussionRoot(human(f.reader), f.task.id), expected);
   await rejected(f.outsider);
-  await grant(f.owner, f.place.id, f.writer, 'denied');
+  await removeFromSpace(f.owner, f.place.id, f.writer);
   await rejected(f.writer);
-  await grant(f.owner, f.place.id, f.reader, 'denied');
+  await removeFromSpace(f.owner, f.place.id, f.reader);
   await rejected(f.reader);
   assert.deepEqual(await use.getDiscussionRoot(human(f.owner), f.task.id), expected);
 });

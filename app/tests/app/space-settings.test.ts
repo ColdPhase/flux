@@ -5,7 +5,7 @@ import { INBOX_PATH, NEEDS_YOU_PATH, SEARCH_PATH, projectGrantsPath, projectLeav
 import { authorizeEvent } from '@flux/core';
 import { accessReader } from '@flux/db';
 import { db, pool } from './support/db.js';
-import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
 import { projectReferences } from './support/project-erasure-scene.js';
 
 // F-037 (#874): the settings of one space. Who may rename it, add and remove its people, leave it and delete it (a space admin, and a
@@ -142,12 +142,12 @@ describe('space settings: who may do what', () => {
     expectStatus(await spaceAdmin.browser.request('GET', projectPath(other.id)), 404);
   });
 
-  test('a member denied in a space reaches it again once they become a company admin', async () => {
-    const space = await newSpace('Denied then promoted');
-    const [candidate] = [await person('set-denied')];
+  test('a member who was removed from a space reaches it again once they become a company admin', async () => {
+    const space = await newSpace('Removed then promoted');
+    const [candidate] = [await person('set-removed')];
     await addMember(owner, wsId, candidate, 'member');
     await grant(spaceAdmin, space.id, candidate, 'contributor');
-    await grant(spaceAdmin, space.id, candidate, 'denied');
+    await removeFromSpace(spaceAdmin, space.id, candidate);
     expectStatus(await candidate.browser.request('GET', projectPath(space.id)), 404);
     expectStatus(await owner.browser.request('PATCH', `/api/v1/workspaces/${wsId}/members/${candidate.id}`, { body: { role: 'admin' } }), 200);
     assert.equal((expectStatus(await candidate.browser.request('GET', projectPath(space.id)), 200) as Project).access, 'manager');
@@ -204,8 +204,8 @@ describe('a company admin\'s search and Inbox hold only the spaces they belong t
   test('their Inbox and Needs you leave out what is in a space they were not added to; adding themselves brings it', async () => {
     assert.ok(!(await inbox(companyAdmin)).includes(note));
     assert.ok(!(await needsYou(companyAdmin)).includes(`note:${note}`));
-    // "Add me" in Settings › Company: the admin becomes a member of the space.
-    expectStatus(await companyAdmin.browser.request('POST', projectGrantsPath(space.id), { body: { principal: { kind: 'human', id: companyAdmin.id }, role: 'contributor' } }), 201);
+    // "Add me" in Settings › Company: the admin becomes a member of the space, and its admin (#903).
+    expectStatus(await companyAdmin.browser.request('POST', projectGrantsPath(space.id), { body: { principal: { kind: 'human', id: companyAdmin.id }, role: 'manager' } }), 201);
     assert.ok((await inbox(companyAdmin)).includes(note), 'control: in the Inbox once they belong to it');
     assert.equal(await find(companyAdmin), 1, 'and in their search');
     expectStatus(await companyAdmin.browser.request('POST', projectLeavePath(space.id)), 204);

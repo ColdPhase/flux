@@ -5,7 +5,7 @@ import type { CreatedThought, MessagePlace, MovedThoughts, WorkAssociations, Pos
 import { authorize, createAgent, policySketchAccess, revokeAgent, ForbiddenError, NotFoundError, type Principal } from '@flux/core';
 import { accessPorts, accessReader } from '@flux/db';
 import { db, pool } from './support/db.js';
-import { addMember, draft, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { addMember, draft, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
 
 // Persistent sketches over HTTP (issue #69, AC-1/AC-2/AC-4): access through the #29 policy,
@@ -48,11 +48,12 @@ describe('sketch access', () => {
     await addMember(alice, ws.id, bob, 'member');
     await addMember(alice, ws.id, carol, 'admin');
     await addMember(alice, ws.id, erin, 'member');
-    lamp = await project(alice, ws.id, 'Gesture lamp', 'workspace');
-    await grant(alice, lamp.id, erin, 'viewer');
+    lamp = await project(alice, ws.id, 'Gesture lamp', 'restricted');
+    await grant(alice, lamp.id, bob, 'contributor');
+    await grant(alice, lamp.id, erin, 'contributor');
   });
 
-  test('a project sketch follows project access: members change it, viewers read it, outsiders get 404', async () => {
+  test('a project sketch follows project access: members change it, outsiders get 404', async () => {
     const sketch = await createSketch(bob, ws.id, { title: 'Lamp ideas', scope: 'project', projectId: lamp.id });
     assert.equal(sketch.scope, 'project');
     assert.equal(sketch.access, 'write');
@@ -62,21 +63,19 @@ describe('sketch access', () => {
     assert.equal(thought.width, 184);
 
     const forErin = await detail(erin, sketch.id);
-    assert.equal(forErin.access, 'read');
+    assert.equal(forErin.access, 'write');
     assert.equal(forErin.thoughts.length, 1);
-    expectStatus(await erin.browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`, { body: { text: 'no', x: 0, y: 0 } }), 403, 'viewer adds');
-    expectStatus(await erin.browser.request('PATCH', `/api/v1/sketches/${sketch.id}/positions`, { body: { moves: [{ id: thought.id, x: 1, y: 1, expectedVersion: 1 }] } }), 403, 'viewer moves');
     expectStatus(await dave.browser.request('GET', `/api/v1/sketches/${sketch.id}`), 404, 'other workspace reads');
     expectStatus(await dave.browser.request('PATCH', `/api/v1/sketches/${sketch.id}/positions`, { body: { moves: [{ id: thought.id, x: 1, y: 1, expectedVersion: 1 }] } }), 404, 'other workspace moves');
     expectStatus(await dave.browser.request('GET', `/api/v1/workspaces/${ws.id}/sketches`), 404, 'other workspace lists');
 
-    // Explicit deny wins: a denied member loses the sketch with the project.
-    await grant(alice, lamp.id, bob, 'denied');
-    expectStatus(await bob.browser.request('GET', `/api/v1/sketches/${sketch.id}`), 404, 'denied member');
-    const bobList = expectStatus(await bob.browser.request('GET', `/api/v1/workspaces/${ws.id}/sketches`), 200) as SketchPage;
-    assert.ok(!bobList.items.some((item) => item.id === sketch.id));
-    await pool.query("DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2", [lamp.id, bob.id]);
-    expectStatus(await bob.browser.request('GET', `/api/v1/sketches/${sketch.id}`), 200, 'access returns with the grant removed');
+    // A member who is removed from the space loses the sketch with it.
+    await removeFromSpace(alice, lamp.id, erin);
+    expectStatus(await erin.browser.request('GET', `/api/v1/sketches/${sketch.id}`), 404, 'removed member');
+    const erinList = expectStatus(await erin.browser.request('GET', `/api/v1/workspaces/${ws.id}/sketches`), 200) as SketchPage;
+    assert.ok(!erinList.items.some((item) => item.id === sketch.id));
+    await grant(alice, lamp.id, erin, 'contributor');
+    expectStatus(await erin.browser.request('GET', `/api/v1/sketches/${sketch.id}`), 200, 'access returns with the grant');
   });
 
   test('a project thought keeps its source message through persisted Undo, within the project audience', async () => {
@@ -118,9 +117,6 @@ describe('sketch access', () => {
       body: { text: 'No cross-project source', x: 0, y: 0, sourceProjectMessageId: otherConversation.messages[0]!.id },
     });
     assert.equal(crossProject.status, 404, 'a source must belong to this sketch project');
-    expectStatus(await erin.browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`, {
-      body: { text: 'A viewer cannot cite into the map', x: 0, y: 0, sourceProjectMessageId: sourceId },
-    }), 403, 'viewer cannot create a sourced thought');
   });
 
   test('a message and its thought link both ways (CW-2): the message names the thought, the thought finds its message', async () => {
@@ -164,7 +160,7 @@ describe('sketch access', () => {
     } finally {
       await Promise.all([stream.close(), carolStream.close()]);
     }
-    for (const [who, label] of [[bob, 'member'], [carol, 'admin'], [erin, 'viewer'], [dave, 'outsider']] as const) {
+    for (const [who, label] of [[bob, 'member'], [carol, 'admin'], [erin, 'granted member'], [dave, 'outsider']] as const) {
       expectStatus(await who.browser.request('GET', `/api/v1/sketches/${mine.id}`), 404, `${label} reads a private sketch`);
       expectStatus(await who.browser.request('POST', `/api/v1/sketches/${mine.id}/thoughts`, { body: { text: 'x', x: 0, y: 0 } }), 404, `${label} writes a private sketch`);
     }
@@ -210,7 +206,8 @@ describe('sketch access', () => {
     const personOwner = await person('sketch-policy-agent-owner');
     await addMember(alice, ws.id, personOwner, 'member');
     const agentOwner: Principal = { kind: 'human', id: personOwner.id };
-    const shared = await createSketch(alice, ws.id, { title: 'Agent policy boundary', scope: 'project', projectId: lamp.id });
+    const closed = await project(alice, ws.id, 'Agent policy room', 'restricted');
+    const shared = await createSketch(alice, ws.id, { title: 'Agent policy boundary', scope: 'project', projectId: closed.id });
     const privateMap = await createSketch(personOwner, ws.id, { title: 'Only the person', scope: 'private' });
     const helper = await createAgent(agentOwner, ws.id, { name: 'Scoped reader', owner: 'self' }, db, accessPorts);
     const agent: Principal = { kind: 'agent', id: helper.id };
@@ -227,15 +224,13 @@ describe('sketch access', () => {
         }
       });
     }
-    await check(agent, shared.id, 'write'); // Its member owner writes in this workspace-visible project, so it does too.
-    await grant(alice, lamp.id, personOwner, 'viewer');
-    await check(agent, shared.id, 'read'); // Exactly its viewer owner's rights (F-036 AG-3).
+    await check(agent, shared.id, 'hidden'); // Its member owner was not added to the space, so it does not see it either.
+    await grant(alice, closed.id, personOwner, 'contributor');
+    await check(agent, shared.id, 'write'); // Exactly its owner's rights (F-036 AG-3).
     await check(agent, privateMap.id, 'hidden'); // Even its own person's private sketch stays opaque.
-    await grant(alice, lamp.id, personOwner, 'contributor');
-    await check(agent, shared.id, 'write');
-    await grant(alice, lamp.id, personOwner, 'denied');
-    await check(agent, shared.id, 'hidden'); // The owner kept out, the agent is too.
-    await grant(alice, lamp.id, personOwner, 'contributor');
+    await removeFromSpace(alice, closed.id, personOwner);
+    await check(agent, shared.id, 'hidden'); // The owner removed, the agent is too.
+    await grant(alice, closed.id, personOwner, 'contributor');
     await check(agent, shared.id, 'write');
     await revokeAgent(agentOwner, helper.id, db, accessPorts);
     await check(agent, shared.id, 'hidden');
@@ -309,7 +304,6 @@ describe('sketch access', () => {
     const self = expectStatus(await bob.browser.request('POST', `/api/v1/sketches/${sketch.id}/links`, { body: { fromId: a!.thought.id, toId: a!.thought.id } }), 422) as { code: string };
     assert.equal(self.code, 'SELF_LINK');
     assert.equal((await detail(bob, sketch.id)).links.length, 3);
-    expectStatus(await erin.browser.request('DELETE', `/api/v1/sketches/${sketch.id}/links/${ab.id}`), 403, 'viewer unlinks');
     expectStatus(await bob.browser.request('DELETE', `/api/v1/sketches/${sketch.id}/links/${ab.id}`), 204);
     expectStatus(await bob.browser.request('DELETE', `/api/v1/sketches/${sketch.id}/links/${ab.id}`), 404, 'already removed');
     assert.deepEqual((await detail(bob, sketch.id)).links.map((link) => link.label), [null, null]);

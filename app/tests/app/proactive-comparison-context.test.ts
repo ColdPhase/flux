@@ -9,7 +9,7 @@ import type { Conversation, ConversationMessage, Material, WorkItem, WorkResult 
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
 import { addMember, draft, expectStatus, grant, person, project, workspace } from './support/people.js';
 import { eventPorts } from '../../apps/server/src/events.js';
-import { db, pool } from './support/db.js';
+import { db, loseSpace, pool } from './support/db.js';
 
 const masterKey = readFileSync('/run/secrets/flux_background_key');
 
@@ -161,9 +161,7 @@ test('unlinked work revisions invalidate queued context, and lost owner access c
   const provider: ComparisonProvider = { async countInputTokens() { calls++; return 1; }, async createMessage() { calls++; throw new Error('must not call'); } };
   assert.deepEqual(await dispatchProactiveComparison({ db, candidateId, masterKey, provider }), { status: 'not_run', reason: 'SOURCE_CHANGED' });
   assert.equal(calls, 0);
-  // A space always keeps an admin (C-16): the peer becomes one, so the owner can lose access.
-  await grant(f.owner, f.projectId, f.peer, 'manager');
-  await grant(f.owner, f.projectId, f.owner, 'denied');
+  await loseSpace(f.projectId, f.owner.id);
   assert.equal((await f.negative()).candidateId, undefined, 'a permitted peer result does not select context for an owner who lost access');
 });
 

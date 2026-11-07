@@ -326,7 +326,7 @@ class AssistantUndo(unittest.TestCase):
             person["id"] = self.api(page, "GET", "/api/v1/me", status=200)["user"]["id"]
             self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/members", {"email": person["email"], "role": "member"}, status=201)
         self.api(ada, "POST", f"/api/v1/projects/{self.ids['project']}/grants", {"principal": {"kind": "human", "id": JONAS["id"]}, "role": "contributor"}, status=201)
-        self.api(ada, "POST", f"/api/v1/projects/{self.ids['project']}/grants", {"principal": {"kind": "human", "id": LEE["id"]}, "role": "viewer"}, status=201)
+        self.api(ada, "POST", f"/api/v1/projects/{self.ids['project']}/grants", {"principal": {"kind": "human", "id": LEE["id"]}, "role": "contributor"}, status=201)
 
     def seen_by(self, who: str, *, undoable: bool, owner_id: str = "ada", phone: bool = False) -> tuple[Page, list[dict], list[tuple[str, str]]]:
         """Another person's page: the same changes, as the server lists them for a reader (Undo only for someone who may edit)."""
@@ -350,17 +350,6 @@ class AssistantUndo(unittest.TestCase):
         line.get_by_role("button", name="Undo", exact=True).click()
         expect(line).to_contain_text("Undone by")
         self.assertIn(("run", "undo"), calls)
-
-    def test_11_a_viewer_sees_the_message_without_undo(self) -> None:
-        page, _, calls = self.seen_by("lee", undoable=False, phone=True)
-        self.open_conversation(page)
-        message = page.get_by_role("region", name="What Ada’s assistant changed")
-        expect(message.locator(".assistant-message__who")).to_have_text("Ada’s assistant")
-        expect(message.locator(".assistant-message__line")).to_contain_text("Added task Order spare probes · updated the Wiki page Probes")
-        expect(message.get_by_role("button", name="Undo", exact=True)).to_have_count(0)
-        self.no_horizontal_scroll(page)
-        shot(page, "assistant-undo-390-light-viewer")
-        self.assertEqual(calls, [])
 
     def test_12_everyone_sees_that_ada_s_assistant_is_working_and_nothing_more(self) -> None:
         ada_id = self.api(self.page(), "GET", "/api/v1/me", status=200)["user"]["id"]

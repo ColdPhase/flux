@@ -10,7 +10,7 @@ import { createOauthRequests } from '../../apps/server/src/identity/oauth-flow.j
 import { loadIdentityConfig } from '../../apps/server/src/identity/config.js';
 import { createSessionResolver } from '../../apps/server/src/identity/session.js';
 import { Browser } from './support/http.js';
-import { addMember, expectStatus, grant, person, project, secondSession, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, secondSession, workspace, type Person } from './support/people.js';
 
 // Real native commands, HTTP cookies and PostgreSQL observations. Holds wrap actual
 // reads, never substitute native session/project authority with a fabricated port.
@@ -40,7 +40,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
     workspaceId = (await workspace(owner, 'Bounded native read fixtures')).id;
     await addMember(owner, workspaceId, other, 'member'); await addMember(owner, workspaceId, viewer, 'member');
     projectId = (await project(owner, workspaceId, 'Native bounded projections', 'restricted')).id;
-    await grant(owner, projectId, other, 'contributor'); await grant(owner, projectId, viewer, 'viewer');
+    await grant(owner, projectId, other, 'contributor'); await grant(owner, projectId, viewer, 'contributor');
     const agents = await Promise.all([0, 1].map(() => post<Agent>(owner, `/api/v1/workspaces/${workspaceId}/agents`, { name: 'Ada', owner: 'self' })));
     for (const ref of [{ kind: 'human', id: owner.id }, { kind: 'human', id: other.id }, ...agents.map(({ id }) => ({ kind: 'agent', id }))])
       await addWork(`Active ${ref.kind} ${ref.id}`, { status: 'in_progress', owner: ref });
@@ -71,7 +71,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
     assert.ok(summary.state.active.owners.every(({ name }) => name === 'Ada'));
     assert.equal(summary.state.rule?.id, rule.id); assert.equal(summary.state.result?.id, result.id);
     const first = await get<ProjectWorkView>(`${base()}/work-view?limit=3`, viewer);
-    assert.equal(first.items.length, 3); assert.equal(first.total, 10); assert.equal(first.summary.access, 'viewer');
+    assert.equal(first.items.length, 3); assert.equal(first.total, 10); assert.equal(first.summary.access, 'contributor');
     assert.deepEqual(first.summary.all, summary.all); assert.match(first.summary.observedAt, /\.\d{6}Z$/);
     const seen = [...first.items]; let next = first.nextCursor;
     while (next) { const page = await get<ProjectWorkView>(`${base()}/work-view?limit=3&cursor=${next}`, viewer); seen.push(...page.items); next = page.nextCursor; }
@@ -284,7 +284,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
       await assert.rejects(held.reads.summary(held.actor, projectId), code(401, 'UNAUTHENTICATED'));
       assert.equal((await other.browser.request('GET', `${base()}/work-summary`)).status, 200, 'another live session is unaffected');
     }
-    const held = await readsAfter(other.browser, () => grant(owner, projectId, other, 'denied'));
+    const held = await readsAfter(other.browser, () => removeFromSpace(owner, projectId, other));
     try { await assert.rejects(held.reads.summary(held.actor, projectId), { status: 404 }); }
     finally { await grant(owner, projectId, other, 'contributor'); }
   });
@@ -320,15 +320,6 @@ describe('bounded native work reads through HTTP and current native fences', () 
       assert.equal(policyReads, 2);
       assert.ok(await sessions.resolveSession({ cookie: other.browser.cookieHeader() }), 'an unrelated live SID cannot substitute');
     }
-  });
-
-  test('a readable native grant downgrade updates final access while preserving the coherent observation', async () => {
-    const held = await readsAfter(other.browser, () => grant(owner, projectId, other, 'viewer'));
-    try {
-      const view = await held.reads.view(held.actor, projectId, new URLSearchParams('limit=1'));
-      assert.equal(view.summary.access, 'viewer'); assert.equal(view.summary.workTotal, 7); assert.equal(view.total, 10);
-      assert.equal(view.items.length, 1);
-    } finally { await grant(owner, projectId, other, 'contributor'); }
   });
 
   test('native observations are read-only REPEATABLE READ and all five reads leave project content/events unchanged', async () => {

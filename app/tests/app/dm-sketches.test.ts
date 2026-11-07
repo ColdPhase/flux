@@ -423,7 +423,7 @@ describe('DM sketches', () => {
     // A grant committed after the preview makes it stale: nothing is copied, a fresh preview comes back.
     const before = (await pool.query('SELECT count(*)::int AS n FROM sketches WHERE copied_from_sketch_id = $1', [sketch.id])).rows[0].n;
     const stale = expectStatus(await preview(jo, sketch.id, `?projectId=${bench.id}`), 200) as SketchPromotionPreview;
-    await grant(olga, bench.id, kai, 'viewer');
+    await grant(olga, bench.id, kai, 'contributor');
     const refused = await promote(jo, sketch.id, { target: { kind: 'existing', projectId: bench.id }, token: stale.token });
     expectStatus(refused, 409, 'stale grants');
     assert.equal((refused.json as { code: string }).code, 'PROMOTION_CHANGED');
@@ -438,17 +438,16 @@ describe('DM sketches', () => {
     const open = await project(olga, ws.id, 'Lighting', 'workspace');
     const closed = await project(olga, ws.id, 'Kai’s bench', 'restricted');
     await grant(olga, closed.id, kai, 'contributor');
-    const viewing = await project(olga, ws.id, 'Read only', 'restricted');
-    await grant(olga, viewing.id, kai, 'viewer');
+    const viewing = await project(olga, ws.id, 'Not Kai’s', 'restricted');
 
     const initial = expectStatus(await preview(kai, sketch.id), 200) as SketchPromotionPreview;
     // F-037: everyone in the company but a guest starts spaces.
     assert.equal(initial.canCreateProject, true);
     assert.ok(initial.target?.kind === 'new', 'a member is offered a new space first');
     assert.ok(initial.projects.some((p) => p.id === open.id) && initial.projects.some((p) => p.id === closed.id));
-    assert.ok(!initial.projects.some((p) => p.id === viewing.id), 'only projects they can change');
+    assert.ok(!initial.projects.some((p) => p.id === viewing.id), 'only spaces they were added to');
     expectStatus(await preview(kai, sketch.id, '?target=new'), 200, 'members start spaces');
-    expectStatus(await preview(kai, sketch.id, `?projectId=${viewing.id}`), 403, 'a viewer cannot copy in');
+    expectStatus(await preview(kai, sketch.id, `?projectId=${viewing.id}`), 404, 'a space they were not added to is not there');
 
     const helper = await createAgent({ kind: 'human', id: kai.id }, ws.id, { name: 'Kai’s helper', owner: 'self' }, db, accessPorts);
     const bench = expectStatus(await preview(kai, sketch.id, `?projectId=${closed.id}`), 200) as SketchPromotionPreview;

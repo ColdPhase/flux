@@ -9,7 +9,7 @@ import { assistantHandoffRunId, type PersonalComputeResult } from '@flux/core';
 import { db, pool } from './support/db.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { mcp, toolValue } from './support/mcp.js';
-import { expectStatus, type Person } from './support/people.js';
+import { expectStatus, grant, removeFromSpace, type Person } from './support/people.js';
 import { assistantScene, changesOf, text, type AssistantScene, type Message } from './support/assistant-scene.js';
 import { assistantChangeUseCases } from '../../apps/server/src/assistant/changes.js';
 
@@ -311,8 +311,8 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     const made = JSON.parse(text((await handoff(live, task, 'k')).message)) as { unitId: string };
     await scene.complete(live.runId);
     const [row] = await changesOf(live.runId);
-    // An explicit deny wins over every role: Ada no longer has this project, though she still owns the workspace.
-    await pool.query(`UPDATE project_grants SET role = 'denied' WHERE project_id = $1 AND user_id = $2`, [scene.place.id, scene.owner.id]);
+    // Ada was removed from the space: she no longer has this project, though she is still in the company.
+    await removeFromSpace(scene.lead, scene.place.id, scene.owner);
     try {
       const single = expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(row!.id, 'undo'), { body: {} }), 200) as { change: AssistantChange; message: string | null };
       assert.equal(single.message, 'Changed since. Open it');
@@ -322,7 +322,7 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
       assert.deepEqual((await units(task.id)).map((item) => [item.id, item.state, item.generation, item.version]), [[made.unitId, 'pending', 0, 1]], 'nothing was cancelled');
       assert.equal((await changesOf(live.runId))[0]!.state, 'applied');
     } finally {
-      await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2 AND role = 'denied'`, [scene.place.id, scene.owner.id]);
+      await grant(scene.lead, scene.place.id, scene.owner, 'manager');
     }
     // With her rights back, the same Undo cancels it.
     const back = expectStatus(await scene.owner.browser.request('POST', assistantChangeActionPath(row!.id, 'undo'), { body: {} }), 200) as { change: AssistantChange; message: string | null };

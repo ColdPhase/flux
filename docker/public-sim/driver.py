@@ -695,7 +695,9 @@ def _phases(ada: Page, jonas: Page, lee: Page, ids: dict, pid: str, sid: str, to
             access["refreshedSameRoom"] = claims[0].get("video", {}).get("room") == claims[1].get("video", {}).get("room")
             access["refreshedLaterExpiry"] = claims[1].get("exp", 0) >= claims[0].get("exp", 0)
         revoked_at = time.time()
-        ok(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": ids["jonas"]}, "role": "denied"}, 201)
+        # A space has two roles (#903): access ends when the person is removed from the space.
+        jonas_grant = next(g for g in ok(ada, "GET", f"/api/v1/projects/{pid}/grants") if g["principal"]["id"] == ids["jonas"])
+        ok(ada, "DELETE", f"/api/v1/projects/{pid}/grants/{jonas_grant['id']}", None, 204)
         gone = None
         while time.time() - revoked_at < 30:
             live = [item for item in stats(jonas) if not item.get("closed") and item.get("state") not in ("closed", "failed")]

@@ -7,7 +7,7 @@ import type { NotificationPreferences, NotificationSourceRef, UpdateNotification
 import { summaryUnitOfWork } from '../../apps/worker/src/jobs/morning-summary.js';
 import { createVapidAuthorizer, deliverPush } from '../../apps/worker/src/push/index.js';
 import { connectionString, db, pool } from './support/db.js';
-import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
 import { decryptPush, recordedPushes, subscribe } from './support/push.js';
 
 // Real session/grant/preferences APIs, SQL transactions and encrypted Web Push against the
@@ -58,8 +58,8 @@ async function fixture(t: TestContext) {
   await addMember(owner, space.id, reader, 'member');
   const a = await project(owner, space.id, 'Readable anchor A', 'restricted');
   const b = await project(owner, space.id, 'Independent source B', 'restricted');
-  await grant(owner, a.id, reader, 'viewer');
-  await grant(owner, b.id, reader, 'viewer');
+  await grant(owner, a.id, reader, 'contributor');
+  await grant(owner, b.id, reader, 'contributor');
   const { subscription, id: subscriptionId } = await subscribe(reader.browser);
   const sourceA: NotificationSourceRef = { workspaceId: space.id, type: 'project', id: a.id };
   const sourceB: NotificationSourceRef = { workspaceId: space.id, type: 'project', id: b.id };
@@ -179,19 +179,19 @@ describe('morning summary native admission and delivery rechecks (#350)', () => 
   test('non-anchor and total access loss suppress an admitted A+B aggregate and its direct inbox read', async (t) => {
     const f = await fixture(t);
     const row = await admit(f);
-    await grant(f.owner, f.b.id, f.reader, 'denied');
+    await removeFromSpace(f.owner, f.b.id, f.reader);
     expectStatus(await f.reader.browser.request('GET', `/api/v1/projects/${f.a.id}`), 200);
     expectStatus(await f.reader.browser.request('GET', `/api/v1/projects/${f.b.id}`), 404);
     await skipped(f);
     expectStatus(await f.reader.browser.request('GET', `/api/v1/inbox/${row.id}`), 404);
-    await grant(f.owner, f.a.id, f.reader, 'denied');
+    await removeFromSpace(f.owner, f.a.id, f.reader);
     await skipped(f);
     expectStatus(await f.reader.browser.request('GET', `/api/v1/inbox/${row.id}`), 404);
     // Restoring A alone still leaves B unauthorized; a single-anchor implementation fails here.
-    await grant(f.owner, f.a.id, f.reader, 'viewer');
+    await grant(f.owner, f.a.id, f.reader, 'contributor');
     await skipped(f);
     expectStatus(await f.reader.browser.request('GET', `/api/v1/inbox/${row.id}`), 404);
-    await grant(f.owner, f.b.id, f.reader, 'viewer');
+    await grant(f.owner, f.b.id, f.reader, 'contributor');
     expectStatus(await f.reader.browser.request('GET', `/api/v1/inbox/${row.id}`), 200);
     assert.equal((await delivered(f)).title, '2 things wait in your inbox');
   });

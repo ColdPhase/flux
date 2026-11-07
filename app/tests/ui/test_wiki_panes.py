@@ -1,7 +1,7 @@
 """Browser tests for the project wiki as two panes (issue #136, Studio 11.6 UI116-4).
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose
-application. A manager, a contributor and a reader share one project with realistic pages. The
+application. A manager and two members share one project with realistic pages. The
 page index, its search and its quiet, accessible selection; New page and Import .md (accepted and
 refused files); history; downloading a page and exporting the project as real files; sharing a
 link; focus mode; unsaved text across pages; phone, small phone and tablet layouts; and measured
@@ -215,7 +215,7 @@ class WikiPanesJourney(unittest.TestCase):
             self.api(owner, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": person["email"], "role": "member"}, status=201)
         project = self.api(owner, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": PROJECT, "visibility": "restricted"}, status=201)
         type(self).project_id = project["id"]
-        for person, role in ((PARTNER, "contributor"), (READER, "viewer")):
+        for person, role in ((PARTNER, "contributor"), (READER, "contributor")):
             self.api(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "human", "id": person["id"]}, "role": role}, status=201)
         base = f"/api/v1/projects/{project['id']}/docs"
         key = lambda: {"idempotency-key": str(uuid.uuid4())}  # noqa: E731
@@ -622,13 +622,10 @@ class WikiPanesJourney(unittest.TestCase):
         self.api(partner, "GET", f"/api/v1/projects/{self.project_id}/export?format=bundle", status=403)
         partner.keyboard.press("Escape")
         expect(dialog).to_have_count(0)
-        # A reader reads and downloads; nothing to write with.
+        # Another member reads and downloads the page too.
         reader = self.page("reader")
         reader.goto(self.url("parts"))
         expect(reader.get_by_role("heading", level=2, name=PARTS)).to_be_visible()
-        expect(self.index(reader).get_by_role("link", name="New page")).to_have_count(0)
-        expect(self.index(reader).get_by_role("button", name="Import .md")).to_have_count(0)
-        expect(reader.locator(".wiki-bar").get_by_role("link", name="Edit")).to_have_count(0)
         name, data = self.download(reader, "^This page as Markdown")
         self.assertEqual((name, data.decode("utf-8")), ("parts-list.md", f"# {PARTS}\n\n{PARTS_BODY.rstrip()}\n"))
 
@@ -905,7 +902,7 @@ class WikiPanesJourney(unittest.TestCase):
         space = self.api(setup, "POST", "/api/v1/workspaces", {"name": "Wiki reference checks"}, status=201)
         self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/members", {"email": READER['email'], "role": "member"}, status=201)
         project = self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/projects", {"name": "Reference notes", "visibility": "restricted"}, status=201)
-        self.api(setup, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "human", "id": READER['id']}, "role": "viewer"}, status=201)
+        self.api(setup, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": {"kind": "human", "id": READER['id']}, "role": "contributor"}, status=201)
         other = self.api(setup, "POST", f"/api/v1/workspaces/{space['id']}/projects", {"name": "Private notes", "visibility": "restricted"}, status=201)
         create = lambda pid, title, body: self.api(setup, "POST", f"/api/v1/projects/{pid}/docs", {"title": title, "body": body, "state": "published"}, status=201,
                                                   headers={"idempotency-key": str(uuid.uuid4())})  # noqa: E731

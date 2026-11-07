@@ -5,7 +5,7 @@ import type { ProjectAgents } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
 import { expect, toolValue } from './support/mcp.js';
 import { actionScene } from './support/mcp-actions.js';
-import { addMember, expectStatus, grant, person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person } from './support/people.js';
 
 const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
@@ -45,7 +45,7 @@ test('project readers see every current connection with owner, client and truthf
   const ownerPerson = { id: active.owner.id, email: '', browser: f.owner };
   await addMember(ownerPerson, workspaceId, member, 'member');
   assert.equal((await member.browser.request('GET', `/api/v1/projects/${f.projectId}/agents`)).status, 404, 'restricted project before a grant');
-  await grant(ownerPerson, f.projectId, member, 'viewer');
+  await grant(ownerPerson, f.projectId, member, 'contributor');
   const seen = await read(member.browser);
   assert.deepEqual(seen.connections.map((item) => [item.id, item.own, item.state]).sort(),
     [[f.connectionId, false, 'session_open'], [String(second.id), false, 'not_signed_in']].sort());
@@ -113,22 +113,6 @@ test('choosing a connection on the consent page is not an authorization; an expi
   assert.equal(await state(f.connectionId), 'offline', 'a session of an earlier grant generation is not open');
 });
 
-test('a connection MCP would refuse is unavailable, never connected', async () => {
-  const f = await actionScene(pool);
-  const member = await person('Narrowed');
-  const ownerPerson = { id: (await pool.query('SELECT owner_user_id FROM agent_connections WHERE id=$1', [f.connectionId])).rows[0].owner_user_id as string, email: '', browser: f.owner };
-  await addMember(ownerPerson, f.workspaceId, member, 'member');
-  await grant(ownerPerson, f.projectId, member, 'contributor');
-  const agent = expect(await member.browser.request('POST', `/api/v1/workspaces/${f.workspaceId}/agents`, { body: { name: 'Narrowed agent', owner: 'self' } }), 201);
-  const writes = expect(await member.browser.request('POST', '/api/v1/agent-connections', { body: { agentId: agent.id,
-    selectedProjectIds: [f.projectId], scopes: ['flux.context.read', 'flux.proposal.write'], name: 'Writes', clientDesignation: 'claude_code' } }), 201);
-  // The connection writes; narrowing its owner to viewer narrows its agent too, so MCP refuses it.
-  await grant(ownerPerson, f.projectId, member, 'viewer');
-  const listed = (expectStatus(await f.owner.request('GET', `/api/v1/projects/${f.projectId}/agents`), 200) as ProjectAgents)
-    .connections.find((item) => item.id === String(writes.id))!;
-  assert.deepEqual({ state: listed.state, session: listed.session }, { state: 'unavailable', session: null });
-});
-
 test('only connections selected for this project, of owners who can still read it, are listed', async () => {
   const f = await actionScene(pool);
   const other = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/projects`,
@@ -147,6 +131,6 @@ test('only connections selected for this project, of owners who can still read i
   const his = expect(await member.browser.request('POST', '/api/v1/agent-connections', { body: { agentId: agent.id,
     selectedProjectIds: [f.projectId], scopes: ['flux.context.read'], name: 'Workshop PC', clientDesignation: 'claude_code' } }), 201);
   assert.ok((await ids()).includes(String(his.id)));
-  await grant(ownerPerson, f.projectId, member, 'denied');
+  await removeFromSpace(ownerPerson, f.projectId, member);
   assert.ok(!(await ids()).includes(String(his.id)), "an owner who lost access no longer shows a connection here");
 });

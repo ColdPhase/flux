@@ -34,7 +34,7 @@ test('"#n" finds the task in search, only for people who can open it', async () 
   await addMember(owner, ws.id, member, 'member');
   await addMember(owner, ws.id, reader, 'member');
   const place = await project(owner, ws.id, 'Hedge sensors', 'restricted');
-  await grant(owner, place.id, reader, 'viewer');
+  await grant(owner, place.id, reader, 'contributor');
   // 26 tasks: #20–#26 share the prefix "2", and two titles name the number 2 in words.
   const titles = ['Phase 2 walnut probes', 'Seal the barrel lid', 'Order 2 spare probes',
     ...Array.from({ length: 23 }, (_, index) => `Log the hedge readings ${String.fromCharCode(97 + index)}`)];

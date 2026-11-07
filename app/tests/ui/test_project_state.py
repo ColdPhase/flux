@@ -58,7 +58,7 @@ class ProjectStateJourney(unittest.TestCase):
     @staticmethod
     def call(page, method, path, body=None, status=200, headers=None):
         response = page.request.fetch(ORIGIN + path, method=method,
-            headers={"origin": ORIGIN, "content-type": "application/json", **(headers or {})},
+            headers={"origin": ORIGIN, **({"content-type": "application/json"} if body is not None else {}), **(headers or {})},
             data=json.dumps(body) if body is not None else None)
         if response.status != status:
             raise AssertionError(f"{method} {path}: {response.status}, expected {status}: {response.text()}")
@@ -86,7 +86,7 @@ class ProjectStateJourney(unittest.TestCase):
         project = self.call(owner, "POST", f"/api/v1/workspaces/{ws['id']}/projects",
             {"name": name, "visibility": "restricted"}, 201)
         self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants",
-            {"principal": {"kind": "human", "id": self.accounts["Jonas Reader"]["id"]}, "role": "viewer"}, 201)
+            {"principal": {"kind": "human", "id": self.accounts["Jonas Reader"]["id"]}, "role": "contributor"}, 201)
         return owner, project
 
     def now_in_project(self, page):
@@ -175,105 +175,19 @@ class ProjectStateJourney(unittest.TestCase):
                 self.assertNotIn(ring["color"], ("transparent", "rgba(0, 0, 0, 0)"), ring)
         shot(page, "136-state-retained-history-desktop")
 
-    def test_03_phone_and_tablet_readers_share_current_counts_and_reachable_details_without_write_access(self):
+    def test_03_a_member_who_is_removed_from_the_space_sees_nothing_of_it(self):
         owner, project = self.scene()
         task = self.work(owner, project, "Prepare the ToF sensor experiment for the library")
-        self.work(owner, project, "Keep a manual switch available")
-        for width, height, dark in ((320, 740, False), (390, 844, True), (820, 1180, False), (1280, 800, False)):
-            with self.subTest(width=width, dark=dark):
-                page = self.page("Jonas Reader", width, height, dark)
-                page.goto(f"/projects/{project['id']}")
-                # One project conversation (UI116-1): an empty stream says so to a reader, with no composer.
-                expect(page.get_by_role("heading", name="No messages yet", exact=True)).to_be_visible()
-                # The two tasks are announced above it (UI116-3); announcements are not messages.
-                expect(page.locator(".convo-notice")).to_have_count(2)
-                expect(page.locator(".project-convo__message")).to_have_count(0)
-                expect(page.locator(".project-convo__read-only")).to_be_visible()
-                expect(page.locator("#project-composer")).to_have_count(0)
-                expect(page.get_by_role("button", name="Send message", exact=True)).to_have_count(0)
-                if width <= 640:
-                    self.assert_text_is_unclipped(page.locator(".phead__sub").first)
-                else:
-                    expect(self.faces(page)).to_be_visible()
-                self.assert_text_is_unclipped(page.locator(".composer__audience > span").first)
-                if width <= 640:
-                    expect(page.locator(".ws-state-row")).to_have_count(0)
-                    open_details(page, tap=True)
-                    panel = page.get_by_role("dialog", name="Details")
-                    expect(panel.get_by_role("region", name="Now", exact=True)).to_contain_text("Open")
-                    expect(panel.get_by_role("region", name="In this space").get_by_role("link")).to_have_text([re.compile("^Map"), re.compile("^Wiki"), re.compile("^Tasks")])
-                    shot(page, f"136-state-overview-{width}")
-                    panel.get_by_role("button", name=re.compile("Open.*Keep a manual switch available")).click()
-                    expect(panel.get_by_role("heading", name="Keep a manual switch available", exact=True)).to_be_visible()
-                    panel.get_by_role("button", name="Close details", exact=True).click()
-                else:
-                    expect(self.now_in_project(page).get_by_role("button", name=re.compile("^Open: "))).to_be_visible()
-                    page.get_by_role("button", name="Close details", exact=True).click()
-                    expect(page.get_by_role("link", name="New conversation", exact=True)).to_have_count(0)
-                self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
-                shot(page, f"136-state-reader-{width}-{'dark' if dark else 'light'}")
-                view_tab(page, "Tasks")
-                # A reader's board has no way to add or move a task (#136).
-                expect(page.get_by_role("button", name="New Task")).to_have_count(0)
-                expect(page.get_by_role("button", name="Move to…")).to_have_count(0)
-                if width <= 640:
-                    # The phone shows the list as drawn; a reader's glyph is a picture of the state, not a button.
-                    expect(page.locator(".ws-task").filter(has_text=task["title"])).to_have_count(1)
-                    expect(page.locator(".ws-task button.ws-task__glyph")).to_have_count(0)
-                else:
-                    expect(page.locator(".tb-card").filter(has_text=task["title"])).to_have_count(1)
-                    page.get_by_role("radio", name="List", exact=True).click()
-                expect(page.locator(".ws-item").filter(has_text=task["title"])).to_be_visible()
-                expect(page.get_by_role("button", name=re.compile("^(New )?Task$"))).to_have_count(0)
-        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants",
-            {"principal": {"kind": "human", "id": self.accounts["Jonas Reader"]["id"]}, "role": "denied"}, 201)
-        denied = self.page("Jonas Reader")
-        self.call(denied, "GET", f"/api/v1/projects/{project['id']}/work", status=404)
-        denied.goto(f"/projects/{project['id']}")
-        expect(denied.locator('[data-seg="open"]')).to_have_count(0)
-        expect(denied.get_by_text(task["title"], exact=True)).to_have_count(0)
-
-    def test_04_reader_opens_uncited_source_and_existing_conversation_then_writer_draft_returns(self):
-        owner, project = self.scene()
-        principal = {"kind": "human", "id": self.accounts["Jonas Reader"]["id"]}
-        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "contributor"}, 201)
-        reader = self.page("Jonas Reader", 390, 844)
-        reader.goto(f"/projects/{project['id']}")
-        reader.get_by_label("Write a message", exact=True).fill("Unsent sensor notes remain mine")
-        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "viewer"}, 201)
-        thread = self.call(owner, "POST", f"/api/v1/projects/{project['id']}/conversations",
-            {"body": "Sensor calibration plan for the library", "clientMessageId": str(uuid.uuid4())}, 201)
-        material = self.call(owner, "POST", f"/api/v1/projects/{project['id']}/materials",
-            {"title": "Low-light sensor notes", "body": "ToF detects gestures without saving camera images.", "clientMutationId": str(uuid.uuid4())}, 201)
-        reader.reload()
-        # The existing root is in the one stream (UI116-1); the reader has no composer.
-        expect(reader.locator(".project-convo__message > .message-bubble > .message-body")).to_have_text("Sensor calibration plan for the library")
-        expect(reader.get_by_role("heading", name="No messages yet", exact=True)).to_have_count(0)
-        expect(reader.locator("#project-composer")).to_have_count(0)
-        expect(reader.get_by_text("Unsent sensor notes remain mine", exact=True)).to_have_count(0)
-        reader.get_by_role("button", name=re.compile("^Sources")).click()
-        tray = reader.get_by_role("region", name="Space materials")
-        expect(tray.get_by_role("button", name="Discuss this version")).to_have_count(0)
-        expect(tray.get_by_role("button", name="Add material")).to_have_count(0)
-        source = tray.get_by_role("link", name=material["title"], exact=True)
-        expect(source).to_have_attribute("href", f"/materials/{material['materialId']}/versions/{material['version']}")
-        source.focus()
-        reader.keyboard.press("Enter")
-        expect(reader.locator(".material-view__body")).to_have_text(material["body"])
-        reader.goto(f"/projects/{project['id']}")
-        reader.goto(f"/projects/{project['id']}/conversations/{thread['id']}")
-        thread_view = reader.get_by_role("complementary", name="Replies").or_(reader.get_by_role("dialog", name="Replies"))
-        expect(thread_view.locator(".thread__root")).to_contain_text("Sensor calibration plan for the library")
-        expect(reader.locator(".project-convo__message > .message-bubble > .message-body")).to_have_text("Sensor calibration plan for the library")
-        expect(thread_view.locator(".project-convo__read-only")).to_be_visible()
-        expect(thread_view.locator(".project-convo__current-thread")).to_contain_text("Conversation · Sensor calibration")
-        expect(thread_view.locator(".project-convo__current-thread")).not_to_contain_text("Replying to")
-        expect(reader.locator("#project-composer")).to_have_count(0)
-        expect(reader.locator("#thread-composer")).to_have_count(0)
-        shot(reader, "136-state-reader-saved-conversation-390")
-        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "contributor"}, 201)
-        reader.goto(f"/projects/{project['id']}")
-        expect(reader.get_by_label("Write a message", exact=True)).to_have_value("Unsent sensor notes remain mine")
+        member = self.page("Jonas Reader")
+        self.call(member, "GET", f"/api/v1/projects/{project['id']}/work", status=200)
+        grants = self.call(owner, "GET", f"/api/v1/projects/{project['id']}/grants")
+        gone = next(grant for grant in grants if grant["principal"]["id"] == self.accounts["Jonas Reader"]["id"])
+        self.call(owner, "DELETE", f"/api/v1/projects/{project['id']}/grants/{gone['id']}", status=204)
+        removed = self.page("Jonas Reader")
+        self.call(removed, "GET", f"/api/v1/projects/{project['id']}/work", status=404)
+        removed.goto(f"/projects/{project['id']}")
+        expect(removed.locator('[data-seg="open"]')).to_have_count(0)
+        expect(removed.get_by_text(task["title"], exact=True)).to_have_count(0)
 
     def test_05_long_project_title_keeps_one_row_with_views_and_people(self):
         for name in (LONG_NAME, LONG_NAME + " — sensor calibration and accessible night lighting"):
@@ -337,39 +251,6 @@ class ProjectStateJourney(unittest.TestCase):
                 self.assertLessEqual(row_box["x"] + row_box["width"], panel_box["x"] + panel_box["width"] + 1)
                 self.assertGreaterEqual(row_box["x"], panel_box["x"] - 1)
                 shot(page, f"136-state-long-metadata-{width}")
-
-    def test_06_material_draft_hides_on_downgrade_and_returns_on_upgrade(self):
-        owner, project = self.scene()
-        principal = {"kind": "human", "id": self.accounts["Jonas Reader"]["id"]}
-        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "contributor"}, 201)
-        reader = self.page("Jonas Reader", 390, 844)
-        reader.goto(f"/projects/{project['id']}")
-        # A contributor opens the sources with "/source" (F-026 S5); the viewer below keeps the button.
-        reader.locator("#project-composer").fill("/source")
-        reader.locator("#project-composer").press("Enter")
-        reader.get_by_role("button", name="Add material", exact=True).click()
-        reader.get_by_label("Title", exact=True).fill("Unpublished calibration source")
-        reader.get_by_label("Text", exact=True).fill("Keep this source draft until I can contribute again.")
-        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "viewer"}, 201)
-        reader.evaluate("window.dispatchEvent(new Event('focus'))")
-        expect(reader.locator(".project-convo__read-only")).to_be_visible(timeout=20000)
-        expect(reader.locator(".project-convo__material-form")).to_have_count(0)
-        reader.reload()
-        expect(reader.locator(".project-convo__read-only")).to_be_visible()
-        reader.get_by_role("button", name=re.compile("^Sources")).click()
-        expect(reader.locator(".project-convo__material-form")).to_have_count(0)
-        expect(reader.get_by_role("button", name="Save for this space", exact=True)).to_have_count(0)
-        self.assertEqual(self.call(owner, "GET", f"/api/v1/projects/{project['id']}/materials")["total"], 0)
-        shot(reader, "136-state-material-reader-downgrade-390")
-        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/grants", {"principal": principal, "role": "contributor"}, 201)
-        reader.reload()
-        expect(reader.get_by_label("Title", exact=True)).to_have_value("Unpublished calibration source")
-        expect(reader.get_by_label("Text", exact=True)).to_have_value("Keep this source draft until I can contribute again.")
-        with reader.expect_response(lambda r: r.request.method == "POST" and r.url.endswith(f"/projects/{project['id']}/materials")) as saved:
-            reader.get_by_role("button", name="Save for this space", exact=True).click()
-        self.assertEqual(saved.value.status, 201)
-        material = self.call(owner, "GET", f"/api/v1/projects/{project['id']}/materials")["items"][0]
-        self.assertEqual(material["title"], "Unpublished calibration source")
 
     def test_07_phone_keeps_blocked_count_visible_beside_other_current_work(self):
         owner, project = self.scene()

@@ -419,6 +419,9 @@ class FirstRunSettingsPeople(unittest.TestCase):
         every.get_by_role("button", name="Add me to Wera’s corner").click()
         expect(sidebar.get_by_role("link", name=re.compile("Wera’s corner"))).to_be_visible()
         expect(every.get_by_role("button", name="Add me to Wera’s corner")).to_have_count(0)
+        # Add me makes the company admin the space's admin (#903), so the space has an admin besides its creator.
+        added = next(grant for grant in self.api(page, "GET", f"/api/v1/projects/{hers['id']}/grants", status=200) if grant["principal"]["id"] == self.ids["maria"])
+        self.assertEqual(added["role"], "manager")
         # A company admin opens a space from a link without belonging to it (F-037: they can change any space).
         left = page.request.delete(f"{ORIGIN}/api/v1/projects/{hers['id']}/grants/{self.grant_of(page, hers['id'], 'maria')}", headers={"origin": ORIGIN})
         self.assertEqual(left.status, 204, left.text())

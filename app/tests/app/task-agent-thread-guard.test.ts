@@ -13,8 +13,7 @@ import { conversationStore } from '../../apps/server/src/conversation/store.js';
 import { actionScene, agentConnection, toolFailure } from './support/mcp-actions.js';
 import { apiUrl, publicOrigin, register, uniqueEmail } from './support/http.js';
 import { expect, toolValue } from './support/mcp.js';
-import { db, pool } from './support/db.js';
-import { person } from './support/people.js';
+import { db, loseSpace, pool } from './support/db.js';
 import { backendPid, barrier, waitUntilBlockedBy } from './support/locks.js';
 
 const auth = createAuth({ db, config: loadIdentityConfig(), mailer: null, oauthRequests: createOauthRequests() });
@@ -151,11 +150,7 @@ test('a revoked owner, binding and connection block actual native effects/replay
     const command=envelope(f,item.id,grant.id); await post(f,command);
     if(axis==='owner') {
       const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as {id:string}).id;
-      // A space always keeps an admin (C-16): a second person becomes one, so the owner can lose access.
-      const admin=await person('guard-second-admin');
-      expect(await f.owner.request('POST',`/api/v1/workspaces/${f.workspaceId}/members`,{body:{email:admin.email,role:'member'}}),201);
-      expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/grants`,{body:{principal:{kind:'human',id:admin.id},role:'manager'}}),201);
-      expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/grants`,{body:{principal:{kind:'human',id:ownerId},role:'denied'}}),201);
+      await loseSpace(f.projectId,ownerId);
     }
     if(axis==='binding') await pool.query('UPDATE agent_oauth_bindings SET generation=generation+1 WHERE id=(SELECT binding_id FROM agent_runtime_sessions WHERE id=$1)',[f.runtimeSessionId]);
     if(axis==='connection') expect(await f.owner.request('DELETE',`/api/v1/agent-connections/${f.connectionId}`),204);

@@ -9,7 +9,7 @@ import { pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
 import { toolValue } from './support/mcp.js';
 import { agentConnection } from './support/mcp-actions.js';
-import { addMember, expectStatus, grant, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { assistantScene, changesOf, human, result, text, type AssistantScene } from './support/assistant-scene.js';
 
 // F-036 AG-3 and AG-7 (#855): an agent's rights are exactly its owner's, and its "What it may do" (Only read, Do it and tell me, Ask me
@@ -46,12 +46,11 @@ async function laboratory(own: AssistantScene) {
   const thread = expectStatus(await own.peer.browser.request('POST', `/api/v1/projects/${rig.id}/conversations`, { body: { body: 'Rig notes', clientMessageId: randomUUID() } }), 201) as Conversation;
   return { lab, rig, thread, newAgent };
 }
-/** The owner kept out of the project for the length of one check: a keep-out is the one thing that lowers a workspace owner. */
+/** The owner removed from the project for the length of one check: the one way to lower the scene's owner, who is an ordinary member (#903). */
 async function keptOut(work: () => Promise<void>) {
-  await pool.query(`INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'denied', $4) ON CONFLICT (project_id, user_id) WHERE (user_id IS NOT NULL) DO UPDATE SET role = 'denied'`,
-    [randomUUID(), scene.ws.id, scene.place.id, scene.owner.id]);
+  await removeFromSpace(scene.lead, scene.place.id, scene.owner);
   try { await work(); }
-  finally { await pool.query(`DELETE FROM project_grants WHERE project_id = $1 AND user_id = $2`, [scene.place.id, scene.owner.id]); }
+  finally { await grant(scene.lead, scene.place.id, scene.owner, 'manager'); }
 }
 
 describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)', () => {
@@ -221,9 +220,8 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
 
     const made = (await scene.listConversation(scene.owner)).filter((change) => change.runId === live.runId);
     assert.equal(assistantChangeLine(made), `Updated the Wiki page Calibration (2 changes) · moved #${job.number} to In progress`);
-    // Anyone who may edit can undo; a viewer's copy offers nothing and the server refuses.
-    assert.ok((await scene.listConversation(scene.viewer)).filter((change) => change.runId === live.runId).every((change) => !change.undoable));
-    assert.equal((await scene.viewer.browser.request('POST', assistantRunChangesActionPath(live.runId, 'undo'), { body: {} })).status, 403);
+    // Anyone who may edit can undo; someone outside the space sees nothing and the server refuses.
+    assert.equal((await scene.stranger.browser.request('POST', assistantRunChangesActionPath(live.runId, 'undo'), { body: {} })).status, 404);
 
     const undone = await undoRun(scene.peer, live.runId);
     assert.equal(undone.undone, 3, undone.message);
@@ -305,16 +303,17 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     assert.ok(toolValue(await create({ title: 'Client acting' })).workId, 'what is new and its owner\'s own is still made at once');
   });
 
-  test('outside its owner\'s rights the assistant is refused and prepares nothing: an owner narrowed to viewer mid-run, and nothing waits', async () => {
+  test('outside its owner\'s rights the assistant is refused and prepares nothing: an owner removed from the space mid-run, and nothing waits', async () => {
     const own = await assistantScene('wd2');
     const { rig, thread } = await laboratory(own);
     const job = await own.task(own.peer, 'Jonas aligns the rig', rig.id);
     const live = await own.liveRun(thread);
-    await grant(own.peer, rig.id, own.owner, 'viewer');
-    const refused = await live.call('flux_update_task', { workId: job.id, expectedVersion: job.version, changes: { title: 'Aligned by a viewer\'s agent' } });
-    assert.match(text(refused.message), /^My owner can't change this, so neither can I/);
+    await removeFromSpace(own.peer, rig.id, own.owner);
+    // The space is gone from the owner's view, so the run's own access is refused before any tool runs (as for a revoked connection).
+    const answer = await live.call('flux_update_task', { workId: job.id, expectedVersion: job.version, changes: { title: 'Aligned after its owner left' } });
+    assert.ok(refused(answer), 'the call is refused');
     assert.equal((await own.taskRow(job.id)).title, 'Jonas aligns the rig');
-    assert.deepEqual((await changesOf(live.runId)).map((row) => row.state), ['refused'], 'nothing waits for an OK the owner could not give');
+    assert.deepEqual(await changesOf(live.runId), [], 'nothing was prepared and nothing waits for an OK the owner could not give');
   });
 
   test('a guest has no AI, at once, even with a grant on the space: a client, a running assistant, a queued run, saved changes and the Inbox all stop', async (t) => {
@@ -523,7 +522,7 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     const raw = JSON.stringify([connections, policy]);
     assert.ok(!raw.includes(hidden.id), 'its id appears nowhere');
     // Added to the space, she reaches it at once: nothing is stored for the assistant.
-    await grant(own.peer, hidden.id, own.owner, 'viewer');
+    await grant(own.peer, hidden.id, own.owner, 'contributor');
     const after = expectStatus(await own.owner.browser.request('GET', '/api/v1/agent-connections'), 200) as unknown as AgentConnection[];
     assert.deepEqual(after.find((connection) => connection.id === assistant.id)!.selectedProjectIds.sort(), [rig.id, hidden.id].sort());
   });

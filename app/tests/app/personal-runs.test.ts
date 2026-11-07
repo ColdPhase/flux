@@ -11,7 +11,7 @@ import { assistantProposalUseCases, personalRunUseCases, proposalUnitOfWork } fr
 import { workUseCases } from '../../apps/server/src/work/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
-import { addMember, expectStatus, person, project as createProject, removeMember, workspace as createWorkspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, project as createProject, removeFromSpace, removeMember, workspace as createWorkspace, type Person } from './support/people.js';
 import { echo, FakeCompute, FakeConnections, FakeQueue, type Responder } from './support/personal-runs.js';
 import { StreamClient } from './support/stream.js';
 import { waitFor } from './support/wait.js';
@@ -60,7 +60,6 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
   let thread: Conversation;
   let work: WorkItem;
   const agents: Record<string, string> = {};
-  let keptOut = '';
   let projectSketch: { id: string; thoughtId: string };
   let privateSketch: { id: string; thoughtId: string };
   let dmSketch: { id: string; thoughtId: string };
@@ -70,12 +69,12 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
   const ask = (someone: Person, prompt = 'Summarize where we are', extra: Record<string, unknown> = {}) =>
     runs.invoke(human(someone), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt, ...extra });
 
-  /** Hubert kept out of the project: his assistant loses it with him (F-036 AG-3). */
+  /** Hubert removed from the space: his assistant loses it with him (F-036 AG-3). */
   async function keepHubertOut() {
-    keptOut = (await post<{ id: string }>(ada, `/api/v1/projects/${lamp.id}/grants`, { principal: { kind: 'human', id: hubert.id }, role: 'denied' })).id;
+    await removeFromSpace(ada, lamp.id, hubert);
   }
   async function letHubertBack() {
-    expectStatus(await ada.browser.request('DELETE', `/api/v1/projects/${lamp.id}/grants/${keptOut}`), 204, 'let Hubert back in');
+    await grant(ada, lamp.id, hubert, 'contributor');
   }
   async function enable(someone: Person, name: string, connectionId: string) {
     connections.connect(someone.id, connectionId);
@@ -86,9 +85,9 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     [ada, hubert, maurycy, kai, viewer, lee, outsider] = await Promise.all(['pr-ada', 'pr-hubert', 'pr-maurycy', 'pr-kai', 'pr-viewer', 'pr-lee', 'pr-outsider'].map(person));
     ws = await createWorkspace(ada, 'Gesture lamp');
     for (const member of [hubert, maurycy, kai, viewer, lee]) await addMember(ada, ws.id, member, 'member');
-    lamp = await createProject(ada, ws.id, 'Lamp sensor', 'workspace');
+    lamp = await createProject(ada, ws.id, 'Lamp sensor', 'restricted');
     other = await createProject(ada, ws.id, 'Payroll', 'restricted');
-    await post(ada, `/api/v1/projects/${lamp.id}/grants`, { principal: { kind: 'human', id: viewer.id }, role: 'viewer' });
+    for (const member of [hubert, maurycy, kai, viewer, lee]) await grant(ada, lamp.id, member, 'contributor');
     await post(ada, `/api/v1/projects/${other.id}/grants`, { principal: { kind: 'human', id: hubert.id }, role: 'contributor' });
     for (const [name, someone] of [['hubert', hubert], ['maurycy', maurycy], ['lee', lee]] as const) {
       agents[name] = (await post<{ id: string }>(someone, `/api/v1/workspaces/${ws.id}/agents`, { name: `${name} assistant`, owner: 'self' })).id;
@@ -157,9 +156,9 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       assert.deepEqual([response.status, (response.json as { code: string }).code], [403, 'PERSONAL_RUN_NOT_OWNER'], JSON.stringify(claim));
     }
     await assert.rejects(runs.invoke(human(maurycy), thread.id, { ...body, clientRunId: randomUUID(), connectionId: hubertConnection }), { code: 'PERSONAL_RUN_NOT_OWNER' });
-    // Someone who may only read the project cannot post an answer into it, even with their own assistant.
-    const readOnly = await viewer.browser.request('POST', invokePath, { body: { ...body, clientRunId: randomUUID() } });
-    assert.deepEqual([readOnly.status, (readOnly.json as { code: string }).code], [403, 'FORBIDDEN']);
+    // Someone outside the space cannot post an answer into it, even with their own assistant.
+    const outside = await outsider.browser.request('POST', invokePath, { body: { ...body, clientRunId: randomUUID() } });
+    assert.equal(outside.status, 404);
 
     const live = await StreamClient.connect(kai.browser);
     await live.ready();
@@ -688,12 +687,12 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       assert.deepEqual(await decisionState(), untouched);
       assert.deepEqual(await counts(), before, 'no decision, acceptance or result was written by the assistant');
 
-      // Neither the assistant's agent identity nor a person who can only read decides the proposal or the decision.
+      // Neither the assistant's agent identity nor a person outside the space decides the proposal or the decision.
       const assistant: Principal = { kind: 'agent', id: agents.hubert! };
       await assert.rejects(proposals.accept(assistant, proposalId, {}, drafted.version));
       await assert.rejects(workUseCases(db).acceptDecision(assistant, pending.id, {}, pending.version), { code: 'DECISION_NEEDS_PERSON' });
-      assert.equal((await viewer.browser.request('POST', `/api/v1/assistant-proposals/${proposalId}/accept`, { body: { expectedVersion: drafted.version } })).status, 403);
-      assert.equal((await viewer.browser.request('POST', `/api/v1/decisions/${pending.id}/accept`, { body: { expectedVersion: pending.version } })).status, 403);
+      assert.equal((await outsider.browser.request('POST', `/api/v1/assistant-proposals/${proposalId}/accept`, { body: { expectedVersion: drafted.version } })).status, 404);
+      assert.equal((await outsider.browser.request('POST', `/api/v1/decisions/${pending.id}/accept`, { body: { expectedVersion: pending.version } })).status, 404);
       assert.equal((await proposals.get(human(kai), proposalId)).status, 'proposed');
       assert.deepEqual(await decisionState(), untouched);
       assert.deepEqual(await counts(), before);

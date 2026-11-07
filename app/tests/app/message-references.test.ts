@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { Conversation, ConversationMessage, ConversationRootWindow, CreatedThought, Dm, DmMessage, Project, Sketch, Workspace } from '@flux/contracts';
 import { pool } from './support/db.js';
-import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
 
 // Message references (#469, F-026 §6): a message cites a map thought or another message. Only the kind and the id are stored; the
 // card (title, author, place, where it opens) is made for each reader after that reader's own access to the target is decided, so a
@@ -129,7 +129,7 @@ describe('message references', () => {
     assert.deepEqual(sent.references!.map((card) => card.state), ['available', 'available']);
     assert.deepEqual((await read(ada, root.id)).messages.at(-1)!.references!.map((card) => card.kind), ['thought', 'message'], 'in the order attached');
     // Marek's access goes: he no longer reads the project at all.
-    await grant(ada, secret.id, marek, 'denied');
+    await removeFromSpace(ada, secret.id, marek);
     expectStatus(await marek.browser.request('GET', `/api/v1/conversations/${root.id}`), 404);
     // The thought is removed from its map: the card is unavailable, the message beside it is not.
     await pool.query('DELETE FROM sketch_thoughts WHERE id = $1', [idea.id]);

@@ -16,6 +16,7 @@ import {
   getDraft,
   getProject,
   grantProject,
+  listProjectGrants,
   listProjects,
   listWorkspaces,
   NotFoundError,
@@ -58,7 +59,7 @@ describe('an agent has exactly its owner\'s rights', () => {
     const open = await createProject(admin, ws.id, { name: 'Open', visibility: 'workspace' }, db, accessPorts);
     const board = await createProject(admin, ws.id, { name: 'Board', visibility: 'restricted' }, db, accessPorts);
     const hidden = await createProject(admin, ws.id, { name: 'Hidden', visibility: 'restricted' }, db, accessPorts);
-    await grantProject(admin, board.id, { principal: { kind: 'human', id: human.id }, role: 'viewer' }, db, accessPorts);
+    await grantProject(admin, board.id, { principal: { kind: 'human', id: human.id }, role: 'contributor' }, db, accessPorts);
     const inOpen = await sharedDraft(admin, ws.id, 'in open', 'project', open.id);
     const minutes = await sharedDraft(admin, ws.id, 'Board minutes', 'project', board.id);
     const secret = await sharedDraft(admin, ws.id, 'hidden', 'project', hidden.id);
@@ -68,9 +69,9 @@ describe('an agent has exactly its owner\'s rights', () => {
     assert.deepEqual(agent.owner, { kind: 'human', id: human.id });
     const bot = agentPrincipal(agent.id);
     assert.deepEqual((await listProjects(bot, ws.id, {}, db, accessPorts)).items.map((p) => [p.name, p.access]).sort(),
-      [['Board', 'viewer'], ['Open', 'contributor']], 'the owner\'s projects at the owner\'s levels, and nothing else');
+      [['Board', 'contributor'], ['Open', 'contributor']], 'the owner\'s projects at the owner\'s levels, and nothing else');
     assert.equal((await getDraft(bot, minutes.id, db, accessPorts)).id, minutes.id);
-    await assert.rejects(updateDraft(bot, minutes.id, { body: 'x', expectedVersion: minutes.version }, db, accessPorts), ForbiddenError, 'the owner only reads here');
+    assert.equal((await updateDraft(bot, minutes.id, { body: 'x', expectedVersion: minutes.version }, db, accessPorts)).body, 'x', 'the owner writes here, so its agent does');
     assert.equal((await updateDraft(bot, inOpen.id, { body: 'agent edit', expectedVersion: inOpen.version }, db, accessPorts)).body, 'agent edit');
     for (const id of [secret.id, wide.id]) await assert.rejects(getDraft(bot, id, db, accessPorts), NotFoundError);
     await assert.rejects(getProject(bot, hidden.id, db, accessPorts), NotFoundError, 'never more than its owner');
@@ -98,10 +99,10 @@ describe('an agent has exactly its owner\'s rights', () => {
   });
 
   for (const [loss, lose] of [
-    ['the owner is kept out of the project', (admin: Principal, ws: string, project: string, human: string) =>
-      grantProject(admin, project, { principal: { kind: 'human', id: human }, role: 'denied' }, db, accessPorts)],
-    ['the owner\'s access is narrowed to reading', (admin: Principal, ws: string, project: string, human: string) =>
-      grantProject(admin, project, { principal: { kind: 'human', id: human }, role: 'viewer' }, db, accessPorts)],
+    ['the owner is removed from the project', async (admin: Principal, _ws: string, project: string, human: string) => {
+      const added = (await listProjectGrants(admin, project, db, accessPorts)).find((item) => item.principal.id === human);
+      await revokeProjectGrant(admin, project, added!.id, db, accessPorts);
+    }],
     // With a grant a guest still works in the space by hand, so only the role can stop the agent: a guest has no AI (AG-2).
     ['the owner becomes a guest with a grant on the project', async (admin: Principal, ws: string, project: string, human: string) => {
       await grantProject(admin, project, { principal: { kind: 'human', id: human }, role: 'contributor' }, db, accessPorts);
@@ -115,24 +116,18 @@ describe('an agent has exactly its owner\'s rights', () => {
       const human = await insertedHuman('loss-member');
       const ws = await createWorkspace(admin, { name: `Loss: ${loss}` }, db, accessPorts);
       await addMember(admin, ws.id, { userId: human.id, role: 'member' }, db, accessPorts);
-      const open = await createProject(admin, ws.id, { name: 'Open', visibility: 'workspace' }, db, accessPorts);
+      const open = await createProject(admin, ws.id, { name: 'Open', visibility: 'restricted' }, db, accessPorts);
+      await grantProject(admin, open.id, { principal: { kind: 'human', id: human.id }, role: 'contributor' }, db, accessPorts);
       const item = await sharedDraft(admin, ws.id, 'Plan', 'project', open.id);
       const bot = agentPrincipal((await createAgent(human, ws.id, { name: 'Helper' }, db, accessPorts)).id);
       const own = await createDraft(bot, ws.id, { title: 'agent own', projectId: open.id }, db, accessPorts);
       assert.equal((await updateDraft(bot, item.id, { body: 'before', expectedVersion: item.version }, db, accessPorts)).body, 'before');
 
       await lose(admin, ws.id, open.id, human.id);
-      const write = updateDraft(bot, item.id, { body: 'after', expectedVersion: item.version + 1 }, db, accessPorts);
-      if (loss.includes('narrowed')) {
-        await assert.rejects(write, ForbiddenError, 'it reads like its owner, and cannot write');
-        assert.equal((await getDraft(bot, item.id, db, accessPorts)).body, 'before');
-        assert.deepEqual(await authorize(bot, 'project.write', { type: 'project', id: open.id }, accessReader(db)), { allowed: false, visible: true });
-      } else {
-        await assert.rejects(write, NotFoundError, 'it no longer sees the project at all');
-        await assert.rejects(getDraft(bot, own.id, db, accessPorts), NotFoundError, 'not even its own draft');
-        assert.deepEqual(await authorize(bot, 'project.read', { type: 'project', id: open.id }, accessReader(db)), { allowed: false, visible: false });
-        assert.equal((await listProjects(bot, ws.id, {}, db, accessPorts).catch(() => ({ items: [] }))).items.length, 0);
-      }
+      await assert.rejects(updateDraft(bot, item.id, { body: 'after', expectedVersion: item.version + 1 }, db, accessPorts), NotFoundError, 'it no longer sees the project at all');
+      await assert.rejects(getDraft(bot, own.id, db, accessPorts), NotFoundError, 'not even its own draft');
+      assert.deepEqual(await authorize(bot, 'project.read', { type: 'project', id: open.id }, accessReader(db)), { allowed: false, visible: false });
+      assert.equal((await listProjects(bot, ws.id, {}, db, accessPorts).catch(() => ({ items: [] }))).items.length, 0);
       assert.equal((await draftRow(item.id)).body, 'before', 'nothing was written after the loss');
     });
   }
@@ -142,11 +137,10 @@ describe('an agent has exactly its owner\'s rights', () => {
     const human = await insertedHuman('draft-member');
     const ws = await createWorkspace(admin, { name: 'Agent drafts' }, db, accessPorts);
     await addMember(admin, ws.id, { userId: human.id, role: 'member' }, db, accessPorts);
-    const viewed = await createProject(admin, ws.id, { name: 'Viewed', visibility: 'restricted' }, db, accessPorts);
-    await grantProject(admin, viewed.id, { principal: { kind: 'human', id: human.id }, role: 'viewer' }, db, accessPorts);
+    const hidden = await createProject(admin, ws.id, { name: 'Hidden', visibility: 'restricted' }, db, accessPorts);
     const bot = agentPrincipal((await createAgent(human, ws.id, { name: 'Writer' }, db, accessPorts)).id);
     assert.deepEqual(await authorize(bot, 'draft.create', { type: 'workspace', id: ws.id }, accessReader(db)), { allowed: false, visible: true });
-    await assert.rejects(createDraft(bot, ws.id, { title: 'viewer only', projectId: viewed.id }, db, accessPorts), ForbiddenError);
+    await assert.rejects(createDraft(bot, ws.id, { title: 'not its owner\'s space', projectId: hidden.id }, db, accessPorts), ForbiddenError);
     const open = await createProject(admin, ws.id, { name: 'Open', visibility: 'workspace' }, db, accessPorts);
     await assert.rejects(createDraft(bot, ws.id, { title: 'unscoped' }, db, accessPorts),
       (error: unknown) => error instanceof RuleViolationError && error.status === 422 && error.code === 'PROJECT_REQUIRED');
@@ -232,24 +226,9 @@ describe('access changes are serialized with draft writes (two connections)', ()
       await assert.rejects(getDraft(bot, item.id, db, accessPorts), NotFoundError);
     });
 
-    test(`(b) inserting a denied grant for a member without a grant row — ${order}`, async () => {
-      const { owner, member, open, item } = await memberCase(`deny-${order}`);
-      await run({ writer: member, draftId: item.id, refused: NotFoundError, change: (tx) => grantProject(owner, open.id, { principal: { kind: 'human', id: member.id }, role: 'denied' }, tx, accessPorts) });
-    });
-
-    test(`(b) keeping the agent's owner out of the project — ${order}`, async () => {
-      const { owner, member, room, bot, item } = await agentCase(`agent-deny-${order}`);
-      await run({ writer: bot, draftId: item.id, refused: NotFoundError, change: (tx) => grantProject(owner, room.id, { principal: { kind: 'human', id: member.id }, role: 'denied' }, tx, accessPorts) });
-    });
-
     test(`(c) removing the agent's owner from the workspace — ${order}`, async () => {
       const { owner, member, ws, bot, item } = await agentCase(`agent-remove-${order}`);
       await run({ writer: bot, draftId: item.id, refused: NotFoundError, change: (tx) => removeMember(owner, ws.id, member.id, tx, accessPorts) });
-    });
-
-    test(`(c) narrowing a member's default access with a viewer grant — ${order}`, async () => {
-      const { owner, member, open, item } = await memberCase(`narrow-${order}`);
-      await run({ writer: member, draftId: item.id, refused: ForbiddenError, change: (tx) => grantProject(owner, open.id, { principal: { kind: 'human', id: member.id }, role: 'viewer' }, tx, accessPorts) });
     });
 
     test(`(c) changing a member to guest removes default project access — ${order}`, async () => {
@@ -267,31 +246,32 @@ describe('access changes are serialized with draft writes (two connections)', ()
 describe('policy contract', () => {
   test('authorize distinguishes invisible from forbidden and visibleFilter matches list results', async () => {
     const owner = await insertedHuman('contract-owner');
-    const viewer = await insertedHuman('contract-viewer');
+    const reader = await insertedHuman('contract-reader');
     const stranger = await insertedHuman('contract-stranger');
     const ws = await createWorkspace(owner, { name: 'Contract' }, db, accessPorts);
-    await addMember(owner, ws.id, { userId: viewer.id, role: 'member' }, db, accessPorts);
+    await addMember(owner, ws.id, { userId: reader.id, role: 'member' }, db, accessPorts);
     const room = await createProject(owner, ws.id, { name: 'Room', visibility: 'restricted' }, db, accessPorts);
-    await grantProject(owner, room.id, { principal: { kind: 'human', id: viewer.id }, role: 'viewer' }, db, accessPorts);
+    await grantProject(owner, room.id, { principal: { kind: 'human', id: reader.id }, role: 'contributor' }, db, accessPorts);
     const item = await sharedDraft(owner, ws.id, 'Contract draft', 'project', room.id);
+    const wide = await sharedDraft(owner, ws.id, 'Contract notice', 'workspace');
     await createDraft(owner, ws.id, { title: 'owner private' }, db, accessPorts);
 
     assert.deepEqual(await authorize(stranger, 'draft.read', { type: 'draft', id: item.id }, accessReader(db)), { allowed: false, visible: false });
-    assert.deepEqual(await authorize(viewer, 'draft.read', { type: 'draft', id: item.id }, accessReader(db)), { allowed: true, visible: true });
-    assert.deepEqual(await authorize(viewer, 'draft.write', { type: 'draft', id: item.id }, accessReader(db)), { allowed: false, visible: true });
-    assert.deepEqual(await authorize(viewer, 'project.manage', { type: 'project', id: room.id }, accessReader(db)), { allowed: false, visible: true });
+    assert.deepEqual(await authorize(reader, 'draft.read', { type: 'draft', id: item.id }, accessReader(db)), { allowed: true, visible: true });
+    assert.deepEqual(await authorize(reader, 'draft.write', { type: 'draft', id: wide.id }, accessReader(db)), { allowed: false, visible: true });
+    assert.deepEqual(await authorize(reader, 'project.manage', { type: 'project', id: room.id }, accessReader(db)), { allowed: false, visible: true });
     assert.deepEqual(await authorize(owner, 'project.manage', { type: 'project', id: room.id }, accessReader(db)), { allowed: true, visible: true });
-    assert.deepEqual(await authorize(viewer, 'workspace.manage_members', { type: 'workspace', id: ws.id }, accessReader(db)), { allowed: false, visible: true });
+    assert.deepEqual(await authorize(reader, 'workspace.manage_members', { type: 'workspace', id: ws.id }, accessReader(db)), { allowed: false, visible: true });
     assert.deepEqual(await authorize(stranger, 'workspace.read', { type: 'workspace', id: ws.id }, accessReader(db)), { allowed: false, visible: false });
     await assert.rejects(assertAuthorized(stranger, 'draft.read', { type: 'draft', id: item.id }, accessReader(db)), NotFoundError);
-    await assert.rejects(assertAuthorized(viewer, 'draft.write', { type: 'draft', id: item.id }, accessReader(db)), ForbiddenError);
+    await assert.rejects(assertAuthorized(reader, 'draft.write', { type: 'draft', id: wide.id }, accessReader(db)), ForbiddenError);
 
-    const filter = await visibleFilter(viewer, ws.id, 'draft', db);
+    const filter = await visibleFilter(reader, ws.id, 'draft', db);
     const rows = await db.select({ id: schema.drafts.id }).from(schema.drafts).where(filter);
-    assert.deepEqual(rows.map((r) => r.id), [item.id]);
+    assert.deepEqual(rows.map((r) => r.id).sort(), [item.id, wide.id].sort());
     const strangerFilter = await visibleFilter(stranger, ws.id, 'draft', db);
     assert.equal((await db.select({ n: count() }).from(schema.drafts).where(strangerFilter))[0]!.n, 0);
-    const projectFilter = await visibleFilter(viewer, ws.id, 'project', db);
+    const projectFilter = await visibleFilter(reader, ws.id, 'project', db);
     assert.deepEqual((await db.select({ id: schema.projects.id }).from(schema.projects).where(projectFilter)).map((r) => r.id), [room.id]);
   });
 });
@@ -314,10 +294,10 @@ describe('database integrity', () => {
         [randomUUID(), a.id, projectB.id, owner.id]), '23503'],
       ['existing draft is moved to another workspace project', () => pool.query('UPDATE drafts SET project_id = $1 WHERE id = $2', [projectB.id, draftA.id]), '23503'],
       ['grant names a project of another workspace', () => pool.query(
-        "INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'viewer', $4)",
+        "INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'contributor', $4)",
         [randomUUID(), a.id, projectB.id, owner.id]), '23503'],
       ['grant names a person who is not a member', () => pool.query(
-        "INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'viewer', $4)",
+        "INSERT INTO project_grants (id, workspace_id, project_id, user_id, role, created_by) VALUES ($1, $2, $3, $4, 'contributor', $4)",
         [randomUUID(), b.id, projectB.id, stranger.id]), '23503'],
       ['draft is owned by an agent of another workspace', () => pool.query(
         "INSERT INTO drafts (id, workspace_id, owner_agent_id, title, created_by) VALUES ($1, $2, $3, 'x', $4)",

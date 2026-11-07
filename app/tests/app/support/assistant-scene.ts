@@ -47,6 +47,9 @@ export async function assistantScene(label: string) {
   /** The `server` engine's worker: a fake provider calls the same effect tools through the real `/mcp` route. */
   const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(db), connections, compute, stopPollMs: 20,
     tools: mcpToolHost(tokens, `${apiUrl}/mcp`), tokens });
+  // The assistant's owner is a plain member who is the space's admin by grant, so their access can end (#903): a company owner or admin
+  // reaches every space, and nothing takes it away. `lead` is the company's owner and the space's other admin.
+  const lead = await person(`${label}-lead`);
   const owner = await person(`${label}-ada`);
   const peer = await person(`${label}-jonas`);
   const outsider = await person(`${label}-other`);
@@ -54,17 +57,19 @@ export async function assistantScene(label: string) {
   const viewer = await person(`${label}-viewer`);
   const stranger = await person(`${label}-stranger`);
   const guest = await person(`${label}-guest`);
-  const ws: Workspace = await createWorkspace(owner, `${label} workspace`);
-  await addMember(owner, ws.id, peer, 'member');
-  await addMember(owner, ws.id, outsider, 'member');
-  await addMember(owner, ws.id, admin, 'admin');
-  await addMember(owner, ws.id, viewer, 'member');
-  await addMember(owner, ws.id, guest, 'guest');
-  const place: Project = await createProject(owner, ws.id, 'Lamp sensor', 'workspace');
-  await grant(owner, place.id, peer, 'contributor');
-  await grant(owner, place.id, outsider, 'contributor');
-  await grant(owner, place.id, viewer, 'viewer');
-  await grant(owner, place.id, guest, 'viewer');
+  const ws: Workspace = await createWorkspace(lead, `${label} workspace`);
+  await addMember(lead, ws.id, owner, 'member');
+  await addMember(lead, ws.id, peer, 'member');
+  await addMember(lead, ws.id, outsider, 'member');
+  await addMember(lead, ws.id, admin, 'admin');
+  await addMember(lead, ws.id, viewer, 'member');
+  await addMember(lead, ws.id, guest, 'guest');
+  const place: Project = await createProject(lead, ws.id, 'Lamp sensor', 'restricted');
+  await grant(lead, place.id, owner, 'manager');
+  await grant(lead, place.id, peer, 'contributor');
+  await grant(lead, place.id, outsider, 'contributor');
+  await grant(lead, place.id, viewer, 'contributor');
+  await grant(lead, place.id, guest, 'contributor');
   const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
   const thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
     { body: { body: 'Please tidy the sensor tasks', clientMessageId: randomUUID() } }), 201) as Conversation;
@@ -148,7 +153,7 @@ export async function assistantScene(label: string) {
   const listConversation = async (who: Person, conversation: Conversation = thread) =>
     (expectStatus(await who.browser.request('GET', `/api/v1/conversations/${conversation.id}/assistant-changes`), 200) as { items: AssistantChange[] }).items;
 
-  return { connections, queue, runs, compute, processor, assistantConnectionId, owner, peer, outsider, admin, viewer, stranger, guest, ws, place, agentId, thread, connectionId, settings, setMayDo, reset,
+  return { connections, queue, runs, compute, processor, assistantConnectionId, lead, owner, peer, outsider, admin, viewer, stranger, guest, ws, place, agentId, thread, connectionId, settings, setMayDo, reset,
     liveRun, complete, task, doc, docBody, map, patchWork, taskRow, dependencies, holding, listConversation, changesOf };
 }
 export type AssistantScene = Awaited<ReturnType<typeof assistantScene>>;

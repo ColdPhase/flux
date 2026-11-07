@@ -113,7 +113,7 @@ test('unrelated project writer and viewer cannot Undo; an exact agent operation 
   const peer = await person('undo-peer'); await addMember(f.human, f.workspaceId, peer, 'member'); await grant(f.human, f.projectId, peer, 'contributor');
   assert.deepEqual((expectStatus(await peer.browser.request('GET', `/api/v1/work/${item.id}`), 200) as WorkItem).creationUndo, { eligible: false, reason: 'not_authorized' });
   assert.equal((await peer.browser.request('POST', `/api/v1/work/${item.id}/creation-undo`, { body: { clientCommandId: randomUUID(), expectedVersion: item.version } })).status, 403);
-  await grant(f.human, f.projectId, peer, 'viewer');
+  await grant(f.human, f.projectId, peer, 'contributor');
   assert.equal((await peer.browser.request('POST', `/api/v1/work/${item.id}/creation-undo`, { body: { clientCommandId: randomUUID(), expectedVersion: item.version } })).status, 403);
   const updateGrant = await f.grant('work.update', 'execute');
   const envelope = { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], workId: item.id, expectedVersion: item.version };

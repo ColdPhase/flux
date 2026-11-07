@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { grantProject, liveInvitationUseCases } from '@flux/core';
-import { accessPorts } from '@flux/db';
+import { liveInvitationUseCases } from '@flux/core';
 import type { Conversation, InboxItem, InboxResponse } from '@flux/contracts';
 import { liveInvitationStore } from '../../apps/server/src/live/invitations.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
-import { db, pool } from './support/db.js';
+import { db, pool, removeFromSpaceCore } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { waitFor } from './support/push.js';
 
@@ -41,7 +40,7 @@ async function fixture(label: string, recipients: string[]) {
   for (const name of recipients) {
     people[name] = await person(`${label}-${name}`);
     await addMember(owner, ws.id, people[name]!, 'member');
-    await grant(owner, place.id, people[name]!, 'viewer');
+    await grant(owner, place.id, people[name]!, 'contributor');
   }
   const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
     body: { body: `${label}: walk through the harbour permit before Friday`, clientMessageId: randomUUID() },
@@ -105,7 +104,7 @@ test('an invitation that no longer applies when the worker reaches it notifies n
     await invitations.invite(human(f.owner), f.session.id, quiet!.id);
     await invitations.invite(human(f.owner), f.session.id, control!.id);
 
-    await grantProject(human(f.owner), f.place.id, { principal: human(lost!), role: 'denied' }, db, accessPorts);
+    await removeFromSpaceCore(human(f.owner), f.place.id, human(lost!), db);
     await invitations.reply(human(answered!), toAnswer.id, 'later');
     await pool.query(`UPDATE live_sessions SET state = 'ended', ended_at = now() WHERE id = $1`, [endedSession.id]);
   } finally {

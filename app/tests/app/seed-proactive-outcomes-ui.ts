@@ -10,10 +10,12 @@ const { db, pool } = createDatabase(process.env.DATABASE_URL!);
 try {
   const owner = await person('outcome-ui-owner');
   const viewer = await person('outcome-ui-viewer');
-  const ws = await workspace(owner, 'Lamp measurement studio');
-  await addMember(owner, ws.id, viewer, 'member');
-  const prj = await project(owner, ws.id, 'Bedside gesture lamp', 'restricted');
-  await grant(owner, prj.id, viewer, 'viewer');
+  // The company's owner is the second person, so the first is an ordinary member who can be removed from the space (#903): a space keeps an
+  // admin (C-16), and a company owner or admin always reaches every space.
+  const ws = await workspace(viewer, 'Lamp measurement studio');
+  await addMember(viewer, ws.id, owner, 'member');
+  const prj = await project(viewer, ws.id, 'Bedside gesture lamp', 'restricted');
+  await grant(viewer, prj.id, owner, 'manager');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Lamp comparison assistant', owner: 'self' } }), 201) as { id: string };
   const rule = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${prj.id}/proactive-comparison-rules`,

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { NamedPrincipal, ProjectPerson, WorkDetailProjection, WorkItem, WorkReferenceRows } from '@flux/contracts';
-import { addMember, expectStatus, grant, person, project, removeMember, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, removeMember, workspace, type Person } from './support/people.js';
 
 /** A person's agent with one task, read by a viewer through the public native work reads (#339 AC-2). */
 async function scene() {
@@ -11,7 +11,7 @@ async function scene() {
   await addMember(manager, ws.id, reader, 'guest');
   const place = await project(manager, ws.id, 'Retained work', 'restricted');
   await grant(manager, place.id, owner, 'contributor');
-  await grant(manager, place.id, reader, 'viewer');
+  await grant(manager, place.id, reader, 'contributor');
   // The agent has exactly its owner's rights (F-036 AG-3): no grant of its own.
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
     body: { name: 'Retained analyst', owner: 'self' },
@@ -47,7 +47,7 @@ test('an agent keeps its name, and its owner stays scoped while that person has 
   assert.deepEqual(await f.detailOwner(), { kind: 'agent', id: f.agent.id, name: 'Retained analyst', projectOwner: { kind: 'human', id: f.owner.id } },
     'the task detail carries the same scoped owner');
 
-  await grant(f.manager, f.place.id, f.owner, 'denied');
+  await removeFromSpace(f.manager, f.place.id, f.owner);
   const hidden = await f.rowOwner();
   assert.equal(Object.hasOwn(hidden, 'projectOwner'), false, 'an owner without project access is omitted entirely');
   assert.equal(hidden.name, 'Retained analyst');

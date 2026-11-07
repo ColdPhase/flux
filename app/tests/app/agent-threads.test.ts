@@ -7,7 +7,7 @@ import { taskAgentThreadUseCases } from '@flux/core';
 import type pg from 'pg';
 import { conversationStore } from '../../apps/server/src/conversation/store.js';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
-import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace } from './support/people.js';
 import { actionScene, toolFailure } from './support/mcp-actions.js';
 import { expect, toolValue } from './support/mcp.js';
 import { db, pool, connectionString } from './support/db.js';
@@ -19,7 +19,7 @@ async function scene() {
   const ws = await workspace(owner, 'Work conversations');
   for (const p of [writer, viewer, outsider]) await addMember(owner, ws.id, p, 'member');
   const place = await project(owner, ws.id, 'Agent planning', 'restricted');
-  await grant(owner, place.id, writer, 'contributor'); await grant(owner, place.id, viewer, 'viewer');
+  await grant(owner, place.id, writer, 'contributor'); await grant(owner, place.id, viewer, 'contributor');
   const task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/work`, {
     body: { title: 'Compare the prototype measurements', clientCommandId: randomUUID() },
   }), 201) as WorkItem;
@@ -33,7 +33,7 @@ test('read/open creates nothing; concurrent first posts have one thread, exact a
   for (const p of [f.owner, f.viewer]) {
     const read = expectStatus(await p.browser.request('GET', f.path), 200) as TaskAgentThread;
     assert.equal(read.conversation, null); assert.equal(read.messageCount, 0);
-    assert.equal(read.canWrite, p.id === f.owner.id);
+    assert.equal(read.canWrite, true);
   }
   assert.equal(await f.count(), 0);
   const a = { body: 'The current measurements need one comparison.', clientMessageId: randomUUID() };
@@ -58,15 +58,14 @@ test('read/open creates nothing; concurrent first posts have one thread, exact a
   assert.ok((await pool.query('SELECT first_persisted_use_at FROM project_work_items WHERE id=$1', [f.task.id])).rows[0].first_persisted_use_at);
 });
 
-test('viewer and non-reader refusals precede metadata/effects, and revocation applies to the next call', async () => {
+test('non-reader refusals precede metadata/effects, and revocation applies to the next call', async () => {
   const f = await scene(); const body = { body: 'A real step', clientMessageId: randomUUID() };
   expectStatus(await f.owner.browser.request('POST', f.path, { body }), 201);
-  assert.equal((await f.viewer.browser.request('POST', f.path, { body: { ...body, clientMessageId: randomUUID() } })).status, 403);
   const hidden = await f.outsider.browser.request('GET', f.path);
   const absent = await f.outsider.browser.request('GET', `/api/v1/work/${randomUUID()}/agent-thread`);
   assert.equal(hidden.status, 404); assert.deepEqual(hidden.json, absent.json);
   assert.equal((await f.outsider.browser.request('POST', f.path, { body })).status, 404);
-  await grant(f.owner, f.place.id, f.writer, 'denied');
+  await removeFromSpace(f.owner, f.place.id, f.writer);
   assert.equal((await f.writer.browser.request('GET', f.path)).status, 404);
   assert.equal((await f.writer.browser.request('POST', f.path, { body })).status, 404);
   assert.equal((expectStatus(await f.owner.browser.request('GET', f.path), 200) as TaskAgentThread).messageCount, 1);
@@ -135,7 +134,7 @@ test('new thread GET is a read-only snapshot when a post and access revocation c
         held = true;
         // The real count has completed; the real page has not started. These commands really commit.
         expectStatus(await f.owner.browser.request('POST', f.path, { body: { body: 'Committed during the read', clientMessageId: randomUUID() } }), 201);
-        await grant(f.owner, f.place.id, f.writer, 'denied');
+        await removeFromSpace(f.owner, f.place.id, f.writer);
       }
       return result;
     };

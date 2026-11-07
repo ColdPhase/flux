@@ -4,7 +4,7 @@ import { before, describe, test } from 'node:test';
 import type { Conversation, Decision, Doc, Project, ReturnPlace, ReturnPoint, ReturnSummary, Workspace, WorkItem, WorkResult } from '@flux/contracts';
 import { pool } from './support/db.js';
 import type { ClientResponse } from './support/http.js';
-import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project as createProject, workspace, type Person } from './support/people.js';
 import { inBatches } from './support/batches.js';
 
 // The return view, "Since you left" (issue #106): server-side return points per person and
@@ -226,7 +226,7 @@ describe('return view: since you left', () => {
 
     const before = await summary(nia, { type: 'home' });
     assert.ok(before.items.some((item) => item.project?.id === lamp.id));
-    await grant(ari, lamp.id, nia, 'denied');
+    await removeFromSpace(ari, lamp.id, nia);
     const after = await summary(nia, { type: 'home' });
     assert.deepEqual(after.items.map((item) => item.project?.id), [open.id], 'revoked items disappear');
     assert.equal(JSON.stringify(after).includes('Gesture lamp'), false);
@@ -254,7 +254,7 @@ describe('return view: hidden rows never hint at anything', () => {
     await say(ari, openThread.id, 'The workshop is on Thursday.');
     const rows = await pool.query('SELECT count(*)::int AS n FROM event_audience ea JOIN events e ON e.id = ea.event_id WHERE ea.recipient = $1 AND e.object_id = $2', [`human:${nia.id}`, secret.id]);
     assert.ok(rows.rows[0]!.n > 400, 'the hidden rows are more than one scan page');
-    await grant(ari, secret.id, nia, 'denied');
+    await removeFromSpace(ari, secret.id, nia);
 
     const shape = (summary: ReturnSummary) => ({ items: summary.items.map(({ text, detail, needsYou, kind, source, project }) => ({ text, detail, needsYou, kind, source, project })),
       needsYou: summary.needsYou, more: summary.more, nextStep: summary.nextStep });
@@ -320,7 +320,7 @@ describe('return view: work a pivot parked (#290, #44 scenario 3)', () => {
     assert.deepEqual(parkedOf(outsider), []);
     for (const secret of [mount.title, 'Wire the hidden prototype', lamp.id]) assert.equal(JSON.stringify(outsider).includes(secret), false, `no hint of ${secret}`);
     // Revoked after the pivot: the parked item goes with every other trace of the project.
-    await grant(ari, lamp.id, kai, 'denied');
+    await removeFromSpace(ari, lamp.id, kai);
     const revoked = await summary(kai, { type: 'home' });
     assert.deepEqual(revoked.items, []);
     assert.equal(JSON.stringify(revoked).includes(mount.title), false);

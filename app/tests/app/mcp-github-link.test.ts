@@ -9,7 +9,7 @@ import { createGithubUseCases } from '../../apps/server/src/github/adapters.js';
 import { db, pool } from './support/db.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { mcp, toolValue } from './support/mcp.js';
-import { expectStatus, grant, person, project, workspace, addMember, type Person } from './support/people.js';
+import { expectStatus, person, project, workspace, addMember, type Person } from './support/people.js';
 
 // #160 AC-3: an agent links the pull request it produced to the task it holds (`flux_link_pull_request`). Real sessions, OAuth
 // bearers and MCP over HTTP, against a second in-process API on the same database whose GitHub App provider is a fixture; so no
@@ -228,7 +228,7 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
     const marekGrant = await theirs.connected.grant('work.update', 'execute', 10, marekItem.id);
     assert.equal(toolValue(await s.link(theirs, marekGrant.id, marekItem.id, url(REPO, 92))).number, 92);
     expectStatus(await s.hubert.browser.request('PATCH', `/api/v1/workspaces/${s.ws.id}/members/${s.marek.id}`, { body: { role: 'member' } }), 200);
-    await grant(s.hubert, s.p.id, s.marek, 'viewer');
+    // Demoted to a member who was never added to the space, Marek has lost it.
     // The MCP admission already refuses the whole connection of an owner who lost the project (HTTP 403, before any tool); the use
     // case behind the tool refuses on its own too, as a second fence, with no GitHub call and nothing stored.
     const refused = await mcp(theirs.connected.accessToken, 2000, 'tools/call', { name: 'flux_link_pull_request', arguments: { projectId: s.p.id,
@@ -237,7 +237,7 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
     assert.equal(refused.status, 403);
     provider.calls = [];
     await assert.rejects(github.linkForAgent({ kind: 'agent', id: theirs.agent.id }, { kind: 'human', id: s.marek.id }, marekItem.id, { pullRequestUrl: url(REPO, 93) }),
-      (error: { code?: string }) => error.code === 'FORBIDDEN');
+      (error: { code?: string }) => ['FORBIDDEN', 'NOT_FOUND', 'PROJECT_NOT_FOUND'].includes(error.code ?? ''));
     assert.deepEqual(provider.calls, []);
     assert.deepEqual((await s.links(marekItem.id)).map((row) => row.facts.number), [92]);
   });

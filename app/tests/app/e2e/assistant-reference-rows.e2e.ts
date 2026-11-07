@@ -104,9 +104,8 @@ before(async () => {
   const ws = await workspace(manager, 'Native reference studio');
   for (const member of [owner, writer, viewer]) await addMember(manager, ws.id, member, 'member');
   place = await project(manager, ws.id, 'Measured citations', 'restricted');
-  await grant(manager, place.id, owner, 'contributor'); await grant(manager, place.id, writer, 'contributor'); await grant(manager, place.id, viewer, 'viewer');
+  await grant(manager, place.id, owner, 'contributor'); await grant(manager, place.id, writer, 'contributor'); await grant(manager, place.id, viewer, 'contributor');
   agentId = (await post<{id:string}>(manager, `/api/v1/workspaces/${ws.id}/agents`, { name: 'Reference analyst', owner: 'self' })).id;
-  await post(manager, `/api/v1/projects/${place.id}/grants`, { principal: {kind:'agent',id:agentId}, role:'viewer' });
   // The API container's fixture key (FLUX_TEST_PERSONAL_RUNS): Connect AI's default pick, read back from the model list.
   const pick = (expectStatus(await manager.browser.request('GET', '/api/v1/personal-assistant/model'), 200) as { default: { connection: string; model: string } }).default;
   await post(manager, '/api/v1/personal-assistant', { agentId, ...pick });
@@ -193,7 +192,7 @@ test('genuinely missing historical citation is isolated from valid rows; phone l
   await capture(page,'references-phone-native-mixed');
 });
 
-test('proposal authority distinguishes loading, failed read, owned, manager, viewer, unowned and real agent owner', {timeout:90_000},async()=>{
+test('proposal authority distinguishes loading, failed read, owned, manager, unowned and real agent owner', {timeout:90_000},async()=>{
   target=await post<WorkItem>(manager,`/api/v1/projects/${place.id}/work`,{title:'Validate the measured range',owner:{kind:'human',id:owner.id},clientCommandId:randomUUID()});
   await script('Fact: measured range {works}. <proposal>{{"fact":"Measured range","interpretation":"Validate it","title":"Range proposal","finding":"positive","evidence":"Native measurements","finishes":"{work}"}}</proposal>');
   const committed=await answer('Draft a result for the range');

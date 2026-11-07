@@ -21,7 +21,6 @@ from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, 
 STAMP = int(time.time() * 1000)
 PASSWORD = "paste what you have in mind"
 LINES = "  Swipe slowly to dim  \r\n\n<b>Hold</b> to switch off\n\t\nDouble tap for a reading light\n"
-VIEW_ONLY = "You can look at this map but not add to it."
 
 
 def png(width: int = 48, height: int = 32) -> bytes:
@@ -105,7 +104,7 @@ class MapPasteJourney(unittest.TestCase):
     def setUp(self):
         self.owner = self.page("owner")
         self.project = self.api(self.owner, "POST", f"/api/v1/workspaces/{self.workspace}/projects", {"name": "Quiet gesture lamp", "visibility": "restricted"}, 201)["id"]
-        for who, role in (("writer", "contributor"), ("viewer", "viewer")):
+        for who, role in (("writer", "contributor"), ("viewer", "contributor")):
             self.api(self.owner, "POST", f"/api/v1/projects/{self.project}/grants", {"principal": {"kind": "human", "id": self.people[who]["id"]}, "role": role}, 201)
         self.sketch = self.api(self.owner, "POST", f"/api/v1/workspaces/{self.workspace}/sketches", {"title": "Bedside sensing directions", "scope": "project", "projectId": self.project}, 201)["id"]
         self.parent = self.api(self.owner, "POST", f"/api/v1/sketches/{self.sketch}/thoughts", {"text": "Capture a gesture without recording camera images", "x": 0, "y": 0}, 201)["thought"]["id"]
@@ -311,17 +310,7 @@ class MapPasteJourney(unittest.TestCase):
         self.open(reader)
         expect(reader.locator(f'li[data-id="{thought["id"]}"] img.sk-li-img')).to_be_visible()
 
-    def test_05_viewer_private_map_and_unsupported_files_are_refused_before_any_upload(self):
-        reader = self.page("viewer")
-        self.open(reader, mode="Map")
-        writes = self.writes(reader)
-        reader.locator(".sk-canvas").click(position={"x": 600, "y": 400})
-        self.paste(reader, "A viewer's idea")
-        expect(reader.locator(".sk-status--readonly")).to_have_text(VIEW_ONLY)
-        self.paste(reader, None, self.image())
-        expect(reader.locator(".sk-status--readonly")).to_have_text(VIEW_ONLY)
-        expect(reader.get_by_role("form")).to_have_count(0)
-        self.assertEqual(writes, [], "a viewer's paste uploads and writes nothing")
+    def test_05_private_map_and_unsupported_files_are_refused_before_any_upload(self):
         page = self.page()
         self.open(page)
         writes = self.writes(page)

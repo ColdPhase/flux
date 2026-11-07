@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { Conversation, ConversationMessage, Dm, DmMessage, DmTaskCopyPreview, DmTaskCopyResult, DmThread, MessageReceiptsResult, Page, WorkItem, Workspace } from '@flux/contracts';
 import { pool } from './support/db.js';
-import { addMember, expectStatus, grant, person, project, removeMember, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, removeMember, workspace, type Person } from './support/people.js';
 
 // Private DM reply threads (#536), real viewing receipts (#534) and the explicit excerpt-to-task copy (#537):
 // every read, write and receipt asks the current participant row again, so outsiders, nonparticipant managers
@@ -362,12 +362,11 @@ describe('DM reply threads, viewing receipts and task copies', () => {
       const empty = expectStatus(await preview(jo, dm.id, { messageId: m.id }), 200) as DmTaskCopyPreview;
       assert.ok(empty.project, 'a default project is proposed');
       expectStatus(await preview(jo, dm.id, { messageId: m.id, excerpt: 'something never said', projectId: lamp.id }), 422, 'not in the message');
-      // A destination the caller can only read.
-      const quiet = await project(ada, ws.id, 'Read only', 'restricted');
-      await grant(ada, quiet.id, jo, 'viewer');
-      expectStatus(await preview(jo, dm.id, { messageId: m.id, projectId: quiet.id }), 403, 'viewer destination');
+      // A destination the caller was not added to.
+      const quiet = await project(ada, ws.id, 'Not Jo’s', 'restricted');
+      expectStatus(await preview(jo, dm.id, { messageId: m.id, projectId: quiet.id }), 404, 'destination outside their spaces');
       const ok = expectStatus(await preview(jo, dm.id, { messageId: m.id, projectId: lamp.id }), 200) as DmTaskCopyPreview;
-      expectStatus(await commit(jo, dm.id, bodyOf(ok, { projectId: quiet.id })), 403, 'commit to a read-only destination');
+      expectStatus(await commit(jo, dm.id, bodyOf(ok, { projectId: quiet.id })), 404, 'commit to a space they were not added to');
       assert.equal((await tasks(ada, quiet.id)).length, 0);
       // The token is bound to this exact preview.
       expectStatus(await commit(jo, dm.id, bodyOf(ok, { token: 'forged' })), 409, 'forged token');
@@ -451,7 +450,7 @@ describe('DM reply threads, viewing receipts and task copies', () => {
       const lamp = await project(ada, ws.id, 'Receipts project', 'restricted');
       await grant(ada, lamp.id, jo, 'contributor');
       await grant(ada, lamp.id, kai, 'contributor');
-      await grant(ada, lamp.id, lee, 'viewer');
+      await grant(ada, lamp.id, lee, 'contributor');
       const r1 = await startRoot(jo, lamp.id, 'First root');
       const r2 = await startRoot(jo, lamp.id, 'Second root');
       const m1 = r1.messages[0]!;
@@ -461,7 +460,7 @@ describe('DM reply threads, viewing receipts and task copies', () => {
       assert.deepEqual(await namesP(jo, lamp.id, [[m1.id, m2.id], [m2.id]]), [[], ['th-kai']], 'one message of a run is not the run');
       expectStatus(await seeP(kai, lamp.id, [m1.id, m2.id]), 200);
       expectStatus(await seeP(lee, lamp.id, [m1.id, m2.id]), 200);
-      assert.deepEqual(await namesP(jo, lamp.id, [[m1.id, m2.id]]), [['th-kai', 'th-lee']], 'a read-only reader is a reader');
+      assert.deepEqual(await namesP(jo, lamp.id, [[m1.id, m2.id]]), [['th-kai', 'th-lee']], 'every reader is counted');
       assert.equal((expectStatus(await seeP(kai, lamp.id, [m1.id]), 200) as { observed: number }).observed, 0, 'idempotent');
 
       // Thread replies are their own level, within one conversation.
@@ -494,7 +493,7 @@ describe('DM reply threads, viewing receipts and task copies', () => {
       assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_message_observations')).rows[0].n, before);
 
       // Revoked readers are never named, whatever they saw; they cannot observe any more.
-      await grant(ada, lamp.id, kai, 'denied');
+      await removeFromSpace(ada, lamp.id, kai);
       assert.deepEqual(await namesP(jo, lamp.id, [[m1.id, m2.id], [a1.id, a2.id]]), [['th-lee'], []]);
       expectStatus(await seeP(kai, lamp.id, [m1.id]), 404, 'revoked: observe');
       async function outsiderObserve(who: Person) { return who.browser.request('POST', `${projectPath(lamp.id)}/observations`, { body: { messageIds: [m1.id], viewerId: jo.id } }); }

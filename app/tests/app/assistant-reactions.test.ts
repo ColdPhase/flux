@@ -64,7 +64,7 @@ describe('owner-only When sentences (F-027 A9, #409)', () => {
     ws = await makeWorkspace(owner,'Sensor studio');
     await addMember(owner,ws.id,peer,'member'); await addMember(owner,ws.id,viewer,'member');
     place = await makeProject(owner,ws.id,'Lamp sensor','workspace');
-    await grant(owner,place.id,peer,'contributor'); await grant(owner,place.id,viewer,'viewer');
+    await grant(owner,place.id,peer,'contributor'); await grant(owner,place.id,viewer,'contributor');
     thread = expectStatus(await owner.browser.request('POST',`/api/v1/projects/${place.id}/conversations`, { body: { body: 'Sensor calibration notes',clientMessageId:randomUUID() } }),201) as Conversation;
     const agent = expectStatus(await owner.browser.request('POST',`/api/v1/workspaces/${ws.id}/agents`,{body:{name:'Ada assistant',owner:'self'}}),201) as {id:string};
     const connectionId = randomUUID(); connections.connect(owner.id,connectionId);

@@ -81,8 +81,8 @@ describe('"On a schedule": the owner\'s schedules and the per-minute tick (F-027
     for (const [who, role] of [[peer, 'member'], [viewer, 'member'], [guest, 'guest']] as const) await addMember(owner, ws.id, who, role);
     place = await createProject(owner, ws.id, 'Lamp sensor', 'workspace');
     await grant(owner, place.id, peer, 'contributor');
-    await grant(owner, place.id, viewer, 'viewer');
-    await grant(owner, place.id, guest, 'viewer');
+    await grant(owner, place.id, viewer, 'contributor');
+    await grant(owner, place.id, guest, 'contributor');
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
       { body: { body: 'Camera fails below 5 lux in the low-light test', clientMessageId: randomUUID() } }), 201) as Conversation;

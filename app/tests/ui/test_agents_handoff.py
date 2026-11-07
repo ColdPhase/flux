@@ -104,7 +104,7 @@ class HandOffJourney(unittest.TestCase):
         return page
 
     def api(self, page: Page, method: str, path: str, body: dict | None = None, status: int | None = None) -> dict | list:
-        response = page.request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, "content-type": "application/json"},
+        response = page.request.fetch(f"{ORIGIN}{path}", method=method, headers={"origin": ORIGIN, **({"content-type": "application/json"} if body is not None else {})},
                                       data=json.dumps(body) if body is not None else None)
         if status is not None:
             self.assertEqual(response.status, status, response.text())
@@ -618,7 +618,7 @@ class HandOffJourney(unittest.TestCase):
                     page.unroute_all(behavior="ignoreErrors")
                     page.context.close()
 
-    def test_14_inaccessible_and_cross_project_targets_and_viewer_writes_are_refused(self) -> None:
+    def test_14_inaccessible_and_cross_project_targets_are_refused(self) -> None:
         project, task_id = self.ids["projection_project"], self.ids["projection_task"]
         ada = self.page("ada")
         task = self.api(ada, "GET", f"/api/v1/work/{task_id}", status=200)
@@ -635,21 +635,14 @@ class HandOffJourney(unittest.TestCase):
             expect(page.get_by_role("region", name="Thread of Calibrate the probes at two soil depths")).to_have_count(0)
             # There is no task picker (#347 P1-2): the thread that opens is this project's own first task, never the wanted one.
             expect(page.get_by_role("region", name=re.compile(r"^Thread of Connection task \d+$"))).to_have_count(1)
-        # A reader can see the work but has no hand-off entry and cannot bypass it through the API.
-        self.api(ada, "POST", f"/api/v1/projects/{project}/grants",
-                 {"principal": {"kind": "human", "id": JONAS["id"]}, "role": "viewer"}, status=201)
+        # Jonas joins the space, then is removed again.
+        joined = self.api(ada, "POST", f"/api/v1/projects/{project}/grants",
+                          {"principal": {"kind": "human", "id": JONAS["id"]}, "role": "contributor"}, status=201)
         grants = self.api(ada, "GET", f"/api/v1/projects/{project}/grants", status=200)
         self.assertEqual(len(grants), len(before) + 1)
-        jonas.goto(f"/projects/{project}/agents")
-        expect(jonas.get_by_role("heading", level=1, name="Agents")).to_be_visible()
-        expect(jonas.get_by_role("button", name="Hand off a task")).to_have_count(0)
         headers = {"origin": ORIGIN, "content-type": "application/json", "if-match": f'"{task["version"]}"'}
-        response = jonas.request.patch(f"{ORIGIN}/api/v1/work/{task_id}", headers=headers,
-                                      data=json.dumps({"owner": {"kind": "agent", "id": self.ids["agent_outside"]}, "clientCommandId": str(uuid.uuid4())}))
-        self.assertEqual(response.status, 403, response.text())
-        # An agent has its owner's rights: with Jonas kept out, his agent cannot own work here.
-        self.api(ada, "POST", f"/api/v1/projects/{project}/grants",
-                 {"principal": {"kind": "human", "id": JONAS["id"]}, "role": "denied"}, status=201)
+        # An agent has its owner's rights: with Jonas removed from the space, his agent cannot own work here.
+        self.api(ada, "DELETE", f"/api/v1/projects/{project}/grants/{joined['id']}", status=204)
         grants = self.api(ada, "GET", f"/api/v1/projects/{project}/grants", status=200)
         response = ada.request.patch(f"{ORIGIN}/api/v1/work/{task_id}", headers=headers,
                                     data=json.dumps({"owner": {"kind": "agent", "id": self.ids["agent_outside"]}, "clientCommandId": str(uuid.uuid4())}))

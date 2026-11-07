@@ -18,7 +18,7 @@ import { apiEditingOutputBudget } from '../../apps/server/src/editing/output.js'
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import type { SessionContext,SessionResolver } from '../../apps/server/src/identity/session.js';
 import { connectionString,db,pool } from './support/db.js';
-import { addMember,expectStatus,grant,person,project,secondSession,workspace } from './support/people.js';
+import { addMember,expectStatus,grant,person,project,removeFromSpace,secondSession,workspace } from './support/people.js';
 import { actionScene } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
 const filesDir=process.env.FLUX_TEST_FILES_DIR??'/data/files';
@@ -30,7 +30,7 @@ async function context(user:{id:string}):Promise<SessionContext> {
 async function scene(count=2) {
   const owner=await person('map-live-owner');const peer=await person('map-live-peer');const viewer=await person('map-live-reader');
   const ws=await workspace(owner,'Native live map');await addMember(owner,ws.id,peer,'member');await addMember(owner,ws.id,viewer,'member');
-  const place=await project(owner,ws.id,'Native map room','restricted');await grant(owner,place.id,peer,'contributor');await grant(owner,place.id,viewer,'viewer');
+  const place=await project(owner,ws.id,'Native map room','restricted');await grant(owner,place.id,peer,'contributor');await grant(owner,place.id,viewer,'contributor');
   const sketch=expectStatus(await owner.browser.request('POST',`/api/v1/workspaces/${ws.id}/sketches`,{body:{scope:'project',projectId:place.id,title:'Shared positions'}}),201) as Sketch;
   const ids=Array.from({length:count},()=>randomUUID());if(ids.length)await db.insert(schema.sketchThoughts).values(ids.map((id,index)=>({id,workspaceId:ws.id,sketchId:sketch.id,text:`Seed ${index}`,x:index,y:index,createdByUserId:owner.id})));
   return{owner,peer,viewer,ws,place,sketch,ids,ownerSession:await context(owner),peerSession:await context(peer),viewerSession:await context(viewer)};
@@ -175,7 +175,6 @@ test('real live/native HTTP shares one budget, uses ordered receipts and current
     assert.equal(conflict.code,'VERSION_CONFLICT');assert.equal(conflict.current,undefined);assert.equal(conflict.currentVersion,undefined);
     assert.equal(stale.body.includes('Native HTTP'),false,'a joined room never exposes rolled-back conflict details through the ordinary error path');
     current=f.peerSession;const changed=await delta(backend,f.peerSession,head,0);assert.equal(changed?.commandId,commandId);assert.equal(changed?.thoughts[0]?.text,'Native HTTP');
-    current=f.viewerSession;const denied=await app.inject({method:'PATCH',url:path,payload:{text:'Viewer cannot write',expectedVersion:2}});assert.equal(denied.statusCode,403);assert.equal(JSON.parse(denied.body).current,undefined);
     current=f.ownerSession;await native(f.peerSession,f.sketch.id,randomUUID(),{expectedVersion:2}).removeThought(f.peerSession.principal,f.sketch.id,f.ids[0]!,2);
     const replay=await app.inject({method:'PATCH',url:path,headers:{'idempotency-key':commandId},payload:{text:'Native HTTP',expectedVersion:1}});assert.equal(replay.statusCode,200,replay.body);
     assert.equal((await bootstrap(backend,f.ownerSession,f.sketch.id)).sketch.thoughts.some((t:Thought)=>t.id===f.ids[0]),false);
@@ -196,7 +195,6 @@ test('private/DM rooms stay opaque, expired preview cannot revive, and final SQL
     const head=await bootstrap(backend,f.ownerSession,f.sketch.id);const lease=await authority.acquire(f.ownerSession,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:f.ids[0]!,expectedVersion:1}]});
     await pool.query("UPDATE map_live_gestures SET expires_at=clock_timestamp()-interval'1 second' WHERE lease_id=$1",[lease.leaseId]);
     await assert.rejects(authority.move(f.ownerSession,f.sketch.id,randomUUID(),{generation:head.generation,gestureId:lease.gestureId,leaseId:lease.leaseId,sequence:1,positions:[{id:f.ids[0]!,x:9,y:9}]}),refused('EDITING_LEASE_CHANGED'));
-    await assert.rejects(authority.presence(f.viewerSession,f.sketch.id,randomUUID(),{generation:head.generation,selected:[],cursor:null}),error=>error instanceof Error&&'status' in error&&error.status===403);
     await pool.query("UPDATE auth_sessions SET expires_at=clock_timestamp()+interval'150 milliseconds' WHERE id=$1",[f.peerSession.sessionId]);
     const delayed=mapBackend({pool},{beforeHandoff:()=>new Promise(resolve=>setTimeout(resolve,220))});
     try {await assert.rejects(delayed.deliver(who(f.peerSession),f.sketch.id,head.generation,0,()=>assert.fail('No protected bytes after current SQL session expiry')),error=>error instanceof Error&&'statusCode' in error&&error.statusCode===401);}finally{await delayed.close();}
@@ -204,7 +202,7 @@ test('private/DM rooms stay opaque, expired preview cannot revive, and final SQL
   } finally {await authority.close();assert.equal(apiEditingOutputBudget.bytes,0);}
 });
 
-test('project delivery checks each producer session once, preserves first policy locks and forgets successes before a later grant downgrade', {timeout:20000},async()=>{
+test('project delivery checks each producer session once, preserves first policy locks and forgets successes before a later removal from the space', {timeout:20000},async()=>{
   const f=await scene();const second=await secondSession(f.peer);
   const producers=[f.peerSession,{...f.peerSession,sessionId:second.sessionId}];
   assert.notEqual(producers[0]!.sessionId,producers[1]!.sessionId,'independent real sign-ins of the same person');
@@ -245,7 +243,7 @@ test('project delivery checks each producer session once, preserves first policy
     assert.deepEqual(visible.sort(),connections.flatMap(connection=>[`map-move:${connection}`,`map-presence:${connection}`]).sort());
     for(const producer of producers)assert.equal(sessionLocks.get(producer.sessionId),1,'each distinct session keeps its own first FOR SHARE fence');
     assert.equal(sketchLocks,3,'recipient read plus one full locked write decision for each producer session');
-    await grant(f.owner,f.place.id,f.peer,'viewer');
+    await removeFromSpace(f.owner,f.place.id,f.peer);
     sessionLocks.clear();sketchLocks=0;
     const denied:unknown[][]=[];
     await backend.deliver(who(f.ownerSession),f.sketch.id,head.generation,0,value=>denied.push(value.transient));
@@ -255,7 +253,7 @@ test('project delivery checks each producer session once, preserves first policy
     const stillAlive=await pool.query(`SELECT
       (SELECT count(*)::int FROM map_live_gestures WHERE sketch_id=$1 AND expires_at>clock_timestamp())+
       (SELECT count(*)::int FROM map_live_presence WHERE sketch_id=$1 AND expires_at>clock_timestamp()) AS n`,[f.sketch.id]);
-    assert.equal(stillAlive.rows[0].n,4,'the negative control is a real grant downgrade, not coincidental TTL expiry');
+    assert.equal(stillAlive.rows[0].n,4,'the negative control is a real removal from the space, not coincidental TTL expiry');
   } finally {await authority.close();await database.pool.end();assert.equal(apiEditingOutputBudget.bytes,0);}
 });
 

@@ -13,7 +13,7 @@ import { liveRevocationCoordinator, withNoMediaAccessChange } from '../../apps/s
 import { accessRoutes } from '../../apps/server/src/access/routes.js';
 import { useDomainErrors } from '../../apps/server/src/http/errors.js';
 import { liveRoutes } from '../../apps/server/src/live/routes.js';
-import { db, pool } from './support/db.js';
+import { db, pool, removeFromSpaceCore } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
 function mediaFixture() {
@@ -56,7 +56,7 @@ async function fixture(label: string) {
   const ws = await workspace(owner, label);
   await addMember(owner, ws.id, member, 'member');
   const place = await project(owner, ws.id, label, 'restricted');
-  await grant(owner, place.id, member, 'viewer');
+  await grant(owner, place.id, member, 'contributor');
   const thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
     body: { body: `${label} anchor`, clientMessageId: randomUUID() },
   }), 201) as Conversation;
@@ -144,9 +144,7 @@ test('lost-room join rechecks policy after repair before issuing a replacement t
   f.transport.rooms.delete(f.session.roomId);
   const app = await joinApp(f, { recoverMissingRoom: async (sessionId) => {
     await f.coordinator.recoverMissingRoom(sessionId);
-    await f.coordinator.withProjectChange(f.place.id, () => grantProject(
-      { kind: 'human', id: f.owner.id }, f.place.id,
-      { principal: f.principal, role: 'denied' }, db, accessPorts));
+    await f.coordinator.withProjectChange(f.place.id, () => removeFromSpaceCore({ kind: 'human', id: f.owner.id }, f.place.id, f.principal, db));
   } });
   try {
     const response = await app.inject({ method: 'POST', url: `/api/v1/live-sessions/${f.session.id}/join` });
@@ -162,8 +160,7 @@ test('grant revocation retires the old room before commit and leaves only a new-
   assert.equal(old.token, `jwt:${f.session.roomId}`);
   await f.coordinator.withProjectChange(f.place.id, async () => {
     assert.equal(f.transport.rooms.has(f.session.roomId), false);
-    await grantProject({ kind: 'human', id: f.owner.id }, f.place.id,
-      { principal: f.principal, role: 'denied' }, db, accessPorts);
+    await removeFromSpaceCore({ kind: 'human', id: f.owner.id }, f.place.id, f.principal, db);
   });
   const next = await f.store.find(f.session.id);
   assert.equal(next?.generation, 2);
@@ -193,8 +190,7 @@ test('an in-flight join finishes before the revocation fence and old-room deleti
     return 'issued';
   });
   await started;
-  const revocation = f.coordinator.withProjectChange(f.place.id, () => grantProject(
-    { kind: 'human', id: f.owner.id }, f.place.id, { principal: f.principal, role: 'denied' }, db, accessPorts));
+  const revocation = f.coordinator.withProjectChange(f.place.id, () => removeFromSpaceCore({ kind: 'human', id: f.owner.id }, f.place.id, f.principal, db));
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(f.transport.retired.length, 0);
   release();
@@ -207,8 +203,7 @@ test('workspace membership removal retires all old media while a remaining membe
   const f = await fixture('live-member');
   const remaining = await person('live-member-remaining');
   await addMember(f.owner, f.ws.id, remaining, 'member');
-  await grantProject({ kind: 'human', id: f.owner.id }, f.place.id,
-    { principal: { kind: 'human', id: remaining.id }, role: 'viewer' }, db, accessPorts);
+  await grantProject({ kind: 'human', id: f.owner.id }, f.place.id, { principal: { kind: 'human', id: remaining.id }, role: 'contributor' }, db, accessPorts);
   const remainingPrincipal = { kind: 'human' as const, id: remaining.id };
   const original = await f.store.withAdmission(remainingPrincipal, f.session.id, async (session) => session.roomId);
   assert.equal(original, f.session.roomId);
@@ -239,8 +234,7 @@ test('failed ending-room deletion blocks a policy change before its mutation com
   let mutationRan = false;
   await assert.rejects(coordinator.withProjectChange(f.place.id, async () => {
     mutationRan = true;
-    await grantProject({ kind: 'human', id: f.owner.id }, f.place.id,
-      { principal: f.principal, role: 'denied' }, db, accessPorts);
+    await removeFromSpaceCore({ kind: 'human', id: f.owner.id }, f.place.id, f.principal, db);
   }), /SFU unavailable/);
   assert.equal(mutationRan, false);
   assert.equal((await f.store.find(f.session.id))?.state, 'ending');
@@ -248,8 +242,7 @@ test('failed ending-room deletion blocks a policy change before its mutation com
   assert.equal((await f.member.browser.request('GET', `/api/v1/projects/${f.place.id}`)).status, 200);
 
   await coordinator.withProjectChange(f.place.id, async () => {
-    await grantProject({ kind: 'human', id: f.owner.id }, f.place.id,
-      { principal: f.principal, role: 'denied' }, db, accessPorts);
+    await removeFromSpaceCore({ kind: 'human', id: f.owner.id }, f.place.id, f.principal, db);
   });
   assert.equal((await f.store.find(f.session.id))?.state, 'ended');
   assert.equal(f.transport.rooms.has(f.session.roomId), false);
@@ -258,9 +251,8 @@ test('failed ending-room deletion blocks a policy change before its mutation com
 
 test('API without an SFU rejects revocation while a live room may still exist', async () => {
   const f = await fixture('live-no-media');
-  const response = await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/grants`, {
-    body: { principal: f.principal, role: 'denied' },
-  });
+  const grants = expectStatus(await f.owner.browser.request('GET', `/api/v1/projects/${f.place.id}/grants`), 200) as { id: string; principal: { id: string } }[];
+  const response = await f.owner.browser.request('DELETE', `/api/v1/projects/${f.place.id}/grants/${grants.find((item) => item.principal.id === f.principal.id)!.id}`);
   assert.equal(response.status, 503);
   assert.equal((response.json as { code?: string }).code, 'LIVE_MEDIA_UNAVAILABLE');
   assert.equal(await f.store.withAdmission(f.principal, f.session.id, async () => 'still-authorized'), 'still-authorized');
@@ -279,8 +271,8 @@ test('an SFU failure after policy commit returns an error and retains the fence 
     liveRevocation: f.coordinator,
   });
   try {
-    const response = await app.inject({ method: 'POST', url: `/api/v1/projects/${f.place.id}/grants`,
-      payload: { principal: f.principal, role: 'denied' } });
+    const grantId = (await pool.query<{ id: string }>('SELECT id FROM project_grants WHERE project_id = $1 AND user_id = $2', [f.place.id, f.principal.id])).rows[0]!.id;
+    const response = await app.inject({ method: 'DELETE', url: `/api/v1/projects/${f.place.id}/grants/${grantId}` });
     assert.equal(response.statusCode, 500);
     assert.equal((await f.store.find(f.session.id))?.state, 'rotating');
     await assert.rejects(f.store.withAdmission(f.principal, f.session.id, async () => 'unexpected'),
@@ -293,7 +285,7 @@ test('an SFU failure after policy commit returns an error and retains the fence 
 test('no-media access mutation holds the project guard until commit against concurrent admission', async () => {
   const f = await fixture('live-mixed-replica');
   const second = await project(f.owner, f.ws.id, 'Fresh project without media', 'restricted');
-  await grant(f.owner, second.id, f.member, 'viewer');
+  await grant(f.owner, second.id, f.member, 'contributor');
   const thread = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${second.id}/conversations`, {
     body: { body: 'Fresh anchor', clientMessageId: randomUUID() },
   }), 201) as Conversation;
@@ -305,8 +297,7 @@ test('no-media access mutation holds the project guard until commit against conc
   const change = withNoMediaAccessChange(db, { workspaceId: f.ws.id, projectId: second.id }, async (conn) => {
     inside();
     await held;
-    await grantProject({ kind: 'human', id: f.owner.id }, second.id,
-      { principal: f.principal, role: 'denied' }, conn, accessPorts);
+    await removeFromSpaceCore({ kind: 'human', id: f.owner.id }, second.id, f.principal, conn);
   });
   await started;
   let admitted = false;
@@ -326,10 +317,9 @@ test('no-media access mutation holds the project guard until commit against conc
 test('no-media guard rolls back a failed access mutation under the same lock', async () => {
   const f = await fixture('live-no-media-rollback');
   const second = await project(f.owner, f.ws.id, 'Rollback project', 'restricted');
-  await grant(f.owner, second.id, f.member, 'viewer');
+  await grant(f.owner, second.id, f.member, 'contributor');
   await assert.rejects(withNoMediaAccessChange(db, { workspaceId: f.ws.id, projectId: second.id }, async (conn) => {
-    await grantProject({ kind: 'human', id: f.owner.id }, second.id,
-      { principal: f.principal, role: 'denied' }, conn, accessPorts);
+    await removeFromSpaceCore({ kind: 'human', id: f.owner.id }, second.id, f.principal, conn);
     throw new Error('forced rollback');
   }), /forced rollback/);
   const allowed = await f.member.browser.request('GET', `/api/v1/projects/${second.id}`);

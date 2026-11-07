@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import type { Conversation, LiveSession } from '@flux/contracts';
-import { addMember, expectStatus, grant, person, project, workspace } from '../support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace } from '../support/people.js';
 
 interface Invitation {
   id: string;
@@ -32,8 +32,8 @@ test('recipient discovers, pages and answers HTTP live invitations; access revoc
     await addMember(owner, ws.id, recipient, 'member');
     await addMember(owner, ws.id, revoked, 'member');
     const place = await project(owner, ws.id, 'Private invitation project', 'restricted');
-    await grant(owner, place.id, recipient, 'viewer');
-    await grant(owner, place.id, revoked, 'viewer');
+    await grant(owner, place.id, recipient, 'contributor');
+    await grant(owner, place.id, revoked, 'contributor');
     const anchor = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
       body: { body: 'Private anchor body is never copied into invitations', clientMessageId: randomUUID() },
     }), 201) as Conversation;
@@ -91,7 +91,7 @@ test('recipient discovers, pages and answers HTTP live invitations; access revoc
     assert.equal(saved.messages.length, 1, 'text choice does not create a duplicate message');
 
     assert.deepEqual((expectStatus(await revoked.browser.request('GET', inboxPath), 200) as Inbox).items.map((row) => row.id), [hidden.id]);
-    await grant(owner, place.id, revoked, 'denied');
+    await removeFromSpace(owner, place.id, revoked);
     assert.deepEqual((expectStatus(await revoked.browser.request('GET', inboxPath), 200) as Inbox).items, []);
     const revokedReply = await revoked.browser.request('POST', replyPath(hidden.id), { body: { choice: 'later' } });
     assert.equal(revokedReply.status, 404, revokedReply.text);

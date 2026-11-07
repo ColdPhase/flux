@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { createDatabase } from '@flux/db';
 import type { Conversation, TypingContext, Workspace } from '@flux/contracts';
-import { addMember, expectStatus, grant, person, project, secondSession, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, secondSession, workspace, type Person } from './support/people.js';
 import { Browser } from './support/http.js';
 import { TypingClient } from './support/typing.js';
 
@@ -21,7 +21,7 @@ describe('actual same-origin ephemeral human typing WebSocket', () => {
   async function connect(browser: Browser) { const client = await TypingClient.connect(browser); clients.add(client); return client; }
   async function conversation() {
     const room = await project(alice, ws.id, 'Typing socket restricted', 'restricted');
-    await grant(alice, room.id, bob, 'contributor'); await grant(alice, room.id, viewer, 'viewer');
+    await grant(alice, room.id, bob, 'contributor'); await grant(alice, room.id, viewer, 'contributor');
     const native = expectStatus(await alice.browser.request('POST', `/api/v1/projects/${room.id}/conversations`,
       { body: { body: 'Native conversation, not a presence event', clientMessageId: randomUUID() } }), 201) as Conversation;
     return { room, context: { kind: 'conversation' as const, id: native.id } };
@@ -77,7 +77,7 @@ describe('actual same-origin ephemeral human typing WebSocket', () => {
   test('two threads of one project are two scopes: each hears only its own writers, and neither stores anything', async () => {
     // Same project, same people, same roles: the thread, not the project, is the audience's scope (#155 AC-2).
     const room = await project(alice, ws.id, 'Typing two threads', 'restricted');
-    await grant(alice, room.id, bob, 'contributor'); await grant(alice, room.id, viewer, 'viewer');
+    await grant(alice, room.id, bob, 'contributor'); await grant(alice, room.id, viewer, 'contributor');
     const thread = async (body: string) => ({ kind: 'conversation' as const, id: (expectStatus(await alice.browser.request('POST', `/api/v1/projects/${room.id}/conversations`,
       { body: { body, clientMessageId: randomUUID() } }), 201) as Conversation).id });
     const one = await thread('First thread: where does the switch go?'); const two = await thread('Second thread: what colour is the base?');
@@ -117,13 +117,13 @@ describe('actual same-origin ephemeral human typing WebSocket', () => {
     await Promise.all([sender.close(), receiver.close()]);
   });
 
-  test('reader can observe but cannot publish; foreign and unknown contexts reveal no names', async () => {
+  test('a member publishes and is heard; foreign and unknown contexts reveal no names', async () => {
     const { context } = await conversation();
     const [sender, reader, foreign] = await Promise.all([connect(alice.browser), connect(viewer.browser), connect(outsider.browser)]);
     await Promise.all([sender.watch(context), reader.watch(context), foreign.watch(context, 'unavailable')]);
     reader.send({ type: 'active', active: true }); sender.send({ type: 'active', active: true });
     await reader.until(() => visible(reader, alice.id), 'reader receives current writer');
-    assert.equal(visible(sender, viewer.id), false);
+    await sender.until(() => visible(sender, viewer.id), 'the writer hears the member');
     assert.deepEqual(foreign.messages.at(-1)?.people, []);
     foreign.send({ type: 'watch', context: { ...context, id: randomUUID() } });
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -131,16 +131,13 @@ describe('actual same-origin ephemeral human typing WebSocket', () => {
     await Promise.all([sender.close(), reader.close(), foreign.close()]);
   });
 
-  test('current writer downgrade and recipient denial withdraw on checked heartbeat', async () => {
+  test('removing a person from the space withdraws their typing on checked heartbeat', async () => {
     const { context, room } = await conversation();
     const [sender, receiver] = await Promise.all([connect(bob.browser), connect(alice.browser)]);
     await Promise.all([sender.watch(context), receiver.watch(context)]);
     sender.send({ type: 'active', active: true }); await receiver.until(() => visible(receiver, bob.id), 'Bob typing');
-    await grant(alice, room.id, bob, 'viewer'); const changed = performance.now();
-    await receiver.until(() => absent(receiver, bob.id), 'writer revoked', 2000);
-    console.log(JSON.stringify({ typingSocket: 'writer-revoked', withdrawMs: performance.now() - changed }));
     receiver.send({ type: 'active', active: true }); await sender.until(() => visible(sender, alice.id), 'reader still observes');
-    await grant(alice, room.id, bob, 'denied'); const denied = performance.now();
+    await removeFromSpace(alice, room.id, bob); const denied = performance.now();
     await sender.until(() => sender.messages.at(-1)?.availability === 'unavailable' && absent(sender, alice.id), 'reader revoked', 2000);
     console.log(JSON.stringify({ typingSocket: 'reader-revoked', withdrawMs: performance.now() - denied }));
     await Promise.all([sender.close(), receiver.close()]);

@@ -158,7 +158,7 @@ test('all pages render quiet comparisons and insufficient evidence with current 
   }
 });
 
-test('a project viewer can inspect outcomes while owner accounting and controls remain private', async () => {
+test('another person in the space can inspect outcomes while owner accounting and controls remain private', async () => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   try {
@@ -266,12 +266,10 @@ test('owner usage distinguishes known, uncertain and no-cost requests and surviv
     const work = await api(page, 'GET', `/api/v1/projects/${fixture.projectId}/work?limit=100`);
     assert.equal((work.data as { items: unknown[] }).items.length, 1, 'insufficient evidence never creates work');
     assert.equal(((await api(page, 'GET', '/api/v1/background-compute-usage')).data as BackgroundComputeUsage).startedRequestsToday, 3, 'inspect and dismiss start no paid request');
-    // A local accounting reference is not a grant to reopen its project source. A space always keeps an admin (C-16), so the
-    // owner can be kept out of it only once another person administers it. Leaving would not do: a company owner still reaches it.
-    assert.equal((await api(page, 'POST', `/api/v1/projects/${fixture.projectId}/grants`,
-      { principal: { kind: 'human', id: fixture.viewerId }, role: 'manager' })).status, 201);
-    assert.equal((await api(page, 'POST', `/api/v1/projects/${fixture.projectId}/grants`,
-      { principal: { kind: 'human', id: fixture.ownerId }, role: 'denied' })).status, 201);
+    // A local accounting reference is not a grant to reopen its project source. A space keeps an admin (C-16): the viewer, the company's owner,
+    // administers it too, so the owner can be removed from it. Removing them is the way out of a space now (#903).
+    const grants = (await api(page, 'GET', `/api/v1/projects/${fixture.projectId}/grants`)).data as { id: string; principal: { id: string } }[];
+    assert.equal((await api(page, 'DELETE', `/api/v1/projects/${fixture.projectId}/grants/${grants.find((item) => item.principal.id === fixture.ownerId)!.id}`)).status, 204);
     await page.goto(`${origin.origin}/settings/background-compute`);
     const privateUsage = page.locator('.background-usage'); await privateUsage.waitFor();
     assert.ok(!(await privateUsage.innerText()).includes('Bedside gesture lamp'));

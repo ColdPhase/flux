@@ -59,7 +59,7 @@ class TypingJourney(unittest.TestCase):
         for key in ("bob", "viewer", "outsider"):
             post(f"/api/v1/workspaces/{cls.workspace}/members", {"email": f"typing-{key}-{STAMP}@example.test", "role": "member"})
         cls.project = post(f"/api/v1/workspaces/{cls.workspace}/projects", {"name": "Reading corner lamp", "visibility": "restricted"})["id"]
-        for key, role in (("bob", "contributor"), ("viewer", "viewer")):
+        for key, role in (("bob", "contributor"), ("viewer", "contributor")):
             post(f"/api/v1/projects/{cls.project}/grants", {"principal": {"kind": "human", "id": cls.ids[key]}, "role": role})
         cls.material = post(f"/api/v1/projects/{cls.project}/materials", {"title": "Low-light observations", "body": "20 gestures per light level; a distance sensor preserves privacy.", "clientMutationId": str(uuid.uuid4())})
         cls.conversations = []
@@ -138,6 +138,12 @@ class TypingJourney(unittest.TestCase):
     def grant(self, owner, who, role):
         response = owner.request.post(f"/api/v1/projects/{self.project}/grants", data={"principal": {"kind": "human", "id": self.ids[who]}, "role": role}, headers={"origin": ORIGIN})
         self.assertEqual(response.status, 201, response.text())
+
+    def remove(self, owner, who):
+        grants = owner.request.get(f"/api/v1/projects/{self.project}/grants").json()
+        gone = next(item["id"] for item in grants if item["principal"]["id"] == self.ids[who])
+        response = owner.request.delete(f"/api/v1/projects/{self.project}/grants/{gone}", headers={"origin": ORIGIN})
+        self.assertEqual(response.status, 204, response.text())
 
     def assert_wire(self, page, who):
         self.assertTrue(page.typing_received, "actual server frames observed")
@@ -218,18 +224,16 @@ class TypingJourney(unittest.TestCase):
         expect(bob.locator(".dm-msg__body", has_text="We can test the lamp tonight.")).to_have_count(1)
         self.assert_wire(alice, "alice")
 
-    def test_04_reader_observes_and_current_access_revocation_clears(self):
+    def test_04_a_member_observes_and_removal_from_the_space_clears(self):
         alice = self.open("alice")
         viewer = self.open("viewer")
-        expect(self.composer(viewer)).to_have_count(0)
-        expect(self.thread(viewer).locator(".project-convo__read-only")).to_be_visible()
         self.composer(alice).fill("PRIVATE-DRAFT current reader test")
         expect(viewer.locator(".typing-notice")).to_contain_text("Alice Rivera", timeout=2000)
         self.assertFalse(any(frame.get("type") == "active" for frame in viewer.typing_sent))
         try:
-            self.measure("reader-revocation-request-to-dom", lambda: self.grant(alice, "viewer", "denied"), lambda: expect(viewer.get_by_text("Alice Rivera is typing…", exact=True)).to_have_count(0, timeout=2000), 2000)
+            self.measure("reader-revocation-request-to-dom", lambda: self.remove(alice, "viewer"), lambda: expect(viewer.get_by_text("Alice Rivera is typing…", exact=True)).to_have_count(0, timeout=2000), 2000)
         finally:
-            self.grant(alice, "viewer", "viewer")
+            self.grant(alice, "viewer", "contributor")
 
     def test_05_receiver_loses_application_frames_and_expires(self):
         state = {"drop": False, "dropped": 0}
@@ -621,9 +625,7 @@ class TypingJourney(unittest.TestCase):
         work, _ = self.work_with_root("Check the typing sentence")
         owner = self.page("alice")
         self.grant(owner, "outsider", "contributor")
-        self.grant(owner, "viewer", "contributor")
-        self.addCleanup(lambda: self.grant(owner, "viewer", "viewer"))
-        self.addCleanup(lambda: self.grant(owner, "outsider", "denied"))
+        self.addCleanup(lambda: self.remove(owner, "outsider"))
         writers = {key: self.panel(key, work["id"]) for key in ("alice", "outsider", "viewer")}
         for page in writers.values():
             expect(page.locator("#details .typing-notice")).to_have_attribute("data-availability", "ready")

@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { grantProject, liveInvitationUseCases, type LiveInvitationCursor } from '@flux/core';
-import { accessPorts } from '@flux/db';
+import { liveInvitationUseCases, type LiveInvitationCursor } from '@flux/core';
 import type { Conversation } from '@flux/contracts';
 import { liveInvitationStore } from '../../apps/server/src/live/invitations.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
-import { db, pool } from './support/db.js';
+import { db, pool, removeFromSpaceCore } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
 const errorCode = (code: string) => (error: unknown) =>
@@ -20,7 +19,7 @@ async function fixture(label: string) {
   await addMember(owner, ws.id, recipient, 'member');
   await addMember(owner, ws.id, stranger, 'member');
   const place = await project(owner, ws.id, `${label} project`, 'restricted');
-  await grant(owner, place.id, recipient, 'viewer');
+  await grant(owner, place.id, recipient, 'contributor');
   const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
     body: { body: `${label} private anchor body`, clientMessageId: randomUUID() },
   }), 201) as Conversation;
@@ -59,7 +58,7 @@ test('database invitation is idempotent, constrained to IDs and choice, and reje
   assert.ok(answered.rows[0].responded_at);
   assert.deepEqual((await f.invitations.listPending(recipient)).items, []);
 
-  await grantProject(caller, f.place.id, { principal: recipient, role: 'denied' }, db, accessPorts);
+  await removeFromSpaceCore(caller, f.place.id, recipient, db);
   await assert.rejects(f.invitations.reply(recipient, same[0]!.id, 'text'), errorCode('LIVE_INVITATION_NOT_FOUND'));
 });
 
@@ -83,8 +82,7 @@ test('invitation transaction blocks revocation until its authorized write commit
   });
   await started;
   let revoked = false;
-  const revoke = grantProject(caller, f.place.id,
-    { principal: recipient, role: 'denied' }, db, accessPorts).then(() => { revoked = true; });
+  const revoke = removeFromSpaceCore(caller, f.place.id, recipient, db).then(() => { revoked = true; });
   await new Promise((resolve) => setTimeout(resolve, 50));
   assert.equal(revoked, false, 'the grant mutation waits for the invitation transaction');
   release();

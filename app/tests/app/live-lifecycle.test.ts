@@ -28,7 +28,7 @@ test('project and creator session caps serialize concurrent starts while allowin
   const others = await Promise.all([person('live-cap-1'), person('live-cap-2'), person('live-cap-3')]);
   for (const other of others) {
     await addMember(owner, place.workspaceId, other, 'member');
-    await grant(owner, place.id, other, 'viewer');
+    await grant(owner, place.id, other, 'contributor');
   }
   const store = liveSessionStore(db);
   const principal = (id: string) => ({ kind: 'human' as const, id });

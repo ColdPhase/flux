@@ -102,7 +102,7 @@ describe('project export', () => {
     lamp = await createProject(owner, ws.id, `Gesture lamp ${tag}`, 'restricted');
     other = await createProject(owner, ws.id, `Other project ${tag}`, 'workspace');
     await grant(owner, lamp.id, partner, 'contributor');
-    await grant(owner, lamp.id, viewer, 'viewer');
+    await grant(owner, lamp.id, viewer, 'contributor');
 
     // Private note in the project; a material is published from a redacted part of it.
     const note = await draft(owner, ws.id, token('PRIVATENOTE-title'), { projectId: lamp.id, body: token('PRIVATENOTE-body') });
@@ -190,9 +190,9 @@ describe('project export', () => {
     assert.deepEqual(people.get(owner.id), ['manager', 'owner']);
     assert.deepEqual(people.get(admin.id), ['manager', 'admin']);
     assert.deepEqual(people.get(partner.id), ['contributor', 'member']);
-    assert.deepEqual(people.get(viewer.id), ['viewer', 'member']);
+    assert.deepEqual(people.get(viewer.id), ['contributor', 'member']);
     assert.equal(people.has(outsider.id), false);
-    assert.deepEqual(data.grants.map((item) => [item.principal.id, item.role]).sort(), [[owner.id, 'manager'], [partner.id, 'contributor'], [viewer.id, 'viewer']].sort());
+    assert.deepEqual(data.grants.map((item) => [item.principal.id, item.role]).sort(), [[owner.id, 'manager'], [partner.id, 'contributor'], [viewer.id, 'contributor']].sort());
     assert.deepEqual(data.people.find((someone) => someone.id === agentId), { kind: 'agent', id: agentId, name: 'export-agent', access: 'manager', workspaceRole: null }, 'the agent has its owner\'s level (F-036 AG-3)');
 
     // The ordinary thread, and the work item's own thread that the result linked to it (#154) created.

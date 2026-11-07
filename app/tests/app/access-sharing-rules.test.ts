@@ -92,23 +92,6 @@ describe('draft audience and target rules through the SQL repositories', () => {
       assert.deepEqual([after.version, after.visibility], [before.version, 'private'], 'a refused change writes nothing');
     }
   });
-
-  test('PROJECT_WRITE_REQUIRED: a project the caller can only read is not a target for a draft, whether created, shared or moved', async () => {
-    const { owner, member, ws } = await scene('write-required');
-    const room = await createProject(owner, ws.id, { name: 'Read only', visibility: 'restricted' }, db, accessPorts);
-    await grantProject(owner, room.id, { principal: { kind: 'human', id: member.id }, role: 'viewer' }, db, accessPorts);
-    await assert.rejects(createDraft(member, ws.id, { title: 'Into the room', projectId: room.id }, db, accessPorts),
-      (error) => on(error, ForbiddenError, 403, 'PROJECT_WRITE_REQUIRED'));
-    const mine = await createDraft(member, ws.id, { title: 'Mine' }, db, accessPorts);
-    await assert.rejects(shareDraft(member, mine.id, { scope: 'project', projectId: room.id, expectedVersion: mine.version }, db, accessPorts),
-      (error) => on(error, ForbiddenError, 403, 'PROJECT_WRITE_REQUIRED'));
-    await assert.rejects(moveDraft(member, mine.id, { projectId: room.id, visibility: 'project', expectedVersion: mine.version }, db, accessPorts),
-      (error) => on(error, ForbiddenError, 403, 'PROJECT_WRITE_REQUIRED'));
-    const after = await draftRow(mine.id);
-    assert.deepEqual([after.version, after.visibility, after.projectId], [mine.version, 'private', null], 'a refused change writes nothing');
-    const [{ n }] = await db.select({ n: count() }).from(schema.drafts).where(eq(schema.drafts.workspaceId, ws.id));
-    assert.equal(n, 1, 'the refused create left no draft behind');
-  });
 });
 
 describe('grantees and grant writes through the SQL repositories', () => {
@@ -121,11 +104,11 @@ describe('grantees and grant writes through the SQL repositories', () => {
     await revokeAgent(owner, retired.id, db, accessPorts);
     // An agent has no grant of its own (F-036 AG-3): any agent principal is refused as input.
     for (const [label, id] of [['an agent of another workspace', strangerAgent.id], ['a revoked agent', retired.id], ['an id that is not a UUID', 'not-a-uuid']] as const) {
-      await assert.rejects(grantProject(owner, room.id, { principal: { kind: 'agent', id }, role: 'viewer' } as never, db, accessPorts),
+      await assert.rejects(grantProject(owner, room.id, { principal: { kind: 'agent', id }, role: 'contributor' } as never, db, accessPorts),
         (error) => (error as { code?: string }).code === 'INVALID_INPUT', label);
     }
     const outsider = await insertedHuman('grantee-outsider');
-    await assert.rejects(grantProject(owner, room.id, { principal: { kind: 'human', id: outsider.id }, role: 'viewer' }, db, accessPorts),
+    await assert.rejects(grantProject(owner, room.id, { principal: { kind: 'human', id: outsider.id }, role: 'contributor' }, db, accessPorts),
       (error) => on(error, RuleViolationError, 422, 'NOT_A_MEMBER'));
     const [{ n }] = await db.select({ n: count() }).from(schema.projectGrants).where(eq(schema.projectGrants.projectId, room.id));
     assert.equal(n, 1, 'no refused grant left a row: only the creator\'s own admin grant (F-037)');
@@ -136,12 +119,12 @@ describe('grantees and grant writes through the SQL repositories', () => {
     const room = await createProject(owner, ws.id, { name: 'Room', visibility: 'restricted' }, db, accessPorts);
     const { firstResult, secondResult } = await interleave(db, pool,
       // Another writer's grant for the same person, uncommitted: this session's `FOR UPDATE` read does not see it, its insert waits for it.
-      async (tx) => tx.insert(schema.projectGrants).values({ id: randomUUID(), workspaceId: ws.id, projectId: room.id, userId: member.id, role: 'viewer', createdBy: owner.id }).returning(),
+      async (tx) => tx.insert(schema.projectGrants).values({ id: randomUUID(), workspaceId: ws.id, projectId: room.id, userId: member.id, role: 'contributor', createdBy: owner.id }).returning(),
       () => grantProject(owner, room.id, { principal: { kind: 'human', id: member.id }, role: 'contributor' }, db, accessPorts));
     assert.equal(firstResult.length, 1);
     assert.ok(on(secondResult.error, ConflictError, 409, 'GRANT_CONFLICT'), `got ${String(secondResult.error)}`);
     const rows = await grantsOf(room.id, member.id);
-    assert.deepEqual(rows.map((row) => row.role), ['viewer'], 'only the committed grant remains');
+    assert.deepEqual(rows.map((row) => row.role), ['contributor'], 'only the committed grant remains');
     assert.equal(await grantEvents(room.id), 0, 'the refused grant wrote no event');
   });
 
@@ -151,7 +134,7 @@ describe('grantees and grant writes through the SQL repositories', () => {
     const { secondResult } = await interleave(db, pool,
       // The removal is uncommitted: this session still reads the membership, and its grant insert waits for the membership row's lock.
       (tx) => removeMember(owner, ws.id, member.id, tx, accessPorts),
-      () => grantProject(owner, room.id, { principal: { kind: 'human', id: member.id }, role: 'viewer' }, db, accessPorts));
+      () => grantProject(owner, room.id, { principal: { kind: 'human', id: member.id }, role: 'contributor' }, db, accessPorts));
     assert.ok(on(secondResult.error, ConflictError, 409, 'GRANTEE_REMOVED'), `got ${String(secondResult.error)}`);
     assert.deepEqual(await grantsOf(room.id, member.id), [], 'no grant outlives the membership');
     assert.equal(await grantEvents(room.id), 0, 'the refused grant wrote no event');

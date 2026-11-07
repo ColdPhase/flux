@@ -259,7 +259,7 @@ describe('space AI switch: notifications by AI origin (#642)', () => {
   });
 
   test('an operator request', async () => {
-    const { owner, ws, place, peer } = scene;
+    const { lead: owner, ws, place, peer } = scene;
     // An operator request belongs to the company, not to a space: it is not hidden by any space's switch.
     const operator = expectStatus(await peer.browser.request('POST', assistantOperatorRequestPath(ws.id), { body: {} }), 201) as { sent: number };
     assert.ok(operator.sent >= 1, 'the owner was told');

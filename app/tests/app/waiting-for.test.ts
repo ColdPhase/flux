@@ -30,7 +30,7 @@ describe('a blocked task waits for a person', () => {
     for (const someone of [kai, viewer, outsider]) await addMember(ada, ws.id, someone, 'member');
     place = await createProject(ada, ws.id, 'Waiting project', 'restricted');
     await grant(ada, place.id, kai, 'contributor');
-    await grant(ada, place.id, viewer, 'viewer');
+    await grant(ada, place.id, viewer, 'contributor');
   });
 
   test('naming who it waits for is validated, optional and cleared when the task leaves Blocked', async () => {
@@ -54,8 +54,6 @@ describe('a blocked task waits for a person', () => {
     const open = await patch(again, { status: 'in_progress' });
     assert.equal(open.waitingFor, null, 'it clears when the task leaves Blocked');
     assert.equal(open.blocker, null);
-    // A viewer cannot change it.
-    expectStatus(await viewer.browser.request('PATCH', `/api/v1/work/${open.id}`, { body: { status: 'blocked', waitingFor: human(kai), clientCommandId: randomUUID() }, headers: { 'If-Match': `"${open.version}"` } }), 403);
   });
 
   test('the person waited on gets "Ada is waiting for you"; the owner keeps the plain item', async () => {

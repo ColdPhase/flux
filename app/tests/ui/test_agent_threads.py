@@ -1,8 +1,8 @@
 """Browser tests for the agents' thread of a task (#400, F-018 CW-2), in the Agents tab and from the task's Details.
 
-Hubert manages a project with Marek (a contributor) and Vera (a viewer). Hubert's Codex holds a task. The task's agents'
+Hubert manages a project with Marek and Vera (members). Hubert's Codex holds a task. The task's agents'
 thread opens in the Agents tab's detail panel (computer) or sheet (phone) from the agent's Now card and from the task's
-Details link; people with write access write to it and a viewer only reads it; it is a different space from the task's
+Details link; every member of the space writes to it; it is a different space from the task's
 conversation. Agents cannot write to it yet (their tools are a later gate), so every message here is a person's.
 """
 
@@ -95,7 +95,7 @@ class AgentThreadJourney(unittest.TestCase):
         for person in (MAREK, VERA):
             self.api(hubert, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": person["email"], "role": "member"}, status=201)
         pid = self.api(hubert, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Arduino lamp", "visibility": "restricted"}, status=201)["id"]
-        for person, role in ((MAREK, "contributor"), (VERA, "viewer")):
+        for person, role in ((MAREK, "contributor"), (VERA, "contributor")):
             self.api(hubert, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": person["id"]}, "role": role}, status=201)
         agent = self.api(hubert, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Codex", "owner": "self"}, status=201)
         self.api(hubert, "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "selectedProjectIds": [pid],
@@ -162,14 +162,12 @@ class AgentThreadJourney(unittest.TestCase):
         # The other reader sees it without a reload (the project's one stream).
         expect(page.get_by_role("region", name=THREAD).get_by_text("workshop PC is offline until tonight")).to_be_visible(timeout=8000)
 
-    def test_05_a_viewer_reads_but_cannot_write_and_a_stranger_gets_nothing(self) -> None:
+    def test_05_another_member_reads_and_a_stranger_gets_nothing(self) -> None:
         vera = self.page("vera")
         vera.goto(self.thread_url())
         thread = vera.get_by_role("region", name=THREAD)
         expect(thread.get_by_text("Codex: please start with the reconnect loop.")).to_be_visible()
-        expect(vera.get_by_label("Write to the agents")).to_be_disabled()
-        expect(vera.get_by_placeholder("You can read this thread but not write to it.")).to_be_visible()
-        self.api(vera, "POST", f"/api/v1/work/{self.ids['task']}/agent-thread", {"body": "from a viewer", "clientMessageId": str(uuid.uuid4())}, status=403)
+        expect(vera.get_by_label("Write to the agents")).to_be_enabled()
         stranger = self.page(None)
         stranger.goto("/sign-in")
         self.api(stranger, "GET", f"/api/v1/work/{self.ids['task']}/agent-thread", status=401)

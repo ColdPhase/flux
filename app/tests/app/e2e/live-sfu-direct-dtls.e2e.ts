@@ -42,7 +42,7 @@ async function setup(name: string, members: string[]) {
   const ws = await workspace(owner, 'Direct DTLS');
   for (const other of others) await addMember(owner, ws.id, other, 'member');
   const place = await project(owner, ws.id, 'Direct path', 'restricted');
-  for (const other of others) await grant(owner, place.id, other, 'viewer');
+  for (const other of others) await grant(owner, place.id, other, 'contributor');
   const conversation = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`, {
     body: { body: 'Direct DTLS anchor', clientMessageId: randomUUID() },
   }), 201) as Conversation;

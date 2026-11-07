@@ -2,8 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import Fastify from 'fastify';
-import { DomainError, grantProject, liveInvitationUseCases, type LiveMedia } from '@flux/core';
-import { accessPorts } from '@flux/db';
+import { DomainError, liveInvitationUseCases, type LiveMedia } from '@flux/core';
 import type { Doc, LiveSession, Material } from '@flux/contracts';
 import { liveRoutes } from '../../apps/server/src/live/routes.js';
 import { liveAccess } from '../../apps/server/src/live/access.js';
@@ -11,7 +10,7 @@ import { discoverLiveSessions } from '../../apps/server/src/live/discovery.js';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
 import { liveInvitationStore } from '../../apps/server/src/live/invitations.js';
 import { liveRevocationCoordinator } from '../../apps/server/src/live/revocation.js';
-import { db, pool } from './support/db.js';
+import { db, pool, removeFromSpaceCore } from './support/db.js';
 import { addMember, expectStatus, grant, person, project, workspace } from './support/people.js';
 
 test('wiki doc is a project-bound live anchor; non-doc, foreign and hidden anchors are refused', async () => {
@@ -23,7 +22,7 @@ test('wiki doc is a project-bound live anchor; non-doc, foreign and hidden ancho
   await addMember(owner, ws.id, outsider, 'member');
   const place = await project(owner, ws.id, 'Wiki room', 'restricted');
   const other = await project(owner, ws.id, 'Other wiki room', 'restricted');
-  await grant(owner, place.id, viewer, 'viewer');
+  await grant(owner, place.id, viewer, 'contributor');
   const doc = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/docs`, {
     body: { title: 'Private wiki title', body: 'Private wiki body' },
   }), 201) as Doc;
@@ -105,8 +104,7 @@ test('wiki doc is a project-bound live anchor; non-doc, foreign and hidden ancho
       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [randomUUID(), ws.id, place.id, foreignDoc.id, owner.id, randomUUID(), `live_${randomUUID()}`]),
     /foreign key/);
-    await liveRevocationCoordinator(db, pool, media).withProjectChange(place.id, () => grantProject(
-      ownerPrincipal, place.id, { principal: { kind: 'human', id: viewer.id }, role: 'denied' }, db, accessPorts));
+    await liveRevocationCoordinator(db, pool, media).withProjectChange(place.id, () => removeFromSpaceCore(ownerPrincipal, place.id, { kind: 'human', id: viewer.id }, db));
     assert.equal((await app.inject({ method: 'GET', url: `/api/v1/live-sessions/${session.id}`,
       headers: { 'x-test-user': viewer.id } })).statusCode, 404);
     assert.equal((await app.inject({ method: 'POST', url: `/api/v1/live-sessions/${session.id}/join`,

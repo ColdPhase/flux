@@ -138,13 +138,11 @@ test('actual result reset versus unused native-task Undo has both forced orders 
     }finally{release.resolve();await bounded(Promise.all([first.catch(()=>undefined),other?.catch(()=>undefined)]));}}
 });
 
-test('current viewer/non-reader rights and forged/old boundary packets cannot mutate source or replenish a later budget',async()=>{
+test('current non-reader rights and forged/old boundary packets cannot mutate source or replenish a later budget',async()=>{
   const f=await setup(),item=await f.task('Private source authority'),d=await doc(f,'Authorized body');expect(await link(f,{type:'work',id:item.id},{type:'doc',id:d.id}),201);
   await fillThread(f,item.id,f.grantId);const changed=expect(await edit(f,d,{body:'Actual revision'}),200) as unknown as Doc;await fillThread(f,item.id,f.grantId);
-  const [viewer,outsider]=await Promise.all([person('artifact-viewer'),person('artifact-outsider')]);
-  expect(await f.owner.request('POST',`/api/v1/workspaces/${f.workspaceId}/members`,{body:{email:viewer.email,role:'member'}}),201);
-  expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/grants`,{body:{principal:{kind:'human',id:viewer.id},role:'viewer'}}),201);
-  assert.equal((await viewer.browser.request('PATCH',`/api/v1/docs/${d.id}`,{body:{body:'Denied'},headers:{'if-match':`"${changed.version}"`}})).status,403);
+  const outsider=await person('artifact-outsider');
+  assert.equal((await outsider.browser.request('PATCH',`/api/v1/docs/${d.id}`,{body:{body:'Denied'},headers:{'if-match':`"${changed.version}"`}})).status,404);
   assert.equal((await outsider.browser.request('GET',`/api/v1/docs/${d.id}`)).status,404);
   await assert.rejects(pool.query(`INSERT INTO agent_thread_artifact_boundaries(workspace_id,project_id,kind,source_id,revision,transaction_id)
     VALUES($1,$2,'doc',$3,'9000',txid_current())`,[f.workspaceId,f.projectId,d.id]),/fresh canonical/);
