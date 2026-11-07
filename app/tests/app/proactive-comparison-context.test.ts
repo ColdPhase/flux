@@ -161,6 +161,8 @@ test('unlinked work revisions invalidate queued context, and lost owner access c
   const provider: ComparisonProvider = { async countInputTokens() { calls++; return 1; }, async createMessage() { calls++; throw new Error('must not call'); } };
   assert.deepEqual(await dispatchProactiveComparison({ db, candidateId, masterKey, provider }), { status: 'not_run', reason: 'SOURCE_CHANGED' });
   assert.equal(calls, 0);
+  // A space always keeps an admin (C-16): the peer becomes one, so the owner can lose access.
+  await grant(f.owner, f.projectId, f.peer, 'manager');
   await grant(f.owner, f.projectId, f.owner, 'denied');
   assert.equal((await f.negative()).candidateId, undefined, 'a permitted peer result does not select context for an owner who lost access');
 });
