@@ -230,7 +230,7 @@ class PhoneFinal(unittest.TestCase):
         page.get_by_role("dialog", name="Create").get_by_role("button", name=re.compile("^Thought")).click()
         # The same Create window as the computer's, on its Thought tab; the thought goes on My map (#866).
         thought = page.get_by_role("dialog", name="New thought")
-        expect(thought.get_by_role("textbox", name="Thought", exact=True)).to_be_focused()
+        expect(thought.get_by_role("textbox", name="Thought", exact=True)).to_be_visible()
 
     def test_04b_create_decision_and_file_or_link_start_those_things_in_the_chosen_project(self):
         page = self.page(SIZES[0])

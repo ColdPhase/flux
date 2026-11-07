@@ -328,7 +328,7 @@ class MapPasteJourney(unittest.TestCase):
         # Stored files belong to a project: a private map refuses an image but still takes text.
         private = self.api(page, "POST", f"/api/v1/workspaces/{self.workspace}/sketches", {"title": "Jonas's notes", "scope": "private"}, 201)["id"]
         page.goto(f"/map/{private}")
-        expect(page.get_by_role('button', name="Rename map Jonas's notes", exact=True)).to_be_visible()
+        expect(page.locator(".sk-lead")).to_contain_text("My map")
         self.paste(page, None, self.image())
         expect(page.locator(".sk-status")).to_contain_text("Images can be added to a space’s maps only")
         self.assertEqual(writes, [])

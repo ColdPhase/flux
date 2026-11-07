@@ -275,7 +275,7 @@ class MapConnectJourney(unittest.TestCase):
                 page.get_by_role('dialog', name='Thought actions', exact=True).get_by_role('button', name='Remove from map', exact=True).tap()
                 expect(page.locator('.sk-node')).to_have_count(0 if solo else 2)
                 if solo:
-                    expect(page.locator('.sk-first')).to_have_text('An empty sketch. Start with Add a thought.')
+                    expect(page.locator('.sk-first')).to_have_text('An empty map. Start with Add a thought.')
                     expect(page.get_by_role('button', name=re.compile('connected thought|thought connected'))).to_have_count(0)
                 undo = page.get_by_role('button', name='Undo', exact=True)
                 expect(undo).to_be_visible()

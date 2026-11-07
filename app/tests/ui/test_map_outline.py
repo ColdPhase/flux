@@ -472,7 +472,7 @@ class MapOutlineJourney(unittest.TestCase):
         self.api(owner, "DELETE", f"/api/v1/projects/{self.project_id}/grants/{gone}", status=204)
         self.api(viewer, "GET", f"/api/v1/sketches/{self.sketch_id}", status=404)
         viewer.goto(f"/map/{self.sketch_id}")
-        expect(viewer.get_by_role("heading", name="This sketch isn’t available")).to_be_visible()
+        expect(viewer.get_by_role("heading", name="This map isn’t available")).to_be_visible()
         expect(viewer.locator("body")).not_to_contain_text(LABELS[4])
 
     def test_07_render_matched_light_dark_phone_tablet_and_enlarged_text(self):

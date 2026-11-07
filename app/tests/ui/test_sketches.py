@@ -501,8 +501,8 @@ class SketchJourney(unittest.TestCase):
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        # My map is her oldest private map: the one she made, not the first person's.
         page.get_by_role("navigation", name="Places").get_by_role("link", name="My map").click()
-        page.get_by_role("link", name=re.compile("Noor’s map")).click()
         expect(page.get_by_role("group", name="Map: Noor’s map")).to_be_visible()
 
         # A change from Noor's other session arrives live in this tab.
