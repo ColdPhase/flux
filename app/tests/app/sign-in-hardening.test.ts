@@ -16,6 +16,16 @@ if (!publicOrigin) throw new Error('FLUX_PUBLIC_ORIGIN is required');
 
 const api2Url = process.env.FLUX_API2_URL ?? 'http://api2:8080';
 const code = (response: { json: unknown }) => (response.json as { code?: string } | null)?.code;
+const SIGN_IN_WAIT_MESSAGE = 'Too many sign-in attempts for this account. Try again in a few minutes';
+const deviceCookieOf = (browser: Browser) => [...browser.cookies].find(([name]) => name.endsWith('flux.device'));
+/** A browser with the same cookies except the device cookie: what a stranger holding only a session, or only the address, has. */
+function withoutDevice(browser: Browser) {
+  const copy = new Browser();
+  for (const [name, value] of browser.cookies) if (!name.endsWith('flux.device')) copy.cookies.set(name, value);
+  return copy;
+}
+const wrongPassword = (browser: Browser, email: string, label: string) =>
+  browser.request('POST', '/api/auth/sign-in/email', { body: { email, password: `wrong password ${label}` } });
 
 async function signUp(email: string, chosen: string, name = 'Test Person') {
   return new Browser().request('POST', '/api/auth/sign-up/email', { body: { email, password: chosen, name } });
@@ -122,9 +132,10 @@ describe('the account\'s own sign-in back-off (#990, ASVS V2.2.1)', () => {
       const refused = await via.request('POST', '/api/auth/sign-in/email', { body: { email, password } });
       assert.equal(refused.status, 429, 'the right password is refused too while the account waits');
       assert.equal(code(refused), 'SIGN_IN_THROTTLED');
-      const wait = Number(refused.headers.get('retry-after'));
-      assert.ok(wait > 20 && wait <= 30, `Retry-After ${wait}`);
-      assert.match((refused.json as { message: string }).message, /Too many sign-in attempts for this account\. Try again in \d+ seconds/);
+      // The answer neither gives the second the wait ends nor how long it is: a stranger could time one guess for each end of it.
+      assert.equal(refused.headers.get('retry-after'), null);
+      assert.equal((refused.json as { message: string }).message, SIGN_IN_WAIT_MESSAGE);
+      assert.equal((refused.json as { retryAfter?: number }).retryAfter, undefined);
     }
     assert.equal((await signIn(uniqueEmail('someone-else'), password)).response.status, 401, 'another address is counted on its own');
     const stored = await pool.query('SELECT failures, locked_until > now() AS locked FROM auth_sign_in_throttle');
@@ -162,8 +173,8 @@ describe('the account\'s own sign-in back-off (#990, ASVS V2.2.1)', () => {
     assert.equal(sixth.status, 401, 'one more attempt is checked');
     const longer = await fail(8);
     assert.equal(longer.status, 429);
-    const wait = Number(longer.headers.get('retry-after'));
-    assert.ok(wait > 50 && wait <= 60, `the second wait is a minute, got ${wait}`);
+    const [{ seconds }] = (await pool.query("SELECT extract(epoch FROM locked_until - now())::float8 AS seconds FROM auth_sign_in_throttle WHERE locked_until > now() AND failures = 6")).rows;
+    assert.ok(seconds > 50 && seconds <= 60, `the second wait is a minute, got ${seconds}`);
     await pool.query("UPDATE auth_sign_in_throttle SET locked_until = now() - interval '1 second' WHERE locked_until > now()");
     const { response } = await signIn(email, password);
     assert.equal(response.status, 200, 'the right password works once the wait is over');
@@ -190,12 +201,17 @@ describe('the account\'s own sign-in back-off (#990, ASVS V2.2.1)', () => {
     // Every count is dropped an hour after its last attempt, whether or not its wait is over.
     assert.equal((await new Browser().request('POST', '/api/auth/sign-in/email', { body: { email: uniqueEmail('trigger'), password: 'wrong for trigger' } })).status, 401);
     assert.equal((await pool.query("SELECT 1 FROM auth_sign_in_throttle WHERE last_failure_at < now() - interval '1 hour'")).rowCount, 0);
+    // Better Auth's own per-address counts, which it never deletes, go the same way once past its longest window.
+    await pool.query("INSERT INTO auth_rate_limits (id, key, count, last_request) VALUES ($1, $2, 3, $3)", [randomUUID(), `192.0.2.7|/old-${randomUUID()}`, Date.now() - 2 * 3600_000]);
+    assert.equal((await new Browser().request('POST', '/api/auth/sign-in/email', { body: { email: uniqueEmail('trigger2'), password: 'wrong for trigger two' } })).status, 401);
+    assert.equal((await pool.query("SELECT 1 FROM auth_rate_limits WHERE last_request < $1", [Date.now() - 3600_000 - 60_000])).rowCount, 0);
     assert.equal((await signIn(stale, password)).response.status, 200);
   });
 
   test('guessing the current password through change-password counts for the account too, and a success clears it', async () => {
     const email = uniqueEmail('change-count');
-    const { browser } = await register(email, password);
+    // A session without the browser that signed in (a session cookie taken from it, or left open on another device).
+    const browser = withoutDevice((await register(email, password)).browser);
     const change = (current: string) => browser.request('POST', '/api/auth/change-password', { body: { currentPassword: current, newPassword: 'a brand new passphrase here', revokeOtherSessions: false } });
     for (let attempt = 1; attempt <= 5; attempt++) {
       const wrong = await change(`wrong current ${attempt}`);
@@ -205,6 +221,7 @@ describe('the account\'s own sign-in back-off (#990, ASVS V2.2.1)', () => {
     const refused = await change(password);
     assert.equal(refused.status, 429, 'the right current password waits too');
     assert.equal(code(refused), 'SIGN_IN_THROTTLED');
+    assert.match((refused.json as { message: string }).message, /^Too many attempts to change this account\./, 'Settings does not talk about signing in');
     assert.equal((await signIn(email, password)).response.status, 429, 'it is the same count as the sign-in');
     await pool.query("UPDATE auth_sign_in_throttle SET locked_until = now() - interval '1 second' WHERE locked_until > now()");
     assert.equal((await change(password)).status, 200, 'the wait is over');
@@ -218,6 +235,104 @@ describe('the account\'s own sign-in back-off (#990, ASVS V2.2.1)', () => {
     for (let index = 0; index < 8; index++) assert.equal((await browser.request('GET', '/api/v1/me')).status, 200);
     assert.equal((await new Browser().request('POST', '/api/auth/sign-up/email', { body: { email: uniqueEmail('x'), password: 'short', name: 'X' } })).status, 400);
     assert.equal(Number((await pool.query('SELECT count(*)::int AS n FROM auth_sign_in_throttle')).rows[0].n), before, 'sign-up, reads and a refused password leave no count');
+  });
+});
+
+describe('a stranger cannot keep the owner out (#990)', () => {
+  test('the browser that signed in to an account carries a signed device cookie', async () => {
+    const { browser, response } = await register(uniqueEmail('cookie'), password);
+    const set = response.setCookies.find((cookie) => /flux\.device=/.test(cookie));
+    assert.ok(set, 'sign-up remembers the browser');
+    assert.match(set, /HttpOnly/i);
+    assert.match(set, /SameSite=Lax/i);
+    assert.ok(Number(/Max-Age=(\d+)/i.exec(set)?.[1]) >= 365 * 86_400, 'long-lived');
+    assert.ok(deviceCookieOf(browser));
+  });
+
+  test('guesses from a stranger wait for the stranger and not for the owner\'s browser, on either API process', async () => {
+    const email = uniqueEmail('owner-known');
+    const { browser: owner } = await register(email, password);
+    const second = new Browser(api2Url, publicOrigin);
+    for (const [name, value] of owner.cookies) second.cookies.set(name, value);
+    for (let attempt = 1; attempt <= 6; attempt++) {
+      const stranger = await wrongPassword(new Browser(), email, `stranger ${attempt}`);
+      assert.equal(stranger.status, attempt <= 5 ? 401 : 429, `guess ${attempt}`);
+    }
+    assert.equal((await signIn(email, password)).response.status, 429, 'a browser nobody knows waits, even with the right password');
+    // The owner's browser signs in as often as it likes while the stranger waits.
+    for (const via of [owner, second, owner]) {
+      const { status } = await via.request('POST', '/api/auth/sign-in/email', { body: { email, password } });
+      assert.equal(status, 200, 'the known browser is not locked out');
+    }
+    assert.equal((await signIn(email, password)).response.status, 429, 'and its success did not lift the stranger\'s wait');
+  });
+
+  test('a known browser still slows its own wrong guesses, and they never lock the account for anyone else', async () => {
+    const email = uniqueEmail('owner-guesses');
+    const { browser: owner } = await register(email, password);
+    for (let attempt = 1; attempt <= 5; attempt++) assert.equal((await wrongPassword(owner, email, `own ${attempt}`)).status, 401);
+    const waiting = await owner.request('POST', '/api/auth/sign-in/email', { body: { email, password } });
+    assert.equal(waiting.status, 429, 'five wrong passwords from one browser wait, whoever it is');
+    assert.equal(code(waiting), 'SIGN_IN_THROTTLED');
+    assert.equal((await signIn(email, password)).response.status, 200, 'another browser with the right password is not affected');
+  });
+
+  test('a cookie that was changed, signed by someone else or won on another account is no cookie', async () => {
+    const { browser: other } = await register(uniqueEmail('attacker-own'), password);
+    const othersValue = deviceCookieOf(other)![1];
+    const forgeries: Array<(value: string) => string> = [
+      (value) => { const [id, accounts, signature] = value.split('.') as [string, string, string]; return `${id}.${accounts}.${signature.slice(0, -2)}${signature.endsWith('AA') ? 'BB' : 'AA'}`; },
+      (value) => { const [id, accounts, signature] = value.split('.') as [string, string, string]; return `${id}.${accounts.replace(/./, (character) => (character === 'a' ? 'b' : 'a'))}.${signature}`; },
+      (value) => { const [id, accounts, signature] = value.split('.') as [string, string, string]; return `${id}.${accounts}${'0'.repeat(16)}.${signature}`; },
+      (value) => { const [id, , signature] = value.split('.') as [string, string, string]; return `${id}..${signature}`; },
+      () => othersValue,
+      () => 'garbage',
+    ];
+    for (const [index, forge] of forgeries.entries()) {
+      const email = uniqueEmail(`owner-forged-${index}`);
+      const { browser: owner } = await register(email, password);
+      const [name, value] = deviceCookieOf(owner)!;
+      const stranger = new Browser();
+      stranger.cookies.set(name, forge(value));
+      const answers = [];
+      for (let attempt = 1; attempt <= 6; attempt++) answers.push((await wrongPassword(stranger, email, `forged ${attempt}`)).status);
+      assert.deepEqual(answers, [401, 401, 401, 401, 401, 429], `forgery ${index} counts in the account's wait`);
+      assert.equal((await owner.request('POST', '/api/auth/sign-in/email', { body: { email, password } })).status, 200, 'the real cookie still works');
+    }
+  });
+
+  test('a password reset is the way back: the browser that finishes it signs in while a stranger keeps the account waiting', async () => {
+    const email = uniqueEmail('reset-back');
+    await register(email, password);
+    // The owner uses another browser, which has never signed in to this account. A stranger waits on the account.
+    for (let attempt = 1; attempt <= 5; attempt++) await wrongPassword(new Browser(), email, `before reset ${attempt}`);
+    const phone = new Browser();
+    assert.equal((await phone.request('POST', '/api/auth/sign-in/email', { body: { email, password } })).status, 429, 'the owner is waiting like anyone');
+    assert.equal((await phone.request('POST', '/api/auth/request-password-reset', { body: { email, redirectTo: `${publicOrigin}/reset-password` } })).status, 200);
+    const token = (await waitForMail(email)).match(/reset-password\/([^?\s]+)/)?.[1];
+    assert.ok(token);
+    const reset = await phone.request('POST', '/api/auth/reset-password', { body: { token, newPassword: 'the harbour lights at dawn' } });
+    assert.equal(reset.status, 200);
+    assert.ok(reset.setCookies.some((cookie) => /flux\.device=/.test(cookie)), 'the reset remembers the browser');
+    // The stranger starts guessing again and the account waits once more, which the owner's browser does not notice.
+    for (let attempt = 1; attempt <= 6; attempt++) await wrongPassword(new Browser(), email, `after reset ${attempt}`);
+    assert.equal((await signIn(email, 'the harbour lights at dawn')).response.status, 429, 'a browser nobody knows waits');
+    const back = await phone.request('POST', '/api/auth/sign-in/email', { body: { email, password: 'the harbour lights at dawn' } });
+    assert.equal(back.status, 200, 'the browser that reset the password signs in at once');
+  });
+
+  test('the owner\'s known browser keeps its session guard on change-password, and a thief with only a session waits', async () => {
+    const email = uniqueEmail('owner-change');
+    const { browser: owner } = await register(email, password);
+    const thief = withoutDevice(owner);
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      const wrong = await thief.request('POST', '/api/auth/change-password', { body: { currentPassword: `thief ${attempt}`, newPassword: 'a brand new passphrase here', revokeOtherSessions: false } });
+      assert.equal(code(wrong), 'INVALID_PASSWORD');
+    }
+    const refused = await thief.request('POST', '/api/auth/change-password', { body: { currentPassword: password, newPassword: 'a brand new passphrase here', revokeOtherSessions: false } });
+    assert.equal(refused.status, 429);
+    const changed = await owner.request('POST', '/api/auth/change-password', { body: { currentPassword: password, newPassword: 'a brand new passphrase here', revokeOtherSessions: false } });
+    assert.equal(changed.status, 200, 'the thief\'s guesses did not lock the owner\'s browser');
   });
 });
 

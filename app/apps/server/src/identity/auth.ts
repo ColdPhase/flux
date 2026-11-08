@@ -374,7 +374,10 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         if (signedIn && (ctx.path === '/sign-in/email' || ctx.path === '/sign-up/email')) rememberDevice(ctx, signedIn.email);
         // A reset is the way back for the owner of the mailbox: the browser that finished it is remembered too.
         const resetFor = resetting.get(ctx.context);
-        if (resetFor && !(ctx.context.returned instanceof APIError)) rememberDevice(ctx, resetFor);
+        if (resetFor && !(ctx.context.returned instanceof APIError)) {
+          await throttle.clear(resetFor, knownDevice(ctx, resetFor)?.id);
+          rememberDevice(ctx, resetFor);
+        }
         // "Sign out my other devices" with a password change ends the person's other browsers, and so their local AI clients (#989).
         if (ctx.path === '/change-password' && ctx.body?.revokeOtherSessions === true && signedIn) await connectionStore.disconnectClients(signedIn.id);
       }),

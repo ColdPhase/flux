@@ -58,11 +58,18 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
 - **#990, guessing.** Better Auth's per-address limiter now uses its `database` storage, so `api` and `api2` count together, and an IPv6
   address counts as its /64 (the pinned Better Auth does this by default). Each account also backs off by itself: the first five attempts
   cost nothing, then the account refuses sign-in for 30 seconds, then 1, 2, 4 and 8 minutes, and at most 15 minutes from the tenth on,
-  whatever the client address. A success, a password reset or an hour without an attempt starts the count again, so the owner of the mailbox
-  is never locked out for good (V2.2.1). Every attempt is counted before the password is checked, so parallel guesses cannot all pass a
-  stale count. The same count covers the current password asked by change-password and change-email, so a session left open cannot be used to
-  guess it. An address nobody holds is counted and slowed the same way. The cost: someone who knows an address can keep it waiting
-  up to 15 minutes at a time; the reset mail is the way back. MFA stays the identity provider's job (see 2.2.x).
+  whatever the client address. A success, a password reset or an hour without an attempt starts the count again. Every attempt is counted
+  before the password is checked, so parallel guesses cannot all pass a stale count. The same count covers the current password asked by
+  change-password and change-email, so a session left open cannot be used to guess it. An address nobody holds is counted and slowed the
+  same way. The refusal says "a few minutes" and sends no `Retry-After`, so the end of a wait cannot be timed.
+  **A stranger cannot lock the owner out** (review finding B1 on #1011, OWASP device cookies): a browser that has signed in to the account,
+  created it or finished its password reset keeps a signed `flux.device` cookie (HttpOnly, SameSite=Lax, 400 days, up to eight accounts
+  as keyed hashes; `Secure` over HTTPS). That browser counts in a wait of its own (this account on this browser), so guesses from anywhere
+  else never refuse it, and its own wrong guesses slow only itself. A guess without a valid cookie for that account (none, altered, or
+  won on another account) counts in the account's wait. The cookie is not a credential: with it the password is still needed, and it
+  is guessed at in the same five-then-wait bucket. What remains: a stranger who knows an address can keep a browser that has never
+  signed in to it (a new device, cleared cookies) waiting for up to 15 minutes at a time. The reset mail is the way back, the browser
+  that finishes the reset is remembered, and a reset clears the account's wait. MFA stays the identity provider's job (see 2.2.x).
 
 ## V1 Architecture, design and threat modelling
 
@@ -123,7 +130,7 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
 | 2.1.10 | No forced rotation | Pass | None |
 | 2.1.11 | Paste and password managers allowed | Pass | Plain `type=password` inputs (inspection) |
 | 2.1.12 | Show the masked password | Not verified | UI not checked in this audit |
-| 2.2.1 | Anti-automation | Pass (fixed) | Audit finding: 3 tries per 10 s per IP and per process, no per-account throttle (**probe:** `401 401 401 429 429 429 429 429`, then 200 after 11 s). Now the per-address limiter is stored in PostgreSQL (`rateLimit.storage: 'database'`, shared by `api` and `api2`) and each account backs off after five attempts, 30 s up to 15 min, in `auth_sign_in_throttle` ([#990](https://github.com/ColdPhase/flux/issues/990)) |
+| 2.2.1 | Anti-automation | Pass (fixed) | Audit finding: 3 tries per 10 s per IP and per process, no per-account throttle (**probe:** `401 401 401 429 429 429 429 429`, then 200 after 11 s). Now the per-address limiter is stored in PostgreSQL (`rateLimit.storage: 'database'`, shared by `api` and `api2`) and each account backs off after five attempts, 30 s up to 15 min, in `auth_sign_in_throttle`; a browser that has signed in to the account has a device cookie and counts in a wait of its own, so a stranger cannot lock the owner out ([#990](https://github.com/ColdPhase/flux/issues/990)) |
 | 2.2.2 | Weak authenticators only secondary | Pass | E-mail is only for verification and recovery |
 | 2.2.3 | Notification after credential changes | Fail | No e-mail on a password or address change (inspection of `identity/auth.ts`). Folded into [#997](https://github.com/ColdPhase/flux/issues/997)'s event list; an e-mail is optional |
 | 2.2.x MFA (L2 by NIST AAL2) | Multi-factor authentication | **Partial** | No MFA in password mode. With SSO the IdP's MFA applies, and the hardening guide recommends SSO for internet-facing teams. Recorded in [#990](https://github.com/ColdPhase/flux/issues/990) |

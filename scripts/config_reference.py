@@ -147,7 +147,7 @@ VARIABLES: dict[str, Var] = {
     "FLUX_AUTH_RATE_LIMIT": Var("identity", "`true` · `false`",
         "Rate limits: Better Auth's on sign-in, sign-up and reset (per client address, an IPv6 address as its /64, kept in PostgreSQL so every API process shares it), "
         "and the API-wide floor under every other route (in memory: 1,200 requests a minute per session, 600 per address without one, 600 new sessions a minute per address; no total per address). "
-        "The account's own back-off after repeated wrong passwords is separate and always on. Only the test scripts turn the limits off.", "true"),
+        "The account's own back-off after repeated wrong passwords is separate and always on; a browser that has signed in to the account is remembered by a signed cookie and is not held by other people's guesses. Only the test scripts turn the limits off.", "true"),
     # --- sso
     "FLUX_OIDC_ISSUER": Var("sso", "https URL",
         "Issuer of the OpenID Connect provider. Set it with `FLUX_OIDC_CLIENT_ID`, or neither. Must be `https` "

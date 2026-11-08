@@ -83,7 +83,7 @@ export function signInPath(next?: string) {
 export function describeAuthError(error: unknown, context: 'sign-in' | 'sign-up' | 'reset' | 'reset-request' | 'sign-out'): string {
   if (error instanceof NetworkError) return 'Flux can’t be reached right now. Check your connection and try again.';
   if (!(error instanceof ApiError)) return 'Something unexpected went wrong. Try again in a moment.';
-  // The account's own back-off (#990) says how long to wait; the other limit is per address and clears in a minute.
+  // The account's own back-off (#990) asks to wait a few minutes and does not say which; the other limit is per address and clears in a minute.
   if (error.code === 'SIGN_IN_THROTTLED' && error.message) return `${error.message}. If you have forgotten the password, you can reset it.`;
   if (error.status === 429) return 'Too many attempts in a short time. Wait a minute, then try again.';
   if (error.code === 'ORIGIN_REJECTED') return 'This page was opened from an address Flux doesn’t accept. Open Flux at its usual address and try again.';
@@ -222,7 +222,7 @@ export async function resetPasswordAction({ request }: ActionFunctionArgs): Prom
     await resetPassword(token, password);
   } catch (error) {
     const message = describeAuthError(error, 'reset');
-    return { formError: message, invalidToken: error instanceof ApiError && error.status === 400 };
+    return { formError: message, invalidToken: error instanceof ApiError && error.code === 'INVALID_TOKEN' };
   }
   return redirect('/sign-in?notice=password-changed');
 }

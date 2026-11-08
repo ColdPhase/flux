@@ -122,7 +122,7 @@ is what remains, and an issue number marks a finding of this audit.
 
 | Threat | Control on `main` | Residual |
 | --- | --- | --- |
-| Password guessing and stuffing | At least 12 characters, no common or easy-to-guess password (bundled list, no network call); Better Auth limiter per address (IPv6 as /64) stored in PostgreSQL, so every API process counts together; each account backs off after five attempts, 30 s up to 15 min, whatever the address ([#990](https://github.com/ColdPhase/flux/issues/990), fixed) | Someone who knows an address can keep it waiting up to 15 minutes at a time; the reset mail is the way back. No MFA in password mode; SSO is the recommended path |
+| Password guessing and stuffing | At least 12 characters, no common or easy-to-guess password (bundled list, no network call); Better Auth limiter per address (IPv6 as /64) stored in PostgreSQL, so every API process counts together; each account backs off after five attempts, 30 s up to 15 min, whatever the address, and a browser that has signed in to the account (signed device cookie) counts in a wait of its own, so a stranger cannot lock the owner out ([#990](https://github.com/ColdPhase/flux/issues/990), fixed) | Someone who knows an address can keep a browser that never signed in to it waiting up to 15 minutes at a time; the reset mail is the way back, and the browser that finishes it is remembered. No MFA in password mode; SSO is the recommended path |
 | Account enumeration | Password reset answers the same for every address | Sign-up says an address exists: [#993](https://github.com/ColdPhase/flux/issues/993) |
 | Reset or verification token abuse | Tokens stored hashed, single use, expiring; reset redirect limited to the trusted origin (probe: `INVALID_REDIRECT_URL`); sessions revoked on reset, and the person's local clients disconnected ([#989](https://github.com/ColdPhase/flux/issues/989), fixed) | None found |
 | Claiming a new server | API only on loopback until the operator adds a proxy | Whoever signs up first after the proxy goes live owns the company: [#994](https://github.com/ColdPhase/flux/issues/994) |
@@ -199,7 +199,7 @@ is what remains, and an issue number marks a finding of this audit.
    borrowed browser session kept acting with all the owner's rights after a password reset. It is fixed: a reset, and signing out the other
    devices, disconnect the person's clients.
 2. **Weak passwords were accepted, and guessing was only slowed per address** ([#990](https://github.com/ColdPhase/flux/issues/990), P2).
-   It is fixed: 12 characters, no common password, and a per-account back-off shared by every API process. A server on the internet is still
+   It is fixed: 12 characters, no common password, and a per-account back-off shared by every API process that a stranger cannot use to lock the owner's browser out. A server on the internet is still
    better served by single sign-on with the identity provider's MFA.
 3. **Prompt injection meets a default of "Do it and tell me".** An agent acts with its owner's rights.
    Text from other people, web pages or GitHub can steer what it does within those rights, and a private run

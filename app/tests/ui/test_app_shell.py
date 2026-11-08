@@ -841,6 +841,13 @@ class AppShellJourney(unittest.TestCase):
         page.get_by_label("Repeat new password").fill("something else")
         page.get_by_role("button", name="Save new password").click()
         expect(page.get_by_text("The two passwords don’t match.")).to_be_visible()
+        # A password the server refuses as too easy to guess is not an expired link: the form stays and offers no new link (#990).
+        page.get_by_label("New password", exact=True).fill("password1234")
+        page.get_by_label("Repeat new password").fill("password1234")
+        page.get_by_role("button", name="Save new password").click()
+        expect(page.get_by_text("That password is too easy to guess.")).to_be_visible()
+        expect(page.get_by_role("link", name="Request a new link")).to_have_count(0)
+        page.get_by_label("New password", exact=True).fill(NEW_PASSWORD)
         page.get_by_label("Repeat new password").fill(NEW_PASSWORD)
         page.get_by_role("button", name="Save new password").click()
         expect(page).to_have_url(f"{ORIGIN}/sign-in")
