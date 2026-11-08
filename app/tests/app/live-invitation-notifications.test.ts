@@ -79,12 +79,10 @@ test('a live invitation reaches only its recipient, once, with who, where and th
   assert.deepEqual(await invitationRows(f.owner.id), [], 'the inviter hears nothing of their own invitation');
 });
 
-test('an invitation that no longer applies when the worker reaches it notifies nobody; inbox-off is respected', async () => {
+test('an invitation that no longer applies when the worker reaches it notifies nobody', async () => {
   const label = 'live-invite-stale';
-  const f = await fixture(label, ['lost', 'answered', 'ended', 'quiet', 'control']);
-  const { lost, answered, ended, quiet, control } = f.people as Record<string, Person>;
-  expectStatus(await quiet!.browser.request('PATCH', '/api/v1/notification-preferences',
-    { body: { channels: { invitation: { inApp: false } } } }), 200);
+  const f = await fixture(label, ['lost', 'answered', 'ended', 'control']);
+  const { lost, answered, ended, control } = f.people as Record<string, Person>;
   const endedSession = await liveSessionStore(db).createOrGet(human(f.owner), f.place.id, f.anchor, randomUUID(), async () => {});
 
   // Hold the generator's cursor so every change below lands before it reads these events.
@@ -101,7 +99,6 @@ test('an invitation that no longer applies when the worker reaches it notifies n
     await invitations.invite(human(f.owner), f.session.id, lost!.id);
     const toAnswer = await invitations.invite(human(f.owner), f.session.id, answered!.id);
     await invitations.invite(human(f.owner), endedSession.id, ended!.id);
-    await invitations.invite(human(f.owner), f.session.id, quiet!.id);
     await invitations.invite(human(f.owner), f.session.id, control!.id);
 
     await removeFromSpaceCore(human(f.owner), f.place.id, human(lost!), db);
@@ -116,9 +113,5 @@ test('an invitation that no longer applies when the worker reaches it notifies n
   assert.deepEqual(await invitationRows(lost!.id), [], 'lost project access before generation');
   assert.deepEqual(await invitationRows(answered!.id), [], 'already answered before generation');
   assert.deepEqual(await invitationRows(ended!.id), [], 'session ended before generation');
-  const quietRows = await invitationRows(quiet!.id);
-  assert.equal(quietRows.length, 1, 'push stays on, so the row backs it');
-  assert.equal(quietRows[0]!.in_inbox, false);
-  assert.equal((await inbox(quiet!)).some((entry) => entry.reason === 'invitation'), false, 'invitation.inApp=false keeps it out of the inbox');
   assert.deepEqual(await invitationRows(f.owner.id), []);
 });

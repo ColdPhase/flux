@@ -1,25 +1,16 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { Form, Link, useLocation, useNavigation } from 'react-router';
 import { Avatar, Icon, Spinner, trapTab, usePop } from '../ui';
-import { NotificationsButton } from '../pwa';
-import { AppearanceControls } from './AppearanceControls';
-
-const dateFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-
-function until(iso: string) {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : dateFormat.format(date);
-}
 
 /**
- * Account button at the foot of the sidebar; opens a small popover with this device's session,
- * its notifications (#41), the theme and sign out.
+ * Account button at the foot of the sidebar; opens a small popover with the name, Settings and Sign out (C-34).
+ * This device's notifications and the theme are in Settings.
  */
-export function UserMenu({ name, email, sessionExpiresAt, asLink = false, compact = false, onNavigate }: { name: string; email: string; sessionExpiresAt: string; asLink?: boolean; compact?: boolean; onNavigate?: () => void }) {
+export function UserMenu({ name, email, asLink = false, compact = false, onNavigate }: { name: string; email: string; asLink?: boolean; compact?: boolean; onNavigate?: () => void }) {
   // In the phone drawer the account row is a plain way into Settings (#266 PF-5), not a popover
   // squeezed over the drawer's own list.
   if (asLink) return <AccountLink name={name} email={email} onNavigate={onNavigate} />;
-  return <AccountMenu name={name} email={email} sessionExpiresAt={sessionExpiresAt} compact={compact} />;
+  return <AccountMenu name={name} email={email} compact={compact} />;
 }
 
 function AccountLink({ name, email, onNavigate }: { name: string; email: string; onNavigate?: () => void }) {
@@ -36,7 +27,7 @@ function AccountLink({ name, email, onNavigate }: { name: string; email: string;
   );
 }
 
-function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string; email: string; sessionExpiresAt: string; compact: boolean }) {
+function AccountMenu({ name, email, compact }: { name: string; email: string; compact: boolean }) {
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
@@ -56,7 +47,7 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
   useEffect(() => {
     if (!open) return;
     const surface = popRef.current;
-    surface?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+    surface?.querySelector<HTMLElement>('a[href], button')?.focus();
     const onPointer = (event: PointerEvent) => {
       if (!surface?.contains(event.target as Node) && !buttonRef.current?.contains(event.target as Node)) setOpen(false);
     };
@@ -81,17 +72,11 @@ function AccountMenu({ name, email, sessionExpiresAt, compact }: { name: string;
           <div className="me__who">
             <b>{name}</b>
             <span>{email}</span>
-            <span className="me__session">Signed in on this device until <time dateTime={sessionExpiresAt}>{until(sessionExpiresAt)}</time></span>
           </div>
-          <div className="me__sec">
-            <span className="me__label"><Icon name="bell" size={12} />Notifications on this device</span>
-            <div className="me__notify"><NotificationsButton /></div>
-          </div>
-          <AppearanceControls idPrefix={popId} />
           {/* Settings, one way in (#763 SG-7): the company's people are in Settings › Company (F-037), and the agents in
               Settings → AI, so the menu never lists a feature this server has turned off. */}
           <div className="me__sec">
-            <Link to="/settings" className="me__item" onClick={follow}><Icon name="gear" />All settings</Link>
+            <Link to="/settings" className="me__item" onClick={follow}><Icon name="gear" />Settings</Link>
           </div>
           <Form method="post" action="/sign-out" className="me__sec me__sec--end">
             <button type="submit" className="me__item" aria-disabled={signingOut || undefined}>

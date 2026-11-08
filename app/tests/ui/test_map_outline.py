@@ -479,11 +479,10 @@ class MapOutlineJourney(unittest.TestCase):
         measurements = []
         for scheme in ("Light", "Dark"):
             page = self.page()
+            # The theme is chosen in Settings > Appearance; the account menu only holds Settings and Sign out.
+            page.goto("/settings/appearance")
+            page.get_by_role("radiogroup", name="Theme").get_by_role("radio", name=scheme, exact=True).click()
             self.open(page)
-            page.locator(".me__btn").click()
-            pop = page.get_by_role("dialog", name="Account", exact=True)
-            pop.get_by_role("radio", name=scheme, exact=True).click()
-            page.keyboard.press("Escape")
             self.pick(page, 3)
             for selector in ('.sk-outline-title', '.sk-outline-also button', '.sk-outline-actions button', '.sk-outline-keys'):
                 page.wait_for_function("selector => { const node = document.querySelector(selector); if (!node) return false; for (let el = node; el; el = el.parentElement) if (Number(getComputedStyle(el).opacity) !== 1) return false; return true; }", arg=selector)

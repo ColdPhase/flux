@@ -84,9 +84,10 @@ class AppSelect(unittest.TestCase):
         return json.loads(response.text()) if response.text() else {}
 
     def mute(self, **kwargs):
-        """Settings' "Place to mute": the same select at every width."""
+        """Settings' "Place to mute": the same select at every width, behind the Muted places row's Change."""
         page = self.page(**kwargs)
         page.goto("/settings/notifications")
+        page.get_by_role("button", name="Change muted places").click()
         place = page.get_by_role("combobox", name="Place to mute", exact=True)
         expect(place).to_be_visible()
         return page, place
@@ -138,6 +139,7 @@ class AppSelect(unittest.TestCase):
     def test_03_a_label_names_it_and_groups_are_announced(self) -> None:
         page = self.page()
         page.goto("/settings/notifications")
+        page.get_by_role("button", name="Change muted places").click()
         # "Place to mute" is a visually hidden <label for> the control: the label still names it, and so names its list.
         expect(page.get_by_label("Place to mute", exact=True)).to_have_attribute("role", "combobox")  # one element: the list is not there until it opens
         mute = page.get_by_role("combobox", name="Place to mute", exact=True)
@@ -300,6 +302,7 @@ class AppSelect(unittest.TestCase):
         for n in range(14):
             self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": f"Bench {n:02d} sensor", "visibility": "workspace"}, status=201)
         page.goto("/settings/notifications")
+        page.get_by_role("button", name="Change muted places").click()
         place = page.get_by_role("combobox", name="Place to mute", exact=True)
         expect(place).to_be_visible()
         place.focus()
@@ -319,7 +322,8 @@ class AppSelect(unittest.TestCase):
     def test_09_typing_treats_a_space_and_an_underscore_alike(self) -> None:
         page = self.page()
         page.goto("/settings/notifications")
-        quiet = page.get_by_role("switch", name="Quiet hours")
+        page.get_by_role("button", name="Change quiet hours").click()
+        quiet = page.get_by_role("switch", name="Use quiet hours")
         expect(quiet).to_be_visible()
         if quiet.get_attribute("aria-checked") != "true":
             quiet.click()

@@ -1555,8 +1555,8 @@ export const notificationVerificationSends = pgTable('notification_verification_
 
 export const notificationPreferences = pgTable('notification_preferences', {
   userId: text('user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
-  channels: jsonb('channels').$type<Record<string, Record<string, boolean>>>().notNull().default({}),
-  emailDestination: text('email_destination').$type<'account' | 'extra' | 'both' | 'none'>().notNull().default('account'),
+  level: text('level').$type<'needsYou' | 'everything' | 'nothing'>().notNull().default('needsYou'),
+  emailMe: boolean('email_me').notNull().default(true),
   quietEnabled: boolean('quiet_enabled').notNull().default(false),
   quietStart: integer('quiet_start').notNull().default(1320),
   quietEnd: integer('quiet_end').notNull().default(420),

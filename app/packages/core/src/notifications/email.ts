@@ -3,7 +3,7 @@ import { NOTIFICATION_EMAIL_SUBJECT, NOTIFICATION_UNSUBSCRIBE_PATH } from '@flux
 import { readsSource } from '../push/notifications.js';
 import type { EmailDeliveryUnitOfWork, EmailJob, NotificationMailer, OutgoingMail } from './ports.js';
 import { NOTIFICATION_EMAIL_QUEUE } from './generate.js';
-import { channelOn, deliverableAt, emailKinds } from './preferences.js';
+import { channelOn, EMAIL_KINDS, inQuietHours } from './preferences.js';
 
 // Notification email (issue #116, founder direction on #44). Email is a channel above the same
 // permissioned inbox as push: every message is the same generic notice with an authorized link,
@@ -57,8 +57,6 @@ export const PERMANENT_FAILURE_SKIP = 'delivery failed permanently';
 
 export type EmailOutcome =
   | { outcome: 'sent'; addressKind: 'account' | 'extra' }
-  /** Quiet hours started after the job was queued: send it again at `until`. */
-  | { outcome: 'deferred'; until: Date }
   | { outcome: 'skipped'; reason: string }
   /** The last attempt failed; `promoted` is the same-mailbox copy queued in its place, if any (#329). */
   | { outcome: 'failed'; reason: string; promoted: string | null }
@@ -104,22 +102,19 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
     const preferences = await ports.preferences.get(row.userId);
     if (notification.reason && !channelOn(preferences, notification.reason, 'email')) return skip('email turned off for this reason');
     if (await ports.preferences.isMuted(row.userId, notification.source)) return skip('place muted');
-    if (!emailKinds(preferences.emailDestination).includes(row.addressKind)) return skip('address no longer chosen');
+    if (!EMAIL_KINDS.includes(row.addressKind)) return skip('address no longer chosen');
     const address = row.addressKind === 'account' ? await ports.accountAddress(row.userId) : await ports.verifiedExtraAddress(row.userId);
     if (!address) return skip('no verified address');
     // One message per actual mailbox: the account and the extra address can be the same one,
     // including after an identity email change between queueing and sending (#113).
     if (await ports.mailboxClaimed(notification.id, row.id, address)) return skip(SAME_MAILBOX_SKIP);
-    // Quiet hours are the person's current choice, not the one at enqueue time.
-    const now = options.now?.() ?? new Date();
-    const until = deliverableAt(preferences, now);
-    if (until.getTime() > now.getTime()) return { defer: until } as const;
+    // Quiet hours are the person's current choice, not the one at enqueue time: inside them nothing is sent, and nothing later (C-31).
+    if (inQuietHours(preferences, options.now?.() ?? new Date())) return skip('quiet hours');
     const token = newToken();
     await ports.markSending(row.id, address, hashToken(token));
     return { row, address, token } as const;
   });
   if ('skip' in claim) return { outcome: 'skipped', reason: claim.skip! };
-  if ('defer' in claim) return { outcome: 'deferred', until: claim.defer! };
 
   const { row, address, token } = claim;
   const company = await options.company?.() ?? null;

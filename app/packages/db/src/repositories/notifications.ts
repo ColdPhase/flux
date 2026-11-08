@@ -44,8 +44,8 @@ type Reason = 'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 
 type SourceType = 'workspace' | 'project' | 'draft' | 'dm';
 
 export interface StoredPreferenceRow {
-  channels: Record<string, Record<string, boolean>>;
-  emailDestination: 'account' | 'extra' | 'both' | 'none';
+  level: 'needsYou' | 'everything' | 'nothing';
+  emailMe: boolean;
   quietEnabled: boolean;
   quietStart: number;
   quietEnd: number;
@@ -54,7 +54,7 @@ export interface StoredPreferenceRow {
 
 type PreferenceRecord = typeof schema.notificationPreferences.$inferSelect;
 const storedRow = (row: PreferenceRecord): StoredPreferenceRow => ({
-  channels: row.channels ?? {}, emailDestination: row.emailDestination, quietEnabled: row.quietEnabled, quietStart: row.quietStart,
+  level: row.level, emailMe: row.emailMe, quietEnabled: row.quietEnabled, quietStart: row.quietStart,
   quietEnd: row.quietEnd, timeZone: row.timeZone,
 });
 
@@ -115,6 +115,11 @@ export function notificationGeneratorRows(db: DbExecutor) {
       await db.update(f).set({ deadAt: sql`now()` }).where(eq(f.eventId, eventId));
     },
     async insertEmail(row: { id: string; notificationId: string; userId: string; addressKind: 'account' | 'extra' }) {
+      // "Email me too" goes to every confirmed address (C-32): a person without a confirmed extra address has no row for it.
+      if (row.addressKind === 'extra') {
+        const [confirmed] = await db.select({ id: a.id }).from(a).where(and(eq(a.userId, row.userId), isNotNull(a.verifiedAt)));
+        if (!confirmed) return false;
+      }
       const inserted = await db.insert(ob).values(row).onConflictDoNothing().returning({ id: ob.id });
       return inserted.length > 0;
     },

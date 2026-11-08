@@ -40,7 +40,7 @@ async function queuedAssignment() {
   const minute = new Date().getUTCHours() * 60 + new Date().getUTCMinutes();
   const clock = (minutes: number) => `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
   expect(await f.owner.request('PATCH', '/api/v1/notification-preferences', { body: {
-    channels: { assigned: { inbox: true, push: true, email: true } }, emailDestination: 'account',
+    level: 'needsYou', emailMe: true,
     quietHours: { enabled: true, start: clock((minute + 1410) % 1440), end: clock((minute + 90) % 1440), timeZone: 'UTC' },
   } }), 200);
   const subscription = await subscribe(f.owner);
@@ -50,22 +50,23 @@ async function queuedAssignment() {
       { title: 'Unused assigned trial', owner: { kind: 'human', id: owner } });
     await native.flushEvents(); return result;
   });
-  const queued = await waitFor(async () => {
-    const rows = await pool.query(`SELECT n.id, e.id AS email_id FROM notifications n
-      JOIN notification_emails e ON e.notification_id=n.id
-      WHERE n.user_id=$1 AND n.reason='assigned' AND n.url=$2 AND e.status='queued'`,
-    [owner, `/projects/${f.projectId}/tasks?open=work:${item.id}`]);
-    return rows.rows[0] as { id: string; email_id: string } | undefined;
-  }, 'the real generator queued assignment');
-  // Existing jobs retain their quiet-hour start_after, so the controlled delivery owns this attempt.
+  // Quiet hours store the notification and queue nothing (C-31), so the controlled delivery owns this attempt.
+  const stored = await waitFor(async () => {
+    const rows = await pool.query(`SELECT id FROM notifications WHERE user_id=$1 AND reason='assigned' AND url=$2`,
+      [owner, `/projects/${f.projectId}/tasks?open=work:${item.id}`]);
+    return rows.rows[0] as { id: string } | undefined;
+  }, 'the real generator stored the assignment');
   expect(await f.owner.request('PATCH', '/api/v1/notification-preferences', { body: { quietHours: { enabled: false } } }), 200);
+  const emailId = randomUUID();
+  await pool.query('INSERT INTO notification_emails (id, notification_id, user_id, address_kind) VALUES ($1, $2, $3, $4)', [emailId, stored.id, owner, 'account']);
+  const queued = { id: stored.id, email_id: emailId };
   const config = loadPushSenderConfig();
   assert.equal(config.status, 'available');
   if (config.status !== 'available') throw new Error('Push test configuration required');
   const agent = createPushAgent(config);
   const ports: DeliveryPorts = { available: true, targets: pushDeliveryRepository(db), authorizer: policySourceReader(accessReader(db)),
     sender: webPushSender(config, agent), admitSend: (id, send) => assignmentDeliveryAdmission(db, id, send),
-    stillWanted: pushPreferenceCheck(db), quietUntil: pushQuietCheck(db) };
+    stillWanted: pushPreferenceCheck(db), quiet: pushQuietCheck(db) };
   const undo = () => f.owner.request('POST', `/api/v1/work/${item.id}/creation-undo`,
     { body: { clientCommandId: randomUUID(), expectedVersion: item.version } });
   return { ...f, ownerId: owner, email, item, queued, subscription, agent, ports, undo,
@@ -82,8 +83,8 @@ test('queued push rechecks task lifecycle after a held source authorizer or quie
         const result = await f.ports.authorizer.canRead(user, source);
         held.resolve(); await within(release.promise, 'delivery release'); return result;
       } };
-      else ports.quietUntil = async (user) => {
-        const result = await f.ports.quietUntil!(user);
+      else ports.quiet = async (user) => {
+        const result = await f.ports.quiet!(user);
         held.resolve(); await within(release.promise, 'delivery release'); return result;
       };
       delivery = deliverPushJob(ports, f.job);

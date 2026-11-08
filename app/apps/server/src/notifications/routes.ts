@@ -25,7 +25,6 @@ export interface NotificationRoutesOptions {
   publicOrigin: string;
 }
 
-const channel = { type: 'object', additionalProperties: false, properties: { inApp: { type: 'boolean' }, push: { type: 'boolean' }, email: { type: 'boolean' } } } as const;
 
 /**
  * Notification settings of the signed-in person (issue #116) and one-click unsubscribe. Every
@@ -60,8 +59,7 @@ export async function notificationRoutes(app: FastifyInstance, { db, sessions, s
       body: {
         type: 'object', additionalProperties: false,
         properties: {
-          channels: { type: 'object', additionalProperties: channel },
-          emailDestination: { type: 'string' },
+          emailMe: { type: 'boolean' },
           quietHours: {
             type: 'object', additionalProperties: false,
             properties: { enabled: { type: 'boolean' }, start: { type: 'string', maxLength: 5 }, end: { type: 'string', maxLength: 5 }, timeZone: { type: 'string', maxLength: 64 } },

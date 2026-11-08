@@ -230,9 +230,6 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
   transform-origin: 50% 100%; max-height: calc(100dvh - 84px); overflow-y: auto; overscroll-behavior: contain;
 }
 .me__who { display: flex; flex-direction: column; padding: 8px 10px 10px; line-height: 1.35; }
-.me__who .me__session { margin-top: 4px; white-space: normal; }
-.me__label svg { margin-right: 6px; vertical-align: -1px; }
-.me__notify { padding: 0 6px 2px; }
 /* The PWA notification control (#41) and update prompt, drawn with the shell's tokens. */
 .pwa-note { margin: 0 0 8px; font-size: var(--fs-sm); line-height: 1.5; color: var(--t3); }
 .pwa-note:last-child { margin-bottom: 0; }
@@ -266,7 +263,6 @@ a.me__btn[aria-current="page"] { background: var(--sub); }
 :root[data-pwa-update="on"] .ui-overlay--center .phone-menu { top: calc(64px + var(--pwa-update-h, 0px)); max-height: calc(100dvh - 96px - var(--pwa-update-h, 0px)); }
 .me__sec { padding: 8px 4px; border-top: 1px solid var(--line); }
 .me__sec--end { padding-bottom: 2px; }
-.me__label { display: block; padding: 0 6px 6px; font-size: var(--fs-xs); font-weight: 500; color: var(--t3); }
 .me__item {
   display: flex; align-items: center; gap: 10px; width: 100%; min-height: var(--ctl); padding: 0 8px; border-radius: var(--r-sm);
   font-size: var(--fs-md); color: var(--t2); text-align: left; transition: var(--tr);
@@ -282,15 +278,6 @@ a.me__item { text-decoration: none; }
 .seg__b:hover { color: var(--t1); }
 .seg__b[aria-checked="true"] { background: var(--el); color: var(--t1); box-shadow: var(--sh-raise); }
 .seg__b:focus-visible { outline-offset: 0; }
-/* Appearance (#431): three equal columns, each label whole on one line, in the account menu and Settings.
-   The account menu is 336 px (.me__pop), so each choice's equal share (about 102 px) holds the widest
-   label, "Match system", with its padding. When the text is larger (#435) a choice that no longer fits
-   beside the others wraps to its own row, whole, so no label breaks or clips. */
-.appearance .seg { display: flex; flex-wrap: wrap; }
-.appearance .seg__b { flex: 1 1 0; min-width: max-content; padding: 0 6px; white-space: nowrap; }
-/* The focus ring is drawn inside each choice (#435): a constant inset offset, so focus never animates
-   the ring from the global 4 px offset past the track's edge. */
-.appearance .seg__b, .appearance .seg__b:focus-visible { outline-offset: -2px; }
 
 
 

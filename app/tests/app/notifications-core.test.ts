@@ -3,8 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { describe, test } from 'node:test';
 import {
   DEFAULT_PREFERENCES,
-  deliverableAt,
-  localMinutes,
+  inQuietHours,
   GENERATION_MAX_ATTEMPTS,
   generateNotifications,
   preferenceRepository,
@@ -45,7 +44,7 @@ function harness(events: GeneratorEvent[], failures: Map<string, number>) {
     advanceCursor: async (seq) => { state.cursor = Math.max(state.cursor, seq); },
     eventsAfter: async (seq, limit) => events.filter((event) => event.seq > seq).slice(0, limit),
     facts,
-    preferences: preferenceRepository({ find: async () => ({ ...DEFAULT_PREFERENCES, channels: {} }), save: async () => undefined, isMuted: async () => false, mutes: async () => [], setMuted: async () => undefined }),
+    preferences: preferenceRepository({ find: async () => ({ ...DEFAULT_PREFERENCES }), save: async () => undefined, isMuted: async () => false, mutes: async () => [], setMuted: async () => undefined }),
     authorizer: { canRead: async () => ({ visible: true, allowed: true, workspaceId }) },
     insertNotification: async (notification) => { state.notifications.push(notification.eventId); return true; },
     deliverableSubscriptions: async () => [],
@@ -114,39 +113,43 @@ describe('quiet hours across daylight-saving transitions', () => {
     const clock = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
     return { ...DEFAULT_PREFERENCES, quietEnabled: true, quietStart: clock(start), quietEnd: clock(end), timeZone };
   };
-  const at = (iso: string) => new Date(iso);
-  const cases: [string, ReturnType<typeof quiet>, string, string][] = [
+  // Quiet hours follow the person's own wall clock, so each case names the instants just inside and just outside the
+  // window. Nothing is deferred (C-31): the window only decides whether push and email are sent at all.
+  const cases: [string, ReturnType<typeof quiet>, [string, boolean][]][] = [
     // Europe/Warsaw springs forward 2026-03-29 02:00 CET → 03:00 CEST (01:00Z).
-    ['Warsaw spring-forward, end after the gap', quiet('Europe/Warsaw', '22:00', '04:00'), '2026-03-29T00:30:00Z', '2026-03-29T02:00:00.000Z'],
-    ['Warsaw spring-forward, end inside the gap → first valid instant after it', quiet('Europe/Warsaw', '22:00', '02:30'), '2026-03-29T00:30:00Z', '2026-03-29T01:00:00.000Z'],
+    ['Warsaw spring-forward, end after the gap', quiet('Europe/Warsaw', '22:00', '04:00'),
+      [['2026-03-29T00:30:00Z', true], ['2026-03-29T01:59:00Z', true], ['2026-03-29T02:00:00Z', false]]],
+    ['Warsaw spring-forward, end inside the gap', quiet('Europe/Warsaw', '22:00', '02:30'),
+      [['2026-03-29T00:30:00Z', true], ['2026-03-29T00:59:00Z', true], ['2026-03-29T01:00:00Z', false]]],
     // Europe/Warsaw falls back 2026-10-25 03:00 CEST → 02:00 CET (01:00Z).
-    ['Warsaw fall-back, end after the repeat', quiet('Europe/Warsaw', '22:00', '04:00'), '2026-10-24T22:30:00Z', '2026-10-25T03:00:00.000Z'],
-    ['Warsaw fall-back, repeated end → first occurrence after now', quiet('Europe/Warsaw', '22:00', '02:30'), '2026-10-24T23:30:00Z', '2026-10-25T00:30:00.000Z'],
+    ['Warsaw fall-back, end after the repeat', quiet('Europe/Warsaw', '22:00', '04:00'),
+      [['2026-10-24T22:30:00Z', true], ['2026-10-25T02:59:00Z', true], ['2026-10-25T03:00:00Z', false]]],
+    ['Warsaw fall-back, end inside the repeated hour: the wall clock is inside it twice', quiet('Europe/Warsaw', '22:00', '02:30'),
+      [['2026-10-24T23:30:00Z', true], ['2026-10-25T00:30:00Z', false], ['2026-10-25T01:00:00Z', true], ['2026-10-25T01:30:00Z', false]]],
     // America/New_York springs forward 2026-03-08 02:00 EST → 03:00 EDT (07:00Z), falls back 2026-11-01 02:00 EDT → 01:00 EST (06:00Z).
-    ['New York spring-forward', quiet('America/New_York', '23:00', '06:00'), '2026-03-08T05:00:00Z', '2026-03-08T10:00:00.000Z'],
-    ['New York fall-back', quiet('America/New_York', '23:00', '06:00'), '2026-11-01T04:00:00Z', '2026-11-01T11:00:00.000Z'],
-    ['New York fall-back, repeated end → first occurrence', quiet('America/New_York', '22:00', '01:30'), '2026-11-01T04:00:00Z', '2026-11-01T05:30:00.000Z'],
+    ['New York spring-forward', quiet('America/New_York', '23:00', '06:00'),
+      [['2026-03-08T05:00:00Z', true], ['2026-03-08T09:59:00Z', true], ['2026-03-08T10:00:00Z', false]]],
+    ['New York fall-back', quiet('America/New_York', '23:00', '06:00'),
+      [['2026-11-01T04:00:00Z', true], ['2026-11-01T10:59:00Z', true], ['2026-11-01T11:00:00Z', false]]],
     // Asia/Tokyo has no DST; the window crosses midnight.
-    ['Tokyo, no DST, across midnight', quiet('Asia/Tokyo', '22:00', '07:00'), '2026-03-29T14:00:00Z', '2026-03-29T22:00:00.000Z'],
-    ['Tokyo, after midnight', quiet('Asia/Tokyo', '22:00', '07:00'), '2026-03-29T16:59:30Z', '2026-03-29T22:00:00.000Z'],
-    ['UTC same-day window, last minute', quiet('UTC', '09:00', '17:00'), '2026-09-28T16:59:30Z', '2026-09-28T17:00:00.000Z'],
-    ['UTC, at the end: already outside', quiet('UTC', '09:00', '17:00'), '2026-09-28T17:00:00Z', '2026-09-28T17:00:00.000Z'],
-    ['outside quiet hours: now', quiet('Europe/Warsaw', '22:00', '04:00'), '2026-03-29T10:00:00Z', '2026-03-29T10:00:00.000Z'],
+    ['Tokyo, no DST, across midnight', quiet('Asia/Tokyo', '22:00', '07:00'),
+      [['2026-03-29T14:00:00Z', true], ['2026-03-29T21:59:00Z', true], ['2026-03-29T22:00:00Z', false]]],
+    ['UTC same-day window, last minute and the end', quiet('UTC', '09:00', '17:00'),
+      [['2026-09-28T08:59:59Z', false], ['2026-09-28T16:59:30Z', true], ['2026-09-28T17:00:00Z', false]]],
+    ['outside the window', quiet('Europe/Warsaw', '22:00', '04:00'), [['2026-03-29T10:00:00Z', false]]],
+    ['a one-minute outside gap is not stepped over', quiet('Europe/Warsaw', '22:01', '22:00'),
+      [['2026-03-28T21:30:00Z', true], ['2026-03-29T19:59:00Z', true], ['2026-03-29T20:00:00Z', false], ['2026-03-29T20:01:00Z', true]]],
   ];
-  for (const [name, preferences, now, expected] of cases) {
+  for (const [name, preferences, instants] of cases) {
     test(name, () => {
-      const result = deliverableAt(preferences, at(now));
-      assert.equal(result.toISOString(), expected);
-      // Never earlier than now, and never still inside quiet hours.
-      assert.ok(result.getTime() >= at(now).getTime());
-      const minute = localMinutes(result, preferences.timeZone);
-      const { quietStart: start, quietEnd: end } = preferences;
-      assert.ok(!(start < end ? minute >= start && minute < end : minute >= start || minute < end), 'released outside the window');
+      for (const [iso, inside] of instants) assert.equal(inQuietHours(preferences, new Date(iso)), inside, `${iso} (${preferences.timeZone})`);
     });
   }
 
-  test('a one-minute outside gap is not stepped over', () => {
-    const preferences = quiet('Europe/Warsaw', '22:01', '22:00');
-    assert.equal(deliverableAt(preferences, at('2026-03-28T21:30:00Z')).toISOString(), '2026-03-29T20:00:00.000Z');
+  test('off, an empty window and an unknown time zone are never quiet', () => {
+    const at = new Date('2026-09-28T12:00:00Z');
+    assert.equal(inQuietHours({ ...quiet('UTC', '00:00', '23:59'), quietEnabled: false }, at), false);
+    assert.equal(inQuietHours(quiet('UTC', '09:00', '09:00'), at), false);
+    assert.equal(inQuietHours(quiet('Mars/Olympus', '00:00', '23:59'), at), false);
   });
 });

@@ -330,7 +330,7 @@ class SettingsJourney(unittest.TestCase):
         page.get_by_role("link", name=re.compile("^Notifications")).tap()
         expect(page).to_have_url(re.compile(r"/settings/notifications$"))
         expect(page.get_by_role("heading", level=2, name="Notifications")).to_be_visible()
-        expect(page.get_by_role("radio", name="Only “Needs you”")).to_be_checked()
+        expect(page.get_by_role("radio", name="Only what needs me")).to_be_checked()
         self.phone_targets(page)
         shot(page, "settings-phone-390-notifications-light")
         page.get_by_role("button", name="Back").tap()
@@ -358,11 +358,11 @@ class SettingsJourney(unittest.TestCase):
         self.phone_targets(page)
         dark = self.page(phone=True, dark=True)
         dark.goto("/settings/notifications")
-        expect(dark.get_by_role("radio", name="Only “Needs you”")).to_be_checked()
+        expect(dark.get_by_role("radio", name="Only what needs me")).to_be_checked()
         shot(dark, "settings-phone-390-notifications-dark")
 
     def test_07b_phone_notifications_hairlines_and_44px_checkboxes(self) -> None:
-        """#434: the level card has hairlines between options in light and dark; matrix checkboxes and email rows are 44 px on touch."""
+        """#434: the level card has hairlines between options in light and dark; the switch and the row buttons are 44 px on touch."""
         for dark in (False, True):
             theme = "dark" if dark else "light"
             with self.subTest(theme=theme):
@@ -378,15 +378,10 @@ class SettingsJourney(unittest.TestCase):
                     self.assertEqual(f"{width} {style}", "1px solid", f"{theme}: hairline above notification level option {index}")
                     self.assertTrue(has_visible_colour(colour), f"{theme}: hairline above notification level option {index} is visible: {colour!r}")
                 self.assertEqual(choices.first.evaluate("el => getComputedStyle(el).borderTopWidth"), "0px", "no hairline above the first option")
-                checks = page.locator(".nset__check input")
-                self.assertGreater(checks.count(), 0)
-                for index in range(checks.count()):
-                    assert_touch_target(self, page, checks.nth(index))
-                destinations = page.locator(".nset__radio input")
-                for index in range(destinations.count()):
-                    box = destinations.nth(index).locator("xpath=ancestor::label[1]").bounding_box()
-                    self.assertIsNotNone(box)
-                    self.assertGreaterEqual(box["height"], 44, f"{theme}: email destination row {index} is a 44 px target: {box}")
+                # Every control on the page is a 44 px target on a phone: the switch, the row buttons and the level options.
+                for control in (page.get_by_role("switch", name="Email me too"), page.get_by_role("button", name="Change quiet hours"),
+                                page.get_by_role("button", name="Change muted places"), page.get_by_label("Add another address")):
+                    assert_touch_target(self, page, control)
                 shot(page, f"settings-phone-390-notifications-{theme}")
 
     def test_07c_phone_sign_in_create_account_link_has_a_44px_hit_area(self) -> None:

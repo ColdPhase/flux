@@ -1,11 +1,8 @@
 import {
-  EMAIL_DESTINATIONS,
   NEEDS_YOU_REASONS,
-  NOTIFICATION_CHANNELS,
   NOTIFICATION_LEVELS,
   NOTIFICATION_REASONS,
   type ChannelChoice,
-  type EmailDestination,
   type NotificationChannel,
   type NotificationLevel,
   type NotificationReason,
@@ -14,30 +11,16 @@ import {
 import { InvalidInputError } from '../access/errors.js';
 import type { PreferenceRepository, PreferenceStore } from './ports.js';
 
-// Per-person notification preferences (issue #116). Pure rules: defaults, validation of changes,
-// quiet hours in the person's own time zone and the email addresses a destination selects.
+// Per-person notification preferences (issue #116, #872). Pure rules: defaults, validation of changes and quiet hours
+// in the person's own time zone. A person stores a level, whether email comes too, and quiet hours (C-31 to C-33);
+// the channels of each reason are derived from them.
 
-/**
- * Defaults: Only "Needs you" (F-026 S22). Every reason reaches the inbox; push is on for the
- * reasons that need you (push still needs the person to turn it on for a device), not for
- * replies. Email starts only for what is addressed to you personally — mentions, questions and
- * direct messages — and goes to the sign-in address until the person chooses.
- */
-export const DEFAULT_CHANNELS: Record<NotificationReason, ChannelChoice> = {
-  mention: { inApp: true, push: true, email: true },
-  question: { inApp: true, push: true, email: true },
-  dm: { inApp: true, push: true, email: true },
-  reply: { inApp: true, push: false, email: false },
-  assigned: { inApp: true, push: true, email: false },
-  review: { inApp: true, push: true, email: false },
-  // A live invitation is quiet: inbox and push, never email by default and never a ringing call.
-  invitation: { inApp: true, push: true, email: false },
-};
-
-/** Stored preferences as the rules use them; `channels` holds only the person's overrides. */
+/** Stored preferences as the rules use them. */
 export interface StoredPreferences {
-  channels: Partial<Record<NotificationReason, Partial<ChannelChoice>>>;
-  emailDestination: EmailDestination;
+  /** What may interrupt the person with push, and with email when `emailMe`. */
+  level: NotificationLevel;
+  /** "Email me too" (C-32): the same events as the level, by email. */
+  emailMe: boolean;
   quietEnabled: boolean;
   /** Minutes after local midnight. */
   quietStart: number;
@@ -45,9 +28,13 @@ export interface StoredPreferences {
   timeZone: string;
 }
 
+/**
+ * Defaults: Only what needs me, with email too (C-35): the inbox always fills; push goes to the reasons that need you
+ * (push still needs the person to turn it on for a device); email follows the same reasons to the sign-in address.
+ */
 export const DEFAULT_PREFERENCES: StoredPreferences = {
-  channels: {},
-  emailDestination: 'account',
+  level: 'needsYou',
+  emailMe: true,
   quietEnabled: false,
   quietStart: 22 * 60,
   quietEnd: 7 * 60,
@@ -57,36 +44,19 @@ export const DEFAULT_PREFERENCES: StoredPreferences = {
 const NEEDS_YOU = new Set<NotificationReason>(NEEDS_YOU_REASONS);
 
 /**
- * The channels a level gives every reason: the inbox always; push for the reasons that need you
- * (or every reason, or none); email as before, except none at "Nothing". Coming back from
- * "Nothing", email returns to its defaults.
+ * The channels each reason has under the stored level: the inbox always; push for the reasons the level lets interrupt
+ * (the reasons that need you, every reason, or none); email on the same reasons when "Email me too" is on.
  */
-export function channelsForLevel(level: NotificationLevel, current: Record<NotificationReason, ChannelChoice>): Record<NotificationReason, ChannelChoice> {
-  const emailOff = NOTIFICATION_REASONS.every((reason) => !current[reason].email);
+export function channelsOf(stored: Pick<StoredPreferences, 'level' | 'emailMe'>): Record<NotificationReason, ChannelChoice> {
   const result = {} as Record<NotificationReason, ChannelChoice>;
   for (const reason of NOTIFICATION_REASONS) {
-    const push = level === 'everything' || (level === 'needsYou' && NEEDS_YOU.has(reason));
-    const email = level === 'nothing' ? false : emailOff ? DEFAULT_CHANNELS[reason].email : current[reason].email;
-    result[reason] = { inApp: true, push, email };
+    const interrupts = stored.level === 'everything' || (stored.level === 'needsYou' && NEEDS_YOU.has(reason));
+    result[reason] = { inApp: true, push: interrupts, email: interrupts && stored.emailMe };
   }
   return result;
 }
 
-/** Which level the channels match: by push, with "Nothing" also meaning no email. */
-export function levelOf(channels: Record<NotificationReason, ChannelChoice>): NotificationLevel | 'custom' {
-  if (NOTIFICATION_REASONS.every((reason) => !channels[reason].push && !channels[reason].email)) return 'nothing';
-  if (NOTIFICATION_REASONS.every((reason) => channels[reason].push)) return 'everything';
-  if (NOTIFICATION_REASONS.every((reason) => channels[reason].push === NEEDS_YOU.has(reason))) return 'needsYou';
-  return 'custom';
-}
-
-export function channelsOf(stored: Pick<StoredPreferences, 'channels'>): Record<NotificationReason, ChannelChoice> {
-  const result = {} as Record<NotificationReason, ChannelChoice>;
-  for (const reason of NOTIFICATION_REASONS) result[reason] = { ...DEFAULT_CHANNELS[reason], ...stored.channels[reason] };
-  return result;
-}
-
-export function channelOn(stored: StoredPreferences, reason: NotificationReason, channel: NotificationChannel) {
+export function channelOn(stored: Pick<StoredPreferences, 'level' | 'emailMe'>, reason: NotificationReason, channel: NotificationChannel) {
   return channelsOf(stored)[reason][channel];
 }
 
@@ -112,30 +82,17 @@ export function formatClock(minutes: number) {
   return `${String(Math.floor(minutes / 60)).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
 }
 
-/** Applies a validated change to stored preferences; unknown reasons, channels or values are refused. */
+/** Applies a validated change to stored preferences; unknown values are refused. */
 export function applyPreferenceChange(current: StoredPreferences, command: UpdateNotificationPreferencesCommand): StoredPreferences {
   if (!command || typeof command !== 'object') throw new InvalidInputError('A change is required');
-  const next: StoredPreferences = { ...current, channels: { ...current.channels } };
+  const next: StoredPreferences = { ...current };
   if (command.level !== undefined) {
     if (!(NOTIFICATION_LEVELS as readonly string[]).includes(command.level)) throw new InvalidInputError('level must be needsYou, everything or nothing', 'INVALID_LEVEL');
-    next.channels = channelsForLevel(command.level, channelsOf(current));
+    next.level = command.level;
   }
-  if (command.channels !== undefined) {
-    if (!command.channels || typeof command.channels !== 'object') throw new InvalidInputError('channels must be an object', 'INVALID_CHANNELS');
-    for (const [reason, choice] of Object.entries(command.channels)) {
-      if (!(NOTIFICATION_REASONS as readonly string[]).includes(reason)) throw new InvalidInputError(`Unknown notification reason ${reason}`, 'INVALID_CHANNELS');
-      if (!choice || typeof choice !== 'object') throw new InvalidInputError('Each reason takes { inApp, push, email }', 'INVALID_CHANNELS');
-      const merged = { ...next.channels[reason as NotificationReason] };
-      for (const [channel, on] of Object.entries(choice)) {
-        if (!(NOTIFICATION_CHANNELS as readonly string[]).includes(channel) || typeof on !== 'boolean') throw new InvalidInputError(`Unknown channel ${channel}`, 'INVALID_CHANNELS');
-        merged[channel as NotificationChannel] = on;
-      }
-      next.channels[reason as NotificationReason] = merged;
-    }
-  }
-  if (command.emailDestination !== undefined) {
-    if (!(EMAIL_DESTINATIONS as readonly string[]).includes(command.emailDestination)) throw new InvalidInputError('emailDestination must be account, extra, both or none', 'INVALID_DESTINATION');
-    next.emailDestination = command.emailDestination;
+  if (command.emailMe !== undefined) {
+    if (typeof command.emailMe !== 'boolean') throw new InvalidInputError('emailMe must be true or false', 'INVALID_EMAIL_ME');
+    next.emailMe = command.emailMe;
   }
   const quiet = command.quietHours;
   if (quiet !== undefined) {
@@ -171,67 +128,25 @@ export function localMinutes(now: Date, timeZone: string) {
   return minutesOf(clockFormatter(timeZone), now);
 }
 
-const MINUTE = 60_000;
-
 /**
- * When push and email may go out: `now`, or — if `now` falls inside the person's quiet hours (the
- * window may cross midnight) — the first real
- * instant after it whose wall-clock time in their IANA zone is outside the window, i.e. the quiet
- * end. Instants are sampled through Intl, so daylight-saving transitions are honoured: an end time
- * that does not exist on a spring-forward day resolves to the first valid instant after the gap,
- * and an end time that occurs twice on a fall-back day resolves to its first occurrence after
- * `now`. The inbox is never held back.
+ * Whether `now` falls inside the person's quiet hours (the window may cross midnight), read in their IANA zone, so
+ * daylight-saving transitions are honoured. During quiet hours there is no push and no email, and nothing is sent when
+ * they end (C-31); the inbox always fills.
  */
-export function deliverableAt(stored: StoredPreferences, now: Date): Date {
-  return afterQuietHours(stored, now);
-}
-
-function afterQuietHours(stored: StoredPreferences, now: Date): Date {
-  if (!stored.quietEnabled || stored.quietStart === stored.quietEnd || !isTimeZone(stored.timeZone)) return now;
+export function inQuietHours(stored: StoredPreferences, now: Date): boolean {
+  if (!stored.quietEnabled || stored.quietStart === stored.quietEnd || !isTimeZone(stored.timeZone)) return false;
+  const minute = minutesOf(clockFormatter(stored.timeZone), now);
   const { quietStart: start, quietEnd: end } = stored;
-  const formatter = clockFormatter(stored.timeZone);
-  const inside = (at: Date) => {
-    const minute = minutesOf(formatter, at);
-    return start < end ? minute >= start && minute < end : minute >= start || minute < end;
-  };
-  if (!inside(now)) return now;
-  // Zone offsets change on whole minutes, so minute resolution finds the exact end. A coarse
-  // step first (never longer than the outside part of the day, so it cannot jump over it),
-  // then minute by minute inside the last step. Quiet hours last under 24 h plus a DST shift.
-  const outsideMinutes = (start - end + 1440) % 1440;
-  const step = Math.max(1, Math.min(15, outsideMinutes)) * MINUTE;
-  let before = Math.floor(now.getTime() / MINUTE) * MINUTE;
-  let after = before;
-  for (let spent = 0; spent <= 27 * 60 * MINUTE; spent += step) {
-    after = before + step;
-    if (!inside(new Date(after))) break;
-    before = after;
-  }
-  for (let at = before + MINUTE; at <= after; at += MINUTE) if (!inside(new Date(at))) return new Date(at);
-  return new Date(after);
+  return start < end ? minute >= start && minute < end : minute >= start || minute < end;
 }
 
-/** The address kinds a destination selects. */
-export function emailKinds(destination: EmailDestination): ('account' | 'extra')[] {
-  switch (destination) {
-    case 'account': return ['account'];
-    case 'extra': return ['extra'];
-    case 'both': return ['account', 'extra'];
-    case 'none': return [];
-  }
-}
-
-/** What remains after one address unsubscribes: the other address of "both", else in-app only. */
-export function withoutAddress(destination: EmailDestination, kind: 'account' | 'extra'): EmailDestination {
-  if (destination === 'both') return kind === 'account' ? 'extra' : 'account';
-  if (destination === kind) return 'none';
-  return destination;
-}
+/** The address kinds a notification email can go to: the sign-in address and a confirmed extra address. */
+export const EMAIL_KINDS: readonly ('account' | 'extra')[] = ['account', 'extra'];
 
 /** Preferences with the documented defaults for anyone without a stored row. */
 export function preferenceRepository(store: PreferenceStore): PreferenceRepository {
   return {
-    get: async (userId) => (await store.find(userId)) ?? { ...DEFAULT_PREFERENCES, channels: {} },
+    get: async (userId) => (await store.find(userId)) ?? { ...DEFAULT_PREFERENCES },
     save: (userId, preferences) => store.save(userId, preferences),
     isMuted: (userId, source) => store.isMuted(userId, source),
     mutes: (userId) => store.mutes(userId),
@@ -239,7 +154,7 @@ export function preferenceRepository(store: PreferenceStore): PreferenceReposito
     async modify(userId, change) {
       if (store.modify) return store.modify(userId, change);
       // Stores without transactions (in-memory test doubles) apply it directly.
-      const next = change((await store.find(userId)) ?? { ...DEFAULT_PREFERENCES, channels: {} });
+      const next = change((await store.find(userId)) ?? { ...DEFAULT_PREFERENCES });
       await store.save(userId, next);
       return next;
     },

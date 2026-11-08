@@ -7,7 +7,7 @@ import { readsSource } from '../push/notifications.js';
 import type { SourceLookup } from '../push/ports.js';
 import { isQuestion, mentions } from './addressing.js';
 import type { GeneratorEvent, GeneratorPorts, GeneratorUnitOfWork, NotificationFacts } from './ports.js';
-import { channelsOf, deliverableAt, emailKinds } from './preferences.js';
+import { channelsOf, EMAIL_KINDS, inQuietHours } from './preferences.js';
 
 // Notifications from committed domain events (issue #116, foundation 8.9). The worker reads the
 // event log after its cursor, in commit order, and for each event decides who it concerns and
@@ -235,19 +235,18 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
   if (!inserted) return false;
 
   const now = options.now?.() ?? new Date();
-  const at = deliverableAt(preferences, now);
-  const startAfter = at.getTime() > now.getTime() ? at : null;
+  // Quiet hours (C-31): no push and no email while they last, and nothing is sent when they end; the inbox row is stored above.
+  if (inQuietHours(preferences, now)) return true;
   if (channels.push) {
     for (const subscriptionId of await ports.deliverableSubscriptions(candidate.userId)) {
-      await ports.enqueuePush({ notificationId, subscriptionId, userId: candidate.userId }, startAfter);
+      await ports.enqueuePush({ notificationId, subscriptionId, userId: candidate.userId });
     }
   }
-  const kinds = emailKinds(preferences.emailDestination);
-  if (channels.email && options.emailAvailable && kinds.length
+  if (channels.email && options.emailAvailable
     && !await ports.emailedRecently(candidate.userId, candidate.source, new Date(now.getTime() - EMAIL_CALM_WINDOW_MS))) {
-    for (const addressKind of kinds) {
+    for (const addressKind of EMAIL_KINDS) {
       const emailId = randomUUID();
-      if (await ports.insertEmail({ id: emailId, notificationId, userId: candidate.userId, addressKind })) await ports.enqueueEmail({ emailId }, startAfter);
+      if (await ports.insertEmail({ id: emailId, notificationId, userId: candidate.userId, addressKind })) await ports.enqueueEmail({ emailId });
     }
   }
   return true;

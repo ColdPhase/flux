@@ -513,7 +513,7 @@ function AppLayoutContent() {
   useQuietViewKeys(!!switching);
   const switchingName = switching ? projects.find((project) => switching.startsWith(`/projects/${project.id}/`))?.name ?? directMessages.find((dm) => switching === `/dm/${dm.id}`)?.title ?? 'the conversation' : '';
 
-  const sidebarProps = { workspace, projects, directMessages, agents, user: me.user, session: me.session, inboxUnread };
+  const sidebarProps = { workspace, projects, directMessages, agents, user: me.user, inboxUnread };
   const where = placeOf(location.pathname);
   // Home's computer layout has no header row; keep its name available to assistive technology.
   const homeRoot = where === 'home' && location.pathname === '/';

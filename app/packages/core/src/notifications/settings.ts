@@ -11,7 +11,7 @@ import { ConflictError, DomainError, InvalidInputError, NotFoundError } from '..
 import type { SourceReadAuthorizer } from '../push/ports.js';
 import { hashToken, newToken } from './email.js';
 import type { AddressRecord, AddressRepository, PreferenceRepository, UnsubscribeRepository, VerificationMailer } from './ports.js';
-import { applyPreferenceChange, channelsOf, formatClock, levelOf, withoutAddress } from './preferences.js';
+import { applyPreferenceChange, formatClock } from './preferences.js';
 
 // Notification settings of one signed-in person (issue #116): preferences, muted places, the
 // extra delivery address and its verification, and one-click unsubscribe. A delivery address is
@@ -85,15 +85,14 @@ export function createNotificationSettings(ports: SettingsPorts) {
     // A place the person can no longer read stays muted but is not named or listed.
     const muted: MutedPlace[] = mutes.filter((place) => names.has(`${place.type}:${place.id}`))
       .map((place) => ({ ...place, name: names.get(`${place.type}:${place.id}`)! }));
-    const channels = channelsOf(stored);
     return {
-      channels,
+      level: stored.level,
+      emailMe: stored.emailMe,
       email: {
-        destination: stored.emailDestination, accountAddress: account.email, extra: addressView(await ports.addresses.find(account.userId)), available: ports.mailer.available,
+        accountAddress: account.email, extra: addressView(await ports.addresses.find(account.userId)), available: ports.mailer.available,
         lastFailureAt: (await ports.unsubscribes.lastFailure(account.userId, new Date(now().getTime() - 24 * 3600_000)))?.toISOString() ?? null,
       },
       quietHours: { enabled: stored.quietEnabled, start: formatClock(stored.quietStart), end: formatClock(stored.quietEnd), timeZone: stored.timeZone },
-      level: levelOf(channels),
       muted,
     };
   }
@@ -175,7 +174,6 @@ export function createNotificationSettings(ports: SettingsPorts) {
     /** Removing the extra address never starts email to the sign-in address by itself. */
     async removeAddress(account: Account) {
       if (!await ports.addresses.remove(account.userId)) throw new NotFoundError('Address', 'ADDRESS_NOT_FOUND');
-      await ports.preferences.modify(account.userId, (current) => ({ ...current, emailDestination: withoutAddress(current.emailDestination, 'extra') }));
       return view(account);
     },
   };
@@ -185,18 +183,23 @@ export function createNotificationSettings(ports: SettingsPorts) {
  * One-click unsubscribe (RFC 8058) with the token from one email. It stops email only to the
  * exact address that email went to, and only while that address is still the person's current
  * one of that kind: a link from a replaced extra address or a changed sign-in address is
- * harmless (`stale`). It needs no session and changes nothing but the email destination.
+ * harmless (`stale`). It needs no session and changes nothing but whether email comes to that address.
  * Repeating it is harmless.
  */
-export async function unsubscribe(ports: Pick<SettingsPorts, 'preferences' | 'unsubscribes'>, token: unknown): Promise<UnsubscribeResponse> {
+export async function unsubscribe(ports: Pick<SettingsPorts, 'preferences' | 'unsubscribes' | 'addresses'>, token: unknown): Promise<UnsubscribeResponse> {
   const value = typeof token === 'string' ? token.trim() : '';
   if (!value || value.length > 128) throw new NotFoundError('Unsubscribe link', 'UNSUBSCRIBE_INVALID');
   const email = await ports.unsubscribes.findByToken(hashToken(value));
   if (!email) throw new NotFoundError('Unsubscribe link', 'UNSUBSCRIBE_INVALID');
   const current = email.addressKind === 'account' ? await ports.unsubscribes.accountAddress(email.userId) : await ports.unsubscribes.verifiedExtraAddress(email.userId);
   if (!email.address || !current || current.toLowerCase() !== email.address.toLowerCase()) {
-    return { result: 'stale', stopped: email.addressKind, destination: (await ports.preferences.get(email.userId)).emailDestination };
+    return { result: 'stale', stopped: email.addressKind, emailMe: (await ports.preferences.get(email.userId)).emailMe };
   }
-  const { emailDestination: destination } = await ports.preferences.modify(email.userId, (stored) => ({ ...stored, emailDestination: withoutAddress(stored.emailDestination, email.addressKind) }));
-  return { result: 'stopped', stopped: email.addressKind, destination };
+  // The sign-in address stops with "Email me too"; an extra address is removed (step 3 gives each address its own switch).
+  if (email.addressKind === 'extra') {
+    await ports.addresses.remove(email.userId);
+    return { result: 'stopped', stopped: 'extra', emailMe: (await ports.preferences.get(email.userId)).emailMe };
+  }
+  const { emailMe } = await ports.preferences.modify(email.userId, (stored) => ({ ...stored, emailMe: false }));
+  return { result: 'stopped', stopped: 'account', emailMe };
 }

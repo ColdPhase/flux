@@ -132,7 +132,7 @@ class RouteChunksJourney(unittest.TestCase):
             page.get_by_role("link", name="Settings and account", exact=True).click()
         else:
             page.get_by_role("button", name=re.compile(self.name)).click()
-            page.get_by_role("link", name="All settings", exact=True).click()
+            page.get_by_role("dialog", name="Account").get_by_role("link", name="Settings", exact=True).click()
 
     def my_map(self, page: Page):
         """A place whose header has Details in its More menu: Home has the button only with an encrypted space (#865)."""

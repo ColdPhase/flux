@@ -97,7 +97,7 @@ export async function deliverPush(deps: DeliveryDependencies, job: PushSendJob):
     authorizer: policySourceReader(accessReader(db)),
     sender: config.status === 'available' ? webPushSender(config, deps.agent, deps.vapid) : unavailable,
     stillWanted: pushPreferenceCheck(db),
-    quietUntil: pushQuietCheck(db),
+    quiet: pushQuietCheck(db),
     log: deps.log,
   }, job);
 }
