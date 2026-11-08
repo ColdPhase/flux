@@ -1,7 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import type { PgBoss } from 'pg-boss';
 import {
-  AGENT_COLOURS,
   AGENT_LIMITS,
   MY_AGENTS_PATH,
   myAgentMemoryItemPath,
@@ -36,7 +35,7 @@ import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { registerAssistantJobRoutes } from '../assistant/jobs.js';
 import { assistantProposalUseCases, personalRunUseCases, pgBossPersonalRunQueue } from './adapters.js';
-import { makeAgent } from './make-agent.js';
+import { makeAgent, removeAgent } from './make-agent.js';
 
 interface Options {
   db: Database;
@@ -55,13 +54,12 @@ const version = { type: 'integer', minimum: 1 } as const;
 const connection = { type: 'string', minLength: 1, maxLength: 64 } as const;
 const model = { type: 'string', minLength: 1, maxLength: 200 } as const;
 const chooseModel = { type: 'object', required: ['connection', 'model'], additionalProperties: false, properties: { connection, model } } as const;
-const colour = { type: 'string', enum: [...AGENT_COLOURS] } as const;
 const instructions = { type: 'string', maxLength: AGENT_LIMITS.instructions } as const;
 const createAgentBody = { type: 'object', additionalProperties: false, properties: {
-  agentId: { type: 'string' }, name: { type: 'string', minLength: 1, maxLength: 80 }, workspaceId: { type: 'string' }, instructions, colour, connection, model,
+  agentId: { type: 'string' }, name: { type: 'string', minLength: 1, maxLength: 80 }, workspaceId: { type: 'string' }, instructions, connection, model,
 } } as const;
 const updateAgentBody = { type: 'object', additionalProperties: false, properties: {
-  name: { type: 'string', minLength: 1, maxLength: 80 }, instructions, colour, connection, model,
+  name: { type: 'string', minLength: 1, maxLength: 80 }, instructions, connection, model,
 } } as const;
 const memoryBody = { type: 'object', required: ['body'], additionalProperties: false, properties: { body: { type: 'string', minLength: 1, maxLength: AGENT_LIMITS.memoryItem } } } as const;
 const invoke = { type: 'object', required: ['clientRunId', 'kind', 'prompt'], additionalProperties: false, properties: {
@@ -126,7 +124,7 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   }));
   app.delete<{ Params: { agentId: string } }>(myAgentPath(':agentId'), async (request, reply) => command(request, reply, {
     operation: `DELETE ${myAgentPath(':agentId')}`, scope: 'account', status: 204,
-    run: async (actor, conn) => { await personalRunUseCases(conn, composition).remove(actor, request.params.agentId); return null; }, replay: ownState,
+    run: (actor, conn) => conn.transaction(async (tx) => { await removeAgent(tx as unknown as Database, composition, actor, request.params.agentId); return null; }), replay: ownState,
   }));
   app.get<{ Params: { agentId: string } }>(myAgentMemoryPath(':agentId'), async (request, reply) => {
     reply.header('cache-control', 'no-store');

@@ -195,8 +195,10 @@ describe('A local client follows the owner\'s rights and waits like the assistan
       try {
         const [waiting] = await rows();
         const answer = await decide(owner, waiting!.id, 'apply');
-        assert.ok([403, 404, 409].includes(answer.status), `Approve answered ${answer.status}`);
-        assert.notEqual((await rows())[0]!.state, 'applied_after_wait');
+        assert.equal(answer.status, 403, answer.text);
+        assert.match(answer.text, /no longer have access to this space/, 'it says the space was lost, not that the target changed');
+        assert.doesNotMatch(answer.text, /Changed since you asked/);
+        assert.deepEqual([(await rows())[0]!.state, (await rows())[0]!.refusal], ['refused', 'You no longer have access to this space, so this wasn’t made']);
         assert.equal((await titled('Lost access')).length, 0);
       } finally { await restore(); }
     });
@@ -309,6 +311,10 @@ describe('co-work for another person\'s client waits for the owner\'s OK', () =>
     assert.equal(await requests(), 0, 'nothing reaches Jonas\'s client yet');
     const first = (await waitingOf('cowork.request'))[0]!;
     assert.equal(first.wait_reason, 'others');
+    // The card reads "wants to send request to Jonas Codex…", so the title names who it goes to and does not repeat the noun (#930).
+    const title = String((await pool.query('SELECT object_title FROM assistant_changes WHERE id = $1', [first.id])).rows[0].object_title);
+    assert.match(title, /^to /);
+    assert.doesNotMatch(title, /request/);
     expectStatus(await decide(owner, first.id, 'skip'), 200);
     assert.equal(await requests(), 0, 'Skip sends nothing');
     assert.match(text(await send('ask-2')), /^Waiting for /);

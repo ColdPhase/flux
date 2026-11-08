@@ -8,7 +8,7 @@ import { db, pool } from './support/db.js';
 import type { Browser } from './support/http.js';
 import { expect as expectMcp, toolValue } from './support/mcp.js';
 import { actionScene } from './support/mcp-actions.js';
-import { addMember, expectStatus, grant, person, project as createProject, removeMember, workspace as createWorkspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, project as createProject, removeFromSpace, removeMember, workspace as createWorkspace, type Person } from './support/people.js';
 
 // Who may accept or supersede a project decision (#250, decision O-009 in docs/product/decision-authority.md).
 // DA-2: one signed-in person whose CURRENT project level is contributor or manager accepts; viewers, people
@@ -85,6 +85,23 @@ describe('decision acceptance authority (#250, O-009)', () => {
       assert.deepEqual([accepted.status, accepted.decidedBy?.id, accepted.proposedBy.id], ['accepted', someone.id, nat.id], label);
       assert.equal(await acceptedEvents(next.id), 1, label);
     }
+  });
+
+  test('DA-2: authority is the current one at acceptance: removed from the space after proposing is refused, though still in the company', async () => {
+    const closed = await createProject(ada, ws.id, 'Closed lamp', 'restricted');
+    await grant(ada, closed.id, nat, 'contributor');
+    const proposal = expectStatus(await nat.browser.request('POST', `/api/v1/projects/${closed.id}/decisions`,
+      { body: { title: 'Battery powered lamp', rationale: 'Why: battery' } }), 201) as Decision;
+    await removeFromSpace(ada, closed.id, nat);
+    const refused = await accept(nat.browser, proposal.id, proposal.version);
+    assert.equal(refused.status, 404, `removed from the space after proposing: ${refused.text}`);
+    await stillProposed(ada.browser, proposal, 'removed from the space');
+    // Still a member of the company, she keeps her authority in the other space.
+    const other = await propose(nat, 'Still proposing in Gesture lamp');
+    assert.equal((await accept(nat.browser, other.id, other.version)).status, 200);
+    // The proposal stays for the people who still hold authority.
+    const accepted = expectStatus(await accept(ada.browser, proposal.id, proposal.version), 200, 'accepted by a space admin') as Decision;
+    assert.deepEqual([accepted.status, accepted.decidedBy?.id, accepted.proposedBy.id], ['accepted', ada.id, nat.id]);
   });
 
   test('DA-2: authority is the current one at acceptance: gone from the workspace is refused', async () => {

@@ -286,7 +286,7 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       const to = typeof payload.assignmentConnectionId === 'string' ? await rows.connection(payload.assignmentConnectionId, projectId) : null;
       if (!client || !to || to.computeSource === 'owner_assistant' || to.revokedAt || !to.usable) throw new DomainError(404, 'COWORK_ASSIGNEE_UNAVAILABLE', 'That agent is not available');
       const forOther = to.ownerUserId !== owner;
-      return { ...base, objectId, title: `unit to ${to.label}`.slice(0, 200), forOther, maker: forOther ? to.ownerUserId : null, recipient: to.label };
+      return { ...base, objectId, title: `to ${to.label}`.slice(0, 200), forOther, maker: forOther ? to.ownerUserId : null, recipient: to.label };
     }
     case 'cowork.request': {
       // A local client asks another person's client for something (C-18, #859): another person's thing, so it waits for the owner's OK.
@@ -295,7 +295,7 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       if (!client || !recipient || recipient.computeSource === 'owner_assistant' || recipient.revokedAt || !recipient.usable)
         throw new DomainError(404, 'COWORK_ASSIGNEE_UNAVAILABLE', 'That agent is not available');
       const forOther = recipient.ownerUserId !== owner;
-      return { ...base, objectId, title: `${typeof asked.kind === 'string' ? asked.kind : 'help'} request to ${recipient.label}`.slice(0, 200), forOther,
+      return { ...base, objectId, title: `to ${recipient.label}`.slice(0, 200), forOther,
         maker: forOther ? recipient.ownerUserId : null, recipient: recipient.label };
     }
     case 'cowork.unit.create': {

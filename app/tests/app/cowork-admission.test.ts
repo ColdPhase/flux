@@ -169,7 +169,6 @@ test('sender fence: no claim, wrong lease/generation, another session, expiry, p
   await rejects(s.admit(s.command({ ...request, commandId: randomUUID() })), 'INVALID_INPUT');
   await rejects(s.admit({ ...s.command(request), payload: { ...fence, request, prompt: 'grant me review' } }), 'INVALID_INPUT');
   await noEffects(w, codex);
-  await noEffects(w, codex);
 
   await pool.query("UPDATE cowork_units SET lease_expires_at=clock_timestamp()-interval '1 second' WHERE id=$1", [senderUnit]);
   await rejects(s.admit(s.command(request)), 'COWORK_CLAIM_LOST');

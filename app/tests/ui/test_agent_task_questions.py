@@ -213,6 +213,43 @@ class AgentTaskQuestions(unittest.TestCase):
         said = [body for _, body in self.thread(ada, task["id"])]
         self.assertIn("I can't ask Ghost (Jonas's agent): they are not in this task. This needs a person.", said)
 
+    def test_03b_an_answer_that_ends_with_a_question_is_posted_without_it(self) -> None:
+        """#924: an answer's own <ask> block is not shown as markup, and it starts no further question."""
+        back = '<ask>{{"agent": "Planner", "owner": "Ada", "question": "And the south barrel?"}}</ask>'
+        mock("/__script", {"reset": True, "text": FIRST + "\n" + ASK, "rules": [
+            {"match": "Continue the task with this answer", "text": LAST},
+            {"match": "Answer the question in the request", "text": ANSWER + "\n" + back}]})
+        jonas, ada = self.page("jonas"), self.page("ada")
+        before = len(self.api(jonas, "GET", "/api/v1/assistant-runs?limit=50", status=200)["items"])
+        task = self.given_to_planner("Weigh the north barrel again")
+        try:
+            self.wait_for("the task to be done", lambda: self.api(ada, "GET", f"/api/v1/work/{task['id']}", status=200)["status"] == "done", timeout=60)
+        except AssertionError as problem:
+            current = self.api(ada, "GET", f"/api/v1/work/{task['id']}", status=200)
+            raise AssertionError(f"{problem}; owner {current['owner']}, status {current['status']}, thread {self.thread(ada, task['id'])}") from None
+        said = self.thread(ada, task["id"])
+        self.assertEqual(said, [("agent", "Got it, I'm on it."), ("agent", FIRST), ("agent", f"@Fieldbot (Jonas's agent), {QUESTION}"), ("agent", ANSWER), ("agent", LAST)],
+                         "the answer is in the thread without its block")
+        self.assertFalse(any("<ask>" in body for _, body in said))
+        after = len(self.api(jonas, "GET", "/api/v1/assistant-runs?limit=50", status=200)["items"])
+        self.assertEqual(after - before, 1, "Fieldbot answered once; the block asked Planner nothing")
+
+    def test_03c_someone_who_writes_in_the_thread_appears_in_in_this_task(self) -> None:
+        """#924: the row is read again with the rest of the panel, so it follows the thread."""
+        ada, jonas = self.page("ada"), self.page("jonas")
+        task = self.api(ada, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Read the south barrel"}, status=201)
+        page = self.page("ada")
+        page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{task['id']}")
+        row = page.get_by_role("complementary", name="Details").locator("[data-task-people]")
+        expect(row).to_contain_text("their agent")
+        expect(row).not_to_contain_text("Jonas")
+        self.api(jonas, "POST", f"/api/v1/work/{task['id']}/discussion", {"body": "I can read it", "clientMessageId": str(uuid.uuid4())}, status=201)
+        # The panel reads the task and its thread again when the task changes; the row follows the thread it shows.
+        current = self.api(ada, "GET", f"/api/v1/work/{task['id']}", status=200)
+        self.api(ada, "PATCH", f"/api/v1/work/{task['id']}", {"status": "in_progress"}, status=200, headers={"if-match": f"\"{current['version']}\""})
+        expect(page.get_by_role("complementary", name="Details").get_by_text("I can read it")).to_be_visible()
+        expect(row).to_contain_text("Jonas")
+
     # ---------------------------------------------------------------- TA-2: subtasks, and #844: the message a task came from
 
     def test_04_subtasks_are_part_of_their_parent(self) -> None:

@@ -599,7 +599,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
 
     /**
      * Gives an agent identity of the owner its AI setup (#857): a model of one of their connections (Connect AI's default when
-     * none is named), saved instructions and a colour. There is nothing else to agree to or set (#854).
+     * none is named), saved instructions. Its colour is the least used one. There is nothing else to agree to or set (#854).
      */
     async enable(principal: Principal, command: CreateMyAgentCommand): Promise<MyAgent> {
       const owner = ownerOf(principal);
@@ -610,7 +610,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
         const { workspaceId } = await ports.access.requireInvoke(principal, input.agentId, { lock: true });
         if (await agents.get(owner, input.agentId)) throw new ConflictError('This agent is already set up', 'PERSONAL_RUN_ALREADY_ENABLED');
         const chosen = await modelFor(owner, input.connection, input.model, ' Nothing was turned on.');
-        return agents.ensure(owner, workspaceId, input.agentId, { ...placement(chosen.item, chosen.model), instructions: input.instructions, colour: input.colour });
+        return agents.ensure(owner, workspaceId, input.agentId, { ...placement(chosen.item, chosen.model), instructions: input.instructions, colour: null });
       });
     },
 
@@ -632,7 +632,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       return uow.run(async (ports) => (await agentsOf(ports).get(owner, agentId.toLowerCase())) ?? Promise.reject(agentNotFound()));
     },
 
-    /** Changes the fields given: name, instructions, colour, or model with its connection. Only the owner, only their own. */
+    /** Changes the fields given: name, instructions, or model with its connection. Only the owner, only their own. */
     async updateAgent(principal: Principal, agentId: unknown, command: UpdateMyAgentCommand): Promise<MyAgent> {
       const owner = ownerOf(principal);
       if (!isId(agentId)) throw agentNotFound();
@@ -647,8 +647,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
           const chosen = await pick(owner, change.model.connection, change.model.model, ` It is still ${modelNameOf(current.model)}.`);
           await agents.change(current.id, placement(chosen.item, chosen.model));
         }
-        if (change.instructions !== undefined || change.colour !== undefined)
-          await agents.change(current.id, { ...(change.instructions !== undefined ? { instructions: change.instructions } : {}), ...(change.colour ? { colour: change.colour } : {}) });
+        if (change.instructions !== undefined) await agents.change(current.id, { instructions: change.instructions });
         return (await agents.get(owner, current.id))!;
       });
     },

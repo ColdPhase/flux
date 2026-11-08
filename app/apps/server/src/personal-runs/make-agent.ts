@@ -1,6 +1,7 @@
 import { FIRST_AGENT_NAME, type CreateMyAgentCommand, type MyAgent } from '@flux/contracts';
 import { createAgent, DomainError, InvalidInputError, type Principal } from '@flux/core';
-import { accessPorts, lockAssistantOwner, type Database } from '@flux/db';
+import { accessPorts, agentTaskRows, lockAssistantOwner, type Database } from '@flux/db';
+import { workUseCases } from '../work/adapters.js';
 import { personalRunUseCases, type PersonalRunComposition } from './adapters.js';
 
 /**
@@ -21,6 +22,26 @@ export async function makeAgent(tx: Database, composition: PersonalRunCompositio
     agentId = (await createAgent(actor, body.workspaceId, { name, owner: 'self' }, tx, accessPorts)).id;
   }
   return uses.enable(actor, { ...body, agentId });
+}
+
+/**
+ * Deletes one of the caller's agents in the caller's transaction (F-036 AG-1). The tasks it holds go back to the caller through the work
+ * use case, as when an agent hands one back: each has its history row and its live update, and a run still working on one is stopped.
+ * A task that could not be given back that way is returned by the deletion itself, so none stays with a deleted agent.
+ */
+export async function removeAgent(tx: Database, composition: PersonalRunComposition, actor: Principal, agentId: string): Promise<void> {
+  // Anything that is not an id is for the deletion to answer "not found".
+  if (actor.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(agentId)) {
+    await lockAssistantOwner(tx, actor.id);
+    for (const held of await agentTaskRows(tx).heldBy(agentId.toLowerCase(), actor.id)) {
+      try {
+        await workUseCases(tx).updateWork(actor, held.id, { owner: { kind: 'human', id: actor.id } }, held.version, 'agent_rule');
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error;
+      }
+    }
+  }
+  await personalRunUseCases(tx, composition).remove(actor, agentId);
 }
 
 /**

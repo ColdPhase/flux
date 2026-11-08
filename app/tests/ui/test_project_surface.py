@@ -286,7 +286,8 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(page.get_by_role("list", name="Maps in Gesture lamp").get_by_role("link", name=re.compile("Sensing options"))).to_be_visible()
         tabs.get_by_role("link", name=re.compile("^Wiki")).click()
         expect(page).to_have_url(re.compile(rf"/docs/{self.ids['doc']}$"))
-        expect(page.get_by_role("link", name=re.compile("What we learned about low light"))).to_be_visible()
+        # The Wiki is the page alone (F-026 Wiki): its title is the page switcher, not a link in a pages column (#869, #946).
+        expect(page.get_by_role("heading", level=2).get_by_role("button", name=re.compile("What we learned about low light"))).to_be_visible()
         tabs.get_by_role("link", name=re.compile("^Conversation")).click()
         expect(page, "Conversation returns to the open conversation").to_have_url(conversation_url)
         expect(page.locator(f"#message-{self.ids['m_camera']}")).to_be_visible()
@@ -298,8 +299,13 @@ class ProjectSurfaceJourney(unittest.TestCase):
         page.set_viewport_size({"width": 320, "height": 640})
         view_tab(page, "Wiki")
         expect(page).to_have_url(re.compile(rf"/docs/{self.ids['doc']}$"))
-        expect(page.locator("header .wiki-header-meta")).to_contain_text("Wiki · 1 page")
-        expect(page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)).to_be_visible()
+        expect(page.get_by_role("button", name="Page actions", exact=True)).to_be_visible()
+        # The one page of the space is in the switcher the title opens.
+        page.get_by_role("heading", level=2).get_by_role("button", name=re.compile("What we learned about low light")).click()
+        switcher = page.get_by_role("dialog", name="Pages in Gesture lamp")
+        expect(switcher.get_by_role("list", name="Pages").get_by_role("link")).to_have_count(1)
+        page.keyboard.press("Escape")
+        expect(switcher).to_have_count(0)
         # At 320px the views are in the title's menu (#341): the current one is marked there.
         page.get_by_role("heading", level=1).get_by_role("button").click()
         current = page.get_by_role("dialog").get_by_role("link", name=re.compile("^Wiki"))

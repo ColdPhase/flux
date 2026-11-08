@@ -240,10 +240,19 @@ class NewProject(unittest.TestCase):
             # The server applies the change; the browser hears about it only when the test lets it.
             held.append((route, route.fetch()))
 
+        def without_map(route) -> None:
+            # A new space has Map and Wiki from the start (S21), so More offers nothing to add. The browser is told that space A has no Map
+            # (the server still has it, so the late answer changes nothing there); More then offers "Add Map", the one slow layout request.
+            response = route.fetch()
+            body = response.json()
+            body["views"] = [view for view in body["views"] if view != "map"]
+            route.fulfill(response=response, json=body)
+
         page.route(re.compile(r"/api/v1/projects/[0-9a-f-]{36}/views$"), hold)
+        page.route(re.compile(rf"/api/v1/projects/{a['id']}$"), without_map)
         page.goto(f"/projects/{a['id']}")
         page.locator("header.top").get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Add Agents").click()
+        page.get_by_role("menu", name="More").get_by_role("menuitem", name="Add Map").click()
         deadline = time.time() + 8
         while not held and time.time() < deadline:
             page.wait_for_timeout(100)
@@ -258,7 +267,7 @@ class NewProject(unittest.TestCase):
         page.wait_for_timeout(600)
         expect(page).to_have_url(re.compile(f"/projects/{b['id']}"))
         expect(composer).to_have_value("Half a thought for B")
-        self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{a['id']}", status=200)["views"], ["map", "docs", "agents"])
+        self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{a['id']}", status=200)["views"], ["map", "docs"])
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{b['id']}", status=200)["views"], ["map", "docs"])
 
     UNLOCK = "seven loud geese in a hat"

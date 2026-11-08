@@ -485,7 +485,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
               </>
               : <span className="wd-value">{item.owner ? ownerView : 'Nobody yet'}</span>}</dd>
           </div>
-          <TaskPeople workId={item.id} revision={item.version} />
+          <TaskPeople workId={item.id} revision={`${detail.observedAt}:${activity.lines.length}`} />
           <div className="wd-row">
             <dt>Came from</dt>
             <dd className="wd-from"><CameFrom item={item} links={relations.links} project={context.project} empty={emptyLinks(relations, 'Added directly on the Tasks tab.')} /></dd>

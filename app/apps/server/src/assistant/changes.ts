@@ -28,6 +28,8 @@ import { ASSISTANT_UNIT_CREATE_INPUT } from '../agent-connection/tool-registry.j
 
 const missing = () => new NotFoundError('Assistant change', 'ASSISTANT_CHANGE_NOT_FOUND');
 const STALE = 'Changed since you asked';
+/** What Approve says when its owner can no longer use the space the change is in: not that the target changed (#930). */
+const LOST_SPACE = 'You no longer have access to this space, so this wasn’t made';
 /** What a client's unit, transfer or request says when its Approve comes after the claim or session it was made under ended (a 300 s lease). */
 const CLAIM_ENDED = 'The claim this was made under has ended, so it can\'t be made now. Ask again with a live claim';
 const CLAIM_ENDED_CODES = new Set(['COWORK_CLAIM_LOST', 'AGENT_EXECUTION_UNAVAILABLE', 'RUNTIME_UNAVAILABLE']);
@@ -220,6 +222,10 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
   async function decideApply(principal: Principal, row: AssistantChangeRow, expected: number | undefined): Promise<AssistantChangeDecision> {
     if (expected !== undefined && expected !== row.version) throw new ConflictError('This change was decided meanwhile', 'ASSISTANT_CHANGE_VERSION_CONFLICT');
     if (row.state !== 'waiting') throw new ConflictError('This change is no longer waiting', 'ASSISTANT_CHANGE_DECIDED');
+    if (!(await evaluateProject(principal, 'project.write', row.projectId, accessReader(db))).allowed) {
+      await refuse(row, LOST_SPACE);
+      return { change: await viewOne((await rows().find(row.id))!), message: LOST_SPACE };
+    }
     const outcome = await reexecuteChange(db, row, owner(principal));
     if (outcome.ok) return { change: await viewOne((await rows().find(row.id))!), message: null };
     if (outcome.code === 'ASSISTANT_PAUSED') throw new DomainError(409, outcome.code, outcome.error);

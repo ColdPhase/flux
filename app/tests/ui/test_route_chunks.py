@@ -357,7 +357,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.on("request", lambda request: requested.append(request.url))
                 self.home(page)
                 worker = page.request.get(f"{ORIGIN}/sw.js").text()
-                for module in ("SettingsHome", "SketchView", "DocEditor", "ProjectTasks", "ProjectAgents", "Details", "JumpTo", "LiveStage"):
+                for module in ("SettingsHome", "SketchView", "WikiEditor", "ProjectTasks", "Details", "JumpTo", "LiveStage"):
                     self.assertRegex(worker, rf"/assets/{module}-[^/\"]+\.js", f"{module} has an actual emitted lazy chunk")
                     self.assertFalse(any(re.search(rf"/assets/{module}-[^/]+\.js", url) for url in requested), f"Cold Home never imports {module}")
 
@@ -527,7 +527,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
                 expect(page.get_by_role("heading", name="Chunk boundaries", exact=True)).to_be_visible()
                 expect(page.get_by_label("Message from you", exact=True).get_by_text("An eager conversation stays available before secondary routes", exact=True)).to_be_visible()
-                for module in ("ProjectTasks", "ProjectAgents", "DocEditor", "SketchView", "Details", "JumpTo", "LiveStage"):
+                for module in ("ProjectTasks", "WikiEditor", "SketchView", "Details", "JumpTo", "LiveStage"):
                     self.assertFalse(any(re.search(rf"/assets/{module}-[^/]+\.js", url) for url in requested), f"The eager conversation does not import {module}")
 
     def test_07_held_details_close_returns_focus_and_resolution_never_reopens(self):
@@ -630,7 +630,7 @@ class RouteChunksJourney(unittest.TestCase):
                 self.assertTrue(row.is_visible(), "The first project/Details render stands with the Map code still on the way")
                 shot(page, f"route-chunks-first-project-details-{engine}-phone")
 
-    CODE = {"Details": "Details", "JumpTo": "JumpTo", "ProjectTasks": "ProjectTasks", "ProjectViews": "ProjectViews", "Wiki": "Wiki", "ProjectAgents": "ProjectAgents"}
+    CODE = {"Details": "Details", "JumpTo": "JumpTo", "ProjectTasks": "ProjectTasks", "ProjectViews": "ProjectViews", "Wiki": "Wiki"}
 
     def wait_for_chunks(self, page: Page, requested: list, seconds: float) -> list[str]:
         """The deferred code that has been asked for, waiting up to `seconds` for all of it."""

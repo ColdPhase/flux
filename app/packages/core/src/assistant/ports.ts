@@ -11,7 +11,7 @@ export interface AgentSetup {
   provider: AiProviderKind;
   model: string | null;
 }
-export type AgentSetupChanges = Partial<Omit<AgentSetup, 'colour'>> & { colour?: AgentColour };
+export type AgentSetupChanges = Partial<Omit<AgentSetup, 'colour'>>;
 
 /** All methods are transaction-bound; the caller's identity is checked before another owner's rows are looked up. */
 export interface AssistantIdentityPort {

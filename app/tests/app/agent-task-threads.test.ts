@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import { assistantChangeActionPath, assistantRunChangesActionPath, conversationAssistantChangesPath, projectWorkDetailPath, taskAgentPath, taskAgentStopPath, taskDiscussionPath, workItemPath,
   type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone, type Conversation, type TaskAgentState, type TaskDiscussion, type WorkDetailProjection, type WorkItem } from '@flux/contracts';
@@ -172,7 +172,8 @@ describe('the exchange through the real drain (#841, N1 to N3)', () => {
     space = await createProject(ada, ws.id, 'Rain barrel monitor', 'workspace');
     for (const [key, someone] of [['ada', ada], ['jonas', jonas], ['maja', maja]] as const) names[key] = (await pool.query('SELECT name FROM auth_users WHERE id = $1', [someone.id])).rows[0].name as string;
     // Everyone's first agent is called Assistant; Jonas's, which asks, is called Planner so that Ada's and Maja's are the ones that collide.
-    for (const [key, someone, name] of [['jonas', jonas, 'Planner'], ['ada', ada, 'Assistant'], ['maja', maja, 'Assistant']] as const) {
+    // Jonas has a second agent, Reviewer, which Planner may ask: his own owner is one of the task's people (#924).
+    for (const [key, someone, name] of [['jonas', jonas, 'Planner'], ['ada', ada, 'Assistant'], ['maja', maja, 'Assistant'], ['reviewer', jonas, 'Reviewer']] as const) {
       agents[key] = (expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name, owner: 'self' } }), 201) as { id: string }).id;
       const connection = randomUUID();
       connections.connect(someone.id, connection);
@@ -318,5 +319,96 @@ describe('the exchange through the real drain (#841, N1 to N3)', () => {
     assert.ok(lines.includes('I couldn\'t get an answer. It\'s back with you.'), lines.join(' | '));
     assert.ok(!lines.includes('The faulty answer'));
     assert.equal((await readTask(held.task.id)).owner?.kind, 'human', 'the asker no longer waits with the task');
+  });
+
+  /** The task is Planner's again, waiting, and Maja's agent has started to answer it. */
+  async function answering(title: string) {
+    const held = await asked(title, '{"agent": "Fieldbot", "question": "Which?"}');
+    await waitFor(async () => (await readTask(held.task.id)).owner?.kind === 'human', 'the first exchange to end');
+    await pool.query('UPDATE project_work_items SET owner_user_id = NULL, owner_agent_id = $2, version = version + 1 WHERE id = $1', [held.task.id, agents.jonas]);
+    const talk = expectStatus(await ada.browser.request('GET', taskDiscussionPath(held.task.id)), 200) as TaskDiscussion;
+    const answer = await db.transaction((tx) => runs.startTask(personalRunPorts(tx, queue.factory), { kind: 'task_answer', ownerUserId: maja.id, agentId: agents.maja!,
+      workId: held.task.id, projectId: space.id, conversationId: talk.conversationId!, prompt: 'Which?', clientRunId: randomUUID(), askedByRunId: held.run.id, exchangeTurn: 1, audience: [ada.id, jonas.id, maja.id] }));
+    assert.ok(answer.started, JSON.stringify(answer));
+    return { held, answer: answer.run };
+  }
+  const complete = (runId: string, body: string) => pool.query(`UPDATE personal_runs SET status = 'completed', completed_at = now(), committed_at = now(), answer_body = $2, cost_state = 'released', charged_micros = 0 WHERE id = $1`, [runId, body]);
+  const handled = (runId: string) => waitFor(async () => (await pool.query(`SELECT 1 FROM agent_task_events WHERE run_id = $1 AND handled_at IS NOT NULL`, [runId])).rowCount === 1, 'the end of the run to be handled');
+
+  test('#924: an answer that ends with an <ask> block is posted without it, and it starts no further question', async () => {
+    const { held, answer } = await answering('Answer with a block');
+    await complete(answer.id, 'The 0.82 V reading means full.\n<ask>{"agent": "Planner", "owner": "' + names.jonas + '", "question": "And the south barrel?"}</ask>');
+    await handled(answer.id);
+    const lines = await thread(held.task.id);
+    assert.ok(lines.includes('The 0.82 V reading means full.'), lines.join(' | '));
+    assert.ok(lines.every((line) => !line.includes('<ask>') && !line.includes('south barrel')), `no block is shown as markup: ${lines.join(' | ')}`);
+    assert.deepEqual((await answerRuns(held.task.id)).length, 1, 'the block asked nobody anything');
+  });
+
+  test('#924: the asking owner takes the task back while it is answered: the answer is still posted, nobody goes on with it and no one is asked again', async () => {
+    const { held, answer } = await answering('Taken back during the answer');
+    await pool.query('UPDATE project_work_items SET owner_agent_id = NULL, owner_user_id = $2, version = version + 1 WHERE id = $1', [held.task.id, jonas.id]);
+    await complete(answer.id, 'The 0.82 V reading means full.');
+    await handled(answer.id);
+    assert.ok((await thread(held.task.id)).includes('The 0.82 V reading means full.'), 'what Maja\'s owner paid for is posted');
+    const now = await readTask(held.task.id);
+    assert.deepEqual([now.owner?.kind, now.owner?.id], ['human', jonas.id], 'the task stays where its owner put it');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM personal_runs WHERE work_id = $1`, [held.task.id])).rows[0].n, 2, 'no run went on with the answer');
+  });
+
+  test('#924: an agent may ask another agent of its own owner, which is one of the task\'s people, but never itself', async () => {
+    const own = await asked('Ask my owner\'s other agent', '{"agent": "Reviewer", "question": "Which?"}');
+    await waitFor(async () => (await readTask(own.task.id)).owner?.kind === 'human', 'the task to go back to Ada');
+    const lines = await thread(own.task.id);
+    assert.ok(lines.includes(`@Reviewer (${names.jonas}'s agent), Which?`), `the question reaches Jonas's other agent: ${lines.join(' | ')}`);
+    assert.ok(!lines.some((line) => line.includes('they are not in this task')), lines.join(' | '));
+    const itself = await asked('Ask itself', '{"agent": "Planner", "owner": "' + names.jonas + '", "question": "Which?"}');
+    await waitFor(async () => (await readTask(itself.task.id)).owner?.kind === 'human', 'the task to go back to Ada');
+    assert.ok((await thread(itself.task.id)).includes(`I can't ask Planner (${names.jonas}'s agent): they are not in this task. This needs a person.`), 'an agent is not offered itself');
+    assert.deepEqual(await answerRuns(itself.task.id), []);
+  });
+});
+
+describe('an answer uses only what the task\'s people can all see (TA-4, #841, #924)', () => {
+  const tag = randomBytes(4).toString('hex');
+  const DM = `ta4dm${tag}`; const PRIVATE_MAP = `ta4private${tag}`; const ELSEWHERE = `ta4elsewhere${tag}`; const SHARED = `ta4shared${tag}`;
+
+  test('a private map, a DM and a space the others are not in reach neither the provider nor the answer\'s tools; what everyone sees does', async () => {
+    const scene = await assistantScene('ta4');
+    const { owner, peer, ws, place, agentId, lead } = scene;
+    const post = async (who: Person, path: string, body: unknown) => expectStatus(await who.browser.request('POST', path, { body }), 201) as { id: string };
+    // Everything the answering owner (Ada) can read that the other people of the task (Jonas) cannot.
+    const elsewhere = await createProject(lead, ws.id, 'Ada elsewhere', 'restricted');
+    await grant(lead, elsewhere.id, owner, 'manager');
+    const elsewhereDoc = await post(owner, `/api/v1/projects/${elsewhere.id}/docs`, { title: 'Elsewhere', body: ELSEWHERE });
+    const privateMap = await post(owner, `/api/v1/workspaces/${ws.id}/sketches`, { title: PRIVATE_MAP, scope: 'private' });
+    await post(owner, `/api/v1/sketches/${privateMap.id}/thoughts`, { text: PRIVATE_MAP, x: 0, y: 0 });
+    const opened = await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/dms`, { body: { participantIds: [lead.id] } });
+    assert.ok(opened.status === 201 || opened.status === 200, `open DM: ${opened.status}`);
+    await post(owner, `/api/v1/dms/${(opened.json as { id: string }).id}/messages`, { body: DM, clientMessageId: randomUUID() });
+    // What the task's people share.
+    await post(owner, `/api/v1/projects/${place.id}/docs`, { title: 'Shared reading', body: `The 0.82 V reading means full. ${SHARED}` });
+    const task = await scene.task(owner, 'Which reading means full?');
+    await post(peer, taskDiscussionPath(task.id), { body: 'I need the reading', clientMessageId: randomUUID() });
+    const talk = expectStatus(await owner.browser.request('GET', taskDiscussionPath(task.id)), 200) as TaskDiscussion;
+    const started = await db.transaction((tx) => scene.runs.startTask(personalRunPorts(tx, scene.queue.factory), { kind: 'task_answer', ownerUserId: owner.id, agentId, workId: task.id,
+      projectId: place.id, conversationId: talk.conversationId!, prompt: 'Which reading means full?', clientRunId: randomUUID(), exchangeTurn: 1, audience: [owner.id, peer.id] }));
+    assert.ok(started.started, JSON.stringify(started));
+    scene.compute.dispatched = [];
+    scene.compute.respond = async () => scene.compute.dispatched.length === 1
+      ? { kind: 'completed', text: 'looking', stopReason: 'tool_use', usage: { inputTokens: 800, outputTokens: 40 }, toolCalls: [
+        { id: 's1', name: 'flux_search_project', input: { projectId: place.id, q: 'reading' } },
+        { id: 's2', name: 'flux_search_project', input: { projectId: place.id, q: 'ta4' } },
+        { id: 's3', name: 'flux_list_maps', input: { projectId: place.id } },
+        { id: 's4', name: 'flux_get_doc', input: { projectId: elsewhere.id, id: elsewhereDoc.id } },
+        { id: 's5', name: 'flux_list_contexts', input: {} },
+      ] }
+      : { kind: 'completed', text: '0.82 V means full.', stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 40 } };
+    assert.equal(await scene.processor.process(started.run.id), 'completed');
+    const sent = JSON.stringify(scene.compute.dispatched);
+    for (const canary of [DM, PRIVATE_MAP, ELSEWHERE]) assert.ok(!sent.includes(canary), `${canary} never reaches the provider`);
+    assert.ok(sent.includes(SHARED), 'control: what every person of the task can see is read');
+    const tools = (scene.compute.dispatched[0]?.tools ?? []).map((tool) => tool.name);
+    assert.ok(tools.length > 0 && tools.every((name) => !/create|update|delete|apply|undo/.test(name)), `an answer reads only: ${tools.join(', ')}`);
   });
 });
