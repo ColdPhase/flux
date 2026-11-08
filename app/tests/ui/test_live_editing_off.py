@@ -51,8 +51,9 @@ class LiveEditingOffJourney(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self, service_workers: str = "allow") -> tuple[Page, list[str]]:
-        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, color_scheme="light", storage_state=self.state, service_workers=service_workers)
+    def page(self) -> tuple[Page, list[str]]:
+        # A request a service worker handles cannot be held by a route (#271), and test_02c holds one.
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, color_scheme="light", storage_state=self.state, service_workers="block")
         self.addCleanup(context.close)
         page = context.new_page()
         errors: list[str] = []
@@ -131,9 +132,8 @@ class LiveEditingOffJourney(unittest.TestCase):
     def test_02c_closing_the_tab_during_a_save_still_saves_the_newer_text(self) -> None:
         # #946 review round 2: a closing tab never starts a save that waits behind the running one, so the newer text
         # goes at once with keepalive. The first save reaches the server and makes its version, but its answer is held
-        # (the save is still running in the page) when the tab closes. A request a service worker handles cannot be held
-        # by the test (WebKit), so this tab runs without one.
-        page, _ = self.page(service_workers="block")
+        # (the save is still running in the page) when the tab closes.
+        page, _ = self.page()
         page.goto(self.doc_url)
         text = page.locator('.cm-content[aria-label="Page text"]')
         expect(text).to_have_attribute("contenteditable", "true")

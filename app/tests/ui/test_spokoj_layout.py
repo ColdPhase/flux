@@ -187,8 +187,11 @@ class SpokojLayout(unittest.TestCase):
                 self.assertLessEqual(head["x"], panel["x"] + 1)
                 self.assertGreaterEqual(head["x"] + head["width"], panel["x"] + panel["width"] - 1)
                 self.assertGreaterEqual(panel["y"], head["y"] + head["height"] - 1, "the panel opens under the header")
-                # Moving between the views with the panel open moves nothing in the header.
+                # Moving between the views with the panel open moves nothing in the header. The Wiki keeps two columns, so a
+                # panel opens over its page there instead (#869), checked below.
                 for path, name in zip(VIEWS[1:], VIEW_NAMES[1:]):
+                    if path == "/docs":
+                        continue
                     page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile(f"^{name}")).click()
                     expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}{path}") + r"(\?|$|/)"))
                     page.wait_for_function(SETTLED)
@@ -197,6 +200,16 @@ class SpokojLayout(unittest.TestCase):
                 self.assert_same_place(closed, self.header_boxes(page), f"{size['width']} panel closed again")
                 if size is COMPUTER:
                     shot(page, "505-header-1440-panel-closed")
+                page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Wiki")).click()
+                expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}/docs") + r"(\?|$|/)"))
+                page.wait_for_function(SETTLED)
+                page.locator("header.top").get_by_role("button", name="More", exact=True).click()
+                page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
+                expect(page.locator(".ui-panel--overlay")).to_be_visible()
+                expect(page.locator(".ui-panel--docked")).to_have_count(0)
+                self.assert_same_place(closed, self.header_boxes(page), f"{size['width']} Wiki with the panel over the page")
+                page.keyboard.press("Escape")
+                expect(page.locator(".ui-panel--overlay")).to_have_count(0)
 
     def test_02_a_narrow_header_moves_the_people_and_together_into_more_and_keeps_the_views(self) -> None:
         for size in (NARROW, {"width": 901, "height": 800}):
