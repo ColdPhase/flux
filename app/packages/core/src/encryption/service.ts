@@ -19,7 +19,7 @@ import { openField } from './envelope.js';
 import { holderIdentity, holderPlace as place, holdersValid, recordTampering, SYSTEM, TamperSignal, zero, type Deks } from './holder-set.js';
 import { DecryptionFailedError } from './primitives.js';
 import type { KeyPin } from './pin.js';
-import { generateRecoveryCode, normalizeRecoveryCode } from './recovery.js';
+import { generateRecoveryCode, isPatternedRecoveryCode, normalizeRecoveryCode } from './recovery.js';
 import { typedSecret, unlockPassword } from './passwords.js';
 import { unlockedRows } from './seal-for.js';
 import type { DerivationSemaphore } from './semaphore.js';
@@ -269,7 +269,7 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       let ownCode: string | null = null;
       if (command.recoveryCode !== undefined) {
         ownCode = normalizeRecoveryCode(command.recoveryCode);
-        if (!ownCode || new Set(ownCode).size < 12) throw new InvalidInputError('That recovery code is not one Flux can use', 'RECOVERY_CODE_INVALID');
+        if (!ownCode || isPatternedRecoveryCode(ownCode)) throw new InvalidInputError('That recovery code is not one Flux can use', 'RECOVERY_CODE_INVALID');
       }
       const requireCompany = async (ports: EncryptionPorts, lock: boolean) => {
         if (companyId === null) return;
@@ -366,7 +366,8 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
     /**
      * `DELETE /api/v1/encrypted-spaces/:id`: erases the space and everything in it. An admin of the space may (its owner or admin), and so
      * may an owner or admin of the company it belongs to, who cannot read it (F-037, C-24). Anyone else gets a plain 404, as for a
-     * workspace they cannot see. The people who were in it see it gone at their next read.
+     * workspace they cannot see. The people who were in it hear of it, and only they: one event (so their open lists drop it at once)
+     * and one Inbox notice naming the space and who deleted it, both on the company, since the space itself is gone (#980).
      */
     async deleteSpace(principal: Principal, workspaceId: string): Promise<void> {
       person(principal);
@@ -378,7 +379,16 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
         const ofCompany = company ? await ports.rows.memberRole(company, principal.id, { lock: true }) : null;
         const allowed = own === 'owner' || own === 'admin' || ofCompany === 'owner' || ofCompany === 'admin';
         if (!allowed) throw new NotFoundError('Space', 'WORKSPACE_NOT_FOUND');
-        await ports.rows.eraseSpace(workspaceId);
+        // Who was in it and what it was called, read before it is gone.
+        const people = await ports.rows.memberIds(workspaceId);
+        const name = (await ports.rows.keys(workspaceId))?.name ?? 'A space';
+        const by = await ports.rows.userName(principal.id) ?? 'Someone';
+        const projects = await ports.rows.eraseSpace(workspaceId);
+        if (!company) return;
+        for (const projectId of projects) await ports.eventTo(principal, company, 'project.deleted.v1', projectId, {}, people.map((id) => `human:${id}`));
+        for (const userId of people) {
+          if (userId !== principal.id) await ports.rows.insertSecurityNotice({ userId, workspaceId: company, eventId: null, title: `${name} was deleted by ${by}` });
+        }
       });
       keys.forget(workspaceId);
     },

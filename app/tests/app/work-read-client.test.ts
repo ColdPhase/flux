@@ -20,8 +20,6 @@ function summary(open = 0): ProjectWorkSummary {
   return {
     projectId: scope.projectId, observedAt: `2026-10-01T00:00:${String(open).padStart(2, '0')}.000000Z`, access: 'contributor',
     all: { ...counts }, mine: { ...counts }, workTotal: open, unfinishedTotal: open,
-    state: { rule: null, proposal: null, active: { count: 0, first: null, owners: [], ownerTotal: 0 }, blocked: { count: 0, first: null }, open: { count: open, first: open ? { kind: 'work', id: 'first-open', title: 'Open native work' } : null },
-      history: { completed: 0, notPursued: 0, parked: 0, firstWork: open ? { kind: 'work', id: 'first-open', title: 'Open native work' } : null, decisionCount: 0, firstDecision: null }, result: null },
   };
 }
 function page(open = 0): ProjectWorkView {

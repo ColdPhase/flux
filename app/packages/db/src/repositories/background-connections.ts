@@ -1,9 +1,10 @@
-import { and, desc, eq, isNull } from 'drizzle-orm';
+import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { AiPrice, BackgroundComputeConnection } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 import { apiKeySpendToday } from './api-key-spend.js';
 import { lockAssistantOwner } from './assistant-lock.js';
+import { companyGuestSql } from './access.js';
 
 const c = schema.backgroundComputeConnections;
 const settings = schema.assistantSettings;
@@ -54,8 +55,9 @@ export function backgroundConnectionRepository(db: Database) {
         return metadata(tx, row!);
       });
     },
+    /** A guest of the company sees none of their keys and changes none: they are kept, hidden and refused until they are a member again (AG-2, C-50). */
     async list(ownerUserId: string): Promise<BackgroundComputeConnection[]> {
-      const rows = await db.select().from(c).where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt)))
+      const rows = await db.select().from(c).where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), sql`NOT ${companyGuestSql(sql`${ownerUserId}`)}`))
         .orderBy(desc(c.createdAt), desc(c.id));
       return Promise.all(rows.map((row) => metadata(db, row)));
     },
@@ -71,7 +73,7 @@ export function backgroundConnectionRepository(db: Database) {
         await tx.select({ id: schema.authUsers.id }).from(schema.authUsers)
           .where(eq(schema.authUsers.id, ownerUserId)).for('update');
         const [target] = await tx.select({ id: c.id }).from(c)
-          .where(and(eq(c.id, connectionId), eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt))).for('update');
+          .where(and(eq(c.id, connectionId), eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), sql`NOT ${companyGuestSql(sql`${ownerUserId}`)}`)).for('update');
         if (!target) return null;
         if (guard) {
           const rows = await tx.select({ model: settings.model }).from(settings)
@@ -88,7 +90,7 @@ export function backgroundConnectionRepository(db: Database) {
         await tx.select({ id: schema.authUsers.id }).from(schema.authUsers)
           .where(eq(schema.authUsers.id, ownerUserId)).for('update');
         const [row] = await tx.update(c).set({ encryptedKey: null, revokedAt: new Date() })
-          .where(and(eq(c.id, connectionId), eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt)))
+          .where(and(eq(c.id, connectionId), eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), sql`NOT ${companyGuestSql(sql`${ownerUserId}`)}`))
           .returning({ id: c.id });
         return Boolean(row);
       });

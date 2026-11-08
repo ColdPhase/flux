@@ -204,7 +204,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       assert.notEqual(String(twin.id), id.task);
       const none = await ben.browser.request('GET', `/api/v1/projects/${id.project}/work-view?purpose=choices&choice=open_work&q=${encodeURIComponent('no such words %_')}`);
       assert.deepEqual((none.json as { items: unknown[] }).items, [], `${side}: % and _ stay literal`);
-      const since = await ben.browser.request('GET', `/api/v1/return?place=project&id=${id.project}&from=24h&scope=all`);
+      const since = await ben.browser.request('GET', `/api/v1/return?place=project&id=${id.project}`);
       expectStatus(since, 200, `${side}: Since-you-left`);
       assert.ok(since.text.includes(c.taskRename), `${side}: Since-you-left shows the task title`);
       const notices = await ben.browser.request('GET', `/api/v1/projects/${id.project}/task-notices`);
@@ -399,9 +399,11 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
 
   test('while A is locked, cross-workspace reads skip it and name it (lockedWorkspaces); B\'s items stay; A\'s own routes answer 423 (S2a-2c)', async () => {
     assert.ok((await ben.browser.request('GET', '/api/v1/needs-you')).text.includes(ids.A.project), 'unlocked, Needs you holds A\'s mention');
+    // Home's return reads from the saved point: one at the start of Ben's audience makes it list everything there is.
+    expectStatus(await ben.browser.request('PUT', '/api/v1/return-points', { body: { place: { type: 'home' }, mark: null } }), 200);
     expectStatus(await lock(ada.browser, A), 200);
     try {
-      for (const path of ['/api/v1/inbox', '/api/v1/needs-you', '/api/v1/return?place=home&from=7d&scope=all', `/api/v1/search?q=${encodeURIComponent(canaries.B.project.slice(0, 20))}`]) {
+      for (const path of ['/api/v1/inbox', '/api/v1/needs-you', '/api/v1/return?place=home', `/api/v1/search?q=${encodeURIComponent(canaries.B.project.slice(0, 20))}`]) {
         const answer = await ben.browser.request('GET', path);
         assert.equal(answer.status, 200, `${path}: ${answer.text.slice(0, 200)}`);
         const json = answer.json as { lockedWorkspaces?: { id: string; name: string }[]; items?: { source?: { workspaceId?: string } }[] };
@@ -416,14 +418,13 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       assert.equal(needs.count, needs.items.length, 'the Needs you count leaves A out');
       // #717 review P2-1/P2-2: no trace of A's places anywhere in an answer (a mention's url, Return's digest, next step).
       const traces = [A, ids.A.project, ids.A.conversation, ids.A.dm, ids.A.decision, ids.A.result, ids.A.task];
-      for (const path of ['/api/v1/needs-you', '/api/v1/inbox', '/api/v1/return?place=home&from=7d&scope=all', '/api/v1/return?place=home&from=7d&scope=all&digest=1',
-        '/api/v1/return?place=home&from=7d&scope=mine&digest=1']) {
+      for (const path of ['/api/v1/needs-you', '/api/v1/inbox', '/api/v1/return?place=home']) {
         const text = (await ben.browser.request('GET', path)).text;
         const found = traces.filter((id) => text.replace(`"id":"${A}"`, '').includes(id));
         assert.deepEqual(found, [], `${path}: no id of A beyond lockedWorkspaces`);
       }
       for (const place of [`place=project&id=${ids.A.project}`, `place=conversation&id=${ids.A.conversation}`]) {
-        assert.equal((await ben.browser.request('GET', `/api/v1/return?${place}&from=7d&scope=all&digest=1`)).status, 423, `Return ${place} stays 423`);
+        assert.equal((await ben.browser.request('GET', `/api/v1/return?${place}`)).status, 423, `Return ${place} stays 423`);
       }
       assert.equal((await ben.browser.request('GET', `/api/v1/projects/${ids.A.project}`)).status, 423, 'A\'s own routes answer 423');
     } finally {

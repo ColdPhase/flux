@@ -4,7 +4,7 @@ import type { AgentConnection, ExternalClientDesignation } from '@flux/contracts
 // Structural adapter output avoids the current core/db build cycle; core owns the port.
 type AgentOauthGrant = { referenceId: string; clientId: string | null; connection: AgentConnection };
 import * as schema from '../schema.js';
-import { isCompanyGuest } from './access.js';
+import { companyGuestSql, isCompanyGuest } from './access.js';
 import { idpStandingRepository } from './idp-standing.js';
 import type { createDatabase } from '../index.js';
 import type { DbExecutor } from './push.js';
@@ -70,6 +70,8 @@ export function agentConnectionRepository(db: Database) {
     if (!agent) return null;
     // C-22: a client lives only while its owner is a member of the company and not a guest of it. Someone removed or made a guest
     // gets no token, no refresh and no sign-in without a page, whatever the connection row still says. Nothing is revoked.
+    // The company's membership row is read before the connection's own workspace's, the order a change to guest takes them in (#1003).
+    const guestOfCompany = await isCompanyGuest(tx, ownerUserId, { lock: true });
     const [member] = await tx.select({ company: schema.workspaces.company }).from(schema.workspaceMembers)
       .innerJoin(schema.workspaces, eq(schema.workspaces.id, schema.workspaceMembers.workspaceId)).where(and(
         eq(schema.workspaceMembers.workspaceId, row.workspaceId), eq(schema.workspaceMembers.userId, ownerUserId),
@@ -77,7 +79,7 @@ export function agentConnectionRepository(db: Database) {
     if (!member) return null;
     // A role in the connection's own workspace is not the company's (an encrypted space is another workspace): a guest of the
     // company has no AI wherever else they are a member (AG-2, #978).
-    if (!member.company && await isCompanyGuest(tx, ownerUserId, { lock: true })) return null;
+    if (guestOfCompany) return null;
     return serializeConnection(row);
   };
 
@@ -100,9 +102,10 @@ export function agentConnectionRepository(db: Database) {
   };
 
   return {
+    /** A guest of the company sees none of their clients and changes none: they are kept, hidden and refused until they are a member again (C-22, C-50). */
     list(ownerUserId: string): Promise<AgentConnection[]> {
       return db.transaction(async (tx) => (await tx.select().from(schema.agentConnections)
-        .where(eq(schema.agentConnections.ownerUserId, ownerUserId))
+        .where(and(eq(schema.agentConnections.ownerUserId, ownerUserId), sql`NOT ${companyGuestSql(sql`${ownerUserId}`)}`))
         .orderBy(desc(schema.agentConnections.createdAt), desc(schema.agentConnections.id))).map(serializeConnection));
     },
 
@@ -115,7 +118,7 @@ export function agentConnectionRepository(db: Database) {
         const revoked = await tx.update(schema.agentConnections)
           .set({ revokedAt: new Date(), updatedAt: new Date() })
           .where(and(eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId),
-            isNull(schema.agentConnections.revokedAt))).returning({ id: schema.agentConnections.id });
+            isNull(schema.agentConnections.revokedAt), sql`NOT ${companyGuestSql(sql`${ownerUserId}`)}`)).returning({ id: schema.agentConnections.id });
         if (!revoked.length) return false;
         await closeWaitingChanges(tx, [connectionId]);
         return true;
@@ -156,7 +159,7 @@ export function agentConnectionRepository(db: Database) {
       return db.transaction(async (tx) => {
         const [row] = await tx.update(schema.agentConnections).set({ mayDo, updatedAt: new Date() })
           .where(and(eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId),
-            isNull(schema.agentConnections.revokedAt))).returning();
+            isNull(schema.agentConnections.revokedAt), sql`NOT ${companyGuestSql(sql`${ownerUserId}`)}`)).returning();
         return row ? serializeConnection(row) : null;
       });
     },

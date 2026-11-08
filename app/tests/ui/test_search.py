@@ -587,6 +587,8 @@ class SearchJourney(unittest.TestCase):
         for index in range(2, 26):
             self.api(ari, "POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": f"Lantern {index} for the shelf", "clientMessageId": str(uuid.uuid4())}, status=201)
         self.api(ari, "POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": "A quincunx of lanterns", "clientMessageId": str(uuid.uuid4())}, status=201)
+        for index in range(1, 21):
+            self.api(ari, "POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": f"Pennant {index} for the mast", "clientMessageId": str(uuid.uuid4())}, status=201)
         for phone in (False, True):
             with self.subTest(phone=phone):
                 page = self.page("ari", phone=phone)
@@ -605,6 +607,21 @@ class SearchJourney(unittest.TestCase):
                 expect(dialog.locator("p.ui-vh[role=status]")).to_have_text("20+ results")
                 if not phone:
                     shot(page, "search-more-than-twenty-desktop-1440")
+                # The line stays while the next answer loads, so the dialog's bottom edge does not move on a keystroke (#1003).
+                settled_box = dialog.bounding_box()
+                held: list = []
+                page.route("**/api/v1/search?*", lambda route: held.append(route))
+                field.fill("lantern shelf")
+                expect(dialog.locator("p.ui-vh[role=status]")).to_have_text("Searching…")
+                expect(line).to_have_text("Showing 20 \u00b7 type more words to narrow")
+                self.assertEqual(dialog.bounding_box(), settled_box, "the dialog did not change size while it searched")
+                page.unroute("**/api/v1/search?*")
+                for route in held:
+                    route.continue_()
+                expect(dialog.locator("p.ui-vh[role=status]")).not_to_have_text("Searching…")
+                expect(dialog.get_by_role("option")).to_have_count(20)
+                expect(line).to_have_text("Showing 20 \u00b7 type more words to narrow")
+                self.assertEqual(dialog.bounding_box(), settled_box, "nor when it was answered")
                 # Text that matches nothing has no such line.
                 field.fill("qzxvw")
                 expect(dialog.locator(".jump__none")).to_be_visible()
@@ -612,6 +629,11 @@ class SearchJourney(unittest.TestCase):
                 # A search with a few results has none either.
                 field.fill("quincunx")
                 expect(dialog.get_by_role("option")).to_have_count(1)
+                expect(line).to_have_count(0)
+                # Exactly twenty is all of them: twenty rows, "20 results", and no line about more (#1003).
+                field.fill("pennant")
+                expect(dialog.get_by_role("option")).to_have_count(20)
+                expect(dialog.locator("p.ui-vh[role=status]")).to_have_text("20 results")
                 expect(line).to_have_count(0)
 
 

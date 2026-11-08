@@ -18,25 +18,10 @@ export type ReturnPlace =
   | { type: 'project'; id: string }
   | { type: 'conversation'; id: string };
 
-/** Whose changes: everything in the place, or only what concerns the reader (#133). */
-export type ReturnScope = 'all' | 'mine';
-/** Where the summary starts: the saved return point, or a fixed period before now (#133). */
-export type ReturnPeriod = 'last-visit' | '24h' | '7d';
-
-/**
- * Query of `GET /api/v1/return`: `place=home`, or `place=project|conversation&id=<uuid>`.
- * Optional (#133): `scope` (default `all`), `from` (default `last-visit`), `until=<mark>` to keep
- * the snapshot the reader is looking at, and `digest=1` for the sourced conversation digest.
- */
+/** Query of `GET /api/v1/return`: `place=home`, or `place=project|conversation&id=<uuid>`. It always starts at the saved return point. */
 export interface ReturnSummaryQuery {
   place: ReturnPlace['type'];
   id?: string;
-  scope?: ReturnScope;
-  from?: ReturnPeriod;
-  until?: string;
-  digest?: '1' | '0';
-  /** '1' (What matters, CW-3): also what happened in the project before the reader had access, within the period. */
-  history?: '1' | '0';
 }
 
 /** `PUT /api/v1/return-points`: saves the point after the person viewed the place. */
@@ -101,34 +86,6 @@ export interface ReturnNextStep {
   dueOn?: string;
 }
 
-/** One quoted message of the digest; it opens at the message. */
-export interface ReturnQuote {
-  messageId: string;
-  author: string;
-  /** The first line of the message, shortened. */
-  excerpt: string;
-  at: string;
-}
-
-/**
- * "Summarize" (#133): the latest statements per conversation and the results recorded in the
- * summary's period and scope. Deterministic and sourced: quotes of whole messages, no model.
- */
-export interface ReturnDigest {
-  conversations: {
-    conversationId: string;
-    projectId: string;
-    opening: string;
-    /** Oldest first, at most three per conversation. */
-    quotes: ReturnQuote[];
-    /** How many more messages of the period are not quoted. */
-    more: number;
-  }[];
-  results: { id: string; projectId: string; title: string; finding: 'positive' | 'negative'; author: string; at: string }[];
-  /** Messages in the period that the digest covers. */
-  messages: number;
-}
-
 export interface ReturnSummary {
   /**
    * F-030: the caller's encrypted workspaces that are locked on this server; their items are left out, and the page
@@ -137,15 +94,8 @@ export interface ReturnSummary {
   lockedWorkspaces?: LockedWorkspaceRef[];
   place: ReturnPlace;
   point: ReturnPoint;
-  scope: ReturnScope;
-  period: ReturnPeriod;
-  /** Where this summary starts: the return point's time, or the start of the chosen period; null from the beginning. */
+  /** Where this summary starts: the return point's time; null from the beginning. */
   since: string | null;
-  /**
-   * CW-3: present when the summary also shows what happened in the project before the reader had access (a newcomer's
-   * first look, or a period reaching back before they joined). Items older than this are "Before you joined".
-   */
-  joinedAt?: string;
   /** Opaque: pass it to `PUT /api/v1/return-points` once the person has seen this summary. */
   mark: string | null;
   /** Newest first, at most 40 items. */
@@ -155,6 +105,4 @@ export interface ReturnSummary {
   /** More visible changes happened than `items` shows. */
   more: boolean;
   nextStep: ReturnNextStep | null;
-  /** Present when `digest=1` was asked for. */
-  digest?: ReturnDigest;
 }

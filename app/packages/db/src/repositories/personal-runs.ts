@@ -8,6 +8,7 @@ import type { DbExecutor } from './push.js';
 import { personalRunWebReadRows } from './personal-run-web-reads.js';
 import { apiKeySpendToday } from './api-key-spend.js';
 import { lockAssistantOwner } from './assistant-lock.js';
+import { companyGuestSql } from './access.js';
 
 /**
  * Drizzle rows for personal assistant runs (issue #68, O-008): enablements, their per-workspace
@@ -71,13 +72,14 @@ export function personalRunRows(db: DbExecutor) {
   /**
    * The AI setup of one of the owner's agents: the one named, else their first (Assistant, which answers `/ai`). A deleted agent has
    * none. `lock` takes the owner's lock (above) and then holds the agent's row until the unit of work ends, so the owner's requests
-   * to their agents are serialized; the caller takes the task-graph lock after this call, never before.
+   * to their agents are serialized; the caller takes the task-graph lock after this call, never before. A guest of the company has none:
+   * their agents are kept but refused until they are a member again (AG-2, C-50).
    */
   async function enablement(ownerUserId: string, options: { lock?: boolean; agentId?: string; workspaceId?: string } = {}) {
     if (options.lock) await lockOwner(ownerUserId);
     const query = db.select({ row: e }).from(e).innerJoin(ag, eq(ag.id, e.agentId))
       .where(and(eq(e.ownerUserId, ownerUserId), isNull(ag.revokedAt), options.agentId ? eq(e.agentId, options.agentId) : undefined,
-        options.workspaceId ? eq(e.workspaceId, options.workspaceId) : undefined))
+        options.workspaceId ? eq(e.workspaceId, options.workspaceId) : undefined, sql`NOT ${companyGuestSql(e.ownerUserId)}`))
       .orderBy(asc(e.createdAt), asc(e.agentId)).limit(1);
     const [found] = options.lock ? await query.for('update', { of: e }) : await query;
     if (!found) return null;
@@ -283,10 +285,11 @@ export function personalRunRows(db: DbExecutor) {
 
     /**
      * The owner's runs, newest first; `place` narrows them to one (#842): a conversation, a space's main conversation, a DM's main line, one of
-     * its threads (#1016) or one agent's chat.
+     * its threads (#1016) or one agent's chat. A guest of the company has none to see: their runs are kept and listed again when they are a
+     * member again (C-50).
      */
     listOwnRuns: (ownerUserId: string, window: Window, place?: { conversationId: string } | { spaceId: string } | { dmId: string; dmThreadRootId: string | null } | { chatAgentId: string }) =>
-      pagedRuns(and(eq(r.ownerUserId, ownerUserId), !place ? undefined
+      pagedRuns(and(eq(r.ownerUserId, ownerUserId), sql`NOT ${companyGuestSql(sql`${ownerUserId}`)}`, !place ? undefined
         : 'conversationId' in place ? eq(r.conversationId, place.conversationId)
           : 'spaceId' in place ? and(eq(r.projectId, place.spaceId), isNull(r.conversationId))
             : 'dmId' in place ? and(eq(r.dmId, place.dmId), place.dmThreadRootId === null ? isNull(r.dmThreadRootId) : eq(r.dmThreadRootId, place.dmThreadRootId))
@@ -409,7 +412,7 @@ export function personalRunRows(db: DbExecutor) {
             (SELECT max(p.completed_at) FROM personal_runs p WHERE p.agent_id = s.agent_id AND p.project_id IS NULL AND p.dm_id IS NULL AND p.kind = 'ask')) AS last_at
         FROM assistant_settings s JOIN agents a ON a.id = s.agent_id AND a.revoked_at IS NULL
         LEFT JOIN agent_chat_reads r ON r.agent_id = s.agent_id
-        WHERE s.owner_user_id = ${ownerUserId} ORDER BY s.created_at, s.agent_id`);
+        WHERE s.owner_user_id = ${ownerUserId} AND NOT ${companyGuestSql(sql`${ownerUserId}`)} ORDER BY s.created_at, s.agent_id`);
       return (rows.rows as { agent_id: string; unread: number; last_at: Date | string | null }[])
         .map((row) => ({ agentId: row.agent_id, unread: Number(row.unread), lastAt: row.last_at ? new Date(row.last_at).toISOString() : null }));
     },

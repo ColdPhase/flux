@@ -374,6 +374,9 @@ export function workspaceEncryptionRows(db: DbExecutor) {
       await db.execute(sql`DELETE FROM workspaces WHERE id = ${workspaceId}`);
       return projects;
     },
+    async memberIds(workspaceId: string): Promise<string[]> {
+      return (await rowsOf<{ userId: string }>(db, sql`SELECT user_id AS "userId" FROM workspace_members WHERE workspace_id = ${workspaceId} ORDER BY user_id`)).map((row) => row.userId);
+    },
     async userName(userId: string): Promise<string | null> {
       const [row] = await rowsOf<{ name: string }>(db, sql`SELECT name FROM auth_users WHERE id = ${userId}`);
       return row?.name ?? null;

@@ -358,6 +358,59 @@ class PrivateAiJourney(unittest.TestCase):
                                            headers={"origin": ORIGIN, "content-type": "application/json"},
                                            data=json.dumps({"clientRunId": str(uuid.uuid4()), "kind": "ask", "prompt": "x"})).status, 409)
 
+    def test_06c_a_guest_sees_no_ask_bar_or_ai_hint_in_a_conversation_a_task_or_a_direct_message_on_either_device(self) -> None:
+        # #1034: nothing of `/ai` for a guest, anywhere they talk: the space's conversation, a thread, a task's thread and a direct message.
+        dm = self.api(self.page("jo"), "POST", f"/api/v1/workspaces/{self.ids['workspace']}/dms", {"participantIds": [LEE["id"]]}, status=201)
+        ai_words = re.compile("Connect your AI|Ask your assistant|Ask your agent|Only you see the answer|Send to your assistant|My assistant|Meet your assistant")
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                lee = self.page("lee", phone=phone)
+                for address, field in ((f"/projects/{self.ids['project']}", "#project-composer"),
+                                       (f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}", "#thread-composer"), (f"/dm/{dm['id']}", "#dm-composer")):
+                    lee.goto(address)
+                    box = lee.locator(field)
+                    expect(box).to_be_visible()
+                    box.fill("/ai summarise this")
+                    expect(lee.locator("#project-ask, [data-asking]")).to_have_count(0)
+                    expect(lee.get_by_text(ai_words)).to_have_count(0)
+                    expect(lee.get_by_role("button", name=re.compile("Ask your|Send to your assistant"))).to_have_count(0)
+                    expect(lee.locator("[data-ai-surface], .assistant-private, .assistant-working")).to_have_count(0)
+                    if field != "#dm-composer":
+                        # Neither menu offers AI: not `/ai` or `/handoff`, not "My assistant", no agent of anyone's.
+                        box.fill("/")
+                        expect(lee.locator('[role="option"]').filter(has_text="/task")).to_have_count(1)
+                        expect(lee.locator('[role="option"]').filter(has_text=re.compile("/ai|/handoff"))).to_have_count(0)
+                        box.fill("@")
+                        expect(lee.locator('[role="option"]').filter(has_text=re.compile("My assistant|Agent"))).to_have_count(0)
+                self.no_horizontal_scroll(lee)
+                # The task's thread: the same words are only words, and the line under the box does not promise a private answer.
+                lee.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['work']}")
+                task_box = lee.get_by_label(re.compile("Write to this task|First message about this task"))
+                expect(task_box).to_be_visible()
+                task_box.fill("/ai where is this task?")
+                expect(lee.get_by_text(ai_words)).to_have_count(0)
+                expect(lee.locator(".assistant-private, .assistant-working")).to_have_count(0)
+                expect(lee.get_by_role("button", name=re.compile("Send to task|Start the discussion"))).to_be_visible()
+        # Messages lists no agent of hers.
+        desktop = self.page("lee")
+        desktop.goto("/")
+        expect(desktop.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        expect(desktop.locator("[data-agent]")).to_have_count(0)
+
+    def test_06d_a_member_made_a_guest_loses_the_ask_bar_without_a_reload(self) -> None:
+        # #1034: the shell reads the role again when it changes, so the bar of someone made a guest goes at once instead of staying until a reload.
+        kai = self.thread("kai")
+        kai.locator("#thread-composer").fill("/ai what did we decide?")
+        expect(kai.locator("#project-ask")).to_be_visible()
+        jo = self.page("jo")
+        members = f"/api/v1/workspaces/{self.ids['workspace']}/members/{KAI['id']}"
+        self.api(jo, "PATCH", members, {"role": "guest"}, status=200)
+        try:
+            expect(kai.locator("#project-ask")).to_have_count(0, timeout=15000)
+            expect(kai.get_by_text(re.compile("Connect your AI|Ask your assistant"))).to_have_count(0)
+        finally:
+            self.api(jo, "PATCH", members, {"role": "member"}, status=200)
+
     def test_06b_someone_outside_the_audience_cannot_ask_in_a_place_they_cannot_read(self) -> None:
         # Mia is in the company but in neither the space nor the direct message: no door of `/ai` opens for her, whatever agent she has.
         mia = self.page("mia")

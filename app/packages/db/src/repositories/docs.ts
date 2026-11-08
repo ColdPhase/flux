@@ -103,16 +103,6 @@ export function docRows(db: DbExecutor) {
 
     list: (projectId: string, window: Window) => paged(and(eq(m.projectId, projectId), eq(m.kind, 'doc'))!, window),
 
-    /** Docs of the workspace in projects matching `visibleProjects` (a condition over `projects`). */
-    // F-030 (AC-6): a locked encrypted workspace answers 423 even when the page would be empty.
-    listVisible: async (workspaceId: string, visibleProjects: SQL, window: Window) => {
-      await sealOf(db, workspaceId, { write: false });
-      return paged(and(
-        eq(m.workspaceId, workspaceId), eq(m.kind, 'doc'),
-        sql`${m.projectId} IN (SELECT ${p.id} FROM ${p} WHERE ${visibleProjects})`,
-      )!, window);
-    },
-
     find,
 
     async version(id: string, version: number) {

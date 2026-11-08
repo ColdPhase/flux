@@ -76,6 +76,16 @@ describe('return view: since you left', () => {
     assert.equal((conversation.json as { code: string }).code, 'CONVERSATION_NOT_FOUND');
   });
 
+  test('the summary reads a place and nothing else: the recap options of #133 are gone (#962)', async () => {
+    const plain = await summary(nia, { type: 'project', id: lamp.id });
+    for (const gone of ['scope', 'period', 'digest', 'joinedAt']) assert.equal(gone in plain, false, gone);
+    // A request that still sends them is answered as if it had not: they are not read, so they change nothing.
+    for (const extra of ['scope=mine', 'from=7d', 'until=' + randomUUID(), 'digest=1', 'history=1']) {
+      const same = json<ReturnSummary>(await nia.browser.request('GET', `/api/v1/return?place=project&id=${lamp.id}&${extra}`), 200, extra);
+      assert.deepEqual(same, plain, extra);
+    }
+  });
+
   test('changes are grouped in human language, each links to its source, and one next step has a reason', async () => {
     const reply = json<{ id: string }>(await post(ari, `/api/v1/conversations/${thread.id}/messages`,
       { body: 'Nia, can you check the camera at 5 lux before Friday?', clientMessageId: randomUUID() }), 201);
@@ -360,32 +370,5 @@ describe('return view: a task that became yours while you were away (#763 H11-5)
     const later = await summary(marta, place);
     assert.deepEqual(texts(later.items), ['New task: Print flyers']);
     assert.equal(later.nextStep, null);
-  });
-});
-
-// CW-3 (#763 connected work flow): a person's own rows start when they get access, so "What matters" also reads what the
-// project did before a newcomer joined, when it asks for that history, under what the newcomer can read now.
-describe('what matters for a newcomer', () => {
-  test('a newcomer sees the week before they joined as history, and only what they can open', async () => {
-    const [ola, lena] = await Promise.all(['Ola', 'Lena'].map(person));
-    const kitchen = await workspace(ola, 'Kitchen');
-    await addMember(ola, kitchen.id, lena, 'member');
-    const pickup = await createProject(ola, kitchen.id, 'Meal box pickup', 'restricted');
-    const talk = json<Conversation>(await post(ola, `/api/v1/projects/${pickup.id}/conversations`, { body: 'How should people pick up meal boxes?', clientMessageId: randomUUID() }), 201);
-    json<WorkItem>(await post(ola, `/api/v1/projects/${pickup.id}/work`, { title: 'Write the SMS text' }), 201, 'task before Lena joined');
-    // Lena joins after that; the project's earlier events are not in her own rows.
-    await grant(ola, pickup.id, lena, 'contributor');
-    await say(ola, talk.id, 'Welcome, Lena.');
-    const plain = await summary(lena, { type: 'project', id: pickup.id });
-    assert.equal(plain.joinedAt, undefined, 'without history=1 the summary is the reader’s own feed, as before');
-    const recap = json<ReturnSummary>(await lena.browser.request('GET', `/api/v1/return?place=project&id=${pickup.id}&from=7d&history=1`), 200, 'recap');
-    assert.ok(recap.joinedAt, 'the summary says where her own feed starts');
-    const before = recap.items.filter((item) => Date.parse(item.at) < Date.parse(recap.joinedAt!));
-    assert.ok(before.some((item) => item.kind === 'work' && /Write the SMS text/.test(item.text)), 'the task from before she joined is listed');
-    // Someone who cannot read the project gets nothing of it, history or not.
-    const olek = await person('Olek2');
-    await addMember(ola, kitchen.id, olek, 'member');
-    const refused = await olek.browser.request('GET', `/api/v1/return?place=project&id=${pickup.id}&from=7d&history=1`);
-    assert.ok([403, 404].includes(refused.status), 'no access, no history');
   });
 });

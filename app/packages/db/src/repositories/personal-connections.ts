@@ -1,9 +1,10 @@
-import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { AiPrice, AiProviderKind } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 import { openBackgroundKey } from '../background-key-crypto.js';
 import { connectionPrice } from './background-connections.js';
+import { companyGuestSql } from './access.js';
 
 const c = schema.backgroundComputeConnections;
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'select'>;
@@ -36,13 +37,14 @@ const connectionOf = (row: Row): PersonalConnectionRow => ({
  * The production lookup of the assistant's connection (#68 "Switching production on" step 1, F-020
  * PROV-1): only `ownerUserId`'s own active connections with a stored key. A `connectionId` returns
  * exactly that one, never another; without one, the owner's newest (used only to describe enabling).
- * The key reference is the connection id; the key itself stays sealed here.
+ * The key reference is the connection id; the key itself stays sealed here. A guest of the company has none: their keys are kept but
+ * never found or used until they are a member again (AG-2, C-50).
  */
 export function personalConnectionLookup(db: Database) {
   return {
     async resolve(ownerUserId: string, connectionId?: string): Promise<PersonalConnectionRow | null> {
       const [row] = await db.select().from(c)
-        .where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), isNotNull(c.encryptedKey),
+        .where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), isNotNull(c.encryptedKey), sql`NOT ${companyGuestSql(c.ownerUserId)}`,
           ...(connectionId !== undefined ? [eq(c.id, connectionId)] : [])))
         .orderBy(desc(c.createdAt), desc(c.id)).limit(1);
       return row ? connectionOf(row) : null;
@@ -50,7 +52,7 @@ export function personalConnectionLookup(db: Database) {
     /** Every active key of the owner, in the order they were added (Connect AI's order, #854). */
     async list(ownerUserId: string): Promise<PersonalConnectionRow[]> {
       const rows = await db.select().from(c)
-        .where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), isNotNull(c.encryptedKey)))
+        .where(and(eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt), isNotNull(c.encryptedKey), sql`NOT ${companyGuestSql(c.ownerUserId)}`))
         .orderBy(asc(c.createdAt), asc(c.id));
       return rows.map(connectionOf);
     },
@@ -66,7 +68,7 @@ export function personalKeyResolver(db: Database, masterKey: Buffer | null) {
   return async (keyRef: string): Promise<string | null> => {
     if (!masterKey || !/^[0-9a-f-]{36}$/i.test(keyRef)) return null;
     const [row] = await db.select({ id: c.id, ownerUserId: c.ownerUserId, encryptedKey: c.encryptedKey }).from(c)
-      .where(and(eq(c.id, keyRef), isNull(c.revokedAt), isNotNull(c.encryptedKey)));
+      .where(and(eq(c.id, keyRef), isNull(c.revokedAt), isNotNull(c.encryptedKey), sql`NOT ${companyGuestSql(c.ownerUserId)}`));
     if (!row?.encryptedKey) return null;
     try { return openBackgroundKey(row.encryptedKey, row.ownerUserId, row.id, masterKey); } catch { return null; }
   };

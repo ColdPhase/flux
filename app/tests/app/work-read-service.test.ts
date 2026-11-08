@@ -22,9 +22,7 @@ const row = (rowId = id): WorkRowProjection => ({ kind: 'work', id: rowId, numbe
 const slice = <T>(items: T[], total = items.length, before = 0): WorkReadSlice<T> => ({ items: items.map((value, i) => ({ value, key: { rank: 0, createdAt: at, id: i ? otherId : id } })), total, before, hasBefore: before > 0, hasAfter: before + items.length < total });
 const summary = (): WorkSummaryObservation => ({ projectId, observedAt: at,
   all: { needs: 0, in_progress: 0, blocked: 0, open: 2, parked: 0, finished: 0, rules: 0, results: 0 },
-  mine: { needs: 0, in_progress: 0, blocked: 0, open: 0, parked: 0, finished: 0, rules: 0, results: 0 }, workTotal: 2, unfinishedTotal: 2,
-  state: { rule: null, proposal: null, active: { count: 0, first: null, owners: [], ownerTotal: 0 }, blocked: { count: 0, first: null }, open: { count: 2, first: { kind: 'work', id, title: 'Native work' } },
-    history: { completed: 0, notPursued: 0, parked: 0, firstWork: { kind: 'work', id, title: 'Native work' }, decisionCount: 0, firstDecision: null }, result: null } });
+  mine: { needs: 0, in_progress: 0, blocked: 0, open: 0, parked: 0, finished: 0, rules: 0, results: 0 }, workTotal: 2, unfinishedTotal: 2 });
 
 function harness(overrides: Partial<WorkReadRepository> = {}, fence?: WorkReadFinalFence) {
   const calls: string[] = [];
@@ -156,14 +154,13 @@ test('all required selectors reach the outside fence as the original normalized 
 });
 
 
-test('incoherent native open/history counts and absent refs fail closed before publication', async () => {
+test('incoherent native counts fail closed before publication', async () => {
   for (const corrupt of [
-    (v: WorkSummaryObservation) => { v.state.open.count = 1; },
-    (v: WorkSummaryObservation) => { v.state.open.first = null; },
-    (v: WorkSummaryObservation) => { v.state.history.completed = 1; },
-    (v: WorkSummaryObservation) => { v.state.history.parked = 1; },
-    (v: WorkSummaryObservation) => { v.state.history.firstWork = null; },
-    (v: WorkSummaryObservation) => { v.state.history.decisionCount = 1; },
+    (v: WorkSummaryObservation) => { v.workTotal = 3; },
+    (v: WorkSummaryObservation) => { v.unfinishedTotal = 1; },
+    (v: WorkSummaryObservation) => { v.mine.open = 3; },
+    (v: WorkSummaryObservation) => { v.all.parked = -1; },
+    (v: WorkSummaryObservation) => { v.mine.rules = 1; },
   ]) {
     const { reads, calls } = harness({ summary: async () => { const value = summary(); corrupt(value); return value; } });
     await assert.rejects(reads.summary(actor, projectId), (error: unknown) => error instanceof DomainError && error.code === 'WORK_READ_UNAVAILABLE');

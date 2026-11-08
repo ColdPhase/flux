@@ -288,6 +288,8 @@ function AppLayoutContent() {
     if (event.kind === 'project.doc_deleted.v1') { revalidator.revalidate(); return; }
     // Access was given or taken (#763 FT-8): Home, Projects and the sidebar list the person's projects again at once.
     if (event.kind === 'project.grant_set.v1' || event.kind === 'project.grant_revoked.v1') { revalidator.revalidate(); return; }
+    // Someone's company role changed: a member made a guest has no AI from that moment (AG-2, #1034), so the shell reads its role again at once.
+    if (event.kind === 'workspace.member_role_changed.v1') { revalidator.revalidate(); return; }
     // Someone saw a message (#534): only the open conversation shows it, and it asks for itself.
     if (event.objectType !== 'dm' || event.kind === 'dm.observed.v1') return;
     const known = directMessages.some((dm) => dm.id === event.objectId);

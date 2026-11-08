@@ -4,6 +4,7 @@ import { ASSISTANT_PLAN_MODELS, nextAgentColour, type AgentColour, type AgentMay
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 import { lockAssistantOwner } from './assistant-lock.js';
+import { companyGuestSql } from './access.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -24,7 +25,7 @@ export interface AgentSetup {
   provider: AiProviderKind;
   model: string | null;
 }
-export type AgentSetupChanges = Partial<Omit<AgentSetup, 'colour'>> & { colour?: AgentColour };
+export type AgentSetupChanges = Partial<Omit<AgentSetup, 'colour'>>;
 
 type Row = { s: typeof s.$inferSelect; name: string; mayDo: AgentMayDo };
 const planOf = (provider: AiProviderKind) => (provider === 'openai' ? 'codex' : 'claude_code') as 'claude_code' | 'codex';
@@ -42,10 +43,14 @@ function view(row: Row, first: string | undefined): MyAgent {
 
 /** Transaction-bound persistence of a person's agents. Their rights are their owner's; they have no grants, switches or project list. */
 export function assistantSettingsRows(tx: Transaction, authority: AssistantAuthority) {
-  /** The owner's live agents with a setup, oldest first: the first is Assistant (F-036 AG-1). */
+  /**
+   * The owner's live agents with a setup, oldest first: the first is Assistant (F-036 AG-1). A guest of the company has none to see or
+   * change: their agents are kept, hidden and refused until they are a member again (AG-2, C-50).
+   */
   const rows = async (ownerUserId: string, workspaceId?: string, lock = false): Promise<Row[]> => {
     const query = tx.select({ s, name: a.name, mayDo: k.mayDo }).from(s).innerJoin(a, eq(a.id, s.agentId)).innerJoin(k, eq(k.id, s.connectionId))
-      .where(and(eq(s.ownerUserId, ownerUserId), isNull(a.revokedAt), isNull(k.revokedAt), workspaceId ? eq(s.workspaceId, workspaceId) : undefined))
+      .where(and(eq(s.ownerUserId, ownerUserId), isNull(a.revokedAt), isNull(k.revokedAt), workspaceId ? eq(s.workspaceId, workspaceId) : undefined,
+        sql`NOT ${companyGuestSql(s.ownerUserId)}`))
       .orderBy(asc(s.createdAt), asc(s.agentId));
     return lock ? query.for('update', { of: s }) : query.for('share', { of: s });
   };

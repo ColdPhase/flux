@@ -25,17 +25,6 @@ function summaryFacts(value: WorkSummaryObservation, projectId: string, observed
   requireFact(value.mine.needs === value.all.needs && value.mine.rules === 0);
   requireFact(value.workTotal === value.all.in_progress + value.all.blocked + value.all.open + value.all.parked + value.all.finished);
   requireFact(value.unfinishedTotal === value.all.in_progress + value.all.blocked + value.all.open);
-  const active = value.state.active;
-  requireFact(active.count === value.all.in_progress && value.state.blocked.count === value.all.blocked);
-  requireFact(count(active.ownerTotal) && active.ownerTotal <= active.count && active.owners.length <= WORK_READ_LIMITS.owners && active.owners.length <= active.ownerTotal);
-  requireFact(new Set(active.owners.map((owner) => `${owner.kind}:${owner.id}`)).size === active.owners.length);
-  requireFact((active.count === 0) === (active.first === null) && (value.state.blocked.count === 0) === (value.state.blocked.first === null));
-  const { open, history } = value.state;
-  requireFact(open.count === value.all.open && (open.count === 0) === (open.first === null));
-  requireFact(count(history.completed) && count(history.notPursued) && count(history.parked) && count(history.decisionCount));
-  requireFact(history.completed + history.notPursued === value.all.finished && history.parked === value.all.parked);
-  requireFact(history.decisionCount >= value.all.rules && (history.decisionCount === 0) === (history.firstDecision === null));
-  requireFact((value.workTotal === 0) === (history.firstWork === null));
 }
 
 function rowFacts(rows: readonly NativeWorkRow[], projectId: string, workspaceId: string) {

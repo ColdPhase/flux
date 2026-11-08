@@ -106,7 +106,7 @@ describe('F-030 unlock, Lock now and 423', () => {
     const outsider = await person('Outsider');
     assert.equal((await contentCall(outsider.browser, A)).status, 404, 'a non-member learns nothing');
     // Cross-workspace reads skip the locked space and name it (S2a-2c `lockedWorkspaces`); others see no such list entry.
-    for (const path of ['/api/v1/inbox', '/api/v1/search?q=garden', '/api/v1/needs-you', '/api/v1/return?place=home&from=24h']) {
+    for (const path of ['/api/v1/inbox', '/api/v1/search?q=garden', '/api/v1/needs-you', '/api/v1/return?place=home']) {
       const answer = await cy.browser.request('GET', path);
       assert.equal(answer.status, 200, `${path}: ${answer.text}`);
       assert.deepEqual((answer.json as { lockedWorkspaces?: unknown }).lockedWorkspaces, [{ id: A, name: 'Garden club' }], path);

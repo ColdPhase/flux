@@ -149,12 +149,12 @@ export type TaskActivityRecord = TaskActivityDetail & {
   position: string;
   by: ActorRef;
   /** The change was made by a linked pull request's task rule on its author's behalf. */
-  automation: 'github_rule' | 'agent_rule' | null;
+  automation: 'github_rule' | 'agent_rule' | 'agent_deleted' | null;
 };
 /** Where an older page of activity starts: strictly before this entry in (time, id) order. */
 export interface TaskActivityPosition { position: string; id: string }
 /** Who a change is made by when it is a task rule acting for its author. */
-export type TaskChangeVia = 'github_rule' | 'agent_rule';
+export type TaskChangeVia = 'github_rule' | 'agent_rule' | 'agent_deleted';
 export type NewDecision = Pick<DecisionRecord, 'id' | 'workspaceId' | 'projectId' | 'title' | 'rationale' | 'proposedBy' | 'supersedesId'>;
 export type DecisionChanges = Partial<Pick<DecisionRecord, 'status' | 'decidedBy' | 'decidedAt' | 'supersededById' | 'supersededAt'>>;
 export type NewResult = Omit<ResultRecord, 'createdAt'>;

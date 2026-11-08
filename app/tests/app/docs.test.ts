@@ -299,7 +299,7 @@ describe('project docs with immutable versions, links and backlinks', () => {
     assert.deepEqual(upsertSection('', source, '## A\n\nx').body, '## A\n\nx\n');
   });
 
-  test('events carry ids only and reach project readers; the workspace list uses the visibility filter', async () => {
+  test('events carry ids only and reach project readers; a project\'s list is for its readers', async () => {
     const [partnerLive, outsiderLive] = await Promise.all([StreamClient.connect(partner.browser), StreamClient.connect(outsider.browser)]);
     try {
       await Promise.all([partnerLive.ready(), outsiderLive.ready()]);
@@ -315,21 +315,19 @@ describe('project docs with immutable versions, links and backlinks', () => {
     } finally { await Promise.all([partnerLive.close(), outsiderLive.close()]); }
 
     json(await post(owner, `/api/v1/projects/${other.id}/docs`, { title: 'Only the owner project' }), 201);
-    const mine = json<Page<DocSummary>>(await get(owner, `/api/v1/workspaces/${ws.id}/docs?limit=100`), 200);
-    assert.ok(mine.items.some((item) => item.projectId === other.id));
-    const partners = json<Page<DocSummary>>(await get(partner, `/api/v1/workspaces/${ws.id}/docs?limit=100`), 200);
-    assert.ok(partners.items.length > 0 && partners.items.every((item) => item.projectId === lamp.id), 'only readable projects');
-    assert.equal(partners.total, partners.items.length);
+    const partners = json<Page<DocSummary>>(await get(partner, `/api/v1/projects/${lamp.id}/docs?limit=100`), 200);
+    assert.ok(partners.items.length > 0 && partners.items.every((item) => item.projectId === lamp.id), 'only the project\'s own docs');
     assert.ok(partners.items.every((item) => item.projectName === 'Gesture lamp' && item.updatedBy.name));
-    assert.equal(json<Page<DocSummary>>(await get(outsider, `/api/v1/workspaces/${ws.id}/docs`), 200).total, 0);
+    assert.equal((await get(outsider, `/api/v1/projects/${lamp.id}/docs`)).status, 404, 'a person outside the project does not find its list');
+    assert.equal((await get(partner, `/api/v1/workspaces/${ws.id}/docs`)).status, 404, 'there is no workspace-wide Wiki list any more (#962)');
     const list = json<Page<DocSummary>>(await get(viewer, `/api/v1/projects/${lamp.id}/docs?limit=100`), 200);
     const sorted = [...list.items].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
     assert.deepEqual(list.items.map((item) => item.id), sorted.map((item) => item.id), 'most recently changed first');
 
-    // Losing access hides everything, including the workspace list.
+    // Losing access hides the project's docs.
     const grants = json<{ id: string; principal: { id: string } }[]>(await get(owner, `/api/v1/projects/${lamp.id}/grants`), 200);
     expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${lamp.id}/grants/${grants.find((item) => item.principal.id === partner.id)!.id}`), 204);
-    assert.equal(json<Page<DocSummary>>(await get(partner, `/api/v1/workspaces/${ws.id}/docs`), 200).total, 0);
+    assert.equal((await get(partner, `/api/v1/projects/${lamp.id}/docs`)).status, 404);
     assert.equal((await get(partner, `/api/v1/docs/${list.items[0]!.id}`)).status, 404);
   });
 });

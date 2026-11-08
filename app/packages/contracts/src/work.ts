@@ -345,9 +345,10 @@ export interface TaskActivityEntry {
   actor: NamedPrincipal;
   /**
    * Set when the change was made by a task rule of a linked pull request on its author's behalf (`actor` is that author),
-   * so a reader never mistakes it for the author's own action.
+   * so a reader never mistakes it for the author's own action. `agent_deleted`: the owner deleted the agent that held the task
+   * and it came back to them (#1003).
    */
-  automation?: 'github_rule' | 'agent_rule';
+  automation?: 'github_rule' | 'agent_rule' | 'agent_deleted';
   /** `kind: 'status'`. `blocker` and `waitingFor` are what a move into Blocked said; null for any other `to`. */
   status?: { from: WorkStatus; to: WorkStatus; blocker: string | null; waitingFor: NamedPrincipal | null };
   /** `kind: 'owner'`. Null is nobody. */

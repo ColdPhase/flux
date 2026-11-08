@@ -247,7 +247,7 @@ function DmContent({ initial }: { initial: Dm }) {
   /** `/ai …` asks the person's agent; the words are not a message (#842). */
   async function askAgent() {
     const prompt = draft.replace(/^\/ai\s*/, '').trim();
-    const state = askState(assistant.status);
+    const state = askState(assistant.status, false, workspace?.role === 'guest');
     if (!prompt) { setAskFailure('Say what to ask after /ai, for example /ai summarise this conversation.'); return; }
     if (state.kind !== 'ready') { setAskFailure(state.note); return; }
     const active = captureScope();

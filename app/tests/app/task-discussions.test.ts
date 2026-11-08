@@ -304,8 +304,6 @@ test('real agent history reaches bounded helper context, search, export, notific
   assert.match(candidates[0]!.title, /Trial analyst \(agent\)/);
   const back = expectStatus(await f.writer.browser.request('GET', `/api/v1/return?place=project&id=${f.place.id}`), 200) as ReturnSummary;
   assert.ok(back.items.some((item) => item.kind === 'question' && item.text.includes('Trial analyst') && item.source.type === 'message' && item.source.messageId === reply.id));
-  const digest = expectStatus(await f.writer.browser.request('GET', `/api/v1/return?place=project&id=${f.place.id}&digest=1`), 200) as ReturnSummary;
-  assert.ok(digest.digest!.conversations.some((item) => item.quotes.some((quote) => quote.messageId === reply.id && quote.author === 'Trial analyst (agent)')));
   assert.equal(JSON.stringify(back).includes(f.owner.id), false, 'agent owner is not fabricated as the author');
 });
 

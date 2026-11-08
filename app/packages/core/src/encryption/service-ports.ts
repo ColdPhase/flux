@@ -86,6 +86,8 @@ export interface EncryptionRepository extends SealStateReader {
   deleteGrant(workspaceId: string, userId: string): Promise<void>;
   memberRole(workspaceId: string, userId: string, options?: { lock?: boolean }): Promise<WorkspaceRole | null>;
   managers(workspaceId: string): Promise<string[]>;
+  /** Everyone in the workspace now, by user id. */
+  memberIds(workspaceId: string): Promise<string[]>;
   userName(userId: string): Promise<string | null>;
   insertSecurityNotice(row: { userId: string; workspaceId: string; title: string; eventId: string | null }): Promise<void>;
 }
@@ -104,6 +106,11 @@ export interface EncryptionPorts {
   access: EncryptionAccess;
   /** Records one workspace event (ids only); returns its id. */
   event(principal: Principal, workspaceId: string, kind: string, data: Record<string, unknown>): Promise<string>;
+  /**
+   * Records one event of `workspaceId` about `objectId` for exactly `recipients` (`human:<id>`): the audience of an object that no
+   * longer exists is decided by the caller, from before it went (an erased encrypted space, #980).
+   */
+  eventTo(principal: Principal, workspaceId: string, kind: string, objectId: string, data: Record<string, unknown>, recipients: readonly string[]): Promise<string>;
   /** Sends `workspace-encryption.resume.v1` in the unit of work's transaction (the worker also resumes a rotation). */
   resume(workspaceId: string): Promise<void>;
   /** The rotation's rows (S2c); only the worker's unit of work has them. */

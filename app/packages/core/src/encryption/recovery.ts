@@ -35,3 +35,20 @@ export function normalizeRecoveryCode(input: unknown): string | null {
   if (text.length !== 32 || [...text].some((char) => !ALPHABET.includes(char))) return null;
   return text;
 }
+
+/**
+ * Whether a canonical code is a pattern rather than 160 random bits (#980): fewer than 12 different characters, a run of eight or
+ * more characters that step through the alphabet by the same amount (the alphabet in order, backwards, every second character, one
+ * character repeated), or one block repeated to fill the code. A random code is none of these but once in billions.
+ */
+export function isPatternedRecoveryCode(code: string): boolean {
+  if (new Set(code).size < 12) return true;
+  const steps = [...code].map((char, at) => (at === 0 ? 0 : (ALPHABET.indexOf(char) - ALPHABET.indexOf(code[at - 1]!) + 32) % 32));
+  let run = 1;
+  for (let at = 2; at < steps.length; at++) {
+    run = steps[at] === steps[at - 1] ? run + 1 : 1;
+    if (run >= 7) return true;
+  }
+  for (let period = 1; period <= code.length / 2; period++) if (code.slice(period) === code.slice(0, code.length - period)) return true;
+  return false;
+}

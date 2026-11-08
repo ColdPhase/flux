@@ -70,10 +70,7 @@ describe('bounded native work reads through HTTP and current native fences', () 
     const summary = await get<ProjectWorkSummary>(`${base()}/work-summary`);
     assert.deepEqual(summary.all, { needs: 0, in_progress: 4, blocked: 0, open: 1, parked: 1, finished: 1, rules: 2, results: 1 });
     assert.equal(summary.workTotal, 7); assert.equal(summary.unfinishedTotal, 5);
-    assert.equal(summary.state.active.ownerTotal, 4); assert.equal(summary.state.active.owners.length, 3);
-    assert.equal(new Set(summary.state.active.owners.map((owner) => `${owner.kind}:${owner.id}`)).size, 3);
-    assert.ok(summary.state.active.owners.every(({ name }) => name === 'Ada'));
-    assert.equal(summary.state.rule?.id, rule.id); assert.equal(summary.state.result?.id, result.id);
+    assert.equal('state' in summary, false, 'the summary is counts only; nothing reads a project state from it (#962)');
     const first = await get<ProjectWorkView>(`${base()}/work-view?limit=3`, viewer);
     assert.equal(first.items.length, 3); assert.equal(first.total, 10); assert.equal(first.summary.access, 'contributor');
     assert.deepEqual(first.summary.all, summary.all); assert.match(first.summary.observedAt, /\.\d{6}Z$/);
@@ -94,31 +91,22 @@ describe('bounded native work reads through HTTP and current native fences', () 
     assert.equal(mine.total, 3);
   });
 
-  test('bounded state retains native open and history refs with stable tie ordering and actual parking transitions', async () => {
+  test('bounded counts follow open, finished and parked work through actual parking transitions', async () => {
     const isolated = await project(owner, workspaceId, 'Native retained state', 'restricted');
     const path = `/api/v1/projects/${isolated.id}`;
     const create = (title: string, status = 'open') => post<WorkItem>(owner, `${path}/work`, { title, status });
-    const openA = await create('Open A'), openB = await create('Open B');
-    const done = await create('Completed native work', 'done');
-    const stopped = await create('Not pursued native work', 'not_pursued');
+    await create('Open A'); await create('Open B');
+    await create('Completed native work', 'done');
+    await create('Not pursued native work', 'not_pursued');
     const parkDone = await create('Park then complete'), parkStopped = await create('Park then stop');
     const original = await post<Decision>(owner, `${path}/decisions`, { title: 'Earlier parking direction' });
     expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${original.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200);
     const proposal = await post<Decision>(owner, `${path}/decisions`, { title: 'Actual parking rule', supersedes: original.id });
-    const accepted = expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${proposal.id}/accept`,
-      { body: {}, headers: { 'if-match': '"1"' } }), 200) as Decision;
-    await parkByHand([parkDone.id, parkStopped.id], accepted.id);
-    // Native command records, then tied timestamps to exercise the documented id tie-break.
-    await pool.query("UPDATE project_work_items SET created_at='2026-10-01T00:00:00Z' WHERE project_id=$1", [isolated.id]);
+    expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${proposal.id}/accept`,
+      { body: {}, headers: { 'if-match': '"1"' } }), 200);
+    await parkByHand([parkDone.id, parkStopped.id], proposal.id);
     const observation = await get<ProjectWorkSummary>(`${path}/work-summary`);
-    assert.equal(observation.state.open.count, 2);
-    assert.equal(observation.state.open.first?.id, [openA.id, openB.id].sort().at(-1));
-    assert.deepEqual(observation.state.history, { completed: 1, notPursued: 1, parked: 2,
-      firstWork: { kind: 'work', id: [openA, openB, done, stopped, parkDone, parkStopped].map(({ id }) => id).sort().at(-1)!,
-        title: [openA, openB, done, stopped, parkDone, parkStopped].sort((a, b) => b.id.localeCompare(a.id))[0]!.title },
-      decisionCount: 2, firstDecision: { kind: 'decision', id: accepted.id, title: accepted.title } });
-    for (const ref of [observation.state.open.first, observation.state.history.firstWork, observation.state.history.firstDecision])
-      assert.deepEqual(Object.keys(ref!).sort(), ['id', 'kind', 'title'], 'additional refs contain no body, collections or permissions');
+    assert.deepEqual([observation.all.open, observation.all.finished, observation.all.parked, observation.all.rules], [2, 2, 2, 2]);
     for (const [item, status] of [[parkDone, 'done'], [parkStopped, 'not_pursued']] as const) {
       const current = expectStatus(await owner.browser.request('GET', `/api/v1/work/${item.id}`), 200) as WorkItem;
       assert.ok(current.parked);
@@ -129,11 +117,10 @@ describe('bounded native work reads through HTTP and current native fences', () 
       assert.equal(finished.parked, null, 'actual native finish clears parking');
     }
     const updated = await get<ProjectWorkSummary>(`${path}/work-summary`);
-    assert.equal(updated.state.history.completed, 2); assert.equal(updated.state.history.notPursued, 2);
-    assert.equal(updated.state.history.parked, 0); assert.equal(updated.state.open.count, 2);
+    assert.deepEqual([updated.all.open, updated.all.finished, updated.all.parked], [2, 4, 0]);
     expectStatus(await outsider.browser.request('GET', `${path}/work-summary`), 404);
     const mixed = await get<ProjectWorkSummary>(`${base()}/work-summary`);
-    assert.equal(mixed.state.history.decisionCount, 2, 'accepted plus genuine superseded history are both counted');
+    assert.equal(mixed.all.rules, 2, 'accepted plus genuine superseded history are both counted');
   });
 
   test('bounded task plan counts preserve canonical own criteria, prerequisites and plan intent', async () => {

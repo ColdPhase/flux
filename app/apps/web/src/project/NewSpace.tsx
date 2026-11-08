@@ -114,6 +114,7 @@ export function NewSpaceForm({ initialName = '', onCancel, onCreated }: { initia
       </div>
       {encrypted ? (
         <div className="newspace__secret" data-encryption-password="">
+          <p className="newspace__hint" data-admins-see-name="">Company admins will see this space’s name, never what’s in it.</p>
           <Input ref={passwordRef} label="Your unlock password" type={reveal ? 'text' : 'password'} autoComplete="new-password" autoCapitalize="none" spellCheck={false}
             value={password} aria-describedby={`${ids.hint} ${ids.length}`} error={problem?.field === 'password' ? problem.message : null} disabled={busy}
             onChange={(event) => { setPassword(event.target.value); setReveal(false); setProblem(null); }} />

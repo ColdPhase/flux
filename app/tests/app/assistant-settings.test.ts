@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { AGENT_TOOLS, ASSISTANT_RUN_EFFECT_TOOLS, MY_AGENTS_PATH, agentConnectionPath, assistantRunTools, myAgentPath,
-  type AgentConnection, type MyAgent, type ProjectAgents } from '@flux/contracts';
+import { AGENT_TOOLS, ASSISTANT_RUN_EFFECT_TOOLS, MY_AGENTS_PATH, agentConnectionPath, assistantRunTools, myAgentPath, taskActivityPath,
+  type AgentConnection, type MyAgent, type ProjectAgents, type TaskActivityPage } from '@flux/contracts';
 import { createConnection, oauthTokenFor } from './support/mcp-actions.js';
 import { authorize } from '@flux/core';
 import { accessReader } from '@flux/db';
@@ -128,7 +128,7 @@ test('deleting an agent hands the tasks it holds back to its owner with a histor
   const held = await post('Held by the agent');
   const finished = await post('Finished with the agent');
   await pool.query("UPDATE project_work_items SET status = 'done' WHERE id = $1", [finished.id]);
-  const history = async (id: string) => (await pool.query("SELECT detail FROM project_task_activity WHERE work_id = $1 AND kind = 'owner' ORDER BY created_at, id", [id])).rows as { detail: { from: unknown; to: { kind: string; id: string } | null } }[];
+  const history = async (id: string) => (await pool.query("SELECT detail FROM project_task_activity WHERE work_id = $1 AND kind = 'owner' ORDER BY created_at, id", [id])).rows as { detail: { from: unknown; to: { kind: string; id: string } | null; automation?: string } }[];
   const before = (await history(held.id)).length;
   expectStatus(await f.owner.browser.request('DELETE', myAgentPath(f.agent.id)), 204);
   const task = (await pool.query('SELECT owner_user_id, owner_agent_id, version FROM project_work_items WHERE id = $1', [held.id])).rows[0];
@@ -136,6 +136,10 @@ test('deleting an agent hands the tasks it holds back to its owner with a histor
   const entries = await history(held.id);
   assert.equal(entries.length, before + 1, 'the hand-back is a row in the task\'s history');
   assert.deepEqual(entries.at(-1)!.detail.to, { kind: 'human', id: f.owner.id });
+  assert.equal(entries.at(-1)!.detail.automation, 'agent_deleted', 'and it says the agent was deleted, not that a setting moved it (#1003)');
+  const shown = expectStatus(await f.owner.browser.request('GET', taskActivityPath(held.id)), 200) as TaskActivityPage;
+  const handBack = shown.items.find((entry) => entry.kind === 'owner' && entry.owner?.to?.kind === 'human');
+  assert.deepEqual([handBack?.automation, handBack?.owner?.from?.kind, handBack?.owner?.to?.id], ['agent_deleted', 'agent', f.owner.id], 'the task\'s history carries the same');
   assert.equal((await pool.query('SELECT owner_agent_id FROM project_work_items WHERE id = $1', [finished.id])).rows[0].owner_agent_id, f.agent.id, 'a finished task keeps its record');
 });
 

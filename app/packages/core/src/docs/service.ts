@@ -245,17 +245,6 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       });
     },
 
-    /** Docs of every project of the workspace that the caller can currently read. */
-    async listWorkspaceDocs(principal: Principal, workspaceId: string, query?: PageQuery): Promise<Page<DocSummary>> {
-      const window = valid.page(query);
-      const workspace = valid.id(workspaceId, 'workspaceId');
-      return uow.run(async (ports) => {
-        await ports.access.requireWorkspace(principal, workspace);
-        const { items, total } = await ports.docs.listVisible(principal, workspace, window);
-        return { items: await summaries(ports, items), total, ...window };
-      });
-    },
-
     getDoc: (principal: Principal, docId: string) => uow.run(async (ports) => {
       const { id } = await authorized(ports, principal, docId, 'read');
       // A delete can commit between locating the page and reading it (#941): it is gone, as for a caller who came a moment later.

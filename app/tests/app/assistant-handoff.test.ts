@@ -335,6 +335,9 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     try {
       // A removal writes without asking the domain for rights, so the server asks: Ada has no say in it any more.
       assert.equal((await undo(mapRow.id)).status, 404, 'the map is not hers to remove now');
+      // She still reads what her assistant did, but not where the hand-off's unit stands in a space she left (#1003).
+      const left = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items.find((row) => row.id === handoffRow.id)!;
+      assert.doesNotMatch(left.line ?? '', /started|finished|Cancelled/);
       // A hand-off asks the domain, which says what it always said.
       const single = expectStatus(await undo(handoffRow.id), 200) as { change: AssistantChange; message: string | null };
       assert.deepEqual([single.change.state, single.message], ['applied', 'Changed since. Open it']);
@@ -345,6 +348,8 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     } finally {
       await grant(scene.lead, scene.place.id, scene.owner, 'manager');
     }
+    const seen = (expectStatus(await scene.owner.browser.request('GET', assistantRunChangesPath(live.runId)), 200) as { items: AssistantChange[] }).items.find((row) => row.id === handoffRow.id)!;
+    assert.match(seen.line ?? '', /hasn.t started yet/, 'with her rights back the unit\'s standing is shown again');
     // With her rights back, one Undo takes back both.
     const back = expectStatus(await scene.owner.browser.request('POST', assistantRunChangesActionPath(live.runId, 'undo'), { body: {} }), 200) as AssistantRunUndone;
     assert.deepEqual([back.undone, back.changedSince], [2, []]);

@@ -164,8 +164,10 @@ export type AskState =
 /**
  * What ask mode says under "Your assistant", from the caller's own status. `outside` is a company owner or admin who can open this
  * space without being in it: their assistant works only where they are (C-15), so nothing else matters until they add themselves.
+ * A guest has no AI (AG-2): there is nothing to connect or ask, so no action, whatever the status says (#1034).
  */
-export function askState(status: PersonalAssistantStatus | null, outside = false): AskState {
+export function askState(status: PersonalAssistantStatus | null, outside = false, guest = false): AskState {
+  if (guest) return { kind: 'blocked', note: 'Guests don’t have AI.', action: null };
   if (outside) return { kind: 'blocked', note: 'Your assistant works only in spaces you’re in.', action: 'join', actionLabel: 'Add me' };
   if (!status) return { kind: 'blocked', note: 'Checking your assistant…', action: null };
   const runtime = status.enablement?.engine === 'runtime';
