@@ -238,12 +238,17 @@ class OneConversationJourney(unittest.TestCase):
         expect(sidebar.get_by_role("link", name=re.compile("Should the lamp react"))).to_have_count(0)
         # The stream opens on whole messages with the latest fully visible.
         page.wait_for_timeout(600)
-        clipped = page.evaluate("""() => {
+        # A root is cut at the top only when starting whole would need more than the room the feed may add (WHOLE_MESSAGE_ROOM, 48 px,
+        # #725); the composer's height decides where the cut falls, so the room is measured rather than assumed (#871 shortened it).
+        cut = page.evaluate("""() => {
           const feed = document.querySelector('.project-convo__feed');
           const top = feed.getBoundingClientRect().top;
-          return [...feed.querySelectorAll('.project-convo__message')].filter((el) => { const r = el.getBoundingClientRect(); return r.top < top - 1 && r.bottom > top + 1; }).length;
+          const all = [...feed.querySelectorAll('.project-convo__message')];
+          const index = all.findIndex((el) => { const r = el.getBoundingClientRect(); return r.top < top - 1 && r.bottom > top + 1; });
+          const next = index >= 0 ? all[index + 1] : null;
+          return { cut: index >= 0, room: next ? next.getBoundingClientRect().top - top : null };
         }""")
-        self.assertEqual(clipped, 0, "no root is cut off at the top of the opening screen")
+        self.assertTrue(not cut["cut"] or cut["room"] is None or cut["room"] > 48, f"no root is cut off at the top of the opening screen unless whole needs more than 48 px: {cut}")
         last, feed = self.root(page, "r3").bounding_box(), page.locator(".project-convo__feed").bounding_box()
         assert last and feed
         self.assertLessEqual(last["y"] + last["height"], feed["y"] + feed["height"] + 1, "the newest root is fully visible")
