@@ -1,17 +1,12 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
-import type { ComparisonProvider } from '@flux/core';
-import { type ProactiveComparisonProposal, type UndoTaskCreationResult,
-  type WorkItem, type WorkResult } from '@flux/contracts';
-import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
+import { type UndoTaskCreationResult, type WorkItem } from '@flux/contracts';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import { db, pool } from './support/db.js';
 import { actionScene, agentConnection, toolFailure } from './support/mcp-actions.js';
 import { expect, toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, removeFromSpace, type Person } from './support/people.js';
-import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
 
 async function fixture() {
   const f = await actionScene(pool);
@@ -68,49 +63,4 @@ test('a genuine foreign agent exact grant cannot Undo another creator; revoked c
   const revoked = await actor.raw('flux_undo_task_creation', command);
   assert.notEqual(revoked.status, 200, 'Revocation refuses before tool execution');
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM task_creation_undo_receipts WHERE work_id=$1', [item.id])).rows[0].n, 0);
-});
-
-test('trusted proposal use keeps accepting human creator; suggesting agent owner gains no Undo right and used proposal cannot resurrect', { timeout: 45_000 }, async () => {
-  const f = await fixture();
-  const rule = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/proactive-comparison-rules`,
-    { body: { agentId: f.agentId, trigger: 'human_negative_result', purpose: 'camera_sensor_comparison',
-      dataScope: 'current_project_published', permittedEffect: 'quiet_project_proposal' } }), 201);
-  expect(await f.owner.request('POST', '/api/v1/background-compute-connections', { body: {
-    provider: 'anthropic', model: 'claude-sonnet-5',
-    apiKey: `sk-ant-api03-${'undo-controlled-provider-'.repeat(4)}END6`, dailyBudgetCents: 17,
-  } }), 201);
-  // Existing dispatch fixtures enable only the internal controlled-provider path;
-  // this proves committed trusted provenance, not production scheduling/billing.
-  await pool.query("UPDATE proactive_comparison_rules SET status='enabled' WHERE id=$1", [rule.id]);
-  const observed = expectStatus(await f.peer.browser.request('POST', `/api/v1/projects/${f.projectId}/results`,
-    { body: { title: 'Actual published comparison input', finding: 'negative', evidence: 'The same fixture sensor misses the trial.' } }), 201) as WorkResult;
-  const candidate = (await pool.query('SELECT id FROM proactive_comparison_outbox WHERE result_id=$1', [observed.id])).rows[0].id as string;
-  await comparisonDispatchFixtureDue(pool, candidate);
-  const provider: ComparisonProvider = {
-    async countInputTokens() { return 100; },
-    async createMessage(input) { return { stopReason: 'end_turn', usage: { inputTokens: 100, outputTokens: 100 },
-      answer: { kind: 'comparison', fact: 'The fixture sensor missed the trial.', interpretation: 'Repeat with unchanged conditions.',
-        suggestedAction: 'Repeat the fixture sensor trial.', citations: input.sources.map(({ type,id,version }) => ({ type,id,version })) } }; },
-  };
-  const outcome = await dispatchProactiveComparison({ db, candidateId: candidate, masterKey: readFileSync('/run/secrets/flux_background_key'), provider });
-  assert.equal(outcome.status, 'proposal'); assert.ok(outcome.status === 'proposal');
-  const proposals = expectStatus(await f.peer.browser.request('GET', `/api/v1/projects/${f.projectId}/proactive-comparison-proposals`), 200) as ProactiveComparisonProposal[];
-  const proposal = proposals.find(value => value.id === outcome.proposalId)!; assert.ok(proposal);
-  const used = expectStatus(await f.peer.browser.request('POST', `/api/v1/proactive-comparison-proposals/${proposal.id}/use`,
-    { body: { expectedVersion: proposal.version, title: 'Human accepted AI trial' } }), 200) as { proposal: ProactiveComparisonProposal; work: WorkItem };
-  assert.deepEqual(used.work.createdBy, { kind: 'human', id: f.peer.id, name: 'undo-current-assignee' });
-  assert.deepEqual(used.work.creationUndo, { eligible: true, reason: 'eligible' });
-  const origin = (await pool.query('SELECT creation_origin,creation_proposal_id,created_by_kind,created_by_id FROM project_work_items WHERE id=$1', [used.work.id])).rows[0];
-  assert.deepEqual(origin, { creation_origin: 'ai_proposal', creation_proposal_id: proposal.id, created_by_kind: 'human', created_by_id: f.peer.id });
-  const command = { clientCommandId: randomUUID(), expectedVersion: used.work.version };
-  assert.equal((await f.owner.request('POST', `/api/v1/work/${used.work.id}/creation-undo`, { body: command })).status, 403);
-  const reverted = expectStatus(await f.peer.browser.request('POST', `/api/v1/work/${used.work.id}/creation-undo`, { body: command }), 200) as UndoTaskCreationResult;
-  assert.deepEqual(reverted.work.createdBy, used.work.createdBy);
-  assert.deepEqual((await pool.query('SELECT status,used_work_id FROM proactive_comparison_proposals WHERE id=$1', [proposal.id])).rows[0],
-    { status: 'used', used_work_id: used.work.id });
-  const count = await f.tasks();
-  assert.equal((await f.peer.browser.request('POST', `/api/v1/proactive-comparison-proposals/${proposal.id}/use`,
-    { body: { expectedVersion: used.proposal.version, title: 'Do not create another trial' } })).status, 409);
-  assert.equal(await f.tasks(), count);
-  assert.deepEqual(expectStatus(await f.peer.browser.request('POST', `/api/v1/work/${used.work.id}/creation-undo`, { body: command }), 200), reverted);
 });

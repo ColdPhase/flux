@@ -11,7 +11,7 @@ What runs on a Flux server, how the parts talk, and where the data lives.
 | `db` | PostgreSQL 18, pinned by digest | All records, the job queue and the event log | none published; `default` |
 | `migrate` | Flux | Applies new SQL migrations in order, each in its own transaction, then exits | `default` |
 | `api` | Flux | The web app and PWA, the HTTP API, `/mcp` for agents, WebSocket streams, sign-in and OAuth | `127.0.0.1:FLUX_PORT` → 8080; `default`, `keyring` |
-| `worker` | Flux | Queued jobs: notifications, email, Web Push, assistant runs, background suggestions, encryption key rotation | `default`, `keyring` |
+| `worker` | Flux | Queued jobs: notifications, email, Web Push, assistant runs, encryption key rotation | `default`, `keyring` |
 | `keyring` | Flux | Holds the boot key of encrypted spaces in memory | `keyring` only (internal) |
 
 Optional parts:

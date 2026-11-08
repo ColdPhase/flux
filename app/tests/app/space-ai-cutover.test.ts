@@ -129,18 +129,13 @@ describe('space AI switch: flip and cutover', () => {
     assert.deepEqual([listed.status, errorCode(listed.message)], [200, 'SPACE_AI_OFF']);
   });
 
-  test('a person\'s own write during the flip commits and captures no AI work; a held membership row makes the flip wait and see the demotion', async () => {
-    await pool.query(`INSERT INTO assistant_reactions (id, workspace_id, project_id, owner_user_id, event, action, enabled) VALUES ($1, $2, $3, $4, 'blocked', 'tell', true)`,
-      [randomUUID(), scene.ws.id, scene.place.id, scene.owner.id]);
+  test('a person\'s own write during the flip commits; a held membership row makes the flip wait and see the demotion', async () => {
     const task = await scene.task(scene.owner, 'Wire the lamp');
     await pool.query('UPDATE project_work_items SET owner_user_id = $2 WHERE id = $1', [task.id, scene.owner.id]);
-    const captured = async () => Number((await pool.query(`SELECT count(*)::int AS n FROM assistant_reaction_events WHERE object_id = $1`, [task.id])).rows[0].n);
-    const before = await captured();
     const written = await behind(
       (query) => query(`UPDATE project_ai_policies SET state = 'blocked', epoch = epoch + 1 WHERE project_id = $1`, [scene.place.id]),
       () => scene.owner.browser.request('PATCH', `/api/v1/work/${task.id}`, { body: { status: 'blocked', blocker: 'No power' }, headers: { 'if-match': `"${task.version}"` } }));
     assert.equal(written.status, 200, `the person's write commits: ${written.text}`);
-    assert.equal(await captured(), before, 'and no reaction was captured');
     await setSpaceAi(scene.place.id, 'allowed');
 
     // The admin's membership is locked by a role change in progress: the flip waits, then sees the demotion and refuses.
@@ -192,7 +187,7 @@ describe('space AI switch: flip and cutover', () => {
     const status = async (id: string) => (await pool.query('SELECT status, end_reason FROM personal_runs WHERE id = $1', [id])).rows[0];
     assert.deepEqual(await status(old.run.id), { status: 'stopped', end_reason: 'ai_off' }, 'the late sweep ends what was admitted before the flip');
     assert.deepEqual(await status(fresh.run.id), { status: 'queued', end_reason: null }, 'and never touches work admitted after AI was turned on again');
-    assert.deepEqual(Object.values(await sweepSpaceAi({ projectId: scene.place.id, epoch: blockedEpoch }, db, accessPorts)), [0, 0, 0, 0, 0, 0, []], 'a second sweep changes nothing');
+    assert.deepEqual(Object.values(await sweepSpaceAi({ projectId: scene.place.id, epoch: blockedEpoch }, db, accessPorts)), [0, 0, 0, 0, []], 'a second sweep changes nothing');
     const dispatched = scene.compute.dispatched.length;
     await scene.processor.process(fresh.run.id);
     assert.ok(scene.compute.dispatched.length > dispatched, 'control: the new run reaches the provider');

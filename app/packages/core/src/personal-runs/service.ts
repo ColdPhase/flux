@@ -57,19 +57,19 @@ const IN_FLIGHT = new Set(['queued', 'reading', 'dispatching']);
  * Nobody meets it in normal use; paused requests (waiting for a limit to reset) are not counted.
  */
 export const MAX_WAITING_REQUESTS = 20;
-/** What Flux's own tick asks for when a schedule or the morning summary is due (F-027 A8). */
+/** What Flux's own tick asks for when a schedule is due (F-027 A8). */
 export interface BackgroundRunSpec {
   ownerUserId: string;
   projectId: string;
   /** Where the run is anchored: the conversation a schedule posts in, or any conversation of the project for a silent run. */
   conversationId: string;
-  kind: 'scheduled' | 'morning_summary' | 'reaction';
+  kind: 'scheduled';
   prompt: string;
   /** Deterministic per firing, so a repeated start returns the same run. */
   clientRunId: string;
   /** The answer stays out of the conversation (Recent keeps it). */
   silent: boolean;
-  /** The short name the owner knows it by, for the lane's lines: "Finishing your Morning summary first" (F-027 AST-6 "Queue"). */
+  /** The short name the owner knows it by, for the lane's lines: "Finishing your daily check first" (F-027 AST-6 "Queue"). */
   label: string;
 }
 /** A background run that could not start says why in plain words; a sign-out fails the firing, anything else skips it. */
@@ -170,7 +170,7 @@ export async function answerView(ports: PersonalRunPorts, record: RunRecord): Pr
 export async function runView(ports: PersonalRunPorts, record: RunRecord): Promise<AssistantRun> {
   return {
     id: record.id, clientRunId: record.clientRunId, workspaceId: record.workspaceId, projectId: record.projectId,
-    conversationId: record.conversationId, kind: record.kind, prompt: record.kind === 'morning_summary' ? 'Your morning summary' : record.prompt, silent: record.silent,
+    conversationId: record.conversationId, kind: record.kind, prompt: record.prompt, silent: record.silent,
     target: record.targetSketchId && record.targetThoughtId ? { type: 'thought', sketchId: record.targetSketchId, thoughtId: record.targetThoughtId } : null,
     continuesRunId: record.continuesRunId, retryOfRunId: record.retryOfRunId, status: record.status,
     stoppedAtStage: record.stoppedAtStage, stopRequested: record.stopRequestedAt !== null, stopAcknowledged: record.stopAcknowledgedAt !== null,
@@ -468,7 +468,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
   }
 
   /**
-   * F-027 A8: starts the owner's scheduled or morning-summary run on the same path as a request: the owner's enablement
+   * F-027 A8: starts the owner's scheduled run on the same path as a request: the owner's enablement
    * (pause, removal), the connection or the signed-in CLI, the assistant's and the owner's current access to the project and
    * the key's daily budget are all checked, and the run, its reservation and its dispatch job commit with the caller's
    * transaction. Flux sets no background runs a day (#843). Nothing falls back to another account; a run that cannot
@@ -507,7 +507,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       prompt: spec.prompt, targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine, silent: spec.silent,
       aiEpoch: ai.epoch,
       // A schedule is the owner's own stored request: it waits behind their own requests and says what it is (AST-6 "Queue").
-      authority: spec.kind === 'reaction' ? 'owner_reaction' : 'owner_schedule', backgroundLabel: spec.label.trim().slice(0, 80) || 'Schedule',
+      authority: 'owner_schedule', backgroundLabel: spec.label.trim().slice(0, 80) || 'Schedule',
     });
     await ports.queue.enqueue(run.id);
     await taskFence.mark();

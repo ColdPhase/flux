@@ -1,10 +1,10 @@
 import { lazy, Suspense, useEffect, useRef, useState } from 'react';
-import { AGENT_RUNTIME_ERRORS, type AgentRuntimeClient, type AgentRuntimeSignInMethod, type AgentRuntimeStatus, type BackgroundComputeConnection } from '@flux/contracts';
+import { AGENT_RUNTIME_ERRORS, type AgentRuntimeClient, type AgentRuntimeSignInMethod, type AgentRuntimeStatus } from '@flux/contracts';
 import { consoleTicket } from '../agent-runtime/api';
 import { SIGN_IN_PROBLEM, signInFailure } from '../agent-runtime/copy';
 import type { ConsoleOutcome } from '../agent-runtime/SignInConsole';
 import { ApiError } from '../api/client';
-import { AddKeyForm } from '../proactive-comparison/AddKeyForm';
+import { AddKeyForm } from './AddKeyForm';
 import { Button, Icon, MEDIA, Overlay, Sheet, Spinner, useMediaQuery } from '../ui';
 import type { AiConnectionKind } from './connections';
 import '../agent-runtime/runtime.css';
@@ -39,9 +39,9 @@ type Step =
  * The window itself. `runtime`: null while it could not be read (`runtimeFailed`), so a plan is not called unavailable by
  * mistake. `have`: what the person has connected; a plan is one connection, a key can be added again.
  */
-export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, keys, onClose, onConnected }: {
+export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, onClose, onConnected }: {
   runtime: AgentRuntimeStatus | null; runtimeFailed: boolean; apiKeys: boolean; have: ReadonlySet<AiConnectionKind>;
-  keys: readonly BackgroundComputeConnection[]; onClose: () => void; onConnected: () => void;
+  onClose: () => void; onConnected: () => void;
 }) {
   const phone = useMediaQuery(MEDIA.phone);
   const [step, setStep] = useState<Step>({ kind: 'choose' });
@@ -139,7 +139,7 @@ export function ConnectAiWindow({ runtime, runtimeFailed, apiKeys, have, keys, o
       {step.kind === 'key' ? <>
         <h2 className="cai-window__title">Use an API key</h2>
         <div className="background-settings cai-window__key">
-          <AddKeyForm connections={keys} current={keys.find((item) => item.usedForBackground) ?? null} onCancel={() => setStep({ kind: 'choose' })} onAdded={onConnected} />
+          <AddKeyForm onCancel={() => setStep({ kind: 'choose' })} onAdded={onConnected} />
         </div>
       </> : null}
     </div>

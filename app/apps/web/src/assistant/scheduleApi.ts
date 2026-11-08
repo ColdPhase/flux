@@ -1,12 +1,12 @@
 import {
-  ASSISTANT_MORNING_SUMMARY_PATH, assistantJobHistoryPath, assistantJobNotePath, assistantJobPath, assistantJobPreviewPath, assistantJobRestorePath, assistantJobRunNowPath,
+  assistantJobHistoryPath, assistantJobNotePath, assistantJobPath, assistantJobPreviewPath, assistantJobRestorePath, assistantJobRunNowPath,
   assistantJobsPath, projectConversationsPath,
-  type AssistantBackgroundNote, type AssistantJob, type AssistantJobPreview, type AssistantJobRun, type AssistantJobSchedule, type AssistantMorningSummary,
-  type ConversationSummary, type CreateAssistantJob, type Page, type SetMorningSummaryByAssistant, type UpdateAssistantJob,
+  type AssistantBackgroundNote, type AssistantJob, type AssistantJobPreview, type AssistantJobRun, type AssistantJobSchedule,
+  type ConversationSummary, type CreateAssistantJob, type Page, type UpdateAssistantJob,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
-// "On a schedule" and the morning summary written by the assistant (F-027 AST-7, A8 #408). Every call is the signed-in owner's own;
+// "On a schedule" (F-027 AST-7, A8 #408). Every call is the signed-in owner's own;
 // the server resolves the owner from the session and answers anyone else with the 404 of a schedule that does not exist.
 
 export interface ScheduleScope { workspaceId: string; ownerId: string }
@@ -29,10 +29,6 @@ export const previewSchedule = ({ workspaceId, ownerId }: ScheduleScope, schedul
   request<AssistantJobPreview>(assistantJobPreviewPath(workspaceId, ownerId), { method: 'POST', body: { schedule, timeZone }, signal });
 export const getBackgroundNote = ({ workspaceId, ownerId }: ScheduleScope, signal?: AbortSignal) =>
   request<AssistantBackgroundNote>(assistantJobNotePath(workspaceId, ownerId), { signal });
-
-export const getMorningSummary = (signal?: AbortSignal) => request<AssistantMorningSummary>(ASSISTANT_MORNING_SUMMARY_PATH, { signal });
-export const setMorningSummary = (body: SetMorningSummaryByAssistant) =>
-  request<{ byAssistant: boolean }>(ASSISTANT_MORNING_SUMMARY_PATH, { method: 'PUT', body });
 
 /** The project's recent conversations, for "Post the result in" under More. */
 export const recentConversations = (projectId: string, signal?: AbortSignal) =>

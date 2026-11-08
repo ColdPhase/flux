@@ -94,7 +94,7 @@ export interface RunRecord {
   /** A tool result passed the MCP route's bound for one call or for the run (F-022 "Caps"). */
   mcpLimit: 'call' | 'run' | null;
   /** 0108 (F-027 A4): what started the run, and a background run's short name for the lane's lines. */
-  authority: 'owner_request' | 'owner_schedule' | 'owner_reaction';
+  authority: 'owner_request' | 'owner_schedule';
   backgroundLabel: string | null;
   /** 0008 (#856): the task a `task` run works on; null for every other kind. */
   workId: string | null;
@@ -227,7 +227,6 @@ export interface PersonalRunRepository {
    */
   assistantConnectionLive?(ownerUserId: string, agentId: string): Promise<boolean>;
   /** The schedule a run belongs to, for the answer a schedule posts in its conversation (F-027 A8). */
-  needsCurrentGithubFacts?(runId: string): Promise<boolean>;
   jobOfRun?(runId: string): Promise<{ id: string; title: string } | null>;
   /** The "What it may do" of the owner's first agent in the workspace (F-036 AG-3); null without one. */
   assistantMayDo?(ownerUserId: string, workspaceId: string): Promise<AgentMayDo | null>;

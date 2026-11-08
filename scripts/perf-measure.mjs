@@ -168,7 +168,6 @@ function viewPlan(ids) {
       [get('assistant answers', `/api/v1/conversations/${ids.conversationId}/assistant-answers?limit=100&offset=0`),
         get('assistant proposals', `/api/v1/projects/${p}/assistant-proposals?limit=100`)]] },
     { view: 'Tasks', groups: [...shell, ...projectShell.slice(0, 2),
-      [get('comparison outcomes', `/api/v1/projects/${p}/proactive-comparison-outcomes?limit=100&offset=0`)],
       ['open', 'in_progress', 'blocked', 'finished'].map((group) =>
         get(`work view ${group}`, `/api/v1/projects/${p}/work-view?${query({ purpose: 'tasks', group, mine: false, limit: 50 })}`)),
       relations.map((objects, index) => get(`work relations ${index + 1}`, `/api/v1/projects/${p}/work-relations?${query({ objects, role: 'source', limit: 100 })}`))] },

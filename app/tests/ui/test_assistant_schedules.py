@@ -1,10 +1,9 @@
-"""Browser tests for "On a schedule" and the morning summary written by the assistant (F-027 A8, #408; AST-7, AST-10.3, AST-2.1).
+"""Browser tests for "On a schedule" (F-027 A8, #408; AST-7, AST-10.3, AST-2.1).
 
 The check_ui.sh stack composes the TEST-ONLY fixture connection and the Anthropic mock (as test_personal_assistant does), so the
 owner's assistant, their schedules and "Run now" are real here: the real API, the real worker and the mock provider. Nothing calls a
-model. What this stack cannot be (a subscription account that has not seen the note about background use) and the Home line of a
-morning summary that only the worker's 8:30 tick writes are stubbed responses with the exact API shapes; tests/app/assistant-jobs.test.ts
-proves the tick, the two workers and the policies against the real database.
+model. What this stack cannot be (a subscription account that has not seen the note about background use) is a stubbed
+response with the exact API shape; tests/app/assistant-jobs.test.ts proves the tick, the two workers and the policies against the real database.
 """
 
 from __future__ import annotations
@@ -108,7 +107,6 @@ class AssistantSchedules(unittest.TestCase):
     def clear(self, page: Page) -> None:
         for job in self.jobs(page):
             self.api(page, "DELETE", f"{self.jobs_path}/{job['id']}", status=200)
-        self.api(page, "PATCH", "/api/v1/notification-preferences", {"morningSummary": {"enabled": False}}, status=200)
 
     def make(self, page: Page, text: str = "Look at the sensor tasks", **extra) -> dict:
         body = {"projectId": self.ids["project"], "text": text, "schedule": {"kind": "daily", "at": later()}, "timeZone": ZONE, **extra}
@@ -162,7 +160,6 @@ class AssistantSchedules(unittest.TestCase):
         page = self.page(signed_in=False)
         page.goto("/sign-up")
         page.get_by_label("Name").fill(ADA["name"])
-        # test_assistant_reactions borrows this test in the same run: each class signs up its own Ada.
         page.get_by_label("Email").fill(ADA["email"].replace("@", f"-{type(self).__name__.lower()}@"))
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Create account").click()
@@ -180,39 +177,6 @@ class AssistantSchedules(unittest.TestCase):
         type(self).ids = {"workspace": ws["id"], "project": project["id"], "conversation": thread["id"], "agent": agent["id"]}
 
     # ---------------------------------------------------------------- the empty part and its two starters
-
-    def test_02_the_morning_summary_is_on_in_two_taps_from_the_empty_part(self) -> None:
-        """AST-10.3, first half."""
-        for phone in (False, True):
-            with self.subTest(phone=phone):
-                page = self.page(phone=phone)
-                self.clear(page)
-                card = self.screen(page)
-                expect(card).to_contain_text("Nothing yet. Try one:")
-                morning = card.get_by_role("button", name="Let your assistant write your morning summary")
-                expect(card.get_by_role("button", name="Weekly review on Monday")).to_be_visible()
-                expect(card.get_by_role("button", name="Add", exact=True)).to_be_visible()
-                self.no_horizontal_scroll(page)
-                shot(page, f"schedules-empty-{self.tag(phone)}")
-                morning.click()  # tap 1
-                dialog = self.dialog(page, "Morning summary")
-                expect(dialog).to_contain_text("Morning summary · 9:00, from Notifications · written by your assistant")
-                expect(dialog).to_contain_text("Runs on your Anthropic API key")
-                expect(page.get_by_role("switch", name=re.compile("^Morning summary"))).to_have_count(0)
-                shot(page, f"schedules-morning-sheet-{self.tag(phone)}")
-                dialog.get_by_role("button", name="Turn on").click()  # tap 2
-                switch = page.get_by_role("switch", name=re.compile("^Morning summary"))
-                expect(switch).to_have_attribute("aria-checked", "true")
-                expect(card).to_contain_text("Morning summary · by your assistant" if phone else "Morning summary · written by your assistant")
-                expect(card).to_contain_text("Every day at 9:00 (Notifications) · Home")
-                expect(card).not_to_contain_text("Nothing yet")
-                summary = self.api(page, "GET", "/api/v1/assistant/morning-summary", status=200)
-                self.assertTrue(summary["byAssistant"])
-                prefs = self.api(page, "GET", "/api/v1/notification-preferences", status=200)
-                self.assertTrue(prefs["morningSummary"]["enabled"] and prefs["morningSummary"]["byAssistant"])
-                switch.click()  # off again; the row stays where it is for this visit
-                expect(switch).to_have_attribute("aria-checked", "false")
-                self.assertFalse(self.api(page, "GET", "/api/v1/assistant/morning-summary", status=200)["byAssistant"])
 
     def test_03_a_weekly_review_on_monday_is_on_in_two_taps(self) -> None:
         """AST-7.1."""
@@ -395,7 +359,6 @@ class AssistantSchedules(unittest.TestCase):
                 page = self.page(phone=phone)
                 self.clear(page)
                 posted: list[dict] = []
-                summary: list[dict] = []
                 page.route(re.compile(r".*/assistants/[0-9a-f-]{36}/background-note$"), lambda route: self.json(route, note))
 
                 def create(route: Route) -> None:
@@ -409,14 +372,7 @@ class AssistantSchedules(unittest.TestCase):
                                       "preparedRunId": None, "pausedReason": None, "next": [], "last": None, "running": False, "version": 1, "createdAt": "2026-10-17T09:00:00.000Z",
                                       "updatedAt": "2026-10-17T09:00:00.000Z"}, 201)
 
-                def morning(route: Route) -> None:
-                    if route.request.method != "PUT":
-                        route.continue_()
-                        return
-                    summary.append(json.loads(route.request.post_data or "{}"))
-                    self.json(route, {"byAssistant": True})
                 page.route(re.compile(r".*/assistants/[0-9a-f-]{36}/schedules$"), create)
-                page.route(re.compile(r".*/api/v1/assistant/morning-summary$"), morning)
                 card = self.screen(page)
                 card.get_by_role("button", name="Add", exact=True).click()
                 dialog = self.dialog(page, "On a schedule")
@@ -428,68 +384,6 @@ class AssistantSchedules(unittest.TestCase):
                 expect(dialog).to_be_hidden()
                 self.assertEqual(len(posted), 1)
                 self.assertEqual((posted[0]["noteVersion"], posted[0]["enabled"]), ("ast-2.2026-10-09", True))
-                # The morning summary's starter shows the same note and sends the same version.
-                self.clear(page)
-                card = self.screen(page)
-                card.get_by_role("button", name="Let your assistant write your morning summary").click()
-                sheet = self.dialog(page, "Morning summary")
-                expect(sheet.get_by_role("note")).to_have_text(note["note"])
-                sheet.get_by_role("button", name="Turn on").click()
-                expect(page.get_by_role("switch", name=re.compile("^Morning summary"))).to_be_visible()
-                self.assertEqual(summary[0]["noteVersion"], "ast-2.2026-10-09")
-                self.assertTrue(summary[0]["on"])
-
-    # ---------------------------------------------------------------- Home and Notifications
-
-    def test_08_home_shows_the_one_line_and_notifications_offers_the_row(self) -> None:
-        line = "Good morning, Ada. Jonas is waiting on you for #8, and 2 tasks are due today."
-        for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
-            with self.subTest(phone=phone, dark=dark):
-                page = self.page(phone=phone, dark=dark)
-                page.route(re.compile(r".*/api/v1/assistant/morning-summary$"), lambda route: self.json(route, {"byAssistant": True, "line": line, "day": "2026-10-17"}))
-                page.goto("/")
-                expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-                summary = page.get_by_test_id("morning-line")
-                expect(summary).to_contain_text(line)
-                expect(summary.get_by_role("link")).to_have_attribute("href", "/inbox")
-                # It sits under the greeting, before everything else, and is not part of the Inbox's "Needs you".
-                hello = page.locator(".home__hello").bounding_box()
-                self.assertGreater(summary.bounding_box()["y"], hello["y"])
-                self.assertLess(summary.bounding_box()["y"], page.get_by_role("heading", name="Needs you").bounding_box()["y"])
-                self.no_horizontal_scroll(page)
-                shot(page, f"schedules-home-{self.tag(phone, dark)}")
-        # Nothing written: nothing is shown.
-        page = self.page()
-        page.route(re.compile(r".*/api/v1/assistant/morning-summary$"), lambda route: self.json(route, {"byAssistant": True, "line": None, "day": None}))
-        page.goto("/")
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        expect(page.get_by_test_id("morning-line")).to_have_count(0)
-
-    def test_09_notifications_has_the_assistant_row_under_the_morning_summary(self) -> None:
-        for phone in (False, True):
-            with self.subTest(phone=phone):
-                page = self.page(phone=phone)
-                self.clear(page)
-                self.api(page, "PATCH", "/api/v1/notification-preferences", {"morningSummary": {"enabled": True, "at": "08:30"}}, status=200)
-                page.goto("/settings/notifications")
-                expect(page.get_by_role("switch", name=re.compile("^Morning summary"))).to_have_attribute("aria-checked", "true")
-                switch = page.get_by_role("switch", name="Let your assistant write your morning summary")
-                expect(switch).to_have_attribute("aria-checked", "false")
-                shot(page, f"schedules-notifications-{self.tag(phone)}")
-                switch.click()
-                note = page.get_by_text("Written by Ada's assistant")
-                expect(note).to_be_visible()
-                expect(note.get_by_role("link", name="Change ›")).to_have_attribute("href", "/settings/agents")
-                expect(switch).to_have_count(0)
-                self.assertTrue(self.api(page, "GET", "/api/v1/assistant/morning-summary", status=200)["byAssistant"])
-                # The same row on the assistant screen says when.
-                self.screen(page)
-                expect(self.card(page)).to_contain_text("Every day at 8:30 (Notifications) · Home")
-                # Turning the plain summary off turns the assistant's off with it.
-                self.api(page, "PATCH", "/api/v1/notification-preferences", {"morningSummary": {"enabled": False}}, status=200)
-                self.assertFalse(self.api(page, "GET", "/api/v1/assistant/morning-summary", status=200)["byAssistant"])
-
-    # ---------------------------------------------------------------- "Set up by asking"
 
     def test_10_the_owner_sees_ready_under_their_answer_and_turns_it_on_with_one_tap(self) -> None:
         for phone in (False, True):

@@ -634,7 +634,7 @@ class RefreshEdges(unittest.TestCase):
                     page.close()
 
     def test_14_other_settings_commands_keep_read_feedback_at_their_own_controls(self):
-        for area in ('quietHours', 'morningSummary', 'mention', 'mute'):
+        for area in ('quietHours', 'mention', 'mute'):
             for phone in (False, True):
                 for theme in ('light', 'dark'):
                     with self.subTest(area=area, phone=phone, theme=theme):
@@ -661,9 +661,11 @@ class RefreshEdges(unittest.TestCase):
                                 done='Muted '+actor['projectName']
                             elif area=='mention':
                                 control=page.get_by_role('checkbox',name='Mentions: Inbox',exact=True).locator('..')
+                                # The person acts on a control in the middle of the screen: the feedback under it is then in view.
+                                control.evaluate("element => element.scrollIntoView({block: 'center'})")
                                 done='Saved'
                             else:
-                                control=page.get_by_role('switch',name=re.compile('^'+('Quiet hours' if area=='quietHours' else 'Morning summary')))
+                                control=page.get_by_role('switch',name=re.compile('^Quiet hours'))
                                 done='Saved'
                             control.tap() if phone else control.click()
                             self.wait_held(page,held)
@@ -679,7 +681,7 @@ class RefreshEdges(unittest.TestCase):
                             expect(page.locator('.nset__saved')).to_have_text(done)
                             actual=self.api(page,'GET','/api/v1/notification-preferences')
                             self.assertEqual(actual['pause'],{'until':None})
-                            if area in ('quietHours','morningSummary'):self.assertTrue(actual[area]['enabled'])
+                            if area=='quietHours':self.assertTrue(actual[area]['enabled'])
                             elif area=='mention':self.assertFalse(actual['channels']['mention']['inApp'])
                             else:self.assertTrue(any(place['id']==actor['project'] for place in actual['muted']))
                             self.assertEqual(len(writes),1,'only the actual control command was admitted')
@@ -728,6 +730,8 @@ class RefreshEdges(unittest.TestCase):
                         if 'first' in held:break
                         page.wait_for_timeout(50)
                     self.assertIn('first',held)
+                    # The person acts on a control in the middle of the screen: the feedback under it is then in view.
+                    page.get_by_role('checkbox',name='Mentions: Inbox',exact=True).evaluate("element => element.scrollIntoView({block: 'center'})")
                     page.get_by_role('checkbox',name='Mentions: Inbox',exact=True).uncheck()
                     self.assertEqual(len(writes),1,'second real action is queued while first ACK is held')
                     other=self.browser.new_context(base_url=ORIGIN,storage_state=page.context.storage_state(),service_workers='block')

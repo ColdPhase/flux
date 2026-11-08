@@ -14,7 +14,6 @@ import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
 import { clock } from '../app/focus';
 import { SwitchRow } from '../app/SettingsHome';
-import { SummaryByAssistant } from '../assistant/SummaryByAssistant';
 import { InstallFlux, NotificationsButton } from '../pwa';
 import { getPushState, pushOnServer } from '../pwa/push';
 import { Button, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
@@ -52,15 +51,14 @@ function timeZones(current: string) {
   return [...new Set([current, browserTimeZone(), 'UTC', ...zones])].sort((a, b) => a.localeCompare(b));
 }
 
-type FeedbackArea = 'level' | 'quietHours' | 'morningSummary' | 'email' | 'mute' | NotificationReason;
+type FeedbackArea = 'level' | 'quietHours' | 'email' | 'mute' | NotificationReason;
 type MuteReceipt = { place: NotificationPreferences['muted'][number]; muted: boolean; index: number };
 type MutedPlaceRow = { place: NotificationPreferences['muted'][number]; receiptOnly: boolean };
 
 const message = (error: unknown, fallback: string) => (error instanceof ApiError && error.status < 500 ? error.message : fallback);
 
 /**
- * Notification settings (#116, #350 S22): Only "Needs you", Everything or Nothing, quiet hours and
- * the morning summary first; then per reason where it reaches you, where email goes (your sign-in
+ * Notification settings (#116): Only "Needs you", Everything or Nothing and quiet hours first; then per reason where it reaches you, where email goes (your sign-in
  * address, a verified extra address, both or nowhere) and muted places. Every change saves at once;
  * nothing here changes how you sign in.
  */
@@ -204,7 +202,7 @@ function AccountNotificationSettings() {
   const change = (command: UpdateNotificationPreferencesCommand, optimistic?: (current: NotificationPreferences) => NotificationPreferences) => {
     if (optimistic) setPrefs((current) => (current ? optimistic(current) : current));
     const area: FeedbackArea = command.channels ? NOTIFICATION_REASONS.find((reason) => command.channels?.[reason]) ?? 'level'
-      : command.emailDestination !== undefined ? 'email' : command.morningSummary ? 'morningSummary' : command.quietHours ? 'quietHours' : 'level';
+      : command.emailDestination !== undefined ? 'email' : command.quietHours ? 'quietHours' : 'level';
     void save(() => updatePreferences(command), 'Saved', undefined, area);
   };
 
@@ -336,7 +334,6 @@ function AccountNotificationSettings() {
       ) : null}
       <div className="sset-card sset-gap">
         <QuietHoursRow prefs={prefs} onChange={change} feedback={workingFeedback('quietHours')} />
-        <MorningSummaryRow prefs={prefs} onChange={change} feedback={workingFeedback('morningSummary')} />
       </div>
 
       {/* Channels this server lacks are not offered: one status line says so, and their columns and sections are gone (#763 SG-3). */}
@@ -632,35 +629,6 @@ function QuietHoursRow({ prefs, onChange, feedback }: { prefs: NotificationPrefe
           </label>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-/** The morning summary (S22): one push a day at a local time, counting what waits in Inbox. */
-function MorningSummaryRow({ prefs, onChange, feedback }: { prefs: NotificationPreferences; onChange: Change; feedback?: ReactNode }) {
-  const summary = prefs.morningSummary;
-  const zone = prefs.quietHours.timeZone;
-  const suggested = browserTimeZone();
-  const set = (next: Partial<typeof summary>) => onChange(
-    // Turning it on in UTC takes this browser's time zone (shared with quiet hours), as quiet hours do.
-    next.enabled && zone === 'UTC' && suggested !== 'UTC' ? { morningSummary: next, quietHours: { timeZone: suggested } } : { morningSummary: next },
-    (current) => ({ ...current, morningSummary: { ...current.morningSummary, ...next } }),
-  );
-  return (
-    <div className="nset__group">
-      <SwitchRow label="Morning summary" checked={summary.enabled}
-        detail={`One digest at ${shortClock(summary.at)} instead of single pings`}
-        onChange={(on) => set({ enabled: on })} />
-      {feedback}
-      {summary.enabled ? (
-        <div className="nset__times">
-          <label>At<input type="time" value={summary.at} onChange={(event) => event.target.value && set({ at: event.target.value })} /></label>
-          <span className="nset__zone-note">{zoneLabel(zone)}, the time zone of quiet hours. Nothing is sent when Inbox is empty.</span>
-        </div>
-      ) : null}
-      {summary.enabled ? <SummaryByAssistant byAssistant={!!summary.byAssistant} at={summary.at}
-        onApplied={(on) => onChange(on ? { morningSummary: { enabled: true } } : { morningSummary: { byAssistant: false } },
-          (current) => ({ ...current, morningSummary: { ...current.morningSummary, byAssistant: on } }))} /> : null}
     </div>
   );
 }

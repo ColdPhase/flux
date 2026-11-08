@@ -499,10 +499,8 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         const target = described;
         const phrase = `${target.words.phrase} ${target.words.noun}`;
         if (!approval) {
-          // A reaction's read-only action, and an agent whose "What it may do" is Only read, change nothing (F-036 AG-3).
-          const reaction = authority.run?.reactionAction;
-          const readOnly = !!reaction && ['tell', 'draft_reply', 'check_task'].includes(reaction);
-          const outcome = classifyAssistantChange({ mayDo: readOnly ? 'read' : reaction?.startsWith('suggest_') ? 'ask' : authority.mayDo,
+          // An agent whose "What it may do" is Only read changes nothing (F-036 AG-3).
+          const outcome = classifyAssistantChange({ mayDo: authority.mayDo,
             ownerCanWrite: authority.ownerCanWrite, removal: target.removal, mine: target.mine, forOther: target.forOther });
           if (outcome.state === 'refused') {
             // Nothing is prepared for or sent to another person; the agent says so in words (F-036 AG-3 "Never possible").

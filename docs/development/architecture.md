@@ -204,7 +204,7 @@ over a shared context, each under about 120 lines. Header helpers and schema fra
 missing session once, on the API's root: access, push, stream and identity answer a missing session
 with the same `UNAUTHENTICATED` body ([#85](https://github.com/ColdPhase/flux/issues/85)); identity's
 401 was Fastify's default body before. Route plugins that tests register alone call `useDomainErrors`,
-the same mapper; agent connection, conversation and proactive comparison still set their own handlers,
+the same mapper; agent connection and conversation still set their own handlers,
 which drop a domain error's details (follow-up with #36).
 
 Resolved from the allowlist: `app/packages/core/src/events.ts` keeps `principalKey`, the audience

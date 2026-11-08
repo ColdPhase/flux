@@ -3,7 +3,7 @@ import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, ne, sql } from 'driz
 import * as schema from '../schema.js';
 import { openRows } from '../sealing.js';
 import { assignmentNotificationActive } from './notification-lifecycle.js';
-import { hiddenWhileAiOff, notificationHiddenWhileAiOff } from './space-ai.js';
+import { notificationHiddenWhileAiOff } from './space-ai.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -51,16 +51,12 @@ export interface StoredPreferenceRow {
   quietEnd: number;
   timeZone: string;
   pausedUntil: Date | null;
-  summaryEnabled: boolean;
-  summaryAt: number;
-  summaryByAssistant: boolean;
 }
 
 type PreferenceRecord = typeof schema.notificationPreferences.$inferSelect;
 const storedRow = (row: PreferenceRecord): StoredPreferenceRow => ({
   channels: row.channels ?? {}, emailDestination: row.emailDestination, quietEnabled: row.quietEnabled, quietStart: row.quietStart,
-  quietEnd: row.quietEnd, timeZone: row.timeZone, summaryEnabled: row.summaryEnabled, summaryAt: row.summaryAt,
-  summaryByAssistant: row.summaryByAssistant, pausedUntil: row.pausedUntil,
+  quietEnd: row.quietEnd, timeZone: row.timeZone, pausedUntil: row.pausedUntil,
 });
 
 /** What the generator reads and writes inside its transaction. */
@@ -462,41 +458,4 @@ export function notificationEmailRows(db: DbExecutor) {
 export async function markAllNotificationsRead(db: DbExecutor, userId: string) {
   const rows = await db.update(n).set({ readAt: sql`now()` }).where(and(eq(n.userId, userId), isNull(n.readAt))).returning({ id: n.id });
   return rows.length;
-}
-
-/** The morning summary (#350): who has it on, the per-day claim, unread inbox rows and the summary row. */
-export function morningSummaryRows(db: DbExecutor) {
-  return {
-    /** F-030: whether a source's workspace is encrypted (its summary row is anchored elsewhere, or content-free). */
-    async sealedWorkspace(workspaceId: string) {
-      const [row] = await db.select({ encrypted: schema.workspaces.encrypted }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
-      return row?.encrypted === true;
-    },
-    async candidates() {
-      const rows = await db.select({ userId: p.userId, summaryEnabled: p.summaryEnabled, summaryAt: p.summaryAt, summaryByAssistant: p.summaryByAssistant, timeZone: p.timeZone, channels: p.channels, lastOn: p.summaryLastOn })
-        .from(p).where(eq(p.summaryEnabled, true));
-      return rows.map(({ userId, lastOn, ...preferences }) => ({ userId, lastOn, preferences }));
-    },
-    async lockCandidate(userId: string) {
-      const [row] = await db.select().from(p).where(eq(p.userId, userId)).for('update');
-      return row ? { userId, lastOn: row.summaryLastOn, preferences: storedRow(row) } : null;
-    },
-    async claimDay(userId: string, day: string) {
-      const rows = await db.update(p).set({ summaryLastOn: day })
-        .where(and(eq(p.userId, userId), eq(p.summaryEnabled, true), sql`(${p.summaryLastOn} IS NULL OR ${p.summaryLastOn} < ${day}::date)`))
-        .returning({ userId: p.userId });
-      return rows.length > 0;
-    },
-    async unread(userId: string, limit: number) {
-      const rows = await db.select({ id: n.id, workspaceId: n.workspaceId, type: n.sourceType, sourceId: n.sourceId }).from(n)
-        .where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt), sql`NOT ${hiddenWhileAiOff(n)}`)).orderBy(sql`${n.createdAt} DESC`).limit(limit);
-      return rows.map((row) => ({ id: row.id, source: { workspaceId: row.workspaceId, type: row.type, id: row.sourceId } }));
-    },
-    async insertSummary(row: { id: string; userId: string; source: { workspaceId: string; type: SourceType; id: string }; sources: { workspaceId: string; type: SourceType; id: string }[]; title: string; body: string; url: string; aiOrigin: boolean }) {
-      await db.insert(n).values({
-        id: row.id, userId: row.userId, workspaceId: row.source.workspaceId, sourceType: row.source.type, sourceId: row.source.id,
-        title: row.title, body: row.body, url: row.url, inInbox: false, deliveryKind: 'morning_summary', summarySources: row.sources, aiOrigin: row.aiOrigin,
-      });
-    },
-  };
 }

@@ -23,24 +23,22 @@ interface Schema { type?: string | string[]; properties?: Record<string, Schema>
  * GitHub (refused), and the person's own account rows. A route reached only through them is not a route "for A's objects".
  */
 const NOT_A_WORKSPACE_OBJECT: Readonly<Record<string, string>> = {
-  connectionId: 'agent and background-compute connections (AI)', runId: 'assistant runs (AI)', proposalId: 'assistant and comparison proposals (AI)',
+  connectionId: 'agent and background-compute connections (AI)', runId: 'assistant runs (AI)', proposalId: 'assistant proposals (AI)',
   changeId: 'assistant changes (AI)', jobId: 'assistant schedules (AI)', requestId: 'assistant join and coordination requests (AI)',
-  agentId: 'agents (AI)', questionId: 'agent questions (AI)', outcomeId: 'comparison outcomes (AI)', ruleId: 'comparison rules (AI)',
+  agentId: 'agents (AI)', questionId: 'agent questions (AI)',
   commandId: 'live Wiki receipts (refused until S2b)', bindingId: 'GitHub (refused)', installationId: 'GitHub (refused)',
   providerId: 'the person\'s sign-in links', ownerUserId: 'a person\'s assistant (AI)', owner: 'a person\'s assistant (AI)',
 };
 /** Generic `:id` parameters by route: an Inbox notification of A, or the person's own account rows. */
 const ID_ROUTES: Readonly<Record<string, 'notification' | 'account' | 'decision'>> = {
-  '/api/v1/inbox/:id': 'notification', '/api/v1/inbox/:id/read': 'notification', '/api/v1/inbox/:id/assistant-draft': 'notification',
+  '/api/v1/inbox/:id': 'notification', '/api/v1/inbox/:id/read': 'notification',
   '/api/v1/push/subscriptions/:id': 'account', '/api/v1/sessions/:id': 'account', '/api/v1/projects/:projectId/work-objects/:kind/:id': 'decision',
-  '/api/v1/workspaces/:workspace/people/:owner/assistant/when/:id': 'account',
 };
 
 /** Answers that refuse a feature an encrypted workspace does not offer, before any of its objects is read. */
 const NOT_OFFERED: Readonly<Record<string, string>> = {
   '403 SPACE_AI_OFF': 'AI is always off in an encrypted workspace (F-030)',
   '409 WORKSPACE_ENCRYPTED_AI_OFF': 'AI is always off in an encrypted workspace: no agent can be made, and the operator is not asked to turn AI on (F-030)',
-  '404 ASSISTANT_WHEN_NOT_FOUND': 'a notification of an encrypted workspace never holds an assistant draft: AI never ran there, so there is nothing to read (F-030)',
   '503 GITHUB_UNAVAILABLE': 'GitHub is refused for an encrypted workspace, and not configured on the test server',
 };
 const codeOf = (text: string) => { try { return (JSON.parse(text) as { code?: string }).code ?? ''; } catch { return ''; } };

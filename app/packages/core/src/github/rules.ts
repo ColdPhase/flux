@@ -20,8 +20,8 @@ import type { GithubRuleChangeCode, GithubRuleMode, GithubTaskRule, WorkStatus }
 
 export type GithubRuleBlock = 'check' | 'closed';
 /**
- * `data.automation` of a `project.work_updated.v1` event a task rule caused on its author's behalf. Return/Home, the
- * comparison scheduler and other consumers treat it as automation, never as that person's own action.
+ * `data.automation` of a `project.work_updated.v1` event a task rule caused on its author's behalf. Return/Home and
+ * other consumers treat it as automation, never as that person's own action.
  */
 export const GITHUB_RULE_AUTOMATION = 'github_rule';
 

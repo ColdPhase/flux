@@ -54,22 +54,6 @@ export interface QuietHours {
 }
 
 /**
- * One push at a local time (in the quiet-hours time zone) counting what still waits in your
- * inbox. While it is on, pushes held back by quiet hours are not sent one by one when
- * quiet hours end: the summary covers them and the inbox keeps them.
- */
-export interface MorningSummary {
-  enabled: boolean;
-  /** Local time "HH:MM". */
-  at: string;
-  /**
-   * The person's assistant writes its text (F-027 AST-7). Turned on only through the assistant (`ASSISTANT_MORNING_SUMMARY_PATH`), which
-   * shows the note about background use once; a preference update can only turn it off.
-   */
-  byAssistant: boolean;
-}
-
-/**
  * Focus mode (F-026 S19): push and email wait until `until` and then arrive as usual; the Inbox
  * still fills. A pause ends at `until` or when it is turned off, and lasts at most 12 hours.
  */
@@ -113,7 +97,6 @@ export interface NotificationPreferences {
   };
   quietHours: QuietHours;
   pause: NotificationPause;
-  morningSummary: MorningSummary;
   /** Which of the three levels the channels match, or `custom`. */
   level: NotificationLevel | 'custom';
   muted: MutedPlace[];
@@ -128,7 +111,6 @@ export interface UpdateNotificationPreferencesCommand {
   pause?: NotificationPause;
   /** Applies the level's push and email choice to every reason, before `channels`. */
   level?: NotificationLevel;
-  morningSummary?: Partial<MorningSummary>;
 }
 
 /** `PUT /api/v1/notification-preferences/mutes`: mute or unmute a place you can read. */

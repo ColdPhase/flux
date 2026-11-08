@@ -4,7 +4,6 @@ import { describe, test } from 'node:test';
 import type { Conversation } from '@flux/contracts';
 import { conversationUseCases } from '@flux/core';
 import { conversationStore } from '../../apps/server/src/conversation/store.js';
-import { comparisonOutcomeReads } from '../../apps/server/src/proactive-comparison/outcome-adapter.js';
 import { notificationRepository } from '../../apps/server/src/push/adapters.js';
 import { pool } from './support/db.js';
 import { expectStatus, person, project, workspace } from './support/people.js';
@@ -118,15 +117,6 @@ describe('reads the project views refresh (#298)', () => {
     const store = conversationUseCases(conversationStore(db));
     const { result, sent } = await statements(() => store.listRoots({ id: owner.id, kind: 'human' }, place.id, {}));
     assert.equal(result.roots.length, 1);
-    assertSnapshotRead(sent);
-  });
-
-  test('the comparison outcome page (Tasks) takes no row locks either', async () => {
-    const owner = await person('Outcome reader');
-    const space = await workspace(owner, 'Outcomes');
-    const place = await project(owner, space.id, 'Outcomes project', 'workspace');
-    const { result, sent } = await statements(() => comparisonOutcomeReads(db).list({ id: owner.id, kind: 'human' }, place.id, 100, 0));
-    assert.deepEqual({ items: result.items, total: result.total }, { items: [], total: 0 });
     assertSnapshotRead(sent);
   });
 });

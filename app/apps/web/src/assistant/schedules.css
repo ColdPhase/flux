@@ -68,13 +68,6 @@
 .asched-sheet .asched { padding-top: 20px; }
 .asched-sheet .asched__head { height: 52px; padding: 0 8px 0 20px; border-bottom: 0; }
 
-/* The assistant's morning summary line under the Home greeting (never an Inbox item). */
-.home__summary { margin: -18px 0 26px; font-size: var(--fs-base); line-height: 1.45; color: var(--t2); max-width: 640px; }
-.home__summary a { display: inline; color: inherit; text-decoration: none; }
-.home__summary a:hover { color: var(--t1); }
-.home__summary a:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; border-radius: 4px; }
-.home__summary svg { vertical-align: -2px; margin-left: 2px; color: var(--t3); }
-
 /* "Ready: <schedule>" under the owner's own answer, and the same line in Notifications. */
 .asched-ready { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 10px; padding: 10px 12px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); font-size: var(--fs-sm); }
 .asched-ready > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }

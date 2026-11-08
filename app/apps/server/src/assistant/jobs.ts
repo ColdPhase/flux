@@ -1,20 +1,19 @@
 import type { FastifyInstance } from 'fastify';
 import type { PgBoss } from 'pg-boss';
 import {
-  ASSISTANT_JOB_LIMITS, ASSISTANT_MORNING_SUMMARY_PATH, assistantJobHistoryPath, assistantJobNotePath, assistantJobPath, assistantJobPreviewPath, assistantJobRestorePath,
-  assistantJobRunNowPath, assistantJobsPath, type AssistantMorningSummary, type CreateAssistantJob, type SetMorningSummaryByAssistant, type UpdateAssistantJob,
+  ASSISTANT_JOB_LIMITS, assistantJobHistoryPath, assistantJobNotePath, assistantJobPath, assistantJobPreviewPath, assistantJobRestorePath,
+  assistantJobRunNowPath, assistantJobsPath, type CreateAssistantJob, type UpdateAssistantJob,
 } from '@flux/contracts';
 import {
-  createAssistantJobs, createPersonalRunUseCases, noPersonalConnections, setMorningSummaryByAssistant, todaysSummary, type AssistantReactionUnitOfWork, type PersonalConnectionLookup,
+  createAssistantJobs, createPersonalRunUseCases, noPersonalConnections, type AssistantJobUnitOfWork, type PersonalConnectionLookup,
   type PersonalRuntimeAvailability,
 } from '@flux/core';
-import { assistantReactionRows, assistantJobRows, assistantSummaryRows, notificationPreferenceRows, personalRunRows, pushSubscriptionRepository, type Database } from '@flux/db';
+import { assistantJobRows, pushSubscriptionRepository, type Database } from '@flux/db';
 import { expectedVersion } from '../http/commands.js';
 import type { SessionResolver } from '../identity/index.js';
 import { personalRunPorts, personalRunUnitOfWork, type PersonalRunQueueFactory } from '../personal-runs/adapters.js';
 import { pgBossQueue } from '../push/adapters.js';
 import { withTaskUseErrors } from '../work/task-use-errors.js';
-import { registerAssistantReactionRoutes } from './reactions.js';
 import { transactionEventSession } from '../work/transaction-events.js';
 
 // "On a schedule" for its owner (F-027 AST-7, A8 #408). Every route resolves the owner from the session and the owner in the
@@ -29,11 +28,11 @@ interface Composition {
 }
 
 /** The server's unit of work for schedules: the personal-run ports a firing needs, plus the schedule rows. */
-export function assistantJobUnitOfWork(db: Database, queue: PersonalRunQueueFactory, boss: Pick<PgBoss, 'send'>): AssistantReactionUnitOfWork {
+export function assistantJobUnitOfWork(db: Database, queue: PersonalRunQueueFactory, boss: Pick<PgBoss, 'send'>): AssistantJobUnitOfWork {
   return { run: (work) => db.transaction(async (tx) => {
     const session = transactionEventSession(tx);
     const result = await session.run(() => withTaskUseErrors(() => work({
-      ...personalRunPorts(tx, queue, session, session), jobs: assistantJobRows(tx), reactions: assistantReactionRows(tx),
+      ...personalRunPorts(tx, queue, session, session), jobs: assistantJobRows(tx),
       // The owner's own list settles an ended firing at once, like the worker's tick: a pause tells them once, with its push.
       inbox: { async tell(ownerUserId, projectId, title, body, url) {
         const id = await assistantJobRows(tx).notify(ownerUserId, projectId, title, body, url);
@@ -64,11 +63,9 @@ const common = {
 const createBody = { type: 'object', required: ['projectId', 'text', 'schedule', 'timeZone'], additionalProperties: false, properties: { projectId: { type: 'string', maxLength: 64 }, ...common } } as const;
 const updateBody = { type: 'object', additionalProperties: false, properties: { projectId: { type: 'string', maxLength: 64 }, expectedVersion: { type: 'integer', minimum: 1 }, ...common } } as const;
 const previewBody = { type: 'object', required: ['schedule', 'timeZone'], additionalProperties: false, properties: { schedule, timeZone: common.timeZone } } as const;
-const summaryBody = { type: 'object', required: ['on'], additionalProperties: false, properties: { on: { type: 'boolean' }, noteVersion: { type: 'string', maxLength: 64 }, timeZone: { type: 'string', maxLength: 64 } } } as const;
 void ASSISTANT_JOB_LIMITS;
 
 export function registerAssistantJobRoutes(app: FastifyInstance, db: Database, sessions: SessionResolver, boss: Pick<PgBoss, 'send'>, composition: Composition) {
-  registerAssistantReactionRoutes(app, assistantJobUnitOfWork(db, composition.queue, boss), sessions);
   const jobs = assistantJobUseCases(db, boss, composition);
   const who = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
   const noStore = { 'cache-control': 'no-store' };
@@ -100,23 +97,4 @@ export function registerAssistantJobRoutes(app: FastifyInstance, db: Database, s
     reply.code(202).headers(noStore).send(await jobs.runNow(await who(request), request.params.workspaceId, request.params.ownerUserId, request.params.jobId)));
   app.get<{ Params: JobParams }>(assistantJobHistoryPath(':workspaceId', ':ownerUserId', ':jobId'), async (request, reply) =>
     reply.headers(noStore).send({ items: await jobs.history(await who(request), request.params.workspaceId, request.params.ownerUserId, request.params.jobId) }));
-
-  // The morning summary written by the assistant: the person's own setting and today's line for the Home greeting.
-  app.get(ASSISTANT_MORNING_SUMMARY_PATH, async (request, reply) => {
-    const principal = await who(request);
-    const body = await db.transaction(async (tx) => {
-      const prefs = notificationPreferenceRows(tx);
-      const stored = await prefs.find(principal.id);
-      const today = await todaysSummary({ summaries: assistantSummaryRows(tx) }, principal.id, stored?.timeZone ?? 'UTC', new Date());
-      return { byAssistant: !!stored?.summaryByAssistant && !!stored.summaryEnabled, line: today.line, day: today.day } satisfies AssistantMorningSummary;
-    });
-    return reply.headers(noStore).send(body);
-  });
-  app.put<{ Body: SetMorningSummaryByAssistant }>(ASSISTANT_MORNING_SUMMARY_PATH, { schema: { body: summaryBody } }, async (request, reply) => {
-    const principal = await who(request);
-    const result = await db.transaction((tx) => setMorningSummaryByAssistant(
-      { runs: personalRunRows(tx), jobs: assistantJobRows(tx), prefs: { lock: (id) => notificationPreferenceRows(tx).lock(id), save: (id, values) => notificationPreferenceRows(tx).save(id, values) } },
-      principal.id, { on: request.body.on, noteVersion: request.body.noteVersion, timeZone: request.body.timeZone }));
-    return reply.headers(noStore).send(result);
-  });
 }

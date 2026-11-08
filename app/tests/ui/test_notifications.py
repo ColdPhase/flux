@@ -302,19 +302,6 @@ class NotificationJourney(unittest.TestCase):
         page.get_by_label("Until", exact=True).fill("07:15")
         self.settled(page, lambda stored: stored["quietHours"]["start"] == "21:30" and stored["quietHours"]["end"] == "07:15")
         expect(page.get_by_text("21:30 – 7:15 · Europe/Warsaw")).to_be_visible()
-        # The morning summary (S22): off by default, one push a day at a local time when on.
-        summary = page.get_by_role("switch", name="Morning summary")
-        expect(summary).to_have_attribute("aria-checked", "false")
-        summary.click()
-        page.get_by_label("At", exact=True).fill("08:30")
-        prefs = self.settled(page, lambda stored: stored["morningSummary"] == {"enabled": True, "at": "08:30", "byAssistant": False})
-        self.assertEqual(prefs["morningSummary"], {"enabled": True, "at": "08:30", "byAssistant": False})
-        expect(page.get_by_text("One digest at 8:30 instead of single pings")).to_be_visible()
-        page.reload()
-        expect(page.get_by_role("switch", name="Morning summary")).to_have_attribute("aria-checked", "true")
-        page.get_by_role("switch", name="Morning summary").click()
-        self.settled(page, lambda stored: not stored["morningSummary"]["enabled"])
-        expect(page.get_by_label("At", exact=True)).to_have_count(0)
         shot(page, "notifications-desktop-1440-settings")
 
         muted.get_by_role("button", name="Unmute").click()
@@ -371,7 +358,7 @@ class NotificationJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=2, name="Notifications")).to_be_visible()
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "settings fit the phone")
         for control in (page.get_by_role("radiogroup", name="Notify me about").get_by_role("radio").all()
-                        + [page.get_by_role("switch", name="Quiet hours"), page.get_by_role("switch", name="Morning summary")]):
+                        + [page.get_by_role("switch", name="Quiet hours")]):
             assert_touch_target(self, page, control)
         assert_touch_target(self, page, page.get_by_label("Mentions: Email"))
         page.get_by_role("heading", level=2, name="Notifications").scroll_into_view_if_needed()

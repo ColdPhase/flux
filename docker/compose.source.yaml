@@ -154,7 +154,6 @@ services:
       # TEST ONLY (#469): public-looking names that connect to a mock; refused unless FLUX_TEST_FAILURE_INJECTION=true.
       FLUX_TEST_LINK_PREVIEW_HOSTS: ${FLUX_TEST_LINK_PREVIEW_HOSTS:-}
       FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}
-      FLUX_BACKGROUND_COMPARISONS: ${FLUX_BACKGROUND_COMPARISONS:-}
       # GitHub App read-only integration (#74). Empty reports unavailable; configure all together.
       FLUX_GITHUB_CLIENT_ID: ${FLUX_GITHUB_CLIENT_ID:-}
       FLUX_GITHUB_CLIENT_SECRET: ${FLUX_GITHUB_CLIENT_SECRET:-}
@@ -229,7 +228,6 @@ services:
       # The same operator allowlist as the API: the worker checks it again at every request.
       FLUX_AI_PRIVATE_TARGETS: ${FLUX_AI_PRIVATE_TARGETS:-}
       FLUX_PERSONAL_RUNS: ${FLUX_PERSONAL_RUNS:-}
-      FLUX_BACKGROUND_COMPARISONS: ${FLUX_BACKGROUND_COMPARISONS:-}
       # The agent runtime (F-022 AIM-3): the worker reconciles slot bindings through runtime-manager.
       FLUX_AGENT_RUNTIME: ${FLUX_AGENT_RUNTIME:-}
       FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS: ${FLUX_AGENT_RUNTIME_COMMERCIAL_TERMS:-}

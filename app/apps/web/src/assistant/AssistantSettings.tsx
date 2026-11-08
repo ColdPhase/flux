@@ -6,11 +6,10 @@ import { Icon, Spinner } from '../ui';
 import { getAssistantStatus } from './api';
 import '../notifications/notifications.css';
 import './assistant.css';
-import { AssistantReactions } from './AssistantReactions';
 import { AssistantSchedules } from './AssistantSchedules';
 
-// Assistant's schedules and reactions (F-027 A8, A9). Everything else about an agent, Assistant included, is its page in
-// Settings › AI (F-036 AG-1, #857). #858 moves schedules into Assistant's conversation and removes reactions, and this page goes.
+// Assistant's schedules (F-027 A8). Everything else about an agent, Assistant included, is its page in Settings › AI
+// (F-036 AG-1, #857). Schedules move into Assistant's conversation with #858's second part, and this page goes.
 
 export function AssistantSettings() {
   const { me, agents } = useShellData();
@@ -32,7 +31,6 @@ export function AssistantSettings() {
       {!status && !failed ? <p className="inbox__loading"><Spinner label="Loading schedules" /></p> : null}
       {status?.enablement ? <>
         <AssistantSchedules status={status} userId={me.user.id} />
-        <AssistantReactions status={status} userId={me.user.id} />
       </> : null}
       {status && !status.enablement ? <p className="nset__note">Connect AI first, so you have an agent. <Link className="ui-link" to="/settings/agents">Back to AI</Link></p> : null}
       <p className="nset__note">{first ? <Link className="ui-link" to={`/settings/agents/${first.id}`}>Back to {first.name}</Link> : <Link className="ui-link" to="/settings/agents">Back to AI</Link>}</p>

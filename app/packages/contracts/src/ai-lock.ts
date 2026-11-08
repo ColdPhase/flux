@@ -14,8 +14,8 @@ import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CHECK_PATH, AGENT_RUNTIME_CON
   AGENT_RUNTIME_NOTICE_PATH, AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH } from './agent-runtime.js';
 
 export type AiScopeKind = 'project' | 'conversation' | 'work' | 'run' | 'assistant_proposal'
-  | 'assistant_change' | 'agent_question' | 'comparison_rule' | 'comparison_proposal' | 'comparison_outcome'
-  | 'assistant_job' | 'notification';
+  | 'assistant_change' | 'agent_question'
+  | 'assistant_job';
 
 export type AiRouteRule =
   | { gate: 'gated'; from: 'params' | 'body'; key: string; kind: AiScopeKind; onlyWhen?: { body: string; equals: unknown } }
@@ -48,23 +48,12 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'POST /api/v1/projects/:projectId/agent-pauses': gated('params', 'projectId', 'project', { body: 'paused', equals: false }),
   'GET /api/v1/projects/:projectId/agent-questions': gated('params', 'projectId', 'project'),
   'POST /api/v1/agent-questions/:questionId/answer': gated('params', 'questionId', 'agent_question'),
-  // Background comparisons (O-007, #58).
-  'GET /api/v1/background-comparisons/runtime': exempt(ACCOUNT),
+  // An owner's API keys (Connect AI, #854).
   'POST /api/v1/background-compute-connections': exempt(ACCOUNT),
   'GET /api/v1/background-compute-connections': exempt(ACCOUNT),
-  'GET /api/v1/background-compute-connections/current': exempt(ACCOUNT),
   'PATCH /api/v1/background-compute-connections/:connectionId': exempt(ACCOUNT),
   'POST /api/v1/ai-model-lists': exempt(ACCOUNT),
   'DELETE /api/v1/background-compute-connections/:connectionId': exempt(REDUCES),
-  'POST /api/v1/projects/:projectId/proactive-comparison-rules': gated('params', 'projectId', 'project'),
-  'GET /api/v1/projects/:projectId/proactive-comparison-rules': gated('params', 'projectId', 'project'),
-  'GET /api/v1/projects/:projectId/proactive-comparison-proposals': gated('params', 'projectId', 'project'),
-  'GET /api/v1/projects/:projectId/proactive-comparison-outcomes': gated('params', 'projectId', 'project'),
-  'PATCH /api/v1/proactive-comparison-outcomes/:outcomeId': exempt('Dismiss only; never starts AI work'),
-  'GET /api/v1/background-compute-usage': exempt(ACCOUNT),
-  'PATCH /api/v1/proactive-comparison-proposals/:proposalId': gated('params', 'proposalId', 'comparison_proposal'),
-  'POST /api/v1/proactive-comparison-proposals/:proposalId/use': gated('params', 'proposalId', 'comparison_proposal'),
-  'PATCH /api/v1/proactive-comparison-rules/:ruleId': gated('params', 'ruleId', 'comparison_rule', { body: 'status', equals: 'enabled' }),
   // People's agents take tasks (#856, AG-5): the setting is a person's; the state shows what an agent did; Retry starts AI work again.
   [`GET ${TASK_TAKING_PATH}`]: exempt(PERSON),
   [`PUT ${TASK_TAKING_PATH}`]: exempt(PERSON),
@@ -84,11 +73,6 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'POST /api/v1/assistant-changes/:changeId/skip': exempt(REDUCES),
   'POST /api/v1/assistant-changes/:changeId/edit': gated('params', 'changeId', 'assistant_change'),
   'POST /api/v1/assistant-changes/:changeId/undo': exempt('A human compensating write as the owner; the owner can always reverse AI output'),
-  'GET /api/v1/workspaces/:workspace/people/:owner/assistant/when': exempt(PERSON),
-  'GET /api/v1/workspaces/:workspace/people/:owner/assistant/when/history': exempt(PERSON),
-  'POST /api/v1/workspaces/:workspace/people/:owner/assistant/when': gated('body', 'projectId', 'project'),
-  'PUT /api/v1/workspaces/:workspace/people/:owner/assistant/when/:id': exempt(PERSON),
-  'GET /api/v1/inbox/:id/assistant-draft': gated('params', 'id', 'notification'),
   'GET /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/schedules': exempt(PERSON),
   'POST /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/schedules': gated('body', 'projectId', 'project'),
   'POST /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/schedules/preview': exempt(PERSON),
@@ -98,8 +82,6 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'POST /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/schedules/:jobId/restore': gated('params', 'jobId', 'assistant_job'),
   'POST /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/schedules/:jobId/run': gated('params', 'jobId', 'assistant_job'),
   'GET /api/v1/workspaces/:workspaceId/assistants/:ownerUserId/schedules/:jobId/history': exempt(PERSON),
-  'GET /api/v1/assistant/morning-summary': exempt(ACCOUNT),
-  'PUT /api/v1/assistant/morning-summary': exempt(`${ACCOUNT}: the worker reads no space whose AI is off`),
   'GET /api/v1/personal-assistant': exempt('Account-wide status of the owner\'s own assistant; no AI read or action'),
   'GET /api/v1/personal-assistant/model': exempt(ACCOUNT),
   'PUT /api/v1/personal-assistant/model': exempt(ACCOUNT),
@@ -199,7 +181,7 @@ export const AI_ADJACENT_ROUTES: Readonly<Record<string, AiRouteRule>> = {
  */
 export const AI_WORK_QUEUES = {
   /** Identifiers of the job-name constants the worker registers. */
-  ai: ['PERSONAL_RUN_JOB', 'ASSISTANT_TICK_JOB', 'MORNING_SUMMARY_JOB', 'COMPARISON_TICK_JOB', 'COMPARISON_RECOVERY_JOB', 'SPACE_AI_SWEEP_JOB'],
+  ai: ['PERSONAL_RUN_JOB', 'ASSISTANT_TICK_JOB', 'SPACE_AI_SWEEP_JOB'],
   /** Jobs that start no AI work, each with the reason (the test fails on a job that is in neither list). */
   notAi: {
     DRAFT_SUMMARY_JOB: 'draft.summarize.v1 is a deterministic word count with no model request; it rechecks its requester, and an agent requester is denied by the principal layer while AI is off',
@@ -211,7 +193,7 @@ export const AI_WORK_QUEUES = {
     WORKSPACE_ENCRYPTION_RESUME_JOB: 'workspace-encryption.resume.v1 replays a sealed workspace\'s waiting work after an unlock; AI is always off there (F-030)',
   } as Readonly<Record<string, string>>,
   /** Tables whose rows wait for AI work: each has `ai_epoch` (no default) and the `ai_work_admission` trigger. */
-  tables: ['personal_runs', 'proactive_comparison_outbox', 'assistant_reaction_events', 'cowork_requests', 'cowork_units'],
+  tables: ['personal_runs', 'cowork_requests', 'cowork_units'],
   /** Functions that insert AI work from inside a person's own write; each checks the policy first and never raises. */
-  captureFunctions: ['assistant_capture_reaction'],
+  captureFunctions: [] as readonly string[],
 } as const;

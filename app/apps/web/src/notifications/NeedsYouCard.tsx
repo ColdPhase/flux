@@ -225,8 +225,6 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
               <li key={change.id}><span>{change.waitReason === 'removal' ? `Delete ${change.objectTitle ? `“${change.objectTitle}”` : `the ${change.phrase.split(' ').pop()}`}` : `${change.verb} ${change.objectTitle}`.trim()}</span>
                 {change.forPerson ? <span className="nyc__waits-for">{change.forPerson.name}</span> : null}</li>))}</ul> : null}
             {full && run ? <p className="nyc__reason">Deleting and other people&apos;s things always wait for your OK.</p> : null}
-            {item.assistantNote && !compact ? <p className="nyc__reason">Your assistant: {item.assistantNote}</p> : null}
-            {item.assistantDraft && !compact ? <p className="nyc__reason">Drafted by your assistant · ready to review in Reply</p> : null}
             {full && item.detail && item.kind !== 'blocked' && !item.proposal && !run ? <p className="nyc__reason">{item.detail}</p> : null}
             {full && item.proposal ? (
               <dl className="nyc__reason nyc__proposal" data-testid="agent-suggestion">

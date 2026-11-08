@@ -379,7 +379,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
      * `criteria`, `dependencyIds` and a `planIntent` it is the one native planning command for people,
      * the API and (later) agents; see the lock order at the top of this file.
      */
-    async createWork(principal: Principal, projectId: string, command: CreateWorkCommand, trustedOrigin?: { proposalId: string }): Promise<WorkItem> {
+    async createWork(principal: Principal, projectId: string, command: CreateWorkCommand): Promise<WorkItem> {
       const by = actor(principal);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Work item is required');
       const project = valid.id(projectId, 'projectId');
@@ -454,7 +454,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         await ports.work.insertLinks([...linkRows(scope, from, 'source', sources, by), ...linkRows(scope, from, 'related', related, by), ...linkRows(scope, from, 'part_of', parent, by)]);
         await ports.work.insertCreationNotice(record, sources);
         await useFence.mark();
-        if (!trustedOrigin) await ports.work.recordCreationBaseline(record);
+        await ports.work.recordCreationBaseline(record);
         const fresh = (await ports.work.findWork(record.id))!;
         const view = { ...await presentWork(ports, fresh), creationUndo: await undoEligibility(ports, principal, fresh) };
         // `assignedTo` names a person given this work by someone else (notifications, #116).
@@ -709,7 +709,6 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         }
         await requireTargets(ports, project, [...sources, ...workRefs(workIds), ...decisions]);
         const resultId = randomUUID();
-        if (finding === 'negative' && by.kind === 'human') await ports.backgroundComparison.prepareHumanNegative(project, by.id);
         // Every message identity (derived from this result and its task) is locked before the first task lock,
         // then the complete sorted task set, so overlapping results lock in one order and cannot deadlock.
         const contributions = workIds.length ? await ports.contributions.prepare(principal, project, { operation: 'result.create', resultId },
@@ -718,9 +717,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         // together with the finishing task's prerequisites, so no other pass can lock them in another order.
         await lockProjectGraphs(ports.work, [project]);
         await requireTargets(ports, project, [...sources, ...workRefs(workIds), ...decisions]);
-        const backgroundTasks = finding === 'negative' && by.kind === 'human' ? await ports.backgroundComparison.taskTargets(resultId) : [];
         const directTasks = [...workIds, ...await ports.work.taskUseTargets([...sources, ...decisions])];
-        const wanted = sortedIds([...directTasks, ...backgroundTasks, ...(finishes ? await directPrerequisiteIds(ports.work, workspaceId, [finishes.id]) : [])], 'taskIds');
+        const wanted = sortedIds([...directTasks, ...(finishes ? await directPrerequisiteIds(ports.work, workspaceId, [finishes.id]) : [])], 'taskIds');
         const useFence = await ports.work.lockPreparedTaskUse(wanted);
         const locked = contributions ? await ports.contributions.lockTasks(contributions) : [];
         // Finishing changes someone's work: it needs the version the author saw and a status
@@ -742,8 +740,6 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         }
         await useFence.mark(directTasks);
         const view = await presentResult(ports, record);
-        if (finding === 'negative' && by.kind === 'human' && await ports.backgroundComparison.enqueueHumanNegative(record.id, project, by.id))
-          await useFence.mark(backgroundTasks);
         await ports.events.record(principal, workspaceId, 'project.result_recorded.v1', project, { resultId: record.id });
         const messageIds = contributions ? await ports.contributions.append(contributions) : [];
         if (clientCommandId) await ports.work.recordNativeCommand(scope, by,

@@ -42,12 +42,9 @@ export function keyFailure(error: unknown) {
 export interface AddKeyFormHandle { reset(): void; focusFirst(): void }
 
 export const AddKeyForm = forwardRef<AddKeyFormHandle, {
-  /** The person's keys: the first one always serves background suggestions, a later one only when marked. */
-  connections: readonly BackgroundComputeConnection[];
-  current: BackgroundComputeConnection | null;
   onAdded: (added: BackgroundComputeConnection) => void;
   onCancel?: () => void;
-}>(function AddKeyForm({ connections, current, onAdded, onCancel }, ref) {
+}>(function AddKeyForm({ onAdded, onCancel }, ref) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   // Only to word the key help for the provider chosen in the form.
@@ -83,7 +80,7 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
     const name = String(data.get('connectionName') ?? '').trim();
     const model = String(data.get('model') ?? '').trim();
     const command: ConnectBackgroundComputeCommand = {
-      ...(name ? { name } : {}), useForBackground: data.get('useForBackground') === 'on' || connections.length === 0,
+      ...(name ? { name } : {}),
       provider: chosen, ...(model ? { model } : {}),
       ...(chosen === 'openai_compatible' ? { baseUrl: String(data.get('baseUrl') ?? '').trim() } : {}),
       ...(input !== null && output !== null ? { price: { inputMicrosPerMTok: input, outputMicrosPerMTok: output } } : {}),
@@ -115,7 +112,6 @@ export const AddKeyForm = forwardRef<AddKeyFormHandle, {
           defaultValue={(API_KEY_DAILY_BUDGET_CENTS.default / 100).toFixed(2)} aria-describedby="background-budget-help" /></label>
         <p id="background-budget-help" className="background-settings__help">Your agents pause for the day when it’s used. It’s the only limit.</p>
         <label>Name<input name="connectionName" autoComplete="off" maxLength={80} placeholder="For example: Work OpenRouter" /></label>
-        {connections.length ? <label className="background-settings__check"><input name="useForBackground" type="checkbox" /><span>Use this key for background suggestions instead of {current ? current.name : 'none'}.</span></label> : null}
         <div className="background-settings__actions">
           <Button type="submit" variant="primary" busy={busy}>Connect</Button>
           {onCancel ? <Button onClick={onCancel}>Cancel</Button> : null}

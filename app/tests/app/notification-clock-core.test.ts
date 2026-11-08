@@ -86,14 +86,6 @@ describe('parseClock', () => {
       'numbers are refused',
     );
   });
-
-  test('honours a custom code, e.g. the morning summary', () => {
-    throwsCode(
-      () => parseClock('bad', 'morningSummary.at', 'INVALID_MORNING_SUMMARY'),
-      'INVALID_MORNING_SUMMARY',
-      'custom code survives',
-    );
-  });
 });
 
 describe('formatClock', () => {

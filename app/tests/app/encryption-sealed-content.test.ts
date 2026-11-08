@@ -612,8 +612,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
   });
 });
 
-// #712 review: a stale template title stays markable as read; the morning summary of a sealed unread is content-free;
-// the settings page and Needs you open (or, locked, name by workspace) a sealed place instead of failing.
+// #712 review: a stale template title stays markable as read; the settings page and Needs you open (or, locked, name by workspace) a sealed place instead of failing.
 describe('F-030 content-free notifications in use (#712 review)', () => {
   const inbox = async () => (expectStatus(await ben.browser.request('GET', '/api/v1/inbox'), 200) as { items: { id: string; title: string; readAt: string | null; source: { workspaceId?: string } }[] }).items;
 
@@ -654,51 +653,6 @@ describe('F-030 content-free notifications in use (#712 review)', () => {
       expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
       expectStatus(await ben.browser.request('PUT', '/api/v1/notification-preferences/mutes', { body: { type: 'project', id: ids.A.project, muted: false } }), 200);
     }
-  });
-
-  test('the morning summary of a person whose newest unread is in A is written content-free and the day is claimed', async () => {
-    await post(ada, `/api/v1/conversations/${ids.A.conversation}/messages`, { body: `@Ben ${randomUUID()}`, clientMessageId: randomUUID() }, 201);
-    let newest: { title: string; source: { workspaceId?: string } } | undefined;
-    for (let attempt = 0; attempt < 60; attempt += 1) {
-      newest = (await inbox()).find((item) => item.readAt === null);
-      if (newest?.source.workspaceId === A) break;
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-    assert.equal(newest?.source.workspaceId, A, 'the newest unread is in A');
-    const now = new Date();
-    await pool.query(`INSERT INTO notification_preferences (user_id) VALUES ($1) ON CONFLICT DO NOTHING`, [ben.id]);
-    await pool.query(`UPDATE notification_preferences SET summary_enabled = true, summary_at = $2, time_zone = 'UTC', summary_last_on = NULL WHERE user_id = $1`,
-      [ben.id, now.getUTCHours() * 60 + now.getUTCMinutes()]);
-    const boss = new PgBoss({ connectionString, migrate: false, supervise: false, schedule: false });
-    await boss.start();
-    try { await boss.send('notification.morning-summary.v1', {}); } finally { await boss.stop({ graceful: false }); }
-    let row: { title: string; body: string; workspace_id: string } | undefined;
-    for (let attempt = 0; attempt < 120 && !row; attempt += 1) {
-      row = (await pool.query<{ title: string; body: string; workspace_id: string }>(`SELECT title, body, workspace_id FROM notifications
-        WHERE user_id = $1 AND delivery_kind = 'morning_summary' ORDER BY created_at DESC LIMIT 1`, [ben.id])).rows[0];
-      if (!row) await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-    assert.ok(row, 'the summary was written');
-    assert.match(row.title, /^(\d+\+? things wait|1 thing waits) in your inbox$/);
-    assert.equal(row.body, 'Your morning summary from Flux');
-    assert.equal(row.workspace_id, A, 'every unread is in A (the rest were marked read): the plain count, in A');
-    const claimed = (await pool.query<{ on: string | null }>(`SELECT summary_last_on::text AS on FROM notification_preferences WHERE user_id = $1`, [ben.id])).rows[0];
-    assert.ok(claimed?.on, 'the day is claimed');
-    // #712 review P2-4: with A locked, the next day's summary leaves A's items out and still claims the day.
-    expectStatus(await lock(ada.browser, A), 200);
-    try {
-      await pool.query(`UPDATE notification_preferences SET summary_last_on = NULL WHERE user_id = $1`, [ben.id]);
-      const again = new PgBoss({ connectionString, migrate: false, supervise: false, schedule: false });
-      await again.start();
-      try { await again.send('notification.morning-summary.v1', {}); } finally { await again.stop({ graceful: false }); }
-      let on: string | null = null;
-      for (let attempt = 0; attempt < 120 && !on; attempt += 1) {
-        on = (await pool.query<{ on: string | null }>(`SELECT summary_last_on::text AS on FROM notification_preferences WHERE user_id = $1`, [ben.id])).rows[0]?.on ?? null;
-        if (!on) await new Promise((resolve) => setTimeout(resolve, 500));
-      }
-      assert.ok(on, 'locked: the day is still claimed (no retry loop on WORKSPACE_LOCKED)');
-    } finally { expectStatus(await unlock(ada.browser, A, { password: pw }), 200); }
-    await pool.query(`UPDATE notification_preferences SET summary_enabled = false WHERE user_id = $1`, [ben.id]);
   });
 });
 

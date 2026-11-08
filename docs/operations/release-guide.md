@@ -115,12 +115,11 @@ gh attestation verify oci://ghcr.io/coldphase/flux-agent-runtime@sha256:<runtime
 ## Assistant on your own AI key (optional)
 
 Owners connect their own AI provider in **Settings → AI**. Two switches decide whether this
-installation lets the assistant and background suggestions run; both are off while empty. Set them in
+installation lets the assistant run and which private hosts a connection may use; both are off while empty. Set them in
 `.env`; `compose.yaml` passes them to `api` and `worker`:
 
 ```sh
 FLUX_PERSONAL_RUNS=on              # the assistant, on each owner's own AI connection
-FLUX_BACKGROUND_COMPARISONS=on     # optional: background suggestions
 FLUX_AI_PRIVATE_TARGETS=           # optional: private hosts a connection may use, for example ollama,10.0.0.0/8
 FLUX_BACKGROUND_KEY_HOST_FILE=/etc/flux/background.key
 ```

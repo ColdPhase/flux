@@ -97,7 +97,7 @@ class ReleaseComposeParityTest(unittest.TestCase):
         # The overlay is optional; the assistant on the owner's own API key needs none of it.
         keys = environment_keys(RELEASE[0].read_text(encoding="utf-8"))
         for service in APPLICATION_SERVICES:
-            for name in ("FLUX_PERSONAL_RUNS", "FLUX_BACKGROUND_COMPARISONS", "FLUX_AI_PRIVATE_TARGETS"):
+            for name in ("FLUX_PERSONAL_RUNS", "FLUX_AI_PRIVATE_TARGETS"):
                 self.assertIn(name, keys[service], f"{service} does not receive {name}")
 
     def test_the_runtime_settings_come_from_the_overlay_that_every_release_ships(self) -> None:

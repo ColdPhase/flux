@@ -3,8 +3,7 @@
 This page describes how an owner's AI connection reaches any supported provider and model with
 the same Flux path ([F-020](../product/model-providers.md), PROV-1–PROV-6). The owner key custody,
 consent, caps and fail-closed rules are those of
-[background comparison](proactive-comparison.md) (O-007) and [personal runs](personal-runs.md)
-(O-008); this page covers what is provider-specific and what is deliberately not.
+[personal runs](personal-runs.md) (O-008); this page covers what is provider-specific and what is deliberately not.
 
 ## Layout
 
@@ -184,8 +183,8 @@ open for every named provider.
 
 - Done 2026-10-03 (PROV-1):
   - Several connections per owner, each named. Adding one never replaces another.
-  - Background comparisons use the one the owner marks (`PATCH …/:id` `usedForBackground`). The
-    assistant uses the one its consent names, chosen when enabling.
+  - The assistant uses the one its consent names, chosen when enabling. (Background comparisons
+    used the one the owner marked, `usedForBackground`; they went in #858.)
   - Removing a connection stops its use, with no fallback.
   - The production personal-run lookup, key resolver and the `FLUX_PERSONAL_RUNS` operator switch
     are in place (see personal-runs.md).

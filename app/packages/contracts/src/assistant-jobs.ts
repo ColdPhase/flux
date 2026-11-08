@@ -1,4 +1,4 @@
-// "On a schedule" and the morning summary (F-027 AST-7, A8 #408). A schedule is the owner's own sentence, run by their
+// "On a schedule" (F-027 AST-7, A8 #408). A schedule is the owner's own sentence, run by their
 // assistant at a time in their time zone, in one project. The words "job" and "cron" are internal, except inside a
 // schedule's *More* (AST-10.2).
 
@@ -141,22 +141,4 @@ export const assistantJobPreviewPath = (workspaceId: string, ownerUserId: string
 export interface AssistantJobPreview {
   words: string;
   next: { at: string; label: string }[];
-}
-
-/** The morning summary written by the assistant (AST-7 "The morning summary"). */
-export const ASSISTANT_MORNING_SUMMARY_PATH = '/api/v1/assistant/morning-summary';
-export interface AssistantMorningSummary {
-  /** Whether the owner asked the assistant to write it. */
-  byAssistant: boolean;
-  /** Today's line for the Home greeting, or null (nothing written yet, or the plain summary went out). */
-  line: string | null;
-  /** The local day of the line ("YYYY-MM-DD"). */
-  day: string | null;
-}
-export interface SetMorningSummaryByAssistant {
-  on: boolean;
-  /** The version of the background-use note the owner saw (AST-2.1). */
-  noteVersion?: string;
-  /** The browser's time zone, taken when the person's zone is still UTC (as the Notifications row does). */
-  timeZone?: string;
 }

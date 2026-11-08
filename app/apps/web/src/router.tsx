@@ -187,10 +187,9 @@ export const router = createBrowserRouter([
               // One of your agents (F-036 AG-1, #857).
               { path: 'agents/:agentId', ...secondary(async () => ({ Component: (await import('./my-agents/AgentPage')).AgentPage })) },
               { path: 'shortcuts', ...secondary(async () => ({ Component: (await settingsPage()).KeyboardShortcuts })) },
-              // Assistant's schedules and reactions, until #858 moves schedules into its conversation and removes reactions.
+              // Assistant's schedules, until they move into its conversation (#858).
               { path: 'assistant', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantSettings })) },
-              { path: 'background-compute', ...secondary(async () => { const page = await import('./proactive-comparison/BackgroundComputeSettings'); return { Component: page.BackgroundComputeSettings, loader: page.backgroundComputeLoader }; }) },
-              { path: 'ai-connections', ...secondary(async () => { const page = await import('./proactive-comparison/BackgroundComputeSettings'); return { Component: page.AiConnectionsSettings, loader: page.aiConnectionsLoader }; }) },
+              { path: 'ai-connections', ...secondary(async () => { const page = await import('./ai/AiKeysSettings'); return { Component: page.AiConnectionsSettings, loader: page.aiConnectionsLoader }; }) },
             ],
           },
           // The header names it as such (#763 NV-1): it is no place of the sidebar.

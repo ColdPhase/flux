@@ -4,12 +4,11 @@ import { after, before, beforeEach, describe, test } from 'node:test';
 import type { PgBoss } from 'pg-boss';
 import { INBOX_PATH, NEEDS_YOU_PATH, assistantOperatorRequestPath, type InboxResponse, type NeedsYouResponse } from '@flux/contracts';
 import {
-  DEFAULT_PREFERENCES, deliverNotificationEmail, deliverPlainSummary, generateNotifications, preferenceRepository,
+  DEFAULT_PREFERENCES, deliverNotificationEmail, generateNotifications, preferenceRepository,
   type GeneratorEvent, type GeneratorPorts, type NotificationFacts, type NotificationMailer, type ProjectMessageFacts, type ReviewFacts,
 } from '@flux/core';
-import { assistantJobRows, assistantReactionRows, morningSummaryRows, notificationGeneratorRows, pushDeliveryRepository } from '@flux/db';
+import { assistantJobRows, notificationGeneratorRows, pushDeliveryRepository } from '@flux/db';
 import { emailUnitOfWork } from '../../apps/worker/src/notifications/adapters.js';
-import { summaryUnitOfWork } from '../../apps/worker/src/jobs/morning-summary.js';
 import { assistantScene, type AssistantScene } from './support/assistant-scene.js';
 import { db, pool } from './support/db.js';
 import { publicOrigin } from './support/http.js';
@@ -18,7 +17,7 @@ import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
 
 // AG-10 (F-029 follow-up #642; per space under F-037): the "AI origin" of a notification is written by whoever creates it, from the
 // actor or the source, and the switch of the space it is about reads that column. One test per writer: a push and an e-mail queued before the flip are skipped while AI is off, the Inbox list, the unread
-// count, the direct read, Needs you and the plain morning-summary count leave the item out, and the same notification delivers once AI is on.
+// count, the direct read and Needs you leave the item out, and the same notification delivers once AI is on.
 
 const fakeBoss = () => {
   const sent: { name: string; data: unknown }[] = [];
@@ -62,7 +61,6 @@ async function assertGated(label: string, recipient: Person, projectId: string, 
   const emailId = randomUUID();
   await pool.query(`INSERT INTO notification_emails (id, notification_id, user_id, address_kind) VALUES ($1, $2, $3, 'account')`, [emailId, notificationId, recipient.id]);
   const target = () => pushDeliveryRepository(db).findTarget({ notificationId, subscriptionId, userId: recipient.id });
-  const summaryRows = async () => (await morningSummaryRows(db).unread(recipient.id, 200)).map((row) => row.id);
 
   const hiddenCount = Number((await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND source_type = 'project' AND source_id = $2 AND in_inbox AND read_at IS NULL AND ai_origin`,
     [recipient.id, projectId])).rows[0].n);
@@ -70,7 +68,6 @@ async function assertGated(label: string, recipient: Person, projectId: string, 
   const on = await unreadIn(recipient);
   assert.ok(on.items.some((item) => item.id === notificationId), `${label}: control, listed while AI is on`);
   assert.ok(await target(), `${label}: control, a push target while AI is on`);
-  assert.ok((await summaryRows()).includes(notificationId), `${label}: control, in the plain summary count while AI is on`);
   if (expectation.needsYou) assert.ok((await needsYouKeys(recipient)).includes(`note:${notificationId}`), `${label}: control, in Needs you while AI is on`);
 
   const epoch = await setSpaceAi(projectId, 'blocked');
@@ -86,7 +83,6 @@ async function assertGated(label: string, recipient: Person, projectId: string, 
     assert.equal(off.unread, on.unread - hiddenCount, `${label}: and out of the unread count`);
     assert.equal((await recipient.browser.request('GET', `${INBOX_PATH}/${notificationId}`)).status, 404, `${label}: a direct read finds nothing`);
     assert.ok(!(await needsYouKeys(recipient)).includes(`note:${notificationId}`), `${label}: left out of Needs you`);
-    assert.ok(!(await summaryRows()).includes(notificationId), `${label}: left out of the plain summary count`);
   } finally {
     await setSpaceAi(projectId, 'allowed');
   }
@@ -189,73 +185,13 @@ describe('space AI switch: notifications by AI origin (#642)', () => {
     try {
       assert.ok(await pushDeliveryRepository(db).findTarget({ notificationId: id!, subscriptionId, userId: owner.id }), 'still pushed');
       assert.ok((await unreadIn(owner)).items.some((item) => item.id === id), 'still in the Inbox');
-      assert.ok((await morningSummaryRows(db).unread(owner.id, 200)).some((row) => row.id === id), 'still counted in the plain summary');
     } finally { await setSpaceAi(scene.place.id, 'allowed'); }
-  });
-
-  test('an assistant\'s note on a task', async () => {
-    const { owner, ws, place } = scene;
-    const taskId = randomUUID();
-    const rule = { id: randomUUID(), workspaceId: ws.id, projectId: place.id, projectName: place.name, ownerUserId: owner.id, event: 'failed_result', action: 'tell', enabled: true, version: 1 };
-    const event = { id: randomUUID(), reactionId: rule.id, ownerUserId: owner.id, objectId: taskId, sourceId: randomUUID(), action: 'tell', event: 'failed_result', reactionVersion: 1, state: 'running', runId: null, createdAt: new Date(), data: null, aiEpoch: 1 };
-    await pool.query(`INSERT INTO assistant_reactions(id,workspace_id,project_id,owner_user_id,event,action,enabled) VALUES($1,$2,$3,$4,'failed_result','tell',true)`, [rule.id, ws.id, place.id, owner.id]);
-    await pool.query(`INSERT INTO assistant_reaction_events(reaction_id,owner_user_id,object_id,source_id,action,event,reaction_version,state,ai_epoch,id) VALUES($1,$2,$3,$4,'tell','failed_result',1,'running',(SELECT epoch FROM project_ai_policies WHERE project_id=$5),$6)`,
-      [rule.id, owner.id, taskId, event.sourceId, place.id, event.id]);
-    await assistantReactionRows(db).deliver(event as never, rule as never, 'The result contradicts the task; check the criteria.');
-    const id = (await pool.query(`SELECT id FROM notifications WHERE user_id = $1 AND title = 'Your assistant has a note for your task' AND url LIKE $2`, [owner.id, `%${taskId}`])).rows[0].id as string;
-    await assertGated('assistant reaction note', owner, scene.place.id, id, { needsYou: true });
   });
 
   test('an assistant\'s schedule paused notice', async () => {
     const { owner, place } = scene;
     const id = await assistantJobRows(db).notify(owner.id, place.id, 'Paused Daily check: it could not run', 'Your assistant paused this schedule. Turn it on again when it is fixed.', '/settings/assistant');
     await assertGated('assistant schedule notice', owner, scene.place.id, id);
-  });
-
-  test('an assistant-written morning summary (the plain count is not AI origin)', async () => {
-    const { owner, place } = scene;
-    const subscriptionId = await subscription(owner);
-    const { boss } = fakeBoss();
-    const uow = summaryUnitOfWork(db, boss);
-    await uow.run((ports) => deliverPlainSummary(ports, owner.id));
-    const plain = (await pool.query(`SELECT id, ai_origin FROM notifications WHERE user_id = $1 AND delivery_kind = 'morning_summary' ORDER BY created_at DESC LIMIT 1`, [owner.id])).rows[0];
-    assert.equal(plain.ai_origin, false, 'the plain count is not AI origin');
-    await uow.run((ports) => deliverPlainSummary(ports, owner.id, 'Your assistant: the lamp sensor is on track.'));
-    const written = (await pool.query(`SELECT id, ai_origin FROM notifications WHERE user_id = $1 AND delivery_kind = 'morning_summary' ORDER BY created_at DESC, id LIMIT 1`, [owner.id])).rows[0];
-    assert.equal(written.ai_origin, true, 'the assistant-written line is AI origin');
-    const target = () => pushDeliveryRepository(db).findTarget({ notificationId: written.id, subscriptionId, userId: owner.id });
-    assert.ok(await target(), 'control: pushed while AI is on');
-    await setSpaceAi(scene.place.id, 'blocked');
-    try {
-      assert.equal(await target(), null, 'the assistant-written summary queued before the flip is not pushed');
-      assert.ok(await pushDeliveryRepository(db).findTarget({ notificationId: plain.id, subscriptionId, userId: owner.id }), 'the plain one is');
-    } finally { await setSpaceAi(scene.place.id, 'allowed'); }
-    assert.ok(place.id);
-  });
-
-  test('the plain morning-summary count leaves out AI-origin items while AI is off', async () => {
-    const { owner } = scene;
-    const { boss } = fakeBoss();
-    const uow = summaryUnitOfWork(db, boss);
-    const unread = async () => (await morningSummaryRows(db).unread(owner.id, 200)).length;
-    /** The number the plain summary announces now (0 when there is nothing to announce). */
-    const announced = async () => {
-      const known = new Set((await pool.query(`SELECT id FROM notifications WHERE user_id = $1 AND delivery_kind = 'morning_summary'`, [owner.id])).rows.map((row) => row.id as string));
-      if (await uow.run((ports) => deliverPlainSummary(ports, owner.id)) === 'empty') return 0;
-      const fresh = (await pool.query(`SELECT id, title FROM notifications WHERE user_id = $1 AND delivery_kind = 'morning_summary'`, [owner.id])).rows
-        .filter((row) => !known.has(row.id as string));
-      assert.equal(fresh.length, 1, 'one summary was stored');
-      return Number(/^(\d+)\+? things?/.exec(fresh[0].title as string)?.[1]);
-    };
-    const hiddenRows = Number((await pool.query(`SELECT count(*)::int AS n FROM notifications WHERE user_id = $1 AND source_type = 'project' AND source_id = $2 AND in_inbox AND read_at IS NULL AND ai_origin`, [owner.id, scene.place.id])).rows[0].n);
-    assert.ok(hiddenRows > 0, 'the earlier tests left AI-origin items unread');
-    const [rowsOn, countOn] = [await unread(), await announced()];
-    assert.equal(countOn, rowsOn, 'control: the summary announces every unread item while AI is on');
-    await setSpaceAi(scene.place.id, 'blocked');
-    try {
-      assert.equal(await unread(), rowsOn - hiddenRows, 'the unread rows it counts drop by exactly the AI-origin items');
-      assert.equal(await announced(), countOn - hiddenRows, 'and so does the number it announces');
-    } finally { await setSpaceAi(scene.place.id, 'allowed'); }
   });
 
   test('an operator request', async () => {

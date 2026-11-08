@@ -28,7 +28,7 @@ export interface ConversationAssistant {
   /** The next request, waiting for the working one to end (AST-6 queue): "Next: '…'. It starts when this one ends · Cancel". */
   queued: AssistantRun | null;
   cancelQueued(): Promise<void>;
-  /** The queued request waits behind a background run of the owner: "Finishing your Morning summary first… [ Stop the summary ]". */
+  /** The queued request waits behind a background run of the owner: "Finishing your daily check first… [ Stop it ]". */
   stopBehind(): Promise<void>;
   /** Other people's assistants working here right now, by name only: "Ada's assistant is working…" (AST-6). */
   others: AssistantActivity['working'];
@@ -84,7 +84,7 @@ export function useConversationAssistant({ meId, meName, projectId, conversation
 
   /** A run changed: keep it while it works or when it ended without an answer; an answer shows in the feed. */
   const track = useCallback((next: AssistantRun) => {
-    // A schedule's or the morning summary's silent run only borrows a conversation: it is not this conversation's working line.
+    // A schedule's silent run only borrows a conversation: it is not this conversation's working line.
     if (next.conversationId !== conversationId || next.silent) return;
     const current = runRef.current;
     // A request behind the working one waits in its own line; it takes over the working line when it starts. It also waits when the

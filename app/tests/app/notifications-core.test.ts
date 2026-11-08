@@ -7,10 +7,8 @@ import {
   deliverableAt,
   localMinutes,
   GENERATION_MAX_ATTEMPTS,
-  deliverPlainSummary,
   generateNotifications,
   preferenceRepository,
-  type SummaryPorts,
   type GeneratorEvent,
   type GeneratorPorts,
   type NotificationFacts,
@@ -112,46 +110,6 @@ describe('F-030 generation failures of a sealed workspace (#712 review P3)', () 
   });
 });
 
-describe('F-030 morning summary of encrypted workspaces (#712 review)', () => {
-  const plainWs = randomUUID(); const sealedWs = randomUUID(); const lockedWs = randomUUID();
-  const source = (workspaceId: string) => ({ workspaceId, type: 'project' as const, id: randomUUID() });
-  function ports(sources: ReturnType<typeof source>[]) {
-    const inserted: { source: { workspaceId: string }; title: string; aiOrigin: boolean; sources: unknown[] }[] = [];
-    const summary: SummaryPorts = {
-      authorizer: { canRead: async (_user, place) => {
-        const workspaceId = sources.find((item) => item.id === place.id)!.workspaceId;
-        if (workspaceId === lockedWs) throw Object.assign(new Error('locked'), { code: 'WORKSPACE_LOCKED' });
-        return { visible: true, allowed: true, workspaceId };
-      } },
-      lockCandidate: async () => null, isMuted: async () => false, claimDay: async () => true,
-      unread: async () => sources.map((item) => ({ id: randomUUID(), source: item })),
-      insertSummary: async (row) => { inserted.push(row); },
-      deliverableSubscriptions: async () => [], enqueuePush: async () => null,
-      sealedWorkspace: async (workspaceId) => workspaceId !== plainWs,
-    };
-    return { summary, inserted };
-  }
-
-  test('the row is anchored on the newest plain source; an assistant line is kept only there', async () => {
-    const mixed = ports([source(sealedWs), source(plainWs)]);
-    assert.equal(await deliverPlainSummary(mixed.summary, 'ben', 'Your assistant: all good.'), 'sent');
-    assert.equal(mixed.inserted[0]!.source.workspaceId, plainWs);
-    assert.equal(mixed.inserted[0]!.title, 'Your assistant: all good.');
-    const sealedOnly = ports([source(sealedWs)]);
-    await deliverPlainSummary(sealedOnly.summary, 'ben', 'Your assistant: all good.');
-    assert.deepEqual({ ws: sealedOnly.inserted[0]!.source.workspaceId, title: sealedOnly.inserted[0]!.title, ai: sealedOnly.inserted[0]!.aiOrigin },
-      { ws: sealedWs, title: '1 thing waits in your inbox', ai: false }, 'only sealed sources: the plain count, never the line');
-  });
-
-  test('an item of a locked workspace is left out instead of failing the summary', async () => {
-    const withLocked = ports([source(lockedWs), source(plainWs)]);
-    assert.equal(await deliverPlainSummary(withLocked.summary, 'ben'), 'sent');
-    assert.equal(withLocked.inserted[0]!.title, '1 thing waits in your inbox');
-    assert.equal(withLocked.inserted[0]!.sources.length, 1);
-    assert.equal(await deliverPlainSummary(ports([source(lockedWs)]).summary, 'ben'), 'empty', 'only locked items: nothing to send, no failure');
-  });
-});
-
 describe('quiet hours across daylight-saving transitions', () => {
   const quiet = (timeZone: string, start: string, end: string) => {
     const clock = (value: string) => Number(value.slice(0, 2)) * 60 + Number(value.slice(3));
@@ -219,17 +177,17 @@ describe('focus pauses push and email (#340, F-026 S19)', () => {
 });
 
 
-describe('focus composed with the morning-summary preference', () => {
+describe('focus composed with quiet hours', () => {
   const now = new Date('2026-10-07T09:20:00Z');
   const until = new Date('2026-10-07T10:00:00Z');
   const cases = [
     { name: 'pause only retains the individual push', quietEnabled: false, quietStart: 22 * 60, quietEnd: 7 * 60, pushes: 1, release: until },
-    { name: 'quiet after the pause uses the summary and still holds email', quietEnabled: true, quietStart: 9 * 60 + 50, quietEnd: 11 * 60, pushes: 0, release: new Date('2026-10-07T11:00:00Z') },
-    { name: 'quiet that already holds the push stays covered by the summary', quietEnabled: true, quietStart: 9 * 60, quietEnd: 9 * 60 + 50, pushes: 0, release: until },
+    { name: 'quiet after the pause holds the push and email to the end of quiet hours', quietEnabled: true, quietStart: 9 * 60 + 50, quietEnd: 11 * 60, pushes: 1, release: new Date('2026-10-07T11:00:00Z') },
+    { name: 'quiet that ends before the pause leaves the pause to hold the push', quietEnabled: true, quietStart: 9 * 60, quietEnd: 9 * 60 + 50, pushes: 1, release: until },
   ];
   for (const row of cases) test(row.name, async () => {
     const { ports, state, uow } = harness([dmEvent(1)], new Map());
-    const preferences = { ...DEFAULT_PREFERENCES, summaryEnabled: true, pausedUntil: until,
+    const preferences = { ...DEFAULT_PREFERENCES, pausedUntil: until,
       quietEnabled: row.quietEnabled, quietStart: row.quietStart, quietEnd: row.quietEnd, timeZone: 'UTC' };
     ports.preferences = preferenceRepository({ find: async () => preferences, save: async () => undefined,
       isMuted: async () => false, mutes: async () => [], setMuted: async () => undefined });

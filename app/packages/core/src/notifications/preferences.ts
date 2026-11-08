@@ -46,11 +46,6 @@ export interface StoredPreferences {
   timeZone: string;
   /** Focus mode: push and email wait until this instant (F-026 S19). */
   pausedUntil: Date | null;
-  /** The morning summary (S22), at `summaryAt` minutes after local midnight in `timeZone`. */
-  summaryEnabled: boolean;
-  summaryAt: number;
-  /** F-027 A8: the assistant writes the summary's text (turned on in the assistant flow, which records the note of AST-2.1). */
-  summaryByAssistant: boolean;
 }
 
 export const DEFAULT_PREFERENCES: StoredPreferences = {
@@ -61,9 +56,6 @@ export const DEFAULT_PREFERENCES: StoredPreferences = {
   quietEnd: 7 * 60,
   timeZone: 'UTC',
   pausedUntil: null,
-  summaryEnabled: false,
-  summaryAt: 9 * 60,
-  summaryByAssistant: false,
 };
 
 const NEEDS_YOU = new Set<NotificationReason>(NEEDS_YOU_REASONS);
@@ -114,9 +106,9 @@ export function isTimeZone(value: unknown): value is string {
 
 const HHMM = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-export function parseClock(value: unknown, field: string, code = 'INVALID_QUIET_HOURS'): number {
+export function parseClock(value: unknown, field: string): number {
   const match = typeof value === 'string' ? HHMM.exec(value) : null;
-  if (!match) throw new InvalidInputError(`${field} must be a time such as "22:00"`, code);
+  if (!match) throw new InvalidInputError(`${field} must be a time such as "22:00"`, 'INVALID_QUIET_HOURS');
   return Number(match[1]) * 60 + Number(match[2]);
 }
 
@@ -165,21 +157,6 @@ export function applyPreferenceChange(current: StoredPreferences, command: Updat
     if (next.quietEnabled && next.quietStart === next.quietEnd) throw new InvalidInputError('Quiet hours need different start and end times', 'INVALID_QUIET_HOURS');
   }
   if (command.pause !== undefined) next.pausedUntil = parsePause(command.pause, now);
-  const summary = command.morningSummary;
-  if (summary !== undefined) {
-    if (!summary || typeof summary !== 'object') throw new InvalidInputError('morningSummary must be an object', 'INVALID_MORNING_SUMMARY');
-    if (summary.enabled !== undefined) {
-      if (typeof summary.enabled !== 'boolean') throw new InvalidInputError('morningSummary.enabled must be true or false', 'INVALID_MORNING_SUMMARY');
-      next.summaryEnabled = summary.enabled;
-    }
-    if (summary.at !== undefined) next.summaryAt = parseClock(summary.at, 'morningSummary.at', 'INVALID_MORNING_SUMMARY');
-    // The assistant writing the summary starts only in the assistant's own flow, which records the note of AST-2.1.
-    if (summary.byAssistant !== undefined) {
-      if (summary.byAssistant !== false) throw new InvalidInputError('Ask your assistant to write the summary from its screen', 'INVALID_MORNING_SUMMARY');
-      next.summaryByAssistant = false;
-    }
-    if (next.summaryEnabled === false) next.summaryByAssistant = false;
-  }
   return next;
 }
 

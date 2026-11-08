@@ -29,8 +29,7 @@ async function objectsOf(scene: AssistantScene): Promise<Objects> {
   await pool.query(`UPDATE personal_runs SET status = 'completed', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = $1`, [run.run.id]);
   const job = expectStatus(await owner.browser.request('POST', assistantJobsPath(ws.id, owner.id),
     { body: { projectId: place.id, text: 'List what moved', schedule: { kind: 'weekly', at: '16:00', weekday: 5 }, timeZone: 'UTC' } }), 201) as { id: string };
-  const ids = { change: randomUUID(), proposal: randomUUID(), question: randomUUID(), rule: randomUUID(), comparison: randomUUID(),
-    outcome: randomUUID(), job: job.id, notification: randomUUID() };
+  const ids = { change: randomUUID(), proposal: randomUUID(), question: randomUUID(), job: job.id };
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -43,18 +42,10 @@ async function objectsOf(scene: AssistantScene): Promise<Objects> {
       VALUES ($1, $2, $3, $4, $5, 'Fact', 'Meaning', 'result', 'Result', 'negative')`, [ids.proposal, ws.id, place.id, randomUUID(), owner.id]);
     await client.query(`INSERT INTO agent_questions (id, workspace_id, project_id, conversation_id, message_id, agent_id, asked_user_id, question, options)
       VALUES ($1, $2, $3, $4, $5, $6, $7, 'Which probe?', '["A","B"]')`, [ids.question, ws.id, place.id, thread.id, randomUUID(), agentId, owner.id]);
-    await client.query(`INSERT INTO proactive_comparison_rules (id, workspace_id, project_id, owner_user_id, agent_id)
-      VALUES ($1, $2, $3, $4, $5)`, [ids.rule, ws.id, place.id, owner.id, agentId]);
-    await client.query(`INSERT INTO proactive_comparison_proposals (id, outbox_id, owner_user_id, agent_id, project_id, result_id, source_fingerprint, sources,
-      fact, interpretation, suggested_action, provider, model) VALUES ($1, $2, $3, $4, $5, $6, $7, '[]', 'Fact', 'Meaning', 'Check', 'anthropic', 'claude-sonnet-5')`,
-    [ids.comparison, randomUUID(), owner.id, agentId, place.id, randomUUID(), 'a'.repeat(64)]);
-    await client.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, ai_origin) VALUES ($1, $2, $3, 'project', $4, 'A note', false)`,
-      [ids.notification, owner.id, ws.id, place.id]);
     await client.query('COMMIT');
   } catch (error) { await client.query('ROLLBACK'); throw error; } finally { client.release(); }
   return { project: place.id, conversation: thread.id, work: work.id,
-    run: run.run.id, assistant_proposal: ids.proposal, assistant_change: ids.change, agent_question: ids.question, comparison_rule: ids.rule,
-    comparison_proposal: ids.comparison, comparison_outcome: ids.outcome, assistant_job: ids.job, notification: ids.notification };
+    run: run.run.id, assistant_proposal: ids.proposal, assistant_change: ids.change, agent_question: ids.question, assistant_job: ids.job };
 }
 
 /** The request a gated route answers to: its scope object in the path or body, the owner wherever an owner is named. */
@@ -82,10 +73,10 @@ describe('space AI switch: HTTP routes', () => {
   after(async () => { await ensureSpaceAiAllowed(blocked.place.id); });
 
   test('every gated route refuses while AI is off and writes nothing; AI on and outsiders are unaffected', async () => {
-    assert.ok(gatedRoutes.length >= 30, `the manifest gates the AI routes (${gatedRoutes.length})`);
+    assert.ok(gatedRoutes.length >= 25, `the manifest gates the AI routes (${gatedRoutes.length})`);
     const counts = async () => (await pool.query(`SELECT
       (SELECT count(*) FROM personal_runs WHERE workspace_id = $1) AS runs, (SELECT count(*) FROM agent_connections WHERE workspace_id = $1) AS connections,
-      (SELECT count(*) FROM assistant_jobs WHERE workspace_id = $1) AS jobs, (SELECT count(*) FROM assistant_reactions WHERE workspace_id = $1) AS reactions,
+      (SELECT count(*) FROM assistant_jobs WHERE workspace_id = $1) AS jobs,
       (SELECT count(*) FROM events WHERE workspace_id = $1) AS events`, [blocked.ws.id])).rows[0];
     await setSpaceAi(blocked.place.id, 'blocked');
     const before = await counts();
@@ -103,15 +94,7 @@ describe('space AI switch: HTTP routes', () => {
       if (code(answered.json) === 'SPACE_AI_OFF') failures.push(`${route}: refused where AI is on`);
     }
     assert.deepEqual(failures, []);
-    assert.deepEqual(await counts(), before, 'no run, connection, schedule, reaction, policy or event was written');
-  });
-
-  test('a narrowing call is not refused: pausing a comparison rule, turning off a reaction', async () => {
-    await setSpaceAi(blocked.place.id, 'blocked');
-    const pause = await blocked.owner.browser.request('PATCH', `/api/v1/proactive-comparison-rules/${a.comparison_rule}`, { body: { expectedVersion: 1, status: 'paused' } });
-    assert.notEqual(code(pause.json), 'SPACE_AI_OFF', 'pausing stays possible');
-    const enable = await blocked.owner.browser.request('PATCH', `/api/v1/proactive-comparison-rules/${a.comparison_rule}`, { body: { expectedVersion: 1, status: 'enabled' } });
-    assert.equal(code(enable.json), 'SPACE_AI_OFF', 'turning it on is refused');
+    assert.deepEqual(await counts(), before, 'no run, connection, schedule, policy or event was written');
   });
 
   test('a task is not handed to an agent while AI is off; people stay assignable', async () => {

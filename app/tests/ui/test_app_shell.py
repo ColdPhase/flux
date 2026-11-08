@@ -547,7 +547,7 @@ class AppShellJourney(unittest.TestCase):
         expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         self.assertEqual(places.get_by_role("link").all_inner_texts(), ["Home", "Inbox", "My tasks", "My map"])
         # Personal settings have their own header; Home is not current there (#184 delta review S1).
-        for path, title in (("/settings/assistant", "Schedules"), ("/settings/background-compute", "Background suggestions")):
+        for path, title in (("/settings/assistant", "Schedules"),):
             page.goto(path)
             expect(page.locator("header.top").get_by_role("heading", level=1, name=title)).to_be_visible()
             expect(places.get_by_role("link", name="Home")).not_to_have_attribute("aria-current", "page")

@@ -202,20 +202,6 @@ describe('a run on the owner\'s own Claude Code in the agent runtime (F-022 T5, 
     assert.deepEqual(stored, { connection_id: null, provider: 'anthropic' });
   });
 
-  test('AST-2.3: an O-007 comparison rule cannot run on the runtime; enabling one still needs an API-key background connection', async () => {
-    const rule = await owner.browser.request('POST', `/api/v1/projects/${place.id}/proactive-comparison-rules`, { body: {
-      agentId, purpose: 'camera_sensor_comparison', dataScope: 'current_project_published',
-      permittedEffect: 'quiet_project_proposal', trigger: 'human_negative_result' } });
-    if (rule.status === 201) {
-      const created = rule.json as { id: string; version: number };
-      const enabled = await owner.browser.request('PATCH', `/api/v1/proactive-comparison-rules/${created.id}`, { body: { expectedVersion: created.version, status: 'enabled' } });
-      assert.equal(enabled.status, 409);
-      assert.equal((enabled.json as { code?: string }).code, 'BACKGROUND_CONNECTION_REQUIRED', 'a signed-in Claude Code is never a background compute source');
-    } else {
-      assert.ok(rule.status >= 400 && rule.status < 500, `refused: ${rule.status}`);
-    }
-  });
-
   test('a run streams progress and commits its answer only after the access recheck; exact argv, token only in FLUX_RUN_TOKEN and the Authorization header, no transcript left', async () => {
     await script({ calls: [{ name: 'flux_list_contexts' }, { name: 'flux_get_doc', args: { projectId: place.id, id: docId } }], answer: 'Done: I read {{count}} things.' });
     const started = await ask();

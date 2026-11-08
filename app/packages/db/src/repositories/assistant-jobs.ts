@@ -5,9 +5,8 @@ import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { notificationRows } from './push.js';
 
-// Drizzle rows of "On a schedule" and the morning summary written by the assistant (migration 0109, F-027 A8 #408). They
-// satisfy `AssistantJobRepository` and `AssistantSummaryRepository` of packages/core/src/assistant structurally and make no
-// access decisions: the core use cases ask the access policy first.
+// Drizzle rows of "On a schedule" (migration 0109, F-027 A8 #408). They satisfy `AssistantJobRepository` of
+// packages/core/src/assistant structurally and make no access decisions: the core use cases ask the access policy first.
 
 const j = schema.assistantJobs;
 const jr = schema.assistantJobRuns;
@@ -147,52 +146,3 @@ export function assistantJobRows(db: DbExecutor) {
     },
   };
 }
-
-const s = schema.assistantMorningSummaries;
-type SummaryDbRow = typeof s.$inferSelect;
-const toSummary = (row: SummaryDbRow) => ({ ownerUserId: row.ownerUserId, day: row.day, runId: row.runId, state: row.state, line: row.line, createdAt: row.createdAt });
-
-/** The morning summary the assistant writes (migration 0109): its day row, the person's name, notification titles and anchors. */
-export function assistantSummaryRows(db: DbExecutor) {
-  return {
-    async create(row: { ownerUserId: string; day: string; runId: string }) {
-      const inserted = await db.insert(s).values({ ...row, state: 'writing' }).onConflictDoNothing().returning({ day: s.day });
-      return inserted.length > 0;
-    },
-    async writing(limit: number) {
-      return (await db.select().from(s).where(eq(s.state, 'writing')).orderBy(asc(s.createdAt), asc(s.day)).limit(limit)).map(toSummary);
-    },
-    async lock(ownerUserId: string, day: string) {
-      const result = await db.execute(sql`SELECT owner_user_id FROM assistant_morning_summaries WHERE owner_user_id = ${ownerUserId} AND day = ${day}::date AND state = 'writing' FOR UPDATE SKIP LOCKED`);
-      if (!result.rows.length) return null;
-      const [row] = await db.select().from(s).where(and(eq(s.ownerUserId, ownerUserId), sql`${s.day} = ${day}::date`));
-      return row ? toSummary(row) : null;
-    },
-    async settle(ownerUserId: string, day: string, state: 'written' | 'plain', line: string | null, now: Date) {
-      await db.update(s).set({ state, line, settledAt: now }).where(and(eq(s.ownerUserId, ownerUserId), sql`${s.day} = ${day}::date`));
-    },
-    async today(ownerUserId: string, day: string) {
-      const [row] = await db.select().from(s).where(and(eq(s.ownerUserId, ownerUserId), sql`${s.day} = ${day}::date`));
-      return row ? toSummary(row) : null;
-    },
-    async firstName(ownerUserId: string) {
-      const [row] = await db.select({ name: schema.authUsers.name }).from(schema.authUsers).where(eq(schema.authUsers.id, ownerUserId));
-      return (row?.name ?? '').trim().split(/\s+/)[0] || 'there';
-    },
-    async titles(ids: string[]) {
-      if (!ids.length) return new Map<string, string>();
-      const rows = await db.select({ id: schema.notifications.id, title: schema.notifications.title }).from(schema.notifications).where(inArray(schema.notifications.id, ids));
-      return new Map(rows.map((row) => [row.id, row.title]));
-    },
-    async anchors(ownerUserId: string, workspaceId: string, limit: number) {
-      const result = await db.execute(sql`SELECT DISTINCT ON (c.project_id) c.project_id, c.id AS conversation_id, c.created_at
-        FROM project_conversations c
-        WHERE c.workspace_id = ${workspaceId} AND c.space = 'people'
-        ORDER BY c.project_id, c.created_at DESC LIMIT ${limit * 4}`);
-      return (result.rows as { project_id: string; conversation_id: string; created_at: Date | string }[])
-        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-        .map((row) => ({ projectId: row.project_id, conversationId: row.conversation_id })).slice(0, limit);
-    },
-  };
-}
-

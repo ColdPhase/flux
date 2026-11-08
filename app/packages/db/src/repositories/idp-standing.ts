@@ -50,7 +50,7 @@ export function idpStandingRepository(db: DbExecutor) {
     async refuses(userId: string, options: { lock?: boolean } = {}): Promise<boolean> {
       // Locked dispatch/commit guards retain even the OK rows, so suspension cannot commit between
       // the guard and its protected write. Unlocked request checks remain a cheap stored-state read.
-      // Retain the owner first, consistently with profile refresh and proactive guards (including
+      // Retain the owner first, consistently with profile refresh and the commit guards (including
       // later writes whose foreign keys reference that owner).
       if (options.lock) await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.id, userId)).for('share');
       const query = db.select({ state: s.state }).from(s).where(eq(s.userId, userId)).orderBy(s.providerId);
@@ -58,7 +58,7 @@ export function idpStandingRepository(db: DbExecutor) {
       return rows.some((row) => row.state === 'sign_in_required');
     },
 
-    /** Same owner-before-standing order as proactive commit guards; call only in a short write transaction. */
+    /** Same owner-before-standing order as the commit guards; call only in a short write transaction. */
     async lockProfileOwner(userId: string): Promise<void> {
       await db.select({ id: schema.authUsers.id }).from(schema.authUsers).where(eq(schema.authUsers.id, userId)).for('update');
     },
@@ -112,9 +112,7 @@ export function idpStandingRepository(db: DbExecutor) {
               OR EXISTS (SELECT 1 FROM oauth_refresh_token r WHERE r.user_id = c.user_id AND r.revoked IS NULL AND r.expires_at > ${at}::timestamptz)
               OR EXISTS (SELECT 1 FROM oauth_access_token a WHERE a.user_id = c.user_id AND a.revoked IS NULL AND a.expires_at > ${at}::timestamptz)
               OR EXISTS (SELECT 1 FROM assistant_settings e JOIN agents g ON g.id = e.agent_id WHERE e.owner_user_id = c.user_id AND g.revoked_at IS NULL)
-              OR EXISTS (SELECT 1 FROM personal_runs p WHERE p.owner_user_id = c.user_id AND p.status IN ('queued', 'reading', 'dispatching'))
-              OR EXISTS (SELECT 1 FROM proactive_comparison_rules r WHERE r.owner_user_id = c.user_id AND r.status = 'enabled')
-              OR EXISTS (SELECT 1 FROM proactive_comparison_outbox o WHERE o.owner_user_id = c.user_id AND o.status IN ('queued', 'reserved')))
+              OR EXISTS (SELECT 1 FROM personal_runs p WHERE p.owner_user_id = c.user_id AND p.status IN ('queued', 'reading', 'dispatching')))
           ORDER BY c.next_check_at LIMIT ${limit} FOR UPDATE SKIP LOCKED)
         RETURNING st.user_id AS "userId", st.provider_id AS "providerId", st.refresh_token_enc AS "refreshTokenEnc"`);
       return (result.rows as Omit<IdpStandingClaim, 'leaseId'>[]).map((row) => ({ ...row, leaseId }));

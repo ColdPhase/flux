@@ -101,9 +101,6 @@ export function personalRunRows(db: DbExecutor) {
   return {
     enablement,
     lockOwner,
-    async needsCurrentGithubFacts(runId: string) {
-      return (await db.execute(sql`SELECT e.id FROM assistant_reaction_events e JOIN assistant_reactions r ON r.id=e.reaction_id WHERE e.run_id=${runId} AND e.event='pr_ready' LIMIT 1`)).rows.length > 0;
-    },
 
     /** The person's own time zone (their notification settings'; UTC when unset): a schedule they ask for runs in it. */
     async personTimeZone(userId: string) {

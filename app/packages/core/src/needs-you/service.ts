@@ -208,10 +208,6 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
             line: change.line, waitReason: change.waitReason, forPerson: change.forPerson })) },
       });
     }
-    for (const note of await ports.assistant?.notes?.(userId) ?? []) {
-      const item = items.find((item) => item.key === `blocked:${note.objectId}` || note.notificationId && item.key === `note:${note.notificationId}`);
-      if (item) { item.assistantNote = note.note; item.assistantDraft = note.draft; if (note.draft && note.notificationId) item.url = `/inbox/${note.notificationId}`; }
-    }
     return items.sort((a, b) => ORDER[a.kind] - ORDER[b.kind] || b.at.localeCompare(a.at));
   }
 

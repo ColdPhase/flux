@@ -184,10 +184,10 @@ export interface PersonalAssistantStatus {
 }
 
 /**
- * What started a run. `scheduled` and `morning_summary` are started by Flux's own tick for the owner's schedules and
- * morning summary (F-027 A8); only the first three can be asked for through the API.
+ * What started a run. `scheduled` is started by Flux's own tick for the owner's schedules (F-027 A8); only the first three
+ * can be asked for through the API.
  */
-export type AssistantRunKind = 'ask' | 'summarize' | 'map_thought' | 'scheduled' | 'morning_summary' | 'reaction' | 'task' | 'task_answer';
+export type AssistantRunKind = 'ask' | 'summarize' | 'map_thought' | 'scheduled' | 'task' | 'task_answer';
 
 /** A map thought on a project sketch of the conversation's project. */
 export interface AssistantRunTarget {
@@ -274,19 +274,19 @@ export interface AssistantRun {
   /** Set once the answer was committed to the conversation. */
   answer: AssistantAnswer | null;
   /**
-   * What started it: the owner's own request, or the owner's stored schedule or reaction (F-027 AST-6). A background
+   * What started it: the owner's own request, or the owner's stored schedule (F-027 AST-6). A background
    * run carries the short name the owner gave it. Optional for older servers.
    */
   authority?: AssistantRunAuthority;
   backgroundLabel?: string | null;
-  /** While queued: the run it waits behind, so the line can say "Next: …" or "Finishing your Morning summary first". Optional for older servers. */
+  /** While queued: the run it waits behind, so the line can say "Next: …" or "Finishing your daily check first". Optional for older servers. */
   behind?: AssistantRunBehind | null;
   createdAt: string;
   dispatchedAt: string | null;
   completedAt: string | null;
 }
 
-export type AssistantRunAuthority = 'owner_request' | 'owner_schedule' | 'owner_reaction';
+export type AssistantRunAuthority = 'owner_request' | 'owner_schedule';
 /** The working run a queued request waits behind (AST-6 "Queue"): another request, or a background run by name. */
 export interface AssistantRunBehind { runId: string; authority: AssistantRunAuthority; label: string | null }
 

@@ -91,7 +91,7 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   const composition = { queue, connections, providerEnabled, ...(runtime ? { runtime } : {}) };
   const runs = personalRunUseCases(db, composition);
   const proposals = assistantProposalUseCases(db, queue);
-  // The owner's schedules and morning summary (F-027 A8) run on the same composition: the same connection, switch and runtime.
+  // The owner's schedules (F-027 A8) run on the same composition: the same connection, switch and runtime.
   registerAssistantJobRoutes(app, db, sessions, boss, composition);
 
   app.get(PERSONAL_ASSISTANT_PATH, async (request) => runs.status(await principal(request)));

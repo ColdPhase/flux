@@ -126,7 +126,7 @@ export function OthersWorkingLine({ name }: { name: string }) {
   );
 }
 
-/** "Finishing your Morning summary first. Yours starts next. · Stop the morning summary": the request waits behind a background run of the owner. */
+/** "Finishing your daily check first. Yours starts next. · Stop the daily check": the request waits behind a background run of the owner. */
 export function BehindLine({ label, onStop }: { label: string | null; onStop: () => Promise<void> }) {
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState('');

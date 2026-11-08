@@ -90,28 +90,6 @@ The settings page sends its saves one after another, numbered, and shows only th
   re-evaluates it. `{ until: null }` resumes; a pause that has ended reads as `null`. Jobs
   already deferred to `until` are not released early: they arrive by `until`, and the Inbox has
   everything meanwhile. Stored in `notification_preferences.paused_until` (migration 0059).
-- **Morning summary** (#350, S22). **Removed in v0.2** by Hubert's answer of 2026-11-03
-  ([F-038](../product/decisions.md#f-038--a-simpler-flux), implemented in #872): the plain, non-AI
-  summary goes, and the only morning summary is a schedule you ask an agent for
-  ([AG-9](../product/assistant.md#ag-9--schedules)). The text below describes the current build
-  until #872 lands. (`morningSummary: { enabled, at }`, off by default,
-  09:00 in the quiet-hours time zone): every 15 minutes the worker resolves the most recent
-  scheduled local date and its three-hour elapsed-time delivery window, including across
-  midnight. Repeated DST times use the first occurrence; a skipped time uses the first valid
-  minute after it. A locked current preference read precedes the claim; Nothing and summary
-  Off block admission and delivery. The monotonic `summary_last_on` date never moves backwards,
-  including after schedule/timezone edits, so a previously claimed local date is not sent again.
-  A summary stores `delivery_kind = morning_summary`, every counted source (at most 51), and
-  `in_inbox = false`. Admission excludes unreadable/muted sources; delivery suppresses the
-  entire aggregate if any counted source is now unreadable or muted. Reading its notification
-  by ID also reauthorizes every source. Ordinary legacy no-reason notifications are unchanged.
-  The title counts up to 50 unread inbox items and shows 50+ when bounded lookback finds more.
-  Nothing is sent for an empty inbox. While summary is on, pushes held by quiet hours are not
-  queued one by one; email still waits until quiet hours end and has no summary digest.
-  Migration 0072 replaces only this PR's unmerged 0057 allocation. Before any migration writes, the migrator refuses existing summary columns without a 0072
-  ledger entry, including a legacy 0057 footprint even when a composed manifest knows the
-  reserved 0057/0058 files. Restore the matching backup/image or use a separately reviewed
-  data conversion; do not guess by editing the ledger. No other reservation is renumbered.
 - **Where email goes**: `account` (the sign-in/SSO address, default), `extra` (the verified
   extra address), `both`, or `none` (in-app only).
 
@@ -180,7 +158,7 @@ The sidebar's **Inbox**, between Home and My tasks, shows how many items are unr
 the 64 px rail shows the same number). `/inbox` lists "New" and "Earlier" items,
 each with its reason, title, excerpt and time; opening one marks it read and opens the source;
 "Mark all read" only quiets the dot. `/settings/notifications` (Settings → Notifications, #350)
-holds a running focus pause with Resume now, the level (Only "Needs you", Everything, Nothing), quiet hours, the morning summary (both focus pause and morning summary go in v0.2, F-038), then
+holds a running focus pause with Resume now, the level (Only "Needs you", Everything, Nothing), quiet hours (the focus pause goes in v0.2, F-038; the plain morning summary is gone, F-038, #858), then
 the channel table, push on this device, email destination and extra address, and muted places. `/inbox/:id` (email link) and
 `/settings/notifications/verify` are routes of the signed-in app.
 

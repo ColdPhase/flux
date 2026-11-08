@@ -1,21 +1,18 @@
 import { PgBoss } from 'pg-boss';
-import { assertExactMigrationLedger, createDatabase, FLUX_SCHEMA_VERSION, loadBackgroundMasterKey, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
-import { backgroundComparisonsEnabled, loadAgentRuntimeConfig } from '@flux/core';
+import { assertExactMigrationLedger, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
+import { loadAgentRuntimeConfig } from '@flux/core';
 import { startAgentRuntimeReconciler } from './agent-runtime/index.js';
 import { registerDraftSummaryWorker } from './jobs/draft-summary.js';
 import { registerIdempotencyCleanup } from './jobs/idempotency-cleanup.js';
 import { registerSearchChangesCleanup } from './jobs/search-changes-cleanup.js';
-import { registerMorningSummary } from './jobs/morning-summary.js';
-import { assistantSummaryStart, registerAssistantTick } from './assistant/index.js';
+import { registerAssistantTick } from './assistant/index.js';
 import { registerSampleWorker } from './jobs/sample.js';
 import { createVapidAuthorizer, registerPushWorker } from './push/index.js';
 import { registerNotificationEmailWorker, startNotificationGenerator } from './notifications/index.js';
 import { personalRunWorkerComposition, registerPersonalRunWorker } from './personal-runs/index.js';
 import { workerRuntimeAvailability } from './personal-runs/runtime-standing.js';
-import { registerComparisonWorker } from './proactive-comparison/index.js';
 import { registerSpaceAiSweep } from './space-ai/index.js';
 import { startWorkspaceEncryption } from './workspace-encryption/index.js';
-import { comparisonProviders } from './proactive-comparison/providers.js';
 import { drainBacklogs } from './drain-backlogs.js';
 import { guardSealedJobs } from './sealed-jobs.js';
 
@@ -47,15 +44,10 @@ const agentRuntimeConfig = loadAgentRuntimeConfig(process.env);
 const personalRuns = personalRunWorkerComposition(process.env, db, agentRuntimeConfig);
 if (personalRuns.mode !== 'production') console.warn(JSON.stringify({ warning: 'TEST ONLY: personal runs use fixture connections and a mock provider', mode: personalRuns.mode }));
 const personalRunRecovery = await registerPersonalRunWorker(boss, db, personalRuns);
-// The owner's schedules and the assistant-written morning summary (F-027 A8): the same personal-run path, one tick a minute.
+// The owner's schedules (F-027 A8): the same personal-run path, one tick a minute.
 const assistantRuns = { connections: personalRuns.connections, providerEnabled: personalRuns.compute.enabled,
   runtime: workerRuntimeAvailability(agentRuntimeConfig, db) };
-// The morning summary (#350, S22): one push a day per person who turned it on; the assistant may write its text.
-await registerMorningSummary(boss, db, assistantSummaryStart(db, boss, assistantRuns));
 await registerAssistantTick(boss, db, assistantRuns);
-// Background comparisons (#58): only when the operator switched them on; otherwise unscheduled.
-const comparisonsOn = backgroundComparisonsEnabled(process.env);
-await registerComparisonWorker(boss, db, { enabled: comparisonsOn, masterKey: comparisonsOn ? loadBackgroundMasterKey() : null, provider: comparisonProviders(process.env) });
 await registerIdempotencyCleanup(boss, db);
 await registerSearchChangesCleanup(boss, db);
 await registerSpaceAiSweep(boss, db);
