@@ -42,6 +42,13 @@ Check that it answers:
 curl -fsS http://127.0.0.1:8081/api/v1/health    # {"status":"ok","schemaVersion":…}
 ```
 
+**Create your account now, before the server has a public address.** The first account to sign up
+becomes the company's owner, with every space, and `FLUX_SIGNUP` is `open` until you change it. On a server,
+open `http://127.0.0.1:8081` through an SSH tunnel (`ssh -L 8081:127.0.0.1:8081 you@server`), choose
+**Sign up**, and keep this account: it is yours. It works because the address is still the loopback one; once you
+set `FLUX_PUBLIC_ORIGIN` in step 2, Flux accepts sign-up only from that address. If you set it first, `./flux up` says
+that nobody has signed up yet, and so does the API log at each start, until someone has.
+
 Do not run `./flux demo` on a server: it creates accounts with printed passwords, and it refuses a
 non-loopback origin unless forced.
 
@@ -93,8 +100,9 @@ Caddy obtains and renews the certificate itself. [nginx](reverse-proxy.md#nginx)
 
 ### 4. Create your account and check mail
 
-Open `https://flux.example.org` and sign up. The first account sets up the company and is its
-owner, with the default space **Everyone**; everyone else joins by an invite link from an admin (or
+Open `https://flux.example.org` and sign in with the account you made in step 1 (if you did not,
+sign up now: the first account sets up the company and is its owner, and nothing stops a stranger who reaches the
+address first). It owns the default space **Everyone**; everyone else joins by an invite link from an admin (or
 by signing in, with single sign-on). Spaces are added from **New › Space**.
 
 <p align="center">

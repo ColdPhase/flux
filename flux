@@ -590,6 +590,18 @@ cmd_up() {
   else
     say "Create an account there, or run ./flux demo for sample data and two logins."
   fi
+  warn_unclaimed_company
+}
+
+# The first account to sign up becomes the company's owner (F-037). On a public address that must be you: say so while nobody has
+# signed up yet (#994). The question is asked only for a non-loopback origin and never stops `up`.
+warn_unclaimed_company() {
+  is_loopback_origin "$(public_origin)" && return 0
+  [ "$(env_value FLUX_SIGNUP | tr -d '[:space:]' | tr 'A-Z' 'a-z')" = off ] && return 0
+  [ "$(db_query "SELECT count(*) FROM workspaces WHERE company" 2>/dev/null | tr -d '[:space:]')" = 0 ] || return 0
+  say ""
+  say "Nobody has signed up yet, and the first account becomes the company's owner. Sign up before anyone else can reach $(public_origin)."
+  say "On a server, do it first at http://127.0.0.1:$(port), with FLUX_PUBLIC_ORIGIN unset or set to that address, then set the public address (docs/operations/install.md, step 1)."
 }
 
 cmd_demo() {

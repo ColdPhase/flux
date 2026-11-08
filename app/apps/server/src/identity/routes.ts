@@ -11,6 +11,7 @@ import {
   type SessionSummary,
 } from '@flux/contracts';
 import type { SessionResolver } from './session.js';
+import { securityEvent } from '../security-log.js';
 
 export interface StoredSession {
   id: string;
@@ -82,6 +83,7 @@ export function registerIdentityRoutes(app: FastifyInstance, { sessions, store, 
     if (!await store.deleteOwned(context.principal.id, request.params.id)) {
       return reply.code(404).send({ error: 'Session not found', code: 'SESSION_NOT_FOUND' } satisfies ApiError);
     }
+    securityEvent(request.log, { event: 'sessions_revoked', outcome: 'success', reason: 'one_session', userId: context.principal.id, count: 1, ip: request.ip });
     return reply.code(204).send();
   });
 
@@ -90,6 +92,9 @@ export function registerIdentityRoutes(app: FastifyInstance, { sessions, store, 
     const revoked = await store.deleteOthers(context.principal.id, context.sessionId);
     // "Sign out everywhere" also ends what a local AI client holds: someone who had this account's session could have connected one (#989).
     // The person connects their own again with one click on the consent page.
-    return { revoked, disconnected: await clients.disconnectClients(context.principal.id) };
+    const disconnected = await clients.disconnectClients(context.principal.id);
+    securityEvent(request.log, { event: 'sessions_revoked', outcome: 'success', reason: 'sign_out_everywhere', userId: context.principal.id, count: revoked, ip: request.ip });
+    if (disconnected > 0) securityEvent(request.log, { event: 'client_disconnected', outcome: 'success', reason: 'sign_out_everywhere', userId: context.principal.id, count: disconnected, ip: request.ip });
+    return { revoked, disconnected };
   });
 }

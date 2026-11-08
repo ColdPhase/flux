@@ -1,0 +1,1 @@
+- `FLUX_SESSION_IDLE` (default 7 days) and the new `FLUX_SESSION_MAX_AGE` (default 30 days from sign-in, however much the session is used) set how long a session lasts; `verified` sign-up answers an address that has an account like a new one and mails its owner instead ([#993](https://github.com/ColdPhase/flux/issues/993)).

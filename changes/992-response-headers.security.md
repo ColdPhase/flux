@@ -1,0 +1,1 @@
+- Every response carries `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`, `/api/` answers carry `Cache-Control: no-store`, and an https public origin makes the API send `Strict-Transport-Security: max-age=31536000`. The reverse-proxy guide says to pass it on ([#992](https://github.com/ColdPhase/flux/issues/992)).

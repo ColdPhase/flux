@@ -101,8 +101,9 @@ for log in postgres services; do
   fi
 done
 [ "$hits" -eq 0 ] || exit 1
-# AC-7 error paths (S2a-2c-3): A's failed request and job texts are in no service log, the request in no PostgreSQL log;
-# B's failed request text is in the API log (the control: an unredacted failure is logged).
+# AC-7 error paths (S2a-2c-3): A's failed request and job texts, and the failed request text of a plain space (C), are in no service log, the request in no PostgreSQL log;
+# C's (a plain space's, #991) too, since no failure logs its message in any space; B's text is in the API log only because its request asked
+# the test deployment to log it (x-flux-test-log), the control that proves this scan can find a line.
 for pair in services:services postgres:postgres; do
   file=${pair%%:*}; log=${pair##*:}
   $compose run --rm --no-deps -T test cat "/state/encryption-error-$file.txt" > "$scan_dir/error-$file"
@@ -110,7 +111,7 @@ for pair in services:services postgres:postgres; do
   if grep -F -f "$scan_dir/error-$file" "$scan_dir/$log.log" > /dev/null; then echo "ERROR-PATH TEXT OF A FOUND in the $log log" >&2; exit 1; fi
 done
 $compose run --rm --no-deps -T test cat /state/encryption-error-control.txt > "$scan_dir/error-control"
-grep -F -f "$scan_dir/error-control" "$scan_dir/services.log" > /dev/null || { echo 'error-path control: the failed request of B is not in the API log' >&2; exit 1; }
+grep -F -f "$scan_dir/error-control" "$scan_dir/services.log" > /dev/null || { echo 'error-path control: the logged request text of B is not in the API log' >&2; exit 1; }
 echo "AC-4 log scan: $count secret encodings, $(wc -l < "$scan_dir/postgres.log") PostgreSQL log lines, $(wc -l < "$scan_dir/services.log") service log lines, 0 hits"
 
 report_memory

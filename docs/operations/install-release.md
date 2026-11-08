@@ -37,7 +37,7 @@ they are.
    | --- | --- | --- |
    | `POSTGRES_PASSWORD` | yes | Random hex (it is part of the database URL). |
    | `FLUX_AUTH_SECRET` | yes | At least 32 random characters. Changing it signs everyone out. |
-   | `FLUX_PUBLIC_ORIGIN` | yes | The exact URL people open, e.g. `https://flux.example.org`. Plain `http` only for a loopback trial. |
+   | `FLUX_PUBLIC_ORIGIN` | yes | The exact URL people open, e.g. `https://flux.example.org`. Plain `http` only for a loopback trial. Start with `http://127.0.0.1:8081` to create your account (step 4), then set the real address (step 5). |
    | `FLUX_PROJECT` | kept | Compose project and volume prefix (`flux`). Keep it across upgrades. |
    | `FLUX_PORT` | kept | Loopback port of the API (`8081`) for the reverse proxy. |
    | `FLUX_SIGNUP` | after your account | `open` until you have signed up; then decide [who can sign up](install.md#5-decide-who-can-sign-up). |
@@ -68,9 +68,14 @@ they are.
    curl -fsS http://127.0.0.1:8081/api/v1/health   # {"status":"ok","schemaVersion":N}
    ```
 
-5. Follow the tested [HTTPS reverse-proxy example](reverse-proxy.md) to put TLS in front
-   of `127.0.0.1:${FLUX_PORT}` for `FLUX_PUBLIC_ORIGIN`,
-   open that URL and create the first account. If startup fails, read
+   **Create your account now, while the server is not public.** The first account to sign up becomes
+   the company's owner. With `FLUX_PUBLIC_ORIGIN=http://127.0.0.1:8081`, open that address through an SSH
+   tunnel (`ssh -L 8081:127.0.0.1:8081 you@server`) and sign up. The API log warns at each start while nobody has
+   signed up and the origin is a public one.
+
+5. Set `FLUX_PUBLIC_ORIGIN` in `.env` to the exact `https` address and run the `up -d --wait` command again. Follow the
+   tested [HTTPS reverse-proxy example](reverse-proxy.md) to put TLS in front
+   of `127.0.0.1:${FLUX_PORT}`, open that URL and sign in with your account. If startup fails, read
    `docker compose --env-file .env -f compose.yaml logs migrate api worker keyring` before changing data.
 
 `--env-file .env` is always passed explicitly, so the settings file is found from any shell

@@ -22,6 +22,8 @@ import { createSessionResolver, type SessionResolver } from './session.js';
 import { registerBackchannelLogout } from './backchannel.js';
 import { createIdpStanding, type IdpStanding } from './standing.js';
 import { createOfflineStep } from './offline-step.js';
+import { unclaimedCompanyWarning } from './first-owner.js';
+import { securityEvent } from '../security-log.js';
 
 export { loadIdentityConfig, type IdentityConfig } from './config.js';
 export { UnauthenticatedError, type SessionContext, type SessionResolver } from './session.js';
@@ -122,6 +124,9 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
       app.log.warn({ issuer: config.oidc.issuer }, 'The identity provider did not answer; single sign-on is reported as not reachable until it does');
       awaitProvider(config.oidc);
     }
+    // The first sign-up owns the company: on a public address, say so while nobody has signed up (#994).
+    const unclaimed = unclaimedCompanyWarning(config, !!await accessPorts.workspaces(db).company());
+    if (unclaimed) app.log.warn(unclaimed);
     await idpStanding?.reconcile();
     standing?.start();
     // Password-only accounts cannot sign in once SSO-only mode is on. Say how many, so the cutover is never silent (#315).
@@ -135,13 +140,15 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
   });
   app.addHook('onClose', async () => standing?.stop());
   // With an active sole provider, ordinary authentication is single sign-on only (F-024 S5a, #313).
-  const sessions = createSessionResolver(auth, standing, confirmation, config.ssoOnly && config.oidc ? { db, providerId: config.oidc.providerId } : null);
+  const sessions = createSessionResolver(auth, standing, confirmation, config.ssoOnly && config.oidc ? { db, providerId: config.oidc.providerId } : null,
+    { db, maxAgeMs: config.sessionMaxAgeSeconds * 1000 });
   const passwordReset: IdentityCapabilities['passwordReset'] = mailer && !config.ssoOnly ? 'available' : 'unavailable';
 
   app.addHook('onRequest', async (request, reply) => {
     const violation = originViolation(request.method, request.headers, config.publicOrigin);
     if (violation) {
-      request.log.warn({ violation, origin: request.headers.origin }, 'Rejected cross-origin state change');
+      // The Origin header is the sender's own text and is not copied: the reason says what was wrong with it (#997).
+      securityEvent(request.log, { event: 'origin_refused', outcome: 'refused', reason: violation, route: request.routeOptions?.url ?? '/', ip: request.ip });
       return reply.code(403).send({ error: 'Forbidden', code: 'ORIGIN_REJECTED', reason: violation } satisfies ApiError & { reason: string });
     }
   });

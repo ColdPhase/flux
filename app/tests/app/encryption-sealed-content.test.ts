@@ -643,11 +643,12 @@ describe('F-030 content-free notifications in use (#712 review)', () => {
 });
 
 // AC-7 error paths (S2a-2c-3; docs/product/encrypted-workspaces.md#error-paths): a request or job about A that fails
-// with an error quoting content answers, stores and logs only the redacted error. B's same failure keeps its text,
-// the positive control. scripts/check_encryption.sh scans the service logs (and PostgreSQL's for the request) for A's
+// with an error quoting content answers, stores and logs only the redacted error. Since #991 B's request answers the same way in every space;
+// B's text is logged only where the test asks the test deployment to (`x-flux-test-log`), the positive control. scripts/check_encryption.sh scans the service logs (and PostgreSQL's for the request) for A's
 // texts (zero hits) and the service logs for B's request text (found: the unredacted path does log).
 describe('F-030 error paths (S2a-2c-3)', () => {
-  const failed = { A: `ERRPATH-A-${randomUUID()}`, B: `ERRPATH-B-${randomUUID()}` };
+  // C: the same plain space as B, with no request for a log line, so its text must reach neither the answer nor the log (#991).
+  const failed = { A: `ERRPATH-A-${randomUUID()}`, B: `ERRPATH-B-${randomUUID()}`, C: `ERRPATH-C-${randomUUID()}` };
   const jobFailed = { A: `JOBFAIL-A-${randomUUID()}`, A2: `JOBFAIL-A2-${randomUUID()}`, B: `JOBFAIL-B-${randomUUID()}` };
 
   before(async () => {
@@ -655,15 +656,14 @@ describe('F-030 error paths (S2a-2c-3)', () => {
     expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
   });
 
-  test('an injected 500 after a sealed write answers only the code for A; B\'s answer still quotes its text', async () => {
-    for (const side of ['A', 'B'] as const) {
-      const response = await ada.browser.request('POST', `/api/v1/conversations/${ids[side].conversation}/messages`,
-        { body: { body: failed[side], clientMessageId: randomUUID() }, headers: { ...key(), 'x-flux-test-fail': '500' } });
+  test('an injected 500 after a write answers only the code, for A and, since #991, for B too', async () => {
+    for (const side of ['A', 'B', 'C'] as const) {
+      // B's request also asks the test deployment to log its text on purpose: the positive control of the log scan below.
+      const response = await ada.browser.request('POST', `/api/v1/conversations/${ids[side === 'C' ? 'B' : side].conversation}/messages`,
+        { body: { body: failed[side], clientMessageId: randomUUID() }, headers: { ...key(), 'x-flux-test-fail': '500', ...(side === 'B' ? { 'x-flux-test-log': '1' } : {}) } });
       assert.equal(response.status, 500, `${side}: ${response.text.slice(0, 200)}`);
-      if (side === 'A') {
-        assert.equal(response.text.includes(failed.A), false, 'A: the answer never quotes the request');
-        assert.deepEqual(JSON.parse(response.text), { error: 'Internal Server Error', code: 'INTERNAL_ERROR' });
-      } else assert.ok(response.text.includes(failed.B), 'B: the control quotes its request in the answer');
+      assert.equal(response.text.includes(failed[side]), false, `${side}: the answer never quotes the request`);
+      assert.deepEqual(JSON.parse(response.text), { error: 'Internal Server Error', code: 'INTERNAL_ERROR' }, side);
     }
   });
 
@@ -690,7 +690,7 @@ describe('F-030 error paths (S2a-2c-3)', () => {
     } finally { await boss.stop({ graceful: false }); }
     const state = process.env.FLUX_TEST_STATE_DIR ?? '/state';
     // The service logs never hold A's texts; PostgreSQL logs the test's own job insert, so it is scanned for the request only.
-    await writeFile(join(state, 'encryption-error-services.txt'), `${failed.A}\n${jobFailed.A}\n${jobFailed.A2}\n`);
+    await writeFile(join(state, 'encryption-error-services.txt'), `${failed.A}\n${failed.C}\n${jobFailed.A}\n${jobFailed.A2}\n`);
     await writeFile(join(state, 'encryption-error-postgres.txt'), `${failed.A}\n`);
     await writeFile(join(state, 'encryption-error-control.txt'), `${failed.B}\n`);
   });

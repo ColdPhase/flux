@@ -15,6 +15,13 @@ described in the [security policy](../SECURITY.md).
   [what the runtime gets](agent-runtime.md#what-the-runtime-gets).
 - **No swap, no core dumps** for `api`, `worker` and `keyring`.
 - **Pinned images.** PostgreSQL and the release image are pinned by digest.
+- **Response headers.** Every response carries `X-Content-Type-Options: nosniff` and `Referrer-Policy: same-origin`, API answers carry
+  `Cache-Control: no-store`, and with an `https` public origin the API sends `Strict-Transport-Security: max-age=31536000` (a year), so a
+  browser that has seen your address refuses `http` for it. Script policy is separate.
+- **No internal messages.** An unexpected server error answers `500` with a code only; its message (a SQL or file-path text, anything it
+  quotes) reaches neither the browser nor the log.
+- **A security log.** One line for each failed or limited sign-in, password or session change, consent decision, refused request and space
+  unlock ([security events](monitoring.md#security-events)), with no secret, address or content in it.
 - **One origin.** State-changing browser requests are accepted only from `FLUX_PUBLIC_ORIGIN`;
   `Host` and forwarding headers never change it. With `https`, cookies are `Secure` and `__Secure-`
   prefixed.
@@ -37,7 +44,10 @@ described in the [security policy](../SECURITY.md).
 ## Checklist for the operator
 
 1. **Serve HTTPS only**, through one [reverse proxy](reverse-proxy.md), with
-   `FLUX_PUBLIC_ORIGIN=https://…`. Redirect port 80 to 443.
+   `FLUX_PUBLIC_ORIGIN=https://…`. Redirect port 80 to 443. Flux sends `Strict-Transport-Security` itself for an `https` origin;
+   do not add `includeSubDomains` or `preload` at the proxy unless every subdomain of the name serves https too.
+   **Create your own account before the address is public:** the first account to sign up becomes the company's owner
+   ([install step 1](install.md#1-get-the-code-and-start-once-on-loopback)). `./flux up` and the API log warn while nobody has.
 2. **Firewall** everything except 80 and 443 (and the media ports if you run
    [live media](../development/live-media.md)). Docker publishes ports past some host firewalls; Flux
    publishes only on loopback, so keep any port you add in an override on `127.0.0.1` too.
@@ -51,6 +61,12 @@ described in the [security policy](../SECURITY.md).
    (open it briefly to add someone later). A new account sees no space until someone adds it.
    Password accounts have no multi-factor sign-in. OWASP ASVS Level 2 asks for it, and the way to get
    it is single sign-on with your identity provider's MFA.
+   With `open` sign-up, the sign-up page tells a person that an address already has an account (it signs the new
+   account in, so it cannot answer the same way); `verified` answers every address alike and mails the owner of the
+   mailbox. The page is behind the per-address limit, and the accepted risk is that someone who can reach the server
+   can find out which addresses have accounts. `verified` or single sign-on removes it.
+   Sessions end after 7 days unused and 30 days after sign-in; shorten them with `FLUX_SESSION_IDLE` and
+   `FLUX_SESSION_MAX_AGE` (ASVS Level 2 asks for `30m` and `12h`; [configuration](configuration.md)).
 5. **Protect the settings file.** `docker/.env` (or the release `.env`) is mode `600` and holds the
    database password, `FLUX_AUTH_SECRET`, `FLUX_KEY_PIN_SECRET`, the VAPID private key and any
    provider secrets. Do not commit it, do not export its values in a shell, keep it with backups.

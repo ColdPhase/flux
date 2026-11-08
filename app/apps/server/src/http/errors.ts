@@ -3,6 +3,7 @@ import type { ApiError } from '@flux/contracts';
 import { ConflictError, DomainError, InvalidInputError, redactedError } from '@flux/core';
 import { sealedWorkScope, touchedSealedWorkspace } from '@flux/db';
 import { taskUseDomainError } from '../work/task-use-errors.js';
+import { accessDenied } from '../security-log.js';
 
 // The one mapping from domain errors to HTTP answers (#85). The API registers it once on its root
 // instance (app.ts), so every route plugin that does not set its own handler answers the same way.
@@ -45,9 +46,10 @@ export function databaseConflict(error: unknown): unknown {
 }
 
 /**
- * Maps DomainError to its status and ApiError body, and an unauthenticated request to 401. F-030 Error paths: every
- * request runs in `sealedWorkScope`; an unexpected error of a request that touched an encrypted workspace's seal is logged
- * and answered only as `redactedError` (class, code, SQLSTATE, constraint), never its message, detail or stack.
+ * Maps DomainError to its status and ApiError body, and an unauthenticated request to 401. An unexpected error (not a domain
+ * refusal, not a 401, no 4xx status) is logged and answered only as `redactedError` (class, code, SQLSTATE, constraint), never its
+ * message, detail or stack, in every space (#991; F-030 Error paths required it for an encrypted workspace's requests, which are told
+ * apart in the log by `sealed`). Every request runs in `sealedWorkScope` for that.
  *
  * `answered` lets a route group say that a request's response is already out (a terminal HTTP response written by the route's own
  * code): the handler then only releases the reply and sends nothing. It is an option, not a second `setErrorHandler`, because a
@@ -60,13 +62,20 @@ export function useDomainErrors(app: FastifyInstance, options: { answered?: (err
     // A storage task-use refusal (#238) is a known outcome; translate it without parsing a message.
     error = taskUseDomainError(error) as typeof error;
     error = databaseConflict(error) as typeof error;
-    if (error instanceof DomainError) return reply.code(error.status).send(domainErrorBody(error));
+    if (error instanceof DomainError) {
+      // A refusal by the access policy is a security event, sampled so one probing person cannot fill the log (#997).
+      if (error.status === 403) accessDenied(request, error.code);
+      return reply.code(error.status).send(domainErrorBody(error));
+    }
     if ((error as FastifyError).statusCode === 401) return reply.code(401).send(UNAUTHENTICATED);
     const status = (error as FastifyError).statusCode;
-    if (touchedSealedWorkspace() && !(status && status < 500)) {
+    // Everything that is not a refusal Flux raised on purpose and not a client error Fastify itself raised (4xx: an invalid body, a media
+    // type, a too-large request) is an unexpected failure. Its message can quote a request, a SQL statement or a file path, so it never
+    // reaches the browser or the log, in any space (#991, ASVS V7.4.1): the answer is the class and code, the log the same.
+    if (!(status && status >= 400 && status < 500)) {
       const redacted = redactedError(error);
-      request.log.error({ error: redacted.message }, 'Request of an encrypted workspace failed');
-      return reply.code(500).send({ error: 'Internal Server Error', code: redacted.code ?? 'INTERNAL_ERROR' });
+      request.log.error({ error: redacted.message, sealed: touchedSealedWorkspace() }, 'Request failed');
+      return reply.code(500).send({ error: 'Internal Server Error', code: redacted.code ?? 'INTERNAL_ERROR' } satisfies ApiError);
     }
     throw error;
   });
