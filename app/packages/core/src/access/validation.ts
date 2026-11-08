@@ -1,13 +1,12 @@
-import type { DraftVisibility, PageQuery, ProjectGrantRole, ProjectVisibility, WorkspaceRole } from '@flux/contracts';
+import type { PageQuery, ProjectGrantRole, ProjectVisibility, WorkspaceRole } from '@flux/contracts';
 import { InvalidInputError } from './errors.js';
 
-// Input validators shared by the workspace, project, agent and draft use cases (issues #46, #91).
+// Input validators shared by the workspace, project, and agent use cases (issues #46, #91).
 // They throw `InvalidInputError` before a transaction opens, so a bad request never takes a lock.
 
 export const ROLES: readonly WorkspaceRole[] = ['owner', 'admin', 'member', 'guest'];
 export const PROJECT_VISIBILITIES: readonly ProjectVisibility[] = ['workspace', 'restricted'];
 export const GRANT_ROLES: readonly ProjectGrantRole[] = ['manager', 'contributor'];
-export const DRAFT_VISIBILITIES: readonly DraftVisibility[] = ['private', 'project', 'workspace'];
 const MAX_BODY = 100_000;
 
 export function oneOf<T extends string>(value: unknown, allowed: readonly T[], field: string): T {

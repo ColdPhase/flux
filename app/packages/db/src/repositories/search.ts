@@ -15,14 +15,14 @@ export type SearchExecutor = Pick<NodePgDatabase<typeof schema>, 'select' | 'exe
  */
 
 /** `search_documents.kind` (the contracts' `SearchKind`; this package does not depend on contracts). */
-export type SearchKindRow = 'project' | 'message' | 'dm_message' | 'material' | 'doc' | 'work' | 'decision' | 'result' | 'sketch' | 'thought' | 'draft' | 'person';
+export type SearchKindRow = 'project' | 'message' | 'dm_message' | 'material' | 'doc' | 'work' | 'decision' | 'result' | 'sketch' | 'thought' | 'person';
 type SearchKind = SearchKindRow;
 /** Highlighted text: plain and matched parts. */
 export type SearchTextRow = { text: string; match: boolean }[];
 type SearchText = SearchTextRow;
 
 /** The object that carries the permission of a search row (`search_documents.audience_key`). */
-export type SearchAudienceType = 'project' | 'dm' | 'sketch' | 'draft' | 'members';
+export type SearchAudienceType = 'project' | 'dm' | 'sketch' | 'members';
 
 export interface SearchAudienceRows {
   type: SearchAudienceType;
@@ -40,7 +40,6 @@ export const AUDIENCE_KEYS: Record<SearchAudienceType, (audience: SearchAudience
   project: ({ condition }) => sql`SELECT 'project:' || ${schema.projects.id} FROM ${schema.projects} WHERE ${condition}`,
   dm: ({ condition }) => sql`SELECT 'dm:' || ${schema.dms.id} FROM ${schema.dms} WHERE ${condition}`,
   sketch: ({ condition }) => sql`SELECT 'sketch:' || ${schema.sketches.id} FROM ${schema.sketches} WHERE ${condition}`,
-  draft: ({ condition }) => sql`SELECT 'draft:' || ${schema.drafts.id} FROM ${schema.drafts} WHERE ${condition}`,
   members: ({ workspaceId }) => sql`SELECT ${`members:${workspaceId}`}::text`,
 };
 
@@ -171,7 +170,7 @@ function hitConditions(plan: SearchPlanRows): SQL {
   if (place?.type === 'project') conditions.push(sql`sd.project_id = ${place.id}::uuid`);
   // A DM's own messages carry its audience.
   if (place?.type === 'dm') conditions.push(sql`sd.audience_key = ${`dm:${place.id}`}`);
-  if (place?.type === 'private') conditions.push(sql`((sd.kind = 'draft' AND sd.status = 'private') OR (sd.kind IN ('sketch', 'thought') AND sd.project_id IS NULL))`);
+  if (place?.type === 'private') conditions.push(sql`(sd.kind IN ('sketch', 'thought') AND sd.project_id IS NULL)`);
   if (plan.author) conditions.push(sql`sd.author_kind = ${plan.author.kind} AND sd.author_id = ${plan.author.id}`);
   return sql.join(conditions, sql` AND `);
 }

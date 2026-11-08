@@ -105,7 +105,7 @@ expected_ledger() { # the candidate's migration files, as the migrator numbers t
 }
 # Content tables compared across the upgrade: rows keep their previous columns (a migration may add a column or a
 # constraint but must not change or drop a recorded value). Tables the previous release lacks are skipped.
-content_tables="workspaces workspace_members projects project_grants drafts project_materials project_material_versions project_conversations project_messages project_work_items project_decisions project_results agents"
+content_tables="workspaces workspace_members projects project_grants project_materials project_material_versions project_conversations project_messages project_work_items project_decisions project_results agents"
 table_columns() {
   local table columns
   for table in $content_tables; do

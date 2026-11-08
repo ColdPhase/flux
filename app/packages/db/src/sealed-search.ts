@@ -419,7 +419,7 @@ export class SealedSearchIndex {
       const place = plan.place;
       if (place?.type === 'project' && doc.projectId !== place.id) return false;
       if (place?.type === 'dm' && doc.audience !== `dm:${place.id}`) return false;
-      if (place?.type === 'private' && !((doc.kind === 'draft' && doc.status === 'private') || ((doc.kind === 'sketch' || doc.kind === 'thought') && doc.projectId === null))) return false;
+      if (place?.type === 'private' && !((doc.kind === 'sketch' || doc.kind === 'thought') && doc.projectId === null)) return false;
       if (plan.author && (doc.author?.kind !== plan.author.kind || doc.author.id !== plan.author.id)) return false;
       return true;
     };
@@ -499,9 +499,6 @@ async function contentOf(db: DbExecutor, kind: string, rows: Placeholder[]): Pro
       break;
     case 'thought':
       for (const r of await rowsOf(db, 'sketch_thoughts', sql`SELECT id, workspace_id, text FROM sketch_thoughts WHERE id = ANY(${uuids(ids)})`)) found.set(String(r.id), { title: str(r.text), body: '' });
-      break;
-    case 'draft':
-      for (const r of await rowsOf(db, 'drafts', sql`SELECT id, workspace_id, title, body FROM drafts WHERE id = ANY(${uuids(ids)})`)) found.set(String(r.id), { title: str(r.title), body: str(r.body) });
       break;
     default: break;
   }

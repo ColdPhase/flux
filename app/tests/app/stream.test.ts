@@ -1,16 +1,23 @@
 import assert from 'node:assert/strict';
 import { before, describe, test } from 'node:test';
-import type { Draft, Workspace } from '@flux/contracts';
+import type { Sketch, Workspace } from '@flux/contracts';
 import { audiencePageQuery, lastAudienceSeqQuery } from '@flux/db';
 import { audienceKey, type Principal } from '@flux/core';
 import { db, pool } from './support/db.js';
 import { Browser } from './support/http.js';
-import { addMember, draft, expectStatus, grant, person, project, removeMember, secondSession, share, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, project, removeMember, secondSession, workspace, type Person } from './support/people.js';
 import { StreamClient, upgradeStatus } from './support/stream.js';
 import { inBatches } from './support/batches.js';
 
-// WebSocket stream: replay, live delivery and per-recipient policy (issue #29, AC-3).
+// WebSocket stream: replay, live delivery and per-recipient policy (issue #29, AC-3). The events are those of maps:
+// a map in a space reaches everyone who can read the space, and a private map only its author.
 const heartbeatMs = Number(process.env.FLUX_STREAM_HEARTBEAT_MS ?? 25_000);
+
+/** A map in a space (`sketch.created.v1` reaches the space's readers) or, without a space, the person's own private map. */
+async function mapOf(who: Person, workspaceId: string, title: string, projectId?: string) {
+  return expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${workspaceId}/sketches`,
+    { body: projectId ? { title, scope: 'project', projectId } : { title, scope: 'private' } }), 201) as Sketch;
+}
 
 async function head(someone: Person) {
   const client = await StreamClient.connect(someone.browser);
@@ -111,6 +118,7 @@ describe('event stream', () => {
   let carol: Person; // member without restricted-project grants
   let shared: Workspace;
   let bobsOwn: Workspace;
+  let lobby: string; // a space everyone in the shared workspace reads
 
   before(async () => {
     [alice, bob, carol] = await Promise.all(['stream-alice', 'stream-bob', 'stream-carol'].map(person));
@@ -118,27 +126,28 @@ describe('event stream', () => {
     bobsOwn = await workspace(bob, 'Bob only');
     await addMember(alice, shared.id, bob, 'member');
     await addMember(alice, shared.id, carol, 'member');
+    lobby = (await project(alice, shared.id, 'Lobby', 'workspace')).id;
   });
 
   test('replay after a cursor delivers only events the recipient may see', async () => {
     // Cursors are per person, so each recipient starts from its own head cursor.
     const [start, carolStart, bobStart] = await Promise.all([head(alice), head(carol), head(bob)]);
-    const bobPrivate = await draft(bob, shared.id, 'Bob private notes');
+    const bobPrivate = await mapOf(bob, shared.id, 'Bob private map');
     const room = await project(alice, shared.id, 'Restricted room', 'restricted');
     await grant(alice, room.id, bob, 'contributor');
-    const roomDraft = await share(alice, await draft(alice, shared.id, 'Room plan', { projectId: room.id }), 'project');
-    const elsewhere = await share(bob, await draft(bob, bobsOwn.id, 'Other tenant'), 'workspace');
-    const wide = await share(alice, await draft(alice, shared.id, 'All hands'), 'workspace');
+    const roomMap = await mapOf(alice, shared.id, 'Room plan', room.id);
+    const elsewhere = await mapOf(bob, bobsOwn.id, 'Other tenant');
+    const wide = await mapOf(alice, shared.id, 'All hands', lobby);
 
     const forAlice = await replay(alice, start);
     const aliceObjects = new Set(forAlice.map((e) => e.objectId));
     assert.ok(forAlice.some((e) => e.kind === 'project.created.v1' && e.objectId === room.id), 'restricted project visible to its owner');
-    assert.ok(forAlice.some((e) => e.kind === 'draft.shared.v1' && e.objectId === roomDraft.id));
-    assert.ok(forAlice.some((e) => e.kind === 'draft.shared.v1' && e.objectId === wide.id));
-    assert.equal(aliceObjects.has(bobPrivate.id), false, 'a private draft of another member never reaches the workspace owner');
+    assert.ok(forAlice.some((e) => e.kind === 'sketch.created.v1' && e.objectId === roomMap.id));
+    assert.ok(forAlice.some((e) => e.kind === 'sketch.created.v1' && e.objectId === wide.id));
+    assert.equal(aliceObjects.has(bobPrivate.id), false, 'a private map of another member never reaches the workspace owner');
     assert.equal(aliceObjects.has(elsewhere.id) || aliceObjects.has(bobsOwn.id), false, 'another workspace never reaches a non-member');
     assert.ok(forAlice.every((e) => e.workspaceId === shared.id), 'alice only belongs to the shared workspace');
-    const order = [room.id, roomDraft.id, wide.id].map((id) => forAlice.findIndex((e) => e.objectId === id));
+    const order = [room.id, roomMap.id, wide.id].map((id) => forAlice.findIndex((e) => e.objectId === id));
     assert.deepEqual([...order].sort((a, b) => a - b), order, 'replay is in commit order');
     for (const event of forAlice) assert.deepEqual(Object.keys(event).sort(), ['createdAt', 'cursor', 'id', 'kind', 'objectId', 'objectType', 'type', 'workspaceId'], 'identifiers, kind and an opaque cursor only');
     assert.equal(new Set(forAlice.map((e) => e.cursor)).size, forAlice.length, 'each event has its own cursor');
@@ -147,16 +156,16 @@ describe('event stream', () => {
     const forCarol = await replay(carol, carolStart);
     const carolObjects = new Set(forCarol.map((e) => e.objectId));
     assert.equal(carolObjects.has(room.id), false, 'restricted project events skip non-grantees');
-    assert.equal(carolObjects.has(roomDraft.id), false, 'restricted project drafts skip non-grantees');
+    assert.equal(carolObjects.has(roomMap.id), false, 'restricted project maps skip non-grantees');
     assert.equal(carolObjects.has(bobPrivate.id), false);
-    assert.ok(carolObjects.has(wide.id), 'workspace-wide draft reaches every member');
+    assert.ok(carolObjects.has(wide.id), 'a map in a workspace project reaches every member');
 
     const forBob = await replay(bob, bobStart);
     const bobObjects = new Set(forBob.map((e) => e.objectId));
-    assert.ok(bobObjects.has(bobPrivate.id) && bobObjects.has(roomDraft.id) && bobObjects.has(elsewhere.id), 'bob sees his own drafts and his grants');
+    assert.ok(bobObjects.has(bobPrivate.id) && bobObjects.has(roomMap.id) && bobObjects.has(elsewhere.id), 'bob sees his own maps and his grants');
 
     // An event id is also a cursor, but only for an event the caller may receive.
-    const shareIndex = forAlice.findIndex((e) => e.objectId === wide.id && e.kind === 'draft.shared.v1');
+    const shareIndex = forAlice.findIndex((e) => e.objectId === wide.id && e.kind === 'sketch.created.v1');
     const shareEvent = forAlice[shareIndex]!;
     const upToShare = new Set(forAlice.slice(0, shareIndex + 1).map((e) => e.id));
     for (const cursor of [shareEvent.id, shareEvent.cursor]) {
@@ -182,11 +191,12 @@ describe('event stream', () => {
     const liveReady = await live.ready();
 
     // Restricted and private activity carol cannot see, in her own workspace.
+    await grant(alice, room.id, bob, 'contributor');
     for (let i = 0; i < 5; i += 1) {
-      await share(alice, await draft(alice, shared.id, `Quiet ${i}`, { projectId: room.id }), 'project');
-      await draft(bob, shared.id, `Bob quiet ${i}`);
+      await mapOf(alice, shared.id, `Quiet ${i}`, room.id);
+      await mapOf(bob, shared.id, `Bob quiet ${i}`, room.id);
     }
-    assert.ok(await countEvents() >= eventsBefore + 15, 'the log demonstrably moved on');
+    assert.ok(await countEvents() >= eventsBefore + 10, 'the log demonstrably moved on');
 
     const afterwards = await observe(carol, baseline);
     assert.equal(before.fresh, baseline);
@@ -197,8 +207,8 @@ describe('event stream', () => {
     assert.equal(liveReady.cursor, baseline);
 
     // The live connection received nothing for the invisible events; a visible one arrives next.
-    const visible = await share(alice, await draft(alice, shared.id, 'Visible after quiet'), 'workspace');
-    const next = await live.event(visible.id, 'draft.shared.v1');
+    const visible = await mapOf(alice, shared.id, 'Visible after quiet', lobby);
+    const next = await live.event(visible.id, 'sketch.created.v1');
     assert.equal(live.messages[0]!.type, 'ready');
     assert.ok(live.events.every((e) => e.objectId === visible.id), 'nothing about the invisible activity was delivered');
     assert.notEqual(next.cursor, baseline);
@@ -217,7 +227,8 @@ describe('event stream', () => {
     const erinKey: Principal = { kind: 'human', id: erin.id };
     // Keep the planner on the recipient index on both sides of the comparison. On an
     // almost empty table PostgreSQL can choose a sequential scan only for the baseline.
-    await inBatches(250, (i) => draft(dave, vault.id, `Earlier private ${i}`));
+    await grant(alice, room.id, dave, 'contributor');
+    await inBatches(250, (i) => mapOf(dave, vault.id, `Earlier hidden ${i}`, room.id));
     await pool.query('ANALYZE event_audience, events');
     const { rows: [{ n: eventsAtBaseline }] } = await pool.query('SELECT count(*)::int AS n FROM events WHERE workspace_id = $1', [vault.id]);
     const baseline = await head(erin);
@@ -226,11 +237,10 @@ describe('event stream', () => {
     const plansBefore = [await examined(lastAudienceSeqQuery(db, audienceKey(erinKey))), await examined(audiencePageQuery(db, audienceKey(erinKey), 0, 200))];
     const daveStart = await head(dave);
 
-    // 500 events erin cannot see: 250 private drafts by dave, and 125 drafts alice creates
-    // in the restricted room and shares to it (created + shared = 2 events each).
+    // 500 events erin cannot see: 250 maps by dave and 250 by alice, all in the restricted room.
     const tasks: (() => Promise<unknown>)[] = [];
-    for (let i = 0; i < 250; i += 1) tasks.push(() => draft(dave, vault.id, `Dave private ${i}`));
-    for (let i = 0; i < 125; i += 1) tasks.push(async () => share(alice, await draft(alice, vault.id, `Vault ${i}`, { projectId: room.id }), 'project'));
+    for (let i = 0; i < 250; i += 1) tasks.push(() => mapOf(dave, vault.id, `Dave hidden ${i}`, room.id));
+    for (let i = 0; i < 250; i += 1) tasks.push(() => mapOf(alice, vault.id, `Vault ${i}`, room.id));
     for (let i = 0; i < tasks.length; i += 25) await Promise.all(tasks.slice(i, i + 25).map((task) => task()));
     const { rows: [{ n }] } = await pool.query('SELECT count(*)::int AS n FROM events WHERE workspace_id = $1', [vault.id]);
     assert.ok(n - eventsAtBaseline >= 500, `the workspace has at least 500 new events (${n - eventsAtBaseline})`);
@@ -254,9 +264,9 @@ describe('event stream', () => {
     assert.ok(erinAfter.median <= erinBefore.median * 3 + 50, `open→ready ${erinBefore.median.toFixed(1)} ms → ${erinAfter.median.toFixed(1)} ms`);
     assert.equal(await head(erin), baseline, 'and the cursor is unchanged');
 
-    // The events exist and reach their audience: dave replays his own private drafts.
+    // The events exist and reach their audience: dave, who is added to the room, replays all of them.
     const forDave = await replay(dave, daveStart);
-    assert.equal(forDave.filter((e) => e.kind === 'draft.created.v1').length, 250);
+    assert.equal(forDave.filter((e) => e.kind === 'sketch.created.v1').length, 500);
     assert.equal(forDave.some((e) => e.objectId === room.id), false);
   });
 
@@ -264,12 +274,16 @@ describe('event stream', () => {
     const aliceStream = await StreamClient.connect(alice.browser);
     const carolStream = await StreamClient.connect(carol.browser);
     await Promise.all([aliceStream.ready(), carolStream.ready()]);
-    const hidden = await draft(bob, shared.id, 'Bob live private');
-    const visible = await share(bob, await draft(bob, shared.id, 'Bob live shared'), 'workspace');
-    const live = await aliceStream.event(visible.id, 'draft.shared.v1');
-    assert.equal(live.workspaceId, shared.id);
-    assert.equal(live.objectType, 'draft');
-    await carolStream.event(visible.id, 'draft.shared.v1');
+    const liveWs = await workspace(alice, 'Stream live');
+    await addMember(alice, liveWs.id, bob, 'member');
+    await addMember(alice, liveWs.id, carol, 'member');
+    const liveLobby = await project(alice, liveWs.id, 'Lobby', 'workspace');
+    const hidden = await mapOf(bob, liveWs.id, 'Bob live private');
+    const visible = await mapOf(bob, liveWs.id, 'Bob live shared', liveLobby.id);
+    const live = await aliceStream.event(visible.id, 'sketch.created.v1');
+    assert.equal(live.workspaceId, liveWs.id);
+    assert.equal(live.objectType, 'sketch');
+    await carolStream.event(visible.id, 'sketch.created.v1');
     // Events arrive in seq order, so a delivered private event would already be here.
     assert.equal(aliceStream.events.some((e) => e.objectId === hidden.id), false);
     assert.equal(carolStream.events.some((e) => e.objectId === hidden.id), false);
@@ -280,15 +294,16 @@ describe('event stream', () => {
     const team = await workspace(alice, 'Stream removal');
     await addMember(alice, team.id, carol, 'member');
     const carolsOwn = await workspace(carol, 'Carol only');
+    const teamLobby = await project(alice, team.id, 'Lobby', 'workspace');
     const stream = await StreamClient.connect(carol.browser);
     await stream.ready();
-    const before = await share(alice, await draft(alice, team.id, 'Before removal'), 'workspace');
-    await stream.event(before.id, 'draft.shared.v1');
+    const before = await mapOf(alice, team.id, 'Before removal', teamLobby.id);
+    await stream.event(before.id, 'sketch.created.v1');
 
     await removeMember(alice, team.id, carol);
-    const afterRemoval = await share(alice, await draft(alice, team.id, 'After removal'), 'workspace');
-    const sentinel = await draft(carol, carolsOwn.id, 'Sentinel');
-    await stream.event(sentinel.id, 'draft.created.v1');
+    const afterRemoval = await mapOf(alice, team.id, 'After removal', teamLobby.id);
+    const sentinel = await mapOf(carol, carolsOwn.id, 'Sentinel');
+    await stream.event(sentinel.id, 'sketch.created.v1');
     assert.equal(stream.events.some((e) => e.objectId === afterRemoval.id), false, 'no event after the removal');
     assert.equal(stream.events.some((e) => e.kind === 'workspace.member_removed.v1'), false, 'the removal itself is past her access');
     assert.equal(stream.closeCode, null, 'the stream stays open for her other workspaces');
@@ -301,7 +316,7 @@ describe('event stream', () => {
     const stream = await StreamClient.connect(other.browser);
     await stream.ready();
     expectStatus(await carol.browser.request('DELETE', `/api/v1/sessions/${other.sessionId}`), 204);
-    const next = await draft(carol, carolsOwn.id, 'After revocation');
+    const next = await mapOf(carol, carolsOwn.id, 'After revocation');
     const closed = await Promise.race([stream.closed, new Promise<null>((resolve) => setTimeout(() => resolve(null), heartbeatMs * 3 + 5000))]);
     assert.ok(closed, 'the stream closed');
     assert.equal(closed.code, 4401);
@@ -329,8 +344,8 @@ describe('event stream', () => {
   test('stored events carry a monotonic seq assigned in commit order', async () => {
     const result = await pool.query('SELECT count(*)::int AS missing FROM events WHERE seq IS NULL');
     assert.equal(result.rows[0].missing, 0);
-    const item: Draft = await draft(alice, shared.id, 'Seq check');
-    const rows = await pool.query("SELECT seq FROM events WHERE object_id = $1 AND kind = 'draft.created.v1'", [item.id]);
+    const item = await mapOf(alice, shared.id, 'Seq check', lobby);
+    const rows = await pool.query("SELECT seq FROM events WHERE object_id = $1 AND kind = 'sketch.created.v1'", [item.id]);
     assert.equal(rows.rowCount, 1);
     const later = await pool.query('SELECT max(seq)::bigint AS max FROM events');
     assert.ok(Number(later.rows[0].max) >= Number(rows.rows[0].seq));

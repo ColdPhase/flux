@@ -154,8 +154,7 @@ function viewPlan(ids) {
   const thoughts = chunks(ids.thoughtIds);
   return [
     { view: 'Home', groups: [...shell,
-      [get('since you left', '/api/v1/return?place=home'), get('assistant', '/api/v1/personal-assistant'),
-        get('drafts', `/api/v1/workspaces/${ws}/drafts?limit=100&offset=0`)]] },
+      [get('since you left', '/api/v1/return?place=home'), get('assistant', '/api/v1/personal-assistant')]] },
     { view: 'Conversation', groups: [...shell, ...projectShell,
       [get('conversation roots', `/api/v1/projects/${p}/conversation-roots`),
         get('task notices', `/api/v1/projects/${p}/task-notices?limit=100&offset=0`),

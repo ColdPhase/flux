@@ -173,43 +173,38 @@ describe('access and stream in Chromium against the running services', () => {
     await bob.openStream();
     await bob.note('opened WebSocket /api/v1/stream in the page', { readyState: await bob.socketState() });
 
-    const created = await alice.expect('POST', `/api/v1/workspaces/${space.id}/drafts`, 201, { title: 'Launch checklist', body: 'Private until shared', projectId: room.id }) as { id: string; version: number };
-    const privateRead = await bob.call('GET', `/api/v1/drafts/${created.id}`);
-    assert.equal(privateRead.status, 404, 'a private draft is invisible to a granted member');
-    await bob.note('GET private draft before sharing', { status: privateRead.status });
-
-    const shared = await alice.expect('POST', `/api/v1/drafts/${created.id}/share`, 200, { scope: 'project' }, { 'if-match': `"${created.version}"` }) as { id: string; version: number };
-    await alice.note('shared the draft to the project', { draft: shared.id, version: shared.version });
-    await bob.waitForFrame(created.id, 'draft.shared.v1');
-    const bobRead = await bob.expect('GET', `/api/v1/drafts/${created.id}`, 200) as { title: string };
+    const created = await alice.expect('POST', `/api/v1/workspaces/${space.id}/sketches`, 201, { title: 'Launch checklist', scope: 'project', projectId: room.id }) as { id: string; version: number };
+    await alice.note('made a map in the restricted project', { map: created.id, version: created.version });
+    await bob.waitForFrame(created.id, 'sketch.created.v1');
+    const bobRead = await bob.expect('GET', `/api/v1/sketches/${created.id}`, 200) as { title: string };
     assert.equal(bobRead.title, 'Launch checklist');
-    await bob.note('stream delivered draft.shared.v1; GET draft', { status: 200, title: bobRead.title });
-    await bob.screenshot('01-bob-granted-sees-shared-draft');
+    await bob.note('stream delivered sketch.created.v1; GET map', { status: 200, title: bobRead.title });
+    await bob.screenshot('01-bob-granted-sees-the-map');
 
-    const carolRead = await carol.call('GET', `/api/v1/drafts/${created.id}`);
+    const carolRead = await carol.call('GET', `/api/v1/sketches/${created.id}`);
     assert.equal(carolRead.status, 404, 'a non-member gets 404, not 403');
     const carolProject = await carol.call('GET', `/api/v1/projects/${room.id}`);
     assert.equal(carolProject.status, 404);
-    await carol.note('GET the shared draft and its project as a non-member', { draft: carolRead.status, project: carolProject.status });
+    await carol.note('GET the map and its project as a non-member', { map: carolRead.status, project: carolProject.status });
     await carol.screenshot('02-carol-non-member-404');
 
     await alice.expect('DELETE', `/api/v1/projects/${room.id}/grants/${grant.id}`, 204);
     await alice.note('revoked Bob\'s grant', { grant: grant.id });
-    const updated = await alice.expect('PATCH', `/api/v1/drafts/${created.id}`, 200, { body: 'Edited after revocation' }, { 'if-match': `"${shared.version}"` }) as { version: number };
+    const updated = await alice.expect('PATCH', `/api/v1/sketches/${created.id}`, 200, { title: 'Edited after revocation' }, { 'if-match': `"${created.version}"` }) as { version: number };
     // A visible sentinel afterwards proves the socket is still delivering, so the missing
     // update event is a denial, not a stalled stream.
-    const sentinel = await alice.expect('POST', `/api/v1/workspaces/${space.id}/drafts`, 201, { title: 'All hands' }) as { id: string; version: number };
-    await alice.expect('POST', `/api/v1/drafts/${sentinel.id}/share`, 200, { scope: 'workspace' }, { 'if-match': `"${sentinel.version}"` });
-    await bob.waitForFrame(sentinel.id, 'draft.shared.v1');
+    const lobby = await alice.expect('POST', `/api/v1/workspaces/${space.id}/projects`, 201, { name: 'Lobby', visibility: 'workspace' }) as { id: string };
+    const sentinel = await alice.expect('POST', `/api/v1/workspaces/${space.id}/sketches`, 201, { title: 'All hands', scope: 'project', projectId: lobby.id }) as { id: string };
+    await bob.waitForFrame(sentinel.id, 'sketch.created.v1');
     const frames = await bob.frames();
-    const draftFrames = frames.filter((frame) => frame.objectId === created.id).map((frame) => frame.kind);
-    const afterRevoke = draftFrames.slice(draftFrames.indexOf('draft.shared.v1') + 1);
+    const mapFrames = frames.filter((frame) => frame.objectId === created.id).map((frame) => frame.kind);
+    const afterRevoke = mapFrames.slice(mapFrames.indexOf('sketch.created.v1') + 1);
     assert.deepEqual(afterRevoke, [], 'the edit after revocation never reached Bob');
-    assert.equal(draftFrames.includes('draft.updated.v1'), false);
-    const revokedRead = await bob.call('GET', `/api/v1/drafts/${created.id}`);
+    assert.equal(mapFrames.includes('sketch.changed.v1'), false);
+    const revokedRead = await bob.call('GET', `/api/v1/sketches/${created.id}`);
     assert.equal(revokedRead.status, 404, 'revoked access is denied');
-    await bob.note('after revocation: stream frames for the draft, sentinel delivery, GET draft', {
-      draftFrames, framesAfterRevocation: afterRevoke, sentinelDelivered: true, updatedVersion: updated.version, status: revokedRead.status, readyState: await bob.socketState(),
+    await bob.note('after revocation: stream frames for the map, sentinel delivery, GET map', {
+      mapFrames, framesAfterRevocation: afterRevoke, sentinelDelivered: true, updatedVersion: updated.version, status: revokedRead.status, readyState: await bob.socketState(),
     });
     await bob.screenshot('03-bob-after-revocation');
   });

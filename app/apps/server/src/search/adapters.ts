@@ -24,7 +24,6 @@ const POLICY_AUDIENCES: Record<SearchAudienceType, (principal: Principal, worksp
   project: (principal, workspaceId, db) => memberFilter(principal, workspaceId, 'project', db),
   dm: (principal, workspaceId, db) => visibleFilter(principal, workspaceId, 'dm', db),
   sketch: (principal, workspaceId, db) => memberFilter(principal, workspaceId, 'sketch', db),
-  draft: (principal, workspaceId, db) => memberFilter(principal, workspaceId, 'draft', db),
   // People are found by whoever may read the workspace's members.
   members: async (principal, workspaceId, db) =>
     (await authorize(principal, 'workspace.read_members', { type: 'workspace', id: workspaceId }, accessReader(db))).allowed ? null : false,

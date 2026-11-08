@@ -22,7 +22,7 @@ import { addMember, expectStatus, person, workspace, type Person } from './suppo
 let ada: Person; let ben: Person; let cy: Person;
 let A: string; let B: string;
 const pw = passphrase();
-const kinds = ['project', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'draft', 'draftBody', 'draftEdit', 'task', 'outcome', 'criterion', 'blocker', 'taskRename',
+const kinds = ['project', 'message', 'reply', 'large', 'dmTitle', 'dmMessage', 'decision', 'rationale', 'result', 'evidence', 'task', 'outcome', 'criterion', 'blocker', 'taskRename',
   'docTitle', 'docBody', 'docEdit', 'materialTitle', 'materialBody', 'materialUrl', 'mapTitle', 'thought', 'linkLabel', 'fileName', 'mention'] as const;
 type Kind = typeof kinds[number];
 const canaries: Record<'A' | 'B', Record<Kind, string>> = { A: {} as Record<Kind, string>, B: {} as Record<Kind, string> };
@@ -31,7 +31,7 @@ for (const side of ['A', 'B'] as const) {
   // Over 8 KiB of repetitive text, so PostgreSQL TOASTs and compresses it (the dump decompresses; the scan reads values).
   canaries[side].large = `${canaries[side].large} ${'garden '.repeat(1500).trim()}`;
 }
-const ids: Record<'A' | 'B', { project: string; conversation: string; dm: string; decision: string; result: string; draft: string; task: string; doc: string; material: string; sketch: string; thought: string }> = {} as never;
+const ids: Record<'A' | 'B', { project: string; conversation: string; dm: string; decision: string; result: string; task: string; doc: string; material: string; sketch: string; thought: string }> = {} as never;
 const key = () => ({ 'idempotency-key': randomUUID() });
 
 async function post(who: Person, path: string, body: unknown, status: number, headers: Record<string, string> = {}) {
@@ -52,8 +52,6 @@ async function writeEverything(side: 'A' | 'B', ws: string) {
   const decision = await post(ada, `/api/v1/projects/${project.id}/decisions`, { title: c.decision, rationale: c.rationale }, 201);
   await post(ada, `/api/v1/decisions/${decision.id}/accept`, {}, 200, { 'if-match': `"${decision.version}"` });
   const result = await post(ada, `/api/v1/projects/${project.id}/results`, { title: c.result, finding: 'positive', evidence: c.evidence }, 201);
-  const draft = await post(ada, `/api/v1/workspaces/${ws}/drafts`, { title: c.draft, body: c.draftBody }, 201);
-  expectStatus(await ada.browser.request('PATCH', `/api/v1/drafts/${draft.id}`, { body: { body: c.draftEdit }, headers: { ...key(), 'if-match': `"${draft.version}"` } }), 200, 'draft edit');
   // S2a-2: a task with every text field, a rename (activity), a move into Blocked with its reason (an update), all by PATCH with a key.
   const task = await post(ada, `/api/v1/projects/${project.id}/work`, { title: c.task, outcome: c.outcome, criteria: [c.criterion] }, 201);
   const renamed = expectStatus(await ada.browser.request('PATCH', `/api/v1/work/${task.id}`, { body: { title: c.taskRename },
@@ -69,7 +67,7 @@ async function writeEverything(side: 'A' | 'B', ws: string) {
     url: `https://example.test/${c.materialUrl}` }, 201);
   const two = await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: `${c.thought} two`, x: 200, y: 0 }, 201);
   await post(ada, `/api/v1/sketches/${sketch.id}/links`, { fromId: (one.thought as { id: string }).id, toId: (two.thought as { id: string }).id, label: c.linkLabel.slice(0, 60) }, 201);
-  ids[side] = { project: project.id, conversation: String(conversation.id), dm: String(dm.id), decision: String(decision.id), result: String(result.id), draft: String(draft.id),
+  ids[side] = { project: project.id, conversation: String(conversation.id), dm: String(dm.id), decision: String(decision.id), result: String(result.id),
     task: String(task.id), doc: String(doc.id), material: String(material.materialId ?? material.id), sketch: String(sketch.id), thought: String((one.thought as { id: string }).id) };
 }
 
@@ -143,8 +141,6 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
         { title: c.taskRename, outcome: c.outcome, criteria: [c.criterion], blocker: c.blocker, status: 'blocked' }, `${side}: task`);
       const activity = JSON.stringify((await ben.browser.request('GET', `/api/v1/work/${id.task}/activity`)).json);
       assert.ok(activity.includes(c.task) && activity.includes(c.taskRename), `${side}: the title change is in the activity`);
-      const draft = expectStatus(await ada.browser.request('GET', `/api/v1/drafts/${id.draft}`), 200) as { title: string; body: string };
-      assert.deepEqual({ title: draft.title, body: draft.body }, { title: c.draft, body: c.draftEdit });
     }
   });
 
@@ -436,26 +432,6 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     assert.equal(((await ben.browser.request('GET', '/api/v1/inbox')).json as { lockedWorkspaces?: unknown }).lockedWorkspaces, undefined);
   });
 
-  test('a draft summary of A while A is locked waits and runs after unlock on the opened body (#655 integrated review P2-2)', async () => {
-    expectStatus(await lock(ada.browser, A), 200);
-    const resultId = randomUUID();
-    await pool.query(`INSERT INTO draft_results (id, workspace_id, draft_id, principal_kind, principal_id) VALUES ($1, $2, $3, 'human', $4)`, [resultId, A, ids.A.draft, ada.id]);
-    const boss = new PgBoss({ connectionString, migrate: false, supervise: false, schedule: false });
-    await boss.start();
-    try { await boss.send('draft.summarize.v1', { resultId }); } finally { await boss.stop({ graceful: false }); }
-    const waits = async () => (await pool.query(`SELECT count(*)::int AS n FROM sealed_job_waits WHERE queue = 'draft.summarize.v1' AND payload->>'resultId' = $1`, [resultId])).rows[0].n as number;
-    const result = async () => (await pool.query<{ status: string; word_count: number | null }>(`SELECT status, word_count FROM draft_results WHERE id = $1`, [resultId])).rows[0]!;
-    for (let attempt = 0; attempt < 80 && await waits() === 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
-    assert.equal(await waits(), 1, 'the summary waits while A is locked');
-    assert.notEqual((await result()).status, 'completed');
-    expectStatus(await unlock(ada.browser, A, { password: pw }), 200);
-    for (let attempt = 0; attempt < 80 && (await result()).status !== 'completed'; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
-    assert.deepEqual(await result(), { status: 'completed', word_count: canaries.A.draftEdit.split(/\s+/u).length }, 'counted on the opened body, not the envelope');
-    // The resume job deletes the wait just after the summary commits.
-    for (let attempt = 0; attempt < 40 && await waits() > 0; attempt += 1) await new Promise((resolve) => setTimeout(resolve, 250));
-    assert.equal(await waits(), 0, 'the replayed wait is deleted');
-  });
-
   test('an event of A that arrives while A is locked waits: no notification; after unlock exactly one (AC-9)', async () => {
     // The mention event of the earlier test, copied as a new event (the generator sees a fresh one) while A is locked.
     const [mention] = (await pool.query(`SELECT e.id, e.kind, e.object_id, e.actor_id, e.data FROM events e JOIN notifications n ON n.event_id = e.id
@@ -511,7 +487,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     }
   });
 
-  test('A\'s rows hold envelopes, B\'s plain text; the draft versions of A are written by the application, sealed', async () => {
+  test('A\'s rows hold envelopes, B\'s plain text', async () => {
     const one = async (query: string, values: unknown[]) => (await pool.query(query, values)).rows[0] as Record<string, unknown>;
     for (const [side, ws] of [['A', A], ['B', B]] as const) {
       const sealed = side === 'A';
@@ -526,9 +502,6 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       const dm = await one(`SELECT bool_and(flux_is_sealed(d.title)) AS title, bool_and(flux_is_sealed(m.body)) AS body, bool_and(flux_is_sealed(m.request_fingerprint)) AS fingerprint
         FROM dms d JOIN dm_messages m ON m.dm_id = d.id WHERE d.workspace_id = $1`, [ws]);
       assert.deepEqual(dm, { title: sealed, body: sealed, fingerprint: sealed }, side);
-      const versions = (await pool.query(`SELECT v.version, flux_is_sealed(v.title) AS title, flux_is_sealed(v.body) AS body FROM draft_versions v
-        JOIN drafts d ON d.id = v.draft_id WHERE d.workspace_id = $1 ORDER BY v.version`, [ws])).rows;
-      assert.deepEqual(versions, [{ version: 1, title: sealed, body: sealed }, { version: 2, title: sealed, body: sealed }], `${side}: one row per version`);
       const work = await one(`SELECT flux_is_sealed(title) AS title, flux_is_sealed(outcome) AS outcome, flux_is_sealed(blocker) AS blocker, flux_is_sealed(criteria) AS criteria
         FROM project_work_items WHERE id = $1`, [ids[side].task]);
       assert.deepEqual(work, { title: sealed, outcome: sealed, blocker: sealed, criteria: sealed }, `${side}: task`);

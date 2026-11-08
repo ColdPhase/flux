@@ -80,7 +80,7 @@ describe('architecture boundaries', () => {
   });
 
   test('the access use cases keep to ports and stay small, never reaching persistence through helpers (#91)', () => {
-    // The workspace, member, AI switch, project, grant, agent and draft use cases run over the repository ports in
+    // The workspace, member, AI switch, project, grant and agent use cases run over the repository ports in
     // `access/repositories.ts` and core's transaction port in `types.ts` (#92); `@flux/db` implements them.
     const entries = files(join(root, 'packages/core/src/access'));
     for (const module of ['policy', 'ports', 'repositories', 'records', 'validation']) {

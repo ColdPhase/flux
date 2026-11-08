@@ -5,12 +5,12 @@ import { UNTITLED_SKETCH, type CreatedThought, type MessagePlace, type MovedThou
 import { authorize, createAgent, policySketchAccess, revokeAgent, ForbiddenError, NotFoundError, type Principal } from '@flux/core';
 import { accessPorts, accessReader } from '@flux/db';
 import { db, pool } from './support/db.js';
-import { addMember, draft, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
 
 // Persistent sketches over HTTP (issue #69, AC-1/AC-2/AC-4): access through the #29 policy,
-// private and DM sketches, cross-workspace rejection, If-Match, concurrent moves, idempotent
-// retries, placements that never delete their object, and stream events with a policy audience.
+// private sketches, cross-workspace rejection, If-Match, concurrent moves, idempotent
+// retries, and stream events with a policy audience.
 
 const ifMatch = (version: number) => ({ 'if-match': `"${version}"` });
 
@@ -257,11 +257,7 @@ describe('sketch access', () => {
     assert.equal(cross.code, 'CROSS_WORKSPACE');
     expectStatus(await bob.browser.request('POST', `/api/v1/workspaces/${ws.id}/sketches`, { body: { title: 'x', scope: 'project', projectId: away.id } }), 404, 'invisible project');
 
-    // A draft of the other workspace cannot be placed here, even by someone who can read it.
-    const awayDraft = await draft(alice, other.id, 'Other workspace note');
-    const sketch = await createSketch(alice, ws.id, { title: 'Placements', scope: 'project', projectId: lamp.id });
-    const placed = expectStatus(await alice.browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`, { body: { text: 'x', x: 0, y: 0, placement: { type: 'draft', id: awayDraft.id } } }), 422) as { code: string };
-    assert.equal(placed.code, 'CROSS_WORKSPACE');
+    const sketch = await createSketch(alice, ws.id, { title: 'Links', scope: 'project', projectId: lamp.id });
 
     // Thoughts of different sketches never link.
     const here = await addThought(alice, sketch.id, { text: 'Here', x: 0, y: 0 });
@@ -270,15 +266,9 @@ describe('sketch access', () => {
     expectStatus(await alice.browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`, { body: { text: 'x', x: 0, y: 0, linkFrom: { thoughtId: there.thought.id } } }), 404, 'connected thought from another sketch');
   });
 
-  test('placements show only what the reader may open, and removing one never deletes the object', async () => {
-    const sketch = await createSketch(alice, ws.id, { title: 'With drafts', scope: 'project', projectId: lamp.id });
-    const note = await draft(alice, ws.id, 'Alice’s private plan', { body: 'secret' });
-    const { thought } = await addThought(alice, sketch.id, { text: 'The plan', x: 0, y: 0, placement: { type: 'draft', id: note.id } });
-    assert.deepEqual(thought.placement, { type: 'draft', id: note.id, title: 'Alice’s private plan' });
-    const forBob = await detail(bob, sketch.id);
-    assert.deepEqual(forBob.thoughts[0]!.placement, { type: 'draft', id: note.id, title: null }, 'no title for a reader who cannot open the draft');
-    assert.equal(JSON.stringify(forBob).includes('secret'), false);
-    expectStatus(await bob.browser.request('POST', `/api/v1/sketches/${sketch.id}/thoughts`, { body: { text: 'x', x: 0, y: 0, placement: { type: 'draft', id: note.id } } }), 404, 'placing a draft you cannot read');
+  test('removing a thought removes its links, and Undo restores them with the same ids', async () => {
+    const sketch = await createSketch(alice, ws.id, { title: 'Removal', scope: 'project', projectId: lamp.id });
+    const { thought } = await addThought(alice, sketch.id, { text: 'The plan', x: 0, y: 0 });
 
     const other = await addThought(alice, sketch.id, { text: 'Next step', x: 240, y: 0, linkFrom: { thoughtId: thought.id, label: 'then' } });
     assert.equal(other.link?.label, 'then');
@@ -287,11 +277,9 @@ describe('sketch access', () => {
     const after = await detail(alice, sketch.id);
     assert.deepEqual(after.thoughts.map((t) => t.id), [other.thought.id]);
     assert.deepEqual(after.links, [], 'links of a removed thought go with it');
-    const kept = expectStatus(await alice.browser.request('GET', `/api/v1/drafts/${note.id}`), 200) as { title: string; body: string };
-    assert.equal(kept.body, 'secret', 'the placed draft is untouched');
 
     // Undo on the client: recreate the thought and its link with the same ids.
-    const restored = await addThought(alice, sketch.id, { id: thought.id, text: 'The plan', x: 0, y: 0, placement: { type: 'draft', id: note.id } });
+    const restored = await addThought(alice, sketch.id, { id: thought.id, text: 'The plan', x: 0, y: 0 });
     assert.equal(restored.thought.id, thought.id);
     const relinked = expectStatus(await alice.browser.request('POST', `/api/v1/sketches/${sketch.id}/links`, { body: { id: other.link!.id, fromId: thought.id, toId: other.thought.id, label: 'then' } }), 201) as ThoughtLink;
     assert.equal(relinked.id, other.link!.id);

@@ -410,7 +410,7 @@ export const oauthClientAssertion = pgTable("oauth_client_assertion", {
 });
 
 
-// Workspaces, membership, projects, grants, agents and drafts (migration 0003). The SQL
+// Workspaces, membership, projects, grants and agents (migration 0003). The SQL
 // migration is authoritative; composite foreign keys reject cross-workspace links.
 export const workspaces = pgTable('workspaces', {
   id: uuid('id').primaryKey(),
@@ -519,25 +519,6 @@ export const projectGrants = pgTable('project_grants', {
   foreignKey({ columns: [table.workspaceId, table.userId], foreignColumns: [workspaceMembers.workspaceId, workspaceMembers.userId] }).onDelete('cascade'),
 ]);
 
-export const drafts = pgTable('drafts', {
-  id: uuid('id').primaryKey(),
-  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-  projectId: uuid('project_id'),
-  ownerUserId: text('owner_user_id').references(() => authUsers.id),
-  ownerAgentId: uuid('owner_agent_id'),
-  title: text('title').notNull(),
-  body: text('body').notNull().default(''),
-  visibility: text('visibility', { enum: ['private', 'project', 'workspace'] }).notNull().default('private'),
-  version: integer('version').notNull().default(1),
-  createdBy: text('created_by').notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [
-  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }),
-  foreignKey({ columns: [table.workspaceId, table.ownerAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
-  index('drafts_workspace_idx').on(table.workspaceId, table.createdAt, table.id),
-]);
-
 // Web Push subscriptions per user and device, and the in-app inbox (migration 0005, issue #41).
 export const pushSubscriptions = pgTable('push_subscriptions', {
   id: uuid('id').primaryKey(),
@@ -565,7 +546,7 @@ export const notifications = pgTable('notifications', {
   userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
   // The object the notification is about; its `<type>.read` decides who may see the row.
-  sourceType: text('source_type').$type<'workspace' | 'project' | 'draft' | 'dm'>().notNull(),
+  sourceType: text('source_type').$type<'workspace' | 'project' | 'dm'>().notNull(),
   sourceId: uuid('source_id').notNull(),
   title: text('title').notNull(),
   body: text('body').notNull().default(''),
@@ -600,23 +581,7 @@ export const eventAudience = pgTable('event_audience', {
   eventId: uuid('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
 }, (table) => [primaryKey({ columns: [table.recipient, table.seq] }), index('event_audience_event_idx').on(table.eventId)]);
 
-// Worker job results and idempotency keys (migration 0004).
-export const draftResults = pgTable('draft_results', {
-  id: uuid('id').primaryKey(),
-  workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-  draftId: uuid('draft_id').notNull().references(() => drafts.id, { onDelete: 'cascade' }),
-  principalKind: text('principal_kind', { enum: ['human', 'agent'] }).notNull(),
-  principalId: text('principal_id').notNull(),
-  status: text('status', { enum: ['queued', 'running', 'completed', 'denied'] }).notNull().default('queued'),
-  deniedAtStage: text('denied_at_stage', { enum: ['before_read', 'before_commit'] }),
-  jobId: text('job_id'),
-  draftVersion: integer('draft_version'),
-  wordCount: integer('word_count'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-  completedAt: timestamp('completed_at', { withTimezone: true }),
-}, (table) => [index('draft_results_draft_idx').on(table.draftId, table.createdAt)]);
-
+// Idempotency keys (migration 0004).
 export const idempotencyKeys = pgTable('idempotency_keys', {
   id: uuid('id').primaryKey(),
   principal: text('principal').notNull(),
@@ -690,8 +655,6 @@ export const projectMaterialVersions = pgTable('project_material_versions', {
   authorAgentId: uuid('author_agent_id'),
   clientMutationId: uuid('client_mutation_id'),
   requestFingerprint: text('request_fingerprint'),
-  sourceDraftId: uuid('source_draft_id'),
-  sourceDraftVersion: integer('source_draft_version'),
   /** Doc versions only (#112): draft or published, and why this version was made. */
   reason: text('reason').notNull().default(''),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1020,8 +983,6 @@ export const sketchThoughts = pgTable('sketch_thoughts', {
   width: integer('width').notNull().default(184),
   height: integer('height').notNull().default(72),
   shape: text('shape', { enum: ['card', 'pill', 'circle'] }).notNull().default('card'),
-  placementType: text('placement_type', { enum: ['draft'] }),
-  placementId: uuid('placement_id'),
   // The message a thought was started from (migration 0025, #96).
   sourceAuthorId: text('source_author_id').references(() => authUsers.id),
   sourceAuthorAgentId: uuid('source_author_agent_id').references(() => agents.id),

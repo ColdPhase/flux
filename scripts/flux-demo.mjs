@@ -106,29 +106,13 @@ if (existing) {
   await owner.session.expect('POST', `/api/v1/projects/${project.id}/grants`, { principal: { kind: 'human', id: partner.id }, role: 'contributor' });
   summary.seeded.push(`space "${project.name}" with both of them`);
 
-  const note = await owner.session.expect('POST', `/api/v1/workspaces/${ws.id}/drafts`, {
-    title: 'Before Thursday (private)',
-    projectId: project.id,
-    body: [
-      'Only I can see this note until I share or publish part of it.',
-      '',
-      '- Budget: the council grant covers 6 sensors, not 10. Ask Jonas if the school can lend two.',
-      '- Soil probes corrode within a season; check the capacitive ones.',
-      '- My home address is on the shipping form. Redact before sharing anything.',
-    ].join('\n'),
-  });
-  summary.seeded.push(`private note "${note.title}" (visible only to ${owner.name})`);
-
   const conversationsPath = `/api/v1/projects/${project.id}/conversations`;
   if (await hasRoute(owner.session, conversationsPath)) {
-    // Published material copies only the chosen text from the private note, never the whole note.
     const material = await owner.session.expect('POST', `/api/v1/projects/${project.id}/materials`, {
       clientMutationId: ids(),
       title: 'Sensor shortlist',
       body: 'Capacitive soil moisture probe (no exposed metal), DS18B20 temperature probe, '
         + 'ESP32 board with LoRa for the far beds. About 18 EUR per bed.',
-      sourceDraftId: note.id,
-      sourceDraftVersion: note.version,
     });
     summary.seeded.push(`published material "${material.title}"`);
 

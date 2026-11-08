@@ -238,7 +238,6 @@ export interface MaterialVersionFields {
   title: string;
   body: string;
   url: string | null;
-  sourceDraft: { id: string; version: number } | null;
   createdAt: string;
 }
 /**
@@ -267,9 +266,6 @@ export interface CreateMaterialCommand {
   title: string;
   body?: string;
   url?: string;
-  /** Publication copies exactly the selected text, never the whole private draft. */
-  sourceDraftId?: string;
-  sourceDraftVersion?: number;
 }
 
 export interface UpdateMaterialCommand {

@@ -209,7 +209,6 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
     const collapsed = view.state.collapsed.includes(thought.id);
     const titleId = `${ids}-${thought.id}`;
     const tagId = `${titleId}-tag`;
-    const placement = thought.placement ? (thought.placement.title ? `Draft · ${thought.placement.title}` : 'Draft you can’t open') : null;
     const link = linkOf(thought.text);
     const linked = projectId ? tasks.get(thought.id) : undefined;
     const label = row.link?.label ?? null;
@@ -232,7 +231,6 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
             {editing?.id === thought.id && canWrite
               ? <ThoughtEditor key={`${editing.id}:${editing.attempt}`} className="sk-li-edit" initial={editing.initial} disabled={editing.saving} onChange={on.onEditText} onDone={on.onFinishEdit} />
               : <span className="sk-outline-title" id={titleId}>{thought.text}</span>}
-            {placement ? <span className="sk-outline-meta">{placement}</span> : null}
             {also.length ? <span className="sk-outline-also" onClick={quiet}><Icon name="link" size={12} /><span>also under </span>{also.map(({ other, relation }, at) => (
               <Fragment key={relation.id}>{at ? ', ' : ''}<button type="button" aria-label={`Also under ${other.thought.text}`} onClick={() => follow(thought.id, other.thought.id)}>{other.thought.text}</button></Fragment>
             ))}</span> : null}

@@ -129,13 +129,14 @@ export const projectReceiptsPath = (projectId: string) => `/api/v1/projects/${pr
 
 export const RECEIPT_LIMITS = { messagesPerCall: 50, runsPerCall: 20, messagesPerQuery: 200 } as const;
 
+/** One person who could open the task, and why: they are in its project. Agents are not listed; an agent reads with exactly its owner's rights. */
+export interface DmTaskCopyPerson { id: string; name: string; reason: 'project' }
+
 /**
  * `POST /api/v1/dms/:dmId/task-copy/preview` (#537). Changes nothing. `excerpt` is the part of the message the
  * person chose (default: the whole message); it must appear in the message exactly. Without `projectId` the
  * first project the caller can change is proposed.
  */
-/** One person who could open the task, and why: they are in its project. Agents are not listed; an agent reads with exactly its owner's rights. */
-export interface DmTaskCopyPerson { id: string; name: string; reason: 'project' }
 export interface DmTaskCopyPreviewCommand { messageId: string; excerpt?: string; projectId?: string }
 export interface DmTaskCopyPreview {
   messageId: string;

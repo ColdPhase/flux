@@ -5,7 +5,7 @@ import { buildOutline, emptyOutline, OUTLINE_STORE_BYTES, OUTLINE_STORE_LIMIT, p
 
 const id = (value: number) => `00000000-0000-4000-8000-${String(value).padStart(12, '0')}`;
 const thought = (value: number, createdAt = `2026-09-30T10:00:${String(value).padStart(2, '0')}.000Z`): Thought => ({
-  id: id(value), sketchId: id(900), text: `Thought ${value}`, x: value * 200, y: 0, width: 184, height: 72, shape: 'card', placement: null, source: null,
+  id: id(value), sketchId: id(900), text: `Thought ${value}`, x: value * 200, y: 0, width: 184, height: 72, shape: 'card', source: null,
   createdBy: { kind: 'human', id: id(901), name: 'Kai' }, version: 1, createdAt, updatedAt: createdAt,
 });
 const link = (from: number, to: number, value = from * 100 + to): ThoughtLink => ({ id: id(value), sketchId: id(900), fromId: id(from), toId: id(to), label: null, createdAt: '2026-09-30T10:01:00.000Z' });

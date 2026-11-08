@@ -79,11 +79,11 @@ async function club(name: string, admins: string[], others: Record<string, 'memb
   return { ws: workspace.id, owner, ownerPw, recovery: recoveryCode, people };
 }
 
-/** A project, a conversation with `count` messages, a DM, a decision and a draft, each with a canary. */
+/** A project, a conversation with `count` messages, a DM, a decision and a map, each with a canary. */
 async function seed(c: Club, count: number) {
   const canary = (kind: string) => `canary-${kind}-${randomUUID()}`;
   const post = async (path: string, body: unknown) => expectStatus(await c.owner.browser.request('POST', path, { body, headers: key() }), 201, path) as Record<string, unknown>;
-  const texts = { project: canary('project'), dm: canary('dm'), decision: canary('decision'), draft: canary('draft'), messages: [] as string[] };
+  const texts = { project: canary('project'), dm: canary('dm'), decision: canary('decision'), map: canary('map'), messages: [] as string[] };
   const project = await post(`/api/v1/workspaces/${c.ws}/projects`, { name: texts.project, visibility: 'workspace' });
   texts.messages.push(canary('opening'));
   const conversation = await post(`/api/v1/projects/${project.id}/conversations`, { body: texts.messages[0], clientMessageId: randomUUID() });
@@ -97,8 +97,8 @@ async function seed(c: Club, count: number) {
   const dm = await post(`/api/v1/workspaces/${c.ws}/dms`, { participantIds: Object.values(c.people).map((p) => p.who.id).slice(0, 1) });
   await post(`/api/v1/dms/${dm.id}/messages`, { body: texts.dm, clientMessageId: randomUUID() });
   const decision = await post(`/api/v1/projects/${project.id}/decisions`, { title: texts.decision, rationale: canary('rationale') });
-  const draft = await post(`/api/v1/workspaces/${c.ws}/drafts`, { title: texts.draft, body: canary('draft-body') });
-  return { texts, ids: { project: project.id as string, conversation: conversation.id as string, dm: dm.id as string, decision: decision.id as string, draft: draft.id as string } };
+  const map = await post(`/api/v1/workspaces/${c.ws}/sketches`, { title: texts.map, scope: 'project', projectId: project.id });
+  return { texts, ids: { project: project.id as string, conversation: conversation.id as string, dm: dm.id as string, decision: decision.id as string, map: map.id as string } };
 }
 
 /** What a person removed could have kept: their holder row and wraps, and the DEKs their password opens. */
@@ -175,7 +175,7 @@ describe('F-030 S2c key rotation (AC-13)', () => {
     assert.ok(conversation.messages.length > 0 && conversation.messages.every((m) => texts.messages.includes(m.body)));
     assert.deepEqual(new Set(await bodiesAt(c, 2)), new Set(texts.messages), 'every message exactly once, none lost');
     assert.equal((expectStatus(await c.owner.browser.request('GET', `/api/v1/decisions/${ids.decision}`), 200) as { title: string }).title, texts.decision);
-    assert.equal((expectStatus(await c.owner.browser.request('GET', `/api/v1/drafts/${ids.draft}`), 200) as { title: string }).title, texts.draft);
+    assert.equal((expectStatus(await c.owner.browser.request('GET', `/api/v1/sketches/${ids.map}`), 200) as { title: string }).title, texts.map);
     assert.deepEqual((expectStatus(await c.owner.browser.request('GET', `/api/v1/dms/${ids.dm}`), 200) as { messages: { body: string }[] }).messages.map((m) => m.body), [texts.dm]);
     const after = await readWorkspace(c.owner.browser, c.ws);
     assert.equal(after.encryption?.rotation, null);

@@ -70,17 +70,6 @@ export interface Sketch {
   thoughtCount?: number;
 }
 
-/**
- * An existing object shown on the map. Only `draft` exists today; tasks and threads follow.
- * `title` is null when the reader cannot open the object now (or it no longer exists), so a
- * placement never reveals content its reader could not read directly.
- */
-export interface Placement {
-  type: 'draft';
-  id: string;
-  title: string | null;
-}
-
 /** The message a thought was started from: its author and time as they were then. */
 export interface ThoughtSource {
   author: PrincipalRef & { name: string };
@@ -98,7 +87,6 @@ export interface Thought {
   width: number;
   height: number;
   shape: ThoughtShape;
-  placement: Placement | null;
   source: ThoughtSource | null;
   /**
    * #252: the image of a project sketch's thought, a stored file of the project published to it.
@@ -164,8 +152,6 @@ export interface CreateThoughtCommand {
   width?: number;
   height?: number;
   shape?: ThoughtShape;
-  /** Place an existing object the caller can read, from the sketch's workspace. */
-  placement?: { type: 'draft'; id: string };
   /** Create the thought already linked to another one (the "+" beside a thought). */
   linkFrom?: { thoughtId: string; label?: string | null; linkId?: string };
   /** Project sketches only: the project message this thought quotes (e.g. when Undo restores it). */

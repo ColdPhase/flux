@@ -8,7 +8,6 @@ import {
   type CreateThoughtCommand,
   type MovedThoughts,
   type MoveThoughtsCommand,
-  type Placement,
   type Sketch,
   type SketchDetail,
   type SketchListQuery,
@@ -28,8 +27,7 @@ import * as valid from './validation.js';
 // Sketch use cases (issue #69). Each one runs in a unit of work: it asks the access port first
 // (reads: `sketch.read`; changes: `sketch.write` with the sketch locked), then validates the
 // caller's version, changes rows through the repository and records one event, so the
-// decision, the change and the stream event commit together. Removing a thought removes only
-// its placement on the map, never the object placed there.
+// decision, the change and the stream event commit together.
 
 /** 409 for a batch of moves: nothing moved; each stale thought comes back as the caller may read it now. */
 export class PositionsConflictError extends ConflictError {
@@ -63,24 +61,16 @@ export function presentThoughtLink(record: LinkRecord): ThoughtLink {
 }
 
 /**
- * Thoughts as `principal` may see them: a placement's title only when its object is readable now. A project sketch's
+ * Thoughts as they are presented. A project sketch's
  * thoughts carry their image (#252); its readers are the project's readers, who may read its published files.
  * Exported for the live map deltas (#228), which present the same views.
  */
-export async function presentThoughts(ports: Pick<SketchPorts, 'access' | 'files'>, principal: Principal, sketch: Pick<SketchRecord, 'workspaceId' | 'scope' | 'projectId'>, records: ThoughtRecord[]): Promise<Thought[]> {
-  const { workspaceId } = sketch;
+export async function presentThoughts(ports: Pick<SketchPorts, 'files'>, sketch: Pick<SketchRecord, 'scope' | 'projectId'>, records: ThoughtRecord[]): Promise<Thought[]> {
   const files = sketch.scope === 'project' && sketch.projectId && records.length
     ? await ports.files.ofThoughts(sketch.projectId, records.map((record) => record.id)) : new Map<string, ThoughtFile>();
-  const placements = new Map<string, Placement>();
-  for (const record of records) {
-    if (!record.placement || placements.has(record.placement.id)) continue;
-    const view = await ports.access.placement(principal, record.placement);
-    const title = view.readable && view.workspaceId === workspaceId ? view.title : null;
-    placements.set(record.placement.id, { ...record.placement, title });
-  }
   return records.map((record) => ({
     id: record.id, sketchId: record.sketchId, text: record.text, x: record.x, y: record.y, width: record.width, height: record.height,
-    shape: record.shape, placement: record.placement ? placements.get(record.placement.id)! : null,
+    shape: record.shape,
     source: record.source ? { author: { kind: record.source.authorKind, id: record.source.authorId, name: record.source.authorName },
       sentAt: iso(record.source.sentAt), projectMessageId: record.source.projectMessageId } : null,
     ...(files.has(record.id) ? { file: files.get(record.id)! } : {}),
@@ -167,7 +157,7 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         const [thoughts, links] = await Promise.all([ports.sketches.thoughts(sketch.id), ports.sketches.links(sketch.id)]);
         return {
           ...presentSketch(sketch, access),
-          thoughts: await presentThoughts(ports, principal, sketch, thoughts),
+          thoughts: await presentThoughts(ports, sketch, thoughts),
           links: links.map(presentThoughtLink),
         };
       });
@@ -186,7 +176,7 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
           throw new ConflictError('The map changed; read it again from the first page', 'SOURCE_VERSION_CONFLICT');
         const [thoughts, links, counts] = await Promise.all([ports.sketches.thoughts(sketch.id, page),
           ports.sketches.links(sketch.id, linkPage), ports.sketches.mapCounts(sketch.id)]);
-        return { ...presentSketch(sketch, access), thoughts: await presentThoughts(ports, principal, sketch, thoughts), links: links.map(presentThoughtLink),
+        return { ...presentSketch(sketch, access), thoughts: await presentThoughts(ports, sketch, thoughts), links: links.map(presentThoughtLink),
           thoughtPage: { ...page, total: counts.thoughts, nextOffset: page.offset + page.limit < counts.thoughts ? page.offset + page.limit : null },
           linkPage: { ...linkPage, total: counts.links, nextOffset: linkPage.offset + linkPage.limit < counts.links ? linkPage.offset + linkPage.limit : null } };
       });
@@ -216,10 +206,6 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         height: command.height === undefined ? DEFAULT_THOUGHT_SIZE.height : valid.height(command.height),
         shape: command.shape === undefined ? 'card' as const : valid.shape(command.shape),
       };
-      const placement = command.placement === undefined ? null : (() => {
-        if (command.placement?.type !== 'draft') throw new InvalidInputError('placement.type must be draft');
-        return { type: 'draft' as const, id: valid.id(command.placement.id, 'placement.id') };
-      })();
       const linkFrom = command.linkFrom === undefined ? null : {
         thoughtId: valid.id(command.linkFrom?.thoughtId, 'linkFrom.thoughtId'),
         label: valid.label(command.linkFrom.label),
@@ -237,11 +223,6 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
           source = { authorId: message.authorId, authorKind: message.authorKind, authorName: message.authorName, sentAt: message.createdAt,
             projectMessageId: message.id };
         }
-        if (placement) {
-          const view = await ports.access.placement(principal, placement);
-          if (!view.readable) throw new NotFoundError('Draft', 'DRAFT_NOT_FOUND');
-          if (view.workspaceId !== sketch.workspaceId) throw new RuleViolationError('A placed object must belong to the sketch’s company', 'CROSS_WORKSPACE');
-        }
         if (await ports.sketches.thoughtExists(thoughtId)) throw new ConflictError('A thought with this id already exists', 'THOUGHT_EXISTS');
         if (linkFrom && await ports.sketches.linkExists(linkFrom.linkId)) throw new ConflictError('A link with this id already exists', 'LINK_EXISTS');
         await ports.live.before(principal,sketch,{thoughtIds:[thoughtId,...(linkFrom?[linkFrom.thoughtId]:[])],linkIds:linkFrom?[linkFrom.linkId]:[]});
@@ -252,13 +233,13 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         const artifacts=await ports.artifacts?.prepare(sketch,[thoughtId,...(linkFrom?[linkFrom.thoughtId]:[])]);
         if (linkFrom) await lockedThought(ports, sketch.id, linkFrom.thoughtId);
         if (fileId) {if(preparedImage)await preparedImage();else await ports.files.place(principal, { projectId: sketch.projectId!, fileId, thoughtId });}
-        const thought = await ports.sketches.insertThought({ id: thoughtId, workspaceId: sketch.workspaceId, sketchId: sketch.id, ...values, placement, source, createdBy: principal });
+        const thought = await ports.sketches.insertThought({ id: thoughtId, workspaceId: sketch.workspaceId, sketchId: sketch.id, ...values, source, createdBy: principal });
         const link = linkFrom ? await ports.sketches.insertLink({
           id: linkFrom.linkId, workspaceId: sketch.workspaceId, sketchId: sketch.id, fromId: linkFrom.thoughtId, toId: thought.id, label: linkFrom.label, createdBy: principal,
         }) : null;
         await artifacts?.thought(null,thought);
         if(fileId)await artifacts?.file(fileId);
-        const [view] = await presentThoughts(ports, principal, sketch, [thought]);
+        const [view] = await presentThoughts(ports, sketch, [thought]);
         await changed(ports, principal, sketch, { op: 'thought_added', thoughtIds: [thought.id], linkIds: link ? [link.id] : [] });
         return { thought: view!, link: link ? presentThoughtLink(link) : null };
       });
@@ -279,12 +260,12 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         // Only a text change can be a canonical revision; geometry/shape keeps main's lock order without the task-graph fence.
         const artifacts=changes.text!==undefined?await ports.artifacts?.prepare(sketch,[target]):null;
         const current = await lockedThought(ports, sketch.id, target);
-        const [currentView] = await presentThoughts(ports, principal, sketch, [current]);
+        const [currentView] = await presentThoughts(ports, sketch, [current]);
         checkVersion(current, command.expectedVersion, currentView!);
         await ports.live.before(principal,sketch,{thoughtIds:[current.id],linkIds:[],leaseId:command.leaseId});
         const updated = await ports.sketches.updateThought(sketch.id, current.id, changes, principal);
         await artifacts?.thought(current,updated);
-        const [view] = await presentThoughts(ports, principal, sketch, [updated]);
+        const [view] = await presentThoughts(ports, sketch, [updated]);
         await changed(ports, principal, sketch, { op: 'thought_updated', thoughtIds: [current.id], linkIds: [] });
         return view!;
       });
@@ -306,13 +287,13 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         if (locked.size !== parsed.length) throw new NotFoundError('Thought', 'THOUGHT_NOT_FOUND');
         const stale = parsed.filter((move) => locked.get(move.id)!.version !== valid.expectedVersion(move.expectedVersion));
         if (stale.length) {
-          const views = await presentThoughts(ports, principal, sketch, stale.map((move) => locked.get(move.id)!));
+          const views = await presentThoughts(ports, sketch, stale.map((move) => locked.get(move.id)!));
           throw new PositionsConflictError(views.map((view) => ({ id: view.id, currentVersion: view.version, current: view })));
         }
         await ports.live.before(principal,sketch,{thoughtIds:parsed.map(move=>move.id),linkIds:[],leaseId:command.leaseId});
         const updated: ThoughtRecord[] = [];
         for (const move of parsed) updated.push(await ports.sketches.updateThought(sketch.id, move.id, { x: move.x, y: move.y }, principal));
-        const thoughts = await presentThoughts(ports, principal, sketch, updated);
+        const thoughts = await presentThoughts(ports, sketch, updated);
         await changed(ports, principal, sketch, { op: 'thoughts_moved', thoughtIds: parsed.map((move) => move.id), linkIds: [] });
         return { thoughts };
       });
@@ -322,7 +303,7 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
       await uow.run(async (ports) => {
         const { sketch } = await authorized(ports, principal, 'sketch.write', sketchId);
         const current = await lockedThought(ports, sketch.id, valid.id(thoughtId, 'thoughtId'));
-        const [currentView] = await presentThoughts(ports, principal, sketch, [current]);
+        const [currentView] = await presentThoughts(ports, sketch, [current]);
         checkVersion(current, expected, currentView!);
         const linkIds = (await ports.sketches.relatedLinks(sketch.id,{thoughtId:current.id})).map((link) => link.id);
         await ports.live.before(principal,sketch,{thoughtIds:[current.id],linkIds});

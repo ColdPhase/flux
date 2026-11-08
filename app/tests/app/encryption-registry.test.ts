@@ -13,7 +13,7 @@ import { expectStatus, person, workspace, type Person } from './support/people.j
 // AC-5 of F-030, S2a-1 part (#655; docs/product/encrypted-workspaces.md#inventory): the registry against the LIVE catalog
 // after all migrations (default-deny), each sealed table's plaintext backstop with exactly the registry's columns, the
 // refusal of plaintext in every sealed column of A while B passes, the SQL copies of sealed columns (only the allowed
-// ones, each with its reason), `preserve_draft_version` writing nothing for A, and the late heartbeat's SQL (S1 review).
+// ones, each with its reason), and the late heartbeat's SQL (S1 review).
 // S2a-2 adds the notification, event and account-idempotency backstops and the SQL source scan.
 
 const FIELD_TYPES = new Set(['text', 'jsonb', 'json', 'ARRAY', 'character varying', 'bytea']);
@@ -139,11 +139,10 @@ describe('F-030 registry against the live catalog', () => {
 
   test('SQL reads a sealed column only in the allowed trigger functions, and copies none for a sealed workspace', async () => {
     const allowed: Record<string, string> = {
-      preserve_draft_version: 'returns before the copy for a sealed workspace (0120); the drafts repository writes the sealed version',
       flux_capture_artifact_mutation: 'compares only (IS DISTINCT FROM); its triggers skip a sealed workspace (WHEN, 0120)',
       flux_guard_task_creation_history: 'compares only (IS DISTINCT FROM): no value leaves the row',
       search_index_decision: 'search_put stores a placeholder without title or body for a sealed workspace (0120)',
-      search_index_dm_message: 'as search_index_decision', search_index_draft: 'as search_index_decision', search_index_material_version: 'as search_index_decision',
+      search_index_dm_message: 'as search_index_decision', search_index_material_version: 'as search_index_decision',
       search_index_message: 'as search_index_decision', search_index_project: 'as search_index_decision', search_index_result: 'as search_index_decision',
       search_index_sketch: 'as search_index_decision', search_index_thought: 'as search_index_decision', search_index_work: 'as search_index_decision',
     };
@@ -156,13 +155,6 @@ describe('F-030 registry against the live catalog', () => {
       }
     }
     assert.deepEqual([...found].filter((name) => !allowed[name]).sort(), [], 'a trigger function that reads a sealed column must be moved to the application or allowed here');
-    // preserve_draft_version: nothing for A; a row for B.
-    for (const [ws, expected] of [[A, 0], [B, 1]] as const) {
-      const id = randomUUID();
-      await pool.query(`INSERT INTO drafts (id, workspace_id, owner_user_id, title, body, created_by) VALUES ($1, $2, $3, $4, $4, $3)`,
-        [id, ws, ada.id, ws === A ? `fx1.1.${'C'.repeat(40)}` : 'Plain title']);
-      assert.equal((await pool.query(`SELECT count(*)::int AS n FROM draft_versions WHERE draft_id = $1`, [id])).rows[0].n, expected);
-    }
   });
 });
 
@@ -173,7 +165,7 @@ describe('F-030 pinned search_path (S2a-2a review P2-1)', () => {
         OR p.proname IN ('workspace_sealed', 'flux_is_sealed', 'search_change_log', 'idempotency_scope_required'))
       ORDER BY 1`)).rows;
     assert.ok(rows.length >= 9, `sealing functions found: ${rows.length}`);
-    for (const name of ['search_put', 'project_ai_policy_encrypted', 'flux_sealed_backstop', 'sealed_workspace_no_ai', 'preserve_draft_version',
+    for (const name of ['search_put', 'project_ai_policy_encrypted', 'flux_sealed_backstop', 'sealed_workspace_no_ai',
       'search_change_log', 'idempotency_scope_required'])
       assert.ok(rows.some((row) => row.fn.startsWith(`${name}(`)), `${name} is among them`);
     const unpinned = rows.filter((row) => {

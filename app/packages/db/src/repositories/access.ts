@@ -182,35 +182,10 @@ export function projectMemberSql(actor: AccessActor, projectId: SQLWrapper, visi
   return sql`(${everyone} OR ${added})`;
 }
 
-const draftProjectVisibility = sql`(SELECT p.visibility FROM projects p WHERE p.id = ${schema.drafts.projectId})`;
-
-function draftProjectLevel(actor: AccessActor): SQL {
-  return sql`(CASE WHEN ${schema.drafts.projectId} IS NULL THEN 0 ELSE ${projectLevelSql(actor, schema.drafts.projectId, draftProjectVisibility)} END)`;
-}
-
-function isDraftOwner(actor: AccessActor): SQL {
-  return actor.principal.kind === 'agent' ? eq(schema.drafts.ownerAgentId, actor.principal.id) : eq(schema.drafts.ownerUserId, actor.principal.id);
-}
-
 /** Condition over `projects` rows: the project is in the actor's workspace and at least viewable. */
 export function visibleProjectsSql(actor: AccessActor): SQL {
   if (!actor.active) return sql`false`;
   return and(eq(schema.projects.workspaceId, actor.workspaceId), sql`${projectLevelSql(actor, schema.projects.id, schema.projects.visibility)} >= 1`)!;
-}
-
-/** Condition over `drafts` rows: the actor may read the draft. Apply before count/limit. */
-export function visibleDraftsSql(actor: AccessActor): SQL {
-  if (!actor.active) return sql`false`;
-  const d = schema.drafts;
-  if (actor.principal.kind === 'agent') {
-    // An agent reads only inside its owner's current project access, including its own drafts.
-    // The owner's deny or lost access yields level 0, so no separate deny clause is needed.
-    return and(eq(d.workspaceId, actor.workspaceId), sql`${draftProjectLevel(actor)} >= 1`,
-      or(isDraftOwner(actor), sql`${d.visibility} = 'project'`))!;
-  }
-  const audiences: SQL[] = [isDraftOwner(actor), sql`(${d.visibility} = 'project' AND ${draftProjectLevel(actor)} >= 1)`];
-  if (actor.principal.kind === 'human' && actor.role !== 'guest') audiences.push(sql`${d.visibility} = 'workspace'`);
-  return and(eq(d.workspaceId, actor.workspaceId), or(...audiences))!;
 }
 
 const sketchProjectVisibility = sql`(SELECT p.visibility FROM projects p WHERE p.id = ${schema.sketches.projectId})`;
@@ -245,28 +220,27 @@ export function visibleDmsSql(actor: AccessActor): SQL {
  * The list filter for a principal in a workspace. Put it in the WHERE clause of the list
  * query and of its count so invisible rows never reach counts, pages or payloads.
  */
-export async function visibleFilter(principal: AccessPrincipal, workspaceId: string, kind: 'project' | 'draft' | 'sketch' | 'dm', db: DbExecutor): Promise<SQL> {
+export async function visibleFilter(principal: AccessPrincipal, workspaceId: string, kind: 'project' | 'sketch' | 'dm', db: DbExecutor): Promise<SQL> {
   return visibleFilterOf(await loadActor(principal, workspaceId, db), kind);
 }
 
-function visibleFilterOf(actor: AccessActor, kind: 'project' | 'draft' | 'sketch' | 'dm'): SQL {
+function visibleFilterOf(actor: AccessActor, kind: 'project' | 'sketch' | 'dm'): SQL {
   if (kind === 'sketch') return visibleSketchesSql(actor);
   if (kind === 'dm') return visibleDmsSql(actor);
-  return kind === 'project' ? visibleProjectsSql(actor) : visibleDraftsSql(actor);
+  return visibleProjectsSql(actor);
 }
 
 /**
  * `visibleFilter` limited to the spaces the person belongs to (F-037, coordinator default, #874): search, the Inbox and Needs you
  * show a company owner or admin only what is in spaces they were added to, though they can reach every other space (Settings ›
- * Company lists those). So do their agents (C-15, #934): an agent belongs where its owner does. Drafts and sketches outside any
+ * Company lists those). So do their agents (C-15, #934): an agent belongs where its owner does. Sketches outside any
  * space are unchanged; direct messages are not spaces. The actor is loaded once for both parts (#955).
  */
-export async function memberFilter(principal: AccessPrincipal, workspaceId: string, kind: 'project' | 'draft' | 'sketch', db: DbExecutor): Promise<SQL> {
+export async function memberFilter(principal: AccessPrincipal, workspaceId: string, kind: 'project' | 'sketch', db: DbExecutor): Promise<SQL> {
   const actor = await loadActor(principal, workspaceId, db);
   const base = visibleFilterOf(actor, kind);
   if (principal.kind !== 'human' && principal.kind !== 'agent') return base;
   if (kind === 'project') return and(base, projectMemberSql(actor, schema.projects.id, schema.projects.visibility))!;
-  if (kind === 'draft') return and(base, sql`(${schema.drafts.projectId} IS NULL OR ${projectMemberSql(actor, schema.drafts.projectId, draftProjectVisibility)})`)!;
   return and(base, sql`(${schema.sketches.scope} <> 'project' OR ${projectMemberSql(actor, schema.sketches.projectId, sketchProjectVisibility)})`)!;
 }
 
@@ -293,13 +267,6 @@ export function accessReader(db: DbExecutor) {
     spaceAi: (projectId: string, options: { lock?: boolean } = {}) => spaceAi(db, projectId, options),
     loadActor: (principal: AccessPrincipal, workspaceId: string, options: AccessLoadOptions = {}) => loadActor(principal, workspaceId, db, options),
 
-    /** `draft.create` for an agent: some project of its workspace where it is a contributor now. */
-    async hasWritableProject(actor: AccessActor): Promise<boolean> {
-      const rows = await db.select({ id: schema.projects.id }).from(schema.projects)
-        .where(and(eq(schema.projects.workspaceId, actor.workspaceId), sql`${projectLevelSql(actor, schema.projects.id, schema.projects.visibility)} >= ${LEVEL.contributor}`))
-        .limit(1);
-      return rows.length > 0;
-    },
 
     async locateProject(projectId: string) {
       const [located] = await db.select({ workspaceId: schema.projects.workspaceId }).from(schema.projects).where(eq(schema.projects.id, projectId));
@@ -311,28 +278,6 @@ export function accessReader(db: DbExecutor) {
         .from(schema.projects).where(eq(schema.projects.id, projectId));
       // Reached only for an active member (core loads the actor first), so only a member learns a lock (423).
       return row ? { ...row, project: openRow('projects', row.project, await sealOf(db, row.project.workspaceId, { write: false })) } : null;
-    },
-
-    async locateDraft(draftId: string) {
-      const [located] = await db.select({ workspaceId: schema.drafts.workspaceId }).from(schema.drafts).where(eq(schema.drafts.id, draftId));
-      return located ?? null;
-    },
-    /** Locks the draft row first, so its project cannot change; returns the project it is in. */
-    async lockDraftForUpdate(draftId: string) {
-      const [locked] = await db.select({ projectId: schema.drafts.projectId }).from(schema.drafts).where(eq(schema.drafts.id, draftId)).for('update');
-      return locked ?? null;
-    },
-    async readDraft(actor: AccessActor, draftId: string, options: { lock: boolean }) {
-      const query = db.select({
-        draft: schema.drafts,
-        readable: visibleDraftsSql(actor).mapWith(Boolean),
-        level: draftProjectLevel(actor).mapWith(Number),
-        isOwner: isDraftOwner(actor).mapWith(Boolean),
-      }).from(schema.drafts).where(eq(schema.drafts.id, draftId));
-      const [row] = options.lock ? await query.for('update') : await query;
-      // Opened only for a reader of the draft (an active member who may read it), so only they learn a lock.
-      if (!row || !row.readable) return row ?? null;
-      return { ...row, draft: openRow('drafts', row.draft, await sealOf(db, row.draft.workspaceId, { write: options.lock })) };
     },
 
     async readAgent(agentId: string) {

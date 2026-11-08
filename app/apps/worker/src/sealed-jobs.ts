@@ -23,7 +23,6 @@ async function namesSealedWorkspace(db: Database, payloads: unknown[]) {
     OR EXISTS (SELECT 1 FROM project_conversations o WHERE o.workspace_id = w.id AND o.id = ANY(${list}::uuid[]))
     OR EXISTS (SELECT 1 FROM dms o WHERE o.workspace_id = w.id AND o.id = ANY(${list}::uuid[]))
     OR EXISTS (SELECT 1 FROM project_work_items o WHERE o.workspace_id = w.id AND o.id = ANY(${list}::uuid[]))
-    OR EXISTS (SELECT 1 FROM drafts o WHERE o.workspace_id = w.id AND o.id = ANY(${list}::uuid[]))
     OR EXISTS (SELECT 1 FROM events o WHERE o.workspace_id = w.id AND o.id = ANY(${list}::uuid[]))
     OR EXISTS (SELECT 1 FROM notifications o WHERE o.workspace_id = w.id AND o.id = ANY(${list}::uuid[]))
   )) AS sealed`);

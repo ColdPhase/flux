@@ -4,11 +4,11 @@ import type { EncryptionViewInput } from '../encryption/view.js';
 import type { Executor } from '../types.js';
 import type { Actor, AccessReader } from './ports.js';
 import type { Principal } from '../principal.js';
-import type { AccountLookup, AccountRecord, AgentRecord, DraftRecord, GrantRecord, GrantWrite, MemberRecord,
+import type { AccountLookup, AccountRecord, AgentRecord, GrantRecord, GrantWrite, MemberRecord,
   ProjectRecord, SweptRun, WorkspaceRecord } from './records.js';
 
 // The persistence ports of the access use cases (issues #46, #91). Core states what each use case needs;
-// `@flux/db` implements them (`repositories/{workspaces,projects,agents,drafts}.ts` and the F-029/F-030 row
+// `@flux/db` implements them (`repositories/{workspaces,projects,agents}.ts` and the F-029/F-030 row
 // modules) and the apps pass `accessPorts` in, bound to the transaction or connection a step runs in. A
 // repository makes no access decision: the use case evaluates the policy first and takes the locks in the
 // order its comments document. Keep this file free of persistence imports.
@@ -145,18 +145,8 @@ export interface AgentRepository {
   revoke(agentId: string, revokedAt: Date): Promise<AgentRecord>;
 }
 
-export interface DraftRepository {
-  insert(row: { id: string; workspaceId: string; projectId: string | null; title: string; body: string; createdBy: string;
-    ownerUserId: string | null; ownerAgentId: string | null }): Promise<DraftRecord>;
-  /** One page of the drafts the actor can read (optionally in one project); the filter applies before count and page. */
-  listVisible(actor: Actor, projectId: string | undefined, page: { limit: number; offset: number }): Promise<{ total: number; rows: DraftRecord[] }>;
-  updateText(draftId: string, changes: { title?: string; body?: string }): Promise<DraftRecord>;
-  /** Share and move: a new project and audience, one version on. */
-  setAudience(draftId: string, audience: { projectId: string | null; visibility: 'private' | 'project' | 'workspace' }): Promise<DraftRecord>;
-}
-
 /** The access policy's reader, returning the rows the use cases present. */
-export type RecordReader = AccessReader<ProjectRecord, DraftRecord, AgentRecord>;
+export type RecordReader = AccessReader<ProjectRecord, AgentRecord>;
 
 /**
  * What the access use cases are built from: each member is bound to the transaction or connection a
@@ -168,7 +158,6 @@ export interface AccessPorts {
   invites(db: Executor): InviteRepository;
   projects(db: Executor): ProjectRepository;
   agents(db: Executor): AgentRepository;
-  drafts(db: Executor): DraftRepository;
   encryption(db: Executor): WorkspaceEncryptionRows;
   aiSweep(db: Executor): SpaceAiSweepRows;
   access(db: Executor): RecordReader;

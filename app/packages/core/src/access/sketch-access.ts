@@ -1,7 +1,7 @@
 import type { Principal } from '../principal.js';
 import type { SketchAccess } from '../sketches/ports.js';
 import { RuleViolationError } from './errors.js';
-import { enforce, evaluateDraft, evaluateProject, evaluateSketch, evaluateWorkspace } from './policy.js';
+import { enforce, evaluateProject, evaluateSketch, evaluateWorkspace } from './policy.js';
 import type { AccessReader } from './ports.js';
 
 /**
@@ -36,12 +36,6 @@ export function policySketchAccess(access: AccessReader): SketchAccess {
       }
       // A private sketch belongs to the person creating it; agents cannot own one.
       enforce(await evaluateWorkspace(principal, 'sketch.create', target.workspaceId, access, { lock: true }), 'workspace');
-    },
-
-    async placement(principal, ref) {
-      const evaluation = await evaluateDraft(principal, 'draft.read', ref.id, access, { lock: true });
-      if (!evaluation.visible || !evaluation.allowed || !evaluation.draft) return { readable: false, workspaceId: null, title: null };
-      return { readable: true, workspaceId: evaluation.draft.workspaceId, title: evaluation.draft.title };
     },
   };
 }

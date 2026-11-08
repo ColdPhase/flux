@@ -189,7 +189,6 @@ export const AI_WORK_QUEUES = {
   ai: ['PERSONAL_RUN_JOB', 'ASSISTANT_TICK_JOB', 'SPACE_AI_SWEEP_JOB'],
   /** Jobs that start no AI work, each with the reason (the test fails on a job that is in neither list). */
   notAi: {
-    DRAFT_SUMMARY_JOB: 'draft.summarize.v1 is a deterministic word count with no model request; it rechecks its requester, and an agent requester is denied by the principal layer while AI is off',
     IDEMPOTENCY_CLEANUP_JOB: 'idempotency.cleanup.v1 deletes expired idempotency keys; it reads no workspace content',
     NOTIFICATION_EMAIL_JOB: 'notification.email.v1 sends a person\'s e-mail; it skips an AI-origin notification of a space whose AI is off (ai_origin)',
     PUSH_SEND_JOB: 'push.send sends a person\'s push; it skips an AI-origin notification of a space whose AI is off (ai_origin)',

@@ -2,7 +2,7 @@ import type { ProjectAccess, WorkspaceRole } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import { ForbiddenError, NotFoundError, SpaceAiOffError } from './errors.js';
 import type {
-  AccessReader, ActorReads, Actor, AgentFacts, AssistantRunFacts, DmFacts, DraftFacts, LoadOptions, ProjectFacts, SketchFacts, SpaceAi,
+  AccessReader, ActorReads, Actor, AgentFacts, AssistantRunFacts, DmFacts, LoadOptions, ProjectFacts, SketchFacts, SpaceAi,
 } from './ports.js';
 
 export type { Actor, LoadOptions, SpaceAi } from './ports.js';
@@ -36,11 +36,6 @@ export type { Actor, LoadOptions, SpaceAi } from './ports.js';
  *   - Otherwise a `member` is a contributor on `workspace`-visible projects. Guests see
  *     only projects they were explicitly granted; nobody without a grant or manager role
  *     sees a `restricted` project.
- * - Drafts are private to their author by default. Workspace membership alone never
- *   reveals a private draft. A `project` draft is readable and writable at project level
- *   contributor. A `workspace` draft is readable by owners, admins and
- *   members (not guests or agents) and writable by its author, owners and admins.
- *   Sharing and moving need the author or, for a non-private draft, an owner/admin.
  * - Sketches (issue #69): a `project` sketch is readable and changeable at project level
  *   contributor. A `private` sketch is readable and changeable only by the
  *   person who created it while they are active in the workspace; owners and admins do not
@@ -50,21 +45,17 @@ export type { Actor, LoadOptions, SpaceAi } from './ports.js';
  *   participant who is active in the workspace reads or writes it; workspace owners and admins
  *   who are not participants never see it, and agents never do in this slice. `dm.create` is
  *   for owners, admins and members (guests can take part when added, but not start a DM).
- * - An agent never works outside its owner's current access, not even on drafts it
- *   authored: it creates drafts only inside a project where its owner is a contributor, and
- *   every read, write, share and move of any draft — its own
- *   private drafts included — needs its current level on the draft's project.
+ * - An agent never works outside its owner's current access.
  * - With `lock: true` (inside a mutation transaction) the decision locks the rows it
- *   depends on — membership/agent `FOR SHARE`, the draft `FOR UPDATE`, the project and
+ *   depends on — membership/agent `FOR SHARE`, the project and
  *   the principal's grants on it `FOR SHARE` — so a concurrent membership, grant or
  *   agent change either commits first and is seen, or waits until the mutation commits.
  * - Callers that cannot see an object get {@link NotFoundError} (404) so its existence
  *   does not leak; visible objects with a forbidden action get {@link ForbiddenError} (403).
  */
 
-export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.rename', 'workspace.manage_encryption', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
+export const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.rename', 'workspace.manage_encryption', 'project.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
 export const PROJECT_ACTIONS = ['project.read', 'project.write', 'project.manage'] as const;
-export const DRAFT_ACTIONS = ['draft.read', 'draft.write', 'draft.share', 'draft.move'] as const;
 export const AGENT_ACTIONS = ['agent.read', 'agent.revoke', 'agent.invoke'] as const;
 export const SKETCH_ACTIONS = ['sketch.read', 'sketch.write'] as const;
 export const DM_ACTIONS = ['dm.read', 'dm.write'] as const;
@@ -74,7 +65,6 @@ export const ASSISTANT_RUN_ACTIONS = ['assistant_run.read'] as const;
 export interface ActionsByResource {
   workspace: (typeof WORKSPACE_ACTIONS)[number];
   project: (typeof PROJECT_ACTIONS)[number];
-  draft: (typeof DRAFT_ACTIONS)[number];
   agent: (typeof AGENT_ACTIONS)[number];
   sketch: (typeof SKETCH_ACTIONS)[number];
   dm: (typeof DM_ACTIONS)[number];
@@ -152,7 +142,6 @@ export async function dmClosedFor(reader: Pick<AccessReader, 'dmPair' | 'isParti
 
 export interface WorkspaceEvaluation extends Decision { actor: Actor }
 export interface ProjectEvaluation<P extends ProjectFacts = ProjectFacts> extends Decision { actor: Actor | null; project: P | null; level: number }
-export interface DraftEvaluation<D extends DraftFacts = DraftFacts> extends Decision { actor: Actor | null; draft: D | null; level: number; isOwner: boolean }
 export interface AgentEvaluation<A extends AgentFacts = AgentFacts> extends Decision { actor: Actor | null; agent: A | null }
 export interface SketchEvaluation<S extends SketchFacts = SketchFacts> extends Decision { actor: Actor | null; sketch: S | null }
 export interface DmEvaluation<M extends DmFacts = DmFacts> extends Decision { actor: Actor | null; dm: M | null }
@@ -168,11 +157,6 @@ export async function evaluateWorkspace(principal: Principal, action: ActionsByR
   switch (action) {
     case 'workspace.read':
       allowed = true;
-      break;
-    case 'draft.create':
-      // People may keep unscoped private drafts; an agent needs a project it can write in
-      // (createDraft additionally requires that project to be the draft's project).
-      allowed = human || await reader.hasWritableProject(actor);
       break;
     case 'sketch.create':
       allowed = human;
@@ -209,44 +193,7 @@ export async function evaluateProject<P extends ProjectFacts = ProjectFacts>(pri
   return { allowed: row.level >= needed, visible: true, actor, project: row.project, level: row.level };
 }
 
-export async function evaluateDraft<D extends DraftFacts = DraftFacts>(principal: Principal, action: ActionsByResource['draft'], draftId: string, reader: AccessReader<ProjectFacts, D>, options: LoadOptions = {}): Promise<DraftEvaluation<D>> {
-  const none = { ...DENIED, actor: null, draft: null, level: 0, isOwner: false };
-  if (!isUuid(draftId)) return none;
-  const located = await reader.locateDraft(draftId);
-  if (!located) return none;
-  const actor = await reader.loadActor(principal, located.workspaceId, options);
-  if (!actor.active) return { ...none, actor };
-  if (options.lock) {
-    // Lock the draft first so its project cannot change, then that project's access rows.
-    const locked = await reader.lockDraftForUpdate(draftId);
-    if (locked?.projectId) await reader.lockProjectAccess(actor, locked.projectId);
-  }
-  const row = await reader.readDraft(actor, draftId, { lock: !!options.lock });
-  if (!row || !row.readable) return { ...none, actor };
-  const { draft, level, isOwner } = row;
-  const manager = isManager(actor.role);
-  let allowed: boolean;
-  if (principal.kind === 'agent') {
-    // Readable already implies current contributor access, which an agent's changes need too.
-    allowed = action === 'draft.read' || (action === 'draft.write' ? isOwner || draft.visibility === 'project' : isOwner);
-    return { allowed, visible: true, actor, draft, level, isOwner };
-  }
-  switch (action) {
-    case 'draft.read':
-      allowed = true;
-      break;
-    case 'draft.write':
-      allowed = isOwner || (draft.visibility === 'project' && level >= LEVEL.contributor) || (draft.visibility === 'workspace' && manager);
-      break;
-    case 'draft.share':
-    case 'draft.move':
-      allowed = isOwner || (draft.visibility !== 'private' && manager);
-      break;
-  }
-  return { allowed, visible: true, actor, draft, level, isOwner };
-}
-
-export async function evaluateAgent<A extends AgentFacts = AgentFacts>(principal: Principal, action: ActionsByResource['agent'], agentId: string, reader: AccessReader<ProjectFacts, DraftFacts, A>, options?: LoadOptions): Promise<AgentEvaluation<A>> {
+export async function evaluateAgent<A extends AgentFacts = AgentFacts>(principal: Principal, action: ActionsByResource['agent'], agentId: string, reader: AccessReader<ProjectFacts, A>, options?: LoadOptions): Promise<AgentEvaluation<A>> {
   const none = { ...DENIED, actor: null, agent: null };
   if (!isUuid(agentId)) return none;
   const agent = await reader.readAgent(agentId);
@@ -268,7 +215,7 @@ export async function evaluateAgent<A extends AgentFacts = AgentFacts>(principal
  * time, so version checks and link rules see each other), then the project access rows
  * `FOR SHARE`, so a concurrent revocation is seen or waits.
  */
-export async function evaluateSketch<S extends SketchFacts = SketchFacts>(principal: Principal, action: ActionsByResource['sketch'], sketchId: string, reader: AccessReader<ProjectFacts, DraftFacts, AgentFacts, S>, options: LoadOptions = {}): Promise<SketchEvaluation<S>> {
+export async function evaluateSketch<S extends SketchFacts = SketchFacts>(principal: Principal, action: ActionsByResource['sketch'], sketchId: string, reader: AccessReader<ProjectFacts, AgentFacts, S>, options: LoadOptions = {}): Promise<SketchEvaluation<S>> {
   const none = { ...DENIED, actor: null, sketch: null };
   if (!isUuid(sketchId)) return none;
   const located = await reader.locateSketch(sketchId);
@@ -295,7 +242,7 @@ export async function evaluateSketch<S extends SketchFacts = SketchFacts>(princi
  * membership removal (which cascades to the participant row) either commits first and is seen,
  * or waits until this change commits.
  */
-export async function evaluateDm<M extends DmFacts = DmFacts>(principal: Principal, _action: ActionsByResource['dm'], dmId: string, reader: AccessReader<ProjectFacts, DraftFacts, AgentFacts, SketchFacts, M>, options: LoadOptions = {}): Promise<DmEvaluation<M>> {
+export async function evaluateDm<M extends DmFacts = DmFacts>(principal: Principal, _action: ActionsByResource['dm'], dmId: string, reader: AccessReader<ProjectFacts, AgentFacts, SketchFacts, M>, options: LoadOptions = {}): Promise<DmEvaluation<M>> {
   const none = { ...DENIED, actor: null, dm: null };
   if (!isUuid(dmId)) return none;
   const located = await reader.locateDm(dmId);
@@ -341,7 +288,7 @@ export async function authorize<T extends ResourceType>(principal: Principal, ac
 /**
  * Throws NotFoundError when the object is invisible to the principal, ForbiddenError when
  * the action is not allowed. Inside a commit transaction pass `{ lock: true }`: the
- * principal's membership/agent rows are locked FOR SHARE and a draft FOR UPDATE, so a
+ * principal's membership/agent rows are locked FOR SHARE, so a
  * revocation committed earlier is seen and a concurrent one waits for this transaction.
  */
 export async function assertAuthorized<T extends ResourceType>(principal: Principal, action: ActionsByResource[T], resource: ResourceRef<T>, reader: AccessReader, options?: LoadOptions): Promise<void> {
@@ -352,7 +299,6 @@ async function evaluate(principal: Principal, action: Action, resource: Resource
   switch (resource.type) {
     case 'workspace': return evaluateWorkspace(principal, action as ActionsByResource['workspace'], resource.id, reader, options);
     case 'project': return evaluateProject(principal, action as ActionsByResource['project'], resource.id, reader, options);
-    case 'draft': return evaluateDraft(principal, action as ActionsByResource['draft'], resource.id, reader, options);
     case 'agent': return evaluateAgent(principal, action as ActionsByResource['agent'], resource.id, reader, options);
     case 'sketch': return evaluateSketch(principal, action as ActionsByResource['sketch'], resource.id, reader, options);
     case 'dm': return evaluateDm(principal, action as ActionsByResource['dm'], resource.id, reader, options);
@@ -360,7 +306,7 @@ async function evaluate(principal: Principal, action: Action, resource: Resource
   }
 }
 
-const READ_ACTION = { workspace: 'workspace.read', project: 'project.read', draft: 'draft.read', agent: 'agent.read', sketch: 'sketch.read', dm: 'dm.read', assistant_run: 'assistant_run.read' } as const satisfies { [T in ResourceType]: ActionsByResource[T] };
+const READ_ACTION = { workspace: 'workspace.read', project: 'project.read', agent: 'agent.read', sketch: 'sketch.read', dm: 'dm.read', assistant_run: 'assistant_run.read' } as const satisfies { [T in ResourceType]: ActionsByResource[T] };
 
 /**
  * The workspace of an object the principal can currently see, or null. Entry points use
@@ -370,7 +316,6 @@ export async function visibleWorkspaceOf(principal: Principal, resource: Resourc
   const evaluation = await evaluate(principal, READ_ACTION[resource.type], resource, reader);
   if (!evaluation.visible) return null;
   if ('project' in evaluation) return evaluation.project?.workspaceId ?? null;
-  if ('draft' in evaluation) return evaluation.draft?.workspaceId ?? null;
   if ('agent' in evaluation) return evaluation.agent?.workspaceId ?? null;
   if ('sketch' in evaluation) return evaluation.sketch?.workspaceId ?? null;
   if ('dm' in evaluation) return evaluation.dm?.workspaceId ?? null;
@@ -393,7 +338,7 @@ export function eventResource(event: EventRef): ResourceRef | null {
   if (!event.workspaceId) return null;
   const type = event.kind.split('.', 1)[0];
   if (type === 'workspace') return event.objectId === event.workspaceId ? { type, id: event.objectId } : null;
-  if (type === 'project' || type === 'draft' || type === 'agent' || type === 'sketch' || type === 'dm' || type === 'assistant_run') return { type, id: event.objectId };
+  if (type === 'project' || type === 'agent' || type === 'sketch' || type === 'dm' || type === 'assistant_run') return { type, id: event.objectId };
   return null;
 }
 
@@ -419,7 +364,7 @@ export async function authorizeEvent(principal: Principal, event: EventRef, read
   return true;
 }
 
-const LABELS: Record<ResourceType, string> = { workspace: 'Company', project: 'Space', draft: 'Draft', agent: 'Agent', sketch: 'Sketch', dm: 'Direct message', assistant_run: 'Assistant run' };
+const LABELS: Record<ResourceType, string> = { workspace: 'Company', project: 'Space', agent: 'Agent', sketch: 'Sketch', dm: 'Direct message', assistant_run: 'Assistant run' };
 
 /** Converts a decision into the non-leaking error contract. */
 export function enforce<D extends Decision>(decision: D, type: ResourceType): D {

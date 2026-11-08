@@ -8,7 +8,6 @@ export interface NewThought {
   width?: number;
   height?: number;
   shape?: ThoughtShape;
-  placement?: { type: 'draft'; id: string; title: string | null } | null;
   /** The message it came from (#96); only a message of the sketch's own DM is restored on the server. */
   source?: Thought['source'];
   /** The project message being added to its own map; the server derives source author and time. */
@@ -32,7 +31,7 @@ function localThought(me: Me, sketchId: string, input: NewThought): Thought {
   const now = new Date().toISOString();
   return {
     id: input.id, sketchId, text: input.text, x: input.x, y: input.y, width: input.width ?? DEFAULT_THOUGHT_SIZE.width,
-    height: input.height ?? DEFAULT_THOUGHT_SIZE.height, shape: input.shape ?? 'card', placement: input.placement ?? null,
+    height: input.height ?? DEFAULT_THOUGHT_SIZE.height, shape: input.shape ?? 'card',
     source: input.source ?? null, ...(input.file ? { file: input.file } : {}),
     createdBy: { kind: 'human', id: me.id, name: me.name }, version: 0, createdAt: now, updatedAt: now,
   };

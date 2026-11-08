@@ -88,7 +88,6 @@ export async function undoMap(db:DbExecutor,principal:{kind:'human';id:string},r
     if(!target) {await repository.deleteThought(room.sketchId,id);change.removedThoughts.push({id,version});}
     else {
       const values={text:target.text,x:target.x,y:target.y,width:target.width,height:target.height,shape:target.shape,version,
-        placementType:target.placement?.type??null,placementId:target.placement?.id??null,
         sourceAuthorId:target.source?.authorKind==='human'?target.source.authorId:null,
         sourceAuthorAgentId:target.source?.authorKind==='agent'?target.source.authorId:null,
         sourceAuthorName:target.source?.authorName??null,sourceSentAt:target.source?.sentAt??null,

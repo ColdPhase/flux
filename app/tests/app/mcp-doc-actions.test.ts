@@ -84,11 +84,12 @@ test('standing doc grants start and edit a project doc as the agent at the read 
   assert.deepEqual([await versions(docId)], [4]);
 });
 
-test('doc actions never reach a private draft, a guessed or other project doc, another doc than a targeted grant names, or an expired or revoked authority', async () => {
+test('doc actions never reach a private map, a guessed or other project doc, another doc than a targeted grant names, or an expired or revoked authority', async () => {
   const f = await actionScene(pool);
   const docA = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`, { body: { title: 'Wiring' } }), 201) as unknown as Doc;
   const docB = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`, { body: { title: 'Housing' } }), 201) as unknown as Doc;
-  const draft = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/drafts`, { body: { title: 'Private plan' } }), 201);
+  const draft = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/sketches`, { body: { title: 'Private plan', scope: 'private' } }), 201);
+  const mapVersion = async () => (expect(await f.owner.request('GET', `/api/v1/sketches/${draft.id}`), 200) as unknown as { version: number }).version;
   // Another person's space: the client has its owner's rights and no more.
   const stranger = await actionScene(pool);
   const elsewhere = { id: stranger.projectId };
@@ -96,11 +97,11 @@ test('doc actions never reach a private draft, a guessed or other project doc, a
   const edit = ( docId: unknown, changes: Record<string, unknown> = { body: 'Agent text' }) => f.tool('flux_update_doc',
     { ...base(f, 'plan'), docId, expectedVersion: 1, changes });
 
-  // A private draft, a guessed ID and another project's doc are all just "not a project object": nothing leaks or changes.
+  // A private map, a guessed ID and another project's doc are all just "not a project object": nothing leaks or changes.
   for (const target of [draft.id, randomUUID(), otherDoc.id]) assert.equal(toolFailure(await edit(target)).code, 'OBJECT_NOT_FOUND');
-  // A private draft cannot be a cited source either, and another person's space is outside its owner's rights.
+  // A private map cannot be a cited source either, and another person's space is outside its owner's rights.
   assert.equal(toolFailure(await f.tool('flux_create_doc', { ...base(f, 'plan'), sources: [{ materialId: draft.id, version: 1 }],
-    doc: { title: 'From a draft' } })).code, 'SOURCE_VERSION_CONFLICT');
+    doc: { title: 'From a map' } })).code, 'SOURCE_VERSION_CONFLICT');
   assert.equal(toolFailure(await f.tool('flux_create_doc', { ...base(f, 'plan'), projectId: elsewhere.id, doc: { title: 'Elsewhere' } })).code,
     'PROJECT_NOT_FOUND');
 
@@ -108,13 +109,13 @@ test('doc actions never reach a private draft, a guessed or other project doc, a
   assert.equal(toolValue(await edit(docA.id)).version, 2);
 
   // A revoked connection refuses before any effect.
-  const drafted = (await pool.query('SELECT count(*)::int AS n FROM draft_versions WHERE draft_id=$1', [draft.id])).rows[0].n as number;
+  const mapBefore = await mapVersion();
   expect(await f.owner.request('DELETE', `/api/v1/agent-connections/${f.connectionId}`), 204);
   const revoked = await f.raw('flux_create_doc', { ...base(f, 'plan'), doc: { title: 'After revocation' } });
   assert.equal(revoked.status, 403);
 
   assert.deepEqual([await versions(docA.id), await versions(docB.id), await versions(otherDoc.id), await docs(f.projectId)], [2, 1, 1, 2]);
-  assert.equal((await pool.query('SELECT count(*)::int AS n FROM draft_versions WHERE draft_id=$1', [draft.id])).rows[0].n, drafted);
+  assert.equal(await mapVersion(), mapBefore, 'the private map was not touched');
   assert.equal((await getDoc(f, docB.id)).author.kind, 'human');
 });
 

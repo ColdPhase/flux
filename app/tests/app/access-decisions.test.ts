@@ -7,7 +7,6 @@ import {
   assertAuthorized,
   authorizeEvent,
   enforce,
-  evaluateDraft,
   evaluateProject,
   eventResource,
   ForbiddenError,
@@ -19,7 +18,6 @@ import {
   SpaceAiOffError,
   type AccessReader,
   type Actor,
-  type DraftFacts,
   type EventRepository,
   type Principal,
   type ProjectFacts,
@@ -37,13 +35,10 @@ const key = (principal: Principal) => `${principal.kind}:${principal.id}`;
 const human = (id: string): Principal => ({ kind: 'human', id });
 const agentOf = (id: string): Principal => ({ kind: 'agent', id });
 
-interface DraftWorld { draft: DraftFacts; readable: string[]; levels: Record<string, number>; owners: string[] }
 interface World {
   actors: Record<string, Actor>;
   ai: SpaceAi;
-  writableProject: boolean;
   projects: Record<string, { project: ProjectFacts; levels: Record<string, number> }>;
-  drafts: Record<string, DraftWorld>;
   agents: Record<string, { id: string; workspaceId: string; ownerUserId: string; revokedAt: Date | null }>;
   sketches: Record<string, { sketch: SketchFacts; readable: string[]; levels: Record<string, number> }>;
   dms: Record<string, { id: string; workspaceId: string; kind: 'pair' | 'group'; pairKey: string | null; readable: string[]; participants: string[] }>;
@@ -53,7 +48,7 @@ interface World {
 
 const member = (principal: Principal, role: WorkspaceRole): Actor => ({ principal, workspaceId: WS, role, agent: null, active: true });
 const emptyWorld = (): World => ({
-  actors: {}, ai: { state: 'allowed', epoch: 1 }, writableProject: false, projects: {}, drafts: {}, agents: {}, sketches: {}, dms: {}, runs: {}, names: {},
+  actors: {}, ai: { state: 'allowed', epoch: 1 }, projects: {}, agents: {}, sketches: {}, dms: {}, runs: {}, names: {},
 });
 
 /** An `AccessReader` over `world` that records every call, so a test can pin the statement order. */
@@ -69,10 +64,6 @@ function memoryReader(world: World) {
       calls.push(`spaceAi${lock(options)}`);
       return world.ai;
     },
-    async hasWritableProject() {
-      calls.push('hasWritableProject');
-      return world.writableProject;
-    },
     async locateProject(projectId) {
       calls.push('locateProject');
       const found = world.projects[projectId];
@@ -85,22 +76,6 @@ function memoryReader(world: World) {
       calls.push('readProject');
       const found = world.projects[projectId];
       return found ? { project: found.project, level: found.levels[key(actor.principal)] ?? 0 } : null;
-    },
-    async locateDraft(draftId) {
-      calls.push('locateDraft');
-      const found = world.drafts[draftId];
-      return found ? { workspaceId: found.draft.workspaceId } : null;
-    },
-    async lockDraftForUpdate(draftId) {
-      calls.push('lockDraftForUpdate');
-      const found = world.drafts[draftId];
-      return found ? { projectId: found.draft.projectId } : null;
-    },
-    async readDraft(actor, draftId, options) {
-      calls.push(`readDraft${options.lock ? '(lock)' : ''}`);
-      const found = world.drafts[draftId];
-      const who = key(actor.principal);
-      return found ? { draft: found.draft, readable: found.readable.includes(who), level: found.levels[who] ?? 0, isOwner: found.owners.includes(who) } : null;
     },
     async readAgent(agentId) {
       calls.push('readAgent');
@@ -159,12 +134,11 @@ function memoryReader(world: World) {
 
 /** Every agent belongs to one person (F-036); these decisions read only the facts the reader returns, so any owner id will do. */
 const OWNER_OF_AGENTS = 'agent-owner';
-const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.rename', 'workspace.manage_encryption', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
+const WORKSPACE_ACTIONS = ['workspace.read', 'workspace.read_members', 'workspace.manage_members', 'workspace.rename', 'workspace.manage_encryption', 'project.create', 'agent.create', 'sketch.create', 'dm.create'] as const;
 const workspaceRef = { type: 'workspace', id: WS } as const;
 
-async function workspaceDecisions(principal: Principal, actor: Actor | undefined, writableProject = false) {
+async function workspaceDecisions(principal: Principal, actor: Actor | undefined) {
   const world = emptyWorld();
-  world.writableProject = writableProject;
   if (actor) world.actors[key(principal)] = actor;
   const { reader } = memoryReader(world);
   const allowed: string[] = [];
@@ -180,8 +154,8 @@ describe('workspace decisions (pure)', () => {
     assert.deepEqual((await workspaceDecisions(ownerId, member(ownerId, 'admin'))).allowed, everything);
     // F-037: everyone in the company but a guest starts spaces; only owners and admins rename the company.
     assert.deepEqual((await workspaceDecisions(ownerId, member(ownerId, 'member'))).allowed,
-      ['workspace.read', 'workspace.read_members', 'project.create', 'draft.create', 'agent.create', 'sketch.create', 'dm.create']);
-    assert.deepEqual((await workspaceDecisions(ownerId, member(ownerId, 'guest'))).allowed, ['workspace.read', 'draft.create', 'sketch.create']);
+      ['workspace.read', 'workspace.read_members', 'project.create', 'agent.create', 'sketch.create', 'dm.create']);
+    assert.deepEqual((await workspaceDecisions(ownerId, member(ownerId, 'guest'))).allowed, ['workspace.read', 'sketch.create']);
   });
 
   test('a person who is not active in the workspace sees nothing and may do nothing', async () => {
@@ -189,17 +163,16 @@ describe('workspace decisions (pure)', () => {
     assert.deepEqual(await workspaceDecisions(outsider, undefined), { allowed: [], visible: false });
   });
 
-  test('an agent reads the workspace and drafts only while it can write in some project', async () => {
+  test('an agent reads the workspace and does nothing else in it', async () => {
     const bot = agentOf(randomUUID());
     const active: Actor = { principal: bot, workspaceId: WS, role: null, agent: { ownerUserId: OWNER_OF_AGENTS, ownerRole: 'member' }, active: true };
-    assert.deepEqual((await workspaceDecisions(bot, active, false)).allowed, ['workspace.read']);
-    assert.deepEqual((await workspaceDecisions(bot, active, true)).allowed, ['workspace.read', 'draft.create']);
-    assert.deepEqual(await workspaceDecisions(bot, { ...active, active: false }, true), { allowed: [], visible: false });
+    assert.deepEqual((await workspaceDecisions(bot, active)).allowed, ['workspace.read']);
+    assert.deepEqual(await workspaceDecisions(bot, { ...active, active: false }), { allowed: [], visible: false });
   });
 
   test('enforce answers 404 for an invisible object and 403 for a visible one the action is not allowed on', async () => {
     assert.throws(() => enforce({ allowed: false, visible: false }, 'project'), (error) => error instanceof NotFoundError && error.code === 'PROJECT_NOT_FOUND');
-    assert.throws(() => enforce({ allowed: false, visible: true }, 'draft'), ForbiddenError);
+    assert.throws(() => enforce({ allowed: false, visible: true }, 'agent'), ForbiddenError);
     assert.deepEqual(enforce({ allowed: true, visible: true }, 'sketch'), { allowed: true, visible: true });
   });
 });
@@ -253,71 +226,6 @@ describe('project decisions (pure)', () => {
     assert.equal(await visibleWorkspaceOf(person, { type: 'project', id: projectId }, memoryReader(world(1)).reader), WS);
     assert.equal(await visibleWorkspaceOf(person, { type: 'project', id: projectId }, memoryReader(world(0)).reader), null);
     assert.equal(await visibleWorkspaceOf(person, workspaceRef, memoryReader(world(0)).reader), WS);
-  });
-});
-
-describe('draft decisions (pure)', () => {
-  const draftId = randomUUID();
-  const projectId = randomUUID();
-  const author = human('author');
-  const peer = human('peer');
-  const boss = human('boss');
-  const draftOf = (visibility: DraftFacts['visibility'], overrides: Partial<DraftFacts> = {}): DraftFacts => ({
-    id: draftId, workspaceId: WS, projectId, ownerUserId: author.id, ownerAgentId: null, title: 'Plan', version: 1, visibility, ...overrides,
-  });
-  const decide = async (principal: Principal, draft: DraftFacts, readable: Principal[], levels: Record<string, number>, actors: Actor[]) => {
-    const w = emptyWorld();
-    for (const actor of actors) w.actors[key(actor.principal)] = actor;
-    w.drafts[draftId] = { draft, readable: readable.map(key), levels, owners: [draft.ownerUserId ? key(human(draft.ownerUserId)) : key(agentOf(draft.ownerAgentId!))] };
-    const { reader } = memoryReader(w);
-    const out: Record<string, boolean> = {};
-    for (const action of ['draft.read', 'draft.write', 'draft.share', 'draft.move'] as const) out[action] = (await evaluateDraft(principal, action, draftId, reader)).allowed;
-    out.visible = (await evaluateDraft(principal, 'draft.read', draftId, reader)).visible;
-    return out;
-  };
-  const actors = [member(author, 'member'), member(peer, 'member'), member(boss, 'admin')];
-
-  test('the author keeps a private draft; nobody else sees it, even a manager', async () => {
-    const draft = draftOf('private');
-    assert.deepEqual(await decide(author, draft, [author], {}, actors), { 'draft.read': true, 'draft.write': true, 'draft.share': true, 'draft.move': true, visible: true });
-    assert.equal((await decide(boss, draft, [author], {}, actors)).visible, false);
-    assert.equal((await decide(peer, draft, [author], {}, actors)).visible, false);
-  });
-
-  test('a project draft is written at contributor level and shared or moved only by its author or a manager', async () => {
-    const draft = draftOf('project');
-    const contributor = await decide(peer, draft, [peer], { [key(peer)]: 1 }, actors);
-    assert.deepEqual(contributor, { 'draft.read': true, 'draft.write': true, 'draft.share': false, 'draft.move': false, visible: true });
-    const manager = await decide(boss, draft, [boss], { [key(boss)]: 2 }, actors);
-    assert.deepEqual(manager, { 'draft.read': true, 'draft.write': true, 'draft.share': true, 'draft.move': true, visible: true });
-  });
-
-  test('a workspace draft is written by its author and by owners and admins, not by other members', async () => {
-    const draft = draftOf('workspace', { projectId: null });
-    assert.equal((await decide(peer, draft, [peer], {}, actors))['draft.write'], false);
-    assert.equal((await decide(boss, draft, [boss], {}, actors))['draft.write'], true);
-    assert.equal((await decide(boss, draft, [boss], {}, actors))['draft.move'], true);
-    assert.equal((await decide(peer, draft, [peer], {}, actors))['draft.share'], false);
-  });
-
-  test('an agent changes only what it owns, or a project draft, at its owner\'s level', async () => {
-    const bot = agentOf(randomUUID());
-    const botActor: Actor = { principal: bot, workspaceId: WS, role: null, agent: { ownerUserId: OWNER_OF_AGENTS, ownerRole: 'member' }, active: true };
-    const own = draftOf('private', { ownerUserId: null, ownerAgentId: bot.id });
-    const asContributor = await decide(bot, own, [bot], { [key(bot)]: 1 }, [botActor]);
-    assert.deepEqual(asContributor, { 'draft.read': true, 'draft.write': true, 'draft.share': true, 'draft.move': true, visible: true });
-    const shared = draftOf('project');
-    const others = await decide(bot, shared, [bot], { [key(bot)]: 1 }, [botActor]);
-    assert.deepEqual(others, { 'draft.read': true, 'draft.write': true, 'draft.share': false, 'draft.move': false, visible: true });
-    assert.equal((await decide(bot, own, [], { [key(bot)]: 1 }, [botActor])).visible, false, 'a draft the reader does not report readable stays hidden');
-  });
-
-  test('an unknown draft and an inactive caller are not found', async () => {
-    const w = emptyWorld();
-    w.actors[key(author)] = member(author, 'member');
-    const { reader } = memoryReader(w);
-    assert.equal((await evaluateDraft(author, 'draft.read', draftId, reader)).visible, false);
-    assert.equal((await evaluateDraft(author, 'draft.read', 'nope', reader)).visible, false);
   });
 });
 
@@ -429,7 +337,7 @@ describe('event and AI decisions (pure)', () => {
   });
 
   test('an event names its object from its kind; a workspace event only its own workspace', () => {
-    assert.deepEqual(eventResource({ kind: 'draft.shared.v1', workspaceId: WS, objectId: 'd' }), { type: 'draft', id: 'd' });
+    assert.deepEqual(eventResource({ kind: 'project.ai_policy_changed.v1', workspaceId: WS, objectId: 'p' }), { type: 'project', id: 'p' });
     assert.deepEqual(eventResource({ kind: 'workspace.member_added.v1', workspaceId: WS, objectId: WS }), { type: 'workspace', id: WS });
     assert.equal(eventResource({ kind: 'workspace.member_added.v1', workspaceId: WS, objectId: 'other' }), null);
     assert.equal(eventResource({ kind: 'comment.added.v1', workspaceId: WS, objectId: 'c' }), null);
@@ -451,15 +359,12 @@ describe('the order of the policy\'s reads and locks (pure)', () => {
   // change to them is a change to which rows a decision locks first, so it needs a deliberate edit here.
   const owner = human('owner');
   const projectId = randomUUID();
-  const draftId = randomUUID();
   const sketchId = randomUUID();
   const dmId = randomUUID();
   const world = () => {
     const w = emptyWorld();
     w.actors[key(owner)] = member(owner, 'member');
     w.projects[projectId] = { project: { id: projectId, workspaceId: WS, visibility: 'workspace' }, levels: { [key(owner)]: 1 } };
-    w.drafts[draftId] = { draft: { id: draftId, workspaceId: WS, projectId, ownerUserId: owner.id, ownerAgentId: null, title: 'T', version: 1, visibility: 'project' },
-      readable: [key(owner)], levels: { [key(owner)]: 1 }, owners: [key(owner)] };
     w.sketches[sketchId] = { sketch: { id: sketchId, workspaceId: WS, scope: 'project', projectId }, readable: [key(owner)], levels: { [key(owner)]: 1 } };
     w.dms[dmId] = { id: dmId, workspaceId: WS, kind: 'group', pairKey: null, readable: [owner.id], participants: [owner.id, 'other'] };
     return w;
@@ -472,12 +377,6 @@ describe('the order of the policy\'s reads and locks (pure)', () => {
     calls.length = 0;
     await evaluateProject(owner, 'project.read', projectId, reader);
     assert.deepEqual(calls, ['locateProject', 'loadActor', 'readProject'], 'an unlocked check takes no lock');
-  });
-
-  test('a draft check takes the membership, the draft row, then its project, then reads the draft FOR UPDATE', async () => {
-    const { reader, calls } = memoryReader(world());
-    await evaluateDraft(owner, 'draft.write', draftId, reader, { lock: true });
-    assert.deepEqual(calls, ['locateDraft', 'loadActor(lock)', 'lockDraftForUpdate', 'lockProjectAccess', 'readDraft(lock)']);
   });
 
   test('a sketch check takes the membership, the sketch row, then its project', async () => {

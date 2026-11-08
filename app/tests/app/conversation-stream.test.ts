@@ -40,10 +40,8 @@ test('conversation and material commits reach only current project readers throu
     const replyCommand = { body: 'Test it in low light', clientMessageId: replyKey };
     const reply = await post<{ id: string }>(partner.browser, `/api/v1/conversations/${thread.id}/messages`, replyCommand);
     await Promise.all([ownerLive.event(project.id, kinds[1]), partnerLive.event(project.id, kinds[1])]);
-    const privateDraft = await post<{ id: string; version: number }>(owner.browser, `/api/v1/workspaces/${ws.id}/drafts`,
-      { title: 'private address', body: 'home address 123; redact this before sharing' });
     const createKey = randomUUID();
-    const createCommand = { clientMutationId: createKey, title: 'Sensor options', body: 'PIR works without images', sourceDraftId: privateDraft.id, sourceDraftVersion: privateDraft.version };
+    const createCommand = { clientMutationId: createKey, title: 'Sensor options', body: 'PIR works without images' };
     const material = await post<Material>(owner.browser, `/api/v1/projects/${project.id}/materials`, createCommand);
     await Promise.all([ownerLive.event(project.id, kinds[2]), partnerLive.event(project.id, kinds[2])]);
     const editKey = randomUUID();
@@ -57,11 +55,10 @@ test('conversation and material commits reach only current project readers throu
     for (const row of rows.rows) {
       assert.equal(row.workspace_id, ws.id);
       assert.equal(row.object_id, project.id);
-      // Identifiers only (#106 return view): never text, titles, URLs or private draft provenance.
+      // Identifiers only (#106 return view): never text, titles or URLs.
       const keys = Object.keys(row.data).sort();
       assert.ok(['conversationId,messageId', 'materialId,version'].includes(keys.join(',')), `event data keys: ${keys.join(',')}`);
       for (const value of Object.values(row.data)) assert.ok(typeof value === 'number' || /^[0-9a-f-]{36}$/.test(String(value)), 'identifiers only');
-      assert.equal(JSON.stringify(row.data).includes(privateDraft.id), false);
     }
     const audience = await pool.query('SELECT DISTINCT recipient FROM event_audience WHERE event_id = ANY($1)', [rows.rows.map((row) => row.id)]);
     assert.deepEqual(audience.rows.map((row) => row.recipient).sort(), [`human:${owner.id}`, `human:${partner.id}`].sort());
@@ -93,7 +90,7 @@ test('conversation and material commits reach only current project readers throu
         const delivered = stream.events.filter((event) => kinds.includes(event.kind));
         assert.deepEqual(delivered.map((event) => event.kind), kinds);
         assert.ok(delivered.every((event) => event.objectType === 'project' && event.objectId === project.id && event.workspaceId === ws.id));
-        assert.ok(delivered.every((event) => !JSON.stringify(event).includes('home address 123') && !JSON.stringify(event).includes(privateDraft.id)));
+        assert.ok(delivered.every((event) => !JSON.stringify(event).includes('home address 123')));
       }
     } finally { await ownerReplay.close(); await partnerReplay.close(); }
 

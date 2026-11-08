@@ -17,10 +17,10 @@ import { inboxVolume } from './support/inbox-volume.js';
 const { db, statements } = recordingDatabase();
 
 describe('inbox unread count (#298)', () => {
-  test('follows the reader\'s own notifications, not the workspace\'s drafts, DMs and projects, and compiles no JIT', async () => {
+  test('follows the reader\'s own notifications, not the workspace\'s DMs and projects, and compiles no JIT', async () => {
     const volume = await inboxVolume();
     const { result, sent } = await statements(() => notificationRepository(db).listReadable(volume.member.id, 1));
-    const total = volume.notifications.project + volume.notifications.draft + volume.notifications.dm;
+    const total = volume.notifications.project + volume.notifications.dm;
     assert.equal(result.unread, total, 'every notification about a readable source is counted');
     const count = sent.find((statement) => /^select count\(\*\) from "notifications"/i.test(statement.text));
     assert.ok(count, 'the unread count is one statement');
@@ -28,18 +28,17 @@ describe('inbox unread count (#298)', () => {
     // below the JIT thresholds.
     const explained = await explainAnalyze(count, { jit: 'on' });
     const threshold = Number((await pool.query<{ jit_above_cost: string }>('SHOW jit_above_cost')).rows[0]!.jit_above_cost);
-    // Before #298 the draft and DM checks were correlated subplans costed once per notification (JIT
-    // compiled from about a thousand notifications); 3f6b3207 built the set of every readable draft
-    // and DM of the workspace (20,000 drafts: 313 ms, mostly JIT). Each set now starts from the
-    // reader's own notifications of that kind, so with 20,000 drafts and 20,000 DMs the plan reads
-    // only the hundred of each they are about. All four facts are reported together.
+    // Before #298 the DM checks were correlated subplans costed once per notification (JIT
+    // compiled from about a thousand notifications); 3f6b3207 built the set of every readable DM
+    // of the workspace (20,000 rows: 313 ms, mostly JIT). Each set now starts from the
+    // reader's own notifications of that kind, so with 20,000 DMs the plan reads
+    // only the hundred they are about. All three facts are reported together.
     assert.deepEqual({
       jitFunctions: explained.JIT?.Functions ?? 0,
       costBelowJitThreshold: explained.Plan['Total Cost'] < threshold,
-      draftsRead: rowsRead(explained.Plan, 'drafts') <= volume.notifications.draft,
       dmsRead: rowsRead(explained.Plan, 'dms') <= volume.notifications.dm,
-    }, { jitFunctions: 0, costBelowJitThreshold: true, draftsRead: true, dmsRead: true },
-    `cost ${explained.Plan['Total Cost']} (jit_above_cost ${threshold}), drafts read ${rowsRead(explained.Plan, 'drafts')} of ${volume.workspaceRows.drafts}, `
+    }, { jitFunctions: 0, costBelowJitThreshold: true, dmsRead: true },
+    `cost ${explained.Plan['Total Cost']} (jit_above_cost ${threshold}), `
       + `DMs read ${rowsRead(explained.Plan, 'dms')} of ${volume.workspaceRows.dms}`);
   });
 });

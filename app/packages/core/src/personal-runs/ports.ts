@@ -171,7 +171,7 @@ export interface MessageSource { contribution?: MessageContribution; files?: Mes
 export type RunPlaceFilter = { conversationId: string } | { spaceId: string } | { dmId: string } | { chatAgentId: string };
 
 export interface WorkSource { id: string; version: number; title: string; outcome: string; status: string }
-export interface ThoughtSource { id: string; sketchId: string; version: number; text: string; sketchScope: 'project' | 'private' | 'dm'; sketchProjectId: string | null }
+export interface ThoughtSource { id: string; sketchId: string; version: number; text: string; sketchScope: 'project' | 'private'; sketchProjectId: string | null }
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link PersonalRunAccess}). */
 export interface PersonalRunRepository {

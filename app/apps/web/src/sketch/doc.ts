@@ -53,7 +53,7 @@ export function inverse(before: SketchDetail, op: Op): Op[] {
     case 'remove': {
       const t = before.thoughts.find((x) => x.id === op.id);
       if (!t) return [];
-      const restore: Op = { kind: 'add', thought: { id: t.id, text: t.text, x: t.x, y: t.y, width: t.width, height: t.height, shape: t.shape, placement: t.placement, source: t.source, ...(t.file ? { file: t.file } : {}) } };
+      const restore: Op = { kind: 'add', thought: { id: t.id, text: t.text, x: t.x, y: t.y, width: t.width, height: t.height, shape: t.shape, source: t.source, ...(t.file ? { file: t.file } : {}) } };
       const links = before.links.filter((l) => l.fromId === t.id || l.toId === t.id).map((l): Op => ({ kind: 'link', link: { id: l.id, fromId: l.fromId, toId: l.toId, label: l.label } }));
       return [restore, ...links];
     }
@@ -120,7 +120,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
     const current = ref.current;
     if (!current) return;
     // The local thought may be ahead (a later change is queued); keep its intent, take the server's facts.
-    const merge = (t: Thought): Thought => (replace ? thought : { ...t, version: thought.version, createdBy: thought.createdBy, createdAt: thought.createdAt, updatedAt: thought.updatedAt, placement: thought.placement, source: thought.source, ...(thought.file ? { file: thought.file } : {}) });
+    const merge = (t: Thought): Thought => (replace ? thought : { ...t, version: thought.version, createdBy: thought.createdBy, createdAt: thought.createdAt, updatedAt: thought.updatedAt, source: thought.source, ...(thought.file ? { file: thought.file } : {}) });
     commit({ ...current, thoughts: current.thoughts.map((t) => (t.id === thought.id ? merge(t) : t)) });
   }, [commit]);
 
@@ -184,7 +184,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
       case 'add': {
         const created = await withRetry(() => api.addThought(sketchId, {
           id: op.thought.id, text: op.thought.text, x: op.thought.x, y: op.thought.y, width: op.thought.width, height: op.thought.height,
-          shape: op.thought.shape, placement: op.thought.placement ? { type: op.thought.placement.type, id: op.thought.placement.id } : undefined,
+          shape: op.thought.shape,
           linkFrom: op.link ? { thoughtId: op.link.fromId, label: op.link.label, linkId: op.link.id } : undefined,
           sourceProjectMessageId: op.thought.sourceProjectMessageId ?? op.thought.source?.projectMessageId ?? undefined, fileId: op.thought.file?.id,
         }, k));

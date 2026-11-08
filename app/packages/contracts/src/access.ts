@@ -1,13 +1,12 @@
 import type { WorkspaceEncryption } from './encryption.js';
 
-// Wire types for workspaces, projects, grants, agents and drafts (issue #29, AC-2). F-037 (#874): one Flux is one company,
+// Wire types for workspaces, projects, grants and agents (issue #29, AC-2). F-037 (#874): one Flux is one company,
 // the one workspace setup makes; people call it the company and a project a space. The paths keep their internal names.
 // Every route below requires a live session. An object the caller cannot see answers
 // 404; a visible object the caller may not change answers 403. Error bodies are ApiError.
 
 export const WORKSPACES_PATH = '/api/v1/workspaces';
 export const PROJECTS_PATH = '/api/v1/projects';
-export const DRAFTS_PATH = '/api/v1/drafts';
 export const AGENTS_PATH = '/api/v1/agents';
 
 export const workspacePath = (workspaceId: string) => `${WORKSPACES_PATH}/${workspaceId}`;
@@ -17,7 +16,6 @@ export const workspaceRemovedPeoplePath = (workspaceId: string) => `${workspaceP
 export const workspaceRestorePath = (workspaceId: string, userId: string) => `${workspaceRemovedPeoplePath(workspaceId)}/${userId}/restore`;
 export const workspaceProjectsPath = (workspaceId: string) => `${workspacePath(workspaceId)}/projects`;
 export const workspaceAgentsPath = (workspaceId: string) => `${workspacePath(workspaceId)}/agents`;
-export const workspaceDraftsPath = (workspaceId: string) => `${workspacePath(workspaceId)}/drafts`;
 export const projectPath = (projectId: string) => `${PROJECTS_PATH}/${projectId}`;
 /** POST: adds one optional view to the project (#351). */
 export const projectViewsPath = (projectId: string) => `${projectPath(projectId)}/views`;
@@ -28,9 +26,6 @@ export const projectGrantPath = (projectId: string, grantId: string) => `${proje
 /** POST: the caller leaves the space (their own grant goes). */
 export const projectLeavePath = (projectId: string) => `${projectPath(projectId)}/leave`;
 export const agentPath = (agentId: string) => `${AGENTS_PATH}/${agentId}`;
-export const draftPath = (draftId: string) => `${DRAFTS_PATH}/${draftId}`;
-export const draftSharePath = (draftId: string) => `${draftPath(draftId)}/share`;
-export const draftMovePath = (draftId: string) => `${draftPath(draftId)}/move`;
 
 export type WorkspaceRole = 'owner' | 'admin' | 'member' | 'guest';
 export type ProjectVisibility = 'workspace' | 'restricted';
@@ -41,7 +36,6 @@ export type ProjectVisibility = 'workspace' | 'restricted';
 export type ProjectGrantRole = 'manager' | 'contributor';
 /** The caller's effective access to a project. `manager` is a space admin, or a company owner or admin. */
 export type ProjectAccess = 'manager' | 'contributor';
-export type DraftVisibility = 'private' | 'project' | 'workspace';
 
 export type PrincipalRef = { kind: 'human'; id: string } | { kind: 'agent'; id: string };
 
@@ -51,16 +45,16 @@ export interface ApiError {
 }
 
 /** 409 VERSION_CONFLICT body: the change was not applied; `current` is the latest authorized object. */
-export interface VersionConflict<T = Draft> extends ApiError {
+export interface VersionConflict<T = unknown> extends ApiError {
   code: 'VERSION_CONFLICT';
   currentVersion: number;
   current: T;
 }
 
 /**
- * Optimistic concurrency. Draft update, share and move need the expected version, either
+ * Optimistic concurrency. A versioned change needs the expected version, either
  * as `If-Match: "<version>"` (bare `<version>` is accepted) or as body `expectedVersion`.
- * Missing → 428 PRECONDITION_REQUIRED, stale → 409 VersionConflict. Draft responses carry
+ * Missing → 428 PRECONDITION_REQUIRED, stale → 409 VersionConflict. Versioned responses carry
  * `ETag: "<version>"`.
  */
 export const IF_MATCH_HEADER = 'if-match';
@@ -213,19 +207,6 @@ export interface Agent {
   createdAt: string;
 }
 
-export interface Draft {
-  id: string;
-  workspaceId: string;
-  projectId: string | null;
-  owner: PrincipalRef;
-  title: string;
-  body: string;
-  visibility: DraftVisibility;
-  version: number;
-  createdAt: string;
-  updatedAt: string;
-}
-
 /** Test deployments only (F-037): production creates the one company at setup and has no route to create another. */
 export interface CreateWorkspaceCommand {
   name: string;
@@ -344,62 +325,6 @@ export interface CreateAgentCommand {
   owner?: 'self';
 }
 
-/** New drafts are always private to their author. */
-export interface CreateDraftCommand {
-  title: string;
-  body?: string;
-  projectId?: string;
-}
-
-export interface UpdateDraftCommand extends VersionPrecondition {
-  title?: string;
-  body?: string;
-}
-
-export interface ShareDraftCommand extends VersionPrecondition {
-  scope: DraftVisibility;
-  /** Required for `project` unless the draft already belongs to a project; must be in the draft's workspace. */
-  projectId?: string;
-}
-
-/** Moves a draft within its workspace. The resulting audience must be stated explicitly. */
-export interface MoveDraftCommand extends VersionPrecondition {
-  projectId: string | null;
-  visibility: DraftVisibility;
-}
-
-export interface DraftListQuery extends PageQuery {
-  projectId?: string;
-}
-
-// ---------------------------------------------------------------------------------------
-// Background job results (issue #29, AC-3)
-
-export const draftSummariesPath = (draftId: string) => `${draftPath(draftId)}/summaries`;
-export const draftSummaryPath = (draftId: string, resultId: string) => `${draftSummariesPath(draftId)}/${resultId}`;
-
-export type DraftSummaryStatus = 'queued' | 'running' | 'completed' | 'denied';
-
-/**
- * A `draft.summarize.v1` job result (a deterministic word count for now). The worker
- * rechecks the requester's access before reading the draft and inside the commit
- * transaction; when access was lost the result is not committed and the status is
- * `denied` with the stage at which it was refused.
- */
-export interface DraftSummary {
-  id: string;
-  draftId: string;
-  workspaceId: string;
-  requestedBy: PrincipalRef;
-  status: DraftSummaryStatus;
-  deniedAtStage: 'before_read' | 'before_commit' | null;
-  /** The draft version the result was computed from. */
-  draftVersion: number | null;
-  wordCount: number | null;
-  createdAt: string;
-  completedAt: string | null;
-}
-
 // ---------------------------------------------------------------------------------------
 // Event stream (issue #29, AC-3)
 
@@ -419,7 +344,7 @@ export const STREAM_CLOSE_UNAUTHENTICATED = 4401;
 export const STREAM_CLOSE_SLOW_CONSUMER = 1013;
 
 /** `assistant_run`: a person's own assistant run (#68); its events reach only that person. */
-export type StreamObjectType = 'workspace' | 'project' | 'draft' | 'agent' | 'sketch' | 'dm' | 'assistant_run';
+export type StreamObjectType = 'workspace' | 'project' | 'agent' | 'sketch' | 'dm' | 'assistant_run';
 
 /**
  * One authorized change. It carries identifiers and kind only; the client refetches the

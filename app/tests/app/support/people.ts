@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import type { Draft, Project, ProjectGrant, Workspace, WorkspaceRole } from '@flux/contracts';
+import type { Project, ProjectGrant, Workspace, WorkspaceRole } from '@flux/contracts';
 import { Browser, register, signIn, uniqueEmail, type ClientResponse } from './http.js';
 
 export const password = 'correct horse battery staple';
@@ -61,16 +61,4 @@ export async function removeFromSpace(actor: Person, projectId: string, grantee:
   const found = grants.find((item) => item.principal.id === grantee.id);
   assert.ok(found, 'the person was added to the space');
   expectStatus(await actor.browser.request('DELETE', `/api/v1/projects/${projectId}/grants/${found.id}`), 204);
-}
-
-export async function draft(actor: Person, workspaceId: string, title: string, options: { projectId?: string; body?: string } = {}): Promise<Draft> {
-  return expectStatus(await actor.browser.request('POST', `/api/v1/workspaces/${workspaceId}/drafts`, { body: { title, ...options } }), 201) as Draft;
-}
-
-export async function share(actor: Person, item: Draft, scope: 'private' | 'project' | 'workspace', projectId?: string): Promise<Draft> {
-  const response = await actor.browser.request('POST', `/api/v1/drafts/${item.id}/share`, {
-    body: projectId ? { scope, projectId } : { scope },
-    headers: { 'if-match': `"${item.version}"` },
-  });
-  return expectStatus(response, 200, `share ${scope}`) as Draft;
 }

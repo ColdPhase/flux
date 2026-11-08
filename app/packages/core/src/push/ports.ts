@@ -112,8 +112,6 @@ export interface PushSendJob {
 export interface JobQueue {
   /** Enqueues in the unit of work's transaction; returns the job id (null when deduplicated). */
   enqueuePushSend(job: PushSendJob): Promise<string | null>;
-  /** Enqueues draft.summarize.v1; the payload is the result id only. */
-  enqueueDraftSummary(job: { resultId: string }): Promise<string | null>;
 }
 
 export interface NotificationPorts {

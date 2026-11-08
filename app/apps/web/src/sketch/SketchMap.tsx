@@ -1289,7 +1289,7 @@ const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, d
         onClick={handlers.click}
         onDoubleClick={handlers.doubleClick}
         onKeyDown={handlers.keyDown}>
-        <ThoughtContent text={thought.text} placement={thought.placement} file={thought.file} source={thought.source}
+        <ThoughtContent text={thought.text} file={thought.file} source={thought.source}
           createdBy={thought.createdBy} createdAt={thought.createdAt} version={thought.version} height={thought.height}
           meId={meId} linked={linked} mover={mover} />
         {resizable ? <span className="sk-resize" aria-hidden="true" onPointerDown={handlers.resizePointerDown} /> : null}
@@ -1306,14 +1306,14 @@ const ThoughtNode = memo(function ThoughtNode({ thought, x, y, w, h, selected, d
 /** Preview coordinates and lease sequences change every movement; the native content does not.
  * Explicit content props let React's ordinary memo comparison keep the body while the button's
  * geometry, live attributes and input handlers continue to use the current thought. */
-const ThoughtContent = memo(function ThoughtContent(props: Pick<Thought, 'text' | 'placement' | 'file' | 'source' | 'createdBy' | 'createdAt' | 'version' | 'height'> & {
+const ThoughtContent = memo(function ThoughtContent(props: Pick<Thought, 'text' | 'file' | 'source' | 'createdBy' | 'createdAt' | 'version' | 'height'> & {
   meId: string; linked: ThoughtTasksEntry | undefined; mover: string | undefined;
 }) {
-  const { text, placement, file, height, meId, linked, mover } = props;
+  const { text, file, height, meId, linked, mover } = props;
   const link = linkOf(text);
-  const meta = placement ? (placement.title ? `Draft · ${placement.title}` : 'Draft you can’t open') : link ? `Link · ${link.host}` : null;
+  const meta = link ? `Link · ${link.host}` : null;
   return <>
-    {meta ? <span className="sk-k"><Icon name={placement ? 'doc' : 'link'} size={12} />{meta}</span> : null}
+    {meta ? <span className="sk-k"><Icon name="link" size={12} />{meta}</span> : null}
     {file ? <ThoughtImage className="sk-img" fileId={file.id} name={file.name} style={{ maxHeight: Math.max(48, height - 64) }} /> : null}
     <span className={`sk-t${link ? ' sk-t--link' : ''}`}>{text}</span>
     <span className="sk-p">{provenance(props, meId)}</span>

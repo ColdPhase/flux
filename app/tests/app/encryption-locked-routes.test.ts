@@ -64,7 +64,6 @@ before(async () => {
   const dmMessage = await post(ada, `/api/v1/dms/${dm.id}/messages`, { body: `${canary} dm`, clientMessageId: randomUUID() }, 201);
   const decision = await post(ada, `/api/v1/projects/${project.id}/decisions`, { title: `${canary} decision`, rationale: 'why' }, 201);
   const result = await post(ada, `/api/v1/projects/${project.id}/results`, { title: `${canary} result`, finding: 'positive', evidence: 'seen' }, 201);
-  const draft = await post(ada, `/api/v1/workspaces/${A}/drafts`, { title: `${canary} draft`, body: 'text' }, 201);
   const task = await post(ada, `/api/v1/projects/${project.id}/work`, { title: `${canary} task`, outcome: 'done', criteria: ['one'] }, 201);
   const doc = await post(ada, `/api/v1/projects/${project.id}/docs`, { title: `${canary} doc`, body: 'body' }, 201);
   const material = await post(ada, `/api/v1/projects/${project.id}/materials`, { clientMutationId: randomUUID(), title: `${canary} material`, body: 'b', url: 'https://example.test/m' }, 201);
@@ -85,7 +84,7 @@ before(async () => {
   Object.assign(objects, {
     workspaceId: A, workspace: A, projectId: project.id, conversationId: String(conversation.id), dmId: String(dm.id),
     rootId: String((dmMessage as { id?: string }).id ?? (dmMessage.message as { id: string }).id), messageId: String((conversation.messages as { id: string }[])[0]!.id),
-    decisionId: String(decision.id), resultId: String(result.id), draftId: String(draft.id), workId: String(task.id), taskId: String(task.id),
+    decisionId: String(decision.id), resultId: String(result.id), workId: String(task.id), taskId: String(task.id),
     docId: String(doc.id), materialId: String(material.materialId ?? material.id), sketchId: String(sketch.id), thoughtId: String((one.thought as { id: string }).id),
     linkId: String((link.link as { id?: string } | undefined)?.id ?? link.id), fileId: file.id, userId: ben.id, version: '1', kind: 'decision',
     notification, grantId: randomUUID(), key: `note:${notification}`,
@@ -168,7 +167,7 @@ describe('F-030 AC-6: every route, called with a locked workspace\'s objects (S2
       for (const param of params) path = path.replace(`:${param}`, encodeURIComponent(param === 'id' ? objects[generic ?? 'notification']! : objects[param] ?? randomUUID()));
       const query = route.query ? sample(route.query) as Record<string, unknown> : {};
       for (const [name, value] of Object.entries(query ?? {})) if (value !== null && typeof value !== 'object') path += `${path.includes('?') ? '&' : '?'}${name}=${encodeURIComponent(String(value))}`;
-      // Ada created everything (her private drafts too); the Inbox and Needs you rows are Ben's.
+      // Ada created everything; the Inbox and Needs you rows are Ben's.
       const who = /^\/api\/v1\/(inbox|needs-you|search|return)/.test(route.url) ? ben : ada;
       const response = await who.browser.request(route.method, path, { ...(body === undefined ? {} : { body }), headers: { ...key(), 'if-match': '"1"' } });
       walked.push(routeKey);

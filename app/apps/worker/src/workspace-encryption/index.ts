@@ -1,11 +1,11 @@
 import type { PgBoss } from 'pg-boss';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
 import {
-  createKeyRotation, dropStaleUnlocks, keyPinStatus, keyringFromEnv, processDraftSummary, ProcessKeys, recordEvent, redactedError, replayWaitedEvent, sealFor, swapFiles,
+  createKeyRotation, dropStaleUnlocks, keyPinStatus, keyringFromEnv, ProcessKeys, recordEvent, redactedError, replayWaitedEvent, sealFor, swapFiles,
   swapSafety, testSwapRoot, type EncryptionPorts, type EncryptionUnitOfWork, type KeyRotationOptions,
 } from '@flux/core';
 import {
-  accessReader, configureRemovalPin, configureSeals, createDatabase, draftResultRepository, eventRepository, keyRotationRows, rotationCheckpoint, rotationMaintenance, sql,
+  configureRemovalPin, configureSeals, createDatabase, keyRotationRows, rotationCheckpoint, rotationMaintenance, sql,
   workspaceEncryptionRows, type DbExecutor, type Database,
 } from '@flux/db';
 import { eventPorts } from '../events.js';
@@ -164,12 +164,6 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
         try {
           if (wait.queue === 'notifications.generate' && typeof wait.payload.eventId === 'string') {
             await replayWaitedEvent(generator, wait.payload.eventId, { emailAvailable });
-          }
-          if (wait.queue === 'draft.summarize.v1' && typeof wait.payload.resultId === 'string') {
-            // Still or again locked here: the summary answers 'waiting' (its wait is this one, kept once per result), so the
-            // wait stays for the next unlock instead of being deleted as handled (#670: a replay that met the lock lost it).
-            const outcome = await processDraftSummary(wait.payload.resultId, db, { results: draftResultRepository, events: eventRepository, access: accessReader });
-            if (outcome === 'waiting') throw Object.assign(new Error('The workspace is locked'), { code: 'WORKSPACE_LOCKED' });
           }
         } catch (error) {
           // Locked again: stop, and pg-boss retries. Any other failure keeps that wait for the sweep and replays the rest (#717 review P3-4).

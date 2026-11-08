@@ -42,7 +42,6 @@ export interface ThoughtRecord {
   width: number;
   height: number;
   shape: ThoughtShape;
-  placement: { type: 'draft'; id: string } | null;
   source: ThoughtSourceRecord | null;
   createdBy: PersonRef;
   version: number;
@@ -75,16 +74,7 @@ export type SketchTarget =
   | { scope: 'project'; workspaceId: string; projectId: string }
   | { scope: 'private'; workspaceId: string };
 
-/** The access policy's answer about an object placed on a map, for one reader, from current rows. */
-export interface PlacementView {
-  /** The reader may read the object now. */
-  readable: boolean;
-  /** The object's workspace when readable, else null. */
-  workspaceId: string | null;
-  title: string | null;
-}
-
-/** Adapter over the core access policy (`evaluateSketch`, `evaluateProject`, `evaluateDraft`). */
+/** Adapter over the core access policy (`evaluateSketch`, and `evaluateProject`). */
 export interface SketchAccess {
   /**
    * Throws NotFoundError when the sketch is invisible to the principal and ForbiddenError when
@@ -100,8 +90,6 @@ export interface SketchAccess {
    * Throws the policy's 404/403, or RuleViolationError for a project of another workspace.
    */
   requireCreate(principal: Principal, target: SketchTarget): Promise<void>;
-  /** Access to the underlying object of a placement. Never throws for invisible objects. */
-  placement(principal: Principal, ref: { type: 'draft'; id: string }): Promise<PlacementView>;
 }
 
 export interface NewSketch {
@@ -123,7 +111,6 @@ export interface NewThought {
   width: number;
   height: number;
   shape: ThoughtShape;
-  placement: { type: 'draft'; id: string } | null;
   source?: ThoughtSourceRecord | null;
   createdBy: Principal;
 }

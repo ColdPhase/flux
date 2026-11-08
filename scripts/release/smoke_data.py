@@ -3,7 +3,7 @@
 
 `seed` signs a throwaway account up on one running release and writes through the public HTTP API what
 an installation holds after some use: a workspace, a project, a conversation with a reply and a binary
-attachment, a document with two versions, a work item and a private note. It records exactly what it
+attachment, a document with two versions, a work item and a private map. It records exactly what it
 wrote in a state file. `verify` signs in again on a restored or upgraded instance, possibly of ANOTHER
 release, and checks that every recorded item is still there (explicit fields and the exact attachment
 bytes, never whole responses, so a field a newer release adds does not matter). `verify --write` also
@@ -134,10 +134,10 @@ def seed(client: Client, state_file: Path) -> None:
         "POST", f"/api/v1/projects/{project_id}/work",
         {"title": work_title, "owner": {"kind": "human", "id": user_id}, "sources": []},
     )
-    note_title = f"RELEASE-private-note-{tag}"
+    note_title = f"RELEASE-private-map-{tag}"
     note = client.expect(
-        "POST", f"/api/v1/workspaces/{workspace['id']}/drafts",
-        {"title": note_title, "body": f"{note_title}-body", "projectId": project_id},
+        "POST", f"/api/v1/workspaces/{workspace['id']}/sketches",
+        {"title": note_title, "scope": "private"},
     )
     state_file.write_text(json.dumps({
         "email": email, "password": password, "workspace_id": workspace["id"], "project_id": project_id,
@@ -148,7 +148,7 @@ def seed(client: Client, state_file: Path) -> None:
     state_file.chmod(0o600)
     print(
         "Release account, workspace, project, conversation (2 messages and an attachment), "
-        "document (2 versions), work item and private note created"
+        "document (2 versions), work item and private map created"
     )
 
 
@@ -170,7 +170,7 @@ def check(state: dict[str, Any], observed: dict[str, Any]) -> list[str]:
     if observed["work_title"] != state["work_title"]:
         problems.append(f"work title {observed['work_title']!r}")
     if observed["note_titles"].get(state["note_id"]) != state["note_title"]:
-        problems.append("private note missing or renamed")
+        problems.append("private map missing or renamed")
     return problems
 
 
@@ -181,7 +181,7 @@ def read_back(client: Client, state: dict[str, Any]) -> dict[str, Any]:
     status, file_bytes = client.raw("GET", f"/api/v1/files/{state['file_id']}")
     versions = client.all(f"/api/v1/docs/{state['doc_id']}/versions")
     work = client.expect("GET", f"/api/v1/work/{state['work_id']}")
-    notes = client.all(f"/api/v1/workspaces/{state['workspace_id']}/drafts")
+    notes = client.all(f"/api/v1/workspaces/{state['workspace_id']}/sketches?scope=private")
     return {
         "workspace_name": workspace.get("name"),
         "project_names": {item["id"]: item["name"] for item in projects},
@@ -203,7 +203,7 @@ def verify(client: Client, state_file: Path, write: bool) -> None:
         raise RuntimeError("restored content differs: " + "; ".join(problems))
     print(
         "Restored account, workspace, project, conversation with its attachment, document versions, "
-        "work item and private note verified"
+        "work item and private map verified"
     )
     if write:
         body = f"RELEASE-after-{secrets.token_hex(4)}"

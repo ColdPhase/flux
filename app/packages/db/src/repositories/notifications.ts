@@ -41,7 +41,7 @@ const ob = schema.notificationEmails;
 const CURSOR = 'generator';
 
 type Reason = 'mention' | 'question' | 'reply' | 'dm' | 'assigned' | 'review' | 'invitation';
-type SourceType = 'workspace' | 'project' | 'draft' | 'dm';
+type SourceType = 'workspace' | 'project' | 'dm';
 
 export interface StoredPreferenceRow {
   level: 'needsYou' | 'everything' | 'nothing';
