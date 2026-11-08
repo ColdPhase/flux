@@ -39,12 +39,17 @@ function fail(message) {
 }
 if (!origin || !password) fail('FLUX_PUBLIC_ORIGIN and FLUX_PERF_PASSWORD are required');
 const emit = (row) => console.log(JSON.stringify(row));
+// Every request carries its own id (`X-Request-ID`, which the API logs as `reqId`), so scripts/perf_report.py pairs a request with
+// its server time exactly, even though the log has no query string (#827).
+const runId = Math.random().toString(36).slice(2, 8);
+let sequence = 0;
 
 class Session {
   cookies = new Map();
 
   async request(method, path, body) {
-    const headers = { origin, accept: 'application/json', 'accept-encoding': 'gzip, deflate, br' };
+    const reqId = `perf-${runId}-${++sequence}`;
+    const headers = { origin, accept: 'application/json', 'accept-encoding': 'gzip, deflate, br', 'x-request-id': reqId };
     if (this.cookies.size) headers.cookie = [...this.cookies].map(([k, v]) => `${k}=${v}`).join('; ');
     if (body !== undefined) headers['content-type'] = 'application/json';
     const started = performance.now();
@@ -61,7 +66,7 @@ class Session {
     try { json = JSON.parse(new TextDecoder().decode(buffer)); } catch { json = null; }
     // Bytes on the wire: the compressed length when the server compressed the answer.
     const wire = Number(response.headers.get('content-length') ?? 0) || buffer.byteLength;
-    return { status: response.status, json, ms, bytes: wire, encoding: response.headers.get('content-encoding') };
+    return { status: response.status, json, ms, bytes: wire, encoding: response.headers.get('content-encoding'), reqId };
   }
 
   async expect(method, path, body) {
@@ -186,7 +191,7 @@ async function openView(session, view, label = 'client') {
     await Promise.all(group.map(async (request) => {
       const response = await session.request(request.method, request.path, request.body);
       emit({ type: label, view: view.view, label: request.label, method: request.method, path: request.path, status: response.status,
-        ms: Math.round(response.ms * 10) / 10, bytes: response.bytes, encoding: response.encoding });
+        ms: Math.round(response.ms * 10) / 10, bytes: response.bytes, encoding: response.encoding, reqId: response.reqId });
     }));
   }
 }
@@ -229,7 +234,7 @@ async function countStatements(session, plan, phase) {
         rows::int, wal_records::int AS wal, left(regexp_replace(query, '\\s+', ' ', 'g'), 300) AS query
         FROM pg_stat_statements WHERE ${mine} ORDER BY calls DESC, total_exec_time DESC`);
       const sum = (field) => Math.round(rows.reduce((total, row) => total + row[field], 0) * 100) / 100;
-      emit({ type: 'count', phase, view: view.view, label: request.label, method: request.method, path: request.path, status: response.status,
+      emit({ type: 'count', phase, view: view.view, label: request.label, method: request.method, path: request.path, status: response.status, reqId: response.reqId,
         statements: rows.reduce((total, row) => total + row.calls, 0), dbMs: sum('ms'), planMs: sum('plan'), walBytes: wal, top: rows.slice(0, 15) });
     }
   }

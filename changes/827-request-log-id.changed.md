@@ -1,0 +1,1 @@
+- The API's request log uses a request's `X-Request-ID` as its `reqId` when it is a short plain identifier (letters, digits, `.`, `_`, `:`, `-`, up to 64), so a proxy's id and the log line match; the performance report pairs server times with requests by that id, so every request has its time ([#827](https://github.com/ColdPhase/flux/issues/827)).

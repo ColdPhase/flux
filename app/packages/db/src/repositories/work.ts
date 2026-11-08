@@ -123,6 +123,17 @@ async function openedWork(db: DbExecutor, row: WorkRow): Promise<WorkRow> {
   const seal = await sealOf(db, row.workspaceId, { write: false });
   return seal.sealed ? openRow('project_work_items', row, seal) : row;
 }
+/** Several rows opened with one lookup of each workspace's seal. */
+async function openedWorks(db: DbExecutor, rows: WorkRow[]): Promise<WorkRow[]> {
+  const seals = new Map<string, Awaited<ReturnType<typeof sealOf>>>();
+  const opened: WorkRow[] = [];
+  for (const row of rows) {
+    const seal = seals.get(row.workspaceId) ?? await sealOf(db, row.workspaceId, { write: false });
+    seals.set(row.workspaceId, seal);
+    opened.push(seal.sealed ? openRow('project_work_items', row, seal) : row);
+  }
+  return opened;
+}
 /** The opened row of a task in a sealed workspace, or null for a plain one (whose baseline stays in SQL as before). */
 async function sealedWork(db: DbExecutor, id: string): Promise<WorkRow | null> {
   const [row] = await db.select().from(w).where(eq(w.id, id));
@@ -276,6 +287,12 @@ export function workRows(db: DbExecutor) {
       const query = db.select().from(w).where(eq(w.id, id));
       const [row] = options.lock ? await query.for('update') : await query;
       return row ? toWorkRecord(await openedWork(db, row)) : null;
+    },
+    async findWorks(ids: readonly string[]) {
+      const unique = [...new Set(ids)];
+      if (!unique.length) return new Map<string, ReturnType<typeof toWorkRecord>>();
+      const rows = await openedWorks(db, await db.select().from(w).where(inArray(w.id, unique)));
+      return new Map(rows.map((row) => [row.id, toWorkRecord(row)]));
     },
     async insertWork(work: { id: string; workspaceId: string; projectId: string; title: string; outcome: string; status: WorkRow['status']; blocker: string | null; waitingFor?: Actor | null; dueOn?: string | null; owner: Actor | null; createdBy: Actor; criteria?: string[]; clientCommandId?: string; requestFingerprint?: string }) {
       const [row] = await db.insert(w).values(await sealFor(db, 'project_work_items', work.workspaceId, {

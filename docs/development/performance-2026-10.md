@@ -66,7 +66,11 @@ MCP list tool read.
 **Numbers.**
 
 - *Server time* is Fastify's own `responseTime` from the API's request log, joined to the
-  measurement windows by `scripts/perf_report.py`; p50/p95 by nearest rank.
+  measurement windows by `scripts/perf_report.py`; p50/p95 by nearest rank. The log has no query
+  string (F-030), so the measurement sends each request with its own `X-Request-ID`, the API logs
+  it as `reqId`, and the report pairs a request with its time by that id (#827; before it, the 29
+  of 41 rows whose path carries a query showed "–"). A log line without a known id counts only
+  for a path no other request of the plan shares.
 - *Isolated*: each distinct request alone, once, with `pg_stat_statements` reset before it: its
   statements, their execution and planning time, and the WAL it caused (`pg_current_wal_lsn`).
 - *Warm*: one unrecorded pass, then 20 runs of every view, by the owner and then by a member.

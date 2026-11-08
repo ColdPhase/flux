@@ -1,6 +1,6 @@
 import { and, count, desc, eq, isNull, sql, type SQL } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { assignmentNotificationActive, assignmentNotificationReverted } from './notification-lifecycle.js';
+import { assignmentNotificationActive, assignmentNotificationsReverted } from './notification-lifecycle.js';
 import * as schema from '../schema.js';
 import { hiddenWhileAiOff, notificationHiddenWhileAiOff } from './space-ai.js';
 
@@ -84,11 +84,14 @@ export function pushSubscriptionRepository(db: DbExecutor) {
 
 /** Notification rows; `audience` is an access-policy condition over `notifications` supplied by the caller. */
 export function notificationRows(db: DbExecutor) {
-  const withHistory = async (row: { notification: NotificationRow }) => {
+  const withHistory = (reverted: ReadonlySet<string>) => (row: { notification: NotificationRow }) => {
     const record = toNotificationRecord(row.notification);
-    return await assignmentNotificationReverted(db, row.notification)
+    return row.notification.eventId && reverted.has(row.notification.eventId)
       ? { ...record, body: `${record.body}${record.body ? ' · ' : ''}Task creation undone` } : record;
   };
+  /** One page of rows with the undone-creation line, reading the tasks they point at together rather than one by one (#828). */
+  const withHistories = async (rows: { notification: NotificationRow }[]) =>
+    rows.map(withHistory(await assignmentNotificationsReverted(db, rows.map((row) => row.notification))));
   return {
     async insert(record: { id: string; userId: string; source: { workspaceId: string; type: NotificationRow['sourceType']; id: string }; title: string; body: string; url: string | null; aiOrigin: boolean }) {
       await db.insert(n).values({
@@ -99,7 +102,7 @@ export function notificationRows(db: DbExecutor) {
     async findForRecipient(userId: string, id: string) {
       const [row] = await db.select({ notification: n }).from(n)
         .where(and(eq(n.id, id), eq(n.userId, userId), sql`NOT ${hiddenWhileAiOff(n)}`));
-      return row ? withHistory(row) : null;
+      return row ? (await withHistories([row]))[0]! : null;
     },
     async workspaceIdsForRecipient(userId: string) {
       return (await db.selectDistinct({ id: n.workspaceId }).from(n).where(eq(n.userId, userId))).map((row) => row.id);
@@ -109,7 +112,7 @@ export function notificationRows(db: DbExecutor) {
       const rows = await db.select({ notification: n }).from(n)
         .where(and(eq(n.userId, userId), eq(n.inInbox, true), audience, sql`NOT ${hiddenWhileAiOff(n)}`))
         .orderBy(desc(n.createdAt), desc(n.id)).limit(limit);
-      return Promise.all(rows.map(withHistory));
+      return withHistories(rows);
     },
     async countUnread(userId: string, audience: SQL) {
       const [row] = await db.select({ unread: count() }).from(n).where(and(eq(n.userId, userId), eq(n.inInbox, true), isNull(n.readAt), audience,
