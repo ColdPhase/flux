@@ -22,11 +22,14 @@ const connectionString = process.env.DATABASE_URL;
 if (!connectionString) throw new Error('DATABASE_URL is required');
 const { pool, db } = createDatabase(connectionString);
 assertExactMigrationLedger(await readMigrationManifest('packages/db/migrations', FLUX_SCHEMA_VERSION), await readAppliedMigrationVersions(pool));
-// Idle polling (#862): every queue is created with `notify` (tooling/migrate.ts), so a job wakes its worker over LISTEN/NOTIFY and a worker
-// polls only as a 30 s backstop for delayed jobs and retries. The scheduler's cron worker looks every 15 s (a schedule fires up to 15 s
-// late), and Flux uses no job flows, so pg-boss's flow resolver looks once a minute. The LISTEN connection is checked every 30 s.
-const boss = new PgBoss({ connectionString, migrate: false, useListenNotify: true, notifyHeartbeatIntervalMs: 30_000,
-  cronWorkerIntervalSeconds: 15, flowIntervalSeconds: 60 });
+// Idle polling (#862, #850): every queue is created with `notify` (tooling/migrate.ts), so a job wakes its worker over LISTEN/NOTIFY and a worker
+// polls only as a backstop for delayed jobs and retries (60 s, set in drain-backlogs.ts). The scheduler's cron worker looks every 15 s (a schedule
+// fires up to about 30 s late), and Flux uses no job flows, so pg-boss's flow resolver looks every two minutes. The LISTEN connection is checked
+// once a minute (a silently dropped connection is noticed up to a minute later) and the queue settings are re-read every five. pg-boss's monitor
+// stays at its 60 s: it also fails the jobs of a worker that stopped heartbeating, which is how a crashed worker's schedules are recovered. The
+// instance registry (who is running, shown by getInstances) is beaten every five minutes, not every half minute.
+const boss = new PgBoss({ connectionString, migrate: false, useListenNotify: true, notifyHeartbeatIntervalMs: 60_000,
+  cronWorkerIntervalSeconds: 15, flowIntervalSeconds: 120, queueCacheIntervalSeconds: 300, instanceHeartbeatSeconds: 300 });
 boss.on('error', (error) => console.error(error));
 await boss.start();
 // A woken worker keeps fetching until its queue is empty (one NOTIFY per transaction would otherwise leave a backlog to the 30 s backstop).

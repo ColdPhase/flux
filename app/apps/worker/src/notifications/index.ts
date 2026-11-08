@@ -15,8 +15,8 @@ import { emailUnitOfWork, generatorUnitOfWork, smtpNotificationMailer } from './
 export { emailUnitOfWork, generatorUnitOfWork, pushPreferenceCheck, smtpNotificationMailer } from './adapters.js';
 
 // Only a backstop (#862): the LISTEN wakes the generator when an event commits and again when the listener reconnects, so an idle
-// generator looks every 30 s instead of every 2 s. A failed event is not left to this tick: its retry is scheduled itself.
-const POLL_MS = 30_000;
+// generator looks every minute instead of every 2 s. A failed event is not left to this tick: its retry is scheduled itself.
+const POLL_MS = 60_000;
 
 /**
  * Turns committed events into notifications (issue #116). A LISTEN on the event channel wakes

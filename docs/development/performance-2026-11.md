@@ -16,8 +16,8 @@ The targets are the ones Hubert agreed on 2026-11-03 (#862). "Before" is `main` 
 
 | Target | Before | After | Verdict |
 | --- | ---: | ---: | --- |
-| Idle: at most 2% of one core | 1.4% (api 0.30, worker 0.32, database 0.75) | 1.1% (api 0.23, worker 0.22, database 0.61) | met |
-| Idle: at most 100 database statements a minute | 122 | 122 | not met, see [Idle statements](#idle-statements) |
+| Idle: at most 2% of one core | 1.4% (api 0.30, worker 0.32, database 0.75) | 0.8% (api 0.21, worker 0.19, database 0.44) | met |
+| Idle: at most 100 database statements a minute | 122 | 95 | met, narrowly, see [Idle statements](#idle-statements) |
 | An open tab: at most 4 requests a minute | not measured here | not changed | not met, the client's polling is the data-layer batch |
 | An open Map or Wiki editor, idle | a read of the room every 250 ms (240 a minute) | a read every 2 s after 5 s of quiet (30 a minute); a cursor that did not move sends nothing | changed, see [Editors](#editors) |
 | A navigation: at most 8 requests, none repeated | 3, 4, 21, 11, 4, 8, 16, 21, 4 | 3, 4, 19, 10, 4, 8, 15, 18, 4 | not met for four moves, see [Navigation](#navigation) |
@@ -149,16 +149,29 @@ it. Not attempted here.
 
 ## Idle statements
 
-**Observed.** Over 60 s with nobody signed in and the worker running: 122 statements. 28 are queue polls (14 queues
-each looking every 30 s, the backstop behind NOTIFY), 28 are the `begin` and `commit` of pg-boss's own transactions,
-and the rest are pg-boss's schedule, instance heartbeat and queue-cache work (about 40) and Flux's own backstops: the
-encryption rotation sweep every 15 s, the notification generator's cursor, `flux_schema_version` and the sealed-job
-wait sweep (about 14).
+**Observed.** Over 60 s with nobody signed in and the worker running, `main` made 122 statements: 28 queue polls (14 queues
+each looking every 30 s, the backstop behind NOTIFY), 28 `begin` and `commit` of pg-boss's own transactions, about 40
+more of pg-boss's schedule, instance heartbeat and queue-cache work, and about 14 of Flux's own backstops (the encryption
+rotation sweep every 15 s, the notification generator's cursor, the schema version and the sealed-job wait sweep). After
+this change the same minute makes 95. What pg-boss does to recover a crashed worker's jobs and to fire a schedule is left as it was.
 
-**Inferred.** At most 100 needs about 22 fewer. Raising the 14 queue backstops to 60 s saves 14, but a delayed push or
-email (quiet hours, retries) would then wait up to 60 s past its time instead of 30; raising the cron worker's 15 s and
-the rotation sweep's 15 s saves 6 more at the same kind of cost. That is a product choice about how late a deferred job
-may be, so it is left open.
+**Changed.** Everything that looks when nothing has happened looks less often; everything that something wakes still wakes
+at once.
+
+- Every queue's backstop poll is 60 s (`NOTIFY_BACKSTOP_SECONDS` in `drain-backlogs.ts`, applied to every `work`
+  registration); pg-boss's flow resolver looks every 120 s, its queue-cache refresh every 300 s, and its LISTEN check
+  every minute.
+- The notification generator's backstop and the sealed-job wait sweep are 60 s, and the instance registry that pg-boss keeps
+  (who is running; only `getInstances` reads it) is beaten every five minutes, not every half minute.
+- Not changed, on purpose: pg-boss's monitor (60 s) also fails the jobs of a worker that stopped heartbeating, which is
+  how a crashed worker's schedules come back, so a slower monitor would leave them waiting minutes longer; its cron worker
+  (15 s), so a schedule fires within about 30 s; and the key rotation sweep (15 s), so a removed person's old key stops
+  opening new content quickly.
+
+**Cost, accepted.** A delayed or retried job (a push held to the end of quiet hours, an e-mail, a retry after a failure)
+starts up to a minute after it is due, not half a minute. A job sent now still starts at once over NOTIFY, a backlog still
+drains back to back, and a failed handler still wakes its queue after 2 s. A listen connection that dropped silently is
+noticed up to a minute later (the check was every 30 s); until then a job sent meanwhile is found by the backstop poll.
 
 ## Reproduce
 
@@ -179,5 +192,4 @@ Run one at a time and alone on the host: the numbers include whatever else the m
 - The client's data layer: polling to live push, one read per space shell, non-blocking loaders (the navigation list
   above is its starting evidence).
 - The first screen's import graph (editor, map and Details out of it).
-- Idle statements: the product choice about how late a deferred job may be.
 - The typing hub's per-second work, not measured here.
