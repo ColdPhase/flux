@@ -1,30 +1,21 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { pool } from './support/db.js';
 import { apiUrl, publicOrigin, register, uniqueEmail } from './support/http.js';
-import { beginOauth, expect, oauthToken, type Tokens } from './support/mcp.js';
+import { expect, oauthToken, type Tokens } from './support/mcp.js';
+import { registerOauthClient } from './support/mcp-actions.js';
 
 // Refresh-token rotation has one successor (#916). Better Auth rotates with a guarded update (`revoked IS NULL`) and creates the
 // successor only after the guard passes, so requests refreshing with the same token at once make one new token pair. Flux has the
 // 30-second retry window of docs/product/mcp-identity.md: a request that reads the token after its rotation gets that same pair again,
 // and one that loses the guard gets `invalid_grant`. Nobody gets a second successor, and nothing inside the window ends the family.
-const REDIRECT = 'http://127.0.0.1:19737/callback';
-const SCOPES = 'flux.context.read offline_access';
+// The client signs in as a person signs one in (#859): it opens the authorization URL and Allow on the consent page makes its connection.
 
 async function scene() {
   const { browser } = await register(uniqueEmail('refresh-rotation'), 'correct horse battery staple');
-  const workspace = expect(await browser.request('POST', '/api/v1/workspaces', { body: { name: 'Refresh rotation' } }), 201);
-  const project = expect(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/projects`, { body: { name: 'Rotation project', visibility: 'restricted' } }), 201);
-  const agent = expect(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name: 'Rotation agent', owner: 'self' } }), 201);
-  const connection = expect(await browser.request('POST', '/api/v1/agent-connections',
-    { body: { name: 'Desk', clientDesignation: 'codex', agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read'] } }), 201);
-  const clientId = `flux-test-${randomUUID()}`;
-  await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types,
-    response_types, scopes, require_pkce, created_at, updated_at) VALUES ($1, $2, 'Flux HTTP test client', $3, 'none', $4, $5, $6, true, now(), now())`,
-  [randomUUID(), clientId, [REDIRECT], ['authorization_code', 'refresh_token'], ['code'], SCOPES.split(' ')]);
-  await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())', [randomUUID(), clientId, `${publicOrigin}/mcp`]);
-  const grant = async (): Promise<Tokens> => oauthToken(browser, String(connection.id), clientId, REDIRECT, await beginOauth(browser, clientId, REDIRECT, { scope: SCOPES }));
+  expect(await browser.request('POST', '/api/v1/workspaces', { body: { name: 'Refresh rotation' } }), 201);
+  const { clientId, redirectUri } = await registerOauthClient(pool);
+  const grant = async (): Promise<Tokens> => oauthToken(browser, clientId, redirectUri);
   const refresh = (refreshToken: string) => fetch(new URL('/api/auth/oauth2/token', apiUrl), { method: 'POST',
     headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId, resource: `${publicOrigin}/mcp` }) });
