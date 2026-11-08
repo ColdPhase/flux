@@ -83,6 +83,8 @@ export function signInPath(next?: string) {
 export function describeAuthError(error: unknown, context: 'sign-in' | 'sign-up' | 'reset' | 'reset-request' | 'sign-out'): string {
   if (error instanceof NetworkError) return 'Flux can’t be reached right now. Check your connection and try again.';
   if (!(error instanceof ApiError)) return 'Something unexpected went wrong. Try again in a moment.';
+  // The account's own back-off (#990) says how long to wait; the other limit is per address and clears in a minute.
+  if (error.code === 'SIGN_IN_THROTTLED' && error.message) return `${error.message}. If you have forgotten the password, you can reset it.`;
   if (error.status === 429) return 'Too many attempts in a short time. Wait a minute, then try again.';
   if (error.code === 'ORIGIN_REJECTED') return 'This page was opened from an address Flux doesn’t accept. Open Flux at its usual address and try again.';
   const code = error.code ?? '';
@@ -91,6 +93,7 @@ export function describeAuthError(error: unknown, context: 'sign-in' | 'sign-up'
   if (code === 'SIGNUP_CLOSED') return 'Creating an account with a password is closed on this Flux server. Ask the person who runs it.';
   if (context === 'sign-in' && code === 'EMAIL_NOT_VERIFIED') return 'Verify your email address first. We sent a link to it; it works once.';
   if (context === 'sign-up' && code.startsWith('USER_ALREADY_EXISTS')) return 'An account with this email already exists. Sign in instead, or reset its password.';
+  if (code === 'PASSWORD_TOO_WEAK' && error.message) return error.message;
   if (code === 'PASSWORD_TOO_SHORT') return `Use at least ${PASSWORD_MIN_LENGTH} characters.`;
   if (code === 'PASSWORD_TOO_LONG') return `Use at most ${PASSWORD_MAX_LENGTH} characters.`;
   if (code === 'INVALID_EMAIL') return 'Enter a valid email address.';

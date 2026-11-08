@@ -26,7 +26,9 @@ complicated or different").
   selections, standing grants, project grants or access requests.
 - The client appears as one row in Settings › AI: "Claude Code on Ada's laptop · Do it and tell me
   · Disconnect". Disconnect revokes it at once. A person may connect several clients, each with its
-  own row.
+  own row. A password reset, a password change that signs out the other devices, and "Sign out all
+  other devices" disconnect every client of the person the same way; each connects again with one
+  click on the consent page ([C-42](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 - Flux holds only its own grant. Flux tokens are audience-bound to Flux's MCP resource, and Flux
   never accepts, stores or forwards the client's provider token (MCP 2026-07-28: the server "MUST
   NOT pass through the token it received from the MCP client"). The client's plan usage is unknown

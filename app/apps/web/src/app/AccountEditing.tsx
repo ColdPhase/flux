@@ -180,7 +180,11 @@ function Sessions() {
   async function end(id: string | 'others') {
     setBusy(id); setStatus('');
     try {
-      if (id === 'others') { const { revoked } = await endOtherSessions(); setStatus(revoked === 1 ? 'Signed out on 1 other device.' : `Signed out on ${revoked} other devices.`); }
+      if (id === 'others') {
+        const { revoked, disconnected } = await endOtherSessions();
+        const devices = revoked === 1 ? 'Signed out on 1 other device.' : `Signed out on ${revoked} other devices.`;
+        setStatus(disconnected ? `${devices} Your AI apps were disconnected; connect them again from Settings › AI.` : devices);
+      }
       else { await endSession(id); setStatus('Signed out on that device.'); }
       await load();
     } catch { setStatus('That did not work. Try again.'); } finally { setBusy(null); }

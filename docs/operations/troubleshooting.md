@@ -37,6 +37,8 @@ For a release installation use `docker compose --env-file .env -f compose.yaml` 
 | Uploads fail with `413` from the proxy | Raise the proxy's body limit to at least 5 MiB (nginx: `client_max_body_size`). |
 | Every session shows the same address, the proxy's | Set `FLUX_TRUSTED_PROXIES` to the proxy's measured address ([how](reverse-proxy.md#trust-only-the-measured-proxy-peer)). |
 | The reset page says password reset is unavailable | No email configured: set `FLUX_SMTP_URL` and `FLUX_MAIL_FROM`. |
+| Sign-in answers `429` "Too many sign-in attempts for this account. Try again in …" | The account's own back-off: five wrong passwords in a row make that address wait 30 seconds, then 1, 2, 4 and 8 minutes, and at most 15 minutes. It counts every API process together and does not depend on the client address, so it also holds while someone else is guessing at the address. The person can wait, or use **Forgot password**: a reset clears the wait. A `429` that says "Too many attempts in a short time" is the separate per-address limit and clears in a minute. |
+| Sign-up says "That password is too easy to guess" | Passwords need at least 12 characters and must not be a common password or built from the person's name or email. A short phrase of unrelated words works. |
 | New people cannot create an account | `FLUX_SIGNUP` is `off`, or `verified` without email (then sign-up is closed). `GET /api/v1/auth/capabilities` shows the rule in effect. Invite links never open closed sign-up. |
 
 ## Features that stay unavailable

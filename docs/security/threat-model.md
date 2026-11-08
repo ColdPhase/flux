@@ -122,9 +122,9 @@ is what remains, and an issue number marks a finding of this audit.
 
 | Threat | Control on `main` | Residual |
 | --- | --- | --- |
-| Password guessing and stuffing | Better Auth limiter, 3 attempts per 10 s per IP and process | 8-character and common passwords are accepted, and there is no per-account throttle: [#990](https://github.com/ColdPhase/flux/issues/990) (P2). No MFA in password mode; SSO is the recommended path |
+| Password guessing and stuffing | At least 12 characters, no common or easy-to-guess password (bundled list, no network call); Better Auth limiter per address (IPv6 as /64) stored in PostgreSQL, so every API process counts together; each account backs off after five attempts, 30 s up to 15 min, whatever the address ([#990](https://github.com/ColdPhase/flux/issues/990), fixed) | Someone who knows an address can keep it waiting up to 15 minutes at a time; the reset mail is the way back. No MFA in password mode; SSO is the recommended path |
 | Account enumeration | Password reset answers the same for every address | Sign-up says an address exists: [#993](https://github.com/ColdPhase/flux/issues/993) |
-| Reset or verification token abuse | Tokens stored hashed, single use, expiring; reset redirect limited to the trusted origin (probe: `INVALID_REDIRECT_URL`); sessions revoked on reset | Local clients survive the reset: [#989](https://github.com/ColdPhase/flux/issues/989) (P2) |
+| Reset or verification token abuse | Tokens stored hashed, single use, expiring; reset redirect limited to the trusted origin (probe: `INVALID_REDIRECT_URL`); sessions revoked on reset, and the person's local clients disconnected ([#989](https://github.com/ColdPhase/flux/issues/989), fixed) | None found |
 | Claiming a new server | API only on loopback until the operator adds a proxy | Whoever signs up first after the proxy goes live owns the company: [#994](https://github.com/ColdPhase/flux/issues/994) |
 | SSO account takeover by email | Accounts keyed by OIDC `sub`; implicit linking off; an address held by a verified account is refused; ID token verified with PKCE; back-channel logout and standing check | Depends on the IdP. Not re-tested here (covered by the OIDC suites) |
 
@@ -133,8 +133,8 @@ is what remains, and an issue number marks a finding of this audit.
 | Threat | Control on `main` | Residual |
 | --- | --- | --- |
 | Malicious client phishing a person ("Claude Code" from evil.example) | No dynamic registration; clients only from CIMD over HTTPS with DNS pinning to public addresses; the consent page shows the redirect host, the client-details host and a warning for non-loopback redirects; framing refused | A person can still click Allow on a client they don't recognise. Every client gets the owner's full rights; there are no scopes, by decision (C-23) |
-| Token replay after access ends | JWT audience bound to `/mcp`; live grant, connection, owner standing and space AI checked on every request and again before output (`mcp-route.ts`); company removal answers 403 (C-22) | Password reset and "sign out everywhere" do not end client grants: [#989](https://github.com/ColdPhase/flux/issues/989) |
-| A borrowed browser session mints a lasting client | Consent needs a live session in the same browser | One click, with no re-authentication: part of [#989](https://github.com/ColdPhase/flux/issues/989) and [#993](https://github.com/ColdPhase/flux/issues/993) |
+| Token replay after access ends | JWT audience bound to `/mcp`; live grant, connection, owner standing and space AI checked on every request and again before output (`mcp-route.ts`); company removal answers 403 (C-22) | None found. A password reset, a password change that signs out other devices and "Sign out all other devices" disconnect the person's clients ([#989](https://github.com/ColdPhase/flux/issues/989), fixed) |
+| A borrowed browser session mints a lasting client | Consent needs a live session in the same browser | One click, with no re-authentication ([#993](https://github.com/ColdPhase/flux/issues/993)); the person's recovery now ends the client ([#989](https://github.com/ColdPhase/flux/issues/989), fixed) |
 | A guest or non-member connects a client | C-22 | Not complete on `main`: [#978](https://github.com/ColdPhase/flux/issues/978) and [#959](https://github.com/ColdPhase/flux/issues/959), with PR #986 open |
 | A client approves its own waiting changes | No approve tool exists in the MCP tool list; approvals only in the owner's browser session (F-036 point 7) | None found |
 
@@ -195,12 +195,12 @@ is what remains, and an issue number marks a finding of this audit.
 
 ## Top risks, in plain words
 
-1. **Recovering a stolen account is incomplete** ([#989](https://github.com/ColdPhase/flux/issues/989), P2). Anyone who holds
-   your browser session for a minute can connect their own "local client" in one click. That client keeps
-   acting with all your rights after you reset your password.
-2. **Weak passwords are accepted, and guessing is only slowed per address** ([#990](https://github.com/ColdPhase/flux/issues/990),
-   P2). "password" is a valid password, and the first account owns the company. Use single sign-on for any
-   server on the internet until this is fixed.
+1. **Recovering a stolen account** ([#989](https://github.com/ColdPhase/flux/issues/989), P2) was incomplete: a client connected from a
+   borrowed browser session kept acting with all the owner's rights after a password reset. It is fixed: a reset, and signing out the other
+   devices, disconnect the person's clients.
+2. **Weak passwords were accepted, and guessing was only slowed per address** ([#990](https://github.com/ColdPhase/flux/issues/990), P2).
+   It is fixed: 12 characters, no common password, and a per-account back-off shared by every API process. A server on the internet is still
+   better served by single sign-on with the identity provider's MFA.
 3. **Prompt injection meets a default of "Do it and tell me".** An agent acts with its owner's rights.
    Text from other people, web pages or GitHub can steer what it does within those rights, and a private run
    can post what it read where others see it. The waiting rules and Undo limit the damage; they do not stop it.

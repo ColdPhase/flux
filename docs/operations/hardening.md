@@ -18,8 +18,14 @@ described in the [security policy](../SECURITY.md).
 - **One origin.** State-changing browser requests are accepted only from `FLUX_PUBLIC_ORIGIN`;
   `Host` and forwarding headers never change it. With `https`, cookies are `Secure` and `__Secure-`
   prefixed.
-- **Sign-in rate limits**, single-use hashed reset tokens, sessions stored server-side and revocable
-  from **Settings → Account**.
+- **Passwords and guessing.** A password needs 12 to 128 characters and must not be a common password
+  (the list ships with the server; nothing is sent anywhere) or built from the person's name or email.
+  Sign-in is limited per client address (an IPv6 address counts as its /64) and the account backs off
+  by itself after five wrong passwords, 30 seconds up to 15 minutes, whatever the address. Both counts
+  live in PostgreSQL, so every API process shares them.
+- **Single-use hashed reset tokens, sessions stored server-side** and revocable from
+  **Settings → Account**. A password reset, and signing out the other devices, also disconnect the
+  person's local AI clients; they connect again with one click on the consent page.
 - **Agents act only with granted permission.** MCP clients sign in through OAuth with per-project
   grants, and a space's owners can turn AI off for the whole space.
 - **Outbound fetches are restricted.** Link cards are off by default and never reach private
@@ -41,6 +47,8 @@ described in the [security policy](../SECURITY.md).
    mailbox, not that they belong to your team. For a private team on the internet, use
    [single sign-on](single-sign-on.md), or create your team's accounts and then set `FLUX_SIGNUP=off`
    (open it briefly to add someone later). A new account sees no space until someone adds it.
+   Password accounts have no multi-factor sign-in. OWASP ASVS Level 2 asks for it, and the way to get
+   it is single sign-on with your identity provider's MFA.
 5. **Protect the settings file.** `docker/.env` (or the release `.env`) is mode `600` and holds the
    database password, `FLUX_AUTH_SECRET`, `FLUX_KEY_PIN_SECRET`, the VAPID private key and any
    provider secrets. Do not commit it, do not export its values in a shell, keep it with backups.
