@@ -18,6 +18,8 @@ export interface DmActionOptions {
   kind: 'dm';
   dmId: string;
   messageId?: string;
+  /** The root a reply belongs to: a reply's link opens its thread, at the reply. */
+  threadRootId?: string | null;
   /** The message text, for Add to map. */
   body: string;
   /** False when the conversation takes no new messages (a 1:1 whose other person left). */
@@ -47,7 +49,8 @@ interface MenuItem { id: string; label: string; icon: IconName; run: () => void;
 
 /** A message's own address: a project's message opens in its thread, a private one in its conversation. */
 const linkOf = (options: MessageActionOptions | DmActionOptions) => `${window.location.origin}${options.kind === 'dm'
-  ? `/dm/${options.dmId}${options.messageId ? `#message-${options.messageId}` : ''}`
+  ? options.messageId && options.threadRootId ? `/dm/${options.dmId}?thread=${options.threadRootId}#thread-message-${options.messageId}`
+    : `/dm/${options.dmId}${options.messageId ? `#message-${options.messageId}` : ''}`
   : `/projects/${options.projectId}/messages/${options.message.id}`}`;
 
 /**
@@ -67,7 +70,8 @@ function useMenuItems(options: MessageActionOptions | DmActionOptions | null, to
   return [
     ...(touch && writable && onReply ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
     ...(touch && writable ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: onCreateWork }] : []),
-    ...(writable && onAddToMap ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
+    // A private message goes on My map, which does not depend on the conversation taking new messages (a 1:1 whose other person left).
+    ...((writable || options.kind === 'dm') && onAddToMap ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
     { id: 'link', label: 'Copy link', icon: 'link' as const, run: copy },
   ];
 }

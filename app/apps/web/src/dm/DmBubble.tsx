@@ -44,7 +44,7 @@ export function DmBubble({ dmId, message, pending, mine, name, continued, groupL
 }) {
   const addToMyMap = useAddToMyMap();
   const actions: DmActionOptions | null = !message ? null : {
-    kind: 'dm', dmId, messageId: message.id, body: message.body, writable,
+    kind: 'dm', dmId, messageId: message.id, threadRootId: message.threadRootId, body: message.body, writable,
     onCreateWork: () => onCreateTask(message, selectedIn(message.id, message.body)),
     onReply,
     onAddToMap: () => void addToMyMap(message.body),
