@@ -245,7 +245,7 @@ export function WorkingAssistant({ compact = false }: { compact?: boolean }) {
   const label = stopping ? 'Stopping your assistant…' : `Your assistant is ${doing(run)}`;
   // Where the person asked (#842): a conversation, a space's main conversation, a direct message or the agent's own chat.
   const destination = run.projectId !== null ? (run.conversationId !== null ? `/projects/${run.projectId}/conversations/${run.conversationId}` : `/projects/${run.projectId}`)
-    : run.dmId !== null ? `/dm/${run.dmId}` : `/agents/${run.agentId}`;
+    : run.dmId !== null ? `/dm/${run.dmId}${run.dmThreadRootId ? `?thread=${run.dmThreadRootId}` : ''}` : `/agents/${run.agentId}`;
   return (
     <>
     <div className={`agentlive${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-ai-surface="working-assistant">

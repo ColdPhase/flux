@@ -3,7 +3,7 @@ import {
   assistantProposalAcceptPath, assistantProposalDismissPath, assistantRunPath, assistantRunRetryPath, assistantRunStopPath,
   conversationAssistantAnswersPath, conversationAssistantRunsPath, projectAssistantProposalsPath,
   agentAssistantRunsPath, assistantChangeActionPath, assistantOperatorRequestPath, assistantRunChangesActionPath, assistantRunChangesPath, assistantRunDismissPath,
-  assistantRunShowPath, conversationAssistantChangesPath, dmAssistantRunsPath, projectAssistantRunsPath,
+  assistantRunShowPath, conversationAssistantChangesPath, dmAssistantRunsPath, dmThreadAssistantRunsPath, projectAssistantRunsPath,
   type AssistantChange, type AssistantChangeDecision, type AssistantChangesDecided, type AssistantRunUndone,
   type AssistantAnswer, type AssistantPlace, type AssistantProposal, type AssistantRun, type InvokeAssistantRunCommand,
   type Page, type PersonalAssistantStatus, type ShowAnswerResult,
@@ -21,9 +21,9 @@ export const tellOperator = (workspaceId: string, client: 'claude_code' | 'codex
 
 /** Where `/ai` is asked (#842): a conversation or a space's main conversation, a direct message, or an agent's private chat. */
 export type AskPlace = AssistantPlace;
-const askPath = (place: AskPlace) => place.kind === 'dm' ? dmAssistantRunsPath(place.dmId) : place.kind === 'chat' ? agentAssistantRunsPath(place.agentId)
+const askPath = (place: AskPlace) => place.kind === 'dm' ? (place.threadRootId ? dmThreadAssistantRunsPath(place.dmId, place.threadRootId) : dmAssistantRunsPath(place.dmId)) : place.kind === 'chat' ? agentAssistantRunsPath(place.agentId)
   : place.conversationId ? conversationAssistantRunsPath(place.conversationId) : projectAssistantRunsPath(place.projectId);
-const placeQuery = (place: AskPlace) => place.kind === 'dm' ? `dmId=${place.dmId}` : place.kind === 'chat' ? `chatAgentId=${place.agentId}`
+const placeQuery = (place: AskPlace) => place.kind === 'dm' ? `dmId=${place.dmId}${place.threadRootId ? `&dmThreadRootId=${place.threadRootId}` : ''}` : place.kind === 'chat' ? `chatAgentId=${place.agentId}`
   : place.conversationId ? `conversationId=${place.conversationId}` : `spaceId=${place.projectId}`;
 export const askAssistant = (place: AskPlace, command: InvokeAssistantRunCommand) => request<AssistantRun>(askPath(place), { method: 'POST', body: command });
 export const getRun = (runId: string, signal?: AbortSignal) => request<AssistantRun>(assistantRunPath(runId), { signal });

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import { createPersonalRunProcessor, postToAgentChat, type Principal } from '@flux/core';
-import type { AssistantAnswer, AssistantRun, Conversation, ConversationRootWindow, Dm, Page, Project, ShowAnswerResult, Workspace } from '@flux/contracts';
+import type { AssistantAnswer, AssistantRun, Conversation, ConversationRootWindow, Dm, DmMessage, DmThread, Page, Project, ShowAnswerResult, Workspace } from '@flux/contracts';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
@@ -12,7 +12,8 @@ import { StreamClient } from './support/stream.js';
 
 // `/ai` in every conversation, answered privately (#842, F-036 AG-4, C-12): a space's conversation and its threads, a direct message and the
 // private chat with an agent. The answer is its asker's alone; Show everyone posts it as the asker's own message, "Ada · via Assistant". What
-// the answer draws on is only what the place's audience can see. Fake compute: no provider pass is claimed.
+// the answer draws on is only what the place's audience can see; a DM's thread has the DM's people as its audience, and the model is given that
+// thread and nothing else (#1016). Fake compute: no provider pass is claimed.
 
 const connections = new FakeConnections();
 const compute = new FakeCompute();
@@ -26,6 +27,10 @@ const TOKENS = {
   thread: `THREAD-${randomUUID()}`,
   otherSpace: `PAYROLL-${randomUUID()}`,
   dm: `BETWEEN-US-${randomUUID()}`,
+  dmThread: `IN-THE-THREAD-${randomUUID()}`,
+  dmReply: `THREAD-REPLY-${randomUUID()}`,
+  otherDmThread: `ANOTHER-THREAD-${randomUUID()}`,
+  otherDm: `HUBERT-AND-ADA-${randomUUID()}`,
   chat: `CHAT-${randomUUID()}`,
 };
 
@@ -33,13 +38,16 @@ async function post<T>(someone: Person, path: string, body: unknown, status = 20
   return expectStatus(await someone.browser.request('POST', path, { body }), status, `POST ${path}`) as T;
 }
 const get = async <T>(someone: Person, path: string): Promise<T> => expectStatus(await someone.browser.request('GET', path), 200, `GET ${path}`) as T;
-const row = async (runId: string) => (await pool.query('SELECT project_id, conversation_id, dm_id, ai_epoch, status, answer_body, shown_at, dismissed_at FROM personal_runs WHERE id = $1', [runId])).rows[0] as {
-  project_id: string | null; conversation_id: string | null; dm_id: string | null; ai_epoch: string | null; status: string; answer_body: string | null; shown_at: Date | null; dismissed_at: Date | null };
+const row = async (runId: string) => (await pool.query('SELECT project_id, conversation_id, dm_id, dm_thread_root_id, ai_epoch, status, answer_body, shown_at, dismissed_at FROM personal_runs WHERE id = $1', [runId])).rows[0] as {
+  project_id: string | null; conversation_id: string | null; dm_id: string | null; dm_thread_root_id: string | null; ai_epoch: string | null; status: string; answer_body: string | null; shown_at: Date | null; dismissed_at: Date | null };
+const reply = (someone: Person, dmId: string, rootId: string, body: string) => post<DmMessage>(someone, `/api/v1/dms/${dmId}/threads/${rootId}/replies`, { body, clientMessageId: randomUUID() });
 
 describe('/ai everywhere, answered privately (#842)', () => {
   let ada: Person; let hubert: Person; let kai: Person; let maurycy: Person; let gus: Person;
   let ws: Workspace; let lamp: Project; let payroll: Project;
-  let thread: Conversation; let dm: Dm;
+  let thread: Conversation; let dm: Dm; let otherDm: Dm;
+  /** A thread of the DM between Hubert and Kai (its root is Kai's), and another thread of the same DM. */
+  let dmRoot: DmMessage; let otherRoot: DmMessage;
   let agentId = '';
   const connection = randomUUID();
 
@@ -59,7 +67,13 @@ describe('/ai everywhere, answered privately (#842)', () => {
     await post(hubert, `/api/v1/conversations/${thread.id}/messages`, { body: `The ToF sensor kept working ${TOKENS.thread}`, clientMessageId: randomUUID() });
     await post(ada, `/api/v1/projects/${payroll.id}/conversations`, { body: `Salaries ${TOKENS.otherSpace}`, clientMessageId: randomUUID() });
     dm = await post<Dm>(hubert, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [kai.id] });
+    dmRoot = await post<DmMessage>(kai, `/api/v1/dms/${dm.id}/messages`, { body: `Thread root ${TOKENS.dmThread}`, clientMessageId: randomUUID() });
+    await reply(hubert, dm.id, dmRoot.id, `Thread reply ${TOKENS.dmReply}`);
+    otherRoot = await post<DmMessage>(kai, `/api/v1/dms/${dm.id}/messages`, { body: `A different thread ${TOKENS.otherDmThread}`, clientMessageId: randomUUID() });
+    await reply(kai, dm.id, otherRoot.id, 'More of the different thread');
     await post(hubert, `/api/v1/dms/${dm.id}/messages`, { body: `Between us: ${TOKENS.dm}`, clientMessageId: randomUUID() });
+    otherDm = await post<Dm>(hubert, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [ada.id] });
+    await post(hubert, `/api/v1/dms/${otherDm.id}/messages`, { body: `Only Ada and I: ${TOKENS.otherDm}`, clientMessageId: randomUUID() });
     agentId = (await post<{ id: string }>(hubert, `/api/v1/workspaces/${ws.id}/agents`, { name: 'Assistant', owner: 'self' })).id;
     connections.connect(hubert.id, connection);
     await runs.enable(human(hubert), { agentId, connection, model: 'claude-sonnet-5' });
@@ -146,7 +160,7 @@ describe('/ai everywhere, answered privately (#842)', () => {
 
   test('in a direct message: both people see one line, only the asker the answer, and the model reads the DM and nothing else', async () => {
     const before = await get<Dm>(kai, `/api/v1/dms/${dm.id}`);
-    const started = await ask({ kind: 'dm', dmId: dm.id });
+    const started = await ask({ kind: 'dm', dmId: dm.id, threadRootId: null });
     assert.deepEqual([started.run.projectId, started.run.conversationId, started.run.dmId], [null, null, dm.id]);
     assert.equal((await row(started.run.id)).ai_epoch, null, 'a DM has no space, so no AI epoch');
     // The line, for both people, at the moment AI is used (not when it answers).
@@ -175,14 +189,118 @@ describe('/ai everywhere, answered privately (#842)', () => {
     assert.equal(hits.rowCount, 0, 'the line "used AI here" is not searchable');
   });
 
-  test('C-30 (#953): an address in an answer a person posted with Show everyone gives nothing to the next run, in a DM, a thread and the main conversation', async () => {
+  test('in a thread of a direct message (#1016): a private answer, one line in the DM, the model reads that thread and nothing else, Show everyone replies in it', async () => {
+    const place = { kind: 'dm', dmId: dm.id, threadRootId: dmRoot.id } as const;
+    const lines = async (someone: Person) => (await get<Dm>(someone, `/api/v1/dms/${dm.id}`)).messages.filter((item) => item.notice === 'ai_used').length;
+    const [hubertLines, kaiLines] = [await lines(hubert), await lines(kai)];
+    // What the model is given is what gives it a web address: the thread's words, not the DM's other messages.
+    const [inThread, inMainLine] = [`https://thread.example/${randomUUID()}`, `https://main-line.example/${randomUUID()}`];
+    await reply(hubert, dm.id, dmRoot.id, `Please read ${inThread}`);
+    await post(hubert, `/api/v1/dms/${dm.id}/messages`, { body: `Please read ${inMainLine}`, clientMessageId: randomUUID() });
+    const started = await ask(place);
+    const given = (await pool.query<{ given: string[] }>('SELECT given FROM personal_runs WHERE id = $1', [started.run.id])).rows[0]!.given.join(' ');
+    assert.ok(given.includes(inThread) && !given.includes(inMainLine), 'only the thread\'s own words give an address');
+    assert.deepEqual([started.run.projectId, started.run.conversationId, started.run.dmId, started.run.dmThreadRootId], [null, null, dm.id, dmRoot.id]);
+    assert.deepEqual(Object.values(await row(started.run.id)).slice(0, 4), [null, null, dm.id, dmRoot.id], 'the run is stored with its thread');
+    assert.equal((await row(started.run.id)).ai_epoch, null, 'a DM thread has no space, so no AI epoch');
+
+    // Both people see one line, in the DM's conversation where they look; it is not a reply of the thread.
+    for (const [someone, before] of [[hubert, hubertLines], [kai, kaiLines]] as const) {
+      const view = await get<Dm>(someone, `/api/v1/dms/${dm.id}`);
+      const line = view.messages.at(-1)!;
+      assert.deepEqual([line.notice, line.body, line.authorId, line.threadRootId], ['ai_used', 'Claude', hubert.id, null], `${someone.email} sees the line`);
+      assert.equal(await lines(someone), before + 1);
+      assert.equal(((await get<DmThread>(someone, `/api/v1/dms/${dm.id}/threads/${dmRoot.id}`)).replies).some((item) => item.notice), false, 'the thread holds no line');
+    }
+    await finish(started.run.id);
+    const input = sentToTheModel();
+    // The model is given this thread: its root and its replies. Not the DM's other messages, another thread, another DM, nor any space.
+    for (const given of [TOKENS.dmThread, TOKENS.dmReply]) assert.match(input, new RegExp(given));
+    for (const hidden of [TOKENS.dm, TOKENS.otherDmThread, TOKENS.otherDm, TOKENS.space, TOKENS.thread, TOKENS.otherSpace]) assert.equal(input.includes(hidden), false, `the model was given ${hidden}`);
+    assert.equal(compute.dispatched.at(-1)!.tools?.length ?? 0, 0, 'no tool reads anything of the owner\'s other places');
+    assert.match(compute.dispatched.at(-1)!.system, /Only your owner sees your answer/);
+
+    // The answer is the asker's: Kai cannot read, show or dismiss it, and finds no run in this place; the run is listed in its thread and not in the DM's main line.
+    for (const [method, path] of [['GET', ''], ['POST', '/show'], ['POST', '/dismiss']] as const)
+      assert.equal((await kai.browser.request(method, `/api/v1/assistant-runs/${started.run.id}${path}`)).status, 404, path);
+    assert.equal((await get<Page<AssistantRun>>(kai, `/api/v1/assistant-runs?dmId=${dm.id}&dmThreadRootId=${dmRoot.id}`)).items.length, 0);
+    assert.deepEqual((await get<Page<AssistantRun>>(hubert, `/api/v1/assistant-runs?dmId=${dm.id}&dmThreadRootId=${dmRoot.id}`)).items.map((item) => item.id), [started.run.id]);
+    assert.equal((await get<Page<AssistantRun>>(hubert, `/api/v1/assistant-runs?dmId=${dm.id}&dmThreadRootId=${otherRoot.id}`)).items.length, 0, 'another thread has not got it');
+    assert.equal((await get<Page<AssistantRun>>(hubert, `/api/v1/assistant-runs?dmId=${dm.id}`)).items.some((item) => item.id === started.run.id), false, 'the DM\'s main line has not got it');
+    assert.equal((await hubert.browser.request('GET', `/api/v1/assistant-runs?dmThreadRootId=${dmRoot.id}`)).status, 400, 'a thread belongs to a DM');
+
+    // Show everyone: a reply in this thread, "via Assistant", once; the DM's conversation gains no message and the root counts one more reply.
+    const mainBefore = (await get<Dm>(kai, `/api/v1/dms/${dm.id}`)).messages.map((item) => item.id);
+    const repliesBefore = (await get<DmThread>(kai, `/api/v1/dms/${dm.id}/threads/${dmRoot.id}`)).replies.length;
+    const shown = expectStatus(await hubert.browser.request('POST', `/api/v1/assistant-runs/${started.run.id}/show`), 200) as ShowAnswerResult;
+    const again = expectStatus(await hubert.browser.request('POST', `/api/v1/assistant-runs/${started.run.id}/show`), 200) as ShowAnswerResult;
+    assert.equal(again.messageId, shown.messageId);
+    const opened = await get<DmThread>(kai, `/api/v1/dms/${dm.id}/threads/${dmRoot.id}`);
+    const message = opened.replies.find((item) => item.id === shown.messageId)!;
+    assert.deepEqual([message.authorId, message.via, message.threadRootId], [hubert.id, 'Assistant', dmRoot.id]);
+    assert.equal(opened.replies.length, repliesBefore + 1);
+    assert.equal(opened.root.replyCount, repliesBefore + 1);
+    assert.deepEqual((await get<Dm>(kai, `/api/v1/dms/${dm.id}`)).messages.map((item) => item.id), mainBefore, 'the DM\'s main line gained nothing');
+    assert.equal((await get<DmThread>(kai, `/api/v1/dms/${dm.id}/threads/${otherRoot.id}`)).replies.some((item) => item.id === shown.messageId), false);
+    assert.equal((await pool.query(`SELECT 1 FROM search_documents WHERE doc_key = $1`, [`dm_message:${started.run.id}`])).rowCount, 0, 'the line is not searchable');
+
+    // The run is the thread's, whoever retries it: a retry stays in the thread and a Dismiss is final there too.
+    const retried = await runs.retry(human(hubert), started.run.id, { clientRunId: randomUUID() });
+    assert.equal(retried.run.dmThreadRootId, dmRoot.id);
+    await finish(retried.run.id);
+    assert.equal((await row(retried.run.id)).dm_thread_root_id, dmRoot.id);
+    expectStatus(await hubert.browser.request('POST', `/api/v1/assistant-runs/${retried.run.id}/dismiss`), 200);
+    assert.equal((await hubert.browser.request('POST', `/api/v1/assistant-runs/${retried.run.id}/show`)).status, 409);
+    // Another place with the same client id is another run.
+    const clientRunId = randomUUID();
+    await runs.invoke(human(hubert), place, { clientRunId, kind: 'ask', prompt: 'Hello' });
+    await assert.rejects(runs.invoke(human(hubert), { kind: 'dm', dmId: dm.id, threadRootId: otherRoot.id }, { clientRunId, kind: 'ask', prompt: 'Hello' }), { code: 'IDEMPOTENCY_CONFLICT' });
+    await assert.rejects(runs.invoke(human(hubert), { kind: 'dm', dmId: dm.id, threadRootId: null }, { clientRunId, kind: 'ask', prompt: 'Hello' }), { code: 'IDEMPOTENCY_CONFLICT' });
+  });
+
+  test('a DM\'s thread has the DM\'s people as its audience: outsiders, other DMs\' messages, replies and lines cannot be a thread; a guest has no AI', async () => {
+    const via = (someone: Person, dmId: string, rootId: string) => someone.browser.request('POST', `/api/v1/dms/${dmId}/threads/${rootId}/assistant-runs`, { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'x' } });
+    // A person outside the DM, and a person in the DM, are told the same about a thread they cannot ask in.
+    assert.equal((await via(maurycy, dm.id, dmRoot.id)).status, 404, 'someone outside the DM');
+    assert.equal((await via(gus, dm.id, dmRoot.id)).status, 404, 'a guest outside the DM');
+    // What is no root of this DM is no thread: another DM's message, a reply, the line "used AI here", an id that is no message.
+    const reply1 = (await get<DmThread>(hubert, `/api/v1/dms/${dm.id}/threads/${dmRoot.id}`)).replies.find((item) => item.body.includes(TOKENS.dmReply))!;
+    const theLine = (await get<Dm>(hubert, `/api/v1/dms/${dm.id}`)).messages.find((item) => item.notice === 'ai_used')!;
+    const elsewhere = (await get<Dm>(hubert, `/api/v1/dms/${otherDm.id}`)).messages[0]!;
+    for (const [label, rootId] of [['another DM\'s message', elsewhere.id], ['a reply', reply1.id], ['the line', theLine.id], ['nothing', randomUUID()], ['not an id', 'x']] as const) {
+      const refused = await via(hubert, dm.id, rootId);
+      assert.deepEqual([refused.status, (refused.json as { code: string }).code], [404, 'DM_MESSAGE_NOT_FOUND'], label);
+    }
+    assert.equal((await via(hubert, otherDm.id, dmRoot.id)).status, 404, 'a root of this DM is no thread of another');
+    // A guest has no AI, in a thread of a DM too (AG-2).
+    await pool.query(`UPDATE workspace_members SET role = 'guest' WHERE workspace_id = $1 AND user_id = $2`, [ws.id, hubert.id]);
+    try {
+      await assert.rejects(ask({ kind: 'dm', dmId: dm.id, threadRootId: dmRoot.id }), { code: 'PERSONAL_RUN_NO_AGENT' });
+    } finally {
+      await pool.query(`UPDATE workspace_members SET role = 'member' WHERE workspace_id = $1 AND user_id = $2`, [ws.id, hubert.id]);
+    }
+    // Taken out of the DM, the asker can no longer ask in its thread, nor post what they were answered.
+    const started = await ask({ kind: 'dm', dmId: dm.id, threadRootId: dmRoot.id });
+    await finish(started.run.id);
+    expectStatus(await hubert.browser.request('POST', `/api/v1/dms/${dm.id}/leave`), 204, 'leave');
+    try {
+      assert.equal((await hubert.browser.request('POST', `/api/v1/assistant-runs/${started.run.id}/show`)).status, 404);
+      assert.equal((await via(hubert, dm.id, dmRoot.id)).status, 404);
+      assert.equal((await row(started.run.id)).shown_at, null);
+    } finally {
+      await post(hubert, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [kai.id] }, 200);
+    }
+  });
+
+  test('C-30 (#953): an address in an answer a person posted with Show everyone gives nothing to the next run, in a DM, a DM thread, a thread and the main conversation', async () => {
     const written = `https://written.example/${randomUUID()}`;
     const shown = `https://shown.example/${randomUUID()}`;
     const given = async (runId: string) => (await pool.query<{ given: string[] }>('SELECT given FROM personal_runs WHERE id = $1', [runId])).rows[0]!.given.join(' ');
     compute.respond = async () => ({ kind: 'completed', text: `Fact: read ${shown}`, stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 40 } });
     try {
       for (const [place, say] of [
-        [{ kind: 'dm', dmId: dm.id }, (words: string) => post(hubert, `/api/v1/dms/${dm.id}/messages`, { body: words, clientMessageId: randomUUID() })],
+        [{ kind: 'dm', dmId: dm.id, threadRootId: null }, (words: string) => post(hubert, `/api/v1/dms/${dm.id}/messages`, { body: words, clientMessageId: randomUUID() })],
+        [{ kind: 'dm', dmId: dm.id, threadRootId: dmRoot.id }, (words: string) => reply(hubert, dm.id, dmRoot.id, words)],
         [{ kind: 'space', projectId: lamp.id, conversationId: thread.id }, (words: string) => post(hubert, `/api/v1/conversations/${thread.id}/messages`, { body: words, clientMessageId: randomUUID() })],
         [{ kind: 'space', projectId: lamp.id, conversationId: null }, (words: string) => post(hubert, `/api/v1/conversations/${thread.id}/messages`, { body: words, clientMessageId: randomUUID() })],
       ] as const) {
@@ -231,7 +349,7 @@ describe('/ai everywhere, answered privately (#842)', () => {
 
   test('a guest has no AI, someone outside the space cannot ask in it, and losing the place stops Show everyone', async () => {
     // A guest has no agent to ask; an agent a person had before becoming a guest is refused (AG-2).
-    await assert.rejects(runs.invoke(human(gus), { kind: 'dm', dmId: dm.id }, { clientRunId: randomUUID(), kind: 'ask', prompt: 'x' }), { code: 'DM_NOT_FOUND' });
+    await assert.rejects(runs.invoke(human(gus), { kind: 'dm', dmId: dm.id, threadRootId: null }, { clientRunId: randomUUID(), kind: 'ask', prompt: 'x' }), { code: 'DM_NOT_FOUND' });
     assert.equal((await gus.browser.request('POST', `/api/v1/conversations/${thread.id}/assistant-runs`, { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'x' } })).status, 404);
     assert.equal((await maurycy.browser.request('POST', `/api/v1/conversations/${thread.id}/assistant-runs`, { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'x' } })).status, 404);
 

@@ -369,6 +369,7 @@ A run belongs to a **place** (`projectId`, `conversationId` and `dmId` on `perso
 | A conversation, thread or task thread of a space | `project_id`, `conversation_id` | the people who read the space | the conversation and the space's open work | the space's, as before |
 | A space's main conversation | `project_id` | the same | the latest messages of the space's conversations and its open work | the space's |
 | A direct message | `dm_id` | the DM's participants | the DM's latest messages, given in the request | `flux_read_web` only |
+| A thread of a direct message (#1016) | `dm_id`, `dm_thread_root_id` | the DM's participants | the thread's root and replies, given in the request | `flux_read_web` only |
 | An agent's private chat | none | its owner | the chat's earlier turns, and what the owner can see through the tools | every read tool of the owner's reach, no change tool |
 
 Only a run in a space has an AI epoch and is held to the space's switch (`place.ts`); a run in a DM is held to its owner still taking part
@@ -376,15 +377,17 @@ in it; a chat's tools are gated by each space on every call. `flux_place` in the
 `runReaches` is the one test the MCP route uses: a run in a space reaches that space, a run in a DM no space, a chat every space of its owner.
 
 **Routes.** `POST` `/api/v1/conversations/:id/assistant-runs`, `/api/v1/projects/:id/assistant-runs` (the main conversation),
-`/api/v1/dms/:id/assistant-runs` and `/api/v1/my-agents/:id/assistant-runs` (a chat) start a run through the one `start`. `GET
-/api/v1/assistant-runs` lists the caller's own runs, narrowed by `conversationId`, `spaceId`, `dmId` or `chatAgentId`.
+`/api/v1/dms/:id/assistant-runs`, `/api/v1/dms/:id/threads/:rootId/assistant-runs` (a DM's thread, #1016) and `/api/v1/my-agents/:id/assistant-runs`
+(a chat) start a run through the one `start`. `GET /api/v1/assistant-runs` lists the caller's own runs, narrowed by `conversationId`, `spaceId`,
+`dmId` (the DM's main line; with `dmThreadRootId`, that thread) or `chatAgentId`.
 
 **The answer is its asker's alone.** `isPrivateAnswer(run)` (kinds `ask`, `summarize`, `map_thought`) means: no entry in
 `conversation-assistant-answers`, no `project.assistant_answer_committed.v1`, no working event, no proposal. The asker sees it as a card
 (`PrivateAnswer`) with **Dismiss** (`POST /assistant-runs/:id/dismiss`, final) and **Show everyone** (`POST /assistant-runs/:id/show`): the
 core plans it (`planShow`: their own, committed, not dismissed, still allowed to write there, and AI still on in the space), the adapter posts
-it as their own message with `via` set to the agent's name, under the run's id, and `markShown` records it. A DM also gets the line "Ada used
-AI here (Claude)" (`dm_messages.kind = 'ai_used'`) when the run is made.
+it as their own message with `via` set to the agent's name, under the run's id, and `markShown` records it (a reply in the thread for a run in a
+DM thread). A DM also gets the line "Ada used AI here (Claude)" (`dm_messages.kind = 'ai_used'`, in the DM's main line, also for a thread) when the
+run is made.
 
 **An agent's own lines in its chat (#919 builds on this).** The owner's words and the agent's answers to them are runs; what the agent says on its
 own (a report: "Done: #4 … · 3 changes · Undo", "Stopped by Maja") is a line in `agent_chat_messages`, each about one run of that agent. There is one

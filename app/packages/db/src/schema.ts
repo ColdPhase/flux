@@ -1601,6 +1601,8 @@ export const personalRuns = pgTable('personal_runs', {
   projectId: uuid('project_id'),
   conversationId: uuid('conversation_id'),
   dmId: uuid('dm_id'),
+  /** 0032 (#1016): the root message of the DM thread the run belongs to; null for the DM's main line. */
+  dmThreadRootId: uuid('dm_thread_root_id'),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   agentId: uuid('agent_id').notNull(),
   connectionId: uuid('connection_id'),

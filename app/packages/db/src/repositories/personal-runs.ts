@@ -23,7 +23,7 @@ type SourceRef =
   | { type: 'message'; id: string; revision: number }
   | { type: 'work'; id: string; revision: number }
   | { type: 'thought'; id: string; sketchId: string; revision: number };
-type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'dmId' | 'ownerUserId' | 'agentId' | 'connectionId'
+type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'dmId' | 'dmThreadRootId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
   | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { workId?: string | null; askedByRunId?: string | null; exchangeTurn?: number; engine?: RunRow['engine']; silent?: boolean; authority?: RunRow['authority']; backgroundLabel?: string | null;
     resumeAt?: Date | null; endReason?: RunRow['endReason']; planLimitResetsAt?: Date | null };
@@ -216,7 +216,7 @@ export function personalRunRows(db: DbExecutor) {
     },
 
     webReads: (runId: string) => personalRunWebReadRows(db).forRun(runId),
-    personTexts: (place: { projectId: string | null; conversationId: string | null; dmId: string | null }, workId: string | null) => personalRunWebReadRows(db).personTexts(place, workId),
+    personTexts: (place: { projectId: string | null; conversationId: string | null; dmId: string | null; dmThreadRootId: string | null }, workId: string | null) => personalRunWebReadRows(db).personTexts(place, workId),
 
     // A run in a direct message or a chat reads no task graph and holds no lock (#842); one in a space holds its graph after the owner's lock (#921).
     prepareTaskUse: async (projectId: string | null, conversationId: string | null, sources: readonly { type: string; id: string }[] = []) =>
@@ -281,12 +281,16 @@ export function personalRunRows(db: DbExecutor) {
       return rows.map(toRun);
     },
 
-    /** The owner's runs, newest first; `place` narrows them to one (#842): a conversation, a space's main conversation, a DM or one agent's chat. */
-    listOwnRuns: (ownerUserId: string, window: Window, place?: { conversationId: string } | { spaceId: string } | { dmId: string } | { chatAgentId: string }) =>
+    /**
+     * The owner's runs, newest first; `place` narrows them to one (#842): a conversation, a space's main conversation, a DM's main line, one of
+     * its threads (#1016) or one agent's chat.
+     */
+    listOwnRuns: (ownerUserId: string, window: Window, place?: { conversationId: string } | { spaceId: string } | { dmId: string; dmThreadRootId: string | null } | { chatAgentId: string }) =>
       pagedRuns(and(eq(r.ownerUserId, ownerUserId), !place ? undefined
         : 'conversationId' in place ? eq(r.conversationId, place.conversationId)
           : 'spaceId' in place ? and(eq(r.projectId, place.spaceId), isNull(r.conversationId))
-            : 'dmId' in place ? eq(r.dmId, place.dmId) : and(eq(r.agentId, place.chatAgentId), isNull(r.projectId), isNull(r.dmId)))!, 'newest', window),
+            : 'dmId' in place ? and(eq(r.dmId, place.dmId), place.dmThreadRootId === null ? isNull(r.dmThreadRootId) : eq(r.dmThreadRootId, place.dmThreadRootId))
+              : and(eq(r.agentId, place.chatAgentId), isNull(r.projectId), isNull(r.dmId)))!, 'newest', window),
 
     // A schedule that posts never posts "Done: nothing to change" (AST-7.11); a silent background run is never listed. The report of a
     // run on a task is posted as the agent's message in the task's discussion (#856), so it is not listed a second time here.
@@ -340,12 +344,16 @@ export function personalRunRows(db: DbExecutor) {
         authorName: authorId !== null ? humanName ?? 'Former member' : agentName ?? 'Agent' }));
     },
 
-    /** The latest `limit` messages of a direct message, oldest first (#842). The line "used AI here" is not one. */
-    async dmMessages(dmId: string, limit: number) {
+    /**
+     * The latest `limit` messages of a direct message, oldest first (#842). The line "used AI here" is not one. With `threadRootId` (#1016)
+     * only that thread: its root and its replies.
+     */
+    async dmMessages(dmId: string, limit: number, threadRootId: string | null = null) {
       const m = schema.dmMessages;
       const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, authorId: m.authorId, authorName: schema.authUsers.name })
         .from(m).innerJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
-        .where(and(eq(m.dmId, dmId), eq(m.kind, 'text'))).orderBy(desc(m.sequence)).limit(limit);
+        .where(and(eq(m.dmId, dmId), eq(m.kind, 'text'), threadRootId === null ? undefined : or(eq(m.id, threadRootId), eq(m.threadRootId, threadRootId))))
+        .orderBy(desc(m.sequence)).limit(limit);
       return rows.reverse().map(({ authorId, authorName, ...row }) => ({ ...row, author: { kind: 'human' as const, id: authorId }, authorName }));
     },
 
@@ -355,6 +363,13 @@ export function personalRunRows(db: DbExecutor) {
         .where(and(eq(r.agentId, agentId), isNull(r.projectId), isNull(r.dmId), eq(r.kind, 'ask'), isNotNull(r.committedAt), sql`${r.id} <> ${beforeRunId}`,
           sql`${r.createdAt} < (SELECT created_at FROM personal_runs WHERE id = ${beforeRunId})`)).orderBy(desc(r.createdAt), desc(r.id)).limit(limit);
       return rows.reverse().map((row) => ({ prompt: row.prompt, answer: row.answer ?? '' }));
+    },
+
+    /** Whether a message is a root of this DM, not a reply and not the line "used AI here": the only thing a thread hangs on (#1016). */
+    async isDmThreadRoot(dmId: string, messageId: string) {
+      const m = schema.dmMessages;
+      const [row] = await db.select({ id: m.id }).from(m).where(and(eq(m.id, messageId), eq(m.dmId, dmId), eq(m.kind, 'text'), isNull(m.threadRootId)));
+      return !!row;
     },
 
     /** The line both people of a DM see when AI is used in it. One per run: it takes the run's id as its own. It is no message to read. */

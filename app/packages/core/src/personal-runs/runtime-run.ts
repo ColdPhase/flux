@@ -190,7 +190,7 @@ async function pauseUntilReset(ports: PersonalRunPorts, run: RunRecord, resetsAt
   }
   if (depth >= MAX_AUTO_RESUMES) return;
   const resumed = await ports.runs.insertRun({
-    id: randomUUID(), workspaceId: run.workspaceId, projectId: run.projectId, conversationId: run.conversationId, dmId: run.dmId, ownerUserId: run.ownerUserId,
+    id: randomUUID(), workspaceId: run.workspaceId, projectId: run.projectId, conversationId: run.conversationId, dmId: run.dmId, dmThreadRootId: run.dmThreadRootId, ownerUserId: run.ownerUserId,
     agentId: run.agentId, connectionId: run.connectionId, clientRunId: randomUUID(), requestFingerprint: run.requestFingerprint, kind: run.kind,
     prompt: run.prompt, given: run.given, targetSketchId: run.targetSketchId, targetThoughtId: run.targetThoughtId, continuesRunId: run.continuesRunId, retryOfRunId: run.id,
     workId: run.workId, askedByRunId: run.askedByRunId, exchangeTurn: run.exchangeTurn, reservedMicros: 0, provider: run.provider, model: run.model, aiEpoch: run.aiEpoch, engine: 'runtime',
@@ -204,7 +204,7 @@ async function alreadyRead(ports: PersonalRunPorts, run: RunRecord): Promise<str
   if (!isPrivateAnswer(run)) return [];
   if (run.dmId !== null) {
     await ports.access.requireDm({ kind: 'human', id: run.ownerUserId }, run.dmId);
-    return (await ports.runs.dmMessages(run.dmId, 40)).map((message) => `Message ${message.sequence} by ${message.authorName}: ${message.body}`);
+    return (await ports.runs.dmMessages(run.dmId, 40, run.dmThreadRootId)).map((message) => `Message ${message.sequence} by ${message.authorName}: ${message.body}`);
   }
   if (run.projectId === null) return (await ports.runs.chatTurns(run.agentId, run.id, 6)).flatMap((turn) => [`Your owner: ${turn.prompt}`, `You: ${turn.answer}`]);
   return [];

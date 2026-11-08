@@ -237,7 +237,7 @@ class PrivateAiJourney(unittest.TestCase):
         kai = self.dm("kai")
         jo.locator("#dm-composer").fill("/ai what did we agree?")
         expect(jo.locator(".composer__audience[data-asking]")).to_contain_text("Only you see the answer")
-        expect(jo.locator(".composer__audience[data-asking]")).to_contain_text("Kai see only a line that AI was used here")
+        expect(jo.locator(".composer__audience[data-asking]")).to_contain_text("Kai sees only a line that AI was used here")
         jo.get_by_role("button", name="Ask your agent").click()
         expect(jo.locator(".dm-notice__line")).to_have_text("You used AI here (Claude)", timeout=15000)
         expect(kai.locator(".dm-notice__line")).to_have_text("Jo Weber used AI here (Claude)", timeout=15000)
@@ -261,6 +261,61 @@ class PrivateAiJourney(unittest.TestCase):
         kai.goto("/dm")
         expect(kai.get_by_text("you two agreed to meet on Thursday").first).to_be_visible()
         expect(kai.get_by_text("used AI here")).to_have_count(0)
+
+    # ---------------------------------------------------------------- a thread of a direct message
+
+    def test_04b_in_a_direct_messages_thread_the_card_is_in_the_thread_and_show_everyone_replies_there(self) -> None:
+        mock("/__script", {"reset": True, "text": "Fact: the thread settled on Thursday for the planting [S1]."})
+        root_words, reply_words = "Planting day: Thursday or Friday?", "Thursday, the soil is ready."
+        kai_api = self.page("kai")
+        root = self.api(kai_api, "POST", f"/api/v1/dms/{self.ids['dm']}/messages", {"body": root_words, "clientMessageId": str(uuid.uuid4())}, status=201)
+        self.api(kai_api, "POST", f"/api/v1/dms/{self.ids['dm']}/threads/{root['id']}/replies", {"body": reply_words, "clientMessageId": str(uuid.uuid4())}, status=201)
+
+        def open_thread(who: str) -> Page:
+            page = self.page(who)
+            page.goto(f"/dm/{self.ids['dm']}?thread={root['id']}")
+            expect(page.locator("#dm-thread-composer")).to_be_visible()
+            return page
+
+        jo, kai = open_thread("jo"), open_thread("kai")
+        lines_before = kai.locator(".dm-notice__line").count()
+        jo.locator("#dm-thread-composer").fill("/ai what did we settle?")
+        audience = jo.locator(".dm-thread__composer .composer__audience[data-asking]")
+        expect(audience).to_contain_text("Only you see the answer")
+        expect(audience).to_contain_text("Kai sees only a line that AI was used here")
+        jo.locator(".dm-thread__composer").get_by_role("button", name="Ask your agent").click()
+        # The card is in the thread's panel and nowhere else; the others see only the line, in the conversation.
+        card = jo.locator(".dm-thread .assistant-private")
+        expect(card).to_be_visible(timeout=20000)
+        expect(card).to_contain_text("Only you can see this")
+        expect(card).to_contain_text("settled on Thursday")
+        expect(card).to_contain_text("Kai doesn’t see this. Show everyone posts it as “Jo · via Assistant”.")
+        expect(jo.locator("#dm-thread-composer")).to_have_value("")
+        expect(jo.locator(".dm__feed .assistant-private")).to_have_count(0)
+        expect(kai.locator(".assistant-private")).to_have_count(0)
+        expect(kai.locator(".assistant-working")).to_have_count(0)
+        expect(kai.locator(".dm-notice__line")).to_have_count(lines_before + 1, timeout=15000)
+        expect(kai.locator(".dm-notice__line").last).to_have_text("Jo Weber used AI here (Claude)")
+        expect(jo.locator(".dm-thread .dm-notice__line")).to_have_count(0)
+        # The model was given this thread, not the conversation's other messages and not the space.
+        given = json.dumps([item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"][-1]["body"])
+        self.assertIn(root_words, given)
+        self.assertIn(reply_words, given)
+        self.assertNotIn(DM_TOKEN, given, "the thread is all the model was given")
+        self.assertNotIn(OPENING, given)
+        shot(jo, "private-ai-1440-dm-thread")
+        # A reload keeps the card for its asker.
+        jo.reload()
+        expect(jo.locator(".dm-thread .assistant-private")).to_be_visible(timeout=15000)
+        # Show everyone: Jo's reply in the thread, "via Assistant", not a message of the conversation.
+        jo.locator(".dm-thread .assistant-private").get_by_role("button", name="Show everyone").click()
+        expect(jo.locator(".dm-thread .assistant-private")).to_have_count(0)
+        posted = kai.locator(".dm-thread .dm-msg").filter(has_text="settled on Thursday for the planting")
+        expect(posted).to_be_visible(timeout=15000)
+        expect(posted).to_contain_text("via Assistant")
+        expect(kai.locator(".dm__feed").get_by_text("settled on Thursday for the planting")).to_have_count(0)
+        thread = self.api(kai, "GET", f"/api/v1/dms/{self.ids['dm']}/threads/{root['id']}", status=200)
+        self.assertEqual([(message["authorId"], message.get("via")) for message in thread["replies"] if message.get("via")], [(JO["id"], "Assistant")])
 
     # ---------------------------------------------------------------- the task's thread
 

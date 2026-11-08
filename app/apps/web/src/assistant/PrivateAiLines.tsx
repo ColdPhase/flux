@@ -62,7 +62,7 @@ export function PrivateAnswer({ run, assistant, meId, meName, others, composerId
       <AnswerBody answer={answer} lookups={lookups} />
       {answer.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
       {changes.length ? <WaitingChanges changes={changes} onChanged={refresh} meId={meId} /> : null}
-      {answer.sources.length ? <p className="assistant-private__source">{sourceSummary(answer.sources.length, run.dmId ? 'this conversation' : 'this space')}</p> : null}
+      {answer.sources.length ? <p className="assistant-private__source">{sourceSummary(answer.sources.length, run.dmThreadRootId ? 'this thread' : run.dmId ? 'this conversation' : 'this space')}</p> : null}
       <div className="assistant-private__foot">
         <span className="assistant-private__note">
           {others.length ? `${othersWords(others)} ${others.length === 1 ? 'doesn’t' : 'don’t'} see this. ` : ''}Show everyone posts it as “{firstName(meName)} · via {name}”.
