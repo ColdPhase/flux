@@ -1,10 +1,11 @@
-import type { AddMemberCommand, ChangeRoleCommand, RemovedPerson, WorkspaceMember, WorkspaceRole } from '@flux/contracts';
+import type { AddMemberCommand, ChangeRoleCommand, RemovedPerson, WorkspaceMember } from '@flux/contracts';
 import { recordEvent } from '../events.js';
-import type { Database, Executor, Principal } from '../types.js';
+import type { Database, Principal } from '../types.js';
 import { eventPorts, requireRoleAuthority } from './common.js';
 import { ConflictError, InvalidInputError, NotFoundError } from './errors.js';
-import { enforce, evaluateWorkspace, isManager, isUuid } from './policy.js';
-import type { AccessPorts } from './repositories.js';
+import { dropUnlockPassword, endPlacesInEncryptedSpaces, lockKeysForManagerChange, type MemberPorts } from './encrypted-places.js';
+import { requireSpacePerson } from './space-person.js';
+import { enforce, evaluateWorkspace, isManager } from './policy.js';
 import { oneOf, ROLES } from './validation.js';
 
 // Workspace membership (issues #46, #91): list, add, change a role, remove or leave. The workspace row is taken
@@ -12,7 +13,6 @@ import { oneOf, ROLES } from './validation.js';
 // last write. `addMember` starts with the workspace row. `changeRole` and `removeMember` take the AI policy row
 // before it (F-029) and, for an owner or admin of a sealed workspace losing the role, the key row before that (F-030).
 
-type MemberPorts = Pick<AccessPorts, 'workspaces' | 'access' | 'events' | 'encryption'>;
 
 export async function listMembers(principal: Principal, workspaceId: string, db: Database, ports: MemberPorts): Promise<WorkspaceMember[]> {
   const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.read_members', workspaceId, ports.access(db)), 'workspace');
@@ -43,6 +43,9 @@ export async function restoreMember(principal: Principal, workspaceId: string, u
     enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, ports.access(tx), { lock: true }), 'workspace');
     const person = (await workspaces.removedPeople(workspaceId)).find((entry) => entry.userId === userId);
     if (!person) throw new NotFoundError('Person', 'REMOVED_PERSON_NOT_FOUND');
+    // An encrypted space brings back only someone who is in the company now and not its guest, as adding does (review of #976, round 2).
+    const company = await workspaces.companyOf(workspaceId);
+    if (company) requireSpacePerson(await ports.encryption(tx).memberRole(company, userId, { lock: true }));
     const member = await workspaces.insertMember({ workspaceId, userId, role: 'member', createdBy: principal.id });
     if (!member) throw new ConflictError('Account is already a member', 'ALREADY_MEMBER');
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.member_added.v1', workspaceId, { userId, role: 'member' });
@@ -66,37 +69,18 @@ export async function addMember(principal: Principal, workspaceId: string, comma
     // With a sign-on provider, an address nobody has proved is not a way to find a person: the answer is the one
     // for no account at all, so a squatter on an employee's address is never added in their place (#313).
     if (!user || options.verifiedEmailOnly && typeof command.userId !== 'string' && !user.emailVerified) throw new NotFoundError('Account', 'ACCOUNT_NOT_FOUND');
+    // An encrypted space takes only the company's people, and no guest (C-24): its admins hold its keys, and a guest cannot start spaces.
+    // The company's own members row is held while it is read, so leaving the company waits for this.
+    const company = await workspaces.companyOf(workspaceId);
+    if (company) {
+      requireSpacePerson(await ports.encryption(tx).memberRole(company, user.id, { lock: true }));
+      if (role === 'guest') throw new ConflictError('Guests cannot be in an encrypted space', 'ENCRYPTED_SPACE_NO_GUESTS');
+    }
     const member = await workspaces.insertMember({ workspaceId, userId: user.id, role, createdBy: principal.id });
     if (!member) throw new ConflictError('Account is already a member', 'ALREADY_MEMBER');
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.member_added.v1', workspaceId, { userId: user.id, role });
     return { userId: user.id, email: user.email, name: user.name, role, createdAt: member.createdAt.toISOString() };
   });
-}
-
-/**
- * F-030 (#655): an owner or admin of a sealed workspace losing the role (demoted, removed or leaving) takes
- * `workspace_keys` `FOR UPDATE` first, before the F-029 order. The target's role is read without a lock to decide.
- */
-async function lockKeysForManagerChange(tx: Executor, ports: Pick<AccessPorts, 'encryption'>, workspaceId: string, userId: string, role: WorkspaceRole | null): Promise<boolean> {
-  if (!isUuid(workspaceId)) return false;
-  const rows = ports.encryption(tx);
-  if (!await rows.sealed(workspaceId)) return false;
-  const current = await rows.memberRole(workspaceId, userId);
-  if (!isManager(current) || (role !== null && isManager(role))) return false;
-  await rows.keys(workspaceId, { lock: 'update' });
-  return true;
-}
-
-/** Deletes the person's unlock password (its holder; the trigger leaves a rotation pending); the last one is refused. */
-async function dropUnlockPassword(tx: Executor, ports: Pick<AccessPorts, 'encryption'>, workspaceId: string, userId: string, keysLocked: boolean): Promise<void> {
-  const rows = ports.encryption(tx);
-  if (!keysLocked) {
-    if (!await rows.sealed(workspaceId)) return;
-    await rows.keys(workspaceId, { lock: 'update' }); // the role changed since the unlocked read
-  }
-  if (await rows.dropUnlockPassword(workspaceId, userId) === 'last') {
-    throw new ConflictError('This space needs at least one unlock password. Ask another owner or admin to set theirs first.', 'LAST_UNLOCK_PASSWORD');
-  }
 }
 
 export async function changeRole(principal: Principal, workspaceId: string, userId: string, command: ChangeRoleCommand, db: Database, ports: MemberPorts): Promise<WorkspaceMember> {
@@ -110,10 +94,16 @@ export async function changeRole(principal: Principal, workspaceId: string, user
     const target = await workspaces.lockMember(workspaceId, userId);
     if (!target) throw new NotFoundError('Member', 'MEMBER_NOT_FOUND');
     requireRoleAuthority(actor, target.role, role);
+    // Nobody in an encrypted space is a guest (C-24).
+    if (role === 'guest' && await workspaces.companyOf(workspaceId)) throw new ConflictError('Guests cannot be in an encrypted space', 'ENCRYPTED_SPACE_NO_GUESTS');
     if (target.role === 'owner' && role !== 'owner' && await workspaces.ownerCount(workspaceId) <= 1) throw new ConflictError('The company needs at least one owner', 'LAST_OWNER');
     if (isManager(target.role) && !isManager(role)) await dropUnlockPassword(tx, ports, workspaceId, userId, sealedChange);
     const updated = await workspaces.setRole(workspaceId, userId, role);
-    if (role === 'guest') await workspaces.endSpaceAdmin(workspaceId, userId);
+    if (role === 'guest') {
+      await workspaces.endSpaceAdmin(workspaceId, userId);
+      // A guest of the company is in no encrypted space: becoming one ends the place, as leaving does, with the same key change (C-24).
+      await endPlacesInEncryptedSpaces(principal, workspaceId, userId, tx, ports);
+    }
     // The trigger deleted their holder and the recovery holder; their removal records are pinned now, in this transaction.
     if (sealedChange) await ports.encryption(tx).recordRemovals(workspaceId);
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.member_role_changed.v1', workspaceId, { userId, from: target.role, role });
@@ -142,5 +132,7 @@ export async function removeMember(principal: Principal, workspaceId: string, us
     await workspaces.recordRemoved(workspaceId, userId, principal.id);
     if (sealedChange) await ports.encryption(tx).recordRemovals(workspaceId);
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'workspace.member_removed.v1', workspaceId, { userId });
+    // Leaving the company ends a person's place in its encrypted spaces too, with the same key change as leaving one (C-24).
+    await endPlacesInEncryptedSpaces(principal, workspaceId, userId, tx, ports);
   });
 }

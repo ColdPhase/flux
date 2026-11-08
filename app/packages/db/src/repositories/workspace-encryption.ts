@@ -139,8 +139,9 @@ export function workspaceEncryptionRows(db: DbExecutor) {
       return row ?? null;
     },
     /** The workspace (encrypted), its owner and its key row at version 1. The AI policy trigger writes `blocked`. */
-    async insertSealedWorkspace(row: { id: string; name: string; createdBy: string; creationId: string }) {
-      await db.execute(sql`INSERT INTO workspaces (id, name, created_by, encrypted, creation_id) VALUES (${row.id}, ${row.name}, ${row.createdBy}, true, ${row.creationId})`);
+    async insertSealedWorkspace(row: { id: string; name: string; createdBy: string; creationId: string; companyId?: string | null }) {
+      await db.execute(sql`INSERT INTO workspaces (id, name, created_by, encrypted, creation_id, company_workspace_id)
+        VALUES (${row.id}, ${row.name}, ${row.createdBy}, true, ${row.creationId}, ${row.companyId ?? null})`);
       await db.execute(sql`INSERT INTO workspace_members (workspace_id, user_id, role, created_by) VALUES (${row.id}, ${row.createdBy}, 'owner', ${row.createdBy})`);
       await db.execute(sql`INSERT INTO workspace_keys (workspace_id) VALUES (${row.id})`);
     },
@@ -316,14 +317,62 @@ export function workspaceEncryptionRows(db: DbExecutor) {
     async deleteGrant(workspaceId: string, userId: string) {
       await db.execute(sql`DELETE FROM workspace_wrap_grants WHERE workspace_id = ${workspaceId} AND user_id = ${userId}`);
     },
-    async memberRole(workspaceId: string, userId: string): Promise<'owner' | 'admin' | 'member' | 'guest' | null> {
-      const [row] = await rowsOf<{ role: 'owner' | 'admin' | 'member' | 'guest' }>(db, sql`SELECT role FROM workspace_members WHERE workspace_id = ${workspaceId} AND user_id = ${userId}`);
+    async memberRole(workspaceId: string, userId: string, options: { lock?: boolean } = {}): Promise<'owner' | 'admin' | 'member' | 'guest' | null> {
+      const [row] = await rowsOf<{ role: 'owner' | 'admin' | 'member' | 'guest' }>(db, options.lock
+        ? sql`SELECT role FROM workspace_members WHERE workspace_id = ${workspaceId} AND user_id = ${userId} FOR SHARE`
+        : sql`SELECT role FROM workspace_members WHERE workspace_id = ${workspaceId} AND user_id = ${userId}`);
       return row?.role ?? null;
     },
     /** Owners and admins now (the holder set's role rule). */
     async managers(workspaceId: string): Promise<string[]> {
       return (await rowsOf<{ userId: string }>(db, sql`SELECT user_id AS "userId" FROM workspace_members WHERE workspace_id = ${workspaceId} AND role IN ('owner', 'admin')`))
         .map((row) => row.userId);
+    },
+    /** The people the creator starts an encrypted space with: plain members (the company's, checked by the caller). */
+    async insertMembers(workspaceId: string, userIds: string[], createdBy: string): Promise<void> {
+      for (const userId of userIds) {
+        await db.execute(sql`INSERT INTO workspace_members (workspace_id, user_id, role, created_by) VALUES (${workspaceId}, ${userId}, 'member', ${createdBy}) ON CONFLICT DO NOTHING`);
+      }
+    },
+    /** What a workspace is, for the company check of a new encrypted space; with `lock` its row is held `FOR SHARE` until the transaction ends. */
+    async workspaceKind(workspaceId: string, options: { lock?: boolean } = {}): Promise<{ company: boolean; encrypted: boolean } | null> {
+      const [row] = await rowsOf<{ company: boolean; encrypted: boolean }>(db, options.lock
+        ? sql`SELECT company, encrypted FROM workspaces WHERE id = ${workspaceId} FOR SHARE`
+        : sql`SELECT company, encrypted FROM workspaces WHERE id = ${workspaceId}`);
+      return row ?? null;
+    },
+    /** The company an encrypted space belongs to (F-037, #874), or null. */
+    async companyOf(workspaceId: string): Promise<string | null> {
+      const [row] = await rowsOf<{ companyId: string | null }>(db, sql`SELECT company_workspace_id AS "companyId" FROM workspaces WHERE id = ${workspaceId}`);
+      return row?.companyId ?? null;
+    },
+    /** The encrypted spaces of a company: their names and dates are metadata (F-030); `member` says whether the asker is in one. */
+    async companySpaces(companyId: string, userId: string): Promise<{ id: string; name: string; createdAt: Date; member: boolean }[]> {
+      return (await rowsOf<{ id: string; name: string; createdAt: Date | string; member: boolean }>(db, sql`
+        SELECT w.id, w.name, w.created_at AS "createdAt",
+          EXISTS (SELECT 1 FROM workspace_members m WHERE m.workspace_id = w.id AND m.user_id = ${userId}) AS member
+        FROM workspaces w WHERE w.company_workspace_id = ${companyId} AND w.encrypted ORDER BY w.created_at, w.id`))
+        .map((row) => ({ ...row, createdAt: new Date(row.createdAt) }));
+    },
+    /**
+     * Erases an encrypted space with everything in it, in the caller's transaction: the bytes of its files are queued for the file
+     * cleanup first (once the rows are gone nothing could find the objects again), then the workspace row, which takes its projects,
+     * members, keys, holders and unlock rows with it. Returns the projects it held, for the event audience.
+     */
+    async eraseSpace(workspaceId: string): Promise<string[]> {
+      const projects = (await rowsOf<{ id: string }>(db, sql`SELECT id FROM projects WHERE workspace_id = ${workspaceId}`)).map((row) => row.id);
+      await db.execute(sql`INSERT INTO file_garbage (id) SELECT id FROM project_files WHERE workspace_id = ${workspaceId} ON CONFLICT DO NOTHING`);
+      for (const projectId of projects) {
+        await db.execute(sql`DELETE FROM notifications WHERE source_type = 'project' AND source_id = ${projectId}`);
+        await db.execute(sql`DELETE FROM notification_mutes WHERE source_type = 'project' AND source_id = ${projectId}`);
+      }
+      // The projects go first, then the search documents, while the workspace still stands: deleting a search document logs a change against it. Then the log, then the
+      // workspace, which takes its members, keys, holders and unlock rows with it.
+      await db.execute(sql`DELETE FROM projects WHERE workspace_id = ${workspaceId}`);
+      await db.execute(sql`DELETE FROM search_documents WHERE workspace_id = ${workspaceId}`);
+      await db.execute(sql`DELETE FROM search_changes WHERE workspace_id = ${workspaceId}`);
+      await db.execute(sql`DELETE FROM workspaces WHERE id = ${workspaceId}`);
+      return projects;
     },
     async userName(userId: string): Promise<string | null> {
       const [row] = await rowsOf<{ name: string }>(db, sql`SELECT name FROM auth_users WHERE id = ${userId}`);

@@ -175,18 +175,18 @@ describe('in the company', () => {
   const setGrant = (who: Person, spaceId: string, target: Person, role: string) =>
     who.browser.request('POST', `/api/v1/projects/${spaceId}/grants`, { body: { principal: { kind: 'human', id: target.id }, role } });
 
-  test('only the company’s owners and admins make an encrypted workspace: an account nobody invited and a plain member are refused', async () => {
+  test('any member of the company who is not a guest makes an encrypted space; an account nobody invited and a guest are refused (C-24)', async () => {
     const stranger = await person('Encrypted Stranger');
     const create = (who: Person) => who.browser.request('POST', ENCRYPTED_WORKSPACES_PATH,
-      { body: { name: 'Shadow company', creationId: randomUUID(), password: 'a long enough unlock password here' } });
-    for (const who of [stranger, member, guest]) {
+      { body: { name: 'Shadow company', creationId: randomUUID(), password: 'a long enough unlock password here', companyId } });
+    for (const who of [stranger, guest]) {
       const refused = await create(who);
       assert.equal(refused.status, 403, who.email);
-      assert.equal(raw(refused), 'COMPANY_ADMIN_REQUIRED');
+      assert.equal(raw(refused), 'ENCRYPTED_SPACE_COMPANY_ONLY');
     }
     assert.equal((await pool.query("SELECT 1 FROM workspaces WHERE name = 'Shadow company'")).rowCount, 0);
-    const made = expectStatus(await create(admin), 201) as { workspace: { id: string } };
-    assert.ok(made.workspace.id);
+    const made = expectStatus(await create(member), 201) as { workspace: { id: string }; project: { id: string } | null };
+    assert.ok(made.workspace.id && made.project, 'a plain member made it, with its one space');
   });
 
   test('nothing keeps a company admin out of a space: a space admin who is a plain member can add one and remove one, and they still open it (#903)', async () => {

@@ -79,7 +79,7 @@ export interface EncryptionComposition {
 }
 
 /** One per API process: the keys, the shared semaphore and the use cases. */
-export function composeEncryption(db: Database, boss: Pick<PgBoss, 'send'>, keys: ProcessKeys): EncryptionComposition {
+export function composeEncryption(db: Database, boss: Pick<PgBoss, 'send'>, keys: ProcessKeys, options: { isolatedCompanies?: boolean } = {}): EncryptionComposition {
   const pin = keyPinStatus(process.env);
   if (pin.warning) console.error(JSON.stringify({ warning: pin.warning }));
   // Role changes pin their removal records with it (F-030 S2c).
@@ -87,6 +87,7 @@ export function composeEncryption(db: Database, boss: Pick<PgBoss, 'send'>, keys
   const useCases = createEncryptionUseCases({
     unit: encryptionUnitOfWork(db, boss), keys, semaphore: new DerivationSemaphore(2, 8), estimator: zxcvbnEstimator(), pin: pin.pin,
     read: (principal, workspaceId) => getWorkspace(principal, workspaceId, db, accessPorts, { bootId: keys.openableBoot }),
+    isolatedCompanies: options.isolatedCompanies ?? false,
   });
   return { keys, useCases };
 }

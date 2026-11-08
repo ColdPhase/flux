@@ -139,11 +139,12 @@ class NewProject(unittest.TestCase):
             expect(card.get_by_role("switch", name="AI")).to_have_attribute("aria-checked", "true")
             create, cancel = card.get_by_role("button", name="Create space"), card.get_by_role("button", name="Cancel")
             self.assertEqual(create.bounding_box()["height"], cancel.bounding_box()["height"])
-            # No template, no goal, no "Who can see this" step, and no Encrypted switch yet.
+            # No template, no goal, no "Who can see this" step; the Encrypted switch is there and starts off (C-24).
             expect(card.get_by_role("textbox")).to_have_count(1)
             expect(card.get_by_role("radio")).to_have_count(0)
             expect(card).not_to_contain_text("goal")
-            expect(card.get_by_role("switch")).to_have_count(1)
+            expect(card.get_by_role("switch")).to_have_count(2)
+            expect(card.get_by_role("switch", name="Encrypted")).to_have_attribute("aria-checked", "false")
             shot(page, f"874-newspace-1440-{scheme}")
 
     def test_02_a_new_space_has_its_four_views_and_its_creator_is_its_admin(self) -> None:
@@ -202,6 +203,8 @@ class NewProject(unittest.TestCase):
         expect(window.get_by_role("heading", name="New space")).to_be_visible()
         expect(window.get_by_text("Name", exact=True)).to_be_visible()
         expect(window.get_by_role("button", name="Cancel")).to_be_visible()
+        # The phone's plus reaches the same window, Encrypted included (#848 AC-2).
+        expect(window.get_by_role("switch", name="Encrypted")).to_have_attribute("aria-checked", "false")
         expect(sheet).to_have_count(0)
         window.get_by_label("Space name").fill("Made from the plus")
         window.get_by_role("button", name="Create space").tap()
@@ -257,6 +260,102 @@ class NewProject(unittest.TestCase):
         expect(composer).to_have_value("Half a thought for B")
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{a['id']}", status=200)["views"], ["map", "docs", "agents"])
         self.assertEqual(self.api(page, "GET", f"/api/v1/projects/{b['id']}", status=200)["views"], ["map", "docs"])
+
+    UNLOCK = "seven loud geese in a hat"
+
+    def encrypted_card(self, page: Page, phone: bool = False):
+        card = self.open_window(page, phone=phone).get_by_role("form", name="New space")
+        encrypted = card.get_by_role("switch", name="Encrypted")
+        expect(encrypted).to_have_attribute("aria-checked", "false")
+        return card, encrypted
+
+    def test_08_encrypted_starts_off_and_turned_on_drops_ai_and_asks_for_a_password_and_the_recovery_code(self) -> None:
+        self.ensure_account()
+        page = self.page()
+        card, encrypted = self.encrypted_card(page)
+        expect(card.get_by_label("Your unlock password", exact=True)).to_have_count(0)
+        expect(card.get_by_role("switch", name="AI")).to_have_attribute("aria-checked", "true")
+        encrypted.click()
+        expect(encrypted).to_have_attribute("aria-checked", "true")
+        expect(card.get_by_role("switch", name="AI")).to_have_count(0)
+        expect(card).to_contain_text("No AI in encrypted spaces")
+        expect(card.get_by_label("Your unlock password", exact=True)).to_be_visible()
+        expect(card.get_by_label("Repeat", exact=True)).to_be_visible()
+        expect(card.get_by_role("button", name="Download recovery code")).to_be_visible()
+        expect(card).to_contain_text("After each server restart, an admin of this space unlocks it")
+        shot(page, f"874-newspace-encrypted-1440-{UI_BROWSER}")
+        # Off again before Create: the AI switch is back, and nothing is asked.
+        encrypted.click()
+        expect(card.get_by_role("switch", name="AI")).to_be_visible()
+        expect(card.get_by_label("Your unlock password", exact=True)).to_have_count(0)
+
+    def test_09_creating_an_encrypted_space_asks_the_download_first_and_leaves_no_plain_space_behind(self) -> None:
+        self.ensure_account()
+        page = self.page()
+        company = self.ids["workspace"]
+        before = self.api(page, "GET", f"/api/v1/workspaces/{company}/projects?limit=100", status=200)["total"]
+        card, encrypted = self.encrypted_card(page)
+        card.get_by_label("Space name").fill("Payroll")
+        encrypted.click()
+        card.get_by_label("Your unlock password", exact=True).fill(self.UNLOCK)
+        card.get_by_label("Repeat", exact=True).fill("something else entirely different")
+        card.get_by_role("button", name="Create space").click()
+        expect(card).to_contain_text("The two passwords don’t match.")
+        card.get_by_label("Repeat", exact=True).fill(self.UNLOCK)
+        card.get_by_role("button", name="Create space").click()
+        expect(card).to_contain_text("Download the recovery code first")
+        with page.expect_download() as download:
+            card.get_by_role("button", name="Download recovery code").click()
+        text = open(download.value.path(), encoding="utf-8").read()
+        found = re.search(r"([A-Z0-9]{4}(?:-[A-Z0-9]{4}){3})\n([A-Z0-9]{4}(?:-[A-Z0-9]{4}){3})", text)
+        self.assertIsNotNone(found, text)
+        code = f"{found.group(1)}-{found.group(2)}"
+        expect(card.get_by_role("button", name="Recovery code downloaded")).to_be_visible()
+        card.get_by_role("button", name="Create space").click()
+        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
+        pid = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
+        project = self.api(page, "GET", f"/api/v1/projects/{pid}", status=200)
+        self.assertEqual((project["name"], project["ai"], project["access"]), ("Payroll", "blocked", "manager"))
+        workspace = self.api(page, "GET", f"/api/v1/workspaces/{project['workspaceId']}", status=200)
+        self.assertEqual((workspace["spaceOf"], workspace["encryption"]["state"], workspace["name"]), (company, "unlocked", "Payroll"))
+        # Nothing plain was made beside it, and the code in the file is the real one.
+        self.assertEqual(self.api(page, "GET", f"/api/v1/workspaces/{company}/projects?limit=100", status=200)["total"], before)
+        self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/lock", {}, status=200)
+        self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/unlock", {"recoveryCode": code}, status=200)
+        # Its settings: a lock where the AI switch would be, and its people and keys one click away.
+        page.goto(f"/projects/{pid}/settings")
+        expect(page.get_by_text("No AI in encrypted spaces")).to_be_visible()
+        expect(page.get_by_role("switch", name="AI")).to_have_count(0)
+        expect(page.locator("[data-encrypted-keys]")).to_be_visible()
+        shot(page, f"874-encrypted-settings-1440-{UI_BROWSER}")
+
+    def test_10_a_first_time_owner_reaches_encrypted_from_home_before_making_anything(self) -> None:
+        """#848 AC-1 and AC-4: a new account with no space and no note opens the New space window from Home's first-run card and finds
+        Encrypted there; creating leaves no plain space behind."""
+        self.ensure_account()
+        stamp = int(time.time() * 1000)
+        state = self.signed_up("Zoe First", f"zoe.np+{stamp}@example.test")
+        page = self.as_account(state)
+        company = self.api(page, "POST", "/api/v1/workspaces", {"name": "Zoe’s co-op"})["id"]
+        page.goto("/")
+        first = page.locator(".home__first")
+        expect(first).to_be_visible()
+        first.get_by_role("button", name="Start a space").click()
+        card = new_space_window(page).get_by_role("form", name="New space")
+        encrypted = card.get_by_role("switch", name="Encrypted")
+        expect(encrypted).to_have_attribute("aria-checked", "false")
+        self.assertEqual(self.api(page, "GET", f"/api/v1/workspaces/{company}/projects", status=200)["total"], 0, "nothing was made on the way")
+        card.get_by_label("Space name").fill("Zoe’s private")
+        encrypted.click()
+        card.get_by_label("Your unlock password", exact=True).fill(self.UNLOCK)
+        card.get_by_label("Repeat", exact=True).fill(self.UNLOCK)
+        with page.expect_download():
+            card.get_by_role("button", name="Download recovery code").click()
+        card.get_by_role("button", name="Create space").click()
+        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}$"))
+        self.assertEqual(self.api(page, "GET", f"/api/v1/workspaces/{company}/projects", status=200)["total"], 0, "no plain space behind it")
+        sealed = [item for item in self.api(page, "GET", "/api/v1/workspaces", status=200) if item.get("spaceOf") == company]
+        self.assertEqual([item["name"] for item in sealed], ["Zoe’s private"])
 
 
 if __name__ == "__main__":

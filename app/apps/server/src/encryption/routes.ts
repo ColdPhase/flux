@@ -1,7 +1,8 @@
 import type { FastifyInstance, FastifyReply } from 'fastify';
-import { ENCRYPTED_WORKSPACES_PATH, WORKSPACES_PATH, type CreateEncryptedWorkspaceCommand, type GrantUnlockPasswordCommand,
-  type NewRecoveryCodeCommand, type SetUnlockPasswordCommand, type UnlockWorkspaceCommand } from '@flux/contracts';
-import { RateLimitedError, type Principal } from '@flux/core';
+import { ENCRYPTED_SPACES_AVAILABILITY_PATH, ENCRYPTED_WORKSPACES_PATH, WORKSPACES_PATH, companyEncryptedSpacesPath, encryptedSpacePath,
+  type CreateEncryptedWorkspaceCommand, type EncryptedSpacesAvailability, type GrantUnlockPasswordCommand, type NewRecoveryCodeCommand, type Project,
+  type SetUnlockPasswordCommand, type UnlockWorkspaceCommand } from '@flux/contracts';
+import { InvalidInputError, RateLimitedError, type Principal } from '@flux/core';
 import { bearerMatches } from '../fixture/index.js';
 import type { SessionResolver } from '../identity/index.js';
 import type { EncryptionComposition } from './adapters.js';
@@ -16,7 +17,7 @@ const secret = { type: 'string', minLength: 1, maxLength: 1024 } as const;
 const body = (properties: Record<string, unknown>, required: string[] = []) =>
   ({ type: 'object', additionalProperties: false, required, properties }) as const;
 
-export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, fixtureCreation, productionCreation = false, requireCompanyAdmin }: {
+export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, fixtureCreation, productionCreation = false, firstSpace }: {
   sessions: SessionResolver;
   encryption: EncryptionComposition;
   /**
@@ -27,8 +28,11 @@ export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, f
   fixtureCreation: string | null;
   /** Creation is a production route, no fixture bearer. Off until the switch in `app.ts` is flipped. */
   productionCreation?: boolean;
-  /** F-037: refuses anyone but a company owner or admin. The fixture bearer of a test deployment skips it. */
-  requireCompanyAdmin: (principal: Principal) => Promise<void>;
+  /**
+   * F-037, C-24: the one space an encrypted space of a company holds, made for the creator right after the workspace (its name is the
+   * space's). Idempotent: a workspace that already holds its space returns it, so a retried creation ends with one.
+   */
+  firstSpace: (principal: Principal, workspaceId: string, name: string) => Promise<Project>;
 }) {
   const { useCases } = encryption;
   const principal = async (request: Parameters<SessionResolver['requirePrincipal']>[0]) => (await sessions.requirePrincipal(request)).principal;
@@ -46,15 +50,29 @@ export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, f
       onRequest: async (request, reply) => {
         if (token !== null && !bearerMatches(request.headers.authorization, token)) return reply.code(401).send({ error: 'Unauthorized' });
       },
-      schema: { body: body({ name: { type: 'string', minLength: 1, maxLength: 400 }, creationId: { type: 'string', maxLength: 64 }, password: secret },
-        ['name', 'creationId', 'password']) },
+      schema: { body: body({ name: { type: 'string', minLength: 1, maxLength: 400 }, creationId: { type: 'string', maxLength: 64 }, password: secret,
+        companyId: { type: 'string', maxLength: 64 }, people: { type: 'array', maxItems: 200, items: { type: 'string', minLength: 1, maxLength: 200 } },
+        recoveryCode: { type: 'string', minLength: 1, maxLength: 200 } }, ['name', 'creationId', 'password']) },
     }, async (request, reply) => {
       const creator = await principal(request);
-      if (fixtureCreation === null || !bearerMatches(request.headers.authorization, fixtureCreation)) await requireCompanyAdmin(creator);
+      const fixture = fixtureCreation !== null && bearerMatches(request.headers.authorization, fixtureCreation);
+      // Everyone but the test deployment's fixture makes an encrypted space of their company (any member who is not a guest, C-24).
+      if (!fixture && !request.body.companyId) throw new InvalidInputError('An encrypted space belongs to a company: say which', 'ENCRYPTED_SPACE_COMPANY_ONLY');
       const { status, body: result } = await useCases.create(creator, request.body);
-      return reply.code(status).send(result);
+      const project = request.body.companyId ? await firstSpace(creator, result.workspace.id, request.body.name.trim()) : null;
+      return reply.code(status).send({ ...result, project });
     });
   }
+  app.get<{ Reply: EncryptedSpacesAvailability }>(ENCRYPTED_SPACES_AVAILABILITY_PATH, async (request) => {
+    await principal(request);
+    return { available: encryption.keys.availability === 'ok' };
+  });
+  app.get<{ Params: { companyId: string } }>(companyEncryptedSpacesPath(':companyId'), async (request) =>
+    useCases.companySpaces(await principal(request), request.params.companyId));
+  app.delete<{ Params: { workspaceId: string } }>(encryptedSpacePath(':workspaceId'), async (request, reply) => {
+    await useCases.deleteSpace(await principal(request), request.params.workspaceId);
+    return reply.code(204).send();
+  });
   app.post<{ Params: { workspaceId: string }; Body: UnlockWorkspaceCommand }>(`${WORKSPACES_PATH}/:workspaceId/unlock`, {
     schema: { body: body({ password: secret, recoveryCode: { type: 'string', minLength: 1, maxLength: 200 } }) },
   }, async (request) => useCases.unlock(await principal(request), request.params.workspaceId, request.body ?? {}));

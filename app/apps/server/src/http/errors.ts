@@ -23,6 +23,8 @@ const DATABASE_CONFLICTS = new Map([
   ['WORKSPACE_ENCRYPTED_AI_OFF', 'AI is always off in an encrypted workspace'],
   ['LAST_UNLOCK_PASSWORD', 'This space needs at least one unlock password'],
   ['WORKSPACE_ENCRYPTION_IMMUTABLE', 'A workspace\'s encryption cannot change'],
+  // #874 (migration 0018): an encrypted space belongs to the company, never to another encrypted space.
+  ['ENCRYPTED_SPACE_COMPANY_ONLY', 'An encrypted space belongs to the company'],
   // S2a backstops (migration 0120): a write the application did not seal, and a feature an encrypted space does not offer.
   ['WORKSPACE_PLAINTEXT_REFUSED', 'This is not available in an encrypted space yet'],
   ['WORKSPACE_ENCRYPTED_UNSUPPORTED', 'This is not available in an encrypted space'],

@@ -94,3 +94,10 @@
   .spset__remove-gap { display: none; }
   .newspace__foot .ui-btn, .delspace .newspace__foot .ui-btn { flex: 1; min-height: 44px; }
 }
+
+/* An encrypted space's people and keys open in a panel (F-030, C-24): the row is the whole target. */
+.spset__keys { display: block; width: 100%; margin-top: 12px; padding: 0; border: 0; font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.spset__keys:hover { background: var(--hov); }
+.spset__keys:focus-visible { outline: 2px solid var(--t1); outline-offset: 2px; }
+.spset__keys .sset-row { display: flex; align-items: center; gap: 12px; }
+.spset__keys .sset-row__b { flex: 1; min-width: 0; }

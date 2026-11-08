@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import type { IdentityCapabilities, RemovedPerson } from '@flux/contracts';
+import type { EncryptedSpaceRef, IdentityCapabilities, RemovedPerson } from '@flux/contracts';
 import { getCapabilities } from '../api/auth';
 import { Link, useNavigate, useRevalidator, useSearchParams } from 'react-router';
 import { INVITE_CREATED_EVENT, INVITE_DEFAULT_EXPIRY_DAYS, INVITE_REVOKED_EVENT, type InviteExpiryDays, type InviteRole,
@@ -11,9 +11,10 @@ import { useShellData } from '../app/data';
 import { Avatar, Button, Icon, Input, Spinner, useRowMotion, useToast, Select, Option } from '../ui';
 import { isEncryptionEvent, type EncryptedWorkspace } from '../encryption/api';
 import { EncryptionSection } from '../encryption/EncryptionSection';
+import { listCompanyEncryptedSpaces } from '../encryption/api';
 import { ROLE_HINT, ROLE_LABEL, addMember, attemptKeys, changeRole, createInvite, firstName, getWorkspace, grantPerson, isManagerRole, listRemovedPeople, restorePerson, listInvites, listMembers, problemText, removeMember, renameCompany,
   revokeInvite } from './api';
-import { DeleteSpaceDialog } from './DeleteSpace';
+import { DeleteSpaceDialog, type DeletableSpace } from './DeleteSpace';
 import './people.css';
 
 const ROLES: WorkspaceRole[] = ['member', 'guest', 'admin', 'owner'];
@@ -249,7 +250,15 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
   const [busy, setBusy] = useState<string | null>(null);
   const toast = useToast();
   const spaces = reachableSpaces.filter((space) => space.workspaceId === workspaceId);
-  const [deleting, setDeleting] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState<DeletableSpace | null>(null);
+  // The company's encrypted spaces (F-030, C-24): its owners and admins hold no key and are not in them, so a name and Delete are all
+  // they get, no Add me. One they are also in is already in their own list above.
+  const [sealed, setSealed] = useState<EncryptedSpaceRef[]>([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    listCompanyEncryptedSpaces(workspaceId, controller.signal).then((list) => setSealed(list.filter((entry) => !entry.member)), () => undefined);
+    return () => controller.abort();
+  }, [workspaceId, reachableSpaces]);
   const join = async (spaceId: string, spaceName: string) => {
     setBusy(spaceId);
     try {
@@ -260,7 +269,7 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
   };
   return (
     <section className="details__sec" aria-labelledby="company-spaces">
-      <h4 id="company-spaces">Spaces · {spaces.length}</h4>
+      <h4 id="company-spaces">Spaces · {spaces.length + sealed.length}</h4>
       <ul className="people__list" aria-label="Every space in the company">
         {spaces.map((space) => (
           <li className="people__item" key={space.id}><div className="people__row">
@@ -268,6 +277,12 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
             {space.member === false ? <Button variant="quiet" className="access__invite" busy={busy === space.id} aria-label={`Add me to ${space.name}`} onClick={() => void join(space.id, space.name)}>Add me</Button> : null}
             {/* Everyone holds the whole company and cannot be deleted; any other space can be, with a confirmation that names it (F-037). */}
             {space.visibility === 'workspace' ? null : <Button variant="quiet" className="access__invite" aria-label={`Delete ${space.name}`} onClick={() => setDeleting({ id: space.id, name: space.name })}>Delete…</Button>}
+          </div></li>
+        ))}
+        {sealed.map((entry) => (
+          <li className="people__item" key={entry.id} data-encrypted-space={entry.id}><div className="people__row">
+            <span className="people__who"><b><Icon name="lock" size={13} /> {entry.name}</b><span>Encrypted · made {madeOn.format(new Date(entry.createdAt))} · you can delete it, not open it</span></span>
+            <Button variant="quiet" className="access__invite" aria-label={`Delete ${entry.name}`} onClick={() => setDeleting({ id: entry.id, name: entry.name, encrypted: true })}>Delete…</Button>
           </div></li>
         ))}
       </ul>
@@ -375,7 +390,8 @@ function AddPerson({ workspace, members, myRole, invitesSeen, onJoined, onAdded 
       </form>
     </section>
       {/* Someone without an account (#763 PE-2): the address Flux could not find is filled into the invite link (F-035). */}
-      <InviteLinks key={newcomer} prefill={newcomer} workspace={workspace} myRole={myRole} seen={invitesSeen} onJoined={onJoined} />
+      {/* An encrypted space takes only the company's people, never a link (C-24). */}
+      {workspace.spaceOf ? null : <InviteLinks key={newcomer} prefill={newcomer} workspace={workspace} myRole={myRole} seen={invitesSeen} onJoined={onJoined} />}
     </>
   );
 }
@@ -501,6 +517,7 @@ function MemberEditor({ id, member, self, workspace, myRole, onClose, onChanged 
 
 const expiryLabel: Record<InviteExpiryDays, string> = { 1: '1 day', 7: '7 days', 30: '30 days' };
 const until = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short' });
+const madeOn = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 const inviteRoles = (mine: WorkspaceRole): InviteRole[] => (mine === 'owner' ? ['member', 'guest', 'admin'] : ['member', 'guest']);
 
 async function copyText(text: string): Promise<boolean> {

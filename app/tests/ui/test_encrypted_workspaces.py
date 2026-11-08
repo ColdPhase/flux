@@ -54,7 +54,9 @@ A_PROJECT, B_PROJECT = "Seed tray", "Dock lights"
 A_ROOT, B_ROOT = "Order the spring seeds", "Replace the dock lights"
 UNLOCK_PASSWORD = "seven loud geese in a hat"       # Ada's unlock password in A (25 characters)
 NEW_PASSWORD = "twelve quiet lamps by the sea"       # a valid new password (29 characters)
-LOCKED_LINE = "Waiting to be unlocked"
+LOCKED_LINE = "Locked, waiting for an admin"        # what a member sees (C-24)
+UNLOCK_LINE = "Locked, unlock it"                   # what an admin who can unlock it sees
+WAITING = "Waiting to be unlocked"                  # the heading of the Inbox note and the label of the waiting list
 CODE = re.compile(r"^[A-Z0-9]{4}(-[A-Z0-9]{4}){7}$")
 # On screen the code is two lines of four groups in reading order (UI audit RC-3).
 CODE_LINE = re.compile(r"^[A-Z0-9]{4}(-[A-Z0-9]{4}){3}$")
@@ -135,6 +137,7 @@ class Base(unittest.TestCase):
             conversation = self.call(world, "ada", "POST", f"/api/v1/projects/{made['id']}/conversations", {"body": root, "clientMessageId": str(uuid.uuid4())}, 201)
             setattr(world, f"{key}_project", made["id"])
             setattr(world, f"{key}_conversation", conversation["id"])
+        self.world = world
         return world
 
     def encryption(self, world: SimpleNamespace, who: str = "ada") -> dict:
@@ -201,12 +204,21 @@ class Base(unittest.TestCase):
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
 
-    def open_people(self, page: Page, space: str = A_NAME) -> None:
-        """Home → Details → People → the space, as a person finds it."""
-        self.home(page)
-        open_details(page)
-        page.get_by_role("region", name="People").get_by_role("button", name=re.compile(f"^{space}")).click()
-        expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
+    def open_people(self, page: Page, space: str = A_NAME, *, locked: bool = False) -> None:
+        """The space's settings → People and encryption, as a person finds it (C-24: not in Details any more). A locked space has no
+        settings page: its admins find the same button in the locked panel."""
+        if locked:
+            page.goto(f"/spaces/{self.world.a}")
+            expect(page.get_by_role("heading", name=f"Unlock {space}")).to_be_visible()
+        else:
+            page.goto(f"/projects/{self.world.a_project}/settings")
+            expect(page.get_by_role("heading", name="Space settings")).to_be_visible()
+        page.locator("[data-encrypted-keys]").click()
+        try:
+            expect(page.get_by_role("heading", name="People", exact=True)).to_be_visible()
+        except AssertionError:
+            print("DEBUG open_people:", page.url, page.locator("body").inner_text()[:1500].replace("\n", " | "))
+            raise
         expect(page.locator(".details__eyebrow", has_text=space)).to_be_visible()
         # The panel slides in (#593): positions are measured only once it has stopped.
         settled(page)
@@ -242,7 +254,7 @@ class Base(unittest.TestCase):
 class EncryptedWorkspaces(Base):
     """Against the real S1 server."""
 
-    # F-037 (#874): the New space window that made an encrypted workspace is gone; per-space encryption comes in a later batch.
+    # F-037 (#874, C-24): an encrypted space is made in the New space window; its people and keys are in the space's settings (People and encryption).
 
     def test_10_a_member_sees_the_space_wait_in_the_sidebar_home_and_projects(self) -> None:
         world = self.make_world()
@@ -252,7 +264,7 @@ class EncryptedWorkspaces(Base):
                 page = self.page(world, "cy", phone=phone)
                 self.home(page)
                 home = page.locator("#content .home")
-                row = home.locator(".home__need").get_by_role("list", name=LOCKED_LINE).get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{LOCKED_LINE}$"))
+                row = home.locator(".home__need").get_by_role("list", name=WAITING).get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{LOCKED_LINE}$"))
                 expect(row).to_be_visible()
                 self.assertEqual(home.get_by_text(A_PROJECT).count(), 0, "no project of the locked space is listed")
                 expect(home.get_by_role("link", name=re.compile(f"^{B_NAME}"))).to_have_count(0)
@@ -266,9 +278,9 @@ class EncryptedWorkspaces(Base):
                 shot(page, f"locked-row-{'phone' if phone else 'computer'}")
                 row.click()
                 expect(page).to_have_url(re.compile(rf"/spaces/{world.a}$"))
-                expect(page.get_by_role("heading", name=f"{A_NAME} is waiting to be unlocked")).to_be_visible()
+                expect(page.get_by_role("heading", name=f"{A_NAME} is locked")).to_be_visible()
                 # LK-1: the known reason, and who can unlock it (Ada is the only one with an unlock password).
-                expect(page.locator("[data-locked-reason]")).to_have_text(re.compile(rf"^Ada locked {A_NAME} {AT}\. Ada can unlock it\. You can come back then\.$"))
+                expect(page.locator("[data-locked-reason]")).to_have_text(re.compile(rf"^Ada locked {A_NAME} {AT}\. Waiting for an admin\. Ada can unlock it\. You can come back then\.$"))
                 expect(page.get_by_role("textbox")).to_have_count(0)
                 expect(page.get_by_role("button", name="Unlock")).to_have_count(0)
                 self.assertEqual(page.locator("[data-ai-surface]").count(), 0)
@@ -310,7 +322,7 @@ class EncryptedWorkspaces(Base):
                 page = self.page(world, "cy", phone=phone)
                 self.home(page)
                 page.goto(f"/projects/{world.a_project}")
-                expect(page.get_by_role("heading", name=f"{A_NAME} is waiting to be unlocked")).to_be_visible()
+                expect(page.get_by_role("heading", name=f"{A_NAME} is locked")).to_be_visible()
                 expect(page).to_have_url(re.compile(rf"/projects/{world.a_project}$"))
                 self.assertEqual(page.get_by_text(A_ROOT).count(), 0, "no content, no partial body")
                 if not phone:
@@ -322,16 +334,16 @@ class EncryptedWorkspaces(Base):
                     expect(page.get_by_role("navigation", name="Main places")).to_be_visible()
                     expect(page.get_by_role("button", name="Create")).to_have_count(0)
                 page.goto(f"/projects/{world.a_project}/tasks")
-                expect(page.get_by_role("heading", name=f"{A_NAME} is waiting to be unlocked")).to_be_visible()
+                expect(page.get_by_role("heading", name=f"{A_NAME} is locked")).to_be_visible()
                 page.go_back()
                 expect(page).to_have_url(re.compile(rf"/projects/{world.a_project}$"))
-                expect(page.get_by_role("heading", name=f"{A_NAME} is waiting to be unlocked")).to_be_visible()
+                expect(page.get_by_role("heading", name=f"{A_NAME} is locked")).to_be_visible()
                 page.go_back()
                 expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
                 if phone:
                     # A conversation's deep link too keeps the tab bar, and its Back leads Home (no history inside the app).
                     page.goto(f"/projects/{world.a_project}/conversations/{world.a_conversation}")
-                    expect(page.get_by_role("heading", name=f"{A_NAME} is waiting to be unlocked")).to_be_visible()
+                    expect(page.get_by_role("heading", name=f"{A_NAME} is locked")).to_be_visible()
                     expect(page.get_by_role("navigation", name="Main places")).to_be_visible()
                     page.locator("header.phead").get_by_role("button", name=re.compile("^Back")).click()
                     expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
@@ -411,18 +423,21 @@ class EncryptedWorkspaces(Base):
                 cy.goto(f"/projects/{world.a_project}")
                 expect(cy.get_by_text(A_ROOT).first).to_be_visible()
                 cy.evaluate("window.__sameTab = 'yes'")
+                # Ada has Home open in one tab (it follows the stream) and the space's keys in another.
+                home_tab = self.page(world, "ada", phone=phone)
+                self.home(home_tab)
                 ada = self.page(world, "ada", phone=phone)
                 self.open_people(ada)
                 expect(self.section(ada).locator(".people__enc-line")).to_have_text(LINE)
                 # Lock now turns Cy's open conversation into the locked panel.
                 ada.get_by_role("button", name="Lock now").click()
                 ada.get_by_role("button", name=f"Lock {A_NAME}", exact=True).click()
-                expect(cy.get_by_role("heading", name=f"{A_NAME} is waiting to be unlocked")).to_be_visible()
+                expect(cy.get_by_role("heading", name=f"{A_NAME} is locked")).to_be_visible()
                 self.assertEqual(cy.get_by_text(A_ROOT).count(), 0)
                 expect(cy).to_have_url(re.compile(rf"/projects/{world.a_project}$"))
-                # Ada's own tab is on Home: the space's projects give way to its one row.
-                home = ada.locator("#content .home__need")
-                expect(home.get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{LOCKED_LINE}$"))).to_be_visible()
+                # Ada's Home tab: the space's projects give way to its one row.
+                home = home_tab.locator("#content .home__need")
+                expect(home.get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{UNLOCK_LINE}$"))).to_be_visible()
                 expect(home.get_by_role("link", name=re.compile(f"^{A_PROJECT}"))).to_have_count(0)
                 # Unlocking from another window brings Cy's tab back.
                 other = self.page(world, "ada", phone=phone)
@@ -432,7 +447,7 @@ class EncryptedWorkspaces(Base):
                 expect(cy.get_by_text(A_ROOT).first).to_be_visible()
                 self.assertEqual(cy.evaluate("window.__sameTab"), "yes", "the tab was not reloaded")
                 # Home has no spaces card (#865): the row of the waiting space goes, and the sidebar lists its space again.
-                expect(home.get_by_role("link", name=re.compile(LOCKED_LINE))).to_have_count(0)
+                expect(home.get_by_role("link", name=re.compile(UNLOCK_LINE))).to_have_count(0)
                 if not phone:
                     expect(ada.get_by_role("navigation", name="Spaces").get_by_role("link", name=re.compile(f"^{A_PROJECT}"))).to_be_visible()
 
@@ -449,7 +464,7 @@ class EncryptedWorkspaces(Base):
                     cy.goto(f"/projects/{world.a_project}/tasks")
                 else:
                     cy.get_by_role("navigation", name="Space views").get_by_role("link", name="Tasks", exact=True).click()
-                expect(cy.get_by_role("heading", name=f"{A_NAME} is waiting to be unlocked")).to_be_visible()
+                expect(cy.get_by_role("heading", name=f"{A_NAME} is locked")).to_be_visible()
                 self.unlock(world)
                 cy.goto(f"/projects/{world.a_project}")
                 expect(cy.get_by_text(A_ROOT).first).to_be_visible()
@@ -463,12 +478,12 @@ class EncryptedWorkspaces(Base):
                 page = self.page(world, "ada", phone=phone)
                 self.home(page)
                 need = page.locator("#content .home__need")
-                waiting = need.get_by_role("list", name=LOCKED_LINE)
-                expect(waiting.get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{LOCKED_LINE}$"))).to_be_visible()
+                waiting = need.get_by_role("list", name=WAITING)
+                expect(waiting.get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{UNLOCK_LINE}$"))).to_be_visible()
                 expect(need.get_by_text("Nothing is waiting for you.", exact=True)).to_have_count(0)
                 shot(page, f"needs-you-waiting-{'phone' if phone else 'computer'}")
                 page.goto("/inbox")
-                expect(page.locator("[data-locked-note]")).to_contain_text(LOCKED_LINE)
+                expect(page.locator("[data-locked-note]")).to_contain_text(WAITING)
                 expect(page.get_by_text("The Inbox could not load")).to_have_count(0)
                 page.goto("/")
                 expect(page.get_by_role("button", name="Search", exact=True).first).to_be_visible()  # the shortcut works once the shell is up
@@ -915,7 +930,7 @@ class EncryptedWorkspaces(Base):
                     page.keyboard.press("Control+k")
                 jump = page.get_by_role("combobox", name="Search", exact=True)
                 expect(jump).to_be_visible()
-                option = page.get_by_role("option", name=re.compile(f"{A_NAME}.*{LOCKED_LINE}"))
+                option = page.get_by_role("option", name=re.compile(f"{A_NAME}.*{UNLOCK_LINE}"))
                 expect(option).to_be_visible()
                 jump.fill("garden")
                 expect(option).to_be_visible()
@@ -924,7 +939,7 @@ class EncryptedWorkspaces(Base):
                 expect(page.get_by_role("heading", name=f"Unlock {A_NAME}")).to_be_visible()
                 page.goto("/inbox")
                 note = page.locator("[data-locked-note]")
-                expect(note).to_contain_text(LOCKED_LINE)
+                expect(note).to_contain_text(WAITING)
                 expect(note.get_by_role("link", name=A_NAME)).to_be_visible()
 
 
@@ -997,7 +1012,7 @@ class KeyRotation(Base):
                 overlay.fields = {"rotation": {"percent": 40, "paused": False, "startedAt": now_iso()}}
                 self.lock(world)
                 page.reload()
-                self.open_people(page)
+                self.open_people(page, locked=True)
                 expect(self.section(page).locator("[data-key-rotation]")).to_have_text(f"Changing the key · paused until {A_NAME} is unlocked.")
                 self.unlock(world)
                 overlay.fields = {"rotation": None, "keyChangedAt": now_iso()}

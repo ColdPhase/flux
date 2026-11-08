@@ -5,7 +5,7 @@ import { recordEvent } from '../events.js';
 import type { Database, Executor, Principal } from '../types.js';
 import { eventPorts } from './common.js';
 import { ForbiddenError, NotFoundError } from './errors.js';
-import { enforce, evaluateWorkspace, isManager, isUuid } from './policy.js';
+import { enforce, evaluateWorkspace, isUuid } from './policy.js';
 import { insertSpace } from './projects.js';
 import type { AccessPorts } from './repositories.js';
 import type { WorkspaceRecord } from './records.js';
@@ -21,7 +21,7 @@ import { name } from './validation.js';
 type WorkspacePorts = Pick<AccessPorts, 'workspaces' | 'access' | 'events' | 'encryption'>;
 
 function toWorkspace(row: WorkspaceRecord, role: WorkspaceRole | null, encryption: WorkspaceEncryption | null = null): Workspace {
-  return { id: row.id, name: row.name, company: row.company, role, version: row.version, createdAt: row.createdAt.toISOString(), encryption };
+  return { id: row.id, name: row.name, company: row.company, role, version: row.version, createdAt: row.createdAt.toISOString(), encryption, spaceOf: row.companyWorkspaceId };
 }
 
 /** The name setup gives the company; an owner or admin changes it in Settings › Company. */
@@ -58,16 +58,6 @@ export async function joinCompany(userId: string, options: { sso: boolean }, db:
     await recordEvent(eventPorts(ports, tx), principal, company.id, 'workspace.member_added.v1', company.id, { userId, role: 'member' });
     return 'joined';
   });
-}
-
-/**
- * The company's owners and admins, the only people who make an encrypted workspace until a space can be encrypted (F-037):
- * any other account would otherwise own a second company.
- */
-export async function requireCompanyAdmin(principal: Principal, db: Database, ports: Pick<AccessPorts, 'workspaces' | 'projects'>) {
-  const company = await ports.workspaces(db).company();
-  const role = company && principal.kind === 'human' && principal.id ? await ports.projects(db).memberRole(company.id, principal.id) : null;
-  if (!isManager(role)) throw new ForbiddenError('Only the company’s owners and admins can do this', 'COMPANY_ADMIN_REQUIRED');
 }
 
 /** The company's name for the sign-in page and for email: nothing before setup, or while it still has the name setup gave it. */

@@ -36,7 +36,7 @@ export type {
 } from './access/ports.js';
 export { parsePage } from './access/validation.js';
 export type { DomainEventSink } from './access/common.js';
-export { companyDisplayName, createWorkspace, listWorkspaces, getWorkspace, joinCompany, renameWorkspace, requireCompanyAdmin, COMPANY_NAME, EVERYONE_SPACE_NAME, type WorkspaceReadOptions } from './access/workspaces.js';
+export { companyDisplayName, createWorkspace, listWorkspaces, getWorkspace, joinCompany, renameWorkspace, COMPANY_NAME, EVERYONE_SPACE_NAME, type WorkspaceReadOptions } from './access/workspaces.js';
 export { listMembers, addMember, changeRole, removeMember, listRemovedPeople, restoreMember } from './access/members.js';
 export { createInvite, listInvites, revokeInvite, previewInvite, acceptInvite, withLink, inviteToken, inviteIdOf, inviteTokenHash, type InviteSigner, type CreatedInvite, type InviteJoined } from './access/invites.js';
 export { setSpaceAi, sweepSpaceAi, SpaceAiSweepIncomplete, type SpaceAiSweepQueue } from './access/space-ai.js';

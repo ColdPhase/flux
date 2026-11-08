@@ -56,10 +56,17 @@ export async function createProject(principal: Principal, workspaceId: string, c
   }
   const people = [...new Set(command.people ?? [])].filter((id) => id !== principal.id);
   return db.transaction(async (tx) => {
-    enforce(await evaluateWorkspace(principal, 'project.create', workspaceId, ports.access(tx), { lock: true }), 'workspace');
+    const { actor } = enforce(await evaluateWorkspace(principal, 'project.create', workspaceId, ports.access(tx), { lock: true }), 'workspace');
     // F-037: only Everyone holds the whole company, and setup makes it; any other space holds the people added to it.
     if (visibility === 'workspace' && (await ports.workspaces(tx).company())?.id === workspaceId) {
       throw new RuleViolationError('A new space holds only the people added to it', 'SPACE_NOT_FOR_EVERYONE');
+    }
+    // An encrypted space (an internal workspace of the company, F-030) holds exactly one space: the one made with it (C-24).
+    if (await ports.workspaces(tx).companyOf(workspaceId)) {
+      // Made with the encrypted space, by its owner: another member of it cannot get in first (review of #976).
+      if (actor.role !== 'owner') throw new RuleViolationError('An encrypted space\'s space is made with it, by its owner', 'ENCRYPTED_SPACE_HOLDS_ONE');
+      await ports.workspaces(tx).lock(workspaceId);
+      if (await ports.workspaces(tx).hasProject(workspaceId)) throw new RuleViolationError('An encrypted space holds one space', 'ENCRYPTED_SPACE_HOLDS_ONE');
     }
     const projects = ports.projects(tx);
     const row = await insertSpace(tx, ports, { workspaceId, name: projectName, visibility, createdBy: principal.id });

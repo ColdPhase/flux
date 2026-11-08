@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useRevalidator } from 'react-router';
 import type { Project, WorkspaceMember } from '@flux/contracts';
-import { ApiError } from '../api/client';
+import { ApiError, NetworkError } from '../api/client';
 import { useIntentKeys } from '../api/intent-keys';
+import { createEncryptedSpace, encryptionProblem } from '../encryption/api';
 import { createProject, listWorkspaceMembers } from './api';
 import { useShellData } from '../app/data';
 import { AccountChangedError, assertSignedInAs } from '../app/personalSpace';
@@ -41,7 +42,38 @@ export function useNewProject() {
       return null;
     } finally { inFlight.current = false; setBusy(false); }
   }
-  return { space: workspace, allowed, busy, error, ready, create };
+  // One id per form (and per name): a retry after a lost answer finds the space the first try made, instead of making a second.
+  const creation = useRef({ id: crypto.randomUUID(), name: '' });
+  /**
+   * An encrypted space (F-030, F-037, C-24): the unlock password, the people and the recovery code the person has downloaded go to the
+   * server once and are not kept. Resolves to the space (the one project the encrypted workspace holds), or null after saying why not.
+   */
+  async function createEncrypted(name: string, options: { people: string[]; password: string; recoveryCode: string }): Promise<Project | null> {
+    const spaceName = name.trim();
+    if (!spaceName || busy || inFlight.current) return null;
+    if (!workspace) { setError('You’re not in a company on this Flux yet. Ask an admin for an invite link.'); return null; }
+    if (creation.current.name !== spaceName) creation.current = { id: crypto.randomUUID(), name: spaceName };
+    inFlight.current = true;
+    setBusy(true); setError('');
+    try {
+      await assertSignedInAs(me.user.id);
+      const made = await createEncryptedSpace({ name: spaceName, creationId: creation.current.id, password: options.password, companyId: workspace.id,
+        people: options.people, recoveryCode: options.recoveryCode });
+      creation.current = { id: crypto.randomUUID(), name: '' };
+      revalidator.revalidate();
+      return made.project;
+    } catch (cause) {
+      // A refusal means nothing was made, so the next try is a new creation. A lost answer may have made it: the same id finds it.
+      if (cause instanceof ApiError && cause.status < 500) creation.current = { id: crypto.randomUUID(), name: '' };
+      setError(cause instanceof AccountChangedError ? cause.message
+        : cause instanceof NetworkError ? 'Flux couldn’t be reached to finish this space. Try again: if it was made, you’ll go straight to it.'
+          : cause instanceof ApiError && cause.code === 'NOT_A_MEMBER' ? 'Someone you chose is no longer in the company. Choose again.'
+            : cause instanceof ApiError && cause.code === 'ENCRYPTED_SPACE_COMPANY_ONLY' ? 'Only people in the company who are not guests can make an encrypted space.'
+              : encryptionProblem(cause, { workspace: spaceName }));
+      return null;
+    } finally { inFlight.current = false; setBusy(false); }
+  }
+  return { space: workspace, allowed, busy, error, ready, create, createEncrypted };
 }
 
 /**

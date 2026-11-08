@@ -122,6 +122,8 @@ function scene(options: Scene = {}, checked = true) {
   const workspaces = {
     createWithOwner: async (row: { id: string; name: string }) => { log('workspaces.createWithOwner'); return { id: row.id, name: row.name, version: 1, encrypted: false, company: false, createdAt: now }; },
     lock: async () => { log('workspaces.lock'); },
+    // An encrypted space belongs to the company (C-24); these workspaces are not spaces of one.
+    companyOf: async () => null, spacesOfCompanyWith: async () => [], hasProject: async () => false,
     company: async () => { log('workspaces.company'); return options.company ? { id: WS, name: 'Company', version: 1, encrypted: false, company: true, createdAt: now } : null; },
     findAccount: async (lookup: unknown) => { log(`workspaces.findAccount(${'userId' in (lookup as object) ? 'id' : 'email'})`); return { id: TARGET, email: 'target@example.test', name: 'Target', emailVerified: true }; },
     insertMember: async (row: { role: WorkspaceRole }) => { log('workspaces.insertMember'); return memberRow(row.role); },
@@ -253,11 +255,11 @@ describe('workspace and membership use cases over in-memory repositories', () =>
     const nobody = scene();
     await assert.rejects(addMember(human(OWNER), WS, { role: 'member' }, nobody.db, nobody.ports), InvalidInputError);
     const verified = scene();
-    verified.ports.workspaces = () => ({ lock: async () => undefined, findAccount: async () => ({ id: TARGET, email: 'a@b.test', name: 'A', emailVerified: false }) }) as never;
+    verified.ports.workspaces = () => ({ lock: async () => undefined, findAccount: async () => ({ id: TARGET, email: 'a@b.test', name: 'A', emailVerified: false }), companyOf: async () => null }) as never;
     await assert.rejects(addMember(human(OWNER), WS, { email: 'a@b.test', role: 'member' }, verified.db, verified.ports, { verifiedEmailOnly: true }),
       (error: unknown) => error instanceof NotFoundError && error.code === 'ACCOUNT_NOT_FOUND');
     const twice = scene();
-    twice.ports.workspaces = () => ({ lock: async () => undefined, findAccount: async () => ({ id: TARGET, email: 'a@b.test', name: 'A', emailVerified: true }), insertMember: async () => null }) as never;
+    twice.ports.workspaces = () => ({ lock: async () => undefined, findAccount: async () => ({ id: TARGET, email: 'a@b.test', name: 'A', emailVerified: true }), insertMember: async () => null, companyOf: async () => null }) as never;
     await assert.rejects(addMember(human(OWNER), WS, { userId: TARGET, role: 'member' }, twice.db, twice.ports), (error: unknown) => error instanceof ConflictError && error.code === 'ALREADY_MEMBER');
   });
 

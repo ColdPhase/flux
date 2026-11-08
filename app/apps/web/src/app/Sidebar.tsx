@@ -9,7 +9,7 @@ import { UserMenu } from './UserMenu';
 import { useShellActions } from './shellContext';
 import { WorkingAgent } from './WorkingAgent';
 import { NewMenu } from './NewMenu';
-import { useLockedWorkspaces } from '../encryption/state';
+import { lockedLine, useLockedWorkspaces } from '../encryption/state';
 
 export interface SidebarProps {
   workspace: WorkspaceSummary | null;
@@ -132,7 +132,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, session, 
             </NavLink>
           ))}
           {locked.map((space) => (
-            <NavLink key={space.id} to={`/spaces/${space.id}`} end={false} className="side__rail-project side__rail-locked" aria-label={`${space.name}, waiting to be unlocked`} title={`${space.name} · Waiting to be unlocked`}>
+            <NavLink key={space.id} to={`/spaces/${space.id}`} end={false} className="side__rail-project side__rail-locked" aria-label={`${space.name}, ${lockedLine(space).toLowerCase()}`} title={`${space.name} · ${lockedLine(space)}`}>
               <LockTile size={28} />
             </NavLink>
           ))}
@@ -223,11 +223,11 @@ export function Sidebar({ projects, directMessages, agents = [], user, session, 
               })}
               {locked.map((space) => (
                 <li key={space.id}>
-                  <NavLink to={`/spaces/${space.id}`} end={false} className="side__item side__locked" onClick={navigate} title={`${space.name} · Waiting to be unlocked`} data-locked-space={space.id}>
+                  <NavLink to={`/spaces/${space.id}`} end={false} className="side__item side__locked" onClick={navigate} title={`${space.name} · ${lockedLine(space)}`} data-locked-space={space.id}>
                     <LockTile />
                     <span className="side__names">
                       <span className="side__label">{space.name}</span>
-                      <span className="side__sub">Waiting to be unlocked</span>
+                      <span className="side__sub">{lockedLine(space)}</span>
                     </span>
                   </NavLink>
                 </li>

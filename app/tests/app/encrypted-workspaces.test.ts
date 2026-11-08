@@ -62,10 +62,10 @@ describe('F-030 creation (fixture route)', () => {
     assert.equal(again.headers.get('cache-control'), 'no-store');
   });
 
-  test('creation is for the company’s owners and admins (F-037): an account outside the company is refused, and no session is refused', async () => {
+  test('creation belongs to a company (F-037, C-24): without the fixture bearer it must name one, and no session is refused', async () => {
     const response = await eve.browser.request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'No bearer club', creationId: randomUUID(), password: pw.eve } });
-    assert.equal(response.status, 403);
-    assert.equal(codeOf(response), 'COMPANY_ADMIN_REQUIRED');
+    assert.equal(response.status, 400);
+    assert.equal(codeOf(response), 'ENCRYPTED_SPACE_COMPANY_ONLY');
     const signedOut = await new Browser().request('POST', ENCRYPTED_WORKSPACES_PATH, { body: { name: 'Nobody club', creationId: randomUUID(), password: pw.eve } });
     assert.equal(signedOut.status, 401);
   });

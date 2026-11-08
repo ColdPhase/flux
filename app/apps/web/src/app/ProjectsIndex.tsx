@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Link } from 'react-router';
 import { useProjectNews } from './projectNews';
 import { Avatar, Button, Icon, Kreska, MEDIA, useMediaQuery } from '../ui';
+import { lockedLine } from '../encryption/state';
 import { useShellData } from './data';
 import { useShellActions } from './shellContext';
 import './settings.css';
@@ -45,7 +46,7 @@ export function ProjectsIndex() {
                   <span className="set-row__ic" aria-hidden="true"><Icon name="lock" size={16} /></span>
                   <span className="set-row__b">
                     <span className="set-row__t">{space.name}</span>
-                    <span className="set-row__s">Waiting to be unlocked</span>
+                    <span className="set-row__s">{lockedLine(space)}</span>
                   </span>
                   <Icon name="chevron-right" size={14} className="set-row__go" />
                 </Link>

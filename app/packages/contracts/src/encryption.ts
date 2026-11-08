@@ -1,4 +1,4 @@
-import type { Workspace } from './access.js';
+import type { Project, Workspace } from './access.js';
 
 /**
  * Encrypted workspaces (F-030, #655; docs/product/encrypted-workspaces.md). Wire types of the keys,
@@ -69,13 +69,41 @@ export interface CreateEncryptedWorkspaceCommand {
   creationId: string;
   /** The creator's unlock password. */
   password: string;
+  /**
+   * F-037 (#874): the company this encrypted space belongs to. The creator must be a member of it who is not a guest, and `people` must
+   * be members of it. Left out only by the test deployment's fixture creation, which makes a bare encrypted workspace.
+   */
+  companyId?: string;
+  /** The company's people who start in the space as members (the creator is its admin). */
+  people?: string[];
+  /**
+   * The recovery code the browser made and the person has downloaded (`XXXX-XXXX-…`, 32 characters). Without it the server makes one and
+   * returns it once, as before. It is never stored; it is only the secret of the recovery holder.
+   */
+  recoveryCode?: string;
 }
 
-/** `recoveryCode` is returned exactly once, on the first answer; a retry gets null. */
+/**
+ * `recoveryCode` is returned exactly once, on the first answer, and only when the server made it; a retry gets null. `project` is the
+ * space (the one project of an encrypted space made for a company); null for a bare encrypted workspace.
+ */
 export interface CreateEncryptedWorkspaceResult {
   workspace: Workspace;
   recoveryCode: string | null;
+  project: Project | null;
 }
+
+/** `GET`: whether this server can make encrypted spaces now (its keyring answers); any signed-in person may ask. */
+export const ENCRYPTED_SPACES_AVAILABILITY_PATH = '/api/v1/encrypted-workspaces/availability';
+export interface EncryptedSpacesAvailability { available: boolean }
+/**
+ * `GET`: the encrypted spaces of a company, for its owners and admins only. They hold no key and are not in them: a name and a date are
+ * all they learn, and `DELETE` is all they can do (F-037, C-24).
+ */
+export const companyEncryptedSpacesPath = (companyId: string) => `/api/v1/workspaces/${companyId}/encrypted-spaces`;
+export interface EncryptedSpaceRef { id: string; name: string; createdAt: string; /** The caller is also in it (then it is in their own lists). */ member: boolean }
+/** `DELETE`: erases an encrypted space and everything in it. Its admins and the company's owners and admins may. */
+export const encryptedSpacePath = (workspaceId: string) => `/api/v1/encrypted-spaces/${workspaceId}`;
 
 /** Exactly one of the two. */
 export interface UnlockWorkspaceCommand { password?: string; recoveryCode?: string }
@@ -101,6 +129,7 @@ export const ENCRYPTION_ERROR_CODES = [
   'WORKSPACE_LOCKED', 'UNLOCK_INCORRECT', 'UNLOCK_RATE_LIMITED', 'CREATION_RATE_LIMITED', 'UNLOCK_BUSY', 'NO_UNLOCK_PASSWORD', 'KEYRING_UNAVAILABLE',
   'SWAP_UNSAFE', 'PASSWORD_TOO_WEAK', 'LAST_UNLOCK_PASSWORD', 'ALREADY_HAS_PASSWORD', 'UNLOCK_PASSWORD_GRANT_REQUIRED',
   'WORKSPACE_ENCRYPTION_ADMIN_REQUIRED', 'WORKSPACE_ENCRYPTED_AI_OFF', 'ENCRYPTION_TAMPERED', 'WORKSPACE_NOT_ENCRYPTED', 'WORKSPACE_ENCRYPTED_UNSUPPORTED',
+  'ENCRYPTED_SPACE_HOLDS_ONE', 'ENCRYPTED_SPACE_COMPANY_ONLY', 'ENCRYPTED_SPACE_NO_INVITES', 'RECOVERY_CODE_INVALID',
 ] as const;
 export type EncryptionErrorCode = typeof ENCRYPTION_ERROR_CODES[number];
 
@@ -163,6 +192,7 @@ export const LOCKED_ALLOWED_ROUTES: Readonly<Record<string, string>> = {
   'GET /api/v1/workspaces/:workspaceId/invites': 'Invite links are metadata: a role, an address and who made them (F-035)',
   'POST /api/v1/workspaces/:workspaceId/invites': 'An invite link is metadata (F-035); with an Idempotency-Key it answers 423 itself, as its stored answer is sealed',
   'DELETE /api/v1/workspaces/:workspaceId/invites/:inviteId': 'Revoking an invite link is metadata (F-035)',
+  'DELETE /api/v1/encrypted-spaces/:workspaceId': 'Deleting an encrypted space is allowed while it is locked: the company\'s admins hold no key and can still erase it (C-24)',
   'POST /api/v1/workspaces/:workspaceId/unlock': 'Unlocking',
   'POST /api/v1/workspaces/:workspaceId/lock': 'Locking',
   'POST /api/v1/workspaces/:workspaceId/unlock-password-grants': 'Answers 423 itself: a grant is useful only while unlocked',

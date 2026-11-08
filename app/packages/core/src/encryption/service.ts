@@ -2,10 +2,11 @@ import { randomUUID, type KeyObject } from 'node:crypto';
 import {
   CREATION_LIMIT, CREATION_WINDOW_SECONDS, UNLOCK_ATTEMPT_LIMIT, UNLOCK_ATTEMPT_WINDOW_SECONDS, UNLOCK_GRANT_SECONDS, WORKSPACE_LOCKED_EVENT,
   WORKSPACE_UNLOCK_PASSWORD_GRANTED_EVENT, WORKSPACE_UNLOCK_PASSWORD_SET_EVENT, WORKSPACE_UNLOCKED_EVENT,
-  type CreateEncryptedWorkspaceCommand, type CreateEncryptedWorkspaceResult, type EncryptionStateResult, type GrantUnlockPasswordCommand,
+  type CreateEncryptedWorkspaceCommand, type CreateEncryptedWorkspaceResult, type EncryptedSpaceRef, type EncryptionStateResult, type GrantUnlockPasswordCommand,
   type GrantUnlockPasswordResult, type NewRecoveryCodeCommand, type NewRecoveryCodeResult, type SetUnlockPasswordCommand, type UnlockWorkspaceCommand,
 } from '@flux/contracts';
-import { ConflictError, ForbiddenError, InvalidInputError, RateLimitedError } from '../access/errors.js';
+import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RateLimitedError } from '../access/errors.js';
+import { requireSpacePerson } from '../access/space-person.js';
 import type { Principal } from '../principal.js';
 import { KeyringUnavailableError, WorkspaceLockedError, UnlockIncorrectError } from './errors.js';
 import {
@@ -49,6 +50,8 @@ export interface EncryptionUseCaseDeps {
   read: WorkspaceReader;
   /** The key pin (`FLUX_KEY_PIN_SECRET`); null: encrypted spaces cannot be created or unlocked here. */
   pin: KeyPin | null;
+  /** A test deployment, where isolated workspaces (not the company) can stand in for it as the parent of an encrypted space. */
+  isolatedCompanies?: boolean;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -62,7 +65,7 @@ interface Material {
 
 const sameVersions = (a: number[], b: number[]) => a.length === b.length && [...a].sort().every((v, i) => v === [...b].sort()[i]);
 
-export function createEncryptionUseCases({ unit, keys, semaphore, estimator, read, pin: maybePin }: EncryptionUseCaseDeps) {
+export function createEncryptionUseCases({ unit, keys, semaphore, estimator, read, pin: maybePin, isolatedCompanies = false }: EncryptionUseCaseDeps) {
   /** Every path that verifies or writes holders needs the pin; without it the process cannot open a sealed space. */
   const requirePin = (): KeyPin => { if (!maybePin) throw new KeyringUnavailableError(); return maybePin; };
   const person = (principal: Principal) => {
@@ -253,18 +256,50 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
       if (!name || name.length > 200) throw new InvalidInputError('Name must be 1–200 characters');
       if (typeof command.creationId !== 'string' || !UUID.test(command.creationId)) throw new InvalidInputError('creationId must be a UUID');
       const creationId = command.creationId.toLowerCase();
+      // F-037, C-24: a space of the company. Its creator and its first people are members of that company; the creator is not a guest.
+      const companyId = command.companyId === undefined ? null : command.companyId;
+      if (companyId !== null && (typeof companyId !== 'string' || !UUID.test(companyId))) throw new InvalidInputError('companyId must be a UUID');
+      if (command.people !== undefined && (!Array.isArray(command.people) || command.people.length > 200 || command.people.some((id) => typeof id !== 'string' || !id))) {
+        throw new InvalidInputError('people must be a list of at most 200 account ids');
+      }
+      if (command.people?.length && companyId === null) throw new InvalidInputError('people need a company');
+      const people = [...new Set(command.people ?? [])].filter((id) => id !== principal.id);
+      // A recovery code the browser made (and the person downloaded) is used as it is, if it is one Flux could have made: 32 characters of the
+      // alphabet that are not a pattern. It is only the secret of the recovery holder and is never stored.
+      let ownCode: string | null = null;
+      if (command.recoveryCode !== undefined) {
+        ownCode = normalizeRecoveryCode(command.recoveryCode);
+        if (!ownCode || new Set(ownCode).size < 12) throw new InvalidInputError('That recovery code is not one Flux can use', 'RECOVERY_CODE_INVALID');
+      }
+      const requireCompany = async (ports: EncryptionPorts, lock: boolean) => {
+        if (companyId === null) return;
+        // `companyId` must BE the company (review of #976): an encrypted space's own workspace named here would make a nested space the
+        // company's admins can neither see nor delete. A test deployment's isolated workspaces stand in for the company; they are the
+        // only plain workspaces besides it, and a deployment has none. The database refuses a link to an encrypted workspace as well.
+        const kind = await ports.rows.workspaceKind(companyId, { lock });
+        if (!kind || kind.encrypted || !(kind.company || isolatedCompanies)) {
+          throw new ForbiddenError('Only people in the company who are not guests can make an encrypted space', 'ENCRYPTED_SPACE_COMPANY_ONLY');
+        }
+        const role = await ports.rows.memberRole(companyId, principal.id, { lock });
+        if (!role || role === 'guest') throw new ForbiddenError('Only people in the company who are not guests can make an encrypted space', 'ENCRYPTED_SPACE_COMPANY_ONLY');
+        for (const id of people) {
+          // The same check as adding a person or bringing one back: in the company now, and not its guest (C-24).
+          requireSpacePerson(await ports.rows.memberRole(companyId, id, { lock }));
+        }
+      };
       const again = async () => {
         const existing = await unit.run((ports) => ports.rows.workspaceByCreation(principal.id, creationId));
         if (!existing) return null;
         if (existing.name !== name) throw new ConflictError('This creation id was used for another workspace', 'IDEMPOTENCY_CONFLICT');
-        return { status: 200 as const, body: { workspace: await read(principal, existing.id), recoveryCode: null } };
+        return { status: 200 as const, body: { workspace: await read(principal, existing.id), recoveryCode: null, project: null } };
       };
       const retried = await again();
       if (retried) return retried;
+      await unit.run((ports) => requireCompany(ports, false));
       const password = unlockPassword(command.password, estimator);
       keys.requireAvailable(); requirePin();
       const workspaceId = randomUUID();
-      const code = generateRecoveryCode();
+      const code = ownCode ?? generateRecoveryCode();
       const ownerKdf = newKdfParams();
       const recoveryKdf = newKdfParams();
       // Five creations per person in 15 minutes, reserved before the two derivations; a failed creation releases its row.
@@ -285,7 +320,10 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
         const unlock = await keys.sealForUnlock(workspaceId, 1, deks.get(1)!);
         try {
           await unit.run(async (ports) => {
-            await ports.rows.insertSealedWorkspace({ id: workspaceId, name, createdBy: principal.id, creationId });
+            // Held until this commits, so a person leaving the company meanwhile is not left in a space made just after.
+            await requireCompany(ports, true);
+            await ports.rows.insertSealedWorkspace({ id: workspaceId, name, createdBy: principal.id, creationId, companyId });
+            await ports.rows.insertMembers(workspaceId, people, principal.id);
             const checkValue = keyCheckValue(key);
             await ports.rows.insertKeyVersion({ workspaceId, keyVersion: 1, commitment: null, checkValue,
               pin: requirePin().version({ workspaceId, keyVersion: 1, checkValue, commitment: null }) });
@@ -308,7 +346,41 @@ export function createEncryptionUseCases({ unit, keys, semaphore, estimator, rea
         zero(deks); ownerKek?.fill(0); recoveryKek?.fill(0);
         if (!created) await unit.run((ports) => ports.rows.releaseCreation(creation.id)).catch(() => undefined);
       }
-      return { status: 201, body: { workspace: await read(principal, workspaceId), recoveryCode: code } };
+      return { status: 201, body: { workspace: await read(principal, workspaceId), recoveryCode: ownCode ? null : code, project: null } };
+    },
+
+    /**
+     * `GET /api/v1/workspaces/:companyId/encrypted-spaces`: the company's owners and admins learn that these spaces exist (their name
+     * is metadata) and nothing else: they hold no key and are not in them. Anyone else gets the company's own 404.
+     */
+    async companySpaces(principal: Principal, companyId: string): Promise<EncryptedSpaceRef[]> {
+      person(principal);
+      return unit.run(async (ports) => {
+        const role = UUID.test(companyId) ? await ports.rows.memberRole(companyId, principal.id) : null;
+        if (!role) throw new NotFoundError('Workspace', 'WORKSPACE_NOT_FOUND');
+        if (role !== 'owner' && role !== 'admin') throw new ForbiddenError('Only owners and admins of the company see its encrypted spaces', 'FORBIDDEN');
+        return (await ports.rows.companySpaces(companyId, principal.id)).map((row) => ({ id: row.id, name: row.name, createdAt: row.createdAt.toISOString(), member: row.member }));
+      });
+    },
+
+    /**
+     * `DELETE /api/v1/encrypted-spaces/:id`: erases the space and everything in it. An admin of the space may (its owner or admin), and so
+     * may an owner or admin of the company it belongs to, who cannot read it (F-037, C-24). Anyone else gets a plain 404, as for a
+     * workspace they cannot see. The people who were in it see it gone at their next read.
+     */
+    async deleteSpace(principal: Principal, workspaceId: string): Promise<void> {
+      person(principal);
+      if (!UUID.test(workspaceId)) throw new NotFoundError('Space', 'WORKSPACE_NOT_FOUND');
+      await unit.run(async (ports) => {
+        if (!await ports.rows.sealed(workspaceId)) throw new NotFoundError('Space', 'WORKSPACE_NOT_FOUND');
+        const company = await ports.rows.companyOf(workspaceId);
+        const own = await ports.rows.memberRole(workspaceId, principal.id, { lock: true });
+        const ofCompany = company ? await ports.rows.memberRole(company, principal.id, { lock: true }) : null;
+        const allowed = own === 'owner' || own === 'admin' || ofCompany === 'owner' || ofCompany === 'admin';
+        if (!allowed) throw new NotFoundError('Space', 'WORKSPACE_NOT_FOUND');
+        await ports.rows.eraseSpace(workspaceId);
+      });
+      keys.forget(workspaceId);
     },
 
     /** `POST …/unlock { password } | { recoveryCode }`. Already unlocked under this boot: 200, no check. */

@@ -154,7 +154,7 @@ describe('F-030 AC-6: every route, called with a locked workspace\'s objects (S2
     assert.ok(routes.length > 250, `the server lists its routes (${routes.length})`);
     const unexpected: string[] = []; const walked: string[] = []; const notOfA: string[] = []; const refusedInput: string[] = []; let locked = 0; let crossWalked = 0;
     // Destructive routes run last, the deepest first, so they cannot take A's objects away from the others.
-    const order = (route: Route) => (route.method === 'DELETE' ? 10 - route.url.split('/').length / 10 : LOCKED_ALLOWED_ROUTES[`${route.method} ${route.url}`] ? 1 : 0);
+    const order = (route: Route) => (route.url.startsWith('/api/v1/encrypted-spaces/') ? 20 : route.method === 'DELETE' ? 10 - route.url.split('/').length / 10 : LOCKED_ALLOWED_ROUTES[`${route.method} ${route.url}`] ? 1 : 0);
     for (const route of [...routes].sort((a, b) => order(a) - order(b))) {
       const routeKey = `${route.method} ${route.url}`;
       const params = [...route.url.matchAll(/:(\w+)/g)].map((match) => match[1]!);

@@ -74,7 +74,7 @@ import { composeEncryption, encryptionUnitOfWork, installSeals, processKeysFromE
 import { encryptionRoutes } from './encryption/routes.js';
 import { registerLockGate } from './encryption/lock-gate.js';
 import { createRequestIdGenerator, requestLogSerializer, SECRET_LOG_PATHS } from './http/log-serializers.js';
-import { dropStaleUnlocks, requireCompanyAdmin } from '@flux/core';
+import { createProject, dropStaleUnlocks, listProjects } from '@flux/core';
 import { useDomainErrors } from './http/errors.js';
 import { registerUpgradeDispatcher } from './http/upgrades.js';
 import { registerEditing } from './editing/composition.js';
@@ -152,7 +152,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   app.addHook('onClose', async () => boss.stop());
   const identity = await startIdentity(app, { db, config: identityConfig });
   gateSessions = identity;
-  const encryption = composeEncryption(db, boss, encryptionKeys);
+  const encryption = composeEncryption(db, boss, encryptionKeys, { isolatedCompanies: testDeployment });
   // The keyring heartbeat (5 s): swap again, then the boot id; a new boot deletes the stale unlock rows and records the locks.
   const heartbeat = encryptionKeys.startHeartbeat(async (change) => {
     if (change.current) await dropStaleUnlocks(encryptionUnitOfWork(db, boss), change.current, change.observedAt);
@@ -165,7 +165,10 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     // S1/S2: creation exists only in a test deployment and with the fixture bearer (never on a ./flux up install).
     fixtureCreation: testDeployment ? config.fixture.token : null,
     productionCreation: ENCRYPTED_CREATION_IN_PRODUCTION,
-    requireCompanyAdmin: (principal) => requireCompanyAdmin(principal, db, accessPorts) }));
+    firstSpace: async (principal, workspaceId, name) => {
+      const existing = await listProjects(principal, workspaceId, { limit: 1 }, db, accessPorts);
+      return existing.items[0] ?? createProject(principal, workspaceId, { name, visibility: 'workspace' }, db, accessPorts);
+    } }));
   const liveMedia = createLiveMediaFromEnv(env, identityConfig.publicOrigin);
   const lifecycle = liveMedia ? liveLifecycle(db, pool, liveMedia.media) : null;
   const liveRevocation = liveMedia ? liveRevocationCoordinator(db, pool, liveMedia.media, lifecycle!) : null;

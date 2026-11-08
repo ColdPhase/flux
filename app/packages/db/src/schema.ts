@@ -402,6 +402,8 @@ export const workspaces = pgTable('workspaces', {
   creationId: uuid('creation_id'),
   /** F-037 (#874, migration 0003): the one company workspace setup makes; at most one row has it. */
   company: boolean('company').notNull().default(false),
+  /** F-037, F-030 (#874, migration 0018): the company an encrypted space hides behind; null for every other workspace. */
+  companyWorkspaceId: uuid('company_workspace_id').references((): AnyPgColumn => workspaces.id, { onDelete: 'cascade' }),
 });
 
 /**

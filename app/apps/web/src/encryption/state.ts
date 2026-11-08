@@ -29,6 +29,12 @@ export function useLockedWorkspaces(): WorkspaceSummary[] {
 
 export const isManagerOf = (space: WorkspaceSummary | undefined) => space?.role === 'owner' || space?.role === 'admin';
 
+/**
+ * What a locked space says of itself in a list (C-24): an admin who can unlock it is told so; everyone else waits for an admin, after
+ * every restart of the server, until one enters their unlock password.
+ */
+export const lockedLine = (space: WorkspaceSummary | undefined) => space?.encryption?.canUnlock ? 'Locked, unlock it' : 'Locked, waiting for an admin';
+
 // The page in view is a place of a locked workspace (a deep link, or a tab that was open when it locked). The route's error
 // boundary says so, and the shell's header reads it, so the header names the space instead of the Home it fell back to.
 let lockedPlace: string | null = null;

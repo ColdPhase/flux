@@ -12,6 +12,7 @@ import { placeOfPath, useRecentPlaces, type RecentPlace } from './recent';
 import { groupResults, ResultBody } from './ResultRow';
 import { useSearch } from './useSearch';
 import { UnsearchedSpaces } from '../encryption/LockedSpace';
+import { lockedLine } from '../encryption/state';
 import './search.css';
 
 /** Results listed at once. There is no second page: a longer list is narrowed by typing more words. */
@@ -165,7 +166,7 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
             {option.kind === 'result' ? <ResultBody result={option.result} />
               : option.kind === 'place' ? <><Icon name={option.icon} size={15} className="jump__ric" /><span className="jump__rtext">{option.label}</span>{option.side ? <small className="jump__side">{option.side}</small> : null}</>
               : option.kind === 'command' ? <><Icon name={option.icon} size={15} className="jump__ric" /><span className="jump__rtext">{option.label}</span>{option.keys ? <span className="jump__keys" aria-hidden="true">{option.keys.map((key) => <kbd key={key} className="jump__key">{key}</kbd>)}</span> : null}</>
-              : <><Icon name="lock" size={15} className="jump__ric" /><span className="jump__rtext">{option.space.name}</span><small className="jump__side">Waiting to be unlocked</small></>}
+              : <><Icon name="lock" size={15} className="jump__ric" /><span className="jump__rtext">{option.space.name}</span><small className="jump__side">{lockedLine(option.space)}</small></>}
           </li>
         )];
       })}

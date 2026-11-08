@@ -92,3 +92,33 @@ export function groupRecoveryCode(code: string): string[] {
   const plain = code.replace(/[\s-]/g, '').toUpperCase();
   return plain.length === 32 ? plain.match(/.{4}/g)! : [code];
 }
+
+const RECOVERY_ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+/** A new recovery code: 160 random bits as 32 characters of the alphabet the server reads, in groups of four (`K7QD-2M9X-…`). */
+export function generateRecoveryCode(below: (max: number) => number = randomBelow): string {
+  return groupRecoveryCode(Array.from({ length: 32 }, () => RECOVERY_ALPHABET[below(32)]!).join('')).join('-');
+}
+
+/**
+ * The text of the file the person keeps: the code, what it is for and where it belongs. It is made here, in the browser, and goes into
+ * the file and to the server once; nothing about it is stored in the browser.
+ */
+export function recoveryCodeFile(spaceName: string, code: string, origin: string, madeOn: Date = new Date()): string {
+  const lines = groupRecoveryCode(code);
+  return [`Recovery code for ${spaceName}`, '', lines.length === 8 ? lines.slice(0, 4).join('-') : lines.join('-'), lines.length === 8 ? lines.slice(4).join('-') : '', '',
+    `Made ${madeOn.toISOString().slice(0, 10)} · ${origin}`, '',
+    `This code opens ${spaceName} if every admin’s unlock password is lost. Keep it apart from the passwords, away from the computer that runs Flux.`,
+    `If every unlock password and this code are lost, everything in ${spaceName} is gone for good. Nobody can recover it.`, ''].join('\n');
+}
+
+/** Offers the file to the browser's download. Returns once the browser has it; the text is not kept. */
+export function downloadRecoveryCode(spaceName: string, code: string): void {
+  const url = URL.createObjectURL(new Blob([recoveryCodeFile(spaceName, code, window.location.origin)], { type: 'text/plain;charset=utf-8' }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `recovery-code-${spaceName.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'space'}.txt`;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}

@@ -8,7 +8,7 @@ import { ProjectOverview } from '../project/ProjectOverview';
 import { useProjectShell } from '../project/data';
 import { WorkspacePeople } from '../people/WorkspacePeople';
 import { useShellData } from './data';
-import { useShellActions, type DetailsView, type OwnedView } from './shellContext';
+import type { DetailsView, OwnedView } from './shellContext';
 import { ThoughtTasksPanel } from '../sketch/ThoughtTasks';
 
 /**
@@ -82,19 +82,17 @@ const ROLE_LINE = {
 } as const;
 
 /**
- * The company's people (F-037), one step away from Home's Details: they live in Settings › Company. An encrypted space
- * (F-030, still its own internal workspace until per-space encryption lands) keeps its people and keys in this panel.
+ * The company's people (F-037), one step away from Home's Details: they live in Settings › Company. An encrypted space keeps its people
+ * and keys in its own settings (C-24), not here.
  */
 function PeopleEntries() {
-  const { workspace, workspaces, lockedWorkspaces } = useShellData();
-  const { openDetails } = useShellActions();
-  const sealed = [...workspaces, ...lockedWorkspaces].filter((space) => space.encryption);
+  const { workspace } = useShellData();
   return (
     <section className="details__sec ov-sec" aria-labelledby="details-people">
       <h4 id="details-people">People</h4>
-      {workspace || sealed.length ? null : <p className="ov-empty">You’re not in a company on this Flux yet. Ask an admin for an invite link.</p>}
+      {workspace ? null : <p className="ov-empty">You’re not in a company on this Flux yet. Ask an admin for an invite link.</p>}
       <ul className="ov-rows">
-        {workspace && !workspace.encryption ? (
+        {workspace ? (
           <li>
             <Link className="ov-row" to="/settings/company">
               <Icon name="people" size={16} className="ov-row__ic" />
@@ -106,18 +104,6 @@ function PeopleEntries() {
             </Link>
           </li>
         ) : null}
-        {sealed.map((space) => (
-          <li key={space.id}>
-            <button type="button" className="ov-row" onClick={() => openDetails({ kind: 'people', workspaceId: space.id })}>
-              <Icon name="lock" size={16} className="ov-row__ic" />
-              <span className="ov-row__b">
-                <span className="ov-row__t">{space.name}</span>
-                {space.role ? <span className="ov-row__s">{ROLE_LINE[space.role]}</span> : null}
-              </span>
-              <Icon name="chevron-right" size={16} className="ov-row__go" />
-            </button>
-          </li>
-        ))}
       </ul>
     </section>
   );
