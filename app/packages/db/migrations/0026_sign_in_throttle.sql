@@ -9,6 +9,7 @@ CREATE TABLE public.auth_rate_limits (
     count integer NOT NULL,
     last_request bigint NOT NULL
 );
+CREATE INDEX auth_rate_limits_last_request_idx ON public.auth_rate_limits (last_request);
 
 CREATE TABLE public.auth_sign_in_throttle (
     account_hash text PRIMARY KEY,

@@ -188,7 +188,7 @@ export const authRateLimits = pgTable('auth_rate_limits', {
   key: text('key').notNull().unique(),
   count: integer('count').notNull(),
   lastRequest: bigint('last_request', { mode: 'number' }).notNull(),
-});
+}, (table) => [index('auth_rate_limits_last_request_idx').on(table.lastRequest)]);
 
 /**
  * Wrong passwords per account (migration 0022, #990): the account's own back-off, which a change of address cannot get around. The key is a
