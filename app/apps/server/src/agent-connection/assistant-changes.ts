@@ -133,8 +133,12 @@ async function removalUndo(tx: Transaction, operation: string, value: Record<str
       const finished = before && work && before.status !== 'done' && String(workField(work, 'status')) === 'done';
       return removal(target.title, finished ? { finishes: before } : {});
     }
-    case 'conversation.create': case 'conversation.reply':
-      return await assistantRemovalRows(tx as DbExecutor).messageIsUndoable(made, agentId) ? removal(target.title) : null;
+    case 'conversation.create': case 'conversation.reply': {
+      const removals = assistantRemovalRows(tx as DbExecutor);
+      if (!await removals.messageIsUndoable(made, agentId)) return null;
+      // A line any agent of the owner (the assistant, a local client) puts in a task's thread is its owner's to delete, with no condition (TA-3, #961).
+      return removal(target.title, operation === 'conversation.reply' && await removals.messageIsInTaskThread(made) ? { thread: true } : {});
+    }
     default: return null;
   }
 }

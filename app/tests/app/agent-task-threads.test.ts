@@ -8,7 +8,7 @@ import { personalRunPorts, personalRunUseCases } from '../../apps/server/src/per
 import { db, pool } from './support/db.js';
 import { eventNow, withFault } from './support/db-faults.js';
 import { assistantScene, text, result, type AssistantScene } from './support/assistant-scene.js';
-import { addMember, expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, project as createProject, removeFromSpace, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { waitFor } from './support/wait.js';
 
@@ -137,6 +137,7 @@ describe('the exchange through the real drain (#841, N1 to N3)', () => {
   let ada: Person; let jonas: Person; let maja: Person;
   const names: Record<string, string> = {};
   let space: Awaited<ReturnType<typeof createProject>>;
+  let workspaceId = '';
   const agents: Record<string, string> = {};
 
   const thread = async (id: string) => {
@@ -148,11 +149,11 @@ describe('the exchange through the real drain (#841, N1 to N3)', () => {
     { status: string; end_reason: string | null; stop_requested_by: string | null };
 
   /** Ada (the space's admin) made a task, Maja wrote in it, and Jonas's agent Planner holds it with a finished report that asks `ask`. */
-  async function asked(title: string, ask: string) {
-    const task = expectStatus(await ada.browser.request('POST', `/api/v1/projects/${space.id}/work`, { body: { title } }), 201) as WorkItem;
+  async function asked(title: string, ask: string, where: Awaited<ReturnType<typeof createProject>> = space) {
+    const task = expectStatus(await ada.browser.request('POST', `/api/v1/projects/${where.id}/work`, { body: { title } }), 201) as WorkItem;
     expectStatus(await maja.browser.request('POST', taskDiscussionPath(task.id), { body: { body: 'I can help with the readings', clientMessageId: randomUUID() } }), 201);
     const talk = expectStatus(await ada.browser.request('GET', taskDiscussionPath(task.id)), 200) as TaskDiscussion;
-    const started = await db.transaction((tx) => runs.startTask(personalRunPorts(tx, queue.factory), { ownerUserId: jonas.id, agentId: agents.jonas!, workId: task.id, projectId: space.id,
+    const started = await db.transaction((tx) => runs.startTask(personalRunPorts(tx, queue.factory), { ownerUserId: jonas.id, agentId: agents.jonas!, workId: task.id, projectId: where.id,
       conversationId: talk.conversationId!, prompt: `Task #${task.number}: ${title}`, clientRunId: randomUUID() }));
     assert.ok(started.started, JSON.stringify(started));
     await pool.query('UPDATE project_work_items SET owner_user_id = NULL, owner_agent_id = $2, version = version + 1 WHERE id = $1', [task.id, agents.jonas]);
@@ -166,6 +167,7 @@ describe('the exchange through the real drain (#841, N1 to N3)', () => {
   before(async () => {
     [ada, jonas, maja] = await Promise.all(['atq-ada', 'atq-jonas', 'atq-maja'].map(person));
     const ws = await createWorkspace(ada, 'Rain barrels two');
+    workspaceId = ws.id;
     for (const member of [jonas, maja]) await addMember(ada, ws.id, member, 'member');
     space = await createProject(ada, ws.id, 'Rain barrel monitor', 'workspace');
     for (const [key, someone] of [['ada', ada], ['jonas', jonas], ['maja', maja]] as const) names[key] = (await pool.query('SELECT name FROM auth_users WHERE id = $1', [someone.id])).rows[0].name as string;
@@ -274,10 +276,28 @@ describe('the exchange through the real drain (#841, N1 to N3)', () => {
     assert.equal(deleted.message, null);
     assert.equal(deleted.change.line, `Removed by ${names.jonas}`);
     const lines = await thread(held.task.id);
-    assert.equal(lines.filter((line) => line === '[Removed by its owner]').length, 2, 'two markers keep their places');
+    assert.equal(lines.filter((line) => line === '[Removed]').length, 2, 'two markers keep their places');
     assert.ok(lines.includes('Thanks, I read the report and the answer'), 'and the person\'s own line stays');
     // Once deleted it is gone: a second try changes nothing.
     assert.equal((expectStatus(await jonas.browser.request('POST', assistantChangeActionPath(report!.id, 'undo'), { body: {} }), 200) as AssistantChangeDecision).change.state, 'undone');
+  });
+
+  test('#961: an owner taken out of the space can no longer delete their agent\'s line; put back, they can', async () => {
+    const closed = await createProject(ada, workspaceId, 'Closed rain barrels', 'restricted');
+    for (const member of [jonas, maja]) await grant(ada, closed.id, member, 'contributor');
+    const held = await asked('A line in a closed space', '{"agent": "Fieldbot", "question": "Which?"}', closed);
+    await waitFor(async () => (await readTask(held.task.id)).owner?.kind === 'human', 'the exchange to end');
+    const talk = expectStatus(await ada.browser.request('GET', taskDiscussionPath(held.task.id)), 200) as TaskDiscussion;
+    const report = ((expectStatus(await jonas.browser.request('GET', conversationAssistantChangesPath(talk.conversationId!)), 200) as { items: AssistantChange[] }).items)
+      .find((change) => change.operation === 'conversation.reply' && change.runId === held.run.id);
+    assert.ok(report?.undoable, 'Jonas\'s report is his to delete while he is in the space');
+    await removeFromSpace(ada, closed.id, jonas);
+    const refused = await jonas.browser.request('POST', assistantChangeActionPath(report!.id, 'undo'), { body: {} });
+    assert.equal(refused.status, 404, refused.text);
+    assert.ok((await thread(held.task.id)).includes('I compared the readings.'), 'and the line is still there');
+    await grant(ada, closed.id, jonas, 'contributor');
+    const deleted = expectStatus(await jonas.browser.request('POST', assistantChangeActionPath(report!.id, 'undo'), { body: {} }), 200) as AssistantChangeDecision;
+    assert.equal(deleted.change.state, 'undone', 'back in the space he can');
   });
 
   test('#938: an answer that cannot be handled gives up in the asker\'s name: the thread says so and the task goes back to its owner', async () => {

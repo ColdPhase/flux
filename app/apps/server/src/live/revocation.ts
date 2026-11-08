@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { and, eq, ne, sql } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import type { Pool } from 'pg';
 import { holdingSessionLock, schema, type Database } from '@flux/db';
 import { NotFoundError, ServiceUnavailableError, type LiveMedia } from '@flux/core';
@@ -41,14 +42,21 @@ export async function withNoMediaAccessChange<T>(db: Database, scope: Scope,
  */
 export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveMedia,
   lifecycle?: Pick<LiveLifecycle, 'recoverWorkspaceUnderLock'>) {
-  async function locked<T>(workspaceId: string, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    // A lock whose connection dies is gone, and the next holder may be working: `work` stops at its next step (#916).
+  /**
+   * `work` also gets `held`, a handle on the lock's own connection (#961). A lock whose connection dies is gone and the next holder may be
+   * working: `work` stops at its next step (#916), and a transaction on `held` that the loss cuts off is rolled back, so this
+   * coordinator's own writes never commit after the lock is gone. (A `pg_advisory_xact_lock` in a transaction on another connection
+   * would wait for the session lock this very coordinator holds, so the writes go through the lock's connection instead.) The caller's
+   * `mutation` is its own transaction on another connection: it is not started after the loss, and one already running commits once.
+   */
+  async function locked<T>(workspaceId: string, work: (signal: AbortSignal, held: Database) => Promise<T>): Promise<T> {
     return holdingSessionLock(pool, { acquire: { text: 'SELECT pg_advisory_lock(62061, hashtext($1))', values: [workspaceId] },
-      release: { text: 'SELECT pg_advisory_unlock(62061, hashtext($1))', values: [workspaceId] } }, work);
+      release: { text: 'SELECT pg_advisory_unlock(62061, hashtext($1))', values: [workspaceId] } },
+    (signal, connection) => work(signal, drizzle({ client: connection, schema })));
   }
 
-  async function fence(scope: Scope): Promise<void> {
-    await db.transaction(async (tx) => {
+  async function fence(scope: Scope, held: Database): Promise<void> {
+    await held.transaction(async (tx) => {
       if (scope.projectId) {
         await tx.select({ id: schema.projects.id }).from(schema.projects)
           .where(and(eq(schema.projects.id, scope.projectId), eq(schema.projects.workspaceId, scope.workspaceId)))
@@ -65,7 +73,7 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
     });
   }
 
-  async function retireAndFinish(scope: Scope): Promise<void> {
+  async function retireAndFinish(scope: Scope, held: Database): Promise<void> {
     const rows = await db.select({ id: schema.liveSessions.id, roomId: schema.liveSessions.roomId }).from(schema.liveSessions)
       .where(and(sessionFilter(scope), eq(schema.liveSessions.state, 'rotating')));
     // DeleteRoom forcibly ejects active users. With room.auto_create=false, neither
@@ -77,7 +85,7 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
       await media.ensureRoom(roomId);
       replacement.set(row.id, roomId);
     }
-    await db.transaction(async (tx) => {
+    await held.transaction(async (tx) => {
       const current = await tx.select({ id: schema.liveSessions.id }).from(schema.liveSessions)
         .where(and(sessionFilter(scope), eq(schema.liveSessions.state, 'rotating'))).for('update');
       for (const row of current) {
@@ -92,11 +100,11 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
     });
   }
 
-  async function recoverUnderLock(workspaceId: string): Promise<void> {
+  async function recoverUnderLock(workspaceId: string, held: Database): Promise<void> {
     const pending = await db.select().from(schema.liveAccessFences)
       .where(eq(schema.liveAccessFences.workspaceId, workspaceId))
       .orderBy(schema.liveAccessFences.createdAt, schema.liveAccessFences.scopeKey);
-    for (const row of pending) await retireAndFinish({ workspaceId, projectId: row.projectId });
+    for (const row of pending) await retireAndFinish({ workspaceId, projectId: row.projectId }, held);
   }
 
   async function recoverMissingRoom(sessionId: string): Promise<void> {
@@ -104,12 +112,12 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
       projectId: schema.liveSessions.projectId }).from(schema.liveSessions)
       .where(eq(schema.liveSessions.id, sessionId));
     if (!located) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
-    await locked(located.workspaceId, async (signal) => {
+    await locked(located.workspaceId, async (signal, held) => {
       await lifecycle?.recoverWorkspaceUnderLock(located.workspaceId);
       signal.throwIfAborted();
-      await recoverUnderLock(located.workspaceId);
+      await recoverUnderLock(located.workspaceId, held);
       signal.throwIfAborted();
-      const missing = await db.transaction(async (tx) => {
+      const missing = await held.transaction(async (tx) => {
         // Admission takes these guards in the same order. The SFU check stays
         // under the project guard, so a concurrent grant mutation cannot pass
         // between proof of room loss and the durable admission fence.
@@ -133,18 +141,18 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
         return true;
       });
       signal.throwIfAborted();
-      if (missing) await retireAndFinish({ workspaceId: located.workspaceId, projectId: located.projectId });
+      if (missing) await retireAndFinish({ workspaceId: located.workspaceId, projectId: located.projectId }, held);
     });
   }
 
   async function change<T>(scope: Scope, mutation: () => Promise<T>): Promise<T> {
-    return locked(scope.workspaceId, async (signal) => {
+    return locked(scope.workspaceId, async (signal, held) => {
       await lifecycle?.recoverWorkspaceUnderLock(scope.workspaceId);
       signal.throwIfAborted();
-      await recoverUnderLock(scope.workspaceId);
+      await recoverUnderLock(scope.workspaceId, held);
       // From here every step is one the lock protects: if its connection is lost, the next holder may be doing them (#916).
       signal.throwIfAborted();
-      await fence(scope);
+      await fence(scope, held);
       // On failure the fence stays durable. A retry or startup reconciliation can
       // finish it; the access mutation has not yet run, so no cutoff is claimed.
       const rows = await db.select({ roomId: schema.liveSessions.roomId }).from(schema.liveSessions)
@@ -157,11 +165,11 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
         // The mutation rolled back or failed validation. Restore admission only
         // with a fresh generation; never recreate a retired room ID.
         signal.throwIfAborted();
-        await retireAndFinish(scope);
+        await retireAndFinish(scope, held);
         throw error;
       }
       signal.throwIfAborted();
-      await retireAndFinish(scope);
+      await retireAndFinish(scope, held);
       return result;
     });
   }
@@ -180,10 +188,10 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
     async recoverPending(): Promise<void> {
       const pending = await db.select({ workspaceId: schema.liveAccessFences.workspaceId })
         .from(schema.liveAccessFences).groupBy(schema.liveAccessFences.workspaceId);
-      for (const row of pending) await locked(row.workspaceId, async (signal) => {
+      for (const row of pending) await locked(row.workspaceId, async (signal, held) => {
         await lifecycle?.recoverWorkspaceUnderLock(row.workspaceId);
         signal.throwIfAborted();
-        await recoverUnderLock(row.workspaceId);
+        await recoverUnderLock(row.workspaceId, held);
       });
     },
   };

@@ -211,8 +211,9 @@ logins. A workspace role gives no access to anyone's place.
   as that person, so it never reaches more than their user id reaches: also a directory of theirs inside a directory of someone
   else's that anyone may write to, directories with no rights, and trees deeper than `PATH_MAX` that `rm` cannot enter. It finds
   only what it can list. In a directory of someone else's that it may enter but not read (mode `0733`, or one opened to everyone
-  and closed to `0700` by its owner), a file of theirs is not found, and the release can still report that it deleted everything;
-  that file stays in `/tmp` until the runtime restarts. While anything of theirs stays, the directory stays too, the release is not
+  and closed to `0700` by its owner), a file of theirs is not found, and the release can still report that it deleted everything.
+  That file stays, and their user id goes to the next person, who can then open it by name. It goes when the runtime restarts, or
+  when the owner of that directory is released. Otherwise, while anything of theirs stays, the directory stays too, the release is not
   reported as deleted and their user id goes to nobody else. The worker asks again every ten seconds, and does not sign them out a
   second time: the sign-out of the first try stands. If it stays open, see [A release that stays open](#a-release-that-stays-open).
   They see in Settings that the operator released it.

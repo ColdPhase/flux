@@ -73,10 +73,38 @@ describe('a session lock holder is told when its connection dies (#916)', () => 
     assert.ok(error instanceof SessionLockLostError, String(error));
     assert.ok(aborted instanceof SessionLockLostError, 'and the work was told, to stop at its next step');
     assert.equal(finished, false, 'the caller did not wait for the work to end');
+    // A caller that must not start the same work again meanwhile (the worker's timer) waits for the abandoned work to stop.
+    await (error as SessionLockLostError).abandoned;
+    assert.equal(finished, true, 'and `abandoned` settles when it has');
     assert.equal(await rivalTakes(CLASS, key), true, 'the server gave the lock to a rival');
     await settle(700);
     // The dead connection was destroyed, not given back: the pool serves the next query.
     assert.equal((await database.pool.query('SELECT 1 AS one')).rows[0].one, 1);
+  });
+
+  test('a write on the lock\'s own connection that the loss cuts off is rolled back, never committed (#961)', async () => {
+    const table = `session_lock_probe_${randomUUID().replace(/-/g, '')}`;
+    await admin.query(`CREATE TABLE ${table} (n int)`);
+    try {
+      const key = randomUUID();
+      let commit = 'not tried';
+      const outcome = await holdingSessionLock(database.pool, lockOf(key), async (_signal, connection) => {
+        await connection.query('BEGIN');
+        await connection.query(`INSERT INTO ${table} VALUES (1)`);
+        // The lock's connection is cut off in the middle of the step, as a restart or a failover would.
+        await kill((await holder(CLASS, key))!);
+        await settle(100);
+        commit = await connection.query('COMMIT').then(() => 'committed', () => 'refused');
+        return 'went on';
+      }).then(() => null, (error: unknown) => error);
+      assert.ok(outcome instanceof SessionLockLostError);
+      await outcome.abandoned;
+      assert.equal(commit, 'refused', 'the commit on the dead connection fails');
+      assert.equal((await admin.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n, 0, 'and the write is not there');
+      // A write on another connection of the pool, by contrast, is its own transaction: it commits whatever happened to the lock.
+      await database.pool.query(`INSERT INTO ${table} VALUES (2)`);
+      assert.equal((await admin.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n, 1);
+    } finally { await admin.query(`DROP TABLE ${table}`); }
   });
 
   test('the reconcile lock of the worker is the same: a killed connection aborts the reconciliation', async () => {

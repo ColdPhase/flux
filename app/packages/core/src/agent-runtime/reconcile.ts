@@ -36,11 +36,15 @@ export async function reconcileAgentRuntime({ config, store, manager, endLostRun
   now?: () => Date; log?: (event: Record<string, unknown>) => void;
 }): Promise<ReconcileReport> {
   const report: ReconcileReport = { released: [], logoutFailed: [], orphans: 0, signInAgain: [], ready: [], outOfPool: [], idle: 0 };
+  // Every write and every release is a step the lock protects: the loss of the lock is looked at just before each, not only between loops (#961).
+  const live = () => signal?.throwIfAborted();
   // Expired/crashed auth commands retain their binding until a full release proves quiescence
   // (no process and no file of that person is left); never steal their lease in place.
+  live();
   await store.recoverAbandonedAuth();
   if (config.idleDays) {
     for (const binding of await store.idleBindings(new Date(now().getTime() - config.idleDays * 86_400_000))) {
+      live();
       if (await store.requestRelease({ bindingId: binding.id }, 'idle')) report.idle += 1;
     }
   }
@@ -58,29 +62,32 @@ export async function reconcileAgentRuntime({ config, store, manager, endLostRun
     return Boolean(sighted?.reachable && !sighted.bindings.includes(bindingId));
   };
   for (const sighting of sightings.value) {
-    signal?.throwIfAborted();
+    live();
     const entry = known.get(sighting.slot);
     known.delete(sighting.slot);
     const row: RuntimeSlotRow = entry?.slot ?? { slot: sighting.slot, state: 'unknown', bootId: null, outOfPoolReason: null, capacity: null };
     const bindings = entry?.bindings ?? [];
     if (!sighting.reachable) {
+      live();
       if (!entry || row.state === 'ready') await store.saveSlot({ ...row, state: row.state === 'ready' ? 'unknown' : row.state });
       continue;
     }
     for (const binding of bindings) {
       if (binding.state !== 'releasing') continue;
-      signal?.throwIfAborted();
+      live();
       const released = await manager.release(sighting.slot, binding.id);
       if (!released.ok || !released.value.deleted) { log({ event: 'release_pending', slot: sighting.slot, code: released.ok ? 'not_deleted' : released.code }); continue; }
       // A client the runtime found no CLI and no files for counts as "never had a login" only when the durable
       // history agrees (#480); a missing directory or tools volume must not turn a possible login into a confirmation.
       const loginPossible = released.value.notInstalled.length ? await store.loginPossible(binding.id) : [];
       const logoutFailed = released.value.logoutFailed || released.value.notInstalled.some((client) => loginPossible.includes(client));
+      live();
       await store.completeRelease(binding.id, logoutFailed);
       report.released.push(binding.id);
       if (logoutFailed) report.logoutFailed.push(binding.id);
     }
     for (const id of sighting.bindings.filter((dir) => !bindings.some((binding) => binding.id === dir))) {
+      live();
       const released = await manager.release(sighting.slot, id);
       if (released.ok && released.value.deleted) report.orphans += 1;
       else log({ event: 'release_pending', slot: sighting.slot, code: released.ok ? 'not_deleted' : released.code });
@@ -88,26 +95,31 @@ export async function reconcileAgentRuntime({ config, store, manager, endLostRun
     for (const binding of bindings) {
       if (sighting.bindings.includes(binding.id)) continue;
       if (binding.state === 'active' && await stillMissing(sighting.slot, binding.id)) {
+        live();
         await store.markSignInAgain(binding.id);
         report.signInAgain.push(binding.id);
       } else if (binding.state === 'binding') {
+        live();
         await store.dropStaleReservation(binding.id, new Date(now().getTime() - STALE_RESERVATION_MS));
       }
     }
     const held = sighting.other > 0;
     const seen: RuntimeSlotRow = { ...row, bootId: sighting.bootId, capacity: sighting.capacity,
       state: held ? 'out_of_pool' : 'ready', outOfPoolReason: held ? 'data_not_empty' : null };
+    live();
     await store.saveSlot(seen);
     if (held) { report.outOfPool.push(seen.slot); log({ event: 'slot_out_of_pool', slot: seen.slot, reason: seen.outOfPoolReason }); } else report.ready.push(seen.slot);
   }
   for (const { slot } of known.values()) {
     if (slot.state === 'out_of_pool') continue;
+    live();
     await store.saveSlot({ ...slot, state: 'out_of_pool', outOfPoolReason: 'missing' });
     report.outOfPool.push(slot.slot);
     log({ event: 'slot_out_of_pool', slot: slot.slot, reason: 'missing' });
   }
   // Only with every runtime's answer: a runtime that did not answer may still have its runs.
   if (endLostRuns && sightings.value.length && sightings.value.every((entry) => entry.reachable)) {
+    live();
     const lost = await endLostRuns(sightings.value.flatMap((entry) => (entry.reachable ? entry.running : [])));
     if (lost) log({ event: 'lost_runs_ended', lost });
   }

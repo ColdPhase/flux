@@ -19,8 +19,11 @@ import type { DbExecutor } from './push.js';
 
 /** The marker a removed message carries instead of its text. */
 export const REMOVED_MESSAGE_BODY = '[Removed with Undo]';
-/** The marker of a line its agent's owner deleted from a task's thread (TA-3, #938): a deletion, not an Undo that waits for silence. */
-export const REMOVED_BY_OWNER_BODY = '[Removed by its owner]';
+/**
+ * The marker of a line its agent's owner deleted from a task's thread (TA-3, #938): a deletion, not an Undo that waits for silence. The
+ * line next to it says who deleted it ("Removed by Jonas"), so the marker does not say it a second time.
+ */
+export const REMOVED_BY_OWNER_BODY = '[Removed]';
 
 export type Removal =
   | { ok: true; snapshot: Record<string, unknown> }
@@ -103,6 +106,12 @@ export function assistantRemovalRows(db: DbExecutor) {
     async messageIsUndoable(messageId: string, agentId: string): Promise<boolean> {
       return yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_messages m JOIN project_conversations c ON c.id = m.conversation_id
         WHERE m.id = ${messageId} AND m.author_agent_id = ${agentId} AND m.attachment_count = 0 AND c.space = 'people') AS found`);
+    },
+
+    /** Whether a message sits in a task's discussion: a line an agent put there is its owner's to delete (TA-3, #938), whichever agent it was. */
+    async messageIsInTaskThread(messageId: string): Promise<boolean> {
+      return yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_messages m JOIN project_task_discussions d ON d.conversation_id = m.conversation_id
+        WHERE m.id = ${messageId}) AS found`);
     },
 
     async removeMessage(input: { messageId: string; agentId: string; byOwner?: boolean }): Promise<Removal> {

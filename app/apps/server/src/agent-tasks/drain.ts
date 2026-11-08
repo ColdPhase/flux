@@ -63,22 +63,23 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
 
   /**
    * An agent's line in the task's discussion. A line that is the content of a run (its report, its question, its answer) is also that
-   * run's change, so its owner can take it back with Undo (#923); a status line is not.
+   * run's change, so its owner can delete it at any time, whoever answered it since (TA-3, #923, #938); a status line is not.
    */
   async function say(tx: Transaction, work: WorkRecord, as: string, body: string, key: string, madeBy?: RunRow) {
     const message = await attempt('say', () => taskDiscussionUseCases(tx as unknown as Database).contribute(agent(as), work.id, { body, clientMessageId: uuidFrom(`agent-task:${key}`) }));
     if (message && madeBy) await recordPost(tx, madeBy, message, key);
   }
 
-  /** The message as the run's applied change (`conversation.reply`): the existing Undo removes it while no person has answered it. */
+  /** The message as the run's applied change (`conversation.reply`): the owner's delete turns it into a marker that keeps its place. */
   async function recordPost(tx: Transaction, run: RunRow, message: { id: string; body: string }, key: string) {
     const rows = assistantChangeRows(tx as unknown as DbExecutor);
     const clientCommandId = uuidFrom(`agent-task:change:${key}`);
     if (await rows.byCommand(run.id, clientCommandId)) return;
     if (!(await assistantRemovalRows(tx as unknown as DbExecutor).messageIsUndoable(message.id, run.agentId))) return;
     const title = message.body.replace(/\s+/g, ' ').trim().slice(0, 80);
-    // `thread`: other agents' later lines in this exchange (the asker going on with an answer) do not count as use; a person's do.
-    const undo: UndoRecord = { plan: { kind: 'removal', title, thread: true }, before: null, after: title || null };
+    // `thread`: a line of the task's thread, deleted by its owner with no condition. The plan keeps no excerpt of the line: once it is
+    // deleted nothing of its text should be left (`after` is cleared with it).
+    const undo: UndoRecord = { plan: { kind: 'removal', thread: true }, before: null, after: title || null };
     await rows.insert({ id: randomUUID(), workspaceId: run.workspaceId, projectId: run.projectId, runId: run.id, ownerUserId: run.ownerUserId, agentId: run.agentId,
       clientCommandId, fingerprint: createHash('sha256').update(`agent-task:change:${key}`).digest('hex'), tool: 'flux_task_post', operation: 'conversation.reply',
       objectType: 'message', objectId: message.id, objectTitle: title, state: 'applied', authority: 'owner_request', preparedCommand: { tool: 'flux_task_post', args: {} },

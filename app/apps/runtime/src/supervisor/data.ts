@@ -10,7 +10,7 @@ import { removeTreeScript, sweepOwned } from './tree.js';
 // that person's own user id, never a symlink. Credential files are checked by `stat` only and never opened; they are only ever
 // deleted. A person's CLI can leave anything in their directory, also a link to someone else's, so everything below it is written
 // and deleted as that person (asThem), who has no rights outside their own files. Root touches only `/data/<id>` itself, after
-// endProcesses proved no process of theirs is left (nobody else can enter it), and removes it with the walk of tree.ts, which follows no link.
+// endProcesses proved no process of theirs is left to change it (their own CLI can have opened the directory to everyone, so that proof is what makes the removal safe), and removes it with the walk of tree.ts, which follows no link.
 // A tree too deep for any tool that works with whole paths goes through tree.ts (#915).
 
 /** The user ids given to people: one each, one for every binding directory `/data` can report. */

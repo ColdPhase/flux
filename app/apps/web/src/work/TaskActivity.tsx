@@ -97,6 +97,8 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
   const [failed, setFailed] = useState<'all' | 'changes' | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [busyEarlier, setBusyEarlier] = useState(false);
+  // How many times the thread was read: the changes beside it are read again with it, because a line can change without a line coming or going.
+  const [reads, setReads] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -108,6 +110,7 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
         setMessages((current) => mergeMessages(current, [...(talk.value.root ? [talk.value.root] : []), ...talk.value.messages]));
       }
       setFailed(activity.status === 'rejected' && talk.status === 'rejected' ? 'all' : activity.status === 'rejected' ? 'changes' : null);
+      setReads((value) => value + 1);
     });
     return () => controller.abort();
   }, [item.id, project.id, me.id, attempt, revision]);
@@ -151,7 +154,7 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
   }, [changes, messages, item, links, hasEarlier]);
 
   return {
-    discussion, lines, loading: !discussion && changes === null && failed !== 'all', failed, hasEarlier, loadEarlier, busyEarlier, author,
+    discussion, lines, reads, loading: !discussion && changes === null && failed !== 'all', failed, hasEarlier, loadEarlier, busyEarlier, author,
     retry: () => { setFailed(null); setAttempt((value) => value + 1); },
     reload: () => setAttempt((value) => value + 1),
   };
@@ -205,7 +208,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   const { discussion } = state;
   const thread = discussion?.conversationId ? `/projects/${project.id}/conversations/${discussion.conversationId}` : null;
   // An agent's line in this thread is its run's change: it is taken back where it stands, not in the state line above.
-  const posts = useAssistantChanges(discussion?.conversationId ?? null, state.lines.length);
+  const posts = useAssistantChanges(discussion?.conversationId ?? null, `${state.lines.length}:${state.reads}`);
   const posted = useMemo(() => {
     const byMessage = new Map<string, AssistantChange>();
     for (const runChanges of posts.byRun.values()) for (const change of runChanges) if (change.objectType === 'message' && change.operation === 'conversation.reply' && change.objectId) byMessage.set(change.objectId, change);
