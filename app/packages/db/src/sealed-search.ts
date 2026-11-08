@@ -753,8 +753,6 @@ async function hydrate(db: DbExecutor, index: SealedSearchIndex, hits: Hit[], co
 
 export interface SealedSearchResult {
   rows: SearchRowRecord[];
-  counts: Map<SearchKindRow, number>;
-  capped: boolean;
   /** Encrypted workspaces too large to hold in memory (`FLUX_SEALED_SEARCH_MAX_BYTES`). */
   unavailable: string[];
   work: SealedSearchWork;
@@ -763,8 +761,8 @@ export interface SealedSearchResult {
 /** Search across the unlocked encrypted workspaces among `audiences`. A locked workspace contributes nothing (and loses its index). */
 export function sealedSearchRows(db: DbExecutor) {
   return {
-    async search(audiences: SearchAudienceRows[], plan: SearchPlanRows, cap: number): Promise<SealedSearchResult> {
-      const result: SealedSearchResult = { rows: [], counts: new Map(), capped: false, unavailable: [], work: { postings: 0, terms: 0, documents: 0 } };
+    async search(audiences: SearchAudienceRows[], plan: SearchPlanRows): Promise<SealedSearchResult> {
+      const result: SealedSearchResult = { rows: [], unavailable: [], work: { postings: 0, terms: 0, documents: 0 } };
       const compiled = compile(plan);
       const hits: Hit[] = [];
       const owners = new Map<Hit, SealedSearchIndex>();
@@ -787,14 +785,6 @@ export function sealedSearchRows(db: DbExecutor) {
         const found = index.search(keys, plan, compiled);
         result.work.postings += found.work.postings; result.work.terms += found.work.terms; result.work.documents += found.work.documents;
         for (const hit of found.hits) { hits.push(hit); owners.set(hit, index); }
-      }
-      // Counts: every match without the kind filter and the cursor, at most cap + 1 rows, objects counted once.
-      const sample = hits.slice(0, cap + 1);
-      result.capped = hits.length > cap;
-      const seen = new Set<string>();
-      for (const { doc } of sample) {
-        const id = `${doc.kind}:${doc.objectId}`;
-        if (!seen.has(id)) { seen.add(id); result.counts.set(doc.kind, (result.counts.get(doc.kind) ?? 0) + 1); }
       }
       // One result per object: of several matching versions, the newest.
       const newest = new Map<string, Hit>();

@@ -168,7 +168,7 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
   }));
 
   server.registerTool('flux_search_project', { title: 'Search a project',
-    description: 'Search project content: snippets, counts and a cursor for more. Private, direct-message and person results are excluded.',
+    description: 'Search project content: snippets and a cursor for more. Private, direct-message and person results are excluded.',
     inputSchema: z.object({ projectId: z.uuid(), q: z.string().min(1).max(200), type: z.enum(['message', 'doc', 'material', 'work', 'decision', 'result', 'sketch']).optional(),
       cursor: z.string().max(500).optional(), limit: page.limit }), annotations },
   ({ projectId, ...query }) => {

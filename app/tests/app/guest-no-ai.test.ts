@@ -66,4 +66,18 @@ describe('a guest has no AI (#959, #968)', () => {
     const allowed = await memberGuestElsewhere.browser.request('POST', backgroundComputeConnectionsPath, { body: keyBody('ME02') });
     assert.notEqual(codeOf(allowed), 'GUEST_NO_AI', allowed.text);
   });
+
+  test('a guest of the company makes no agent in a workspace where they are a member (an encrypted space); a member there does (#978)', async () => {
+    const encryptedSpace = await createWorkspace(member, 'An encrypted space the guest was added to');
+    await addMember(member, encryptedSpace.id, guestWithRoom, 'member');
+    const agentsOf = async (someone: Person) => Number((await pool.query('SELECT count(*)::int AS n FROM agents WHERE owner_user_id = $1', [someone.id])).rows[0].n);
+    const refused = await guestWithRoom.browser.request('POST', `/api/v1/workspaces/${encryptedSpace.id}/agents`, { body: { name: 'Sneaky', owner: 'self' } });
+    assert.equal(refused.status, 403, refused.text);
+    assert.equal(codeOf(refused), 'GUEST_NO_AI');
+    assert.equal(await agentsOf(guestWithRoom), 0, 'no agent was made');
+    // The same request from a member of the company, in the same workspace, works.
+    await addMember(member, encryptedSpace.id, memberGuestElsewhere, 'member');
+    expectStatus(await memberGuestElsewhere.browser.request('POST', `/api/v1/workspaces/${encryptedSpace.id}/agents`, { body: { name: 'Helper', owner: 'self' } }), 201);
+    assert.equal(await agentsOf(memberGuestElsewhere), 1);
+  });
 });

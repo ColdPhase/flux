@@ -97,8 +97,9 @@ own.
   instructions. The same holds for web pages, files, event text and anything an agent reads.
 - Another agent's question in a task is answered under [agents in a task](cowork-workflow.md);
   it never becomes an instruction to change anything ([coordinator default C-13](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
-- A guest has no agents and no AI. The server refuses a guest's API key and plan sign-in (`GUEST_NO_AI`), whatever address
-  they open. A guest is a person whose role in the company is guest (F-037: one company per Flux; [C-22](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
+- A guest has no agents and no AI. The server refuses a guest's API key, plan sign-in and new agent (`GUEST_NO_AI`), and a
+  guest cannot sign in a local client or keep one, whatever address they open and whatever role another workspace (an encrypted
+  space) gives them (#978). A guest is a person whose role in the company is guest (F-037: one company per Flux; [C-22](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 
 ## AG-3 — Rights, "What it may do", approvals and Undo
 

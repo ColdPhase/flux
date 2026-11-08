@@ -10,8 +10,8 @@ import { inBatches } from './support/batches.js';
 
 // Search across Flux (issue #114): one query over project and direct messages, materials and
 // their versions, work, decisions, results, sketches and thoughts, drafts and people. The access
-// policy is applied in SQL before ranking, limits, counts and snippets, so nothing hidden ever
-// shows, counts, or changes the work the database does.
+// policy is applied in SQL before ranking, limits and snippets, so nothing hidden ever
+// shows or changes the work the database does.
 
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
 const patch = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('PATCH', path, { body, headers });
@@ -129,8 +129,6 @@ describe('search: one query across Flux, only what you may read', () => {
     const message = answer.items.find((item) => text(item.title).includes('5 lux'))!;
     assert.ok(message.title.some((part) => part.match && /sensor/i.test(part.text)), 'the match is highlighted');
     assert.deepEqual(message.target, { type: 'message', projectId: lamp.id, conversationId: lampThread.id, messageId: (message.target as { messageId: string }).messageId });
-    assert.equal(answer.counts.message, 4, 'project and direct messages');
-    assert.equal(answer.counts.material, 1, 'two matching versions are one material');
     assert.equal(answer.next, null);
     for (const hidden of ['Ari private ideas', 'Secret sensor pricing', 'Sensor shopping list', ariDraft.id, privateSketch.id]) assert.equal(JSON.stringify(answer).includes(hidden), false, hidden);
   });
@@ -138,14 +136,12 @@ describe('search: one query across Flux, only what you may read', () => {
   test('a member outside the restricted project and the DM finds only the open project, and nothing hints at the rest', async () => {
     const answer = await search(olek, 'sensor');
     assert.deepEqual(titles(answer), ['The workshop is on Thursday, bring the sensor kit.']);
-    assert.deepEqual(answer.counts, { message: 1 });
-    assert.equal(answer.countsCapped, false);
     assert.equal(answer.next, null);
     const body = JSON.stringify(answer);
     for (const hidden of ['Gesture lamp', lamp.id, 'infrared', 'Sensor comparison', direct.id, 'arrive', 'Nia sensor notes', 'Secret sensor']) assert.equal(body.includes(hidden), false, hidden);
     // Filtering by a place he cannot see is the same as a place without matches.
-    assert.deepEqual(await search(olek, { q: 'sensor', place: `project:${lamp.id}` }), { items: [], next: null, counts: {}, countsCapped: false });
-    assert.deepEqual(await search(olek, { q: 'sensor', place: `dm:${direct.id}` }), { items: [], next: null, counts: {}, countsCapped: false });
+    assert.deepEqual(await search(olek, { q: 'sensor', place: `project:${lamp.id}` }), { items: [], next: null });
+    assert.deepEqual(await search(olek, { q: 'sensor', place: `dm:${direct.id}` }), { items: [], next: null });
   });
 
   test('private drafts and sketches reach only their author; owners do not see other people’s private drafts or DMs they are not in', async () => {
@@ -184,14 +180,14 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.equal(hit.label, 'Space');
     assert.deepEqual(hit.target, { type: 'project', projectId: lamp.id });
     assert.deepEqual(hit.place, { type: 'workspace', id: ws.id, name: 'Studio' });
-    assert.equal(found.counts.project, 1);
+    assert.equal(found.items.filter((item) => item.kind === 'project').length, 1, 'once');
     assert.deepEqual(kinds(await search(nia, { q: 'lam', type: 'project' })), ['project'], 'a prefix finds it while typing');
     // Every member may open the workspace-visible project, so every member finds it by name.
     assert.deepEqual(titles(await search(olek, 'open notes')), ['Open notes']);
   });
 
-  test('a project the reader may not open is not found, by name, by id or in the counts', async () => {
-    const empty = { items: [], next: null, counts: {}, countsCapped: false };
+  test('a project the reader may not open is not found, by name or by id', async () => {
+    const empty = { items: [], next: null };
     // Olek is a member without a grant on the restricted project; Gus is a guest with a grant on the open one only.
     assert.deepEqual(await search(olek, 'gesture lamp'), empty);
     assert.deepEqual(await search(gus, 'gesture lamp'), empty);
@@ -212,12 +208,10 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.equal((await search(ari, 'quay signals')).items.length, 0);
   });
 
-  test('type filters narrow results while counts cover every type', async () => {
+  test('a type filter narrows the results to one kind', async () => {
+    assert.ok(new Set(kinds(await search(nia, 'sensor'))).size > 1, 'without a filter there are several kinds');
     const answer = await search(nia, { q: 'sensor', type: 'material' });
     assert.deepEqual(kinds(answer), ['material']);
-    assert.equal(answer.counts.material, 1);
-    assert.ok((answer.counts.message ?? 0) >= 4);
-    assert.equal(answer.counts.sketch, 1);
     const sketches = await search(nia, { q: 'sensor', type: 'sketch' });
     assert.deepEqual(kinds(sketches), ['thought']);
     assert.equal((await searchRaw(nia, { q: 'sensor', type: 'secrets' })).status, 400);
@@ -257,7 +251,6 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.equal(old.items[0]!.label, 'Wiki page · version 1 of 2, draft', 'the old text is found at its own version');
     const both = await search(nia, 'brass');
     assert.equal(both.items.filter((item) => item.kind === 'doc').length, 1, 'one result per doc');
-    assert.equal(both.counts.doc, 1);
     assert.deepEqual((await search(olek, 'brass')).items, [], 'not outside the project');
     assert.deepEqual(kinds(await search(nia, { q: 'brass', type: 'doc' })), ['doc']);
   });
@@ -267,7 +260,6 @@ describe('search: one query across Flux, only what you may read', () => {
     await removeFromSpace(ari, lamp.id, nia);
     const denied = await search(nia, 'infrared');
     assert.deepEqual(denied.items, []);
-    assert.deepEqual(denied.counts, {});
     await grant(ari, lamp.id, nia, 'contributor');
     assert.ok((await search(nia, 'infrared')).items.length >= 4, 'restored');
     const third = await dm(olek, ws.id, [nia]);
@@ -320,7 +312,7 @@ describe('search: one query across Flux, only what you may read', () => {
     await say(olek, thread.id, 'Vitamin D levels were fine.');
     const longOr = 'aa or ab or ac or ad or ae or af or ag or ah or ai or aj or ak or al or am or an or ao or ap or aq';
     assert.ok(titles(await search(nia, longOr)).includes('The aq cable is in the drawer.'), 'the 17th alternative still matches');
-    assert.equal((await search(nia, { q: longOr, type: 'message' })).counts.message, 1);
+    assert.deepEqual(kinds(await search(nia, { q: longOr, type: 'message' })), ['message']);
     assert.ok(titles(await search(nia, '"or"')).includes('Choose or ignore the second lamp.'), 'a quoted "or" is a word');
     assert.ok(titles(await search(nia, 'vitamin d')).includes('Vitamin D levels were fine.'), 'a one-letter word');
     assert.ok(titles(await search(nia, 'd levels')).includes('Vitamin D levels were fine.'), 'a one-letter word first');
@@ -359,7 +351,7 @@ describe('search: one query across Flux, only what you may read', () => {
 });
 
 describe('search: hidden matches never change the answer or the work', () => {
-  test('hundreds of hidden matches give the same results, counts, `more` and rows examined', async () => {
+  test('hundreds of hidden matches give the same results, `more` and rows examined', async () => {
     const [ari, nia, olek] = await Promise.all(['Ari Hidden', 'Nia Hidden', 'Olek Hidden'].map(person));
     const ws = await workspace(ari, 'Saturation studio');
     await addMember(ari, ws.id, nia, 'member');
@@ -402,7 +394,7 @@ describe('search: hidden matches never change the answer or the work', () => {
     await settle();
 
     const saturated = await search(olek, query);
-    assert.deepEqual(saturated, baseline, 'identical answer, counts and `next`');
+    assert.deepEqual(saturated, baseline, 'identical answer and `next`');
     assert.equal(saturated.next, null, 'hidden matches never make `more` true');
     const saturatedWork = await explain(olek, query);
     console.log(JSON.stringify({ search: 'saturation', before: baselineWork, after: saturatedWork, insider: { before: { rows: insiderBefore.rows, searchBuffers: insiderBefore.searchBuffers } } }));
@@ -428,10 +420,10 @@ describe('search: hidden matches never change the answer or the work', () => {
     const insiderAfter = await explain(nia, query);
     assert.ok(insiderAfter.rows > insiderBefore.rows + 300, `the insider reads the new rows (${insiderBefore.rows} → ${insiderAfter.rows})`);
     assert.ok(insiderAfter.indexRows > insiderBefore.indexRows + 300, `the insider's index scans return them (${insiderBefore.indexRows} → ${insiderAfter.indexRows})`);
-    // The reader who can see them does get them, with `more` and a count.
+    // The reader who can see them does get them, with `more`.
     const insider = await search(nia, query);
     assert.ok(insider.next, 'Nia has more pages');
-    assert.ok((insider.counts.message ?? 0) > 300);
+    assert.equal(insider.items.length, 5);
     // Only a very coarse wall-clock sanity bound: other test files run concurrently on the same
     // database, so timing is not the privacy evidence (the buffers above are).
     const saturatedTime = await median();
@@ -439,7 +431,7 @@ describe('search: hidden matches never change the answer or the work', () => {
   });
 });
 
-test('hidden work matches leave visible work results, counts and indexed work identical', { timeout: 60_000 }, async () => {
+test('hidden work matches leave visible work results and indexed work identical', { timeout: 60_000 }, async () => {
   const [owner, reader] = await Promise.all(['work-search-owner', 'work-search-reader'].map(person));
   const ws = await workspace(owner, 'Work search privacy');
   await addMember(owner, ws.id, reader, 'member');
@@ -455,7 +447,6 @@ test('hidden work matches leave visible work results, counts and indexed work id
   const fewestBuffers = async () => Math.min(...await Promise.all([0, 1, 2].map(async () => (await explain(reader, query)).buffers)));
   const beforeBuffers = await fewestBuffers();
   assert.deepEqual(before.items.map((hit) => hit.target), [{ type: 'work', projectId: visible.id, id: task.id }]);
-  assert.equal(before.counts.work, 1);
   assert.equal(before.next, null);
   // Complete bounded persistence fixtures exercise the real work search trigger, without changing audiences.
   for (let start = 0; start < 200; start += 100) await pool.query(`
@@ -464,7 +455,7 @@ test('hidden work matches leave visible work results, counts and indexed work id
   [ws.id, hidden.id, marker, owner.id, start + 1, start + 100]);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_work_items WHERE project_id=$1', [hidden.id])).rows[0].n, 200);
   await pool.query('ANALYZE search_documents, project_work_items');
-  assert.deepEqual(await search(reader, query), before, 'hidden work changes neither results, counts nor next');
+  assert.deepEqual(await search(reader, query), before, 'hidden work changes neither results nor next');
   const work = ({ rows, indexRows, indexScans, lookups }: SearchWork) => ({ rows, indexRows, indexScans, lookups });
   const afterWork = await explain(reader, query);
   assert.deepEqual(work(afterWork), work(beforeWork), 'every scan row, including the task lookup, stays independent of hidden work');
@@ -474,6 +465,6 @@ test('hidden work matches leave visible work results, counts and indexed work id
   const treeSlack = afterWork.indexScans * (afterWork.lookups + 2) + 4;
   assert.ok(bufferGrowth <= treeSlack, `whole-query buffers (including work) grew ${bufferGrowth}, allowed ${treeSlack}`);
   const inside = await search(owner, query);
-  assert.equal(inside.counts.work, 201);
+  assert.equal(inside.items.length, 5);
   assert.ok(inside.next, 'positive control sees the actual restricted work');
 });

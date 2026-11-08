@@ -47,7 +47,7 @@ test('genuine native creation Undo retains exact history and receipts; core/MCP 
   })}`), 200) as unknown as SearchResponse;
   for (const type of [undefined, 'work']) {
     const answer = await search(type);
-    assert.equal(answer.counts.work, 2);
+    assert.equal(answer.items.filter((hit) => hit.kind === 'work').length, 2);
     assert.deepEqual(answer.items.filter((hit) => hit.kind === 'work').map((hit) => hit.target)
       .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b))),
     [item, activeControl].map((work) => ({ type: 'work', projectId: f.projectId, id: work.id }))
@@ -71,7 +71,7 @@ test('genuine native creation Undo retains exact history and receipts; core/MCP 
     [['task.created', item.number], ['task.creation_reverted', item.number]].sort(), 'both truthful notices retain the exact task number');
   for (const type of [undefined, 'work']) {
     const answer = await search(type);
-    assert.equal(answer.counts.work, 1, 'current counts exclude retained reverted work before the count limit');
+    assert.equal(answer.items.filter((hit) => hit.kind === 'work').length, 1, 'retained reverted work is not found');
     assert.deepEqual(answer.items.filter((hit) => hit.kind === 'work').map((hit) => hit.target),
       [{ type: 'work', projectId: f.projectId, id: activeControl.id }]);
     assert.equal(answer.next, null);

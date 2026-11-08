@@ -68,7 +68,7 @@ export interface SearchRow {
   at: Date;
 }
 
-/** What the statements of a search read (EXPLAIN ANALYZE, BUFFERS): test support. */
+/** What the statement of a search reads (EXPLAIN ANALYZE, BUFFERS): test support. */
 export interface SearchWork {
   /** Table rows read by scan nodes, including rows a filter discarded. */
   rows: number;
@@ -84,19 +84,16 @@ export interface SearchWork {
   nodes: string[];
 }
 
-/** Rows only; every statement composes the audiences' conditions before ranking, limit and counts. */
+/** Rows only; the statement composes the audiences' conditions before ranking and limit. */
 export interface SearchRepository<C> {
   page(audiences: SearchAudience<C>[], plan: SearchPlan): Promise<SearchRow[]>;
-  counts(audiences: SearchAudience<C>[], plan: SearchPlan, cap: number): Promise<{ counts: Map<SearchKind, number>; capped: boolean }>;
-  /** Test support: rows examined by the statements of a plan. */
-  explain(audiences: SearchAudience<C>[], plan: SearchPlan, cap: number): Promise<SearchWork>;
+  /** Test support: rows examined by the statement of a plan. */
+  explain(audiences: SearchAudience<C>[], plan: SearchPlan): Promise<SearchWork>;
 }
 
 /** What the in-memory index of the unlocked encrypted workspaces answers (F-030 S2b): rows already past the cursor, best first. */
 export interface SealedSearchAnswer {
   rows: SearchRow[];
-  counts: Map<SearchKind, number>;
-  capped: boolean;
   /** Encrypted workspaces too large to hold in memory. */
   unavailable: string[];
   /** Test support: postings read and documents examined. */
@@ -105,7 +102,7 @@ export interface SealedSearchAnswer {
 
 /** Search in the encrypted workspaces among the audiences. Access is decided already: only these audiences' partitions are read. */
 export interface SealedSearchRepository<C> {
-  search(audiences: SearchAudience<C>[], plan: SearchPlan, cap: number): Promise<SealedSearchAnswer>;
+  search(audiences: SearchAudience<C>[], plan: SearchPlan): Promise<SealedSearchAnswer>;
 }
 
 /** Seals a position to one principal and one query; anything else opens to null. */

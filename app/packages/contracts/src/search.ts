@@ -2,9 +2,9 @@
  * Search across Flux (issue #114, foundation 8.12).
  *
  * One query over project names, project and direct messages, docs and materials and every version of them, work,
- * decisions, results, sketches and their thoughts, drafts and people. Every result, snippet, count and the `next`
+ * decisions, results, sketches and their thoughts, drafts and people. Every result, snippet and the `next`
  * cursor come only from objects the caller may read at the moment of the request: the server
- * applies the access policy inside the SQL before ranking, limiting, counting and highlighting.
+ * applies the access policy inside the SQL before ranking, limiting and highlighting.
  */
 import type { WorkStatus } from './work.js';
 
@@ -19,7 +19,7 @@ export type SearchKind = 'project' | 'message' | 'dm_message' | 'material' | 'do
 export type SearchFilterType = 'project' | 'message' | 'doc' | 'material' | 'work' | 'decision' | 'result' | 'sketch' | 'draft' | 'person';
 export const SEARCH_FILTER_TYPES: readonly SearchFilterType[] = ['project', 'message', 'doc', 'material', 'work', 'decision', 'result', 'sketch', 'draft', 'person'];
 
-export const SEARCH_LIMITS = { query: 200, pageDefault: 20, pageMax: 50, countCap: 500 } as const;
+export const SEARCH_LIMITS = { query: 200, pageDefault: 20, pageMax: 50 } as const;
 
 /**
  * `GET /api/v1/search?q=&type=&place=&author=&cursor=&limit=`.
@@ -95,12 +95,11 @@ export interface SearchResponse {
    */
   lockedWorkspaces?: LockedWorkspaceRef[];
   items: SearchResult[];
-  /** Cursor of the next page; `null` when no more visible results exist. */
+  /**
+   * Cursor of the next page; `null` when no more visible results exist. The web does not page: it only tells the reader that
+   * there are more than it lists. An agent's `flux_search_project` continues with it.
+   */
   next: string | null;
-  /** Visible matches per filter type, over all types and without the cursor. */
-  counts: Partial<Record<SearchFilterType, number>>;
-  /** True when counting stopped at {@link SEARCH_LIMITS.countCap} visible matches. */
-  countsCapped: boolean;
   /**
    * F-030: encrypted workspaces the reader belongs to that are too large to search in memory
    * (`FLUX_SEALED_SEARCH_MAX_BYTES`); their content is not in this answer. Absent when there are none.

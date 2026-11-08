@@ -96,7 +96,7 @@ before(async () => {
 });
 
 describe('F-030 S2b: search in an encrypted workspace', () => {
-  test('the same query finds the same results, counts and marks in A as in B (parity)', async () => {
+  test('the same query finds the same results and marks in A as in B (parity)', async () => {
     const queries: Record<string, string | number>[] = [
       { q: 'sensor' }, { q: 'sens' }, { q: 'SENSOR' }, { q: 'sensor lamp' }, { q: 'lamp camera' }, { q: '"sensor comparison"' }, { q: '"comparison sensor"' },
       { q: 'sensor -camera' }, { q: 'camera or privacy' }, { q: 'ensor' }, { q: 'omparison' }, { q: 'presentation' }, { q: 'present' }, { q: '#1' }, { q: 'workshop' },
@@ -106,7 +106,7 @@ describe('F-030 S2b: search in an encrypted workspace', () => {
     for (const query of queries) {
       const [a, b] = [await search(ben, { ...query, place: `project:${ids.A.project}` }), await search(ben, { ...query, place: `project:${ids.B.project}` })];
       assert.deepEqual(a.items.map(shape).sort(), b.items.map(shape).sort(), `results of ${JSON.stringify(query)}`);
-      assert.deepEqual(a.counts, b.counts, `counts of ${JSON.stringify(query)}`);
+      assert.equal(a.next === null, b.next === null, `whether there is more of ${JSON.stringify(query)}`);
       assert.equal(a.sealedUnavailable, undefined);
     }
     const dm = [await search(ben, { q: 'lunch', place: `dm:${ids.A.dm}` }), await search(ben, { q: 'lunch', place: `dm:${ids.B.dm}` })];

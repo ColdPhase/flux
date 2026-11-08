@@ -250,7 +250,7 @@ class SearchJourney(unittest.TestCase):
         self.assertEqual(options.nth(options.count() - 1).get_attribute("aria-selected"), "true")
         # The footer says what the tool finds in one sentence, with none of the old words, and names the keys.
         foot = dialog.locator(".jump__foot")
-        expect(foot).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages and thoughts you can see.")
+        expect(foot).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
         hint = foot.locator(".jump__hint-line").inner_text().lower()
         for word in ("material", "version", "rule"):
             self.assertNotIn(word, hint)
@@ -301,7 +301,7 @@ class SearchJourney(unittest.TestCase):
         type(self).states["nia"] = page.context.storage_state()
         dialog, field = self.jump(page, "")
         expect(dialog).not_to_contain_text("hallway")
-        expect(dialog.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages and thoughts you can see.")
+        expect(dialog.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
 
     def test_07a_there_is_no_search_page(self) -> None:
         page = self.page("nia")
@@ -359,7 +359,7 @@ class SearchJourney(unittest.TestCase):
         fresh.get_by_role("button", name="Search", exact=True).click()
         sheet = fresh.get_by_role("dialog", name="Search", exact=True)
         hint = sheet.locator(".jump__hint")
-        expect(hint).to_have_text("Finds spaces, people, messages, tasks, Wiki pages and thoughts you can see.")
+        expect(hint).to_have_text("Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you can see.")
         self.no_horizontal_scroll(fresh)
         shot(fresh, "search-jump-phone-390-empty")
 
@@ -578,6 +578,42 @@ class SearchJourney(unittest.TestCase):
                     page.keyboard.press("Control+k")
                     expect(dialog.get_by_role("option", name=re.compile("Ask my assistant"))).to_have_count(1)  # the next time it is there
                 shot(page, f"search-open-stable-desktop-1440-{delay}")
+
+    # ---------------------------------------------------------------- more than the dialog lists
+
+    def test_14_more_than_twenty_results_end_with_one_quiet_line(self) -> None:
+        ari = self.page("ari")
+        place = self.api(ari, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Lantern shelf", "visibility": "restricted"}, status=201)
+        thread = self.api(ari, "POST", f"/api/v1/projects/{place['id']}/conversations", {"body": "Lantern 1 for the shelf", "clientMessageId": str(uuid.uuid4())}, status=201)
+        for index in range(2, 26):
+            self.api(ari, "POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": f"Lantern {index} for the shelf", "clientMessageId": str(uuid.uuid4())}, status=201)
+        self.api(ari, "POST", f"/api/v1/conversations/{thread['id']}/messages", {"body": "A quincunx of lanterns", "clientMessageId": str(uuid.uuid4())}, status=201)
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                page = self.page("ari", phone=phone)
+                page.goto("/")
+                if phone:
+                    page.get_by_role("button", name="Search", exact=True).click()
+                    dialog = page.get_by_role("dialog", name="Search", exact=True)
+                    field = dialog.get_by_role("combobox", name="Search", exact=True)
+                    field.fill("lantern")
+                else:
+                    dialog, field = self.jump(page, "lantern")
+                expect(dialog.get_by_role("option")).to_have_count(20)
+                line = dialog.locator(".jump__more")
+                expect(line).to_have_text("Showing 20 \u00b7 type more words to narrow")
+                expect(dialog.get_by_role("listbox").locator(".jump__more")).to_have_count(0)  # a line under the list, never a row to choose
+                expect(dialog.locator("p.ui-vh[role=status]")).to_have_text("20+ results")
+                if not phone:
+                    shot(page, "search-more-than-twenty-desktop-1440")
+                # Text that matches nothing has no such line.
+                field.fill("qzxvw")
+                expect(dialog.locator(".jump__none")).to_be_visible()
+                expect(line).to_have_count(0)
+                # A search with a few results has none either.
+                field.fill("quincunx")
+                expect(dialog.get_by_role("option")).to_have_count(1)
+                expect(line).to_have_count(0)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,6 @@
 import { and, asc, eq, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
-import type { AccessPrincipal } from './access.js';
+import { isCompanyGuest, type AccessPrincipal } from './access.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -28,6 +28,11 @@ export function agentRepository(db: DbExecutor) {
     async insert(row: { id: string; workspaceId: string; name: string; ownerUserId: string; createdBy: string }) {
       const [created] = await db.insert(schema.agents).values(row).returning();
       return created!;
+    },
+
+    /** Whether the person is a guest of the company, read `FOR SHARE` (AG-2): a guest makes no agent in any workspace. */
+    isCompanyGuest(userId: string) {
+      return isCompanyGuest(db, userId, { lock: true });
     },
 
     /** The workspace's agents this principal may see, oldest first. */

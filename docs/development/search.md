@@ -5,7 +5,7 @@ covers project messages, direct messages, docs and materials and every version o
 decisions, results, sketches and their thoughts, drafts and people. It runs in PostgreSQL only
 (`tsvector`, GIN, `websearch_to_tsquery`, `ts_headline`, `pg_trgm`), in line with O-002: there is
 no separate search server. The #16 rule applies throughout: **access filtering happens before
-ranking, limits, counts and snippets.**
+ranking, limits and snippets.**
 
 ## Index
 
@@ -68,7 +68,7 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
    conditions into one array of visible audience keys (`ARRAY(SELECT 'project:' || id FROM
    projects WHERE <visibleFilter> UNION ALL …)`) in a materialized CTE, and every statement starts
    with `audience_key = ANY(keys)`. Ranking (`ts_rank` plus title similarity), the window that keeps
-   one material version, the `LIMIT` of the page, the per-kind counts and `ts_headline` all run on
+   one material version, the `LIMIT` of the page and `ts_headline` all run on
    rows that already passed it. A project is named in a result only when the project itself is
    among the visible audiences.
 3. **The index is keyed by audience.** Every lexeme the parser finds in the query (and every word
@@ -95,7 +95,7 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
    146 and 142 → 142 in two full local runs, and 136 → 136 and 138 → 138 in two GitHub runs, with 2
    row addresses per scan out of 462 matches in the workspace.
 
-Matches the reader cannot see therefore change neither the answer (items, snippets, counts,
+Matches the reader cannot see therefore change neither the answer (items, snippets,
 `next`) nor the rows, row addresses and index or table buffers the database reads for it. The remaining shared costs are not per-match:
 the policy conditions scan the workspace's projects, DMs, sketches and drafts (their number, not
 their content), recent writes leave dead row versions in those tables until autovacuum removes
@@ -117,8 +117,11 @@ needs a live session and answers `Cache-Control: no-store`.
 - `limit`: 1–50, default 20.
 - **Answer:** `items` (kind, a human label such as "Decision · current rule" or "Thought in
   “Sensing options”", the title and snippet as plain and matched parts, never markup, the place,
-  author, time and exact target), `next`, `counts` per type over every type (without the cursor)
-  and `countsCapped` (counting stops at 500 visible matches).
+  author, time and exact target) and `next`. There are no counts: nothing read them (#944).
+- **Who uses which parameter.** The web sends `q`, `place` (the Create window's look for a duplicate) and
+  `limit`. `type` and `cursor` serve the MCP tool `flux_search_project`, which calls the same use case
+  directly (`agent-connection/domain-reads.ts`) so an agent can ask for one kind and continue past a
+  page, and the API's own tests; no screen sends them.
 - **Cursor.** `next` is the AES-256-GCM encryption (keys from `FLUX_AUTH_SECRET` via HKDF) of the
   last visible result's rank, time and row, authenticated with the reader and a hash of the query
   and filters. It works only for that person and that exact search; anything else is
@@ -150,11 +153,11 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   ranking), and has no filter chips, no place filter and no Create group. ↑/↓ move, Enter opens the
   selected row (the first is selected), Esc closes and returns focus. A longer list is narrowed by typing
   more words. The footer (on the phone, the line above the list when there are no recent places) says
-  what it finds in one sentence: "Finds spaces, people, messages, tasks, Wiki pages and thoughts you
+  what it finds in one sentence: "Finds spaces, people, messages, tasks, Wiki pages, files and thoughts you
   can see." With no text it lists the recent places and a few actions (`recent.ts`). A row is 48 px: a tile
   for the kind, the matching text with the words marked, and one line of where it lives (`ResultRow.tsx`).
-  Only the answer to the latest request is shown. The API keeps its `type`, `place` and `counts`: the
-  Create window's duplicate check and the MCP `flux_search_project` tool use them.
+  Only the answer to the latest request is shown. A list that has more than the 20 rows ends with one quiet
+  line, "Showing 20 · type more words to narrow" (`next` is set; there is no second page).
 - **It opens at its final size** (#898): whether "Ask my assistant…" has a row is read while the dialog
   is closed (`useAssistantReady`, at load and each time it closes) and kept while it is open, and the
   skeleton counts the same rows, so nothing is added to the dialog after it is on screen.
@@ -175,13 +178,13 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   a restricted project, a member outside it and a guest. It covers every kind and its label, place
   and target; the restricted project and a DM leaking nothing to an outsider, including when he
   filters by their ids; private drafts and sketches reaching only their author, and a group DM
-  hidden from the workspace owner; people for members but not guests; the API's type filters and counts;
+  hidden from the workspace owner; people for members but not guests; the API's type filters;
   an edit searchable at once and an old material version; docs as drafts and published, at the
   version that matched and once per doc; revocation by removing a grant and by
   leaving a DM on the very next search; ranking and typo tolerance; injection-safe queries; and
   sealed keyset pagination (another reader, another query or filter, or a forged cursor get
   `400`). **Saturation:** 300 hidden project messages, 100 thoughts in another person's private
-  sketch and 60 DM messages give the outsider an identical answer (items, counts, `next`) and
+  sketch and 60 DM messages give the outsider an identical answer (items, `next`) and
   identical work from `EXPLAIN (ANALYZE, BUFFERS)`: table rows, index scans, the keys they look up
   and the row addresses from the index, measured twice for determinism. Buffers of
   `search_documents` and its index were equal in every run; because writes anywhere can still add a
@@ -193,7 +196,7 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
 - `app/tests/ui/test_search.py` (in `./scripts/check_ui.sh`) covers Ctrl+K search as you type and
   opening the exact message, the sidebar entry, results in groups by kind with no chips, the keys, an old
   material version, a rule in Details, a thought selected in its sketch, Esc, a DM message, no results,
-  the one-sentence hint, an outsider seeing only the open project, recent places per account and their
+  the one-sentence hint, the "Showing 20" line under more than 20 results, an outsider seeing only the open project, recent places per account and their
   removal on sign-out, that there is no Search page, a DM message and a project message with 130 newer
   messages after them (outside the first window) opening exactly, task numbers, projects by name, the
   phone (full-screen sheet, 44 px targets, no horizontal scroll), and that the dialog has its final size

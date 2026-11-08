@@ -131,6 +131,8 @@ export interface ProjectRepository {
 
 export interface AgentRepository {
   insert(row: { id: string; workspaceId: string; name: string; ownerUserId: string; createdBy: string }): Promise<AgentRecord>;
+  /** Whether the person is a guest of the company (their role there, not in the workspace the agent is made in). */
+  isCompanyGuest(userId: string): Promise<boolean>;
   /** The workspace's agents this principal may see, oldest first. */
   listVisible(principal: Principal, workspaceId: string): Promise<AgentRecord[]>;
   revoke(agentId: string, revokedAt: Date): Promise<AgentRecord>;

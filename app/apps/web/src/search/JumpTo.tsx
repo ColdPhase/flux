@@ -180,6 +180,10 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
     </div>
   ) : state.status === 'failed' ? <p className="jump__empty" role="alert">{state.message}</p> : null;
 
+  // More than the dialog lists (it does not page): one quiet last line says so, and typing more words narrows the list.
+  const more = text && state.status === 'ready' && state.answer.next && found
+    ? <p className="jump__hint jump__more">Showing {found} · type more words to narrow</p> : null;
+
   if (pickingWhere) {
     return (
       <div className="jump__in">
@@ -207,7 +211,7 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
         {phone && !text && !places.length ? <p className="jump__hint">{SEARCH_HINT}</p> : null}
         {/* What was not searched (F-030; UI audit LK-3): a space that waits to be unlocked, or one too large to search in memory. */}
         {text && state.status === 'ready' ? <UnsearchedSpaces tooLarge={state.answer.sealedUnavailable ?? []} /> : null}
-        {list}{empty}
+        {list}{empty}{more}
       </div>
       {phone ? null : (
         <p className="jump__foot">

@@ -3,6 +3,7 @@ import type { Agent, CreateAgentCommand } from '@flux/contracts';
 import { recordEvent } from '../events.js';
 import type { Database, Principal } from '../types.js';
 import { eventPorts } from './common.js';
+import { ForbiddenError } from './errors.js';
 import { enforce, evaluateAgent, evaluateWorkspace } from './policy.js';
 import type { AccessPorts } from './repositories.js';
 import type { AgentRecord } from './records.js';
@@ -29,6 +30,8 @@ export async function createAgent(principal: Principal, workspaceId: string, com
   if (command.owner !== undefined) oneOf(command.owner, ['self'] as const, 'owner');
   return db.transaction(async (tx) => {
     enforce(await evaluateWorkspace(principal, 'agent.create', workspaceId, ports.access(tx), { lock: true }), 'workspace');
+    // A guest of the company has no AI (AG-2, C-22), whatever role another workspace gives them (an encrypted space, #978).
+    if (await ports.agents(tx).isCompanyGuest(principal.id)) throw new ForbiddenError('A guest has no AI', 'GUEST_NO_AI');
     const id = randomUUID();
     const row = await ports.agents(tx).insert({ id, workspaceId, name: agentName, ownerUserId: principal.id, createdBy: principal.id });
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'agent.created.v1', id, { owner: 'self' });
