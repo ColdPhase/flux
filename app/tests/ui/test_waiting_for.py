@@ -114,7 +114,7 @@ class WaitingFor(unittest.TestCase):
                 item = page.get_by_role("listitem").filter(has=page.get_by_role("button", name=heading))
                 expect(item.first).to_be_visible()
                 expect(item.first.get_by_role("button", name="Unblock")).to_have_count(0)
-                expect(item.first.get_by_role("button", name="Done", exact=True)).to_be_visible()
+                if not phone: expect(item.first.get_by_role("button", name="Done", exact=True)).to_be_visible()
                 shot(page, f"waiting-for-inbox-{'phone' if phone else 'computer'}")
                 item.first.get_by_role("button", name="Open task").click()
                 expect(page.locator(f".wd[data-detail-id='{task['id']}']")).to_be_visible()
@@ -147,7 +147,7 @@ class WaitingFor(unittest.TestCase):
                 tag = "phone" if phone else "computer"; title = f"Fit the rail {tag}"; reason = f"Rail is late {tag}"
                 task = self.block(self.task(title), blocker=reason, waitingFor={"kind": "human", "id": self.kai})
                 page = self.page("ada", phone); page.goto(f"/projects/{self.project}/tasks")
-                if not phone: page.get_by_role("radio", name="List", exact=True).click()
+                page.get_by_role("radio", name="List", exact=True).click()
                 row = page.locator(".ws-task").filter(has_text=title).first
                 row.get_by_role("button", name=re.compile(r"^Blocked\. Set to")).click()
                 toast = page.locator(".ui-toast"); expect(toast).to_be_visible()
@@ -166,7 +166,8 @@ class WaitingFor(unittest.TestCase):
         page = self.page("ada"); page.goto(f"/projects/{self.project}/tasks")
         page.get_by_role("radio", name="Board", exact=True).click()
         card = page.locator(f".tb-card[data-card-id='{named['id']}'] .tb-card__blocker")
-        expect(card).to_have_text("Waiting for Kai Nowak · Needs the gateway in its new place first.")
+        # The card says one thing it waits for (#868): the person, else the reason.
+        expect(card).to_have_text("Waiting for Kai Nowak")
         expect(page.locator(f".tb-card[data-card-id='{unnamed['id']}'] .tb-card__blocker")).to_have_text("Needs the heat-shrink delivery.")
         page.get_by_role("radio", name="List", exact=True).click()
         row = page.locator(".ws-task").filter(has_text="Move the LoRa gateway to the fence post").first
@@ -194,10 +195,17 @@ class WaitingFor(unittest.TestCase):
                 page = self.page("kai", phone); page.goto("/inbox")
                 item = page.get_by_role("listitem").filter(has=page.get_by_role("button", name=re.compile(rf"is waiting for you: #{task['number']} ")))
                 expect(item.first).to_be_visible()
-                item.first.get_by_role("button", name="Done", exact=True).click()
+                if phone:
+                    item.first.locator(".nyc__scroll").evaluate("element => element.scrollTo({ left: element.scrollWidth, behavior: 'instant' })")
+                    item.first.locator(".nyc__tray").get_by_role("button", name="Done").tap()
+                else:
+                    item.first.get_by_role("button", name="Done", exact=True).click()
                 expect(page.get_by_role("button", name=re.compile(rf"is waiting for you: #{task['number']} "))).to_have_count(0)
                 expect(page.locator(".ui-toast")).to_contain_text(f"#{task['number']} can continue")
-                stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
+                for _ in range(40):
+                    stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
+                    if stored["status"] != "blocked": break
+                    page.wait_for_timeout(250)
                 self.assertEqual((stored["status"], stored["waitingFor"], stored["blocker"]), ("in_progress", None, None))
                 self.notice(self.page("ada", phone), task["number"], f"#{task['number']} can continue: Kai Nowak is done")
 

@@ -14,8 +14,6 @@ export interface CardHandlers {
   open(item: NeedsYouItem): void;
   discuss(item: NeedsYouItem): void;
   unblock(item: NeedsYouItem): void;
-  /** The person a task waits for says they are done (#868): the task goes back to Doing by itself. */
-  waitingDone(item: NeedsYouItem): void;
   /** Approve all: everything one agent run waits for (F-036 AG-7), in the owner's own session. */
   applyChanges(item: NeedsYouItem): void;
   /** Answers an agent's question with one of its ready-made answers (S14); Undo holds it back for a moment. */
@@ -172,7 +170,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, onSelect
       ) : item.kind === 'blocked' ? (
         <>
           <Button variant="secondary" onClick={() => handlers.open(item)}>Open task</Button>
-          {item.blocked?.waitedBy ? <Button variant="primary" onClick={() => handlers.waitingDone(item)}>Done</Button> : <Button variant="quiet" onClick={() => handlers.unblock(item)}>Unblock</Button>}
+          {item.blocked?.waitedBy ? null : <Button variant="quiet" onClick={() => handlers.unblock(item)}>Unblock</Button>}
         </>
       ) : answers ? (
         <>{answers}</>

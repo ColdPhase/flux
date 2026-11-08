@@ -490,10 +490,6 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             <dt>Status</dt>
             <dd>{writable ? <StatusControl status={item.status} dropped={item.dropped} disabled={busy} onChoose={(status) => void setState(status)} /> : <span className="wd-value"><StatusGlyph status={item.status} size={16} /><span>{reverted ? 'Creation undone · read-only history' : statusPhrase(item)}</span></span>}</dd>
           </div>
-          {finished && !reverted && (writable || item.cameOfIt) ? <div className="wd-row">
-            <dt>What came of it</dt>
-            <dd><CameOfIt line={item.cameOfIt} dropped={item.dropped} editable={writable} disabled={busy} onSaveLine={(line) => change({ cameOfIt: line })} onDropped={(dropped) => void change({ dropped })} /></dd>
-          </div> : null}
           <div className="wd-row">
             <dt>Owner</dt>
             <dd>{writable
@@ -556,6 +552,13 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             <LinkThoughtButton links={thoughts} toggle={thoughtToggle} />
           </div>
         ) : null}
+        {/* At Done, one optional line (#868). It sits below the actions, so no control above it moves when a task is finished (Spokój rule 7). */}
+        {finished && !reverted && (writable || item.cameOfIt) ? <dl className="wd-rows wd-rows--after">
+          <div className="wd-row">
+            <dt>What came of it</dt>
+            <dd><CameOfIt line={item.cameOfIt} dropped={item.dropped} editable={writable} disabled={busy} onSaveLine={(line) => change({ cameOfIt: line })} onDropped={(dropped) => void change({ dropped })} /></dd>
+          </div>
+        </dl> : null}
         <ReadyToClose item={item} writable={writable} busy={busy} done={() => void setState('done')} />
         {!reverted && !finished ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
         <LinkedThoughts links={thoughts} />

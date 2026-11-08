@@ -57,8 +57,24 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
     } } });
   }, [toast]);
 
+  /** The person a task waits for says they are done (#868): the task goes back to Doing by itself and its owner is told once. */
+  const finishWait = useCallback((item: NeedsYouItem) => {
+    const current = latest.current;
+    const blocked = item.blocked;
+    if (!blocked) return;
+    const done = resolveWaiting({ id: blocked.workId, version: blocked.version });
+    const intent = current.hide(item.key, done);
+    done.then(announceInboxChange, (error: unknown) => {
+      if (!intent.isCurrent()) return;
+      current.show(item);
+      toast({ message: apiMessage(error, 'That did not work. Open the task to look again.'), tone: 'danger' });
+    });
+    toast({ message: `#${blocked.number} can continue` });
+  }, [toast]);
+
   return useMemo<CardHandlers>(() => ({
-    done: (item) => resolve(item, { action: 'done' }, 'Marked done'),
+    // For the person a blocked task waits for, Done is what they were asked for: the task resumes. For anything else it only clears the item.
+    done: (item) => item.kind === 'blocked' && item.blocked?.waitedBy ? finishWait(item) : resolve(item, { action: 'done' }, 'Marked done'),
 
     snooze(item: NeedsYouItem, choice: SnoozeChoice) {
       if (choice === 'decline') { resolve(item, { action: 'decline' }, 'Declined for good. Only your Inbox changed'); return; }
@@ -144,21 +160,6 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
       void navigate(item.project ? `/projects/${item.project.id}` : item.url);
     },
 
-    waitingDone(item: NeedsYouItem) {
-      const current = latest.current;
-      const blocked = item.blocked;
-      if (!blocked) return;
-      // The task goes back to Doing by itself and its owner is told once (#868); there is nothing to undo.
-      const done = resolveWaiting({ id: blocked.workId, version: blocked.version });
-      const intent = current.hide(item.key, done);
-      done.then(announceInboxChange, (error: unknown) => {
-        if (!intent.isCurrent()) return;
-        current.show(item);
-        toast({ message: apiMessage(error, 'That did not work. Open the task to look again.'), tone: 'danger' });
-      });
-      toast({ message: `#${blocked.number} can continue` });
-    },
-
     unblock(item: NeedsYouItem) {
       const current = latest.current;
       const blocked = item.blocked;
@@ -182,5 +183,5 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
         });
       } } });
     },
-  }), [resolve, toast, navigate, openDetails, discussDecision]);
+  }), [resolve, finishWait, toast, navigate, openDetails, discussDecision]);
 }
