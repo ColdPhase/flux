@@ -27,7 +27,6 @@ PASSWORD = "settings stay calm and findable"
 STAMP = int(time.time() * 1000)
 NAME, EMAIL = "Ada Kowalska", f"ada.settings+{STAMP}@example.test"
 SECTIONS = ["Account", "Appearance", "Notifications", "AI", "Company", "Keyboard shortcuts"]
-# The one sentence Settings › AI and the Background suggestions page use when the server does not run them (#513).
 # Guide §4, in order: every shortcut and its action.
 SHORTCUTS = [
     ("C", "New (task by default)"), ("⌘K", "Search or run"), ("GI", "Go to Inbox"), ("JorK", "Move in a list"), ("E", "Done"),

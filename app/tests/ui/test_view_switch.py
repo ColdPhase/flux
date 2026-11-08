@@ -269,8 +269,8 @@ class ViewSwitch(unittest.TestCase):
         project_view(page, "Conversation")
         page.wait_for_url(re.compile(PATH["Conversation"]))
         page.wait_for_function("() => document.querySelector('#content .project-convo')", timeout=8000)
-        # The Tasks view's loader reads the project (and the comparison outcomes) before it commits.
-        held = self.hold_reads(page, r"/api/v1/projects/[^/?]+(/comparison[^/?]*)?(\?.*)?$")
+        # The Tasks view's loader reads the project before it commits.
+        held = self.hold_reads(page, r"/api/v1/projects/[^/?]+(\?.*)?$")
         page.evaluate("() => { window.__frames = []; }")
         project_view(page, "Tasks")
         page.wait_for_timeout(1000)

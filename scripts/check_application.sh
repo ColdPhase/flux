@@ -111,17 +111,17 @@ $compose run --rm test node -e "fetch(process.env.FLUX_API_URL + '/api/auth/sign
 if [ "$#" -gt 0 ]; then
   $compose run --rm test node_modules/.bin/tsx --test --test-concurrency=1 "$@"
   if $compose logs --no-color api worker providermock | grep -F 'owner-budget-key-' >/dev/null; then
-    echo 'Background provider key appeared in API, worker or provider-mock logs' >&2
+    echo 'Provider key appeared in API, worker or provider-mock logs' >&2
     exit 1
   fi
-  echo 'Named API test files only: browser, restart, unavailable-configuration and background checks skipped.'
+  echo 'Named API test files only: browser, restart and unavailable-configuration checks skipped.'
   exit 0
 fi
 
 $compose run --rm test
 # Every seeded provider key (each adapter's, #179) carries this marker; none may reach a log.
 if $compose logs --no-color api worker providermock | grep -F 'owner-budget-key-' >/dev/null; then
-  echo 'Background provider key appeared in API, worker or provider-mock logs' >&2
+  echo 'Provider key appeared in API, worker or provider-mock logs' >&2
   exit 1
 fi
 

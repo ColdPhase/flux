@@ -307,7 +307,7 @@ export function SettingsHome() {
   return phone ? <PhoneSettings /> : <SettingsAppearance />;
 }
 
-/** Settings → AI on its own page: Connect AI, your agents, background suggestions and agent apps. */
+/** Settings → AI on its own page: Connect AI, your agents and agent apps. */
 export function SettingsAgents() {
   const { workspace } = useShellData();
   // A guest has no agents and no AI (AG-2): not Connect AI, not Your agents. A direct link says so instead of a page of controls.

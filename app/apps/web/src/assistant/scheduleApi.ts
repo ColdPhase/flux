@@ -30,7 +30,6 @@ export const previewSchedule = ({ workspaceId, ownerId }: ScheduleScope, schedul
 export const getBackgroundNote = ({ workspaceId, ownerId }: ScheduleScope, signal?: AbortSignal) =>
   request<AssistantBackgroundNote>(assistantJobNotePath(workspaceId, ownerId), { signal });
 
-
 /** The project's recent conversations, for "Post the result in" under More. */
 export const recentConversations = (projectId: string, signal?: AbortSignal) =>
   request<Page<ConversationSummary>>(`${projectConversationsPath(projectId)}?limit=10`, { signal }).then((page) => page.items);

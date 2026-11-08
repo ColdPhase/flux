@@ -1318,7 +1318,6 @@ export const backgroundComputeConnections = pgTable('background_compute_connecti
   baseUrl: text('base_url'),
   /** The owner's label, e.g. "Work OpenRouter" (PROV-1: an owner may keep several connections). */
   name: text('name').notNull(),
-  /** The one connection background comparisons use; at most one active per owner. */
   /** Micro-dollars per 1M tokens; all null when no price is known. */
   inputPriceMicrosPerMTok: integer('input_price_micros_per_mtok'),
   outputPriceMicrosPerMTok: integer('output_price_micros_per_mtok'),

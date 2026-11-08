@@ -108,6 +108,6 @@ ALTER TABLE public.notification_preferences DROP COLUMN summary_enabled, DROP CO
 -- Runs of the removed kinds.
 DELETE FROM public.personal_runs WHERE kind IN ('morning_summary', 'reaction') OR authority = 'owner_reaction';
 ALTER TABLE public.personal_runs DROP CONSTRAINT personal_runs_kind_check,
-  ADD CONSTRAINT personal_runs_kind_check CHECK (kind = ANY (ARRAY['ask'::text, 'summarize'::text, 'map_thought'::text, 'scheduled'::text]));
+  ADD CONSTRAINT personal_runs_kind_check CHECK (kind = ANY (ARRAY['ask'::text, 'summarize'::text, 'map_thought'::text, 'scheduled'::text, 'task'::text, 'task_answer'::text]));
 ALTER TABLE public.personal_runs DROP CONSTRAINT personal_runs_authority_check,
   ADD CONSTRAINT personal_runs_authority_check CHECK (authority = ANY (ARRAY['owner_request'::text, 'owner_schedule'::text]));

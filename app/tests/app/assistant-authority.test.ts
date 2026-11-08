@@ -267,9 +267,9 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     assert.equal(rest.undone, 1);
   });
 
-  test('#843 (background): a scheduled or reaction run has no change limit either; its twelfth change applies like its first', async () => {
+  test('#843 (background): a scheduled run has no change limit either; its twelfth change applies like its first', async () => {
     const live = await scene.liveRun();
-    await pool.query(`UPDATE personal_runs SET authority = 'owner_schedule', background_label = 'Morning summary' WHERE id = $1`, [live.runId]);
+    await pool.query(`UPDATE personal_runs SET authority = 'owner_schedule', background_label = 'Daily check' WHERE id = $1`, [live.runId]);
     for (let i = 1; i <= 12; i += 1) assert.ok(JSON.parse(text((await live.call('flux_create_task', { task: { title: `Background task ${i}` } })).message)).workId, `change ${i} applies`);
     assert.ok((await changesOf(live.runId)).every((item) => item.state === 'applied' && item.wait_reason === null));
     await scene.complete(live.runId);

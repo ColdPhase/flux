@@ -42,9 +42,9 @@ export async function projectIdOfAiScope(db: DbExecutor, kind: AiScopeKind, id: 
 
 /**
  * F-029 "AI origin" (`isAiOrigin` of the contract): the row's own `ai_origin` flag, which its writer set from the actor or
- * the source (an agent's message, decision or result, an assistant's suggestion, note, join request or assistant-written
- * summary). True while the space it is about has AI off: it is then left out of lists, counts, Needs you and the plain
- * morning summary, and neither pushed nor e-mailed, including rows created before AI was turned off.
+ * the source (an agent's message, decision or result, an assistant's suggestion, note or join request). True while the space
+ * it is about has AI off: it is then left out of lists, counts and Needs you, and neither pushed nor e-mailed, including rows
+ * created before AI was turned off.
  */
 export function hiddenWhileAiOff(n: { sourceType: SQLWrapper; sourceId: SQLWrapper; aiOrigin: SQLWrapper }): SQL<boolean> {
   return sql<boolean>`(${n.aiOrigin} AND ${n.sourceType} = 'project' AND ${currentAiEpoch(n.sourceId)} IS NULL)`;

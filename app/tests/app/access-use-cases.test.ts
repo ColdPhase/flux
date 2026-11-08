@@ -179,7 +179,7 @@ function scene(options: Scene = {}, checked = true) {
       return draftRow({ ...audience, version: 4 });
     },
   };
-  const aiSweep = Object.fromEntries(['endQueuedRuns', 'stopInFlightRuns', 'closeRunTokens', 'endComparisons', 'skipReactionEvents', 'cancelRequests', 'stopUnits']
+  const aiSweep = Object.fromEntries(['endQueuedRuns', 'stopInFlightRuns', 'closeRunTokens', 'cancelRequests', 'stopUnits']
     .map((step) => [step, async () => {
       log(`aiSweep.${step}`);
       if (options.failStep === step) throw new Error(`${step} failed`);
@@ -330,8 +330,8 @@ describe('workspace and membership use cases over in-memory repositories', () =>
   test('sweepSpaceAi: one transaction per step; a failing step is reported and the others still commit', async () => {
     const ok = scene();
     const swept = await sweepSpaceAi({ projectId: PROJECT, epoch: 2 }, ok.db, ok.ports);
-    assert.deepEqual(swept, { runs: 0, tokens: 2, comparisons: 2, reactions: 2, requests: 2, units: 2, failed: [] });
-    assert.equal(ok.calls.filter((call) => call === 'begin').length, 6);
+    assert.deepEqual(swept, { runs: 0, tokens: 2, requests: 2, units: 2, failed: [] });
+    assert.equal(ok.calls.filter((call) => call === 'begin').length, 4);
     const broken = scene({ failStep: 'cancelRequests' });
     await assert.rejects(sweepSpaceAi({ projectId: PROJECT, epoch: 2 }, broken.db, broken.ports), (error: unknown) => error instanceof SpaceAiSweepIncomplete
       && error.swept.failed.join() === 'requests' && error.swept.units === 2);

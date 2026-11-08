@@ -183,8 +183,8 @@ open for every named provider.
 
 - Done 2026-10-03 (PROV-1):
   - Several connections per owner, each named. Adding one never replaces another.
-  - Background comparisons use the one the owner marks (`PATCH …/:id` `usedForBackground`). The
-    assistant uses the one its consent names, chosen when enabling.
+  - The assistant uses the one its consent names, chosen when enabling. (Background comparisons
+    used the one the owner marked, `usedForBackground`; they went in #858.)
   - Removing a connection stops its use, with no fallback.
   - The production personal-run lookup, key resolver and the `FLUX_PERSONAL_RUNS` operator switch
     are in place (see personal-runs.md).

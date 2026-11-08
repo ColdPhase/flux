@@ -142,7 +142,6 @@ describe('F-030 registry against the live catalog', () => {
       preserve_draft_version: 'returns before the copy for a sealed workspace (0120); the drafts repository writes the sealed version',
       flux_capture_artifact_mutation: 'compares only (IS DISTINCT FROM); its triggers skip a sealed workspace (WHEN, 0120)',
       flux_guard_task_creation_history: 'compares only (IS DISTINCT FROM): no value leaves the row',
-      assistant_task_reaction_tap: 'AI: compares only, and no reaction exists for a sealed workspace (F-029 forced off)',
       search_index_decision: 'search_put stores a placeholder without title or body for a sealed workspace (0120)',
       search_index_dm_message: 'as search_index_decision', search_index_draft: 'as search_index_decision', search_index_material_version: 'as search_index_decision',
       search_index_message: 'as search_index_decision', search_index_project: 'as search_index_decision', search_index_result: 'as search_index_decision',
