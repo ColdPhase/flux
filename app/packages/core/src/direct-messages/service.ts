@@ -266,7 +266,7 @@ export function createDmUseCases(uow: DmUnitOfWork) {
       return changeOwn(principal, dmId, messageId, async (ports, dm, message) => {
         if (message.removedAt) throw new ConflictError('This message was deleted, so it cannot be edited', 'MESSAGE_REMOVED');
         if (message.body === body) return null;
-        await ports.dms.editMessage({ id: message.id, workspaceId: dm.workspaceId }, body);
+        await ports.dms.editMessage({ id: message.id, workspaceId: dm.workspaceId, authorId: message.authorId }, body);
         return 'edited';
       });
     },

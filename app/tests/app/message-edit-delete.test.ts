@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { before, describe, test } from 'node:test';
-import { fileRows } from '@flux/db';
+import { fileRows, notificationFactRows, personalRunRows, sql } from '@flux/db';
 import { createFileUseCases } from '@flux/core';
 import { REMOVED_BY_AUTHOR_BODY, type Conversation, type ConversationMessage, type Dm, type DmMessage, type DmThread, type Project, type SearchResponse, type StagedFile, type Workspace } from '@flux/contracts';
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
@@ -19,6 +19,7 @@ import { expectStatus, person, type Person } from './support/people.js';
 const word = (label: string) => `${label}${randomUUID().replace(/-/g, '').slice(0, 12)}`;
 const codeOf = (response: { json: unknown }) => (response.json as { code?: string } | null)?.code;
 const filesDir = process.env.FLUX_TEST_FILES_DIR ?? '/data/files';
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 describe('an author edits and deletes their own message (#1006)', () => {
   let ada: Person; // owner of the company
@@ -187,6 +188,61 @@ describe('an author edits and deletes their own message (#1006)', () => {
       await createFileUseCases(fileUnitOfWork(db), await diskFileStorage(filesDir)).cleanup();
       await assert.rejects(readFile(path), /ENOENT/, 'and removed from the volume');
     });
+
+    test('a deleted message is not given to a model, and an edited one is given with its new words', async () => {
+      const gone = word('modelgone'); const kept = word('modelkept'); const fixed = word('modelfixed');
+      const thread = await start(ben, lamp.id, 'the opening');
+      const removed = await reply(ben, thread.id, gone);
+      const edited = await reply(cy, thread.id, kept);
+      await reply(cy, thread.id, 'the last one');
+      const bodies = async () => (await personalRunRows(db).messages(thread.id, 10)).map((m) => m.body);
+      assert.deepEqual(await bodies(), ['the opening', gone, kept, 'the last one'], 'control: a model reads all of them');
+      expectStatus(await remove(ben, thread.id, removed.id), 200);
+      expectStatus(await edit(cy, thread.id, edited.id, fixed), 200);
+      assert.deepEqual(await bodies(), ['the opening', fixed, 'the last one']);
+      assert.deepEqual((await personalRunRows(db).messages(thread.id, 2)).map((m) => m.body), [fixed, 'the last one'], 'a deleted message does not take a place in the window');
+    });
+
+    test('a message that said "via Assistant" no longer names the agent once its words change or go; a delete also drops the digest of the sent words', async () => {
+      const edited = await start(ben, lamp.id, word('assisted'));
+      const removed = await start(ben, lamp.id, word('assisted again'));
+      const fingerprint = async (id: string) => (await pool.query('SELECT request_fingerprint AS f FROM project_messages WHERE id = $1', [id])).rows[0].f as string;
+      for (const thread of [edited, removed])
+        await pool.query(`UPDATE project_messages SET via = 'Assistant' WHERE id = $1`, [thread.messages[0]!.id]);
+      const sentFingerprint = await fingerprint(removed.messages[0]!.id);
+      const editedFingerprint = await fingerprint(edited.messages[0]!.id);
+      assert.equal((await read(cy, edited.id))[0]!.via, 'Assistant', 'control: the mark shows');
+      const afterEdit = expectStatus(await edit(ben, edited.id, edited.messages[0]!.id, word('my own words')), 200) as ConversationMessage;
+      assert.equal(afterEdit.via, undefined, 'the edited words are the person\'s');
+      assert.equal((await read(cy, edited.id))[0]!.via, undefined);
+      assert.equal(await fingerprint(edited.messages[0]!.id), editedFingerprint, 'an edit keeps the identity of the send, so a retry of it finds the message');
+      const afterDelete = expectStatus(await remove(ben, removed.id, removed.messages[0]!.id), 200) as ConversationMessage;
+      assert.equal(afterDelete.via, undefined);
+      const kept = await fingerprint(removed.messages[0]!.id);
+      assert.notEqual(kept, sentFingerprint, 'the digest of the sent words is gone');
+      assert.match(kept, /^[a-f0-9]{64}$/);
+    });
+
+    test('a delete that arrives while the notices of the message are being made waits for them and then removes them', async () => {
+      const thread = await start(ben, lamp.id, word('racing'));
+      const messageId = thread.messages[0]!.id;
+      const url = `/projects/${lamp.id}/conversations/${thread.id}#message-${messageId}`;
+      const made = randomUUID();
+      let deleting: ReturnType<typeof remove> | undefined;
+      // The generator's batch: it reads the message, the author's Delete arrives, the batch writes its notice and commits.
+      await db.transaction(async (tx) => {
+        const facts = await notificationFactRows(tx).projectMessage(messageId);
+        assert.ok(facts, 'the message is read');
+        deleting = remove(ben, thread.id, messageId);
+        await pause(600);
+        assert.equal((await row(messageId)).removed_at, null, 'the delete waits for the batch');
+        await tx.execute(sql`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, body, url, reason, ai_origin)
+          VALUES (${made}, ${cy.id}, ${ws.id}, 'project', ${lamp.id}, 'Ben mentioned you in Lamp', ${facts.body}, ${url}, 'mention', false)`);
+      });
+      assert.equal((await deleting!).status, 200);
+      assert.equal(await noticeExists(made), false, 'the notice made from the words is removed with them');
+      assert.equal(await notificationFactRows(db).projectMessage(messageId), null, 'and a message that is removed tells no one anything');
+    });
   });
 
   describe('only the author', () => {
@@ -316,6 +372,55 @@ describe('an author edits and deletes their own message (#1006)', () => {
       assert.equal((await dmEdit(ben, root.id, 'back')).status, 409);
       const list = expectStatus(await ben.browser.request('GET', `/api/v1/workspaces/${ws.id}/dms`), 200) as { items: { id: string; lastMessageBody: string | null }[] };
       assert.ok(!JSON.stringify(list).includes(secret), 'the list shows no trace of it either');
+    });
+
+    test('a send made under an Idempotency-Key leaves no stored answer with the words after an edit or a delete; "via" and the digest go as for a space', async () => {
+      const first = word('dmkeyed'); const second = word('dmkeyedafter'); const third = word('dmkeyedgone');
+      const keyed = async (body: string) => expectStatus(await ben.browser.request('POST', `/api/v1/dms/${dm.id}/messages`,
+        { body: { body, clientMessageId: randomUUID() }, headers: { 'idempotency-key': randomUUID() } }), 201) as DmMessage;
+      const stored = async (words: string) => (await pool.query(`SELECT 1 FROM idempotency_keys WHERE principal = $1 AND response_body::text LIKE $2`, [`human:${ben.id}`, `%${words}%`])).rowCount;
+      const fingerprint = async (id: string) => (await pool.query('SELECT request_fingerprint AS f FROM dm_messages WHERE id = $1', [id])).rows[0].f as string;
+      const one = await keyed(first);
+      const two = await keyed(third);
+      assert.equal(await stored(first), 1, 'control: the answer is stored with the words');
+      await pool.query(`UPDATE dm_messages SET via = 'Assistant' WHERE id = ANY($1)`, [[one.id, two.id]]);
+      const edited = expectStatus(await dmEdit(ben, one.id, second), 200) as DmMessage;
+      assert.equal(edited.via, undefined, 'the edited words are the person\'s');
+      assert.equal(await stored(first), 0, 'the words as sent are not kept in the stored answer');
+      const sentFingerprint = await fingerprint(two.id);
+      const removed = expectStatus(await dmRemove(ben, two.id), 200) as DmMessage;
+      assert.equal(removed.via, undefined);
+      assert.equal(await stored(third), 0, 'nor the deleted ones');
+      assert.notEqual(await fingerprint(two.id), sentFingerprint, 'the digest of the sent words is gone');
+      assert.match(await fingerprint(two.id), /^[a-f0-9]{64}$/);
+    });
+
+    test('a deleted direct message is not given to a model', async () => {
+      const gone = word('dmmodelgone'); const kept = word('dmmodelkept');
+      const first = await send(ben, gone);
+      await send(cy, kept);
+      const bodies = async () => (await personalRunRows(db).dmMessages(dm.id, 500)).map((m) => m.body).filter((body) => body === gone || body === kept || body === REMOVED_BY_AUTHOR_BODY);
+      assert.deepEqual(await bodies(), [gone, kept], 'control: a model reads both');
+      expectStatus(await dmRemove(ben, first.id), 200);
+      assert.deepEqual(await bodies(), [kept], 'the deleted one, and its marker, are not read');
+    });
+
+    test('a delete that arrives while the notices of the message are being made waits for them and then removes them', async () => {
+      const root = await send(ben, word('dmracing'));
+      const made = randomUUID();
+      let deleting: ReturnType<typeof dmRemove> | undefined;
+      await db.transaction(async (tx) => {
+        const facts = await notificationFactRows(tx).dmMessage(dm.id, root.id);
+        assert.ok(facts, 'the message is read');
+        deleting = dmRemove(ben, root.id);
+        await pause(600);
+        assert.equal((await dmRow(root.id)).removed_at, null, 'the delete waits for the batch');
+        await tx.execute(sql`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, body, url, reason, ai_origin)
+          VALUES (${made}, ${cy.id}, ${ws.id}, 'dm', ${dm.id}, 'Ben sent you a message', ${facts.body}, ${`/dm/${dm.id}#message-${root.id}`}, 'dm', false)`);
+      });
+      assert.equal((await deleting!).status, 200);
+      assert.equal(await noticeExists(made), false, 'the notice made from the words is removed with them');
+      assert.equal(await notificationFactRows(db).dmMessage(dm.id, root.id), null);
     });
 
     test('only the author: another participant, the company\'s owner and admin who are not in the DM, and an outsider change nothing', async () => {

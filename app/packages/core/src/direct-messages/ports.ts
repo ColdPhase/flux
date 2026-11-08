@@ -115,7 +115,7 @@ export interface DmRepository {
   /** The message `FOR UPDATE` for its author's Edit or Delete (#1006); null for any other id (including another DM's). */
   lockMessage(dmId: string, messageId: string): Promise<DmMessageRecord | null>;
   /** Overwrites the words (sealed in an encrypted workspace) and stamps `editedAt`. */
-  editMessage(message: { id: string; workspaceId: string }, body: string): Promise<void>;
+  editMessage(message: { id: string; workspaceId: string; authorId: string }, body: string): Promise<void>;
   /** Replaces the words with the marker and removes everything that carried them: its citations, its notices and search row. */
   removeMessage(message: { id: string; workspaceId: string; dmId: string; authorId: string }): Promise<void>;
   /** The newest `limit` replies of one root below `beforeSequence` (all when null), ascending. */

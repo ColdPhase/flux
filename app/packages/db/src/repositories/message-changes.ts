@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { and, eq, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
@@ -11,6 +12,10 @@ import { openRows, sealFor } from '../sealing.js';
  * stamps `removed_at`; the row keeps its id, place and sequence so replies, threads and links still make sense, and everything that carried
  * the words leaves with them: the message's own citations, its files, the notices that quoted it and (the migration's trigger) its search
  * row. Both seal what they write, so an encrypted workspace's rows stay envelopes (the marker too) and a locked one refuses (423).
+ *
+ * "Ada · via Assistant" names the agent that wrote the words, so a message whose words are no longer those ends the mark: an edit and a
+ * delete both clear `via`. A delete also replaces the request fingerprint (an unsalted SHA-256 of the sent words) with a random value, and
+ * an edit or a delete drops the author's stored `Idempotency-Key` answers for direct-message sends, which hold the sent message.
  */
 export const REMOVED_BY_AUTHOR_BODY = 'Message removed';
 
@@ -32,6 +37,15 @@ async function forgetNotices(db: DbExecutor, source: { type: 'project' | 'dm'; i
     await db.execute(sql`DELETE FROM notifications WHERE source_type = ${source.type} AND source_id = ${source.id} AND reason = 'reply' AND url LIKE ${`${alsoRepliesTo}#%`}`);
 }
 
+/** The author's stored answers to keyed direct-message sends hold the message as sent; a retry only repeats a send, which finds the message. */
+async function forgetSendAnswers(db: DbExecutor, message: { workspaceId: string; authorId: string }) {
+  await db.execute(sql`DELETE FROM idempotency_keys WHERE workspace_id = ${message.workspaceId} AND principal = ${`human:${message.authorId}`}
+    AND operation IN ('POST /api/v1/dms/:dmId/messages', 'POST /api/v1/dms/:dmId/threads/:rootId/replies')`);
+}
+
+/** A fingerprint that no words produce: the row keeps the column filled, but no longer a digest of what was written. */
+const unlinkedFingerprint = () => randomBytes(32).toString('hex');
+
 export function messageChangeRows(db: DbExecutor) {
   return {
     /**
@@ -49,7 +63,7 @@ export function messageChangeRows(db: DbExecutor) {
     /** Overwrites the words. Returns the new `edited_at`. */
     async editProject(message: Pick<LockedProjectMessage, 'id' | 'workspaceId'>, body: string): Promise<Date> {
       const sealed = await sealFor(db, 'project_messages', message.workspaceId, { body }, { id: message.id });
-      const [updated] = await db.update(m).set({ body: sealed.body, editedAt: sql`now()` }).where(eq(m.id, message.id)).returning({ editedAt: m.editedAt });
+      const [updated] = await db.update(m).set({ body: sealed.body, editedAt: sql`now()`, via: null }).where(eq(m.id, message.id)).returning({ editedAt: m.editedAt });
       return updated!.editedAt!;
     },
 
@@ -58,8 +72,8 @@ export function messageChangeRows(db: DbExecutor) {
       await db.delete(r).where(eq(r.projectMessageId, message.id));
       const files = await db.delete(f).where(eq(f.messageId, message.id)).returning({ id: f.id });
       if (files.length) await db.insert(schema.fileGarbage).values(files.map(({ id }) => ({ id }))).onConflictDoNothing();
-      const sealed = await sealFor(db, 'project_messages', message.workspaceId, { body: REMOVED_BY_AUTHOR_BODY }, { id: message.id });
-      const [updated] = await db.update(m).set({ body: sealed.body, removedAt: sql`now()`, attachmentCount: 0, sourceMaterialId: null, sourceMaterialVersion: null })
+      const sealed = await sealFor(db, 'project_messages', message.workspaceId, { body: REMOVED_BY_AUTHOR_BODY, requestFingerprint: unlinkedFingerprint() }, { id: message.id });
+      const [updated] = await db.update(m).set({ body: sealed.body, requestFingerprint: sealed.requestFingerprint, removedAt: sql`now()`, via: null, attachmentCount: 0, sourceMaterialId: null, sourceMaterialVersion: null })
         .where(eq(m.id, message.id)).returning({ removedAt: m.removedAt });
       const place = `/projects/${message.projectId}/conversations/${message.conversationId}`;
       await forgetNotices(db, { type: 'project', id: message.projectId }, `${place}#message-${message.id}`, message.sequence === 1 ? place : undefined);
@@ -74,20 +88,20 @@ export function messageChangeRows(db: DbExecutor) {
       return opened!;
     },
 
-    async editDm(message: { id: string; workspaceId: string }, body: string): Promise<Date> {
+    async editDm(message: { id: string; workspaceId: string; authorId: string }, body: string): Promise<Date> {
+      await forgetSendAnswers(db, message);
       const sealed = await sealFor(db, 'dm_messages', message.workspaceId, { body }, { id: message.id });
-      const [updated] = await db.update(dm).set({ body: sealed.body, editedAt: sql`now()` }).where(eq(dm.id, message.id)).returning({ editedAt: dm.editedAt });
+      const [updated] = await db.update(dm).set({ body: sealed.body, editedAt: sql`now()`, via: null }).where(eq(dm.id, message.id)).returning({ editedAt: dm.editedAt });
       return updated!.editedAt!;
     },
 
     async removeDm(message: { id: string; workspaceId: string; dmId: string; authorId: string }): Promise<Date> {
       await db.delete(r).where(eq(r.dmMessageId, message.id));
       // A send retried under an Idempotency-Key stored the message in its answer for replay; the message id is the retry identity too,
-      // so dropping the author's stored answers for sends only costs a repeat of the same send (which finds the marker).
-      await db.execute(sql`DELETE FROM idempotency_keys WHERE workspace_id = ${message.workspaceId} AND principal = ${`human:${message.authorId}`}
-        AND operation IN ('POST /api/v1/dms/:dmId/messages', 'POST /api/v1/dms/:dmId/threads/:rootId/replies')`);
-      const sealed = await sealFor(db, 'dm_messages', message.workspaceId, { body: REMOVED_BY_AUTHOR_BODY }, { id: message.id });
-      const [updated] = await db.update(dm).set({ body: sealed.body, removedAt: sql`now()` }).where(eq(dm.id, message.id)).returning({ removedAt: dm.removedAt });
+      // so dropping the author's stored answers for sends only costs a repeat of the same send (which finds the message).
+      await forgetSendAnswers(db, message);
+      const sealed = await sealFor(db, 'dm_messages', message.workspaceId, { body: REMOVED_BY_AUTHOR_BODY, requestFingerprint: unlinkedFingerprint() }, { id: message.id });
+      const [updated] = await db.update(dm).set({ body: sealed.body, requestFingerprint: sealed.requestFingerprint, removedAt: sql`now()`, via: null }).where(eq(dm.id, message.id)).returning({ removedAt: dm.removedAt });
       await forgetNotices(db, { type: 'dm', id: message.dmId }, `/dm/${message.dmId}#message-${message.id}`);
       return updated!.removedAt!;
     },

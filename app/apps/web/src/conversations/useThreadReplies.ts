@@ -30,8 +30,9 @@ export function useThreadReplies({ me, project, conversation, revalidateRef }: P
   const [stored, setMessages] = useState<Conversation['messages']>(conversation?.messages ?? []);
   const messagesRef = useRef(stored);
   useEffect(() => { messagesRef.current = stored; }, [stored]);
-  // A reply confirmed here is shown at once, in place of its queued message, until a read includes it (#264).
-  const messages = useMemo(() => conversation ? mergeMessages(stored, sent.filter((item) => item.message.conversationId === conversation.id).map((item) => item.message)) : stored,
+  // A reply confirmed here is shown at once, in place of its queued message, until a read includes it (#264); then the stored copy
+  // wins, so a reply its author edited or deleted since shows the new words (#1006), not the ones it was sent with.
+  const messages = useMemo(() => conversation ? mergeMessages(sent.filter((item) => item.message.conversationId === conversation.id).map((item) => item.message), stored) : stored,
     [conversation, stored, sent]);
   const [olderCursor, setOlderCursor] = useState(conversation?.messagePage.nextBeforeSequence ?? null);
   const [olderBusy, setOlderBusy] = useState(false);

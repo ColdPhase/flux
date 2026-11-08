@@ -62,7 +62,8 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, ot
   const { workspace } = useShellData();
   const [askFailure, setAskFailure] = useState('');
   const asking = workspace?.role !== 'guest' && /^\/ai(\s|$)/.test(draft);
-  const shown = useMemo(() => merge(replies, composer.sent.map((item) => item.message as DmMessage)), [replies, composer.sent]);
+  // A reply confirmed here shows at once until a read includes it; then the stored copy wins, so an edit or a delete shows (#1006).
+  const shown = useMemo(() => merge(composer.sent.map((item) => item.message as DmMessage), replies), [replies, composer.sent]);
   const outbox = outboxView(shown, composer.pending, composer.sent, meId);
 
   // The author edited or deleted the root or a reply of this thread (#1006): it is replaced at once.

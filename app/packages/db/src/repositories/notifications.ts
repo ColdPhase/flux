@@ -171,8 +171,10 @@ export function notificationFactRows(db: DbExecutor) {
     async projectMessage(messageId: string) {
       const pm = schema.projectMessages;
       const [row] = await db.select({ message: pm, createdBy: schema.projectConversations.createdBy, createdByAgentId: schema.projectConversations.createdByAgentId }).from(pm)
-        .innerJoin(schema.projectConversations, eq(schema.projectConversations.id, pm.conversationId)).where(eq(pm.id, messageId));
-      // A message its author deleted before this ran tells no one anything (#1006).
+        .innerJoin(schema.projectConversations, eq(schema.projectConversations.id, pm.conversationId)).where(eq(pm.id, messageId)).for('share', { of: pm });
+      // The row is held `FOR SHARE` until the batch commits, so an author's Delete (which locks it `FOR UPDATE`) waits for the notices
+      // written from these words and then removes them; a Delete that came first is read here as removed. A message its author
+      // deleted before this ran tells no one anything (#1006).
       if (!row || row.message.removedAt) return null;
       const message = (await openRows(db, 'project_messages', [row.message]))[0]!;
       const [opening] = await openRows(db, 'project_messages', await db.select({ id: pm.id, workspaceId: pm.workspaceId, body: pm.body, attachmentCount: pm.attachmentCount }).from(pm)
@@ -194,7 +196,8 @@ export function notificationFactRows(db: DbExecutor) {
     async dmMessage(dmId: string, messageId: string) {
       const [row] = await db.select({ message: schema.dmMessages, dm: schema.dms }).from(schema.dmMessages)
         .innerJoin(schema.dms, eq(schema.dms.id, schema.dmMessages.dmId))
-        .where(and(eq(schema.dmMessages.id, messageId), eq(schema.dmMessages.dmId, dmId)));
+        .where(and(eq(schema.dmMessages.id, messageId), eq(schema.dmMessages.dmId, dmId))).for('share', { of: schema.dmMessages });
+      // Held `FOR SHARE` until the batch commits, as for a space's message: a Delete waits and then removes the notices written here.
       if (!row || row.message.removedAt) return null;
       const participants = await db.select({ id: schema.dmParticipants.userId }).from(schema.dmParticipants).where(eq(schema.dmParticipants.dmId, dmId));
       const [message] = await openRows(db, 'dm_messages', [row.message]);
