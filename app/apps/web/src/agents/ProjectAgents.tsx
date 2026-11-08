@@ -6,7 +6,7 @@ import type { AgentOperation, AgentQuestion, AgentPause, AgentStop, Conversation
 import { ApiError, NetworkError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { projectAiBlocked, useShellData } from '../app/data';
-import { AiOffState, AiSurface, isAiBlocked, useSpaceAi } from '../ai/spaceAi';
+import { AiOffState, isAiBlocked, useSpaceAi } from '../ai/spaceAi';
 import { useShellActions } from '../app/shellContext';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { AttachButton, ComposerFiles, MessageContent } from '../composer/Files';
@@ -25,7 +25,6 @@ import { HandOffDialog, type HandOffTask } from './HandOff';
 import { useAgentStops, usePauseAgent, useStopAgent } from './stop';
 import { QuestionCard, WhenNoQuestion } from './QuestionCard';
 import { RequestCards } from './RequestCards';
-import { ReviewRule } from './ReviewRule';
 import { useProjectQuestions, useQuestionList } from './questions';
 import { useLatestAgentLine } from './latest';
 import { useSpareHeight } from '../ui/spareHeight';
@@ -856,7 +855,6 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
   const [handOff, setHandOff] = useState<{ agentId: string | null; task: HandOffTask | null } | null>(null);
   const [dropping, setDropping] = useState<string | null>(null);
   // `?policy=open` opens the policy (a link to it, and where a reload leaves a reader who had it open).
-  const [policyOpen, setPolicyOpen] = useState(search.get('policy') === 'open');
   const dropTask = (agentId: string, taskId: string) => {
     const row = rows.find((item) => item.id === taskId);
     if (row) setHandOff({ agentId, task: { id: row.id, version: row.version, number: row.number, title: row.title } });
@@ -904,16 +902,7 @@ function ProjectAgentsLoaded({ data }: { data: ProjectAgentsData }) {
             <span className="agents-link__count">{asked.length}</span>
             <Icon name="chevron-right" size={14} />
           </RefLink></li> : null}
-          <li><button type="button" className="agents-link" aria-expanded={policyOpen} aria-controls="agents-policy" onClick={() => setPolicyOpen((value) => !value)}>
-            <span className="agents-link__icon"><Icon name="rule" size={16} /></span><span className="agents-link__text"><b>Review rule</b> · Who checks an agent's work in this project.</span><span className="agents-link__go">{policyOpen ? 'Hide' : shell?.project.access === 'manager' ? 'Edit' : 'Read'}<Icon name="chevron-right" size={14} /></span></button></li>
         </ul>
-        {policyOpen ? (
-          <div id="agents-policy">
-            <AiSurface projectId={shell?.project.id} id="review-rule">
-              <ReviewRule key={projectId} projectId={projectId} meId={me.user.id} canEdit={shell?.project.access === 'manager'} />
-            </AiSurface>
-          </div>
-        ) : null}
         {canWrite && entries.length && rows.length ? (
           <section className="agents-drag" aria-label="Open tasks to hand off">
             <p className="agents-drag__hint">Drag a task onto an agent to hand it off</p>

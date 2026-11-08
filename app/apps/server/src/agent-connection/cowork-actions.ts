@@ -5,7 +5,7 @@ import { COWORK_CHECKPOINT_LIMITS, COWORK_DECLINE_REASONS, COWORK_DEFER_BOUNDARI
 import { assistantChangeRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
 import { ownerAssistantUnitCreationInTransaction } from '../co-work/assistant-units.js';
 import { coWorkClaimCheckpoint, coWorkClaimInTransaction } from '../co-work/claims.js';
-import { COWORK_CLAIM_POLICY, COWORK_RESPONSE_POLICY, coworkPolicies } from '../co-work/policy.js';
+import { COWORK_CLAIM_POLICY, COWORK_REQUEST_POLICY, COWORK_RESPONSE_POLICY, COWORK_UNIT_POLICY } from '../co-work/policy.js';
 import { coWorkRecovery } from '../co-work/recovery.js';
 import { coWorkRequestInTransaction } from '../co-work/requests.js';
 import { coWorkRequestResponseInTransaction } from '../co-work/responses.js';
@@ -103,12 +103,12 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
         async ({ transaction, runtime }) => {
           const creation = await ownerAssistantUnitCreationInTransaction(transaction, runtime, input.projectId,
             { taskId, role: input.peerRequestClass, unitKey, expectedTaskVersion, assignmentConnectionId, parent: null },
-            (await coworkPolicies(transaction, input.projectId)).unit);
+            COWORK_UNIT_POLICY);
           return coWorkUnitOutcome(creation, { workspaceId: runtime.workspaceId, projectId: input.projectId });
         });
     }
     const create = async (tx: Transaction) => coWorkUnitCreateInTransaction(tx, claims, command(input, 'cowork.unit.create', taskId,
-      { unitKey, expectedTaskVersion, assignmentConnectionId, parent }), (await coworkPolicies(tx, input.projectId)).unit);
+      { unitKey, expectedTaskVersion, assignmentConnectionId, parent }), COWORK_UNIT_POLICY);
     // A child unit given to another person's client is another person's thing: it waits for the owner's OK like a task for someone
     // else (C-18, #859), and Approve repeats this call as the client's own, while its runtime session and parent claim stay live.
     if (parent !== null && (claims.approval || await forAnotherPerson(db, claims, assignmentConnectionId)))
@@ -171,7 +171,7 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
     inputSchema: z.strictObject({ ...execution, ...unitFence, outcome: outcomeRef }), annotations,
   }, ({ unitId, expectedVersion, generation, leaseId, outcome, ...input }) => run(() => db.transaction(async (tx) =>
     coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.complete', unitId,
-      { expectedVersion, generation, leaseId, outcome }), (await coworkPolicies(tx, input.projectId)).unit))));
+      { expectedVersion, generation, leaseId, outcome })))));
 
   register('cowork.unit.transfer').registerTool('flux_transfer_unit', {
     title: 'Hand your co-work unit to another connection',
@@ -183,8 +183,7 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       assignmentConnectionId: id.describe('The connection that should continue the unit.') }), annotations,
   }, ({ unitId, expectedVersion, generation, leaseId, assignmentConnectionId, ...input }) => run(async () => {
     const payload = { expectedVersion, generation, leaseId, assignmentConnectionId };
-    const transfer = async (tx: Transaction) => coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.transfer', unitId, payload),
-      (await coworkPolicies(tx, input.projectId)).unit);
+    const transfer = async (tx: Transaction) => coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.transfer', unitId, payload));
     // Handing the unit to another person's client is giving it another person's work: it waits for the owner's OK (C-18, #859).
     if (claims.approval || await forAnotherPerson(db, claims, assignmentConnectionId))
       return execute({ ...input, sources: [] } as unknown as ActionInput, 'cowork.unit.transfer', unitId, payload,
@@ -201,8 +200,7 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       + 'already completed never changes. Needs the runtime from flux_bootstrap.',
     inputSchema: z.strictObject({ ...execution, unitId: unitFence.unitId, expectedVersion: unitFence.expectedVersion }), annotations,
   }, ({ unitId, expectedVersion, ...input }) => run(() => db.transaction(async (tx) =>
-    coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.decline', unitId, { expectedVersion }),
-      (await coworkPolicies(tx, input.projectId)).unit))));
+    coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.decline', unitId, { expectedVersion })))));
 
   register('cowork.request.respond').registerTool('flux_defer_request', {
     title: 'Put a queued request off to a safe checkpoint, with a reason',
@@ -285,8 +283,7 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
     (async () => {
       const payload = { generation, leaseId, request: { unitId: recipientUnitId, expectedUnitVersion: expectedRecipientUnitVersion, recipientConnectionId,
         intentKey, parentRequestId, kind, target, sourceRefs, criteriaRefs, priority, peerUnblocking, lifetimeSeconds } } as unknown as AgentJsonValue;
-      const send = async (tx: Transaction) => coWorkRequestInTransaction(tx, claims, command(input, 'cowork.request', unitId, payload),
-        (await coworkPolicies(tx, input.projectId)).request);
+      const send = async (tx: Transaction) => coWorkRequestInTransaction(tx, claims, command(input, 'cowork.request', unitId, payload), COWORK_REQUEST_POLICY);
       // A request to another person's client waits for the owner's OK (C-18, #859), as a unit given to it does.
       if (claims.approval || await forAnotherPerson(db, claims, recipientConnectionId))
         return execute({ ...input, sources: [] } as unknown as ActionInput, 'cowork.request', unitId, payload,

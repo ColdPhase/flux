@@ -161,7 +161,7 @@ test('flux_claim_request and flux_decline_request act only on a request addresse
       expectedUnitVersion: reviewClaim.version, recipientConnectionId: marekClaude.connectionId, intentKey: 'review-1', parentRequestId: null,
       kind: 'review', target: { type: 'work', id: a.id, version: a.version }, sourceRefs: [{ type: 'material', id: f.material.materialId, version: 1 }],
       criteriaRefs: [{ type: 'work', id: a.id, version: a.version }], priority: 1, peerUnblocking: true, lifetimeSeconds: 3600 } }),
-  { limits: LIMITS, reviewSeparation: 'distinct_connection' }));
+  { limits: LIMITS }));
   const fence = { unitId: reviewUnit, generation: reviewClaim.generation, leaseId: reviewClaim.lease!.id, requestId: asked.requestId };
 
   // Over MCP: claim the request; a retry replays; claiming it again under the same live claim is refused.

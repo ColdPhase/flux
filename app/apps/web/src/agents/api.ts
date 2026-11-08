@@ -1,5 +1,5 @@
 import { agentQuestionAnswerPath, ownWorkingAgentsPath, projectAgentQuestionsPath, projectAgentPausesPath, projectAgentStopsPath, projectAgentsPath,
-  projectReviewPolicyPath, taskCoordinationCancelPath, taskCoordinationPacketPath, taskCoordinationPath, type CoWorkReviewPolicy, type CoWorkReviewRule, type TaskCoordination, type TaskCoordinationRequest,
+  taskCoordinationCancelPath, taskCoordinationPacketPath, taskCoordinationPath, type TaskCoordination, type TaskCoordinationRequest,
   type AgentQuestion, type AgentQuestions, type AgentStop, type AgentStops, type AnswerAgentQuestionCommand, type OwnWorkingAgents,
   type ProjectAgents, type StopAgentCommand, type AgentPause, type PauseAgentCommand } from '@flux/contracts';
 import { request, send } from '../api/client';
@@ -41,7 +41,3 @@ export async function getCoordinationPacket(workId: string, requestId: string): 
 /** Cancels an open request at the version the person saw. Repeating it after a lost answer succeeds without a second change. */
 export const cancelCoWorkRequest = (workId: string, requestId: string, expectedVersion: number) =>
   request<TaskCoordinationRequest>(taskCoordinationCancelPath(workId, requestId), { method: 'POST', body: { expectedVersion } });
-/** A project's rule for how separate a reviewer must be from the author (#153 AC-4). Readers read it; managers set it. */
-export const getReviewPolicy = (projectId: string, signal?: AbortSignal) => request<CoWorkReviewPolicy>(projectReviewPolicyPath(projectId), { signal });
-export const setReviewPolicy = (projectId: string, reviewSeparation: CoWorkReviewRule) =>
-  request<CoWorkReviewPolicy>(projectReviewPolicyPath(projectId), { method: 'PUT', body: { reviewSeparation } });

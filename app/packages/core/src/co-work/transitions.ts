@@ -1,6 +1,5 @@
 import type { CoWorkSourceRef } from '@flux/contracts';
 import { ConflictError, InvalidInputError, NotFoundError } from '../access/errors.js';
-import type { CoWorkReviewSeparation } from './admission.js';
 import type { CoWorkContext, CoWorkLease, CoWorkRole } from './claims.js';
 import { stoppedError } from './claims.js';
 import { normalizeCoWorkSource } from './requests.js';
@@ -16,8 +15,6 @@ export type CoWorkUnitTransitionInput =
   | (CoWorkHolderFence & { operation: 'transfer'; assignmentConnectionId: string })
   /** The receiving assignee's refusal of a still-pending transferred unit; it needs no claim, only the unit version. */
   | { operation: 'decline'; expectedVersion: number };
-/** Server-owned policy; never read from a payload, peer message or client metadata. */
-export interface CoWorkUnitTransitionPolicy { reviewSeparation: CoWorkReviewSeparation }
 export interface CoWorkTransitionUnit {
   id: string;
   projectId: string;
@@ -82,19 +79,11 @@ export function normalizeCoWorkUnitTransition(operation: 'complete' | 'transfer'
   const value = exactly(payload, ['expectedVersion', 'generation', 'leaseId', 'assignmentConnectionId']);
   return { operation, ...fence(value), assignmentConnectionId: uuid(value.assignmentConnectionId) };
 }
-export function validateCoWorkUnitTransitionPolicy(policy: CoWorkUnitTransitionPolicy): void {
-  if (!policy || (policy.reviewSeparation !== 'distinct_connection' && policy.reviewSeparation !== 'distinct_owner'))
-    throw new Error('Current co-work unit transition policy is required');
-}
-
-function separated(unit: CoWorkTransitionUnit, assignee: { id: string; ownerUserId: string }, facts: CoWorkUnitTransitionFacts,
-  separation: CoWorkReviewSeparation): boolean {
+/** An author's own connection is never its reviewer in the same run (a fixed rule: there is no project setting for it, C-9). */
+function separated(unit: CoWorkTransitionUnit, assignee: { id: string }, facts: CoWorkUnitTransitionFacts): boolean {
   const opposite = unit.role === 'review' ? 'execute' : unit.role === 'execute' ? 'review' : null;
   if (!opposite) return true;
-  return facts.runUnits.filter((other) => other.id !== unit.id && other.role === opposite).every((other) =>
-    other.assignmentConnectionId !== assignee.id
-    // A deleted connection's owner is unknown: fail closed under the stricter policy.
-    && (separation !== 'distinct_owner' || (other.ownerUserId !== null && other.ownerUserId !== assignee.ownerUserId)));
+  return facts.runUnits.filter((other) => other.id !== unit.id && other.role === opposite).every((other) => other.assignmentConnectionId !== assignee.id);
 }
 
 /**
@@ -102,8 +91,7 @@ function separated(unit: CoWorkTransitionUnit, assignee: { id: string; ownerUser
  * claim live in this runtime session with exactly this generation and lease at fresh database time, may finish or hand
  * it over; nothing addressed to the unit may be left open. A transfer gives the assignee a pending unit and no authority.
  */
-export function requireCoWorkUnitTransition(context: CoWorkContext, facts: CoWorkUnitTransitionFacts, input: CoWorkUnitTransitionInput,
-  policy: CoWorkUnitTransitionPolicy): CoWorkTransitionUnit {
+export function requireCoWorkUnitTransition(context: CoWorkContext, facts: CoWorkUnitTransitionFacts, input: CoWorkUnitTransitionInput): CoWorkTransitionUnit {
   const { unit, now } = facts;
   if (!unit || unit.projectId !== context.projectId || unit.assignmentConnectionId !== context.connectionId)
     throw new NotFoundError('Work unit', 'COWORK_UNIT_NOT_FOUND');
@@ -120,7 +108,7 @@ export function requireCoWorkUnitTransition(context: CoWorkContext, facts: CoWor
     if (!facts.assignee || facts.assignee.id !== unit.transferredFromConnectionId)
       throw new NotFoundError('Unit assignee', 'COWORK_ASSIGNEE_UNAVAILABLE');
     // The prior assignee may have become the run's author while the unit was away: the same rule as a transfer applies.
-    if (!separated(unit, facts.assignee, facts, policy.reviewSeparation))
+    if (!separated(unit, facts.assignee, facts))
       throw new ConflictError('An author cannot be its own reviewer in this run', 'COWORK_REVIEW_SEPARATION');
     return unit;
   }
@@ -135,7 +123,7 @@ export function requireCoWorkUnitTransition(context: CoWorkContext, facts: CoWor
       throw new ConflictError('A unit is transferred to another connection', 'COWORK_ASSIGNMENT_REFUSED');
     if (!facts.assignee || facts.assignee.id !== input.assignmentConnectionId)
       throw new NotFoundError('Unit assignee', 'COWORK_ASSIGNEE_UNAVAILABLE');
-    if (!separated(unit, facts.assignee, facts, policy.reviewSeparation))
+    if (!separated(unit, facts.assignee, facts))
       throw new ConflictError('An author cannot be its own reviewer in this run', 'COWORK_REVIEW_SEPARATION');
   }
   return unit;

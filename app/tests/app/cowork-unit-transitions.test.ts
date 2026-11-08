@@ -11,7 +11,7 @@ import { coWorkClaimInTransaction, type CoWorkClaimPolicy } from '../../apps/ser
 import { coWorkTaskGraphLocks } from '../../apps/server/src/co-work/graph.js';
 import { coWorkRequestInTransaction, type CoWorkRequestPolicy } from '../../apps/server/src/co-work/requests.js';
 import { coWorkRequestResponseInTransaction } from '../../apps/server/src/co-work/responses.js';
-import { coWorkUnitTransitionInTransaction, type CoWorkUnitTransitionPolicy } from '../../apps/server/src/co-work/transitions.js';
+import { coWorkUnitTransitionInTransaction } from '../../apps/server/src/co-work/transitions.js';
 import { coWorkUnitCreateInTransaction } from '../../apps/server/src/co-work/units.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { backendPid, barrier, settled, waitUntilBlockedBy } from './support/locks.js';
@@ -21,13 +21,12 @@ import { backendPid, barrier, settled, waitUntilBlockedBy } from './support/lock
 // tool or client evidence.
 const { db, pool } = createDatabase(process.env.DATABASE_URL!);
 after(() => pool.end());
-const TRANSITIONS: CoWorkUnitTransitionPolicy = { reviewSeparation: 'distinct_connection' };
-const UNITS: CoWorkUnitPolicy = { maximumRunUnits: 8, reviewSeparation: 'distinct_connection' };
+const UNITS: CoWorkUnitPolicy = { maximumRunUnits: 8 };
 const CLAIMS: CoWorkClaimPolicy = { maximumConnectionUnits: 2, leaseSeconds: 120,
   prepareTaskLocks: (tx, context, units) => coWorkTaskGraphLocks(tx, context.workspaceId, units),
   async requireEligible() {}, async requireCheckpointSources() {} };
 const LIMITS: CoWorkRequestLimits = { maximumRequests: 128, maximumDepth: 8, maximumReviewRounds: 16 };
-const REQUESTS: CoWorkRequestPolicy = { limits: LIMITS, reviewSeparation: 'distinct_connection' };
+const REQUESTS: CoWorkRequestPolicy = { limits: LIMITS };
 const NO_PUBLICATION = { async publishResponse(): Promise<never> { throw new Error('A claim or decline never publishes'); } };
 type Role = 'execute' | 'review' | 'plan';
 
@@ -98,8 +97,8 @@ async function holder(w: World, c: Connected, unitId: string, role: Role) {
       command(w, c, 'cowork.unit.complete', unitId, role, payload, change),
     handOver: (payload: Record<string, unknown>, change: Partial<AgentExecutionCommand> = {}) =>
       command(w, c, 'cowork.unit.transfer', unitId, role, payload, change),
-    run: (input: AgentExecutionCommand, policy = TRANSITIONS) =>
-      db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, c.claims, input, policy)),
+    run: (input: AgentExecutionCommand) =>
+      db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, c.claims, input)),
   };
 }
 /** Everything a refused transition could have changed. */
@@ -271,7 +270,7 @@ test('holder fence negative controls: only the current holder under its live cla
     'execute', { unitKey: 'take-away', expectedTaskVersion: elsewhere.version, assignmentConnectionId: both.connection.id,
       parent: null }, { projectId: w.other.id, audience: { kind: 'project', projectId: w.other.id } }), UNITS));
   await refusedWithoutEffects(w, [...all, both], () => db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, both.claims,
-    command(w, both, 'cowork.unit.complete', away.unitId, 'execute', { ...f.fence, outcome }), TRANSITIONS)), 'COWORK_UNIT_NOT_FOUND');
+    command(w, both, 'cowork.unit.complete', away.unitId, 'execute', { ...f.fence, outcome }))), 'COWORK_UNIT_NOT_FOUND');
   // After all refusals the holder still completes with its exact live fence.
   assert.equal((await f.own.run(f.own.finish({ ...f.fence, outcome }))).state, 'completed');
 });
@@ -339,7 +338,7 @@ test('the receiving assignee declines a transferred unit before claiming: it ret
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => run(decline({ expectedVersion: moved.version + 1 })), 'COWORK_VERSION_CONFLICT');
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => run(decline({ outcome: 'x' })), 'INVALID_INPUT');
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, f.codex.claims,
-    command(w, f.codex, 'cowork.unit.decline', f.root.unitId, 'execute', { expectedVersion: moved.version }), TRANSITIONS)),
+    command(w, f.codex, 'cowork.unit.decline', f.root.unitId, 'execute', { expectedVersion: moved.version }))),
   'COWORK_UNIT_NOT_FOUND');
 
   const input = decline();
@@ -359,7 +358,7 @@ test('the receiving assignee declines a transferred unit before claiming: it ret
 
   // Once a receiver has claimed a transferred unit it owns it: no decline.
   const second = await db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, f.codex.claims, command(w, f.codex, 'cowork.unit.transfer',
-    f.root.unitId, 'execute', { ...fenceOf(again), assignmentConnectionId: f.marekClaude.connection.id }), TRANSITIONS));
+    f.root.unitId, 'execute', { ...fenceOf(again), assignmentConnectionId: f.marekClaude.connection.id })));
   const marekClaim = await claimUnit(w, f.marekClaude, f.root.unitId, 'execute', second.version);
   assert.equal((await unitRow(f.root.unitId)).transferred_from_connection_id, null);
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => run(decline({ expectedVersion: marekClaim.version })), 'COWORK_DECLINE_REFUSED');
@@ -374,7 +373,7 @@ test('a decline cannot return a review unit to a connection that became the run\
   const parent = { unitId: f.root.unitId, generation: f.claim.generation, leaseId: f.claim.lease!.id };
   await createUnit(w, f.codex, f.a, 'execute', 'exec-for-reviewer', { assignee: f.marekClaude.connection.id, parent });
   const decline = () => db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, third.claims, command(w, third, 'cowork.unit.decline',
-    f.review.unitId, 'review', { expectedVersion: moved.version }), TRANSITIONS));
+    f.review.unitId, 'review', { expectedVersion: moved.version })));
   // The same rule as a transfer: returning it would make the reviewer its own run's author. Nothing changes.
   await refusedWithoutEffects(w, [f.codex, f.marekClaude, third], decline, 'COWORK_REVIEW_SEPARATION');
   const row = await unitRow(f.review.unitId);
@@ -405,8 +404,8 @@ test('transfer negative controls: an ineligible, revoked or self assignee and se
   const { w } = f;
   const claude = await w.connect(w.hubert, 'Hubert Claude');
   const all = [f.codex, f.marekClaude, claude];
-  const refuse = (input: AgentExecutionCommand, code: string, run = f.own.run, policy = TRANSITIONS) =>
-    refusedWithoutEffects(w, all, () => run(input, policy), code);
+  const refuse = (input: AgentExecutionCommand, code: string, run = f.own.run) =>
+    refusedWithoutEffects(w, all, () => run(input), code);
   const to = (assignmentConnectionId: string) => f.own.handOver({ ...f.fence, assignmentConnectionId });
   // Unknown, revoked, another workspace, project not selected, no execute scope — one content-free outcome.
   const revoked = await w.connection(w.marek, 'Marek revoked');
@@ -421,9 +420,7 @@ test('transfer negative controls: an ineligible, revoked or self assignee and se
   // Separation: the author's execute unit cannot go to the run's reviewer, nor the review unit to the run's author.
   await refuse(to(f.marekClaude.connection.id), 'COWORK_REVIEW_SEPARATION');
   await refuse(f.reviewer.handOver({ ...f.reviewFence, assignmentConnectionId: f.codex.connection.id }), 'COWORK_REVIEW_SEPARATION', f.reviewer.run);
-  // A stricter policy also refuses another connection of the author's owner as the reviewer; the default allows it.
-  await refuse(f.reviewer.handOver({ ...f.reviewFence, assignmentConnectionId: claude.connection.id }), 'COWORK_REVIEW_SEPARATION', f.reviewer.run,
-    { reviewSeparation: 'distinct_owner' });
+  // Another connection of the author's own owner may take the review (there is no project rule to say otherwise, C-9).
   const handed = await f.reviewer.run(f.reviewer.handOver({ ...f.reviewFence, assignmentConnectionId: claude.connection.id }));
   assert.deepEqual([handed.state, handed.assignmentConnectionId], ['pending', claude.connection.id]);
   // The author's execute unit can go to another connection of its own owner that holds no review unit of the run.
@@ -489,7 +486,7 @@ test('race: a request admission and the completion of its recipient unit seriali
   const ready2 = barrier<number>(), release2 = barrier();
   const finishing = db.transaction(async (tx) => {
     const outcome = await coWorkUnitTransitionInTransaction(tx, g.marekClaude.claims,
-      g.reviewer.finish({ ...g.reviewFence, outcome: { type: 'result', id: findings.id } }), TRANSITIONS);
+      g.reviewer.finish({ ...g.reviewFence, outcome: { type: 'result', id: findings.id } }));
     ready2.resolve(await backendPid(tx)); await release2.promise; return outcome;
   });
   finishing.catch(() => ready2.resolve(-1));
@@ -512,7 +509,7 @@ test('race: two transitions of one unit by its holder serialize; exactly one win
   const ready = barrier<number>(), release = barrier();
   const holding = db.transaction(async (tx) => {
     const outcome = await coWorkUnitTransitionInTransaction(tx, f.codex.claims,
-      f.own.finish({ ...f.fence, outcome: { type: 'result', id: result.id } }), TRANSITIONS);
+      f.own.finish({ ...f.fence, outcome: { type: 'result', id: result.id } }));
     ready.resolve(await backendPid(tx)); await release.promise; return outcome;
   });
   holding.catch(() => ready.resolve(-1));
@@ -551,7 +548,7 @@ test('race: an assignee revocation that commits first refuses the transfer; one 
   const ready = barrier<number>(), release = barrier();
   const holding = db.transaction(async (tx) => {
     const outcome = await coWorkUnitTransitionInTransaction(tx, f.codex.claims,
-      f.own.handOver({ ...f.fence, assignmentConnectionId: f.marekClaude.connection.id }), TRANSITIONS);
+      f.own.handOver({ ...f.fence, assignmentConnectionId: f.marekClaude.connection.id }));
     ready.resolve(await backendPid(tx)); await release.promise; return outcome;
   });
   holding.catch(() => ready.resolve(-1));

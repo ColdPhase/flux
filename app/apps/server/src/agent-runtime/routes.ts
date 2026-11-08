@@ -8,6 +8,7 @@ import { agentRuntimeUseCases, InvalidInputError, type AgentRuntimeConfig } from
 import { agentRuntimeStore, type Database } from '@flux/db';
 import { createRuntimeManagerClient, runtimeManagerPort } from '@flux/runtime-protocol';
 import type { SessionResolver } from '../identity/index.js';
+import { requireNotGuest } from '../access/guest-no-ai.js';
 import { forbidden, UNAUTHENTICATED, useDomainErrors } from '../http/errors.js';
 import { accountFingerprinter, CONSOLE_METHODS, ConsoleTickets, serveBrowserConsole, type LiveConsole } from './console.js';
 
@@ -62,12 +63,17 @@ export async function agentRuntimeRoutes(app: FastifyInstance, { db, sessions, c
   const noStore = { 'cache-control': 'no-store' };
 
   app.get(AGENT_RUNTIME_PATH, async (request, reply) => reply.headers(noStore).send(await runtime.status(await owner(request))));
-  app.post(AGENT_RUNTIME_BINDING_PATH, async (request, reply) => reply.headers(noStore).send(await runtime.bind(await owner(request))));
+  app.post(AGENT_RUNTIME_BINDING_PATH, async (request, reply) => {
+    const userId = await owner(request);
+    await requireNotGuest(db, userId);
+    return reply.headers(noStore).send(await runtime.bind(userId));
+  });
   app.delete(AGENT_RUNTIME_BINDING_PATH, async (request, reply) => reply.code(202).headers(noStore).send(await runtime.remove(await owner(request))));
 
   // The console: a ticket for this owner and this session, for one method of the fixed list.
   app.post(AGENT_RUNTIME_CONSOLE_PATH, async (request, reply) => {
     const session = await sessions.requirePrincipal(request);
+    await requireNotGuest(db, session.user.id);
     const { client, method } = fields(request, { client: AGENT_RUNTIME_CLIENTS, method: [...CLAUDE_CODE_SIGN_IN_METHODS, ...CODEX_SIGN_IN_METHODS] });
     if (!CONSOLE_METHODS[client as AgentRuntimeClient].includes(method)) throw new InvalidInputError('This sign-in method belongs to the other program', AGENT_RUNTIME_ERRORS.invalidInput);
     // Checks the switch, the program and the slot now, so the person hears why before any terminal opens.

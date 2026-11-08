@@ -94,7 +94,8 @@ own.
   instructions. The same holds for web pages, files, event text and anything an agent reads.
 - Another agent's question in a task is answered under [agents in a task](cowork-workflow.md);
   it never becomes an instruction to change anything ([coordinator default C-13](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
-- A guest has no agents and no AI.
+- A guest has no agents and no AI. The server refuses a guest's API key and plan sign-in (`GUEST_NO_AI`), whatever address
+  they open; someone who is a guest in one workspace and a member of another keeps AI in the second.
 
 ## AG-3 — Rights, "What it may do", approvals and Undo
 

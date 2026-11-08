@@ -337,42 +337,6 @@ class RequestCardsJourney(unittest.TestCase):
         expect(dark_phone.get_by_role("region", name=REGION)).to_be_visible()
         shot(dark_phone, "request-cards-phone-dark-390")
 
-    def test_11_a_manager_chooses_who_may_review_and_others_only_read_it(self) -> None:
-        # The real server, no stub: the rule is stored and read back, and a plain member cannot change it.
-        path = f"/api/v1/projects/{self.ids['project']}/review-policy"
-        hubert = self.page("hubert")
-        hubert.goto(f"/projects/{self.ids['project']}/agents")
-        hubert.get_by_role("button", name=re.compile("^Review rule")).click()
-        rule = hubert.get_by_role("region", name="Who may review")
-        expect(rule).to_be_visible()
-        expect(rule.get_by_role("radio", name=re.compile("^Another connection"))).to_be_checked()
-        rule.get_by_role("radio", name=re.compile("^Another person’s agent")).click()
-        expect(rule.get_by_role("status")).to_contain_text("Saved. It applies from the next review.")
-        self.assertEqual(self.api(hubert, "GET", path, status=200)["reviewSeparation"], "distinct_owner")
-        shot(hubert, "review-rule-1440")
-        hubert.reload()
-        hubert.get_by_role("button", name=re.compile("^Review rule")).click()
-        expect(hubert.get_by_role("region", name="Who may review").get_by_role("radio", name=re.compile("^Another person’s agent"))).to_be_checked()
-        # A member who does not manage the space reads it in a sentence, with no choice to make; the server refuses her anyway.
-        vera = self.page("vera")
-        vera.goto(f"/projects/{self.ids['project']}/agents")
-        vera.get_by_role("button", name=re.compile("^Review rule")).click()
-        read = vera.get_by_role("region", name="Who may review")
-        expect(read).to_contain_text("The reviewer must belong to someone other than the author’s owner.")
-        expect(read.get_by_role("radio")).to_have_count(0)
-        self.api(vera, "PUT", path, {"reviewSeparation": "distinct_connection"}, status=403)
-        marek = self.page("marek")
-        self.api(marek, "PUT", path, {"reviewSeparation": "distinct_connection"}, status=403)
-        self.assertEqual(self.api(marek, "GET", path, status=200)["reviewSeparation"], "distinct_owner")
-        # Put it back, so the rule is the default again.
-        self.api(hubert, "PUT", path, {"reviewSeparation": "distinct_connection"}, status=200)
-        phone = self.page("hubert", phone=True)
-        phone.goto(f"/projects/{self.ids['project']}/agents")
-        phone.get_by_role("button", name=re.compile("^Review rule")).click()
-        expect(phone.get_by_role("region", name="Who may review")).to_be_visible()
-        self.assertLessEqual(phone.evaluate("() => document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0)
-        shot(phone, "review-rule-phone-390")
-
 
 if __name__ == "__main__":
     unittest.main()

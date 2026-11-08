@@ -55,7 +55,7 @@ export async function coWorkUnitCreateInTransaction(tx: Transaction, claims: Flu
     throw new InvalidInputError('An exact co-work unit creation operation and task are required');
   const taskId = command.objectId;
   const input = normalizeCoWorkUnitCreate(command.payload);
-  policy = Object.freeze({ maximumRunUnits: policy?.maximumRunUnits, reviewSeparation: policy?.reviewSeparation });
+  policy = Object.freeze({ maximumRunUnits: policy?.maximumRunUnits });
   validateCoWorkUnitPolicy(policy);
   const rows = coworkUnitCreationRows(tx);
   let locked = false;

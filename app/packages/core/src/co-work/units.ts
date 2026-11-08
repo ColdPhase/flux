@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import { ConflictError, InvalidInputError, NotFoundError } from '../access/errors.js';
-import type { CoWorkReviewSeparation } from './admission.js';
 import type { CoWorkContext, CoWorkLease, CoWorkRole } from './claims.js';
 import { stoppedError } from './claims.js';
 
@@ -16,7 +15,6 @@ export interface CoWorkUnitCreateInput {
 /** Server-owned policy; never read from a payload, peer message or client metadata. */
 export interface CoWorkUnitPolicy {
   maximumRunUnits: number;
-  reviewSeparation: CoWorkReviewSeparation;
 }
 export interface CoWorkCreationUnit {
   id: string;
@@ -80,8 +78,7 @@ export function normalizeCoWorkUnitCreate(payload: unknown): CoWorkUnitCreateInp
     parent: parent ? { unitId: uuid(parent.unitId), generation: positive(parent.generation), leaseId: uuid(parent.leaseId) } : null };
 }
 export function validateCoWorkUnitPolicy(policy: CoWorkUnitPolicy): void {
-  if (!policy || !Number.isSafeInteger(policy.maximumRunUnits) || policy.maximumRunUnits < 1 || policy.maximumRunUnits > 64
-    || (policy.reviewSeparation !== 'distinct_connection' && policy.reviewSeparation !== 'distinct_owner'))
+  if (!policy || !Number.isSafeInteger(policy.maximumRunUnits) || policy.maximumRunUnits < 1 || policy.maximumRunUnits > 64)
     throw new Error('Current co-work unit policy is required');
 }
 
@@ -99,13 +96,11 @@ export function coWorkRootRunId(creatorConnectionId: string, taskId: string, uni
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
-function separated(role: CoWorkRole, assignee: { id: string; ownerUserId: string }, facts: CoWorkUnitCreationFacts,
-  separation: CoWorkReviewSeparation): boolean {
+/** An author's own connection is never its reviewer in the same run (a fixed rule: there is no project setting for it, C-9). */
+function separated(role: CoWorkRole, assignee: { id: string }, facts: CoWorkUnitCreationFacts): boolean {
   const opposite = role === 'review' ? 'execute' : role === 'execute' ? 'review' : null;
   if (!opposite) return true;
-  return facts.runUnits.filter((unit) => unit.role === opposite).every((unit) => unit.assignmentConnectionId !== assignee.id
-    // A deleted connection's owner is unknown: fail closed under the stricter policy.
-    && (separation !== 'distinct_owner' || (unit.ownerUserId !== null && unit.ownerUserId !== assignee.ownerUserId)));
+  return facts.runUnits.filter((unit) => unit.role === opposite).every((unit) => unit.assignmentConnectionId !== assignee.id);
 }
 
 /**
@@ -148,7 +143,7 @@ export function requireCoWorkUnitCreation(context: CoWorkContext, facts: CoWorkU
     throw new ConflictError('An open unit with this role already exists on the task', 'COWORK_UNIT_TAKEN');
   if (facts.runUnits.length >= policy.maximumRunUnits)
     throw new ConflictError('The run unit budget is exhausted', 'COWORK_BUDGET_EXHAUSTED');
-  if (!separated(target.role, assignee, facts, policy.reviewSeparation))
+  if (!separated(target.role, assignee, facts))
     throw new ConflictError('An author cannot be its own reviewer in this run', 'COWORK_REVIEW_SEPARATION');
   return { kind: 'create', lineageTaskId, runId };
 }
@@ -198,9 +193,7 @@ export function requireOwnerAssistantHandoff(context: CoWorkContext, facts: CoWo
     throw new ConflictError('The run unit budget is exhausted', 'COWORK_BUDGET_EXHAUSTED');
   const opposite = target.role === 'review' ? 'execute' : target.role === 'execute' ? 'review' : null;
   if (opposite) {
-    const same = (unit: { assignmentConnectionId: string; ownerUserId: string | null }) => unit.assignmentConnectionId === assignee.id
-      // A deleted connection's owner is unknown: fail closed under the stricter policy.
-      || (policy.reviewSeparation === 'distinct_owner' && (unit.ownerUserId === null || unit.ownerUserId === assignee.ownerUserId));
+    const same = (unit: { assignmentConnectionId: string }) => unit.assignmentConnectionId === assignee.id;
     const authored = task.createdByKind === 'agent' && !!assignee.agentId && task.createdById === assignee.agentId;
     // A stopped unit never ran to a result, so it separates nothing; every other unit, finished or not, does.
     if (facts.taskUnits === undefined || authored && target.role === 'review'

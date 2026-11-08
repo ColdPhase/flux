@@ -275,6 +275,17 @@ export async function memberFilter(principal: AccessPrincipal, workspaceId: stri
 }
 
 /**
+ * Whether the person is a guest in every workspace they belong to (F-036 AG-2: a guest has no AI). Someone who belongs to no workspace
+ * is not a guest: they have no company to be a guest of, and this is not a place to refuse them.
+ */
+export async function isGuestOnly(db: DbExecutor, userId: string): Promise<boolean> {
+  const result = await db.execute<{ guest: boolean }>(sql`SELECT (
+    EXISTS (SELECT 1 FROM workspace_members WHERE user_id = ${userId} AND role = 'guest')
+    AND NOT EXISTS (SELECT 1 FROM workspace_members WHERE user_id = ${userId} AND role <> 'guest')) AS guest`);
+  return result.rows[0]?.guest === true;
+}
+
+/**
  * Core's `AccessReader` over one executor. One method is one statement (or the single guarded
  * statement pair of `lockProjectAccess`); core's evaluators call them in the documented lock order.
  * The rows it returns are whole table rows, so core's evaluations carry them to callers unchanged.

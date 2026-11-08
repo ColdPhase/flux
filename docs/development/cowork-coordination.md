@@ -166,9 +166,9 @@ not a public tool; MCP exposure stays disabled until #152/#160 wire it.
   time. The recipient unit must be in the same project and the same canonical
   lineage (`lineage_work_id`, `run_id`) as the sender unit, so a sender cannot
   open or borrow an unrelated lineage budget. A connection cannot address
-  itself. Review requests also follow the server-owned separation policy:
-  `distinct_connection` (default; explicit same-owner review) or
-  `distinct_owner`. Target, source and criteria references must currently exist
+  itself. A review request goes to another connection of the run; there is no
+  project setting for it (removed in #959, C-9: another connection of the author's
+  own owner may review). Target, source and criteria references must currently exist
   in this project at their exact recorded versions. GitHub references stay
   refused until #74 supplies the receiving owner's verified repository adapter.
   The recipient must be a live connection of this workspace; selecting it
@@ -422,11 +422,7 @@ owner HTTP endpoint; owners keep using the existing grant API.
 - **Separation.** Within one run, the assignee of a review unit is never the
   assignee of an execute unit, and the reverse also holds
   (`COWORK_REVIEW_SEPARATION`).
-  - Under the server-owned `distinct_owner` policy, their owners must differ
-    as well.
-  - A connection that has been deleted has an unknown owner, so the check
-    fails closed.
-  - Admission still applies its own review separation to each request.
+  - Their owners may be the same: there is no owner rule (#959, C-9).
 - **Task fence.** The task must be at `expectedTaskVersion`, or the code is
   `COWORK_VERSION_CONFLICT`. It must not be `done` or `not_pursued`, or the
   code is `COWORK_TASK_CLOSED`. Creation never changes the task row, its
@@ -556,12 +552,11 @@ new public actor/authority parameter or endpoint.
   counts are never refunded by Undo. Repeated separate roots cannot escape the
   assistant run limit or task exclusion. External creators still use/debit their
   own standing grants under the unchanged ordinary composition.
-- **Review separation.** Keep server-owned `distinct_connection`/`distinct_owner`
-  policy and current native reviewer eligibility against the task's canonical
+- **Review separation.** Keep the fixed rule (no project setting since #959, C-9) and
+  current native reviewer eligibility against the task's canonical
   author/unit/source evidence. A fresh root cannot erase known authorship or
-  let its recipient review its own execution. Under `distinct_owner`, a same-owner
-  reviewer may be ineligible; say so, without relaxing policy to satisfy Journey 5.
-  No author, recipient or model selects a weaker separation policy. Missing/stale
+  let its recipient review its own execution. No author, recipient or model
+  selects a weaker separation. Missing/stale
   provenance fails closed; creation is no review acceptance or publication.
 - **Atomic composition.** Acquire verified run/authority locks before the
   complete sorted connection/binding slot set, project graph/native task set and
@@ -797,8 +792,7 @@ for why).
   - The assignee cannot be the holder itself (`COWORK_ASSIGNMENT_REFUSED`).
   - The creation separation applies within the run. A review unit never goes to
     the assignee of one of the run's execute units, and the reverse also holds
-    (`COWORK_REVIEW_SEPARATION`). Under `distinct_owner` their owners must
-    differ, and a deleted connection's unknown owner fails closed.
+    (`COWORK_REVIEW_SEPARATION`). Their owners may be the same (#959, C-9).
   - The unit keeps its task, lineage, run, key, role and checkpoint reference.
     Its assignment becomes the assignee and its state `pending`; the lease is
     cleared, and the generation and version increase, which fences the old
@@ -868,10 +862,9 @@ and classes and the playbook names it.
   always empty, and the input schema is strict. The tools write no stream
   event, so there is nothing to flush.
 - **Server-owned policy.** The MCP path uses `COWORK_UNIT_POLICY`
-  (`maximumRunUnits` 16, `reviewSeparation` `distinct_connection`, the
-  contract default) from `apps/server/src/co-work/policy.ts`. Tool input,
-  client metadata and project content never set it. A project-level choice of
-  `distinct_owner` needs its own project-policy amendment.
+  (`maximumRunUnits` 16) from `apps/server/src/co-work/policy.ts`. Tool input,
+  client metadata and project content never set it. The project-level choice of
+  `distinct_owner` was removed in #959 (C-9).
 - **Resolution stays unexposed.** There is no production `publishResponse`
   provider, and which grant authorizes the publication is still an open peer
   question (see "Request claim and resolution"). The decline tool's schema
@@ -996,7 +989,7 @@ previous section's tools.
   - The receipt stores only the claim outcome. A replay rereads the checkpoint
     under the same checks.
 - **Completion and transfer** map one to one to "Unit completion and
-  transfer", with `reviewSeparation` from `COWORK_UNIT_POLICY`. The complete
+  transfer", with no policy parameter since #959. The complete
   tool's `outcome` admits only the native reference types.
 - **Still not exposed (until 2026-10-17, see the next section):** request
   admission, recovery and the inbox, and resolution with a response.
@@ -1016,8 +1009,7 @@ Agent decision under the delegated authority (#153 AC-2/AC-4; consumers #400 AC-
 "Still not exposed" list above.
 
 - **`flux_send_request`** wraps `coWorkRequestInTransaction` (operation `cowork.request`, class = the sender unit's
-  role). The server policy `COWORK_REQUEST_POLICY` bounds a lineage to 32 requests, depth 4 and 4 review rounds, with
-  `COWORK_UNIT_POLICY`'s review separation. The same intent key returns the existing request; a retried command
+  role). The server policy `COWORK_REQUEST_POLICY` bounds a lineage to 32 requests, depth 4 and 4 review rounds. The same intent key returns the existing request; a retried command
   replays; a newer request of the same kind to the same unit supersedes an unclaimed older one.
 - **`flux_coordination_inbox`** wraps `coWorkRecovery` with the server's cursor secret (`flux.context.read`, entry
   capabilities `project.identity.read` + `connection.runtime.read`, so never offered to assistant runs). Reading is
@@ -1067,12 +1059,12 @@ Agent decision under the delegated authority; contract changes are additive (MCP
   (`status`, `nextBoundary`). Cancellation requested versus acknowledged waits for a cancel operation; today only the stored
   `cancelled` state exists.
 
-### Request cards, handoff packet, cancel and the review rule (2026-10-17, #153 AC-2/AC-4, #400 AC-4)
+### Request cards, handoff packet and cancel (2026-10-17, #153 AC-2/AC-4, #400 AC-4; the review rule removed in #959)
 
 Agent decision under the delegated authority; additive HTTP for people (no MCP tool, no contract-1 change). Migration
 `0111_cowork_cards` (0107 is the last on main; 0108-0110 belong to other branches): `cowork_requests.cancelled_by` and
-`cowork_review_policies(project_id, review_separation, updated_by, updated_at)`. Its reverse refuses while a project requires
-`distinct_owner`, because dropping the table would silently loosen that rule.
+`cowork_review_policies(project_id, review_separation, updated_by, updated_at)`. The table was dropped in `0017_remove_review_rule`
+(#959, C-9; there was no existing data to keep).
 
 - **Cards (`GET /api/v1/work/:workId/coordination`).** Whoever can read the task reads the latest 50 requests: kind, sender and
   recipient agent with their owners' names, the target (its title only while it exists at the exact version the request
@@ -1101,15 +1093,12 @@ Agent decision under the delegated authority; additive HTTP for people (no MCP t
   `COWORK_REQUEST_CLOSED` when it next answers; no verdict is recorded and no grant use is debited. The agent's inbox drops it.
   This is not CW-3's "cancellation requested versus acknowledged": there is no acknowledgement round-trip, and stopping
   an agent's hold on a task stays the separate Stop control.
-- **Review rule (`GET`/`PUT /api/v1/projects/:projectId/review-policy`).** Readers read, a project manager sets
-  `distinct_connection` (the default when nothing is stored: another connection of any owner, including the author's own
-  owner, may review) or `distinct_owner` (the reviewer's owner must differ from the author's). The server applies it in every
-  place that already enforced separation: creating a review unit, handing a unit over, declining one, and admitting a review
-  request (`COWORK_REVIEW_SEPARATION`). It is read inside each command's own transaction before its locks, so a command applies
-  the rule that was committed when it began. An agent never reads or sets it; it only meets it as a refusal. A review unit
-  created under the old rule is refused a new request after the rule tightens, and nothing is debited.
+- **Review rule: removed (#959, C-9).** `GET`/`PUT /api/v1/projects/:projectId/review-policy`, the `cowork_review_policies`
+  table and the policy plumbing are gone, with the screen that edited them. One fixed rule remains in every place that
+  enforced separation (creating a review unit, handing a unit over, declining one): an author's own connection is never the
+  reviewer of its work in the same run (`COWORK_REVIEW_SEPARATION`). Another connection of the author's own owner may review.
 - **Verdicts and "a separate non-author".** Unchanged from the section above: the reviewer's unit is a different connection
-  from every execute unit of the run (and, under `distinct_owner`, another owner); an execution-class grant cannot claim a
+  from every execute unit of the run; an execution-class grant cannot claim a
   review unit; a verdict is pinned to the request's target and becomes non-current when the target has a newer version; a
   changed reviewer is a new unit with its own grants and the earlier verdict stays in the history. A result or message
   target is immutable: its verdict stays current for that exact record, and a revised result needs a new review.
