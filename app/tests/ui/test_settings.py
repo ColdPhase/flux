@@ -31,7 +31,7 @@ SECTIONS = ["Account", "Appearance", "Notifications", "AI", "Company", "Keyboard
 SHORTCUTS = [
     ("C", "New (task by default)"), ("⌘K", "Search or run"), ("GI", "Go to Inbox"), ("JorK", "Move in a list"), ("E", "Done"),
     ("S", "Not now"), ("A", "Accept"), ("Z", "Undo"), ("R", "Reply in thread"), ("T", "Create a task from a message"),
-    ("1to5", "Task state"), ("[", "Collapse the sidebar"), ("F", "Focus mode"), ("Esc", "Close a panel or menu"),
+    ("1to5", "Task state"), ("[", "Collapse the sidebar"), ("Esc", "Close a panel or menu"),
 ]
 
 

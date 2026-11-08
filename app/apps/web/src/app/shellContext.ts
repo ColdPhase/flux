@@ -120,11 +120,9 @@ export interface ShellActions {
   actionSlot: HTMLElement | null;
   /** A project view's quiet context beside its title, such as the compact Wiki's page count. */
   metadataSlot: HTMLElement | null;
-  /** The keyboard actions ⌘K lists (F-026 E02): Focus mode (`F`) and the computer sidebar (`[`). */
-  toggleFocus(): void;
-  /** Hides or shows the computer sidebar; while focus holds it on its rail, showing it ends focus, as the sidebar's own button does. */
+  /** The keyboard action ⌘K lists (F-026 E02): hides or shows the computer sidebar (`[`). */
   toggleSidebar(): void;
-  /** True while the computer sidebar is on its rail, by choice or by focus mode. */
+  /** True while the computer sidebar is on its rail. */
   sidebarHidden: boolean;
   /** Shows a view-owned panel (a thread, an agent) in the one panel; see `OwnedPanel` and `useOwnedPanel`. */
   showPanel(panel: OwnedPanel): void;
@@ -145,7 +143,7 @@ export interface ShellActions {
   panelKey: string | null;
 }
 
-export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, labelPanel: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, toggleFocus: () => undefined, toggleSidebar: () => undefined, sidebarHidden: false, showPanel: () => undefined, hidePanel: () => undefined, reopenPanel: () => undefined, closePanel: () => undefined, guardPanel: () => undefined, panelSlot: null, panelKey: null });
+export const ShellContext = createContext<ShellActions>({ openDetails: () => undefined, labelPanel: () => undefined, openCreate: () => undefined, openSearch: () => undefined, openNavigation: () => undefined, actionSlot: null, metadataSlot: null, toggleSidebar: () => undefined, sidebarHidden: false, showPanel: () => undefined, hidePanel: () => undefined, reopenPanel: () => undefined, closePanel: () => undefined, guardPanel: () => undefined, panelSlot: null, panelKey: null });
 
 export function useShellActions(): ShellActions {
   return useContext(ShellContext);

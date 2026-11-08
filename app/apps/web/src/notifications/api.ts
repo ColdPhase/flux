@@ -18,7 +18,6 @@ import {
 } from '@flux/contracts';
 import { request } from '../api/client';
 import { noteLockedWorkspaces } from '../encryption/api';
-import { captureNotificationSession, isCurrentNotificationSession, lastConfirmedNotificationPause, markNotificationPauseUncertain, recordNotificationPause, type NotificationSession } from './session';
 
 /** The inbox and notification settings (#41, #116). */
 export const getInbox = (signal?: AbortSignal, limit = 100) => request<InboxResponse>(`${INBOX_PATH}?limit=${limit}`, { signal }).then(noteLockedWorkspaces);
@@ -45,22 +44,3 @@ export interface AcceptedInboxItem { ownerId: string; key: string }
 export const NEEDS_YOU_ACCEPTED = 'flux:needs-you-accepted';
 export const announceAcceptedInboxItem = (ownerId: string, key: string) =>
   window.dispatchEvent(new CustomEvent<AcceptedInboxItem>(NEEDS_YOU_ACCEPTED, { detail: { ownerId, key } }));
-
-/** A confirmed pause belongs to the account that saved it. */
-export interface PauseChange { ownerId: string; until: string | null; uncertain?: true; notice?: string }
-export const PAUSE_CHANGED = 'flux:pause-changed';
-export const announcePauseChange = (ownerId: string, until: string | null) => {
-  const session = captureNotificationSession(ownerId);
-  if (!session) return;
-  recordNotificationPause(session, until);
-  window.dispatchEvent(new CustomEvent<PauseChange>(PAUSE_CHANGED, { detail: { ownerId, until } }));
-};
-
-/** Shares read unavailability without publishing an invented confirmed Resume. */
-export const announcePauseUncertainty = (session: NotificationSession, notice?: string) => {
-  if (!isCurrentNotificationSession(session)) return;
-  markNotificationPauseUncertain(session);
-  window.dispatchEvent(new CustomEvent<PauseChange>(PAUSE_CHANGED, {
-    detail: { ownerId: session.ownerId, until: lastConfirmedNotificationPause(session), uncertain: true, notice },
-  }));
-};
