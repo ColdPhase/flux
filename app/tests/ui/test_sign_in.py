@@ -177,19 +177,18 @@ class SignInPages(_Browser):
 
     def test_05_five_wrong_passwords_make_the_page_say_how_long_to_wait(self) -> None:
         page = self.page()
+        # The account is made and guessed at from another browser context, so this page has no session and shows the form.
+        api = self.page()
         email = f"back.off+{int(time.time() * 1000)}@example.test"
-        made = page.request.post(f"{ORIGIN}/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": "Back Off"}, headers={"origin": ORIGIN})
+        made = api.request.post(f"{ORIGIN}/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": "Back Off"}, headers={"origin": ORIGIN})
         self.assertEqual(made.status, 200, made.text())
-        for attempt in range(4):
-            wrong = page.request.post(f"{ORIGIN}/api/auth/sign-in/email", data={"email": email, "password": f"wrong guess {attempt} here"}, headers={"origin": ORIGIN})
+        for attempt in range(5):
+            wrong = api.request.post(f"{ORIGIN}/api/auth/sign-in/email", data={"email": email, "password": f"wrong guess {attempt} here"}, headers={"origin": ORIGIN})
             self.assertEqual(wrong.status, 401)
         page.goto("/sign-in")
-        for attempt in range(2):
-            page.get_by_label("Email").fill(email)
-            page.get_by_label("Password").fill(PASSWORD if attempt else "the fifth wrong guess here")
-            page.get_by_role("button", name="Sign in", exact=True).click()
-            if attempt == 0:
-                expect(page.get_by_text("That email and password don’t match an account.")).to_be_visible()
+        page.get_by_label("Email").fill(email)
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Sign in", exact=True).click()
         # The fifth attempt put the account on a 30-second wait: even the right password is refused, with the time and the way out.
         expect(page.get_by_text(re.compile(r"Too many sign-in attempts for this account\. Try again in \d+ seconds\. If you have forgotten the password, you can reset it\."))).to_be_visible()
         expect(page).to_have_url(re.compile(r"/sign-in"))
