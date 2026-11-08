@@ -248,9 +248,10 @@ class MessageAlignment(unittest.TestCase):
                 root.get_by_role("button", name=re.compile(r"^2 replies")).click()
                 thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
                 if phone:
-                    # "Replying to · …" has its own line: it does not squeeze the audience next to it.
-                    line, audience = rect(thread.locator(".project-convo__current-thread")), rect(thread.locator(".project-convo__to .composer__audience"))
-                    self.assertLessEqual(line["bottom"], audience["top"] + 1, f"the phone thread footer stacks its two lines ({line} {audience})")
+                    # "Replying to · …" has its own line under the box, and the thread says nothing about its audience (#871).
+                    line, box = rect(thread.locator(".project-convo__current-thread")), rect(thread.locator("#thread-composer"))
+                    self.assertGreaterEqual(line["top"], box["bottom"] - 1, f"the phone thread footer puts its line under the box ({line} {box})")
+                    expect(thread.locator(".composer__audience")).to_have_count(0)
                 self.assert_side(page, thread.locator(".thread__root"), who == "ada")
                 for key, reply in self.replies.items():
                     row = thread.locator(f"#message-{reply['id']}")

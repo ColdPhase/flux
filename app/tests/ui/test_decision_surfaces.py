@@ -2,7 +2,7 @@
 
 Runs through scripts/check_ui.sh against the running Compose application, on the engine named by
 FLUX_UI_BROWSER. One person owns a project with a current rule, a plain proposal and a proposal that
-replaces the rule (a pivot over three tasks). For 390 x 844 and 1440 x 900, in light and dark, it
+replaces the rule (it names the decision it replaces and moves no task). For 390 x 844 and 1440 x 900, in light and dark, it
 measures what a person sees:
 
 * #692: in "Propose a decision" the pagination row, the "Propose decision" button and its help text
@@ -67,7 +67,6 @@ MEASURE = """(root) => {
     surface: surface && surface.css, paints, lefts,
     identity: box(q('.wd-decision-identity')), accept: box(q('.wd-accept')), finish: box(q('.wd-accept-finish')),
     pages: box(q('.ws-pages')), form: box(q('fieldset.wd-form')), actions: box(q('.wd-actions')), help: box(q('.wd-actions + p, .wd-submit > p')),
-    audience: box(root.querySelector('section[aria-labelledby="wd-audience"]')),
     lead: box(q('.details__lead')), rows: box(q('.wd-rows')), decide: box(q('.wd-decide')),
     sectionGaps: sections.slice(1).map((el, i) => Math.round((el.getBoundingClientRect().top - sections[i].getBoundingClientRect().bottom) * 10) / 10),
     headingGap: (() => { const h = q('.details__sec > h4'); const n = h && h.nextElementSibling; return h && n ? Math.round((n.getBoundingClientRect().top - h.getBoundingClientRect().bottom) * 10) / 10 : null; })(),
@@ -117,7 +116,7 @@ class DecisionSurfaces(unittest.TestCase):
             self.assertEqual(response.status, status, response.text())
         return json.loads(response.text()) if response.text() else {}
 
-    def test_01_a_project_with_a_rule_a_proposal_and_a_pivot(self) -> None:
+    def test_01_a_project_with_a_rule_a_proposal_and_a_replacement(self) -> None:
         page = self.context(view=DESKTOP, phone=False, scheme="light", signed_in=False).new_page()
         page.goto("/sign-up")
         page.get_by_label("Name").fill(ADA["name"])
@@ -172,23 +171,21 @@ class DecisionSurfaces(unittest.TestCase):
                 with self.subTest(view=label, scheme=scheme):
                     page, panel = self.opened(f"/projects/{self.project_id}/tasks?open=propose-decision", phone=phone, scheme=scheme, view=view)
                     # One page of rules shows no pager (Spokój rule 4, #763 B6).
-                    expect(panel.get_by_label("Replaces", exact=True)).to_be_enabled()
+                    expect(panel.get_by_label("Does it replace an earlier one?", exact=True)).to_be_enabled()
                     expect(panel.get_by_role("navigation", name="Choices it can replace")).to_have_count(0)
                     panel.get_by_label("Decision", exact=True).fill("Keep a manual off switch")
                     expect(panel.get_by_role("button", name="Propose decision", exact=True)).to_be_enabled()
                     m = self.measure(panel)
                     self.shots(page, panel, f"form-{label}-{scheme}")
                     print(f"FORM {label} {scheme}: form->actions {m['actions']['top'] - m['form']['bottom']:.1f}, "
-                          f"actions->help {m['help']['top'] - m['actions']['bottom']:.1f}, help->audience {m['audience']['top'] - m['help']['bottom']:.1f}, "
-                          f"heading gap {m['headingGap']}", flush=True)
+                          f"actions->help {m['help']['top'] - m['actions']['bottom']:.1f}, heading gap {m['headingGap']}", flush=True)
                     above = m["actions"]["top"] - m["form"]["bottom"]
                     between = m["help"]["top"] - m["actions"]["bottom"]
-                    below = m["audience"]["top"] - m["help"]["bottom"]
                     self.assertAlmostEqual(above, 28, delta=1, msg="the button starts a section: the panel's 28 px below the fields")
-                    self.assertAlmostEqual(between, m["headingGap"], delta=1, msg="the help text sits the heading's 8 px under the button")
+                    self.assertAlmostEqual(between, 8, delta=1, msg="the help text sits 8 px under the button, as under a heading")
                     self.assertGreaterEqual(between, 8, "the help text never touches the button")
-                    self.assertAlmostEqual(below, 28, delta=1, msg="the next section starts 28 px below the help text")
-                    self.assertAlmostEqual(above, below, delta=1, msg="sections are as far apart above the button as below its help")
+                    # The form ends with its help text: the space's audience is the default and is not said below it (#871).
+                    self.assertNotIn("Who can see this", panel.inner_text())
                     self.assertEqual(m["paints"], [], "no element paints a background other than the panel's surface")
                     for part in m["lefts"]:
                         if part["submit"]:
@@ -205,7 +202,7 @@ class DecisionSurfaces(unittest.TestCase):
                 with self.subTest(proposal=kind, view=label, scheme=scheme):
                     page, panel = self.opened(f"/projects/{self.project_id}/tasks?open=decision:{decision_id}", phone=phone, scheme=scheme, view=view)
                     expect(panel.get_by_role("heading", level=3)).to_be_visible()
-                    expect(panel.get_by_role("button", name="Accept and pivot" if kind == "pivot" else "Accept", exact=True)).to_be_visible()
+                    expect(panel.get_by_role("button", name="Accept", exact=True)).to_be_visible()
                     m = self.measure(panel)
                     self.shots(page, panel, f"{kind}-{label}-{scheme}")
                     print(f"PANEL {kind} {label} {scheme}: surface {m['surface']}, paints {m['paints']}, section gaps {m['sectionGaps']}, "
@@ -216,15 +213,14 @@ class DecisionSurfaces(unittest.TestCase):
                     # The answer is the Inbox card's (#763 D1): right under the reason, before the record rows.
                     self.assertGreaterEqual(m["decide"]["top"], m["lead"]["bottom"], "the answer follows the reason")
                     self.assertLessEqual(m["decide"]["bottom"], m["rows"]["top"], "the answer comes before the Proposed row")
-                    self.assertTrue(m["sectionGaps"], "the panel has sections")
                     for gap in m["sectionGaps"]:
                         self.assertAlmostEqual(gap, 28, delta=1, msg=f"every section starts 28 px below the one before: {m['sectionGaps']}")
 
     def test_03_a_plain_proposal_has_one_surface_and_one_left_edge(self) -> None:
         self.check_proposal("plain", self.plain_id)
 
-    def test_04_a_pivot_proposal_has_one_surface_and_one_left_edge(self) -> None:
-        self.check_proposal("pivot", self.pivot_id)
+    def test_04_a_replacing_proposal_has_one_surface_and_one_left_edge(self) -> None:
+        self.check_proposal("replacing", self.pivot_id)
 
 
 if __name__ == "__main__":

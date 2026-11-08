@@ -26,7 +26,7 @@ interface Props {
 
 /** The pane's composer (F-026 S5): sources, the ask bar or who reads this, the field with its "@" and "/" menu, and its notices. */
 export function PaneComposer({ core, drafts, menu, actions, ask, askBar, materials, typing, readFailure, author }: Props) {
-  const { me, project, conversation, writable, aiOff, composerId, audience } = core;
+  const { me, project, conversation, writable, aiOff, composerId } = core;
   const { asking, publicComposer, draft, busy, askBusy } = drafts;
   const { menuOpen, options, activeIndex } = menu;
   const trayOpen = materials.trayOpen;
@@ -35,12 +35,10 @@ export function PaneComposer({ core, drafts, menu, actions, ask, askBar, materia
   return <div className="composer project-convo__composer"><div className="composer__in">
     {trayOpen ? <MaterialTray materials={materials} projectName={project.name} writable={writable} inThread={!!conversation} composerId={composerId} author={author} onCite={(material: Material) => void actions.cite(material)} /> : null}
     {writable ? <ConnectionLine /> : null}
-    {/* On the phone "Replying to" and the audience share one line, keeping the composer compact. */}
+    {/* A space's conversation and its threads are read by the space's people, the default, so no audience is said (#871). */}
     {conversation && writable && !asking && menu.assistantEntry?.mode === 'ask' && assistantUses(me.user.id) < 3 ? <AssistantSuggestions onPick={ask.askSuggestion} /> : null}
-    {asking && writable ? <AskBar id="project-ask" state={askBar.state} error={askBar.error} onExit={ask.exitAsk} onAction={askBar.onAction} /> : <div className="project-convo__to">
-      {conversation ? <p className="project-convo__current-thread" title={title}>{writable ? 'Replying to' : 'Conversation'} · {title}</p> : null}
-      <p className="composer__audience"><Icon name="lock" size={13} /><span>{audience}</span><span className="composer__where"> · saved to {project.name}</span></p>
-    </div>}
+    {asking && writable ? <AskBar id="project-ask" state={askBar.state} error={askBar.error} onExit={ask.exitAsk} onAction={askBar.onAction} />
+      : conversation ? <div className="project-convo__to"><p className="project-convo__current-thread" title={title}>{writable ? 'Replying to' : 'Conversation'} · {title}</p></div> : null}
     {writable && !asking ? <ComposerFiles state={publicComposer} attach="none" /> : null}
     {/* A tap on the card's empty space goes to the field, as in a messenger (#266 PF-3). */}
     {writable ? <ComposerBox id={composerId} label={asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'} value={draft}

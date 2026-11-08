@@ -242,7 +242,7 @@ settle with the reader-input rule (`openOnWholeMessages`). Neither reads the pro
 collection.
 
 Agents view (2026-10-04, #170 integration of #183): open, unparked tasks come from the bounded
-`pivot_work` choice page (50 per page, paged with Previous/Next only when there is more); a
+`open_work` choice page (`pivot_work` until #871) (50 per page, paged with Previous/Next only when there is more); a
 `?task=` outside that page is read by itself through the native own-object read, and nothing is
 chosen until those reads settle.
 

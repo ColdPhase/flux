@@ -27,9 +27,8 @@ export interface WorkReadQuery {
 export type ProjectWorkViewQuery = WorkReadQuery & (
   /** `kinds: 'work'` lists only tasks: the Tasks tab shows tasks, decisions wait in the Inbox (#342). */
   | { purpose?: 'tasks'; group?: 'all' | WorkGroup; mine?: boolean; kinds?: 'work' }
-  | { purpose: 'choices'; choice: 'accepted_decisions' | 'pivot_work'; q?: string }
+  | { purpose: 'choices'; choice: 'accepted_decisions' | 'open_work'; q?: string }
   | { purpose: 'choices'; choice: 'result_work'; q?: string; selected?: string }
-  | { purpose: 'choices'; choice: 'parked_work'; decisionId: string; q?: string }
   | { purpose: 'choices'; choice: 'doc_refs'; kind: WorkObjectType; q?: string }
 );
 

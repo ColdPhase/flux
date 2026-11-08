@@ -63,7 +63,7 @@ const createWork = { type: 'object', required: ['title'], additionalProperties: 
 } } as const;
 const updateWork = { type: 'object', additionalProperties: false, minProperties: 1, properties: {
   title, outcome: { type: 'string', maxLength: WORK_LIMITS.outcome }, owner: principalRef, status, waitingFor: principalRef, dueOn, restore: { type: 'boolean', enum: [true] },
-  blocker: { type: ['string', 'null'], maxLength: WORK_LIMITS.blocker }, parked: { type: 'boolean', enum: [false] }, expectedVersion: version,
+  blocker: { type: ['string', 'null'], maxLength: WORK_LIMITS.blocker }, expectedVersion: version,
   expectedGithubRuleRevision: { type: 'integer', minimum: 0 },
   clientCommandId: { type: 'string', format: 'uuid' },
   criteria, dependencyIds,
@@ -71,7 +71,7 @@ const updateWork = { type: 'object', additionalProperties: false, minProperties:
 const proposeDecision = { type: 'object', required: ['title'], additionalProperties: false, properties: {
   title, rationale: { type: 'string', maxLength: WORK_LIMITS.rationale }, supersedes: { type: 'string' }, sources: refs, affects: ids,
 } } as const;
-const acceptDecision = { type: 'object', additionalProperties: false, properties: { stillApplies: ids, park: ids, expectedVersion: version } } as const;
+const acceptDecision = { type: 'object', additionalProperties: false, properties: { expectedVersion: version } } as const;
 const createResult = { type: 'object', required: ['title', 'finding'], additionalProperties: false, properties: {
   title, finding: { type: 'string', enum: ['positive', 'negative'] }, evidence: { type: 'string', maxLength: WORK_LIMITS.evidence },
   sources: refs, work: ids, decisions: ids, finishes: { type: 'object', required: ['id', 'expectedVersion'], additionalProperties: false, properties: { id: { type: 'string' }, expectedVersion: version } },
@@ -184,7 +184,7 @@ export async function workRoutes(app: FastifyInstance, { db, sessions, storage }
     async (request, reply) => command(request, reply, {
       // F-030: scoped to the decision's project, so an encrypted workspace's stored response is sealed (the body carries the title).
       operation: `POST ${decisionAcceptPath(':decisionId')}`, scope: locatedScope('decision', request.params.decisionId), etag: true,
-      run: (actor, conn) => workUseCases(conn).acceptDecision(actor, request.params.decisionId, request.body ?? {}, expectedVersion(request)),
+      run: (actor, conn) => workUseCases(conn).acceptDecision(actor, request.params.decisionId, expectedVersion(request)),
       replay: projectReader,
     }));
 

@@ -453,10 +453,8 @@ class DmThreadsReceipts(unittest.TestCase):
         self.assertLessEqual(resting["scroll"], resting["client"], "no sideways scrolling after the swipe")
         self.assertLessEqual(resting["over"], 0.5, "the bubble and its clock end inside the pane")
         shot(page, "dm-threads-phone-rest-light")
-        # The caption under the composer does not wrap.
-        caption = page.locator(".dm__composer .composer__audience > span").first.evaluate("el => ({height: el.getBoundingClientRect().height, line: parseFloat(getComputedStyle(el).lineHeight) || parseFloat(getComputedStyle(el).fontSize) * 1.45})")
-        self.assertLessEqual(caption["height"], caption["line"] * 1.3, f"the caption stays on one line ({caption})")
-        self.assertGreaterEqual(page.locator(".dm__composer .composer__audience > svg").first.bounding_box()["width"], 10, "the lock icon stays visible")
+        # A direct message is named by its people, so the composer has no caption under it (#871).
+        expect(page.locator(".dm__composer .composer__audience")).to_have_count(0)
 
     def test_08_project_conversation_roots_and_thread_replies_show_real_receipts(self) -> None:
         import uuid

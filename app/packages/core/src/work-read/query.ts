@@ -4,9 +4,8 @@ import { InvalidInputError } from '../access/errors.js';
 /** Normalized read selectors owned by core; transport CSV/query strings never reach SQL. */
 export type WorkViewSelection =
   | { purpose: 'tasks'; group: 'all' | WorkGroup; mine: boolean; workOnly?: boolean }
-  | { purpose: 'choices'; choice: 'accepted_decisions' | 'pivot_work'; q: string }
+  | { purpose: 'choices'; choice: 'accepted_decisions' | 'open_work'; q: string }
   | { purpose: 'choices'; choice: 'result_work'; q: string; selected?: string }
-  | { purpose: 'choices'; choice: 'parked_work'; q: string; decisionId: string }
   | { purpose: 'choices'; choice: 'doc_refs'; q: string; kind: WorkObjectType };
 export interface WorkReadWindow { limit: number; cursor?: string }
 export interface WorkViewRead extends WorkReadWindow { selection: WorkViewSelection }
@@ -78,17 +77,13 @@ export function parseWorkViewRead(query: URLSearchParams): WorkViewRead {
   if (purpose !== 'choices') return workReadInvalid('Unknown read purpose');
   const choice = query.get('choice');
   const base = ['purpose', 'choice', 'q', 'limit', 'cursor'];
-  if (choice === 'accepted_decisions' || choice === 'pivot_work') {
+  if (choice === 'accepted_decisions' || choice === 'open_work') {
     closed(query, base);
     return { ...window(query), selection: { purpose, choice, q: search(query) } };
   }
   if (choice === 'result_work') {
     closed(query, [...base, 'selected']);
     return { ...window(query), selection: { purpose, choice, q: search(query), ...(query.has('selected') ? { selected: optionalId(query, 'selected') } : {}) } };
-  }
-  if (choice === 'parked_work') {
-    closed(query, [...base, 'decisionId']);
-    return { ...window(query), selection: { purpose, choice, q: search(query), decisionId: workReadId(query.get('decisionId')) } };
   }
   if (choice === 'doc_refs') {
     closed(query, [...base, 'kind']);

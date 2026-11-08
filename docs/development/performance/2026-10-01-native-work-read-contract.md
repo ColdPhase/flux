@@ -29,12 +29,12 @@ Foreign/missing native selectors use the existing non-disclosing 404 behavior.
   `WORK_GROUPS` member) and `mine` (default false).
 - `purpose=choices`: requires `choice`, no task `group` or `mine`. All choices
   permit `q`. `accepted_decisions` selects every accepted decision;
-  `pivot_work` selects unfinished, unparked work; `result_work` selects unfinished
+  `open_work` selects unfinished, unparked work (it was `pivot_work` until #871); `result_work` selects unfinished
   work INCLUDING parked work and permits one optional `selected` work UUID;
-  `parked_work` requires an accepted/superseded native `decisionId` and selects
-  unfinished work parked by that decision; `doc_refs` requires `kind` equal to
-  work, decision or result and selects all objects of that kind. `selected` is
-  valid only for result_work, `decisionId` only for parked_work, and `kind` only
+  `doc_refs` requires `kind` equal to
+  work, decision or result and selects all objects of that kind. (`parked_work`, the work a
+  decision parked, went with the pivot in #871.) `selected` is
+  valid only for result_work, and `kind` only
   for doc_refs. An explicit selected work object is returned separately even if
   finished/outside search; it never changes eligible totals or replaces a page
   row. At most `limit` rows plus ONE selected row (101 maximum) are hydrated.

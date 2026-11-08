@@ -688,7 +688,7 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
           {end}
           {/* Until someone writes, the stream says so, below any task announcements: they are not messages. */}
           {roots.length || stream.hasOlder || outbox.pending.length ? null
-            : <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write a thought. You don’t need a topic or a ready plan. {audience === 'Only you' ? 'Only you see it for now; people you add to the space will see it too.' : `Everyone in ${project.name} sees it.`} Any message can later become a task, a decision or a thought on the map.</p></EmptyState>}
+            : <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write a thought. You don’t need a topic or a ready plan. {audience === 'Only you' ? 'Only you see it for now; people you add to the space will see it too. ' : ''}Any message can later become a task, a decision or a thought on the map.</p></EmptyState>}
         </section>
       </div>
     </div>

@@ -604,42 +604,44 @@ function AppLayoutContent() {
   const lockedId = location.pathname.match(/^\/spaces\/([^/]+)/)?.[1] ?? lockedPlaceId;
   const lockedSpace = lockedId ? [...workspaces, ...lockedWorkspaces].find((space) => space.id === lockedId) : undefined;
   const lockedHere = !!lockedId && lockedSpace?.encryption?.state === 'locked';
+  // A place has a name and, when it is locked, one line saying so. No place carries a subtitle that describes it or its audience
+  // (#871): the audience of a space is the default and is not said, and a direct message is named by its people.
   const place = lockedHere
     ? { crumb: null, title: lockedSpace.name, topic: lockedLine(lockedSpace), noDetails: true }
     : location.pathname === '/projects'
-    ? { crumb: null, title: 'Spaces', topic: 'Every space you can open', noDetails: true }
+    ? { crumb: null, title: 'Spaces', noDetails: true }
     : /^\/settings(\/(appearance|account|company|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)
-    ? { crumb: null, title: 'Settings', topic: 'Appearance, notifications and AI', noDetails: true }
+    ? { crumb: null, title: 'Settings', noDetails: true }
     : aiConnections
-    ? { crumb: null, title: 'Your API keys', topic: 'Each with one daily budget', noDetails: true }
+    ? { crumb: null, title: 'Your API keys', noDetails: true }
     : location.pathname === '/settings/assistant'
-    ? { crumb: null, title: 'Schedules', topic: 'Work your first agent does on its own', noDetails: true }
+    ? { crumb: null, title: 'Schedules', noDetails: true }
     : activeAgent
-    ? { crumb: null, title: activeAgent.name, topic: 'Your agent · only you talk to it', noDetails: true }
+    ? { crumb: null, title: activeAgent.name, noDetails: true }
     : activeProject
-    ? { crumb: null, title: activeProject.name, topic: audience }
-    : /^\/map(\/|$)/.test(location.pathname)
+    ? { crumb: null, title: activeProject.name }
     // My map (#866) is named in the header at its own address too; its privacy line is the first thing in the map's head.
-    ? { crumb: null, title: 'My map', topic: '' }
+    : /^\/map(\/|$)/.test(location.pathname)
+    ? { crumb: null, title: 'My map', noDetails: true }
     : where === 'inbox'
       ? location.pathname.startsWith('/settings/')
-        ? { crumb: null, title: 'Notification settings', topic: 'What reaches you, where and when', noDetails: true }
+        ? { crumb: null, title: 'Notification settings', noDetails: true }
         // The count beside the title says what the Inbox holds ("Inbox · 6 need you", #763 IN-5); no second line repeats it.
-        : { crumb: null, title: 'Inbox', topic: '', noDetails: true }
+        : { crumb: null, title: 'Inbox', noDetails: true }
     : where === 'dm'
       ? activeDm
-        // A DM's header names its exact audience (design principle 5).
-        ? { crumb: null, title: activeDm.title, topic: activeDm.audience }
+        // A pair is named by the other person. A group names its people beneath its title, since the title may be a topic (#871).
+        ? { crumb: null, title: activeDm.title, ...(activeDm.kind === 'group' ? { topic: activeDm.audience } : {}) }
         : dmId === 'new'
-          ? { crumb: null, title: 'New message', topic: 'Only the people you choose can read it', noDetails: true }
-          : { crumb: null, title: 'Direct messages', topic: 'Conversations with people, outside any space', noDetails: true }
+          ? { crumb: null, title: 'New message', noDetails: true }
+          : { crumb: null, title: 'Direct messages', noDetails: true }
       // Pages reached from Home name themselves (#763 NV-1); only `/` is Home. My tasks span every space, so no single
       // space is named above them (#190).
       : location.pathname === '/tasks'
-        ? { crumb: null, title: 'My tasks', topic: 'Assigned to you, in every space' }
+        ? { crumb: null, title: 'My tasks', noDetails: true }
       : notFound
-        ? { crumb: null, title: 'Page not found', topic: '', noDetails: true }
-      : { crumb: workspace?.name ?? null, title: 'Home', topic: 'What needs you and where you left off' };
+        ? { crumb: null, title: 'Page not found', noDetails: true }
+      : { crumb: workspace?.name ?? null, title: 'Home', noDetails: true };
   // The phone Wiki is drawn with its title as the view menu and no chip row of views (F-026 §4, #354).
   // A place without its own Details (Inbox, the DM list) never keeps the generic panel open.
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
@@ -663,12 +665,14 @@ function AppLayoutContent() {
   const viewName = activeProject ? PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))] : null;
   const addViewItems: { label: string; run: () => void }[] = project && shownProjectViews && projectId
     ? addableViews(shownProjectViews).map((view) => ({ label: `Add ${VIEW_LABEL[view]}`, run: () => void addView(projectId, view) })) : [];
+  // One label for the place's own panel, on every device and in every entry to it: a space's and a direct message's (#871).
+  const placeDetailsLabel = activeProject ? 'Space details' : 'Message info';
   const moreItems: MoreItem[] = [
     // A header with no room for them (Spokój rule 3) moves the people and Together here; the views stay in the row.
-    ...(project?.people ? [{ label: 'Who can see this', run: openAudience, narrow: true }] : []),
+    ...(project?.people ? [{ label: 'People', run: openAudience, narrow: true }] : []),
     ...(activeProject ? [{ label: 'Together', node: <LiveEntry variant="more" /> }] : []),
     ...(activeProject && projectId ? [{ label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
-    ...('noDetails' in place ? [] : [{ label: activeProject ? 'Space details' : activeDm ? 'Message info' : 'Details', run: () => shell.openDetails('place') }]),
+    ...('noDetails' in place ? [] : [{ label: placeDetailsLabel, run: () => shell.openDetails('place') }]),
     ...addViewItems,
     tablet ? { label: 'Show the sidebar', keys: '[', run: () => setNavOpen(true) } : { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
   ];
@@ -738,8 +742,8 @@ function AppLayoutContent() {
       ) : activeDm && dmViews ? (
         <>{phoneBack('/projects')}
           <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: 'chat' as const, current: true }))}
-            onDetails={detailsEntry} detailsLabel="Message info"
-            subtitle={`Messages · ${activeDm.audience}`} /></>
+            onDetails={detailsEntry} detailsLabel={placeDetailsLabel}
+            subtitle={activeDm.kind === 'group' ? `Messages · ${activeDm.audience}` : 'Messages'} /></>
       ) : location.pathname === '/' ? (
         <div className="phead__id">
           <PhoneHomeLead />
@@ -802,7 +806,7 @@ function AppLayoutContent() {
             <div className="top__title">
               {place.crumb && !activeProject ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
               <h1 title={place.title}>{place.title}</h1>
-              {!rowViews || where === 'dm' ? <span className="top__topic">{activeProject ? null : place.topic}</span> : null}
+              {'topic' in place && place.topic ? <span className="top__topic">{place.topic}</span> : null}
             </div>
           )}
           {rowViews && !tabletMenu ? <Tabs variant="segmented" className="top__views" label={rowViews.label} items={rowViews.items} /> : null}
@@ -833,7 +837,7 @@ function AppLayoutContent() {
             contentKey={opening ? `owned:thread:${opening}` : ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView}
             context={opening ? undefined : phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
             {opening ? <ThreadOpening /> : null}
-            {opening && !detailsOpen ? null : isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} />}
+            {opening && !detailsOpen ? null : isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} />}
           </SidePanel>
         </div>
         {/* A locked space's place keeps the tab bar on the phone (LK-2), and offers no "+" there. */}

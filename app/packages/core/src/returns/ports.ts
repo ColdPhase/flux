@@ -52,7 +52,7 @@ export interface ReturnAccess {
 
 export interface ReturnWork {
   id: string; projectId: string; title: string; status: string; blocker: string | null;
-  ownerKey: string | null; createdByKey: string; parkedByDecisionId: string | null; createdAt: Date;
+  ownerKey: string | null; createdByKey: string; createdAt: Date;
   /** `YYYY-MM-DD` or null (#488). */
   dueOn: string | null;
 }
@@ -94,8 +94,6 @@ export interface ReturnRepository {
   projectEventsBetween?(projectId: string, from: Date, to: Date, limit: number): Promise<AudienceEvent[]>;
   projects(ids: string[]): Promise<Map<string, { id: string; name: string }>>;
   work(ids: string[]): Promise<Map<string, ReturnWork>>;
-  /** Work in these projects that one of these decisions parks now (an accepted pivot, #290). */
-  parkedWork(projectIds: string[], decisionIds: string[]): Promise<{ id: string; projectId: string; decisionId: string }[]>;
   decisions(ids: string[]): Promise<Map<string, ReturnDecision>>;
   results(ids: string[]): Promise<Map<string, ReturnResult>>;
   /** Work items a result is linked to (any role), in the result's project. */

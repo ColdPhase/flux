@@ -23,16 +23,14 @@ test('task URL fields default explicitly and reject duplicates/unknown/coerced s
   invalid(() => assertEmptyWorkReadQuery(params('limit=50')));
 });
 
-test('native choices stay disjoint; parked result choices keep a separate deep selection', () => {
-  for (const choice of ['accepted_decisions', 'pivot_work', 'result_work']) assert.equal(parseWorkViewRead(params(`purpose=choices&choice=${choice}`)).selection.purpose, 'choices');
+test('native choices stay disjoint; result choices keep a separate deep selection', () => {
+  for (const choice of ['accepted_decisions', 'open_work', 'result_work']) assert.equal(parseWorkViewRead(params(`purpose=choices&choice=${choice}`)).selection.purpose, 'choices');
   assert.deepEqual(parseWorkViewRead(params(`purpose=choices&choice=result_work&selected=${a}&q=%20board%20`)).selection,
     { purpose: 'choices', choice: 'result_work', q: 'board', selected: a });
-  assert.deepEqual(parseWorkViewRead(params(`purpose=choices&choice=parked_work&decisionId=${b}`)).selection,
-    { purpose: 'choices', choice: 'parked_work', q: '', decisionId: b });
-  for (const input of ['choice=pivot_work', 'purpose=choices&choice=pivot_work&mine=true', 'purpose=choices&choice=accepted_decisions&selected='+a,
-    'purpose=choices&choice=parked_work', 'purpose=choices&choice=doc_refs', 'purpose=choices&choice=doc_refs&kind=message', 'purpose=choices&choice=result_work&decisionId='+a]) invalid(() => parseWorkViewRead(params(input)));
+  for (const input of ['choice=open_work', 'purpose=choices&choice=open_work&mine=true', 'purpose=choices&choice=accepted_decisions&selected='+a,
+    'purpose=choices&choice=parked_work', 'purpose=choices&choice=pivot_work', 'purpose=choices&choice=doc_refs', 'purpose=choices&choice=doc_refs&kind=message', 'purpose=choices&choice=result_work&decisionId='+a]) invalid(() => parseWorkViewRead(params(input)));
   invalid(() => parseWorkViewRead(params('purpose=choices&choice=doc_refs&kind=work&q='+'a'.repeat(201))));
-  invalid(() => parseWorkViewRead(params('purpose=choices&choice=pivot_work&q=%00')));
+  invalid(() => parseWorkViewRead(params('purpose=choices&choice=open_work&q=%00')));
 });
 
 test('source batch bounds apply before deduplication and conversation/source cursors are exclusive', () => {

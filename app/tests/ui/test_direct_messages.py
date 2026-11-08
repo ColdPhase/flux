@@ -141,10 +141,10 @@ class DirectMessageJourney(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/dm/[0-9a-f-]{36}$"))
         type(self).dm_path = page.url.replace(ORIGIN, "")
 
-        # The header and the composer name the exact audience.
+        # A pair is named by the other person; no audience line repeats it in the header or the composer (#871).
         expect(page.get_by_role("heading", level=1, name="Kai Tanaka")).to_be_visible()
-        expect(page.locator(".top__topic")).to_have_text("Only you and Kai")
-        expect(page.locator(".composer__audience")).to_contain_text("Only you and Kai")
+        expect(page.locator(".top__topic")).to_have_count(0)
+        expect(page.locator(".composer__audience")).to_have_count(0)
         self.send(page, "Morning! I sketched the gesture lamp idea on the train. Wave to dim, hold to switch off?")
         self.send(page, "Camera or a distance sensor? I’d rather not point a camera at people’s desks.")
         sidebar = page.get_by_role("navigation", name="Messages")
@@ -165,7 +165,7 @@ class DirectMessageJourney(unittest.TestCase):
         kai.locator("#side-dms").get_by_role("link", name="Messages", exact=True).click()
         kai.get_by_role("navigation", name="Messages").get_by_role("link", name=re.compile("Ada Kowalska")).click()
         expect(kai).to_have_url(f"{ORIGIN}{self.dm_path}")
-        expect(kai.locator(".composer__audience")).to_contain_text("Only you and Ada")
+        expect(kai.locator(".composer__audience")).to_have_count(0)
         expect(kai.get_by_text("Wave to dim, hold to switch off?")).to_be_visible()
         self.send(kai, "Distance sensor. A VL53L1X sees a hand at 30 cm and nobody’s face.")
         # Ada's open conversation receives it through the authorized stream, without a reload.
@@ -251,7 +251,7 @@ class DirectMessageJourney(unittest.TestCase):
         row.click()
         expect(page).to_have_url(f"{ORIGIN}{self.dm_path}")
         expect(page.get_by_role("heading", level=1, name="Ada Kowalska")).to_be_visible()
-        expect(page.locator(".composer__audience")).to_contain_text("Only you and Ada")
+        expect(page.locator(".composer__audience")).to_have_count(0)
         send = page.get_by_role("button", name="Send message")
         size = box(page, send)
         self.assertGreaterEqual(size["width"], 44)

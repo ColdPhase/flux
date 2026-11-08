@@ -16,12 +16,12 @@ people in them would, in the browser:
    the task and from the map, adds the sensor alternative as a new thought, and writes a wiki page that
    cites the result and the experiment. A task created first is linked to the map later; a removed map
    placement keeps its task; Tasks shows only committed work.
-3. An agent proposes the pivot as its owner and a person accepts it (test_3; O-009): Ada connects
+3. An agent proposes a replacing decision as its owner and a person accepts it (test_3; O-009): Ada connects
    her MCP connection; the agent (a real OAuth bearer) proposes
-   "Switch to a ToF distance sensor"; Jonas reaches it from his inbox and accepts it as a pivot, parking
-   the camera work and keeping the sensor order.
-4. Return after the pivot without AI (test_4): Ada comes back to Home and the project and finds the new
-   direction, the previous rule, the parked work and the work that still applies, with no AI.
+   "Switch to a ToF distance sensor"; Jonas reaches it from his inbox and accepts it. The camera decision is
+   marked replaced and no task is moved or parked (#871).
+4. Return after the change without AI (test_4): Ada comes back to Home and the project and finds the new
+   direction and the previous decision, and her tasks as they were, with no AI.
 5. Inbox, search and the wiki (test_5): the inbox and Search find the items; the wiki
    page gets a second version citing the new rule, and its first version stays as written.
 6. Export and audience (test_6): Ada's project export holds the conversation, the attachment, the map,
@@ -492,7 +492,8 @@ class ScenarioJourney:
         expect(page).to_have_url(re.compile(r"/dm/[0-9a-f-]{36}$"))
         dm = page.url.rsplit("/", 1)[-1]
         composer = page.get_by_label(re.compile(r"^Message "))
-        expect(page.locator(".composer__audience")).to_contain_text("Only you and Jonas")
+        # A direct message is named by its person; no audience line repeats it (#871).
+        expect(page.locator(".composer__audience")).to_have_count(0)
         for who, body in DM:
             if who == "ada":
                 composer.fill(body)
@@ -542,7 +543,7 @@ class ScenarioJourney:
         self.keep("jonas", jonas)
         self.tap(self.project_list(jonas).get_by_role("link", name=re.compile(f"^{LAMP}")))
         expect(jonas.get_by_role("heading", level=1, name=LAMP)).to_be_visible()
-        expect(jonas.locator(".composer__audience").first).to_contain_text("Ada and you")
+        expect(jonas.locator(".composer__audience")).to_have_count(0)  # the space's audience is the default (#871)
         expect(jonas.locator(".composer").get_by_role("checkbox")).to_have_count(0)
         writing = jonas.get_by_label("Write a message", exact=True)
         writing.fill(JONAS_ROOT)
@@ -564,7 +565,7 @@ class ScenarioJourney:
             self.tap(row.get_by_role("button", name="Reply in thread", exact=True).first)
         thread = page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies"))
         expect(thread.locator(".thread__root")).to_contain_text(JONAS_ROOT)
-        expect(thread.locator(".composer__audience")).to_contain_text("Jonas and you")
+        expect(thread.locator(".composer__audience")).to_have_count(0)
         expect(thread.get_by_role("checkbox")).to_have_count(0)
         reply = page.locator("#thread-composer")
         self.tap(reply)
@@ -608,7 +609,7 @@ class ScenarioJourney:
 
         # A person proposes the first rule and accepts it.
         page = self.page("ada")
-        # A message has no Propose a decision (#867); the full form (Replaces) opens from its address.
+        # A message has no Propose a decision (#867); the full form (Does it replace an earlier one?) opens from its address.
         page.goto(f"/projects/{lamp}?open=propose-decision")
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
@@ -904,9 +905,9 @@ class ScenarioJourney:
         expect(ada.locator(".sk-tasks__list")).to_contain_text(ORDER_TASK[:60])
         self.shot(ada, "2b-map-count")
 
-    # ---------------------------------------------------------------- scenario 3: agent proposes, a person pivots
+    # ---------------------------------------------------------------- scenario 3: agent proposes a replacement, a person accepts
 
-    def test_3_agent_proposes_a_pivot_and_a_person_accepts(self) -> None:
+    def test_3_agent_proposes_a_replacing_decision_and_a_person_accepts(self) -> None:
         self.need("thinking_done", "d1", "camera_task", "order_task")
         s, lamp = self.s, self.s["lamp"]
         # Ada's own external agent signs in with one click on the consent page, which makes its agent and connection.
@@ -914,7 +915,7 @@ class ScenarioJourney:
         agent = {"id": mcp.agent_id}
         s["agent"], s["agent_id"] = mcp, agent["id"]
 
-        # The agent proposes the pivot; it stays a proposal and the camera rule stays current.
+        # The agent proposes the replacement; it stays a proposal and the camera decision stays current.
         proposed = mcp.tool("flux_propose_decision", {"projectId": lamp, "clientCommandId": str(uuid.uuid4()), "sources": [],
                                                       "decision": {"title": D2, "rationale": WHY2, "supersedes": s["d1"], "affects": [s["camera_task"]]}})
         d2 = self.api("ada", "GET", f"/api/v1/decisions/{proposed['decisionId']}", status=200)
@@ -924,8 +925,8 @@ class ScenarioJourney:
         self.assertEqual([name for name in names if re.search("accept|approve|decide", name)], [], "no MCP tool accepts a decision")
         s["d2"] = d2["id"]
 
-        # Jonas owns the affected work: the proposal reaches his inbox, and he accepts it as a pivot.
-        title = f"Decision to review: {D2}"
+        # Jonas owns the affected work: the proposal reaches his inbox, and he accepts it.
+        title = f"Decision proposed: {D2}"
         self.wait_for("Jonas's review notification", lambda: title in self.inbox_titles("jonas"))
         jonas = self.page("jonas")
         jonas.goto("/" if self.phone else f"/projects/{lamp}")  # a phone conversation has no tab bar (#341)
@@ -936,25 +937,23 @@ class ScenarioJourney:
         jonas.reload()
         self.tap(jonas.locator(".nyc", has_text=D2).get_by_role("button", name=D2))
         panel = self.details(jonas)
-        expect(panel.get_by_role("heading", name="What happens to current work?")).to_be_visible()
+        expect(panel.get_by_text(f"This replaces the decision {D1}")).to_be_visible()
+        expect(panel.get_by_role("heading", name="What happens to current work?")).to_have_count(0)
         expect(panel.locator(".agent-tag").first).to_be_visible()
-        panel.get_by_role("radiogroup", name=CAMERA_TASK).get_by_label("Park").check()
-        panel.get_by_role("radiogroup", name=ORDER_TASK).get_by_label("Still applies").check()
-        accept = panel.get_by_role("button", name="Accept and pivot")
+        accept = panel.get_by_role("button", name="Accept", exact=True)
         accept.scroll_into_view_if_needed()
-        self.shot(jonas, "3-pivot")
+        self.shot(jonas, "3-replaces")
         self.tap(accept)
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
-        expect(panel.get_by_role("region", name="At this pivot")).to_contain_text("parked")
         accepted = self.api("jonas", "GET", f"/api/v1/decisions/{s['d2']}", status=200)
         self.assertEqual((accepted["status"], accepted["decidedBy"]["id"], accepted["proposedBy"]["kind"]), ("accepted", self.ids["jonas"], "agent"))
         earlier = self.api("jonas", "GET", f"/api/v1/decisions/{s['d1']}", status=200)
         self.assertEqual((earlier["status"], earlier["decidedBy"]["id"], earlier["rationale"]), ("superseded", self.ids["ada"], WHY1), "the old rule keeps its history")
-        parked = self.api("jonas", "GET", f"/api/v1/work/{s['camera_task']}", status=200)
-        self.assertEqual(parked["parked"]["decisionId"], s["d2"])
-        self.assertNotEqual(parked["status"], "done", "parked work is not called done")
-        self.assertTrue(any(link["role"] == "still_applies" and link["to"]["id"] == s["order_task"] for link in accepted["links"]))
-        self.assertEqual(self.api("jonas", "GET", f"/api/v1/results/{s['result']}", status=200)["finding"], "negative", "the result survives the pivot")
+        camera = self.api("jonas", "GET", f"/api/v1/work/{s['camera_task']}", status=200)
+        self.assertIsNone(camera["parked"], "Flux moves no task when a decision is replaced (#871)")
+        self.assertNotEqual(camera["status"], "done")
+        self.assertFalse(any(link["role"] == "still_applies" for link in accepted["links"]))
+        self.assertEqual(self.api("jonas", "GET", f"/api/v1/results/{s['result']}", status=200)["finding"], "negative", "the result survives the replacement")
         self.close_details(jonas)
 
         # Jonas asks Ada to pick up the sensor work while she is away.
@@ -966,9 +965,9 @@ class ScenarioJourney:
         s["question"] = self.root_of("jonas", lamp, QUESTION)["message"]["id"]
         s["pivoted"] = True
 
-    # ---------------------------------------------------------------- scenario 4: return after the pivot, no AI
+    # ---------------------------------------------------------------- scenario 4: return after the change, no AI
 
-    def test_4_return_after_the_pivot_without_ai(self) -> None:
+    def test_4_return_after_the_change_without_ai(self) -> None:
         self.need("pivoted")
         s, lamp = self.s, self.s["lamp"]
         page = self.page("ada")
@@ -986,15 +985,14 @@ class ScenarioJourney:
         page.goto(f"/projects/{lamp}/tasks?open=decision:{s['d2']}")
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=D2)).to_be_visible()
-        pivot = panel.get_by_role("region", name="At this pivot")
-        expect(pivot).to_contain_text(CAMERA_TASK)
-        expect(pivot).to_contain_text(ORDER_TASK)
+        expect(panel.get_by_text(f"This replaces the decision {D1}")).to_be_visible()
         self.close_details(page)
 
-        # The still-useful work stays where work is listed; the earlier rule and the result are in their own details (#342).
+        # The work stays where work is listed, as it was; the earlier decision and the result are in their own details (#342).
         page.goto(f"/projects/{lamp}/tasks?view=list")
-        expect(page.get_by_role("region", name=re.compile("^Parked by a pivot"))).to_contain_text(CAMERA_TASK)
-        expect(page.get_by_role("region", name=re.compile("^Open"))).to_contain_text(ORDER_TASK)
+        expect(page.get_by_role("region", name=re.compile("^Parked"))).to_have_count(0)
+        expect(page.get_by_text(CAMERA_TASK).first).to_be_visible()
+        expect(page.get_by_role("region", name=re.compile("^To do"))).to_contain_text(ORDER_TASK)
         expect(page.get_by_role("region", name=re.compile("^(Decisions|Results)"))).to_have_count(0)
         page.goto(f"/projects/{lamp}/tasks?open=decision:{s['d1']}")
         expect(self.details(page)).to_contain_text("Decision · replaced")
@@ -1008,21 +1006,18 @@ class ScenarioJourney:
         self.assertIsNotNone(summary["nextStep"], "a direct next action")
         self.assertTrue(any(item["kind"] == "decision" for item in summary["items"]))
 
-    def test_4a_the_return_view_names_the_work_the_pivot_parked(self) -> None:
-        """#44 scenario 3: the returning person sees that the pivot parked the camera work, on Home and in the
-        project summary, even though the task's own last event is before their return point (#290, fixed in #293)."""
+    def test_4a_the_return_view_does_not_name_work_as_set_aside(self) -> None:
+        """#44 scenario 3, as changed by #871: the returning person is told the decision changed, and no task is told as
+        parked or set aside, on Home and in the project summary."""
         self.need("pivoted")
         page = self.page("ada")
         page.goto("/")
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Ada$"))).to_be_visible()
         home = [item["text"] for item in self.api("ada", "GET", "/api/v1/return?place=home", status=200)["items"]]
         self.assertIn(f"Decision changed: {D2}", home)
-        self.assertIn(f"Parked: {CAMERA_TASK}", home, "Home's return summary names the parked work")
+        self.assertFalse([text for text in home if text.startswith("Parked")], "Home's return summary names no parked work")
         items = self.api("ada", "GET", f"/api/v1/return?place=project&id={self.s['lamp']}", status=200)["items"]
-        self.assertIn(f"Parked: {CAMERA_TASK}", [item["text"] for item in items], "the project's return summary names the parked work")
-        # In the project's Tasks, the parked work is listed.
-        page.goto(f"/projects/{self.s['lamp']}/tasks?view=list")
-        expect(page.get_by_role("region", name=re.compile("^Parked by a pivot"))).to_contain_text(CAMERA_TASK)
+        self.assertFalse([item["text"] for item in items if item["text"].startswith("Parked")], "nor does the project's")
 
     # ---------------------------------------------------------------- inbox, search and the wiki
 
@@ -1030,7 +1025,7 @@ class ScenarioJourney:
         self.need("pivoted", "doc", "result")
         s, lamp = self.s, self.s["lamp"]
         # Inbox: Ada has Jonas's DM and the agent's proposal for review; Jonas has the reply and his task.
-        expected = {"ada": ["Jonas Berg sent you a message", f"Decision to review: {D2}", f"Jonas Berg asked you in {LAMP}"],
+        expected = {"ada": ["Jonas Berg sent you a message", f"Decision proposed: {D2}", f"Jonas Berg asked you in {LAMP}"],
                     "jonas": ["Ada Kowalska replied in", f"Ada Kowalska assigned you “{CAMERA_TASK}”"]}
         for who, titles in expected.items():
             self.wait_for(f"{who}'s notifications", lambda who=who, titles=titles: all(any(t.startswith(title) for t in self.inbox_titles(who)) for title in titles))
@@ -1161,14 +1156,14 @@ class ScenarioJourney:
         self.assertEqual(sorted(t["text"] for t in exported["sketches"][0]["thoughts"]), sorted([CAMERA, SENSOR, PRIVACY, LOW_LIGHT, VARIANT_B]))
         work = {w["title"]: w for w in exported["work"]}
         self.assertEqual(work[self.s["experiment_title"]]["status"], "done")
-        self.assertEqual(work[CAMERA_TASK]["parked"]["decisionId"], s["d2"])
+        self.assertIsNone(work[CAMERA_TASK]["parked"], "a replaced decision parks nothing")
         decisions = {d["title"]: d for d in exported["decisions"]}
         self.assertEqual((decisions[D1]["status"], decisions[D2]["status"], decisions[D3]["status"]), ("superseded", "accepted", "proposed"))
         self.assertEqual((decisions[D2]["proposedBy"]["kind"], decisions[D2]["decidedBy"]["id"]), ("agent", self.ids["jonas"]))
         self.assertEqual([(r["title"], r["finding"]) for r in exported["results"]], [(RESULT, "negative")])
         self.assertEqual([len(d["versions"]) for d in exported["docs"]], [self.api("ada", "GET", f"/api/v1/docs/{s['doc']}", status=200)["version"]])
         roles = {(link["role"], link["from"]["type"], link["to"]["type"]) for link in exported["links"]}
-        for expected in (("source", "work", "thought"), ("still_applies", "decision", "work"), ("mentions", "doc", "result"), ("about", "result", "work")):
+        for expected in (("source", "work", "thought"), ("mentions", "doc", "result"), ("about", "result", "work")):
             self.assertIn(expected, roles)
         raw = json.dumps(exported)
         for hidden in (LEFT_OUT, DM[0][1], DRAFT, MARKET_NOTE, MARKET, self.emails["ada"], s["dm"]):

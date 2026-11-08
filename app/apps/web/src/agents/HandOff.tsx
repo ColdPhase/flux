@@ -113,7 +113,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
     // the workspace's agents just means no "without access" rows, never a failed hand-off.
     Promise.all([
       listProjectPeople(project.id, signal), getProjectAgents(project.id, signal), listAgents(project.workspaceId, signal).catch(() => [] as Agent[]),
-      getProjectWorkView(project.id, { purpose: 'choices', choice: 'pivot_work' }, signal).then((page) => ({ rows: page.items.filter((row): row is WorkRowProjection => row.kind === 'work'), next: page.nextCursor })),
+      getProjectWorkView(project.id, { purpose: 'choices', choice: 'open_work' }, signal).then((page) => ({ rows: page.items.filter((row): row is WorkRowProjection => row.kind === 'work'), next: page.nextCursor })),
     ]).then(([people, agents, workspaceAgents, page]) => {
       if (signal.aborted) return;
       setLoaded({ people, connections: agents.connections, workspaceAgents, tasks: page.rows });
@@ -152,7 +152,7 @@ function HandOffBody({ onClose, project, task: given, agentId, onDone }: {
     setCursor(page.next);
   };
   const readPage = async (after: string, signal?: AbortSignal) => {
-    const page = await getProjectWorkView(project.id, { purpose: 'choices', choice: 'pivot_work', cursor: after }, signal);
+    const page = await getProjectWorkView(project.id, { purpose: 'choices', choice: 'open_work', cursor: after }, signal);
     return { rows: page.items.filter((row): row is WorkRowProjection => row.kind === 'work'), next: page.nextCursor };
   };
   const loadMore = async () => {

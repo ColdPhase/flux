@@ -86,7 +86,7 @@ export type ObjectRef =
 
 /**
  * `source`: created from, or based on, a message or material version (the source stays in place).
- * `affects`: a decision concerns this work. `still_applies`: at a pivot, work that remains useful.
+ * `affects`: a decision concerns this work. `still_applies`: kept for rows written before #871; nothing writes it now.
  * `about`: a result reports on this work or decision. `related`: any other connection.
  * `mentions`: the current text of a doc refers to it (#112); rewritten with each doc version.
  */
@@ -324,8 +324,6 @@ export interface UpdateWorkCommand extends VersionPrecondition {
    * posts the same blocker twice (#550).
    */
   restore?: boolean;
-  /** `false` takes parked work back into the plan. Parking happens only through a pivot. */
-  parked?: false;
   /** Replaces the whole list. */
   criteria?: string[];
   /**
@@ -385,13 +383,10 @@ export interface ProposeDecisionCommand {
 }
 
 /**
- * Accepting a decision that supersedes another is a pivot: the earlier decision becomes
- * superseded, `stillApplies` work is marked as still useful and `park` work is parked.
+ * Accepting a decision that replaces another marks the earlier one superseded. Nothing else changes:
+ * Flux does not move or park tasks when a decision changes (#871).
  */
-export interface AcceptDecisionCommand extends VersionPrecondition {
-  stillApplies?: string[];
-  park?: string[];
-}
+export type AcceptDecisionCommand = VersionPrecondition;
 
 export interface CreateResultCommand {
   /** Durable domain retry identity of this exact publication (#154); a retry never duplicates the result or its task messages. */

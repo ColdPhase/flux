@@ -232,9 +232,9 @@ test('agent root renders without a human DM link, real human reply persists, and
     assert.equal(await row.locator('a[href*="/dm/new"]').count(), 0);
     assert.equal(await row.locator('.message-time time').getAttribute('datetime'), root.createdAt);
     // One project conversation (UI116-1): the root is in the stream, its replies and reply box in the thread beside it.
-    const audience = page.locator('#thread .project-convo__composer .composer__audience').filter({ hasText: '1 agent' });
-    await audience.waitFor();
-    assert.doesNotMatch(await audience.innerText(), /Only you|only you two/);
+    // The thread's audience is the space's, the default, so its composer says nothing about it (#871).
+    await page.getByRole('textbox', { name: 'Reply', exact: true }).waitFor();
+    assert.equal(await page.locator('#thread .project-convo__composer .composer__audience').count(), 0);
     // One placeholder for a thread, whoever started it (#504 AC-2).
     const composer = page.getByRole('textbox', { name: 'Reply', exact: true });
     assert.equal(await composer.getAttribute('placeholder'), 'Reply in thread…');

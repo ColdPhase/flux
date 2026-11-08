@@ -224,8 +224,8 @@ test('canonical query builders preserve typed selectors, literal search, indepen
   const view = new URL(workViewReadUrl('project', { purpose: 'choices', choice: 'result_work', q: '  %_ & title  ', selected: 'chosen', cursor: 'opaque+/=' }), 'http://local');
   assert.deepEqual(Object.fromEntries(view.searchParams), { purpose: 'choices', choice: 'result_work', q: '%_ & title', limit: '50', cursor: 'opaque+/=', selected: 'chosen' });
   for (const query of [
-    { purpose: 'choices', choice: 'accepted_decisions' }, { purpose: 'choices', choice: 'pivot_work' },
-    { purpose: 'choices', choice: 'parked_work', decisionId: 'native-rule' }, { purpose: 'choices', choice: 'doc_refs', kind: 'result' },
+    { purpose: 'choices', choice: 'accepted_decisions' }, { purpose: 'choices', choice: 'open_work' },
+    { purpose: 'choices', choice: 'doc_refs', kind: 'result' },
   ] as const) assert.equal(new URL(workViewReadUrl('project', query), 'http://local').searchParams.get('choice'), query.choice);
   const batch = new URL(workAssociationReadUrl('project', { messageIds: 'b,a,b', cursor: 'objects', edgeCursor: 'edges' }), 'http://local');
   assert.deepEqual(Object.fromEntries(batch.searchParams), { relation: 'source', limit: '50', cursor: 'objects', edgeCursor: 'edges', messageIds: 'a,b' });

@@ -33,9 +33,9 @@ function merge(current: DmMessage[], incoming: DmMessage[]) {
  * Its audience is the conversation's current participants and nothing else; every read, send and refresh
  * asks the server again. Esc and the close control give focus back to the message that opened it.
  */
-export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, others, writable, refreshTick, receiptTick, focusComposer, canObserve,
+export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, others, writable, refreshTick, receiptTick, focusComposer, canObserve,
   onDenied, onCreateTask, onCount }: {
-  dmId: string; rootId: string; meId: string; meName: string; nameOf: (id: string) => string; audience: string;
+  dmId: string; rootId: string; meId: string; meName: string; nameOf: (id: string) => string;
   /** First names of the other people of the conversation: the ones who do not see a private answer. */
   others: readonly string[]; writable: boolean;
   refreshTick: number; receiptTick: number; focusComposer: boolean; canObserve: boolean;
@@ -269,7 +269,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, ot
               disabled={!writable} boxDisabled={!writable} placeholder={writable ? 'Reply in thread…' : 'Nobody else is in this conversation'}
               sendLabel={asking ? 'Ask your agent' : 'Send reply'} sendDisabled={!composer.canSend || !writable} onSend={() => void send()} />
             {asking ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span>Only you see the answer · {others.join(', ') || 'The others'} {others.length === 1 ? 'sees' : 'see'} only a line that AI was used here</span></p>
-              : <p className="composer__audience"><Icon name="lock" size={13} /><span>{audience}<span aria-hidden="true"> · </span><span className="composer__where">private reply</span></span></p>}
+              : null}
             <SendAnnouncer pending={composer.pending} />
             {askFailure ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{askFailure}</p> : null}
             {composer.error ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{composer.error}</p> : null}

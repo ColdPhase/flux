@@ -70,7 +70,7 @@ describe('decision acceptance authority (#250, O-009)', () => {
     // An agent never accepts, even one owned by the workspace owner or owned by the workspace, with a contributor grant.
     for (const [agent, label] of [[personalAgent, 'the owner\'s own agent'], [sharedAgent, 'a workspace-owned agent']] as const) {
       const principal: Principal = { kind: 'agent', id: agent.id };
-      await rejects(work.acceptDecision(principal, proposal.id, {}, proposal.version), 'DECISION_NEEDS_PERSON');
+      await rejects(work.acceptDecision(principal, proposal.id, proposal.version), 'DECISION_NEEDS_PERSON');
       await stillProposed(ada.browser, proposal, label);
     }
 
@@ -139,14 +139,14 @@ describe('decision acceptance authority (#250, O-009)', () => {
     assert.equal((await accept(gil.browser, replacement.id, replacement.version)).status, 404);
     assert.equal((await accept(gil.browser, replacement.id, replacement.version, { decidedBy: ada.id })).status, 404,
       'naming someone with authority lends none');
-    await rejects(work.acceptDecision(agent, replacement.id, {}, replacement.version), 'DECISION_NEEDS_PERSON');
+    await rejects(work.acceptDecision(agent, replacement.id, replacement.version), 'DECISION_NEEDS_PERSON');
     await stillProposed(ada.browser, replacement, 'refused replacement');
     assert.equal((await current()).status, 'accepted', 'the current rule stays current until a person decides');
 
     // A guest contributor accepts the replacement: the earlier rule is superseded and keeps its history. The
     // caller is the decider, whoever the body names.
-    const pivot = expectStatus(await accept(gus.browser, replacement.id, replacement.version, { decidedBy: ada.id }), 200, 'pivot') as Decision;
-    assert.deepEqual([pivot.status, pivot.decidedBy?.id, pivot.supersedes], ['accepted', gus.id, rule.id]);
+    const accepted = expectStatus(await accept(gus.browser, replacement.id, replacement.version, { decidedBy: ada.id }), 200, 'replacement') as Decision;
+    assert.deepEqual([accepted.status, accepted.decidedBy?.id, accepted.supersedes], ['accepted', gus.id, rule.id]);
     const earlier = await current();
     assert.deepEqual([earlier.status, earlier.supersededBy, earlier.decidedBy?.id, earlier.rationale],
       ['superseded', replacement.id, ada.id, 'Why: Use a camera for gestures']);
@@ -192,7 +192,7 @@ describe('decision acceptance authority (#250, O-009)', () => {
     assert.deepEqual(AGENT_OPERATIONS.filter((operation) => operation.startsWith('decision.')), ['decision.propose']);
 
     // The agent itself (owned by the project's manager) is refused; so is a person who was never added to the space.
-    await rejects(work.acceptDecision({ kind: 'agent', id: f.agentId }, decisionId, {}, 1), 'DECISION_NEEDS_PERSON');
+    await rejects(work.acceptDecision({ kind: 'agent', id: f.agentId }, decisionId, 1), 'DECISION_NEEDS_PERSON');
     const reader = await person('da-mcp-reader');
     expectMcp(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/members`, { body: { email: reader.email, role: 'member' } }), 201);
     assert.equal((await accept(reader.browser, decisionId, 1)).status, 404);

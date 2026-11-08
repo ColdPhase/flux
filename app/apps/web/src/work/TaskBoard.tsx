@@ -5,7 +5,7 @@ import type { Project, ProjectWorkView, WorkGroup, WorkItem, WorkRowProjection, 
 import { ApiError, NetworkError } from '../api/client';
 import { AgentTag, Icon, Kreska, StatusGlyph, initials, useRowMotion } from '../ui';
 import { updateWork } from './api';
-import { DROPPED, STATUS_LABEL, blockedLine, dueShort, isFinished, taskNumber } from './format';
+import { DROPPED, STATUS_LABEL, blockedLine, dueShort, taskNumber } from './format';
 import { STATE_KEYS, useStateChanges } from './taskState';
 import { getProjectWorkView, workViewReadUrl } from './read-api';
 import type { ReadState } from './read-state';
@@ -248,10 +248,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
     .map((item) => {
       const saved = retained[item.id];
       return saved?.scope === confirmationScope && saved.item.version > item.version ? withStoredState(item, saved.item) : item;
-    })
-    // Work a pivot parked is set aside, not part of the plan: the List shows it.
-    .filter((item) => !item.parked || isFinished(item));
-
+    });
 
   // After a keyboard or menu move the card is drawn in another column (and again if the move is
   // refused): keep focus on it for a moment, unless the person has moved on to something else.

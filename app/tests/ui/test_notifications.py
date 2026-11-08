@@ -178,7 +178,7 @@ class NotificationJourney(unittest.TestCase):
         # Every item has its reason in words and says where it came from; replies, direct messages and assigned
         # work are notifications, not needs, and stay out of the queue (they reach you where they happen).
         for title, kind in [
-            ("Decision to review", None),
+            ("Decision proposed", None),
             ("Kai Tanaka asked you in Garden sensors", "Question"),
             ("Kai Tanaka mentioned you in Garden sensors", None),
         ]:

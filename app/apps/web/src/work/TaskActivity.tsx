@@ -300,10 +300,8 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
 }
 
 /** The one composer, at the bottom of the panel: it writes to the task's discussion, which shows in the timeline above. */
-export function TaskComposer({ state, composer, item, meId, writable, readOnly, id, audience }: {
+export function TaskComposer({ state, composer, item, meId, writable, readOnly, id }: {
   state: TaskActivityState; composer: TaskComposerDraft; item: Pick<WorkItem, 'id' | 'number'>; meId: string; writable: boolean; readOnly: boolean; id: string;
-  /** Who can see it, said under the box as in every composer: "Everyone in <project>" (who added it is in the activity). */
-  audience: string;
 }) {
   const touch = useMediaQuery(MEDIA.touch);
   const captureScope = useComposerScope(composer.key);
@@ -314,10 +312,11 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
   // no thread yet, so it has no scope (nothing is created to show it); neither does one whose creation was undone.
   const conversationId = readOnly ? null : discussion?.conversationId ?? null;
   const typing = useTyping(meId, conversationId ? { kind: 'conversation', id: conversationId } : null, writable);
-  // The typing status is its own line under the audience note, so its whole sentence is readable at any width (#731).
-  // It is always there, empty without a scope, so nothing changes place when a thread starts.
+  // The typing status is its own line under the box, so its whole sentence is readable at any width (#731).
+  // It is always there, empty without a scope, so nothing changes place when a thread starts. The task's audience is the space's,
+  // the default, so it is not said (#871).
   const typingLine = conversationId ? <TypingNotice {...typing} /> : <p className="typing-notice" aria-hidden="true">{'\u00a0'}</p>;
-  const audienceLine = <div className="wd-foot__line"><ComposerAudience>{audience}</ComposerAudience>{typingLine}</div>;
+  const typingNotice = <div className="wd-foot__line">{typingLine}</div>;
 
   // `/ai …` asks the person's agent in this discussion; the words are not a message (#842).
   const asking = !state.aiOff && /^\/ai(\s|$)/.test(composer.draft.body);
@@ -350,7 +349,7 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
     if (sendsOnEnter(event, touch) || (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && !event.nativeEvent.isComposing)) { event.preventDefault(); void send(); }
   };
   if (!writable) {
-    return <><p className="wd-muted wd-foot__note">{readOnly ? 'Creation was undone. This history is read-only; your unsent draft is kept.' : 'You can read this task but not write to it.'}</p>{audienceLine}</>;
+    return <><p className="wd-muted wd-foot__note">{readOnly ? 'Creation was undone. This history is read-only; your unsent draft is kept.' : 'You can read this task but not write to it.'}</p>{typingNotice}</>;
   }
   return (
     <form className="wd-composer" onSubmit={(event) => void send(event)}>
@@ -359,7 +358,7 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
       <ComposerBox id={id} label={hasRoot ? 'Write to this task' : 'First message about this task'} value={composer.draft.body} maxLength={20000}
         placeholder={`Write about #${item.number} · @ · /`} onChange={(value) => { setAskFailure(''); composer.setBody(value); typing.input(Boolean(value.trim()) && !/^\/ai(\s|$)/.test(value)); }} onBlur={typing.stop} onKeyDown={onKeyDown}
         attach={composer} sendLabel={hasRoot ? 'Send to task' : 'Start the discussion'} sendDisabled={!composer.canSend || !discussion} onSend={() => void send()} />
-      {asking ? <div className="wd-foot__line"><ComposerAudience>Only you see the answer, until you choose Show everyone</ComposerAudience></div> : audienceLine}
+      {asking ? <div className="wd-foot__line"><ComposerAudience>Only you see the answer, until you choose Show everyone</ComposerAudience></div> : typingNotice}
       {askFailure ? <p className="wd-error" role="alert">{askFailure}</p> : null}
       <SendAnnouncer pending={composer.pending} />
     </form>

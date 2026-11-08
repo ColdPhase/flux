@@ -79,7 +79,6 @@ export function ProjectMap() {
           <div className="view-empty">
             <EmptyState icon="map" title={`Map ideas for ${project.name}`} action={action}>
               <p>A map is for thinking out loud together: put thoughts down, connect one idea to several options, and move them around. Nothing on a map has to become a task.</p>
-              <p>Everyone in {project.name} can see a map made here.</p>
             </EmptyState>
           </div>
         ) : null}
@@ -88,7 +87,6 @@ export function ProjectMap() {
             <div className="sk-index-head">
               <div>
                 <h2>Maps</h2>
-                <p className="pv-lead"><Icon name="people" size={13} />Everyone in {project.name} can see these</p>
               </div>
               {action}
             </div>

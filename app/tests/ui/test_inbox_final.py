@@ -291,8 +291,7 @@ class InboxFinal(unittest.TestCase):
         # P4: one card for a decision. Its kind, why it needs you, the reason, what it rests on, then the actions.
         decision = self.card(page, DECISION)
         expect(decision).to_contain_text("Jonas Berg")
-        expect(decision).to_contain_text("Proposed decision")
-        expect(decision).to_contain_text("Community garden sensors")
+        expect(decision).to_contain_text(re.compile("Decision · Community garden sensors"))
         expect(decision.locator(".nyc__chip")).to_have_text("Needs you")
         expect(decision.get_by_text(REASON)).to_be_visible()
         expect(decision.get_by_role("button", name=re.compile("^Accept"))).to_be_visible()

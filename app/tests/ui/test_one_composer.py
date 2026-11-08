@@ -115,17 +115,16 @@ class OneComposer(unittest.TestCase):
                 spread = set(values.values())
                 self.assertEqual(len(spread), 1, f"{key} differs between places on {'phone' if phone else 'computer'}: {values}")
 
-    def test_02_the_audience_line_is_under_the_box_in_one_form(self) -> None:
+    def test_02_no_place_says_its_audience_under_the_box(self) -> None:
+        """The space's people, a direct message's people and a task's discussion are the default audience of their place, so
+        none of them says it under the box (#871); only a private answer does (test_private_ai)."""
         page = self.page()
         for name, url, selector in self.places(page):
             with self.subTest(place=name):
                 page.goto(url)
                 expect(page.locator(selector)).to_be_visible()
                 measured = self.measure(page.locator(selector))
-                self.assertTrue(measured["audience"], f"{name} shows its audience")
-                for line in measured["audience"]:
-                    self.assertTrue(line["below"] and line["icon"], f"{name}: under the box, lock first")
-                    self.assertEqual(line["size"], measured["audience"][0]["size"])
+                self.assertEqual(measured["audience"], [], f"{name} says nothing about its audience")
 
     def test_03_the_plus_takes_files_where_they_are_kept_and_is_greyed_where_not(self) -> None:
         page = self.page()

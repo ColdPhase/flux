@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { sql } from 'drizzle-orm';
 import { schema } from '@flux/db';
 import { agentExecutionUseCases, DomainError, type Principal } from '@flux/core';
-import type { Agent, AgentConnection, Decision, Material, Page, WorkItem, WorkResult } from '@flux/contracts';
+import type { Agent, AgentConnection, Material, Page, WorkItem, WorkResult } from '@flux/contracts';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
 import { agentExecutionInTransaction } from '../../apps/server/src/agent-connection/execution.js';
 import { lockProjectTaskGraphs, requireTaskPrerequisitesMet, taskPrerequisiteIds } from '../../apps/server/src/work/task-graph.js';
@@ -178,7 +178,7 @@ test('starting or finishing a task needs every prerequisite done and unparked; a
   await f.fails(f.owner, { title: 'Started too early', status: 'in_progress', dependencyIds: [prerequisite.id] }, 409, 'TASK_PREREQUISITES_UNMET');
   assert.deepEqual(await f.counts(), { ...before, work: before.work, notices: before.notices, updated: before.updated + 1 });
 
-  // Every non-done state keeps it unmet: in progress, blocked, not pursued, and a parked done task.
+  // Every non-done state keeps it unmet: in progress, blocked and not pursued.
   for (const status of ['in_progress', 'blocked', 'not_pursued'] as const) {
     const current = await f.read(prerequisite.id);
     await f.patch(f.owner, current, { status, ...(status === 'blocked' ? { blocker: 'x' } : {}) });
@@ -219,29 +219,6 @@ test('starting or finishing a task needs every prerequisite done and unparked; a
     title: 'A finding', finding: 'positive', work: [gated.id], finishes: { id: gated.id, expectedVersion: gated.version } } }), 201) as WorkResult;
   assert.ok(accepted.id);
   assert.equal((await f.read(gated.id)).status, 'done');
-});
-
-test('a parked prerequisite stays unmet until it is brought back and finished', async () => {
-  const f = await scene();
-  const prerequisite = await f.create(f.owner, { title: 'Will be parked' });
-  const dependent = await f.create(f.owner, { title: 'Waits for it', dependencyIds: [prerequisite.id] });
-  const decide = async (body: Body, expectedStatus = 201) => expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/decisions`, { body }), expectedStatus) as Decision;
-  const accept = async (decision: Decision, body: Body = {}) => expectStatus(await f.owner.browser.request('POST', `/api/v1/decisions/${decision.id}/accept`,
-    { body, headers: ifMatch(decision) }), 200) as Decision;
-  const rule = await accept(await decide({ title: 'Use the camera' }));
-  await accept(await decide({ title: 'Use a time-of-flight sensor instead', supersedes: rule.id }), { park: [prerequisite.id] });
-  const parked = await f.read(prerequisite.id);
-  assert.ok(parked.parked, 'the pivot parked it without changing its status');
-  assert.equal((await f.read(dependent.id)).prerequisites[0]!.parked, true);
-  await f.patchFails(f.owner, dependent, { status: 'in_progress' }, 409, 'TASK_PREREQUISITES_UNMET');
-  const back = await f.patch(f.owner, parked, { parked: false }) as WorkItem;
-  assert.equal(back.parked, null);
-  const done = await f.patch(f.owner, back, { status: 'done' }) as WorkItem;
-  assert.equal(done.status, 'done');
-  assert.equal((await f.patch(f.owner, dependent, { status: 'in_progress' }) as WorkItem).status, 'in_progress');
-  // A done task that is parked (older pivots) is not met either: the check reads the parked state, not the status alone.
-  const rule2 = await accept(await decide({ title: 'Back to the camera', supersedes: (await decide({ title: 'Interim' }).then(accept)).id }));
-  assert.ok(rule2.id);
 });
 
 test('the same canonical plan intent returns the original task once; other payloads, edited tasks and moved plans conflict visibly', async () => {

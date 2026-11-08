@@ -76,9 +76,9 @@ export interface PhoneMenuItem { id: string; label: string; to: string; icon: Ic
 
 /**
  * The title is the view menu: it names the project (or Home, or the conversation) and the view
- * shown, and opens the places inside it. "Details and people" is the last row.
+ * shown, and opens the places inside it. "Space details" is the last row.
  */
-export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Details and people', lead, adds = [], metadataSlot }: {
+export function PhoneTitleMenu({ title, subtitle, items, onDetails, detailsLabel = 'Space details', lead, adds = [], metadataSlot }: {
   title: string; subtitle: ReactNode; items: PhoneMenuItem[]; onDetails: (() => void) | null; detailsLabel?: string; lead?: ReactNode;
   /** "Add Map", "Add Wiki", "Add Agents" for a view the project has not added yet (#351), quiet at the end. */
   adds?: { label: string; run: () => void }[];

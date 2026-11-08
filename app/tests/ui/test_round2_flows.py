@@ -220,7 +220,7 @@ class Round2Flows(unittest.TestCase):
         panel = page.locator("#details")
         expect(panel.get_by_role("heading", name="Propose a decision")).to_be_visible()
         expect(panel.get_by_label("Decision", exact=True)).to_have_value(CLAUSE)
-        expect(panel.get_by_label("Replaces", exact=True)).to_be_visible()
+        expect(panel.get_by_label("Does it replace an earlier one?", exact=True)).to_be_visible()
 
     # ---------------------------------------------------------------- WF-2
 

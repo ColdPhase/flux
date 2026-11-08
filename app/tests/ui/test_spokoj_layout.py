@@ -224,7 +224,7 @@ class SpokojLayout(unittest.TestCase):
                 header.get_by_role("button", name="More", exact=True).click()
                 menu = page.get_by_role("menu", name="More")
                 items = [text.split("\n")[0].strip() for text in menu.locator("[role^=menuitem]:visible").all_inner_texts()]
-                self.assertEqual(items[:4], ["Who can see this", "Together", "Settings", "Space details"], items)
+                self.assertEqual(items[:4], ["People", "Together", "Settings", "Space details"], items)
                 # Live sessions are off on this test server: Together is dimmed in place, not removed.
                 expect(menu.get_by_role("menuitem", name="Together")).to_have_attribute("aria-disabled", "true")
                 menu.get_by_role("menuitem", name="Space details").click()

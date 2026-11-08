@@ -570,7 +570,7 @@ class TypingJourney(unittest.TestCase):
 
     def test_15_the_typing_sentence_is_whole_on_its_own_line_in_the_task_panel_and_phone_sheet(self):
         """#731: "Alice Rivera and Lee Park are typing…" and "Alice Rivera and 2 others are typing…" are readable in full
-        at 390 px and in the desktop panel: the line is under the audience note (not sharing its row), never cut by an
+        at 390 px and in the desktop panel: the line is under the box (the task's audience is the default, so there is no note beside it), never cut by an
         ellipsis, and it appears and disappears without moving the footer, the box or anything above them."""
         work, _ = self.work_with_root("Check the typing sentence")
         owner = self.page("alice")
@@ -588,21 +588,21 @@ class TypingJourney(unittest.TestCase):
                 notice = bob.locator("#details .typing-notice")
                 expect(notice).to_have_attribute("data-availability", "ready")
                 field = bob.locator("#details").get_by_label("Write to this task")
-                audience = bob.locator("#details .wd__foot .composer__audience")
+                field_box = bob.locator("#details .wd__foot .composer__box")
                 shape = "() => { const box = (q) => { const b = document.querySelector(q).getBoundingClientRect(); return [b.x, b.y, b.width, b.height].map((n) => Math.round(n * 100) / 100); };" \
-                        " return { foot: box('#details .wd__foot'), field: box('#details .wd__foot textarea'), audience: box('#details .wd__foot .composer__audience'), notice: box('#details .wd__foot .typing-notice') }; }"
+                        " return { foot: box('#details .wd__foot'), field: box('#details .wd__foot textarea'), box: box('#details .wd__foot .composer__box'), notice: box('#details .wd__foot .typing-notice') }; }"
                 before = bob.evaluate(shape)
                 for who, text in (("alice", f"PRIVATE-DRAFT sentence {name} 1"), ("outsider", f"PRIVATE-DRAFT sentence {name} 2")):
                     fields[who].fill(text)
                 expect(notice).to_have_text(two, timeout=4000)
-                self.assert_sentence_whole(bob, notice, audience)
+                self.assert_sentence_whole(bob, notice, field_box)
                 shot(bob, f"typing-panel-{name.replace(' ', '-')}-two-writers")
                 fields["viewer"].fill(f"PRIVATE-DRAFT sentence {name} 3")
                 expect(notice).to_have_text(many, timeout=4000)
-                self.assert_sentence_whole(bob, notice, audience)
+                self.assert_sentence_whole(bob, notice, field_box)
                 shot(bob, f"typing-panel-{name.replace(' ', '-')}-three-writers")
                 during = bob.evaluate(shape)
-                for key in ("foot", "field", "audience", "notice"):
+                for key in ("foot", "field", "box", "notice"):
                     self.assertEqual(before[key], during[key], f"{key} does not move when the sentence appears at {name}")
                 for page in writers.values():
                     page.locator("#details").get_by_label("Write to this task").blur()
@@ -611,13 +611,13 @@ class TypingJourney(unittest.TestCase):
                 expect(notice).to_have_attribute("data-availability", "ready")
                 bob.context.close()
 
-    def assert_sentence_whole(self, page, notice, audience):
-        """The line is not ellipsized, lies wholly inside the footer, and is a row of its own under the audience note."""
+    def assert_sentence_whole(self, page, notice, field_box):
+        """The line is not ellipsized, lies wholly inside the footer, and is a row of its own under the box."""
         measure = notice.evaluate("el => { const b = el.getBoundingClientRect(), f = el.closest('.wd__foot').getBoundingClientRect(); return { cut: el.scrollWidth > el.clientWidth + 1, left: b.left, right: b.right, top: b.top, footLeft: f.left, footRight: f.right }; }")
         self.assertFalse(measure["cut"], f"the sentence is not cut off: {notice.text_content()!r}")
         self.assertGreaterEqual(measure["left"], measure["footLeft"])
         self.assertLessEqual(measure["right"], measure["footRight"])
-        self.assertGreaterEqual(measure["top"], audience.bounding_box()["y"] + audience.bounding_box()["height"] - 0.5, "the line does not share the audience note's row")
+        self.assertGreaterEqual(measure["top"], field_box.bounding_box()["y"] + field_box.bounding_box()["height"] - 0.5, "the line does not share the box's row")
         self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), page.viewport_size["width"])
 
     # ---- #732: unavailable is said after a real failure or timeout, never while connecting ----

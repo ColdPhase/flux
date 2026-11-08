@@ -279,7 +279,7 @@ class PhoneFinal(unittest.TestCase):
                 menu = page.get_by_role("dialog", name=re.compile("Community garden sensors"))
                 expect(menu).to_be_visible()
                 labels = [text.strip().split("\n")[0] for text in menu.locator(".phone-menu__item").all_inner_texts()]
-                self.assertEqual(labels, ["Conversation", "Tasks", "Map", "Wiki", "Details and people"])
+                self.assertEqual(labels, ["Conversation", "Tasks", "Map", "Wiki", "Space details"])
                 expect(menu.get_by_text("Decisions")).to_have_count(0)
                 expect(menu.locator('[aria-current="page"]')).to_have_count(1)
                 expect(menu.locator('[aria-current="page"]')).to_contain_text("Tasks")
@@ -291,7 +291,7 @@ class PhoneFinal(unittest.TestCase):
                 menu.get_by_role("link", name=re.compile("^Map")).click()
                 expect(page).to_have_url(re.compile(r"/map$"))
                 page.get_by_role("heading", level=1).get_by_role("button").click()
-                page.get_by_role("button", name="Details and people").click()
+                page.get_by_role("button", name="Space details").click()
                 expect(page.get_by_role("dialog", name="Details")).to_be_visible()
                 expect(page.get_by_role("dialog", name="Details").get_by_role("button", name="What matters")).to_have_count(0)
                 page.keyboard.press("Escape")

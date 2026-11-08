@@ -94,7 +94,7 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
 export function ProjectOverview({ messageId, selection, onBack }: { messageId?: string; selection?: OverviewView['selection']; onBack: () => void }) {
   const shell = useProjectShell();
   const open = useOpenConversation();
-  const { me, workspace } = useShellData();
+  const { me } = useShellData();
   const { closePanel } = useShellActions();
   const read = useOverviewWork(me.user.id, shell?.project.id ?? null, open?.conversation?.id ?? null, messageId);
   const current = useProjectWorkSummary();
@@ -202,7 +202,6 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
         <p className="details__eyebrow">{project.name}{conversation && !messageMode ? ' · Conversation' : ''}</p>
         <div className="ov-head ov-head--plain"><h3 className="details__title">{title}</h3></div>
         {message ? <p className="details__lead ov-quote">{message.body.length > 280 ? `${message.body.slice(0, 279)}…` : message.body}</p> : null}
-        <p className="ov-audience"><Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />{audienceLine(people, me.user.id, project.visibility === 'workspace')}</p>
       </>}
       <Rows label={messageMode ? 'Made from this message' : 'Linked in this conversation'} rows={linked}
         controls={read.objects.phase !== 'idle' ? <>
@@ -226,10 +225,8 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
 
       {/* Who is in the space, in one sentence; the people and the controls to change them are in its settings (F-037). */}
       <section className="details__sec ov-sec" aria-label="Space settings">
-        <p className="access__line">
-          <Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />
-          <span>{project.visibility === 'workspace' ? `Everyone in ${workspace?.name ?? 'the company'} is in this space; guests only when added.` : 'Only the people added to it can open it.'}</span>
-        </p>
+        {/* Said only when the space is narrower than the default, everyone in the company (#871). */}
+        {project.visibility === 'workspace' ? null : <p className="access__line"><Icon name="lock" size={13} /><span>Only the people added to it can open it.</span></p>}
         {/* F-030 (#655): an encrypted space says so, in one line. */}
         {encrypted ? <p className="access__line" data-encrypted-line=""><Icon name="lock" size={13} /><span>Encrypted space · only people work here, no AI.</span></p> : null}
         <Link className="ov-row" to={`/projects/${project.id}/settings`} onClick={closePanel}>

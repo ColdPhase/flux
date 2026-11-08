@@ -7,10 +7,10 @@ what a person sees and can do, on a computer (1440 x 900) and a phone (390 x 844
 
 * D1: a proposed decision's panel is its Inbox card first: "Needs you", Accept / Not now / Discuss and
   who is still waiting; on a phone the answer is inside the half sheet; Not now asks when to return.
-* D2: no empty "Based on", "Evidence", "Reports on" or "At this pivot" sections.
+* D2: no empty "Based on", "Evidence" or "Reports on" sections; "Shown on the Wiki page …" is a sentence drawn only when it applies (#871).
 * D3: Discuss opens the decision's thread with its reply field focused, or the conversation with the
   composer focused and the decision beside it, from the panel and from the Inbox.
-* D4/D6: "Add to a Wiki page" closes the form back to the decision, lists the page under "In the Wiki"
+* D4/D6: "Add to a Wiki page" closes the form back to the decision, says "Shown on the Wiki page …"
   and says where it went with one toast and Open.
 * B2: (gone with #867: a message has no "Hand off to an agent")
   no task.
@@ -179,20 +179,21 @@ class DecisionFlows(unittest.TestCase):
         pid = self.ids["project"]
         page.goto(f"/projects/{pid}/tasks?open=decision:{self.ids['bare']}")
         panel = self.panel(page)
-        expect(panel.get_by_role("heading", name="In the Wiki")).to_be_visible()
+        expect(panel.get_by_text(re.compile(r"^Shown on the Wiki page Watering"))).to_be_visible()
         expect(panel.get_by_role("link", name=re.compile("Watering"))).to_be_visible()
         expect(panel.get_by_role("heading", name="Based on")).to_have_count(0)
         expect(panel).not_to_contain_text("No source linked")
         page.goto(f"/projects/{pid}/tasks?open=decision:{self.ids['rule']}")
         panel = self.panel(page)
         expect(panel.locator(".details__eyebrow")).to_contain_text("accepted")
-        expect(panel.get_by_role("heading", name="In the Wiki")).to_be_visible()
+        # On no page, so no sentence about the Wiki (#871).
+        expect(panel.get_by_text(re.compile(r"^Shown on the Wiki page"))).to_have_count(0)
         expect(panel.get_by_role("heading", name="At this pivot")).to_have_count(0)
         expect(panel).not_to_contain_text("No rows on this page")
         page.goto(f"/projects/{pid}/tasks?open=result:{self.ids['result']}")
         panel = self.panel(page)
         expect(panel.locator(".details__lead")).to_contain_text("Readings within 2 %")
-        expect(panel.get_by_role("heading", name="In the Wiki")).to_be_visible()
+        expect(panel.get_by_text(re.compile(r"^Shown on the Wiki page"))).to_have_count(0)
         expect(panel.get_by_role("heading", name="Evidence")).to_have_count(0)
         expect(panel.get_by_role("heading", name="Reports on")).to_have_count(0)
         expect(panel).not_to_contain_text("No evidence linked")
@@ -238,7 +239,9 @@ class DecisionFlows(unittest.TestCase):
         pid = self.ids["project"]
         page.goto(f"/projects/{pid}?open=result:{self.ids['result']}")
         panel = self.panel(page)
-        expect(panel).to_contain_text("Not in the Wiki yet.")
+        # A result on no page says nothing about the Wiki; the way to add it is the button (#871).
+        expect(panel).not_to_contain_text("Shown on the Wiki page")
+        expect(panel).not_to_contain_text("In the Wiki")
         panel.get_by_role("button", name="Add to a Wiki page", exact=True).click()
         form = page.locator("#details form.wd")
         page_select = form.get_by_label("Wiki page", exact=True)
@@ -293,7 +296,7 @@ class DecisionFlows(unittest.TestCase):
         panel = self.panel(page)
         expect(panel.get_by_role("heading", level=3, name="Propose a decision")).to_be_visible()
         expect(panel).not_to_contain_text("New proposal")
-        select = panel.get_by_label("Replaces", exact=True)
+        select = panel.get_by_label("Does it replace an earlier one?", exact=True)
         expect(select).to_be_enabled()
         expect(panel.get_by_role("navigation", name="Choices it can replace")).to_have_count(0)
 

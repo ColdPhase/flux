@@ -156,7 +156,7 @@ class NativeDetailsJourney(unittest.TestCase):
         panel=page.locator("#details .wd");self.choices_ready(panel,"Choices it can replace")
         panel.get_by_label("Decision",exact=True).fill("Keep a manual off switch after measuring both shields")
         why=panel.get_by_label("Why",exact=True);why.fill("Retain the complete earlier measurements before changing the cable")
-        nav=panel.get_by_role("navigation",name="Choices it can replace");select=panel.get_by_label("Replaces",exact=True);seen={value for value in values(select) if value}
+        nav=panel.get_by_role("navigation",name="Choices it can replace");select=panel.get_by_label("Does it replace an earlier one?",exact=True);seen={value for value in values(select) if value}
         nav.get_by_role("button",name="Next",exact=True).click();self.choices_ready(panel,"Choices it can replace")
         seen.update(value for value in values(select) if value);self.assertEqual(seen,{item["id"] for item in self.rules})
         chosen=self.rules[0];choose(select, chosen["id"]);expect(panel.get_by_role("button",name="Propose decision",exact=True)).to_be_enabled()
@@ -169,33 +169,30 @@ class NativeDetailsJourney(unittest.TestCase):
         self.assertEqual(proposal["supersedes"],chosen["id"]);self.assertEqual(proposal["rationale"],"Retain the complete earlier measurements before changing the cable")
         self.__class__.pivot=proposal
 
-    def test_05_native_pivot_keeps_off_page_choices_and_earlier_full_reason(self):
+    def test_05_a_replacing_decision_names_what_it_replaces_and_moves_no_task(self):
         page=self.page();panel=self.open(page,"decision",self.pivot["id"])
-        expect(panel).to_contain_text(self.rules[0]["rationale"]);self.choices_ready(panel,"Pivot work pages")
-        groups=panel.get_by_role("radiogroup");first=groups.first;keep_name=first.get_attribute("aria-label");first.get_by_role("radio",name="Still applies",exact=True).check()
-        nav=panel.get_by_role("navigation",name="Pivot work pages");nav.get_by_role("button",name="Next",exact=True).click();self.choices_ready(panel,"Pivot work pages")
-        park_group=panel.get_by_role("radiogroup").last;park_name=park_group.get_attribute("aria-label");park_group.get_by_role("radio",name="Park",exact=True).check()
-        nav.get_by_role("button",name="Previous",exact=True).click();self.choices_ready(panel,"Pivot work pages")
-        expect(panel.get_by_role("radiogroup",name=keep_name,exact=True).get_by_role("radio",name="Still applies",exact=True)).to_be_checked()
-        expect(panel).to_contain_text("1 still apply · 1 parked")
-        # The answer stays at the top, as on the Inbox card (#763 D1); the choices scroll in their own box below it.
-        panel.get_by_role("button",name="Accept and pivot",exact=True).scroll_into_view_if_needed()
-        self.in_panel_viewport(page,panel.get_by_role("button",name="Accept and pivot",exact=True))
-        self.in_panel_viewport(page,panel.locator(".wd-decision-identity"))
-        self.assertLessEqual(panel.locator(".wd-decide").bounding_box()["y"]+panel.locator(".wd-decide").bounding_box()["height"],panel.locator(".wd-pivot").bounding_box()["y"],"the answer comes before the choice scrollport")
-        shot(page,"bounded-details-pivot-desktop")
-        phone=self.page(True);mobile=self.open(phone,"decision",self.pivot["id"]);self.choices_ready(mobile,"Pivot work pages")
-        mobile.get_by_role("radiogroup").first.get_by_role("radio",name="Still applies",exact=True).check()
-        mobile.get_by_role("button",name="Accept and pivot",exact=True).scroll_into_view_if_needed()
-        self.in_panel_viewport(phone,mobile.get_by_role("button",name="Accept and pivot",exact=True))
-        self.in_panel_viewport(phone,mobile.locator(".wd-decision-identity"))
-        self.assertLessEqual(mobile.locator(".wd-decide").bounding_box()["y"]+mobile.locator(".wd-decide").bounding_box()["height"],mobile.locator(".wd-pivot").bounding_box()["y"],"the answer comes before the phone's choice scrollport")
-        shot(phone,"bounded-details-pivot-phone")
-        panel.get_by_role("button",name="Accept and pivot",exact=True).click()
+        before=api(self.ctx,"GET",self.root+"/work?limit=100")["items"]
+        # One plain sentence names the decision it replaces, with its full earlier reason; there is nothing to decide about tasks (#871).
+        expect(panel.get_by_text(f"This replaces the decision {self.rules[0]['title']}")).to_be_visible()
+        expect(panel).to_contain_text(self.rules[0]["rationale"])
+        for gone in ("What happens to current work?","At this pivot"):expect(panel.get_by_role("heading",name=gone)).to_have_count(0)
+        expect(panel.get_by_role("radiogroup")).to_have_count(0)
+        expect(panel.get_by_role("button",name="Accept and pivot",exact=True)).to_have_count(0)
+        # The answer stays at the top, as on the Inbox card (#763 D1).
+        accept=panel.get_by_role("button",name="Accept",exact=True);accept.scroll_into_view_if_needed()
+        self.in_panel_viewport(page,accept);self.in_panel_viewport(page,panel.locator(".wd-decision-identity"))
+        shot(page,"bounded-details-replaces-desktop")
+        phone=self.page(True);mobile=self.open(phone,"decision",self.pivot["id"])
+        mobile.get_by_role("button",name="Accept",exact=True).scroll_into_view_if_needed()
+        self.in_panel_viewport(phone,mobile.get_by_role("button",name="Accept",exact=True));self.in_panel_viewport(phone,mobile.locator(".wd-decision-identity"))
+        shot(phone,"bounded-details-replaces-phone")
+        accept.click()
         expect(panel).to_contain_text("Decision · accepted")
-        work=api(self.ctx,"GET",self.root+"/work?limit=100")["items"];kept=next(item for item in work if item["title"]==keep_name);parked=next(item for item in work if item["title"]==park_name)
-        self.assertEqual(parked["parked"]["decisionId"],self.pivot["id"]);self.assertTrue(any(link["role"]=="still_applies" and link["to"]["id"]==kept["id"] for link in self.native("decision",self.pivot["id"])["links"]))
-        expect(panel.get_by_role("region",name="At this pivot")).to_contain_text(park_name)
+        after=api(self.ctx,"GET",self.root+"/work?limit=100")["items"]
+        self.assertEqual([(item["id"],item["version"],item["parked"]) for item in before],[(item["id"],item["version"],item["parked"]) for item in after],"no task was moved or parked")
+        self.assertFalse(any(link["role"]=="still_applies" for link in self.native("decision",self.pivot["id"])["links"]))
+        self.assertEqual(self.native("decision",self.rules[0]["id"])["status"],"superseded")
+        expect(panel.get_by_role("button",name=self.rules[0]["title"],exact=True)).to_be_visible()
 
     def test_06_native_version_conflict_retains_result_text_and_requires_explicit_finish_change(self):
         work=self.works[-2];page=self.page();panel=self.open(page,"work",work["id"]);panel.get_by_role("button",name="Attach a result",exact=True).click()
@@ -263,7 +260,7 @@ class NativeDetailsJourney(unittest.TestCase):
         page.go_back();expect(page).to_have_url(re.compile(f"/projects/{self.project}/tasks"));expect(panel).to_be_visible();self.ready(panel)
         panel.get_by_role("region",name="Reports on").get_by_role("button",name=re.compile("Compare both shielded")).click()
         panel=page.locator("#details .wd");expect(panel).to_have_attribute("data-detail-id",self.target["id"]);self.ready(panel)
-        expect(panel).to_contain_text("Everyone in Library lighting measurements")
+        expect(panel).not_to_contain_text("Everyone in Library lighting measurements")
         expect(panel.get_by_role("heading",name="Not available",exact=True)).to_have_count(0)
 
     def test_09_doc_source_link_does_not_promise_a_missing_section_or_new_version(self):
@@ -283,27 +280,6 @@ class NativeDetailsJourney(unittest.TestCase):
             expect(page.locator(".wiki-editor .cm-md-h").filter(has_text=re.compile("^"+re.escape(f"Result: {result['title']}")+"$"))).to_be_visible()
             saved=api(self.ctx,"GET",f"/api/v1/docs/{doc['id']}")
             self.assertEqual(saved["version"],doc["version"]+(0 if unchanged else 1));doc=saved
-
-    def test_10_pivot_selection_limit_is_enforced_across_pages_and_native_command(self):
-        rule=api(self.ctx,"POST",self.root+"/decisions",{"title":"Retain the measured shield and compare bounded work choices","supersedes":self.rules[-1]["id"]},201)
-        page=self.page();panel=self.open(page,"decision",rule["id"]);self.choices_ready(panel,"Pivot work pages")
-        groups=panel.get_by_role("radiogroup");self.assertEqual(groups.count(),50)
-        for group in groups.all():group.get_by_role("radio",name="Still applies",exact=True).check()
-        expect(panel).to_contain_text("50 still apply · 0 parked")
-        nav=panel.get_by_role("navigation",name="Pivot work pages");nav.get_by_role("button",name="Next",exact=True).click();self.choices_ready(panel,"Pivot work pages")
-        expect(groups.first.get_by_role("radio",name="Still applies",exact=True)).to_be_disabled()
-        groups.first.get_by_role("radio",name="Park",exact=True).check();expect(panel).to_contain_text("50 still apply · 1 parked")
-        nav.get_by_role("button",name="Previous",exact=True).click();self.choices_ready(panel,"Pivot work pages")
-        groups.first.get_by_role("radio",name="Unchanged",exact=True).check();expect(panel).to_contain_text("49 still apply · 1 parked")
-        nav.get_by_role("button",name="Next",exact=True).click();self.choices_ready(panel,"Pivot work pages")
-        expect(groups.first.get_by_role("radio",name="Still applies",exact=True)).to_be_enabled()
-        groups.first.get_by_role("radio",name="Still applies",exact=True).check();groups.nth(1).get_by_role("radio",name="Park",exact=True).check()
-        expect(panel).to_contain_text("50 still apply · 1 parked")
-        panel.get_by_role("button",name="Accept and pivot",exact=True).click();expect(panel).to_contain_text("Decision · accepted")
-        saved=self.native("decision",rule["id"])
-        self.assertEqual(sum(link["role"]=="still_applies" for link in saved["links"]),50)
-        parked=api(self.ctx,"GET",self.root+"/work?limit=100")["items"]
-        self.assertEqual(sum(bool(item["parked"] and item["parked"]["decisionId"]==rule["id"]) for item in parked),1)
 
     def test_11_empty_relations_keep_loading_failure_and_retry_visible(self):
         task = api(self.ctx, "POST", self.root + "/work", {"title": "Record the next shield reading"}, 201)
@@ -353,8 +329,8 @@ class NativeDetailsJourney(unittest.TestCase):
                 self.ready(panel)
                 expect(nav).to_have_count(0)
                 expect(panel).not_to_contain_text("No rows on this page")
-                # A task added on Tasks has no source: its "Came from" row is hidden (#868).
-                expect(panel.locator(".wd-row dt", has_text="Came from")).to_have_count(0)
+                # A task added on Tasks has no source: its "From" row is hidden (#868).
+                expect(panel.locator(".wd-row dt", has_text="From")).to_have_count(0)
                 shot(page, f"detail-relations-empty-{'phone' if phone else 'desktop'}")
 
                 page.unroute("**/work-relations?**", hold)
@@ -375,7 +351,7 @@ class NativeDetailsJourney(unittest.TestCase):
                 panel.get_by_role("button", name="Refresh relationships", exact=True).click()
                 self.ready(panel)
                 expect(nav).to_have_count(0)
-                expect(panel.locator(".wd-row dt", has_text="Came from")).to_have_count(0)
+                expect(panel.locator(".wd-row dt", has_text="From")).to_have_count(0)
         self.assertEqual(self.native("work", task["id"]), before, "empty/read/retry never changes native work or links")
 
     def test_12_empty_later_relation_page_still_returns_to_first_page(self):

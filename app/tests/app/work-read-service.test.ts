@@ -150,10 +150,9 @@ test('all required selectors reach the outside fence as the original normalized 
   }, { check: async (_principal, _pid, _digest, required) => { captured.push(required); return 'contributor'; } });
   await reads.detail(actor, projectId, 'work', id);
   await reads.relations(actor, projectId, new URLSearchParams(`objects=work:${id}`));
-  await reads.view(actor, projectId, new URLSearchParams(`purpose=choices&choice=parked_work&decisionId=${otherId}`));
   await reads.view(actor, projectId, new URLSearchParams(`purpose=choices&choice=result_work&selected=${otherId}`));
   await reads.associations(actor, projectId, new URLSearchParams(`messageIds=${messageId}`));
-  assert.deepEqual(captured, [{ objects: [{ kind: 'work', id }] }, { objects: [{ kind: 'work', id }] }, { parkedDecisionId: otherId }, { objects: [{ kind: 'work', id: otherId }] }, { sources: { relation: 'source', messageIds: [messageId] } }]);
+  assert.deepEqual(captured, [{ objects: [{ kind: 'work', id }] }, { objects: [{ kind: 'work', id }] }, { objects: [{ kind: 'work', id: otherId }] }, { sources: { relation: 'source', messageIds: [messageId] } }]);
 });
 
 

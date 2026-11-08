@@ -148,18 +148,9 @@ export function returnRows(db: DbExecutor) {
       return byId(rows.map((row) => ({
         id: row.id, projectId: row.projectId, title: row.creationRevertedAt ? `${row.title} · creation undone` : row.title, status: row.status, blocker: row.blocker,
         ownerKey: row.ownerUserId ? actorKey('human', row.ownerUserId) : row.ownerAgentId ? actorKey('agent', row.ownerAgentId) : null,
-        createdByKey: actorKey(row.createdByKind, row.createdById), parkedByDecisionId: row.parkedByDecisionId, createdAt: row.createdAt,
+        createdByKey: actorKey(row.createdByKind, row.createdById), createdAt: row.createdAt,
         dueOn: row.dueOn ?? null,
       })));
-    },
-
-    /** Work a decision parks now, looked up by project first (`project_work_items_project_idx`). */
-    async parkedWork(projectIds: string[], decisionIds: string[]) {
-      if (!projectIds.length || !decisionIds.length) return [];
-      const w = schema.projectWorkItems;
-      const rows = await db.select({ id: w.id, projectId: w.projectId, decisionId: w.parkedByDecisionId }).from(w)
-        .where(and(inArray(w.projectId, projectIds), inArray(w.parkedByDecisionId, decisionIds)));
-      return rows.map((row) => ({ id: row.id, projectId: row.projectId, decisionId: row.decisionId! }));
     },
 
     async decisions(ids: string[]) {
