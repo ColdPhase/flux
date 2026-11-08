@@ -1,10 +1,10 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { AgentOauthFlow } from '@flux/core';
-import { oauthFingerprint, oauthFlow, verifiedOauthQuery } from './oauth-query.js';
+import { oauthFlow, verifiedOauthQuery } from './oauth-query.js';
 
-export interface OauthRequestContext { fingerprint: string; flow: AgentOauthFlow | null; clearedSessionId: string | null;
-  /** The post-login step: the client's full request is not yet what the person grants (#660); consent narrows it. */
-  continuing?: boolean }
+export interface OauthRequestContext { clientId: string; flow: AgentOauthFlow | null; clearedSessionId: string | null;
+  /** The person's decision on the consent page: only an approval may make a connection (#859). */
+  consenting: boolean }
 /** Composed per auth instance, never populated from an incoming header or shared mutable value. */
 export const createOauthRequests = () => new AsyncLocalStorage<Readonly<OauthRequestContext>>();
 export type OauthRequests = ReturnType<typeof createOauthRequests>;
@@ -19,9 +19,9 @@ export async function oauthRequestContext(url: URL, body: unknown, secret: strin
     const params = await verifiedOauthQuery(query, secret);
     const flow = params ? oauthFlow(params, resource) : null;
     if (!params || !flow) throw new Error('Invalid OAuth query');
-    return { fingerprint: flow.fingerprint, flow, clearedSessionId: params.get('ba_pl'), continuing: url.pathname.endsWith('/oauth2/continue') };
+    return { clientId: flow.clientId, flow, clearedSessionId: params.get('ba_pl'), consenting: url.pathname.endsWith('/oauth2/consent') };
   }
-  if (url.pathname.endsWith('/oauth2/authorize'))
-    return { fingerprint: oauthFingerprint(url.searchParams), flow: null, clearedSessionId: null };
+  const clientId = url.pathname.endsWith('/oauth2/authorize') ? url.searchParams.get('client_id') : null;
+  if (clientId) return { clientId, flow: null, clearedSessionId: null, consenting: false };
   return undefined;
 }

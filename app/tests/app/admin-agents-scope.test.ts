@@ -3,11 +3,13 @@ import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { Conversation, Page, Project, Workspace } from '@flux/contracts';
 import { evaluateProject, type Principal } from '@flux/core';
-import { accessReader, assistantProjectIds, memberFilter, schema, sql } from '@flux/db';
+import { accessReader, memberFilter, reachableProjectIds, schema, sql } from '@flux/db';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { searchUseCases } from '../../apps/server/src/search/adapters.js';
 import { SearchCursorCodec } from '../../apps/server/src/search/cursor.js';
-import { db } from './support/db.js';
+import { db, pool } from './support/db.js';
+import { agentConnection } from './support/mcp-actions.js';
+import { toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeConnections, FakeQueue } from './support/personal-runs.js';
 
@@ -81,16 +83,18 @@ describe('a company admin\'s agents reach only the spaces the admin was added to
     assert.ok(asked.run.id, 'in Everyone it works');
   });
 
-  test('local clients: a connection selects only spaces the admin belongs to, and the assistant\'s selection is the same list', async () => {
-    const refused = await mira.browser.request('POST', '/api/v1/agent-connections', { body: { agentId: agents.mira, selectedProjectIds: [closed.id], scopes: ['flux.context.read'] } });
-    assert.equal(refused.status, 404, refused.text);
-    const accepted = await mira.browser.request('POST', '/api/v1/agent-connections', { body: { agentId: agents.mira, selectedProjectIds: [open.id], scopes: ['flux.context.read'] } });
-    assert.equal(accepted.status, 201, accepted.text);
-    // The assistant's own selection is every space its owner can see now, and for an admin that is the spaces she belongs to.
+  test('local clients: a signed-in client reaches only spaces the admin belongs to, and the assistant\'s reach is the same list', async () => {
+    const client = await agentConnection(pool, mira.browser, agents.mira, [open.id]);
+    const listed = (toolValue(await client.tool('flux_list_contexts', {})).projects as { id: string }[]).map((entry) => entry.id);
+    assert.ok(!listed.includes(closed.id) && listed.includes(open.id), 'the client lists only the space she belongs to');
+    const refused = await client.raw('flux_bootstrap', { projectId: closed.id, clientSessionId: randomUUID() });
+    assert.ok(refused.status !== 200 || (refused.message?.result as { isError?: boolean } | undefined)?.isError === true, 'and is refused in the closed space');
+    // The assistant's reach is every space its owner belongs to now, and for an admin that is the spaces she was added to.
     const assistant = (await db.execute<{ id: string }>(sql`SELECT id FROM agent_connections WHERE owner_user_id = ${mira.id} AND compute_source = 'owner_assistant' LIMIT 1`)).rows[0];
     assert.ok(assistant, 'her assistant has a connection');
-    const selected = await db.transaction((tx) => assistantProjectIds(tx, assistant.id));
-    assert.ok(selected && !selected.includes(closed.id) && selected.includes(open.id), 'the assistant\'s projects leave out the closed space');
+    const reach = await db.transaction((tx) => reachableProjectIds(tx, assistant.id));
+    assert.ok(!reach.includes(closed.id) && reach.includes(open.id), 'the assistant\'s projects leave out the closed space');
+    assert.deepEqual(await db.transaction((tx) => reachableProjectIds(tx, client.connectionId)), reach, 'a client and the assistant reach the same list');
   });
 
   test('Add me: once the admin adds herself to the closed space her agents work there, and only there', async () => {
@@ -100,8 +104,8 @@ describe('a company admin\'s agents reach only the spaces the admin was added to
     assert.deepEqual(await found(agentOf('mira')), ['Tidal closed', 'Tidal open']);
     assert.equal((await level(agentOf('mira'), second.id)).allowed, false, 'not in the other closed space');
     assert.equal((await level(agentOf('ari'), closed.id)).allowed, false, 'and Ari\'s agent is still outside: it follows its own owner');
-    const accepted = await mira.browser.request('POST', '/api/v1/agent-connections', { body: { agentId: agents.mira, selectedProjectIds: [closed.id], scopes: ['flux.context.read'] } });
-    assert.equal(accepted.status, 201, accepted.text);
+    const client = await agentConnection(pool, mira.browser, agents.mira, [closed.id]);
+    assert.ok((toolValue(await client.tool('flux_list_contexts', {})).projects as { id: string }[]).some((entry) => entry.id === closed.id), 'a local client works in the space she joined');
     const asked = await runs.invoke(human(mira), closedTalk.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'And now?' });
     assert.ok(asked.run.id, '/ai works in the space she joined');
   });

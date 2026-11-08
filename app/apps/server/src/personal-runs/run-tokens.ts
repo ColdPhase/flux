@@ -1,8 +1,8 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { assistantRunScopes, assistantRunTools, personalRunTokenPath, RUN_TOKEN_LIMITS, type PersonalRunTokenGrant } from '@flux/contracts';
+import { assistantRunTools, personalRunTokenPath, RUN_TOKEN_LIMITS, type PersonalRunTokenGrant } from '@flux/contracts';
 import { redactSecrets } from '@flux/core';
-import { lockAgentMcpPolicy, personalRunTokenRows, spaceAi, type Database } from '@flux/db';
+import { personalRunTokenRows, spaceAi, type Database } from '@flux/db';
 import type { FluxAuth } from '../identity/auth.js';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
 
@@ -14,7 +14,7 @@ import { createAgentConnectionStore } from '../agent-connection/store.js';
 // the run keeps its id (`jti`), its expiry and the exact tools it was minted for.
 //
 // Claims: `sub` and `flux_owner_user_id` = the owner, `flux_connection_id` = the assistant connection,
-// `scope` = the scopes the run's tools need (reads, and `flux.action.execute` with change tools, A3), `flux_run_id`,
+// no scope (the run's exact tools are stored with its mint and listed by the route, A3), `flux_run_id`,
 // `flux_place` = the run's project and conversation, audience the Flux MCP resource, lifetime no longer
 // than the run's clock.
 
@@ -45,12 +45,10 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       // access only: the assistant reaches what its owner can (F-036 AG-3).
       const grant = await createAgentConnectionStore(tx).grantForRun(run.ownerUserId, connectionId);
       if (!grant || grant.connection.id !== connectionId || grant.connection.agentId !== run.agentId || grant.connection.computeSource !== 'owner_assistant') return null;
-      const policy = await lockAgentMcpPolicy(tx, connectionId);
-      if (!policy) return null;
       // The run's exact tools: reads, and the changes unless its "What it may do" is Only read (F-036 AG-3).
       // An answer to another agent's question only reads, whatever the agent may do (TA-3: a question is not an instruction).
       const readOnly = grant.connection.mayDo === 'read' || run.kind === 'task_answer' || run.reactionAction && ['tell', 'draft_reply', 'check_task'].includes(run.reactionAction);
-      const tools = assistantRunTools(policy, readOnly ? ['flux.context.read'] : grant.connection.scopes);
+      const tools = assistantRunTools(readOnly ? 'read' : grant.connection.mayDo);
       let context: string | undefined;
       if (run.reactionTaskId) {
         if (!githubFacts) return null;
@@ -69,7 +67,7 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
     const { baseURL } = await auth.$context;
     const { token } = await auth.api.signJWT({ body: { payload: {
       sub: minted.run.ownerUserId, flux_owner_user_id: minted.run.ownerUserId, flux_connection_id: minted.connectionId,
-      scope: assistantRunScopes(minted.tools).join(' '), flux_run_id: minted.run.id, flux_place: { project: minted.run.projectId, conversation: minted.run.conversationId },
+      flux_run_id: minted.run.id, flux_place: { project: minted.run.projectId, conversation: minted.run.conversationId },
       jti: minted.jti, iat: Math.floor(Date.now() / 1000), exp: Math.floor(minted.expiresAt.getTime() / 1000),
       // The MCP resource server requires an `azp` (the party the token was issued to) since Better Auth 1.7.18. A run token has no
       // OAuth client, so it names its issuer's own flow; no client of that id exists, so nothing else accepts it as a client's.

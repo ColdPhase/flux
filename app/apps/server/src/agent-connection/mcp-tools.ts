@@ -52,9 +52,9 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { disp
     instructions: run ? RUN_SERVER_INSTRUCTIONS : coworkServerInstructions(), supportedProtocolVersions: [...FLUX_MCP_PROTOCOL_VERSIONS],
     maxToolInputElements: MCP_MAX_TOOL_INPUT_ELEMENTS,
   });
-  const tools = agentToolRegistry(server, claims.dispatch, run ? (result) => boundRunResult(db, run.id, result as { content?: unknown }) : undefined, claims.scopes, run ? { projectId: run.projectId } : undefined);
+  const tools = agentToolRegistry(server, claims.dispatch, run ? (result) => boundRunResult(db, run.id, result as { content?: unknown }) : undefined, run ? { projectId: run.projectId } : undefined);
   registerAgentPlaybook(run ? toolsOnly(server) : server, tools, db, claims);
-  registerAgentDomainReads(tools.forScope('flux.context.read'), db, claims, cursorSecret);
+  registerAgentDomainReads(tools.forAccess('read'), db, claims, cursorSecret);
   registerAgentBootstrap(tools, db, claims);
   registerAgentWorkActions(tools, db, claims);
   registerAgentMapActions(tools, db, claims);
@@ -64,9 +64,9 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { disp
   registerAgentCoworkActions(tools, db, claims, cursorSecret);
   registerAgentGithubActions(tools, db, claims, github);
   registerAgentWebReads(tools, db, claims, webReader);
-  tools.forScope('flux.proposal.write').registerTool('flux_create_proposal', {
+  tools.forAccess('write').registerTool('flux_create_proposal', {
     title: 'Propose a sourced project action',
-    description: 'Submit a human-reviewable suggestion based on the current version of a selected project material.',
+    description: 'Submit a human-reviewable suggestion based on the current version of a project material.',
     inputSchema: z.object({
       projectId: z.uuid(), materialId: z.uuid(), version: z.int().min(1), clientCommandId: z.uuid(),
       fact: z.string().min(1).max(10_000), interpretation: z.string().min(1).max(10_000),
@@ -75,7 +75,7 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { disp
     annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
   }, async ({ projectId, materialId, version, clientCommandId, fact, interpretation, suggestedAction }) => {
     try {
-      const proposal = await withAgentConnection(db, claims, 'flux.proposal.write', projectId, async ({ tx, connection }) => {
+      const proposal = await withAgentConnection(db, claims, 'write', projectId, async ({ tx, connection }) => {
         const proposals = agentProposalUseCases(agentProposalRepository(tx, {
           async authorizeWrite(principal, id, transaction) {
             const checked = enforce(await evaluateProject(principal, 'project.write', id, accessReader(transaction), { lock: true }), 'project');

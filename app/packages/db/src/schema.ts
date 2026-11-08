@@ -770,7 +770,7 @@ export const projectFiles = pgTable('project_files', {
   check('project_file_exact_uploader', sql`num_nonnulls(${table.uploaderId}, ${table.uploaderAgentId}) = 1`),
 ]);
 
-// One person's selected agent, scopes and project ceiling for an external MCP client (#52).
+// One person's agent for a local MCP client (#52). It reaches what its owner reaches; "What it may do" decides the rest (#859).
 export const agentConnections = pgTable('agent_connections', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
@@ -779,7 +779,6 @@ export const agentConnections = pgTable('agent_connections', {
   name: text('name').notNull().default('External connection'),
   clientDesignation: text('client_designation', { enum: ['claude_code', 'codex', 'other'] }).notNull().default('other'),
   computeSource: text('compute_source', { enum: ['user_operated_claude_code', 'user_operated_external_client', 'owner_assistant'] }).notNull().default('user_operated_external_client'),
-  scopes: text('scopes', { enum: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] }).array().notNull(),
   /** "What it may do" (0003, F-036 AG-3, #855): Only read, Do it and tell me, or Ask me first. */
   mayDo: text('may_do', { enum: AGENT_MAY_DO }).notNull().default('act'),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
@@ -803,50 +802,7 @@ export const assistantSettings = pgTable('assistant_settings', {
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }),
   foreignKey({ columns: [table.workspaceId, table.connectionId], foreignColumns: [agentConnections.workspaceId, agentConnections.id] }).onDelete('cascade')]);
 
-export const agentConnectionProjects = pgTable('agent_connection_projects', {
-  workspaceId: uuid('workspace_id').notNull(),
-  connectionId: uuid('connection_id').notNull(),
-  projectId: uuid('project_id').notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.connectionId, table.projectId] }),
-  unique().on(table.workspaceId, table.connectionId, table.projectId),
-  foreignKey({ columns: [table.workspaceId, table.connectionId], foreignColumns: [agentConnections.workspaceId, agentConnections.id] }).onDelete('cascade'),
-  foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
-]);
-
-/** Restrictive overlay; original connection/OAuth consent remains immutable. */
-export const agentConnectionMcpPolicies = pgTable('agent_connection_mcp_policies', {
-  connectionId: uuid('connection_id').primaryKey().references(() => agentConnections.id, { onDelete: 'cascade' }),
-  version: integer('version').notNull().default(1),
-  enabledCapabilityIds: text('enabled_capability_ids').array().notNull(),
-  enabledEntryIds: text('enabled_entry_ids').array().notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [
-  check('agent_connection_mcp_policy_version_check', sql`${table.version} > 0`),
-  check('agent_connection_mcp_capability_array_check', sql`cardinality(${table.enabledCapabilityIds}) <= 128 AND array_position(${table.enabledCapabilityIds}, NULL) IS NULL`),
-  check('agent_connection_mcp_entry_array_check', sql`cardinality(${table.enabledEntryIds}) <= 256 AND array_position(${table.enabledEntryIds}, NULL) IS NULL`),
-]);
-export const agentConnectionMcpProjects = pgTable('agent_connection_mcp_projects', {
-  connectionId: uuid('connection_id').notNull().references(() => agentConnectionMcpPolicies.connectionId, { onDelete: 'cascade' }),
-  workspaceId: uuid('workspace_id').notNull(),
-  projectId: uuid('project_id').notNull(),
-}, (table) => [
-  primaryKey({ columns: [table.connectionId, table.projectId] }),
-  foreignKey({ columns: [table.workspaceId, table.connectionId, table.projectId],
-    foreignColumns: [agentConnectionProjects.workspaceId, agentConnectionProjects.connectionId, agentConnectionProjects.projectId] }).onDelete('cascade'),
-]);
-
-// A single immutable OAuth choice per browser session prevents concurrent consent tabs
-// from silently changing which agent and project ceiling receives a token.
-export const agentOauthSelections = pgTable('agent_oauth_selections', {
-  sessionId: text('session_id').primaryKey().references(() => authSessions.id, { onDelete: 'cascade' }),
-  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
-  connectionId: uuid('connection_id').notNull().references(() => agentConnections.id, { onDelete: 'cascade' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
-/** Provider references persist independently of short-lived browser flow choices. */
+/** One durable binding of an OAuth client to the person's connection for it; the token's grant reference points here. */
 export const agentOauthBindings = pgTable('agent_oauth_bindings', {
   id: uuid('id').primaryKey(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
@@ -871,15 +827,6 @@ export const oauthGrantAuthentication = pgTable('oauth_grant_authentication', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const agentOauthFlows = pgTable('agent_oauth_flows', {
-  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
-  sessionId: text('session_id').notNull().references(() => authSessions.id, { onDelete: 'cascade' }),
-  fingerprint: text('fingerprint').notNull(),
-  bindingId: uuid('binding_id').notNull().references(() => agentOauthBindings.id),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [primaryKey({ columns: [table.ownerUserId, table.sessionId, table.fingerprint] })]);
-
 /** Server-issued runtime identity, bound to one actual OAuth binding/generation. */
 export const agentRuntimeSessions = pgTable('agent_runtime_sessions', {
   id: uuid('id').primaryKey(),
@@ -890,7 +837,6 @@ export const agentRuntimeSessions = pgTable('agent_runtime_sessions', {
   connectionId: uuid('connection_id').notNull(),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id),
   agentId: uuid('agent_id').notNull(),
-  scopes: text('scopes').array().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   revokedAt: timestamp('revoked_at', { withTimezone: true }),
@@ -1937,7 +1883,6 @@ export const assistantChanges = pgTable('assistant_changes', {
   waitReason: text('wait_reason', { enum: ASSISTANT_WAIT_REASONS }),
   authority: text('authority', { enum: ['owner_request', 'owner_approval'] }),
   preparedCommand: jsonb('prepared_command').$type<{ tool: string; args: Record<string, unknown> }>(),
-  policyVersion: integer('policy_version').notNull(),
   beforeVersion: integer('before_version'),
   afterVersion: integer('after_version'),
   receipt: jsonb('receipt').$type<Record<string, unknown>>(),

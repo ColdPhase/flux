@@ -24,9 +24,8 @@ async function bounded<T>(pending: Promise<T>, label: string): Promise<T> {
 }
 
 async function cacheFixture() {
-  const f = await actionScene(pool); const grant = await f.grant('work.create', 'execute');
-  const created = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
-    grantId: grant.id, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], task: { title: 'Actual native cached trial' } }));
+  const f = await actionScene(pool);
+  const created = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], task: { title: 'Actual native cached trial' } }));
   const item = await f.read(String(created.workId)) as unknown as WorkItem;
   const owner = (await pool.query('SELECT owner_user_id FROM agents WHERE id=$1', [f.agentId])).rows[0].owner_user_id as string;
   const body = { title: item.title }; const key = randomUUID(); const url = `/api/v1/projects/${f.projectId}/work`;

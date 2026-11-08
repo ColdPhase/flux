@@ -35,12 +35,10 @@ const PERSON = 'Belongs to a person, not to a space; what an agent does in a spa
 /** Keyed by `METHOD path` exactly as the route is registered. */
 export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   // External agent connections and consent (F-016, #52/#152).
-  'POST /api/v1/agent-connections': exempt(PERSON),
   'GET /api/v1/agent-connections': exempt('The owner\'s own connections, so they can see and remove them'),
   // "What it may do" (F-036 #855): a setting of the agent itself, which belongs to a person.
   'PATCH /api/v1/agent-connections/:connectionId': exempt(PERSON),
   'DELETE /api/v1/agent-connections/:connectionId': exempt(REDUCES),
-  'POST /api/v1/agent-connections/:connectionId/select-for-oauth': exempt(PERSON),
   'GET /api/v1/projects/:projectId/agent-proposals': gated('params', 'projectId', 'project'),
   'GET /api/v1/projects/:projectId/agents': gated('params', 'projectId', 'project'),
   'GET /api/v1/working-agents': useCase('The person\'s working agents across spaces; work in a space with AI off is left out'),
@@ -50,8 +48,6 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'POST /api/v1/projects/:projectId/agent-pauses': gated('params', 'projectId', 'project', { body: 'paused', equals: false }),
   'GET /api/v1/projects/:projectId/agent-questions': gated('params', 'projectId', 'project'),
   'POST /api/v1/agent-questions/:questionId/answer': gated('params', 'questionId', 'agent_question'),
-  'GET /api/v1/agent-connections/:connectionId/permissions': exempt(PERSON),
-  'PATCH /api/v1/agent-connections/:connectionId/permissions': exempt(PERSON),
   // Background comparisons (O-007, #58).
   'GET /api/v1/background-comparisons/runtime': exempt(ACCOUNT),
   'POST /api/v1/background-compute-connections': exempt(ACCOUNT),
@@ -158,7 +154,6 @@ const SETTINGS = 'Account or company settings; no AI read or action';
 const ROSTER = 'Human management of identities; the names are metadata for people, shown to members whatever the AI state';
 export const AI_ADJACENT_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'GET /api/v1/agent-oauth/consent-context': exempt(PERSON),
-  'GET /api/v1/agent-oauth/held-connection': exempt(PERSON),
   'GET /api/v1/workspaces/:workspaceId/agents': exempt(ROSTER),
   'POST /api/v1/workspaces/:workspaceId/agents': exempt(PERSON),
   'DELETE /api/v1/agents/:agentId': exempt(REDUCES),

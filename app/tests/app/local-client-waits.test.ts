@@ -21,8 +21,8 @@ let owner: Person;
 let peer: Person;
 const setMayDo = async (mayDo: 'read' | 'act' | 'ask') => expectStatus(await f.owner.request('PATCH', agentConnectionPath(f.connectionId), { body: { mayDo } }), 200);
 const create = (title: string, clientCommandId = randomUUID()) => f.tool('flux_create_task', { projectId: f.projectId, clientCommandId, task: { title } });
-const rows = async () => (await pool.query(`SELECT id, state, wait_reason, authority, operation, run_id, connection_id, decided_by, client_command_id FROM assistant_changes WHERE connection_id = $1 ORDER BY created_at, id`, [f.connectionId])).rows as
-  { id: string; state: string; wait_reason: string | null; authority: string | null; operation: string; run_id: string | null; connection_id: string; decided_by: string | null; client_command_id: string }[];
+const rows = async () => (await pool.query(`SELECT id, state, wait_reason, refusal, authority, operation, run_id, connection_id, decided_by, client_command_id FROM assistant_changes WHERE connection_id = $1 ORDER BY created_at, id`, [f.connectionId])).rows as
+  { id: string; state: string; wait_reason: string | null; refusal: string | null; authority: string | null; operation: string; run_id: string | null; connection_id: string; decided_by: string | null; client_command_id: string }[];
 const titled = async (title: string) => (await pool.query(`SELECT id, owner_user_id, created_by_kind, created_by_id FROM project_work_items WHERE title = $1 AND project_id = $2`, [title, f.projectId])).rows as
   { id: string; owner_user_id: string | null; created_by_kind: string; created_by_id: string }[];
 const reset = async () => { await setMayDo('act'); await pool.query(`DELETE FROM assistant_changes WHERE connection_id = $1`, [f.connectionId]); };
@@ -337,8 +337,9 @@ describe('co-work for another person\'s client waits for the owner\'s OK', () =>
     const before = (await unitsOf(jonas.connectionId)).length;
     await pool.query(`UPDATE cowork_units SET lease_expires_at = now() - interval '1 minute' WHERE id = $1`, [root.unitId]);
     const answer = expectStatus(await decide(owner, waiting!.id, 'apply'), 403) as { error?: string };
-    assert.ok(answer.error, 'the owner is told why');
+    assert.match(String(answer.error), /The claim this was made under has ended, so it can't be made now\. Ask again with a live claim/, 'the owner is told why, in plain words');
     assert.equal((await waitingOf('cowork.unit.create'))[0]!.state, 'refused');
+    assert.match(String((await waitingOf('cowork.unit.create'))[0]!.refusal), /claim this was made under has ended/, 'and the change line says it too');
     assert.equal((await unitsOf(jonas.connectionId)).length, before, 'no unit was given on a claim that had ended');
   });
 });

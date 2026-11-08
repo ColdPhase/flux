@@ -1,6 +1,6 @@
 """Browser regressions for the #763 Part B audit fixes in Home, Inbox, navigation, Projects, Connect and the phone's Search.
 
-Ada owns a project in which her own agent ("Ada's Claude Code") works on a task and asks her questions over a real MCP bearer
+Ada owns a project in which her own agent ("Claude Code") works on a task and asks her questions over a real MCP bearer
 (the same OAuth/PKCE client as test_scenarios). Each test names its finding:
 
 - IN-1/IN-2: an agent's question in Home and the Inbox carries Kreska, the Agent tag, its task and the ready answers; an answer
@@ -27,7 +27,7 @@ import uuid
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot as save_shot, start_forwarder
-from test_scenarios import ACTION_SCOPES, McpAgent
+from test_scenarios import McpAgent
 
 PASSWORD = "a calm home for the garden"
 STAMP = int(time.time() * 1000)
@@ -132,16 +132,15 @@ class HomeInboxNav(unittest.TestCase):
         self.api("ada", "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": PEOPLE["jonas"][1], "role": "member"}, status=201)
         project = self.api("ada", "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Community garden sensors", "visibility": "workspace"}, status=201)
         self.api("ada", "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Cargo bike co-op", "visibility": "workspace"}, status=201)
-        agent = self.api("ada", "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Ada's Claude Code", "owner": "self"}, status=201)
-        connection = self.api("ada", "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "name": "Desk laptop", "clientDesignation": "claude_code",
-                                                                            "selectedProjectIds": [project["id"]], "scopes": ACTION_SCOPES}, status=201)
-        ids.update(workspace=ws["id"], project=project["id"], agent=agent["id"], connection=connection["id"])
+        # Ada's own agent signs in with one click on the consent page (#859), which makes its agent and connection.
+        type(self).agent = McpAgent(self, "ada", project["id"])
+        agent = {"id": self.agent.agent_id}
+        ids.update(workspace=ws["id"], project=project["id"], agent=agent["id"], connection=self.agent.connection_id)
         # The task the agent works on, and its thread, where the agent asks.
         task = self.api("ada", "POST", f"/api/v1/projects/{project['id']}/work", {"title": "Calibrate the probes at two soil depths"}, status=201)
         ids["task"], ids["task_number"] = task["id"], str(task["number"])
         self.api("ada", "POST", f"/api/v1/work/{task['id']}/discussion", {"body": "Offsets for the probes", "clientMessageId": str(uuid.uuid4())})
         ids["thread"] = self.api("ada", "GET", f"/api/v1/work/{task['id']}/discussion", status=200)["conversationId"]
-        type(self).agent = McpAgent(self, "ada", connection["id"], project["id"])
         # A second task held by the agent: the working-agent card (S13).
         held = self.api("ada", "POST", f"/api/v1/projects/{project['id']}/work",
                         {"title": "Log the soil moisture at dawn", "status": "in_progress", "owner": {"kind": "agent", "id": agent["id"]}}, status=201)
@@ -309,7 +308,7 @@ class HomeInboxNav(unittest.TestCase):
         side = page.locator("aside.app__side")
         page.goto("/inbox")
         card = side.locator(".agentlive--agent")
-        expect(card).to_contain_text("Ada's Claude Code")
+        expect(card).to_contain_text("Claude Code")
         elsewhere = card.bounding_box()
         page.goto("/")
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good"))).to_be_visible()
@@ -324,7 +323,7 @@ class HomeInboxNav(unittest.TestCase):
         phone = self.page(phone=True)
         phone.goto("/")
         region = phone.get_by_role("region", name="Your agents working now")
-        expect(region.get_by_role("button", name="Stop Ada's Claude Code")).to_be_visible()
+        expect(region.get_by_role("button", name="Stop Claude Code")).to_be_visible()
         self.no_sideways_scroll(phone)
 
     # ---------------------------------------------------------------- NV-4 / IN-5
@@ -377,14 +376,12 @@ class HomeInboxNav(unittest.TestCase):
     # ---------------------------------------------------------------- AG-1
 
     def test_08_connect_page_does_not_scroll_sideways(self) -> None:
-        # Jonas has no connection yet: the New connection form shows at once, with its selects.
+        # Jonas has no connection yet: the page shows how a client signs in, with its commands, and nothing to fill in (#859).
         page = self.page("jonas")
         page.goto("/connect-agent")
-        expect(page.get_by_role("combobox").first).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Claude Code, Codex or another app on your computer")).to_be_visible()
+        expect(page.get_by_text("claude mcp add --transport http flux", exact=False)).to_be_visible()
         self.no_sideways_scroll(page)
-        field = page.locator("input.ui-select__field").first
-        if field.count():
-            self.assertLessEqual(field.evaluate("el => el.getBoundingClientRect().width"), 1)
         shot(page, "connect-1440")
 
     # ---------------------------------------------------------------- SE-2

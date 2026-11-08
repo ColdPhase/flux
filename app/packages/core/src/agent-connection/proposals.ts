@@ -1,28 +1,26 @@
 import { createHash } from 'node:crypto';
-import type { AgentScope, CreateAgentProposalCommand } from '@flux/contracts';
-import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError } from '../access/errors.js';
+import type { CreateAgentProposalCommand } from '@flux/contracts';
+import { ConflictError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import { isUuid } from '../access/policy.js';
 import type { AgentProposal, Page, PageQuery } from '@flux/contracts';
 import { parsePage } from '../access/validation.js';
 import type { Principal } from '../types.js';
 
-export type { AgentScope } from '@flux/contracts';
-
-/** Verified OAuth selection. The transport constructs this from live consent, never tool input. */
+/**
+ * The verified sign-in of a client: who it acts for and as. It carries no scope and no project list; where it may act is the
+ * owner's rights at the moment of each call, and what it may change is the agent's "What it may do" (F-036 AG-3, #859).
+ */
 export interface AgentConnectionContext {
   connectionId: string;
   ownerUserId: string;
   agentId: string;
-  selectedProjectIds: readonly string[];
-  scopes: readonly AgentScope[];
   computeSource: import('@flux/contracts').ExternalComputeSource;
 }
 
-export function requireAgentSelection(context: AgentConnectionContext, projectId: string, scope: AgentScope): void {
+/** The ids are well formed. Whether the connection's owner can see the project is decided by the access policy, not by a stored list. */
+export function requireAgentProject(context: AgentConnectionContext, projectId: string): void {
   if (!isUuid(context.connectionId)) throw new NotFoundError('Connection', 'CONNECTION_NOT_FOUND');
-  if (!context.scopes.includes(scope)) throw new ForbiddenError('The connection lacks the required scope', 'MCP_SCOPE_REQUIRED');
-  if (!isUuid(projectId) || !context.selectedProjectIds.includes(projectId))
-    throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
+  if (!isUuid(projectId)) throw new NotFoundError('Project', 'PROJECT_NOT_FOUND');
 }
 
 function boundedText(value: unknown, field: string): string {
@@ -62,7 +60,7 @@ export function agentProposalUseCases(port: AgentProposalPort) {
   return {
     async create(connection: AgentConnectionContext, command: CreateAgentProposalCommand): Promise<AgentProposal> {
       const normalized = validateProposalCommand(command);
-      requireAgentSelection(connection, normalized.projectId, 'flux.proposal.write');
+      requireAgentProject(connection, normalized.projectId);
       const result = await port.create(connection, normalized);
       if (result === 'CONNECTION_NOT_FOUND') throw new NotFoundError('Connection', result);
       if (result === 'AGENT_NOT_FOUND') throw new NotFoundError('Agent', result);

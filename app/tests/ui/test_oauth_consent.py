@@ -1,11 +1,13 @@
-"""Browser tests for the agent consent page: where access goes (#287, MCP 2026-07-28 security considerations).
+"""Browser tests for the agent consent page: one decision, and where access goes (#859, #287, MCP 2026-07-28 security considerations).
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh. Browser sessions cannot register
 OAuth clients, so two clients are registered through the token-gated integration fixture (the same
 path a UI scenario uses): "Local CLI" returns to 127.0.0.1 on this computer, and a look-alike named
-"Claude Code" sends access to collector.example.net. Nora authorizes both from her signed-in browser:
-on desktop (1440) the local one is approved without a warning; on a 390 touch phone the web one shows
-its host and a warning, with 16px reading text and 44px buttons (Apple HIG-08/09/14 in
+"Claude Code" sends access to collector.example.net. Nora authorizes both from her signed-in browser.
+Signing in is one click: the page asks nothing to be chosen, only Allow or Deny, and nothing exists
+before Allow (looking at the page or pressing Deny makes no agent and no connection). On desktop (1440)
+the local one is allowed without a warning and signs in again as the same connection; on a 390 touch phone
+the web one shows its host and a warning, with 16px reading text and 44px buttons (Apple HIG-08/09/14 in
 docs/design/apple-hig-mobile.md), and is denied. A page on another origin cannot frame the consent page.
 """
 
@@ -26,14 +28,13 @@ import uuid
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
-from app_select import expect_value
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "a client that says where it goes"
 NORA = {"name": "Nora Lind", "email": f"nora.consent+{int(time.time() * 1000)}@example.test"}
 LOCAL_REDIRECT = "http://127.0.0.1:19737/callback"
 WEB_REDIRECT = "https://collector.example.net/oauth/callback"
-SCOPES = "flux.context.read flux.proposal.write offline_access"
+SCOPES = "offline_access"
 FIXTURE_PATH = "/api/v1/integration/oauth-clients"
 
 
@@ -92,14 +93,17 @@ class OauthConsentJourney(unittest.TestCase):
                                         "code_challenge": challenge, "code_challenge_method": "S256", "state": state,
                                         "scope": scope, "resource": f"{ORIGIN}/mcp", "prompt": "consent"})
         page.goto(f"/api/auth/oauth2/authorize?{query}")
+        # Nothing is chosen first: the client's request leads straight to the one page that asks (#859).
         expect(page.get_by_role("heading", level=1, name=re.compile(r"^Connect .+ to Flux$"))).to_be_visible()
-        page.locator(".connection__saved").filter(has_text="Studio laptop").get_by_role("radio").check()
-        page.get_by_role("button", name="Continue to consent").click()
-        expect(page.get_by_role("heading", level=1, name="Review access before connecting")).to_be_visible()
         return state
 
     def destination(self, page: Page):
         return page.get_by_role("region", name="Where access goes")
+
+    def clients(self, page: Page) -> list[dict]:
+        """The connections of local clients Nora holds now (her assistant's own connection is not a client's)."""
+        return [item for item in self.api(page, "GET", "/api/v1/agent-connections", status=200)
+                if item["computeSource"] != "owner_assistant" and not item.get("revokedAt")]
 
     def test_01_an_owner_and_two_fixture_clients(self) -> None:
         page = self.page(signed_in=False)
@@ -111,10 +115,8 @@ class OauthConsentJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         type(self).state = page.context.storage_state()
         workspace = self.api(page, "POST", "/api/v1/workspaces", {"name": "Lamp workshop"}, status=201)
-        project = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Sensor study", "visibility": "restricted"}, status=201)
-        agent = self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/agents", {"name": "Nora's agent", "owner": "self"}, status=201)
-        self.api(page, "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "name": "Studio laptop", "clientDesignation": "claude_code",
-                 "selectedProjectIds": [project["id"]], "scopes": ["flux.context.read", "flux.proposal.write"]}, status=201)
+        self.api(page, "POST", f"/api/v1/workspaces/{workspace['id']}/projects", {"name": "Sensor study", "visibility": "restricted"}, status=201)
+        self.assertEqual(self.clients(page), [], "no client is connected before one asks")
         # Her session cannot register a client; the test deployment's fixture token can.
         self.api(page, "POST", "/api/auth/oauth2/create-client", {"client_name": "Claude Code", "redirect_uris": [WEB_REDIRECT],
                  "token_endpoint_auth_method": "none"}, status=401)
@@ -123,43 +125,51 @@ class OauthConsentJourney(unittest.TestCase):
             self.ids[key] = self.api(page, "POST", FIXTURE_PATH, {"name": name, "redirectUris": [redirect]}, status=201,
                                      headers={"authorization": f"Bearer {token}"})["clientId"]
 
-    def test_02_desktop_a_local_client_shows_its_loopback_host_without_a_warning(self) -> None:
+    def test_02_desktop_a_local_client_shows_its_loopback_host_without_a_warning_and_allow_connects_it(self) -> None:
         page = self.page()
         page.context.route(f"{LOCAL_REDIRECT}**", lambda route: route.fulfill(body="Connection authorized", content_type="text/plain"))
         state = self.authorize(page, "local", LOCAL_REDIRECT)
         expect(page.get_by_text("Local CLI", exact=True)).to_be_visible()
+        expect(page.locator(".connection__head p")).to_contain_text("wants to sign in. It will act as you.")
         destination = self.destination(page)
         expect(destination).to_be_visible()
         expect(destination.locator("dt")).to_have_text(["Sends access to", "Client details from"])
         expect(destination.locator("dd")).to_have_text(["127.0.0.1:19737", "Registered on this Flux server"])
         expect(destination).to_contain_text("This address is on your own computer")
         expect(page.get_by_role("note")).to_have_count(0)
+        # What it will be: Nora's rights, "What it may do", and waiting for deleting and other people's things. No capability is offered.
+        will = page.get_by_role("list", name="What it will be").get_by_role("listitem")
+        expect(will).to_have_count(3)
+        expect(will.nth(0)).to_contain_text("Acts with your rights")
+        expect(will.nth(1)).to_contain_text("Do it and tell me")
+        expect(will.nth(2)).to_contain_text("wait for your OK")
+        for chooser in ("checkbox", "radio", "combobox", "textbox"):
+            expect(page.get_by_role(chooser)).to_have_count(0)
+        expect(page.get_by_role("button", name="Allow", exact=True)).to_be_visible()
+        expect(page.get_by_role("button", name="Deny", exact=True)).to_be_visible()
+        self.assertEqual(page.locator(".connection .ui-btn--primary").count(), 1, "one primary on the page")
+        self.assertEqual(self.clients(page), [], "looking at the page made nothing")
         shot(page, "oauth-consent-desktop-local")
-        page.get_by_role("button", name="Allow access").click()
+        page.get_by_role("button", name="Allow", exact=True).click()
         page.wait_for_url(f"{LOCAL_REDIRECT}?**")
         callback = urllib.parse.parse_qs(urllib.parse.urlsplit(page.url).query)
         self.assertEqual(callback["state"], [state])
         self.assertTrue(callback.get("code"), "the local client receives a code")
+        made = self.clients(page)
+        self.assertEqual([(item["name"], item["mayDo"], item["clientDesignation"]) for item in made], [("Local CLI on this computer", "act", "other")])
 
-    def test_02b_a_client_asking_for_more_than_the_connection_has_gets_only_the_granted_permissions(self) -> None:
-        """#548: the person may grant fewer permissions than the client asks for; the page says which, and approval sends exactly those."""
+    def test_02b_signing_in_again_finds_the_same_connection_and_makes_no_second_one(self) -> None:
         page = self.page()
         page.context.route(f"{LOCAL_REDIRECT}**", lambda route: route.fulfill(body="Connection authorized", content_type="text/plain"))
-        sent: list[dict] = []
-        page.on("request", lambda request: sent.append(json.loads(request.post_data)) if request.url.endswith("/oauth2/consent") and request.post_data else None)
-        self.authorize(page, "local", LOCAL_REDIRECT, SCOPES + " flux.action.execute")
-        requested = page.locator(".connection__requested")
-        expect(requested).to_contain_text("This client will be allowed")
-        expect(requested.locator(".connection__scopes").first).to_contain_text("Read selected project context")
-        expect(requested.locator(".connection__scopes").first).not_to_contain_text("Run approved project actions")
-        expect(requested.get_by_test_id("not-granted")).to_be_visible()
-        expect(requested.locator(".connection__scopes").nth(1)).to_have_text("Run approved project actions")
-        shot(page, "oauth-consent-desktop-partial")
-        page.get_by_role("button", name="Allow access").click()
+        before = self.clients(page)
+        self.assertEqual(len(before), 1)
+        self.authorize(page, "local", LOCAL_REDIRECT)
+        expect(page.locator(".connection__head p")).to_contain_text("is already connected as Local CLI on this computer. Allow signs it in again.")
+        shot(page, "oauth-consent-desktop-again")
+        page.get_by_role("button", name="Allow", exact=True).click()
         page.wait_for_url(f"{LOCAL_REDIRECT}?**")
-        self.assertEqual(len(sent), 1)
-        self.assertEqual(sorted(sent[0]["scope"].split()), ["flux.context.read", "flux.proposal.write", "offline_access"])
-        self.assertTrue(urllib.parse.parse_qs(urllib.parse.urlsplit(page.url).query).get("code"), "the client still receives a code")
+        self.assertTrue(urllib.parse.parse_qs(urllib.parse.urlsplit(page.url).query).get("code"), "the client signs in again")
+        self.assertEqual([item["id"] for item in self.clients(page)], [item["id"] for item in before], "the same connection, not a second one")
 
     def test_03_phone_a_web_redirect_is_named_and_warned_in_touch_sizes_then_denied(self) -> None:
         page = self.page(phone=True)
@@ -182,17 +192,18 @@ class OauthConsentJourney(unittest.TestCase):
             .map((el) => [el.textContent.trim().slice(0, 40), parseFloat(getComputedStyle(el).fontSize)])
             .filter(([, size]) => size < 11)""")
         self.assertEqual(secondary, [], "no visible text below 11px")
-        for name in ("Allow access", "Deny"):
-            box = page.get_by_role("button", name=name).bounding_box()
+        for name in ("Allow", "Deny"):
+            box = page.get_by_role("button", name=name, exact=True).bounding_box()
             self.assertGreaterEqual(min(box["width"], box["height"]), 44, f"44px target: {name}")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], "no horizontal scroll")
         shot(page, "oauth-consent-phone-web")
-        page.get_by_role("button", name="Deny").click()
+        page.get_by_role("button", name="Deny", exact=True).click()
         page.wait_for_url("https://collector.example.net/oauth/callback?**")
         callback = urllib.parse.parse_qs(urllib.parse.urlsplit(page.url).query)
         self.assertEqual(callback["error"], ["access_denied"])
         self.assertEqual(callback["state"], [state])
         self.assertNotIn("code", callback, "a denied request carries no code")
+        self.assertEqual([item["name"] for item in self.clients(page)], ["Local CLI on this computer"], "Deny made no agent and no connection")
 
     def test_04_another_origin_cannot_frame_the_consent_page(self) -> None:
         page = self.page()
@@ -223,49 +234,31 @@ class OauthConsentJourney(unittest.TestCase):
         framing.wait_for_timeout(1500)
         # Chromium replaces a frame refused by frame-ancestors / X-Frame-Options with its error page.
         self.assertTrue(frame.url.startswith("chrome-error://"), f"the framed consent page was refused: {frame.url}")
-        expect(framing.frame_locator("iframe").get_by_role("heading", name="Review access before connecting")).to_have_count(0)
+        expect(framing.frame_locator("iframe").get_by_role("heading", name=re.compile(r"^Connect .+ to Flux$"))).to_have_count(0)
         # The same page opened directly still works.
-        expect(page.get_by_role("heading", level=1, name="Review access before connecting")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name=re.compile(r"^Connect .+ to Flux$"))).to_be_visible()
 
-    def test_05_one_way_on_continue_saves_a_new_connection_with_the_asking_clients_label(self) -> None:
-        """#763 AG-6: during a client's sign-in the choice step has one primary, "Continue to consent", which also saves a
-        new connection; its client label starts from the asking client's own name; Revoke is not on this path."""
+    def test_05_allow_on_a_web_client_connects_it_named_after_the_asking_client_and_nothing_else_is_asked(self) -> None:
+        """#763 AG-6, #859: during a client's sign-in there is nothing to name or choose; Allow saves one connection that starts from
+        the asking client's own name (a recognition aid only) and, being off this computer, is not called "on this computer"."""
         page = self.page()
-        verifier = secrets.token_urlsafe(32)
-        challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
-        query = urllib.parse.urlencode({"client_id": self.ids["web"], "redirect_uri": WEB_REDIRECT, "response_type": "code",
-                                        "code_challenge": challenge, "code_challenge_method": "S256", "state": str(uuid.uuid4()),
-                                        "scope": SCOPES, "resource": f"{ORIGIN}/mcp", "prompt": "consent"})
-        page.goto(f"/api/auth/oauth2/authorize?{query}")
-        expect(page.get_by_role("heading", level=1, name=re.compile(r"^Connect .+ to Flux$"))).to_be_visible()
+        page.context.route("https://collector.example.net/**", lambda route: route.fulfill(body="Collector", content_type="text/plain"))
+        self.authorize(page, "web", WEB_REDIRECT)
         expect(page.get_by_role("button", name="Revoke connection")).to_have_count(0)
-        page.get_by_role("button", name="Create another selection").click()
-        # The "Claude Code" fixture client asks: the new connection's label starts as Claude Code (a recognition aid only).
-        expect_value(page.get_by_label("Client label", exact=True), "claude_code")
-        expect(page.get_by_role("button", name="Save connection")).to_have_count(0)
-        go = page.get_by_role("button", name="Continue to consent")
-        # #763 WF-5: the connection starts named after the asking client, Continue is never greyed out, and pressing it
-        # too early says what is missing instead.
-        expect(page.get_by_label("Connection name")).to_have_value("Claude Code on this computer")
-        expect(go).to_be_enabled()
-        page.get_by_label("Connection name").fill("")
-        go.click()
-        expect(page.get_by_role("alert")).to_have_text("Name this connection.")
-        expect(page.get_by_role("heading", level=1, name=re.compile(r"^Connect .+ to Flux$"))).to_be_visible()
-        page.get_by_label("Connection name").fill("Travel laptop")
-        project = page.locator(".connection__project").filter(has_text="Sensor study").get_by_role("checkbox")
-        if not project.is_checked():
-            go.click()
-            expect(page.get_by_role("alert")).to_have_text("Choose at least one project the agent may use.")
-            project.check()
-        self.assertEqual(page.locator(".connection .ui-btn--primary").count(), 1, "one primary on the step")
-        go.click()
-        expect(page.get_by_role("heading", level=1, name="Review access before connecting")).to_be_visible()
-        expect(page.locator(".connection__summary")).to_contain_text("Travel laptop")
-        expect(page.locator(".connection__summary")).to_contain_text("Your client label: Claude Code")
-        saved = [item["name"] for item in self.api(page, "GET", "/api/v1/agent-connections", status=200) if not item.get("revokedAt")]
-        self.assertIn("Travel laptop", saved)
-        # Negative control: before this change the form had its own Save connection and Continue stayed disabled until saved.
+        expect(page.get_by_label("Connection name")).to_have_count(0)
+        expect(page.get_by_label("Client label", exact=True)).to_have_count(0)
+        expect(page.get_by_role("button", name="Continue to consent")).to_have_count(0)
+        page.get_by_role("button", name="Allow", exact=True).click()
+        page.wait_for_url("https://collector.example.net/oauth/callback?**")
+        self.assertTrue(urllib.parse.parse_qs(urllib.parse.urlsplit(page.url).query).get("code"))
+        made = {item["name"]: item for item in self.clients(page)}
+        self.assertEqual(sorted(made), ["Claude Code", "Local CLI on this computer"])
+        self.assertEqual((made["Claude Code"]["clientDesignation"], made["Claude Code"]["mayDo"]), ("claude_code", "act"))
+        # Her page of connected clients lists both, each with "What it may do" and Disconnect.
+        page.goto("/settings/agents/connect")
+        listed = page.get_by_role("list", name="Connected clients").get_by_role("listitem")
+        expect(listed).to_have_count(2)
+        expect(listed.filter(has_text="Claude Code").get_by_role("button", name="Disconnect")).to_be_visible()
 
 
 if __name__ == "__main__":

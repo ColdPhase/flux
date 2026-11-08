@@ -8,7 +8,7 @@ import { register, uniqueEmail } from '../support/http.js';
 import { password } from '../support/people.js';
 import { startClientModelMock, type MockPlan, type MockStep, type MockTurn } from '../support/client-model-mock.js';
 import { expect } from '../support/mcp.js';
-import { claudeBin, cleanClientHome, clientEvents, connectClient, scopes, seedOauthClient, sh, startFluxProxy, type ClientHome, type ClientSpec } from '../support/mcp-client-harness.js';
+import { claudeBin, cleanClientHome, clientEvents, connectClient, connectionOfClient, seedOauthClient, sh, startFluxProxy, type ClientHome, type ClientSpec } from '../support/mcp-client-harness.js';
 
 /**
  * #160 AC-2 (supported onboarding) with the REAL pinned Codex and Claude Code clients, clean configurations, no vendor account
@@ -49,18 +49,15 @@ test('real Codex and Claude Code from clean configurations: supplied playbook re
     const plan = expect(await owner.request('POST', `/api/v1/projects/${projectId}/materials`,
       { body: { clientMutationId: randomUUID(), title: 'Release plan', body: 'Step one: measure. Step two: compare.' } }), 201);
     const connections: Record<string, { id: string; agentId: string; clientId: string }> = {};
-    for (const spec of specs) {
-      const agentId = String(expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name: `${spec.label} agent`, owner: 'self' } }), 201).id);
-      const id = String(expect(await owner.request('POST', '/api/v1/agent-connections', { body: { name: spec.label, clientDesignation: spec.designation,
-        agentId, selectedProjectIds: [projectId], scopes } }), 201).id);
-      connections[spec.key] = { id, agentId, clientId: await seedOauthClient(pool, spec) };
-    }
+    // Nothing is created beforehand: the person's Allow on the consent page makes each client's agent and connection (#859).
+    for (const spec of specs) connections[spec.key] = { id: '', agentId: '', clientId: await seedOauthClient(pool, spec) };
 
     const homes: Record<string, ClientHome> = {};
     for (const spec of specs) {
       homes[spec.key] = cleanClientHome(spec);
       await t.test(`${spec.label}: clean ${spec.client} connects and the owner authorizes`, async () => {
         await connectClient(browser, email, homes[spec.key]!, connections[spec.key]!.clientId);
+        Object.assign(connections[spec.key]!, await connectionOfClient(pool, connections[spec.key]!.clientId));
       });
     }
 

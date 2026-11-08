@@ -7,6 +7,7 @@ import { coWorkRequestFingerprint, DomainError, normalizeCoWorkRequest } from '@
 import { coworkRequestRows, createDatabase, schema } from '@flux/db';
 import { coWorkRecovery } from '../../apps/server/src/co-work/recovery.js';
 import { addMember, expectStatus, grant, person, project, removeFromSpace, workspace } from './support/people.js';
+import { createConnection } from './support/mcp-actions.js';
 
 // Actual owner APIs, current central policy, connection binding and durable SQL.
 // Trusted OAuth binding/enqueue fixtures do not certify public MCP admission,
@@ -21,21 +22,19 @@ async function fixture() {
   const agent = expectStatus(await receiver.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Recovery receiver', owner: 'self' } }), 201) as Agent;
   const connect = async () => {
-    const connection = expectStatus(await receiver.browser.request('POST', '/api/v1/agent-connections',
-      { body: { agentId: agent.id, selectedProjectIds: [p.id], scopes: ['flux.context.read'] } }), 201) as AgentConnection;
+    const connection = await createConnection(pool, receiver.browser, { agentId: agent.id }) as AgentConnection;
     const clientId = `recovery-fixture-${randomUUID()}`, bindingId = randomUUID();
     await pool.query('INSERT INTO oauth_client(id,client_id,name,redirect_uris) VALUES($1,$2,$3,$4)',
       [randomUUID(), clientId, 'Trusted recovery binding fixture', ['https://fixture.invalid/callback']]);
     await pool.query('INSERT INTO agent_oauth_bindings(id,owner_user_id,connection_id,client_id) VALUES($1,$2,$3,$4)',
       [bindingId, receiver.id, connection.id, clientId]);
     return { connection, claims: { ownerUserId: receiver.id, connectionId: connection.id, clientId,
-      grantReferenceId: `flux-grant:${bindingId}`, scopes: connection.scopes } };
+      grantReferenceId: `flux-grant:${bindingId}` } };
   };
   const recipient = await connect();
   const senderAgent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Native sender', owner: 'self' } }), 201) as Agent;
-  const senderConnection = expectStatus(await owner.browser.request('POST', '/api/v1/agent-connections',
-    { body: { agentId: senderAgent.id, selectedProjectIds: [p.id], scopes: ['flux.context.read'] } }), 201) as AgentConnection;
+  const senderConnection = await createConnection(pool, owner.browser, { agentId: senderAgent.id }) as AgentConnection;
   const work = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${p.id}/work`,
     { body: { title: 'Durable native outcome' } }), 201) as WorkItem;
   const source = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
@@ -164,7 +163,7 @@ test('opaque continuations retain microsecond positions and expiry, and foreign 
 test('current selected-project, client, scope, central access and revocation precede cursor recovery', async () => {
   const f = await fixture(); await f.enqueue(); await f.enqueue(); const first = await f.read({ limit: 1 });
   assert.ok(first.continuation);
-  for (const claims of [{ ...f.recipient.claims, clientId: 'wrong-client' }, { ...f.recipient.claims, scopes: [] }])
+  for (const claims of [{ ...f.recipient.claims, clientId: 'wrong-client' }])
     await assert.rejects(f.recover(claims, f.p.id, { cursor: first.continuation }), unavailable);
   // The agent has what its owner has (F-036 AG-3).
   await removeFromSpace(f.owner, f.p.id, f.receiver);

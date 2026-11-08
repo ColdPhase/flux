@@ -87,33 +87,31 @@ const ids = () => crypto.randomUUID();
 const oauthClient = process.env.FLUX_FIXTURE_OAUTH_CLIENT;
 const redirectUri = 'http://127.0.0.1:19737/callback';
 
-/** The #52 authorization-code flow with PKCE for one connection, in a fresh browser session. */
-async function bearerFor(connectionId, scope = 'flux.context.read') {
+/**
+ * The #52 authorization-code flow with PKCE, signed in the way a client signs in (#859): the person allows it on the consent page and
+ * that one click makes (or finds) the client's connection. Returns the bearer and the connection id its token names.
+ */
+async function signInClient() {
   const browser = await signIn(owner);
   const verifier = randomBytes(32).toString('base64url');
   const query = new URLSearchParams({
     client_id: oauthClient, redirect_uri: redirectUri, response_type: 'code',
     code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
-    state: ids(), scope, resource: `${origin}/mcp`,
+    state: ids(), scope: 'offline_access', resource: `${origin}/mcp`,
   });
-  // The connection choice is bound to this exact signed OAuth request (#152): authorize first, choose, continue.
+  // The consent is bound to this exact signed OAuth request: authorize first, then allow.
   const start = await browser.request('GET', `/api/auth/oauth2/authorize?${query}`, undefined, { accept: 'text/html' });
-  const choice = new URL((start.status === 302 ? start.location : start.json?.url) ?? '', origin);
-  assert.equal(choice.pathname, '/connect-agent', `OAuth authorize answered ${start.status}: ${start.text}`);
-  const selectedQuery = choice.search.slice(1);
-  await browser.expect('POST', `/api/v1/agent-connections/${connectionId}/select-for-oauth`, { oauth_query: selectedQuery }, [204]);
-  const continued = await browser.expect('POST', '/api/auth/oauth2/continue', { postLogin: true, oauth_query: selectedQuery }, [200]);
-  const location = new URL(String(continued.url ?? continued.redirect_uri), origin);
-  assert.equal(location.pathname, '/consent', `OAuth continue answered ${JSON.stringify(continued)}`);
-  const oauthQuery = location.search.slice(1);
-  const consent = await browser.expect('POST', '/api/auth/oauth2/consent', { accept: true, oauth_query: oauthQuery }, [200]);
+  const location = new URL((start.status === 302 ? start.location : start.json?.url) ?? '', origin);
+  assert.equal(location.pathname, '/consent', `OAuth authorize answered ${start.status}: ${start.text}`);
+  const consent = await browser.expect('POST', '/api/auth/oauth2/consent', { accept: true, oauth_query: location.search.slice(1) }, [200]);
   const code = new URL(consent.url).searchParams.get('code');
   const token = await fetch(new URL('/api/auth/oauth2/token', api), {
     method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri, client_id: oauthClient, code_verifier: verifier }),
   });
   assert.equal(token.status, 200, 'OAuth token issued');
-  return (await token.json()).access_token;
+  const bearer = (await token.json()).access_token;
+  return { bearer, connectionId: JSON.parse(Buffer.from(bearer.split('.')[1], 'base64url').toString()).flux_connection_id };
 }
 
 /** HTTP status of one MCP tool call with a bearer (200 allowed, 401/403 denied). */
@@ -254,22 +252,23 @@ async function seed() {
   await ada.expect('DELETE', `/api/v1/sessions/${revokedId}`, undefined, [204]);
   assert.equal((await revoked.request('GET', '/api/v1/me')).status, 401);
 
-  // Agent connections (#52): one revoked before the backup, one live (revoked after it).
-  const agent = await ada.expect('POST', `/api/v1/workspaces/${workspaceId}/agents`, { name: 'Ada\'s laptop agent', owner: 'self' });
-  const connection = async () => (await ada.expect('POST', '/api/v1/agent-connections', { agentId: agent.id, selectedProjectIds: [projectId], scopes: ['flux.context.read'] })).id;
-  const revokedConnection = await connection();
-  const liveConnection = await connection();
-  const bearers = { revoked: await bearerFor(revokedConnection), live: await bearerFor(liveConnection) };
+  // Agent connections (#52): one revoked before the backup, one live (revoked after it). The client signs in, is disconnected, and
+  // signs in again, which makes a new connection on the same agent.
+  const first = await signInClient();
+  const revokedConnection = first.connectionId;
+  const bearers = { revoked: first.bearer };
   assert.equal(await mcpStatus(bearers.revoked), 200, 'a fresh bearer works');
   await ada.expect('DELETE', `/api/v1/agent-connections/${revokedConnection}`, undefined, [204]);
   assert.equal(await mcpStatus(bearers.revoked), 403, 'a revoked connection denies its bearer');
+  const second = await signInClient();
+  assert.notEqual(second.connectionId, revokedConnection, 'signing in again made a new connection');
+  const liveConnection = second.connectionId;
+  bearers.live = second.bearer;
   assert.equal(await mcpStatus(bearers.live), 200, 'the live connection works');
 
   // Task creation Undo (#238): the agent creates a task natively; Ada undoes it before anyone used it. The reverted
   // task, its two notices and its receipt must all come back from the backup.
-  const actor = (await ada.expect('POST', '/api/v1/agent-connections', { agentId: agent.id, selectedProjectIds: [projectId],
-    scopes: ['flux.context.read', 'flux.action.execute'] })).id;
-  const actorBearer = await bearerFor(actor, 'flux.context.read flux.action.execute');
+  const actorBearer = bearers.live;
   bearers.undo = actorBearer;
   const created = await mcpTool(actorBearer, 'flux_create_task', { projectId, clientCommandId: ids(), sources: [], task: { title: token('BACKUP-undone-task') } });
   const createdTask = await ada.expect('GET', `/api/v1/work/${created.workId}`);

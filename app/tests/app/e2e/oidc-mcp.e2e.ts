@@ -13,7 +13,7 @@ import { FakeConnections, FakeQueue } from '../support/personal-runs.js';
  * Provider sign-in on the MCP authorization path (F-024 S1, #310). A scripted client (test code, not a
  * vendor client) starts a real PKCE authorization against the disposable Keycloak of scripts/check_oidc.sh.
  * Chromium takes the person through Flux `/login` -> Keycloak -> Flux, and the test then finishes the
- * connection choice and consent through the public API, redeems the code and calls MCP tools.
+ * one consent decision (#859) through the public API, redeems the code and calls MCP tools.
  *
  * The last tests are the standing check (F-024 S4, #311): the same person is suspended and restored by
  * disabling and re-enabling the user in Keycloak, and a provider that returns no refresh token is refused.
@@ -69,7 +69,7 @@ async function registerClient(redirectUri: string) {
     (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types, response_types, scopes, require_pkce, created_at, updated_at)
     VALUES ($1, $2, 'Scripted MCP client', $3, 'none', $4, $5, $6, true, now(), now())`,
   [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'],
-    ['flux.context.read', 'flux.proposal.write', 'offline_access']]);
+    ['offline_access']]);
   await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())', [randomUUID(), clientId, resource]);
   return clientId;
 }
@@ -78,7 +78,7 @@ function authorizeUrl(clientId: string, redirectUri: string, challenge: string, 
   const url = new URL('/api/auth/oauth2/authorize', origin);
   url.search = new URLSearchParams({
     client_id: clientId, redirect_uri: redirectUri, response_type: 'code', code_challenge: challenge, code_challenge_method: 'S256',
-    state: randomUUID(), scope: 'flux.context.read flux.proposal.write offline_access', resource, ...extra,
+    state: randomUUID(), scope: 'offline_access', resource, ...extra,
   }).toString();
   return url.toString();
 }
@@ -120,28 +120,38 @@ async function redeem(callback: URL, verifier: string, redirectUri: string, id: 
   return await response.json() as { access_token: string; refresh_token: string };
 }
 
-/** Connection choice and consent, as the pages do it, for a person already signed in to this context. */
-async function chooseAndConsent(context: BrowserContext, page: Page, redirectUri: string, connectionId = state.connectionId) {
-  await page.waitForURL((target) => target.pathname === '/connect-agent', { timeout: 20_000 });
-  const selected = page.url().split('?')[1]!;
-  assert.ok(new URLSearchParams(selected).get('sig'), 'the connection choice still carries the signed request');
-  await api(context, 'POST', `/api/v1/agent-connections/${connectionId}/select-for-oauth`, { oauth_query: selected }, 204);
-  const continued = await api<{ url?: string; redirect_uri?: string }>(context, 'POST', '/api/auth/oauth2/continue', { postLogin: true, oauth_query: selected });
-  const consentUrl = new URL(String(continued.url ?? continued.redirect_uri), origin);
-  // An earlier consent for this client and connection is remembered: the code comes straight back.
-  if (consentUrl.pathname !== '/consent') return consentUrl;
+/** The connection a person's client holds now, once Allow made it (#859); null before. */
+async function heldConnection(userId: string, client: string) {
+  return (await pool.query(`SELECT c.id FROM agent_connections c JOIN agent_oauth_bindings b ON b.connection_id = c.id
+    WHERE b.owner_user_id = $1 AND b.client_id = $2 AND c.revoked_at IS NULL ORDER BY b.created_at DESC LIMIT 1`, [userId, client])).rows[0]?.id as string | null ?? null;
+}
+const clientConnections = async (userId: string) => (await pool.query(
+  "SELECT id FROM agent_connections WHERE owner_user_id = $1 AND compute_source <> 'owner_assistant' AND revoked_at IS NULL", [userId])).rowCount;
+
+/**
+ * The one consent decision, as the page does it, for a person already signed in to this context (#859): look at where access goes, then
+ * Allow. A client Allow already signed in comes straight back with its code: consent for its connection is remembered.
+ */
+async function allowAtConsent(context: BrowserContext, page: Page, redirectUri: string) {
+  const callbackOrigin = new URL(redirectUri).origin;
+  await context.route(`${callbackOrigin}/**`, (route) => route.fulfill({ body: 'Connection authorized', contentType: 'text/plain' }));
+  await page.waitForURL((target) => target.pathname === '/consent' || target.origin === callbackOrigin, { timeout: 20_000 });
+  const here = new URL(page.url());
+  if (here.origin === callbackOrigin) return here;
+  const query = here.search.slice(1);
+  assert.ok(new URLSearchParams(query).get('sig'), 'the consent page still carries the signed request');
   const display = await api<{ redirect: { kind: string; host: string }; clientIdHost: string | null }>(context, 'GET',
-    `/api/v1/agent-oauth/consent-context?oauth_query=${encodeURIComponent(consentUrl.search.slice(1))}`);
+    `/api/v1/agent-oauth/consent-context?oauth_query=${encodeURIComponent(query)}`);
   assert.deepEqual(display.redirect, { kind: 'loopback', host: new URL(redirectUri).host }, 'consent shows where access goes');
   assert.equal(display.clientIdHost, null, 'a pre-registered client has no client_id host');
-  const framing = await context.request.get(`${origin}/consent?${consentUrl.search.slice(1)}`);
+  const framing = await context.request.get(`${origin}/consent?${query}`);
   assert.equal(framing.headers()['x-frame-options'], 'DENY', 'the consent page cannot be framed');
   assert.match(framing.headers()['content-security-policy'] ?? '', /frame-ancestors 'none'/);
-  const consent = await api<{ url?: string; redirect_uri?: string }>(context, 'POST', '/api/auth/oauth2/consent', { accept: true, oauth_query: consentUrl.search.slice(1) });
+  const consent = await api<{ url?: string; redirect_uri?: string }>(context, 'POST', '/api/auth/oauth2/consent', { accept: true, oauth_query: query });
   return new URL(String(consent.url ?? consent.redirect_uri));
 }
 
-test('setup: an identity-provider-only person has a Flux account and one agent connection', async () => {
+test('setup: an identity-provider-only person has a Flux account and a project, and no client is connected', async () => {
   const context = await fresh();
   const page = await context.newPage();
   await page.goto(`${origin}/sign-in`);
@@ -151,13 +161,12 @@ test('setup: an identity-provider-only person has a Flux account and one agent c
   await page.waitForURL((target) => target.origin === origin, { timeout: 20_000 });
   const me = await api<{ user: { id: string } }>(context, 'GET', '/api/v1/me');
   state.userId = me.user.id;
-  const workspace = await api<{ id: string }>(context, 'POST', '/api/v1/workspaces', { name: 'Erin lab' }, 201);
+  // The client's agent is made in the person's own company (their earliest membership), so the project goes there.
+  const company = (await pool.query("SELECT workspace_id FROM workspace_members WHERE user_id = $1 AND role <> 'guest' ORDER BY created_at, workspace_id LIMIT 1", [state.userId])).rows[0]?.workspace_id as string | undefined;
+  const workspace = { id: company ?? (await api<{ id: string }>(context, 'POST', '/api/v1/workspaces', { name: 'Erin lab' }, 201)).id };
   const project = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Selected project', visibility: 'restricted' }, 201);
   state.projectId = project.id;
-  const agent = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/agents`, { name: 'Erin agent', owner: 'self' }, 201);
-  const connection = await api<{ id: string }>(context, 'POST', '/api/v1/agent-connections',
-    { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] }, 201);
-  state.connectionId = connection.id;
+  assert.equal(await clientConnections(state.userId), 0, 'nothing is connected before a client asks and the person allows');
   clientId = await registerClient(loopback);
   const password = await pool.query('SELECT password FROM auth_accounts WHERE user_id = $1', [state.userId]);
   assert.ok(password.rows.every((row) => row.password === null), 'the person has no Flux password');
@@ -176,11 +185,15 @@ test('a client authorizes through the provider on /login from a fresh browser, w
   const requested = authorizeUrl(clientId, otherPort, challenge);
   await toProvider(page, requested);
   await providerLogin(page, 'erin');
-  const callback = await chooseAndConsent(context, page, otherPort);
+  const callback = await allowAtConsent(context, page, otherPort);
   assert.equal(callback.origin, new URL(otherPort).origin);
   assert.equal(callback.pathname, '/callback');
   assert.equal(callback.searchParams.get('state'), new URL(requested).searchParams.get('state'), 'the client\'s own state returns');
   const tokens = await redeem(callback, verifier, otherPort, clientId);
+  // Allow made the client's connection, and nothing before it did (#859).
+  state.connectionId = (await heldConnection(state.userId!, clientId))!;
+  assert.ok(state.connectionId, 'Allow made the connection');
+  assert.equal(await clientConnections(state.userId!), 1);
 
   const claims = JSON.parse(Buffer.from(tokens.access_token.split('.')[1]!, 'base64url').toString()) as { aud: string | string[]; sub: string; iss: string };
   assert.deepEqual([claims.aud].flat(), [resource], 'the access token is Flux\'s, for the MCP resource');
@@ -188,7 +201,7 @@ test('a client authorizes through the provider on /login from a fresh browser, w
   assert.equal(claims.sub, state.userId);
   const contexts = await mcp(tokens.access_token, 1, 'tools/call', { name: 'flux_list_contexts', arguments: {} });
   assert.equal(contexts.status, 200, JSON.stringify(contexts.message));
-  assert.deepEqual((toolValue(contexts.message).projects as { id: string }[]).map((project) => project.id), [state.projectId]);
+  assert.ok((toolValue(contexts.message).projects as { id: string }[]).some((project) => project.id === state.projectId), 'the client sees what its owner sees');
 
   // The session records how the person signed in: the provider id, the provider's session id and when.
   const identity = (await pool.query(`SELECT i.method, i.idp_sid, i.confirmed_at > now() - interval '5 minutes' AS recent
@@ -241,13 +254,10 @@ test('a grant authorized with a password records password, and keeps that after 
   assert.equal(signUp.status(), 200, await signUp.text());
   const userId = (await api<{ user: { id: string } }>(context, 'GET', '/api/v1/me')).user.id;
   const workspace = await api<{ id: string }>(context, 'POST', '/api/v1/workspaces', { name: 'Password lab' }, 201);
-  const project = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Password project', visibility: 'restricted' }, 201);
-  const agent = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/agents`, { name: 'Password agent', owner: 'self' }, 201);
-  const connection = await api<{ id: string }>(context, 'POST', '/api/v1/agent-connections',
-    { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read'] }, 201);
+  await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Password project', visibility: 'restricted' }, 201);
   const { verifier, challenge } = pkce();
-  await page.goto(authorizeUrl(clientId, loopback, challenge, { scope: 'flux.context.read offline_access' }));
-  const callback = await chooseAndConsent(context, page, loopback, connection.id);
+  await page.goto(authorizeUrl(clientId, loopback, challenge));
+  const callback = await allowAtConsent(context, page, loopback);
   const tokens = await redeem(callback, verifier, loopback, clientId);
   const sessionId = (await api<{ session: { id: string } }>(context, 'GET', '/api/v1/me')).session.id;
   const before = await grantAuthentication(userId, clientId);
@@ -291,18 +301,18 @@ test('a cancelled provider step returns to /login with the signed request, and t
   await page.getByRole('button', { name: 'Sign in with Keycloak', exact: true }).click();
   await page.waitForURL((target) => target.origin === keycloak);
   await providerLogin(page, 'erin');
-  const callback = await chooseAndConsent(context, page, loopback);
+  const callback = await allowAtConsent(context, page, loopback);
   assert.equal(callback.searchParams.get('state') !== null, true);
   await redeem(callback, verifier, loopback, clientId);
 });
 
-test('a tampered continuation is refused, on the provider request and on the connection choice', async () => {
+test('a tampered continuation is refused on the provider request', async () => {
   const context = await fresh();
   const page = await context.newPage();
   const { challenge } = pkce();
   await page.goto(authorizeUrl(clientId, loopback, challenge));
   const signed = page.url().split('?')[1]!;
-  const tampered = signed.replace('flux.proposal.write', 'flux.action.execute');
+  const tampered = signed.replace('offline_access', 'flux.action.execute');
   assert.notEqual(tampered, signed);
   const social = await context.request.post(`${origin}/api/auth/sign-in/social`, { headers: { origin },
     data: { provider: providerId, callbackURL: '/', disableRedirect: true, oauth_query: tampered } });
@@ -441,7 +451,7 @@ test('standing: sign-in stored the provider refresh token sealed, and a healthy 
   const { verifier, challenge } = pkce();
   await toProvider(page, authorizeUrl(clientId, loopback, challenge));
   await providerLogin(page, 'erin');
-  standing.tokens = await redeem(await chooseAndConsent(context, page, loopback), verifier, loopback, clientId);
+  standing.tokens = await redeem(await allowAtConsent(context, page, loopback), verifier, loopback, clientId);
   standing.context = context;
 
   const row = await standingRow(state.userId!);
@@ -540,7 +550,7 @@ test('confirmation age (S2): within the age everything works, past it the browse
   const { verifier, challenge } = pkce();
   await toProvider(page, authorizeUrl(clientId, loopback, challenge));
   await providerLogin(page, 'erin');
-  const callback = await chooseAndConsent(context, page, loopback);
+  const callback = await allowAtConsent(context, page, loopback);
   let tokens = await redeem(callback, verifier, loopback, clientId);
   const confirmed = (await pool.query('SELECT confirmed_at > now() - interval \'5 minutes\' AS recent FROM auth_accounts WHERE user_id = $1 AND provider_id = $2', [state.userId, providerId])).rows;
   assert.deepEqual(confirmed, [{ recent: true }], 'the provider sign-in confirmed the identity');
@@ -584,29 +594,32 @@ test('confirmation age (S2): within the age everything works, past it the browse
   assert.equal((await closed.json() as { code: string }).code, 'SIGNUP_CLOSED');
 });
 
-test('confirmation age (S2): the client authorizes again through the provider and finds the connection it held chosen', async () => {
+test('confirmation age (S2): the client authorizes again through the provider and finds the connection it held', async () => {
   await confirmedHoursAgo(13);
   const context = await fresh();
   const page = await context.newPage();
   const { verifier, challenge } = pkce();
   await toProvider(page, authorizeUrl(clientId, loopback, challenge));
   await providerLogin(page, 'erin');
-  await page.waitForURL((target) => target.pathname === '/connect-agent', { timeout: 20_000 });
-  const held = await api<{ connectionId: string | null }>(context, 'GET', `/api/v1/agent-oauth/held-connection?oauth_query=${encodeURIComponent(page.url().split('?')[1]!)}`);
-  assert.equal(held.connectionId, state.connectionId, 'the connection this client held is offered first');
-  const callback = await chooseAndConsent(context, page, loopback);
+  const before = await clientConnections(state.userId!);
+  const callback = await allowAtConsent(context, page, loopback);
   const tokens = await redeem(callback, verifier, loopback, clientId);
+  assert.equal(await heldConnection(state.userId!, clientId), state.connectionId, 'signing in again finds the connection this client held');
+  assert.equal(await clientConnections(state.userId!), before, 'and makes no second one');
   assert.equal((await mcp(tokens.access_token, 12, 'tools/list')).status, 200, 'the provider sign-in confirmed the person again');
   assert.equal((await refreshGrant(tokens.refresh_token)).status, 200);
-  // Negative control: a client that never held a connection is offered none, and the question needs a signed request.
+  // Negative control: a client that never held a connection is shown one that does not exist yet, looking makes none,
+  // and the question needs a signed request.
   const other = await registerClient('http://127.0.0.1:19740/callback');
   const { challenge: otherChallenge } = pkce();
   const otherPage = await context.newPage();
   await otherPage.goto(authorizeUrl(other, 'http://127.0.0.1:19740/callback', otherChallenge));
-  await otherPage.waitForURL((target) => target.pathname === '/connect-agent', { timeout: 20_000 });
-  const none = await api<{ connectionId: string | null }>(context, 'GET', `/api/v1/agent-oauth/held-connection?oauth_query=${encodeURIComponent(otherPage.url().split('?')[1]!)}`);
-  assert.equal(none.connectionId, null);
-  const forged = await context.request.get(`${origin}/api/v1/agent-oauth/held-connection?oauth_query=${encodeURIComponent(otherPage.url().split('?')[1]!.replace('flux.proposal.write', 'flux.action.execute'))}`);
+  await otherPage.waitForURL((target) => target.pathname === '/consent', { timeout: 20_000 });
+  const query = otherPage.url().split('?')[1]!;
+  const none = await api<{ connectionName: string | null }>(context, 'GET', `/api/v1/agent-oauth/consent-context?oauth_query=${encodeURIComponent(query)}`);
+  assert.equal(none.connectionName, null);
+  assert.equal(await clientConnections(state.userId!), before, 'looking at a stranger client\'s request made nothing');
+  const forged = await context.request.get(`${origin}/api/v1/agent-oauth/consent-context?oauth_query=${encodeURIComponent(query.replace('offline_access', 'flux.action.execute'))}`);
   assert.equal(forged.status(), 400);
 });
 
@@ -622,7 +635,7 @@ async function signInWithTokens() {
   const { verifier, challenge } = pkce();
   await toProvider(page, authorizeUrl(clientId, loopback, challenge));
   await providerLogin(page, 'erin');
-  const tokens = await redeem(await chooseAndConsent(context, page, loopback), verifier, loopback, clientId);
+  const tokens = await redeem(await allowAtConsent(context, page, loopback), verifier, loopback, clientId);
   const sid = (await pool.query(`SELECT i.idp_sid FROM auth_session_identities i JOIN auth_sessions s ON s.id = i.session_id
     WHERE s.user_id = $1 ORDER BY s.created_at DESC LIMIT 1`, [state.userId])).rows[0].idp_sid as string;
   return { context, tokens, sid };
@@ -814,13 +827,11 @@ test('standing: a deleted Keycloak user loses browser, MCP and refresh access wi
   await page.waitForURL((target) => target.origin === origin, { timeout: 20_000 });
   const person = await api<{ user: { id: string } }>(context, 'GET', '/api/v1/me');
   const workspace = await api<{ id: string }>(context, 'POST', '/api/v1/workspaces', { name: 'Deleted identity proof' }, 201);
-  const project = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Kept data', visibility: 'restricted' }, 201);
-  const agent = await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/agents`, { name: 'Kept identity agent', owner: 'self' }, 201);
-  const connection = await api<{ id: string }>(context, 'POST', '/api/v1/agent-connections',
-    { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] }, 201);
+  await api<{ id: string }>(context, 'POST', `/api/v1/workspaces/${workspace.id}/projects`, { name: 'Kept data', visibility: 'restricted' }, 201);
   const client = await registerClient(loopback); const { verifier, challenge } = pkce();
   await page.goto(authorizeUrl(client, loopback, challenge));
-  const tokens = await redeem(await chooseAndConsent(context, page, loopback, connection.id), verifier, loopback, client);
+  const tokens = await redeem(await allowAtConsent(context, page, loopback), verifier, loopback, client);
+  const connection = { id: (await heldConnection(person.user.id, client))! };
   assert.equal((await mcp(tokens.access_token, 33, 'tools/list')).status, 200);
   await admin.deleteUser('frank'); await dueNow(person.user.id);
   await waitFor(async () => (await standingRow(person.user.id))?.state === 'sign_in_required', 'deleted-user suspension');

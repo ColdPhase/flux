@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import type { Agent, AgentConnection, AgentExecutionCommand, CoWorkRequestLimits, Project, WorkItem,
   WorkResult } from '@flux/contracts';
+import { createConnection } from './support/mcp-actions.js';
 import { createDatabase } from '@flux/db';
 import { DomainError, type CoWorkUnitPolicy } from '@flux/core';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
@@ -33,7 +34,6 @@ type Role = 'execute' | 'review' | 'plan';
 async function world() {
   const hubert = await person('cowork-transitions-hubert'), marek = await person('cowork-transitions-marek');
   const ws = await workspace(hubert, 'Unit transitions workspace');
-  // Marek authorizes his own connection's standing grants, which needs project management (#152).
   await addMember(hubert, ws.id, marek, 'admin');
   const p = await project(hubert, ws.id, 'Shared outcome', 'restricted');
   const other = await project(hubert, ws.id, 'Other project', 'restricted');
@@ -41,47 +41,38 @@ async function world() {
   const task = async (title: string, inProject: Project = p) =>
     expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${inProject.id}/work`, { body: { title } }), 201) as WorkItem;
   /** A connection row only: an assignee never needs a bearer to receive a unit. */
-  const connection = async (who: Person, name: string, options: { projects?: string[]; scopes?: string[]; space?: string } = {}) => {
-    const space = options.space ?? ws.id, projects = options.projects ?? [p.id];
+  const connection = async (who: Person, name: string, options: { space?: string } = {}) => {
+    const space = options.space ?? ws.id;
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${space}/agents`,
       { body: { name, owner: 'self' } }), 201) as Agent;
-    return expectStatus(await who.browser.request('POST', '/api/v1/agent-connections',
-      { body: { agentId: agent.id, selectedProjectIds: projects, scopes: options.scopes ?? ['flux.context.read', 'flux.action.execute'] } }),
-    201) as AgentConnection;
+    return await createConnection(pool, who.browser, { agentId: agent.id }) as AgentConnection;
   };
   /** A connection with a trusted OAuth binding and a live runtime session. */
-  const connect = async (who: Person, name: string, options: { projects?: string[] } = {}) => {
+  const connect = async (who: Person, name: string, options: { space?: string } = {}) => {
     const created = await connection(who, name, options);
     const clientId = `cowork-transitions-${randomUUID()}`, bindingId = randomUUID();
     await pool.query('INSERT INTO oauth_client(id,client_id,name,redirect_uris) VALUES($1,$2,$3,$4)',
       [randomUUID(), clientId, 'Trusted transition fixture', ['https://fixture.invalid/callback']]);
     await pool.query('INSERT INTO agent_oauth_bindings(id,owner_user_id,connection_id,client_id) VALUES($1,$2,$3,$4)',
       [bindingId, who.id, created.id, clientId]);
-    const claims = { ownerUserId: who.id, connectionId: created.id, clientId, grantReferenceId: `flux-grant:${bindingId}`, scopes: created.scopes };
+    const claims = { ownerUserId: who.id, connectionId: created.id, clientId, grantReferenceId: `flux-grant:${bindingId}` };
     const { runtime } = await db.transaction((tx) => agentRuntimeInTransaction(tx, claims, randomUUID()));
     return { who, connection: created, claims, runtimeId: runtime.id };
   };
-  const actionGrant = async (who: Person, connectionId: string, operation: string, objectId: string | null, role: Role, projectId = p.id) =>
-    who.browser.request('POST', `/api/v1/agent-connections/${connectionId}/action-grants`,
-      { body: { clientCommandId: randomUUID(), projectId, operation, ...(objectId ? { objectId } : {}),
-        peerRequestClass: role, maximumUses: 20, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } });
   const material = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Review criteria', body: 'Exact current revision' } }), 201) as { materialId: string };
   const result = async (title: string, inProject: Project = p) => expectStatus(await hubert.browser.request('POST',
     `/api/v1/projects/${inProject.id}/results`, { body: { title, finding: 'positive' } }), 201) as WorkResult;
-  return { hubert, marek, ws, p, other, task, connection, connect, actionGrant, material, result };
+  return { hubert, marek, ws, p, other, task, connection, connect, material, result };
 }
 type World = Awaited<ReturnType<typeof world>>;
 type Connected = Awaited<ReturnType<World['connect']>>;
 
-function command(w: World, c: Connected, operation: string, objectId: string, role: Role, _grantId: string,
+function command(w: World, c: Connected, operation: string, objectId: string, role: Role,
   payload: Record<string, unknown>, change: Partial<AgentExecutionCommand> = {}): AgentExecutionCommand {
   return { runtimeSessionId: c.runtimeId, clientCommandId: randomUUID(), projectId: w.p.id,
     operation: operation as AgentExecutionCommand['operation'], peerRequestClass: role, audience: { kind: 'project', projectId: w.p.id },
     objectId, sources: [], payload: payload as AgentExecutionCommand['payload'], ...change };
-}
-async function grantOf(w: World, c: Connected, operation: string, objectId: string | null, role: Role) {
-  return expectStatus(await w.actionGrant(c.who, c.connection.id, operation, objectId, role), 201) as { id: string };
 }
 function rejects(promise: Promise<unknown>, code: string) {
   return assert.rejects(promise, (error: unknown) => error instanceof DomainError && error.code === code, code);
@@ -89,29 +80,24 @@ function rejects(promise: Promise<unknown>, code: string) {
 /** A unit through the real creation composition. */
 async function createUnit(w: World, c: Connected, task: WorkItem, role: Role, unitKey: string,
   options: { assignee?: string; parent?: { unitId: string; generation: number; leaseId: string } } = {}) {
-  const g = await grantOf(w, c, 'cowork.unit.create', task.id, role);
-  return db.transaction((tx) => coWorkUnitCreateInTransaction(tx, c.claims, command(w, c, 'cowork.unit.create', task.id, role, g.id,
+  return db.transaction((tx) => coWorkUnitCreateInTransaction(tx, c.claims, command(w, c, 'cowork.unit.create', task.id, role,
     { unitKey, expectedTaskVersion: task.version, assignmentConnectionId: options.assignee ?? c.connection.id, parent: options.parent ?? null }), UNITS));
 }
 /** A live claim on a unit through the real claim composition and the production graph provider. */
 async function claimUnit(w: World, c: Connected, unitId: string, role: Role, expectedVersion = 1) {
-  const g = await grantOf(w, c, 'cowork.claim', unitId, role);
   return db.transaction((tx) => coWorkClaimInTransaction(tx, c.claims,
-    command(w, c, 'cowork.claim', unitId, role, g.id, { expectedVersion }), CLAIMS));
+    command(w, c, 'cowork.claim', unitId, role, { expectedVersion }), CLAIMS));
 }
 type Claim = Awaited<ReturnType<typeof claimUnit>>;
 /** The holder's live fence from its claim outcome. */
 const fenceOf = (claim: Claim) => ({ expectedVersion: claim.version, generation: claim.generation, leaseId: claim.lease!.id });
-/** Completion/transfer commands of one connection for one unit, each through its own owner's standing grant. */
-async function holder(w: World, c: Connected, unitId: string, role: Role, options: { exact?: boolean } = {}) {
-  const complete = await grantOf(w, c, 'cowork.unit.complete', options.exact === false ? null : unitId, role);
-  const transfer = await grantOf(w, c, 'cowork.unit.transfer', options.exact === false ? null : unitId, role);
+/** Completion/transfer commands of one connection for one unit. */
+async function holder(w: World, c: Connected, unitId: string, role: Role) {
   return {
-    complete, transfer,
     finish: (payload: Record<string, unknown>, change: Partial<AgentExecutionCommand> = {}) =>
-      command(w, c, 'cowork.unit.complete', unitId, role, complete.id, payload, change),
+      command(w, c, 'cowork.unit.complete', unitId, role, payload, change),
     handOver: (payload: Record<string, unknown>, change: Partial<AgentExecutionCommand> = {}) =>
-      command(w, c, 'cowork.unit.transfer', unitId, role, transfer.id, payload, change),
+      command(w, c, 'cowork.unit.transfer', unitId, role, payload, change),
     run: (input: AgentExecutionCommand, policy = TRANSITIONS) =>
       db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, c.claims, input, policy)),
   };
@@ -166,21 +152,18 @@ async function reviewScene() {
   const review = await createUnit(w, f.codex, f.a, 'review', 'review-a', { assignee: f.marekClaude.connection.id, parent });
   const reviewClaim = await claimUnit(w, f.marekClaude, review.unitId, 'review');
   const reviewer = await holder(w, f.marekClaude, review.unitId, 'review');
-  const askGrant = await grantOf(w, f.codex, 'cowork.request', f.root.unitId, 'execute');
-  const ask = (intentKey: string, lifetimeSeconds = 3600) => command(w, f.codex, 'cowork.request', f.root.unitId, 'execute', askGrant.id,
+  const ask = (intentKey: string, lifetimeSeconds = 3600) => command(w, f.codex, 'cowork.request', f.root.unitId, 'execute',
     { generation: f.claim.generation, leaseId: f.claim.lease!.id, request: { unitId: review.unitId, expectedUnitVersion: reviewClaim.version,
       recipientConnectionId: f.marekClaude.connection.id, intentKey, parentRequestId: null, kind: 'review',
       target: { type: 'work', id: f.a.id, version: f.a.version }, sourceRefs: [{ type: 'material', id: w.material.materialId, version: 1 }],
       criteriaRefs: [{ type: 'work', id: f.a.id, version: f.a.version }], priority: 1, peerUnblocking: true, lifetimeSeconds } });
   const admit = (input: AgentExecutionCommand) => db.transaction((tx) => coWorkRequestInTransaction(tx, f.codex.claims, input, REQUESTS));
-  const takeGrant = await grantOf(w, f.marekClaude, 'cowork.request.claim', review.unitId, 'review');
-  const respondGrant = await grantOf(w, f.marekClaude, 'cowork.request.respond', review.unitId, 'review');
   const live = { generation: reviewClaim.generation, leaseId: reviewClaim.lease!.id };
   const take = (requestId: string, expectedRequestVersion = 1) => db.transaction((tx) => coWorkRequestResponseInTransaction(tx,
-    f.marekClaude.claims, command(w, f.marekClaude, 'cowork.request.claim', review.unitId, 'review', takeGrant.id,
+    f.marekClaude.claims, command(w, f.marekClaude, 'cowork.request.claim', review.unitId, 'review',
       { ...live, requestId, expectedRequestVersion }), NO_PUBLICATION));
   const decline = (requestId: string, expectedRequestVersion = 2) => db.transaction((tx) => coWorkRequestResponseInTransaction(tx,
-    f.marekClaude.claims, command(w, f.marekClaude, 'cowork.request.respond', review.unitId, 'review', respondGrant.id,
+    f.marekClaude.claims, command(w, f.marekClaude, 'cowork.request.respond', review.unitId, 'review',
       { ...live, requestId, expectedRequestVersion, outcome: 'declined', reason: 'scope' }), NO_PUBLICATION));
   return { ...f, review, reviewClaim, reviewer, reviewFence: fenceOf(reviewClaim), ask, admit, take, decline };
 }
@@ -217,9 +200,8 @@ test('the holder completes its claimed unit with an outcome: terminal, task unto
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => f.own.run(f.own.handOver({ ...later,
     assignmentConnectionId: f.marekClaude.connection.id })), 'COWORK_CLAIM_LOST');
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => claimUnit(w, f.codex, f.root.unitId, 'execute', done.version), 'COWORK_UNIT_CLOSED');
-  // The completed unit still observes its receipt; a revoked grant refuses even that.
+  // The completed unit still observes its receipt.
   assert.deepEqual(await f.own.run(first), done);
-  expectStatus(await w.hubert.browser.request('DELETE', `/api/v1/agent-connections/${f.codex.connection.id}/action-grants/${f.own.complete.id}`), 204);
 });
 
 test('a versioned outcome must be readable now: an unknown, foreign, stale or GitHub outcome is refused; a replay rechecks it', async () => {
@@ -270,30 +252,26 @@ test('holder fence negative controls: only the current holder under its live cla
       await refuse({ ...build(f.fence), payload: payload as AgentExecutionCommand['payload'] }, 'INVALID_INPUT');
   }
   // A non-holder connection with a project-wide grant of its own owner: the unit is not its unit.
-  const intruder = await holder(w, claude, f.root.unitId, 'execute', { exact: false });
+  const intruder = await holder(w, claude, f.root.unitId, 'execute');
   await refuse(intruder.finish({ ...f.fence, outcome }), 'COWORK_UNIT_NOT_FOUND', intruder.run);
   await refuse(intruder.handOver({ ...f.fence, ...to }), 'COWORK_UNIT_NOT_FOUND', intruder.run);
   // An exact grant can only name a unit assigned to the grantee with that role.
   // Another class (a broad review grant cannot act on an execute unit), another operation's grant, an exact grant for another unit.
-  const reviewClass = await grantOf(w, f.codex, 'cowork.unit.complete', null, 'review');
-  await refuse(command(w, f.codex, 'cowork.unit.complete', f.root.unitId, 'review', reviewClass.id, { ...f.fence, outcome }), 'COWORK_UNIT_NOT_FOUND');
+  await refuse(command(w, f.codex, 'cowork.unit.complete', f.root.unitId, 'review', { ...f.fence, outcome }), 'COWORK_UNIT_NOT_FOUND');
   const b = await w.task('Native outcome B');
   const bUnit = await createUnit(w, f.codex, b, 'execute', 'take-b');
   // An own unit without a live claim (pending) is not completable or transferable.
   const bHolder = await holder(w, f.codex, bUnit.unitId, 'execute');
   await refuse(bHolder.finish({ expectedVersion: 1, generation: 1, leaseId: randomUUID(), outcome }), 'COWORK_CLAIM_LOST', bHolder.run);
   await refuse(bHolder.handOver({ expectedVersion: 1, generation: 1, leaseId: randomUUID(), ...to }), 'COWORK_CLAIM_LOST', bHolder.run);
-  // Another project's unit of a connection that selected both projects, under this project's project-wide grant.
-  const both = await w.connect(w.hubert, 'Hubert both projects', { projects: [w.p.id, w.other.id] });
+  // Another project's unit of a connection that reaches both projects: it is not this project's unit, whoever holds it.
+  const both = await w.connect(w.hubert, 'Hubert both projects');
   const elsewhere = await w.task('Elsewhere', w.other);
-  const otherGrant = expectStatus(await w.actionGrant(w.hubert, both.connection.id, 'cowork.unit.create', elsewhere.id, 'execute', w.other.id),
-    201) as { id: string };
   const away = await db.transaction((tx) => coWorkUnitCreateInTransaction(tx, both.claims, command(w, both, 'cowork.unit.create', elsewhere.id,
-    'execute', otherGrant.id, { unitKey: 'take-away', expectedTaskVersion: elsewhere.version, assignmentConnectionId: both.connection.id,
+    'execute', { unitKey: 'take-away', expectedTaskVersion: elsewhere.version, assignmentConnectionId: both.connection.id,
       parent: null }, { projectId: w.other.id, audience: { kind: 'project', projectId: w.other.id } }), UNITS));
-  const wide = await grantOf(w, both, 'cowork.unit.complete', null, 'execute');
   await refusedWithoutEffects(w, [...all, both], () => db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, both.claims,
-    command(w, both, 'cowork.unit.complete', away.unitId, 'execute', wide.id, { ...f.fence, outcome }), TRANSITIONS)), 'COWORK_UNIT_NOT_FOUND');
+    command(w, both, 'cowork.unit.complete', away.unitId, 'execute', { ...f.fence, outcome }), TRANSITIONS)), 'COWORK_UNIT_NOT_FOUND');
   // After all refusals the holder still completes with its exact live fence.
   assert.equal((await f.own.run(f.own.finish({ ...f.fence, outcome }))).state, 'completed');
 });
@@ -318,18 +296,16 @@ test('the holder transfers its unit; the assignee claims it with its own grant; 
 
   // The former holder lost the unit: claim, completion, another transfer and request claims are not found; its old
   // claim receipt no longer locates its unit.
-  const broadClaim = await grantOf(w, f.codex, 'cowork.claim', null, 'execute');
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => db.transaction((tx) => coWorkClaimInTransaction(tx, f.codex.claims,
-    command(w, f.codex, 'cowork.claim', f.root.unitId, 'execute', broadClaim.id, { expectedVersion: moved.version }), CLAIMS)), 'COWORK_UNIT_NOT_FOUND');
+    command(w, f.codex, 'cowork.claim', f.root.unitId, 'execute', { expectedVersion: moved.version }), CLAIMS)), 'COWORK_UNIT_NOT_FOUND');
   const result = await w.result('Late result');
   const lateFence = { expectedVersion: moved.version, generation: f.claim.generation + 1, leaseId: f.claim.lease!.id };
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => f.own.run(f.own.finish({ ...lateFence, outcome: { type: 'result', id: result.id } })),
     'COWORK_UNIT_NOT_FOUND');
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => f.own.run(f.own.handOver({ ...lateFence,
     assignmentConnectionId: f.codex.connection.id })), 'COWORK_UNIT_NOT_FOUND');
-  const broadTake = await grantOf(w, f.codex, 'cowork.request.claim', null, 'execute');
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => db.transaction((tx) => coWorkRequestResponseInTransaction(tx, f.codex.claims,
-    command(w, f.codex, 'cowork.request.claim', f.root.unitId, 'execute', broadTake.id, { generation: f.claim.generation, leaseId: f.claim.lease!.id,
+    command(w, f.codex, 'cowork.request.claim', f.root.unitId, 'execute', { generation: f.claim.generation, leaseId: f.claim.lease!.id,
       requestId: randomUUID(), expectedRequestVersion: 1 }), NO_PUBLICATION)), 'COWORK_UNIT_NOT_FOUND');
 
   // The transfer gave Marek nothing but a pending unit: Marek's own owner grants his claim, and the claim fences again.
@@ -347,9 +323,8 @@ test('the receiving assignee declines a transferred unit before claiming: it ret
   const f = await setup();
   const { w } = f;
   // The prior assignee pauses with a checkpoint, claims again and hands the unit over: the checkpoint is its instruction.
-  const releaseGrant = await grantOf(w, f.codex, 'cowork.release', f.root.unitId, 'execute');
   const released = await db.transaction((tx) => coWorkClaimInTransaction(tx, f.codex.claims, command(w, f.codex, 'cowork.release', f.root.unitId,
-    'execute', releaseGrant.id, { ...f.fence, checkpoint: { summary: 'Drafted the outline', nextAction: 'Write section two', blocker: null } }), CLAIMS));
+    'execute', { ...f.fence, checkpoint: { summary: 'Drafted the outline', nextAction: 'Write section two', blocker: null } }), CLAIMS));
   const reclaimed = await claimUnit(w, f.codex, f.root.unitId, 'execute', released.version);
   const moved = await f.own.run(f.own.handOver({ ...fenceOf(reclaimed), assignmentConnectionId: f.marekClaude.connection.id }));
   const before = await unitRow(f.root.unitId);
@@ -358,16 +333,13 @@ test('the receiving assignee declines a transferred unit before claiming: it ret
   assert.ok(checkpoint);
 
   const mine = await holder(w, f.marekClaude, f.root.unitId, 'execute');
-  const declineGrant = await grantOf(w, f.marekClaude, 'cowork.unit.decline', f.root.unitId, 'execute');
-  const decline = (change: Record<string, unknown> = {}) => command(w, f.marekClaude, 'cowork.unit.decline', f.root.unitId, 'execute',
-    declineGrant.id, { expectedVersion: moved.version, ...change });
+  const decline = (change: Record<string, unknown> = {}) => command(w, f.marekClaude, 'cowork.unit.decline', f.root.unitId, 'execute', { expectedVersion: moved.version, ...change });
   const run = (input: AgentExecutionCommand) => mine.run(input);
   // Fences: a stale version, a copied field and the former holder (who no longer has the unit) are refused without effects.
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => run(decline({ expectedVersion: moved.version + 1 })), 'COWORK_VERSION_CONFLICT');
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => run(decline({ outcome: 'x' })), 'INVALID_INPUT');
-  const codexGrant = await grantOf(w, f.codex, 'cowork.unit.decline', null, 'execute');
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, f.codex.claims,
-    command(w, f.codex, 'cowork.unit.decline', f.root.unitId, 'execute', codexGrant.id, { expectedVersion: moved.version }), TRANSITIONS)),
+    command(w, f.codex, 'cowork.unit.decline', f.root.unitId, 'execute', { expectedVersion: moved.version }), TRANSITIONS)),
   'COWORK_UNIT_NOT_FOUND');
 
   const input = decline();
@@ -387,7 +359,7 @@ test('the receiving assignee declines a transferred unit before claiming: it ret
 
   // Once a receiver has claimed a transferred unit it owns it: no decline.
   const second = await db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, f.codex.claims, command(w, f.codex, 'cowork.unit.transfer',
-    f.root.unitId, 'execute', f.own.transfer.id, { ...fenceOf(again), assignmentConnectionId: f.marekClaude.connection.id }), TRANSITIONS));
+    f.root.unitId, 'execute', { ...fenceOf(again), assignmentConnectionId: f.marekClaude.connection.id }), TRANSITIONS));
   const marekClaim = await claimUnit(w, f.marekClaude, f.root.unitId, 'execute', second.version);
   assert.equal((await unitRow(f.root.unitId)).transferred_from_connection_id, null);
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => run(decline({ expectedVersion: marekClaim.version })), 'COWORK_DECLINE_REFUSED');
@@ -401,9 +373,8 @@ test('a decline cannot return a review unit to a connection that became the run\
   const moved = await f.reviewer.run(f.reviewer.handOver({ ...f.reviewFence, assignmentConnectionId: third.connection.id }));
   const parent = { unitId: f.root.unitId, generation: f.claim.generation, leaseId: f.claim.lease!.id };
   await createUnit(w, f.codex, f.a, 'execute', 'exec-for-reviewer', { assignee: f.marekClaude.connection.id, parent });
-  const declineGrant = await grantOf(w, third, 'cowork.unit.decline', f.review.unitId, 'review');
   const decline = () => db.transaction((tx) => coWorkUnitTransitionInTransaction(tx, third.claims, command(w, third, 'cowork.unit.decline',
-    f.review.unitId, 'review', declineGrant.id, { expectedVersion: moved.version }), TRANSITIONS));
+    f.review.unitId, 'review', { expectedVersion: moved.version }), TRANSITIONS));
   // The same rule as a transfer: returning it would make the reviewer its own run's author. Nothing changes.
   await refusedWithoutEffects(w, [f.codex, f.marekClaude, third], decline, 'COWORK_REVIEW_SEPARATION');
   const row = await unitRow(f.review.unitId);
@@ -441,11 +412,10 @@ test('transfer negative controls: an ineligible, revoked or self assignee and se
   const revoked = await w.connection(w.marek, 'Marek revoked');
   expectStatus(await w.marek.browser.request('DELETE', `/api/v1/agent-connections/${revoked.id}`), 204);
   const elsewhere = await workspace(w.hubert, 'Another workspace');
-  const away = await project(w.hubert, elsewhere.id, 'Away', 'restricted');
-  const foreign = await w.connection(w.hubert, 'Hubert elsewhere', { space: elsewhere.id, projects: [away.id] });
-  const unselected = await w.connection(w.marek, 'Marek other project', { projects: [w.other.id] });
-  const readOnly = await w.connection(w.marek, 'Marek read only', { scopes: ['flux.context.read'] });
-  for (const id of [randomUUID(), revoked.id, foreign.id, unselected.id, readOnly.id]) await refuse(to(id), 'COWORK_ASSIGNEE_UNAVAILABLE');
+  const foreign = await w.connection(w.hubert, 'Hubert elsewhere', { space: elsewhere.id });
+  const readOnly = await w.connection(w.marek, 'Marek read only');
+  await pool.query("UPDATE agent_connections SET may_do = 'read' WHERE id = $1", [readOnly.id]);
+  for (const id of [randomUUID(), revoked.id, foreign.id, readOnly.id]) await refuse(to(id), 'COWORK_ASSIGNEE_UNAVAILABLE');
   // Not to itself.
   await refuse(to(f.codex.connection.id), 'COWORK_ASSIGNMENT_REFUSED');
   // Separation: the author's execute unit cannot go to the run's reviewer, nor the review unit to the run's author.

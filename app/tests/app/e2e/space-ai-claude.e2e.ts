@@ -7,7 +7,7 @@ import { register, uniqueEmail } from '../support/http.js';
 import { password } from '../support/people.js';
 import { startClientModelMock, type MockPlan } from '../support/client-model-mock.js';
 import { expect } from '../support/mcp.js';
-import { claudeBin, cleanClientHome, clientEvents, connectClient, scopes, seedOauthClient, sh, startFluxProxy, type ClientSpec } from '../support/mcp-client-harness.js';
+import { claudeBin, cleanClientHome, clientEvents, connectClient, connectionOfClient, seedOauthClient, sh, startFluxProxy, type ClientSpec } from '../support/mcp-client-harness.js';
 
 /**
  * AG-10 (F-029 S2, #614; per space under F-037), with the REAL pinned Claude Code (scripts/check_mcp_clients.sh): the client adds
@@ -29,11 +29,11 @@ test('a connected real Claude Code gets nothing of a space after its AI is turne
     const { browser: owner } = await register(email, password, 'Lock owner');
     const workspace = expect(await owner.request('POST', '/api/v1/workspaces', { body: { name: 'Garden club' } }), 201) as unknown as Workspace;
     const projectId = String(expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/projects`, { body: { name: 'Sensor study', visibility: 'restricted' } }), 201).id);
-    const agentId = String(expect(await owner.request('POST', `/api/v1/workspaces/${workspace.id}/agents`, { body: { name: 'Owner Claude', owner: 'self' } }), 201).id);
-    expect(await owner.request('POST', '/api/v1/agent-connections', { body: { name: spec.label, clientDesignation: spec.designation, agentId, selectedProjectIds: [projectId], scopes } }), 201);
     const clientId = await seedOauthClient(pool, spec);
     const home = cleanClientHome(spec);
+    // One click on the consent page makes the client's agent and connection (#859); nothing is created beforehand.
     await connectClient(browser, email, home, clientId);
+    await connectionOfClient(pool, clientId);
 
     /** One Claude Code session whose scripted model asks for `flux_list_contexts`. */
     async function session() {

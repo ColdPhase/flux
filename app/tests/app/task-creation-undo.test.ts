@@ -5,7 +5,7 @@ import { notificationFactRows, projectExportRows, taskUseRows } from '@flux/db';
 import { projectWorkDetailPath, type UndoTaskCreationResult, type WorkItem, type SearchResponse, type TaskCreationNotice } from '@flux/contracts';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import { db, pool } from './support/db.js';
-import { actionScene, toolFailure } from './support/mcp-actions.js';
+import { actionScene, approveWaiting, toolFailure, waits } from './support/mcp-actions.js';
 import { expect, toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, type Person } from './support/people.js';
 import { backendPid, barrier, waitUntilBlockedBy } from './support/locks.js';
@@ -19,10 +19,9 @@ async function bounded<T>(pending: Promise<T>, label: string): Promise<T> {
 
 async function scene() {
   const f = await actionScene(pool);
-  const createGrant = await f.grant('work.create', 'execute');
   const create = async (extra: Record<string, unknown> = {}) => {
     const commandId = randomUUID();
-    const command = { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, grantId: createGrant.id,
+    const command = { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
       clientCommandId: commandId, peerRequestClass: 'execute', sources: [], task: { title: 'Unused agent trial', ...extra } };
     const created = toolValue(await f.tool('flux_create_task', command));
     return { command, item: await f.read(String(created.workId)) as unknown as WorkItem };
@@ -116,10 +115,13 @@ test('unrelated project writer and viewer cannot Undo; an exact agent operation 
   await grant(f.human, f.projectId, peer, 'contributor');
   assert.equal((await peer.browser.request('POST', `/api/v1/work/${item.id}/creation-undo`, { body: { clientCommandId: randomUUID(), expectedVersion: item.version } })).status, 403);
   const envelope = { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], workId: item.id, expectedVersion: item.version };
-  const undoGrant = await f.grant('work.creation.revert', 'execute', 5, item.id);
-  const reverted = toolValue(await f.tool('flux_undo_task_creation', { ...envelope, grantId: undoGrant.id }));
+  // Taking a task back is a deletion: it waits for the owner's OK like any (AG-3), and the task is untouched until then.
+  assert.ok(waits(await f.tool('flux_undo_task_creation', { ...envelope })), 'the take-back waits');
+  assert.equal((await f.read(item.id) as unknown as WorkItem).creationUndo?.eligible, true, 'nothing changed while it waits');
+  const reverted = await approveWaiting(pool, f.owner, f.connectionId, 'work.creation.revert');
   assert.equal(reverted.workId, item.id); assert.equal(reverted.number, item.number);
-  assert.deepEqual(toolValue(await f.tool('flux_undo_task_creation', { ...envelope, grantId: undoGrant.id })), { ...reverted, replayed: true });
+  assert.equal((await f.read(item.id) as unknown as WorkItem).lifecycle?.state, 'creation_reverted');
+  assert.match(JSON.stringify((await f.tool('flux_undo_task_creation', { ...envelope }))?.result), /approved this change and it was made/, 'a retry says it was made');
 });
 
 test('old incomplete history stays unknown, human origin stays human (own creation only), removed task links and document mentions keep monotonic use', async () => {

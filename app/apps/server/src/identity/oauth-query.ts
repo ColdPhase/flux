@@ -1,14 +1,5 @@
 import { constantTimeEqual, makeSignature } from 'better-auth/crypto';
-import { createHash } from 'node:crypto';
 import type { AgentOauthFlow } from '@flux/core';
-
-const TRANSPORT = new Set(['sig', 'exp', 'ba_iat', 'ba_pl', 'ba_param']);
-/** All semantic parameters survive in this versioned fingerprint, including unknown extensions. */
-export function oauthFingerprint(params: URLSearchParams): string {
-  const entries = [...params.entries()].filter(([key]) => !TRANSPORT.has(key))
-    .sort(([a, av], [b, bv]) => a < b ? -1 : a > b ? 1 : av < bv ? -1 : av > bv ? 1 : 0);
-  return createHash('sha256').update(`flux.oauth-flow.v1\n${new URLSearchParams(entries).toString()}`).digest('hex');
-}
 
 export function oauthFlow(params: URLSearchParams, resource: string): AgentOauthFlow | null {
   for (const key of new Set(params.keys())) if (key !== 'resource' && key !== 'ba_param' && params.getAll(key).length !== 1) return null;
@@ -19,11 +10,10 @@ export function oauthFlow(params: URLSearchParams, resource: string): AgentOauth
   const resources = params.getAll('resource');
   const expiry = Number(params.get('exp'));
   if (!clientId || !redirectUri || params.get('response_type') !== 'code' || params.get('code_challenge_method') !== 'S256' || !params.get('code_challenge')
-    || !scopes.length || new Set(scopes).size !== scopes.length
-    || scopes.some((scope) => !['flux.context.read', 'flux.proposal.write', 'flux.action.execute', 'offline_access'].includes(scope))
+    || !scopes.length || new Set(scopes).size !== scopes.length || scopes.some((scope) => scope !== 'offline_access')
     || resources.length !== 1 || resources[0] !== resource || params.has('request') || params.has('request_uri')
     || !Number.isSafeInteger(expiry) || expiry <= 0) return null;
-  return { fingerprint: oauthFingerprint(params), clientId, redirectUri, scopes, expiresAt: new Date(expiry * 1000) };
+  return { clientId, redirectUri };
 }
 
 /**

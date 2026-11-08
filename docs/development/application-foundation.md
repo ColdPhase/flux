@@ -177,7 +177,7 @@ not expose this endpoint as a human or agent authorization scheme.
 Browser sessions cannot register OAuth clients ([#287](https://github.com/ColdPhase/flux/issues/287)).
 Test deployments register a public PKCE client for the MCP resource with
 `POST /api/v1/integration/oauth-clients` and the same bearer, with a body of
-`{"name": "...", "redirectUris": ["http://127.0.0.1:19737/callback"]}` and optional `scopes`.
+`{"name": "...", "redirectUris": ["http://127.0.0.1:19737/callback"]}`; the only scope there is is `offline_access`.
 The route answers `{"clientId": "..."}`. It exists only when `FLUX_TEST_FAILURE_INJECTION=true`
 is also set, which `./flux up` never does. The browser tests (`ui-test`) receive the token for it.
 

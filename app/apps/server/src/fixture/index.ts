@@ -1,12 +1,15 @@
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { PgBoss } from 'pg-boss';
-import { FIXTURE_OAUTH_CLIENT_PATH, SAMPLE_COMMAND_PATH, type FixtureOauthClientCommand, type FixtureOauthClientRegistered, type SampleCommand } from '@flux/contracts';
-import { fixtureOauthClientRepository, type Database } from '@flux/db';
+import { FIXTURE_AGENT_CONNECTION_PATH, FIXTURE_OAUTH_CLIENT_PATH, SAMPLE_COMMAND_PATH, type AgentConnection, type FixtureAgentConnectionCommand, type FixtureOauthClientCommand,
+  type FixtureOauthClientRegistered, type SampleCommand } from '@flux/contracts';
+import { and, eq, isNull } from 'drizzle-orm';
+import { agentConnectionRepository, fixtureOauthClientRepository, schema, type Database } from '@flux/db';
+import type { SessionResolver } from '../identity/index.js';
 import type { FixtureConfig } from '../config.js';
 import { createSample, ForcedRollbackError, InvalidSampleError } from './sample.js';
 
-const MCP_SCOPES = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute', 'offline_access'];
+const MCP_SCOPES = ['offline_access'];
 
 /**
  * Test-deployment wiring in one place (#88). Nothing here exists without `FLUX_FIXTURE_TOKEN`:
@@ -42,7 +45,6 @@ export function registerFixtureRoutes(app: FastifyInstance, { config, db, boss, 
       schema: { body: { type: 'object', required: ['name', 'redirectUris'], additionalProperties: false, properties: {
         name: { type: 'string', minLength: 1, maxLength: 200 },
         redirectUris: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'string', minLength: 1, maxLength: 2048 } },
-        scopes: { type: 'array', minItems: 1, maxItems: MCP_SCOPES.length, uniqueItems: true, items: { type: 'string', enum: MCP_SCOPES } },
       } } },
     }, async (request, reply) => {
       for (const uri of request.body.redirectUris) {
@@ -52,7 +54,7 @@ export function registerFixtureRoutes(app: FastifyInstance, { config, db, boss, 
       }
       const clientId = `flux-fixture-${randomUUID()}`;
       await clients.register({ clientId, name: request.body.name, redirectUris: request.body.redirectUris,
-        scopes: request.body.scopes ?? MCP_SCOPES, resource: `${publicOrigin}/mcp` });
+        scopes: MCP_SCOPES, resource: `${publicOrigin}/mcp` });
       return reply.code(201).send({ clientId } satisfies FixtureOauthClientRegistered);
     });
   }
@@ -75,5 +77,30 @@ export function registerFixtureRoutes(app: FastifyInstance, { config, db, boss, 
       if (error instanceof InvalidSampleError) return reply.code(400).send({ error: error.message });
       throw error;
     }
+  });
+}
+
+/** `POST /api/v1/integration/agent-connections`: see `FIXTURE_AGENT_CONNECTION_PATH`. Registered only in a test deployment, for a signed-in session. */
+export function registerFixtureConnectionRoute(app: FastifyInstance, { config, db, sessions, publicOrigin }: { config: FixtureConfig; db: Database; sessions: SessionResolver; publicOrigin: string }) {
+  if (!fixtureFlags(config).registerOauthClients) return;
+  const clients = fixtureOauthClientRepository(db);
+  const connections = agentConnectionRepository(db);
+  app.post<{ Body: FixtureAgentConnectionCommand }>(FIXTURE_AGENT_CONNECTION_PATH, {
+    schema: { body: { type: 'object', required: ['agentId'], additionalProperties: false, properties: {
+      agentId: { type: 'string', format: 'uuid' }, name: { type: 'string', minLength: 1, maxLength: 120 },
+      clientDesignation: { type: 'string', enum: ['claude_code', 'codex', 'other'] } } } },
+  }, async (request, reply) => {
+    const session = await sessions.requirePrincipal(request);
+    const clientId = `flux-fixture-connection-${randomUUID()}`;
+    await clients.register({ clientId, name: 'Fixture client', redirectUris: ['http://127.0.0.1:19737/callback'], scopes: MCP_SCOPES, resource: `${publicOrigin}/mcp` });
+    const made = await db.transaction(async (tx) => {
+      const [agent] = await tx.select({ workspaceId: schema.agents.workspaceId }).from(schema.agents).where(and(eq(schema.agents.id, request.body.agentId),
+        eq(schema.agents.ownerUserId, session.principal.id), isNull(schema.agents.revokedAt)));
+      if (!agent) return null;
+      return connections.connect(tx, session.principal.id, { id: request.body.agentId, workspaceId: agent.workspaceId },
+        { clientId, name: request.body.name ?? 'Fixture client', clientDesignation: request.body.clientDesignation ?? 'other' });
+    });
+    if (!made || typeof made === 'string') return reply.code(404).send({ error: 'Agent not found', code: 'AGENT_NOT_FOUND' });
+    return reply.code(201).send(made.connection satisfies AgentConnection);
   });
 }

@@ -403,8 +403,8 @@ describe('"On a schedule": the owner\'s schedules and the per-minute tick (F-027
   });
 
   test('AST-7.5: only the owner\'s own request can prepare a schedule, and it stays off; a background run\'s block does nothing; no tool exists for it', async () => {
-    const { AGENT_MCP_ENTRIES } = await import('@flux/contracts');
-    assert.deepEqual(AGENT_MCP_ENTRIES.filter((entry) => /schedule|reaction|switch|cron/i.test(`${entry.id} ${entry.name}`)), []);
+    const { AGENT_TOOLS } = await import('@flux/contracts');
+    assert.deepEqual(AGENT_TOOLS.filter((entry) => /schedule|reaction|switch|cron/i.test(`${entry.id} ${entry.name}`)), []);
     const runs = personalRunUseCases(db, { queue: queue.factory, connections, providerEnabled: true });
     const block = '<schedule>{"title":"Blocked tasks","text":"Tell me what is blocked here","when":{"kind":"weekdays","at":"09:00"}}</schedule>';
     compute.respond = answer(`I will tell you each weekday morning.\n${block}`);

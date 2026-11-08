@@ -12,6 +12,7 @@ import { nativeWorkInTransaction, workUseCases } from '../../apps/server/src/wor
 import { db, pool } from './support/db.js';
 import { backendPid, settled, waitUntilBlockedBy } from './support/locks.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
+import { createConnection } from './support/mcp-actions.js';
 
 // Native task criteria, prerequisites and plan intent (#152): API/persistence behavior against the real
 // database. Pure rules are in task-graph-core.test.ts; the migration is in task-plan-migration.test.ts.
@@ -619,18 +620,15 @@ function ordered(tx: Parameters<Parameters<typeof db.transaction>[0]>[0]) {
   return { tx: proxy, log };
 }
 
-async function execution(f: Scene, maximumUses = 3) {
+async function execution(f: Scene) {
   const agent = expectStatus(await f.owner.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, { body: { name: 'Execution planner', owner: 'self' } }), 201) as Agent;
-  const connection = expectStatus(await f.owner.browser.request('POST', '/api/v1/agent-connections', { body: { agentId: agent.id, selectedProjectIds: [f.place.id],
-    scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] } }), 201) as AgentConnection;
+  const connection = await createConnection(pool, f.owner.browser, { agentId: agent.id }) as AgentConnection;
   const clientId = `plan-fixture-${randomUUID()}`; const bindingId = randomUUID();
   await pool.query('INSERT INTO oauth_client(id,client_id,name,redirect_uris) VALUES($1,$2,$3,$4)', [randomUUID(), clientId, 'Plan fixture', ['https://fixture.invalid/callback']]);
   await pool.query('INSERT INTO agent_oauth_bindings(id,owner_user_id,connection_id,client_id) VALUES($1,$2,$3,$4)', [bindingId, f.owner.id, connection.id, clientId]);
-  const claims = { ownerUserId: f.owner.id, connectionId: connection.id, clientId, grantReferenceId: `flux-grant:${bindingId}`, scopes: connection.scopes };
+  const claims = { ownerUserId: f.owner.id, connectionId: connection.id, clientId, grantReferenceId: `flux-grant:${bindingId}` };
   const { runtime } = await db.transaction((tx) => agentRuntimeInTransaction(tx, claims, randomUUID()));
-  const standing = expectStatus(await f.owner.browser.request('POST', `/api/v1/agent-connections/${connection.id}/action-grants`, { body: {
-    clientCommandId: randomUUID(), projectId: f.place.id, operation: 'work.create', peerRequestClass: 'execute', maximumUses, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as { id: string };
-  return { agent, connection, claims, runtime, standing };
+  return { agent, connection, claims, runtime };
 }
 
 test('a native execution creates criteria, edges, intent, task, notice and receipt in one unit before the single final flush', async () => {

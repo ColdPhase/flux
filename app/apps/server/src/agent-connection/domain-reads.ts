@@ -9,7 +9,7 @@ import { workUseCases } from '../work/adapters.js';
 import { sketchUseCases } from '../sketches/adapters.js';
 import { policySearchAccess, searchRepository } from '../search/adapters.js';
 import { SearchCursorCodec } from '../search/cursor.js';
-import { requireMcpSourceKinds, withAgentConnection, type FluxMcpClaims } from './context.js';
+import { withAgentConnection, type FluxMcpClaims } from './context.js';
 import { toolError, toolResult } from './tool-results.js';
 
 const page = { limit: z.int().min(1).max(50).default(20), offset: z.int().min(0).max(10_000).default(0) };
@@ -47,22 +47,22 @@ function runChunkEnd(body: string, offset: number) {
   return end;
 }
 
-/** Canonical readers under the selected-project ceiling. No separate MCP object model. */
+/** Canonical readers under the owner's rights. No separate MCP object model. */
 export function registerAgentDomainReads(server: AgentToolRegistrar, db: Database, claims: FluxMcpClaims, cursorSecret: string) {
   const cursors = new SearchCursorCodec(cursorSecret);
   const run = claims.run !== undefined;
   const pageLimit = (limit: number) => run ? Math.min(limit, RUN_PAGE_LIMIT) : limit;
   const capped = <T extends { limit: number }>(query: T): T => ({ ...query, limit: pageLimit(query.limit) });
   async function result<T>(projectId: string | null, read: Parameters<typeof withAgentConnection<T>>[4]) {
-    try { return toolResult(await withAgentConnection(db, claims, 'flux.context.read', projectId, read)); }
+    try { return toolResult(await withAgentConnection(db, claims, 'read', projectId, read)); }
     catch (error) { return toolError(error); }
   }
 
-  server.registerTool('flux_list_contexts', { title: 'List selected Flux projects',
-    description: 'List the selected projects this connection can still read.', inputSchema: z.object({}), annotations },
-  () => result(null, async ({ tx, connection, principal, requireProject }) => {
+  server.registerTool('flux_list_contexts', { title: 'List your Flux projects',
+    description: 'List the projects you can read and this connection can still use.', inputSchema: z.object({}), annotations },
+  () => result(null, async ({ tx, reachable, principal, requireProject }) => {
     const projects = [];
-    for (const id of [...connection.selectedProjectIds].sort()) {
+    for (const id of await reachable()) {
       // A space the connection cannot use now (AI turned off there, access lost) is left out; the others are still listed (AG-10).
       try {
         await requireProject(id);
@@ -167,12 +167,11 @@ export function registerAgentDomainReads(server: AgentToolRegistrar, db: Databas
     return sketchUseCases(tx).getWindow(principal, id, { limit: pageLimit(limit), offset, linkOffset, expectedUpdatedAt });
   }));
 
-  server.registerTool('flux_search_project', { title: 'Search a selected project',
+  server.registerTool('flux_search_project', { title: 'Search a project',
     description: 'Search project content: snippets, counts and a cursor for more. Private, direct-message and person results are excluded.',
     inputSchema: z.object({ projectId: z.uuid(), q: z.string().min(1).max(200), type: z.enum(['message', 'doc', 'material', 'work', 'decision', 'result', 'sketch']).optional(),
       cursor: z.string().max(500).optional(), limit: page.limit }), annotations },
   ({ projectId, ...query }) => {
-    requireMcpSourceKinds(claims, query.type ? [query.type] : ['message', 'doc', 'material', 'work', 'decision', 'result', 'sketch']);
     return result(projectId, async ({ tx, principal, workspaceId }) => {
     const access = policySearchAccess(tx);
     const search = createSearchUseCases({ rows: searchRepository(tx), cursors,

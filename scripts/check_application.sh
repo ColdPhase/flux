@@ -179,11 +179,8 @@ run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/work-proposal-paginat
 # Criteria, prerequisites and plan revision in the real task details, with the unmet-prerequisite refusal (#152).
 run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/task-plan.e2e.ts
 
-# Named, request-bound agent connection consent, including signed-out setup (#152).
+# A client's one-click sign-in: the consent page makes the connection, Deny makes nothing, and the settings page sets what it may do (#859).
 $compose run --rm e2e node_modules/.bin/tsx --test tests/app/e2e/agent-connections.e2e.ts
-
-# The owner's capability and project switches on the Connect page decide the agent's next real MCP call (#316).
-run_browser e2e node_modules/.bin/tsx --test tests/app/e2e/mcp-permission-controls.e2e.ts
 
 # A session created before an API container restart must still be valid afterwards.
 $compose run --rm test node_modules/.bin/tsx tests/app/session-restart.ts prepare

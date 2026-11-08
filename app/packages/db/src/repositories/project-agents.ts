@@ -39,14 +39,14 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
           if (!decided.has(key)) decided.set(key, policy.allows(principal, action, project, tx));
           return decided.get(key)!;
         };
+        // A local client's connection reaches every space its owner reaches (#859): the project's workspace is the only list.
         const listed = await tx.select({ connection: schema.agentConnections, agentName: schema.agents.name, ownerName: schema.authUsers.name })
-          .from(schema.agentConnectionProjects)
-          .innerJoin(schema.agentConnections, and(eq(schema.agentConnections.id, schema.agentConnectionProjects.connectionId),
-            isNull(schema.agentConnections.revokedAt), ne(schema.agentConnections.computeSource, 'owner_assistant')))
+          .from(schema.agentConnections)
+          .innerJoin(schema.projects, and(eq(schema.projects.id, projectId), eq(schema.projects.workspaceId, schema.agentConnections.workspaceId)))
           .innerJoin(schema.agents, and(eq(schema.agents.id, schema.agentConnections.agentId),
             eq(schema.agents.ownerUserId, schema.agentConnections.ownerUserId), isNull(schema.agents.revokedAt)))
           .innerJoin(schema.authUsers, eq(schema.authUsers.id, schema.agentConnections.ownerUserId))
-          .where(eq(schema.agentConnectionProjects.projectId, projectId));
+          .where(and(isNull(schema.agentConnections.revokedAt), ne(schema.agentConnections.computeSource, 'owner_assistant')));
         // The reader's own assistant is in every project of its workspace that its owner can read (F-036 AG-3): it has no list to join.
         const assistant = await tx.select({ connection: schema.agentConnections, agentName: schema.agents.name, ownerName: schema.authUsers.name })
           .from(schema.agentConnections)
@@ -67,22 +67,8 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
         if (!current.length) return { projectId, connections: [] };
         const ids = current.map((row) => row.connection.id);
 
-        // Usable now = what MCP requires of the whole connection: the level its scopes need on every
-        // selected project (see agent-connections.ts resolveCurrent). Otherwise it is unavailable.
-        const selections = new Map<string, string[]>();
-        for (const row of await tx.select({ connectionId: schema.agentConnectionProjects.connectionId, projectId: schema.agentConnectionProjects.projectId })
-          .from(schema.agentConnectionProjects).where(inArray(schema.agentConnectionProjects.connectionId, ids))) {
-          selections.set(row.connectionId, [...(selections.get(row.connectionId) ?? []), row.projectId]);
-        }
-        const usable = new Set<string>();
-        for (const { connection } of current) {
-          const action: Action = connection.scopes.some((scope) => scope !== 'flux.context.read') ? 'project.write' : 'project.read';
-          let ok = true;
-          for (const selected of selections.get(connection.id) ?? []) {
-            if (!await allows({ kind: 'agent', id: connection.agentId }, action, selected)) { ok = false; break; }
-          }
-          if (ok) usable.add(connection.id);
-        }
+        // Usable now = what MCP requires: its agent reads this project, which the listing above already checked.
+        const usable = new Set<string>(ids);
 
         // Authorized before = a token was issued for one of its bindings, or a client ever opened a session.
         // Choosing a connection on the consent page alone creates a binding, not an authorization.
@@ -189,7 +175,7 @@ export function projectAgentRepository(db: Database, policy: ProjectAgentPolicy)
           const session = usable.has(connection.id) ? sessions.get(connection.id) : undefined;
           const last = activity.get(connection.id);
           return {
-            id: connection.id, name: connection.name, clientDesignation: connection.clientDesignation, scopes: [...connection.scopes], mayDo: connection.mayDo,
+            id: connection.id, name: connection.name, clientDesignation: connection.clientDesignation, mayDo: connection.mayDo,
             owner: { id: connection.ownerUserId, name: ownerName }, agent: { id: connection.agentId, name: agentName },
             own: connection.ownerUserId === reader.id,
             ...(connection.computeSource === 'owner_assistant' ? { assistant: true as const } : {}),

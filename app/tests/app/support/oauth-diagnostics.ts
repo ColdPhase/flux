@@ -1,5 +1,5 @@
 /** Closed diagnostic vocabulary. Raw URLs, response bodies, native output and credentials never leave this module. */
-export const OAUTH_DIAGNOSTIC_STAGES = ['native_login_started', 'authorization_received', 'sign_in_ready', 'connection_selected',
+export const OAUTH_DIAGNOSTIC_STAGES = ['native_login_started', 'authorization_received', 'sign_in_ready',
   'consent_ready', 'consent_submitted', 'callback_navigation', 'callback_response', 'callback_wait_failed', 'native_login_finished'] as const;
 export type OAuthDiagnosticStage = typeof OAUTH_DIAGNOSTIC_STAGES[number];
 export const OAUTH_DIAGNOSTIC_CODES = ['invalid_request', 'invalid_client', 'invalid_grant', 'unauthorized_client',

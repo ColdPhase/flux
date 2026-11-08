@@ -11,8 +11,8 @@ const versions = async (docId: string) => (await pool.query('SELECT count(*)::in
 const docEvents = async (docId: string) => (await pool.query(
   "SELECT count(*)::int AS n FROM events WHERE kind IN ('project.doc_created.v1', 'project.doc_updated.v1') AND data->>'docId' = $1", [docId])).rows[0].n as number;
 const docs = async (projectId: string) => (await pool.query("SELECT count(*)::int AS n FROM project_materials WHERE project_id=$1 AND kind='doc'", [projectId])).rows[0].n as number;
-const base = (f: Scene, grantId: string, peerRequestClass: 'execute' | 'plan', clientCommandId: string = randomUUID()) => ({ projectId: f.projectId,
-  runtimeSessionId: f.runtimeSessionId, grantId, clientCommandId, peerRequestClass, sources: [] as { materialId: string; version: number }[] });
+const base = (f: Scene, peerRequestClass: 'execute' | 'plan', clientCommandId: string = randomUUID()) => ({ projectId: f.projectId,
+  runtimeSessionId: f.runtimeSessionId, clientCommandId, peerRequestClass, sources: [] as { materialId: string; version: number }[] });
 const getDoc = async (f: Scene, docId: string) => expect(await f.owner.request('GET', `/api/v1/docs/${docId}`), 200) as unknown as Doc;
 
 test('standing doc grants start and edit a project doc as the agent at the read version: one version, event and debit per command', async () => {
@@ -21,10 +21,8 @@ test('standing doc grants start and edit a project doc as the agent at the read 
   assert.deepEqual(capabilities.filter((item) => item.operation?.startsWith('doc.')).map(({ name, operation, classes, available }) => ({ name, operation, classes, available })),
     [{ name: 'flux_create_doc', operation: 'doc.create', classes: ['execute', 'plan'], available: true },
       { name: 'flux_update_doc', operation: 'doc.update', classes: ['execute', 'plan'], available: true }]);
-  const create = await f.grant('doc.create', 'plan');
-  const update = await f.grant('doc.update', 'execute');
   const first = randomUUID();
-  const started = { ...base(f, create.id, 'plan', first), sources: [f.source],
+  const started = { ...base(f, 'plan', first), sources: [f.source],
     doc: { title: 'Battery notes', body: 'Measured **four hours** against [the plan](flux:doc/00000000-0000-4000-8000-000000000000).' } };
   const created = toolValue(await f.tool('flux_create_doc', started));
   const docId = String(created.docId);
@@ -44,7 +42,7 @@ test('standing doc grants start and edit a project doc as the agent at the read 
 
   // An edit at the read version, like If-Match: the next immutable version, written by the agent.
   const edit = randomUUID();
-  const published = { ...base(f, update.id, 'execute', edit), docId, expectedVersion: 1,
+  const published = { ...base(f, 'execute', edit), docId, expectedVersion: 1,
     changes: { body: 'Measured four hours, twice.', state: 'published', reason: 'Second measurement' } };
   const edited = toolValue(await f.tool('flux_update_doc', published));
   assert.deepEqual([edited.version, edited.state, edited.replayed], [2, 'published', false]);
@@ -78,7 +76,7 @@ test('standing doc grants start and edit a project doc as the agent at the read 
 
   // Revocation stops new edits and replays alike: a replay revalidates current authority before returning anything.
   const again = randomUUID();
-  const latest = { ...base(f, update.id, 'execute', again), docId, expectedVersion: 3, changes: { body: 'Agent follow-up' } };
+  const latest = { ...base(f, 'execute', again), docId, expectedVersion: 3, changes: { body: 'Agent follow-up' } };
   const followed = toolValue(await f.tool('flux_update_doc', latest));
   assert.equal(followed.version, 4);
   assert.deepEqual([await versions(docId)], [4]);
@@ -86,33 +84,31 @@ test('standing doc grants start and edit a project doc as the agent at the read 
 
 test('doc actions never reach a private draft, a guessed or other project doc, another doc than a targeted grant names, or an expired or revoked authority', async () => {
   const f = await actionScene(pool);
-  const anyDoc = await f.grant('doc.update', 'plan', 10);
-  const create = await f.grant('doc.create', 'plan', 10);
   const docA = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`, { body: { title: 'Wiring', state: 'published' } }), 201) as unknown as Doc;
   const docB = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`, { body: { title: 'Housing' } }), 201) as unknown as Doc;
   const draft = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/drafts`, { body: { title: 'Private plan' } }), 201);
-  const elsewhere = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/projects`,
-    { body: { name: 'Unselected project', visibility: 'restricted' } }), 201);
-  const otherDoc = expect(await f.owner.request('POST', `/api/v1/projects/${elsewhere.id}/docs`, { body: { title: 'Elsewhere' } }), 201) as unknown as Doc;
-  const edit = (grantId: string, docId: unknown, changes: Record<string, unknown> = { body: 'Agent text' }) => f.tool('flux_update_doc',
-    { ...base(f, grantId, 'plan'), docId, expectedVersion: 1, changes });
+  // Another person's space: the client has its owner's rights and no more.
+  const stranger = await actionScene(pool);
+  const elsewhere = { id: stranger.projectId };
+  const otherDoc = expect(await stranger.owner.request('POST', `/api/v1/projects/${elsewhere.id}/docs`, { body: { title: 'Elsewhere' } }), 201) as unknown as Doc;
+  const edit = ( docId: unknown, changes: Record<string, unknown> = { body: 'Agent text' }) => f.tool('flux_update_doc',
+    { ...base(f, 'plan'), docId, expectedVersion: 1, changes });
 
   // A private draft, a guessed ID and another project's doc are all just "not a project object": nothing leaks or changes.
-  for (const target of [draft.id, randomUUID(), otherDoc.id]) assert.equal(toolFailure(await edit(anyDoc.id, target)).code, 'OBJECT_NOT_FOUND');
-  // A private draft cannot be a cited source either, and another project is outside the connection's selection.
-  assert.equal(toolFailure(await f.tool('flux_create_doc', { ...base(f, create.id, 'plan'), sources: [{ materialId: draft.id, version: 1 }],
+  for (const target of [draft.id, randomUUID(), otherDoc.id]) assert.equal(toolFailure(await edit(target)).code, 'OBJECT_NOT_FOUND');
+  // A private draft cannot be a cited source either, and another person's space is outside its owner's rights.
+  assert.equal(toolFailure(await f.tool('flux_create_doc', { ...base(f, 'plan'), sources: [{ materialId: draft.id, version: 1 }],
     doc: { title: 'From a draft' } })).code, 'SOURCE_VERSION_CONFLICT');
-  assert.equal(toolFailure(await f.tool('flux_create_doc', { ...base(f, create.id, 'plan'), projectId: elsewhere.id, doc: { title: 'Elsewhere' } })).code,
+  assert.equal(toolFailure(await f.tool('flux_create_doc', { ...base(f, 'plan'), projectId: elsewhere.id, doc: { title: 'Elsewhere' } })).code,
     'PROJECT_NOT_FOUND');
 
   // A targeted grant authorizes only its doc; a grant for another operation or class authorizes nothing here.
-  const onlyA = await f.grant('doc.update', 'plan', 10, docA.id);
-  assert.equal(toolValue(await edit(onlyA.id, docA.id)).version, 2);
+  assert.equal(toolValue(await edit(docA.id)).version, 2);
 
   // A revoked connection refuses before any effect.
   const drafted = (await pool.query('SELECT count(*)::int AS n FROM draft_versions WHERE draft_id=$1', [draft.id])).rows[0].n as number;
   expect(await f.owner.request('DELETE', `/api/v1/agent-connections/${f.connectionId}`), 204);
-  const revoked = await f.raw('flux_create_doc', { ...base(f, create.id, 'plan'), doc: { title: 'After revocation' } });
+  const revoked = await f.raw('flux_create_doc', { ...base(f, 'plan'), doc: { title: 'After revocation' } });
   assert.equal(revoked.status, 403);
 
   assert.deepEqual([await versions(docA.id), await versions(docB.id), await versions(otherDoc.id), await docs(f.projectId)], [2, 1, 1, 2]);
@@ -122,17 +118,15 @@ test('doc actions never reach a private draft, a guessed or other project doc, a
 
 test('a doc action refuses when its owner lost the project, with no version, event or debit', async () => {
   const f = await actionScene(pool);
-  const create = await f.grant('doc.create', 'plan');
-  const update = await f.grant('doc.update', 'execute');
-  const created = toolValue(await f.tool('flux_create_doc', { ...base(f, create.id, 'plan'), doc: { title: 'Wiring notes', body: 'First pass.' } }));
+  const created = toolValue(await f.tool('flux_create_doc', { ...base(f, 'plan'), doc: { title: 'Wiring notes', body: 'First pass.' } }));
   const docId = String(created.docId);
-  // The owner no longer has the space: the agent has exactly what its owner has, so the standing grant carries nothing. No project is
-  // reachable, so the MCP request itself is refused before any tool runs, as for a revoked connection.
+  // The owner no longer has the space: the agent has exactly what its owner has, so the call is refused as for a space that is not there.
   const ownerId = String((await pool.query('SELECT owner_user_id FROM agents WHERE id = $1', [f.agentId])).rows[0].owner_user_id);
   const restore = await loseSpace(f.projectId, ownerId);
-  const refused = await f.raw('flux_update_doc', { ...base(f, update.id, 'execute'), docId, expectedVersion: 1,
+  const refused = await f.raw('flux_update_doc', { ...base(f, 'execute'), docId, expectedVersion: 1,
     changes: { body: 'Second pass.' } });
-  assert.equal(refused.status, 403);
+  assert.equal(refused.status, 200);
+  assert.match(toolFailure(refused.message).code, /NOT_FOUND/, 'content-free: the space is not there for it');
   assert.deepEqual([await versions(docId), await docEvents(docId)], [1, 1]);
   await restore();
   assert.equal((await getDoc(f, docId)).version, 1);

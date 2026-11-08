@@ -1,7 +1,7 @@
-import { AGENT_MCP_SOURCE_CAPABILITIES, type AgentMcpPolicy, type AgentScope } from '@flux/contracts';
-import { agentProjectReads, DomainError, enforce, evaluateProject, requireAgentMcpEntry, requireAgentSelection, requireSpaceAi, type AgentConnectionContext,
+import type { AgentMayDo, AgentToolAccess } from '@flux/contracts';
+import { agentProjectReads, DomainError, enforce, evaluateProject, requireAgentProject, requireSpaceAi, type AgentConnectionContext,
   type AgentProjectObjectKind } from '@flux/core';
-import { agentProjectObjectRows, lockAgentMcpPolicy, loadActor, accessReader, type Database, type Transaction } from '@flux/db';
+import { agentProjectObjectRows, reachableProjectIds, accessReader, type Database, type Transaction } from '@flux/db';
 import { createAgentConnectionStore } from './store.js';
 import type { McpDispatch } from './mcp-dispatch.js';
 import { requireLiveRun, type RunTokenClaims } from './run-token.js';
@@ -13,7 +13,6 @@ export interface FluxMcpClaims {
   connectionId: string;
   clientId: string | null;
   grantReferenceId: string | null;
-  scopes: readonly string[];
   /** Supplied only by the verified HTTP composition; native internal adapters keep their existing envelope. */
   dispatch?: McpDispatch;
   /** Optional immutable URL restriction admitted by the HTTP bearer composition; grants nothing. */
@@ -34,85 +33,61 @@ export type VerifiedFluxMcpClaims = FluxMcpClaims & { dispatch: McpDispatch };
 export interface FluxAgentReadContext {
   tx: Transaction;
   connection: AgentConnectionContext;
+  /** "What it may do", read with the connection row held. */
+  mayDo: AgentMayDo;
   workspaceId: string;
   principal: { kind: 'agent'; id: string };
-  mcpPolicy: AgentMcpPolicy | null;
+  /** Every project the connection's owner can see now. A run reaches only its place. Whether the agent may use one is `requireProject`'s. */
+  reachable(): Promise<string[]>;
   requireProject(projectId: string, action?: 'project.read' | 'project.write'): Promise<void>;
   requireObject(projectId: string, kind: AgentProjectObjectKind, id: string): Promise<void>;
 }
 
 /** Hold live binding, connection and central access locks throughout content projection/effect. */
-export function withAgentConnection<T>(db: Database, claims: FluxMcpClaims, scope: AgentScope,
+export function withAgentConnection<T>(db: Database, claims: FluxMcpClaims, access: AgentToolAccess,
   projectId: string | null, read: (context: FluxAgentReadContext) => Promise<T>): Promise<T> {
-  return db.transaction(async (tx) => read(await agentConnectionInTransaction(tx, claims, scope, projectId)));
+  return db.transaction(async (tx) => read(await agentConnectionInTransaction(tx, claims, access, projectId)));
 }
 
-/** The same authorization boundary composed into #152/#153's caller-owned transaction. */
-export async function agentConnectionInTransaction(tx: Transaction, claims: FluxMcpClaims, scope: AgentScope,
+/**
+ * The same authorization boundary composed into #152/#153's caller-owned transaction. A client acts with its owner's rights at
+ * this moment and does what its "What it may do" says: there is no scope, project list or capability switch to consult (#859).
+ */
+export async function agentConnectionInTransaction(tx: Transaction, claims: FluxMcpClaims, access: AgentToolAccess,
   projectId: string | null): Promise<FluxAgentReadContext> {
     const store = createAgentConnectionStore(tx);
-    const grant = await (claims.run ? store.grantForRun : claims.dispatch ? store.grantForMcp : store.grantForOauth)(claims.ownerUserId,
-      claims.grantReferenceId ?? claims.connectionId);
+    const grant = await (claims.run ? store.grantForRun : store.grantForOauth)(claims.ownerUserId, claims.grantReferenceId ?? claims.connectionId);
     if (!grant || grant.connection.id !== claims.connectionId || grant.clientId !== null && grant.clientId !== claims.clientId)
       throw new DomainError(404, 'CONNECTION_NOT_FOUND', 'Connection not found');
     const row = grant.connection;
     // A run token works only while its run is in flight, under its own id, for the owner's assistant.
     if (claims.run) await requireLiveRun(tx, { ownerUserId: claims.ownerUserId, connectionId: claims.connectionId, run: claims.run }, { newCall: true, lock: true });
-    if (!claims.scopes.includes(scope) || !row.scopes.includes(scope))
-      throw new DomainError(403, 'MCP_SCOPE_REQUIRED', 'The connection lacks the required scope');
+    // C-22: the agent acts only while its owner is a non-guest member of the company, checked in this transaction before any write
+    // (a project-independent call such as a runtime acknowledgement reaches no project, so nothing else would stop it).
+    const actor = await accessReader(tx).loadActor({ kind: 'agent', id: row.agentId }, row.workspaceId, { lock: true });
+    if (!actor.active || actor.agent?.ownerUserId !== row.ownerUserId)
+      throw new DomainError(403, 'AGENT_OWNER_UNAVAILABLE', 'This client is unavailable: its owner is no longer a member of the company');
     // "What it may do" (F-036 AG-3): an agent set to Only read reads and answers, and changes nothing anywhere.
-    if (scope !== 'flux.context.read' && row.mayDo === 'read')
+    if (access === 'write' && row.mayDo === 'read')
       throw new DomainError(403, 'AGENT_ONLY_READS', 'This agent only reads: its owner set "What it may do" to Only read');
-    const mcpPolicy = claims.dispatch ? await lockAgentMcpPolicy(tx, row.id) : null;
-    if (claims.dispatch) {
-      if (!mcpPolicy) throw new DomainError(403, 'MCP_ENTRY_UNAVAILABLE', 'This capability is unavailable');
-      const entry = claims.dispatch.current();
-      if (!claims.scopes.includes(entry.requiredScope) || !row.scopes.includes(entry.requiredScope))
-        throw new DomainError(403, 'MCP_SCOPE_REQUIRED', 'The connection lacks the required scope');
-      requireAgentMcpEntry(mcpPolicy, claims.dispatch.dependencies.capturedVersion, entry,
-        claims.dispatch.dependencies.capabilities);
-      // Project-independent resources and runtime ACKs also require the owned
-      // agent's current owner membership, under the same protected lock prefix.
-      const actor = await loadActor({ kind: 'agent', id: row.agentId }, row.workspaceId, tx, { lock: true });
-      if (!actor.active || actor.agent?.ownerUserId !== row.ownerUserId)
-        throw new DomainError(403, 'MCP_ENTRY_UNAVAILABLE', 'This capability is unavailable');
-      claims.dispatch.admit(entry);
-    }
-    const connection: AgentConnectionContext = {
-      connectionId: row.id, ownerUserId: row.ownerUserId, agentId: row.agentId,
-      // A run reaches only its place (F-022): the selection narrows to the run's project.
-      selectedProjectIds: (mcpPolicy ? mcpPolicy.selectedProjectIds.filter((id) => row.selectedProjectIds.includes(id)) : row.selectedProjectIds)
-        .filter((id) => (!claims.run || id === claims.run.projectId) && (!claims.boundProjectId || id === claims.boundProjectId)),
-      scopes: row.scopes.filter((selected) => claims.scopes.includes(selected)), computeSource: row.computeSource,
-    };
+    const connection: AgentConnectionContext = { connectionId: row.id, ownerUserId: row.ownerUserId, agentId: row.agentId, computeSource: row.computeSource };
+    const reachable = async () => (await reachableProjectIds(tx, row.id)).filter((id) => (!claims.run || id === claims.run.projectId) && (!claims.boundProjectId || id === claims.boundProjectId));
     const requireProject = async (id: string, action: 'project.read' | 'project.write' = 'project.read') => {
-      requireAgentSelection(connection, id, action === 'project.write' ? scope : 'flux.context.read');
-      // AG-10: every tool, resource and prompt that names a space refuses while AI is off there (the policy row first).
+      requireAgentProject(connection, id);
+      // A run reaches only its place (F-022), and a request bound to one project only that one.
+      if (claims.run && id !== claims.run.projectId || claims.boundProjectId && id !== claims.boundProjectId) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found');
+      // AG-10: every tool, resource and prompt that names a space refuses while AI is off there.
       await requireSpaceAi(accessReader(tx), id, { lock: true });
       const checked = enforce(await evaluateProject({ kind: 'agent', id: row.agentId }, action, id, accessReader(tx), { lock: true }), 'project');
       if (checked.project!.workspaceId !== row.workspaceId) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found');
       claims.dispatch?.project(id, action);
     };
-    if (projectId) {
-      requireAgentSelection(connection, projectId, scope);
-      await requireProject(projectId, scope === 'flux.context.read' ? 'project.read' : 'project.write');
-    }
+    if (projectId) await requireProject(projectId, access === 'read' ? 'project.read' : 'project.write');
     const objects = agentProjectReads(agentProjectObjectRows(tx));
-    return { tx, connection, workspaceId: row.workspaceId, principal: { kind: 'agent', id: row.agentId }, mcpPolicy, requireProject,
+    return { tx, connection, mayDo: row.mayDo, workspaceId: row.workspaceId, principal: { kind: 'agent', id: row.agentId }, reachable, requireProject,
       requireObject: async (project, kind, id) => {
         await requireProject(project);
         await objects.requireObject(connection, row.workspaceId, project, kind, id);
         claims.dispatch?.object(project, kind, id);
       } };
-}
-
-/** Register aggregate source requirements before any content query, count or snippet projection. */
-export function requireMcpSourceKinds(claims: FluxMcpClaims, kinds: readonly string[]): void {
-  if (!claims.dispatch) return;
-  const capabilities = kinds.map((kind) => {
-    const capability = AGENT_MCP_SOURCE_CAPABILITIES[kind];
-    if (!capability) throw new DomainError(403, 'MCP_ENTRY_UNAVAILABLE', 'This capability is unavailable');
-    return capability;
-  });
-  claims.dispatch.requireCapabilities(capabilities);
 }

@@ -18,10 +18,10 @@ import { backendPid, barrier, waitUntilBlockedBy } from './support/locks.js';
 
 const auth = createAuth({ db, config: loadIdentityConfig(), mailer: null, oauthRequests: createOauthRequests() });
 type Scene = Awaited<ReturnType<typeof actionScene>>;
-type Command = { projectId: string; taskId: string; runtimeSessionId: string; grantId: string; clientCommandId: string;
+type Command = { projectId: string; taskId: string; runtimeSessionId: string; clientCommandId: string;
   peerRequestClass: 'execute' | 'plan'; sources: { materialId: string; version: number }[]; message: { body: string } };
-const envelope = (f: Pick<Scene, 'projectId' | 'runtimeSessionId'>, taskId: string, grantId: string): Command => ({
-  projectId: f.projectId, taskId, runtimeSessionId: f.runtimeSessionId, grantId, clientCommandId: randomUUID(),
+const envelope = (f: Pick<Scene, 'projectId' | 'runtimeSessionId'>, taskId: string): Command => ({
+  projectId: f.projectId, taskId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(),
   peerRequestClass: 'execute', sources: [], message: { body: 'One meaningful measured observation.' } });
 async function post(f: Pick<Scene, 'tokens'>, command: Command | Record<string, unknown>, database: Database = db) {
   const request = new Request(`${publicOrigin}/mcp`, { method: 'POST', headers: {
@@ -45,7 +45,7 @@ async function state(taskId: string) {
 }
 
 test('real OAuth native posts share one lazy thread and fifth slot across two owners/agents/connections', async () => {
-  const f = await actionScene(pool), item = await task(f), grant = await f.grant('conversation.reply', 'execute', 20);
+  const f = await actionScene(pool), item = await task(f);
   const peer = await register(uniqueEmail('thread-peer'), 'correct horse battery staple');
   const me = expect(await peer.browser.request('GET', '/api/v1/me'), 200).user as { id: string; email: string };
   expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/members`, { body: { email: me.email, role: 'admin' } }), 201);
@@ -53,16 +53,15 @@ test('real OAuth native posts share one lazy thread and fifth slot across two ow
   expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/grants`, { body: { principal: { kind: 'human', id: me.id }, role: 'contributor' } }), 201);
   const agent = expect(await peer.browser.request('POST', `/api/v1/workspaces/${f.workspaceId}/agents`, { body: { name: 'Independent measurement', owner: 'self' } }), 201);
   const second = await agentConnection(pool, peer.browser, String(agent.id), [f.projectId]);
-  const peerGrant = await second.grant('conversation.reply', 'execute', 20);
-  const firstCommand = envelope(f, item.id, grant.id);
-  const secondCommand = { ...envelope({ ...second, projectId: f.projectId }, item.id, peerGrant.id), clientCommandId: firstCommand.clientCommandId };
+  const firstCommand = envelope(f, item.id);
+  const secondCommand = { ...envelope({ ...second, projectId: f.projectId }, item.id), clientCommandId: firstCommand.clientCommandId };
   const first = await Promise.all([post(f, firstCommand), post(second, secondCommand)]);
   assert.equal(first[0].conversationId, first[1].conversationId); assert.notEqual(first[0].messageId, first[1].messageId);
-  await post(f, envelope(f, item.id, grant.id)); await post(second, envelope({ ...second, projectId: f.projectId }, item.id, peerGrant.id));
+  await post(f, envelope(f, item.id)); await post(second, envelope({ ...second, projectId: f.projectId }, item.id));
   const held=barrier<number>(),release=barrier();let loser:ReturnType<typeof post>|undefined;
-  const fifth=db.transaction(async tx=>{const saved=await post(f,envelope(f,item.id,grant.id),tx);
+  const fifth=db.transaction(async tx=>{const saved=await post(f,envelope(f,item.id),tx);
     held.resolve(await backendPid(tx));await bounded(release.promise);return saved;});void fifth.catch(()=>undefined);
-  try{const pid=await bounded(held.promise);loser=post(second,envelope({...second,projectId:f.projectId},item.id,peerGrant.id));
+  try{const pid=await bounded(held.promise);loser=post(second,envelope({...second,projectId:f.projectId},item.id));
     void loser.catch(()=>undefined);await waitUntilBlockedBy(pool,pid);release.resolve();await bounded(fifth);
     await assert.rejects(bounded(loser),fails('AGENT_THREAD_TURN_LIMIT'));
   }finally{release.resolve();await bounded(Promise.all([fifth.catch(()=>undefined),loser?.catch(()=>undefined)]));}
@@ -73,8 +72,8 @@ test('real OAuth native posts share one lazy thread and fifth slot across two ow
 });
 
 test('private task-target receipt stays stable, rejects changed/old-mode intent and a human replay cannot replenish turns', async () => {
-  const f = await actionScene(pool), item = await task(f), grant = await f.grant('conversation.reply', 'execute', 20);
-  const command = envelope(f, item.id, grant.id), first = await post(f, command);
+  const f = await actionScene(pool), item = await task(f);
+  const command = envelope(f, item.id), first = await post(f, command);
   assert.deepEqual(await post(f, command), { ...first, replayed: true });
   await assert.rejects(post(f, { ...command, message: { body: 'Different effect' } }), fails('IDEMPOTENCY_CONFLICT'));
   assert.ok(toolFailure(await f.tool('flux_reply_in_conversation', { ...command, taskId: undefined,
@@ -82,9 +81,9 @@ test('private task-target receipt stays stable, rejects changed/old-mode intent 
   const human = { body: 'A new human measurement boundary', clientMessageId: randomUUID() };
   expect(await f.owner.request('POST', `/api/v1/conversations/${first.conversationId}/messages`, { body: human }), 201);
   assert.equal((await state(item.id)).turns, 0);
-  for (let i = 0; i < 5; i++) await post(f, envelope(f, item.id, grant.id));
+  for (let i = 0; i < 5; i++) await post(f, envelope(f, item.id));
   expect(await f.owner.request('POST', `/api/v1/conversations/${first.conversationId}/messages`, { body: human }), 201);
-  assert.equal((await state(item.id)).turns, 5); await assert.rejects(post(f, envelope(f, item.id, grant.id)), fails('AGENT_THREAD_TURN_LIMIT'));
+  assert.equal((await state(item.id)).turns, 5); await assert.rejects(post(f, envelope(f, item.id)), fails('AGENT_THREAD_TURN_LIMIT'));
   const before = await state(item.id);
   await assert.rejects(pool.query('DELETE FROM project_messages WHERE id=$1', [first.messageId]), /immutable/);
   const owner = (expect(await f.owner.request('GET', '/api/v1/me'), 200).user as { id: string }).id;
@@ -97,39 +96,38 @@ test('private task-target receipt stays stable, rejects changed/old-mode intent 
 });
 
 test('generic writers and raw SQL remain closed; the public post tool admits no client mode', async () => {
-  const f = await actionScene(pool), item = await task(f), grant = await f.grant('conversation.reply', 'execute', 20);
-  const first = await post(f, envelope(f, item.id, grant.id));
+  const f = await actionScene(pool), item = await task(f);
+  const first = await post(f, envelope(f, item.id));
   assert.ok((await f.toolNames()).includes('flux_post_agent_thread'));
-  assert.ok(toolFailure(await f.tool('flux_reply_in_conversation', { ...envelope(f, item.id, grant.id), taskId: undefined,
+  assert.ok(toolFailure(await f.tool('flux_reply_in_conversation', { ...envelope(f, item.id), taskId: undefined,
     conversationId: first.conversationId })).code, 'the thread is not an ordinary conversation');
   await assert.rejects(pool.query(`INSERT INTO project_messages(id,workspace_id,project_id,conversation_id,author_agent_id,client_message_id,request_fingerprint,sequence,body)
     VALUES($1,$2,$3,$4,$5,$6,'unguarded',99,'Bypass')`, [randomUUID(),f.workspaceId,f.projectId,first.conversationId,f.agentId,randomUUID()]),
     (e: unknown) => !!e && typeof e === 'object' && 'constraint' in e && e.constraint === 'agent_thread_agent_writes_closed');
-  await assert.rejects(post(f, { ...envelope(f, item.id, grant.id), targetMode: 'task-agent-thread/v1' }));
+  await assert.rejects(post(f, { ...envelope(f, item.id), targetMode: 'task-agent-thread/v1' }));
   const people = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/conversations`, { body: { body: 'People still use v1', clientMessageId: randomUUID() } }), 201);
-  assert.equal(toolValue(await f.tool('flux_reply_in_conversation', { ...envelope(f,item.id,grant.id), taskId: undefined,
+  assert.equal(toolValue(await f.tool('flux_reply_in_conversation', { ...envelope(f,item.id), taskId: undefined,
     conversationId: people.id })).sequence, 2);
   assert.equal((await state(item.id)).turns, 1);
 });
 
 test('the agents\' thread belongs to its task: another class, a guessed task and a moved thread are refused', async () => {
   const f = await actionScene(pool), a = await task(f), b = await task(f);
-  const broad = await f.grant('conversation.reply','execute',20), first = await post(f,envelope(f,a.id,broad.id));
-  const exact = await f.grant('conversation.reply','plan',20,first.conversationId);
-  await post(f,{ ...envelope(f,a.id,exact.id),peerRequestClass:'plan' });
-  await assert.rejects(post(f,envelope(f,randomUUID(),broad.id)),fails('OBJECT_NOT_FOUND'));
+  const first = await post(f,envelope(f,a.id));
+  await post(f,{ ...envelope(f,a.id),peerRequestClass:'plan' });
+  await assert.rejects(post(f,envelope(f,randomUUID())),fails('OBJECT_NOT_FOUND'));
   const other = expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/work`,{body:{title:'Unrelated'}}),201);
   await assert.rejects(pool.query('UPDATE project_conversations SET work_id=$1 WHERE id=$2',[other.id,first.conversationId]),/immutable/);
   assert.equal((await state(b.id)).threads,0);
 });
 
 test('current real source/runtime/grant/access authority is enforced on new effects and receipt replay without a debit', async () => {
-  const f = await actionScene(pool), item = await task(f), grant = await f.grant('conversation.reply','execute',20);
-  const command = { ...envelope(f,item.id,grant.id),sources:[f.source] }, first = await post(f,command);
+  const f = await actionScene(pool), item = await task(f);
+  const command = { ...envelope(f,item.id),sources:[f.source] }, first = await post(f,command);
   expect(await f.owner.request('PATCH',`/api/v1/materials/${f.source.materialId}`,{body:{clientMutationId:randomUUID(),expectedVersion:1,body:'Changed actual material'}}),200);
   await assert.rejects(post(f,command),fails('SOURCE_VERSION_CONFLICT'));
   await assert.rejects(post(f,{...command,clientCommandId:randomUUID()}),fails('SOURCE_VERSION_CONFLICT'));
-  const live = await f.grant('conversation.reply','execute',20); const other = envelope(f,item.id,live.id);
+  const other = envelope(f,item.id);
   await pool.query("UPDATE agent_runtime_sessions SET expires_at=clock_timestamp()-interval '1 second' WHERE id=$1",[f.runtimeSessionId]);
   await assert.rejects(post(f,other),fails('AGENT_EXECUTION_UNAVAILABLE'));
   assert.deepEqual(await state(item.id),{threads:1,messages:1,boundaries:1,turns:1,used:true});
@@ -139,8 +137,8 @@ test('current real source/runtime/grant/access authority is enforced on new effe
 
 test('a revoked owner, binding and connection block actual native effects/replay; invalid bearer creates nothing', async () => {
   for (const axis of ['owner','binding','connection','runtime'] as const) {
-    const f = await actionScene(pool), item = await task(f), grant = await f.grant('conversation.reply','execute',20);
-    const command=envelope(f,item.id,grant.id); await post(f,command);
+    const f = await actionScene(pool), item = await task(f);
+    const command=envelope(f,item.id); await post(f,command);
     if(axis==='owner') {
       const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as {id:string}).id;
       await loseSpace(f.projectId,ownerId);
@@ -151,13 +149,13 @@ test('a revoked owner, binding and connection block actual native effects/replay
     await assert.rejects(post(f,command)); await assert.rejects(post(f,{...command,clientCommandId:randomUUID()}));
     assert.equal((await state(item.id)).messages,1);
   }
-  const f=await actionScene(pool), item=await task(f), grant=await f.grant('conversation.reply','execute',20);
-  await assert.rejects(post({...f,tokens:{...f.tokens,access_token:'invalid'}},envelope(f,item.id,grant.id)));
+  const f=await actionScene(pool), item=await task(f);
+  await assert.rejects(post({...f,tokens:{...f.tokens,access_token:'invalid'}},envelope(f,item.id)));
   assert.deepEqual(await state(item.id),{threads:0,messages:0,boundaries:0,turns:0,used:false});
 });
 
 test('rollback removes the actual native message, counter, receipt, quota, quiet event and shared use together', async () => {
-  const f=await actionScene(pool),item=await task(f),grant=await f.grant('conversation.reply','execute',20),command=envelope(f,item.id,grant.id);
+  const f=await actionScene(pool),item=await task(f),command=envelope(f,item.id);
   const sentinel=new Error('After native effect/receipt/events');
   await assert.rejects(db.transaction(async tx=>{
     await post(f,command,tx); await tx.execute(sql`SET CONSTRAINTS ALL IMMEDIATE`);
@@ -185,37 +183,37 @@ test('SQL cannot commit a prepared debit/message without its real native receipt
 
 test('real human reset and native post serialize in both forced orders; a rolled-back human boundary resets nothing',{timeout:60_000},async()=>{
   for(const winner of ['post','human'] as const){
-    const f=await actionScene(pool),item=await task(f),grant=await f.grant('conversation.reply','execute',20);
-    for(let i=0;i<4;i++)await post(f,envelope(f,item.id,grant.id));
+    const f=await actionScene(pool),item=await task(f);
+    for(let i=0;i<4;i++)await post(f,envelope(f,item.id));
     const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as {id:string}).id;
     const human={body:'New actual human observation',clientMessageId:randomUUID()},held=barrier<number>(),release=barrier();let other:Promise<unknown>|undefined;
     const first=db.transaction(async tx=>{
-      if(winner==='post')await post(f,envelope(f,item.id,grant.id),tx);
+      if(winner==='post')await post(f,envelope(f,item.id),tx);
       else await taskAgentThreadUseCases(conversationStore(tx)).post({kind:'human',id:ownerId},item.id,human);
       held.resolve(await backendPid(tx));await bounded(release.promise);
     });void first.catch(()=>undefined);
-    try{const pid=await bounded(held.promise);other=winner==='post'?f.owner.request('POST',`/api/v1/work/${item.id}/agent-thread`,{body:human}):post(f,envelope(f,item.id,grant.id));void other.catch(()=>undefined);
+    try{const pid=await bounded(held.promise);other=winner==='post'?f.owner.request('POST',`/api/v1/work/${item.id}/agent-thread`,{body:human}):post(f,envelope(f,item.id));void other.catch(()=>undefined);
       await waitUntilBlockedBy(pool,pid);release.resolve();await bounded(first);const result=await bounded(other);if(winner==='post')assert.equal((result as {status:number}).status,201);
       assert.deepEqual(await state(item.id),{threads:1,messages:6,boundaries:6,turns:winner==='post'?0:1,used:true});
     }finally{release.resolve();await bounded(Promise.all([first.catch(()=>undefined),other?.catch(()=>undefined)]));}
   }
-  const f=await actionScene(pool),item=await task(f),grant=await f.grant('conversation.reply','execute',20);
-  for(let i=0;i<5;i++)await post(f,envelope(f,item.id,grant.id));
+  const f=await actionScene(pool),item=await task(f);
+  for(let i=0;i<5;i++)await post(f,envelope(f,item.id));
   const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as {id:string}).id,sentinel=new Error('Rollback human reset');
   await assert.rejects(db.transaction(async tx=>{
     await taskAgentThreadUseCases(conversationStore(tx)).post({kind:'human',id:ownerId},item.id,{body:'Uncommitted boundary',clientMessageId:randomUUID()});
     const current=await tx.execute<{turn_count:number}>(sql`SELECT turn_count FROM agent_thread_guard_events WHERE task_id=${item.id} ORDER BY sequence DESC LIMIT 1`);
     assert.equal(current.rows[0]!.turn_count,0);throw sentinel;
   }),sentinel);
-  assert.deepEqual(await state(item.id),{threads:1,messages:5,boundaries:5,turns:5,used:true});await assert.rejects(post(f,envelope(f,item.id,grant.id)),fails('AGENT_THREAD_TURN_LIMIT'));
+  assert.deepEqual(await state(item.id),{threads:1,messages:5,boundaries:5,turns:5,used:true});await assert.rejects(post(f,envelope(f,item.id)),fails('AGENT_THREAD_TURN_LIMIT'));
 });
 
 async function bounded<T>(promise:Promise<T>):Promise<T>{let timer:ReturnType<typeof setTimeout>|undefined;try{return await Promise.race([promise,new Promise<never>((_,reject)=>{timer=setTimeout(()=>reject(new Error('Native guard race exceeded10s')),10_000);})]);}finally{clearTimeout(timer);}}
-async function unused(){const f=await actionScene(pool),create=await f.grant('work.create','execute');const value=toolValue(await f.tool('flux_create_task',{...envelope(f,randomUUID(),create.id),taskId:undefined,message:undefined,task:{title:'Unused guarded task'}}));const item=await f.read(String(value.workId)) as unknown as WorkItem;const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as {id:string}).id;return{...f,item,ownerId};}
+async function unused(){const f=await actionScene(pool);const value=toolValue(await f.tool('flux_create_task',{...envelope(f,randomUUID()),taskId:undefined,message:undefined,task:{title:'Unused guarded task'}}));const item=await f.read(String(value.workId)) as unknown as WorkItem;const ownerId=(expect(await f.owner.request('GET','/api/v1/me'),200).user as {id:string}).id;return{...f,item,ownerId};}
 
 test('forced native-post winner fences actual HTTP Undo, while forced Undo winner refuses the authenticated native post', {timeout:60_000},async()=>{
   for(const winner of ['post','undo'] as const){
-    const f=await unused(),grant=await f.grant('conversation.reply','execute',20),command=envelope(f,f.item.id,grant.id);
+    const f=await unused(),command=envelope(f,f.item.id);
     const held=barrier<number>(),release=barrier();let other:Promise<unknown>|undefined;
     const first=db.transaction(async tx=>{
       if(winner==='post') await post(f,command,tx);

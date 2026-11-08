@@ -1445,8 +1445,8 @@ class AppShellJourney(unittest.TestCase):
         owner.evaluate("() => { window.releaseMaterial(); }")
         expect(owner.get_by_role("article").filter(has_text="Held material")).to_be_visible()
 
-    def test_14_personal_agent_setup_project_choice_and_revoke(self) -> None:
-        """A first-time owner can create an identity, choose a project for it (it has the owner's rights, no grant), and revoke access."""
+    def test_14_your_agent_app_shows_how_to_connect_what_it_may_do_and_disconnects(self) -> None:
+        """A first-time owner sees how a client signs in (one click, no form), sets what a connected client may do, and disconnects it (#859)."""
         page = self.page(signed_in=False)
         email = f"agent-setup+{int(time.time() * 1000)}@example.test"
         page.goto("/sign-up")
@@ -1462,35 +1462,39 @@ class AppShellJourney(unittest.TestCase):
         project_id = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
 
         page.goto("/connect-agent")
-        expect(page.get_by_role("heading", name="Your agent connections")).to_be_visible()
+        expect(page).to_have_url(re.compile(r"/settings/agents/connect$"))
+        expect(page.get_by_role("heading", level=1, name="Claude Code, Codex or another app on your computer")).to_be_visible()
         expect(page.get_by_text("claude mcp add --transport http flux", exact=False)).to_be_visible()
-        expect(page.get_by_role("heading", name="New connection")).to_have_count(0)
+        # Nothing to fill in: no project to choose, no name to give, no capability to switch on.
+        connection_page = page.get_by_role("region", name="Your agent app")
+        for control in ("checkbox", "textbox", "combobox", "radio"):
+            expect(connection_page.get_by_role(control)).to_have_count(0)
+        expect(page.get_by_text("No client is connected yet")).to_be_visible()
         shot(page, "agent-first-desktop")
         page.set_viewport_size(PHONE)
-        create_button = box(page, page.get_by_role("button", name="Create personal agent"))
-        self.assertLessEqual(create_button["y"] + create_button["height"], PHONE["height"])
         shot(page, "agent-first-phone")
         page.set_viewport_size(DESKTOP)
-        page.get_by_label("Agent name").fill("My research agent")
-        page.get_by_role("button", name="Create personal agent").click()
-        expect_value(page.get_by_label("Your agent"), re.compile(r".+"))
-        expect(page.get_by_role("heading", name="New connection")).to_be_visible()
-        project = page.locator(".connection__project").filter(has_text="Sensor study")
-        # F-036 AG-3 (#855, #894): the agent has exactly its owner's rights, so there is no per-project agent grant to make.
-        # The owner manages this space, so the project can be chosen at once.
-        expect(project.get_by_text("Your agent can do here what you can")).to_be_visible()
-        expect(project.get_by_text("No agent grant yet")).to_have_count(0)
-        expect(project.get_by_role("button", name="Grant", exact=True)).to_have_count(0)
-        expect(project.get_by_role("checkbox")).to_be_enabled()
-        project.get_by_role("checkbox").check()
-        page.get_by_label("Connection name").fill("Research laptop")
-        choose(page.get_by_label("Client label"), "codex")
-        page.get_by_role("button", name="Save connection").click()
-        saved = page.get_by_role("group", name="Saved selections")
-        expect(saved.get_by_text("My research agent", exact=True)).to_be_visible()
-        expect(saved.get_by_text("Sensor study", exact=True)).to_be_visible()
-        expect(saved.get_by_text("Selected project", exact=True)).to_be_visible()
-        # Saving the selection gave the agent no grant of its own: its access is its owner's.
+
+        # A client signs in on its consent page (tests/ui/test_oauth_consent.py); here its connection is made as that sign-in makes it.
+        workspace = page.context.request.get(f"{ORIGIN}/api/v1/workspaces").json()[0]["id"]
+        headers = {"origin": ORIGIN, "content-type": "application/json"}
+        agent = page.context.request.post(f"{ORIGIN}/api/v1/workspaces/{workspace}/agents", headers=headers, data=json.dumps({"name": "My research agent", "owner": "self"}))
+        self.assertEqual(agent.status, 201, agent.text())
+        made = page.context.request.post(f"{ORIGIN}/api/v1/integration/agent-connections", headers=headers,
+                                         data=json.dumps({"agentId": agent.json()["id"], "name": "Research laptop", "clientDesignation": "codex"}))
+        self.assertEqual(made.status, 201, made.text())
+        page.reload()
+        saved = page.get_by_role("list", name="Connected clients").get_by_role("listitem")
+        expect(saved).to_have_count(1)
+        expect(saved.get_by_text("Research laptop", exact=True)).to_be_visible()
+        # "What it may do" starts at "Do it and tell me"; the owner changes it here, and it is kept.
+        may_do = saved.get_by_role("radiogroup", name="What it may do")
+        expect(may_do.get_by_role("radio", name="Do it and tell me")).to_have_attribute("aria-checked", "true")
+        may_do.get_by_role("radio", name="Ask me first").click()
+        expect(may_do.get_by_role("radio", name="Ask me first")).to_have_attribute("aria-checked", "true")
+        page.reload()
+        expect(page.get_by_role("list", name="Connected clients").get_by_role("radio", name="Ask me first")).to_have_attribute("aria-checked", "true")
+        # The connection gave the agent no grant of its own: its access is its owner's.
         grants = page.context.request.get(f"{ORIGIN}/api/v1/projects/{project_id}/grants")
         self.assertEqual(grants.status, 200, grants.text())
         self.assertFalse(any(grant["principal"]["kind"] == "agent" for grant in grants.json()), grants.text())
@@ -1498,12 +1502,11 @@ class AppShellJourney(unittest.TestCase):
         page.set_viewport_size(PHONE)
         shot(page, "agent-saved-phone")
         page.set_viewport_size(DESKTOP)
-        page.reload()
-        saved = page.get_by_role("group", name="Saved selections")
-        expect(saved.get_by_text("My research agent", exact=True)).to_be_visible()
-        saved.get_by_role("button", name="Revoke connection").click()
-        saved.get_by_role("button", name="Revoke now").click()
-        expect(page.get_by_role("group", name="Saved selections")).to_have_count(0)
+        saved = page.get_by_role("list", name="Connected clients").get_by_role("listitem")
+        saved.get_by_role("button", name="Disconnect").click()
+        saved.get_by_role("button", name="Disconnect", exact=True).click()
+        expect(page.get_by_role("list", name="Connected clients")).to_have_count(0)
+        expect(page.get_by_text("Disconnected (1)")).to_be_visible()
         connections = page.context.request.get(f"{ORIGIN}/api/v1/agent-connections")
         self.assertEqual(connections.status, 200, connections.text())
         self.assertEqual(len(connections.json()), 1)
@@ -1563,7 +1566,7 @@ class AppShellJourney(unittest.TestCase):
         self.open_settings(page)
         self.wait_until_held(page, held)
         page.goto("/connect-agent")
-        expect(page.get_by_role("heading", name="Your agent connections")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="Claude Code, Codex or another app on your computer")).to_be_visible()
         page.evaluate("1")  # events of the document that was left have all arrived
         self.assertEqual(started, [], "no request started after beforeunload")
 

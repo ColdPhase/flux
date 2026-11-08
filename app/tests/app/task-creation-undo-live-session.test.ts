@@ -17,9 +17,8 @@ import { expect, toolValue } from './support/mcp.js';
 // routes, store, policy and SQL; the media server is the same in-process stand-in the other live tests use.
 test('live discovery reads leave Undo available, a started session is a first use, and an undone task is no live anchor', { timeout: 30_000 }, async () => {
   const f = await actionScene(pool);
-  const create = await f.grant('work.create', 'execute', 5);
   const native = async (title: string) => {
-    const created = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, grantId: create.id,
+    const created = toolValue(await f.tool('flux_create_task', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
       clientCommandId: randomUUID(), peerRequestClass: 'execute', sources: [], task: { title } }));
     return await f.read(String(created.workId)) as unknown as WorkItem;
   };

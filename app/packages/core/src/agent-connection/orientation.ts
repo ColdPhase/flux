@@ -3,7 +3,7 @@ import { AGENT_SOURCE_KINDS, type AgentSourceChanges, type AgentSourceCheckpoint
 import { InvalidInputError } from '../access/errors.js';
 import { normalizeAgentCheckpoint } from './source-checkpoint.js';
 export { normalizeAgentCheckpoint } from './source-checkpoint.js';
-import { requireAgentSelection, type AgentConnectionContext } from './proposals.js';
+import { requireAgentProject, type AgentConnectionContext } from './proposals.js';
 
 export interface AgentOrientationScope { workspaceId: string; projectId: string }
 /** Metadata queries apply exact scope and any canonical provenance policy before projection/count/page. */
@@ -26,7 +26,7 @@ export function agentOrientationUseCases(port: AgentOrientationPort) {
   return {
     async list(connection: AgentConnectionContext, scope: AgentOrientationScope, kind: AgentSourceKind,
       query?: { limit?: number; offset?: number }): Promise<AgentSourcePage> {
-      requireAgentSelection(connection, scope.projectId, 'flux.context.read');
+      requireAgentProject(connection, scope.projectId);
       if (!AGENT_SOURCE_KINDS.includes(kind)) throw new InvalidInputError('A canonical source kind is required');
       const page = agentSourcePage(query);
       const result = await port.list(scope, kind, page);
@@ -36,7 +36,7 @@ export function agentOrientationUseCases(port: AgentOrientationPort) {
         coverage: 'canonical_metadata_page' };
     },
     async changes(connection: AgentConnectionContext, scope: AgentOrientationScope, known: AgentSourceCheckpoint[]): Promise<AgentSourceChanges> {
-      requireAgentSelection(connection, scope.projectId, 'flux.context.read');
+      requireAgentProject(connection, scope.projectId);
       if (!Array.isArray(known) || known.length > 50) throw new InvalidInputError('At most 50 recorded source checkpoints are accepted');
       const normalized = known.map(normalizeAgentCheckpoint);
       const key = (item: AgentSourceCheckpoint) => `${item.kind}:${item.id}`;

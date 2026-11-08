@@ -81,7 +81,7 @@ async function scene() {
   };
   let call = 1000;
   /** The tool over HTTP at the second API, which has the fixture provider. */
-  const link = async (who: typeof mine, _grantId: string, workId: string, pullRequestUrl: string, extra: Record<string, unknown> = {}) => {
+  const link = async (who: typeof mine, workId: string, pullRequestUrl: string, extra: Record<string, unknown> = {}) => {
     const response = await mcp(who.connected.accessToken, call++, 'tools/call', { name: 'flux_link_pull_request', arguments: {
       projectId: p.id, runtimeSessionId: who.connected.runtimeSessionId, clientCommandId: randomUUID(),
       workId, pullRequestUrl, ...extra } }, { base });
@@ -98,9 +98,8 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
   test('an agent that holds the task links its pull request with its owner\'s GitHub authorization, once', async () => {
     const s = await scene();
     const item = await s.task('Fix the thermal runaway check', s.mine.agent);
-    const standing = await s.mine.connected.grant('work.update', 'execute', 10, item.id);
     provider.calls = [];
-    const first = toolValue(await s.link(s.mine, standing.id, item.id, url(REPO, 42)));
+    const first = toolValue(await s.link(s.mine, item.id, url(REPO, 42)));
     assert.equal(first.workId, item.id); assert.equal(first.bindingId, s.bound.id); assert.equal(first.role, 'required_output');
     assert.equal(first.number, 42); assert.equal(first.url, url(REPO, 42)); assert.equal(first.headSha, SHA('a')); assert.equal(first.linkState, 'current');
     assert.equal(first.replayed, false);
@@ -112,7 +111,7 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
     assert.ok(provider.calls.length >= 2 && provider.calls.every((row) => row.as === s.hubert.id && row.kind === 'human'), JSON.stringify(provider.calls));
     assert.deepEqual([...new Set(provider.calls.map((row) => row.call))].sort(), ['pull', 'repository']);
     // A related pull request (any letter case, a trailing page of the URL) is its own link and never moves the task's rule.
-    const related = toolValue(await s.link(s.mine, standing.id, item.id, `${url(REPO, 43, 'Fixture').replace('repo-', 'REPO-')}/files#diff`, { role: 'related' }));
+    const related = toolValue(await s.link(s.mine, item.id, `${url(REPO, 43, 'Fixture').replace('repo-', 'REPO-')}/files#diff`, { role: 'related' }));
     assert.equal(related.role, 'related'); assert.equal(related.number, 43);
     assert.equal((await s.links(item.id)).length, 2);
     assert.equal((await pool.query('SELECT 1 FROM github_task_rules WHERE task_id=$1', [item.id])).rows.length, 0);
@@ -121,18 +120,17 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
   test('a retry returns the stored result, and the same pull request is never linked twice', async () => {
     const s = await scene();
     const item = await s.task('Replay the link', s.mine.agent);
-    const standing = await s.mine.connected.grant('work.update', 'execute', 10, item.id);
     const commandId = randomUUID();
-    const first = toolValue(await s.link(s.mine, standing.id, item.id, url(REPO, 51), { clientCommandId: commandId }));
+    const first = toolValue(await s.link(s.mine, item.id, url(REPO, 51), { clientCommandId: commandId }));
     const calls = provider.calls.length;
-    const replay = toolValue(await s.link(s.mine, standing.id, item.id, url(REPO, 51), { clientCommandId: commandId }));
+    const replay = toolValue(await s.link(s.mine, item.id, url(REPO, 51), { clientCommandId: commandId }));
     assert.equal(replay.replayed, true);
     assert.deepEqual({ ...replay, replayed: false }, first);
     assert.equal(provider.calls.length, calls, 'a replay asks GitHub nothing');
     // The same command ID for another pull request is a conflict, not a second link.
-    assert.equal(toolFailure(await s.link(s.mine, standing.id, item.id, url(REPO, 52), { clientCommandId: commandId })).code, 'IDEMPOTENCY_CONFLICT');
+    assert.equal(toolFailure(await s.link(s.mine, item.id, url(REPO, 52), { clientCommandId: commandId })).code, 'IDEMPOTENCY_CONFLICT');
     // A new command for the same pull request finds the same link.
-    const again = toolValue(await s.link(s.mine, standing.id, item.id, url(REPO, 51)));
+    const again = toolValue(await s.link(s.mine, item.id, url(REPO, 51)));
     assert.equal(again.linkId, first.linkId);
     assert.equal(await s.linkRows(item.id), 1);
   });
@@ -141,8 +139,7 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
   test('only the agent that holds the task may link, and not while a person has paused it', async () => {
     const s = await scene();
     const other = await s.makeAgent(s.hubert, 'Hubert Claude');
-    const standing = await s.mine.connected.grant('work.update', 'execute', 20);
-    const code = async (workId: string) => toolFailure(await s.link(s.mine, standing.id, workId, url(REPO, 71))).code;
+    const code = async (workId: string) => toolFailure(await s.link(s.mine, workId, url(REPO, 71))).code;
     assert.equal(await code((await s.task('Nobody holds this')).id), 'TASK_NOT_HELD');
     assert.equal(await code((await s.task('Held by the other agent', other.agent)).id), 'TASK_NOT_HELD');
     const done = await s.task('Already finished', s.mine.agent);
@@ -154,7 +151,7 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
     expectStatus(await pause(true), 201);
     assert.equal(await code(paused.id), 'COWORK_PAUSED');
     expectStatus(await pause(false), 204);
-    assert.equal(toolValue(await s.link(s.mine, standing.id, paused.id, url(REPO, 72))).number, 72);
+    assert.equal(toolValue(await s.link(s.mine, paused.id, url(REPO, 72))).number, 72);
     // A task of another project is not found, whoever holds it.
     const foreign = expectStatus(await s.hubert.browser.request('POST', `/api/v1/projects/${s.elsewhere.id}/work`, { body: { title: 'Elsewhere' } }), 201) as WorkItem;
     assert.ok(['OBJECT_NOT_FOUND', 'AGENT_EXECUTION_UNAVAILABLE'].includes(await code(foreign.id)));
@@ -164,10 +161,9 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
   test('a repository no person connected to the project, or a pull request that is not in it, is refused', async () => {
     const s = await scene();
     const item = await s.task('Wrong repository', s.mine.agent);
-    const standing = await s.mine.connected.grant('work.update', 'execute', 30, item.id);
-    const failure = async (pullRequestUrl: string, extra: Record<string, unknown> = {}) => toolFailure(await s.link(s.mine, standing.id, item.id, pullRequestUrl, extra)).code;
+    const failure = async (pullRequestUrl: string, extra: Record<string, unknown> = {}) => toolFailure(await s.link(s.mine, item.id, pullRequestUrl, extra)).code;
     const schemaError = async (extra: Record<string, unknown>) => {
-      const message = await s.link(s.mine, standing.id, item.id, url(REPO, 84), extra);
+      const message = await s.link(s.mine, item.id, url(REPO, 84), extra);
       const result = message?.result as { isError?: boolean; content?: { text?: string }[] } | undefined;
       assert.equal(result?.isError, true); return result?.content?.[0]?.text ?? '';
     };
@@ -193,26 +189,25 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
   test('the owner\'s own GitHub authorization and write access are required, not the agent\'s alone', async () => {
     const s = await scene();
     const item = await s.task('Owner authorization', s.mine.agent);
-    const standing = await s.mine.connected.grant('work.update', 'execute', 10, item.id);
     provider.allowed.delete(s.hubert.id);
-    assert.equal(toolFailure(await s.link(s.mine, standing.id, item.id, url(REPO, 91))).code, 'GITHUB_ACCESS_UNAVAILABLE', 'the owner has no GitHub access to the repository');
+    assert.equal(toolFailure(await s.link(s.mine, item.id, url(REPO, 91))).code, 'GITHUB_ACCESS_UNAVAILABLE', 'the owner has no GitHub access to the repository');
     provider.allowed.add(s.hubert.id);
     assert.equal(await s.linkRows(item.id), 0);
-    // Marek owns a second agent and, as a workspace admin, may manage the project and authorize its standing grants. Once he is only a
+    // Marek owns a second agent and, as a workspace admin, may manage the project. Once he is only a
     // member who can read the project, his agent cannot link through his authority any more, whatever its own role.
     const theirs = await s.makeAgent(s.marek, 'Marek Claude');
     const marekItem = await s.task('Marek\'s task', theirs.agent, s.marek);
-    const marekGrant = await theirs.connected.grant('work.update', 'execute', 10, marekItem.id);
-    assert.equal(toolValue(await s.link(theirs, marekGrant.id, marekItem.id, url(REPO, 92))).number, 92);
+    assert.equal(toolValue(await s.link(theirs, marekItem.id, url(REPO, 92))).number, 92);
     expectStatus(await s.hubert.browser.request('PATCH', `/api/v1/workspaces/${s.ws.id}/members/${s.marek.id}`, { body: { role: 'member' } }), 200);
     await removeFromSpace(s.hubert, s.p.id, s.marek);
     // Demoted to a member and taken out of the space, Marek has lost it.
-    // The MCP admission already refuses the whole connection of an owner who lost the project (HTTP 403, before any tool); the use
-    // case behind the tool refuses on its own too, as a second fence, with no GitHub call and nothing stored.
+    // The agent has exactly its owner's rights, so the tool answers as for a space that is not there; the use case behind the tool
+    // refuses on its own too, as a second fence, with no GitHub call and nothing stored.
     const refused = await mcp(theirs.connected.accessToken, 2000, 'tools/call', { name: 'flux_link_pull_request', arguments: { projectId: s.p.id,
-      runtimeSessionId: theirs.connected.runtimeSessionId, grantId: marekGrant.id, clientCommandId: randomUUID(), peerRequestClass: 'execute',
+      runtimeSessionId: theirs.connected.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'execute',
       workId: marekItem.id, pullRequestUrl: url(REPO, 93) } }, { base });
-    assert.equal(refused.status, 403);
+    assert.equal(refused.status, 200);
+    assert.equal((refused.message?.result as { isError?: boolean } | undefined)?.isError, true, 'the tool is refused');
     provider.calls = [];
     await assert.rejects(github.linkForAgent({ kind: 'agent', id: theirs.agent.id }, { kind: 'human', id: s.marek.id }, marekItem.id, { pullRequestUrl: url(REPO, 93) }),
       (error: { code?: string }) => ['FORBIDDEN', 'NOT_FOUND', 'PROJECT_NOT_FOUND'].includes(error.code ?? ''));
@@ -231,10 +226,9 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
   test('an installation without a GitHub App says so, before any effect, and the tool is part of the work-change permission', async () => {
     const s = await scene();
     const item = await s.task('No GitHub App here', s.mine.agent);
-    const standing = await s.mine.connected.grant('work.update', 'execute', 10, item.id);
     // The stack's own API has no GitHub App configured.
     const refused = toolFailure(await s.mine.connected.tool('flux_link_pull_request', { projectId: s.p.id, runtimeSessionId: s.mine.connected.runtimeSessionId,
-      grantId: standing.id, clientCommandId: randomUUID(), peerRequestClass: 'execute', workId: item.id, pullRequestUrl: url(REPO, 99) }));
+      clientCommandId: randomUUID(), peerRequestClass: 'execute', workId: item.id, pullRequestUrl: url(REPO, 99) }));
     assert.equal(refused.code, 'GITHUB_UNAVAILABLE');
     assert.ok((await s.mine.connected.toolNames()).includes('flux_link_pull_request'));
     const listed = (s.mine.connected.bootstrap.capabilities as { name: string; operation: string | null; classes: string[] }[]).find((row) => row.name === 'flux_link_pull_request');

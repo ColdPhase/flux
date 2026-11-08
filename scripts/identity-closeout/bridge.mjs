@@ -62,27 +62,23 @@ async function refresh(family) {
     body: new URLSearchParams({ grant_type: 'refresh_token', refresh_token: family.refresh_token, client_id: family.clientId, resource: `${origin}/mcp` }) });
   return { status: response.status, body: await response.json() };
 }
-async function authorize(connectionId, index) {
+async function authorize(index) {
   const clientId = `identity-bridge-${index}-${randomUUID()}`; const redirect = 'http://127.0.0.1:19849/callback';
   await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types, response_types, scopes, require_pkce, created_at, updated_at)
-    VALUES ($1, $2, 'Operator bridge client', $3, 'none', '{authorization_code,refresh_token}', '{code}', '{flux.context.read,flux.proposal.write,flux.action.execute,offline_access}', true, now(), now())`, [randomUUID(), clientId, [redirect]]);
+    VALUES ($1, $2, 'Operator bridge client', $3, 'none', '{authorization_code,refresh_token}', '{code}', '{offline_access}', true, now(), now())`, [randomUUID(), clientId, [redirect]]);
   await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1,$2,$3,now())', [randomUUID(), clientId, `${origin}/mcp`]);
   const verifier = randomBytes(32).toString('base64url'); const state = randomUUID();
   const url = new URL('/api/auth/oauth2/authorize', origin);
   url.search = new URLSearchParams({ client_id: clientId, redirect_uri: redirect, response_type: 'code', code_challenge_method: 'S256',
     code_challenge: createHash('sha256').update(verifier).digest('base64url'),
-    scope: 'flux.context.read flux.proposal.write flux.action.execute offline_access', state, resource: `${origin}/mcp` }).toString();
+    scope: 'offline_access', state, resource: `${origin}/mcp` }).toString();
   const context = await browser.newContext(); const page = await context.newPage(); await page.goto(url.toString());
   await page.getByRole('button', { name: 'Sign in with Keycloak', exact: true }).click(); await provider(page);
-  await page.waitForURL(`${origin}/connect-agent?**`);
+  // One click on the consent page makes the client's agent and connection (#859).
+  await page.waitForURL(`${origin}/consent?**`);
   const query = new URL(page.url()).search.slice(1);
-  await api(context, 'POST', `/api/v1/agent-connections/${connectionId}/select-for-oauth`, { oauth_query: query }, [204]);
-  let next = await api(context, 'POST', '/api/auth/oauth2/continue', { postLogin: true, oauth_query: query });
-  let target = new URL(next.url ?? next.redirect_uri, origin);
-  if (target.pathname === '/consent') {
-    next = await api(context, 'POST', '/api/auth/oauth2/consent', { accept: true, oauth_query: target.search.slice(1) });
-    target = new URL(next.url ?? next.redirect_uri, origin);
-  }
+  const next = await api(context, 'POST', '/api/auth/oauth2/consent', { accept: true, oauth_query: query });
+  const target = new URL(next.url ?? next.redirect_uri, origin);
   assert.equal(target.searchParams.get('state'), state); assert.equal(target.searchParams.get('iss'), `${origin}/api/auth`);
   const response = await fetch(`${origin}/api/auth/oauth2/token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'authorization_code', code: target.searchParams.get('code'), client_id: clientId,
@@ -90,13 +86,14 @@ async function authorize(connectionId, index) {
   assert.equal(response.status, 200, 'genuine provider-backed code exchange');
   const tokens = await response.json();
   await context.storageState({ path: `/state/browser-${index}.json` });
-  return { ...tokens, clientId };
+  const connectionId = JSON.parse(Buffer.from(tokens.access_token.split('.')[1], 'base64url').toString()).flux_connection_id;
+  return { ...tokens, clientId, connectionId };
 }
 async function facts(state) {
   const clientIds = state.families.map((family) => family.clientId);
   const provenance = (await pool.query(`SELECT f.* FROM oauth_grant_authentication f WHERE f.authorization_code_id IN
     (SELECT authorization_code_id FROM oauth_refresh_token WHERE client_id = ANY($1)) ORDER BY f.authorization_code_id`, [clientIds])).rows;
-  const bindings = (await pool.query(`SELECT b.* FROM agent_oauth_bindings b WHERE b.connection_id = $1 ORDER BY b.id`, [state.connectionId])).rows;
+  const bindings = (await pool.query(`SELECT b.* FROM agent_oauth_bindings b WHERE b.connection_id = ANY($1) ORDER BY b.id`, [state.connectionIds])).rows;
   const ledger = (await pool.query('SELECT * FROM flux_schema_version ORDER BY version')).rows;
   const sessionIds = state.facts?.sessionIdentities.map((row) => row.session_id);
   const sessionIdentities = sessionIds
@@ -141,14 +138,10 @@ try {
   } else if (phase === 'seed') {
     const fixture = JSON.parse(await readFile('/state/native-fixture.json', 'utf8'));
     const signed = await signIn(); assert.equal(signed.userId, fixture.adaId);
-    const agents = await api(signed.context, 'GET', `/api/v1/workspaces/${fixture.workspaceId}/agents`);
-    const own = agents.find((agent) => agent.owner.kind === 'human' && agent.owner.id === signed.userId && !agent.revokedAt);
-    assert.ok(own, 'the existing native fixture agent remains the same owner\'s');
-    const connection = await api(signed.context, 'POST', '/api/v1/agent-connections', { name: 'Managed custody bridge', clientDesignation: 'other',
-      agentId: own.id, selectedProjectIds: [fixture.projectId], scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] });
-    const state = { userId: signed.userId, projectId: fixture.projectId, connectionId: connection.id,
+    const state = { userId: signed.userId, projectId: fixture.projectId, connectionIds: [],
       fileId: fixture.fileId, fileHex: fixture.fileHex, families: [] };
-    for (const index of [0, 1]) state.families.push(await authorize(connection.id, index));
+    for (const index of [0, 1]) state.families.push(await authorize(index));
+    state.connectionIds = state.families.map((family) => family.connectionId);
     state.facts = await facts(state); state.snapshot = await snapshot(signed.context, state);
     assert.equal(state.facts.provenance.length, 2);
     assert.ok(state.facts.provenance.every((row) => row.auth_method === providerId));
@@ -183,7 +176,7 @@ try {
         assert.equal((await mcp(family.access_token)).status, 200);
         assert.equal((await refresh(family)).status, 200);
       }
-      assert.equal((await pool.query('SELECT revoked_at FROM agent_connections WHERE id = $1', [state.connectionId])).rows[0].revoked_at, null);
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_connections WHERE id = ANY($1) AND revoked_at IS NULL', [state.connectionIds])).rows[0].n, state.connectionIds.length);
       await storedSecrets(state); receipt.genuineProviderRecovery = true; receipt.sameKeptGrantsAndOwner = true;
     } else throw new Error('Unknown bridge phase');
   }

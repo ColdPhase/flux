@@ -12,8 +12,6 @@ type Connection = {
   connectionId: string;
   ownerUserId: string;
   agentId: string;
-  selectedProjectIds: readonly string[];
-  scopes: readonly ('flux.context.read' | 'flux.proposal.write')[];
   computeSource: import('@flux/contracts').ExternalComputeSource;
 };
 type ValidatedCommand = CreateAgentProposalCommand & { fingerprint: string };
@@ -44,17 +42,12 @@ export function agentProposalRepository(db: Database, policy: AgentProposalPolic
     async create(connection: Connection, input: ValidatedCommand): Promise<AgentProposal | Failure> {
       const principal: Principal = { kind: 'agent', id: connection.agentId };
       return db.transaction(async (tx) => {
-        const [selection] = await tx.select({ scopes: schema.agentConnections.scopes }).from(schema.agentConnections)
+        const [selection] = await tx.select({ mayDo: schema.agentConnections.mayDo }).from(schema.agentConnections)
           .where(and(eq(schema.agentConnections.id, connection.connectionId),
             eq(schema.agentConnections.ownerUserId, connection.ownerUserId),
             eq(schema.agentConnections.agentId, connection.agentId),
             isNull(schema.agentConnections.revokedAt))).for('share');
-        if (!selection?.scopes.includes('flux.proposal.write')) return 'CONNECTION_NOT_FOUND';
-        const [selected] = await tx.select({ projectId: schema.agentConnectionProjects.projectId })
-          .from(schema.agentConnectionProjects).where(and(
-            eq(schema.agentConnectionProjects.connectionId, connection.connectionId),
-            eq(schema.agentConnectionProjects.projectId, input.projectId)));
-        if (!selected) return 'CONNECTION_NOT_FOUND';
+        if (!selection || selection.mayDo === 'read') return 'CONNECTION_NOT_FOUND';
         const [agent] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
           eq(schema.agents.id, connection.agentId), eq(schema.agents.ownerUserId, connection.ownerUserId),
           isNull(schema.agents.revokedAt))).for('share');

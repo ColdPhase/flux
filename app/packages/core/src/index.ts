@@ -59,7 +59,6 @@ export * from './conversation/commands.js';
 export * from './conversation/service.js';
 export * from './agent-threads/service.js';
 export * from './agent-connection/connections.js';
-export * from './agent-connection/mcp-policy.js';
 export * from './agent-connection/oauth.js';
 export * from './agent-connection/reads.js';
 export * from './sketches/index.js';

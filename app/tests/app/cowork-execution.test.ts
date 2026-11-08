@@ -9,26 +9,26 @@ import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connectio
 import { coWorkClaimInTransaction, type CoWorkClaimPolicy } from '../../apps/server/src/co-work/claims.js';
 import { expectStatus, person, project, workspace } from './support/people.js';
 import { backendPid, barrier, waitUntilBlockedBy } from './support/locks.js';
+import { createConnection } from './support/mcp-actions.js';
 
 // Real native API/runtime/grant/SQL ledger composition. The bearer binding and
 // policy callbacks are trusted fixtures, not model activation or complete native
 // dependency/reviewer/checkpoint policy acceptance. Public tools stay disabled.
 const { db, pool } = createDatabase(process.env.DATABASE_URL!);
 after(() => pool.end());
-async function fixture(maximumUses = 1, seconds = 30) {
+async function fixture(seconds = 30) {
   const owner = await person('co-work-execution'); const ws = await workspace(owner, 'Execution workspace');
   const p = await project(owner, ws.id, 'Native co-work', 'restricted');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Co-work executor', owner: 'self' } }), 201) as Agent;
-  const connection = expectStatus(await owner.browser.request('POST', '/api/v1/agent-connections',
-    { body: { agentId: agent.id, selectedProjectIds: [p.id], scopes: ['flux.context.read', 'flux.action.execute'] } }), 201) as AgentConnection;
+  const connection = await createConnection(pool, owner.browser, { agentId: agent.id }) as AgentConnection;
   const clientId = `cowork-fixture-${randomUUID()}`, bindingId = randomUUID();
   await pool.query('INSERT INTO oauth_client(id,client_id,name,redirect_uris) VALUES($1,$2,$3,$4)',
     [randomUUID(), clientId, 'Trusted co-work boundary fixture', ['https://fixture.invalid/callback']]);
   await pool.query('INSERT INTO agent_oauth_bindings(id,owner_user_id,connection_id,client_id) VALUES($1,$2,$3,$4)',
     [bindingId, owner.id, connection.id, clientId]);
   const claims = { ownerUserId: owner.id, connectionId: connection.id, clientId,
-    grantReferenceId: `flux-grant:${bindingId}`, scopes: connection.scopes };
+    grantReferenceId: `flux-grant:${bindingId}` };
   const { runtime } = await db.transaction((tx) => agentRuntimeInTransaction(tx, claims, randomUUID()));
   const work = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${p.id}/work`,
     { body: { title: 'One bounded native unit' } }), 201) as WorkItem;
@@ -37,11 +37,6 @@ async function fixture(maximumUses = 1, seconds = 30) {
   const unitId = randomUUID();
   await db.insert(schema.coworkUnits).values({ aiEpoch: 1, id: unitId, workspaceId: ws.id, projectId: p.id, taskId: work.id,
     lineageTaskId: work.id, runId: randomUUID(), unitKey: unitId, role: 'execute', assignmentConnectionId: connection.id });
-  const grant = async (operation: 'claim' | 'renew' | 'release' = 'claim', objectId: string | null = unitId, role: 'execute' | 'review' | 'plan' = 'execute') =>
-    expectStatus(await owner.browser.request('POST', `/api/v1/agent-connections/${connection.id}/action-grants`,
-      { body: { clientCommandId: randomUUID(), projectId: p.id, operation: `cowork.${operation}`, ...(objectId ? { objectId } : {}),
-        peerRequestClass: role, maximumUses, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as { id: string };
-  const ceiling = await grant();
   const command: AgentExecutionCommand = { runtimeSessionId: runtime.id, clientCommandId: randomUUID(),
     projectId: p.id, operation: 'cowork.claim', peerRequestClass: 'execute', audience: { kind: 'project', projectId: p.id },
     objectId: unitId, sources: [{ materialId: source.materialId, version: 1 }], payload: { expectedVersion: 1 } };
@@ -79,14 +74,14 @@ async function fixture(maximumUses = 1, seconds = 30) {
     return outcome;
   });
   const state = async () => (await db.select().from(schema.coworkUnits).where(eq(schema.coworkUnits.id, unitId)))[0]!;
-  return { owner, ws, p, agent, connection, claims, runtime, work, source, unitId, ceiling, grant, command, policy, preparations, run, state };
+  return { owner, ws, p, agent, connection, claims, runtime, work, source, unitId, command, policy, preparations, run, state };
 }
 function rejects(promise: Promise<unknown>, code: string) {
   return assert.rejects(promise, (error: unknown) => error instanceof DomainError && error.code === code);
 }
 
 test('actual concurrent claim commands share one lease/effect/ledger and exhausted replay preserves the original expiry', async () => {
-  const f = await fixture(1, 1);
+  const f = await fixture(1);
   const [a, b] = await Promise.all([f.run(), f.run()]); assert.deepEqual(a, b);
   assert.equal(a.lease!.runtimeSessionId, f.runtime.id);
   assert.equal((await f.state()).version, 2);
@@ -100,7 +95,7 @@ test('actual concurrent claim commands share one lease/effect/ledger and exhaust
 });
 
 test('changed command payload/session/operation conflicts without changing the original claim', async () => {
-  const f = await fixture(2); const first = await f.run();
+  const f = await fixture(); const first = await f.run();
   await rejects(f.run({ ...f.command, payload: { expectedVersion: 2 } }), 'IDEMPOTENCY_CONFLICT');
   const other = await db.transaction((tx) => agentRuntimeInTransaction(tx, f.claims, randomUUID()));
   await rejects(f.run({ ...f.command, runtimeSessionId: other.runtime.id }), 'IDEMPOTENCY_CONFLICT');

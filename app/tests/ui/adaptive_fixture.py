@@ -157,8 +157,7 @@ def seed(browser) -> dict:
                                    ("marek", "Marek's coding agent", (("Workshop PC", "claude_code"),))):
         agent = api(contexts[who], "POST", f"/api/v1/workspaces/{ws}/agents", {"name": name, "owner": "self"})["id"]
         for label, client in connections:
-            api(contexts[who], "POST", "/api/v1/agent-connections", {"agentId": agent, "selectedProjectIds": [project],
-                "scopes": ["flux.context.read", "flux.proposal.write"], "name": label, "clientDesignation": client})
+            api(contexts[who], "POST", "/api/v1/integration/agent-connections", {"agentId": agent, "name": label, "clientDesignation": client})
     for context in contexts.values():
         context.close()
     return {"states": states, "ids": ids}

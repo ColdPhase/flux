@@ -188,7 +188,7 @@ def main() -> int:
             raise NativeSeedComplete()
         client = f"bridge-native-{suffix}"
         sql = f"""INSERT INTO oauth_client (id,client_id,name,redirect_uris,token_endpoint_auth_method,grant_types,response_types,scopes,require_pkce,created_at,updated_at)
-            VALUES (gen_random_uuid()::text,'{client}','Native backup fixture',ARRAY['http://127.0.0.1:19737/callback'],'none',ARRAY['authorization_code','refresh_token'],ARRAY['code'],ARRAY['flux.context.read','flux.action.execute','offline_access'],true,now(),now());
+            VALUES (gen_random_uuid()::text,'{client}','Native backup fixture',ARRAY['http://127.0.0.1:19737/callback'],'none',ARRAY['authorization_code','refresh_token'],ARRAY['code'],ARRAY['offline_access'],true,now(),now());
             INSERT INTO oauth_client_resource (id,client_id,resource_id,created_at) VALUES(gen_random_uuid()::text,'{client}','{host_env['FLUX_PUBLIC_ORIGIN']}/mcp',now());"""
         run("native-client", compose("exec", "-T", "db", "psql", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-U", "flux", "-d", "flux"), stdin=sql)
         fixture_env = {**host_env, **values, "FLUX_FIXTURE_MODE": "seed", "FLUX_FIXTURE_OAUTH_CLIENT": client}

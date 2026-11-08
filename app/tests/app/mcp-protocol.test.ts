@@ -117,13 +117,12 @@ test('two-era HTTP admission keeps exact revisions, notification semantics, mode
     assert.equal(reached.message.result.isError, true); assert.doesNotMatch(reached.message.result.content[0].text, /maximum of/);
   });
   await t.test('arrays containing otherwise valid writes create no task, receipt or grant debit in either era', async () => {
-    const grant = await f.grant('work.create', 'execute', 3);
     const counts = async () => ({ tasks: await f.tasks(), receipts:
       (await pool.query('SELECT count(*)::int AS n FROM agent_command_receipts WHERE connection_id=$1', [f.connectionId])).rows[0].n });
     const before = await counts();
     for (const version of [legacy, modern]) {
       const write = { jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'flux_create_task', arguments: {
-        projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, grantId: grant.id,
+        projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
         peerRequestClass: 'execute', clientCommandId: randomUUID(), task: { title: 'Forbidden batch effect' },
       }, ...(version === modern ? modernRequest().params : {}) } };
       const reply = await send([write], { 'mcp-protocol-version': version, ...(version === modern ? { 'mcp-method': 'tools/call', 'mcp-name': 'flux_create_task' } : {}) });
@@ -132,7 +131,7 @@ test('two-era HTTP admission keeps exact revisions, notification semantics, mode
     }
     // A mixed-era array with a valid legacy write and a modern request member is refused whole, with no side effect.
     const mixed = [{ jsonrpc: '2.0', id: 6, method: 'tools/call', params: { name: 'flux_create_task', arguments: {
-      projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, grantId: grant.id, peerRequestClass: 'execute',
+      projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, peerRequestClass: 'execute',
       clientCommandId: randomUUID(), task: { title: 'Forbidden mixed-era effect' } } } }, modernRequest()];
     const mixedReply = await send(mixed, { 'mcp-protocol-version': legacy });
     assert.equal(mixedReply.status, 400); assert.equal(mixedReply.message.error.code, -32600); assert.equal(mixedReply.message.id, null);
