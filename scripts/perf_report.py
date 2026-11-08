@@ -14,7 +14,9 @@ other request of the plan shares that path; otherwise the row shows "–" rather
 With --targets it also holds the CPU-limited phases (their names end in "@<n> cpu", #850 AC-3) to the 2 vCPU / 4 GB targets of #862:
 the p95 of every request at most 50 ms, and says which requests are over.
 
-Usage: perf_report.py MEASURE.jsonl API.log [--json OUT.json] [--targets]
+With --fail-on-targets (and --targets) the exit status is 1 when a CPU-limited phase is over the target, so a check can stop on it (#1023).
+
+Usage: perf_report.py MEASURE.jsonl API.log [--json OUT.json] [--targets [--fail-on-targets]]
 """
 
 import json
@@ -182,10 +184,11 @@ def main(argv):
         lines = target_lines(rows, phases)
         print(f"\nTargets for 2 vCPU / 4 GB (#862): p95 at most {TARGET_P95_MS} ms, in the CPU-limited phases")
         print("\n".join(lines) if lines else "- no CPU-limited phase ran (FLUX_PERF_PHASES without `limited`)")
+        missed = any(": FAIL," in line for line in lines)
     if "--json" in argv:
         with open(argv[argv.index("--json") + 1], "w", encoding="utf-8") as handle:
             json.dump({"rows": rows, "counts": [dict(row, key=None) for row in counts.values()]}, handle, indent=1)
-    return 0
+    return 1 if "--fail-on-targets" in argv and "--targets" in argv and missed else 0
 
 
 if __name__ == "__main__":

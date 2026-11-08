@@ -94,6 +94,18 @@ describe('the provider\'s discovery document is read lazily and retried', () => 
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(await reachable(), false, 'the held probe\'s answer replaced it');
   });
+
+  test('what startup found out is the first answer, so the first sign-in page after a start never waits for a probe (#1023)', async () => {
+    let probes = 0; let clock = 0;
+    // A provider that is down: a probe would take its whole timeout (3 s) to say so.
+    const reachable = cachedReachability(issuer, 5000, () => { probes += 1; return new Promise<boolean>(() => undefined); }, () => clock);
+    reachable.known(false);
+    assert.equal(await Promise.race([reachable(), new Promise<string>((resolve) => setTimeout(() => resolve('waited'), 50))]), false, 'answered at once from startup');
+    assert.equal(probes, 0, 'no probe was needed');
+    clock = 5000;
+    assert.equal(await Promise.race([reachable(), new Promise<string>((resolve) => setTimeout(() => resolve('waited'), 50))]), false, 'and still at once after the interval');
+    assert.equal(probes, 1, 'while a new probe runs behind it');
+  });
 });
 
 describe('the confirmation age (F-024 S2, #312)', () => {

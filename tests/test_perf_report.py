@@ -1,7 +1,9 @@
 """The performance report (scripts/perf_report.py, #298, #827). The API's request log has no query string, so a server time is matched to
 its request by id; a path alone is used only when no other request of the plan shares it."""
 
+import contextlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -108,6 +110,19 @@ class PerfTargets(unittest.TestCase):
         measure = [PLAN, {"type": "window", "phase": "warm", "start": 100, "end": 200}, client("perf-e-1", ME)]
         rows, phases = summarise_all(measure, served("perf-e-1", ME, 400, 150))
         self.assertEqual(report.target_lines(rows, phases), [])
+
+    def test_the_exit_status_says_when_a_target_is_missed_only_when_asked(self) -> None:
+        """#1023: the CPU-limited phase printed FAIL and still exited 0; with --fail-on-targets it exits 1."""
+        measure = [PLAN, {"type": "window", "phase": "warm @1.0 cpu", "start": 100, "end": 200}, client("perf-f-1", ME)]
+        for ms, expected in ((77, 1), (8, 0)):
+            with tempfile.TemporaryDirectory() as directory:
+                measure_path, log_path = Path(directory, "measure.jsonl"), Path(directory, "api.log")
+                measure_path.write_text("\n".join(json.dumps(row) for row in measure) + "\n", encoding="utf-8")
+                log_path.write_text("\n".join(served("perf-f-1", ME, ms, 150)) + "\n", encoding="utf-8")
+                base = ["perf_report.py", str(measure_path), str(log_path), "--targets"]
+                with contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(report.main(base + ["--fail-on-targets"]), expected, f"{ms} ms asked to fail")
+                    self.assertEqual(report.main(base), 0, f"{ms} ms: without the flag it never fails")
 
 
 if __name__ == "__main__":

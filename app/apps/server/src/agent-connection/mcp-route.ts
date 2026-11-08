@@ -148,6 +148,11 @@ export function registerMcpRoute(app: FastifyInstance, db: Database, auth: FluxA
   };
   app.route({ method: ['GET', 'POST', 'DELETE'], url: '/mcp', handler: async (request, reply) => {
     reply.hijack();
-    await relay(request.raw, reply.raw, request.body, protectedHandle);
+    // The bearer is accepted once the server answers it with anything but a 401: the API's request limit then gives it a budget of its own (#1022).
+    await relay(request.raw, reply.raw, request.body, async (webRequest) => {
+      const response = await protectedHandle(webRequest);
+      if (response.status !== 401) request.acceptCredential?.();
+      return response;
+    });
   } });
 }

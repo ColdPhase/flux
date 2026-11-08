@@ -31,7 +31,7 @@ export interface SessionResolver {
   /** Reads the current session row on every call; a revoked or expired session yields null. */
   resolveSession(headers: IncomingHttpHeaders): Promise<SessionContext | null>;
   /** For HTTP handlers, stream upgrades and other entry points; throws a 401 error without a live session. */
-  requirePrincipal(request: { headers: IncomingHttpHeaders }): Promise<SessionContext>;
+  requirePrincipal(request: { headers: IncomingHttpHeaders; acceptCredential?: (() => void) | null }): Promise<SessionContext>;
 }
 
 /** `confirmation` ends a provider session whose provider confirmation lapsed (F-024 S2, #312). */
@@ -82,6 +82,8 @@ export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding
       if (!context) throw new UnauthenticatedError();
       // A refused request (403) is logged with the person it was refused to (#997).
       rememberPrincipal(request, context.principal.id);
+      // The credential resolved to a person: the API's request limit gives it a budget of its own from now on (#1022).
+      request.acceptCredential?.();
       return context;
     },
   };

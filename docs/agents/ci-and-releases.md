@@ -124,7 +124,7 @@ CodeQL flags 16 route registrations that reach PostgreSQL, the keyring or an out
 password reset, invites, encryption unlock and live join already have limits of their own; for the rest the decision is **one floor
 under every API route** (`apps/server/src/http/rate-limit.ts`, registered in `app.ts`) rather than sixteen route limits:
 1,200 requests a minute per session (the browser's cookie `flux.session_token`, or an Authorization header), 600 per address without a
-credential and 600 new sessions a minute per address, and no total per address, so people behind one office address or one proxy are not
+credential and 1,200 a minute per address for a session the server has not accepted yet (a made-up cookie has no budget of its own), and no total per address, so people behind one office address or one proxy are not
 limited together; fixed one-minute windows in the API process, memory-bounded, `429 RATE_LIMITED` with `Retry-After`. A person using Flux does not come near it; a runaway client or
 a flood does. `FLUX_AUTH_RATE_LIMIT=false` turns it off with the sign-in limit (the test stacks do). It covers the routes of all 16
 alerts (`/api/v1/health` and the back-channel logout answer the anonymous count; the Better Auth catch-all also keeps its own limit).

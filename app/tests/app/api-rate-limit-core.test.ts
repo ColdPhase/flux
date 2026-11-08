@@ -5,15 +5,18 @@ import { useDomainErrors } from '../../apps/server/src/http/errors.js';
 import { SESSION_COOKIE_PREFIX } from '../../apps/server/src/identity/session-cookie.js';
 import { API_RATE_LIMIT, credentialKey, useApiRateLimit, type ApiRateLimitOptions } from '../../apps/server/src/http/rate-limit.js';
 
-// The API-wide request limit (#838, CodeQL js/missing-rate-limiting): per credential, per address without one, and per address for new
-// credentials; only API traffic counts; the answer is the domain 429 with Retry-After. No database, network or process: Fastify's inject and a
-// clock. That the cookie name here is the one a real sign-in sets is tests/app/api-rate-limit.test.ts.
+// The API-wide request limit (#838, CodeQL js/missing-rate-limiting): per credential the server has accepted, per address without one, and per
+// address for credentials it has not accepted (#1022); only API traffic counts; the answer is the domain 429 with Retry-After. No database,
+// network or process: Fastify's inject and a clock. A route accepts the credential the way the session resolver does, with
+// `request.acceptCredential()`; `/api/v1/open` answers 200 to any cookie without ever accepting it. That the cookie name here is the one a real
+// sign-in sets is tests/app/api-rate-limit.test.ts.
 
 async function server(options: Partial<ApiRateLimitOptions> = {}, clock = { at: 1_000_000 }) {
   const app = Fastify({ logger: false });
   useDomainErrors(app);
   useApiRateLimit(app, { enabled: true, now: () => clock.at, ...options });
-  for (const path of ['/api/v1/me', '/mcp', '/health', '/.well-known/oauth-protected-resource', '/assets/app.js', '/sign-in']) app.get(path, async () => ({ ok: true }));
+  for (const path of ['/api/v1/me', '/mcp', '/health', '/.well-known/oauth-protected-resource', '/assets/app.js', '/sign-in']) app.get(path, async (request) => { request.acceptCredential?.(); return { ok: true }; });
+  app.get('/api/v1/open', async () => ({ ok: true }));
   await app.ready();
   return { app, clock };
 }
@@ -23,12 +26,13 @@ const cookie = (token: string) => ({ cookie: `${SESSION_COOKIE_PREFIX}.session_t
 describe('the API request limit', () => {
   test('a credential has its own window: the call past the limit is a 429 with Retry-After, another credential is untouched, the window ends', async () => {
     const { app, clock } = await server({ credentialPerMinute: 3 });
+    assert.equal((await call(app, '/api/v1/me', cookie('ada'))).statusCode, 200, 'the first call is charged to the address and accepts the credential');
     for (let n = 0; n < 3; n += 1) assert.equal((await call(app, '/api/v1/me', cookie('ada'))).statusCode, 200);
     clock.at += 20_000;
     const refused = await call(app, '/api/v1/me', cookie('ada'));
     assert.equal(refused.statusCode, 429);
     assert.equal(refused.json().code, 'RATE_LIMITED');
-    assert.equal(refused.headers['retry-after'], '40', 'the seconds left in the minute that began with the first call');
+    assert.equal(refused.headers['retry-after'], '40', 'the seconds left in the minute that began with the first call of its own');
     assert.equal((await call(app, '/api/v1/me', cookie('ben'))).statusCode, 200, 'another credential from the same address');
     clock.at += 40_000;
     assert.equal((await call(app, '/api/v1/me', cookie('ada'))).statusCode, 200, 'a new window');
@@ -41,28 +45,40 @@ describe('the API request limit', () => {
     for (let n = 0; n < 3; n += 1) answers.push((await call(app, '/api/v1/me')).statusCode);
     assert.deepEqual(answers, [200, 200, 429]);
     assert.equal((await call(app, '/api/v1/me', {}, '10.0.0.2')).statusCode, 200, 'another address');
-    for (let n = 0; n < 5; n += 1) assert.equal((await call(app, '/api/v1/me', cookie('ada'))).statusCode, 200, 'signed-in calls are not the anonymous count');
+    for (let n = 0; n < 6; n += 1) assert.equal((await call(app, '/api/v1/me', cookie('ada'))).statusCode, 200, 'signed-in calls are not the anonymous count');
     await app.close();
   });
 
-  test('made-up credentials from one address are charged to that address as they start, the ones already known are not', async () => {
-    const { app, clock } = await server({ newCredentialsPerMinute: 5, credentialPerMinute: 100 });
+  test('a made-up credential is never its own: every request with one is charged to the address, however many cookies there are (#1022)', async () => {
+    const { app, clock } = await server({ newCredentialsPerMinute: 5, credentialPerMinute: 2 });
     const answers = [];
-    for (let n = 0; n < 7; n += 1) answers.push((await call(app, '/api/v1/me', cookie(`made-up-${n}`))).statusCode);
-    assert.deepEqual(answers, [200, 200, 200, 200, 200, 429, 429]);
-    assert.equal((await call(app, '/api/v1/me', cookie('made-up-0'))).statusCode, 200, 'a credential that already has its window');
-    assert.equal((await call(app, '/api/v1/me', cookie('made-up-0'), '10.0.0.9')).statusCode, 200, 'another address');
-    assert.equal((await call(app, '/api/v1/me', cookie('made-up-9'), '10.0.0.9')).statusCode, 200, 'a new credential from another address');
+    // /api/v1/open answers 200 to any cookie and accepts none, as an anonymous route does.
+    for (let n = 0; n < 7; n += 1) answers.push((await call(app, '/api/v1/open', cookie(`made-up-${n}`))).statusCode);
+    assert.deepEqual(answers, [200, 200, 200, 200, 200, 429, 429], 'one cookie each, and the address\'s budget is all there is');
+    assert.equal((await call(app, '/api/v1/open', cookie('made-up-0'))).statusCode, 429, 'a cookie that was seen before has no budget of its own either');
+    const one = [];
+    for (let n = 0; n < 3; n += 1) one.push((await call(app, '/api/v1/open', cookie('made-up-0'), '10.0.0.9')).statusCode);
+    assert.deepEqual(one, [200, 200, 200], 'another address; the credential\'s own limit (2) was never in play');
     clock.at += 60_000;
-    assert.equal((await call(app, '/api/v1/me', cookie('made-up-6'))).statusCode, 200, 'the next minute');
+    assert.equal((await call(app, '/api/v1/open', cookie('made-up-6'))).statusCode, 200, 'the next minute');
+    await app.close();
+  });
+
+  test('a credential the server has accepted has a window of its own, and the address is not charged for it any more', async () => {
+    const { app } = await server({ newCredentialsPerMinute: 3, credentialPerMinute: 100 });
+    assert.equal((await call(app, '/api/v1/me', cookie('ada'))).statusCode, 200, 'the first call is charged to the address, and accepted');
+    for (let n = 0; n < 20; n += 1) assert.equal((await call(app, '/api/v1/me', cookie('ada'))).statusCode, 200, `call ${n}`);
+    for (let n = 0; n < 2; n += 1) assert.equal((await call(app, '/api/v1/open', cookie(`made-up-${n}`))).statusCode, 200);
+    assert.equal((await call(app, '/api/v1/me', cookie('ada'))).statusCode, 200, 'the address\'s budget is not what Ada spends');
     await app.close();
   });
 
   test('many people behind one address are not limited together: no address-wide total exists', async () => {
     const { app } = await server({ credentialPerMinute: 30, anonymousPerMinute: 5, newCredentialsPerMinute: 600 });
-    // 300 people, 30 requests each (9,000 in the minute) from one address: every one answered.
+    // 300 people, 31 requests each (9,300 in the minute) from one address: every one answered. The first is charged to the address, the other 30
+    // are the person's own.
     for (let person = 0; person < 300; person += 1) {
-      for (let n = 0; n < 30; n += 1) assert.equal((await call(app, '/api/v1/me', cookie(`person-${person}`))).statusCode, 200, `person ${person} request ${n}`);
+      for (let n = 0; n < 31; n += 1) assert.equal((await call(app, '/api/v1/me', cookie(`person-${person}`))).statusCode, 200, `person ${person} request ${n}`);
     }
     assert.equal((await call(app, '/api/v1/me', cookie('person-0'))).statusCode, 429, 'one person past their own limit');
     await app.close();
@@ -89,8 +105,8 @@ describe('the API request limit', () => {
     for (let n = 0; n < 200; n += 1) assert.equal((await call(app, '/api/v1/me', cookie(`c${n}`), `10.2.${n % 250}.1`)).statusCode, 200);
     // A credential that is current is still limited after thousands of others came and went.
     const answers = [];
-    for (let n = 0; n < 3; n += 1) answers.push((await call(app, '/api/v1/me', cookie('steady'), '10.3.0.1')).statusCode);
-    assert.deepEqual(answers, [200, 200, 429]);
+    for (let n = 0; n < 4; n += 1) answers.push((await call(app, '/api/v1/me', cookie('steady'), '10.3.0.1')).statusCode);
+    assert.deepEqual(answers, [200, 200, 200, 429], 'one charged to the address, then its own two');
     await app.close();
   });
 

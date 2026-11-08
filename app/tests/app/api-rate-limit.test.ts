@@ -68,6 +68,19 @@ test('the cookie of a real sign-in is the credential, and two people at one addr
     assert.equal(refused.json().code, 'RATE_LIMITED');
     assert.match(String(refused.headers['retry-after']), /^\d+$/);
     assert.equal((await me(jonas)).statusCode, 200);
+    // A made-up session cookie never gets a budget of its own (#1022): from one address, however many of them are sent, the address's count for
+    // credentials the server has not accepted is all there is, even to a route that answers any cookie with a 200.
+    const forged = new Map<number, number>();
+    for (let n = 0; n < API_RATE_LIMIT.newCredentialsPerMinute + 5; n += 1) {
+      const status = (await app.inject({ method: 'GET', url: '/api/v1/auth/capabilities', remoteAddress: '10.20.0.77', headers: { cookie: `flux.session_token=made-up-${n}.${randomUUID()}` } })).statusCode;
+      forged.set(status, (forged.get(status) ?? 0) + 1);
+    }
+    assert.deepEqual([...forged], [[200, API_RATE_LIMIT.newCredentialsPerMinute], [429, 5]]);
+    const sameForged = `flux.session_token=made-up-0.${randomUUID()}`;
+    const first = await app.inject({ method: 'GET', url: '/api/v1/auth/capabilities', remoteAddress: '10.20.0.78', headers: { cookie: sameForged } });
+    assert.equal(first.statusCode, 200);
+    for (let n = 0; n < 30; n += 1) await app.inject({ method: 'GET', url: '/api/v1/auth/capabilities', remoteAddress: '10.20.0.78', headers: { cookie: sameForged } });
+    assert.equal((await app.inject({ method: 'GET', url: '/api/v1/me', remoteAddress: '10.20.0.78', headers: { cookie: sameForged } })).statusCode, 401, 'a made-up cookie is still a 401 where a session is needed');
   } finally {
     await app.close();
   }

@@ -11,11 +11,13 @@ import { SESSION_COOKIE_PATTERN } from '../identity/session-cookie.js';
  *
  * Fixed one-minute windows, counted in this API process (N processes allow N times as much, as for the live join limit):
  * - per credential (the session cookie, or an Authorization header, hashed): 1,200 requests. A browser measured 136 requests in a busy
- *   minute and about 32 idle on Home, so this is nine times the busiest person;
+ *   minute and about 32 idle on Home, so this is nine times the busiest person. A credential is its own only after the server has
+ *   accepted it (`request.acceptCredential()`, called where it resolves to a person); a made-up cookie never is, however many are sent;
  * - per address, for requests that carry no credential: 600;
- * - per address, new credentials: 600 a minute. A flood of made-up credentials from one place cannot dodge the count above (each made-up
- *   credential would be a fresh window), yet people behind one address are not limited together: each of them is one credential, and no
- *   address-wide request total exists, so 40 or 400 people behind one office address or one proxy are not in each other's way.
+ * - per address, credentials not accepted yet: 1,200 requests a minute, each request counted. A flood of made-up credentials from one
+ *   place is this count and nothing more, yet people behind one address are not limited together: a person is charged to the address
+ *   only for the few requests in flight before the first one is accepted (a page opening asks for about fifteen), and no address-wide
+ *   request total exists, so 40 or 400 people behind one office address or one proxy are not in each other's way.
  * Behind a reverse proxy the address is the client's only when FLUX_TRUSTED_PROXIES names the proxy (Fastify `trustProxy`); without it
  * every request comes from the proxy and everyone shares the two per-address budgets (docs/operations/reverse-proxy.md).
  * Memory is bounded: expired windows are dropped as the table grows and, past `maxKeys`, the oldest go first.
@@ -23,7 +25,7 @@ import { SESSION_COOKIE_PATTERN } from '../identity/session-cookie.js';
  * Only API traffic counts (`/api/`, `/mcp`, `/health`, `/.well-known/`); the web app's own files do not. `FLUX_AUTH_RATE_LIMIT=false`
  * switches this off along with the sign-in limit (the test stacks do; a deployment never should).
  */
-export const API_RATE_LIMIT = { credentialPerMinute: 1_200, anonymousPerMinute: 600, newCredentialsPerMinute: 600, windowMs: 60_000, maxKeys: 50_000 } as const;
+export const API_RATE_LIMIT = { credentialPerMinute: 1_200, anonymousPerMinute: 600, newCredentialsPerMinute: 1_200, windowMs: 60_000, maxKeys: 50_000 } as const;
 
 export interface ApiRateLimitOptions {
   enabled: boolean;
@@ -36,6 +38,13 @@ export interface ApiRateLimitOptions {
 }
 
 const COUNTED = /^\/(?:api|mcp|health|\.well-known)(?:\/|$)/;
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    /** Say that the server has accepted this request's credential (it resolved to a person): from now on it has a budget of its own (#1022). */
+    acceptCredential?: (() => void) | null;
+  }
+}
 
 /** What identifies the caller's credential, hashed so the table never holds a session token; null for a request without one. */
 export function credentialKey(request: Pick<FastifyRequest, 'headers'>): string | null {
@@ -58,6 +67,9 @@ export function useApiRateLimit(app: FastifyInstance, options: ApiRateLimitOptio
   }
   // Insertion order is age order: a key whose window ended is re-inserted when it starts again.
   const windows = new Map<string, { start: number; count: number }>();
+  // The credentials the server has accepted, oldest first, bounded like the windows. Only an accepted credential has a window of its own.
+  const accepted = new Set<string>();
+  app.decorateRequest('acceptCredential', null);
 
   const prune = (at: number) => {
     for (const [key, window] of windows) if (window.start + windowMs <= at) windows.delete(key);
@@ -84,10 +96,17 @@ export function useApiRateLimit(app: FastifyInstance, options: ApiRateLimitOptio
     if (!credential) wait = take(`anon:${request.ip}`, anonymousLimit, at);
     else {
       const key = `c:${credential}`;
-      const known = windows.get(key);
-      // A credential this address starts a window for is charged to the address first, so made-up credentials are never free.
-      if (!known || known.start + windowMs <= at) wait = take(`new:${request.ip}`, newCredentialLimit, at);
-      if (wait === 0) wait = take(key, credentialLimit, at);
+      // Until the server has accepted a credential, every request with it is charged to the address: a made-up cookie is never free, and a
+      // thousand of them are no more than one address's budget.
+      if (accepted.has(key)) wait = take(key, credentialLimit, at);
+      else {
+        wait = take(`new:${request.ip}`, newCredentialLimit, at);
+        request.acceptCredential = () => {
+          if (accepted.has(key)) return;
+          if (accepted.size >= maxKeys) accepted.delete(accepted.values().next().value!);
+          accepted.add(key);
+        };
+      }
     }
     if (wait > 0) {
       reply.header('retry-after', String(wait));

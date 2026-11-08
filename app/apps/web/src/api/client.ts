@@ -58,6 +58,15 @@ interface Answer { ok: boolean; status: number; statusText: string; text: string
 const inFlight = new Map<string, SharedRead>();
 
 /**
+ * Nothing in flight is joined any more: a read asked for from now on is a request of its own. Called when something changed that a read
+ * already on its way may not show: a write of this tab (`send`), and an event of the live stream, which is another tab's write or another
+ * person's change (the stream, #1023). The callers already waiting keep their answer.
+ */
+export function endSharedReads() {
+  inFlight.clear();
+}
+
+/**
  * The one transport to the Flux API (#93): every call of the web app, JSON or not, goes through here.
  * Answers the raw response of any status; only a request that got no answer throws (`NetworkError`, or the
  * caller's `AbortError`). `accept` is sent only when given, so a file read keeps the browser's default;
@@ -70,7 +79,7 @@ export async function send(path: string, init: ApiRequestInit & { accept?: strin
   if (init.batchRead && (!init.method || init.method === 'GET')) await nextTask();
   // A write ends the sharing: a read that started before it must not answer a caller that asks after it (nor one that started while it ran).
   const writes = !!init.method && init.method !== 'GET';
-  if (writes) inFlight.clear();
+  if (writes) endSharedReads();
   const attempt = async (): Promise<Response> => {
     // A page being left starts no request (#471): the browser has stopped its loads, and WebKit reports a
     // fetch that starts now as an uncaught page error. It starts when the page is live again, never sooner
@@ -103,7 +112,7 @@ export async function send(path: string, init: ApiRequestInit & { accept?: strin
     }
     return response;
   } finally {
-    if (writes) inFlight.clear();
+    if (writes) endSharedReads();
   }
 }
 
