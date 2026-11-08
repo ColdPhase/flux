@@ -97,7 +97,8 @@ export function PageFrame({ docId, title, meta, metaData, faces, headings, onHea
   return (
     <article className="wiki-page" aria-labelledby={titleId}>
       <div className="wiki-head">
-        <p className="wiki-head__meta" role="status" {...metaData}>{meta}</p>
+        {/* Not a live region: "Saving…" and "Saved" are not announced at every pause (#950). The editor announces who joins. */}
+        <p className="wiki-head__meta" {...metaData}>{meta}</p>
         {faces}
         <Contents headings={headings} onHeading={onHeading} />
         <PageMenu buttonRef={menuButton} historyTo={`${base}/history`} shown={shown} linkPath={linkPath}

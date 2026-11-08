@@ -16,6 +16,12 @@ export interface WriterRange { actor: NamedPrincipal; anchor: string; head: stri
 export const AUTOSAVE = { idleMs: 2000, spacingMs: 30_000, retryMs: 2000 } as const;
 /** How long an own receipt may run ahead of other people's updates before the room is read again (they come on the same socket). */
 const GAP_MS = 3000;
+/**
+ * The caret's presence lasts 5 s on the server: it is renewed at half that, and only while the person writes or moves the
+ * caret (within `ACTIVE_MS`, like the enrollment), so a page left open with the caret in it goes quiet (#862, #950).
+ */
+const CARET_RENEWAL_MS = 2500;
+const ACTIVE_MS = 30_000;
 
 /**
  * The Y.Doc is an editor instance. A socket reconnect renews it; a reload creates another.
@@ -44,12 +50,17 @@ export class SharedWiki {
   savedAt: number | null = null;
   /** A native write (an agent, Add to docs) started a new generation while nothing was pending: open a fresh room. */
   stale = false;
+  /** The title of the latest saved version, once the room has said it: a rename by anyone shows without a read. */
+  savedTitle: string | null = null;
   /** The last confirmed sequence that holds this editor's own text. */
   private ownSequence = 0;
   /** The highest sequence an own receipt confirmed while other people's earlier updates were still on their way. */
   private aheadSequence = 0;
   private gapTimer: number | null = null;
   private lastInputAt = 0;
+  /** When the person last moved their caret, and when it was last sent. */
+  private caretAt = 0;
+  private cursorSentAt = 0;
   private lastOwnSaveAt = 0;
   private saveRetryAt = 0;
   inputRevision = 0;
@@ -96,13 +107,14 @@ export class SharedWiki {
       let changed = false;
       for (const [key, peer] of this.peers) if (Date.parse(peer.expiresAt) <= Date.now()) { this.peers.delete(key); changed = true; }
       if (changed) this.changed();
-      if (this.editable && this.cursor) this.publishCursor();
+      const now = Date.now();
+      if (this.editable && this.cursor && now - Math.max(this.lastInputAt, this.caretAt) <= ACTIVE_MS && now - this.cursorSentAt >= CARET_RENEWAL_MS) this.publishCursor();
       void this.autosave();
     }, 1000);
     this.renewalTimer = window.setInterval(() => {
       // Only while the person writes (#869): a page that is open but not written in renews nothing (#862: an open tab stays quiet);
       // the socket still says when write access ends.
-      if (!this.writer || !this.head?.canWrite || this.status !== 'live' || this.renewing || Date.now() - this.lastInputAt > 30_000) return;
+      if (!this.writer || !this.head?.canWrite || this.status !== 'live' || this.renewing || Date.now() - this.lastInputAt > ACTIVE_MS) return;
       this.renewing = true;
       void this.enroll(this.head).catch((error: unknown) => {
         if (this.stopped) return;
@@ -383,7 +395,7 @@ export class SharedWiki {
         if (message.actor.id !== this.userId) this.peers.set(message.connectionId, message);
         break;
       case 'saved':
-        this.head.savedVersion = message.savedVersion; this.head.savedSequence = message.savedSequence; break;
+        this.head.savedVersion = message.savedVersion; this.head.savedSequence = message.savedSequence; this.savedTitle = message.title; break;
       case 'resync': this.disconnected(); return;
       case 'revoked': this.retire('Access ended. Your pending text is kept privately.'); return;
       case 'error':
@@ -403,6 +415,7 @@ export class SharedWiki {
   };
   setCursor(anchor: number, head: number) {
     if (!this.editable) return;
+    this.caretAt = Date.now();
     this.cursor = { anchor: encode64(Y.encodeRelativePosition(Y.createRelativePositionFromTypeIndex(this.text, anchor))), head: encode64(Y.encodeRelativePosition(Y.createRelativePositionFromTypeIndex(this.text, head))) };
     if (this.cursorTimer !== null) return;
     this.cursorTimer = window.setTimeout(() => { this.cursorTimer = null; this.publishCursor(); }, 40);
@@ -417,6 +430,7 @@ export class SharedWiki {
     };
     if (this.cursor && !(admitted(this.cursor.anchor) && admitted(this.cursor.head))) { this.cursorWaiting = true; return; }
     this.cursorWaiting = false;
+    this.cursorSentAt = Date.now();
     this.connection?.send({ type: 'cursor', generation: this.head.generation, cursor: this.cursor });
   }
   blur() { this.cursor = null; this.cursorWaiting = false; this.connection?.send({ type: 'cursor', generation: this.head.generation, cursor: null }); }
@@ -436,6 +450,8 @@ export class SharedWiki {
     // A save already running is the one this asks for, unless the page is being left. A closing tab never starts a save
     // that waits behind the running one, so a newer head goes at once as well; while the page still runs, one more save
     // follows the running one in case that one made its version first (#946 review).
+    // A rename or a restore saving its version keeps the automatic save out of its way.
+    if (this.savingVersion && !leaving) return Promise.resolve();
     if (this.running) {
       if (!leaving) return this.running;
       const now = this.saveNewerHead();
@@ -461,7 +477,30 @@ export class SharedWiki {
     return this.running;
   }
   private running: Promise<void> | null = null;
+  private savingVersion = false;
   private openedAt = Date.now();
+  /**
+   * A rename or a restore saves the head as a version with its title or reason. Someone typing meanwhile moves the head
+   * on, and someone else's save moves the version on: the save is tried again once this editor has the newer head, for
+   * up to 10 s (#950: a rename failed while someone else typed).
+   */
+  async saveVersion(metadata: { title?: string; reason?: string }) {
+    const deadline = Date.now() + 10_000;
+    this.savingVersion = true;
+    try {
+      for (;;) {
+        await this.running;
+        const seen = this.head.sequence, version = this.head.savedVersion;
+        try { return await this.save(metadata); }
+        catch (error) {
+          const moved = error instanceof ApiError && (error.code === 'DOC_LIVE_HEAD_CHANGED' || error.code === 'VERSION_CONFLICT');
+          if (!moved || this.stopped || Date.now() > deadline) throw error;
+          const until = Date.now() + 1000;
+          while (this.head.sequence === seen && this.head.savedVersion === version && Date.now() < until) await new Promise((resolve) => window.setTimeout(resolve, 25));
+        }
+      }
+    } finally { this.savingVersion = false; }
+  }
   private leftAt = -1;
   /**
    * Leaving during a save of an older head: this head goes now with keepalive and its own command. The server makes no

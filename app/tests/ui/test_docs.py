@@ -233,7 +233,7 @@ class DocsJourney(unittest.TestCase):
         expect(conflict).to_contain_text("“Keep my text” saves your text as the next version, in place of theirs.")
         expect(conflict.get_by_role("link", name="See their change")).to_have_attribute(
             "href", f"/projects/{self.project_id}/docs/{self.doc_id}/history?from={before['version']}&to={before['version'] + 1}")
-        expect(page.get_by_role("status").filter(has_text="Not saved · this page changed")).to_be_visible()
+        expect(page.locator(".wiki-head__meta").filter(has_text="Not saved · this page changed")).to_be_visible()
         shot(page, "docs-conflict-desktop-1440")
         self.assertEqual(self.doc(page)["version"], before["version"] + 1, "the stale save changed nothing")
         # Kai keeps his text on top of Ada's version and carries her addition over himself.

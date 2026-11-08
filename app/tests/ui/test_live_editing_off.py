@@ -106,7 +106,7 @@ class LiveEditingOffJourney(unittest.TestCase):
                 break
             time.sleep(0.25)
         self.assertEqual((doc["body"], doc["version"]), ("The sensor reads 38% at 5 lux. Checked twice.", 2))
-        expect(page.get_by_role("status").filter(has_text=re.compile(r"^Saved · "))).to_be_visible()
+        expect(page.locator(".wiki-head__meta").filter(has_text=re.compile(r"^Saved · "))).to_be_visible()
         time.sleep(0.5)
         # Neither a live room request nor live text, not even briefly before a fallback.
         self.assertEqual({"live requests": live, "live text": page.evaluate("window.__liveText")}, {"live requests": [], "live text": []})

@@ -158,6 +158,14 @@ draws it since #869: two columns only, the sidebar and the page.
   the space's pages by name with the open one checked, and "+ New page", which names the page in
   place and opens it with the caret in its text. `/projects/:id/docs` opens the page last open in
   this tab, else the latest change; a space without pages offers New page and the import.
+  The save state is not a live region, so a screen reader does not hear "Saving…" and "Saved" at
+  every pause; who joins ("Jonas is here too") is announced, and a failed save is an alert (#950).
+- **Quiet while open (#862, #950).** A writer's unchanged caret is renewed every 2.5 s (the server
+  keeps it 5 s) and only within 30 s of their last keystroke or caret move, like the enrollment;
+  then their caret and face leave the other screens until they type or move it again. The room's
+  `saved` message carries the saved version's title, so an open page follows a rename without
+  reading the page. Rename and Restore save the head with their title or reason; when someone else
+  typed or saved meanwhile, they try again on the newer head for up to 10 s.
 - **History** (⋯ › History, `…/history?from=&to=`): every version with its reason, author and date,
   the comparison as the page reads or as exact Markdown, and **Restore version N**, which opens the
   page and makes that version the page again (shared at once with live editing) as the next version.

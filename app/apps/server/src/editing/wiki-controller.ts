@@ -85,7 +85,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
           const savedSignature = signature(JSON.stringify({ generation: head.generation, savedVersion: head.savedVersion, savedSequence: head.savedSequence }));
           if (c.lastSaved !== savedSignature) {
             c.output.sendJSON({ type: 'saved', generation: head.generation, sequence: head.sequence, hash: head.hash,
-              savedVersion: head.savedVersion, savedSequence: head.savedSequence }); c.lastSaved = savedSignature; c.pendingRead = true; return;
+              savedVersion: head.savedVersion, savedSequence: head.savedSequence, title: result.title }); c.lastSaved = savedSignature; c.pendingRead = true; return;
           }
           // Every changed cursor this read observed goes out under its fence, then the next
           // ordered update or preview in the same callback (contract amendment 2026-10-06).

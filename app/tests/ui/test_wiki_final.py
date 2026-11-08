@@ -114,7 +114,10 @@ class WikiFinal(unittest.TestCase):
                 expect(page.get_by_role("button", name="Preview")).to_have_count(0)
                 self.assertEqual(page.locator(".wiki-editor").evaluate("e => getComputedStyle(e).fontSize"), "15px")
                 self.assertLessEqual(page.locator(".wiki-page").bounding_box()["width"], 760.5)
-                expect(page.get_by_role("status").filter(has_text=re.compile(r"^Saved · "))).to_be_visible()
+                expect(page.locator(".wiki-head__meta").filter(has_text=re.compile(r"^Saved · "))).to_be_visible()
+                # "Saving…" and "Saved" are not announced at every pause: the save state is in no live region (#950).
+                self.assertEqual(page.evaluate("""() => [...document.querySelectorAll('[role=status], [role=alert], [aria-live]:not([aria-live=off])')]
+                  .filter((region) => /Sav(ed|ing)/.test(region.textContent)).length"""), 0)
                 # The title is the page switcher.
                 title = page.get_by_role("heading", level=2, name="Hardware").get_by_role("button", name="Hardware")
                 expect(title).to_have_attribute("aria-haspopup", "dialog")

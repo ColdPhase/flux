@@ -186,7 +186,8 @@ export function liveWiki<State extends WikiCodecState, Lease>(ports: WikiPorts<S
         catch (error) { if (!(error instanceof ForbiddenError || error instanceof NotFoundError)) throw error; }
       }
       await ports.session.assertCurrent(identity);
-      return { current, updates, actor, canWrite, preview, presence };
+      // The saved version's title goes with "saved", so an open page follows a rename without reading the page (#950).
+      return { current, updates, actor, canWrite, preview, presence, title: doc.current.title };
     },
   };
 }
