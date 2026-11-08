@@ -27,11 +27,19 @@ export async function waitForDiscovery(oidc: Pick<OidcConfig, 'issuer'>, options
   return false;
 }
 
-/** A probe result shared for a few seconds, so a busy sign-in page does not hammer the provider. */
+/**
+ * A probe result shared for a few seconds, so a busy sign-in page does not hammer the provider. Only the very first answer waits for
+ * a probe: after that an expired result is answered at once with the last known one while a new probe runs in the background
+ * (#847), so a sign-in page never waits for the provider's discovery document (about half a second on a real install). A page that
+ * asks again every few seconds while the provider is down sees it come back one answer later.
+ */
 export function cachedReachability(oidc: Pick<OidcConfig, 'issuer'>, ttlMs = 5000, probe: () => Promise<boolean> = () => discoveryReachable(oidc), now: () => number = Date.now) {
   let cached: { at: number; value: Promise<boolean> } | null = null;
+  let last: boolean | null = null;
   return () => {
-    if (!cached || now() - cached.at >= ttlMs) cached = { at: now(), value: probe() };
-    return cached.value;
+    if (!cached || now() - cached.at >= ttlMs) {
+      cached = { at: now(), value: probe().then((value) => { last = value; return value; }, () => { last = false; return false; }) };
+    }
+    return last === null ? cached.value : Promise.resolve(last);
   };
 }

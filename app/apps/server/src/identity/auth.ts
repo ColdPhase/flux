@@ -214,7 +214,9 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     account: { modelName: 'authAccounts', accountLinking: { disableImplicitLinking: true } },
     verification: { modelName: 'authVerifications', storeIdentifier: 'hashed' },
     plugins: [
-      jwt(),
+      // The OAuth tokens of the MCP plugin are signed with these keys. Better Auth would also sign a JWT on every session read for a
+      // `set-auth-jwt` header that nothing in Flux reads: one more statement and one signature per session resolution, four per work read (#850).
+      jwt({ disableSettingJwtHeader: true }),
       mcp({
         loginPage: '/login', consentPage: '/consent', resource,
         // One scope: the client may stay connected until the person disconnects it. What it may do is not a scope. It acts with its

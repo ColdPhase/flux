@@ -121,7 +121,8 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       const rows=liveMapRows(c.db,decodeMapChange,boundary.confirmation);if(!await rows.hasPresence(connectionId))await rows.capacity('presence',sketchId);
       const packet={type:'map-presence',generation:c.room.generation,connectionId,actor:c.actor,selected:shown,cursor:command.cursor,slot:127,expiresAt:new Date().toISOString()};
       if(Buffer.byteLength(JSON.stringify(packet))>65_536)throw new ServiceUnavailableError('The bounded presence frame is full','EDITING_MAP_CAPACITY');
-      await rows.setPresence(sketchId,c.room.generation,who,id(connectionId),shown,command.cursor);await rows.notify(sketchId);
+      // A heartbeat that says what this connection already said renews its five seconds and wakes nobody (#850).
+      if(await rows.setPresence(sketchId,c.room.generation,who,id(connectionId),shown,command.cursor)!=='renewed')await rows.notify(sketchId);
     },'transient');},
     undo(who,sketchId,command){return run(who,sketchId,true,c=>undoMap(c.db,c.principal,c.room,c.sketch,command));},
     deliverUndo(who,sketchId,commandId,handoff){return run(who,sketchId,false,async c=>{

@@ -180,8 +180,13 @@ export function liveMapRows<Change extends Record<string,unknown>>(db:DbExecutor
       const affected=rows.filter(row=>row.thoughts.some(thought=>thoughtIds.includes(thought.id))).map(row=>row.leaseId);
       if(affected.length)await db.delete(g).where(inArray(g.leaseId,affected));return affected;
     },
-    async setPresence(sketchId:string,generation:string,who:Who,connectionId:string,selected:string[],cursor:{x:number;y:number}|null) {
-      const [existing]=await db.select().from(p).where(eq(p.connectionId,connectionId));
+    /**
+     * Stores this connection's presence and renews its five seconds. Answers `renewed` when it said exactly this already and was still
+     * alive: nothing a peer can see changed, so the caller does not wake the room's other connections (#850: an untouched map's
+     * heartbeat was one NOTIFY a second, and every peer read the room for it).
+     */
+    async setPresence(sketchId:string,generation:string,who:Who,connectionId:string,selected:string[],cursor:{x:number;y:number}|null): Promise<'new'|'changed'|'renewed'> {
+      const [existing]=await db.select({row:p,live:sql<boolean>`${p.expiresAt}>clock_timestamp()`}).from(p).where(eq(p.connectionId,connectionId));
       // A person's slot (and so their shape) is the same in every connection and kept while they stay: their live row's
       // own, else the smallest slot no other live person holds. The room lock makes two arrivals take different slots.
       if(!existing)await db.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${'flux.map.presence.slot:'+sketchId},0))`);
@@ -191,7 +196,12 @@ export function liveMapRows<Change extends Record<string,unknown>>(db:DbExecutor
         expiresAt:sql`LEAST(clock_timestamp()+interval '5 seconds',(SELECT expires_at FROM auth_sessions WHERE id=${who.sessionId}))`})
         .onConflictDoUpdate({target:p.connectionId,set:{selected,cursor,expiresAt:sql`LEAST(clock_timestamp()+interval '5 seconds',(SELECT expires_at FROM auth_sessions WHERE id=${who.sessionId}))`},
           setWhere:and(eq(p.sketchId,sketchId),eq(p.generation,generation),eq(p.actorId,who.actorId),eq(p.sessionId,who.sessionId))});
-      return !!existing;
+      if(!existing||!existing.live)return 'new';
+      const was=existing.row;
+      const same=was.sketchId===sketchId&&was.generation===generation&&was.actorId===who.actorId&&was.sessionId===who.sessionId
+        &&was.selected.length===selected.length&&was.selected.every((item,index)=>item===selected[index])
+        &&(was.cursor===null&&cursor===null||!!was.cursor&&!!cursor&&was.cursor.x===cursor.x&&was.cursor.y===cursor.y);
+      return same?'renewed':'changed';
     },
     async presence(sketchId:string,generation:string) {
       return db.select({presence:p,name:schema.authUsers.name}).from(p).innerJoin(schema.authUsers,eq(schema.authUsers.id,p.actorId))

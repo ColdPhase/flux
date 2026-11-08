@@ -17,6 +17,7 @@
 //   concurrent  the warm loop by FLUX_PERF_CLIENTS people at once (default 2, never more)
 //   once        every view once per prepared person (for auto_explain and the CPU profile)
 // FLUX_PERF_PERSON picks who runs count, pass and warm: 0 the owner, 1 a member.
+// FLUX_PERF_SUFFIX is appended to the phase names (the CPU-limited phase uses " @1 cpu", #850 AC-3).
 // Output: JSON lines (`state`, `plan`, `window`, `count`, `client`) on stdout. Every mode but
 // prepare and plan reads the prepared state from FLUX_PERF_STATE.
 
@@ -260,7 +261,8 @@ if (mode !== 'prepare') emit({ type: 'plan', views: flatten(plan) });
 // FLUX_PERF_PERSON: 0 is the workspace owner (Ada), 1 a member (Jonas); their access paths differ.
 const person = Number(process.env.FLUX_PERF_PERSON ?? 0);
 const me = sessions[person] ?? fail(`No prepared session for person ${person}`);
-const named = (phase) => (person ? `${phase} (member)` : phase);
+const suffix = process.env.FLUX_PERF_SUFFIX ?? '';
+const named = (phase) => `${person ? `${phase} (member)` : phase}${suffix}`;
 
 if (mode === 'count') {
   // One request at a time with nothing else running: its statements and its isolated server time.
@@ -275,7 +277,7 @@ if (mode === 'count') {
   await window(named('warm'), async () => { for (let run = 0; run < runs; run++) for (const view of plan) await openView(me, view); });
 } else if (mode === 'concurrent') {
   for (const view of plan) await openView(sessions[0], view, 'warmup');
-  await window('concurrent', async () => {
+  await window(`concurrent${suffix}`, async () => {
     await Promise.all(sessions.map(async (session) => { for (let run = 0; run < runs; run++) for (const view of plan) await openView(session, view); }));
   });
 } else if (mode === 'once') {

@@ -11,9 +11,10 @@ import type { Plugin, ResolvedConfig } from 'vite';
  */
 /**
  * Chunks that only work online are not precached: the Claude Code sign-in console's terminal (F-022
- * T4) needs a live connection to the runtime, so every installed client would download it for nothing.
+ * T4) needs a live connection to the runtime, and a call's media client (livekit, 427 KB raw) cannot run without one, so every
+ * installed client would download them for nothing (#850 AC-4).
  */
-export const ONLINE_ONLY = [/^assets\/SignInConsole-[^/]+\.(js|css)$/];
+export const ONLINE_ONLY = [/^assets\/SignInConsole-[^/]+\.(js|css)$/, /^assets\/media-[^/]+\.(js|css)$/];
 
 export function fluxServiceWorker(source = 'src/pwa/sw.js', onlineOnly: RegExp[] = ONLINE_ONLY): Plugin {
   let config: ResolvedConfig;

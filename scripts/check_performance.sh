@@ -11,7 +11,11 @@
 #   FLUX_PERF_COLD       cold passes, each after restarting PostgreSQL and the API (default 20)
 #   FLUX_PERF_IMAGE_TAG  reuse an already built flux-foundation:<tag> image instead of building
 #   FLUX_PERF_KEEP=1     leave the stack and its volumes running afterwards (remove them yourself)
-#   FLUX_PERF_PHASES     which phases to run (default: count warm concurrent plans cold profile)
+#   FLUX_PERF_PHASES     which phases to run (default: count warm concurrent limited bundle plans cold profile; `restart` alone times
+#                        the API's restarts)
+#   FLUX_PERF_CPUS       the CPU-limited phase's cap for the API and the database each (default 1.0, so the pair stands for a
+#                        2 vCPU host; #850 AC-3, #862). The phase repeats the warm and concurrent runs under it, and the report holds
+#                        them to the targets (p95 at most 50 ms).
 # Runs at most two clients at a time; keep it to one run at a time on a shared host.
 set -eu
 
@@ -23,7 +27,7 @@ out="${FLUX_PERF_OUT:-$root/perf-results/$(date -u +%Y%m%dT%H%M%SZ)}"
 case "$out" in /*) ;; *) echo "FLUX_PERF_OUT must be absolute" >&2; exit 1 ;; esac
 runs="${FLUX_PERF_RUNS:-20}"
 cold="${FLUX_PERF_COLD:-20}"
-phases=" ${FLUX_PERF_PHASES:-count warm concurrent plans cold profile} "
+phases=" ${FLUX_PERF_PHASES:-count warm concurrent limited bundle plans cold profile} "
 phase() { case "$phases" in *" $1 "*) return 0 ;; *) return 1 ;; esac; }
 mkdir -p "$out"
 
@@ -96,9 +100,19 @@ psql -c "SELECT 'messages', count(*) FROM project_messages UNION ALL SELECT 'con
 # What the worker runs while idle (queue polling), before it is stopped for the request numbers.
 psql -c 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements' >/dev/null
 psql -c 'SELECT pg_stat_statements_reset()' >/dev/null
-sleep 30
+# CPU the three services use while idle, from each container's cgroup (microseconds of CPU time, summed over its threads).
+cpu_usec() { $compose exec -T "$1" sh -c 'cat /sys/fs/cgroup/cpu.stat' 2>/dev/null | awk '/^usage_usec/ { print $2 }'; }
+cpu_before="$(cpu_usec api) $(cpu_usec worker) $(cpu_usec db)"
+sleep 60
+cpu_after="$(cpu_usec api) $(cpu_usec worker) $(cpu_usec db)"
 psql -c "SELECT calls, round(total_exec_time::numeric, 1), left(regexp_replace(query, '\s+', ' ', 'g'), 160)
-  FROM pg_stat_statements WHERE query NOT ILIKE '%pg_stat_statements%' ORDER BY total_exec_time DESC LIMIT 15" > "$out/idle-30s.txt"
+  FROM pg_stat_statements WHERE query NOT ILIKE '%pg_stat_statements%' ORDER BY calls DESC, total_exec_time DESC LIMIT 40" > "$out/idle-60s.txt"
+# #862: at most 100 statements a minute at idle (the worker running, nobody signed in): the minute above, so every 30 s poll is counted twice.
+psql -c "SELECT 'Idle database: ' || coalesce(sum(calls), 0) || ' statements a minute over 60 s with the worker running (target at most 100)'
+  FROM pg_stat_statements WHERE query NOT ILIKE '%pg_stat_statements%'" | tee "$out/idle.txt"
+# #862: at most 2% of one core at idle, all three together (nobody signed in; the worker's queue polling and the API's heartbeat).
+echo "$cpu_before $cpu_after" | awk '{ if (NF == 6 && $1 != "") { api = ($4 - $1) / 60000000 * 100; worker = ($5 - $2) / 60000000 * 100; db = ($6 - $3) / 60000000 * 100;
+  printf "Idle CPU over 60 s: api %.2f%%, worker %.2f%%, database %.2f%% of one core, %.2f%% together (target at most 2%%)\n", api, worker, db, api + worker + db } else print "Idle CPU: the cgroup counters could not be read" }' | tee -a "$out/idle.txt"
 $compose stop worker
 
 # Sign in and read the views' ids once; every later run reuses those sessions and ids.
@@ -131,6 +145,24 @@ if phase concurrent; then
   rm -f "$out/.concurrent-done"
 fi
 
+# The same runs again with the API and the database each held to FLUX_PERF_CPUS (docker update, live), so a 2 vCPU host's
+# queueing shows (#850 AC-3): the numbers the targets are judged on.
+if phase limited; then
+  cpus="${FLUX_PERF_CPUS:-1.0}"
+  echo "CPU-limited runs (API and database at $cpus CPU each)..."
+  limited_ids=$($compose ps -q api db)
+  docker update --cpus "$cpus" $limited_ids >/dev/null
+  for who in 0 1; do measure -e FLUX_PERF_MODE=warm -e FLUX_PERF_PERSON=$who -e "FLUX_PERF_SUFFIX= @$cpus cpu"; done
+  measure -e FLUX_PERF_MODE=concurrent -e FLUX_PERF_CLIENTS=2 -e "FLUX_PERF_SUFFIX= @$cpus cpu"
+  docker update --cpus 0 $limited_ids >/dev/null
+fi
+
+# What the first screen downloads and the service worker precaches (#850 AC-4): the built app's files, from inside the API image.
+if phase bundle; then
+  echo "First-screen code..."
+  $compose exec -T api node --input-type=module - < scripts/perf-bundle.mjs | tee "$out/bundle.txt"
+fi
+
 # Plans: auto_explain logs every statement (EXPLAIN ANALYZE, BUFFERS) of one pass per person.
 if phase plans; then
   echo "Plans..."
@@ -143,17 +175,42 @@ if phase plans; then
   $compose logs --no-color --no-log-prefix --since "$since" db > "$out/plans.log"
 fi
 
+# Only the restart times, without the passes between them (about 3 minutes with the seeding): `FLUX_PERF_PHASES=restart`.
+if phase restart; then
+  echo "API restarts (${FLUX_PERF_RESTARTS:-8})..."
+  : > "$out/restart-api-ms.txt"
+  i=0
+  while [ "$i" -lt "${FLUX_PERF_RESTARTS:-8}" ]; do
+    api_started=$(date +%s%N)
+    $compose restart api >/dev/null
+    $compose up -d --wait api >/dev/null
+    echo $((($(date +%s%N) - api_started) / 1000000)) >> "$out/restart-api-ms.txt"
+    i=$((i + 1))
+  done
+  sort -n "$out/restart-api-ms.txt" | awk '{ v[NR] = $1 } END { if (NR) printf "Restart of the API to healthy: median %d ms, slowest %d ms over %d restarts (target at most 5000 ms)\n", v[int((NR + 1) / 2)], v[NR], NR }' | tee "$out/restart.txt"
+fi
+
 if phase cold; then
   echo "Cold passes ($cold per person, each after restarting PostgreSQL and the API)..."
   i=0
+  : > "$out/restart-ms.txt"
+  : > "$out/restart-api-ms.txt"
   while [ "$i" -lt $((cold * 2)) ]; do
+    restart_started=$(date +%s%N)
     $compose restart db >/dev/null
     $compose up -d --wait db >/dev/null
+    api_started=$(date +%s%N)
     $compose restart api >/dev/null
     $compose up -d --wait api >/dev/null
+    now=$(date +%s%N)
+    echo $(((now - restart_started) / 1000000)) >> "$out/restart-ms.txt"
+    echo $(((now - api_started) / 1000000)) >> "$out/restart-api-ms.txt"
     measure -e FLUX_PERF_MODE=pass -e FLUX_PERF_FIRST=$((i / 2)) -e FLUX_PERF_PERSON=$((i % 2))
     i=$((i + 1))
   done
+  # #862: restart to healthy at most 5 s: the API alone, and the database and then the API as an upgrade does.
+  sort -n "$out/restart-api-ms.txt" | awk '{ v[NR] = $1 } END { if (NR) printf "Restart of the API to healthy: median %d ms, slowest %d ms over %d restarts (target at most 5000 ms)\n", v[int((NR + 1) / 2)], v[NR], NR }' | tee "$out/restart.txt"
+  sort -n "$out/restart-ms.txt" | awk '{ v[NR] = $1 } END { if (NR) printf "Restart of the database and then the API to healthy, as an upgrade does: median %d ms, slowest %d ms\n", v[int((NR + 1) / 2)], v[NR] }' | tee -a "$out/restart.txt"
 fi
 $compose logs --no-color --no-log-prefix api > "$out/api.log"
 
@@ -168,7 +225,10 @@ if phase profile; then
   $compose cp api:/tmp/flux-prof "$out/profile" >/dev/null 2>&1 || echo "No CPU profile was written" >&2
 fi
 
-python3 scripts/perf_report.py "$out/measure.jsonl" "$out/api.log" --json "$out/report.json" | tee "$out/report.md"
+if [ -s "$out/measure.jsonl" ]; then python3 scripts/perf_report.py "$out/measure.jsonl" "$out/api.log" --json "$out/report.json" --targets | tee "$out/report.md"; else : > "$out/report.md"; fi
+for extra in idle.txt bundle.txt restart.txt; do
+  if [ -f "$out/$extra" ]; then printf '\n' >> "$out/report.md"; cat "$out/$extra" >> "$out/report.md"; fi
+done
 if [ -f "$out/pool-samples.txt" ]; then
   awk -F'|' 'NF >= 3 { if ($1 + 0 > max) max = $1 + 0 } END { print "Most API connections seen at once: " max + 0 " (pool max 10)" }' "$out/pool-samples.txt" | tee -a "$out/report.md"
 fi

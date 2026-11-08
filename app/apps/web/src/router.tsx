@@ -16,7 +16,8 @@ import { docViewsPage, mapPage, tasksPage, wikiPage } from './app/viewChunks';
 import {
   forgotPasswordAction,
   forgotPasswordLoader,
-  redirectIfSignedIn,
+  loginLoader,
+  signInLoader,
   resetPasswordAction,
   signInAction,
   signOutAction,
@@ -89,8 +90,8 @@ export const router = createBrowserRouter([
         Component: AuthLayout,
         children: [
           // Better Auth sends a signed OAuth continuation here, including forced reauthentication.
-          { path: 'login', action: signInAction, Component: SignInPage },
-          { path: 'sign-in', loader: redirectIfSignedIn, action: signInAction, Component: SignInPage },
+          { path: 'login', loader: loginLoader, action: signInAction, Component: SignInPage },
+          { path: 'sign-in', loader: signInLoader, action: signInAction, Component: SignInPage },
           { path: 'sign-up', loader: signUpLoader, action: signUpAction, Component: SignUpPage },
           { path: 'forgot-password', loader: forgotPasswordLoader, action: forgotPasswordAction, Component: ForgotPasswordPage },
           { path: 'reset-password', action: resetPasswordAction, Component: ResetPasswordPage },

@@ -9,19 +9,22 @@ import { isWorkspaceLocked } from '../encryption/api';
 /** Direct messages (#107): private conversations with people, outside any project. */
 export async function listAllDms(signal?: AbortSignal, workspaces?: Workspace[]) {
   const spaces = workspaces ?? await request<Workspace[]>(WORKSPACES_PATH, { signal });
-  const items: DmSummary[] = [];
-  for (const space of spaces) {
+  // Every workspace at once (#850).
+  const lists = await Promise.all(spaces.map(async (space) => {
+    const found: DmSummary[] = [];
     try {
       for (let offset = 0; ; offset += 100) {
         const page = await request<Page<DmSummary>>(`${workspaceDmsPath(space.id)}?limit=100&offset=${offset}`, { signal });
-        items.push(...page.items);
+        found.push(...page.items);
         if (offset + page.items.length >= page.total || page.items.length === 0) break;
       }
     } catch (error) {
       // An encrypted workspace that locked since the workspaces were read has no conversations to list until it is unlocked (F-030, #655).
       if (!isWorkspaceLocked(error)) throw error;
     }
-  }
+    return found;
+  }));
+  const items = lists.flat();
   return items.sort((a, b) => (b.lastMessageAt ?? b.createdAt).localeCompare(a.lastMessageAt ?? a.createdAt));
 }
 

@@ -1,0 +1,1 @@
+- With single sign-on as the only way in, the sign-in page no longer shows the email and password form for a moment before the provider button: the page reads what sign-in offers together with the check for an existing session, and the server answers from its last known state while it re-checks the provider ([#847](https://github.com/ColdPhase/flux/issues/847)).

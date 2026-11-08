@@ -31,6 +31,7 @@ describe('human identity', () => {
     const authSession = await browser.request('GET', '/api/auth/get-session');
     assert.equal(authSession.status, 200);
     assert.equal((authSession.json as { session: { token?: string } }).session.token, undefined);
+    assert.equal(authSession.headers.get('set-auth-jwt'), null, 'no JWT is signed on a session read for a header nothing reads (#850)');
     assert.equal(authSession.text.includes(browser.cookies.get('flux.session_token')!.split('.')[0]!), false);
     const me = await browser.request('GET', '/api/v1/me');
     assert.equal(me.status, 200);

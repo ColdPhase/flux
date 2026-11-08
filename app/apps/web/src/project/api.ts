@@ -10,13 +10,16 @@ import { isWorkspaceLocked, type EncryptedWorkspace } from '../encryption/api';
  * unlocked (F-030, #655) is not asked for projects (their names are sealed): it is returned in `lockedWorkspaces`, and so
  * is one that locked between the two reads (`423`).
  */
-export async function listAccessibleProjects(signal?: AbortSignal) {
-  const all = await request<EncryptedWorkspace[]>(WORKSPACES_PATH, { signal });
+export async function listAccessibleProjects(signal?: AbortSignal, read?: EncryptedWorkspace[]) {
+  // The shell reads the workspaces once and asks for their projects and conversations beside each other (#850); a caller that has the
+  // list passes it.
+  const all = read ?? await request<EncryptedWorkspace[]>(WORKSPACES_PATH, { signal });
   const workspaces: EncryptedWorkspace[] = [];
   const lockedWorkspaces: EncryptedWorkspace[] = all.filter((workspace) => workspace.encryption?.state === 'locked');
   const projects: Project[] = [];
-  for (const workspace of all) {
-    if (lockedWorkspaces.includes(workspace)) continue;
+  const open = all.filter((workspace) => !lockedWorkspaces.includes(workspace));
+  // Every workspace at once, in the list's order.
+  const reads = await Promise.all(open.map(async (workspace) => {
     const found: Project[] = [];
     try {
       for (let offset = 0; ; offset += 100) {
@@ -26,9 +29,12 @@ export async function listAccessibleProjects(signal?: AbortSignal) {
       }
     } catch (error) {
       if (!isWorkspaceLocked(error)) throw error;
-      lockedWorkspaces.push(workspace);
-      continue;
+      return { workspace, found: null };
     }
+    return { workspace, found };
+  }));
+  for (const { workspace, found } of reads) {
+    if (!found) { lockedWorkspaces.push(workspace); continue; }
     workspaces.push(workspace);
     projects.push(...found);
   }
@@ -51,5 +57,5 @@ export const setSpaceAi = (projectId: string, state: SpaceAiState, idempotencyKe
 /** Adds Map, Wiki or Agents to a project (#351); adding one it has changes nothing. */
 export const addProjectView = (projectId: string, view: ProjectViewId) =>
   request<Project>(projectViewsPath(projectId), { method: 'POST', body: { view }, headers: { [IDEMPOTENCY_KEY_HEADER]: crypto.randomUUID() } });
-export const getProject = (id: string, signal?: AbortSignal) => request<Project>(projectPath(id), { signal });
+export const getProject = (id: string, signal?: AbortSignal) => request<Project>(projectPath(id), { signal, share: true });
 export const listWorkspaceMembers = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceMember[]>(workspaceMembersPath(workspaceId), { signal });

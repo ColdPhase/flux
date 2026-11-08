@@ -16,10 +16,10 @@ export const saveLiveDoc = (id: string, command: SaveSharedDoc, keepalive = fals
 
 const LIMIT = 100;
 
-async function everything<T>(path: string, signal?: AbortSignal): Promise<T[]> {
+async function everything<T>(path: string, signal?: AbortSignal, share = false): Promise<T[]> {
   const items: T[] = [];
   for (let offset = 0; offset <= 10_000; offset += LIMIT) {
-    const page = await request<Page<T>>(`${path}?limit=${LIMIT}&offset=${offset}`, { signal });
+    const page = await request<Page<T>>(`${path}?limit=${LIMIT}&offset=${offset}`, { signal, share });
     items.push(...page.items);
     if (!page.items.length || offset + page.items.length >= page.total) break;
   }
@@ -29,7 +29,7 @@ async function everything<T>(path: string, signal?: AbortSignal): Promise<T[]> {
 const key = (idempotencyKey: string) => ({ 'idempotency-key': idempotencyKey });
 const ifMatch = (version: number) => ({ 'if-match': `"${version}"` });
 
-export const listProjectDocs = (projectId: string, signal?: AbortSignal) => everything<DocSummary>(projectDocsPath(projectId), signal);
+export const listProjectDocs = (projectId: string, signal?: AbortSignal) => everything<DocSummary>(projectDocsPath(projectId), signal, true);
 export const getDoc = (id: string, signal?: AbortSignal) => request<Doc>(docPath(id), { signal });
 export const listVersions = (id: string, signal?: AbortSignal) => everything<DocVersionSummary>(docVersionsPath(id), signal);
 export const getVersion = (id: string, version: number, signal?: AbortSignal) => request<DocVersion>(docVersionPath(id, version), { signal });

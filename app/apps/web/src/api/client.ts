@@ -28,6 +28,11 @@ export interface ApiRequestInit {
   keepalive?: boolean;
   /** The browser cache mode, e.g. `no-store` for a file or a reachability check that must not be served from cache. */
   cache?: RequestCache;
+  /**
+   * A plain read that other callers of the same address may join while it is in flight (see `sharedRead`). Only for reads whose callers
+   * all want the latest answer and none relies on its own request being ordered against another's (#850): the project shell's.
+   */
+  share?: boolean;
 }
 
 // A read starts in a task of its own, after the work that asked for it (#716). A view opening asks for half a dozen reads from
@@ -47,6 +52,11 @@ const nextTask = () => new Promise<void>((resolve) => {
   waiting.push(resolve);
 });
 
+/** Plain reads in flight, by address, that later callers of the same address join (see `sharedRead`). */
+interface SharedRead { answer: Promise<Answer>; callers: number; abort: AbortController }
+interface Answer { ok: boolean; status: number; statusText: string; text: string }
+const inFlight = new Map<string, SharedRead>();
+
 /**
  * The one transport to the Flux API (#93): every call of the web app, JSON or not, goes through here.
  * Answers the raw response of any status; only a request that got no answer throws (`NetworkError`, or the
@@ -58,6 +68,9 @@ export async function send(path: string, init: ApiRequestInit & { accept?: strin
   // navigation can begin in the task between, and a read asked for just before it, with the gate checked first, started
   // after `beforeunload` (#758, #759: working-agents, needs-you and the other shell reads of a page that is left).
   if (init.batchRead && (!init.method || init.method === 'GET')) await nextTask();
+  // A write ends the sharing: a read that started before it must not answer a caller that asks after it (nor one that started while it ran).
+  const writes = !!init.method && init.method !== 'GET';
+  if (writes) inFlight.clear();
   const attempt = async (): Promise<Response> => {
     // A page being left starts no request (#471): the browser has stopped its loads, and WebKit reports a
     // fetch that starts now as an uncaught page error. It starts when the page is live again, never sooner
@@ -78,19 +91,24 @@ export async function send(path: string, init: ApiRequestInit & { accept?: strin
       throw new NetworkError();
     }
   };
-  let response = await attempt();
-  // The API is busy (429 with Retry-After, the floor of rate limits): a read is asked again after the wait, with the page saying so
-  // (#838). Only a read: a write could have been done, and the person decides whether to send it again.
-  const read = (!init.method || init.method === 'GET' || init.method === 'HEAD') && init.body === undefined && !init.keepalive;
-  for (let tries = 0; response.status === 429 && read && tries < BUSY_RETRIES; tries += 1) {
-    await waitOutBusy(busyWaitMs(response), init.signal);
-    response = await attempt();
+  try {
+    let response = await attempt();
+    // The API is busy (429 with Retry-After, the floor of rate limits): a read is asked again after the wait, with the page saying so
+    // (#838). Only a read: a write could have been done, and the person decides whether to send it again. A shared read is one request,
+    // so it waits and retries once for all the callers that joined it.
+    const readOnly = (!init.method || init.method === 'GET' || init.method === 'HEAD') && init.body === undefined && !init.keepalive;
+    for (let tries = 0; response.status === 429 && readOnly && tries < BUSY_RETRIES; tries += 1) {
+      await waitOutBusy(busyWaitMs(response), init.signal);
+      response = await attempt();
+    }
+    return response;
+  } finally {
+    if (writes) inFlight.clear();
   }
-  return response;
 }
 
 /** The `ApiError` of a failed response, read from its JSON error body when it has one. */
-export function responseError(response: Response, data: unknown): ApiError {
+export function responseError(response: Pick<Response, 'status' | 'statusText'>, data: unknown): ApiError {
   const record = (data && typeof data === 'object' ? data : {}) as { code?: unknown; message?: unknown; error?: unknown };
   const code = typeof record.code === 'string' ? record.code : null;
   const message = typeof record.message === 'string' ? record.message : typeof record.error === 'string' ? record.error : response.statusText;
@@ -104,13 +122,54 @@ export function responseError(response: Response, data: unknown): ApiError {
   return new ApiError(response.status, code, message, data);
 }
 
+async function read(path: string, init: ApiRequestInit): Promise<Answer> {
+  const response = await send(path, { ...init, accept: 'application/json', batchRead: true });
+  return { ok: response.ok, status: response.status, statusText: response.statusText, text: await response.text() };
+}
+
+/**
+ * Reads that ask to share (`share: true`) and are of the same address in flight together are one request (#850, #862: a navigation asked
+ * for the same project and people up to four times, from its route loaders and its components). Only what is in flight is shared, never an
+ * answer that has already arrived, and a write ends the sharing, so nothing is served stale; each caller parses its own copy of the text,
+ * and aborting stops the request only when every caller that wanted it has aborted. Reads that do not ask are never shared: several
+ * views hold or reorder their own reads and need each answer to be its own.
+ */
+function startSharedRead(path: string): SharedRead {
+  const abort = new AbortController();
+  const created: SharedRead = { answer: read(path, { signal: abort.signal }), callers: 0, abort };
+  const finish = () => { if (inFlight.get(path) === created) inFlight.delete(path); };
+  created.answer.then(finish, finish);
+  inFlight.set(path, created);
+  return created;
+}
+
+function sharedRead(path: string, signal: AbortSignal | undefined): Promise<Answer> {
+  const entry = inFlight.get(path) ?? startSharedRead(path);
+  entry.callers += 1;
+  return new Promise<Answer>((resolve, reject) => {
+    let left = false;
+    const leave = () => {
+      if (left) return;
+      left = true;
+      signal?.removeEventListener('abort', onAbort);
+      entry.callers -= 1;
+      if (entry.callers === 0) { if (inFlight.get(path) === entry) inFlight.delete(path); entry.abort.abort(); }
+    };
+    const onAbort = () => { leave(); reject(new DOMException('The operation was aborted.', 'AbortError')); };
+    if (signal?.aborted) { onAbort(); return; }
+    signal?.addEventListener('abort', onAbort, { once: true });
+    entry.answer.then((answer) => { if (!left) { left = true; signal?.removeEventListener('abort', onAbort); entry.callers -= 1; resolve(answer); } },
+      (error: unknown) => { if (!left) { left = true; signal?.removeEventListener('abort', onAbort); entry.callers -= 1; reject(error); } });
+  });
+}
+
 /** A JSON request: the parsed body of a 2xx answer, or an `ApiError`. */
 export async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
-  const response = await send(path, { ...init, accept: 'application/json', batchRead: true });
-  const text = await response.text();
+  const plainRead = init.share === true && (!init.method || init.method === 'GET') && !init.headers && !init.keepalive && init.cache === undefined;
+  const response = plainRead ? await sharedRead(path, init.signal) : await read(path, init);
   let data: unknown = null;
-  if (text) {
-    try { data = JSON.parse(text); } catch { data = null; }
+  if (response.text) {
+    try { data = JSON.parse(response.text); } catch { data = null; }
   }
   if (!response.ok) throw responseError(response, data);
   return data as T;

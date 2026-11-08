@@ -83,10 +83,16 @@ const NOTICES: Record<string, string> = {
 /** The operator's single sign-on, when configured (#113). Hidden while unknown or unavailable. */
 const SSO_RECHECK_MS = 5000;
 
-function useCapabilities() {
-  const [capabilities, setCapabilities] = useState<IdentityCapabilities | null>(null);
+/**
+ * The capabilities the route's loader read before the page showed (#847), kept fresh only where it matters: asked again every few
+ * seconds while the provider is unreachable, so its button comes back without a reload; asked once if the loader could not read them.
+ */
+function useCapabilities(first: IdentityCapabilities | null) {
+  const [capabilities, setCapabilities] = useState<IdentityCapabilities | null>(first);
+  const known = capabilities !== null;
   const unreachable = capabilities?.sso !== null && capabilities?.sso?.reachable === false;
   useEffect(() => {
+    if (known && !unreachable) return undefined;
     const controller = new AbortController();
     let waiting: () => void = () => undefined;
     const load = () => {
@@ -96,14 +102,14 @@ function useCapabilities() {
         getCapabilities(controller.signal).then(setCapabilities).catch(() => undefined);
       });
     };
-    load();
+    if (!known) load();
     const timer = unreachable ? window.setInterval(load, SSO_RECHECK_MS) : undefined;
     return () => {
       waiting();
       controller.abort();
       if (timer !== undefined) window.clearInterval(timer);
     };
-  }, [unreachable]);
+  }, [known, unreachable]);
   return capabilities;
 }
 
@@ -142,7 +148,8 @@ export function SignInPage() {
   const location = useLocation();
   const next = location.pathname === '/login' ? `${location.pathname}${location.search}` : params.get('next');
   const shownRef = useRef<string | null>(null);
-  const capabilities = useCapabilities();
+  const { capabilities: loaded } = useLoaderData() as { capabilities: IdentityCapabilities | null };
+  const capabilities = useCapabilities(loaded);
   const sso = capabilities?.sso ?? null;
   const ssoOnly = capabilities?.ssoOnly ?? false;
   const ssoFailed = params.get('sso') === 'failed';
@@ -275,7 +282,7 @@ export function ClaimPage() {
     getPendingClaim(controller.signal).then(setClaim).catch(() => setClaim(null));
     return () => controller.abort();
   }, []);
-  const capabilities = useCapabilities();
+  const capabilities = useCapabilities(null);
   const sso = capabilities?.sso;
   const linkable = capabilities?.linkable === true;
   const confirm = async () => {
@@ -408,9 +415,12 @@ export function ResetPasswordPage() {
 export function SignOutPage() {
   const result = useActionData() as FormResult | undefined;
   const submitting = useSubmitting();
+  const { capabilities } = useLoaderData() as { capabilities: IdentityCapabilities | null };
+  // With single sign-on as the only way in there is no password to remember (#847).
+  const sso = capabilities?.ssoOnly ? capabilities.sso : null;
   return (
     <>
-      <Heading title="Sign out of Flux?">You’ll need your email and password to sign in again on this device.</Heading>
+      <Heading title="Sign out of Flux?">{sso ? `You’ll sign in with ${sso.label} again on this device.` : 'You’ll need your email and password to sign in again on this device.'}</Heading>
       <Form method="post" className="auth__form" aria-label="Sign out">
         <FormError message={result?.formError} />
         <Button type="submit" variant="primary" size="lg" block busy={submitting}>{submitting ? 'Signing out…' : 'Sign out'}</Button>

@@ -31,6 +31,8 @@ export class SharedMap {
   private selected: string[] = [];
   private cursor: { x: number; y: number } | null = null;
   private cursorTimer: number | null = null;
+  private lastPresence = '';
+  private lastPresenceAt = -Infinity;
   private leaving = () => this.cancel(true);
   get ownGesture() { return this.gesture?.active && this.head ? { id: this.gesture.id, sequence: this.gesture.sequence, generation: this.head.generation } : null; }
   constructor(readonly id: string, readonly userId: string,
@@ -52,9 +54,16 @@ export class SharedMap {
       const gesture = this.gesture;
       if (gesture?.active && gesture.serverLease && Date.parse(gesture.serverLease.expiresAt) <= Date.now() && gesture.lastPreviewAt + 5000 <= Date.now()) { this.cancel(true, false); this.problem = 'The movement lease expired. Its unfinished positions are kept privately for comparison.'; expired = true; }
       if (expired) this.changed();
-      if (this.head && this.status === 'live' && this.head.canWrite) this.connection?.send({ type: 'map-presence', generation: this.head.generation, selected: this.selected.slice(0, 16), cursor: this.cursor });
+      // The server keeps presence five seconds: a heartbeat every other second is enough, and one that says nothing new is skipped in between (#850).
+      if (this.head && this.status === 'live' && this.head.canWrite && (this.presenceKey() !== this.lastPresence || Date.now() - this.lastPresenceAt >= 2000)) this.sendPresence();
     }, 1000);
     void this.start();
+  }
+  private presenceKey() { return `${this.head?.generation}|${this.selected.slice(0, 16).join(',')}|${this.cursor ? `${this.cursor.x},${this.cursor.y}` : ''}`; }
+  private sendPresence() {
+    if (!this.head) return;
+    this.lastPresence = this.presenceKey(); this.lastPresenceAt = Date.now();
+    this.connection?.send({ type: 'map-presence', generation: this.head.generation, selected: this.selected.slice(0, 16), cursor: this.cursor });
   }
   private get privateKey() { return `flux:map-gesture:${this.userId}:${this.id}`; }
   private keepMovement(gesture: Gesture) {
@@ -154,7 +163,7 @@ export class SharedMap {
     if (this.cursorTimer !== null) return;
     this.cursorTimer = window.setTimeout(() => {
       this.cursorTimer = null;
-      if (this.head && this.status === 'live' && this.head.canWrite) this.connection?.send({ type: 'map-presence', generation: this.head.generation, selected: this.selected.slice(0, 16), cursor: this.cursor });
+      if (this.head && this.status === 'live' && this.head.canWrite) this.sendPresence();
     }, 50);
   }
   resync() { this.disconnected(); }
