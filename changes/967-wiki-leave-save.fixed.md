@@ -1,0 +1,1 @@
+- With live editing off, a Wiki tab that closes during a save no longer loses its newest text: the tab leaves a copy on this device that the next visit restores, and a version saved over another person's version says which one it replaced ([#967](https://github.com/ColdPhase/flux/issues/967)).

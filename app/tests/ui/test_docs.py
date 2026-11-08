@@ -239,6 +239,14 @@ class DocsJourney(unittest.TestCase):
         # Kai keeps his text on top of Ada's version and carries her addition over himself.
         conflict.get_by_role("button", name="Keep my text").click()
         expect(conflict).to_have_count(0)
+        # The version that holds Kai's text says whose version it replaced (#967).
+        deadline = time.monotonic() + 15
+        while True:
+            kept = page.request.get(f"{ORIGIN}/api/v1/docs/{self.doc_id}/versions/{before['version'] + 2}")
+            if kept.status == 200 or time.monotonic() > deadline:
+                break
+            time.sleep(0.25)
+        self.assertEqual(kept.json()["reason"], f"In place of {OWNER['name']}’s version {before['version'] + 1}")
         self.type_end(page, "\n## Open questions\n\n- Does the sensor see through a frosted shade?\n")
         deadline = time.monotonic() + 60  # the next version follows the 30 s spacing
         while True:

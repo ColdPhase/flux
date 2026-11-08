@@ -149,8 +149,11 @@ draws it since #869: two columns only, the sidebar and the page.
   the same head is a quiet conflict. A native write while a page is open (an agent, Add to docs)
   starts a new generation; an editor with nothing pending opens it afresh. Without live editing
   (`FLUX_LIVE_EDITING=off`) the editor holds this tab's copy and saves it with `If-Match` 1.2 s
-  after typing rests; a concurrent save shows who saved, with "Keep my text" or "Use their version",
-  and unsaved text survives a reload of the tab.
+  after typing rests; a concurrent save shows who saved, with "Keep my text" or "Use their version"
+  (the kept version's reason names the version it replaced), and unsaved text survives a reload of
+  the tab. A tab that closes with unsaved text sends it at once and also leaves a copy on this
+  device (localStorage, removed at sign-out and once a save holds the text), which the next visit
+  to the page restores whatever order the closing saves reached the server in (#967).
 - **The row above the title**: "Saved · just now" (or "Saving…"), "Jonas is here too" and the faces
   of the people writing, **Contents** (≡: the headings, levels 1–3; choosing one scrolls to it,
   smoothly unless motion is reduced; "No headings yet" without any) and **⋯** (History, Copy link,
