@@ -366,7 +366,28 @@ describe('a stranger cannot keep the owner out (#990)', () => {
     assert.match(set, /HttpOnly/i);
     assert.match(set, /SameSite=Lax/i);
     assert.notEqual(deviceCookieOf(owner)![1], before);
+    // The same device is given again at the new generation (its own wait stays its own), and each time it is given again the older
+    // generations' keys leave the cookie, so it never fills with stale keys.
+    assert.equal(deviceCookieOf(owner)![1].split('.')[0], before.split('.')[0], 'the same device id');
+    for (let again = 0; again < 3; again++) assert.equal((await owner.request('POST', '/api/v1/sessions/revoke-others')).status, 200);
+    assert.equal(deviceCookieOf(owner)![1].split('.')[1]!.length, 16, 'one key for the account, not one for every generation');
     await assertCopyIsNoLongerTheBrowser(owner, copy, email, password);
+  });
+
+  test('"Sign out all other devices" gives a browser that has only a session no device cookie, so its guesses keep waiting (review of #1044)', async () => {
+    const email = uniqueEmail('revoke-session-only');
+    const { browser: owner } = await register(email, password);
+    const thief = withoutDevice(owner);
+    const guess = (label: string) => thief.request('POST', '/api/auth/change-password', { body: { currentPassword: `thief ${label}`, newPassword: 'a brand new passphrase here', revokeOtherSessions: false } });
+    for (let attempt = 1; attempt <= 5; attempt++) assert.equal(code(await guess(String(attempt))), 'INVALID_PASSWORD');
+    assert.equal((await guess('6')).status, 429, 'the account waits for a browser that has only a session');
+    const out = await thief.request('POST', '/api/v1/sessions/revoke-others');
+    assert.equal(out.status, 200);
+    assert.equal(out.setCookies.some((cookie) => /flux\.device=/.test(cookie)), false, 'a session alone is given no device cookie');
+    assert.equal(deviceCookieOf(thief), undefined);
+    const after = await guess('7');
+    assert.equal(after.status, 429, 'and its next guess still waits');
+    assert.equal(code(after), 'SIGN_IN_THROTTLED');
   });
 
   test('a password change that signs out the other devices ends the copies of the device cookie too (#1031)', async () => {

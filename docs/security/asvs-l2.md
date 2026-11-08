@@ -71,10 +71,13 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
   signed in to it (a new device, cleared cookies) waiting for up to 15 minutes at a time. The reset mail is the way back, the browser
   that finishes the reset is remembered, and a reset clears the account's wait. MFA stays the identity provider's job (see 2.2.x).
   **A copied cookie does not outlive a recovery** ([#1031](https://github.com/ColdPhase/flux/issues/1031)): the cookie names an account by a keyed
-  hash of its address and the account's *device generation* (`auth_users.device_generation`, migration 0029). A password reset, a password
+  hash of its address and the account's *device generation* (`auth_users.device_generation`, migration 0036). A password reset, a password
   change that signs out the other devices and "Sign out all other devices" raise it, so a copy taken before then names an older generation and
-  counts in the account's wait like any stranger; the browser that did the reset or the sign-out is given a cookie with the new generation in
-  the same answer. A plain password change that keeps the other devices leaves the cookie as it was.
+  counts in the account's wait like any stranger. The browser that did the reset, or the password change with sign-out, is given a cookie with
+  the new generation in the same answer (it proved the mailbox or the password). The browser that pressed "Sign out all other devices" keeps
+  the cookie it had, given again at the new generation (same device); a browser that has only a session gets none, because a session does not
+  prove the password and a cookie would give it a wait of its own to guess in (review of #1044). Older generations' keys leave the cookie when
+  it is given again. A plain password change that keeps the other devices leaves the cookie as it was.
 - **#991, errors.** Every error that is not a domain refusal, a 401 or a Fastify 4xx answers `500` with a class code and logs only the
   redacted error. The encrypted-space rule of F-030 now holds for every space, so there is one path to keep correct, not two.
 - **#992, headers.** `nosniff`, `Referrer-Policy: same-origin`, `no-store` for `/api/` answers that set no rule of their own, and HSTS

@@ -7,6 +7,7 @@ import { oauthRequestContext, type OauthRequests } from './oauth-flow.js';
 import type { OfflineStep } from './offline-step.js';
 import type { SignInFacts, SignIns } from './sign-in.js';
 import type { SessionResolver } from './session.js';
+import { loggedPath } from '../http/log-serializers.js';
 import { claimCookie } from './claim-routes.js';
 import { LINK_COOKIE, linkCookie, type LinkIntents } from './link.js';
 
@@ -123,7 +124,7 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       const response = context ? await oauthRequests.run(Object.freeze(context), handle) : await handle();
       reply.status(response.status);
       // Better Auth's per-address limiter answered (the account's own back-off is recorded where it is decided): the route, never its query (#997).
-      if (response.status === 429 && response.headers.has('x-retry-after')) securityEvent(request.log, { event: 'rate_limited', outcome: 'limited', reason: 'address_limit', route: url.pathname, ip: request.ip });
+      if (response.status === 429 && response.headers.has('x-retry-after')) securityEvent(request.log, { event: 'rate_limited', outcome: 'limited', reason: 'address_limit', route: loggedPath(url.pathname), ip: request.ip });
       // A refused sign-in (no refresh token, #311; an address another account holds, #313) comes back to the page
       // with the reason. An address an unverified account holds goes to the claim page instead.
       const destination = (value: string) => {

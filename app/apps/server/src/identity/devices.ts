@@ -14,11 +14,14 @@ export interface Devices {
   cookie: { name: string; options: { maxAge: number; httpOnly: true; sameSite: 'lax'; secure: boolean; path: '/' } };
   /** The device a cookie value names when it is signed by this server and lists this account at its current generation; else null. */
   known(value: string | null | undefined, email: string): Promise<Device | null>;
-  /** The cookie value that remembers this account (at its current generation) for the browser that sent `value`, if any. */
+  /** The cookie value that remembers this account (at its current generation, its older keys taken out) for the browser that sent `value`, if any. */
   remember(value: string | null | undefined, email: string): Promise<string>;
   /** Every cookie given out so far stops counting as a browser of this account. Remember the browser in hand afterwards. */
   endAll(userId: string): Promise<void>;
 }
+
+/** How many older generations of an account's key `remember` takes out of a cookie; a key older than that stays until newer accounts push it out. */
+const OLDER_GENERATIONS = 16;
 
 export function createDevices(db: Database, secret: string, secure: boolean): Devices {
   const address = (email: string) => email.trim().toLowerCase();
@@ -27,16 +30,22 @@ export function createDevices(db: Database, secret: string, secure: boolean): De
     const [row] = await db.select({ generation: schema.authUsers.deviceGeneration }).from(schema.authUsers).where(sql`lower(${schema.authUsers.email}) = ${address(email)}`);
     return row?.generation ?? 0;
   };
-  const accountKey = async (email: string) => createHmac('sha256', secret)
-    .update('flux-device-account\0').update(address(email)).update('\0').update(String(await generationOf(email))).digest('hex').slice(0, 16);
+  const keyAt = (email: string, generation: number) => createHmac('sha256', secret)
+    .update('flux-device-account\0').update(address(email)).update('\0').update(String(generation)).digest('hex').slice(0, 16);
+  // The key of this account now, and of its last few older generations, which a cookie may still list and `remember` takes out of it.
+  const keysOf = async (email: string) => {
+    const generation = await generationOf(email);
+    return { current: keyAt(email, generation), older: Array.from({ length: Math.min(generation, OLDER_GENERATIONS) }, (_, back) => keyAt(email, generation - 1 - back)) };
+  };
   return {
     cookie: { name: deviceCookieName(secure), options: { maxAge: DEVICE_COOKIE_MAX_AGE_SECONDS, httpOnly: true, sameSite: 'lax', secure, path: '/' } },
     async known(value, email) {
       const device = readDevice(secret, value);
-      return device && knows(device, await accountKey(email)) ? device : null;
+      return device && knows(device, (await keysOf(email)).current) ? device : null;
     },
     async remember(value, email) {
-      return writeDevice(secret, withAccount(readDevice(secret, value), await accountKey(email)));
+      const { current, older } = await keysOf(email);
+      return writeDevice(secret, withAccount(readDevice(secret, value), current, older));
     },
     async endAll(userId) {
       await db.update(schema.authUsers).set({ deviceGeneration: sql`${schema.authUsers.deviceGeneration} + 1` }).where(eq(schema.authUsers.id, userId));

@@ -39,9 +39,13 @@ describe('the event line', () => {
     securityEvent(log, { event: 'origin_refused', outcome: 'refused', reason: 'Origin https://evil.example said "hi"', route: '/api/v1/search?q=secret text' });
     assert.equal(lines[0]!.reason, 'other');
     assert.equal(lines[0]!.route, 'other');
+    securityEvent(log, { event: 'rate_limited', outcome: 'limited', reason: 'address_limit', route: '/api/auth/reset-password/<token>' });
+    assert.equal(lines.at(-1)!.route, '/api/auth/reset-password/<token>', 'the placeholder of a link token is a route');
+    securityEvent(log, { event: 'rate_limited', outcome: 'limited', reason: 'address_limit', route: '/api/auth/<script>' });
+    assert.equal(lines.at(-1)!.route, 'other', 'other angle brackets are not');
     securityEvent(log, { event: 'access_denied', outcome: 'denied', reason: 'WORKSPACE_FORBIDDEN', route: 'GET /api/v1/projects/:projectId' });
-    assert.equal(lines[1]!.reason, 'WORKSPACE_FORBIDDEN');
-    assert.equal(lines[1]!.route, 'GET /api/v1/projects/:projectId');
+    assert.equal(lines.at(-1)!.reason, 'WORKSPACE_FORBIDDEN');
+    assert.equal(lines.at(-1)!.route, 'GET /api/v1/projects/:projectId');
   });
 
   test('an account key is the same for the same address in any case, differs between addresses and between servers, and is not the address', () => {
@@ -209,6 +213,22 @@ describe('the real routes, with their log read back', () => {
       assert.ok(urls.includes('/api/auth/reset-password/<token>'), `the log names the route: ${JSON.stringify(urls)}`);
       assert.equal(urls.some((url) => url.includes(token)), false);
       assert.equal(JSON.stringify(app.lines).includes(token), false, 'no line of the log holds the token, whatever its field');
+    } finally { await app.instance.close(); }
+  });
+
+  test('the address limiter does not write a reset link\'s token when it limits the link (#1030)', async () => {
+    const app = await server({ rateLimit: true });
+    try {
+      const remoteAddress = `198.51.100.${100 + Math.floor(Math.random() * 100)}`;
+      const token = 'ZkDOYS3I83T9ydUR7p2yDljZ';
+      const answers = new Set<number>();
+      // One address opening the same link again and again (a mail scanner, a retry loop) reaches the limiter's window.
+      for (let attempt = 0; attempt < 130; attempt++) answers.add((await app.instance.inject({ method: 'GET', url: `/api/auth/reset-password/${token}?callbackURL=%2Freset-password`, remoteAddress, headers: { origin: ORIGIN } })).statusCode);
+      assert.ok(answers.has(429), `the limiter answered (${[...answers].join(', ')})`);
+      const limited = app.security().filter((line) => line.event === 'rate_limited' && String(line.route).startsWith('/api/auth/reset-password'));
+      assert.ok(limited.length > 0);
+      assert.equal(limited[0]!.route, '/api/auth/reset-password/<token>');
+      assert.equal(JSON.stringify(app.lines).includes(token), false, 'no line of the log holds the token');
     } finally { await app.instance.close(); }
   });
 

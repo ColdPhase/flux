@@ -151,8 +151,8 @@ second thing to keep correct (the holder lookup, the AI switch, a private reposi
 agent told about its pull request, it starts from the task's link facts, which processing keeps current, and not from this table.
 
 - **Code.** The processing step no longer calls a bridge (`ports.rows.bridge`), `githubBridgeDeliveries` is deleted, and so is the table's
-  Drizzle definition. Link facts, task rules and their history are unchanged.
-- **Storage.** Migration 0030 drops `github_bridge_outbox` (and, with it, its sealed-space insert trigger). There is no data to keep before the
+  Drizzle definition. The GitHub capabilities answer no longer has `agentDelivery` (nothing read it). Link facts, task rules and their history are unchanged.
+- **Storage.** Migration 0037 drops `github_bridge_outbox` (and, with it, its sealed-space insert trigger). There is no data to keep before the
   first release. Earlier migrations (0001 and 0027) are not edited.
 - **Tests.** `github.test.ts` no longer asserts outbox rows; the G-1c conditional-request and poll-window tests moved to `github-polling.test.ts`.
 

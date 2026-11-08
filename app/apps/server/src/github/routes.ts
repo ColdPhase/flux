@@ -32,7 +32,7 @@ export async function githubRoutes(app: FastifyInstance, options: Options) {
   app.get<{ Params: { projectId: string } }>('/api/v1/projects/:projectId/github/capabilities', async (request): Promise<GithubCapabilities> => {
     const actor = await project(request, request.params.projectId);
     return { status: config ? 'configured' : 'unavailable', authorization: credentials ? await credentials.state(actor.id) : 'required',
-      taskAutomation: config ? 'available' : 'unavailable', agentDelivery: config ? 'available' : 'unavailable',
+      taskAutomation: config ? 'available' : 'unavailable',
       delivery: config?.delivery ?? 'webhook', ruleDefault: await rules.ruleDefault(actor, request.params.projectId) };
   });
   app.post<{ Params: { projectId: string } }>('/api/v1/projects/:projectId/github/authorize', async (request) => {
