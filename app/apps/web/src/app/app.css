@@ -311,11 +311,6 @@ a.me__item { text-decoration: none; }
 /* The views never shrink: a squeezed track cut "Agents" at 1024 px with "+ Task" beside it (#763 sweep). The name gives way instead. */
 .top__views { flex: none; }
 @container main (max-width: 760px) { .top--row .top__title { min-width: 4em; } }
-/* "N needs you" is a quiet text link (direction C, #763, 2026-10-31). */
-.top__needs { display: inline-flex; align-items: center; height: var(--ctl); padding: 0 4px; border-radius: 6px; background: transparent; color: var(--t1);
-  font-size: var(--fs-md); font-weight: 500; white-space: nowrap; cursor: pointer; transition: var(--tr); }
-.top__needs:hover { text-decoration: underline; text-underline-offset: 3px; }
-.top__needs[aria-expanded="true"] { text-decoration: underline; text-underline-offset: 3px; }
 .top__audience.top__faces { max-width: none; min-height: 32px; margin: 0; padding: 0 4px; gap: 3px; border-radius: var(--r-pill); }
 .top__face { display: inline-flex; flex: none; border-radius: 50%; }
 .top__face .ui-avatar { background: var(--el); }
@@ -342,7 +337,7 @@ a.me__item { text-decoration: none; }
 @media (pointer: coarse) { .top__more-menu .newmenu__item { min-height: 44px; } }
 .top__focus { display: inline-flex; align-items: center; gap: 8px; }
 .top__focus-pill { height: 28px; padding: 0 12px; gap: 6px; font-weight: 600; cursor: pointer; }
-@media (pointer: coarse) { .top__needs, .top__focus-pill { min-height: 44px; } .top__audience.top__faces { min-height: 44px; } }
+@media (pointer: coarse) { .top__focus-pill { min-height: 44px; } .top__audience.top__faces { min-height: 44px; } }
 /* 641–680 px (the drawer, e.g. a Fold 5 unfolded): the project header's 22 px audience line must not shrink the faces control (#763). */
 @media (pointer: coarse) and (min-width: 641px) { header.top .top__audience.top__faces { min-height: 44px; } }
 /* Spokój rule 3: the header is one row at every width, with the panel open or closed (the panel sits under it).

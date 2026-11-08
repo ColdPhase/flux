@@ -4,7 +4,7 @@ Runs through scripts/check_ui.sh against the running Compose application, on the
 with chromium and with webkit), on a computer (1440 x 900) and a phone (390 x 844, touch):
 
 * FT-1 / FR-4 (F-037): a person in no company sees one calm first step on Home (how to join) and no empty
-  "Needs you", "Enjoy the quiet" or empty sidebar Projects section; the step opens New project.
+  "Waiting for you", "Enjoy the quiet" or empty sidebar Projects section; the step opens New project.
 * LD-1 / LD-5 / IN-3: the Inbox expands only the selected item; the others are one line with one quiet action; there is
   one inverted primary; a filter with nothing in it is not offered; the selection is not a ring; a click on a compact
   card opens it.
@@ -130,7 +130,7 @@ class Round2Flows(unittest.TestCase):
                 expect(first).to_be_visible()
                 expect(first.get_by_text("Got an invite link? Open it to join your company.")).to_be_visible()
                 expect(page.get_by_text("Enjoy the quiet", exact=False)).to_have_count(0)
-                expect(page.get_by_role("heading", name="Needs you")).to_have_count(0)
+                expect(page.get_by_role("heading", name="Waiting for you")).to_have_count(0)
                 expect(page.get_by_text("with the New button", exact=False)).to_have_count(0)
                 self.assertEqual(page.locator("#content .ui-btn--primary:visible").count(), 0, "nothing to start before joining")
                 if not phone:
@@ -251,12 +251,8 @@ class Round2Flows(unittest.TestCase):
         rule = self.post("ada", f"/api/v1/projects/{project}/decisions", {"title": "Water at dawn only", "rationale": "Less evaporation."})
         self.post("ada", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": rule["version"]})
         time.sleep(1.5)
-        # H11-4: Home says the project has something new, not "quiet".
-        page = self.page("jonas")
-        page.goto("/")
-        row = page.locator(".home__project", has_text="Community garden sensors")
-        expect(row.locator(".home__state")).to_have_text("new")
         # H11-3: the Unread divider sits right above the decision, the first thing that changed.
+        page = self.page("jonas")
         page.goto(f"/projects/{project}")
         divider = page.get_by_role("separator", name="Unread")
         expect(divider).to_have_count(1)

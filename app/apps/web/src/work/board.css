@@ -43,7 +43,6 @@
 .tb-also { display: flex; flex-wrap: wrap; align-items: center; gap: 0 14px; padding: 12px var(--space-page) 0; font-size: var(--fs-sm); color: var(--t3); }
 .tb-also__b { min-height: 28px; color: var(--t2); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; transition: var(--tr); }
 .tb-also__b:hover { color: var(--t1); text-decoration-color: currentColor; }
-.tb-also__b--need { color: var(--t1); font-weight: 500; }
 
 /* ---------- Board ---------- */
 .tb-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -181,8 +180,6 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
 @media (max-width: 640px) {
   .tb-bar { display: none; }
   .tb-also { padding-top: 8px; }
-  .tb-also__b--need { display: none; }
-  .tb-also:not(:has(.tb-also__b:not(.tb-also__b--need))) { display: none; }
 }
 
 /* One column at a time on a narrow board: the status tabs above already name it and count it, so the

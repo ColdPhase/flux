@@ -335,8 +335,8 @@ class WorkDecisionsJourney(unittest.TestCase):
             expected.add(("work",item["id"]))
         self.assertEqual(self.api(page, "GET", f"{base}/work?limit=1", status=200)["total"], 101)
         page.goto(f"/projects/{project['id']}/tasks")
-        # The Inbox pointer belongs to the board; the List omits it (#346).
-        expect(page.get_by_role("link",name=re.compile("101 decisions need you in the Inbox"))).to_be_visible()
+        # No pointer to the Inbox on the board or the List: what waits for the person is listed in the Inbox alone (#865).
+        expect(page.get_by_role("link",name=re.compile("need you in the Inbox"))).to_have_count(0)
         page.get_by_role("radio", name="List", exact=True).click()
         # The project's state is in Details (#340): the rule in force, found among 101 tasks.
         open_details(page)

@@ -37,7 +37,10 @@ export function nativeWorkViewKeySource(projectId: string, actor: PrincipalRef, 
     const group = selection.group;
     if (group === 'all' || ['in_progress', 'blocked', 'open', 'parked', 'finished'].includes(group)) {
       const predicate = group === 'all' ? sql`true` : group === 'parked' ? sql`${unfinished} AND ${parked}` : group === 'finished' ? sql`${w.status} IN ('done', 'not_pursued')` : sql`${w.status} = ${group} AND NOT ${parked}`;
-      const owner = !selection.mine ? sql`true` : actor.kind === 'human' ? sql`${w.ownerUserId} = ${actor.id}` : sql`${w.ownerUserId} IS NULL AND ${w.ownerAgentId} = ${actor.id}::uuid`;
+      // "Mine" is the person's own tasks and those owned by their own agents (#865): an agent works for its owner.
+      const owner = !selection.mine ? sql`true` : actor.kind === 'human'
+        ? sql`(${w.ownerUserId} = ${actor.id} OR ${w.ownerAgentId} IN (SELECT ${schema.agents.id} FROM ${schema.agents} WHERE ${schema.agents.ownerUserId} = ${actor.id}))`
+        : sql`${w.ownerUserId} IS NULL AND ${w.ownerAgentId} = ${actor.id}::uuid`;
       parts.push(sql`SELECT 'work'::text AS kind, ${w.id} AS id, ${w.createdAt} AS created_at, ${workRank} AS rank FROM ${w} WHERE ${w.projectId} = ${projectId}::uuid AND ${active} AND (${predicate}) AND (${owner})`);
     }
     // `workOnly`: the Tasks tab lists tasks; decisions wait in the Inbox and results show in their task (#342).

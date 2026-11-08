@@ -114,7 +114,7 @@ class RouteChunksJourney(unittest.TestCase):
     def home(self, page: Page):
         page.goto("/")
         expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
-        expect(page.get_by_role("region", name="Needs you")).to_be_visible()
+        expect(page.get_by_role("region", name="Waiting for you")).to_be_visible()
 
     def notes(self, page: Page):
         """An editable field with work in it: the message box of the project's conversation (the Sketchbook's note composer is gone, #866)."""

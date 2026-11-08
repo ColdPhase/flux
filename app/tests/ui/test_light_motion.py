@@ -1190,11 +1190,11 @@ class LightMotionJourney(unittest.TestCase):
                 self.assertNotEqual(fill["pressed"], fill["hover"], f"the primary button: a press apart from the hover: {fill}")
                 self.assertNotEqual(fill["pressed"], fill["rest"], fill)
         self.open(page, "/")
-        card = page.locator(".home__continue").first
+        card = page.locator(".home__continue .home__row").first
         expect(card).to_be_visible()
-        with self.subTest(control="Continue card"):
+        with self.subTest(control="Continue row"):
             fill = self.fills(page, card)
-            self.assertNotEqual(fill["pressed"], fill["rest"], f"the Continue card: the press changes the fill: {fill}")
+            self.assertNotEqual(fill["pressed"], fill["rest"], f"the Continue row: the press changes the fill: {fill}")
             self.assertNotEqual(fill["pressed"], fill["hover"], fill)
 
     def test_17_the_message_toolbar_has_its_shared_reveal_pose(self):
@@ -1475,7 +1475,7 @@ class LightMotionJourney(unittest.TestCase):
     SHIFT = """() => { const el = document.querySelector('.home__need, .home__first'); return el ? el.getBoundingClientRect().top : null; }"""
 
     def home_tops(self, context, wait_for_card: bool) -> tuple[float, float, int]:
-        """Where the first section below Continue is while the two reads that decide the card are held, and after they answer.
+        """Where the first section of Home is while the two reads that decide the Continue row are held, and after they answer.
 
         The reads are held in a list and let go by the test, never delayed with a sleep: a sleep inside a sync route handler blocks Playwright's
         dispatcher, so what the test reads lands after the reads have answered (it failed 2 runs in 8 that way)."""
@@ -1505,8 +1505,8 @@ class LightMotionJourney(unittest.TestCase):
         page.wait_for_timeout(1200)
         return before, page.evaluate(self.SHIFT), slot
 
-    def test_25_home_keeps_the_continue_cards_space_only_for_someone_who_has_one(self):
-        """Phone Home: the section below Continue must not jump when the card arrives, nor leave a gap that closes when there is none (#863 rule 6)."""
+    def test_25_home_keeps_no_space_for_continue_and_nothing_above_it_moves_when_it_arrives(self):
+        """Phone Home: Continue is the last section, so nothing above it jumps when it arrives and no gap is kept for it (#863 rule 6, #865)."""
         ada = self.fx.context(phone=True)
         self.addCleanup(ada.close)
         first = ada.new_page()
@@ -1514,11 +1514,11 @@ class LightMotionJourney(unittest.TestCase):
         expect(first.locator(".home__continue")).to_be_visible()
         first.wait_for_timeout(400)
         first.close()
-        # The next time Home opens it knows there is a card: the space is there while it is read, and the section below does not move.
+        # The next time Home opens there is a card, but no space is kept for it while it is read, and the section above does not move.
         before, after, slot = self.home_tops(ada, wait_for_card=True)
-        self.assertEqual(slot, 1, "the card's space is kept while it is read")
-        self.assertLess(abs(before - after), 1.5, f"the section below Continue did not move: {before} to {after}")
-        # Someone with nothing to continue from has no space kept for it: nothing to close up.
+        self.assertEqual(slot, 0, "no space is kept while the card is read")
+        self.assertLess(abs(before - after), 1.5, f"the section above Continue did not move: {before} to {after}")
+        # Someone with nothing to continue from has nothing to close up.
         fresh = self.fx.browser.new_context(base_url=ORIGIN, service_workers="block", viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True)
         self.addCleanup(fresh.close)
         api(fresh, "POST", "/api/auth/sign-up/email", {"name": "Mara Nowak", "email": f"motion-mara-{self.fx.stamp}-{uuid.uuid4().hex[:8]}@example.test", "password": "light motion for a calm shared studio"})

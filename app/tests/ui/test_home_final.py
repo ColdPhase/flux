@@ -1,11 +1,10 @@
-"""Browser tests for the final Home (#342, F-026 S1, S13, P1).
+"""Browser tests for the final Home (#342, F-026 S1, S13, P1, #865).
 
-Home is a date and a greeting, the top three that need you with the way to the whole Inbox, a
-"Continue where you left off" card (the whole card is a link with a round arrow), the projects with
-what is new, and a row of key hints; on a phone it also shows a working agent with Stop. Its private
-notes became thoughts on My map (#866). Checked at 1440x900 and
-390x844 (touch), light and dark, against the API. Screenshots (home-final-*.png) go to
-FLUX_UI_SCREENSHOTS when set.
+Home is a date and a greeting, "Waiting for you" (the top three of the Inbox, every decision folded into one row, with
+the same count and the way to the whole Inbox) and "Continue where you left off"; every row is a link that ends in an
+arrow, and nothing on Home acts. On a phone the rows "My tasks (N)" and "My map" follow the waiting items and a working
+agent shows with Stop. There is no spaces card, no footer links, no key hints and no assistant banner. Checked at 1440x900
+and 390x844 (touch), light and dark, against the API. Screenshots (home-final-*.png) go to FLUX_UI_SCREENSHOTS when set.
 """
 
 from __future__ import annotations
@@ -120,43 +119,45 @@ class HomeFinal(unittest.TestCase):
         page.goto("/")
         expect(page.get_by_role("heading", level=2, name=GREETING)).to_be_visible()
         expect(page.locator(".home__date")).to_have_text(re.compile(r"^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday),? "))
-        need = page.get_by_role("region", name=re.compile("^Needs you"))
-        expect(need.get_by_role("heading", name=re.compile(r"^Needs you\s*3$"))).to_be_visible()
-        rows = need.locator(".nyc")
+        need = page.get_by_role("region", name=re.compile("^Waiting for you"))
+        expect(need.get_by_role("heading", name=re.compile(r"^Waiting for you\s*3$"))).to_be_visible()
+        rows = need.locator(".home__row")
         expect(rows).to_have_count(3)
-        self.assertEqual(self.queue()["count"], 3)
-        expect(rows.nth(0)).to_contain_text("Decision")
-        expect(rows.nth(0)).to_contain_text(DECISION)
-        expect(rows.nth(0).get_by_role("button", name=re.compile("^Accept"))).to_be_visible()
-        expect(rows.nth(0).get_by_role("button", name="Not now")).to_be_visible()
+        self.assertEqual(self.queue()["count"], 3, "the heading's count is the Inbox's")
+        # The decision is one row ("N decisions waiting") with no Accept on Home; the others say what they are.
+        expect(rows.nth(0)).to_contain_text("1 decision waiting")
+        expect(rows.nth(0)).to_contain_text("Community garden sensors")
+        expect(rows.nth(0)).to_contain_text("from Jonas Berg")
         expect(rows.nth(1)).to_contain_text("Question")
         expect(rows.nth(2)).to_contain_text("is blocked")
+        expect(need.get_by_role("button")).to_have_count(0)
         link = page.get_by_role("link", name=re.compile("^Open Inbox"))
         expect(link).to_have_attribute("aria-keyshortcuts", "G I")
 
-        # P1: the whole card is the link, with a round arrow; it continues the task in progress.
-        card = page.get_by_role("link", name=re.compile("^Continue where you left off"))
+        # P1: Continue where you left off is one row under its own heading and carries the task in progress.
+        cont = page.get_by_role("region", name="Continue where you left off")
+        card = cont.get_by_role("link")
         expect(card).to_contain_text("Order six capacitive probes from the shortlist")
         expect(card).to_contain_text("In progress · #1 · Community garden sensors")
-        arrow = card.locator(".home__go")
-        expect(arrow).to_be_visible()
-        arrow_box = box(page, arrow)
-        self.assertEqual(round(arrow_box["width"]), round(arrow_box["height"]))
-        self.assertEqual(card.evaluate("element => getComputedStyle(element.querySelector('.home__go')).borderRadius"), "50%")
+        # Every row ends in an arrow.
+        for row in rows.all() + [card]:
+            expect(row.locator(".home__row-go")).to_be_visible()
 
-        # Projects, with what is new, and the key hints.
-        projects = page.get_by_role("region", name="Spaces")
-        expect(projects.get_by_role("link", name=re.compile("^Community garden sensors"))).to_be_visible()
-        expect(projects.get_by_role("link", name=re.compile("^Cargo bike co-op"))).to_contain_text("quiet")
-        hints = page.locator(".home__keys")
-        for text in ("new", "search or run", "Inbox", "hide sidebar"):
-            expect(hints).to_contain_text(text)
+        # Home has nothing else (#865): no spaces card, footer links, key hints, assistant banner or workspace Wiki.
+        expect(page.get_by_role("region", name="Spaces")).to_have_count(0)
+        for gone in (".home__projects", ".home__more", ".home__keys", ".home__meet"):
+            expect(page.locator(gone)).to_have_count(0)
+        expect(page.locator("#content").get_by_text("All my tasks")).to_have_count(0)
+        # The company's people and an encrypted space's keys stay one quiet button away: Details.
+        expect(page.locator(".home__details").get_by_role("button", name="Details", exact=True)).to_have_count(1)
+        expect(page.locator("#content").get_by_role("link", name="Wiki", exact=True)).to_have_count(0)
+        # The computer's sidebar carries My tasks and My map; Home's rows for them are the phone's.
+        expect(page.locator(".home__places")).to_have_count(0)
         page.mouse.move(1000, 880)
         shot(page, "home-final-desktop-1440")
 
-        # The card opens its task in the detail panel on the project.
-        arrow_point = {"x": 24, "y": 24}
-        card.click(position=arrow_point)
+        # The row opens its task in the detail panel on the space.
+        card.click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.project_id}/tasks"))
         expect(page.locator("#details")).to_contain_text("Order six capacitive probes from the shortlist")
 
@@ -172,23 +173,24 @@ class HomeFinal(unittest.TestCase):
         page.get_by_role("link", name=re.compile("^Open Inbox")).click()
         expect(page).to_have_url(re.compile(r"/inbox$"))
 
-    def test_03_accept_and_not_now_work_from_home_with_undo(self) -> None:
+    def test_03_a_row_opens_the_inbox_on_its_item_and_the_action_is_there(self) -> None:
         page = self.page()
         page.goto("/")
-        rows = page.get_by_role("region", name=re.compile("^Needs you")).locator(".nyc")
+        rows = page.get_by_role("region", name=re.compile("^Waiting for you")).locator(".home__row")
         expect(rows).to_have_count(3)
-        rows.nth(0).get_by_role("button", name="Not now").click()
-        menu = page.get_by_role("menu", name="Ask me again")
-        expect(menu).to_be_visible()
-        menu.get_by_role("menuitem", name=re.compile("^Next week")).click()
-        expect(page.get_by_role("status").filter(has_text="Back next week")).to_be_visible()
-        expect(page.get_by_role("heading", name=re.compile(r"^Needs you\s*2$"))).to_be_visible()
-        page.keyboard.press("z")
-        expect(page.get_by_role("heading", name=re.compile(r"^Needs you\s*3$"))).to_be_visible()
-        rows.nth(0).get_by_role("button", name=re.compile("^Accept")).click()
+        # The question's row opens the Inbox with that item selected; accepting happens in the Inbox, with Undo.
+        rows.nth(1).click()
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        selected = page.locator(".nyc.is-selected")
+        expect(selected).to_have_count(1)
+        expect(selected).to_contain_text("Question")
+        page.go_back()
+        rows.nth(0).click()
+        expect(page.locator(".nyc.is-selected")).to_contain_text(DECISION)
+        page.locator(".nyc.is-selected").get_by_role("button", name=re.compile("^Accept")).click()
         expect(page.get_by_role("status").filter(has_text="Accepted")).to_be_visible()
         page.locator(".ui-toast", has_text="Accepted").get_by_role("button", name="Undo").click()
-        expect(rows).to_have_count(3)
+        expect(page.locator(".nyc")).to_have_count(3)
         status = self.contexts["ada"].request.get(f"/api/v1/decisions/{self.decision['id']}").json()["status"]
         self.assertEqual(status, "proposed", "Undo kept the decision proposed")
 
@@ -198,8 +200,8 @@ class HomeFinal(unittest.TestCase):
             self.assertEqual(response.status, 200, response.text())
         page = self.page()
         page.goto("/")
-        expect(page.get_by_text("Nothing needs you right now. Enjoy the quiet.")).to_be_visible()
-        expect(page.get_by_role("heading", name=re.compile(r"^Needs you$"))).to_be_visible()
+        expect(page.get_by_text("Nothing is waiting for you.")).to_be_visible()
+        expect(page.get_by_role("heading", name=re.compile(r"^Waiting for you$"))).to_be_visible()
         shot(page, "home-final-desktop-1440-clear")
         # Bring the queue back for the phone.
         for key in (f"decision:{self.decision['id']}",):
@@ -209,28 +211,33 @@ class HomeFinal(unittest.TestCase):
 
     # ---------------------------------------------------------------- the phone's Home
 
-    def test_05_phone_home_orders_continue_then_what_needs_you(self) -> None:
+    def test_05_phone_home_orders_waiting_then_my_tasks_and_my_map_then_continue(self) -> None:
         page = self.page(phone=True)
         page.goto("/")
         expect(page.get_by_role("heading", level=2, name=GREETING)).to_be_visible()
-        card = page.get_by_role("link", name=re.compile("^Continue where you left off"))
-        need = page.get_by_role("region", name=re.compile("^Needs you"))
-        expect(card).to_be_visible()
-        self.assertLess(box(page, card)["y"], box(page, need)["y"], "Continue comes first on the phone")
-        self.assertGreaterEqual(box(page, card.locator(".home__go"))["width"], 44)
-        expect(need.get_by_role("link", name=re.compile("^See all"))).to_be_visible()
-        # "See all" and the project rows are touch targets on the phone too (#393 review).
-        self.assertGreaterEqual(box(page, need.get_by_role("link", name=re.compile("^See all")))["height"], 44)
-        expect(page.locator(".home__project").first).to_be_visible()
-        for project_row in page.locator(".home__project").all():
-            self.assertGreaterEqual(box(page, project_row)["height"], 44)
-        row = need.locator(".nyc").first
-        for name in (re.compile("^Accept"), "Not now"):
-            self.assertGreaterEqual(box(page, row.get_by_role("button", name=name))["height"], 44)
+        need = page.get_by_role("region", name=re.compile("^Waiting for you"))
+        places = page.get_by_role("list", name="Your places")
+        cont = page.get_by_role("region", name="Continue where you left off")
+        expect(cont).to_be_visible()
+        self.assertLess(box(page, need)["y"], box(page, places)["y"], "the waiting items come first on the phone")
+        self.assertLess(box(page, places)["y"], box(page, cont)["y"], "My tasks and My map sit between them and Continue")
+        # "My tasks (N)": the two tasks Ada owns; "My map" next to it. Both lead where the sidebar's rows do.
+        expect(places.get_by_role("link", name=re.compile(r"^My tasks\s*\(2\)"))).to_be_visible()
+        expect(places.get_by_role("link", name="My map")).to_be_visible()
+        # "Open Inbox" and every row are touch targets (#393 review).
+        self.assertGreaterEqual(box(page, need.get_by_role("link", name=re.compile("^Open Inbox")))["height"], 44)
+        for row in page.locator(".home__row").all():
+            self.assertGreaterEqual(box(page, row)["height"], 44)
+        # The tab bar stays at three tabs; nothing else of the sidebar moved onto Home.
+        tabs = page.get_by_role("navigation", name="Main places").get_by_role("link")
+        expect(tabs).to_have_count(3)
+        expect(page.locator(".home__projects")).to_have_count(0)
         self.assertLessEqual(page.evaluate("document.scrollingElement.scrollWidth"), PHONE["width"], "no sideways scroll")
-        expect(page.locator(".home__keys")).to_be_hidden()
         shot(page, "home-final-phone-390")
-        page.get_by_role("link", name=re.compile("^See all")).tap()
+        places.get_by_role("link", name=re.compile(r"^My tasks")).tap()
+        expect(page).to_have_url(re.compile(r"/tasks$"))
+        page.go_back()
+        page.get_by_role("link", name=re.compile("^Open Inbox")).tap()
         expect(page).to_have_url(re.compile(r"/inbox$"))
 
     def test_06_phone_home_shows_a_working_agent_with_stop(self) -> None:
@@ -273,7 +280,7 @@ class HomeFinal(unittest.TestCase):
         page = self.page(dark=True)
         page.goto("/")
         expect(page.get_by_role("heading", level=2, name=GREETING)).to_be_visible()
-        expect(page.locator(".nyc").first).to_be_visible()
+        expect(page.locator(".home__row").first).to_be_visible()
         page.mouse.move(1000, 880)
         shot(page, "home-final-desktop-1440-dark")
         phone = self.page(phone=True, dark=True)

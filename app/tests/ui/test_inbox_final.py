@@ -746,26 +746,21 @@ class InboxFinal(unittest.TestCase):
         page.keyboard.press("z")
         expect(self.card(page, "asked you")).to_have_count(1)
 
-    def test_10_old_decision_links_lead_here(self) -> None:
+    def test_10_the_inbox_is_the_only_list_of_waiting_decisions(self) -> None:
         proposed = self.post("jonas", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Keep the old rule for the shed", "rationale": "It works."})
         self.wait_for(lambda: "decision" in self.kinds(), "a decision to wait")
         page = self.page()
-        for query in ("status=needs", "status=rules"):
-            page.goto(f"/projects/{self.project_id}/tasks?{query}")
-            expect(page).to_have_url(re.compile(r"/inbox\?show=decisions$"))
-            expect(page.get_by_role("tab", name=re.compile("^Decisions"))).to_have_attribute("aria-selected", "true")
-            expect(page.locator(".nyc", has_text="Keep the old rule")).to_be_visible()
+        page.goto("/inbox")
+        expect(page.locator(".nyc", has_text="Keep the old rule")).to_be_visible()
         # A decision's own link still opens the decision, with its history in its details.
         page.goto(f"/projects/{self.project_id}/tasks?open=decision:{proposed['id']}")
         expect(page.locator("#details")).to_contain_text("Keep the old rule for the shed")
-        # The Tasks tab no longer has a Decisions view or archive; it points here instead.
+        # The Tasks tab has no Decisions view or archive, and no pointer here either (#865).
         page.goto(f"/projects/{self.project_id}/tasks")
         expect(page.get_by_role("button", name="Decisions & results")).to_have_count(0)
-        expect(page.get_by_role("link", name=re.compile("decisions? needs? you in the Inbox"))).to_be_visible()
-        page.get_by_role("link", name=re.compile("decisions? needs? you in the Inbox")).click()
-        expect(page).to_have_url(re.compile(r"/inbox\?show=decisions$"))
+        expect(page.get_by_role("link", name=re.compile("decisions? needs? you in the Inbox"))).to_have_count(0)
 
-    def test_11_all_clear_and_an_empty_filter(self) -> None:
+    def test_11_all_clear(self) -> None:
         for item in self.queue(None)["items"]:
             response = self.contexts["ada"].request.post(f"/api/v1/needs-you/{requests_quote(item['key'])}", data={"action": "done"}, headers={"origin": ORIGIN})
             self.assertEqual(response.status, 200, response.text())
@@ -779,8 +774,6 @@ class InboxFinal(unittest.TestCase):
         expect(page.get_by_text("all clear · all spaces")).to_have_count(0)
         expect(page.get_by_role("link", name="Notification settings").last).to_be_visible()
         expect(page.get_by_role("navigation", name="Places").get_by_role("link", name="Inbox", exact=True).locator(".side__count")).to_have_count(0)
-        page.goto("/inbox?show=questions")
-        expect(page.get_by_role("heading", name="No questions wait for you")).to_be_visible()
         shot(page, "inbox-final-desktop-1440-clear")
         self.assertEqual(self.queue(None)["count"], 0)
 
@@ -887,7 +880,8 @@ class InboxFinal(unittest.TestCase):
 
         self.wait_for(lambda: has_decision("ada") and has_decision("jonas"), "the shared decision in both accounts")
         page = self.page()
-        page.goto("/inbox?show=decisions")
+        page.goto("/inbox")
+        page.get_by_role("tab", name=re.compile("^Decisions")).click()
         card = self.card(page, title)
         expect(card).to_have_attribute("aria-current", "true")
         page.keyboard.press("e")

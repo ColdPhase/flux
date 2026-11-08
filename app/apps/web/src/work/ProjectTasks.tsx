@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
-import { Navigate, useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import type { Project, ProjectWorkViewQuery, WorkCounts, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
 import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery, useRowMotion } from '../ui';
 import { getProject } from '../project/api';
@@ -18,7 +18,6 @@ import { useTaskFeedback } from './useTaskFeedback';
 import { TaskBoard } from './TaskBoard';
 import { useAgentOwners } from '../agents/owners';
 import './work.css';
-import { RefLink } from '../place/origin';
 
 interface TasksData { project: Project }
 
@@ -49,8 +48,6 @@ const GROUP_LABEL: Record<GroupId, string> = {
   in_progress: 'In progress', blocked: 'Blocked', open: 'Open', parked: 'Parked', finished: 'Done',
 };
 const isGroup = (value: string | null): value is GroupId => GROUPS.includes(value as GroupId);
-/** Old links to the Decisions view (`?status=needs` or `rules`) lead to the Inbox's Decisions filter. */
-const RETIRED_DECISION_VIEWS = ['needs', 'rules'];
 
 /**
  * One readable row of views instead of a board of clipped columns (#136 AC-2): All, then only
@@ -176,7 +173,6 @@ export function ProjectTasks() {
   const { openDetails, openCreate } = useShellActions();
   const revalidator = useRevalidator();
   const [search, setSearch] = useSearchParams();
-  const retired = RETIRED_DECISION_VIEWS.includes(search.get('status') ?? '');
   const { me } = useShellData();
   const scroller = useRef<HTMLDivElement>(null);
   const location = useLocation();
@@ -311,28 +307,20 @@ export function ProjectTasks() {
   const openObject = (kind: WorkObjectType, id: string, title?: string) => () => { saveReading(); openDetails({ kind, id, ...(title ? { title } : {}) }); };
   const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable muted={muted} onOpen={openObject('work', item.id, item.title)} onChange={changeState} />;
   const summaryCounts = data ? mine ? data.summary.mine : data.summary.all : null;
-  // What the board leaves to other places, one step away: work a pivot set aside, and decisions that wait in the Inbox.
+  // What the board leaves to another place, one step away: work a pivot set aside. What waits for the person is only in the Inbox (#865).
   const parkedCount = summaryCounts?.parked ?? 0;
-  const waiting = summaryCounts?.needs ?? 0;
-  const inboxLink = !waiting ? null : (
-    <RefLink className="tb-also__b tb-also__b--need" to="/inbox?show=decisions">
-      {`${waiting} ${waiting === 1 ? 'decision needs' : 'decisions need'} you in the Inbox`}
-    </RefLink>
-  );
   const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean);
   const emptyContinuation = data !== null && cursor !== null && !data.items.length;
 
   // A task that changes state moves to another group, a new one grows in, a finished list collapses its rows (#593 AC-4).
   useRowMotion(scroller, '.ws-task[data-work-id]', (el) => el.dataset.workId, [mode, status ?? 'all', mine, cursor ?? '', phone, read.phase === 'ready' || read.phase === 'refreshing' ? 'ready' : 'loading'].join('|'));
-  // The Decisions view is gone (F-026 S1): its old links open the Inbox's Decisions filter.
-  if (retired) return <Navigate to="/inbox?show=decisions" replace state={location.state} />;
   return (
     <div className="tb-root">
       <Toolbar mode={mode} onMode={chooseMode} query={boardSearch} onQuery={setBoardSearch} mine={mine} onMine={(next) => setView({ mine: next })} onNew={startNew} phone={phone} />
       <div className="pane-scroll" ref={scroller} data-own-place="">
       {!listing ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>
-          {parkedCount || waiting ? <nav className="tb-also" aria-label="Also elsewhere">{inboxLink}{parkedCount ? <button type="button" className="tb-also__b" onClick={() => setView({ mode: 'list', status: 'parked' })}>{parkedCount} parked by a pivot</button> : null}</nav> : null}
+          {parkedCount ? <nav className="tb-also" aria-label="Also elsewhere"><button type="button" className="tb-also__b" onClick={() => setView({ mode: 'list', status: 'parked' })}>{parkedCount} parked by a pivot</button></nav> : null}
           <TaskBoard project={project} openRead={read} meId={me.user.id} mine={mine} query={boardSearch.trim().toLowerCase()} writable
             revision={boardRevision}
             openWork={(id, title) => { saveReading(); openDetails({ kind: 'work', id, title }); }} refresh={refreshBoard}

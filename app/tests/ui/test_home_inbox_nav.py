@@ -3,10 +3,10 @@
 Ada owns a project in which her own agent ("Claude Code") works on a task and asks her questions over a real MCP bearer
 (the same OAuth/PKCE client as test_scenarios). Each test names its finding:
 
-- IN-1/IN-2: an agent's question in Home and the Inbox carries Kreska, the Agent tag, its task and the ready answers; an answer
-  applies with Undo, reaches the question itself, and the item leaves Home, the Inbox and the Agents view together; a question
-  answered elsewhere leaves Needs you too.
-- NV-1: Your tasks, the Wiki, New project and a missing page name themselves, and nothing marks Home current there.
+- IN-1/IN-2: an agent's question is a row on Home (Kreska, "Your agent", no actions) and a card in the Inbox with the Agent tag,
+  its task and the ready answers; an answer applies with Undo, reaches the question itself, and the item leaves Home, the Inbox
+  and the Agents view together; a question answered elsewhere leaves the Inbox too.
+- NV-1: My tasks, New project and a missing page name themselves, and nothing marks Home current there.
 - NV-2: the working-agent card stays in the sidebar on Home (Spokój rule 7); only the phone's Home carries its own.
 - NV-4/IN-5: at 768 px the Inbox header keeps ⋯ on screen and the filters head the list.
 - NV-5/NV-6: the phone's Projects lists DMs in the projects' card with whole dates, and projects with letter tiles.
@@ -162,17 +162,18 @@ class HomeInboxNav(unittest.TestCase):
         page = self.page()
         page.goto("/")
         home = page.get_by_role("list", name="Top of your Inbox")
-        row = home.locator(f'.nyc[data-key="{key}"]')
+        row = home.locator(".home__row", has_text="Offsets per bed, or one value for all six?")
         expect(row).to_be_visible()
         expect(row.locator(".nyc__face .kreska")).to_be_visible()
-        expect(row.get_by_text("Agent", exact=True)).to_be_visible()
-        expect(row).to_contain_text(f"on #{number}")
-        expect(row.get_by_role("button", name="Per bed", exact=True)).to_be_visible()
-        expect(row.get_by_role("button", name="One value", exact=True)).to_be_visible()
-        expect(row.get_by_role("button", name="Reply")).to_have_count(0)
+        expect(row).to_contain_text("Question")
+        expect(row).to_contain_text("Your agent")
+        # Home only lists (#865): the ready answers are in the Inbox, and the row opens it on this item.
+        expect(row.get_by_role("button")).to_have_count(0)
         shot(page, "home-question-1440")
+        row.click()
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        expect(page.locator(f'.nyc.is-selected[data-key="{key}"]')).to_be_visible()
 
-        page.goto("/inbox")
         card = page.get_by_role("list", name="Needs you").locator(f'.nyc[data-key="{key}"]')
         expect(card).to_contain_text("Offsets per bed, or one value for all six?")
         expect(card).to_contain_text(f"on #{number}")
@@ -231,7 +232,7 @@ class HomeInboxNav(unittest.TestCase):
             self.no_sideways_scroll(page)
             shot(page, f"inbox-question-390-{'dark' if dark else 'light'}")
             page.goto("/")
-            expect(page.locator(f'.nyc[data-key="{key}"]').get_by_role("button", name="Per bed", exact=True)).to_be_visible()
+            expect(page.locator(".home__row", has_text="Mount the box at 40 cm, or at 60 cm?")).to_be_visible()
             self.no_sideways_scroll(page)
 
     def test_03b_long_answers_wrap_and_never_overlap(self) -> None:
@@ -254,35 +255,32 @@ class HomeInboxNav(unittest.TestCase):
             apart = a["x"] + a["width"] <= b["x"] + 1 or b["x"] + b["width"] <= a["x"] + 1 or a["y"] + a["height"] <= b["y"] + 1 or b["y"] + b["height"] <= a["y"] + 1
             self.assertTrue(apart, f"the answers do not overlap: {boxes}")
 
-        for engine_page, where in ((lambda: self.page(phone=True), "/inbox"), (lambda: self.page(phone=True), "/")):
-            page = engine_page()
-            page.goto(where)
-            card = page.locator(f'.nyc[data-key="{key}"]')
-            expect(card).to_be_visible()
-            if "nyc--compact" in (card.get_attribute("class") or ""):
-                card.get_by_role("button", name="Answer").click()
-            check(page, card)
-            self.no_sideways_scroll(page)
-            shot(page, f"question-long-answers-390-{'inbox' if where == '/inbox' else 'home'}")
-        # Home on the computer with Details open: the question is not squeezed to a letter per line.
-        page = self.page()
+        page = self.page(phone=True)
+        page.goto("/inbox")
+        card = page.locator(f'.nyc[data-key="{key}"]')
+        expect(card).to_be_visible()
+        if "nyc--compact" in (card.get_attribute("class") or ""):
+            card.get_by_role("button", name="Answer").click()
+        check(page, card)
+        self.no_sideways_scroll(page)
+        shot(page, "question-long-answers-390-inbox")
+        # Home's row for it never scrolls sideways.
         page.goto("/")
-        page.locator("#content .home").get_by_role("button", name="Details", exact=True).click()
-        expect(page.get_by_role("complementary", name="Details")).to_be_visible()
-        row = page.locator(f'.nyc[data-key="{key}"]')
-        expect(row).to_be_visible()
-        self.assertGreater(row.locator(".nyc__title").bounding_box()["width"], 160, "the question keeps a readable width")
-        check(page, row)
-        shot(page, "question-long-answers-1440-home-details")
+        expect(page.locator(".home__row", has_text="Which calibration should I apply before the dawn log?")).to_be_visible()
+        self.no_sideways_scroll(page)
         # Answer it so the next tests start from the same queue.
-        row.get_by_role("button", name=long[0], exact=True).click()
+        page.goto("/inbox")
+        card = page.locator(f'.nyc[data-key="{key}"]')
+        if "nyc--compact" in (card.get_attribute("class") or ""):
+            card.get_by_role("button", name="Answer").click()
+        card.get_by_role("button", name=long[0], exact=True).click()
 
     # ---------------------------------------------------------------- NV-1
 
     def test_04_pages_reached_from_home_name_themselves(self) -> None:
         page = self.page()
         places = page.get_by_role("navigation", name="Places")
-        for path, title in (("/tasks", "My tasks"), ("/docs", "Wiki"), ("/no-such-page", "Page not found")):
+        for path, title in (("/tasks", "My tasks"), ("/no-such-page", "Page not found")):
             page.goto(path)
             expect(page.locator("header.top").get_by_role("heading", level=1)).to_have_text(title)
             expect(page.locator("header.top")).not_to_contain_text("Your private notes")
@@ -290,7 +288,7 @@ class HomeInboxNav(unittest.TestCase):
         page.goto("/")
         expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         phone = self.page(phone=True)
-        for path, title in (("/tasks", "My tasks"), ("/docs", "Wiki"), ("/no-such-page", "Page not found")):
+        for path, title in (("/tasks", "My tasks"), ("/no-such-page", "Page not found")):
             phone.goto(path)
             expect(phone.locator("header.phead").get_by_role("heading", level=1)).to_have_text(title)
             bar = phone.get_by_role("navigation", name="Main places")

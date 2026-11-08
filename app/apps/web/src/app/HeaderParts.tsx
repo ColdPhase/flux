@@ -23,15 +23,6 @@ export function HeaderFaces({ people, audience, onOpen }: { people: ProjectPerso
   );
 }
 
-/** "N needs you" as a quiet text link (direction C, #763): this project's items of the Inbox's queue, and it opens the Inbox on them (#763 A2). */
-export function NeedsYouChip({ count, project, onOpen }: { count: number; project: string | null; onOpen: () => void }) {
-  return (
-    <button type="button" className="top__needs" onClick={onOpen} title={project ? `Open what needs you in ${project}, in the Inbox` : 'Open in the Inbox'}>
-      {count} needs you
-    </button>
-  );
-}
-
 /** Focus on: the one thing the header says, and the way out (`F`). */
 export function FocusPill({ until, onEnd, uncertain = false }: { until: Date; onEnd: () => void; uncertain?: boolean }) {
   return (

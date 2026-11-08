@@ -203,7 +203,7 @@ def journey(take: Take) -> None:
     page = take.page
     # Shot 2: the return view. Jonas wrote after Ada's last visit, so Home has news for her.
     page.goto("/")
-    since = page.get_by_role("link", name=re.compile("^Continue where you left off"))
+    since = page.get_by_role("region", name="Continue where you left off").get_by_role("link")
     expect(since).to_be_visible()
     take.place(take.x, take.y)
     take.caption(2)

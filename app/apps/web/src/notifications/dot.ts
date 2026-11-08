@@ -4,28 +4,15 @@ import { INBOX_CHANGED } from './api';
 import { getNeedsYou } from './needsYou';
 
 /**
- * How many things need you, for the sidebar's count and the project header's pill (F-026 §4, #342). Notifications are written by the worker shortly after the event,
- * so a stream event refreshes it after a short pause; it also refreshes on focus, when the inbox
- * changes and every two minutes.
+ * How many things wait for you, for the sidebar's count and the phone's Inbox tab (F-026 §4, #342): the Inbox is the one place
+ * that counts them (#865). Notifications are written by the worker shortly after the event, so a stream event refreshes it after a
+ * short pause; it also refreshes on focus, when the inbox changes and every two minutes.
  */
-export interface InboxCounts {
-  /** Everything in "Needs you", for the sidebar and the phone's Inbox tab. */
-  count: number;
-  /** The same items by project, for the project header's "N needs you" (#763 A2): one queue, one count. */
-  byProject: ReadonlyMap<string, number>;
-}
-
-const EMPTY: InboxCounts = { count: 0, byProject: new Map() };
-
-export function useInboxDot(identity: string, pathname: string): InboxCounts {
-  const [unread, setUnread] = useState<{ identity: string; counts: InboxCounts } | null>(null);
+export function useInboxDot(identity: string, pathname: string): number {
+  const [unread, setUnread] = useState<{ identity: string; count: number } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const refresh = useCallback(() => {
-    void getNeedsYou().then((queue) => {
-      const byProject = new Map<string, number>();
-      for (const item of queue.items) if (item.project) byProject.set(item.project.id, (byProject.get(item.project.id) ?? 0) + 1);
-      setUnread({ identity, counts: { count: queue.count, byProject } });
-    }, () => undefined);
+    void getNeedsYou().then((queue) => setUnread({ identity, count: queue.count }), () => undefined);
   }, [identity]);
   const soon = useCallback(() => {
     if (timer.current) clearTimeout(timer.current);
@@ -46,5 +33,5 @@ export function useInboxDot(identity: string, pathname: string): InboxCounts {
     };
   }, [refresh]);
   useStreamEvents(identity, soon, refresh);
-  return unread?.identity === identity ? unread.counts : EMPTY;
+  return unread?.identity === identity ? unread.count : 0;
 }

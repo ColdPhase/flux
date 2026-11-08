@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import type { ReturnNextStep, WorkItem } from '@flux/contracts';
+import type { NeedsYouItem, ReturnNextStep, WorkItem } from '@flux/contracts';
 import { Button, Icon, Kreska, MEDIA, StatusGlyph, useMediaQuery } from '../ui';
-import { NeedsYouCard } from '../notifications/NeedsYouCard';
+import { Face, KIND_WORD } from '../notifications/NeedsYouCard';
 import { useNeedsYou } from '../notifications/needsYou';
-import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import { getReturnSummary, saveReturnPoint } from '../returns/api';
 import { WaitingSpaces } from '../encryption/LockedSpace';
 import { SourceLink } from '../returns/SinceYouLeft';
@@ -13,7 +12,6 @@ import { STATUS_LABEL, dueLabel } from '../work/format';
 import { useShellData } from './data';
 import { useShellActions } from './shellContext';
 import { useSmallMoments } from './smallMoments';
-import { useProjectNews } from './projectNews';
 import { HomeWorkingAgents, WorkingAssistant } from './WorkingAgent';
 import '../notifications/needs-you.css';
 import './home.css';
@@ -29,18 +27,26 @@ type Continue =
   | { kind: 'task'; item: WorkItem }
   | { kind: 'step'; step: ReturnNextStep; mark: string | null };
 
+interface HomeReads {
+  /** What to continue from; null when there is nothing. */
+  value: Continue | null;
+  /** How many tasks are yours, your agents' included: "My tasks (N)" on the phone. Null until read. */
+  tasks: number | null;
+}
+
 /**
- * Where to continue (P1): the task you were last on (in progress, newest change), else the next step
- * "Since you left" suggests (F5: the return contract feeds this card; a task that became yours while you were away
- * comes before a rule waiting for you, with its due day, #763 H11-5), else nothing.
+ * What Home reads about the person's own work, once: the task you were last on (in progress, newest change), else the next
+ * step the return summary suggests (a task that became yours while you were away comes before a decision waiting for you, with
+ * its due day, #763 H11-5), else nothing; and how many tasks are yours, for "My tasks (N)".
  */
-function useContinue(userId: string, workspaceIds: string[]): { value: Continue | null; ready: boolean } {
-  const [state, setState] = useState<{ userId: string; value: Continue | null } | null>(null);
+function useContinue(userId: string, workspaceIds: string[]): HomeReads {
+  const [state, setState] = useState<{ userId: string; value: Continue | null; tasks: number | null } | null>(null);
   const spaces = workspaceIds.join(',');
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
       let value: Continue | null = null;
+      let tasks: number | null = null;
       const read = await getReturnSummary({ type: 'home' }, controller.signal).catch(() => null);
       // A first visit starts the return point and has nothing to continue from: nothing was shown, so nothing is acknowledged.
       const first = !!read && read.point.savedAt === null;
@@ -48,82 +54,135 @@ function useContinue(userId: string, workspaceIds: string[]): { value: Continue 
       const summary = first ? null : read;
       try {
         const assigned = await listAssignedWork(spaces ? spaces.split(',') : [], 50, controller.signal);
+        tasks = assigned.total;
         const active = assigned.items.filter((item) => item.status === 'in_progress').sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
         if (active) value = { kind: 'task', item: active };
       } catch { /* the card is optional */ }
       if (!value && summary?.nextStep) value = { kind: 'step', step: summary.nextStep, mark: summary.mark };
-      if (!controller.signal.aborted) setState({ userId, value });
+      if (!controller.signal.aborted) setState({ userId, value, tasks });
     })();
     return () => controller.abort();
   }, [userId, spaces]);
-  return { value: state?.userId === userId ? state.value : null, ready: state?.userId === userId };
+  const mine = state?.userId === userId ? state : null;
+  return { value: mine?.value ?? null, tasks: mine?.tasks ?? null };
 }
 
-/**
- * The height of the card to continue from the last time Home was read on this device, 0 when there was none. Home paints before the
- * two reads that decide it have answered, so this is all it can know then: the card's space is kept while it is read only for someone
- * who is expected to have one, at the height it had. Someone who has nothing to continue from (a first visit) gets no empty gap that
- * closes up again.
- */
-const cardKey = (userId: string) => `flux.home-continue.${userId}`;
-function expectedCard(userId: string): number {
-  try { return Number(localStorage.getItem(cardKey(userId))) || 0; } catch { return 0; }
-}
-function rememberCard(userId: string, height: number) {
-  try { localStorage.setItem(cardKey(userId), String(height)); } catch { /* private mode: Home opens without the reserved space */ }
-}
-
-function ContinueCard({ userId, workspaceIds }: { userId: string; workspaceIds: string[] }) {
+/** "Continue where you left off" (F-026 P1): where the person last worked, as one row under its own heading. */
+function ContinueSection({ reads }: { reads: HomeReads }) {
   const { projects } = useShellData();
-  const { value, ready } = useContinue(userId, workspaceIds);
-  const [expected] = useState(() => expectedCard(userId));
-  useEffect(() => {
-    if (ready) rememberCard(userId, value ? Math.round(document.querySelector('.home__continue')?.getBoundingClientRect().height ?? 0) : 0);
-  }, [ready, value, userId]);
-  // While it is read the card's usual space is kept for someone who has one (#863 rule 6), so what is below does not jump down when it arrives.
-  if (!ready) return expected ? <div className="home__continue-slot" style={{ minHeight: expected }} aria-hidden="true" /> : null;
+  // It is the last thing on Home, so when it arrives nothing above it moves and no space is kept for it (#863 rule 6).
+  const { value } = reads;
   if (!value) return null;
-  const arrow = <span className="home__go" aria-hidden="true"><Icon name="chevron-right" size={16} /></span>;
+  let row: ReactNode;
   if (value.kind === 'task') {
     const { item } = value;
     const project = projects.find((entry) => entry.id === item.projectId)?.name;
-    return (
-      <RefLink className="home__card home__continue" to={`/projects/${item.projectId}/tasks?open=work:${item.id}`}>
-        <span className="home__k">Continue where you left off</span>
-        <span className="home__t">{item.title}</span>
-        <span className="home__sub"><StatusGlyph status={item.status} size={14} /><span>{STATUS_LABEL[item.status]} · #{item.number}{project ? ` · ${project}` : ''}</span></span>
-        {arrow}
+    row = (
+      <RefLink className="home__row" to={`/projects/${item.projectId}/tasks?open=work:${item.id}`}>
+        <span className="nyc__face nyc__face--glyph"><StatusGlyph status={item.status} size={16} /></span>
+        <span className="home__row-b">
+          <span className="home__row-t">{item.title}</span>
+          <span className="home__row-k">{STATUS_LABEL[item.status]} · #{item.number}{project ? ` · ${project}` : ''}</span>
+        </span>
+        <Icon name="chevron-right" size={16} className="home__row-go" />
       </RefLink>
     );
+  } else {
+    const { step, mark } = value;
+    row = (
+      <SourceLink source={step.source} className="home__row" onFollow={() => void saveReturnPoint({ type: 'home' }, mark).catch(() => undefined)}>
+        <span className="nyc__face nyc__face--icon"><Icon name="chevron-right" size={16} /></span>
+        <span className="home__row-b">
+          <span className="home__row-t">{step.text}</span>
+          <span className="home__row-k">{step.reason}{step.dueOn ? ` Due ${dueLabel(step.dueOn)}.` : ''}</span>
+        </span>
+        <Icon name="chevron-right" size={16} className="home__row-go" />
+      </SourceLink>
+    );
   }
-  const { step, mark } = value;
   return (
-    <SourceLink source={step.source} className="home__card home__continue" onFollow={() => void saveReturnPoint({ type: 'home' }, mark).catch(() => undefined)}>
-      <span className="home__k">Continue where you left off</span>
-      <span className="home__t">{step.text}</span>
-      <span className="home__sub"><span>{step.reason}{step.dueOn ? ` Due ${dueLabel(step.dueOn)}.` : ''}</span></span>
-      {arrow}
-    </SourceLink>
+    <section className="home__continue" aria-labelledby="home-continue">
+      <div className="home__sech"><h3 id="home-continue">Continue where you left off</h3></div>
+      <ul className="home__rows"><li>{row}</li></ul>
+    </section>
   );
 }
 
-/** Home (F-026 §7, S1, P1): the date and a greeting, the top three that need you, where to continue, and your projects. */
+/** A person's names for a line: "Maja", "Maja and Jonas", "Maja, Jonas and 2 more". */
+function nameList(names: string[]) {
+  const unique = [...new Set(names)];
+  if (unique.length <= 2) return unique.join(' and ');
+  return `${unique.slice(0, 2).join(', ')} and ${unique.length - 2} more`;
+}
+
+/**
+ * What Home lists of the Inbox (F-026 P1, #865): the first three rows, with every decision that waits folded into one
+ * row at the place of the first, so "2 decisions waiting" is one line and never two Accept buttons.
+ */
+type WaitingRow = { key: string; decisions: NeedsYouItem[] } | { key: string; item: NeedsYouItem };
+export function waitingRows(items: NeedsYouItem[], limit = 3): WaitingRow[] {
+  const rows: WaitingRow[] = [];
+  let decisions: NeedsYouItem[] | null = null;
+  for (const item of items) {
+    if (item.kind !== 'decision') { rows.push({ key: item.key, item }); continue; }
+    if (decisions) { decisions.push(item); continue; }
+    decisions = [item];
+    rows.push({ key: 'decisions', decisions });
+  }
+  return rows.slice(0, limit);
+}
+
+/** One line of a Home card: a face, two lines of words and the arrow every row ends in. */
+function HomeRow({ to, state, face, title, meta, metaFirst = false, onClick }: { to: string; state?: unknown; face: ReactNode; title: ReactNode; meta?: ReactNode; metaFirst?: boolean; onClick?: () => void }) {
+  return (
+    <li>
+      <Link className="home__row" to={to} state={state} onClick={onClick}>
+        {face}
+        <span className="home__row-b">
+          {metaFirst && meta ? <span className="home__row-k">{meta}</span> : null}
+          <span className="home__row-t">{title}</span>
+          {!metaFirst && meta ? <span className="home__row-k">{meta}</span> : null}
+        </span>
+        <Icon name="chevron-right" size={16} className="home__row-go" />
+      </Link>
+    </li>
+  );
+}
+
+function WaitingItem({ row }: { row: WaitingRow }) {
+  if ('decisions' in row) {
+    const { decisions } = row;
+    const places = [...new Set(decisions.map((item) => item.project?.name).filter((name): name is string => !!name))];
+    const from = nameList(decisions.map((item) => item.from?.name).filter((name): name is string => !!name));
+    return (
+      <HomeRow to="/inbox" state={{ select: decisions[0]!.key }} face={<span className="nyc__face nyc__face--icon"><Icon name="rule" size={16} /></span>}
+        title={`${decisions.length} ${decisions.length === 1 ? 'decision' : 'decisions'} waiting`}
+        meta={[places.slice(0, 2).join(' · '), from ? `from ${from}` : null].filter(Boolean).join(' · ')} />
+    );
+  }
+  const { item } = row;
+  const run = item.assistantChanges ?? null;
+  const project = item.project?.name ?? null;
+  const meta = (run ? [run.agentName, 'Your agent', project]
+    : [KIND_WORD[item.kind], item.from?.name ?? null, item.from?.kind === 'agent' ? 'Your agent' : null, project]).filter(Boolean).join(' · ');
+  return <HomeRow to="/inbox" state={{ select: item.key }} face={<Face item={item} />} title={item.title} meta={meta} metaFirst />;
+}
+
+/** Home (F-026 §7, P1, #865): the date and a greeting, what waits for you (the top of the Inbox), and where to continue. */
 export function Home() {
   const moments = useSmallMoments();
   const { me, workspace, workspaces, projects, lockedWorkspaces } = useShellData();
-  const { openDetails, openCreate } = useShellActions();
+  const { openCreate, openDetails } = useShellActions();
   const phone = useMediaQuery(MEDIA.navDrawer);
   const queue = useNeedsYou(me.user.id);
-  const handlers = useNeedsYouActions(queue);
-  const [menu, setMenu] = useState<string | null>(null);
   const now = useMemo(() => new Date(), []);
   const firstName = me.user.name.trim().split(/\s+/)[0] || me.user.name;
-  const top = (queue.items ?? []).slice(0, 3);
+  const rows = waitingRows(queue.items ?? []);
   const workspaceIds = useMemo(() => workspaces.map((space) => space.id), [workspaces]);
-  const news = useProjectNews(useMemo(() => projects.slice(0, 5).map((project) => project.id), [projects]));
-  // A person with no project yet gets one first step, not an empty queue and links to empty pages (#763 FT-1, S21).
-  // A space waiting to be unlocked is not a first run: its row stays in Projects (F-030, #655).
-  const firstRun = projects.length === 0 && !lockedWorkspaces.length && !top.length;
+  const reads = useContinue(me.user.id, workspaceIds);
+  // A person with no space yet gets one first step, not an empty queue and links to empty pages (#763 FT-1, S21).
+  // A space waiting to be unlocked is not a first run (F-030, #655).
+  const firstRun = projects.length === 0 && !lockedWorkspaces.length && !rows.length;
   const joinedSpace = workspace;
 
   return (
@@ -131,8 +190,7 @@ export function Home() {
       <p className="home__date">{dateFormat.format(now)}</p>
       <h2 className="home__hello">{greeting(now.getHours())}, {firstName}</h2>
 
-      {phone ? <ContinueCard userId={me.user.id} workspaceIds={workspaceIds} /> : null}
-      {/* Without a sidebar (phone, narrow drawer) Home carries the working agents with Stop, under Continue as drawn (S13). */}
+      {/* Without a sidebar (phone) Home carries the working agents with Stop; nothing shows while none works (S13). */}
       {phone ? <><WorkingAssistant /><HomeWorkingAgents /></> : null}
 
       {firstRun ? (
@@ -150,69 +208,38 @@ export function Home() {
           <p className="home__first-note">Got an invite link? Open it to join your company.</p>
           </>}
         </section>
-      ) : null}
-      {/* Details (the space and its people, where invite links are made) stays reachable; the links to empty pages wait. */}
-      {/* Where to continue stays: it is empty for someone with nothing yet, and shows what a shared space already holds. */}
-      {firstRun && !phone ? <ContinueCard userId={me.user.id} workspaceIds={workspaceIds} /> : null}
-      {firstRun && workspaces.length ? <p className="home__more"><button type="button" onClick={() => openDetails()}>Details</button></p> : null}
-      {firstRun ? null : <>
-      <section className="home__need" aria-labelledby="home-need">
-        <div className="home__sech">
-          <h3 id="home-need">Needs you{queue.count ? <span className="home__n">{queue.count}</span> : null}</h3>
-          <Link className="home__all" to="/inbox" aria-keyshortcuts="G I">{phone ? 'See all' : 'Open Inbox'}{phone ? <Icon name="chevron-right" size={14} /> : <span aria-hidden="true"><kbd>G</kbd><kbd>I</kbd></span>}</Link>
-        </div>
-        {queue.items === null ? <div className="home__card home__quiet" aria-busy="true">Looking at what needs you…</div>
-          : top.length ? (
-            <ul className="home__queue" aria-label="Top of your Inbox">
-              {top.map((item, index) => (
-                <NeedsYouCard key={item.key} item={item} variant="row" lead={index === 0} handlers={handlers} menuOpen={menu === item.key} onMenuOpen={(open) => setMenu(open ? item.key : null)} />
-              ))}
-            </ul>
-          ) : (
-            <div className="home__card home__clear">{moments ? <Kreska size={32} expression="done" /> : null}<span>{lockedWorkspaces.length
-              ? 'Nothing needs you in your open spaces.' : 'Nothing needs you right now. Enjoy the quiet.'}</span></div>
-          )}
-        {/* F-030 (#655): a space that waits to be unlocked is not looked into; it says so instead of the queue saying "nothing". */}
-        {queue.items === null ? null : <WaitingSpaces />}
-      </section>
-
-      <div className="home__pair">
-        {!phone ? <ContinueCard userId={me.user.id} workspaceIds={workspaceIds} /> : null}
-        <section className="home__card home__projects" aria-labelledby="home-projects">
-          <h3 id="home-projects" className="home__k">Spaces</h3>
-          {projects.length || lockedWorkspaces.length ? (
-            <ul>
-              {projects.slice(0, 5).map((project) => (
-                <li key={project.id}>
-                  <Link to={`/projects/${project.id}`} className="home__project">
-                    <span className="home__tile" aria-hidden="true">{(project.name.trim()[0] ?? '?').toUpperCase()}</span>
-                    <span className="home__pn">{project.name}</span>
-                    <span className={`home__state${news.has(project.id) ? ' is-new' : ''}`}>{news.has(project.id) ? 'new' : 'quiet'}</span>
-                  </Link>
-                </li>
-              ))}
-              {/* An encrypted space that waits to be unlocked is one row in place of its spaces (F-030, #655). */}
-              {lockedWorkspaces.map((space) => (
-                <li key={space.id}>
-                  <Link to={`/spaces/${space.id}`} className="home__project home__project--locked" data-locked-space={space.id}>
-                    <span className="home__tile" aria-hidden="true"><Icon name="lock" size={12} /></span>
-                    <span className="home__pn">{space.name}</span>
-                    <span className="home__state">Waiting to be unlocked</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : <p className="home__empty">No spaces yet. When someone adds you to one, it appears here.</p>}
+      ) : (
+        <section className="home__need" aria-labelledby="home-need">
+          <div className="home__sech">
+            <h3 id="home-need">Waiting for you{queue.count ? <span className="home__n">{queue.count}</span> : null}</h3>
+            <Link className="home__all" to="/inbox" aria-keyshortcuts="G I">Open Inbox</Link>
+          </div>
+          {queue.items === null ? <div className="home__card home__quiet" aria-busy="true">Looking at what waits for you…</div>
+            : rows.length ? (
+              <ul className="home__rows" aria-label="Top of your Inbox">
+                {rows.map((row) => <WaitingItem key={row.key} row={row} />)}
+              </ul>
+            ) : (
+              <div className="home__card home__clear">{moments ? <Kreska size={32} expression="done" /> : null}<span>{lockedWorkspaces.length
+                ? 'Nothing is waiting for you in your open spaces.' : 'Nothing is waiting for you.'}</span></div>
+            )}
+          {/* F-030 (#655): a space that waits to be unlocked is not looked into; it says so instead of the queue saying "nothing". */}
+          {queue.items === null ? null : <WaitingSpaces />}
         </section>
-      </div>
+      )}
 
+      {/* The phone has no sidebar: My tasks and My map are rows under the waiting items, and the tab bar stays at three tabs. */}
+      {phone && !firstRun ? (
+        <ul className="home__rows home__places" aria-label="Your places">
+          <HomeRow to="/tasks" face={<span className="nyc__face nyc__face--icon"><Icon name="tasks" size={16} /></span>}
+            title={<>My tasks{reads.tasks === null ? null : <span className="home__n">({reads.tasks})</span>}</>} />
+          <HomeRow to="/map" face={<span className="nyc__face nyc__face--icon"><Icon name="map" size={16} /></span>} title="My map" />
+        </ul>
+      ) : null}
 
-      <p className="home__more"><Link to="/tasks">All my tasks</Link><Link to="/map">My map</Link><Link to="/docs">Wiki</Link><button type="button" onClick={() => openDetails()}>Details</button></p>
-      </>}
-
-      <p className="home__keys" aria-hidden="true">
-        <span><kbd>C</kbd> new</span><span><kbd>⌘K</kbd> search or run</span><span><kbd>G</kbd><kbd>I</kbd> Inbox</span><span><kbd>[</kbd> hide sidebar</span>
-      </p>
+      <ContinueSection reads={reads} />
+      {/* The company's people and an encrypted space's people and keys are in Details; this is the way to them (not drawn, so one quiet button). */}
+      {workspaces.length || lockedWorkspaces.length ? <p className="home__details"><button type="button" onClick={() => openDetails()}>Details</button></p> : null}
     </div></div>
   );
 }

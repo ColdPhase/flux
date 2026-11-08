@@ -386,7 +386,9 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   });
 
   useEffect(() => { latest.current = items; });
-  const shown = items.filter((item) => (!mine || item.owner?.id === meId) && matchesTask(item, query));
+  // "Mine" is the person's tasks and those of their own agents (#865); the server reads it the same way, this only keeps a saved edit in step.
+  const isMine = (item: BoardTask) => item.owner?.id === meId || (item.owner?.kind === 'agent' && item.owner.projectOwner?.id === meId);
+  const shown = items.filter((item) => (!mine || isMine(item)) && matchesTask(item, query));
   const columnFor = (item: BoardTask) => pending[item.id] ?? columnOf(item.status);
   const cards: Record<ColumnId, BoardTask[]> = { open: [], in_progress: [], done: [] };
   for (const item of shown) cards[columnFor(item)].push(item);

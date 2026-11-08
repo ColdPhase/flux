@@ -248,24 +248,14 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- current state
 
-    def test_03_needs_you_and_details_open_the_projects_objects(self) -> None:
-        """The computer's header is one row (F-026 §4, #340): "N needs you" counts this project's items of the Inbox's
-        one queue and opens the Inbox on them (#763 A2); the rule, the work, the result and the proposal open from Details."""
+    def test_03_details_open_the_projects_objects(self) -> None:
+        """The computer's header is one row (F-026 §4, #340) and carries no "N needs you" (#865: the Inbox is the one list
+        of what needs the person); the rule, the work, the result and the proposal open from Details."""
         page = self.open_project("ada")
         header = page.locator("header.top")
         expect(header.get_by_label("Current state")).to_have_count(0)
-        queue = self.api(page, "GET", "/api/v1/needs-you", status=200)
-        mine = [item for item in queue["items"] if (item.get("project") or {}).get("id") == self.ids["project"]]
-        chip = header.get_by_role("button", name=re.compile(r"needs you$"))
+        expect(header.get_by_role("button", name=re.compile(r"needs you$"))).to_have_count(0)
         panel = self.details(page)
-        if mine:
-            expect(chip).to_have_text(f"{len(mine)} needs you")
-            chip.click()
-            expect(page).to_have_url(re.compile(r"/inbox\?project="))
-            expect(page.locator(".nyc[data-key]")).to_have_count(len(mine))
-            page.go_back()
-        else:
-            expect(chip).to_have_count(0)
         open_details(page)
         linked = panel.get_by_role("region", name="Linked in this conversation")
         for heading in ("Use a ToF sensor, not the camera, for gestures", "Test the camera in low light",

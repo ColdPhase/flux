@@ -1,0 +1,1 @@
+- The space header's "N needs you", the Tasks "decisions need you in the Inbox" link, Home's spaces card with "quiet", its footer links, key hints and assistant banner, and the workspace-wide Wiki page ([#865](https://github.com/ColdPhase/flux/issues/865)).

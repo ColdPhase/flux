@@ -38,6 +38,6 @@ test('a direct message, the Inbox and Home are one place each', () => {
   assert.deepEqual(placeOfPath('/inbox/n1'), { key: 'inbox', path: '/inbox' });
   assert.deepEqual(placeOfPath('/'), { key: 'home', path: '/' });
   assert.equal(key('/tasks'), 'home:tasks');
-  assert.equal(key('/docs'), 'home:docs');
+  assert.equal(placeOfPath('/docs'), null, 'the workspace-wide Wiki is gone (#865): its address is no place');
   assert.equal(key('/map/s1'), 'sketchbook');
 });

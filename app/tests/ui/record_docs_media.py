@@ -213,7 +213,7 @@ def highlights(browser: Browser, ids: dict, request: APIRequestContext) -> None:
     api(colleague.request, "POST", f"/api/v1/conversations/{conversation['id']}/messages", {"body": ASK, "clientMessageId": str(uuid.uuid4())})
     colleague.close()
     page.goto("/")
-    catch_up = page.get_by_role("link", name=re.compile("^Continue where you left off"))
+    catch_up = page.get_by_role("region", name="Continue where you left off").get_by_role("link")
     expect(catch_up).to_be_visible()
     cards = box(catch_up)
     shoot(page, "highlight-home", {"x": 400, "y": 30, "width": 880, "height": cards["y"] + cards["height"] + 20 - 30})

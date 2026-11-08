@@ -252,7 +252,7 @@ class EncryptedWorkspaces(Base):
                 page = self.page(world, "cy", phone=phone)
                 self.home(page)
                 home = page.locator("#content .home")
-                row = home.locator(".home__projects").get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{LOCKED_LINE}$"))
+                row = home.locator(".home__need").get_by_role("list", name=LOCKED_LINE).get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{LOCKED_LINE}$"))
                 expect(row).to_be_visible()
                 self.assertEqual(home.get_by_text(A_PROJECT).count(), 0, "no project of the locked space is listed")
                 expect(home.get_by_role("link", name=re.compile(f"^{B_NAME}"))).to_have_count(0)
@@ -393,7 +393,7 @@ class EncryptedWorkspaces(Base):
                 self.assertEqual(cy.get_by_text(A_ROOT).count(), 0)
                 expect(cy).to_have_url(re.compile(rf"/projects/{world.a_project}$"))
                 # Ada's own tab is on Home: the space's projects give way to its one row.
-                home = ada.locator("#content .home__projects")
+                home = ada.locator("#content .home__need")
                 expect(home.get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{LOCKED_LINE}$"))).to_be_visible()
                 expect(home.get_by_role("link", name=re.compile(f"^{A_PROJECT}"))).to_have_count(0)
                 # Unlocking from another window brings Cy's tab back.
@@ -403,8 +403,10 @@ class EncryptedWorkspaces(Base):
                 other.get_by_role("button", name="Unlock", exact=True).click()
                 expect(cy.get_by_text(A_ROOT).first).to_be_visible()
                 self.assertEqual(cy.evaluate("window.__sameTab"), "yes", "the tab was not reloaded")
-                expect(home.get_by_role("link", name=re.compile(f"^{A_PROJECT}"))).to_be_visible()
+                # Home has no spaces card (#865): the row of the waiting space goes, and the sidebar lists its space again.
                 expect(home.get_by_role("link", name=re.compile(LOCKED_LINE))).to_have_count(0)
+                if not phone:
+                    expect(ada.get_by_role("navigation", name="Spaces").get_by_role("link", name=re.compile(f"^{A_PROJECT}"))).to_be_visible()
 
     def test_15_a_refusal_alone_turns_a_page_into_the_locked_panel(self) -> None:
         for phone in (False, True):
@@ -435,7 +437,7 @@ class EncryptedWorkspaces(Base):
                 need = page.locator("#content .home__need")
                 waiting = need.get_by_role("list", name=LOCKED_LINE)
                 expect(waiting.get_by_role("link", name=re.compile(rf"^{A_NAME}\s+{LOCKED_LINE}$"))).to_be_visible()
-                expect(need.get_by_text("Nothing needs you right now. Enjoy the quiet.")).to_have_count(0)
+                expect(need.get_by_text("Nothing is waiting for you.", exact=True)).to_have_count(0)
                 shot(page, f"needs-you-waiting-{'phone' if phone else 'computer'}")
                 page.goto("/inbox")
                 expect(page.locator("[data-locked-note]")).to_contain_text(LOCKED_LINE)
@@ -455,7 +457,7 @@ class EncryptedWorkspaces(Base):
                 expect(page.get_by_role("alert").filter(has_text="Search is unavailable")).to_have_count(0)
                 shot(page, f"search-waiting-{'phone' if phone else 'computer'}")
                 page.keyboard.press("Escape")
-                for place in ("/docs", "/map", "/tasks"):
+                for place in ("/map", "/tasks"):
                     page.goto(place)
                     expect(page.locator("#content")).to_be_visible()
                     expect(page.get_by_role("alert")).to_have_count(0)

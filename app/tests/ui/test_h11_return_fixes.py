@@ -149,7 +149,7 @@ class ReturnFixes(unittest.TestCase):
     def test_01_home_continues_with_the_given_task_and_its_panel_stays_within_the_project(self) -> None:
         page = self.page()
         page.goto("/")
-        card = page.get_by_role("link", name=re.compile("^Continue where you left off"))
+        card = page.get_by_role("region", name="Continue where you left off").get_by_role("link")
         expect(card).to_contain_text(f"Pick up “{TASK}”")
         expect(card).to_contain_text(f"Due {DUE}")
         shot(page, "h11-home-continue-due")

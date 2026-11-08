@@ -990,7 +990,7 @@ class ScenarioJourney:
         page = self.page("ada")
         page.goto("/")
         # Home continues with the one next step (F5, #342); the changes themselves are in the summary.
-        card = page.get_by_role("link", name=re.compile("^Continue where you left off"))
+        card = page.get_by_role("region", name="Continue where you left off").get_by_role("link")
         expect(card).to_be_visible()
         expect(card).to_contain_text("Answer Jonas's question")
         changed = [item for item in self.api("ada", "GET", "/api/v1/return?place=home", status=200)["items"] if item["text"] == f"Decision changed: {D2}"]

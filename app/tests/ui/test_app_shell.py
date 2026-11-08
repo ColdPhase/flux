@@ -515,19 +515,19 @@ class AppShellJourney(unittest.TestCase):
 
     def test_03_sign_in_and_reload_keep_the_session(self) -> None:
         page = self.page(signed_in=False)
-        page.goto("/sign-in?next=%2Fdocs")
+        page.goto("/sign-in?next=%2Ftasks")
         page.get_by_label("Email").fill(EMAIL)
         page.get_by_label("Password").fill("not the password")
         page.get_by_role("button", name="Sign in").click()
         expect(page.get_by_role("alert")).to_contain_text("don’t match")
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
-        expect(page).to_have_url(f"{ORIGIN}/docs")
-        expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
+        expect(page).to_have_url(f"{ORIGIN}/tasks")
+        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         page.reload()
-        expect(page).to_have_url(f"{ORIGIN}/docs")
-        # The Wiki reached from Home names itself (#763 NV-1).
-        expect(page.get_by_role("heading", level=1, name="Wiki")).to_be_visible()
+        expect(page).to_have_url(f"{ORIGIN}/tasks")
+        # My tasks, reached from Home, names itself (#763 NV-1).
+        expect(page.get_by_role("heading", level=1, name="My tasks")).to_be_visible()
         # A signed-in person who opens sign-in is taken to their work.
         page.goto("/sign-in")
         expect(page).to_have_url(f"{ORIGIN}/")
@@ -570,10 +570,10 @@ class AppShellJourney(unittest.TestCase):
         # test_project_header.py and retain Conversation · Map · Tasks · Wiki · Agents (#340).
         views = page.get_by_role("navigation", name="Views")
         expect(views).to_have_count(0)
-        # #763 FT-1: with no project yet Home is one first step; the links to empty pages, Needs you and Projects wait.
-        expect(page.locator(".home__more").get_by_role("link")).to_have_count(0)
+        # #763 FT-1: with no project yet Home is one first step; the waiting rows and the rows to empty pages wait.
+        expect(page.locator(".home__rows")).to_have_count(0)
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good "))).to_be_visible()
-        expect(page.get_by_role("region", name="Needs you")).to_have_count(0)
+        expect(page.get_by_role("region", name="Waiting for you")).to_have_count(0)
         expect(page.get_by_role("region", name="You’re in Personal")).to_be_visible()
         shot(page, "desktop-1440-home-light")
 
@@ -775,7 +775,7 @@ class AppShellJourney(unittest.TestCase):
 
         # Coarse pointer: primary targets are at least 44px.
         targets = [page.get_by_role("link", name="Settings and account"), page.get_by_role("button", name="Search", exact=True),
-                   page.get_by_role("button", name="Create", exact=True), page.get_by_role("link", name="All my tasks")]
+                   page.get_by_role("button", name="Create", exact=True), page.get_by_role("link", name=re.compile(r"^My tasks"))]
         for target in targets:
             size = box(page, target)
             self.assertGreaterEqual(round(min(size["width"], size["height"]), 2), 44, f"44px target: {target}")

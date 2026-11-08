@@ -272,7 +272,6 @@ SCREENS = [
     Screen("empty-map", "/projects/{pe}/map"),
     Screen("my-map", "/map"),
     Screen("workspace-tasks", "/tasks"),
-    Screen("workspace-docs", "/docs"),
     Screen("dm-index", "/dm"),
     Screen("dm", "/dm/{dm}", needs=("dm",)),
     Screen("dm-new", "/dm/new"),

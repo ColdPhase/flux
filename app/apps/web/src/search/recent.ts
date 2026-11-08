@@ -27,7 +27,6 @@ export function placeOfPath(pathname: string): RecentPlace | null {
   const path = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
   if (path === '/') return { key: 'home', path };
   if (path === '/tasks') return { key: 'home:tasks', path };
-  if (path === '/docs') return { key: 'home:docs', path };
   if (/^\/map(\/[^/]+)?$/.test(path)) return { key: 'sketchbook', path };
   if (/^\/inbox(\/[^/]+)?$/.test(path)) return { key: 'inbox', path: '/inbox' };
   const dm = /^\/dm\/([^/]+)(?:\/sketches(?:\/[^/]+)?)?$/.exec(path);

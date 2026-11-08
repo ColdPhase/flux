@@ -60,7 +60,6 @@
 .side__locked { padding-block: 4px; }
 .side__locked .side__sub { color: var(--t3); }
 .side__rail-locked .side__pj--lock { color: var(--t2); }
-.home__project--locked .home__state { font-size: var(--fs-xs); }
 .locked-note { margin-top: 28px; }
 .locked-note h2 { margin: 0 0 4px; font-size: var(--fs-md); font-weight: 500; color: var(--t2); }
 .locked-note p { margin: 0 0 8px; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }

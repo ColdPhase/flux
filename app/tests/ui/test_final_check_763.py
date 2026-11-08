@@ -267,31 +267,23 @@ class FinalCheck763(unittest.TestCase):
                 action = row.locator(".nyc__rowactions").bounding_box()
                 self.assertGreaterEqual(action["x"], title.bounding_box()["x"] + title.bounding_box()["width"] - 1, "the action has its own column")
 
-    def test_home_needs_you_is_never_clipped_above_the_dock(self) -> None:
+    def test_home_last_row_is_never_clipped_above_the_dock(self) -> None:
         for viewport in NARROW:
             with self.subTest(width=viewport["width"]):
                 page = self.page(viewport)
                 page.goto("/")
-                last = page.get_by_role("button", name="Open task").first
+                last = page.locator("#content .home__row").last
                 expect(last).to_be_attached()
                 page.locator("#content .pane-scroll").first.evaluate("el => { el.scrollTop = el.scrollHeight; }")
                 page.wait_for_timeout(100)
                 fab = page.locator(".phone-fab").bounding_box()
                 rect = last.bounding_box()
-                self.assertLessEqual(rect["y"] + rect["height"], fab["y"], "the last action ends above the + once scrolled")
+                self.assertLessEqual(rect["y"] + rect["height"], fab["y"], "the last row ends above the + once scrolled")
                 hit = last.evaluate("el => { const r = el.getBoundingClientRect(); return el.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }")
-                self.assertTrue(hit, "the last action is tappable")
+                self.assertTrue(hit, "the last row is tappable")
                 # The scroller runs to the dock: content passes under the + instead of stopping at a hard line above it.
                 scroller = page.locator("#content .pane-scroll").first.bounding_box()
                 self.assertGreater(scroller["y"] + scroller["height"], fab["y"] + fab["height"] / 2)
-                # The second row's text Accept starts on the first row's dark Accept's left edge.
-                rows = page.locator(".home__queue .nyc--row")
-                first = rows.nth(0).get_by_role("button", name=re.compile("^Accept")).bounding_box()
-                second = rows.nth(1).get_by_role("button", name=re.compile("^Accept")).bounding_box()
-                self.assertLessEqual(abs(first["x"] - second["x"]), 1)
-                text_left = rows.nth(1).get_by_role("button", name=re.compile("^Accept")).evaluate(
-                    "el => { const range = document.createRange(); range.selectNodeContents(el); return range.getBoundingClientRect().left; }")
-                self.assertLessEqual(abs(text_left - first["x"]), 2, "the text starts on the dark button's left edge")
 
     # ------------------------------------------------------------------ P2-5
 
