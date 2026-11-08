@@ -52,7 +52,7 @@ class SketchJourney(unittest.TestCase):
         cls.pw.stop()
 
     def context(self, *, phone: bool = False, **extra) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "block"}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
@@ -462,14 +462,14 @@ class SketchJourney(unittest.TestCase):
     def test_10_the_stream_follows_an_account_switch_in_the_same_tab(self) -> None:
         # A second person with a sketch of their own, prepared in a separate context.
         other_email = f"noor+{int(time.time() * 1000)}@example.test"
-        prep_context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP)
+        prep_context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, service_workers="block")
         self.addCleanup(prep_context.close)
         prep = self.page(prep_context)
         self.api(prep, "POST", "/api/auth/sign-up/email", {"name": "Noor Vale", "email": other_email, "password": PASSWORD})
         ws = self.api(prep, "POST", "/api/v1/workspaces", {"name": "Noor"})
         sketch = self.api(prep, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": "Noor’s map", "scope": "private"})
 
-        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP)
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, service_workers="block")
         self.addCleanup(context.close)
         page = self.page(context)
         sockets: list[dict] = []
@@ -515,11 +515,39 @@ class SketchJourney(unittest.TestCase):
         self.assertLessEqual(len(after), 2, f"no reconnect loop: {after}")
         self.assertTrue(any(s["frames"] for s in after), "the second account's stream delivers")
 
+    def test_10b_two_tabs_opening_my_map_at_once_make_one_map(self) -> None:
+        """#866 review: both tabs found no map and each made one, so they showed different maps. Both ask with one key now."""
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, service_workers="block")
+        self.addCleanup(context.close)
+        first = self.page(context)
+        self.api(first, "POST", "/api/auth/sign-up/email", {"name": "Twin Tabs", "email": f"twin+{int(time.time() * 1000)}@example.test", "password": PASSWORD})
+        ws = self.api(first, "POST", "/api/v1/workspaces", {"name": "Twin tabs"})
+        second = self.page(context)
+        # Hold both tabs' look for a private map until each has asked, so both find none and both go on to make one.
+        held: list = []
+        for tab in (first, second):
+            tab.route(re.compile(r"/api/v1/workspaces/[^/]+/sketches\?.*scope=private"), lambda route: held.append(route))
+        first.goto("/map", wait_until="commit")
+        second.goto("/map", wait_until="commit")
+        for _ in range(150):
+            if len(held) == 2:
+                break
+            first.wait_for_timeout(100)
+        self.assertEqual(len(held), 2, "both tabs asked for their private maps")
+        for route in held:
+            route.continue_()
+        for tab in (first, second):
+            expect(tab.get_by_role("group", name="Map: My map")).to_be_visible()
+            expect(tab).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
+        self.assertEqual(first.url, second.url, "both tabs show the same map")
+        listed = self.api(first, "GET", f"/api/v1/workspaces/{ws['id']}/sketches?scope=private&limit=100")
+        self.assertEqual(listed["total"], 1, "one private map was made")
+
     # ---------------------------------------------------------------- Fit and its controls (#222)
 
     def fit_fixture(self, *, viewport: dict, ratios: tuple[float, float], touch: bool = False) -> Page:
         """A persisted project sketch whose last thought reaches the old Fit corner."""
-        context = self.browser.new_context(base_url=ORIGIN, viewport=viewport, has_touch=touch,
+        context = self.browser.new_context(base_url=ORIGIN, viewport=viewport, has_touch=touch, service_workers="block",
                                            is_mobile=touch and viewport["width"] <= 640,
                                            color_scheme="dark" if viewport["height"] < 800 else "light")
         self.addCleanup(context.close)

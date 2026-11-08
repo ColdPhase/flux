@@ -364,10 +364,14 @@ class PhoneFinal(unittest.TestCase):
         title.get_by_role("button").click()
         menu = page.get_by_role("dialog", name=re.compile("Kai Tanaka"))
         labels = [text.strip().split("\n")[0] for text in menu.locator(".phone-menu__item").all_inner_texts()]
-        self.assertEqual(labels[:2], ["Messages", "Sketches"])
-        menu.get_by_role("link", name="Sketches").click()
-        expect(page).to_have_url(re.compile(r"/sketches$"))
+        # A direct message has the one view, Messages; its sketches are gone (#866).
+        self.assertEqual(labels[:1], ["Messages"])
+        self.assertNotIn("Sketches", labels)
         expect(page.locator(".views")).to_have_count(0)
+        # Its old addresses lead to the conversation, not to a dead end.
+        for old in ("/sketches", "/sketches/00000000-0000-4000-8000-000000000000"):
+            page.goto(f"{self.dm_path}{old}")
+            expect(page).to_have_url(re.compile(rf"{re.escape(self.dm_path)}$"))
 
     def test_09_every_place_stays_reachable(self):
         page = self.page(SIZES[0])

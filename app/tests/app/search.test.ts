@@ -121,7 +121,7 @@ describe('search: one query across Flux, only what you may read', () => {
     // The task's number in its project leads its text, so "#n" finds it (#276); the outcome follows.
     assert.equal(text(workHit.snippet), `#${work.number}\nNumbers for the low-light case`);
     assert.equal(byKind('thought')[0]!.label, 'Thought on the map “Lamp shapes”');
-    assert.equal(byKind('draft')[0]!.label, 'Private draft');
+    assert.equal(byKind('draft')[0]!.label, 'Thought · only you');
     assert.deepEqual(byKind('draft')[0]!.target, { type: 'draft', draftId: niaDraft.id });
     assert.equal(byKind('decision')[0]!.label, 'Decision · proposed');
     assert.equal(byKind('result')[0]!.label, 'Positive result');

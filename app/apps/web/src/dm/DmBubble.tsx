@@ -3,7 +3,7 @@ import { Avatar, Icon } from '../ui';
 import { MessageContent } from '../composer/Files';
 import { OutboxStatus, PendingSource } from '../composer/Outbox';
 import type { PendingSend } from '../composer/draft';
-import { MessageDay, MessageTime, clock } from '../app/messageParts';
+import { MessageDay, MessageTime } from '../app/messageParts';
 import { MessageText } from '../app/MessageText';
 import { MessageActions, useTouchActions, type DmActionOptions } from '../work/messageActions';
 
@@ -23,13 +23,13 @@ function selectedIn(messageId: string, body: string): string | undefined {
  * grouping, time, day line and actions everywhere: reply in thread and create task beside it on a computer, swipe
  * left and long press on a phone, and the thread count under a root that has replies.
  */
-export function DmBubble({ message, pending, mine, name, continued, groupLast, day, writable, selecting, picked, arrived, observed, seenBy, nav,
-  onReply, onCreateTask, onOpenThread, onPick, onRetry, onRemove }: {
+export function DmBubble({ message, pending, mine, name, continued, groupLast, day, writable, arrived, observed, seenBy, nav,
+  onReply, onCreateTask, onOpenThread, onRetry, onRemove }: {
   /** The stored message, or (while it is being sent) the person's queued one, which the stored one then replaces in place (#264). */
   message: DmMessage | null; pending?: PendingSend | null; mine: boolean; name: string; continued: boolean; groupLast: boolean;
   /** The day label when this message starts a new day. */
   day: string | null;
-  writable: boolean; selecting: boolean; picked: boolean; arrived: boolean;
+  writable: boolean; arrived: boolean;
   /** Other people's messages are watched for viewing receipts. */
   observed: boolean; seenBy: readonly string[];
   /** Roots in the conversation show their thread count and open the thread; elsewhere they do not. */
@@ -37,10 +37,9 @@ export function DmBubble({ message, pending, mine, name, continued, groupLast, d
   onReply?: () => void;
   onCreateTask: (message: DmMessage, excerpt: string | undefined) => void;
   onOpenThread?: (message: DmMessage, trigger: HTMLElement) => void;
-  onPick: (id: string) => void;
   onRetry?: () => void; onRemove?: () => void;
 }) {
-  const actions: DmActionOptions | null = selecting || !message ? null : {
+  const actions: DmActionOptions | null = !message ? null : {
     kind: 'dm', messageId: message.id, body: message.body, writable,
     onCreateWork: () => onCreateTask(message, selectedIn(message.id, message.body)),
     onReply,
@@ -65,17 +64,10 @@ export function DmBubble({ message, pending, mine, name, continued, groupLast, d
   }
   return (
     <li {...touchHandlers} id={`${nav === 'thread' ? 'thread-message' : 'message'}-${message.id}`} tabIndex={-1}
-      className={`dm-msg${mine ? ' is-mine' : ''}${continued ? ' dm-msg--cont' : ''}${arrived ? ' is-arrived' : ''}${picked ? ' is-picked' : ''} ${touchClass}`}
+      className={`dm-msg${mine ? ' is-mine' : ''}${continued ? ' dm-msg--cont' : ''}${arrived ? ' is-arrived' : ''} ${touchClass}`}
       data-sequence={message.sequence} data-message-id={message.id} {...(observed ? { 'data-observe-id': message.id } : {})} aria-label={label}>
       {day ? <MessageDay as="p" label={day} /> : null}
-      {/* While selecting, the whole row toggles; the check is the keyboard and screen reader control. */}
-      <div className="dm-msg__row" onClick={selecting ? (event) => { if (!(event.target as HTMLElement).closest('.dm-msel')) onPick(message.id); } : undefined}>
-        {selecting ? (
-          <button type="button" className="dm-msel" aria-pressed={picked} onClick={() => onPick(message.id)}
-            aria-label={`Select ${mine ? 'your' : `${name}’s`} message, ${clock(message.createdAt)}`}>
-            <i><Icon name="check" size={12} /></i>
-          </button>
-        ) : null}
+      <div className="dm-msg__row">
         <span className="dm-msg__face">{continued || mine ? null : <Avatar name={name} size="lg" tone="neutral" />}</span>
         <div className={`dm-msg__main${mine ? ' is-mine' : ''}`}>
           {continued || mine ? null : <p className="dm-msg__meta"><b>{name}</b></p>}
@@ -87,7 +79,7 @@ export function DmBubble({ message, pending, mine, name, continued, groupLast, d
             </button>
           ) : null}
           {groupLast ? <MessageTime at={message.createdAt} seenBy={seenBy} /> : null}
-          {actions && !selecting ? <MessageActions {...actions} /> : null}
+          {actions ? <MessageActions {...actions} /> : null}
         </div>
       </div>
       {touch.node}

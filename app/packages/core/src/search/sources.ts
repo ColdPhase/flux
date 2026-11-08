@@ -21,7 +21,7 @@ const WORK_STATUS: Record<string, string> = {
   not_pursued: 'Task · not pursued', parked: 'Task · parked',
 };
 const DECISION_STATUS: Record<string, string> = { accepted: 'Decision · accepted', proposed: 'Decision · proposed', superseded: 'Decision · replaced' };
-const DRAFT_STATUS: Record<string, string> = { private: 'Private draft', project: 'Draft shared with the space', workspace: 'Draft shared with everyone' };
+const DRAFT_STATUS: Record<string, string> = { private: 'Thought · only you', project: 'Thought · shared with the space', workspace: 'Thought · shared with everyone' };
 
 function materialLabel(row: SearchRow) {
   const version = row.version ?? 1;
@@ -89,7 +89,7 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
     target: (row) => ({ type: 'thought', sketchId: row.parentId ?? '', thoughtId: row.objectId, dmId: row.dmId }),
   },
   draft: {
-    filter: 'draft', audience: 'draft', textIsTitle: false, label: (row) => DRAFT_STATUS[row.status ?? ''] ?? 'Draft',
+    filter: 'draft', audience: 'draft', textIsTitle: false, label: (row) => DRAFT_STATUS[row.status ?? ''] ?? 'Thought',
     target: (row) => ({ type: 'draft', draftId: row.objectId }),
   },
   person: {

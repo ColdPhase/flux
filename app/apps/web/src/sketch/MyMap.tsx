@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Navigate } from 'react-router';
 import { Button, EmptyState, Spinner } from '../ui';
 import { useShellData } from '../app/data';
@@ -15,15 +15,13 @@ export function MyMap() {
   const { workspace } = useShellData();
   const [state, setState] = useState<{ to: string } | 'loading' | 'failed'>('loading');
   const [attempt, setAttempt] = useState(0);
-  // A retry after a lost answer reuses the key, so it never makes two maps.
-  const key = useRef(crypto.randomUUID());
   const workspaceId = workspace?.id;
 
   useEffect(() => {
     if (!workspaceId) return undefined;
     const controller = new AbortController();
     void (async () => {
-      const mine = await openMyMap(workspaceId, key.current, controller.signal);
+      const mine = await openMyMap(workspaceId, controller.signal);
       setState({ to: sketchHref(mine) });
     })().catch(() => { if (!controller.signal.aborted) setState('failed'); });
     return () => controller.abort();

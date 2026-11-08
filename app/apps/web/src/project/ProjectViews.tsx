@@ -105,10 +105,10 @@ export function ProjectMap() {
                 </li>
               ))}
             </ul>
-            <p className="pv-note">A sketch is for thinking out loud: one idea can link to several options, and nothing on it has to become a task. Link a thought from a task or a decision to see it in Details.</p>
+            <p className="pv-note">A map is for thinking out loud: one thought can link to several options, and nothing on it has to become a task. Link a thought from a task or a decision to see it in Details.</p>
             {state.items.length < state.total ? (
               <div className="sk-index-more">
-                <Button onClick={() => setPages((n) => n + 1)}>Show more sketches</Button>
+                <Button onClick={() => setPages((n) => n + 1)}>Show more maps</Button>
                 <span className="sk-index__s">Showing {state.items.length} of {state.total}</span>
               </div>
             ) : null}

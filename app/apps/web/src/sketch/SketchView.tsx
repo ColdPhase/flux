@@ -14,7 +14,7 @@ import { firstLine } from '../work/format';
 import { DraftSaveNotSentError, useSketchDoc, type Op } from './doc';
 import { useLiveSketchDoc, type LiveSketchDoc } from './live-doc';
 import { useEditingCapability } from '../editing/capability';
-import { audience, quote, sketchHref, when } from './format';
+import { audience, quote, sketchHref } from './format';
 import { freeSpot, freeSpotNear, rectOf, type Rect } from './geometry';
 import { SketchList } from './SketchList';
 import { SketchMap } from './SketchMap';
@@ -28,7 +28,6 @@ import { useThoughtTasks } from './ThoughtTasks';
 import { useRegisterLiveHere } from '../live/LiveProvider';
 import './sketch.css';
 import '../editing/editing.css';
-import { RefLink } from '../place/origin';
 
 export interface Editing {
   id: string;
@@ -77,19 +76,19 @@ function useProjectName(projectId: string | null | undefined) {
 
 /** `/map/:sketchId`: a fresh view (and document) per sketch. */
 export function SketchRoute() {
-  const { sketchId = '', projectId, dmId } = useParams();
+  const { sketchId = '', projectId } = useParams();
   const { me } = useShellData();
   const capability = useEditingCapability();
-  // Opened from a project's Map tab (#117) or a DM's Sketches (#96), the way back stays there.
-  const back = projectId ? `/projects/${projectId}/map` : dmId ? `/dm/${dmId}/sketches` : '/map';
+  // Opened from a project's Map tab (#117), the way back stays there.
+  const back = projectId ? `/projects/${projectId}/map` : '/map';
   // The live map mounts only when this API's live capability is configured (#228, #239 review);
   // otherwise the map is the ordinary one, unchanged.
   if (capability === 'loading') return <div className="sk-page sk-page--center"><Spinner label="Opening the map" /></div>;
   const View = capability === 'configured' ? LiveSketchView : SketchView;
-  return <View key={`${me.user.id}:${sketchId}`} sketchId={sketchId} projectId={projectId} dmId={dmId} back={back} />;
+  return <View key={`${me.user.id}:${sketchId}`} sketchId={sketchId} projectId={projectId} back={back} />;
 }
 
-interface ViewProps { sketchId: string; projectId?: string; dmId?: string; back?: string }
+interface ViewProps { sketchId: string; projectId?: string; back?: string }
 
 /** The ordinary map: native requests, stream refetches and local inverse undo. */
 export function SketchView(props: ViewProps) {
@@ -110,12 +109,11 @@ function LiveSketchView(props: ViewProps) {
  * a List. Everything is edited in place; there is no management panel. Changes save as they
  * happen and arrive live from the other people who can see the sketch.
  */
-function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewProps & { doc: LiveSketchDoc }) {
-  const { me, directMessages } = useShellData();
+function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & { doc: LiveSketchDoc }) {
+  const { me } = useShellData();
   const location = useLocation();
   const navigate = useNavigate();
-  const routeState = location.state as { started?: number; addThoughtFromMessage?: { messageId?: string; projectId: string; body: string } } | null;
-  const started = routeState?.started;
+  const routeState = location.state as { addThoughtFromMessage?: { messageId?: string; projectId: string; body: string } } | null;
   const { sketch } = doc;
   const personalOutline = useOutline(me.user.id, sketch);
   const capture = useThoughtDraft(me.user.id, sketchId, sketch);
@@ -156,12 +154,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   }
   const [editingState, setEditing] = useState<Editing | null>(null);
   const editSaveInFlight = useRef(false);
-  const dmAudience = directMessages.find((item) => item.id === (doc.sketch?.dmId ?? dmId))?.audience ?? null;
-  // "Start sketch from these messages" lands here: say what happened and who sees it.
-  const [status, setStatus] = useState<{ text: string; change: boolean; selection?: boolean }>(() => ({
-    text: started ? `Started from ${started} ${started === 1 ? 'message' : 'messages'} · ${dmAudience ? `${dmAudience.replace(/^Only /, 'only ')} can see it` : 'it stays in this conversation'}` : '',
-    change: false,
-  }));
+  const [status, setStatus] = useState<{ text: string; change: boolean; selection?: boolean }>({ text: '', change: false });
   const { hash } = location;
   const [renaming, setRenaming] = useState<boolean>(!!(location.state as { fresh?: boolean } | null)?.fresh);
   const [heights] = useState(() => new Map<string, number>());
@@ -434,7 +427,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
       lines: lines.map((line, index): DraftLine => ({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: line, x: places[index]!.x, y: places[index]!.y })) });
     setConnectFrom(null);
     setEditing(null);
-    say(`${lines.length} private draft ${lines.length === 1 ? 'thought' : 'thoughts'} from the clipboard · check, then Save`);
+    say(`${lines.length} ${lines.length === 1 ? 'thought' : 'thoughts'} from the clipboard · check, then Save`);
   };
 
   const pasteImage = async (file: Blob) => {
@@ -669,15 +662,15 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     });
   };
 
-  // #469: the one selected thought is cited in the conversation of this sketch's place: its project's, or the direct message it belongs to.
+  // #469: the one selected thought is cited in the conversation of this map's space.
   // Nothing is sent from here: the citation waits in that conversation's composer, where the person adds their words.
-  const citePlace = sketch?.scope === 'project' && sketch.projectId ? sketch.projectId : sketch?.scope === 'dm' && sketch.dmId ? `dm:${sketch.dmId}` : null;
+  const citePlace = sketch?.scope === 'project' && sketch.projectId ? sketch.projectId : null;
   const citeSelected = () => {
     const thoughts = selection.flatMap((id) => { const t = find(id); return t ? [t] : []; });
     if (!citePlace || !sketch) return;
     if (thoughts.length !== 1) { say('Select one thought to cite'); return; }
     holdCite(citePlace, thoughtCite(thoughts[0]!, sketch.title));
-    navigate(citePlace.startsWith('dm:') ? `/dm/${citePlace.slice(3)}` : `/projects/${citePlace}`);
+    navigate(`/projects/${citePlace}`);
   };
 
   const undo = () => {
@@ -703,9 +696,9 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   };
 
   // A sketch opens only where it lives, so the tabs and the header's audience are never wrong: a project
-  // sketch inside its project (#117, #189), a DM's sketch inside its DM (#96), a private one in Home's Map.
+  // map inside its project (#117, #189), a private one at /map/:id.
   // Links that cannot know the place (search, doc links) arrive at `/map/:id` and move here.
-  const here = projectId ? `/projects/${projectId}/map/${sketchId}` : dmId ? `/dm/${dmId}/sketches/${sketchId}` : `/map/${sketchId}`;
+  const here = projectId ? `/projects/${projectId}/map/${sketchId}` : `/map/${sketchId}`;
   if (sketch && sketchHref(sketch) !== here) return <Navigate replace to={`${sketchHref(sketch)}${hash}`} state={location.state} />;
   if (doc.load === 'loading' && !sketch) return <div className="sk-page sk-page--center"><Spinner label="Opening the map" /></div>;
   if (doc.load === 'not-found' || (!sketch && doc.load === 'failed')) {
@@ -758,12 +751,8 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
             ) : (
               <button type="button" className="sk-title" disabled={!canWrite} aria-label={canWrite ? `Rename map ${sketch.title}` : undefined} onClick={() => setRenaming(true)}>{sketch.title}</button>
             )}
-            <span className="sk-aud" title="Who can see this map"><Icon name={sketch.scope === 'project' ? 'people' : 'lock'} size={12} />{audience(sketch, me.user.id, projectName, dmAudience)}</span>
+            <span className="sk-aud" title="Who can see this map"><Icon name={sketch.scope === 'project' ? 'people' : 'lock'} size={12} />{audience(sketch, me.user.id, projectName)}</span>
           </p>
-          {/* #96: a DM sketch can be copied into a space, after an exact preview in Details. */}
-          {sketch.scope === 'dm' && canWrite ? (
-            <Button variant="secondary" className="sk-promote" onClick={() => openDetails({ kind: 'promote-sketch', sketchId: sketch.id, title: sketch.title })}>Make it a space…</Button>
-          ) : null}
           {!phone || !mapMode || (!sketch.thoughts.length && !canWrite) ? viewModes : null}
         </div>
   );
@@ -785,16 +774,6 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
   const notices = (
     <>
         {doc.privateMovement ? <details className="editing-map-recovery"><summary>An unfinished movement is kept privately</summary><p>Compare these positions with the current thoughts before starting a new movement. This copy is not shared automatically.</p><ul>{doc.privateMovement.positions.map((position) => <li key={position.id}>{quote(find(position.id)?.text ?? 'Unavailable thought')} · x {Math.round(position.x)}, y {Math.round(position.y)}{position.width !== undefined ? ` · width ${Math.round(position.width)}, height ${Math.round(position.height ?? 0)}` : ''}</li>)}</ul><Button variant="quiet" onClick={doc.discardPrivateMovement}>Discard private movement copy</Button></details> : null}
-        {sketch.copies.length ? (
-          <ul className="sk-copies" aria-label="Space copies">
-            {sketch.copies.map((copy) => (
-              <li key={copy.sketchId}><Icon name="check" size={12} />Copied to <RefLink to={`/projects/${copy.projectId}/map/${copy.sketchId}`}>{copy.projectName}</RefLink> · {when(copy.copiedAt)}<span className="sk-origin__long"> · later changes here stay in this conversation</span><span className="sk-origin__short"> · not synced</span></li>
-            ))}
-          </ul>
-        ) : null}
-        {sketch.origin ? (
-          <p className="sk-origin"><Icon name="lock" size={12} />Copied from a direct message by {sketch.origin.copiedBy.id === me.user.id ? 'you' : sketch.origin.copiedBy.name} · {when(sketch.origin.copiedAt)}<span className="sk-origin__long">. Only the thoughts were copied; the conversation stays private.</span><span className="sk-origin__short"> · the conversation stays private</span></p>
-        ) : null}
 
         {/* Pressing these keeps focus in the editor. Safari and macOS Firefox never focus a pressed
             button: the editor would blur first, and leaving the field saves, even for Cancel edit. */}
@@ -853,9 +832,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
       <button type="button" className="sk-tool" aria-label="Undo" data-tip="Undo" aria-disabled={!doc.canUndo} onClick={undo}><Icon name="undo" size={16} /></button>
     </div>
   ) : null;
-  const readonlyNote = !canWrite ? <p className="sk-readonly"><Icon name="lock" size={12} />{doc.liveStatus === 'connecting' ? 'Reconnecting to the shared map. Wait for confirmation before changing it.' : sketch.scope === 'dm'
-    ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
-    : 'You can look at this map; people who can change it keep it up to date.'}</p> : null;
+  const readonlyNote = !canWrite ? <p className="sk-readonly"><Icon name="lock" size={12} />{doc.liveStatus === 'connecting' ? 'Reconnecting to the shared map. Wait for confirmation before changing it.' : 'You can look at this map; people who can change it keep it up to date.'}</p> : null;
 
   if (mapMode) {
     // F-026: the map fills the pane; the header, the tools and the notices float over it.
@@ -933,16 +910,6 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
     <div className="sk-page" ref={rootRef} onKeyDown={onKeyDown} data-live-map-status={doc.liveStatus}>
       <div className="sk">
         {head}
-        {sketch.copies.length ? (
-          <ul className="sk-copies" aria-label="Space copies">
-            {sketch.copies.map((copy) => (
-              <li key={copy.sketchId}><Icon name="check" size={12} />Copied to <RefLink to={`/projects/${copy.projectId}/map/${copy.sketchId}`}>{copy.projectName}</RefLink> · {when(copy.copiedAt)}<span className="sk-origin__long"> · later changes here stay in this conversation</span><span className="sk-origin__short"> · not synced</span></li>
-            ))}
-          </ul>
-        ) : null}
-        {sketch.origin ? (
-          <p className="sk-origin"><Icon name="lock" size={12} />Copied from a direct message by {sketch.origin.copiedBy.id === me.user.id ? 'you' : sketch.origin.copiedBy.name} · {when(sketch.origin.copiedAt)}<span className="sk-origin__long">. Only the thoughts were copied; the conversation stays private.</span><span className="sk-origin__short"> · the conversation stays private</span></p>
-        ) : null}
 
 
         {canWrite ? (
@@ -958,9 +925,7 @@ function SketchEditor({ sketchId, projectId, dmId, back = '/map', doc }: ViewPro
           </div>
         ) : (
           <>
-            <p className="sk-readonly"><Icon name="lock" size={12} />{doc.liveStatus === 'connecting' ? 'Reconnecting to the shared map. Wait for confirmation before changing it.' : sketch.scope === 'dm'
-              ? 'Nobody else is in this conversation now, so the sketch is read-only until the other person reopens it.'
-              : 'You can look at this map; people who can change it keep it up to date.'}</p>
+            <p className="sk-readonly"><Icon name="lock" size={12} />{doc.liveStatus === 'connecting' ? 'Reconnecting to the shared map. Wait for confirmation before changing it.' : 'You can look at this map; people who can change it keep it up to date.'}</p>
             <p className="sk-status sk-status--readonly" role="status">{status.text}</p>
           </>
         )}

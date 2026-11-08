@@ -60,8 +60,8 @@ export function routeView(pathname: string): string {
   const path = pathname.replace(/\/+$/, '') || '/';
   const project = /^\/projects\/([^/]+)(?:\/(tasks|map|docs|agents|github|live))?(?:\/|$)/.exec(path);
   if (project) return `/projects/${project[1]}/${project[2] ?? 'conversation'}`;
-  const dm = /^\/dm\/(?!new$)([^/]+)(\/sketches)?(?:\/|$)/.exec(path);
-  if (dm) return `/dm/${dm[1]}${dm[2] ?? ''}`;
+  const dm = /^\/dm\/(?!new$)([^/]+)(?:\/|$)/.exec(path);
+  if (dm) return `/dm/${dm[1]}`;
   const material = /^\/materials\/([^/]+)/.exec(path);
   if (material) return `/materials/${material[1]}`;
   const place = /^\/(tasks|map|docs|inbox|dm|projects)(?:\/|$)/.exec(path);

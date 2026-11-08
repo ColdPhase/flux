@@ -1,0 +1,1 @@
+- A direct message has one view, Messages. Its Sketches tab, "Choose messages" (start a sketch from messages) and "Make it a space" are gone; a conversation is a conversation, and ideas go on My map or a space's Map ([#866](https://github.com/ColdPhase/flux/issues/866)).

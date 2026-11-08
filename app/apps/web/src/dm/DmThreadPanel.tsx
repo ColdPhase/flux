@@ -165,8 +165,8 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
             {root ? (
               <ol className="dm__list dm-thread__root" aria-label="Message">
                 <DmBubble key={root.id} message={root} mine={root.authorId === meId} name={label(root.authorId)} continued={false} groupLast day={null}
-                  writable={writable} selecting={false} picked={false} arrived={false} observed={root.authorId !== meId} seenBy={[]} nav="thread"
-                  onReply={() => field.current?.focus()} onCreateTask={onCreateTask} onPick={() => undefined} />
+                  writable={writable} arrived={false} observed={root.authorId !== meId} seenBy={[]} nav="thread"
+                  onReply={() => field.current?.focus()} onCreateTask={onCreateTask} />
               </ol>
             ) : <p className="thread__hint" role="status">Opening…</p>}
             <p className="thread__hint">{count ? `${count} ${count === 1 ? 'reply' : 'replies'}` : writable ? 'Reply to this message. Only the people in this conversation can read it.' : 'No replies yet.'}</p>
@@ -177,14 +177,14 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
                 if (!line.message) {
                   const item = (line as { item: NonNullable<ReturnType<typeof outbox.pending.at>> }).item;
                   return <DmBubble key={`pending-${item.id}`} message={null} pending={item} mine name={meName} continued={continued} groupLast={groupLast} day={newDay ? dayLabel : null}
-                    writable={writable} selecting={false} picked={false} arrived={false} observed={false} seenBy={[]} nav="thread"
-                    onCreateTask={onCreateTask} onPick={() => undefined} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />;
+                    writable={writable} arrived={false} observed={false} seenBy={[]} nav="thread"
+                    onCreateTask={onCreateTask} onRetry={() => composer.retry(item.id)} onRemove={() => composer.remove(item.id)} />;
                 }
                 const message = line.message;
                 return <DmBubble key={outbox.keyOf(message.id)} message={message} mine={mine} name={mine ? meName : label(message.authorId)} continued={continued} groupLast={groupLast}
-                  day={newDay ? dayLabel : null} writable={writable} selecting={false} picked={false} arrived={false} observed={!mine} nav="thread"
+                  day={newDay ? dayLabel : null} writable={writable} arrived={false} observed={!mine} nav="thread"
                   seenBy={(seen.get(message.id) ?? []).map((p) => p.name)}
-                  onReply={() => field.current?.focus()} onCreateTask={onCreateTask} onPick={() => undefined} />;
+                  onReply={() => field.current?.focus()} onCreateTask={onCreateTask} />;
               })}
             </ol>
           </div>

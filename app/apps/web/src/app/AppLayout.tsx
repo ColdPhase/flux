@@ -24,7 +24,6 @@ import { viewIndex } from './views';
 import { PROJECT_VIEWS, SPACE_AI_POLICY_CHANGED_EVENT, type ProjectViewId } from '@flux/contracts';
 import { addProjectView } from '../project/api';
 import { addableViews, audienceLine, shownViews, useProjectShell } from '../project/data';
-import { useDmSketchCount } from '../dm/useDmSketchCount';
 import { LiveProvider } from '../live/LiveProvider';
 import { LiveEntry } from '../live/LiveEntry';
 import { LiveBar } from '../live/LiveBar';
@@ -60,9 +59,8 @@ const VIEW_PATH: Record<ProjectViewId, string> = { map: 'map', docs: 'docs', age
 function viewOrder(pathname: string) {
   const inProject = pathname.match(/^\/projects\/[^/]+(?:\/(tasks|map|docs|agents))?/);
   if (inProject) return ['conversation', 'map', 'tasks', 'docs', 'agents'].indexOf(inProject[1] ?? 'conversation');
-  // A direct message's Messages · Sketches (#96).
-  const inDm = pathname.match(/^\/dm\/(?!new$)[^/]+(\/sketches)?/);
-  if (inDm) return inDm[1] ? 1 : 0;
+  // A direct message has the one view.
+  if (/^\/dm\/(?!new$)[^/]+/.test(pathname)) return 0;
   return viewIndex(pathname);
 }
 
@@ -627,12 +625,8 @@ function AppLayoutContent() {
   const openNeedsYou = () => { if (projectId) navigate(`/inbox?project=${encodeURIComponent(projectId)}`); };
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeDm = directMessages.find((dm) => dm.id === dmId);
-  // Messages · Sketches: a DM's sketches stay inside it, for exactly its people (#96).
-  const dmSketches = useDmSketchCount(activeDm?.workspaceId, activeDm?.id, me.user.id);
-  const dmViews = activeDm ? [
-    { id: 'messages', label: 'Messages', to: `/dm/${activeDm.id}` },
-    { id: 'sketches', label: 'Sketches', to: `/dm/${activeDm.id}/sketches`, end: false, ...(dmSketches ? { count: dmSketches, countLabel: `, ${dmSketches} ${dmSketches === 1 ? 'sketch' : 'sketches'}` } : {}) },
-  ] : null;
+  // A direct message has one view, Messages; its sketches are gone (#866).
+  const dmViews = activeDm ? [{ id: 'messages', label: 'Messages', to: `/dm/${activeDm.id}` }] : null;
   const matches = useMatches();
   const notFound = matches.some((match) => (match.handle as { notFound?: boolean } | undefined)?.notFound === true);
   // A space that waits to be unlocked: the address of its row, or any place of it that turned into the locked panel (F-030, #655).
@@ -699,8 +693,7 @@ function AppLayoutContent() {
   }, [location.pathname, openable, me.user.id, docTitle]);
   const rowViews = phone ? null
     : activeProject && projectViews ? { items: projectViews, label: 'Space views' }
-      : dmViews ? { items: dmViews, label: 'Direct message views' }
-        : null;
+      : null;
   const viewName = activeProject ? PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))] : null;
   const addViewItems: { label: string; run: () => void }[] = project && shownProjectViews && projectId
     ? addableViews(shownProjectViews).filter((view) => !(aiOff && view === 'agents')).map((view) => ({ label: `Add ${VIEW_LABEL[view]}`, run: () => void addView(projectId, view) })) : [];
@@ -781,9 +774,9 @@ function AppLayoutContent() {
             subtitle={onWiki ? peopleLine(project?.people ?? null) : <>{onAgents && aiOff ? 'AI is off' : PROJECT_VIEW_NAMES[Math.max(0, viewOrder(location.pathname))]}{project?.people ? <span className="phead__people"> · {peopleLine(project.people, !onAgents)}</span> : null}</>} /></>
       ) : activeDm && dmViews ? (
         <>{phoneBack('/projects')}
-          <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: view.id === 'messages' ? 'chat' as const : 'edit' as const, current: view.id === (/\/sketches/.test(location.pathname) ? 'sketches' : 'messages') }))}
+          <PhoneTitleMenu title={activeDm.title} items={dmViews.map((view) => ({ id: view.id, label: view.label, to: view.to, icon: 'chat' as const, current: true }))}
             onDetails={detailsEntry} detailsLabel="Message info"
-            subtitle={`${/\/sketches/.test(location.pathname) ? 'Sketches' : 'Messages'} · ${activeDm.audience}`} /></>
+            subtitle={`Messages · ${activeDm.audience}`} /></>
       ) : location.pathname === '/' ? (
         <div className="phead__id">
           <PhoneHomeLead />

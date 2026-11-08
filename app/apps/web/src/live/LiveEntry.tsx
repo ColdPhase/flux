@@ -73,7 +73,7 @@ export function LiveEntry({ variant = 'header', anchor: given, onAction }: {
     </span>
   ) : null;
   if (live.capability === 'loading') return dimmed('Checking whether live sessions are available.');
-  if (!anchor) return dimmed('Open a conversation, task, sketch or page to work on it together.');
+  if (!anchor) return dimmed('Open a conversation, task, map or page to work on it together.');
   const inSession = live.phase === 'in' || live.phase === 'joining' || live.phase === 'rejoining' || live.phase === 'starting';
   const busy = live.phase === 'starting' || live.phase === 'joining';
   const here_ = sessionAt(items, anchor);

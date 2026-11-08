@@ -69,8 +69,6 @@ test('a view switch is a different view; a thread, a page or a sketch opened ins
   assert.notEqual(routeView('/settings'), routeView('/settings/appearance'));
   assert.notEqual(routeView('/settings/appearance'), routeView('/settings/account'));
   assert.equal(routeView('/dm/d1'), routeView('/dm/d1/'));
-  assert.notEqual(routeView('/dm/d1'), routeView('/dm/d1/sketches'));
-  assert.equal(routeView('/dm/d1/sketches'), routeView('/dm/d1/sketches/s1'));
   assert.notEqual(routeView('/dm'), routeView('/dm/new'));
   assert.notEqual(routeView('/projects'), routeView('/projects/p1'));
   // New space is a window and `/projects/new` has no page of its own (#895): it is the address of a space that does not exist, like any other.

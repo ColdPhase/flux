@@ -12,7 +12,7 @@ export function routeLabel(pathname: string): string {
   if (pathname.startsWith('/settings/notifications')) return 'notification settings';
   if (pathname.startsWith('/settings')) return 'settings';
   if (pathname === '/projects') return 'projects';
-  if (/(?:\/map|\/sketches)(\/|$)/.test(pathname)) return 'the map';
+  if (/\/map(\/|$)/.test(pathname)) return 'the map';
   if (/(?:\/docs|\/materials)(\/|$)/.test(pathname)) return 'the wiki';
   if (/\/tasks(\/|$)/.test(pathname)) return 'tasks';
   if (/\/agents(\/|$)/.test(pathname)) return 'agents';

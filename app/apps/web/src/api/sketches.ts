@@ -2,7 +2,6 @@ import {
   sketchLinkPath,
   sketchLinksPath,
   sketchPath,
-  sketchPromotionPath,
   sketchPositionsPath,
   sketchThoughtPath,
   sketchThoughtsPath,
@@ -13,10 +12,6 @@ import {
   type CreateThoughtCommand,
   type MovedThoughts,
   type MoveThoughtsCommand,
-  type PromotedSketch,
-  type PromotionParticipants,
-  type PromotionTarget,
-  type SketchPromotionPreview,
   type Project,
   type Sketch,
   type SketchDetail,
@@ -35,32 +30,15 @@ const key = (idempotencyKey: string) => ({ 'idempotency-key': idempotencyKey });
 
 /**
  * My map (#866): the person's oldest private map, made the first time it is asked for. The API lists their private maps newest change
- * first, and a map nobody put anything on is listed too, so My map is found again before it has a thought. A retry after a lost answer
- * reuses `idempotencyKey`, so it never makes two.
+ * first, and a map nobody put anything on is listed too, so My map is found again before it has a thought. The map is made with one key
+ * for the person and company, so two tabs (or a retry after a lost answer) that ask at the same moment get one map, not two.
  */
-export async function openMyMap(workspaceId: string, idempotencyKey: string, signal?: AbortSignal): Promise<Sketch> {
+export const myMapKey = (workspaceId: string) => `my-map:${workspaceId}`;
+export async function openMyMap(workspaceId: string, signal?: AbortSignal): Promise<Sketch> {
   const listed = await request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=100&offset=0&scope=private`, { signal });
   const mine = [...listed.items].sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
-  return mine ?? request<Sketch>(workspaceSketchesPath(workspaceId), { method: 'POST', body: { title: 'My map', scope: 'private' }, headers: key(idempotencyKey), signal });
+  return mine ?? request<Sketch>(workspaceSketchesPath(workspaceId), { method: 'POST', body: { title: 'My map', scope: 'private' }, headers: key(myMapKey(workspaceId)), signal });
 }
-
-/** Sketches of one direct message (#96), newest change first. */
-export const listDmSketches = (workspaceId: string, dmId: string, limit: number, offset: number, signal?: AbortSignal) =>
-  request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?dmId=${dmId}&limit=${limit}&offset=${offset}`, { signal });
-/** A sketch in a DM, optionally started from selected messages (each becomes a thought with its source). */
-export const createDmSketch = (workspaceId: string, dmId: string, title: string, fromMessageIds: string[], idempotencyKey: string) =>
-  request<Sketch>(workspaceSketchesPath(workspaceId), {
-    method: 'POST', body: { title, scope: 'dm', dmId, ...(fromMessageIds.length ? { fromMessageIds } : {}) }, headers: key(idempotencyKey),
-  });
-/**
- * Who could open a project copy of a DM sketch, and what goes in; nothing is shared. `participants`
- * (#188) says whether a new project is also given to the DM's other people; the web app asks only
- * when the person ticks "Also give … access".
- */
-export const previewPromotion = (sketchId: string, target: { kind: 'new' } | { kind: 'existing'; projectId: string } | null, participants: PromotionParticipants, signal?: AbortSignal) =>
-  request<SketchPromotionPreview>(`${sketchPromotionPath(sketchId)}?${new URLSearchParams({ ...(target ? (target.kind === 'new' ? { target: 'new' } : { projectId: target.projectId }) : {}), participants })}`, { signal });
-export const promoteSketch = (sketchId: string, target: PromotionTarget, token: string, participants: PromotionParticipants, idempotencyKey: string) =>
-  request<PromotedSketch>(sketchPromotionPath(sketchId), { method: 'POST', body: { target, token, participants }, headers: key(idempotencyKey) });
 
 export const getSketch = (sketchId: string, signal?: AbortSignal) => request<SketchDetail>(sketchPath(sketchId), { signal });
 export const renameSketch = (sketchId: string, title: string, version: number, idempotencyKey: string) =>
