@@ -123,8 +123,9 @@ address in `get-session`. The 503s on the GitHub routes are the App not being co
 CodeQL flags 16 route registrations that reach PostgreSQL, the keyring or an outside service with no rate limit. Sign-in, sign-up,
 password reset, invites, encryption unlock and live join already have limits of their own; for the rest the decision is **one floor
 under every API route** (`apps/server/src/http/rate-limit.ts`, registered in `app.ts`) rather than sixteen route limits:
-1,200 requests a minute per session (the browser's cookie `flux.session_token`, or an Authorization header), 600 per address without a
-credential and 1,200 a minute per address for a session the server has not accepted yet (a made-up cookie has no budget of its own), and no total per address, so people behind one office address or one proxy are not
+1,200 requests a minute per session (the cookie `flux.session_token` that Better Auth reads, or on `/mcp` the bearer), counted as the session's own only once the server has accepted it and
+taken away again by a 401; 600 per address without a credential and 1,200 a minute per address for a cookie or bearer not accepted yet (a made-up one has no budget of its own, whatever else the request carries);
+an IPv6 address counts as its /64 and no total per address exists, so people behind one office address or one proxy are not
 limited together; fixed one-minute windows in the API process, memory-bounded, `429 RATE_LIMITED` with `Retry-After`. A person using Flux does not come near it; a runaway client or
 a flood does. `FLUX_AUTH_RATE_LIMIT=false` turns it off with the sign-in limit (the test stacks do). It covers the routes of all 16
 alerts (`/api/v1/health` and the back-channel logout answer the anonymous count; the Better Auth catch-all also keeps its own limit).

@@ -281,6 +281,6 @@ does not rewrite paths, `Host`, cookies or `Authorization`. A CDN or second prox
 which address Flux sees: trust only the hop that connects to Flux, and make sure that hop replaces
 any client-supplied `X-Forwarded-For`.
 
-Flux limits how fast the API is called (1,200 requests a minute per session, 600 a minute per address
-without one and 1,200 a minute per address for a session cookie the server has not accepted yet). The address is the client's only when `FLUX_TRUSTED_PROXIES` names your proxy; without it every request comes from the
+Flux limits how fast the API is called (1,200 requests a minute per session once the server has accepted it, 600 a minute per address
+without one and 1,200 a minute per address for a session cookie or bearer it has not accepted yet; an IPv6 address counts as its /64). The address is the client's only when `FLUX_TRUSTED_PROXIES` names your proxy; without it every request comes from the
 proxy, so everyone shares the per-address budgets and a busy company can meet the limit. Set it as described above.

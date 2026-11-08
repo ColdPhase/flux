@@ -6,6 +6,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 
@@ -123,6 +124,15 @@ class PerfTargets(unittest.TestCase):
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(report.main(base + ["--fail-on-targets"]), expected, f"{ms} ms asked to fail")
                     self.assertEqual(report.main(base), 0, f"{ms} ms: without the flag it never fails")
+
+    def test_only_one_or_true_turns_enforcement_on(self) -> None:
+        """#1023 review: FLUX_PERF_ENFORCE=0 enforced too, because the script only asked whether the variable was set."""
+        script = (Path(__file__).resolve().parents[1] / "scripts" / "check_performance.sh").read_text(encoding="utf-8")
+        line = next(line for line in script.splitlines() if line.startswith('case "${FLUX_PERF_ENFORCE'))
+        for value, expected in (("1", "--fail-on-targets"), ("true", "--fail-on-targets"), ("0", ""), ("false", ""), ("", "")):
+            result = subprocess.run(["sh", "-c", f'{line}\nprintf %s "$enforce"'], env={"FLUX_PERF_ENFORCE": value, "PATH": "/usr/bin:/bin"},
+                                    capture_output=True, text=True, check=True)
+            self.assertEqual(result.stdout, expected, f"FLUX_PERF_ENFORCE={value!r}")
 
 
 if __name__ == "__main__":

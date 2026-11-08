@@ -22,7 +22,7 @@ const window = Object.assign(new EventTarget(), {
   setTimeout: (run: () => void, ms: number) => globalThis.setTimeout(run, ms),
   clearTimeout: (id: number) => globalThis.clearTimeout(id),
 });
-const document = Object.assign(new EventTarget(), { visibilityState: 'visible' });
+const document = Object.assign(new EventTarget(), { visibilityState: 'visible' as 'visible' | 'hidden' });
 const originals = new Map(['window', 'document', 'WebSocket'].map((name) => [name, Object.getOwnPropertyDescriptor(globalThis, name)]));
 Object.defineProperty(globalThis, 'window', { configurable: true, value: window });
 Object.defineProperty(globalThis, 'document', { configurable: true, value: document });
@@ -82,4 +82,54 @@ test('without an event the same two reads are still one request', async (context
   assert.equal(calls.length, 1);
   calls[0]!.finish({ name: 'Name' });
   await Promise.all([first, second]);
+});
+
+test('an event that is held for a hidden page ends the sharing when it arrives, not when it is delivered', async (context) => {
+  const calls = fetchStub(context);
+  const delivered: string[] = [];
+  stops.push(stream.subscribe('person-a', { onEvent: (event) => { delivered.push(event.id); } }));
+  document.visibilityState = 'hidden';
+  try {
+    const before = client.request('/api/v1/projects/p', { share: true });
+    await settle();
+    assert.equal(calls.length, 1);
+    FakeSocket.all.at(-1)!.event('e-held');
+    assert.deepEqual(delivered, [], 'the event is held while the page is hidden');
+    const after = client.request('/api/v1/projects/p', { share: true });
+    await settle();
+    assert.equal(calls.length, 2, 'the read asked for after the event did not join the older one');
+    calls[0]!.finish({ name: 'Old name' });
+    calls[1]!.finish({ name: 'New name' });
+    await Promise.all([before, after]);
+  } finally {
+    document.visibilityState = 'visible';
+    document.dispatchEvent(new Event('visibilitychange'));
+  }
+  assert.deepEqual(delivered, ['e-held'], 'and it is delivered once the page is visible');
+});
+
+test('a resync ends the sharing: events may have been missed, so a read on its way may not show the change', async (context) => {
+  const calls = fetchStub(context);
+  let resyncs = 0;
+  stops.push(stream.subscribe('person-a', { onEvent: () => undefined, onResync: () => { resyncs += 1; } }));
+  // An event gives the stream a cursor; the connection then drops before it ever opened twice in a row, so the cursor is refused and the
+  // stream starts again from the head and asks for a refetch when that connection opens.
+  FakeSocket.all.at(-1)!.event('e1');
+  FakeSocket.all.at(-1)!.onclose?.({ code: 1006 });
+  window.dispatchEvent(new Event('online'));
+  assert.equal(FakeSocket.all.length, 2, 'it reconnected with the cursor');
+  FakeSocket.all.at(-1)!.onclose?.({ code: 1006 });
+  await settle();
+  assert.equal(FakeSocket.all.length, 3, 'and then from the head');
+  const before = client.request('/api/v1/projects/p', { share: true });
+  await settle();
+  assert.equal(calls.length, 1);
+  FakeSocket.all.at(-1)!.onopen?.();
+  assert.equal(resyncs, 1, 'listeners were asked to refetch');
+  const after = client.request('/api/v1/projects/p', { share: true });
+  await settle();
+  assert.equal(calls.length, 2, 'the refetch did not join the read that began before the resync');
+  calls[0]!.finish({ name: 'Old name' });
+  calls[1]!.finish({ name: 'New name' });
+  await Promise.all([before, after]);
 });

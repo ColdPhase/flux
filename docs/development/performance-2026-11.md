@@ -182,7 +182,7 @@ noticed up to a minute later (the check was every 30 s); until then a job sent m
 FLUX_PERF_PHASES="count warm concurrent limited bundle" ./scripts/check_performance.sh
 FLUX_PERF_PHASES=restart FLUX_PERF_RESTARTS=10 ./scripts/check_performance.sh   # idle numbers and restart times, 5 minutes
 FLUX_PERF_CPUS=1.0 ./scripts/check_performance.sh                 # the CPU cap of the limited phase (1.0 stands for 2 vCPU)
-FLUX_PERF_ENFORCE=1 ./scripts/check_performance.sh                # exit 1 when a CPU-limited phase misses the p95 target of 50 ms
+FLUX_PERF_ENFORCE=1 ./scripts/check_performance.sh                # exit 1 when a CPU-limited phase misses the p95 target of 50 ms (only 1 or true; 0 leaves it off)
 ./scripts/check_ui.sh test_navigation_requests                    # requests per move
 python3 scripts/perf_report.py perf-results/<time>/measure.jsonl perf-results/<time>/api.log --targets
 ```

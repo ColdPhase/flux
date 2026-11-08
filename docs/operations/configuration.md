@@ -214,7 +214,7 @@ The longest a session lasts from sign-in, however much it is used; the person th
 
 **Type** `true`, `false` · **Default** `true` · **Used by** api (release, source)
 
-Rate limits: Better Auth's on sign-in, sign-up and reset (per client address, an IPv6 address as its /64, kept in PostgreSQL so every API process shares it), and the API-wide floor under every other route (in memory: 1,200 requests a minute per session, 600 per address without one, 1,200 a minute per address for a session cookie the server has not accepted yet, so a made-up cookie never has a budget of its own; no total per address). The account's own back-off after repeated wrong passwords is separate and always on; a browser that has signed in to the account is remembered by a signed cookie and is not held by other people's guesses. Only the test scripts turn the limits off. Example: `true`.
+Rate limits: Better Auth's on sign-in, sign-up and reset (per client address, an IPv6 address as its /64, kept in PostgreSQL so every API process shares it), and the API-wide floor under every other route (in memory: 1,200 requests a minute per session, counted as its own only once the server has accepted that session cookie, or the bearer of `/mcp`; 600 per address without a credential; 1,200 a minute per address for a cookie or bearer not accepted yet, so a made-up one never has a budget of its own, whatever else the request carries; an IPv6 address counts as its /64; no total per address). The account's own back-off after repeated wrong passwords is separate and always on; a browser that has signed in to the account is remembered by a signed cookie and is not held by other people's guesses. Only the test scripts turn the limits off. Example: `true`.
 
 ## Single sign-on (OpenID Connect)
 

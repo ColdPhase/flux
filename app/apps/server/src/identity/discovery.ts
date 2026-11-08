@@ -38,13 +38,16 @@ export async function waitForDiscovery(oidc: Pick<OidcConfig, 'issuer'>, options
 export function cachedReachability(oidc: Pick<OidcConfig, 'issuer'>, ttlMs = 5000, probe: () => Promise<boolean> = () => discoveryReachable(oidc), now: () => number = Date.now) {
   let cached: { at: number; value: Promise<boolean> } | null = null;
   let last: boolean | null = null;
+  // A probe that was running when `known` told the answer must not overwrite it when it ends.
+  let told = 0;
   const reachable = () => {
     if (!cached || now() - cached.at >= ttlMs) {
-      cached = { at: now(), value: probe().then((value) => { last = value; return value; }, () => { last = false; return false; }) };
+      const asked = told;
+      cached = { at: now(), value: probe().then((value) => { if (asked === told) last = value; return value; }, () => { if (asked === told) last = false; return false; }) };
     }
     return last === null ? cached.value : Promise.resolve(last);
   };
   return Object.assign(reachable, {
-    known(value: boolean) { last = value; cached = { at: now(), value: Promise.resolve(value) }; },
+    known(value: boolean) { told += 1; last = value; cached = { at: now(), value: Promise.resolve(value) }; },
   });
 }

@@ -102,6 +102,8 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
       if (await discoveryReachable(oidc)) {
         try {
           await start(true);
+          // The provider that was down at the start is installed now: the sign-in page says so at once, not one answer later (#1023).
+          reachable?.known(true);
           app.log.info({ issuer: oidc.issuer }, 'Single sign-on is available');
           return;
         } catch (error) {
