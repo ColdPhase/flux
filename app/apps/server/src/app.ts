@@ -149,7 +149,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const migrationManifest = await readMigrationManifest(migrationsDir, FLUX_SCHEMA_VERSION);
   assertExactMigrationLedger(migrationManifest, await readAppliedMigrationVersions(pool));
   // The API only enqueues. The worker owns scheduling and maintenance, so this instance runs neither of their timers (#862).
-  const boss = new PgBoss({ connectionString, migrate: false, schedule: false, supervise: false });
+  // The instance registry is beaten every five minutes, not every half minute: nothing but getInstances reads it (#850).
+  const boss = new PgBoss({ connectionString, migrate: false, schedule: false, supervise: false, instanceHeartbeatSeconds: 300 });
   boss.on('error', (error) => app.log.error(error));
   await boss.start();
   app.addHook('onClose', async () => boss.stop());
