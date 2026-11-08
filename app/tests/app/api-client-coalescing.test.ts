@@ -13,7 +13,8 @@ function stub(context: { mock: { method: typeof import('node:test').mock.method 
   }));
   return calls;
 }
-const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 5));
+// A read starts in a task of its own (a MessageChannel message), which a loaded machine can deliver a few milliseconds late.
+const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 60));
 
 test('reads of one address in flight together are one request, and each caller gets its own copy', async (context) => {
   const calls = stub(context);
