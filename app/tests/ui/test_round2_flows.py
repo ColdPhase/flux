@@ -236,9 +236,9 @@ class Round2Flows(unittest.TestCase):
         expect(notice.locator(".convo-notice__what")).to_have_text("made a task from their own message")
 
 
-    # ---------------------------------------------------------------- H11-2, H11-3, H11-4
+    # ---------------------------------------------------------------- H11-3
 
-    def test_05_a_returning_person_sees_news_lands_on_the_decision_and_finds_what_matters(self) -> None:
+    def test_05_a_returning_person_finds_the_unread_divider_above_the_decision(self) -> None:
         project = self.ids["project"]
         page = self.page("jonas")
         page.goto(f"/projects/{project}")
@@ -257,18 +257,13 @@ class Round2Flows(unittest.TestCase):
         divider = page.get_by_role("separator", name="Unread")
         expect(divider).to_have_count(1)
         self.assertTrue(divider.evaluate("el => !!el.nextElementSibling && el.nextElementSibling.matches('.convo-object')"), "the divider is above the decision")
-        # H11-2: the pill opens What matters; Jump stays the second action.
-        line = page.get_by_role("region", name="Since you left")
-        expect(line.get_by_role("button", name="What matters", exact=True)).to_be_visible()
-        shot(page, f"r2-since-you-left-1440-{UI_BROWSER}")
-        line.get_by_role("button", name="What matters", exact=True).click()
-        expect(page.locator("#details").get_by_role("heading", name="What matters")).to_be_visible()
+        # #865: no "Since you left" line floats over the stream, on a computer or a phone.
+        expect(page.get_by_role("region", name="Since you left")).to_have_count(0)
+        shot(page, f"r2-unread-divider-1440-{UI_BROWSER}")
         phone = self.page("jonas", phone=True)
         phone.goto(f"/projects/{project}")
-        pill = phone.get_by_role("region", name="Since you left")
-        expect(pill).to_be_visible()
-        pill.get_by_role("button", name=re.compile(r"^Since you left: .*Open What matters$")).click()
-        expect(phone.get_by_role("heading", name="What matters")).to_be_visible()
+        expect(phone.get_by_role("separator", name="Unread")).to_have_count(1)
+        expect(phone.get_by_role("region", name="Since you left")).to_have_count(0)
 
 
 if __name__ == "__main__":

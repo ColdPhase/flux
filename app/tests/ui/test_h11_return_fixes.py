@@ -6,8 +6,8 @@ it and Home, then while she was away Tomasz gave her a task with a due day, prop
 proposed and accepted another at once. It checks what Marta sees, on a computer (1440 x 900) and a
 phone (390 x 844, touch):
 
-* H11-5: What matters and Home's "Continue where you left off" lead to the task that became hers, with
-  its due day; it comes before the rule waiting for her.
+* H11-5: Home's "Continue where you left off" leads to the task that became hers, with its due day; it
+  comes before the rule waiting for her.
 * H11-8: a Details panel shows its object across the views of one project and closes when she goes to
   another page (Inbox); Back brings it back.
 * H11-9: a decision proposed and accepted together is one card with a line under it, not two
@@ -27,7 +27,7 @@ import uuid
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
 from message_gestures import long_press
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder
 
 PASSWORD = "back from a week away"
 STAMP = int(time.time() * 1000)
@@ -118,30 +118,18 @@ class ReturnFixes(unittest.TestCase):
         page.locator(".side__item[href='/inbox']").click()
         expect(page).to_have_url(re.compile(r"/inbox$"))
 
-    # ---------------------------------------------------------------- H11-5, H11-8: What matters
+    # ---------------------------------------------------------------- H11-8: a panel does not follow her to another page
 
-    def test_02_what_matters_leads_to_the_given_task_with_its_due_day_and_closes_on_another_page(self) -> None:
+    def test_02_the_space_details_close_on_another_page(self) -> None:
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}")
-        # Home's card (test_01) took her into the project, which saved its point: the last 7 days show the same changes.
-        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="What matters").click()
+        open_details(page)
         panel = page.locator("#details")
-        expect(panel.get_by_role("heading", name="What matters")).to_be_visible()
-        panel.get_by_role("button", name="Change").click()
-        panel.get_by_role("radio", name="Last 7 days").click()
-        step = panel.locator(".since__next")
-        expect(step).to_contain_text(f"Pick up “{TASK}”")
-        # Seven days reach back past the task's creation by Tomasz: he made it, and it is hers.
-        expect(step).to_contain_text(re.compile(f"Tomasz (gave it to you|added it for you)\\. Due {DUE}\\."))
-        given = panel.get_by_role("link", name=re.compile(f"^Tomasz (gave you a task|added a task for you): {TASK}"))
-        expect(given).to_have_count(0)  # the next step is not repeated in the list
-        expect(panel.get_by_role("link", name=re.compile(f"Proposed rule: {OPEN_RULE}"))).to_be_visible()
-        shot(page, "h11-what-matters-due")
-        # Another page: the recap does not follow her there.
+        expect(panel.get_by_role("heading", name="Volunteer sign-up")).to_be_visible()
+        shot(page, "h11-space-details")
+        # Another page: the panel does not follow her there.
         self.inbox(page)
-        expect(panel.get_by_role("heading", name="What matters")).to_have_count(0)
-        expect(panel.locator(".since__next")).to_have_count(0)
+        expect(panel.get_by_role("heading", name="Volunteer sign-up")).to_have_count(0)
         shot(page, "h11-inbox-no-stale-panel")
 
     # ---------------------------------------------------------------- H11-5, H11-9, H11-8: Home and the task panel

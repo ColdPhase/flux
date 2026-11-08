@@ -22,7 +22,7 @@ from app_select import choose
 from author_columns import assert_author_column
 from create_window import add_task, submit_button, title_field
 from message_gestures import open_message_menu
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, open_details, shot, start_forwarder, view_tab
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder, view_tab
 
 PASSWORD = "decisions need reasons"
 STAMP = int(time.time() * 1000)
@@ -338,10 +338,6 @@ class WorkDecisionsJourney(unittest.TestCase):
         # No pointer to the Inbox on the board or the List: what waits for the person is listed in the Inbox alone (#865).
         expect(page.get_by_role("link",name=re.compile("need you in the Inbox"))).to_have_count(0)
         page.get_by_role("radio", name="List", exact=True).click()
-        # The project's state is in Details (#340): the rule in force, found among 101 tasks.
-        open_details(page)
-        expect(page.locator("#details").get_by_role("region", name="Now", exact=True).get_by_role("button", name=re.compile("^Decision"))).to_contain_text("Oldest rule: battery powered")
-        page.get_by_role("button", name="Close details", exact=True).click()
         views=page.get_by_role("navigation",name="Task views")
         expect(views.get_by_role("button",name=re.compile("^Open"))).to_contain_text("101")
         # Decisions are not a view of the Tasks tab any more; they wait in the Inbox.

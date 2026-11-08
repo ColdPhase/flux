@@ -1,26 +1,14 @@
-import {
-  RETURN_POINTS_PATH, RETURN_POINTS_RESTORE_PATH, RETURN_SUMMARY_PATH,
-  type ReturnPeriod, type ReturnPlace, type ReturnPoint, type ReturnScope, type ReturnSource, type ReturnSummary,
-} from '@flux/contracts';
+import { RETURN_POINTS_PATH, RETURN_SUMMARY_PATH, type ReturnPlace, type ReturnPoint, type ReturnSource, type ReturnSummary } from '@flux/contracts';
 import { request } from '../api/client';
 import { noteLockedWorkspaces } from '../encryption/api';
 
-/** "Since you left" (#106): the summary of a place and its server-side return point. */
+/** The summary of a place since its server-side return point (#106): what Home continues from and what is new in a space. */
 export function getReturnSummary(place: ReturnPlace, signal?: AbortSignal) {
   const query = place.type === 'home' ? 'place=home' : `place=${place.type}&id=${encodeURIComponent(place.id)}`;
   return request<ReturnSummary>(`${RETURN_SUMMARY_PATH}?${query}`, { signal }).then(noteLockedWorkspaces);
 }
-/** "What matters" (#133): a project's private recap in a scope and period, at a snapshot `until` when given. */
-export function getRecap({ projectId, scope, period, until, digest }: { projectId: string; scope: ReturnScope; period: ReturnPeriod; until: string | null; digest: boolean }, signal?: AbortSignal) {
-  const query = new URLSearchParams({ place: 'project', id: projectId, scope, from: period, history: '1' });
-  if (until) query.set('until', until);
-  if (digest) query.set('digest', '1');
-  return request<ReturnSummary>(`${RETURN_SUMMARY_PATH}?${query}`, { signal });
-}
 export const saveReturnPoint = (place: ReturnPlace, mark: string | null) =>
   request<ReturnPoint>(RETURN_POINTS_PATH, { method: 'PUT', body: { place, mark } });
-export const restoreReturnPoint = (place: ReturnPlace) =>
-  request<ReturnPoint>(RETURN_POINTS_RESTORE_PATH, { method: 'POST', body: { place } });
 
 /** Where an item's source opens. Work, decisions and results open in Details on their project. */
 export function sourceHref(source: ReturnSource) {

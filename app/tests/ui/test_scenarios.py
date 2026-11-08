@@ -58,7 +58,7 @@ from app_select import choose, expect_value
 from create_window import create_other, linked_labels, open_from_tasks, submit_button
 from message_gestures import open_message_menu
 from message_gestures import open_message_menu
-from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, open_what_matters, shot, start_forwarder
+from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, shot, start_forwarder
 from wiki_text import existing_text, has_text, type_at_end, wait_until_shared
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -996,15 +996,8 @@ class ScenarioJourney:
         expect(page.get_by_role("button", name=re.compile("Mark all", re.I))).to_have_count(0)
         self.no_sideways_scroll(page)
         self.shot(page, "4-home-return")
-        # In the project, "What matters" works without AI.
-        page.goto(f"/projects/{lamp}")
-        open_what_matters(page, tap=self.phone)
-        recap = page.locator("#details")
-        expect(recap.get_by_role("heading", name="What matters")).to_be_visible()
-        self.tap(recap.get_by_role("button", name="Summarize"))
-        expect(recap.locator("section[aria-labelledby=wm-digest]")).to_contain_text("No AI")
-        self.shot(page, "4-what-matters")
-        self.tap(recap.get_by_role("link", name=re.compile(f"Decision changed: {re.escape(D2)}")))
+        # The changed decision opens in the one panel, without AI.
+        page.goto(f"/projects/{lamp}/tasks?open=decision:{s['d2']}")
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=D2)).to_be_visible()
         pivot = panel.get_by_role("region", name="At this pivot")
@@ -1041,10 +1034,9 @@ class ScenarioJourney:
         self.assertIn(f"Parked: {CAMERA_TASK}", home, "Home's return summary names the parked work")
         items = self.api("ada", "GET", f"/api/v1/return?place=project&id={self.s['lamp']}", status=200)["items"]
         self.assertIn(f"Parked: {CAMERA_TASK}", [item["text"] for item in items], "the project's return summary names the parked work")
-        # In the project, "What matters" shows it.
-        page.goto(f"/projects/{self.s['lamp']}")
-        open_what_matters(page, tap=self.phone)
-        expect(page.locator("#details").get_by_role("link", name=re.compile(f"^Parked: {re.escape(CAMERA_TASK)}"))).to_be_visible(timeout=3000)
+        # In the project's Tasks, the parked work is listed.
+        page.goto(f"/projects/{self.s['lamp']}/tasks?view=list")
+        expect(page.get_by_role("region", name=re.compile("^Parked by a pivot"))).to_contain_text(CAMERA_TASK)
 
     # ---------------------------------------------------------------- inbox, search and the wiki
 

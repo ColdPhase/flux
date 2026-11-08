@@ -72,7 +72,7 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
   // The empty field lists the places the person opened (F-026 E02).
   const recentPlaces = useRecentPlaces(userId);
   const { projects, lockedWorkspaces, directMessages } = useShellData();
-  const { openDetails, toggleFocus, toggleSidebar, sidebarHidden } = useShellActions();
+  const { toggleFocus, toggleSidebar, sidebarHidden } = useShellActions();
   const location = useLocation();
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const text = query.trim();
@@ -91,12 +91,10 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
   // Whether it is ready was decided before the dialog opened, so the row is there from the first frame or not at all (#898).
   const askMine: Option[] = assistantReady && aiHere ? [{ kind: 'command', section: 'Actions', id: 'action-ask-assistant', label: 'Ask my assistant…', icon: 'spark', stays: !inThread,
     run: () => { if (inThread) navigate({ pathname: location.pathname, search: '?ask=1' }); else setPickingWhere(true); } }] : [];
-  // Typed words that name a command show it first: the assistant, and the project's recap ("What matters", #763 H11-2).
+  // Typed words that name a command show it first: the assistant.
   const typed = text.toLowerCase();
   const commands: Option[] = [
     ...(typed && 'ask my assistant'.includes(typed) ? askMine : []),
-    ...(here && typed.length >= 3 && ('what matters'.includes(typed) || /^(recap|summary|since)/i.test(typed))
-      ? [{ kind: 'command' as const, section: 'Actions', id: 'action-recap', label: 'What matters', icon: 'leaf' as const, run: () => openDetails({ kind: 'recap', projectId: here }) }] : []),
   ];
   // With no text: up to four recent places (not the one in view, and only those the person can still open, named as
   // their header names them), then the actions with their keys as drawn (E02).

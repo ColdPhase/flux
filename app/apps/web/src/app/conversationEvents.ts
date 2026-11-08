@@ -104,16 +104,6 @@ export function foldEntries<Root extends StreamEntryLike, Notice extends StreamE
   return out;
 }
 
-/** The words of "Since you left: …" from the summary's items: messages, task updates, decisions, results. */
-export function sinceLine(summary: Pick<ReturnSummary, 'items' | 'more'>): string {
-  const count = (kinds: string[]) => summary.items.filter((item) => kinds.includes(item.kind)).length;
-  const plus = summary.more ? '+' : '';
-  const part = (n: number, one: string, many: string) => n ? `${n}${plus} ${n === 1 && !plus ? one : many}` : null;
-  return [part(count(['message']), 'message', 'messages'), part(count(['work', 'question']), 'task update', 'task updates'),
-    part(count(['decision']), 'decision', 'decisions'), part(count(['result']), 'result', 'results'),
-    part(count(['material', 'sketch', 'doc']), 'other change', 'other changes')].filter(Boolean).join(' · ');
-}
-
 /** The first thing unread that the stream can show, oldest first; items arrive newest first. */
 /** The first unread item; decisions and results count too (#763 H11-3), so Jump never lands after an accepted rule. */
 export type UnreadTarget = { messageId: string; conversationId: string | null } | { workId: string } | { objectKind: 'decision' | 'result'; objectId: string };
