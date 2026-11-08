@@ -445,7 +445,13 @@ describe('F-030 AI forced off', () => {
         OR c.table_name LIKE 'cowork%' OR c.table_name LIKE 'personal_run%' OR c.table_name = 'background_compute_connections')
       GROUP BY c.table_name ORDER BY c.table_name`)).rows as { name: string; ws: boolean; project: boolean; agent: boolean; connection: boolean; guarded: boolean }[];
     const withPath = tables.filter((t) => t.ws || t.project || t.agent || (t.connection && t.name.startsWith('agent')));
-    assert.ok(withPath.length >= 26, `AI tables with a workspace path: ${withPath.length}`);
+    // Pinned like the other registries: a table added or dropped changes this list on purpose, after checking it is guarded (a count floor went red whenever a table was dropped, #1017).
+    assert.deepEqual(withPath.map((t) => t.name).sort(), [
+      'agent_chat_messages', 'agent_chat_reads', 'agent_command_receipts', 'agent_connections', 'agent_memory_items', 'agent_oauth_bindings', 'agent_pauses',
+      'agent_proposals', 'agent_questions', 'agent_runtime_sessions', 'agent_stops', 'agent_task_taking', 'agent_thread_artifact_boundaries',
+      'agent_thread_artifact_mutations', 'agent_thread_artifact_resets', 'agent_thread_guard_events', 'agents', 'assistant_changes', 'assistant_jobs',
+      'assistant_proposals', 'assistant_settings', 'cowork_checkpoints', 'cowork_connection_slots', 'cowork_units', 'personal_runs',
+    ], 'the AI tables with a workspace path');
     assert.deepEqual(withPath.filter((t) => !t.guarded).map((t) => t.name), [], 'every one is guarded');
     const projectOf = async (ws: string, who: Person) =>
       (expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws}/projects`, { body: { name: 'Seeds' } }), 201) as { id: string }).id;

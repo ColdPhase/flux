@@ -54,11 +54,17 @@ describe('human identity', () => {
       const answer = await asking.request('GET', '/api/v1/me', { headers: probe });
       assert.equal(answer.status, 200, 'the probe is not a 401 when nobody is signed in');
       assert.equal(answer.json, null);
+      // The shell reads the company beside the person: signed out it gets the same 200 null, and without the header the 401 stays.
+      const workspaces = await asking.request('GET', '/api/v1/workspaces', { headers: probe });
+      assert.equal(workspaces.status, 200, 'the shell\'s workspaces read is not a 401 when nobody is signed in');
+      assert.equal(workspaces.json, null);
+      assert.equal((await asking.request('GET', '/api/v1/workspaces')).status, 401, 'without the probe header a signed-out read is refused');
     }
     const { browser: signedIn } = await signIn(email, password);
     const probed = await signedIn.request('GET', '/api/v1/me', { headers: probe });
     assert.equal(probed.status, 200);
     assert.equal((probed.json as Me).user.email, email, 'the probe returns the person when signed in');
+    assert.ok(Array.isArray((await signedIn.request('GET', '/api/v1/workspaces', { headers: probe })).json), 'the workspaces read with the probe header lists the company when signed in');
   });
 
   test('wrong password and unknown account are rejected without a session', async () => {

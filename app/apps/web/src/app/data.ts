@@ -1,5 +1,5 @@
 import { redirect, useRouteLoaderData, type LoaderFunctionArgs } from 'react-router';
-import { WORKSPACES_PATH, type MyAgent, type ProjectAccess, type ProjectVisibility, type SpaceAiState, type WorkspaceRole } from '@flux/contracts';
+import { ME_PROBE_HEADER, WORKSPACES_PATH, type MyAgent, type ProjectAccess, type ProjectVisibility, type SpaceAiState, type WorkspaceRole } from '@flux/contracts';
 import { request as apiRead } from '../api/client';
 import { getMe, type MeResponse } from '../api/auth';
 import { signInPath } from '../auth/logic';
@@ -87,8 +87,10 @@ export function appLoader(args: LoaderFunctionArgs): Promise<ShellData> {
 
 async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
   // The person and the workspaces are read beside each other, then the projects and the conversations of every workspace beside each
-  // other: two round trips before the shell, not four in a row (#850, #862). Without a session the workspaces read is refused and dropped.
-  const [me, read] = await Promise.all([getMe(request.signal), apiRead<EncryptedWorkspace[]>(WORKSPACES_PATH, { signal: request.signal }).catch(() => null)]);
+  // other: two round trips before the shell, not four in a row (#850, #862). Without a session both answer a 200 `null`, as the probe
+  // header asks, not a 401 that the browser console logs (#546); the person is sent to sign in.
+  const [me, read] = await Promise.all([getMe(request.signal),
+    apiRead<EncryptedWorkspace[] | null>(WORKSPACES_PATH, { signal: request.signal, headers: { [ME_PROBE_HEADER]: '1' } }).catch(() => null)]);
   if (!me) {
     const url = new URL(request.url);
     throw redirect(signInPath(`${url.pathname}${url.search}`));
