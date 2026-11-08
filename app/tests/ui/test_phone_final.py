@@ -206,8 +206,8 @@ class PhoneFinal(unittest.TestCase):
                 sheet = page.get_by_role("dialog", name="Create")
                 expect(sheet).to_be_visible()
                 names = [text.strip().split("\n")[0] for text in sheet.get_by_role("button").all_inner_texts() if text.strip()]
-                self.assertEqual(names[:7], ["Task", "Thought", "Message", "Decision", "File or link", "Map", "Space"])
-                for name in ("Task", "Thought", "Message", "Decision", "File or link", "Map", "Space"):
+                self.assertEqual(names[:5], ["Task", "Thought", "Decision", "Page", "Space"])
+                for name in ("Task", "Thought", "Decision", "Page", "Space"):
                     self.assertGreaterEqual(min(self.box(sheet.get_by_role("button", name=re.compile(f"^{name}")))["height"], 44), 44)
                 self.assert_no_sideways_scroll(page, size["width"])
                 shot(page, f"341-create-{size['width']}-{'dark' if dark else 'light'}")
@@ -216,13 +216,8 @@ class PhoneFinal(unittest.TestCase):
                 # The Task tile opens the one Create window in this project; the sheet itself is gone.
                 expect(page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)).to_be_visible()
 
-    def test_04_create_message_and_thought_use_the_places_that_make_them(self):
+    def test_04_create_thought_uses_the_window_that_makes_it(self):
         page = self.page(SIZES[0])
-        page.goto("/projects")
-        page.get_by_role("button", name="Create", exact=True).click()
-        page.get_by_role("dialog", name="Create").get_by_role("button", name=re.compile("^Message")).click()
-        expect(page).to_have_url(f"{ORIGIN}/dm/new")
-        expect(page.get_by_role("navigation", name="Main places")).to_have_count(0)
         page.goto("/inbox")
         page.get_by_role("button", name="Create", exact=True).click()
         page.get_by_role("dialog", name="Create").get_by_role("button", name=re.compile("^Thought")).click()
@@ -230,47 +225,40 @@ class PhoneFinal(unittest.TestCase):
         thought = page.get_by_role("dialog", name="New thought")
         expect(thought.get_by_role("textbox", name="Thought", exact=True)).to_be_visible()
 
-    def test_04b_create_decision_and_file_or_link_start_those_things_in_the_chosen_project(self):
+    def test_04b_create_decision_and_page_start_those_things_in_the_chosen_project(self):
         page = self.page(SIZES[0])
         base = f"/api/v1/projects/{self.project['id']}"
-        # Decision: "Propose a decision" opens on the project, and proposing it records the decision.
+        # Decision: the same Create window as the computer's, on its Decision tab, in the space chosen in the sheet.
         page.goto("/inbox")
         page.get_by_role("button", name="Create", exact=True).click()
         sheet = page.get_by_role("dialog", name="Create")
         choose(sheet.get_by_label("Space"), self.project["id"])
         sheet.get_by_role("button", name=re.compile("^Decision")).click()
-        expect(page).to_have_url(f"{ORIGIN}/projects/{self.project['id']}")
-        expect(page.get_by_role("heading", name="Propose a decision")).to_be_visible()
-        form = page.locator("form").filter(has=page.get_by_role("heading", name="Propose a decision"))
+        window = page.get_by_role("dialog", name="New decision")
+        expect(window.get_by_role("combobox", name="Space")).to_be_visible()
         title = f"Probes stay on the north beds {uuid.uuid4().hex[:6]}"
-        form.get_by_label("Decision", exact=True).fill(title)
-        form.get_by_role("button", name="Propose decision").click()
-        expect(page.get_by_role("heading", name=title)).to_be_visible()
-        decisions = self.call(page, "GET", f"{base}/decisions?limit=100")["items"]
+        window.get_by_role("textbox", name="Decision", exact=True).fill(title)
+        window.get_by_role("button", name=re.compile("^Propose decision")).click()
+        expect(page.locator(".ui-toast", has_text="Decision proposed")).to_be_visible()
+        decisions: list = []
+        for _ in range(60):
+            decisions = self.call(page, "GET", f"{base}/decisions?limit=100")["items"]
+            if title in [item["title"] for item in decisions]:
+                break
+            page.wait_for_timeout(250)
         self.assertIn(title, [item["title"] for item in decisions])
-        # File or link: the picker opens inside the tap; the file joins the project's message draft and sends.
+        # Page: a Wiki page in the chosen space; it opens ready to write.
         page.goto("/projects")
         page.get_by_role("button", name="Create", exact=True).click()
         sheet = page.get_by_role("dialog", name="Create")
         choose(sheet.get_by_label("Space"), self.project["id"])
-        name = f"bed-map-{uuid.uuid4().hex[:6]}.txt"
-        with page.expect_file_chooser() as chooser:
-            sheet.get_by_role("button", name=re.compile("^File or link")).click()
-        chooser.value.set_files({"name": name, "mimeType": "text/plain", "buffer": b"north beds: probes 1-6"})
-        expect(page).to_have_url(f"{ORIGIN}/projects/{self.project['id']}")
-        expect(page.get_by_role("dialog", name="Create")).to_have_count(0)
-        draft = page.get_by_role("list", name="Files in your draft")
-        expect(draft).to_contain_text(name)
-        expect(draft).to_contain_text("Ready, private")
-        field = page.get_by_label("Write a message", exact=True)
-        expect(field).to_be_focused()
-        field.fill("The bed map, with the probe numbers")
-        page.get_by_role("button", name="Send message").click()
-        expect(page.get_by_role("link", name=re.compile(re.escape(name))).first).to_be_visible()
-        roots = self.call(page, "GET", f"{base}/conversation-roots?limit=20")["roots"]
-        sent = [root["message"] for root in roots if root["message"]["body"] == "The bed map, with the probe numbers"]
-        self.assertEqual(len(sent), 1)
-        self.assertEqual([item["name"] for item in sent[0].get("files", [])], [name])
+        sheet.get_by_role("button", name=re.compile("^Page")).click()
+        window = page.get_by_role("dialog", name="New page")
+        name = f"Bed map {uuid.uuid4().hex[:6]}"
+        window.get_by_role("textbox", name="Page title", exact=True).fill(name)
+        window.get_by_role("button", name=re.compile("^Create page")).click()
+        expect(page).to_have_url(re.compile(rf"{ORIGIN}/projects/{self.project['id']}/docs/[0-9a-f-]{{36}}$"))
+        expect(page.get_by_role("heading", level=2).get_by_role("button", name=name)).to_be_visible()
 
     # ------------------------------------------------------------------ AC-3
 

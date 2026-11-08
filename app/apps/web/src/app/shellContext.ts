@@ -90,9 +90,9 @@ export interface OwnedPanel {
 
 /** What the one Create window opens with (F-026 S3): everything is optional; the person completes the rest. */
 export interface CreateRequest {
-  /** `task` goes straight to the task form, `project` to the project form (#763 FR-2), `decision` to the decision form
-   * (a message's Propose a decision, #763 SP-5), `thought` to a thought on My map (#866); without it the phone sheet first asks what to create. */
-  kind?: 'task' | 'project' | 'decision' | 'thought';
+  /** The five types (#867): `task` goes straight to the task form, `space` to the New space window (#763 FR-2), `decision` to the decision
+   * form, `thought` to a thought on My map (#866) and `page` to a new Wiki page; without it the phone sheet first asks what to create. */
+  kind?: 'task' | 'space' | 'decision' | 'thought' | 'page';
   projectId?: string;
   title?: string;
   status?: WorkStatus;

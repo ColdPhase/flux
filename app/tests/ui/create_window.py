@@ -47,8 +47,8 @@ def add_task(page: Page, title: str) -> None:
 
 
 def window(page: Page) -> Locator:
-    """The Create window whichever tab it shows: its name follows the tab ("New task", "New thought", …)."""
-    return page.get_by_role("dialog", name=re.compile(r"^New (task|thought|message|decision|space)$"))
+    """The Create window whichever tab it shows: its name follows the tab ("New task", "New thought", "New decision", "New page", "New space")."""
+    return page.get_by_role("dialog", name=re.compile(r"^New (task|thought|decision|page|space)$"))
 
 
 def kind_tab(page: Page, name: str) -> Locator:
@@ -66,15 +66,15 @@ def new_space_window(page: Page) -> Locator:
 
 
 def open_new_space(page: Page) -> Locator:
-    """From the open Create window, its New space button opens the New space window in its place."""
+    """From the open Create window, its Space tab opens the New space window in its place."""
     expect(window(page)).to_be_visible()
-    window(page).get_by_role("button", name="New space", exact=True).click()
+    kind_tab(page, "Space").click()
     expect(new_space_window(page).get_by_role("heading", name="New space")).to_be_visible()
     return new_space_window(page)
 
 
 def create_other(page: Page, name: str) -> None:
-    """From the open Create window: one of its other tabs (Thought, Message or Decision, #521), or "Space", which opens the New space
+    """From the open Create window: one of its other tabs (Thought, Decision or Page, #521, #867), or "Space", which opens the New space
     window (F-037). With no project yet the window opens on New space (#763 FR-2), so any window may be showing."""
     if name == "Space":
         if new_space_window(page).count() == 0:

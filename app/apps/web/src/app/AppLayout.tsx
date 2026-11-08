@@ -842,7 +842,7 @@ function AppLayoutContent() {
         ) : null}
       </div>
 
-      {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} go={(to) => void navigate(to)} /> : null}
+      {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} /> : null}
       <CreateHost request={create} onClose={() => setCreate(null)} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
     </div>

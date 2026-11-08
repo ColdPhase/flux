@@ -1,12 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
-import { DEFAULT_THOUGHT_SIZE, SKETCH_LIMITS, WORK_LIMITS, WORK_STATUSES, type CreateWorkCommand, type ObjectRef, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
+import { SKETCH_LIMITS, WORK_LIMITS, WORK_STATUSES, type CreateWorkCommand, type ObjectRef, type Project, type ProjectPerson, type WorkStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { openDm, sendDmMessage } from '../api/direct-messages';
 import { useIntentKeys } from '../api/intent-keys';
-import { addThought, getProject, getSketch, openMyMap } from '../api/sketches';
-import { listWorkspaceMembers } from '../project/api';
+import { getProject } from '../api/sketches';
 import { listProjectPeople } from '../project/data';
 import { useShellData } from '../app/data';
 import { readDraft, useDraft, writeDraft } from '../drafts/store';
@@ -16,8 +14,9 @@ import '../people/space.css';
 import { AccountChangedError, assertSignedInAs } from '../app/personalSpace';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
 import { searchFlux } from '../search/api';
-import { freeSpot, rectOf } from '../sketch/geometry';
+import { putThoughtOnMyMap } from '../sketch/myMap';
 import { Button, Icon, MEDIA, Overlay, Spinner, StatusGlyph, Tabs, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
+import { createDoc, docUrl } from '../docs/api';
 import { createWork, proposeDecision } from '../work/api';
 import { ownTaskAgents } from '../agents/taskAgents';
 import { STATUS_LABEL } from '../work/format';
@@ -26,8 +25,10 @@ import { ACCEPT_UNDO_MS, startProposal } from '../notifications/pendingAccept';
 import './create.css';
 
 // The one Create window (F-026 S3, #345, #521): the computer's centred window and the phone's bottom sheet hold the
-// same tabs and fields, whether it opens from New / C, Tasks, a message's menu, the Map or ⌘K. Task is the default;
-// Thought, Message and Decision are tabs in the same window, and the typed text goes with the person between them; New space is its own window.
+// same tabs and fields, whether it opens from New / C, Tasks, a message's menu, the Map or the phone's "+". Task is the default;
+// Thought, Decision and Page are tabs in the same window, and the typed text goes with the person between them. The fifth type, Space, is
+// the last tab and opens its own window (Name, People, AI, Encrypted), since it is made in the company and needs no space chosen.
+// The same five on every device (#867): Task, Thought, Decision, Page and Space. A message is written in the composer, so it is not one.
 
 const mac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -35,30 +36,33 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const flat = (text: string) => text.replace(/\s*\n\s*/g, ' ');
 const oneLine = (text: string) => flat(text).trim();
 
-type Kind = 'task' | 'thought' | 'message' | 'decision';
-const KINDS: { id: Kind; label: string; name: string }[] = [
-  { id: 'task', label: 'Task', name: 'New task' },
-  { id: 'thought', label: 'Thought', name: 'New thought' },
-  { id: 'message', label: 'Message', name: 'New message' },
-  { id: 'decision', label: 'Decision', name: 'New decision' },
-];
+type Kind = 'task' | 'thought' | 'decision' | 'page';
 /** The New space window is not one of the four panels: it has its own title, Name and Cancel (F-037, S20). */
 type Shown = Kind | 'space';
+const KINDS: { id: Shown; label: string; name: string; manual?: boolean }[] = [
+  { id: 'task', label: 'Task', name: 'New task' },
+  { id: 'thought', label: 'Thought', name: 'New thought' },
+  { id: 'decision', label: 'Decision', name: 'New decision' },
+  { id: 'page', label: 'Page', name: 'New page' },
+  // Space leaves the panels for a window of its own, so the arrow keys only move focus to it; Enter, Space or a click opens it.
+  { id: 'space', label: 'Space', name: 'New space', manual: true },
+];
 
 /** Mounted once by the shell; `request` is what the person asked to create, or null while closed. */
 export function CreateHost({ request, onClose }: { request: CreateRequest | null; onClose: () => void }) {
   const phone = useMediaQuery(MEDIA.phone);
-  // Each opening starts on Task (F-026 S3), or on Project while the person has none, since a task needs one (#763 FR-2);
+  // Each opening starts on Task (F-026 S3), or on Space while the person has none, since a task needs one (#763 FR-2);
   // the window is named after the tab it shows, so no heading repeats the tab.
   const { projects, workspace } = useShellData();
   // A guest cannot start spaces, so with none of their own they open on Task like anyone else.
   // A thought needs no space (it goes on My map), so a Thought asked for opens as one for someone with no space yet (#866).
-  const opening: Shown = request?.kind === 'thought' ? 'thought' : request?.kind === 'project' || (!projects.length && workspace?.role !== 'guest') ? 'space' : request?.kind === 'decision' ? 'decision' : 'task';
+  const opening: Shown = request?.kind === 'thought' ? 'thought' : request?.kind === 'space' || (!projects.length && workspace?.role !== 'guest') ? 'space'
+    : request?.kind === 'decision' ? 'decision' : request?.kind === 'page' ? 'page' : 'task';
   const [chosen, setChosen] = useState<{ request: CreateRequest | null; kind: Shown; name?: string }>({ request: null, kind: 'task' });
   const kind = chosen.request === request ? chosen.kind : opening;
   const navigate = useNavigate();
   return (
-    <Overlay open={request !== null} onClose={onClose} placement={phone ? 'bottom' : 'center'} label={kind === 'space' ? 'New space' : KINDS.find((item) => item.id === kind)!.name}
+    <Overlay open={request !== null} onClose={onClose} placement={phone ? 'bottom' : 'center'} label={KINDS.find((item) => item.id === kind)!.name}
       className={kind === 'space' ? 'newspace-win' : 'create'}>
       {request ? (kind === 'space'
         ? <NewSpaceForm initialName={chosen.request === request && chosen.name !== undefined ? chosen.name : oneLine(request.title ?? '').slice(0, WORK_LIMITS.title)} onCancel={onClose} onCreated={(project) => { onClose(); void navigate(`/projects/${project.id}`); }} />
@@ -118,15 +122,15 @@ function CreateBody({ request, phone, kind, onKind, onSpace, onClose }: { reques
     <div className="create__in">
       <div className="create__head ui-panel__head">
         <div className="create__kinds" onClick={pointerOnTab}>
-          <Tabs variant="segmented" className="create__tabs" label="Create" items={KINDS} value={kind} onChange={(id) => onKind(id as Kind)} panelIdPrefix={prefix} />
+          <Tabs variant="segmented" className="create__tabs" label="Create" items={KINDS} value={kind} panelIdPrefix={prefix}
+            onChange={(id) => { if (id === 'space') onSpace(oneLine(carried.text).slice(0, WORK_LIMITS.title)); else onKind(id as Kind); }} />
         </div>
-        <Button variant="quiet" className="create__space-link" onClick={() => onSpace(oneLine(carried.text).slice(0, WORK_LIMITS.title))}>New space</Button>
         <button type="button" className="create__x" aria-label="Close" onClick={onClose}><Icon name="x" size={18} /></button>
       </div>
       <TaskForm {...shared} ids={ids('task')} request={request} prefilled={prefilled} />
       <ThoughtForm {...shared} ids={ids('thought')} />
-      <MessageForm {...shared} ids={ids('message')} />
       <DecisionForm {...shared} ids={ids('decision')} request={request} />
+      <PageForm {...shared} ids={ids('page')} />
     </div>
   );
 }
@@ -442,14 +446,7 @@ function ThoughtForm({ ids, phone, carried, onClose }: PanelProps) {
       const target = workspace?.id;
       if (!target) { setError('You’re not in a company on this Flux yet. Ask an admin for an invite link.'); return; }
       await assertSignedInAs(me.user.id);
-      const map = await openMyMap(target);
-      const found = await getSketch(map.id);
-      const size = { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height };
-      const spot = freeSpot(found.thoughts.map((thought) => rectOf(thought, new Map())), null, size);
-      // One key per text and map (#178): a retry after a lost answer returns the same thought.
-      const intent = `thought:${map.id}:${body}`;
-      await addThought(map.id, { text: body, ...spot }, intents.keyFor(intent));
-      intents.settle(intent);
+      await putThoughtOnMyMap(target, body, intents);
       carried.made(snapshot);
       onClose();
       toast({ message: 'Thought added to My map', tone: 'success', timeout: 4000, action: { label: 'Open', onClick: () => go('/map') } });
@@ -469,78 +466,41 @@ function ThoughtForm({ ids, phone, carried, onClose }: PanelProps) {
 }
 
 /**
- * Message: a direct message to one person, as the phone's "+" Message and New message start it. Only the two of you can
- * read it, and nobody is chosen until the person picks someone, so a private message never goes anywhere by default.
- * A group starts on the Messages page; a project's conversation has its own composer.
+ * Page: a new page in the Wiki of the chosen space (#867, #869). The typed text is its title; it opens on the new page, ready to
+ * write, as "+ New page" in the Wiki's switcher does.
  */
-function MessageForm({ ids, phone, carried, onClose }: PanelProps) {
-  const { me, workspace } = useShellData();
-  const revalidator = useRevalidator();
-  const toast = useToast();
-  const go = useNavigate();
-  const [people, setPeople] = useState<{ workspaceId: string; members: WorkspaceMember[] }[] | null>(null);
-  // A guest cannot list the company's people (403): their people are none, and the copy says why.
-  const [guest, setGuest] = useState(false);
-  const [to, setTo] = useState('');
+function PageForm({ ids, phone, carried, projectId, onProject, onClose }: PanelProps) {
+  const { projects } = useShellData();
+  const navigate = useNavigate();
+  const intents = useIntentKeys();
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [error, setError] = useState('');
-  // A retry reuses its keys: the same conversation opens once and a lost answer never sends the message twice.
-  const opening = useRef<{ to: string; key: string } | null>(null);
-  const attempt = useRef<{ payload: string; id: string } | null>(null);
-  // The company's people (F-037), read when the tab is first shown.
-  useEffect(() => {
-    if (!ids.active || people !== null) return undefined;
-    const controller = new AbortController();
-    void Promise.all((workspace ? [workspace] : []).map(async (space) => {
-      const listed = await listWorkspaceMembers(space.id, controller.signal).then((members) => ({ members, denied: false }), (error: unknown) => {
-        if (error instanceof ApiError && error.status === 403) return { members: [], denied: true };
-        throw error;
-      });
-      return { workspaceId: space.id, members: listed.members.filter((member) => member.userId !== me.user.id), denied: listed.denied };
-    }))
-      .then((lists) => { setGuest(lists.some((list) => list.denied)); setPeople(lists.filter((list) => list.members.length)); })
-      .catch(() => { if (!controller.signal.aborted) setPeople([]); });
-    return () => controller.abort();
-  }, [ids.active, people, workspace, me.user.id]);
-  const [toSpace, toUser] = to ? to.split(':') : [];
-  const person = people?.find((list) => list.workspaceId === toSpace)?.members.find((member) => member.userId === toUser);
-  const body = carried.text.trim();
-  const ready = !!body && !!person && !busy;
+  const title = oneLine(carried.text);
+  const project = projects.find((item) => item.id === projectId);
+  const ready = !!title && title.length <= WORK_LIMITS.title && !!project && !busy;
   async function submit() {
-    if (!ready || !person || !toSpace || inFlight.current) return;
+    if (!ready || !project || inFlight.current) return;
     inFlight.current = true;
     setBusy(true); setError('');
     const snapshot = carried.begin();
-    if (opening.current?.to !== to) opening.current = { to, key: crypto.randomUUID() };
+    // One key per title and space: a retry after a lost answer returns the same page.
+    const intent = JSON.stringify(['new-page', project.id, title]);
     try {
-      const dm = await openDm(toSpace, [person.userId], opening.current.key);
-      const payload = JSON.stringify([dm.id, body]);
-      if (attempt.current?.payload !== payload) attempt.current = { payload, id: crypto.randomUUID() };
-      await sendDmMessage(dm.id, { body, clientMessageId: attempt.current.id });
-      attempt.current = null;
+      const doc = await createDoc(project.id, { title }, intents.keyFor(intent));
+      intents.settle(intent);
       carried.made(snapshot);
-      revalidator.revalidate();
       onClose();
-      toast({ message: `Sent to ${person.name}`, tone: 'success', timeout: 4000, action: { label: 'Open', onClick: () => go(`/dm/${dm.id}`) } });
+      navigate(docUrl(project.id, doc.id), { state: { writeAt: 'start' } });
     } catch (cause) {
-      setError(cause instanceof ApiError && (cause.code === 'DM_RECIPIENT_LEFT' || cause.code === 'DM_RECIPIENT_UNAVAILABLE') ? cause.message
-        : cause instanceof ApiError && cause.code === 'DM_PARTICIPANT_UNAVAILABLE' ? 'This person is no longer in the company.'
-          : cause instanceof ApiError && cause.status === 403 ? 'You can’t start conversations here.' : 'Could not send the message. Your text is still here; try again.');
+      setError(cause instanceof ApiError && cause.status === 403 ? 'You can read this space but not add pages to it.' : 'The page was not created. Your title is still here; try again.');
     } finally { inFlight.current = false; setBusy(false); }
   }
-  const where = people === null ? <span>{ids.active ? 'Loading people…' : null}</span> : !people.length ? <span>{guest ? 'Guests can reply in conversations they are added to, but cannot start one.' : 'Nobody else is in the company yet'}</span> : (
-    <label className="create__chip create__chip--quiet"><Icon name="person" size={13} /><span>{person ? `To ${person.name}` : 'Choose a person'}</span><Icon name="chevron-down" size={12} />
-      <Select aria-label="To" value={to} onChange={(next) => { setTo(next); setError(''); }}>
-        <Option value="">Choose a person</Option>
-        {people.flatMap((list) => list.members.map((member) => <Option key={member.userId} value={`${list.workspaceId}:${member.userId}`}>{member.name}</Option>))}
-      </Select>
-    </label>
-  );
   return (
-    <Panel ids={ids} where={where} onSubmit={() => void submit()}
-      foot={<><p className="create__note">{person ? `Only you and ${person.name} can read it` : 'A direct message: only the two of you can read it'}</p><Go label="Send message" busy={busy} ready={ready} phone={phone} /></>}>
-      <textarea id={ids.field} className="create__text" aria-label="Message" rows={3} value={carried.text} maxLength={100_000} disabled={busy} placeholder="Write a message…"
+    <Panel ids={ids} where={<ProjectWhere ids={ids} projectId={projectId} onProject={onProject} phone={phone} />} onSubmit={() => void submit()}
+      foot={<><p className="create__note">{project ? 'A page in the Wiki of this space' : 'A page belongs to a space'}</p><Go label="Create page" busy={busy} ready={ready} phone={phone} /></>}>
+      <label className="ui-vh" htmlFor={ids.field}>Page title</label>
+      <input id={ids.field} className="create__name" value={flat(carried.text)} maxLength={WORK_LIMITS.title} disabled={busy || !project} placeholder="Name of the new page"
         onChange={(event) => { carried.set(event.target.value); setError(''); }} />
       {error ? <p className="create__error" role="alert">{error}</p> : null}
     </Panel>

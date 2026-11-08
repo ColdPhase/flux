@@ -15,6 +15,11 @@ export interface TabItem {
   count?: number;
   /** Accessible wording for the count, e.g. "3 open tasks". */
   countLabel?: string;
+  /**
+   * In-page tabs: the arrow keys, Home and End move focus to this tab without opening it; Enter, Space or a click opens it. For a tab that
+   * leaves the panels for something of its own (the Create window's Space), which a key that only moves along the strip must not do.
+   */
+  manual?: boolean;
 }
 
 interface TabsProps {
@@ -131,7 +136,9 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix, 
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (isNav) return;
-    const index = items.findIndex((item) => item.id === value);
+    // From the tab holding focus (a manual tab can hold it without being the current one), else from the current one.
+    const focused = (event.target as HTMLElement).closest<HTMLElement>('[role="tab"]')?.dataset.tab;
+    const index = items.findIndex((item) => item.id === (focused ?? value));
     const last = items.length - 1;
     const next = event.key === 'ArrowRight' ? (index + 1) % items.length
       : event.key === 'ArrowLeft' ? (index - 1 + items.length) % items.length
@@ -139,7 +146,7 @@ export function Tabs({ items, value, onChange, label, className, panelIdPrefix, 
     if (next < 0) return;
     event.preventDefault();
     const target = items[next]!;
-    onChange?.(target.id);
+    if (!target.manual) onChange?.(target.id);
     barRef.current?.querySelector<HTMLElement>(`[data-tab="${target.id}"]`)?.focus();
   };
 

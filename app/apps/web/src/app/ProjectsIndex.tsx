@@ -22,7 +22,7 @@ export function ProjectsIndex() {
       <div className="pane-in set">
         <div className="proj-index__head">
           <p className="proj-index__lead">Each space has one conversation, tasks, a map and a wiki.</p>
-          <Button variant="secondary" onClick={() => openCreate({ kind: 'project' })}><Icon name="plus" />New space</Button>
+          <Button variant="secondary" onClick={() => openCreate({ kind: 'space' })}><Icon name="plus" />New space</Button>
         </div>
         {projects.length || lockedWorkspaces.length ? (
           <ul className="set-card" aria-label="Spaces">
@@ -56,7 +56,7 @@ export function ProjectsIndex() {
         ) : (
           <div className="proj-index__empty">
             <p>No spaces yet. Create one, or it appears here when someone adds you to theirs.</p>
-            <Button variant="primary" onClick={() => openCreate({ kind: 'project' })}><Icon name="plus" />Create a space</Button>
+            <Button variant="primary" onClick={() => openCreate({ kind: 'space' })}><Icon name="plus" />Create a space</Button>
           </div>
         )}
         {/* Direct messages live in Projects on the phone, below the spaces (F-026 S2). */}
