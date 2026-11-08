@@ -208,7 +208,7 @@ Current authority is still rechecked even when that immutable fingerprint matche
 Source
 publication/review writes require separate eligible provider authority and
 external once-only write reconciliation before retry. The internal
-`github_bridge_outbox` row currently remains `pending_audience_adapter`.
+`github_bridge_outbox` row currently remains `pending_audience_adapter`. (The outbox was removed in #1032.)
 
 ## 5. Concrete conversion inventory and enablement gate
 

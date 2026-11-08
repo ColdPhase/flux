@@ -118,8 +118,8 @@ not a fake provider event. Every 30-minute window, the API schedules known linke
 objects in batches of five. Each job targets one binding; pending local work is
 coalesced during an outage. No repository discovery scan or agent wake occurs.
 Completed/irrelevant raw deliveries expire after seven days; pending deliveries
-survive outages. Linked-PR events reach the task's current holder through the #153 bridge below. No provider
-facts enter ordinary discussions, notifications, events or exports. Native task status, blocker text and rule history
+survive outages. A linked pull request's events update the link's facts and any rule the task has; they are not forwarded to an
+agent (the #153 bridge was removed, see below). No provider facts enter ordinary discussions, notifications, events or exports. Native task status, blocker text and rule history
 change only through a task rule a writer turned on (G-1a).
 
 Run source and SQL/API checks in Docker with `./scripts/check_application.sh`.
@@ -137,29 +137,24 @@ Primary sources checked 2026-09-30:
 The [accepted design](2026-09-30-design.md) and
 [independent conditions](2026-09-30-independent-design-review.md) govern this slice.
 
-## #153 current-recipient bridge (#479 AC-3/AC-4, 2026-10-30)
+## #153 current-recipient bridge: removed (#1032, 2026-11-08)
 
-A linked PR's event is recorded for the one agent connection that works on the task now, as a reference. It carries no
-comment text and no authority; the agent reads current PR state with its own access. Since #973 no tool reads it (see Read below).
+Delivered 2026-10-30 (#479 AC-3/AC-4): when a linked pull request's facts were saved, processing wrote one reference to an outbox
+(`github_bridge_outbox`) for the agent connection that held the task, with no comment text, no wake and no authority. It was never read by a
+client. Its only reader was the coordination inbox (`flux_coordination_inbox`), which went with the addressed requests between clients
+(#973, v0.2), and nothing pruned the rows (an earlier version of this section said they were "kept for seven days"; no job did that).
 
-- **When.** In the same processing transaction, after the link's current facts are saved, once per new outbox
-  correlation (a redelivery with the same facts never delivers twice).
-- **Current recipient.** The assignee connection of the task's newest open (`pending`, `claimed` or `paused`) execute
-  unit, when that connection is unrevoked, still has the project selected and its agent holds the task
-  (`owner_agent_id`). Holding the task is the standing subscription: no hold, no delivery, and a webhook never
-  reassigns or widens the audience. The outbox row then records `delivered` and the recipient.
-- **Workspace AI lock (F-029).** The holder is an agent, so delivery needs AI on in the workspace (policy row read
-  `FOR SHARE`) and an execute unit admitted under the current AI epoch; otherwise the row is `no_recipient`.
-- **Repository access.** A private repository's facts reach the recipient only when the recipient's owner is the
-  binding's author, whose GitHub access this very processing just verified. Otherwise the row is `no_access`; Flux
-  does not call GitHub on another person's behalf. A public repository needs only the Flux checks above.
-- **No recipient.** `no_recipient` when nobody holds the task. Nothing is woken or created; the next holder sees
-  current state through ordinary reads.
-- **Read.** Nothing reads these rows now: their only reader was the coordination inbox (`flux_coordination_inbox`), which went with the
-  addressed requests (#973). They are written and nothing prunes them; removing the bridge, or a reader for it, is a follow-up (#1032).
-- **Storage.** Migration 0132 widened `github_bridge_outbox.state` to `pending_audience_adapter` (rows from before
-  0132), `delivered`, `no_recipient`, `no_access` and `suppressed_echo`, and added `recipient_connection_id`. Migration 0027
-  (#973) drops `suppressed_echo`: Flux asks no review of its own whose echo it would hold back.
+Decision (#1032, agent decision under the delegation in [autonomy](../../product/autonomy.md)): the outbox goes instead of getting a reader
+again. The reference carried nothing the agent could not get itself: the bridge's own text said the agent reads current pull request state
+with its own access, and Flux does not forward provider facts to a client on another person's behalf. A second route for it would be a
+second thing to keep correct (the holder lookup, the AI switch, a private repository's author) for no reader. If a later version wants an
+agent told about its pull request, it starts from the task's link facts, which processing keeps current, and not from this table.
+
+- **Code.** The processing step no longer calls a bridge (`ports.rows.bridge`), `githubBridgeDeliveries` is deleted, and so is the table's
+  Drizzle definition. Link facts, task rules and their history are unchanged.
+- **Storage.** Migration 0030 drops `github_bridge_outbox` (and, with it, its sealed-space insert trigger). There is no data to keep before the
+  first release. Earlier migrations (0001 and 0027) are not edited.
+- **Tests.** `github.test.ts` no longer asserts outbox rows; the G-1c conditional-request and poll-window tests moved to `github-polling.test.ts`.
 
 ## Agent pull request link (#160 AC-3, 2026-10-30)
 
@@ -192,7 +187,7 @@ way round; this table uses the design document's labels ([G-1 §2](2026-10-05-ap
 | G-1c polling for instances without public HTTPS (2-minute poll of linked open PRs, conditional requests, mode shown in Settings) | AC-3, AC-5 | Delivered 2026-10-30 (`FLUX_GITHUB_DELIVERY=poll`, G-1c "As implemented"). |
 | G-1b one-click App setup through the manifest flow | AC-1 | Deferred to a later version, [#755](https://github.com/ColdPhase/flux/issues/755). |
 | G-1d suggested links found in PR titles, branches and bodies | AC-2 | Deferred to a later version, [#755](https://github.com/ColdPhase/flux/issues/755). |
-| #153 current-recipient bridge and causal echo suppression | AC-3, AC-4 | Delivered 2026-10-30 (section above); echo suppression and the inbox that read the rows went with #973. |
+| #153 current-recipient bridge and causal echo suppression | AC-3, AC-4 | Delivered 2026-10-30, then removed: echo suppression and the inbox that read the rows went with #973, the outbox itself with #1032 (section above). |
 | Eligible once-only external review | AC-5 | Deferred, [#755](https://github.com/ColdPhase/flux/issues/755) (proposed direction B2 above). |
 | Portable source history import | AC-3 | Deferred to a later version, [#755](https://github.com/ColdPhase/flux/issues/755). |
 
