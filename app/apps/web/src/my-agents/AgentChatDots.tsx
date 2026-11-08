@@ -15,21 +15,29 @@ export function AgentChatDotsProvider({ identity, children }: { identity: string
   const { pathname } = useLocation();
   const open = pathname.match(/^\/agents\/([^/]+)/)?.[1] ?? null;
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const last = useRef(0);
   const refresh = useCallback(() => {
+    last.current = Date.now();
     void listAgentChats().then((chats) => setUnread({ identity, agents: new Set(chats.filter((chat) => chat.unread > 0).map((chat) => chat.agentId)) }), () => undefined);
   }, [identity]);
-  // The worker writes a report shortly after the run ends, and an open chat reads itself: look again after a short pause.
+  // The worker writes a report shortly after the run ends, and an open chat reads itself: look again after a short pause. A running agent
+  // records an event for each step (the stream carries identifiers only, so a report cannot be told from a step), so looks are at most one
+  // every ten seconds: one is always pending, never one per event.
   const soon = useCallback(() => {
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(refresh, 1200);
+    if (timer.current) return;
+    const wait = Math.max(1200, last.current + 10_000 - Date.now());
+    timer.current = setTimeout(() => { timer.current = null; refresh(); }, wait);
   }, [refresh]);
   useEffect(() => { refresh(); }, [refresh, pathname]);
   useEffect(() => {
+    // A hidden tab asks nothing; it looks again when it is shown.
+    const visible = () => { if (document.visibilityState === 'visible') refresh(); };
     window.addEventListener('focus', refresh);
-    const interval = setInterval(refresh, 120_000);
-    return () => { window.removeEventListener('focus', refresh); clearInterval(interval); if (timer.current) clearTimeout(timer.current); };
+    document.addEventListener('visibilitychange', visible);
+    const interval = setInterval(visible, 120_000);
+    return () => { window.removeEventListener('focus', refresh); document.removeEventListener('visibilitychange', visible); clearInterval(interval); if (timer.current) { clearTimeout(timer.current); timer.current = null; } };
   }, [refresh]);
-  useStreamEvents(identity, (event) => { if (event.kind === ASSISTANT_RUN_CHANGED_EVENT) soon(); }, refresh);
+  useStreamEvents(identity, (event) => { if (event.kind === ASSISTANT_RUN_CHANGED_EVENT && document.visibilityState === 'visible') soon(); }, refresh);
   const agents = useMemo(() => {
     const known = unread?.identity === identity ? unread.agents : new Set<string>();
     return open && known.has(open) ? new Set([...known].filter((id) => id !== open)) : known;

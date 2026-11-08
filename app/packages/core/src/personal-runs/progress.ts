@@ -21,10 +21,10 @@ export async function announce(ports: PersonalRunPorts, run: RunRecord): Promise
 const IN_FLIGHT = new Set(['queued', 'reading', 'dispatching']);
 
 /** Updates a run and, when its status or stop request changed, tells its owner. */
-export async function updateAndAnnounce(ports: PersonalRunPorts, id: string, changes: RunChanges): Promise<RunRecord> {
+export async function updateAndAnnounce(ports: PersonalRunPorts, id: string, changes: RunChanges, options: { report?: boolean } = {}): Promise<RunRecord> {
   const updated = await ports.runs.updateRun(id, changes);
   if (changes.status !== undefined || changes.stopRequestedAt !== undefined) await announce(ports, updated);
   // The end of a run on a task is reported to its agent's private chat (#919); the run's own end is already in this transaction.
-  if (changes.status !== undefined) await reportTaskRun(ports, updated);
+  if (changes.status !== undefined && options.report !== false) await reportTaskRun(ports, updated);
   return updated;
 }

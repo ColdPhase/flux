@@ -198,6 +198,12 @@ class AgentTakesTask(unittest.TestCase):
         row.click()
         line = kai.locator("[data-chat-agent][data-run-id]").filter(has_text=f"Done: #{self.ids['number']} Calibrate the overflow sensor")
         expect(line).to_be_visible()
+        # The agent's own words and the task chip are above the muted change line (mockup AgentReports).
+        expect(line).to_contain_text("wiring is the problem")
+        expect(line.get_by_role("link", name=re.compile(rf"^#{self.ids['number']} Calibrate the overflow sensor"))).to_be_visible()
+        # The run changed nothing but its own reply in the task's thread, which is no part of an Undo: no count and no Undo.
+        expect(line.locator(".agc__line")).not_to_contain_text("change")
+        expect(line.get_by_role("button", name="Undo")).to_have_count(0)
         shot(kai, "919-agent-report-line-1440")
         # Opening the chat read it: no dot in Messages, none in the sidebar.
         kai.goto("/dm")

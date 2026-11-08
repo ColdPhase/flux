@@ -48,6 +48,7 @@ import { announce, updateAndAnnounce } from './progress.js';
 import { givenAddresses, GIVEN_AT_START_MAX } from './web-addresses.js';
 import { endedWithWebSources } from './web-sources.js';
 import { unreadAgentChats } from './agent-chat.js';
+import { takeAsk } from '../agent-tasks/ask.js';
 import { isPrivateAnswer, placeOf } from './ports.js';
 import {
   budgetedReservationMicros, centsToMicros, connectionRef, memoryText, normalizeAgentChange, normalizeEnable, normalizeInvoke, retryRequest, runReservationMicros,
@@ -294,12 +295,16 @@ const RUNTIME_OFF: PersonalRuntimeStanding = { state: 'off', payer: null, accoun
 /** The plain error of a model the account cannot use (F-027 AST-11): `ASSISTANT_MODEL_UNAVAILABLE`, nothing changes. */
 const modelUnavailable = (message: string) => new ConflictError(message, 'ASSISTANT_MODEL_UNAVAILABLE');
 
-/** Stop was pressed by `by` (the owner or the space admin, decided by the caller): before dispatch the run ends at once and for free. */
-export async function stopRunBy(ports: PersonalRunPorts, runId: string, by: string): Promise<RunRecord | null> {
+/**
+ * Stop was pressed by `by` (the owner or the space admin, decided by the caller): before dispatch the run ends at once and for free. `system`: the
+ * system stopped it (the task was taken away, or the agent gave up) and `by` is only the owner it is recorded for, so the agent's chat has no
+ * "Stopped by you" for it (#919).
+ */
+export async function stopRunBy(ports: PersonalRunPorts, runId: string, by: string, options: { system?: boolean } = {}): Promise<RunRecord | null> {
   const run = await ports.runs.findRun(runId, { lock: true });
   if (!run) return null;
   if (run.status === 'queued' || run.status === 'reading') {
-    return updateAndAnnounce(ports, run.id, { status: 'stopped', stopRequestedAt: new Date(), stopRequestedBy: by, costState: 'released', chargedMicros: 0, completedAt: new Date() });
+    return updateAndAnnounce(ports, run.id, { status: 'stopped', stopRequestedAt: new Date(), stopRequestedBy: by, costState: 'released', chargedMicros: 0, completedAt: new Date() }, { report: !options.system });
   }
   if (run.status === 'dispatching' && !run.stopRequestedAt) return updateAndAnnounce(ports, run.id, { stopRequestedAt: new Date(), stopRequestedBy: by });
   return run;
@@ -863,7 +868,21 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       if (!isId(agentId)) throw agentNotFound();
       return uow.run(async (ports) => {
         if (!(await ports.runs.enablement(owner, { agentId: agentId.toLowerCase() }))) throw agentNotFound();
-        return ports.runs.agentChatMessages(agentId.toLowerCase(), 100);
+        const lines = await ports.runs.agentChatMessages(agentId.toLowerCase(), 100);
+        // A report shows the agent's words and the task it was about, to a person who can still read that task's space (#919).
+        const reader: Principal = { kind: 'human', id: owner };
+        const readable = new Map<string, boolean>();
+        const enriched: AgentChatMessage[] = [];
+        for (const line of lines) {
+          const run = await ports.runs.findRun(line.runId);
+          const label = run?.kind === 'task' && run.workId ? await ports.runs.workLabel(run.workId) : null;
+          if (!run || !label) { enriched.push(line); continue; }
+          if (!readable.has(label.projectId)) readable.set(label.projectId, await ports.access.canUseProject(reader, 'read', label.projectId));
+          if (!readable.get(label.projectId)) { enriched.push(line); continue; }
+          const words = run.status === 'completed' || run.status === 'truncated' ? takeAsk(run.answerBody ?? '').body.trim().slice(0, 2000) : '';
+          enriched.push({ ...line, words: words || null, task: { id: run.workId!, number: label.number, title: label.title, projectId: label.projectId, projectName: label.projectName } });
+        }
+        return enriched;
       });
     },
 

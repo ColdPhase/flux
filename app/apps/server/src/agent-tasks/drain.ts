@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { AGENT_TASK_EVENT_ATTEMPTS, AGENT_TASK_GIVE_UP_ATTEMPTS, agentTaskRows, assistantChangeRows, assistantRemovalRows, personalRunRows, personalRunWebReadRows, workRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
-import { agentLabel, answerLines, askableLines, createPersonalRunUseCases, DomainError, MAX_EXCHANGE_TURNS, noPersonalConnections, resolveAsked, stopRunBy, TAKEN_WORDS, takeAsk, taskRunClientId, webSourcesLine,
+import { agentLabel, answerLines, askableLines, createPersonalRunUseCases, DomainError, MAX_EXCHANGE_TURNS, noPersonalConnections, reportTaskRun, resolveAsked, stopRunBy, TAKEN_WORDS, takeAsk, taskRunClientId, webSourcesLine,
   taskRunPrompt, uuidFrom, type AgentQuestion, type Askable, type Principal, type TaskStart, type UndoRecord, type WorkRecord } from '@flux/core';
 import { personalRunPorts, type PersonalRunComposition, type PersonalRunQueueFactory } from '../personal-runs/adapters.js';
 import { taskDiscussionUseCases } from '../work/task-discussions.js';
@@ -150,9 +150,10 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     const holder = agentId ? await rows.agent(agentId) : null;
     if (!holder?.ownerUserId) return;
     const ports = personalRunPorts(tx, queue);
-    const stopRuns = async (ofAgent: string, by: string, before?: Date) => {
+    // A person's Stop names them; the system giving up is recorded for the owner and is not reported to the chat as a stop by them.
+    const stopRuns = async (ofAgent: string, by: string, before?: Date, system = false) => {
       for (const going of await rows.runsOfWork(work.id, 8))
-        if (going.agentId === ofAgent && IN_FLIGHT.includes(going.status) && (!before || going.createdAt <= before)) await stopRunBy(ports, going.id, by);
+        if (going.agentId === ofAgent && IN_FLIGHT.includes(going.status) && (!before || going.createdAt <= before)) await stopRunBy(ports, going.id, by, { system });
     };
     if (run?.kind === 'task_answer') {
       // The answering agent's run ended and its answer could not be handled: the agent that asked still holds the task and waits for it,
@@ -164,12 +165,12 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       if (current.owner?.kind !== 'agent' || current.owner.id !== asker.id) return;
       await say(tx, current, asker.id, 'I couldn\'t get an answer. It\'s back with you.', `gave-up:${event.id}`);
       await giveBack(tx, current, asker.ownerUserId, asker.ownerUserId);
-      await stopRuns(asker.id, asker.ownerUserId);
+      await stopRuns(asker.id, asker.ownerUserId, undefined, true);
       return;
     }
     if (event.kind === 'released') {
       // Only the runs that were going when the task was taken away: a run started since is a later assignment's.
-      await stopRuns(holder.id, event.byKind === 'human' && event.byId ? event.byId : holder.ownerUserId, event.createdAt);
+      await stopRuns(holder.id, event.byKind === 'human' && event.byId ? event.byId : holder.ownerUserId, event.createdAt, !(event.byKind === 'human' && event.byId));
       return;
     }
     if (FINISHED.has(work.status)) return;
@@ -179,7 +180,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       await say(tx, current, holder.id, 'I couldn\'t take care of this. It\'s back with you.', `gave-up:${event.id}`);
       await giveBack(tx, current, holder.ownerUserId, holder.ownerUserId);
       // A rule's hand-back writes no `released` event, so the run is stopped here.
-      await stopRuns(holder.id, holder.ownerUserId);
+      await stopRuns(holder.id, holder.ownerUserId, undefined, true);
     } else if (event.kind === 'assigned' && event.ownerUserId && current.owner?.kind === 'human' && current.owner.id === holder.ownerUserId) {
       // The person chose this agent and the setting could not give it: the task is as it was, and they are told.
       await say(tx, current, holder.id, 'I couldn\'t take this. It\'s still with you.', `gave-up:${event.id}`);
@@ -289,7 +290,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     // Only the runs that were going when the task was taken away: a retried release must not stop a later assignment's run.
     for (const run of await agentTaskRows(tx).runsOfWork(event.workId, 8))
       if (run.agentId === event.ownerAgentId && IN_FLIGHT.includes(run.status) && run.createdAt <= event.createdAt)
-        await stopRunBy(ports, run.id, event.byKind === 'human' && event.byId ? event.byId : run.ownerUserId);
+        await stopRunBy(ports, run.id, event.byKind === 'human' && event.byId ? event.byId : run.ownerUserId, { system: !(event.byKind === 'human' && event.byId) });
   }
 
   async function finished(tx: Transaction, event: Event) {
@@ -319,8 +320,14 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       const current = (await workRows(tx).findWork(work.id, { lock: true }))!;
       // With "Do it and tell me" it marks the task Done; with "Ask me first" or "Only read" it hands it back to check (C-1), which
       // reaches its owner's Inbox as one item for the run (AG-7).
-      if (mayDo === 'act') await attempt('done', () => workUseCases(tx as unknown as Database).updateWork(agent(run.agentId), work.id, { status: 'done' }, current.version));
-      else await giveBack(tx, work, run.ownerUserId, run.ownerUserId, run.agentId);
+      // The agent's chat hears what became of the task, once the run's outcome is known (#919): Done, or back with the owner to check.
+      if (mayDo === 'act') {
+        await attempt('done', () => workUseCases(tx as unknown as Database).updateWork(agent(run.agentId), work.id, { status: 'done' }, current.version));
+        await reportTaskRun(personalRunPorts(tx, queue), run, 'done');
+      } else {
+        await giveBack(tx, work, run.ownerUserId, run.ownerUserId, run.agentId);
+        await reportTaskRun(personalRunPorts(tx, queue), run, 'back');
+      }
       return;
     }
     if (ended === 'stopped') {

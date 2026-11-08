@@ -201,8 +201,8 @@ export interface PersonalRunRepository {
   inFlightCount(ownerUserId: string): Promise<number>;
   /** How many changes this run made or left waiting: what a second try would repeat. */
   changeCount(runId: string): Promise<number>;
-  /** A task's number in its space and its title, for the line that reports a run on it (#919); null when it is gone. */
-  workLabel(workId: string): Promise<{ number: number; title: string } | null>;
+  /** A task's number and title and the space it is in, for the line that reports a run on it (#919); null when it is gone. */
+  workLabel(workId: string): Promise<{ number: number; title: string; projectId: string; projectName: string } | null>;
   /** Another run of this owner holds the lane (reading or dispatching), or this background run would pass a queued owner request: it waits. */
   laneBusy(ownerUserId: string, exceptRunId: string): Promise<boolean>;
   /** The runtime has room for one more agent (#860). Held until the transaction ends, so two claims never take the last place. */

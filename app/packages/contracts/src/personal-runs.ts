@@ -53,10 +53,17 @@ export const AGENT_CHATS_PATH = '/api/v1/agent-chats';
 export const agentChatMessagesPath = (agentId: string) => `${AGENT_CHATS_PATH}/${agentId}/messages`;
 export const agentChatReadPath = (agentId: string) => `${AGENT_CHATS_PATH}/${agentId}/read`;
 /**
- * One line an agent said on its own in its chat, about the run it reports (#919). `changes` is how many of that run's changes stand now: the line offers
- * Undo while it is above zero, and it drops to zero once they are undone.
+ * One line an agent said on its own in its chat, about the run it reports (#919): the change line "Done: #4 …", with the agent's own words
+ * of that run and the task it was about above it. `changes` is how many of the run's changes stand now, as its Undo would take them back
+ * (not the agent's own line in the task's thread): the line offers Undo while it is above zero. `undone` is how many were taken back.
+ * `words` and `task` are null when the line has none, or when the person can no longer read the task's space.
  */
-export interface AgentChatMessage { id: string; agentId: string; runId: string; body: string; createdAt: string; changes: number }
+export interface AgentChatMessage {
+  id: string; agentId: string; runId: string; body: string; createdAt: string;
+  changes: number; undone: number;
+  words: string | null;
+  task: { id: string; number: number; title: string; projectId: string; projectName: string } | null;
+}
 /** `GET /api/v1/agent-chats`: for each of the caller's agents, what they have not read in its chat (answers and reports) and when it last said something. */
 export interface AgentChatSummary { agentId: string; unread: number; lastAt: string | null }
 
