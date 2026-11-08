@@ -57,5 +57,5 @@ export const setSpaceAi = (projectId: string, state: SpaceAiState, idempotencyKe
 /** Adds Map, Wiki or Agents to a project (#351); adding one it has changes nothing. */
 export const addProjectView = (projectId: string, view: ProjectViewId) =>
   request<Project>(projectViewsPath(projectId), { method: 'POST', body: { view }, headers: { [IDEMPOTENCY_KEY_HEADER]: crypto.randomUUID() } });
-export const getProject = (id: string, signal?: AbortSignal) => request<Project>(projectPath(id), { signal });
+export const getProject = (id: string, signal?: AbortSignal) => request<Project>(projectPath(id), { signal, share: true });
 export const listWorkspaceMembers = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceMember[]>(workspaceMembersPath(workspaceId), { signal });

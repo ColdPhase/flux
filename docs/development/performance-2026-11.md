@@ -20,7 +20,7 @@ The targets are the ones Hubert agreed on 2026-11-03 (#862). "Before" is `main` 
 | Idle: at most 100 database statements a minute | 122 | 122 | not met, see [Idle statements](#idle-statements) |
 | An open tab: at most 4 requests a minute | not measured here | not changed | not met, the client's polling is the data-layer batch |
 | An open Map or Wiki editor, idle | a read of the room every 250 ms (240 a minute) | a read every 2 s after 5 s of quiet (30 a minute); a cursor that did not move sends nothing | changed, see [Editors](#editors) |
-| A navigation: at most 8 requests, none repeated | 3, 4, 21, 11, 4, 8, 16, 21, 4 | 2, 3, 18, 10, 4, 8, 14, 18, 4 | not met for four moves, see [Navigation](#navigation) |
+| A navigation: at most 8 requests, none repeated | 3, 4, 21, 11, 4, 8, 16, 21, 4 | 3, 4, 19, 10, 4, 8, 15, 18, 4 | not met for four moves, see [Navigation](#navigation) |
 | p95 at most 50 ms on 2 vCPU | 69 ms for all requests; 19 of 40 requests over 50 ms | 59 ms; 14 of 40 over 50 ms | not met, see [Server time](#server-time) |
 | First visit: at most 250 KB before content | 326 KB brotli, 41 files | 327 KB brotli, 41 files | not met, see [First screen](#first-screen) |
 | Restart to healthy: at most 5 s | API alone 5.8 s median | 5.1 s median | at the target within the noise of the host |
@@ -42,8 +42,11 @@ navigation and the CPU of an idle stack are the evidence; times are context.
   otherwise, so a person who lost access still hears of it within 2 s. A presence heartbeat that changes nothing is no
   longer a write that wakes the other editors (`setPresence` answers `new`, `changed` or `renewed`; only the first two
   are announced), and the client sends presence when it changed or every 2 s.
-- **Requests.** Identical plain GETs in flight at once share one request (`api/client.ts`); each caller parses its own
-  copy and aborting stops the request only when every caller has aborted. The shell reads the person and the workspaces
+- **Requests.** The project shell's reads (the project, its people and its docs) that are in flight together are one
+  request (`share: true` in `api/client.ts`); each caller parses its own copy, aborting stops the request only when every
+  caller has aborted, and a write ends the sharing so no one is handed an answer from before it. Reads that do not ask
+  are never shared: views that hold or reorder their own reads (the Inbox, the focus pause, the Tasks refresh) need each
+  answer to be its own, and sharing every read broke four of their tests. The shell reads the person and the workspaces
   together, then the projects, conversations and agents together: two round trips, not four in a row. The video-call
   code (`MediaClient`, 130 KB brotli) is not downloaded ahead of time by the service worker.
 - **Sessions.** Better Auth no longer signs a token for a `set-auth-jwt` header on every session read; nothing in Flux
@@ -105,23 +108,36 @@ until the page has been quiet for 0.9 s:
 
 | Move | Before | After |
 | --- | ---: | ---: |
-| Home → Inbox | 3 (`needs-you` twice) | 2 |
-| Inbox → Home | 4 (`needs-you` twice) | 3 |
-| Home → a space | 21 (the project twice, the people four times) | 18 (the people twice) |
+| Home → Inbox | 3 (`needs-you` twice) | 3 (same) |
+| Inbox → Home | 4 (`needs-you` twice) | 4 (same) |
+| Home → a space | 21 (the project twice, the people four times) | 19 (the people three times) |
 | Conversation → Tasks | 11 | 10 |
 | Tasks → Map | 4 | 4 |
 | Map → Wiki | 8 (the project and the docs twice each) | 8 (same) |
-| Wiki → Conversation | 16 | 14 |
+| Wiki → Conversation | 16 (the people three times) | 15 (the people twice) |
 | Conversation → another space | 21 | 18 |
 | Another space → My tasks | 4 | 4 |
 
-**Inferred.** Sharing requests that are in flight together removed the repeats that overlap. The rest are distinct
-reads that a space opens whether or not its view needs them: entering a space asks for `assistant-runs`, `needs-you`,
-`personal-assistant`, the project, `agent-questions`, `conversation-roots`, `docs`, `materials`, `object-notices`,
-`people` (twice, one after the other), `task-notices`, `work-associations`, `work-summary`, the members, the sketches and
-`return`. Getting to 8 means loading `docs`, `sketches`, `members`, `personal-assistant` and `return` when their view
-opens (or one "space shell" read), and reading the project once from its layout route instead of from each view's loader:
-the client's data layer. The test fails any move that costs more than it does today, so it cannot get worse meanwhile.
+**Inferred.** Sharing the project shell's reads that are in flight together removed the repeats that overlap; the ones left
+are asked one after the other (the people, the project and the docs again from a view's own loader, `needs-you` from the
+sidebar and then the Inbox). Sharing every read removed a little more (18 on entering a space, 14 from the Wiki back to the Conversation) but broke four tests of views that hold or
+reorder their own reads, so only the project, its people and its docs share. The rest are distinct
+reads that a space opens whether or not its view needs them. What each move asked for (`test_navigation_requests` prints
+it for every move over 8):
+
+- **Entering a space (19):** `assistant-runs`, `needs-you`, `personal-assistant`, the project, `agent-questions`,
+  `conversation-roots`, `docs`, `materials`, `object-notices`, the people (three times, one after the other),
+  `task-notices`, `work-associations`, `work-summary`, the members, the sketches and `return`.
+- **Conversation → Tasks (10):** `needs-you`, the project, the people, `work-relations`, `work-view` and `return`: the
+  shell asks again for what it already has, and the view asks for its own.
+- **Wiki → Conversation (15):** everything a conversation reads (`assistant-runs`, `conversation-roots`, `materials`,
+  `object-notices`, `task-notices`, `work-associations`, `agent-questions`, `personal-assistant`), plus `needs-you`,
+  `return`, the members, the project and the people twice.
+
+Getting to 8 means loading `docs`, `sketches`, the members, `personal-assistant` and `return` when their view opens (or one
+"space shell" read), asking `needs-you` and `return` once per move instead of from each place that shows them, and reading
+the project and its people once from the layout route instead of from each view's loader: the client's data layer. The
+test fails any move that costs more than it does today, so it cannot get worse meanwhile.
 
 ## First screen
 

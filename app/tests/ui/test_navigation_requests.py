@@ -28,13 +28,13 @@ EMAIL = f"nav.requests+{STAMP}@example.test"
 # a poll that lands in the quiet window) and how many addresses it sends twice; the ones above TARGET wait for the client's data layer.
 TARGET = 8
 BUDGET = {
-    "Home → Inbox": (3, 0),
-    "Inbox → Home": (4, 0),
-    "Home → a space (Conversation)": (19, 1),
+    "Home → Inbox": (4, 1),
+    "Inbox → Home": (5, 1),
+    "Home → a space (Conversation)": (20, 1),
     "Conversation → Tasks": (11, 0),
     "Tasks → Map": (5, 0),
     "Map → Wiki": (9, 2),
-    "Wiki → Conversation": (15, 0),
+    "Wiki → Conversation": (16, 1),
     "Conversation → another space": (19, 1),
     "another space → My tasks": (5, 0),
 }

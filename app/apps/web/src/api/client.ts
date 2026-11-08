@@ -28,6 +28,11 @@ export interface ApiRequestInit {
   keepalive?: boolean;
   /** The browser cache mode, e.g. `no-store` for a file or a reachability check that must not be served from cache. */
   cache?: RequestCache;
+  /**
+   * A plain read that other callers of the same address may join while it is in flight (see `sharedRead`). Only for reads whose callers
+   * all want the latest answer and none relies on its own request being ordered against another's (#850): the project shell's.
+   */
+  share?: boolean;
 }
 
 // A read starts in a task of its own, after the work that asked for it (#716). A view opening asks for half a dozen reads from
@@ -123,10 +128,11 @@ async function read(path: string, init: ApiRequestInit): Promise<Answer> {
 }
 
 /**
- * Plain reads of the same address that are in flight together share one request (#850, #862: a navigation asked for the same project
- * and people up to four times, from its route loaders and its components). Only what is in flight is shared, never an answer that has
- * already arrived, so nothing is served stale; each caller parses its own copy of the text, and aborting stops the request only
- * when every caller that wanted it has aborted.
+ * Reads that ask to share (`share: true`) and are of the same address in flight together are one request (#850, #862: a navigation asked
+ * for the same project and people up to four times, from its route loaders and its components). Only what is in flight is shared, never an
+ * answer that has already arrived, and a write ends the sharing, so nothing is served stale; each caller parses its own copy of the text,
+ * and aborting stops the request only when every caller that wanted it has aborted. Reads that do not ask are never shared: several
+ * views hold or reorder their own reads and need each answer to be its own.
  */
 function startSharedRead(path: string): SharedRead {
   const abort = new AbortController();
@@ -159,7 +165,7 @@ function sharedRead(path: string, signal: AbortSignal | undefined): Promise<Answ
 
 /** A JSON request: the parsed body of a 2xx answer, or an `ApiError`. */
 export async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
-  const plainRead = (!init.method || init.method === 'GET') && !init.headers && !init.keepalive && init.cache === undefined;
+  const plainRead = init.share === true && (!init.method || init.method === 'GET') && !init.headers && !init.keepalive && init.cache === undefined;
   const response = plainRead ? await sharedRead(path, init.signal) : await read(path, init);
   let data: unknown = null;
   if (response.text) {

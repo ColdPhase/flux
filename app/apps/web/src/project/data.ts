@@ -18,7 +18,7 @@ export interface ProjectShell {
   docs: DocSummary[] | null;
 }
 
-export const listProjectPeople = (projectId: string, signal?: AbortSignal) => request<ProjectPerson[]>(projectPeoplePath(projectId), { signal });
+export const listProjectPeople = (projectId: string, signal?: AbortSignal) => request<ProjectPerson[]>(projectPeoplePath(projectId), { signal, share: true });
 /** A project's sketches, without empty ones (#508): the Map index, Details and the pickers list only sketches with something on them. */
 export const listProjectSketches = (workspaceId: string, projectId: string, limit: number, offset: number, signal?: AbortSignal) =>
   request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=${limit}&offset=${offset}&projectId=${encodeURIComponent(projectId)}&hideEmpty=true`, { signal });
