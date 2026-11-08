@@ -71,7 +71,7 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
   signed in to it (a new device, cleared cookies) waiting for up to 15 minutes at a time. The reset mail is the way back, the browser
   that finishes the reset is remembered, and a reset clears the account's wait. MFA stays the identity provider's job (see 2.2.x).
   **A copied cookie does not outlive a recovery** ([#1031](https://github.com/ColdPhase/flux/issues/1031)): the cookie names an account by a keyed
-  hash of its address and the account's *device generation* (`auth_users.device_generation`, migration 0028). A password reset, a password
+  hash of its address and the account's *device generation* (`auth_users.device_generation`, migration 0029). A password reset, a password
   change that signs out the other devices and "Sign out all other devices" raise it, so a copy taken before then names an older generation and
   counts in the account's wait like any stranger; the browser that did the reset or the sign-out is given a cookie with the new generation in
   the same answer. A plain password change that keeps the other devices leaves the cookie as it was.
