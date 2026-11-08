@@ -544,12 +544,9 @@ class SharedComposerJourney(unittest.TestCase):
         project, _, _, _ = self.scene(page)
         sketch = self.api(page, "POST", f"/api/v1/workspaces/{self.workspace}/sketches", {"title": "Night measurement plan", "scope": "project", "projectId": project['id']}, 201)
         thought = self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Measure the negative camera result", "x": 0, "y": 0}, 201)["thought"]
-        page.goto(f"/projects/{project['id']}/map/{sketch['id']}")
-        page.locator(f".sk-node[data-id='{thought['id']}']").click()
-        page.get_by_role("button", name="Create task from selected thoughts").click()
-        with page.expect_response(lambda response: response.request.method == "POST" and response.url.endswith(f"/projects/{project['id']}/work")) as created:
-            submit_button(page).click()
-        task = created.value.json()
+        # #867: the Map has no Create task; the task has the thought as its source and opens in Details beside the map.
+        task = self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "Measure the negative camera result", "sources": [{"type": "thought", "id": thought["id"]}]}, 201)
+        page.goto(f"/projects/{project['id']}/map/{sketch['id']}?open=work:{task['id']}")
         details = page.locator("#details")
         box = details.get_by_label("First message about this task")
         expect(box).to_be_enabled()

@@ -195,21 +195,9 @@ class MapConnectJourney(unittest.TestCase):
         page.keyboard.press('Space')  # C is left out again
         expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(2)
         tools = page.get_by_role('toolbar', name='Map tools')
-        expect(tools.get_by_text('Create task', exact=True)).to_be_visible()
-        # #509 (from #345): Create task opens the Create window with the thoughts as its sources; the task exists only after
-        # the window's own Create task.
-        posted = []
-        page.on('request', lambda r: posted.append(r.url) if r.method == 'POST' and r.url.endswith(f'/projects/{self.project}/work') else None)
-        tools.get_by_role('button', name='Create task from selected thoughts').click()
-        expect(dialog(page)).to_be_visible()
-        expect(title_field(page)).to_have_value(f'Explore: {TEXT[A]}, {TEXT[B]}')
-        expect(linked_labels(page)).to_have_text([TEXT[A], TEXT[B]])
-        self.assertEqual(posted, [], 'nothing is created before the window\'s Create task')
-        shot(page, 'map-create-task-window-1440-light')
-        with page.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith(f'/projects/{self.project}/work')) as saved:
-            submit_button(page).click()
-        self.assert_task_sources(page, saved.value.json()['id'], {A, B}, {C})
-        expect(dialog(page)).to_have_count(0)
+        # #867: the Map has no Create task; a task is made in Tasks, in the composer or from a message. The selection stays.
+        expect(tools.get_by_text('Create task', exact=True)).to_have_count(0)
+        expect(tools.get_by_role('button', name='Create task from selected thoughts')).to_have_count(0)
         expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(2)
 
     def test_04_tablet_touch_selects_several_with_select_several(self):
@@ -220,11 +208,7 @@ class MapConnectJourney(unittest.TestCase):
         page.locator('.sk-node', has_text=A).tap()
         page.locator('.sk-node', has_text=B).tap()
         expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(2)
-        tools.get_by_role('button', name='Create task from selected thoughts').tap()
-        expect(linked_labels(page)).to_have_text([TEXT[A], TEXT[B]])
-        with page.expect_response(lambda r: r.request.method == 'POST' and r.url.endswith(f'/projects/{self.project}/work')) as saved:
-            submit_button(page).tap()
-        self.assert_task_sources(page, saved.value.json()['id'], {A, B}, {C})
+        expect(tools.get_by_role('button', name='Create task from selected thoughts')).to_have_count(0)  # #867
 
     def test_05_phone_views_and_adds_only(self):
         for scheme in ('light', 'dark'):
@@ -368,7 +352,7 @@ class MapConnectJourney(unittest.TestCase):
         sheet = page.get_by_role('dialog', name='Thought actions', exact=True)
         expect(sheet).to_have_attribute('aria-modal', 'true')
         expect(sheet.get_by_role('button', name='Add a connected thought', exact=True)).to_have_count(0)
-        for name in ('Edit thought', 'Create task from selected thoughts', 'Remove from map'):
+        for name in ('Edit thought', 'Remove from map'):
             row = sheet.get_by_role('button', name=name, exact=True)
             expect(row).to_be_visible()
             self.assertGreaterEqual(row.evaluate('el => parseFloat(getComputedStyle(el).minHeight)'), 44)
@@ -412,13 +396,7 @@ class MapConnectJourney(unittest.TestCase):
         page.locator('.sk-node', has_text=B).tap()
         actions.tap()
         shot(page, 'map-phone-thought-actions-390-light')
-        sheet.get_by_role('button', name='Create task from selected thoughts', exact=True).tap()
-        expect(title_field(page)).to_have_value(TEXT[B])
-        expect(linked_labels(page)).to_have_text([TEXT[B]])
-        with page.expect_response(lambda response: response.request.method == 'POST' and f'/projects/{self.project}/work' in response.url) as saved:
-            submit_button(page).tap()
-        self.assertEqual(saved.value.status, 201)
-        self.assert_task_sources(page, saved.value.json()['id'], {B}, {A, C})
+        expect(sheet.get_by_role('button', name='Create task from selected thoughts', exact=True)).to_have_count(0)  # #867
 
     def test_11_reading_tokens_keep_persisted_geometry_and_follow_text_size(self):
         for viewport, touch, body, meta in ((COMPUTER, False, 14, 12), (PHONE, True, 15, 12.5)):

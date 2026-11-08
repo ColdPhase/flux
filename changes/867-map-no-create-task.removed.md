@@ -1,0 +1,1 @@
+- The Map has no "Create task" in its toolbar, on its phone options sheet or in its outline: a task is made in Tasks, with `/task` in the composer, or from a message ([#867](https://github.com/ColdPhase/flux/issues/867)).

@@ -547,13 +547,10 @@ class MapTaskCountJourney(unittest.TestCase):
         expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text(f"{task_number(created)} · Open")
         expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text("No owner yet · added by Nia Okafor")
         page.keyboard.press("Escape")
-        # Create task on the map: the new task is counted at once.
+        # A task made with the thought as its source is counted at once (#867: the Map has no Create task of its own).
         self.node(page, "later").click()
-        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Create task from selected thoughts").click()
-        expect(linked_labels(page)).to_have_text([LATER])
-        submit_button(page).click()
-        expect(dialog(page)).to_have_count(0)
-        expect(page.locator(".details__title")).to_have_text(LATER)
+        expect(page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Create task from selected thoughts")).to_have_count(0)
+        self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": LATER, "sources": [{"type": "thought", "id": self.thoughts["later"]}]}, status=201)
         expect(self.badge(page, "later")).to_have_accessible_name(tasks_label(1, LATER))
         self.assertEqual(self.expected_counts(page), {"dark": 4, "camera": 1, "quiet": 1, "drafted": 1, "later": 1})
         self.assertEqual(self.stored(page)["thoughts"], self.sketch_baseline["thoughts"], "creating tasks never changes the thoughts")

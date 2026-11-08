@@ -244,13 +244,11 @@ class TaskEntries(unittest.TestCase):
         thought = self.api(who, "POST", f"/api/v1/sketches/{self.ids['sketch']}/thoughts", {"text": text, "x": 40 if who == "ada" else 360, "y": 40}, status=201)["thought"]["id"]
         self.ids[f"thought-{who}"] = thought
         self.ids[f"text-{who}"] = text
+        # #867: the Map has no Create task; a task that has the thought as its source is the same task as any other entry's.
         page = self.page(who)
         page.goto(f"/projects/{self.ids['project']}/map/{self.ids['sketch']}")
-        page.locator(f".sk-node[data-id='{thought}']").click()
-        page.get_by_role("button", name="Create task from selected thoughts", exact=True).click()
-        expect(title_field(page)).to_have_value(text)
-        expect(linked_labels(page)).to_have_text([text])
-        self.submit_with_recovery(page, text)
+        expect(page.get_by_role("button", name="Create task from selected thoughts", exact=True)).to_have_count(0)
+        self.api(who, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": text, "sources": [{"type": "thought", "id": thought}], "clientCommandId": str(uuid.uuid4())}, status=201)
         return text
 
     def run_entry(self, entry: str, who: str) -> None:
@@ -294,10 +292,10 @@ class TaskEntries(unittest.TestCase):
     def test_04_tasks_column_task_by_jonas(self) -> None:
         self.run_entry("tasks", "jonas")
 
-    def test_05_map_thought_task_by_ada(self) -> None:
+    def test_05_task_from_a_map_thought_by_ada(self) -> None:
         self.run_entry("map", "ada")
 
-    def test_06_map_thought_task_by_jonas(self) -> None:
+    def test_06_task_from_a_map_thought_by_jonas(self) -> None:
         self.run_entry("map", "jonas")
 
     def test_07_a_source_outside_the_project_is_refused_for_both_authors(self) -> None:
