@@ -22,7 +22,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, shot, start_forwarder
 
 MOCK = os.environ.get("FLUX_ANTHROPIC_MOCK_URL", "http://127.0.0.1:8090")
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
@@ -167,6 +167,7 @@ class AgentTakesTask(unittest.TestCase):
         ada = self.page("ada")
         task = self.task(ada, "Calibrate the overflow sensor", KAI["id"])
         type(self).ids["task"] = task["id"]
+        type(self).ids["number"] = str(task["number"])
         state = self.agent_line(self.page("kai"), task["id"], "done")
         self.assertEqual(state["agent"]["name"], "Planner")
         # The task is the agent's, Doing became Done, and Kai is told in the task: the agent's words and one plain line.
@@ -180,6 +181,28 @@ class AgentTakesTask(unittest.TestCase):
         ada_view = self.open_task("ada", task["id"])
         expect(ada_view.get_by_role("complementary", name="Details").locator("[data-agent-line='done']")).to_contain_text("Marked done")
         self.assertEqual(self.api(ada, "GET", f"/api/v1/work/{task['id']}", status=200)["status"], "done")
+
+    def test_04a_the_report_waits_in_the_agents_chat_with_an_unread_dot_and_never_in_the_inbox(self) -> None:
+        """#919: when the run ends, one line in the agent's private chat; the dot shows in the sidebar and in Messages until Kai opens it."""
+        kai = self.page("kai")
+        agent = self.ids["agent"]
+        kai.goto("/")
+        expect(kai.locator(f".side__agent[data-agent='{agent}'] .side__dot")).to_have_count(1)
+        kai.goto("/dm")
+        row = kai.locator(f".dm-index [data-agent='{agent}']")
+        expect(row.locator(".dm-index__dot")).to_have_count(1)
+        shot(kai, "919-agent-report-unread-messages-1440")
+        # Reports never go to the Inbox.
+        inbox = self.api(kai, "GET", "/api/v1/inbox", status=200)
+        self.assertEqual([item for item in inbox["items"] if "Done:" in f"{item['title']} {item['body']}"], [])
+        row.click()
+        line = kai.locator("[data-chat-agent][data-run-id]").filter(has_text=f"Done: #{self.ids['number']} Calibrate the overflow sensor")
+        expect(line).to_be_visible()
+        shot(kai, "919-agent-report-line-1440")
+        # Opening the chat read it: no dot in Messages, none in the sidebar.
+        kai.goto("/dm")
+        expect(kai.locator(f".dm-index [data-agent='{agent}'] .dm-index__dot")).to_have_count(0)
+        expect(kai.locator(f".side__agent[data-agent='{agent}'] .side__dot")).to_have_count(0)
 
     def test_05_undo_takes_it_back_to_kai_and_reopens_it(self) -> None:
         page = self.open_task("kai", self.ids["task"])
@@ -254,6 +277,9 @@ class AgentTakesTask(unittest.TestCase):
         self.assertEqual(self.api(kai, "GET", f"/api/v1/work/{task['id']}", status=200)["owner"]["kind"], "human")
         view = self.open_task("kai", task["id"])
         expect(view.get_by_role("complementary", name="Details").locator(".wd-act__item--message").filter(has_text="Stopped by Ada Kowalska.")).to_be_visible()
+        # #919: the stop is reported to the agent's chat too, by name.
+        lines = self.api(kai, "GET", f"/api/v1/agent-chats/{self.ids['agent']}/messages", status=200)["items"]
+        self.assertIn(f"Stopped by Ada Kowalska: #{task['number']} Weigh the full barrel on Thursday", [line["body"] for line in lines])
 
     # ---------------------------------------------------------------- failed: Try again, or Take it back
 

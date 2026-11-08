@@ -242,7 +242,11 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   agent. Each agent run is one item, for example "Planner · 3 things wait for you · Approve all
   · Open". The same requests also show in the task discussion.
 - **Reports** such as "Done: #4 … · 3 changes · Undo" go to the agent's private conversation and
-  onto its message in the task discussion. They never go to the Inbox.
+  onto its message in the task discussion. They never go to the Inbox. The private conversation
+  gets one line when a run on a task ends: "Done: #4 …", or "Stopped by Maja: #4 …" (a limit or AI
+  turned off is the task's own state line, not a report). The count and Undo are what still stands of
+  the run's changes when the line is read. The agent's row in Messages and in the sidebar shows an
+  unread dot until its owner opens the chat (#919).
 - **Notifications.** "Only what needs me" includes an agent waiting for you. During Quiet hours
   there is no push or email, and the Inbox keeps everything.
 

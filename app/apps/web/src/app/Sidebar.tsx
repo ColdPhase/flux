@@ -9,6 +9,7 @@ import { UserMenu } from './UserMenu';
 import { useShellActions } from './shellContext';
 import { WorkingAgent } from './WorkingAgent';
 import { NewMenu } from './NewMenu';
+import { useAgentUnread } from '../my-agents/AgentChatDots';
 import { lockedLine, useLockedWorkspaces } from '../encryption/state';
 
 export interface SidebarProps {
@@ -138,11 +139,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
         </nav>
         <nav className="side__rail-dms" aria-label="Private conversations">
           <Link to="/dm" className="side__ib" aria-label="Messages" aria-current={location.pathname === '/dm' ? 'page' : undefined}><Icon name="chat" size={18} /></Link>
-          {agents.map((agent) => (
-            <NavLink key={agent.id} to={`/agents/${agent.id}`} end={false} className="side__rail-dm side__rail-agent" aria-label={`${agent.name}, your agent`} title={`${agent.name} · Your agent`}>
-              <Kreska size={28} hue={agent.colour} />
-            </NavLink>
-          ))}
+          {agents.map((agent) => <RailAgent key={agent.id} agent={agent} />)}
           {directMessages.map((dm) => (
             <NavLink key={dm.id} to={`/dm/${dm.id}`} end={false} className="side__rail-dm"
               aria-label={dm.hasNew ? `${dm.title}, new messages` : dm.title} title={`${dm.title} · ${dm.audience}`}>
@@ -244,14 +241,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
           </div>
           {directMessages.length || agents.length ? (
             <ul className="side__list">
-              {agents.map((agent, index) => (
-                <li key={agent.id}>
-                  <NavLink to={`/agents/${agent.id}`} end={false} className="side__item side__dm side__agent" onClick={navigate} title={`${agent.name} · Your agent`} data-agent={agent.id}>
-                    <Kreska size={20} hue={agent.colour} /><span className="side__label">{agent.name}</span>
-                    {index === 0 ? <Icon name="pin" size={12} className="side__pin" aria-label="Pinned" /> : null}
-                  </NavLink>
-                </li>
-              ))}
+              {agents.map((agent, index) => <ListAgent key={agent.id} agent={agent} pinned={index === 0} onNavigate={navigate} />)}
               {directMessages.map((dm) => (
                 <li key={dm.id}>
                   <NavLink to={`/dm/${dm.id}`} end={false} className="side__item side__dm" onClick={navigate} title={`${dm.title} · ${dm.audience}`}>
@@ -267,5 +257,30 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
       <WorkingAgent />
       <UserMenu name={user.name} email={user.email} asLink={!!onClose} onNavigate={onClose} />
     </div>
+  );
+}
+
+/** An agent in the collapsed rail: a dot while its chat has something unread (its answers and the reports of its work, #919). */
+function RailAgent({ agent }: { agent: MyAgent }) {
+  const unread = useAgentUnread(agent.id);
+  return (
+    <NavLink to={`/agents/${agent.id}`} end={false} className="side__rail-dm side__rail-agent" aria-label={unread ? `${agent.name}, your agent, new messages` : `${agent.name}, your agent`} title={`${agent.name} · Your agent`}>
+      <Kreska size={28} hue={agent.colour} />
+      {unread ? <span className="side__dot" aria-hidden="true" /> : null}
+    </NavLink>
+  );
+}
+
+/** An agent in Messages, with a dot while its chat has something unread. */
+function ListAgent({ agent, pinned, onNavigate }: { agent: MyAgent; pinned: boolean; onNavigate?: () => void }) {
+  const unread = useAgentUnread(agent.id);
+  return (
+    <li>
+      <NavLink to={`/agents/${agent.id}`} end={false} className="side__item side__dm side__agent" onClick={onNavigate} title={`${agent.name} · Your agent`} data-agent={agent.id}>
+        <Kreska size={20} hue={agent.colour} /><span className="side__label">{agent.name}</span>
+        {pinned ? <Icon name="pin" size={12} className="side__pin" aria-label="Pinned" /> : null}
+        {unread ? <span className="side__dot"><span className="ui-vh">, new messages</span></span> : null}
+      </NavLink>
+    </li>
   );
 }

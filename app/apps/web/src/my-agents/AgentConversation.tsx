@@ -5,6 +5,7 @@ import { ApiError, NetworkError } from '../api/client';
 import { useShellData } from '../app/data';
 import { MessageDay, clock, day } from '../app/messageParts';
 import { AnswerBody } from '../assistant/ConversationParts';
+import { undoRunChanges } from '../assistant/api';
 import { askError, askState, canRetry, endedText, isWorking, workingText } from '../assistant/format';
 import { MessageBubble } from '../composer/Attachments';
 import { ComposerBox } from '../composer/ComposerBox';
@@ -73,7 +74,14 @@ function Turn({ run, agent, chat, first, newDay }: { run: AssistantRun; agent: M
 }
 
 /** One line the agent said on its own: the report of a run (#842, AG-7). */
-function Line({ line, agent, newDay }: { line: AgentChatMessage; agent: MyAgent; newDay: boolean }) {
+function Line({ line, agent, newDay, onChanged }: { line: AgentChatMessage; agent: MyAgent; newDay: boolean; onChanged: () => void }) {
+  const [undoing, setUndoing] = useState(false);
+  const [failed, setFailed] = useState(false);
+  // Undo reverses the changes of the run this line reports, the same call as the change line of a task's discussion (#856).
+  const undo = async () => {
+    setUndoing(true); setFailed(false);
+    try { await undoRunChanges(line.runId); onChanged(); } catch { setFailed(true); } finally { setUndoing(false); }
+  };
   return (
     <li className="dm-msg agc__turn" data-line-id={line.id} data-run-id={line.runId} data-chat-agent="">
       {newDay ? <MessageDay as="p" label={day(line.createdAt)} /> : null}
@@ -81,8 +89,12 @@ function Line({ line, agent, newDay }: { line: AgentChatMessage; agent: MyAgent;
         <span className="dm-msg__face"><Kreska size={26} hue={agent.colour} /></span>
         <div className="dm-msg__main">
           <p className="dm-msg__meta"><b>{agent.name}</b></p>
-          <MessageBubble><div className="dm-msg__body agc__answer"><p>{line.body}</p></div></MessageBubble>
-          <div className="agc__actions"><time className="agc__time" dateTime={line.createdAt}>{clock(line.createdAt)}</time></div>
+          <MessageBubble><div className="dm-msg__body agc__answer"><p>{line.body}{line.changes > 0 ? ` · ${line.changes} ${line.changes === 1 ? 'change' : 'changes'}` : ''}</p></div></MessageBubble>
+          <div className="agc__actions">
+            <time className="agc__time" dateTime={line.createdAt}>{clock(line.createdAt)}</time>
+            {line.changes > 0 ? <Button variant="quiet" size="sm" busy={undoing} onClick={() => void undo()}>Undo</Button> : null}
+            {failed ? <span role="alert">Could not undo. Try again.</span> : null}
+          </div>
         </div>
       </div>
     </li>
@@ -136,7 +148,7 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
                   const previous = entries[index - 1];
                   const newDay = !previous || day(previous.at) !== day(entry.at);
                   return entry.run ? <Turn key={entry.run.id} run={entry.run} agent={agent} chat={chat} first newDay={newDay} />
-                    : <Line key={entry.line!.id} line={entry.line!} agent={agent} newDay={newDay} />;
+                    : <Line key={entry.line!.id} line={entry.line!} agent={agent} newDay={newDay} onChanged={chat.refresh} />;
                 })}
               </ol>
             ) : <p className="agc__empty">Nothing here yet. Say what you want {agent.name} to do, or ask it something.</p>}

@@ -71,4 +71,5 @@
 .agc__answer > p { margin: 0; }
 .agc__state { color: var(--t2); }
 .agc__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 2px; font-size: var(--fs-xs); color: var(--t3); }
+.agc__actions [role="alert"] { color: var(--t1); }
 .agc__time { font-variant-numeric: tabular-nums; }

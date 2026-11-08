@@ -44,6 +44,7 @@
 .dm-index__text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 .dm-index__text b { font-size: var(--fs-md); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dm-index__text span { font-size: var(--fs-sm); color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dm-index__dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--inv); }
 .dm-index__item time { flex: none; font-size: var(--fs-xs); color: var(--t3); }
 
 /* New message */

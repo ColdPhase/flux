@@ -99,6 +99,13 @@ export function personalRunRows(db: DbExecutor) {
     return { items: rows.map(toRun), total: counted?.total ?? 0 };
   }
 
+  /** How many of a run's changes stand now: made, and not undone. */
+  async function appliedChanges(runId: string) {
+    const c = schema.assistantChanges;
+    const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(c).where(and(eq(c.runId, runId), inArray(c.state, ['applied', 'applied_after_wait'])));
+    return row?.count ?? 0;
+  }
+
   return {
     enablement,
     lockOwner,
@@ -132,6 +139,12 @@ export function personalRunRows(db: DbExecutor) {
       const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(r).where(and(eq(r.ownerUserId, ownerUserId),
         or(inArray(r.status, ['reading', 'dispatching']), and(eq(r.status, 'queued'), eq(r.authority, 'owner_request')))));
       return row?.count ?? 0;
+    },
+
+
+    async workLabel(workId: string) {
+      const [row] = await db.select({ number: schema.projectWorkItems.number, title: schema.projectWorkItems.title }).from(schema.projectWorkItems).where(eq(schema.projectWorkItems.id, workId));
+      return row ? { number: row.number, title: row.title } : null;
     },
 
     async changeCount(runId: string) {
@@ -342,13 +355,18 @@ export function personalRunRows(db: DbExecutor) {
       const [made] = await db.insert(t).values({ id: randomUUID(), workspaceId: owner.workspaceId, agentId: line.agentId, ownerUserId: owner.ownerUserId, runId: line.runId, key: line.key, body: line.body })
         .onConflictDoNothing().returning();
       const [row] = made ? [made] : await db.select().from(t).where(and(eq(t.agentId, line.agentId), eq(t.key, line.key)));
-      return row ? { message: { id: row.id, agentId: row.agentId, runId: row.runId, body: row.body, createdAt: row.createdAt.toISOString() }, created: !!made } : null;
+      return row ? { message: { id: row.id, agentId: row.agentId, runId: row.runId, body: row.body, createdAt: row.createdAt.toISOString(), changes: await appliedChanges(row.runId) }, created: !!made } : null;
     },
 
     async agentChatMessages(agentId: string, limit: number) {
       const t = schema.agentChatMessages;
       const rows = await db.select().from(t).where(eq(t.agentId, agentId)).orderBy(desc(t.createdAt), desc(t.id)).limit(limit);
-      return rows.reverse().map((row) => ({ id: row.id, agentId: row.agentId, runId: row.runId, body: row.body, createdAt: row.createdAt.toISOString() }));
+      // What stands now of each reported run's changes: a report offers Undo while it is above zero.
+      const counts = rows.length ? await db.select({ runId: schema.assistantChanges.runId, count: sql<number>`count(*)::int` }).from(schema.assistantChanges)
+        .where(and(inArray(schema.assistantChanges.runId, [...new Set(rows.map((row) => row.runId))]), inArray(schema.assistantChanges.state, ['applied', 'applied_after_wait'])))
+        .groupBy(schema.assistantChanges.runId) : [];
+      const standing = new Map(counts.map((row) => [row.runId, row.count]));
+      return rows.reverse().map((row) => ({ id: row.id, agentId: row.agentId, runId: row.runId, body: row.body, createdAt: row.createdAt.toISOString(), changes: standing.get(row.runId) ?? 0 }));
     },
 
     /** What came after the owner last opened a chat: the agent's answers (runs that ended in it) and its own lines. */

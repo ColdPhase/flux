@@ -52,8 +52,11 @@ export type AssistantPlace =
 export const AGENT_CHATS_PATH = '/api/v1/agent-chats';
 export const agentChatMessagesPath = (agentId: string) => `${AGENT_CHATS_PATH}/${agentId}/messages`;
 export const agentChatReadPath = (agentId: string) => `${AGENT_CHATS_PATH}/${agentId}/read`;
-/** One line an agent said on its own in its chat, about the run it reports. */
-export interface AgentChatMessage { id: string; agentId: string; runId: string; body: string; createdAt: string }
+/**
+ * One line an agent said on its own in its chat, about the run it reports (#919). `changes` is how many of that run's changes stand now: the line offers
+ * Undo while it is above zero, and it drops to zero once they are undone.
+ */
+export interface AgentChatMessage { id: string; agentId: string; runId: string; body: string; createdAt: string; changes: number }
 /** `GET /api/v1/agent-chats`: for each of the caller's agents, what they have not read in its chat (answers and reports) and when it last said something. */
 export interface AgentChatSummary { agentId: string; unread: number; lastAt: string | null }
 

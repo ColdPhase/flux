@@ -136,6 +136,7 @@ body:has(.app) { background: var(--side); }
 .side__dm .ui-avatar, .side__agent .kreska { flex: none; }
 /* Assistant is pinned first in Messages (F-036 AG-4); its pin sits where an unread dot would. */
 .side__pin { margin-left: auto; flex: none; color: var(--t3); }
+.side__pin + .side__dot { margin-left: 8px; }
 
 /* A working agent with Stop (S13): only while a real run executes. */
 .agentlive { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 8px 0; padding: 8px 8px 8px 10px; border-radius: 14px; background: var(--el); box-shadow: var(--sh-card); }
