@@ -130,6 +130,30 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     }
   });
 
+  test('deleting a page waits for the OK in both modes; [Delete] removes it for everyone and [Keep] leaves it (#941)', async () => {
+    const pageExists = async (id: string) => (await pool.query('SELECT 1 FROM project_materials WHERE id = $1', [id])).rowCount === 1;
+    for (const mode of ['act', 'ask'] as const) {
+      await scene.setMayDo(mode);
+      const stays = await scene.doc(scene.owner, `Stays in ${mode}`);
+      const goes = await scene.doc(scene.owner, `Goes in ${mode}`);
+      const live = await scene.liveRun();
+      for (const item of [stays, goes])
+        assert.match(text((await live.call('flux_delete_doc', { docId: item.id, expectedVersion: item.version })).message), /^Waiting for /, mode);
+      await scene.complete(live.runId);
+      const rows = await changesOf(live.runId);
+      assert.deepEqual(rows.map((row) => [row.operation, row.state, row.wait_reason]), [['doc.delete', 'waiting', 'removal'], ['doc.delete', 'waiting', 'removal']], mode);
+      assert.ok(await pageExists(stays.id) && await pageExists(goes.id), 'nothing is deleted before the OK');
+      assert.equal((await scene.listConversation(scene.owner)).find((change) => change.id === rows[0]!.id)?.line, 'Deleting always waits for your OK.');
+      const keep = rows.find((row) => row.object_id === stays.id)!;
+      const remove = rows.find((row) => row.object_id === goes.id)!;
+      assert.equal((expectStatus(await decide(scene.owner, keep.id, 'skip', { expectedVersion: keep.version }), 200) as { change: { line: string } }).change.line, 'Kept');
+      const done = expectStatus(await decide(scene.owner, remove.id, 'apply', { expectedVersion: remove.version }), 200) as { change: { state: string; undoable: boolean } };
+      assert.deepEqual([done.change.state, done.change.undoable], ['applied_after_wait', false], 'a deleted page has nothing to undo');
+      assert.equal(await pageExists(stays.id), true);
+      assert.equal(await pageExists(goes.id), false);
+    }
+  });
+
   test('other people\'s things wait; what you or any of your agents made is yours, until someone else edits it', async () => {
     const theirs = await scene.task(scene.peer, 'Jonas calibrates');
     const otherAgent = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Ada Codex', owner: 'self' } }), 201) as { id: string }).id;
@@ -407,6 +431,7 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
       // What the run names by its id, in another space.
       ['flux_update_task', { workId: task.id, expectedVersion: task.version, changes: { title: 'Changed from outside' } }],
       ['flux_update_doc', { docId: page.id, expectedVersion: page.version, changes: { body: 'Changed from outside' } }],
+      ['flux_delete_doc', { docId: page.id, expectedVersion: page.version }],
       ['flux_rename_map', { mapId: map.id, expectedVersion: map.version, title: 'Changed from outside' }],
       ['flux_add_thought', { mapId: map.id, thought: { text: 'Changed from outside', x: 1, y: 1 } }],
       ['flux_update_thought', { mapId: map.id, thoughtId: from.id, expectedVersion: from.version, changes: { text: 'Changed from outside' } }],

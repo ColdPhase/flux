@@ -549,6 +549,139 @@ class WikiPanesJourney(unittest.TestCase):
                 self.measure(page, ".wiki-actions .wiki-menu__row:focus-visible", 3, property="outlineColor", backgroundSelector=".wiki-actions")
                 shot(page, f"wiki-actions-desktop-1440-{theme}")
 
+    # ---------------------------------------------------------------- delete a page (#941)
+
+    def scratch_page(self, owner: Page, title: str) -> dict:
+        return self.api(owner, "POST", f"/api/v1/projects/{self.project_id}/docs", {"title": title, "body": "Nothing here to keep."}, status=201,
+                        headers={"idempotency-key": str(uuid.uuid4())})
+
+    def test_12_delete_page_asks_first_and_a_citing_message_says_the_page_is_deleted(self) -> None:
+        owner = self.page("owner")
+        gone = self.scratch_page(owner, "Scratch notes")
+        kept_title = "Kept for later"
+        kept = self.scratch_page(owner, kept_title)
+        conversation = self.api(owner, "POST", f"/api/v1/projects/{self.project_id}/conversations",
+                                {"body": "The bench notes are in the Wiki.", "clientMessageId": str(uuid.uuid4())}, status=201)
+        cited = self.api(owner, "POST", f"/api/v1/conversations/{conversation['id']}/messages",
+                         {"body": "Start with the scratch notes.", "clientMessageId": str(uuid.uuid4()), "source": {"materialId": gone["id"], "version": 1}}, status=201)
+        page = self.page("owner")
+        page.goto(f"/projects/{self.project_id}/docs/{gone['id']}")
+        wait_until_shared(page)
+        # The menu names it, and nothing is deleted before the OK.
+        page.get_by_role("button", name="Page actions").click()
+        expect(page.get_by_role("menu", name="Page actions").get_by_role("menuitem")).to_have_text(["History", "Copy link", "Export", "Import a Markdown file", "Rename page", "Delete page"])
+        page.get_by_role("menuitem", name="Delete page").click()
+        dialog = page.get_by_role("alertdialog", name="Delete Scratch notes?")
+        expect(dialog).to_contain_text("will be deleted for everyone in this space")
+        shot(page, "941-page-delete-confirm")
+        dialog.get_by_role("button", name="Cancel").click()
+        expect(dialog).to_have_count(0)
+        expect(page.get_by_role("button", name="Page actions")).to_be_focused()
+        self.assertEqual(self.doc(page, gone["id"])["title"], "Scratch notes")
+        # The OK deletes it for everyone: the person lands on another page, and the API no longer knows it.
+        page.get_by_role("button", name="Page actions").click()
+        page.get_by_role("menuitem", name="Delete page").click()
+        page.get_by_role("alertdialog", name="Delete Scratch notes?").get_by_role("button", name="Delete page").click()
+        expect(page.get_by_text("Deleted “Scratch notes”.")).to_be_visible()
+        expect(page).not_to_have_url(re.compile(re.escape(gone["id"])))
+        expect(page.get_by_role("heading", level=2).first).to_be_visible()
+        self.api(page, "GET", f"/api/v1/docs/{gone['id']}", status=404)
+        self.assertNotIn(gone["id"], [item["id"] for item in self.docs(page)])
+        self.assertIn(kept["id"], [item["id"] for item in self.docs(page)], "another page stays")
+        # The message that cited it keeps its text and says so; there is nothing to open.
+        talk = self.page("partner")
+        talk.goto(f"/projects/{self.project_id}/conversations/{conversation['id']}")
+        message = talk.locator(f"#message-{cited['id']}")
+        expect(message).to_contain_text("Start with the scratch notes.")
+        expect(message.locator(".wiki-card--gone")).to_contain_text("Page deleted")
+        expect(message.locator("a.wiki-card")).to_have_count(0)
+        # An earlier version of a page has no Delete.
+        earlier = self.page("owner")
+        earlier.goto(self.url("lamp", "/versions/1"))
+        earlier.get_by_role("button", name="Page actions").click()
+        expect(earlier.get_by_role("menu", name="Page actions").get_by_role("menuitem", name="Copy link")).to_be_visible()
+        expect(earlier.get_by_role("menuitem", name="Delete page")).to_have_count(0)
+
+    def test_13_delete_page_on_the_phone(self) -> None:
+        owner = self.page("owner", viewport=PHONE, touch=True)
+        gone = self.scratch_page(owner, "Phone scratch")
+        owner.goto(f"/projects/{self.project_id}/docs/{gone['id']}")
+        wait_until_shared(owner)
+        owner.get_by_role("button", name="Page actions").click()
+        owner.get_by_role("menuitem", name="Delete page").click()
+        dialog = owner.get_by_role("alertdialog", name="Delete Phone scratch?")
+        expect(dialog).to_be_visible()
+        for name in ("Cancel", "Delete page"):
+            box = dialog.get_by_role("button", name=name).bounding_box()
+            self.assertGreaterEqual(box["height"], 44, name)
+            self.assertLessEqual(box["x"] + box["width"], PHONE["width"], name)
+        box = dialog.bounding_box()
+        self.assertGreaterEqual(box["x"], 0)
+        self.assertLessEqual(box["x"] + box["width"], PHONE["width"])
+        shot(owner, "941-page-delete-confirm-phone")
+        dialog.get_by_role("button", name="Delete page").click()
+        expect(owner.get_by_text("Deleted “Phone scratch”.")).to_be_visible()
+        self.api(owner, "GET", f"/api/v1/docs/{gone['id']}", status=404)
+
+    def delete_page(self, page: Page, doc_id: str) -> None:
+        """Deletes the page through the API as `page`'s person, at the version it has now (a save may land a moment before)."""
+        for attempt in range(3):
+            response = page.request.fetch(f"{ORIGIN}/api/v1/docs/{doc_id}", method="DELETE",
+                                          headers={"origin": ORIGIN, "if-match": f'"{self.doc(page, doc_id)["version"]}"', "idempotency-key": str(uuid.uuid4())})
+            if response.status != 409:
+                self.assertEqual(response.status, 204, response.text())
+                return
+        self.fail("the page kept changing")
+
+    def test_14_a_page_deleted_while_it_is_open_says_so_and_leaves_the_switcher(self) -> None:
+        owner = self.page("owner")
+        typed = self.scratch_page(owner, "Shared scratch")
+        watched = self.scratch_page(owner, "Watched scratch")
+        racing = self.scratch_page(owner, "Racing scratch")
+        # Marek wrote on one page and only read another, each in its own tab.
+        writing = self.page("partner")
+        writing.goto(f"/projects/{self.project_id}/docs/{typed['id']}")
+        wait_until_shared(writing)
+        type_at_end(writing, existing_text(writing), " Marek's line before the page went.")
+        reading = self.page("partner")
+        reading.goto(f"/projects/{self.project_id}/docs/{watched['id']}")
+        wait_until_shared(reading)
+        # Hubert has the Delete dialog of a third page open when Marek deletes it first.
+        hubert = self.page("owner")
+        hubert.goto(f"/projects/{self.project_id}/docs/{racing['id']}")
+        wait_until_shared(hubert)
+        hubert.get_by_role("button", name="Page actions").click()
+        hubert.get_by_role("menuitem", name="Delete page").click()
+        expect(hubert.get_by_role("alertdialog", name="Delete Racing scratch?")).to_be_visible()
+        for doc in (typed, watched):
+            self.delete_page(owner, doc["id"])
+        self.delete_page(writing, racing["id"])
+        # The page says it was deleted: no "access ended", no editor, and no switcher entry. The text Marek typed is his to copy.
+        gone = writing.locator("[data-page-gone]")
+        expect(gone.get_by_role("heading", name="This page was deleted")).to_be_visible()
+        expect(gone).to_contain_text("Shared scratch")
+        expect(writing.get_by_text("Access ended")).to_have_count(0)
+        expect(writing.get_by_text("A private copy from an earlier session")).to_have_count(0)
+        expect(writing.get_by_role("textbox", name="Page text")).to_have_count(0)
+        expect(gone.get_by_label("Your text from the deleted page")).to_have_value(re.compile(r"Marek's line before the page went\."))
+        shot(writing, "941-page-deleted-while-open")
+        # A page he only read offers no text, and Hubert's open dialog is gone with the page, with no failure said.
+        expect(reading.locator("[data-page-gone]").get_by_role("heading", name="This page was deleted")).to_be_visible()
+        expect(reading.get_by_label("Your text from the deleted page")).to_have_count(0)
+        expect(hubert.locator("[data-page-gone]").get_by_role("heading", name="This page was deleted")).to_be_visible()
+        expect(hubert.get_by_role("alertdialog")).to_have_count(0)
+        expect(hubert.get_by_text("That didn’t work")).to_have_count(0)
+        # Back to the Wiki lands on another page, and the switcher does not list the deleted ones.
+        writing.get_by_role("link", name="Back to the Wiki").click()
+        expect(writing.locator("[data-page-gone]")).to_have_count(0)
+        expect(writing.get_by_role("heading", level=2).first).to_be_visible()
+        pages = self.switcher(writing)
+        expect(pages.get_by_role("link").first).to_be_visible()
+        for title in ("Shared scratch", "Watched scratch", "Racing scratch"):
+            expect(pages.get_by_role("link", name=title)).to_have_count(0)
+        for doc in (typed, watched, racing):
+            self.api(writing, "GET", f"/api/v1/docs/{doc['id']}", status=404)
+
 
 if __name__ == "__main__":
     unittest.main()

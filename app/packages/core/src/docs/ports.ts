@@ -70,6 +70,12 @@ export interface DocRepository {
   insert(doc: { id: string; workspaceId: string; projectId: string; createdBy: ActorRef }, first: NewDocVersion): Promise<DocWithCurrent>;
   /** Adds the next immutable version and makes it current; the caller holds the row lock. */
   append(id: string, next: NewDocVersion): Promise<DocWithCurrent>;
+  /**
+   * Takes the page away for everyone (#941): the page, its versions, its shared text, its links and search rows. What named it is
+   * cleared by its own rule (suggestions and plan items about it go, a message that cited it says the page is deleted, a live
+   * room on it ends). The caller holds the row lock and has checked the version.
+   */
+  remove(scope: { workspaceId: string; projectId: string }, docId: string): Promise<void>;
   /** Replaces the doc's `mentions` links with links to `targets`; other roles are kept. */
   replaceMentions(scope: { workspaceId: string; projectId: string }, docId: string, targets: ObjectRef[], by: ActorRef, retained?: DocTaskUseFence): Promise<void>;
 }
@@ -90,7 +96,7 @@ export interface DocRenderer {
   render(markdown: string, mentions: Map<string, DocMention>): string;
 }
 
-export type DocEventKind = 'project.doc_created.v1' | 'project.doc_updated.v1';
+export type DocEventKind = 'project.doc_created.v1' | 'project.doc_updated.v1' | 'project.doc_deleted.v1';
 
 /** Records a versioned project event in the unit of work (identifiers only, never content). */
 export interface DocEventLog {

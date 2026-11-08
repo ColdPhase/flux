@@ -10,7 +10,7 @@ const MAP_CHANGES: readonly AgentOperation[] = ['map.rename', 'map.thought.creat
 export function agentOperationTarget(operation: AgentOperation): 'work' | 'sketch' | 'doc' | 'conversation' | null {
   // #153: a unit is created for an exact native task of this project. #238: an agent undoes its own unused task.
   if (operation === 'work.update' || operation === 'cowork.unit.create' || operation === 'work.creation.revert') return 'work';
-  if (operation === 'doc.update') return 'doc';
+  if (operation === 'doc.update' || operation === 'doc.delete') return 'doc';
   if (operation === 'conversation.reply') return 'conversation';
   return MAP_CHANGES.includes(operation) ? 'sketch' : null;
 }

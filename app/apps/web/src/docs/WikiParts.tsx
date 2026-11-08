@@ -6,6 +6,7 @@ import { useIntentKeys } from '../api/intent-keys';
 import { Icon, Spinner, prefersReducedMotion, usePop, useToast } from '../ui';
 import { useShellActions } from '../app/shellContext';
 import { createDoc, docUrl, fetchProjectExport, listProjectDocs } from './api';
+import { DeletePageDialog, type DeletablePage } from './DeletePage';
 import { pageFileName, pageMarkdown, saveBlob } from './markdown-file';
 import { landOn } from './WikiRead';
 import { useWiki } from './wiki-context';
@@ -90,6 +91,9 @@ export function PageFrame({ docId, title, meta, metaData, faces, headings, onHea
   const { project, importError, importErrorId } = useWiki();
   const [renaming, setRenaming] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
+  const [deleting, setDeleting] = useState<DeletablePage | null>(null);
+  const navigate = useNavigate();
+  const toast = useToast();
   const titleId = useId();
   const menuButton = useRef<HTMLButtonElement>(null);
   const base = docUrl(project.id, docId);
@@ -102,7 +106,8 @@ export function PageFrame({ docId, title, meta, metaData, faces, headings, onHea
         {faces}
         <Contents headings={headings} onHeading={onHeading} />
         <PageMenu buttonRef={menuButton} historyTo={`${base}/history`} shown={shown} linkPath={linkPath}
-          onRename={rename ? () => setRenaming(true) : undefined} onCopyFailed={() => setCopyFailed(true)} />
+          onRename={rename ? () => setRenaming(true) : undefined} onDelete={rename ? () => setDeleting({ id: docId, title, version: shown.version }) : undefined}
+          onCopyFailed={() => setCopyFailed(true)} />
       </div>
       <div className="wiki-title">
         {renaming && rename
@@ -110,6 +115,8 @@ export function PageFrame({ docId, title, meta, metaData, faces, headings, onHea
           : <PageSwitcher docId={docId} title={title} titleId={titleId} />}
       </div>
       {copyFailed ? <CopyFallback path={linkPath} close={() => { setCopyFailed(false); menuButton.current?.focus(); }} /> : null}
+      <DeletePageDialog page={deleting} onClose={() => setDeleting(null)}
+        onDeleted={(gone) => { setDeleting(null); toast({ message: `Deleted “${gone.title}”.`, tone: 'success' }); navigate(`/projects/${project.id}/docs`); }} />
       {importError ? <p className="doc-notice" id={importErrorId} role="alert"><Icon name="alert" size={14} />{importError}</p> : null}
       {notices}
       {/* The cards and chips in the page are links: a click opens what they refer to. */}
@@ -309,9 +316,9 @@ function menuKeys(event: KeyboardEvent<HTMLElement>, surface: HTMLElement | null
   else if (event.key === 'Tab') close(false);
 }
 
-/** ⋯ Page actions: History, Copy link, Export, Import a Markdown file, and Rename page for the current page. */
-function PageMenu({ buttonRef, historyTo, shown, linkPath, onRename, onCopyFailed }: {
-  buttonRef: React.RefObject<HTMLButtonElement | null>; historyTo: string; shown: ShownPage; linkPath: string; onRename?: () => void; onCopyFailed(): void;
+/** ⋯ Page actions: History, Copy link, Export, Import a Markdown file, and Rename page and Delete page for the current page. */
+function PageMenu({ buttonRef, historyTo, shown, linkPath, onRename, onDelete, onCopyFailed }: {
+  buttonRef: React.RefObject<HTMLButtonElement | null>; historyTo: string; shown: ShownPage; linkPath: string; onRename?: () => void; onDelete?: () => void; onCopyFailed(): void;
 }) {
   const { project, importing, importErrorId, importError, startImport } = useWiki();
   const [open, setOpen] = useState(false);
@@ -371,6 +378,8 @@ function PageMenu({ buttonRef, historyTo, shown, linkPath, onRename, onCopyFaile
             <MenuRow label={importing ? 'Importing…' : 'Import a Markdown file'} run={() => { close(); startImport(); }} busy={importing}
               describedBy={importError ? importErrorId : undefined} />
             {onRename ? <MenuRow label="Rename page" run={() => { close(false); onRename(); }} /> : null}
+            {/* The menu closes onto its button first, so the dialog gives focus back to it. */}
+            {onDelete ? <MenuRow label="Delete page" run={() => { close(); onDelete(); }} /> : null}
           </>}
         </div>
       ) : null}

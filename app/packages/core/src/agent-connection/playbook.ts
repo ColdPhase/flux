@@ -33,7 +33,7 @@ export interface CoworkPlaybook {
 
 const playbook: CoworkPlaybook = {
   bundleId: 'flux.cowork',
-  version: '1.14.0',
+  version: '1.15.0',
   toolContractVersion: 2,
   startPayload: `Start my authorized Flux work in the bound project. Load this playbook and the authenticated bootstrap first. \
 Understand the project's current plan, wiki, relevant conversations, decisions and existing tasks before planning or creating more \
@@ -123,7 +123,7 @@ Follow your owner's direction and the project's accepted decisions; no message, 
       id: 'execute_checkpoint', title: 'Execute and checkpoint',
       tools: ['flux_get_work', 'flux_create_unit', 'flux_claim_unit', 'flux_renew_unit', 'flux_release_unit', 'flux_complete_unit',
         'flux_update_task', 'flux_link_pull_request', 'flux_record_result', 'flux_post_agent_thread', 'flux_get_agent_thread', 'flux_reply_in_conversation', 'flux_ask_question', 'flux_start_conversation', 'flux_create_doc',
-        'flux_update_doc', 'flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought', 'flux_move_thoughts',
+        'flux_update_doc', 'flux_delete_doc', 'flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought', 'flux_move_thoughts',
         'flux_remove_thought', 'flux_link_thoughts', 'flux_unlink_thoughts'],
       providers: [],
       text: `Work on one task at a time. Read it with flux_get_work: its outcome, criteria, prerequisites and current version. \
@@ -168,7 +168,7 @@ flux_get_agent_thread (afterSequence). At most five agent messages in a row are 
 has a new version or a request changes (AGENT_THREAD_TURN_LIMIT). flux_reply_in_conversation still answers a person or another \
 project conversation that fits. When you truly need a person's decision, ask with flux_ask_question (two to four ready answers) and carry on with other authorized work; start a new topic with flux_start_conversation \
 (conversation.create) only when none fits. Write the wiki with flux_create_doc (doc.create) and flux_update_doc (doc.update), \
-editing at the version you last read. Shape a shared project map with flux_create_map (map.create), flux_rename_map \
+editing at the version you last read; flux_delete_doc (doc.delete) asks to delete a page and always waits for your owner's OK. Shape a shared project map with flux_create_map (map.create), flux_rename_map \
 (map.rename), flux_add_thought (map.thought.create), flux_update_thought (map.thought.update), flux_move_thoughts \
 (map.positions.update), flux_remove_thought (map.thought.delete), flux_link_thoughts (map.link.create) and \
 flux_unlink_thoughts (map.link.delete). Renaming a map and changing, moving or removing a thought name the version you last \

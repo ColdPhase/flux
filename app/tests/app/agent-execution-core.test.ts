@@ -65,6 +65,7 @@ test('every operation has a registered postcondition entry; an incomplete sample
     'map.positions.update': [{ kind: 'thought', id: uuid(), version: 2 }, { kind: 'map_checkpoint', id: uuid(), updatedAt: at }],
     'map.link.create': [{ kind: 'map_checkpoint', id: uuid(), updatedAt: at }], 'map.link.delete': [{ kind: 'map_checkpoint', id: uuid(), updatedAt: at }],
     'doc.create': [{ kind: 'doc', id: uuid(), version: 1 }], 'doc.update': [{ kind: 'doc', id: uuid(), version: 2 }],
+    'doc.delete': [{ kind: 'doc_removed', id: uuid() }],
     'conversation.create': [{ kind: 'message', id: uuid() }], 'conversation.reply': [{ kind: 'message', id: uuid() }],
     'cowork.claim': [claim()], 'cowork.renew': [claim()], 'cowork.release': [claim()],
     'cowork.unit.create': [{ kind: 'cowork.unit_state', workspaceId: uuid(), projectId: uuid(), unitId: uuid(), taskId: uuid(),
@@ -91,7 +92,7 @@ test('doc and conversation commands: creates have no target, changes name their 
     assert.equal(normalizeAgentExecution({ ...base, operation, objectId: null }).objectId, null);
     assert.throws(() => normalizeAgentExecution({ ...base, operation, objectId: randomUUID() }), invalidInput);
   }
-  for (const operation of ['doc.update', 'conversation.reply'] as const) {
+  for (const operation of ['doc.update', 'doc.delete', 'conversation.reply'] as const) {
     const target = randomUUID();
     assert.equal(normalizeAgentExecution({ ...base, operation, objectId: target }).objectId, target);
     assert.throws(() => normalizeAgentExecution({ ...base, operation, objectId: null }), invalidInput);
@@ -101,7 +102,9 @@ test('doc and conversation commands: creates have no target, changes name their 
   const id = randomUUID();
   validateAgentPostconditions('doc.update', [{ kind: 'doc', id, version: 3 }]);
   validateAgentPostconditions('conversation.reply', [{ kind: 'message', id }]);
+  validateAgentPostconditions('doc.delete', [{ kind: 'doc_removed', id }]);
   for (const [operation, value] of [
+    ['doc.delete', [{ kind: 'doc', id, version: 3 }]], ['doc.delete', [{ kind: 'doc_removed', id, version: 3 }]], ['doc.update', [{ kind: 'doc_removed', id }]],
     ['doc.update', [{ kind: 'doc', id }]], ['doc.update', [{ kind: 'material', id, version: 3 }]], ['doc.create', [{ kind: 'message', id }]],
     ['conversation.reply', [{ kind: 'message', id, version: 1 }]], ['conversation.create', [{ kind: 'message', id, body: 'text' }]],
     ['conversation.create', [{ kind: 'message', id }, { kind: 'message', id: randomUUID() }]], ['conversation.reply', [{ kind: 'doc', id, version: 1 }]],

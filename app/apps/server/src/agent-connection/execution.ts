@@ -60,7 +60,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
     });
     for (const condition of ordered) {
       const target = prepared.command.objectId;
-      if (target && (condition.kind === 'work' || condition.kind === 'doc' || condition.kind === 'map' || condition.kind === 'map_checkpoint') && condition.id !== target
+      if (target && (condition.kind === 'work' || condition.kind === 'doc' || condition.kind === 'doc_removed' || condition.kind === 'map' || condition.kind === 'map_checkpoint') && condition.id !== target
         || target && condition.kind === 'cowork.claim_state' && condition.unitId !== target
         // A created unit belongs to the exact task the command targeted; a completed or transferred unit IS the target.
         || condition.kind === 'cowork.unit_state'

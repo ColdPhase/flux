@@ -2,7 +2,7 @@ import type { ConversationMessage, Project, ProjectPerson } from '@flux/contract
 import type { PendingSend } from '../composer/draft';
 import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from '../app/MessageText';
-import { AgentAuthor, AuthorFace, ContributionMark, MessageTime, SourceCitation, SourceTag, ViaTag, pendingMessageRow } from '../app/messageParts';
+import { AgentAuthor, AuthorFace, ContributionMark, DeletedSourceCitation, MessageTime, SourceCitation, SourceTag, ViaTag, pendingMessageRow } from '../app/messageParts';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
 import { useOwnMessage } from '../work/ownMessage';
@@ -59,7 +59,7 @@ export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       <MessageContent body={own.slot ?? (message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null)} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
         <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
         <MessageObjects message={message} projectId={project.id} preview={preview} />
-        {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
+        {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : message.sourceDeleted ? <DeletedSourceCitation /> : null}
       </MessageContent>
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}

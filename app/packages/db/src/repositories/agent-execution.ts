@@ -57,6 +57,13 @@ export function agentExecutionRows(tx: DbExecutor) {
           eq(table.workspaceId, workspaceId), eq(table.projectId, projectId), eq(table.scope, 'project'))).for('share');
         return row?.at.toISOString() === condition.updatedAt;
       }
+      if (condition.kind === 'doc_removed') {
+        // The page is no longer a doc of this project (#941).
+        const table = schema.projectMaterials;
+        const [row] = await tx.select({ id: table.id }).from(table).where(and(eq(table.id, condition.id),
+          eq(table.workspaceId, workspaceId), eq(table.projectId, projectId), eq(table.kind, 'doc'))).for('share');
+        return !row;
+      }
       if (condition.kind === 'result') {
         const table = schema.projectResults;
         const [row] = await tx.select({ id: table.id }).from(table).where(and(eq(table.id, condition.id),

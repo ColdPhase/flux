@@ -30,6 +30,8 @@ export class LocalWiki {
   saving = false;
   dirty = false;
   problem: string | null = null;
+  /** The server answered 404 to a save: the page may be deleted (#941); the page asks. */
+  missing = false;
   /** The version someone saved while this text was written, until the person chooses. */
   conflict: Doc | null = null;
   /** Unsaved text from earlier (this tab, or a tab that closed) came back. */
@@ -112,7 +114,7 @@ export class LocalWiki {
         if (current && current.body === this.text.toString() && !explicit) this.adopt(current, current.body);
         else if (cause instanceof ApiError && cause.code === 'VERSION_CONFLICT') this.conflict = current;
         else if (cause instanceof ApiError && cause.status === 403) this.problem = 'You can read this space but not change its pages.';
-        else if (cause instanceof ApiError && cause.status === 404) this.problem = 'This page is no longer available to you.';
+        else if (cause instanceof ApiError && cause.status === 404) { this.missing = true; this.problem = 'This page is no longer available to you.'; }
         else { this.problem = 'Not saved yet. Your text is kept here and saves when the connection is back.'; if (!this.stopped) this.schedule(5000); }
         if (explicit) throw cause;
       } finally { this.saving = false; this.running = null; this.changed(); }

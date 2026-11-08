@@ -101,6 +101,12 @@ export async function docRoutes(app: FastifyInstance, { db, sessions }: Options)
       run: (actor, conn) => docUseCases(conn).updateDoc(actor, request.params.docId, request.body, expectedVersion(request)),
       replay: projectReader,
     }));
+  // Deleting a page for everyone (#941) needs the version the caller saw, like an edit; a retry after the page is gone is 404.
+  app.delete<{ Params: { docId: string } }>(docPath(':docId'), async (request, reply) => command(request, reply, {
+    operation: `DELETE ${docPath(':docId')}`, scope: docScope(request.params.docId), status: 204,
+    run: (actor, conn) => docUseCases(conn).deleteDoc(actor, request.params.docId, expectedVersion(request)),
+    replay: projectReader,
+  }));
   app.post<{ Params: { docId: string }; Body: AddDocSectionCommand }>(docSectionsPath(':docId'), { schema: { body: addSection } },
     async (request, reply) => command(request, reply, {
       operation: `POST ${docSectionsPath(':docId')}`, scope: docScope(request.params.docId), etag: true,

@@ -141,7 +141,7 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   projects: { visibility: 'an enum', created_by: 'a user id', views: 'enum values' },
   project_grants: { user_id: 'a user id', role: 'an enum', created_by: 'a user id' },
   project_conversations: { created_by: 'a user id', space: 'an enum' },
-  project_messages: { author_id: 'a user id', contribution_kind: 'an enum', via: 'the name of the agent whose answer the author posted, as visible as an author\'s name (an agent name is metadata)' },
+  project_messages: { author_id: 'a user id', contribution_kind: 'an enum', source_deleted: 'a flag', via: 'the name of the agent whose answer the author posted, as visible as an author\'s name (an agent name is metadata)' },
   message_references: { kind: 'an enum (thought or message)' },
   project_message_observations: { viewer_id: 'a user id' },
   dm_message_observations: { viewer_id: 'a user id' },

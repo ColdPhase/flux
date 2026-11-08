@@ -10,7 +10,7 @@ import type { AgentMayDo } from './agent-proposals.js';
  */
 export const ASSISTANT_RUN_EFFECT_TOOLS = [
   'flux_create_task', 'flux_update_task', 'flux_record_result', 'flux_propose_decision', 'flux_create_unit',
-  'flux_create_doc', 'flux_update_doc',
+  'flux_create_doc', 'flux_update_doc', 'flux_delete_doc',
   'flux_create_map', 'flux_rename_map', 'flux_add_thought', 'flux_update_thought', 'flux_remove_thought',
   'flux_move_thoughts', 'flux_link_thoughts', 'flux_unlink_thoughts',
   'flux_start_conversation', 'flux_reply_in_conversation',
@@ -114,6 +114,7 @@ const PHRASES: Record<string, { phrase: string; verb: string; noun: string }> = 
   'decision.propose': { phrase: 'propose', verb: 'Propose', noun: 'decision' },
   'doc.create': { phrase: 'add', verb: 'Add', noun: 'page' },
   'doc.update': { phrase: 'edit', verb: 'Edit', noun: 'page' },
+  'doc.delete': { phrase: 'delete', verb: 'Delete', noun: 'page' },
   'map.create': { phrase: 'add', verb: 'Add', noun: 'map' },
   'map.rename': { phrase: 'rename', verb: 'Rename', noun: 'map' },
   'map.thought.create': { phrase: 'add', verb: 'Add', noun: 'thought' },
@@ -168,7 +169,7 @@ export function assistantChangeSummary(changes: readonly Pick<AssistantChange, '
 }
 
 const PAST: Record<string, string> = { add: 'added', change: 'changed', close: 'closed', rename: 'renamed', record: 'recorded', propose: 'proposed',
-  edit: 'edited', remove: 'removed', move: 'moved', post: 'posted', set: 'set', hand: 'handed', send: 'sent', take: 'took' };
+  edit: 'edited', delete: 'deleted', remove: 'removed', move: 'moved', post: 'posted', set: 'set', hand: 'handed', send: 'sent', take: 'took' };
 /** "add task" becomes "added task" for a message about what already happened. */
 export function assistantPastPhrase(phrase: string): string {
   const space = phrase.indexOf(' ');
@@ -188,6 +189,7 @@ export function assistantDoneWords(change: { operation: string; objectType: Assi
   if (change.operation === 'work.update' && change.status && change.status !== 'done') return `moved ${number || 'a task'} to ${STATUS_WORDS[change.status] ?? change.status}`;
   if (change.operation === 'doc.update') return `updated ${DONE_NOUNS.doc} ${title}`.trim();
   if (change.operation === 'doc.create') return `added ${DONE_NOUNS.doc} ${title}`.trim();
+  if (change.operation === 'doc.delete') return `deleted ${DONE_NOUNS.doc} ${title}`.trim();
   const past = assistantPastPhrase(change.phrase);
   return title ? `${past} ${change.objectType === 'work' ? title : `${title}`}` : past;
 }

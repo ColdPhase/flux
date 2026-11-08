@@ -16,6 +16,7 @@ const RUN_EFFECT_DESCRIPTIONS: Record<string, string> = {
   flux_propose_decision: 'Propose one decision. It stays proposed; people decide.',
   flux_create_doc: 'Start one Wiki page in this project.',
   flux_update_doc: 'Save the next version of one Wiki page at the version you last read (the complete new text).',
+  flux_delete_doc: 'Delete one Wiki page for everyone (deleting always waits for your owner\'s OK).',
   flux_create_map: 'Create one shared map in this project.',
   flux_rename_map: 'Rename one map at the version you last read.',
   flux_add_thought: 'Add one thought to a map, optionally linked from another thought.',

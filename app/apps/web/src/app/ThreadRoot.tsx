@@ -1,7 +1,7 @@
 import type { ConversationMessage, NativeWorkRow } from '@flux/contracts';
 import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
-import { AgentAuthor, AuthorFace, SourceCitation, MessageTime, ViaTag } from './messageParts';
+import { AgentAuthor, AuthorFace, DeletedSourceCitation, SourceCitation, MessageTime, ViaTag } from './messageParts';
 import { MessageContent, type PhotoActions } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { useProjectShell } from '../project/data';
@@ -35,7 +35,7 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
           <LinkPreviews body={body} projectId={projectId} messageId={message?.id ?? null} />
           {message ? <MessageObjects message={message} projectId={projectId} preview={preview} thread={task} threadRow={taskRow} />
             : task ? <div className="ws-attach"><DiscussedTask task={task} row={taskRow} /></div> : null}
-          {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
+          {message?.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : message?.sourceDeleted ? <DeletedSourceCitation /> : null}
         </MessageContent>
         {message ? <MessageTime at={message.createdAt} /> : null}
         {message ? <QuestionCard projectId={projectId} messageId={message.id} meId={meId} writable={writable} /> : null}

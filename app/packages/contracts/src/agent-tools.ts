@@ -58,6 +58,7 @@ export const AGENT_TOOLS: readonly AgentToolEntry[] = [
   effect('flux_unlink_thoughts', 'map.link.delete'),
   effect('flux_create_doc', 'doc.create'),
   effect('flux_update_doc', 'doc.update'),
+  effect('flux_delete_doc', 'doc.delete'),
   effect('flux_start_conversation', 'conversation.create'),
   effect('flux_reply_in_conversation', 'conversation.reply'),
   effect('flux_post_agent_thread', 'conversation.reply'),
