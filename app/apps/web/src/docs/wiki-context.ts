@@ -1,26 +1,17 @@
 import { createContext, useContext } from 'react';
 import type { DocSummary, Project } from '@flux/contracts';
 
-/** What every view inside the project wiki shares (#136): the project, its pages and focus mode. */
+/** What every view inside a space's Wiki shares (#136, #869): the space, its pages and the one Markdown import. */
 export interface WikiState {
   project: Project;
-  /** The project's pages, the most recently changed first (the server's order). */
+  /** The space's pages, the most recently changed first (the server's order). */
   docs: DocSummary[];
-  writable: boolean;
-  /** Focus mode hides the page index so the document has the room ("fullscreen"). */
-  focus: boolean;
-  setFocus(next: boolean): void;
-  /** The wiki is narrow (a phone): pages are a chip row and the page's actions sit in one menu. */
-  compact: boolean;
-  /** Import .md: the one file chooser of the wiki, offered by the page list (computer) or the page menu (phone). */
+  /** Import a Markdown file: the one file chooser of the Wiki, under ⋯ (or on the empty Wiki). */
   importing: boolean;
   importError: string;
   /** The id of the refused import's message, for the controls it describes. */
   importErrorId: string;
   startImport(): void;
-  /** Where the page's menu goes on a phone: the end of the row of page chips, which stays at the top while the page is read (#507). */
-  menuSlot: HTMLElement | null;
-  setMenuSlot(element: HTMLElement | null): void;
 }
 
 export const WikiContext = createContext<WikiState | null>(null);

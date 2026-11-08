@@ -46,9 +46,11 @@ class SealedLiveEditing(LiveFixture):
         kai_again = await self.editor("kai")
         await expect(kai_again).to_contain_text("Ada writes the first live sentence.")
         await expect(kai_again).to_contain_text("Kai answers in the same room.")
-        # The saved doc is still the version before the live text until someone saves.
-        saved = await self.api(ada, "GET", f"/api/v1/docs/{self.doc_id}")
-        self.assertNotIn("Ada writes the first live sentence.", saved["body"])
+        # Versions save by themselves (#869); the first version stays as it was written.
+        saved = await self.saved_doc(ada, "Kai answers in the same room.")
+        self.assertIn("Ada writes the first live sentence.", saved["body"])
+        first = await self.api(ada, "GET", f"/api/v1/docs/{self.doc_id}/versions/1")
+        self.assertEqual(first["body"], "A sealed starting paragraph.")
 
     async def test_02_a_live_map_shows_the_other_persons_edits_and_the_lock_closes_the_room(self):
         await self.create_map(2)

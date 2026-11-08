@@ -550,15 +550,12 @@ async def wiki(fixture, units, reader):
     await fixture.create_doc("A" * (units - 1) + "B")
     owner, peer = fixture.pages["ada"], fixture.pages["kai"]
     field = await fixture.editor("ada")
-    if reader:
-        await peer.goto(fixture.doc_url)
-        selector = "[data-live-reader]"
-    else:
-        await fixture.editor("kai")
-        selector = "[data-live-wiki-editor]"
+    # A reader has the page open without writing in it (#869: every page is edited where it is read).
+    await fixture.editor("kai")
+    selector = "[data-live-wiki-editor]"
     await peer.locator(selector).wait_for()
     if reader:
-        await peer.locator('.doc-prose').evaluate("el => el.scrollIntoView({block:'end'})")
+        await peer.locator('.wiki-main').evaluate("el => { el.scrollTop = el.scrollHeight; }")
     else:
         await peer.locator('.cm-content').click()
         await peer.keyboard.press('Control+End')
@@ -570,7 +567,7 @@ async def wiki(fixture, units, reader):
         await owner.keyboard.press("Shift+ArrowLeft")
         await owner.keyboard.insert_text(chr(97 + counter % 26))
         counter += 1
-        identity = await owner.locator('[data-live-wiki-editor]').evaluate("el => {const status=document.querySelector('[data-live-status]')?.textContent||'', match=status.match(/^(\\d+) changes waiting to be shared/);return {inputRevision:Number(el.dataset.liveInputRevision),generation:el.dataset.liveGeneration,visibility:document.visibilityState,pending_commands:match?Number(match[1]):status.startsWith('All changes shared')?0:null};}")
+        identity = await owner.locator('[data-live-wiki-editor]').evaluate("el => {const pending=document.querySelector('[data-live-status]')?.dataset.livePending;return {inputRevision:Number(el.dataset.liveInputRevision),generation:el.dataset.liveGeneration,visibility:document.visibilityState,pending_commands:pending===undefined?null:Number(pending)};}")
         if not identity.get("inputRevision") or identity['visibility'] != 'visible':
             raise RuntimeError("Trusted editor input has no new local input revision")
         return identity
@@ -618,22 +615,15 @@ async def wiki(fixture, units, reader):
           const end=last.data.trimEnd().length;const range=document.createRange();range.setStart(last,end-1);range.setEnd(last,end);
           const rect=range.getBoundingClientRect(),clip=content.closest('.cm-scroller')?.getBoundingClientRect();
           if(!(rect.width>0&&rect.height>0&&rect.top>=Math.max(0,clip?.top||0)&&rect.bottom<=Math.min(innerHeight,clip?.bottom||innerHeight)&&rect.left>=Math.max(0,clip?.left||0)&&rect.right<=Math.min(innerWidth,clip?.right||innerWidth)))return false;
-          const name=reader?document.querySelector('.editing-people'):document.querySelector('.editing-caret[aria-label="Ada North\\'s cursor"]');
-          if(!name||!name.textContent.includes('Ada North'))return false;
+          const name=reader?document.querySelector('[data-live-status]'):document.querySelector('.editing-caret[aria-label="Ada North\\'s cursor"]');
+          if(!name||!name.textContent.includes(reader?'Ada is here too':'Ada North'))return false;
           if(!reader){const caret=name.getBoundingClientRect();if(caret.height<=0||Math.abs(caret.left-rect.right)>2||Math.abs(caret.top-rect.top)>rect.height)return false;}
-          return {generation,sequence:Number(el.dataset.liveSequence),namedCursor:reader?'received named presence in ordinary reader':'visible named end cursor',characterRect:{left:rect.left,top:rect.top,right:rect.right,bottom:rect.bottom}};
+          return {generation,sequence:Number(el.dataset.liveSequence),namedCursor:reader?'received named presence on the open page':'visible named end cursor',characterRect:{left:rect.left,top:rect.top,right:rect.right,bottom:rect.bottom}};
         }"""
-        observed = await painted(peer, expression, {"selector": selector, "body": '.doc-prose' if reader else '.cm-content', "reader": reader, "generation": identity["generation"], "sequence": receipt["sequence"]})
+        observed = await painted(peer, expression, {"selector": selector, "body": '.cm-content', "reader": reader, "generation": identity["generation"], "sequence": receipt["sequence"]})
         preview_receipt = None
-        if reader:
-            preview_receipt = frame_match(fixture, 'kai', 'received', lambda h: h.get('type') == 'preview' and h.get('generation') == identity['generation'] and h.get('sequence') == observed['render']['sequence'] and ('index' not in h or h.get('index') == h.get('count', 0)-1))
-            if not preview_receipt:
-                raise RuntimeError('Rendered reader preview has no matching complete authorized publication')
-            rendered_update = frame_match(fixture, 'kai', 'received', lambda h: h.get('type') == 'update' and h.get('generation') == identity['generation'] and h.get('sequence') == observed['render']['sequence'] and h.get('index') == h.get('count',0)-1)
-            if not rendered_update or rendered_update['header'].get('hash') != preview_receipt['header'].get('hash'):
-                raise RuntimeError('Rendered reader preview does not match the complete confirmed update hash')
-        observed.update(superseded=reader and observed['render']['sequence'] > receipt['sequence'],
-            coverage={"kind": 'safe-reader-preview' if reader else 'contiguous-confirmed-head', "input_revision": identity['inputRevision'],
+        observed.update(superseded=False,
+            coverage={"kind": 'contiguous-confirmed-head', "input_revision": identity['inputRevision'],
                       "sealed_batch": sealed, "receipt_sequence": receipt['sequence'], "render_sequence": observed['render']['sequence']},
             publication_at=published['at'], receipt_at=acknowledged['at'], peer_update_received_at=included['at'],
             receipt={name:receipt.get(name) for name in ('commandId','generation','sequence','hash','fingerprint','operation','changed','workspaceId','resourceId')},
@@ -660,7 +650,7 @@ async def wiki(fixture, units, reader):
         }"""
         return await painted(owner, expression, {"generation": identity['generation'], "revision": identity['inputRevision']})
     return await cohort(fixture, f"wiki-{units}-{'reader' if reader else 'editor'}", owner, peer, produce, observe,
-                        local_observe, {"resource_id": fixture.doc_id, "body_units": units, "actions": "continuous native keyboard replace-one-character; length constant; changed final character stays in both viewports", "receiver": "ordinary reader sanitized HTML" if reader else "CodeMirror Yjs editor"})
+                        local_observe, {"resource_id": fixture.doc_id, "body_units": units, "actions": "continuous native keyboard replace-one-character; length constant; changed final character stays in both viewports", "receiver": "CodeMirror Yjs editor, open without writing" if reader else "CodeMirror Yjs editor"})
 
 
 async def map_drag(fixture, count, selected):

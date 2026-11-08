@@ -1,11 +1,12 @@
-"""Browser tests for project docs and wiki (issue #112, AC-3/AC-5).
+"""Browser tests for a space's Wiki pages (issue #112, AC-3/AC-5; #869).
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose
-application. Two people share one project. One writes a doc in the Markdown editor with a
-preview and a link to a result, publishes it and reads it; the other edits concurrently and gets
-the conflict instead of a silent overwrite; both read the history with a diff; a result is added
-to the doc from its details; the phone reads, edits and compares. Every step is checked against
-the API, so the test proves persisted behaviour rather than local state.
+application. Two people share one space. One writes a page where it is read, with a link to a
+decision, and the version saves by itself; the other writes at the same time and nothing is lost
+(with live editing both see each other's text; without it the later save meets the earlier one and
+the person chooses); both read the history with a diff; a result is added to the page from its
+details; the phone writes and compares. Every step is checked against the API, so the test proves
+persisted behaviour rather than local state.
 """
 
 from __future__ import annotations
@@ -22,6 +23,7 @@ from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_play
 from app_select import choose, expect_value
 
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UI_BROWSER, UPSTREAM, shot, start_forwarder
+from wiki_text import existing_text, has_text, saved, wait_until_shared
 
 PASSWORD = "docs keep their history"
 STAMP = int(time.time() * 1000)
@@ -118,6 +120,23 @@ class DocsJourney(unittest.TestCase):
     def tab(self, page: Page, name: str):
         return page.get_by_role("navigation", name="Space views").get_by_role("link", name=name)
 
+    def saved_doc(self, page: Page, snippet: str, timeout: float = 60.0, doc_id: str | None = None) -> dict:
+        """The page once a saved version holds `snippet`: versions save by themselves when the typing rests (#869)."""
+        deadline = time.monotonic() + timeout
+        while True:
+            doc = self.doc(page, doc_id)
+            if snippet in doc["body"] or time.monotonic() > deadline:
+                self.assertIn(snippet, doc["body"], "a version saved by itself")
+                return doc
+            time.sleep(0.25)
+
+    def type_end(self, page: Page, value: str) -> None:
+        text = existing_text(page)
+        wait_until_shared(page)
+        text.focus()
+        page.keyboard.press("Control+End")
+        page.keyboard.insert_text(value)
+
     # ---------------------------------------------------------------- set up
 
     def test_01_two_people_share_a_project(self) -> None:
@@ -150,163 +169,156 @@ class DocsJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- write, preview, link, publish
 
-    def test_02_write_a_doc_with_preview_and_a_link(self) -> None:
+    def test_02_write_a_page_in_place_with_a_link(self) -> None:
         page = self.page("owner")
         page.goto(f"/projects/{self.project_id}")
         self.tab(page, "Wiki").click()
         expect(page.get_by_role("heading", name="No pages yet")).to_be_visible()
-        page.get_by_role("link", name="New page").click()
-        page.get_by_label("Title").fill(TITLE)
-        text = page.get_by_label("Text (Markdown)")
-        text.fill(BODY + "The decision: ")
-        text.press("End")
-        # The link picker: keyboard only, filtered to objects of this project.
-        text.press("Control+k")
+        page.get_by_role("button", name="New page").click()
+        page.get_by_role("textbox", name="Name of the new page").fill(TITLE)
+        page.keyboard.press("Enter")
+        expect(page.get_by_role("heading", level=2, name=TITLE)).to_be_visible()
+        text = existing_text(page)
+        wait_until_shared(page)
+        expect(text).to_be_focused()
+        page.keyboard.insert_text(BODY + "The decision: ")
+        # The link picker: keyboard only, filtered to objects of this space.
+        page.keyboard.press("Control+k")
         picker = page.get_by_role("dialog", name="Link to something in this space")
         picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True).fill("ToF distance")
         expect(picker.get_by_role("listbox", name="Matches").get_by_role("option").first).to_contain_text(RULE)
         picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True).press("Enter")
-        expect(text).to_have_value(re.compile(re.escape(f"[{RULE}](flux:decision/{self.decision_id})")))
-        # Both panes on a wide screen; the preview is rendered by the server.
-        preview = page.get_by_label("Preview")
-        expect(preview.get_by_role("heading", name="Numbers from the bench")).to_be_visible()
-        expect(preview.locator("table td").nth(1)).to_have_text("38%")
-        expect(preview.get_by_role("link", name=RULE)).to_have_attribute("data-ref-type", "decision")
-        page.get_by_role("radio", name="Published").click()
-        page.get_by_label("What changed").fill("First notes from the bench test")
-        shot(page, "docs-editor-desktop-1440")
-        text.press("Control+s")
-
-        expect(page.get_by_role("heading", level=2, name=TITLE)).to_be_visible()
+        has_text(text, f"[{RULE}](flux:decision/{self.decision_id})")
+        expect(text).to_be_focused()
+        shot(page, "docs-writing-desktop-1440")
         stored = self.api(page, "GET", f"/api/v1/projects/{self.project_id}/docs", status=200)["items"]
         self.assertEqual(len(stored), 1)
         type(self).doc_id = stored[0]["id"]
-        doc = self.doc(page)
-        self.assertEqual((doc["version"], doc["state"], doc["reason"], doc["author"]["name"]), (1, "published", "First notes from the bench test", OWNER["name"]))
+        doc = self.saved_doc(page, f"flux:decision/{self.decision_id}")
+        self.assertEqual((doc["reason"], doc["author"]["name"]), ("Edited the text", OWNER["name"]))
         self.assertTrue(any(link["role"] == "mentions" and link["to"]["id"] == self.decision_id for link in doc["links"]))
-        expect(page.locator(".doc-head__k")).to_contain_text("Published · version 1")
-        expect(page.locator(".doc-prose table")).to_be_visible()
+        # Away from the caret the page reads as the page: the table is a table, the reference is its chip.
+        text.evaluate("el => el.blur()")
+        expect(page.locator(".wiki-editor .doc-table td").nth(1)).to_have_text("38%")
+        expect(page.locator(".wiki-editor .cm-md-h2").first).to_have_text("What we use")
+        chip = page.locator('.wiki-editor a.doc-ref[data-ref-type="decision"]')
+        expect(chip).to_have_text(RULE)
         # A reference to a decision opens its details in the panel.
-        page.locator(".doc-prose").get_by_role("link", name=RULE).click()
+        chip.click()
         expect(page.locator("#details").get_by_role("heading", name=RULE)).to_be_visible()
         expect(page.locator("#details")).to_contain_text(TITLE)
         page.keyboard.press("Escape")
         shot(page, "docs-reader-desktop-1440")
 
-    # ---------------------------------------------------------------- concurrent edit
+    # ---------------------------------------------------------------- two people at once
 
-    def test_03_a_concurrent_edit_is_never_overwritten(self) -> None:
+    def test_03_two_people_write_at_once_and_nothing_is_lost(self) -> None:
         if LIVE:
             self.shared_concurrent_edit()
             return
         page = self.page("partner")
         page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
-        page.get_by_role("link", name="Edit").click()
-        text = page.get_by_label("Text (Markdown)")
-        expect(text).to_have_value(re.compile("What we use"))
-        text.fill(self.doc(page)["body"].replace("Two quick waves start the night light", "Two quick waves start the night light at 5% brightness"))
-        page.get_by_label("What changed").fill("Night light brightness")
+        wait_until_shared(page)
         # Meanwhile Ada saves a change of her own.
         owner = self.page("owner")
-        theirs = self.doc(owner)["body"] + "\n## Open questions\n\n- Does the sensor see through a frosted shade?\n"
-        self.api(owner, "PATCH", f"/api/v1/docs/{self.doc_id}", {"body": theirs, "reason": "Added open questions"}, status=200,
-                 headers={"if-match": '"1"', "idempotency-key": str(uuid.uuid4())})
-        page.get_by_role("button", name="Save version").click()
-        conflict = page.get_by_role("alert")
-        expect(conflict).to_contain_text("Ada Lind saved version 2 while you were editing")
-        expect(conflict).to_contain_text("Nothing was overwritten")
-        conflict.get_by_role("button", name="Show their changes and yours").click()
-        expect(conflict.locator(".doc-diff__row--added")).to_contain_text(["## Open questions"])
+        before = self.doc(owner)
+        theirs = before["body"] + "\n## Open questions\n\n- Does the sensor see through a frosted shade?\n"
+        self.api(owner, "PATCH", f"/api/v1/docs/{self.doc_id}", {"body": theirs}, status=200,
+                 headers={"if-match": f'"{before["version"]}"', "idempotency-key": str(uuid.uuid4())})
+        self.type_end(page, "\nKai checked the power readings.\n")
+        conflict = page.get_by_role("alert").filter(has_text="saved this page while you were writing")
+        expect(conflict).to_contain_text(OWNER["name"])
+        expect(conflict).to_contain_text("Your text is still here")
+        # What Keep does, and theirs to compare first (#946 review B2).
+        expect(conflict).to_contain_text("“Keep my text” saves your text as the next version, in place of theirs.")
+        expect(conflict.get_by_role("link", name="See their change")).to_have_attribute(
+            "href", f"/projects/{self.project_id}/docs/{self.doc_id}/history?from={before['version']}&to={before['version'] + 1}")
+        expect(page.get_by_role("status").filter(has_text="Not saved · this page changed")).to_be_visible()
         shot(page, "docs-conflict-desktop-1440")
-        self.assertEqual(self.doc(page)["version"], 2, "the stale save changed nothing")
+        self.assertEqual(self.doc(page)["version"], before["version"] + 1, "the stale save changed nothing")
         # Kai keeps his text on top of Ada's version and carries her addition over himself.
-        conflict.get_by_role("button", name="Keep my text on top of version 2").click()
-        expect(page.get_by_role("alert")).to_have_count(0)
-        text.fill(text.input_value().rstrip("\n") + "\n\n## Open questions\n\n- Does the sensor see through a frosted shade?\n")
-        page.get_by_role("button", name="Save version").click()
-        expect(page.locator(".doc-head__k")).to_have_text("Published · version 3")
-        history = self.versions(page)
-        self.assertEqual([item["reason"] for item in history], ["Night light brightness", "Added open questions", "First notes from the bench test"])
-        v2 = self.api(page, "GET", f"/api/v1/docs/{self.doc_id}/versions/2", status=200)
-        self.assertIn("Open questions", v2["body"], "Ada's version stays as she wrote it")
-        self.assertNotIn("5% brightness", v2["body"])
-        current = self.doc(page)["body"]
-        self.assertIn("5% brightness", current)
-        self.assertIn("frosted shade", current)
+        conflict.get_by_role("button", name="Keep my text").click()
+        expect(conflict).to_have_count(0)
+        self.type_end(page, "\n## Open questions\n\n- Does the sensor see through a frosted shade?\n")
+        deadline = time.monotonic() + 60  # the next version follows the 30 s spacing
+        while True:
+            current = self.doc(page)
+            if ("Kai checked the power readings." in current["body"] and "frosted shade" in current["body"]) or time.monotonic() > deadline:
+                break
+            time.sleep(0.25)
+        self.assertIn("Kai checked the power readings.", current["body"])
+        self.assertIn("frosted shade", current["body"])
+        self.assertIn("Open questions", self.api(page, "GET", f"/api/v1/docs/{self.doc_id}/versions/{before['version'] + 1}", status=200)["body"],
+                      "Ada's version stays as she wrote it")
+        # Kai changes the agreed text; the next version holds it.
+        existing_text(page).focus()
+        page.keyboard.press("Control+a")
+        page.keyboard.insert_text(current["body"].replace("Two quick waves start the night light", "Two quick waves start the night light at 5% brightness"))
+        self.saved_doc(page, "5% brightness")
 
     def shared_concurrent_edit(self) -> None:
-        """Normal installation: both contributions arrive before Save; each saved version stays immutable."""
+        """Normal installation: both people see each other's text as it is typed, and the saved versions keep both."""
         partner, owner = self.page("partner"), self.page("owner")
         url = f"/projects/{self.project_id}/docs/{self.doc_id}"
         for page in (partner, owner):
-            page.goto(url + "/edit")
+            page.goto(url)
             expect(page.locator('[data-live-status="live"]')).to_be_visible()
-        theirs = owner.locator('.cm-content[aria-label="Shared Markdown"]')
-        mine = partner.locator('.cm-content[aria-label="Shared Markdown"]')
-        mine.click()
-        partner.keyboard.press("Control+End")
-        partner.keyboard.insert_text("\nKai checked the power readings.\n")
-        theirs.click()
-        owner.keyboard.press("Control+End")
-        owner.keyboard.insert_text("\n## Open questions\n\n- Does the sensor see through a frosted shade?\n")
+        theirs, mine = existing_text(owner), existing_text(partner)
+        self.type_end(partner, "\nKai checked the power readings.\n")
+        self.type_end(owner, "\n## Open questions\n\n- Does the sensor see through a frosted shade?\n")
         for field in (mine, theirs):
             expect(field).to_contain_text("Kai checked the power readings.")
             expect(field).to_contain_text("frosted shade")
-        expect(owner.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
-        self.assertEqual(self.doc(owner)["version"], 1, "typing does not rewrite the saved citation")
-        owner.get_by_label("Reason for this version").fill("Added open questions")
-        owner.get_by_role("button", name="Save version", exact=True).click()
-        expect(owner.get_by_role("status").filter(has_text="Version 2 saved")).to_be_visible()
-        v2 = self.api(owner, "GET", f"/api/v1/docs/{self.doc_id}/versions/2", status=200)
-        self.assertIn("Kai checked the power readings.", v2["body"])
-        self.assertIn("frosted shade", v2["body"])
-        self.assertEqual({actor["name"] for actor in v2["contributors"]}, {OWNER["name"], PARTNER["name"]})
-        # Kai changes the agreed text after Ada's explicit snapshot, retaining both earlier contributions.
-        mine.click()
-        partner.keyboard.press("Control+a")
-        partner.keyboard.insert_text(v2["body"].replace("Two quick waves start the night light", "Two quick waves start the night light at 5% brightness"))
-        expect(partner.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
-        expect(theirs).to_contain_text("at 5% brightness")
-        partner.get_by_label("Reason for this version").fill("Night light brightness")
-        partner.get_by_role("button", name="Save version", exact=True).click()
-        expect(partner.get_by_role("status").filter(has_text="Version 3 saved")).to_be_visible()
-        current = self.doc(partner)
-        self.assertEqual(current["version"], 3)
-        self.assertIn("5% brightness", current["body"])
+        expect(owner.get_by_role("status").filter(has_text="Kai is here too")).to_be_visible()
+        current = self.saved_doc(owner, "frosted shade")
+        current = self.saved_doc(owner, "Kai checked the power readings.")
         self.assertIn("frosted shade", current["body"])
-        self.assertEqual(self.api(owner, "GET", f"/api/v1/docs/{self.doc_id}/versions/2", status=200)["body"], v2["body"])
-        self.assertNotIn("5% brightness", v2["body"])
-        self.assertEqual([row["reason"] for row in self.versions(partner)], ["Night light brightness", "Added open questions", "First notes from the bench test"])
+        versions = self.versions(owner)
+        self.assertTrue(all(item["reason"] == "Edited the text" for item in versions[:-1]), versions)
+        names = {actor["name"] for item in versions for actor in item.get("contributors", [])}
+        self.assertEqual(names, {OWNER["name"], PARTNER["name"]}, "each saved version names who wrote in it")
+        saved_before = current["version"]
+        earlier = self.api(owner, "GET", f"/api/v1/docs/{self.doc_id}/versions/{saved_before}", status=200)
+        # Kai changes the agreed text later; the version saved before stays as it was.
+        mine.focus()
+        partner.keyboard.press("Control+a")
+        partner.keyboard.insert_text(current["body"].replace("Two quick waves start the night light", "Two quick waves start the night light at 5% brightness"))
+        expect(theirs).to_contain_text("at 5% brightness")
+        latest = self.saved_doc(partner, "5% brightness", timeout=60)
+        self.assertIn("frosted shade", latest["body"])
+        self.assertGreater(latest["version"], saved_before)
+        self.assertEqual(self.api(owner, "GET", f"/api/v1/docs/{self.doc_id}/versions/{saved_before}", status=200)["body"], earlier["body"])
+        self.assertNotIn("5% brightness", earlier["body"])
 
     # ---------------------------------------------------------------- history and diff
 
     def test_04_history_shows_every_version_and_a_diff(self) -> None:
         for viewport, name in ((DESKTOP, "1440"), (LAPTOP, "1280")):
             page = self.page("owner", viewport=viewport)
-            page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
-            page.get_by_role("link", name=re.compile("^History")).click()
+            page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}/history")
             versions = page.locator(".doc-versions > li")
-            expect(versions).to_have_count(3)
-            expect(versions.first).to_contain_text("Night light brightness")
+            expect(versions).to_have_count(len(self.versions(page)))
+            expect(versions.first).to_contain_text("Edited the text")
             expect(versions.first).to_contain_text(PARTNER["name"])
             diff = page.get_by_label("Changes in the text")
             # The rendered comparison reads as the page: added words are marked where they stand, headings are headings.
             expect(diff.locator("li", has_text="Two quick waves")).to_contain_text("at 5% brightness")
             expect(diff.locator("li ins")).to_contain_text(["at 5% brightness"])
             choose(page.get_by_label("Compare with"), "1")
-            expect(page.get_by_role("heading", name=re.compile("^v1 → v3"))).to_be_visible()
+            expect(page.get_by_role("heading", name=re.compile("^v1 → v"))).to_be_visible()
             expect(diff.locator(".wiki-chg--added", has_text="Open questions")).to_have_count(1)
             shot(page, f"docs-history-desktop-{name}")
         # An earlier version reads as written, and says so.
         page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}/versions/1")
         expect(page.locator(".doc-notice").first).to_contain_text("You are reading an earlier version")
-        expect(page.locator(".doc-prose")).not_to_contain_text("Open questions")
+        expect(page.locator(".wiki-body")).not_to_contain_text("Open questions")
         shot(page, "docs-reader-earlier-desktop-1280")
 
     # ---------------------------------------------------------------- from a result
 
     def test_05_add_a_result_to_the_doc(self) -> None:
         page = self.page("partner")
+        before = self.doc(page)["version"]
         # Results have no list in Tasks (#342): the result opens by its own link, as from its task's details.
         results = page.request.get(f"/api/v1/projects/{self.project_id}/results?limit=100").json()["items"]
         result = next(item for item in results if item["title"].startswith(FINDING))
@@ -321,11 +333,9 @@ class DocsJourney(unittest.TestCase):
         expect(page.get_by_text(f"Added to “{TITLE}”")).to_be_visible()
         page.get_by_role("button", name="Open", exact=True).click()
         expect(page.get_by_role("heading", level=2, name=TITLE)).to_be_visible()
-        expect(page.locator(".wiki-who time").first).to_have_attribute("title", re.compile(re.escape(f"Added the result “{FINDING}”")))
-        expect(page.locator(".doc-prose").get_by_role("heading", name=f"Result: {FINDING}")).to_be_visible()
-        expect(page.get_by_role("region", name=re.compile("^Added from"))).to_contain_text(FINDING)
+        expect(page.locator(".wiki-editor .cm-md-h", has_text=f"Result: {FINDING}")).to_be_visible()
         doc = self.doc(page)
-        self.assertEqual(doc["version"], 4)
+        self.assertEqual((doc["version"], doc["reason"]), (before + 1, f"Added the result “{FINDING}”"))
         self.assertTrue(any(link["role"] == "source" and link["to"]["id"] == self.result_id for link in doc["links"]))
         result = self.api(page, "GET", f"/api/v1/results/{self.result_id}", status=200)
         self.assertTrue(any(link["from"]["type"] == "doc" and link["from"]["id"] == self.doc_id for link in result["links"]))
@@ -335,44 +345,23 @@ class DocsJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- phone
 
-    def test_06_phone_reads_edits_and_compares(self) -> None:
+    def test_06_phone_writes_and_compares(self) -> None:
         page = self.page("partner", phone=True)
         page.goto(f"/projects/{self.project_id}/docs")
-        row = page.get_by_role("link", name=re.compile(TITLE))
-        expect(row).to_be_visible()
-        self.assertGreaterEqual(row.bounding_box()["height"], 44, "touch target")
-        shot(page, "docs-list-phone-390")
-        row.tap()
         expect(page.get_by_role("heading", level=2, name=TITLE)).to_be_visible()
         scroll_width = page.evaluate("document.querySelector('.pane-scroll').scrollWidth - document.querySelector('.pane-scroll').clientWidth")
         self.assertLessEqual(scroll_width, 0, "no horizontal page scroll on the phone")
         shot(page, "docs-reader-phone-390")
-        edit = page.get_by_role("link", name="Edit")
-        self.assertGreaterEqual(edit.bounding_box()["height"], 44)
-        edit.tap()
-        if LIVE:
-            text = page.locator('.cm-content[aria-label="Shared Markdown"]')
-            expect(page.locator('[data-live-status="live"]')).to_be_visible()
-            text.click()
-            page.keyboard.press("Control+End")
-            page.keyboard.insert_text("\n## Next\n\n- Order two ToF sensors for the second lamp\n")
-            expect(page.get_by_role("status").filter(has_text="All changes shared")).to_be_visible()
-        else:
-            text = page.get_by_label("Text (Markdown)")
-            text.fill(text.input_value() + "\n## Next\n\n- Order two ToF sensors for the second lamp\n")
-        page.get_by_role("button", name="Preview").tap()
-        expect(page.get_by_label("Shared preview" if LIVE else "Preview").get_by_role("heading", name="Next")).to_be_visible()
-        shot(page, "docs-editor-preview-phone-390")
-        page.get_by_role("button", name="Save version").tap()
-        if LIVE:
-            expect(page.get_by_role("status").filter(has_text="Version 5 saved")).to_be_visible()
-            page.get_by_role("link", name="Back to the Wiki page", exact=True).tap()
-        expect(page.get_by_role("heading", level=2, name=TITLE)).to_be_visible()
-        expect(page.locator(".wiki-bar__title")).to_contain_text("Wiki ·")
-        self.assertEqual(self.doc(page)["version"], 5)
-        self.assertEqual(self.doc(page)["reason"], "Edited the text")
-        page.get_by_role("button", name="More").tap()
-        page.get_by_role("link", name=re.compile("^History")).tap()
+        wait_until_shared(page)
+        existing_text(page).locator(".cm-line").last.tap()
+        page.keyboard.press("Control+End")
+        page.keyboard.insert_text("\n## Next\n\n- Order two ToF sensors for the second lamp\n")
+        doc = self.saved_doc(page, "Order two ToF sensors")
+        self.assertEqual(doc["reason"], "Edited the text")
+        expect(saved(page)).to_be_visible()
+        shot(page, "docs-writing-phone-390")
+        page.get_by_role("button", name="Page actions").tap()
+        page.get_by_role("menu", name="Page actions").get_by_role("menuitem", name="History").tap()
         expect(page.get_by_label("Changes in the text").locator(".wiki-chg--added")).to_contain_text(["Next"])
         shot(page, "docs-history-phone-390")
 
@@ -385,12 +374,20 @@ class DocsJourney(unittest.TestCase):
                 f"[missing](flux:doc/{uuid.uuid4()})")
         doc = self.api(page, "POST", f"/api/v1/projects/{self.project_id}/docs", {"title": "Pasted from an email", "body": body}, status=201)
         page.goto(f"/projects/{self.project_id}/docs/{doc['id']}")
+        wait_until_shared(page)
+        # Written where it is read, the page is its text: nothing in it becomes an element that runs.
+        prose = page.locator(".wiki-editor")
+        expect(prose).to_contain_text("<script>alert('script')</script>")
+        # CodeMirror's own zero-size `img.cm-widgetBuffer` marks are its, not the text's.
+        self.assertEqual(prose.locator("img:not(.cm-widgetBuffer), script, iframe, [onerror]").count(), 0)
+        self.assertEqual(prose.locator("a").count(), 0, "no hostile link became clickable")
+        expect(prose.locator(".doc-ref--missing")).to_have_text("missing")
+        # The saved version reads as the server sanitized it, and says which link leads nowhere.
+        page.goto(f"/projects/{self.project_id}/docs/{doc['id']}/versions/1")
         prose = page.locator(".doc-prose")
         expect(prose).to_contain_text("<script>alert('script')</script>")
         self.assertEqual(prose.locator("img, script, iframe").count(), 0)
         self.assertEqual(prose.locator("a").count(), 0, "no hostile link became clickable")
-        expect(prose.locator(".doc-ref--missing")).to_have_text("missing")
-        # The shared reader adds its own notice ("Shared working copy · last saved version N"); the one about the link is the other.
         expect(page.locator(".doc-notice", has_text="not in this space or no longer exists")).to_be_visible()
 
     # ---------------------------------------------------------------- history reads like the page (#511)
@@ -402,21 +399,22 @@ class DocsJourney(unittest.TestCase):
         second = ("## Sensors\n\n- Capacitive soil probe\n- DS18B20 probe\n- Shed gateway\n\n## Radio\n\n"
                   "The far beds report over LoRa. Two sensors reached the gateway from 140 m.\n\n| Bed | Distance |\n| --- | ---: |\n| Far east | 140 m |\n| Shed | 60 m |\n")
         doc = self.api(owner, "POST", f"/api/v1/projects/{self.project_id}/docs", {"title": "Garden radio", "body": first, "reason": "First notes"}, status=201)
-        self.api(owner, "PATCH", f"/api/v1/docs/{doc['id']}", {"body": second, "state": "published", "reason": "Added the LoRa range test"}, status=200,
+        self.api(owner, "PATCH", f"/api/v1/docs/{doc['id']}", {"body": second, "reason": "Added the LoRa range test"}, status=200,
                  headers={"if-match": '"1"', "idempotency-key": str(uuid.uuid4())})
         page = self.page("owner")
         page.goto(f"/projects/{self.project_id}/docs/{doc['id']}")
-        page_h2 = page.locator(".doc-prose h2").first.evaluate("el => getComputedStyle(el).fontSize + '/' + getComputedStyle(el).fontWeight")
-        page.get_by_role("link", name=re.compile("^History")).click()
+        wait_until_shared(page)
+        page_h2 = page.locator(".wiki-editor .cm-md-h2").first.evaluate("el => getComputedStyle(el).fontSize + '/' + getComputedStyle(el).fontWeight")
+        page.get_by_role("button", name="Page actions").click()
+        page.get_by_role("menu", name="Page actions").get_by_role("menuitem", name="History").click()
 
-        # AC-2: versions are a timeline (version, summary, author, state, date); the header reads "v1 → v2 · +N −M · Draft → Published".
+        # AC-2: versions are a timeline (version, summary, author, date); the header reads "v1 → v2 · +N −M".
         versions = page.locator(".doc-versions > li")
         expect(versions).to_have_count(2)
         expect(versions.first).to_contain_text("Added the LoRa range test")
-        expect(versions.first).to_contain_text("v2 · Published")
-        expect(versions.first).to_contain_text(OWNER["name"])
-        expect(versions.last).to_contain_text("v1 · Draft")
-        expect(page.get_by_role("heading", name=re.compile(r"^v1 → v2 · \+\d+ −\d+ · Draft → Published$"))).to_be_visible()
+        expect(versions.first).to_contain_text(f"v2 · {OWNER['name']}")
+        expect(versions.last).to_contain_text("v1 · ")
+        expect(page.get_by_role("heading", name=re.compile(r"^v1 → v2 · \+\d+ −\d+$"))).to_be_visible()
         expect(page.locator(".doc-versions .doc-version[aria-current='true']")).to_contain_text("Added the LoRa range test")
 
         # AC-1: the changes are the page itself, in its typography: headings, a list, a table.
@@ -460,20 +458,12 @@ class DocsJourney(unittest.TestCase):
         shot(page, "wiki-history-rendered-desktop-1440-dark")
         page.emulate_media(color_scheme="light")
 
-        # Restore is a quiet action in the toolbar's primary place. It brings the earlier text into the
-        # editor; nothing changes until the person saves it as a new version.
-        restore = page.locator(".wiki-bar").get_by_role("link", name="Restore v1")
-        expect(restore).to_have_class(re.compile(r"ui-btn--quiet"))
-        restore.click()
-        expect(page).to_have_url(re.compile(r"/edit\?restore=1$"))
-        text = page.get_by_label("Text (Markdown)")
-        expect(page.locator(".doc-notice", has_text="Version 1 is in the editor")).to_be_visible()
-        self.assertEqual(text.input_value().strip(), first.strip())
-        self.assertEqual(self.doc(owner, doc["id"])["version"], 2, "nothing changed yet")
-        page.locator(".wiki-bar").get_by_role("button", name="Save version").click()
-        expect(page.locator(".doc-head__k")).to_have_text("Published · version 3")
-        saved = self.doc(owner, doc["id"])
-        self.assertEqual((saved["version"], saved["body"].strip(), saved["reason"]), (3, first.strip(), "Restored version 1"))
+        # Restore brings the earlier text back as the page, for everyone writing in it, as the next version that says so.
+        page.get_by_role("button", name="Restore version 1").click()
+        expect(page.get_by_text("Version 1 is the page again.")).to_be_visible(timeout=15000)
+        expect(page).to_have_url(re.compile(re.escape(f"/docs/{doc['id']}") + "$"))
+        restored = self.doc(owner, doc["id"])
+        self.assertEqual((restored["version"], restored["body"], restored["reason"]), (3, first, "Restored version 1"))
 
         # The phone reads the same comparison in one column, without sideways scrolling.
         phone = self.page("owner", phone=True)

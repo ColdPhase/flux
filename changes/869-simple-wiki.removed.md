@@ -1,0 +1,1 @@
+- The Wiki's Write / Preview / Both editor, the raw Markdown field, "Reason for this version", Draft / Published, the pages column, the "On this page" column and the Wiki's focus mode ([#869](https://github.com/ColdPhase/flux/issues/869)).

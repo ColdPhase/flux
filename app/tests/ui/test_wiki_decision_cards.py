@@ -1,7 +1,7 @@
 """Decisions in the Wiki are one live card with a short reason (F-034, #763 E1, founder decision 2026-10-30).
 
 A page holding decision references standing on their own lines shows them as drawn, with the reason under each; a
-card opens its decision and leaves the outline and the history to the page's own headings and the edits people made.
+card opens its decision and leaves Contents and the history to the page's own headings and the edits people made.
 "Add to a Wiki page" inserts the card; a later change of the decision shows on the card without a new version; a proposed decision cannot be added.
 Runs on Chromium and WebKit (FLUX_UI_BROWSER), at 1440x900 and on a 390x844 touch phone.
 """
@@ -68,10 +68,10 @@ class WikiDecisionCards(unittest.TestCase):
             card(cls.resistive), "",
             "## Range", "", "The far east bed sits 180 m from the shed behind a hedge.", "",
         ])
-        sensors = api("POST", f"/api/v1/projects/{pid}/docs", {"title": "How the garden sensors work", "body": body, "state": "published"},
+        sensors = api("POST", f"/api/v1/projects/{pid}/docs", {"title": "How the garden sensors work", "body": body},
                       {"idempotency-key": str(uuid.uuid4())})
         cls.sensors_id = sensors["id"]
-        rules = api("POST", f"/api/v1/projects/{pid}/docs", {"title": "Decisions and why", "body": "The rules we keep.", "state": "published"},
+        rules = api("POST", f"/api/v1/projects/{pid}/docs", {"title": "Decisions and why", "body": "The rules we keep."},
                     {"idempotency-key": str(uuid.uuid4())})
         cls.rules_id = rules["id"]
         cls.state = ctx.storage_state()
@@ -124,9 +124,10 @@ class WikiDecisionCards(unittest.TestCase):
         expect(prose.get_by_role("heading", name=re.compile("^Decision:"))).to_have_count(0)
         expect(prose).not_to_contain_text("Source:")
         expect(prose).not_to_contain_text("Frost comes in autumn")
-        # The outline lists the page's own topics only.
-        outline = page.get_by_role("complementary", name="On this page")
-        expect(outline.get_by_role("link")).to_have_text(["Parts", "Range"])
+        # Contents lists the page's own topics only.
+        page.get_by_role("button", name="Contents").click()
+        expect(page.get_by_role("menu", name="Contents").get_by_role("menuitem")).to_have_text(["Parts", "Range"])
+        page.keyboard.press("Escape")
         # Cards are not listed again under the page.
         expect(page.get_by_role("region", name=re.compile("^Links in this page"))).to_have_count(0)
         shot(page, "wiki-decision-cards-desktop-1440")
@@ -143,7 +144,8 @@ class WikiDecisionCards(unittest.TestCase):
         self.call(page, "POST", f"/api/v1/decisions/{replacement['id']}/accept", {"expectedVersion": replacement["version"]})
         page.goto(self.doc_url(self.sensors_id))
         expect(page.locator("a.doc-decision").first).to_contain_text("Decision replaced")
-        expect(page.get_by_role("complementary", name="On this page").get_by_role("link")).to_have_text(["Parts", "Range"])
+        page.get_by_role("button", name="Contents").click()
+        expect(page.get_by_role("menu", name="Contents").get_by_role("menuitem")).to_have_text(["Parts", "Range"])
         page.goto(f"{self.doc_url(self.sensors_id)}/history")
         versions = page.locator(".doc-versions > li")
         expect(versions).to_have_count(1)

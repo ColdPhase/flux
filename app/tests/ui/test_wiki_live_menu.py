@@ -1,4 +1,4 @@
-"""Compact Wiki Together/Join against the real local SFU; no device is turned on."""
+"""A phone Wiki page's Together/Join, in the space header (#869: the page's ⋯ holds only its own actions), against the real local SFU; no device is turned on."""
 
 import re
 import unittest
@@ -10,16 +10,13 @@ from test_live_sessions import LIVE, LiveBase
 
 @unittest.skipUnless(LIVE, "requires the explicitly configured local SFU profile")
 class WikiLiveMenu(LiveBase):
-    def test_reader_starts_and_peer_joins_from_the_single_overflow(self) -> None:
+    def test_reader_starts_and_peer_joins_from_the_space_header(self) -> None:
         self.seed()
         reader = self.page("nia", phone=True)
         url = f"/projects/{self.ids['project']}/docs/{self.ids['doc']}"
         before = self.api(reader, "GET", f"/api/v1/docs/{self.ids['doc']}", status=200)
         reader.goto(url)
-        reader.locator("header.top, .wiki-top__menu").get_by_role("button", name="More", exact=True).click()
-        menu = reader.get_by_role("dialog", name="Page actions")
-        menu.get_by_role("button", name="Together", exact=True).click()
-        expect(menu).to_have_count(0)
+        reader.locator("header.phead").get_by_role("button", name="Together", exact=True).click()
         bar = self.bar(reader)
         expect(bar.get_by_role("status").first).to_contain_text("Live")
         expect(bar.get_by_role("button", name=re.compile("^Microphone off"))).to_have_attribute("aria-pressed", "false")
@@ -34,8 +31,7 @@ class WikiLiveMenu(LiveBase):
 
         peer = self.page("jonas", phone=True)
         peer.goto(url)
-        peer.locator("header.top, .wiki-top__menu").get_by_role("button", name="More", exact=True).click()
-        peer.get_by_role("dialog", name="Page actions").get_by_role("button", name="Join", exact=True).click()
+        peer.locator("header.phead").get_by_role("button", name="Join", exact=True).click()
         expect(self.bar(peer).get_by_role("status").first).to_contain_text("Live")
         self.assertEqual(peer.evaluate("window.__live.gum + window.__live.gdm"), 0)
         self.assertEqual(len(self.api(peer, "GET", f"/api/v1/projects/{self.ids['project']}/live-sessions", status=200)["items"]), 1)

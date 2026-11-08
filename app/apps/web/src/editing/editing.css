@@ -1,29 +1,59 @@
-.editing-code { border: 1px solid var(--line); border-radius: 6px; background: var(--bg); min-width: 0; overflow: hidden; }
-.editing-code .cm-editor { color: var(--t1); }
-.editing-code .cm-gutters { background: var(--bg); color: var(--t3); border: 0; }
+/* The page being written (#869): the reader's type with no box around it; the marks show only where the caret is. */
+.wiki-editor .cm-editor { color: var(--t2); font: inherit; background: none; }
+.wiki-editor .cm-editor.cm-focused { outline: none; }
+/* The page's column holds the text: a wide table scrolls inside its own card, never the page. */
+.wiki-editor .cm-editor, .wiki-editor .cm-editor .cm-scroller { min-width: 0; }
+.wiki-editor .cm-editor .cm-scroller { font-family: var(--font); line-height: inherit; overflow: visible; }
+.wiki-editor .cm-editor .cm-content { min-width: 0; width: 100%; padding: 0 0 48px; caret-color: var(--t1); }
+.wiki-editor .cm-editor .cm-line { padding: 0; }
+/* A readable measure, as the reader keeps it (at most 90 characters a line in Chromium and WebKit); code and tables take the column. */
+.wiki-editor .cm-editor .cm-line:not(.cm-md-pre):not(.cm-md-table) { max-width: 62ch; }
+.wiki-editor .cm-editor .cm-placeholder { color: var(--t3); }
+.wiki-editor .cm-editor .cm-md-h { color: var(--t1); font-weight: 600; letter-spacing: -0.025em; line-height: 1.5; }
+.wiki-editor .cm-editor .cm-md-h1 { padding-top: 10px; font-size: var(--fs-2xl); line-height: 1.35; }
+.wiki-editor .cm-editor .cm-md-h2 { padding-top: 10px; font-size: var(--fs-xl); letter-spacing: -0.02em; }
+.wiki-editor .cm-editor .cm-md-h3 { padding-top: 6px; font-size: var(--fs-lg); }
+.wiki-editor .cm-editor .cm-md-h4 { font-size: var(--fs-base); }
+.wiki-editor .cm-editor .cm-md-setext { color: var(--t3); }
+.wiki-editor .cm-md-strong { font-weight: 600; color: var(--t1); }
+.wiki-editor .cm-md-em { font-style: italic; }
+.wiki-editor .cm-md-s { color: var(--t3); text-decoration: line-through; }
+.wiki-editor .cm-md-code { padding: 1px 5px; border-radius: 4px; background: var(--sub); box-shadow: inset 0 0 0 1px var(--line); font-family: var(--mono); font-size: .86em; }
+.wiki-editor .cm-md-link { color: var(--t1); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--t1) 45%, transparent); text-underline-offset: 3px; }
+.wiki-editor .cm-md-mark { color: var(--t3); }
+/* A list item hangs from its bullet, at its depth. */
+.wiki-editor .cm-editor .cm-line.cm-md-li { padding-left: calc(var(--md-depth, 1) * 1.5em); text-indent: -1.5em; }
+.wiki-editor .cm-md-bullet { display: inline-block; width: 1.5em; text-indent: 0; color: var(--t1); }
+.wiki-editor .cm-editor .cm-line.cm-md-quote { padding-left: 14px; border-left: 2px solid var(--line2); background: var(--sub); color: var(--t2); }
+.wiki-editor .cm-editor .cm-line.cm-md-pre { padding: 0 18px; background: var(--sub); font-family: var(--mono); font-size: var(--fs-xs); line-height: 1.65; }
+.wiki-editor .cm-editor .cm-line.cm-md-pre--first { padding-top: 12px; border-radius: var(--r) var(--r) 0 0; }
+.wiki-editor .cm-editor .cm-line.cm-md-pre--last { padding-bottom: 12px; border-radius: 0 0 var(--r) var(--r); }
+.wiki-editor .cm-editor .cm-line.cm-md-pre--first.cm-md-pre--last { border-radius: var(--r); }
+.wiki-editor .cm-editor .cm-line.cm-md-fence { color: var(--t3); }
+.wiki-editor .cm-md-rule { display: inline-block; width: 100%; height: 1px; vertical-align: middle; background: var(--line); }
+.wiki-editor .cm-editor .cm-line.cm-md-table { font-family: var(--mono); font-size: var(--fs-xs); }
+.wiki-editor .cm-md-table-card { margin: 6px 0; cursor: text; }
+.wiki-editor .cm-editor .cm-line.cm-md-card { padding: 4px 0; }
+.wiki-editor a.doc-ref { cursor: pointer; }
+.wiki-editor a.doc-decision { display: block; white-space: normal; }
+
+/* Another person's caret: a thin line topped by their shape, and their first name above it (as drawn, #869). */
 .editing-carets { pointer-events: none; }
 .editing-caret { position: absolute; border-left: 2px solid; margin-left: -1px; color: var(--t1); pointer-events: none; }
 .editing-caret > span:first-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; pointer-events: none; }
-/* Shape, not colour, tells people apart: the same small shape tops the caret, leads its name tag and its entry in the strip. */
 .editing-caret::before { content: ''; position: absolute; top: -4px; left: -5px; width: 8px; height: 8px; background: currentColor; }
-.editing-shape { flex: none; display: inline-block; width: 8px; height: 8px; margin-right: 5px; background: currentColor; vertical-align: baseline; }
-.editing-caret[data-shape="circle"]::before, .editing-shape[data-shape="circle"] { border-radius: 50%; }
-.editing-caret[data-shape="square"]::before, .editing-shape[data-shape="square"] { border-radius: 1px; }
-.editing-caret[data-shape="diamond"]::before, .editing-shape[data-shape="diamond"] { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
-.editing-caret[data-shape="triangle"]::before, .editing-shape[data-shape="triangle"] { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
-/* The name stays out of the text: on a wide editor it has its own lane right of the lines (the scroller reserves it below). */
-.editing-caret__tag { display: none; position: absolute; box-sizing: border-box; align-items: center; height: 18px; max-width: 126px; padding: 0 8px 0 7px; border-radius: 9px;
-  background: var(--inv); color: var(--oninv); font: var(--fs-glyph)/18px var(--font); white-space: nowrap; pointer-events: none; }
-.editing-caret__tag > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.editing-caret__tag .editing-shape { margin-right: 5px; }
-@media (min-width: 768px) {
-  .editing-caret__tag { display: flex; }
-  /* The lane is the scroller's padding, not the editable's: padding on the editable broke WebKit's native IME composition (#613). */
-  .editing-code .cm-editor .cm-scroller { padding-right: 136px; }
-}
-.editing-status { display: flex; gap: 12px; flex-wrap: wrap; font-size: var(--fs-xs); color: var(--t3); }
-.editing-people { display: inline-flex; gap: 10px; flex-wrap: wrap; align-items: center; font-size: var(--fs-xs); color: var(--t1); }
-.editing-people > span { display: inline-flex; align-items: center; }
+.editing-caret[data-shape="circle"]::before { border-radius: 50%; }
+.editing-caret[data-shape="square"]::before { border-radius: 1px; }
+.editing-caret[data-shape="diamond"]::before { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.editing-caret[data-shape="triangle"]::before { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.editing-caret__tag { position: absolute; bottom: calc(100% + 2px); left: -1px; padding: 1px 5px; border-radius: 4px; background: var(--inv); color: var(--oninv);
+  font: 600 var(--fs-glyph)/1.3 var(--font); white-space: nowrap; pointer-events: none; }
+.editing-caret[data-shape]::before { display: none; }
+.editing-caret[data-shape] .editing-caret__tag::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 4px; background: currentColor; vertical-align: 1px; }
+.editing-caret[data-shape="circle"] .editing-caret__tag::before { border-radius: 50%; }
+.editing-caret[data-shape="diamond"] .editing-caret__tag::before { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.editing-caret[data-shape="triangle"] .editing-caret__tag::before { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+
 .doc-notice textarea { display: block; width: 100%; min-height: 150px; max-height: 320px; font: var(--fs-xs)/1.6 var(--mono); color: var(--t1); background: var(--bg); }
 .sk-live-mover { display: block; font-size: var(--fs-glyph); line-height: 1.3; color: var(--t1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sk-node[data-live-mover] { outline: 2px solid var(--t1); outline-offset: 1px; will-change: transform; z-index: 3; }
@@ -35,5 +65,12 @@
 .editing-selection[data-shape="square"] { border-bottom-style: dashed; }
 .editing-selection[data-shape="diamond"] { border-bottom-style: dotted; }
 .editing-selection[data-shape="triangle"] { border-bottom-style: double; border-bottom-width: 3px; }
-/* CW-4: a reference's kind word in place of its id, after the label. */
+/* CW-4: a reference's kind word in place of its id, after the label, while its line is written. */
 .editing-ref { margin-left: 4px; padding: 0 6px; border-radius: var(--r-pill); background: var(--hov); color: var(--t2); font: 500 var(--fs-xs)/1.6 var(--font); white-space: nowrap; }
+/* A person's shape, as the map's people strip and labels show it. */
+.editing-shape { flex: none; display: inline-block; width: 8px; height: 8px; margin-right: 5px; background: currentColor; vertical-align: baseline; }
+.editing-shape[data-shape="circle"] { border-radius: 50%; }
+.editing-shape[data-shape="square"] { border-radius: 1px; }
+.editing-shape[data-shape="diamond"] { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); }
+.editing-shape[data-shape="triangle"] { clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.wiki-editor .cm-editor .cm-line.cm-md-fence--quiet { font-size: 0; line-height: 4px; }

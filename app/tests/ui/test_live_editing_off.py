@@ -22,7 +22,7 @@ PASSWORD = "ordinary live-off password"
 WATCH = r"""
 (() => {
   const seen = window.__liveText = [];
-  const words = ['Write together', 'Connecting to the shared working copy', 'Shared working copy', 'Waiting for confirmation', 'Reconnecting to the shared map'];
+  const words = ['Write together', 'Connecting to the shared working copy', 'Shared working copy', 'Waiting for confirmation', 'Reconnecting to the shared map', 'is here too'];
   const check = () => { const text = document.body ? document.body.innerText : ''; for (const word of words) if (text.includes(word) && !seen.includes(word)) seen.push(word); };
   new MutationObserver(check).observe(document, { childList: true, subtree: true, characterData: true });
 })();
@@ -52,7 +52,8 @@ class LiveEditingOffJourney(unittest.TestCase):
         cls.pw.stop()
 
     def page(self) -> tuple[Page, list[str]]:
-        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, color_scheme="light", storage_state=self.state)
+        # A request a service worker handles cannot be held by a route (#271), and test_02c holds one.
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, color_scheme="light", storage_state=self.state, service_workers="block")
         self.addCleanup(context.close)
         page = context.new_page()
         errors: list[str] = []
@@ -86,22 +87,80 @@ class LiveEditingOffJourney(unittest.TestCase):
         self.api(page, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Distance sensor", "x": 80, "y": 80})
         type(self).map_url = f"/map/{sketch['id']}"
 
-    def test_02_wiki_reader_and_editor_are_ordinary_from_the_first_render(self) -> None:
+    def test_02_the_wiki_page_is_ordinary_from_the_first_render_and_saves_versions(self) -> None:
         page, live = self.page()
-        shown: list[str] = []
         page.goto(self.doc_url)
         expect(page.get_by_role("heading", level=2, name="Bench notes")).to_be_visible()
-        expect(page.get_by_text("The sensor reads 38% at 5 lux.")).to_be_visible()
-        page.get_by_role("link", name="Edit").click()
-        expect(page.get_by_label("Text (Markdown)")).to_have_value("The sensor reads 38% at 5 lux.")
-        shown.extend(page.evaluate("window.__liveText"))
-        # A directly opened editor is ordinary from its first render too.
-        page.goto(self.doc_url + "/edit")
-        expect(page.get_by_label("Text (Markdown)")).to_have_value("The sensor reads 38% at 5 lux.")
+        text = page.locator('.cm-content[aria-label="Page text"]')
+        expect(text).to_contain_text("The sensor reads 38% at 5 lux.")
+        expect(text).to_have_attribute("contenteditable", "true")
+        expect(page.locator('[data-live-status="ordinary"]')).to_be_visible()
+        # The page is written where it is read, and the text saves as the next version when the typing rests (#869).
+        text.click()
+        page.keyboard.press("Control+End")
+        page.keyboard.insert_text(" Checked twice.")
+        deadline = time.monotonic() + 15
+        while True:
+            doc = self.api(page, "GET", f"/api/v1/docs/{self.doc_url.rsplit('/', 1)[-1]}", status=200)
+            if "Checked twice." in doc["body"] or time.monotonic() > deadline:
+                break
+            time.sleep(0.25)
+        self.assertEqual((doc["body"], doc["version"]), ("The sensor reads 38% at 5 lux. Checked twice.", 2))
+        expect(page.get_by_role("status").filter(has_text=re.compile(r"^Saved · "))).to_be_visible()
         time.sleep(0.5)
-        shown.extend(page.evaluate("window.__liveText"))
-        # Neither a live room request nor live editor text, not even briefly before a fallback.
-        self.assertEqual({"live requests": live, "live text": shown}, {"live requests": [], "live text": []})
+        # Neither a live room request nor live text, not even briefly before a fallback.
+        self.assertEqual({"live requests": live, "live text": page.evaluate("window.__liveText")}, {"live requests": [], "live text": []})
+
+    def test_02b_leaving_at_once_saves_the_text(self) -> None:
+        # #946 review: without live editing the text saves when the page is left, before the typing has rested.
+        page, _ = self.page()
+        page.goto(self.doc_url)
+        text = page.locator('.cm-content[aria-label="Page text"]')
+        expect(text).to_have_attribute("contenteditable", "true")
+        text.focus()
+        page.keyboard.press("Control+End")
+        page.keyboard.insert_text(" Left at once.")
+        page.get_by_role("navigation", name="Space views").get_by_role("link", name="Conversation").click()
+        deadline = time.monotonic() + 10
+        while True:
+            doc = self.api(page, "GET", f"/api/v1/docs/{self.doc_url.rsplit('/', 1)[-1]}", status=200)
+            if "Left at once." in doc["body"] or time.monotonic() > deadline:
+                break
+            time.sleep(0.25)
+        self.assertIn("Left at once.", doc["body"])
+
+    def test_02c_closing_the_tab_during_a_save_still_saves_the_newer_text(self) -> None:
+        # #946 review round 2: a closing tab never starts a save that waits behind the running one, so the newer text
+        # goes at once with keepalive. The first save reaches the server and makes its version, but its answer is held
+        # (the save is still running in the page) when the tab closes.
+        page, _ = self.page()
+        page.goto(self.doc_url)
+        text = page.locator('.cm-content[aria-label="Page text"]')
+        expect(text).to_have_attribute("contenteditable", "true")
+        doc_id = self.doc_url.rsplit('/', 1)[-1]
+        before = self.api(page, "GET", f"/api/v1/docs/{doc_id}", status=200)["version"]
+        held: list = []
+        def answer_later(route) -> None:
+            held.append((route.request.method, route.fetch().status))
+        page.route(lambda url: url.split("?", 1)[0].endswith(f"/api/v1/docs/{doc_id}"), answer_later, times=1)
+        text.focus()
+        page.keyboard.press("Control+End")
+        page.keyboard.insert_text(" First part.")
+        deadline = time.monotonic() + 10
+        while not held and time.monotonic() < deadline:
+            page.wait_for_timeout(100)
+        self.assertEqual(held, [("PATCH", 200)], "the version saved by itself was made; its answer is held")
+        page.keyboard.insert_text(" Second part, then the tab closed.")
+        page.close(run_before_unload=True)
+        reader, _ = self.page()
+        deadline = time.monotonic() + 10
+        while True:
+            doc = self.api(reader, "GET", f"/api/v1/docs/{doc_id}", status=200)
+            if "then the tab closed." in doc["body"] or time.monotonic() > deadline:
+                break
+            time.sleep(0.25)
+        self.assertIn("First part. Second part, then the tab closed.", doc["body"])
+        self.assertEqual(doc["version"], before + 2, "one version for each text, never two of the same")
 
     def test_03_map_is_ordinary_with_immediate_undo(self) -> None:
         page, live = self.page()

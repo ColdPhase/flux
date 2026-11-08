@@ -129,39 +129,50 @@ refused changes record none.
 
 ## Web
 
-`app/apps/web/src/docs/` is a project's **Wiki** tab, two panes (appearance per the
-[final design](../design/final/README.md)):
+`app/apps/web/src/docs/` is a space's **Wiki** tab, as the [final design](../design/final/README.md)
+draws it since #869: two columns only, the sidebar and the page.
 
-- **Page index** (`Wiki.tsx`, 212 px): the project's pages with drafts marked, a search box that
-  filters by title and excerpt (with a count and an empty state; Escape clears), **New page** and
-  **Import .md** for people who can write. The selection is quiet: a 4% tint, weight 600, a 3 px
-  dot and one `aria-current`. `/projects/:id/docs` opens the page last open in this tab, else the
-  latest change.
-- **Top bar** (57 px, sticky): what is open, "Unsaved changes in this tab" when a draft of an edit
-  is kept, quiet icon actions (Share, Download, History, Focus) and one primary (Edit for writers).
-- **Reader** (`…/docs/:docId`, earlier versions at `…/versions/:n` with a calm "earlier version"
-  line), **editor** (`…/new`, `…/edit`: Write · Preview · Both on wide screens, the server-rendered
-  preview, the link picker, ⌘/Ctrl S saves, ⌘/Ctrl ⇧ P toggles the preview, unsaved text kept in the
-  tab's session storage) and **history** (`…/history?from=&to=`: every version with its reason and
-  a line diff with changed words marked, jsdiff 9.0.0, folded context, `+`/`−` marks and
-  screen-reader words so colour is never alone). A concurrent save shows who saved which version,
-  "Show their changes" as a diff, and the explicit choices "Keep my text on top of version N" or
-  "Discard mine, use theirs"; nothing is overwritten silently.
-- **Import .md** (`markdown-file.ts`): one `.md`/`.markdown` file of at most 400 KB and 100,000
-  characters, valid UTF-8 without NUL; anything else is refused with its reason and nothing is
-  created. It always creates a draft; the title comes from a leading `# Title`, else the file name;
-  line endings become `\n`. The body goes through the server's renderer like any edit
-  (`markdown-it` with `html: false`, then `sanitize-html`).
-- **Download**: the open page or version as Markdown. Managers also get the whole project as a
-  bundle, from the server's export route, which requires `project.manage`.
-- **Share**: copies the page link (with a selectable fallback when the clipboard is refused) and
-  names the page's audience, with "See who has access".
-- **Focus**: hides the index and keeps that choice in the tab.
+- **The page** (`…/docs/:docId`) is edited where it is read (`editing/WikiEditor.tsx`). Its text
+  stays the Markdown the server stores and renders; `editing/livePreview.ts` draws it as the page
+  (headings, emphasis, lists, quotes, code, rules, links and tables, with `@lezer/markdown`) and
+  shows a line's or a span's marks only where the caret is. A `flux:` reference reads as the
+  reader's chip or card (F-034) and opens what it refers to; on the line being written it reads as
+  its label and kind (CW-4). ⌘/Ctrl K inserts a reference from the link picker, Enter continues a
+  list or quote, ⌘/Ctrl B and I wrap bold and italic. There is no Write / Preview / Both, no raw
+  Markdown field, no reason field and no Draft / Published in the interface; the API keeps `state`
+  and `reason`, and versions get the server's generated reasons ("Edited the text", "Renamed to
+  “…”", "Restored version N").
+- **Versions save by themselves.** With live editing (#228) the text is the page's shared Y.Text;
+  typing is shared at once, and an editor saves the confirmed head as the next version once its own
+  text has rested for 2 s, at most once per 30 s per person, and at once when the person leaves the
+  page. Text nobody present wrote is saved by an editor alone in the room. Another person's save of
+  the same head is a quiet conflict. A native write while a page is open (an agent, Add to docs)
+  starts a new generation; an editor with nothing pending opens it afresh. Without live editing
+  (`FLUX_LIVE_EDITING=off`) the editor holds this tab's copy and saves it with `If-Match` 1.2 s
+  after typing rests; a concurrent save shows who saved, with "Keep my text" or "Use their version",
+  and unsaved text survives a reload of the tab.
+- **The row above the title**: "Saved · just now" (or "Saving…"), "Jonas is here too" and the faces
+  of the people writing, **Contents** (≡: the headings, levels 1–3; choosing one scrolls to it,
+  smoothly unless motion is reduced; "No headings yet" without any) and **⋯** (History, Copy link,
+  Export, Import a Markdown file, Rename page). The title is the **page switcher**: "Find a page",
+  the space's pages by name with the open one checked, and "+ New page", which names the page in
+  place and opens it with the caret in its text. `/projects/:id/docs` opens the page last open in
+  this tab, else the latest change; a space without pages offers New page and the import.
+- **History** (⋯ › History, `…/history?from=&to=`): every version with its reason, author and date,
+  the comparison as the page reads or as exact Markdown, and **Restore version N**, which opens the
+  page and makes that version the page again (shared at once with live editing) as the next version.
+  An earlier version (`…/versions/:n`) is read as the server rendered it, with Restore.
+- **Import a Markdown file** (`markdown-file.ts`): one `.md`/`.markdown` file of at most 400 KB and
+  100,000 characters, valid UTF-8 without NUL; anything else is refused with its reason and nothing
+  is created. The title comes from a leading `# Title`, else the file name; line endings become
+  `\n`; the rest is the page's text, unchanged.
+- **Export**: the open page or version as Markdown; managers choose between the page and the whole
+  space as a bundle, from the server's export route, which requires `project.manage`.
+- **Copy link** copies the page's address, with the exact link selected on the page when the
+  browser refuses the clipboard.
 
-Home › Wiki lists the docs of every readable project. On a phone or a narrow pane the index becomes
-a search row with a horizontal strip of pages above the document; while a page is edited the strip
-steps aside, the bar scrolls with the page and only Cancel / Save stay at the bottom, so the text
-field is never covered. Targets are 44 px on touch.
+A task, decision or result opened from a page opens over it, never as a column beside it. On a phone
+the same page has the same row and menus within its column; targets are 44 px on touch.
 
 ## Tests and evidence
 
@@ -169,12 +180,14 @@ field is never covered. Targets are 44 px on touch.
 access, version immutability and citations, If-Match 428/409 and a concurrent race, idempotent
 retries, links and backlinks across all target types without cross-project leaks, sanitization,
 Add to docs with result section rewrite and decision references, the F-034 migration, events and the workspace list filter), `app/tests/app/returns.test.ts`
-(doc items in the return view), `app/tests/app/wiki-decision-cards.test.ts` (F-034: the reference line, the live card read, proposed decisions refused, the text rules and an encrypted workspace) and `app/tests/ui/test_wiki_decision_cards.py` (Chromium and WebKit: cards with their reason, the outline and history, Add to docs, a replaced decision, the phone) and `app/tests/ui/test_docs.py` (Playwright: write with preview and a
-link, publish, concurrent edit and conflict, history and diff at 1440 and 1280, add from a
-result, phone read/edit/compare, hostile text) and `app/tests/ui/test_wiki_panes.py` (the two panes,
-quiet selection and focus ring in every theme, search and its count, New page, Import .md with its
-refusals, downloads compared byte for byte, the managers-only bundle, share, focus mode, phone 390
-and 320 with the editor's text field uncovered, tablet 820). Screenshots: `docs/design/docs-wiki/`.
+(doc items in the return view), `app/tests/app/wiki-decision-cards.test.ts` (F-034: the reference line, the live card read, proposed decisions refused, the text rules and an encrypted workspace) and, in the browser,
+`app/tests/ui/test_wiki_final.py` (the page as drawn: two columns, the switcher, Contents, ⋯, the
+title row in one place with one page or many, tables, the phone), `test_wiki_panes.py` (the journey:
+writing and automatic versions, New page, Import with its refusals, History, Restore, Rename,
+exports compared byte for byte, Copy link, phone 390 and 320, tablet 820, contrast),
+`test_docs.py` (a page with a reference, two people at once, history and diff, add from a result,
+the phone, hostile text), `test_doc_references.py` (the link picker), `test_wiki_decision_cards.py`
+and `test_live_editing.py` (two people, sockets and automatic versions).
 
 ## Not yet
 

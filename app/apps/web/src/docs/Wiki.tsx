@@ -1,33 +1,27 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
-import { Link, Outlet, redirect, useLoaderData, useLocation, useMatch, useNavigate, useParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { Outlet, redirect, useLoaderData, useNavigate, useParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
 import type { DocSummary, Project } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useIntentKeys } from '../api/intent-keys';
-import { Icon, Spinner, useToast } from '../ui';
+import { useToast } from '../ui';
 import { getProject } from '../project/api';
 import { createDoc, docUrl, listProjectDocs } from './api';
 import { readMarkdownFile } from './markdown-file';
-import { WikiIcon } from './WikiParts';
-import { WikiContext, useWiki, type WikiState } from './wiki-context';
+import { WikiContext, type WikiState } from './wiki-context';
 import './docs.css';
 
-// The project wiki as drawn (F-026, #354): the "Pages" list beside the document. The open page is a
-// raised row with a stronger label and aria-current, never colour alone. In a narrow work area
-// (a phone) the list becomes a row of chips above the document and the page's actions one menu.
-
-/** Below this width of the wiki itself it is "compact": the phone layout, whatever the viewport. */
-const COMPACT_BELOW = 500;
+// A space's Wiki as drawn (#869): two columns only, the sidebar and the page. There is no pages column: the page's
+// title is the page switcher, and the page is edited where it is read.
 
 interface WikiData { project: Project; docs: DocSummary[] }
 
 const pageKey = (projectId: string) => `flux.project-wiki.${projectId}`;
-const FOCUS_KEY = 'flux.wiki-focus';
 
 function readKey(key: string) {
   try { return sessionStorage.getItem(key); } catch { return null; }
 }
-function writeKey(key: string, value: string | null) {
-  try { if (value === null) sessionStorage.removeItem(key); else sessionStorage.setItem(key, value); } catch { /* private mode */ }
+function writeKey(key: string, value: string) {
+  try { sessionStorage.setItem(key, value); } catch { /* private mode */ }
 }
 
 export async function wikiLoader({ params, request }: LoaderFunctionArgs): Promise<WikiData> {
@@ -40,7 +34,7 @@ export async function wikiLoader({ params, request }: LoaderFunctionArgs): Promi
   return { project, docs };
 }
 
-/** The index follows every move inside the wiki (a saved, new or imported page), not a comparison change. */
+/** The list follows a move to another page (a new or imported one), not a comparison change in History. */
 export function wikiShouldRevalidate({ currentUrl, nextUrl, defaultShouldRevalidate }: ShouldRevalidateFunctionArgs) {
   if (currentUrl.pathname !== nextUrl.pathname) return true;
   if (currentUrl.search !== nextUrl.search) return false;
@@ -50,21 +44,6 @@ export function wikiShouldRevalidate({ currentUrl, nextUrl, defaultShouldRevalid
 export function WikiLayout() {
   const { project, docs } = useLoaderData() as WikiData;
   const { docId } = useParams();
-  // Writing gets the whole column on a phone: the page strip steps aside while a page is edited.
-  const editing = /\/docs\/(new|[^/]+\/edit)$/.test(useLocation().pathname);
-  const [focus, setFocusState] = useState(() => readKey(FOCUS_KEY) === '1');
-  const frame = useRef<HTMLDivElement>(null);
-  const [compact, setCompact] = useState(false);
-  const [menuSlot, setMenuSlot] = useState<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    const node = frame.current;
-    if (!node) return;
-    const measure = () => setCompact(node.clientWidth < COMPACT_BELOW);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, []);
   useEffect(() => { if (docId) writeKey(pageKey(project.id), docId); }, [project.id, docId]);
   const navigate = useNavigate();
   const toast = useToast();
@@ -88,9 +67,9 @@ export function WikiLayout() {
       if (!read.ok) { setImportError(read.error); return; }
       // The same file chosen again after a lost answer reuses its key (#178): one page, never two.
       const intent = JSON.stringify(['import', project.id, file.name, read.title, read.body]);
-      const doc = await createDoc(project.id, { title: read.title, body: read.body, state: 'draft', reason: `Imported from ${file.name}` }, intents.keyFor(intent));
+      const doc = await createDoc(project.id, { title: read.title, body: read.body, reason: `Imported from ${file.name}` }, intents.keyFor(intent));
       intents.settle(intent);
-      toast({ message: `Imported “${doc.title}” as a draft page.`, tone: 'success' });
+      toast({ message: `Imported “${doc.title}”.`, tone: 'success' });
       navigate(docUrl(project.id, doc.id));
     } catch (cause) {
       setImportError(cause instanceof ApiError && cause.status === 403 ? 'You can read this space but not add pages to it.'
@@ -100,115 +79,15 @@ export function WikiLayout() {
   }
   const startImport = useCallback(() => { if (!importing) fileRef.current?.click(); }, [importing]);
 
-  // Focus is a computer setting: on a phone the pages are always a row of chips (nothing to exit),
-  // and the choice returns when the wiki is wide again.
-  const value = useMemo<WikiState>(() => ({
-    project, docs, focus, compact, writable: true,
-    setFocus(next: boolean) { writeKey(FOCUS_KEY, next ? '1' : null); setFocusState(next); },
-    importing, importError, importErrorId, startImport, menuSlot, setMenuSlot,
-  }), [project, docs, focus, compact, importing, importError, importErrorId, startImport, menuSlot]);
+  const value = useMemo<WikiState>(() => ({ project, docs, importing, importError, importErrorId, startImport }),
+    [project, docs, importing, importError, importErrorId, startImport]);
   return (
     <WikiContext.Provider value={value}>
-      <div className="wiki-frame" ref={frame}>
-        <div className={`wiki${focus && !compact ? ' wiki--focus' : ''}${editing ? ' wiki--editing' : ''}`}>
-          <WikiIndex activeId={docId ?? null} hidden={focus && !compact} />
-          <div className="wiki-main pane-scroll"><Outlet /></div>
-        </div>
+      <div className="wiki-frame">
+        <div className="wiki-main pane-scroll"><Outlet /></div>
         <input ref={fileRef} type="file" accept=".md,.markdown,text/markdown,text/x-markdown" hidden tabIndex={-1}
           onChange={(event) => void importFile(event)} />
       </div>
     </WikiContext.Provider>
-  );
-}
-
-const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
-const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
-
-function WikiIndex({ activeId, hidden }: { activeId: string | null; hidden: boolean }) {
-  const { project, docs, writable, compact, importing, importError: error, importErrorId: errorId, startImport, setMenuSlot } = useWiki();
-  const creating = !!useMatch('/projects/:projectId/docs/new');
-  const [query, setQuery] = useState('');
-  const listRef = useRef<HTMLUListElement>(null);
-  const searchId = useId();
-  // A stable order to find a page by name; the server's order changes with every save.
-  const pages = useMemo(() => [...docs].sort((a, b) => collator.compare(a.title, b.title)), [docs]);
-  const needle = fold(query.trim());
-  const shown = needle ? pages.filter((doc) => fold(`${doc.title} ${doc.excerpt}`).includes(needle)) : pages;
-  const listed = shown.length > 0;
-  // On a phone the search appears once the chip row is long enough to need it (or while searching).
-  const searchable = docs.length > 0 && (!compact || docs.length > 5 || !!query);
-
-  // As a strip (narrow work area) the index scrolls sideways; keep the open page in view, also
-  // when the strip's width changes (rotation, resize, a panel opening).
-  useEffect(() => {
-    const list = listRef.current;
-    if (!list) return;
-    const reveal = () => {
-      const link = list.querySelector<HTMLElement>('[aria-current="page"]');
-      if (!link || list.scrollWidth <= list.clientWidth) return;
-      const box = list.getBoundingClientRect();
-      const item = link.getBoundingClientRect();
-      if (item.left < box.left || item.right > box.right) list.scrollLeft += item.left - box.left - 16;
-    };
-    reveal();
-    const observer = new ResizeObserver(reveal);
-    observer.observe(list);
-    return () => observer.disconnect();
-  }, [activeId, hidden, listed]);
-
-  const newPage = writable ? (
-    <Link className="ui-icon-btn wiki-index__new" to={`/projects/${project.id}/docs/new`} aria-label="New page" aria-current={creating ? 'page' : undefined}>
-      <Icon name="plus" size={16} />
-    </Link>
-  ) : null;
-  // On a phone New page and Import .md live in the page's menu; the chip row holds only pages (F-026 §4).
-  const importer = writable && !compact ? (
-    <button type="button" className="ui-btn ui-btn--quiet wiki-index__import" aria-label="Import .md" onClick={startImport}
-      aria-disabled={importing || undefined} aria-busy={importing || undefined} aria-describedby={error ? errorId : undefined}>
-      {importing ? <Spinner /> : <WikiIcon name="upload" size={14} />}<span>Import .md</span>
-    </button>
-  ) : null;
-
-  const pageList = shown.length ? (
-    <ul ref={listRef} className="wiki-pages">
-      {shown.map((doc) => (
-        <li key={doc.id}>
-          <Link className="wiki-page" to={docUrl(project.id, doc.id)} title={doc.title} aria-current={doc.id === activeId ? 'page' : undefined}>
-            <span className="wiki-page__t">{doc.title}</span>
-            {doc.state === 'draft' ? <span className="wiki-page__state">Draft</span> : null}
-          </Link>
-        </li>
-      ))}
-    </ul>
-  ) : null;
-
-  return (
-    // On a phone the page's menu ends the row of page chips (#507): the header is the same in every view and has no room for it.
-    // It stays outside the list of pages, which holds only pages (F-026 §4 Phone).
-    <div className="wiki-top">
-    <nav className="wiki-index" aria-label="Wiki pages" hidden={hidden}>
-      {compact ? null : (
-        <div className="wiki-index__head">
-          <p className="wiki-index__eyebrow">Pages</p>
-          {newPage}
-        </div>
-      )}
-      {searchable ? (
-        <div className="wiki-search">
-          <Icon name="search" size={14} />
-          <label className="ui-vh" htmlFor={searchId}>Search the wiki</label>
-          <input id={searchId} type="search" placeholder="Search pages" autoComplete="off" value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onKeyDown={(event) => { if (event.key === 'Escape' && query) { event.stopPropagation(); setQuery(''); } }} />
-        </div>
-      ) : null}
-      {/* Mounted while the index is shown, so a changed count is announced. */}
-      <p className="wiki-index__count" role="status">{needle ? (shown.length ? `${shown.length} ${shown.length === 1 ? 'page' : 'pages'}` : `No pages match “${query.trim()}”.`) : ''}</p>
-      {pageList}
-      {!compact && writable ? <div className="wiki-index__acts">{importer}</div> : null}
-      {error ? <p className="wiki-index__error" id={errorId} role="alert"><Icon name="alert" size={13} /><span>{error}</span></p> : null}
-    </nav>
-    {compact ? <div className="wiki-top__menu" ref={setMenuSlot} /> : null}
-    </div>
   );
 }

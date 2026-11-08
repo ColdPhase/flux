@@ -1,55 +1,27 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { NamedPrincipal, NativeWorkRow } from '@flux/contracts';
-import { AgentIdentity, Avatar, Icon, Kreska, Morph, prefersReducedMotion, StatusGlyph, TASK_STATE_WORD } from '../ui';
+import { AgentIdentity, Icon, Morph, StatusGlyph, TASK_STATE_WORD } from '../ui';
 import { getWorkReferenceRows, getWorkRelations } from '../work/read-api';
 import type { AgentOwners } from '../agents/owners';
-import { ago, longDate, shortDate } from './format';
-import { WikiIcon } from './WikiParts';
+import { shortDate } from './format';
 
-// The reading side of the wiki as drawn (F-026, #354): who edited the page, the "On this page"
-// outline from its headings, and the references the page holds, a task as its glyph, #number and
-// word, and a decision standing alone as a live card with its short reason (F-034). The page text itself is the server's sanitized
-// HTML; the references are read through the same bounded read as the conversation's.
-
-function Face({ who }: { who: NamedPrincipal }) {
-  return who.kind === 'agent' ? <Kreska size={20} /> : <Avatar name={who.name} size="sm" />;
-}
+// The references a page holds, as the page shows them (F-026, #354; F-034): a task as its glyph, #number and word,
+// a page with its icon, and a decision alone on its line as a live card with its short reason. The editor (#869)
+// and an earlier version read through here draw the same marks.
 
 /** A person's name, or an agent as the final design names it: its name, the Agent tag and "for <owner>". */
 function WhoName({ who, owners }: { who: NamedPrincipal; owners: AgentOwners }) {
   return who.kind === 'agent' ? <AgentIdentity name={who.name} owner={owners.get(who.id)} icon={false} className="wiki-who__agent" /> : <>{who.name}</>;
 }
 
-/** "Edited by <who> · <time>" with the editors' faces: the last editor, then who started the page. */
-export function EditedBy({ editor, at, reason, starter, startedAt, owners }: {
-  editor: NamedPrincipal; at: string; reason: string; starter: NamedPrincipal; startedAt: string; owners: AgentOwners;
-}) {
-  const other = starter.id !== editor.id;
-  return (
-    <p className="wiki-who">
-      <span className="wiki-who__by">
-        <Face who={editor} />
-        <span><span className="wiki-who__verb">Edited by </span><WhoName who={editor} owners={owners} /> · <time dateTime={at} title={`${longDate(at)} · ${reason}`}>{ago(at)}</time></span>
-      </span>
-      {other ? (
-        <span className="wiki-who__by wiki-who__starter">
-          <span className="wiki-who__dot" aria-hidden="true">·</span>
-          <Face who={starter} />
-          <span><span className="ui-vh">Started by </span><WhoName who={starter} owners={owners} /> · <time dateTime={startedAt} title={longDate(startedAt)}>{shortDate(startedAt)}</time></span>
-        </span>
-      ) : null}
-    </p>
-  );
-}
-
 export interface Heading { id: string; text: string; level: number }
 
-type Mark = { key: string; host: HTMLElement } & (
-  { kind: 'glyph' | 'word'; row: NativeWorkRow } | { kind: 'decision'; row: NativeWorkRow; source?: string } | { kind: 'page' }
-);
+/** One mark of a reference; `source` is where a decision came from (CW-16). */
+export type Mark = { kind: 'glyph' | 'word'; row: NativeWorkRow } | { kind: 'decision'; row: NativeWorkRow; source?: string } | { kind: 'page' };
 
-function headingsOf(html: string): Heading[] {
+/** The page's headings (levels 1–3), from the HTML it shows. */
+export function headingsOfHtml(html: string): Heading[] {
   const doc = new DOMParser().parseFromString(html, 'text/html');
   return [...doc.querySelectorAll('h1, h2, h3')].flatMap((node) => {
     const text = node.textContent?.trim() ?? '';
@@ -57,19 +29,33 @@ function headingsOf(html: string): Heading[] {
   }).map((heading, index) => ({ ...heading, id: `section-${index + 1}` }));
 }
 
-const REFRESH_MS = 20000;
+/**
+ * The tasks and decisions a page refers to, as this person can read them now (`type:id` keys, at most 100 per read),
+ * and where each decision came from (its first source message, CW-16).
+ */
+export async function readReferences(projectId: string, refs: string[], signal: AbortSignal) {
+  const chunks: string[][] = [];
+  for (let start = 0; start < refs.length; start += 100) chunks.push(refs.slice(start, start + 100));
+  const decisions = refs.filter((ref) => ref.startsWith('decision:')).slice(0, 100);
+  const basedOn = decisions.length ? getWorkRelations(projectId, { objects: decisions.join(','), role: 'source', limit: 100 }, signal).then((page) => {
+    const found = new Map<string, string>();
+    for (const link of page.items) if (link.from.type === 'decision' && link.to.type === 'message' && !found.has(link.from.id) && link.toTitle) found.set(link.from.id, link.toTitle);
+    return found;
+  }, () => new Map<string, string>()) : Promise.resolve(new Map<string, string>());
+  const [reads, sources] = await Promise.all([Promise.all(chunks.map((chunk) => getWorkReferenceRows(projectId, chunk.join(','), signal))), basedOn]);
+  return { rows: new Map<string, NativeWorkRow>(reads.flatMap((read) => read.items).map((row) => [`${row.kind}:${row.id}`, row])), sources };
+}
+
 const RETRY_MS = 5000;
 
 /**
- * Reads the rendered page: gives its headings an id for the outline, and marks the work and decision
- * references that this person can read. What cannot be read stays the plain link the server wrote.
- * The marks follow the objects: the read repeats with the reader's own refresh (focus, every 20
- * seconds), also while the page's HTML is unchanged, and retries soon after a failed read.
+ * Reads an earlier version's rendered HTML: gives its headings an id for Contents, and marks the work and decision
+ * references that this person can read. What cannot be read stays the plain link the server wrote. The marks follow
+ * the objects: the read repeats when the window gets focus, and soon after a failed read.
  */
 export function useProse(el: HTMLElement | null, html: string, projectId: string, owners: AgentOwners) {
-  const [marks, setMarks] = useState<Mark[]>([]);
-  // The outline is read from the same HTML the page shows, then the rendered headings get these ids.
-  const headings = useMemo(() => headingsOf(html), [html]);
+  const [marks, setMarks] = useState<(Mark & { key: string; host: HTMLElement })[]>([]);
+  const headings = useMemo(() => headingsOfHtml(html), [html]);
 
   useEffect(() => {
     if (!el) return;
@@ -86,8 +72,6 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
     const carried = anchors.map(() => ({ hosts: [] as HTMLElement[], unwrap: null as (() => void) | null }));
     // Doc links were already resolved by the server. Their icon requires no new read or metadata.
     const refs = [...new Set(anchors.filter((anchor) => anchor.dataset.refType !== 'doc').map((anchor) => `${anchor.dataset.refType}:${anchor.dataset.refId}`))];
-    const chunks: string[][] = [];
-    for (let start = 0; start < refs.length; start += 100) chunks.push(refs.slice(start, start + 100));
     let controller = new AbortController();
     let retry = 0;
     let gone = false;
@@ -101,7 +85,7 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
       anchors[index]!.classList.remove('doc-task', 'doc-decision', 'doc-page');
     };
     const apply = (rows: Map<string, NativeWorkRow>, sources = new Map<string, string>()) => {
-      const next: Mark[] = [];
+      const next: (Mark & { key: string; host: HTMLElement })[] = [];
       anchors.forEach((anchor, index) => {
         const row = rows.get(`${anchor.dataset.refType}:${anchor.dataset.refId}`);
         const own = carried[index]!;
@@ -146,30 +130,20 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
       window.clearTimeout(retry);
       controller = new AbortController();
       const signal = controller.signal;
-      // CW-16: a decision card also says where the decision came from (its first source message), as "Based on" does.
-      const decisions = refs.filter((ref) => ref.startsWith('decision:')).slice(0, 100);
-      const basedOn = decisions.length ? getWorkRelations(projectId, { objects: decisions.join(','), role: 'source', limit: 100 }, signal).then((page) => {
-        const found = new Map<string, string>();
-        for (const link of page.items) if (link.from.type === 'decision' && link.to.type === 'message' && !found.has(link.from.id) && link.toTitle) found.set(link.from.id, link.toTitle);
-        return found;
-      }, () => new Map<string, string>()) : Promise.resolve(new Map<string, string>());
-      Promise.all([Promise.all(chunks.map((chunk) => getWorkReferenceRows(projectId, chunk.join(','), signal))), basedOn]).then(([reads, sources]) => {
+      readReferences(projectId, refs, signal).then(({ rows, sources }) => {
         if (signal.aborted || gone) return;
-        apply(new Map<string, NativeWorkRow>(reads.flatMap((read) => read.items).map((row) => [`${row.kind}:${row.id}`, row])), sources);
+        apply(rows, sources);
       }, () => { if (!signal.aborted && !gone) retry = window.setTimeout(load, RETRY_MS); });
     };
     const refresh = () => { if (document.visibilityState === 'visible') load(); };
-    // Stage the local page icons independently of the work-row read and its retry. The portal
-    // hosts exist after this DOM effect; a failed work read cannot delay an already resolved page.
+    // Stage the local page icons independently of the work-row read and its retry.
     void Promise.resolve().then(() => { if (!gone) apply(new Map()); });
     load();
     window.addEventListener('focus', refresh);
-    const interval = window.setInterval(refresh, REFRESH_MS);
     return () => {
       gone = true;
       controller.abort();
       window.clearTimeout(retry);
-      window.clearInterval(interval);
       window.removeEventListener('focus', refresh);
       anchors.forEach((_, index) => clear(index));
       setMarks([]);
@@ -178,8 +152,6 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
 
   return {
     headings,
-    /** Decision ids the page shows as cards (F-034), so the lists under the page need not repeat them. */
-    cards: new Set(marks.flatMap((mark) => (mark.kind === 'decision' ? [mark.row.id] : []))),
     marks: marks.map((mark) => createPortal(<RefMark mark={mark} owners={owners} />, mark.host, mark.key)),
   };
 }
@@ -187,7 +159,7 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
 const DECISION_WORD = { accepted: 'Decision accepted', proposed: 'Decision proposed', superseded: 'Decision replaced' } as const;
 const DECISION_GLYPH = { accepted: 'done', proposed: 'open', superseded: 'not_pursued' } as const;
 
-function RefMark({ mark, owners }: { mark: Mark; owners: AgentOwners }) {
+export function RefMark({ mark, owners }: { mark: Mark; owners: AgentOwners }) {
   if (mark.kind === 'page') return <Icon name="doc" size={16} />;
   const { row } = mark;
   if (row.kind === 'work') {
@@ -210,12 +182,12 @@ function RefMark({ mark, owners }: { mark: Mark; owners: AgentOwners }) {
 }
 
 /**
- * A smooth outline jump that stopped short lands on its heading (#752). WebKit can end a smooth scroll of the reading
- * pane early while the page is still settling after it opens: `scrollend` fired with the heading halfway down the page
- * and the reader stayed there. Unless the reader scrolled meanwhile (wheel, touch, a key or a pointer press), the end of
- * the motion puts the heading where it was asked to go. Returns how to stop watching.
+ * A smooth jump that stopped short lands on its heading (#752). WebKit can end a smooth scroll of the page early while
+ * it is still settling after it opens. Unless the reader scrolled meanwhile (wheel, touch, a key or a pointer press),
+ * the end of the motion puts the target where it was asked to go. `top()` answers the scroll position the target
+ * needs. Returns how to stop watching.
  */
-function landOn(scroller: HTMLElement, node: HTMLElement): () => void {
+export function landOn(scroller: HTMLElement, top: () => number | null): () => void {
   const inputs = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
   const stop = () => {
     scroller.removeEventListener('scrollend', land);
@@ -223,114 +195,12 @@ function landOn(scroller: HTMLElement, node: HTMLElement): () => void {
   };
   function land() {
     stop();
-    if (!node.isConnected) return;
-    const off = node.getBoundingClientRect().top - scroller.getBoundingClientRect().top - (parseFloat(getComputedStyle(node).scrollMarginTop) || 0);
-    const top = Math.max(0, Math.min(scroller.scrollHeight - scroller.clientHeight, scroller.scrollTop + off));
-    if (Math.abs(top - scroller.scrollTop) > 1) scroller.scrollTo({ top, behavior: 'auto' });
+    const wanted = top();
+    if (wanted === null) return;
+    const clamped = Math.max(0, Math.min(scroller.scrollHeight - scroller.clientHeight, wanted));
+    if (Math.abs(clamped - scroller.scrollTop) > 1) scroller.scrollTo({ top: clamped, behavior: 'auto' });
   }
   scroller.addEventListener('scrollend', land);
   for (const name of inputs) scroller.addEventListener(name, stop, { passive: true });
   return stop;
-}
-
-/**
- * "On this page": the page's headings; the one being read is marked, and each moves focus to its heading.
- * In a wide reading pane it is the sticky column beside the page; in a narrower one the page toolbar's
- * chip opens it as a list instead (#511, AC-3). It is never placed below the page.
- */
-export function Outline({ headings, scroller, onOpen, list = false }: { headings: Heading[]; scroller: HTMLElement | null; onOpen?: () => void; list?: boolean }) {
-  const [current, setCurrent] = useState<string | null>(null);
-  const landing = useRef<() => void>(() => undefined);
-  useEffect(() => () => landing.current(), []);
-  useEffect(() => {
-    if (!scroller || !headings.length) return;
-    const measure = () => {
-      const line = scroller.getBoundingClientRect().top + 120;
-      let found = headings[0]!.id;
-      for (const heading of headings) {
-        const node = document.getElementById(heading.id);
-        if (node && node.getBoundingClientRect().top <= line) found = heading.id;
-      }
-      setCurrent(found);
-    };
-    measure();
-    scroller.addEventListener('scroll', measure, { passive: true });
-    return () => scroller.removeEventListener('scroll', measure);
-  }, [scroller, headings]);
-  const open = (event: MouseEvent<HTMLAnchorElement>, id: string) => {
-    const node = document.getElementById(id);
-    if (!node) return;
-    event.preventDefault();
-    const smooth = !prefersReducedMotion();
-    landing.current();
-    node.scrollIntoView({ block: 'start', behavior: smooth ? 'smooth' : 'auto' });
-    if (smooth && scroller?.contains(node)) landing.current = landOn(scroller, node);
-    node.focus({ preventScroll: true });
-    setCurrent(id);
-    onOpen?.();
-  };
-  const base = Math.min(...headings.map((heading) => heading.level));
-  const links = (
-    <ul>
-      {headings.map((heading) => (
-        <li key={heading.id} data-level={heading.level - base}>
-          <a href={`#${heading.id}`} aria-current={heading.id === current ? 'location' : undefined} onClick={(event) => open(event, heading.id)}>{heading.text}</a>
-        </li>
-      ))}
-    </ul>
-  );
-  if (list) return <nav className="wiki-outline-pop" aria-label="On this page">{links}</nav>;
-  return (
-    <aside className="wiki-outline" aria-label="On this page">
-      <p className="wiki-outline__h">On this page</p>
-      {links}
-    </aside>
-  );
-}
-
-/** Whether the reading pane is wide enough for the outline's own column (the same 860px as the stylesheet's container). */
-function useOutlineColumn(pane: HTMLElement | null) {
-  const [wide, setWide] = useState(false);
-  useEffect(() => {
-    if (!pane) return undefined;
-    // The observer reports the pane's size once it starts watching, and again whenever it changes.
-    const observer = new ResizeObserver(() => setWide(pane.clientWidth > 860));
-    observer.observe(pane);
-    return () => observer.disconnect();
-  }, [pane]);
-  return wide;
-}
-
-/**
- * The page toolbar's "On this page" slot (#511, AC-3, AC-4): always in the same place. In a pane too
- * narrow for the outline's column it opens the list below the toolbar; where the column is beside the
- * page, and in editing, history or a page of one heading, it is dimmed.
- */
-export function OutlineChip({ headings, scroller }: { headings: Heading[] | null; scroller?: HTMLElement | null }) {
-  const [open, setOpen] = useState(false);
-  const wrap = useRef<HTMLDivElement>(null);
-  const column = useOutlineColumn(scroller ?? null);
-  const active = !!headings && headings.length > 1 && !column;
-  useEffect(() => {
-    if (!open) return;
-    const outside = (event: PointerEvent) => { if (!wrap.current?.contains(event.target as Node)) setOpen(false); };
-    const key = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      setOpen(false);
-      wrap.current?.querySelector<HTMLButtonElement>('button')?.focus();
-    };
-    document.addEventListener('pointerdown', outside);
-    document.addEventListener('keydown', key);
-    return () => { document.removeEventListener('pointerdown', outside); document.removeEventListener('keydown', key); };
-  }, [open]);
-  return (
-    <div className="wiki-outline-chip" data-slot="outline" ref={wrap}>
-      <button type="button" className="ui-btn ui-btn--quiet wiki-outline-chip__btn" aria-label="On this page" aria-expanded={active ? open : undefined}
-        disabled={!active} data-tip={active ? 'On this page' : undefined} onClick={() => setOpen((value) => !value)}>
-        <WikiIcon name="outline" />
-        <span className="wiki-outline-chip__label">On this page <span aria-hidden="true">▾</span></span>
-      </button>
-      {open && active ? <Outline headings={headings!} scroller={scroller ?? null} list onOpen={() => setOpen(false)} /> : null}
-    </div>
-  );
 }
