@@ -116,7 +116,7 @@ class MapLayoutJourney(unittest.TestCase):
                 page = self.page(width, height, has_touch=touch, is_mobile=width <= 640)
                 self.scene(page)
                 self.assert_hint_inside_pane(page)
-                toolbar = page.get_by_role('toolbar', name='Sketch tools')
+                toolbar = page.get_by_role('toolbar', name='Map tools')
                 pane = page.locator('.sk-page').bounding_box()
                 for button in toolbar.get_by_role('button').all():
                     expect(button).to_be_in_viewport(ratio=1)
@@ -155,7 +155,7 @@ class MapLayoutJourney(unittest.TestCase):
         expect(node).to_have_attribute('aria-pressed', 'true')
         page.get_by_role('button', name='Close details', exact=True).click()
         expect(node).to_have_attribute('aria-pressed', 'true')
-        page.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Thought', exact=True).click()
+        page.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Thought', exact=True).click()
         draft = page.get_by_role('form', name='New thought draft').get_by_label('Thought text')
         draft.fill('Unsent receiver measurements stay private')
         self.open_task(page, task)

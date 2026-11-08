@@ -208,8 +208,8 @@ class PhoneFinal(unittest.TestCase):
                 sheet = page.get_by_role("dialog", name="Create")
                 expect(sheet).to_be_visible()
                 names = [text.strip().split("\n")[0] for text in sheet.get_by_role("button").all_inner_texts() if text.strip()]
-                self.assertEqual(names[:7], ["Task", "Thought", "Message", "Decision", "File or link", "Sketch", "Space"])
-                for name in ("Task", "Thought", "Message", "Decision", "File or link", "Sketch", "Space"):
+                self.assertEqual(names[:7], ["Task", "Thought", "Message", "Decision", "File or link", "Map", "Space"])
+                for name in ("Task", "Thought", "Message", "Decision", "File or link", "Map", "Space"):
                     self.assertGreaterEqual(min(self.box(sheet.get_by_role("button", name=re.compile(f"^{name}")))["height"], 44), 44)
                 self.assert_no_sideways_scroll(page, size["width"])
                 shot(page, f"341-create-{size['width']}-{'dark' if dark else 'light'}")
@@ -228,8 +228,9 @@ class PhoneFinal(unittest.TestCase):
         page.goto("/inbox")
         page.get_by_role("button", name="Create", exact=True).click()
         page.get_by_role("dialog", name="Create").get_by_role("button", name=re.compile("^Thought")).click()
-        expect(page).to_have_url(f"{ORIGIN}/map")
-        expect(page.get_by_label("Private note", exact=True)).to_be_focused()
+        # The same Create window as the computer's, on its Thought tab; the thought goes on My map (#866).
+        thought = page.get_by_role("dialog", name="New thought")
+        expect(thought.get_by_role("textbox", name="Thought", exact=True)).to_be_visible()
 
     def test_04b_create_decision_and_file_or_link_start_those_things_in_the_chosen_project(self):
         page = self.page(SIZES[0])
@@ -363,27 +364,37 @@ class PhoneFinal(unittest.TestCase):
         title.get_by_role("button").click()
         menu = page.get_by_role("dialog", name=re.compile("Kai Tanaka"))
         labels = [text.strip().split("\n")[0] for text in menu.locator(".phone-menu__item").all_inner_texts()]
-        self.assertEqual(labels[:2], ["Messages", "Sketches"])
-        menu.get_by_role("link", name="Sketches").click()
-        expect(page).to_have_url(re.compile(r"/sketches$"))
+        # A direct message has the one view, Messages; its sketches are gone (#866).
+        self.assertEqual(labels[:1], ["Messages"])
+        self.assertNotIn("Sketches", labels)
         expect(page.locator(".views")).to_have_count(0)
+        # Its old addresses lead to the conversation, not to a dead end.
+        for old in ("/sketches", "/sketches/00000000-0000-4000-8000-000000000000"):
+            page.goto(f"{self.dm_path}{old}")
+            expect(page).to_have_url(re.compile(rf"{re.escape(self.dm_path)}$"))
 
     def test_09_every_place_stays_reachable(self):
         page = self.page(SIZES[0])
         page.goto("/")
-        # Settings through the avatar; Home's pages, the Sketchbook and Details from Home; Messages through Projects.
+        # Settings through the avatar; Home's pages, My map and Details from Home; Messages through Projects.
         page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
-        for link, path, shell_title, content_title in (("All my tasks", "/tasks", "My tasks", "Nothing is waiting for you"), ("Wiki", "/docs", "Wiki", "No docs yet"), ("My map", "/map", "My map", "Start a sketch")):
+        for link, path, shell_title, content_title in (("All my tasks", "/tasks", "My tasks", "Nothing is waiting for you"), ("Wiki", "/docs", "Wiki", "No docs yet")):
             page.goto("/")
             page.locator(".home__more").get_by_role("link", name=link).click()
             expect(page).to_have_url(f"{ORIGIN}{path}")
-            # Each names itself in the header: Your tasks and Wiki (#763 NV-1), the Sketchbook (#508).
+            # Each names itself in the header: Your tasks and Wiki (#763 NV-1).
             expect(page.get_by_role("heading", level=1, name=shell_title, exact=True)).to_be_visible()
             expect(page.get_by_role("heading", level=2, name=content_title)).to_be_visible()
             page.get_by_role("button", name="Back", exact=True).click()
             expect(page).to_have_url(f"{ORIGIN}/")
+        # My map opens the person's one private map at its own address; Back leads Home (#866).
+        page.goto("/")
+        page.locator(".home__more").get_by_role("link", name="My map").click()
+        expect(page).to_have_url(re.compile(rf"{ORIGIN}/map/[0-9a-f-]{{36}}$"))
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
+        page.goto("/")
         page.locator(".home__more").get_by_role("button", name="Details", exact=True).click()
         expect(page.get_by_role("dialog", name="Details")).to_be_visible()
         page.keyboard.press("Escape")

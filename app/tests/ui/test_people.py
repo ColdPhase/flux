@@ -397,56 +397,6 @@ class PeopleJourney(unittest.TestCase):
         expect(kai.get_by_role("switch", name="AI")).to_be_disabled()
         shot(kai, "people-desktop-1440-project-access-read-only")
 
-    def test_08_promote_a_dm_sketch_with_and_without_giving_access(self) -> None:
-        page = self.page("ada")
-        dm = page.request.post(f"/api/v1/workspaces/{self.riverside}/dms", data={"participantIds": [self.ids["kai"]]}, headers={"origin": ORIGIN})
-        assert dm.status in (200, 201), dm.text()
-        dm_id = dm.json()["id"]
-        kai = self.page("kai")
-        self.post(kai, f"/api/v1/dms/{dm_id}/messages", {"body": "Glaze tiles first, then the kiln wiring?", "clientMessageId": str(uuid.uuid4())})
-        sketches = [self.post(page, f"/api/v1/workspaces/{self.riverside}/sketches", {"title": title, "scope": "dm", "dmId": dm_id})["id"] for title in ("Glaze test tiles", "Kiln wiring")]
-
-        # Without the checkbox: only Ada (the company's one owner or admin) can open the new space.
-        page.goto(f"/dm/{dm_id}/sketches/{sketches[0]}")
-        page.get_by_role("button", name="Make it a space…").click()
-        details = page.locator("#details")
-        also = details.get_by_role("checkbox", name="Also give Kai access")
-        expect(also).to_be_visible()
-        expect(also).not_to_be_checked()
-        expect(details).to_contain_text("Kai Tanaka can then read and write in the new space. Nobody else is added.")
-        expect(details.locator(".promote__aud b")).to_have_text("Only you")
-        expect(details).to_contain_text("Kai won’t see it unless you also give them access.")
-        shot(page, "people-desktop-1440-promote-unchecked")
-        details.get_by_role("button", name="Create space").click()
-        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/map/[0-9a-f-]{36}$"))
-        alone = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
-        # F-037: the space's creator is its admin by her own grant; nobody else was added.
-        status, grants = self.api(page, f"/api/v1/projects/{alone}/grants")
-        self.assertEqual((status, [(g["principal"]["id"], g["role"]) for g in grants]), (200, [(self.ids["ada"], "manager")]))
-        self.assertEqual(self.api(kai, f"/api/v1/projects/{alone}")[0], 404)
-        kai.goto("/")
-        expect(self.sidebar_projects(kai).get_by_role("heading", name="Spaces")).to_be_visible()
-        expect(self.sidebar_projects(kai).get_by_text("Glaze test tiles")).to_have_count(0)
-
-        # With it: Kai is named before confirming, and only Kai is added.
-        page.goto(f"/dm/{dm_id}/sketches/{sketches[1]}")
-        page.get_by_role("button", name="Make it a space…").click()
-        also = details.get_by_role("checkbox", name="Also give Kai access")
-        expect(also).not_to_be_checked()
-        also.check()
-        expect(details.locator(".promote__aud b")).to_have_text("Kai and you — only you two")
-        expect(details).to_contain_text("Kai is added because you chose to. Nobody else is.")
-        shot(page, "people-desktop-1440-promote-checked")
-        details.get_by_role("button", name="Create space").click()
-        expect(page).to_have_url(re.compile(r"/projects/[0-9a-f-]{36}/map/[0-9a-f-]{36}$"))
-        expect(page.get_by_text("Kai can open it too.")).to_be_visible()
-        together = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
-        status, grants = self.api(page, f"/api/v1/projects/{together}/grants")
-        # F-037: Ada started the space, so she is its admin by her own grant.
-        self.assertEqual(sorted((g["principal"]["id"], g["role"]) for g in grants), sorted([(self.ids["kai"], "contributor"), (self.ids["ada"], "manager")]))
-        self.assertEqual(self.api(kai, f"/api/v1/projects/{together}")[1]["access"], "contributor")
-        self.assertEqual(self.api(self.page("lee"), f"/api/v1/projects/{together}")[0], 404)
-
     # ---------------------------------------------------------------- remove and leave
 
     def test_09_remove_someone_and_leave(self) -> None:

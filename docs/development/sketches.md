@@ -93,16 +93,16 @@ author receives the events of a private sketch. The stream's `objectType` is `sk
 
 ## Web
 
-- `/map` is the Sketchbook, private to you. It lists your private sketches
-  (`?scope=private&hideEmpty=true`, so an empty sketch you left is not listed; the project Map
-  and Details do the same, #508) and has **New sketch**, which creates a private sketch. If you have
-  no workspace yet, it first creates a personal one. Project sketches live in their
-  project's Map tab and DM sketches in their DM (#189).
-- A sketch opens only where it lives: `/projects/:projectId/map/:sketchId` for a project
-  sketch, `/dm/:dmId/sketches/:sketchId` for a DM's sketch and `/map/:sketchId` for a private
-  one. A link that cannot know the place (search, doc links) opens `/map/:sketchId`, and the
+- `/map` is **My map** (#866), the person's one private map: the Sketchbook and its list, and "Your
+  notes", are gone. It finds the oldest of their private sketches (`?scope=private`, an empty one
+  included), or makes one titled "My map" the first time (`openMyMap` in `api/sketches.ts`), and shows
+  it at its own address, `/map/:sketchId`. It is shown as "My map · Only you", with no way back to a list and
+  no rename. Create's **Thought** puts a thought on it, in a free place (`freeSpot`). Project
+  sketches live in their project's Map tab, which still lists them (#189). A direct message has no maps in the app (#866): its Sketches tab, "Choose messages" and "Make it a space" are gone. The API still has `scope=dm` sketches and their promotion; removing them is a follow-up.
+- A map opens only where it lives: `/projects/:projectId/map/:sketchId` for a space's map and
+  `/map/:sketchId` for a private one. A link that cannot know the place (search, doc links) opens `/map/:sketchId`, and the
   view moves it, keeping the `#thought-…` fragment.
-- `/map/:sketchId` is the sketch (direction C `#lamp-map`, `-select`, `-edit`,
+- `/map/:sketchId` is a map (direction C `#lamp-map`, `-select`, `-edit`,
   `-list`). The toolbar has Thought, Connect, Shape, Remove and Undo, plus a status line.
   - The map is a canvas with a visible **+** beside the selected thought.
   - Pointer: drag to move (the selection moves together), Shift-click to select

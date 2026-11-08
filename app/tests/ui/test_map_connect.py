@@ -194,7 +194,7 @@ class MapConnectJourney(unittest.TestCase):
         expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(3)
         page.keyboard.press('Space')  # C is left out again
         expect(page.locator('.sk-node[aria-pressed="true"]')).to_have_count(2)
-        tools = page.get_by_role('toolbar', name='Sketch tools')
+        tools = page.get_by_role('toolbar', name='Map tools')
         expect(tools.get_by_text('Create task', exact=True)).to_be_visible()
         # #509 (from #345): Create task opens the Create window with the thoughts as its sources; the task exists only after
         # the window's own Create task.
@@ -215,7 +215,7 @@ class MapConnectJourney(unittest.TestCase):
     def test_04_tablet_touch_selects_several_with_select_several(self):
         page = self.page({'width': 820, 'height': 1180}, touch=True)
         self.scene(page)
-        tools = page.get_by_role('toolbar', name='Sketch tools')
+        tools = page.get_by_role('toolbar', name='Map tools')
         tools.get_by_role('button', name='Select several').tap()
         page.locator('.sk-node', has_text=A).tap()
         page.locator('.sk-node', has_text=B).tap()
@@ -237,7 +237,7 @@ class MapConnectJourney(unittest.TestCase):
                 self.assertGreaterEqual(add.evaluate('el => el.offsetHeight'), 44)
                 self.assertGreaterEqual(add.bounding_box()['height'], 44 - 1 / 64)
                 expect(page.locator('.sk-dot')).to_have_count(0)
-                tools = page.get_by_role('toolbar', name='Sketch tools')
+                tools = page.get_by_role('toolbar', name='Map tools')
                 for name in ('Connect', 'Change shape', 'Select several'):
                     expect(tools.get_by_role('button', name=name, exact=True)).to_have_count(0)
                 self.assertLessEqual(page.evaluate('document.documentElement.scrollWidth'), PHONE['width'])
@@ -275,7 +275,7 @@ class MapConnectJourney(unittest.TestCase):
                 page.get_by_role('dialog', name='Thought actions', exact=True).get_by_role('button', name='Remove from map', exact=True).tap()
                 expect(page.locator('.sk-node')).to_have_count(0 if solo else 2)
                 if solo:
-                    expect(page.locator('.sk-first')).to_have_text('An empty sketch. Start with Add a thought.')
+                    expect(page.locator('.sk-first')).to_have_text('An empty map. Start with Add a thought.')
                     expect(page.get_by_role('button', name=re.compile('connected thought|thought connected'))).to_have_count(0)
                 undo = page.get_by_role('button', name='Undo', exact=True)
                 expect(undo).to_be_visible()
@@ -300,7 +300,7 @@ class MapConnectJourney(unittest.TestCase):
     def test_07_desktop_undo_and_a_fresh_map(self):
         page = self.page(COMPUTER)
         sketch = self.scene(page)
-        undo = page.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Undo', exact=True)
+        undo = page.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Undo', exact=True)
         expect(undo).to_have_attribute('aria-disabled', 'true')
         page.locator('.sk-node', has_text=B).click()
         page.get_by_role('toolbar', name='Selection actions').get_by_role('button', name='Remove from map', exact=True).click()

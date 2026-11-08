@@ -171,7 +171,7 @@ class ThoughtDraftJourney(unittest.TestCase):
             page.locator(f'.sk-li-t[data-id="{self.parent}"]').focus()
             page.keyboard.press("+")
         else:
-            page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Thought", exact=True).click()
+            page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).click()
         field = page.get_by_role("form", name="New thought draft").get_by_label("Thought text")
         expect(field).to_be_focused()
         return field
@@ -518,7 +518,7 @@ class ThoughtDraftJourney(unittest.TestCase):
         page.get_by_role("button", name="Sign in", exact=True).click()
         expect(page.get_by_role("heading", name="Home", exact=True)).to_be_visible()
         # The same person in the same page visit, reaching the map through the app's own links: a project
-        # sketch lives in its project's Map, not in the private sketchbook (#189).
+        # sketch lives in its project's Map, not on My map (#189).
         # Each test makes its own "Quiet gesture lamp", so this one is chosen by its address.
         page.get_by_role("navigation", name="Spaces").locator(f'a[href="/projects/{self.project}"]').click()
         page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Map")).click()

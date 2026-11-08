@@ -29,8 +29,8 @@ export const sketchPromotionPath = (sketchId: string) => `${sketchPath(sketchId)
  * changes) until that person reopens it.
  */
 export type SketchScope = 'project' | 'private' | 'dm';
-/** The title a new sketch starts with until someone names it. */
-export const UNTITLED_SKETCH = 'Untitled sketch';
+/** The title a new map starts with until someone names it. */
+export const UNTITLED_SKETCH = 'Untitled map';
 export type ThoughtShape = 'card' | 'pill' | 'circle';
 export const THOUGHT_SHAPES: readonly ThoughtShape[] = ['card', 'pill', 'circle'];
 

@@ -308,7 +308,7 @@ class MapCanvasJourney(unittest.TestCase):
     def test_10_one_toolbar_at_the_bottom_and_zoom_with_the_minimap_at_the_bottom_right(self):
         page = self.page()
         self.scene(page, extra=(('Far right and low', 900, 420), ('Far left and high', -400, -200)))
-        tools = page.get_by_role('toolbar', name='Sketch tools')
+        tools = page.get_by_role('toolbar', name='Map tools')
         names = [b.get_attribute('aria-label') or b.inner_text().strip() for b in tools.get_by_role('button').all()]
         self.assertEqual(names, ['Select', 'Move around', 'Thought', 'Create task from selected thoughts', 'Cite the selected thought in the conversation', 'Undo'])
         pane = page.locator('.sk-page').bounding_box()
@@ -345,13 +345,13 @@ class MapCanvasJourney(unittest.TestCase):
                     'pill': page.locator('.sk-head'),
                     'Map': page.get_by_role('radio', name='Map', exact=True),
                     'List': page.get_by_role('radio', name='List', exact=True),
-                    'Thought': page.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Thought', exact=True),
+                    'Thought': page.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Thought', exact=True),
                     'Create task': page.get_by_role('button', name='Create task from selected thoughts', exact=True),
-                    'Undo': page.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Undo', exact=True),
+                    'Undo': page.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Undo', exact=True),
                 }
                 on_map = {name: control.bounding_box() for name, control in controls.items()}
                 expect(page.locator('.sk-hint')).to_be_visible()
-                tools = page.get_by_role('toolbar', name='Sketch tools')
+                tools = page.get_by_role('toolbar', name='Map tools')
 
                 def one_row():
                     centres = tools.get_by_role('button').evaluate_all('buttons => buttons.map((b) => { const r = b.getBoundingClientRect(); return r.top + r.height / 2; })')

@@ -225,20 +225,6 @@ class ConnectAiJourney(unittest.TestCase):
         expect(page.get_by_role("link", name=re.compile("^AI\\b"))).to_have_attribute("href", "/settings/agents")
         self.no_horizontal_scroll(page)
 
-    def test_04_details_link_to_settings_ai(self) -> None:
-        page = self.page("tom")
-        # The private note composer lives in the Sketchbook (New > Private note opens it).
-        page.goto("/map")
-        ask = page.locator(".composer__ask")
-        page.get_by_label("Private note", exact=True).fill("Which sensor works in the dark?")
-        ask.click()
-        panel = page.get_by_role("complementary", name="Details")
-        link = panel.get_by_role("link", name=re.compile("^Ways to connect"))
-        expect(link).to_have_attribute("href", "/settings/agents")
-        link.click()
-        expect(page).to_have_url(re.compile(r"/settings/agents$"))
-        expect(page.get_by_role("region", name="Connect AI", exact=True)).to_be_visible()
-
     def test_05_no_ai_journey_nothing_connected(self) -> None:
         page = self.page("tom")
         page.goto("/settings/agents")

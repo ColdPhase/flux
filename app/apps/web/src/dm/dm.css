@@ -29,39 +29,10 @@
 .dm-gone h2 { font-size: var(--fs-lg); color: var(--t1); }
 .dm-gone p { margin: 4px 0 14px; font-size: var(--fs-md); }
 
-/* Selecting messages to start a sketch in this DM (#96, #594). Nothing moves: every message keeps its place, the other
-   people's on the left and mine on the right edge of the same column. The check sits in the column the face has (an own
-   message has none, so it gets the same column), vertically centred on the bubble's first line (the line box of --dm-lh with
-   the body's --dm-lead above it: the same two values the body uses, so the check cannot drift off the line). A picked row takes the one
-   soft fill (--pick, apart from every bubble, own ones too): its box grown by --dm-pick on every side, painted behind the text so that a neighbour's fill never covers a
-   bubble. Only transform, opacity and colours animate. */
-.dm { --dm-w: 1000px; --dm-pick: 8px; --dm-check: 32px; --dm-pad: 9px; --dm-meta: calc(var(--fs-sm) * 1.4 + 7px); }
+.dm { --dm-w: 1000px; --dm-pad: 9px; --dm-meta: calc(var(--fs-sm) * 1.4 + 7px); }
 /* --dm-pad is the bubble's padding (composer/attachments.css) and --dm-meta the author row above it: the check's offsets. */
 @media (max-width: 760px) { .dm { --dm-pad: 11px; } }
-.dm--selecting .dm__composer { display: none; }
-.dm--selecting .dm__list { isolation: isolate; }
-.dm--selecting .dm-msg__row { position: relative; cursor: pointer; }
-.dm--selecting .dm-msg__row::before { content: ""; position: absolute; z-index: -1; inset: calc(-1 * var(--dm-pick)); border-radius: var(--r-lg); transition: background-color var(--dur-1) var(--ease-out); }
-.dm--selecting .dm-msg__row:hover::before { background: var(--hov); }
-.dm--selecting .dm-msg.is-picked .dm-msg__row::before { background: var(--pick); }
-.dm--selecting .dm-msg__face { visibility: hidden; }
 .dm-msg:not(.is-mine):not(.dm-msg--cont) { --dm-top: var(--dm-meta); }
-.dm-msel { position: absolute; left: 0; top: calc(var(--dm-top, 0px) + var(--dm-pad) + var(--dm-lead) + .5 * var(--dm-lh) * var(--fs-base) - var(--dm-check) / 2); display: grid; place-items: center start;
-  width: var(--dm-check); height: var(--dm-check); border-radius: var(--r); color: var(--t3); animation: dm-in var(--dur-in) var(--ease-out) backwards; }
-.dm-msel i { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--t3); transition: var(--tr); }
-.dm-msel svg { opacity: 0; transform: scale(.6); color: var(--oninv); transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
-.dm-msel[aria-pressed="true"] i { background: var(--inv); box-shadow: none; }
-.dm-msel[aria-pressed="true"] svg { opacity: 1; transform: none; }
-.dm-msel:active:not([aria-pressed="true"]) i { background: var(--act); }
-.dm-selbar { flex: none; display: flex; flex-direction: column; justify-content: center; min-height: min(var(--dm-swap, 0px), 140px); border-top: 1px solid var(--line); background: var(--bg); padding: 10px 24px 16px; padding-bottom: max(16px, env(safe-area-inset-bottom)); animation: dm-rise var(--dur-in) var(--ease-out) backwards; }
-.dm-selbar__in { max-width: calc(var(--dm-w) - 48px); margin: 0 auto; display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; }
-.dm-selbar__count { margin-right: auto; font-size: var(--fs-md); font-weight: 500; color: var(--t1); }
-.dm-selbar__note { flex-basis: 100%; display: flex; align-items: center; gap: 6px; font-size: var(--fs-sm); color: var(--t3); }
-.dm-selbar__note svg { flex: none; }
-.dm-selbar .ui-btn--primary[aria-disabled="true"] { background: var(--sub); color: var(--t2); }
-.dm-select-btn[aria-pressed="true"] { background: var(--sub); color: var(--t1); }
-.dm-sk-lead { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: var(--fs-sm); color: var(--t3); }
-@keyframes dm-in { from { opacity: 0; transform: scale(.8); } }
 @keyframes dm-rise { from { opacity: 0; transform: translateY(8px); } }
 
 /* List of conversations */
@@ -101,20 +72,11 @@
 
 @media (pointer: coarse) {
   .dm__error button { min-height: 44px; }
-  .dm { --dm-check: 44px; }
   .dm-new__person { min-height: 56px; }
   .dm-new__space .ui-select, .dm-new__search, .dm-new__title input { min-height: 44px; }
 }
 @media (max-width: 640px) {
-  /* The caption under the phone composer shares its line with "Choose messages": it never wraps; "direct message" is
-     kept for screen readers and the names truncate. */
-  .dm__composer .composer__audience:has(> .dm-select-btn--phone) > span:first-of-type { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-  .dm__composer .composer__audience:has(> .dm-select-btn--phone) .composer__where, .dm__composer .composer__audience:has(> .dm-select-btn--phone) > span > span[aria-hidden="true"] {
-    position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .dm__in { padding: 8px 16px 8px; }
-  .dm-selbar { padding: 8px 16px 12px; padding-bottom: max(12px, env(safe-area-inset-bottom)); }
-  .dm-selbar__in .ui-btn--primary { flex: 1 1 100%; justify-content: center; order: 3; }
-  .dm-selbar__note { order: 4; }
   .dm__head { padding: 8px 0 12px; }
   .dm__faces .ui-avatar--lg { width: 30px; height: 30px; }
   .dm__composer { padding-top: 6px; }
@@ -149,9 +111,8 @@
 .dm-msg__body, .dm-msg.is-mine .dm-msg__body { padding: 0; max-width: 100%; background: none; border-radius: 0; }
 .dm-msg--cont { margin-top: 4px; }
 .dm-msg__meta { margin-bottom: 7px; }
-.dm-msg.is-arrived, .dm-msg.is-picked { box-shadow: none; border-radius: var(--r); }
+.dm-msg.is-arrived { box-shadow: none; border-radius: var(--r); }
 .dm-msg.is-arrived .message-bubble { background: var(--sub); }
-.dm-msg.is-picked .message-time, .dm-msg.is-picked .message-seen { color: var(--t2); }
 
 .dm-msg { margin-top: 24px; }
 .dm-msg.dm-msg--cont { margin-top: 4px; }
@@ -168,7 +129,6 @@
 .dm-msg__main > .msg-acts { left: calc(100% + var(--acts-gap, 6px)); }
 .dm-msg.is-mine .dm-msg__main > .msg-acts { left: auto; right: calc(100% + var(--acts-gap, 6px)); }
 .dm-msg.is-mine .dm-msg__main > .msg-acts::before { left: auto; right: calc(-1 * var(--acts-gap, 6px)); }
-.dm--selecting .msg-acts { display: none; }
 /* Revealing a message's swipe actions must not move the reading position (that would close them at once); loading earlier messages keeps its own position. */
 .dm__feed { overflow-anchor: none; }
 .dm__lift { height: 0; flex: none; }
@@ -214,5 +174,3 @@
 @media (max-width: 680px) { .dm-copy__row { grid-template-columns: minmax(0, 1fr); } }
 /* The bubble column of every message, in a conversation and in its thread, leaves --acts-room beside it for the pill. */
 @media (hover: hover) { .dm-msg .dm-msg__main { max-width: min(600px, calc(100% - var(--acts-room, 114px))); } }
-/* Selecting on a phone gives an own message the check's column too, so its bubble never runs under it. */
-@media (hover: none) { .dm--selecting .dm-msg.is-mine .dm-msg__main { max-width: min(600px, calc(100% - var(--dm-check) - 12px)); } }

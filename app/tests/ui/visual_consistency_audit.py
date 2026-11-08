@@ -273,7 +273,7 @@ SCREENS = [
     Screen("empty-tasks", "/projects/{pe}/tasks"),
     Screen("empty-wiki", "/projects/{pe}/docs"),
     Screen("empty-map", "/projects/{pe}/map"),
-    Screen("sketchbook", "/map"),
+    Screen("my-map", "/map"),
     Screen("workspace-tasks", "/tasks"),
     Screen("workspace-docs", "/docs"),
     Screen("dm-index", "/dm"),

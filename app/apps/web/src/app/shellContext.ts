@@ -46,7 +46,6 @@ export interface PeopleView { kind: 'people'; workspaceId: string }
 /** A new space (F-030, #655): the form in the Details panel, plain or encrypted. Never kept in a history entry: it holds a password. */
 
 /** "Make it a project…" for a DM sketch (#96): the exact audience and content before anything is shared. */
-export interface PromoteSketchView { kind: 'promote-sketch'; sketchId: string; title: string }
 
 /** "What matters" (#133): the private recap of one project. */
 export interface RecapView { kind: 'recap'; projectId: string }
@@ -67,7 +66,7 @@ export interface OwnedView { kind: 'owned' }
 export const isOwned = (view: DetailsView): view is OwnedView => typeof view === 'object' && view.kind === 'owned';
 
 /** What the Details panel shows: the current place, a project object or form, or how to connect a personal AI (#57). */
-export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | PromoteSketchView | RecapView | PeopleView | ThoughtTasksView | OwnedView;
+export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | RecapView | PeopleView | ThoughtTasksView | OwnedView;
 
 /**
  * A panel a route's own view owns (F-026 S4, #488): a conversation thread, a direct-message thread, an agent or a task's
@@ -95,8 +94,8 @@ export interface OwnedPanel {
 /** What the one Create window opens with (F-026 S3): everything is optional; the person completes the rest. */
 export interface CreateRequest {
   /** `task` goes straight to the task form, `project` to the project form (#763 FR-2), `decision` to the decision form
-   * (a message's Propose a decision, #763 SP-5); without it the phone sheet first asks what to create. */
-  kind?: 'task' | 'project' | 'decision';
+   * (a message's Propose a decision, #763 SP-5), `thought` to a thought on My map (#866); without it the phone sheet first asks what to create. */
+  kind?: 'task' | 'project' | 'decision' | 'thought';
   projectId?: string;
   title?: string;
   status?: WorkStatus;

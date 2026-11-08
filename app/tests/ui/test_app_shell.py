@@ -577,46 +577,23 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("region", name="You’re in Personal")).to_be_visible()
         shot(page, "desktop-1440-home-light")
 
-        # Private notes moved from Home's former conversation into Your notes in the Sketchbook.
+        # My map (#866): the sidebar opens the person's one private map, made the first time; Your notes became thoughts on it.
         places.get_by_role("link", name="My map", exact=True).click()
-        expect(page).to_have_url(f"{ORIGIN}/map")
-        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
+        expect(page).to_have_url(re.compile(rf"^{ORIGIN}/map/[0-9a-f-]{{36}}$"))
         expect(page.get_by_role("navigation", name="Views")).to_have_count(0)
-        expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
-        composer = page.get_by_label("Private note", exact=True)
-        # Your notes is a normal-flow section of the Sketchbook, not the old Home-pinned composer.
-        notes_section = page.get_by_role("region", name="Your notes")
-        expect(notes_section).to_be_visible()
-        expect(notes_section.get_by_role("heading", name="Your notes")).to_be_visible()
-        expect(composer).to_be_visible()
-        audience = notes_section.locator(".composer__audience")
-        expect(audience).to_be_visible()
-        expect(audience).to_contain_text("Only you")
-        self.assertTrue(composer.evaluate("el => el.closest('.ynotes') !== null"), "the private note composer belongs to Your notes")
-        # One composer in six places (#343): the privacy line is part of the composer, inside its container.
-        self.assertTrue(audience.evaluate("(el) => el.closest('.composer') !== null"), "the privacy label is inside the composer container")
-        self.assertTrue(composer.evaluate("(el) => el.closest('.composer') === document.querySelector('.composer__audience').closest('.composer')"), "the label and the input share one composer")
-        shot(page, "desktop-1440-sketchbook-empty-light")
-
-        # Quick capture: Enter saves a private note, which survives a reload.
-        save = page.get_by_role("button", name="Save note")
-        expect(save).to_have_attribute("aria-disabled", "true")
-        composer.fill("Lamp idea: wave to dim, but keep the camera off by default")
-        expect(save).to_have_attribute("aria-disabled", "false")
-        composer.press("Enter")
-        # The first note is a private draft in the person's company (F-037; #190 HOME-3).
-        notes = page.get_by_role("region", name="Private drafts")
-        expect(notes.get_by_text("Lamp idea: wave to dim")).to_be_visible()
-        expect(composer).to_have_value("")
-        spaces = page.evaluate("fetch('/api/v1/workspaces').then(r => r.json())")
-        self.assertEqual([space["name"] for space in spaces], ["Personal"], "the note made no space of its own")
-        composer.fill("Try a PIR sensor first; compare with the camera in low light")
-        save.click()
-        expect(notes.get_by_text("Try a PIR sensor first")).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
+        expect(page.locator(".sk-aud")).to_have_text("Only you")
+        expect(page.get_by_text("An empty map.")).to_be_visible()
+        shot(page, "desktop-1440-my-map-empty-light")
+        my_map = page.url.rsplit("/", 1)[1]
+        added = page.request.post(f"{ORIGIN}/api/v1/sketches/{my_map}/thoughts", data={"text": "Lamp idea: wave to dim, but keep the camera off by default", "x": 40, "y": 40},
+                                  headers={"origin": ORIGIN})
+        self.assertEqual(added.status, 201, added.text())
         page.reload()
-        expect(page.get_by_role("region", name="Private drafts").get_by_role("listitem")).to_have_count(2)
-        expect(page.get_by_text("Private drafts · saved in your space")).to_be_visible()
-        self.assertEqual(len(page.evaluate("fetch('/api/v1/workspaces').then(r => r.json())")), 1, "still one space")
+        expect(page.get_by_text("Lamp idea: wave to dim")).to_be_visible()
+        spaces = page.evaluate("fetch('/api/v1/workspaces').then(r => r.json())")
+        self.assertEqual([space["name"] for space in spaces], ["Personal"], "My map made no space of its own")
+        self.assertEqual(len(page.request.get(f"{ORIGIN}/api/v1/workspaces/{spaces[0]['id']}/sketches?scope=private&limit=100").json()["items"]), 1, "one private map")
         shot(page, "desktop-1440-light")
 
         # The personal pages stay reachable and keep Back: Home's quiet links, then the browser's Back (#508 AC-5).
@@ -643,7 +620,6 @@ class AppShellJourney(unittest.TestCase):
         expect(panel.get_by_text(EMAIL)).to_have_count(0)
         # Docked: the work area stays usable beside the panel.
         self.assertGreater(box(page, panel)["x"], 1000)
-        expect(page.get_by_role("heading", name="Start a sketch")).to_be_visible()
         self.assertTrue(panel.evaluate("el => el.contains(document.activeElement)"), "focus moves into the panel")
         shot(page, "desktop-1440-details-light")
         page.keyboard.press("Escape")
@@ -764,117 +740,6 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/nowhere")
         expect(page.get_by_role("heading", name="This page doesn’t exist")).to_be_visible()
 
-    # ---------------------------------------------------------------- unfinished work
-
-    def test_04a_draft_survives_view_switch_and_reload(self) -> None:
-        page = self.page()
-        page.goto("/map")
-        composer = page.get_by_label("Private note", exact=True)
-        state = page.locator(".composer__state")
-        expect(state).to_have_text("Private until you explicitly publish a selected version")
-        unfinished = "Half a thought: what if the lamp dims when nobody moves for"
-        composer.fill(unfinished)
-        expect(state).to_have_text("Draft kept on this device")
-        user_id = page.evaluate("fetch('/api/v1/me').then(r => r.json()).then(b => b.user.id)")
-        self.assertEqual(page.evaluate(f"localStorage.getItem('flux:draft:{user_id}:home')"), unfinished, "stored per account and context")
-
-        # A view switch remounts the composer; the text comes back.
-        page.get_by_role("link", name="Home", exact=True).first.click()
-        expect(page.get_by_role("heading", level=2, name=re.compile("^Good ")) ).to_be_visible()
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="My map").click()
-        expect(composer).to_have_value(unfinished)
-        expect(state).to_have_text("Draft kept on this device")
-
-        # So does a reload.
-        page.reload()
-        expect(page.get_by_label("Private note", exact=True)).to_have_value(unfinished)
-        shot(page, "desktop-1440-draft-light")
-
-        # Sending saves the note and clears the draft, also after a reload.
-        page.get_by_label("Private note", exact=True).press("Enter")
-        expect(page.get_by_role("region", name="Private drafts").get_by_text(unfinished)).to_be_visible()
-        expect(page.get_by_label("Private note", exact=True)).to_have_value("")
-        expect(state).to_have_text("Private until you explicitly publish a selected version")
-        self.assertIsNone(page.evaluate(f"localStorage.getItem('flux:draft:{user_id}:home')"))
-        page.reload()
-        expect(page.get_by_label("Private note", exact=True)).to_have_value("")
-
-        # Another account on the same browser does not see this draft.
-        page.get_by_label("Private note", exact=True).fill("Only mine")
-        self.assertEqual(page.evaluate("Object.keys(localStorage).filter(k => k.startsWith('flux:draft:'))"), [f"flux:draft:{user_id}:home"])
-        page.get_by_label("Private note", exact=True).fill("")
-
-    def test_04b_reading_position_is_kept_per_view(self) -> None:
-        page = self.page()
-        page.goto("/map")
-        user_id = page.evaluate("fetch('/api/v1/me').then(r => r.json()).then(b => b.user.id)")
-        key = f"flux.captures.{user_id}"
-        saved = page.evaluate(f"localStorage.getItem('{key}')")
-        notes = [{"id": f"n{i}", "text": f"Reading position check, note {i + 1}: a long enough line to take real space in the column.", "createdAt": "2026-09-27T09:00:00.000Z"} for i in range(40)]
-        page.evaluate(f"localStorage.setItem('{key}', JSON.stringify({json.dumps(notes)}))")
-        try:
-            page.reload()
-            scroller = page.locator(".sk-page")
-            expect(page.get_by_text("note 40:")).to_be_attached()
-            # Home loads blocks above these notes after they render (private drafts, the offer to move
-            # browser notes, #190 HOME-3); the position is a pixel offset, so it is taken once they have.
-            expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
-            page.wait_for_load_state("networkidle")
-            scroller.evaluate("el => { el.scrollTop = 600; el.dispatchEvent(new Event('scroll')); }")
-            page.wait_for_timeout(100)
-            # The note at the top of the column: blocks above the notes can load later and change the
-            # pixel offset (the browser keeps the same note in view), so the place is checked by content.
-            first_visible = """() => { const s = document.querySelector('.sk-page'); const top = s.getBoundingClientRect().top;
-              const note = [...s.querySelectorAll('.note')].find((el) => el.getBoundingClientRect().bottom > top + 1);
-              return note ? note.querySelector('.note__text').textContent : null; }"""
-            anchor = page.evaluate(first_visible)
-            self.assertIsNotNone(anchor)
-            page.goto("/docs")
-            expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
-            page.get_by_role("navigation", name="Places").get_by_role("link", name="My map").click()
-            expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
-            page.wait_for_load_state("networkidle")
-            # Restored by content, not pixels: a block that loads above the notes after the restore (drafts,
-            # the move offer) shifts the offset while the browser keeps the same note in view.
-            self.assertGreater(page.locator(".sk-page").evaluate("el => el.scrollTop"), 0, "a position was restored")
-            self.assertEqual(page.evaluate(first_visible), anchor, "the same note is at the top after a view switch")
-            page.reload()
-            expect(page.get_by_text("note 40:")).to_be_attached()
-            # The offer to move these browser notes into the account loads above them (#190 HOME-3).
-            expect(page.get_by_role("button", name=re.compile(r"^Move 40 notes"))).to_be_visible()
-            page.wait_for_load_state("networkidle")
-            self.assertEqual(page.evaluate(first_visible), anchor, "the same note is at the top after a reload")
-        finally:
-            page.evaluate(f"localStorage.setItem('{key}', {json.dumps(saved)}); localStorage.removeItem('flux:scroll:{user_id}:/map')" if saved else f"localStorage.removeItem('{key}'); localStorage.removeItem('flux:scroll:{user_id}:/map')")
-            self.save_state(page)
-
-    def test_04c_personal_assistant_needs_a_connection(self) -> None:
-        page = self.page()
-        page.goto("/map")
-        composer = page.get_by_label("Private note", exact=True)
-        composer.fill("Which sensor works in the dark?")
-        # With no assistant of their own, the spark button leads to "Connect your AI" (#189); nothing is
-        # sent and the private note stays where it is.
-        ask = page.locator(".composer__ask")
-        expect(ask).to_have_accessible_name("Connect your AI")
-        expect(ask).not_to_have_attribute("aria-pressed", re.compile(".*"))
-        ask.click()
-        panel = page.get_by_role("complementary", name="Details")
-        expect(panel.get_by_role("heading", name="Connect your AI")).to_be_visible()
-        expect(panel.get_by_role("link", name="Ways to connect, in Settings → AI")).to_have_attribute("href", "/settings/agents")
-        expect(panel.get_by_role("link", name="Set up or revoke an MCP client connection")).to_have_attribute("href", "/connect-agent")
-        expect(panel).to_contain_text("Claude Code, Codex or another MCP client")
-        self.assertNotIn("Anthropic API key", panel.inner_text())
-        expect(panel.get_by_text("Flux works fully without AI.", exact=False)).to_be_visible()
-        shot(page, "desktop-1440-ask-light")
-        panel.get_by_role("button", name="Back to Details").click()
-        expect(panel.get_by_role("heading", name="Nothing selected")).to_be_visible()
-        page.get_by_role("button", name="Close details").click()
-        expect(composer).to_have_value("Which sensor works in the dark?")
-        expect(page.locator(".composer__audience")).to_contain_text("Only you")
-        expect(page.get_by_role("button", name="Save note")).to_have_attribute("aria-disabled", "false")
-        composer.fill("")
-
     def test_05_desktop_dark_and_tablet(self) -> None:
         page = self.page(dark=True)
         page.goto("/")
@@ -948,8 +813,9 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
         shot(page, "phone-390-dark")
         page.goto("/map")
-        # Sketching itself is covered by tests/ui/test_sketches.py (#69).
-        expect(page.get_by_role("button", name="New sketch")).to_be_visible()
+        # Mapping itself is covered by tests/ui/test_sketches.py (#69): My map opens at its own address.
+        expect(page).to_have_url(re.compile(rf"^{ORIGIN}/map/[0-9a-f-]{{36}}$"))
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
 
         narrow = self.page(phone=True, viewport={"width": 360, "height": 780})
         narrow.goto("/tasks")
@@ -1258,19 +1124,7 @@ class AppShellJourney(unittest.TestCase):
         ws = spaces[0]
         projects = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/projects?limit=100").json()
         self.assertEqual([p["id"] for p in projects["items"]], [project_id], "a retried project whose first response was lost is not created twice")
-        owner.get_by_role("link", name="My map").click()
-        owner.get_by_label("Private note", exact=True).fill("home address 123; PIR avoids storing images")
-        lost_draft = lose_first_committed(f"**/api/v1/workspaces/{ws['id']}/drafts")
-        owner.get_by_role("button", name="Save note").click()
-        expect(owner.get_by_text("Save failed")).to_be_visible()
-        owner.get_by_role("button", name="Save note").click()
-        expect(owner.get_by_role("region", name="Private drafts").get_by_text("home address 123; PIR avoids storing images")).to_be_visible()
-        owner.unroute(f"**/api/v1/workspaces/{ws['id']}/drafts", lost_draft)
-        drafts = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/drafts").json()["items"]
-        self.assertEqual(len(drafts), 1, "a retried private draft whose first response was lost is saved once")
-        owner.reload()
-        expect(owner.get_by_role("region", name="Private drafts").get_by_text("home address 123; PIR avoids storing images")).to_be_visible()
-        draft_id = owner.context.request.get(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/drafts").json()["items"][0]["id"]
+        owner.get_by_role("navigation", name="Spaces").get_by_role("link", name="Gesture lamp").click()
         owner.get_by_role("navigation", name="Spaces").get_by_role("link", name="Gesture lamp").click()
         owner.get_by_label("Write a message").fill("Try a PIR sensor before considering a camera")
         owner.get_by_role("button", name="Send message").click()
@@ -1286,15 +1140,12 @@ class AppShellJourney(unittest.TestCase):
         expect(owner).to_have_url(re.compile(rf"/conversations/{conversation_id}$"))
         open_sources(owner, thread_of(owner))
         owner.get_by_role("button", name="Add material").click()
-        choose(owner.get_by_label("Start from a private draft"), draft_id)
-        expect(owner.get_by_label("Text")).to_have_value("home address 123; PIR avoids storing images")
         owner.get_by_label("Title").fill("Privacy options")
         owner.get_by_label("Text").fill("PIR avoids storing images")
         owner.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
         owner.go_back()
         expect(owner.get_by_label("Title")).to_have_value("Privacy options")
         expect(owner.get_by_label("Text")).to_have_value("PIR avoids storing images")
-        expect_value(owner.get_by_label("Start from a private draft"), draft_id)
         owner.get_by_role("button", name="Save for this space").press("Enter")
         expect(owner.get_by_text("Privacy options")).to_be_visible()
         owner.get_by_role("button", name="Discuss this version").click()
@@ -1406,7 +1257,6 @@ class AppShellJourney(unittest.TestCase):
         partner.get_by_role("button", name="Create account").click()
         expect(partner.get_by_role("heading", level=1, name="Home")).to_be_visible()
         partner_id = partner.context.request.get(f"{ORIGIN}/api/v1/me").json()["user"]["id"]
-        self.assertEqual(partner.context.request.get(f"{ORIGIN}/api/v1/drafts/{draft_id}").status, 404)
         invite = owner.context.request.post(f"{ORIGIN}/api/v1/workspaces/{ws['id']}/members", data={"email": partner_email, "role": "member"}, headers={"Origin": ORIGIN})
         self.assertEqual(invite.status, 201, invite.text())
         partner_grant = owner.context.request.post(f"{ORIGIN}/api/v1/projects/{project_id}/grants", data={"principal": {"kind": "human", "id": partner_id}, "role": "contributor"}, headers={"Origin": ORIGIN})

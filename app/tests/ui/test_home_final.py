@@ -3,7 +3,7 @@
 Home is a date and a greeting, the top three that need you with the way to the whole Inbox, a
 "Continue where you left off" card (the whole card is a link with a round arrow), the projects with
 what is new, and a row of key hints; on a phone it also shows a working agent with Stop. Its private
-notes moved to the Sketchbook as "Your notes" (see test_home_notes). Checked at 1440x900 and
+notes became thoughts on My map (#866). Checked at 1440x900 and
 390x844 (touch), light and dark, against the API. Screenshots (home-final-*.png) go to
 FLUX_UI_SCREENSHOTS when set.
 """

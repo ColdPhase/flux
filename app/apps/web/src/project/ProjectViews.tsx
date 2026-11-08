@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import type { Sketch } from '@flux/contracts';
+import { UNTITLED_SKETCH, type Sketch } from '@flux/contracts';
 import { Button, EmptyState, Icon, Spinner, useToast } from '../ui';
 import { useShellData } from '../app/data';
 import { useStreamEvents } from '../api/stream';
@@ -53,7 +53,7 @@ export function ProjectMap() {
     setCreating(true);
     try {
       // A retry after a lost answer reuses the key, so it never makes two sketches.
-      const sketch = await createProjectSketch(project.workspaceId, project.id, 'Untitled sketch', attempt.current);
+      const sketch = await createProjectSketch(project.workspaceId, project.id, UNTITLED_SKETCH, attempt.current);
       attempt.current = crypto.randomUUID();
       navigate(`/projects/${project.id}/map/${sketch.id}`, { state: { fresh: true } });
     } catch {
@@ -105,10 +105,10 @@ export function ProjectMap() {
                 </li>
               ))}
             </ul>
-            <p className="pv-note">A sketch is for thinking out loud: one idea can link to several options, and nothing on it has to become a task. Link a thought from a task or a decision to see it in Details.</p>
+            <p className="pv-note">A map is for thinking out loud: one thought can link to several options, and nothing on it has to become a task. Link a thought from a task or a decision to see it in Details.</p>
             {state.items.length < state.total ? (
               <div className="sk-index-more">
-                <Button onClick={() => setPages((n) => n + 1)}>Show more sketches</Button>
+                <Button onClick={() => setPages((n) => n + 1)}>Show more maps</Button>
                 <span className="sk-index__s">Showing {state.items.length} of {state.total}</span>
               </div>
             ) : null}

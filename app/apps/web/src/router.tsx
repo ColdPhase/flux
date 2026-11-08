@@ -1,4 +1,4 @@
-import { Navigate, Outlet, createBrowserRouter, useMatches, useRouteLoaderData, type RouteObject } from 'react-router';
+import { Navigate, Outlet, createBrowserRouter, redirect, useMatches, useRouteLoaderData, type RouteObject } from 'react-router';
 import { useEffect, useState } from 'react';
 import { markBooted } from './place/memory';
 import { ToastProvider, markMotionReady } from './ui';
@@ -166,14 +166,14 @@ export const router = createBrowserRouter([
           { path: 'materials/:materialId', ...material },
           { path: 'materials/:materialId/versions/:version', ...material },
           { path: 'tasks', ...secondary(async () => ({ Component: (await import('./app/TasksView')).TasksView })) },
-          { path: 'map', ...secondary(async () => ({ Component: (await import('./sketch/SketchIndex')).SketchIndex })) },
+          { path: 'map', ...secondary(async () => ({ Component: (await import('./sketch/MyMap')).MyMap })) },
           { path: 'map/:sketchId', ...sketch },
           { path: 'docs', ...secondary(async () => ({ Component: (await docViewsPage()).WorkspaceDocs })) },
           { path: 'dm', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).DmIndex })) },
           { path: 'dm/new', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).NewDm })) },
           { path: 'dm/:dmId', ...secondary(async () => { const page = await import('./dm/DmConversation'); return { Component: page.DmConversation, loader: page.dmLoader }; }) },
-          { path: 'dm/:dmId/sketches', ...secondary(async () => ({ Component: (await import('./dm/DmSketches')).DmSketches })) },
-          { path: 'dm/:dmId/sketches/:sketchId', ...sketch },
+          // A direct message has no maps (#866): its old Sketches addresses lead to the conversation.
+          { path: 'dm/:dmId/sketches/*', loader: ({ params }) => redirect(`/dm/${params.dmId}`) },
           // An agent is a private conversation in Messages (F-036 AG-4, #857).
           { path: 'agents/:agentId', ...secondary(async () => ({ Component: (await import('./my-agents/AgentConversation')).AgentConversation })) },
           { path: 'inbox', ...secondary(async () => ({ Component: (await import('./notifications/InboxView')).InboxView })) },

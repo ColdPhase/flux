@@ -1,13 +1,11 @@
 import { useEffect, useId, useMemo, useRef, useState, type FormEvent, type MouseEvent, type ReactNode } from 'react';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useLocation, useNavigate, useRevalidator } from 'react-router';
-import { WORK_LIMITS, WORK_STATUSES, type CreateWorkCommand, type ObjectRef, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
+import { DEFAULT_THOUGHT_SIZE, SKETCH_LIMITS, WORK_LIMITS, WORK_STATUSES, type CreateWorkCommand, type ObjectRef, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { openDm, sendDmMessage } from '../api/direct-messages';
 import { useIntentKeys } from '../api/intent-keys';
-import { getProject } from '../api/sketches';
-import { noteTitle } from '../captures/store';
-import { createPrivateDraft } from '../drafts/api';
+import { addThought, getProject, getSketch, openMyMap } from '../api/sketches';
 import { listWorkspaceMembers } from '../project/api';
 import { listProjectPeople } from '../project/data';
 import { useShellData } from '../app/data';
@@ -18,6 +16,7 @@ import '../people/space.css';
 import { AccountChangedError, assertSignedInAs } from '../app/personalSpace';
 import { useShellActions, type CreateRequest } from '../app/shellContext';
 import { searchFlux } from '../search/api';
+import { freeSpot, rectOf } from '../sketch/geometry';
 import { Button, Icon, MEDIA, Overlay, Spinner, StatusGlyph, Tabs, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
 import { createWork, proposeDecision } from '../work/api';
 import { ownTaskAgents } from '../agents/taskAgents';
@@ -53,7 +52,8 @@ export function CreateHost({ request, onClose }: { request: CreateRequest | null
   // the window is named after the tab it shows, so no heading repeats the tab.
   const { projects, workspace } = useShellData();
   // A guest cannot start spaces, so with none of their own they open on Task like anyone else.
-  const opening: Shown = request?.kind === 'project' || (!projects.length && workspace?.role !== 'guest') ? 'space' : request?.kind === 'decision' ? 'decision' : 'task';
+  // A thought needs no space (it goes on My map), so a Thought asked for opens as one for someone with no space yet (#866).
+  const opening: Shown = request?.kind === 'thought' ? 'thought' : request?.kind === 'project' || (!projects.length && workspace?.role !== 'guest') ? 'space' : request?.kind === 'decision' ? 'decision' : 'task';
   const [chosen, setChosen] = useState<{ request: CreateRequest | null; kind: Shown; name?: string }>({ request: null, kind: 'task' });
   const kind = chosen.request === request ? chosen.kind : opening;
   const navigate = useNavigate();
@@ -420,8 +420,8 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
 }
 
 /**
- * Thought: a private note in Your notes (the Sketchbook, HOME-3), the same as the phone's "+" Thought. It is saved in the
- * company (F-037), private to the person.
+ * Thought: a thought on My map (#866), the person's private map, the same as the phone's "+" Thought. It is saved in the
+ * company (F-037), private to the person, and put where the map has room.
  */
 function ThoughtForm({ ids, phone, carried, onClose }: PanelProps) {
   const { me, workspace } = useShellData();
@@ -432,7 +432,7 @@ function ThoughtForm({ ids, phone, carried, onClose }: PanelProps) {
   const inFlight = useRef(false);
   const [error, setError] = useState('');
   const body = carried.text.trim();
-  const ready = !!body && !busy;
+  const ready = !!body && body.length <= SKETCH_LIMITS.text && !busy;
   async function submit() {
     if (!ready || inFlight.current) return;
     inFlight.current = true;
@@ -441,23 +441,28 @@ function ThoughtForm({ ids, phone, carried, onClose }: PanelProps) {
     try {
       const target = workspace?.id;
       if (!target) { setError('You’re not in a company on this Flux yet. Ask an admin for an invite link.'); return; }
-      // One key per text and space (#178): a retry after a lost answer returns the same note.
-      const intent = `draft:${target}:${body}`;
       await assertSignedInAs(me.user.id);
-      await createPrivateDraft(target, noteTitle(body), body, intents.keyFor(intent));
+      const map = await openMyMap(target);
+      const found = await getSketch(map.id);
+      const size = { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height };
+      const spot = freeSpot(found.thoughts.map((thought) => rectOf(thought, new Map())), null, size);
+      // One key per text and map (#178): a retry after a lost answer returns the same thought.
+      const intent = `thought:${map.id}:${body}`;
+      await addThought(map.id, { text: body, ...spot }, intents.keyFor(intent));
       intents.settle(intent);
       carried.made(snapshot);
       onClose();
-      toast({ message: 'Thought saved to Your notes', tone: 'success', timeout: 4000, action: { label: 'Open', onClick: () => go('/map') } });
+      toast({ message: 'Thought added to My map', tone: 'success', timeout: 4000, action: { label: 'Open', onClick: () => go('/map') } });
     } catch (cause) {
       setError(cause instanceof AccountChangedError ? cause.message : 'Could not save the thought. Your text is still here; try again.');
     } finally { inFlight.current = false; setBusy(false); }
   }
   const where = <span className="create__private"><Icon name="lock" size={13} />Only you</span>;
   return (
-    <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">Saved to Your notes in My map</p><Go label="Save thought" busy={busy} ready={ready} phone={phone} /></>}>
+    <Panel ids={ids} where={where} onSubmit={() => void submit()} foot={<><p className="create__note">Added to My map</p><Go label="Save thought" busy={busy} ready={ready} phone={phone} /></>}>
       <textarea id={ids.field} className="create__text" aria-label="Thought" rows={3} value={carried.text} disabled={busy} placeholder="What’s on your mind?"
         onChange={(event) => { carried.set(event.target.value); setError(''); }} />
+      <TooLong text={body} limit={SKETCH_LIMITS.text} />
       {error ? <p className="create__error" role="alert">{error}</p> : null}
     </Panel>
   );

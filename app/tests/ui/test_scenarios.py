@@ -7,8 +7,8 @@ people in them would, in the browser:
 
 1. Idea to collaboration (test_1): Ada signs up, starts Riverside Makers with a four-person
    "Marketplace stall" project and adds the people. In a DM, Ada and Jonas discuss a gesture-controlled
-   lamp; they select the camera, sensor and privacy messages, sketch from them and make a separate
-   two-person "Gesture lamp" project from the sketch. Jonas signs in and writes there; Ada replies in the
+   lamp; Ada makes a separate two-person "Gesture lamp" project with a map of the camera, sensor and privacy
+   thoughts. Jonas signs in and writes there; Ada replies in the
    thread with no audience checkbox. Mia and Lee, who share Marketplace, see none of it.
 2. Thinking and execution inform each other (test_2): a person proposes and accepts the first rule; one
    experiment is created from several thoughts on the map; Jonas posts the low-light run with an
@@ -26,7 +26,7 @@ people in them would, in the browser:
    page gets a second version citing the new rule, and its first version stays as written.
 6. Export and audience (test_6): Ada's project export holds the conversation, the attachment, the map,
    the work, both rules, the result, the page and their links, and nothing private. A member reads the
-   project but not Ada's private note or the DM and cannot export it; a non-member gets 404.
+   project but not Ada's private thought or the DM and cannot export it; a non-member gets 404.
 
 Where the product cannot do a step yet, that step is its own small method marked
 @unittest.expectedFailure with the reason (test_2a, test_2b, test_4a), and the scenario continues through
@@ -510,55 +510,30 @@ class ScenarioJourney:
         message_ids = [m["id"] for m in stored["messages"]]
         s.update(dm=dm)
 
-        # Only the camera, sensor and privacy messages seed a shared sketch; no project yet.
-        self.tap(page.get_by_role("button", name="Choose messages", exact=True))
-        bar = page.get_by_role("region", name="Selected messages")
-        expect(bar).to_contain_text("No space is created.")
-        for index in (1, 2, 3):
-            self.tap(page.locator(f'.dm-msg[data-message-id="{message_ids[index]}"] .dm-msg__body'))
-        expect(bar.get_by_role("status")).to_have_text("3 messages selected")
-        self.tap(bar.get_by_role("button", name="Start sketch from these messages"))
-        page.wait_for_url(re.compile(rf"/dm/{dm}/sketches/[0-9a-f-]{{36}}$"))
-        dm_sketch = page.url.rsplit("/", 1)[-1]
-        expect(page.get_by_label("Sketch name")).to_be_focused()
-        page.keyboard.press("Escape")
-        expect(page.locator(".sk-status")).to_contain_text("Started from 3 messages · only you and Jonas can see it")
-        sketch = self.sketch("ada", dm_sketch)
-        self.assertEqual((sketch["scope"], sketch["dmId"], sketch["projectId"]), ("dm", dm, None))
-        self.assertEqual([t["source"]["dmMessageId"] for t in sketch["thoughts"]], message_ids[1:4])
-        s.update(dm_sketch=dm_sketch)
+        # Ada makes a two-person space for the lamp and puts the camera, sensor and privacy thoughts on its map. A direct message has no
+        # maps of its own (#866): the conversation stays a conversation, and the space is made from the Create window's data here.
+        workspace_id = s["workspace"]
+        lamp = self.api("ada", "POST", f"/api/v1/workspaces/{workspace_id}/projects", {"name": LAMP, "visibility": "restricted"}, status=201)["id"]
+        self.api("ada", "POST", f"/api/v1/projects/{lamp}/grants", {"principal": {"kind": "human", "id": self.ids["jonas"]}, "role": "contributor"}, status=201)
+        copy = self.api("ada", "POST", f"/api/v1/workspaces/{workspace_id}/sketches", {"title": "Lamp ideas", "scope": "project", "projectId": lamp}, status=201)["id"]
+        for index, text in enumerate((CAMERA, SENSOR, PRIVACY)):
+            self.api("ada", "POST", f"/api/v1/sketches/{copy}/thoughts", {"text": text, "x": 40 + 240 * index, "y": 40}, status=201)
+        page.goto(f"/projects/{lamp}/map/{copy}")
+        sketch = self.sketch("ada", copy)
 
-        # Ada thinks further on the sketch: low light is the camera's weak spot.
+        # Ada thinks further on the map: low light is the camera's weak spot.
         if self.phone:
             show_map_as(page, "List", touch=True)
         camera = self.thought_id(sketch, CAMERA)
-        self.add_connected_thought(page, dm_sketch, camera, LOW_LIGHT)
-        self.shot(page, "1-dm-sketch")
-
-        # She makes a separate two-person project from the sketch; the preview names the content and readers.
-        self.tap(page.get_by_role("button", name="Make it a space…"))
-        panel = self.details(page)
-        expect(panel.get_by_role("heading", name="Make a space from this sketch")).to_be_visible()
-        panel.get_by_role("checkbox", name="Also give Jonas access").check()
-        expect(panel.locator(".promote__aud b")).to_have_text("Jonas and you — only you two")
-        expect(panel).to_contain_text("4 thoughts")
-        expect(panel).to_contain_text("Nothing is synced to the space.")
-        preview = self.api("ada", "GET", f"/api/v1/sketches/{dm_sketch}/promotion?target=new&participants=grant", status=200)
-        self.assertEqual({person["id"] for person in preview["audience"]}, {self.ids["ada"], self.ids["jonas"]})
-        self.assertEqual(preview["staysInDm"]["messages"], 2, "the first and the unrelated message stay in the DM")
-        panel.get_by_label("Name").fill(LAMP)
-        self.shot(page, "1-promote")
-        self.tap(panel.get_by_role("button", name="Create space"))
-        page.wait_for_url(re.compile(r"/projects/[0-9a-f-]{36}/map/[0-9a-f-]{36}$"))
-        lamp, copy = re.findall(r"[0-9a-f-]{36}", page.url.split(ORIGIN, 1)[-1])
+        self.add_connected_thought(page, copy, camera, LOW_LIGHT)
+        self.shot(page, "1-project-map")
         project = self.api("ada", "GET", f"/api/v1/projects/{lamp}", status=200)
         self.assertEqual((project["name"], project["visibility"]), (LAMP, "restricted"))
         people = self.api("ada", "GET", f"/api/v1/projects/{lamp}/people", status=200)
         self.assertEqual({person["id"] for person in people}, {self.ids["ada"], self.ids["jonas"]})
-        copied = self.sketch("ada", copy)
-        self.assertEqual(sorted(t["text"] for t in copied["thoughts"]), sorted([CAMERA, SENSOR, PRIVACY, LOW_LIGHT]))
-        self.assertNotIn(dm, json.dumps(copied), "the project copy does not point back into the DM")
-        self.assertNotIn(LEFT_OUT, json.dumps(copied))
+        mapped = self.sketch("ada", copy)
+        self.assertEqual(sorted(t["text"] for t in mapped["thoughts"]), sorted([CAMERA, SENSOR, PRIVACY, LOW_LIGHT]))
+        self.assertNotIn(LEFT_OUT, json.dumps(mapped))
         s.update(lamp=lamp, map=copy)
 
         # Jonas signs in, finds the new project and writes there; the composer names its audience, no checkbox.
@@ -605,10 +580,10 @@ class ScenarioJourney:
         saved = self.api("jonas", "GET", f"/api/v1/conversations/{s['c1']}", status=200)
         self.assertEqual([(m["body"], m["authorId"]) for m in saved["messages"]], [(JONAS_ROOT, self.ids["jonas"]), (ADA_REPLY, self.ids["ada"])])
 
-        # Mia and Lee share Marketplace with them, and see nothing of the DM, the sketch or the new project.
+        # Mia and Lee share Marketplace with them, and see nothing of the DM or the new project.
         for key in ("mia", "lee"):
             for path in (f"/api/v1/projects/{lamp}", f"/api/v1/conversations/{s['c1']}", f"/api/v1/dms/{dm}",
-                         f"/api/v1/sketches/{dm_sketch}", f"/api/v1/sketches/{copy}"):
+                         f"/api/v1/sketches/{copy}"):
                 self.assertEqual(self.status(key, path), 404, f"{key} {path}")
             found = self.api(key, "GET", "/api/v1/search?q=gestures", status=200)
             self.assertEqual(found["items"], [], f"{key} finds nothing about the lamp")
@@ -1027,10 +1002,6 @@ class ScenarioJourney:
         expect(page.get_by_role("button", name=re.compile("Mark all", re.I))).to_have_count(0)
         self.no_sideways_scroll(page)
         self.shot(page, "4-home-return")
-        # Ada has no AI of her own: the note composer's spark (in the Sketchbook now) offers to connect one.
-        page.goto("/map")
-        expect(page.locator(".composer__ask")).to_have_accessible_name("Connect your AI")
-
         # In the project, "What matters" works without AI.
         page.goto(f"/projects/{lamp}")
         open_what_matters(page, tap=self.phone)
@@ -1152,19 +1123,16 @@ class ScenarioJourney:
     def test_6_export_and_audience(self) -> None:
         self.need("pivoted", "doc", "file")
         s, lamp = self.s, self.s["lamp"]
-        # Ada keeps a private note; it stays hers.
+        # Ada keeps a private thought on My map; it stays hers.
         page = self.page("ada")
-        page.goto("/map")
-        note = page.get_by_label("Private note", exact=True)
-        note.fill(DRAFT)
-        if self.phone:
-            page.get_by_role("button", name="Save note").tap()
-        else:
-            note.press("Enter")
-        expect(page.get_by_role("region", name="Private drafts").get_by_text(DRAFT)).to_be_visible()
+        my_map = self.api("ada", "POST", f"/api/v1/workspaces/{s['workspace']}/sketches", {"title": "My map", "scope": "private"}, status=201)
+        self.api("ada", "POST", f"/api/v1/sketches/{my_map['id']}/thoughts", {"text": DRAFT, "x": 0, "y": 0}, status=201)
+        page.goto(f"/map/{my_map['id']}")
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
+        expect(page.get_by_text(DRAFT)).to_be_visible()
         private = self.api("ada", "GET", "/api/v1/search?q=89+EUR&place=private", status=200)["items"]
         self.assertEqual(len(private), 1, private)
-        draft_id = private[0]["id"]
+        draft_id = my_map["id"]
 
         # Mia is a member of the lamp project too.
         page.goto(f"/projects/{lamp}")
@@ -1182,7 +1150,7 @@ class ScenarioJourney:
         self.shot(member, "6-member")
         for path in (f"/api/v1/conversations/{s['c1']}", f"/api/v1/docs/{s['doc']}", f"/api/v1/results/{s['result']}", f"/api/v1/files/{s['file']}"):
             self.assertEqual(self.status("mia", path), 200, f"the member reads {path}")
-        for path in (f"/api/v1/drafts/{draft_id}", f"/api/v1/dms/{s['dm']}", f"/api/v1/sketches/{s['dm_sketch']}"):
+        for path in (f"/api/v1/sketches/{draft_id}", f"/api/v1/dms/{s['dm']}"):
             self.assertEqual(self.status("mia", path), 404, f"the member cannot open the private {path}")
         self.assertEqual(self.fetch("mia", "GET", f"/api/v1/projects/{lamp}/export").status, 403, "a member cannot export")
         for query in ("89 EUR", "Saturday market"):

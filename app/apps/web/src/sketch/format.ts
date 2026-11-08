@@ -32,19 +32,14 @@ export function provenance(thought: Pick<Thought, 'source' | 'version' | 'create
   return `From ${who(thought.createdBy, meId)} · ${when(thought.createdAt)}`;
 }
 
-/**
- * Who can see the sketch, in words: "Only you", "Everyone in Gesture lamp" or, in a direct
- * message, the DM's own audience line ("Only you and Kai").
- */
-export function audience(sketch: Sketch, meId: string, projectName?: string | null, dmAudience?: string | null) {
+/** Who can see the map, in words: "Only you" or "Everyone in Gesture lamp". */
+export function audience(sketch: Sketch, meId: string, projectName?: string | null) {
   if (sketch.scope === 'project') return projectName ? `Everyone in ${projectName}` : 'Everyone in the space';
-  if (sketch.scope === 'dm') return dmAudience ? `${dmAudience}, in this direct message` : 'The people in this direct message';
   return sketch.createdBy.id === meId ? 'Only you' : `Only ${firstName(sketch.createdBy.name)}`;
 }
 
-/** Where a sketch opens: inside its project or DM, so the tabs and audience stay in view. */
-export function sketchHref(sketch: Pick<Sketch, 'id' | 'scope' | 'projectId' | 'dmId'>) {
-  if (sketch.scope === 'dm' && sketch.dmId) return `/dm/${sketch.dmId}/sketches/${sketch.id}`;
+/** Where a map opens: inside its space, so the tabs and audience stay in view. */
+export function sketchHref(sketch: Pick<Sketch, 'id' | 'scope' | 'projectId'>) {
   if (sketch.scope === 'project' && sketch.projectId) return `/projects/${sketch.projectId}/map/${sketch.id}`;
   return `/map/${sketch.id}`;
 }

@@ -556,7 +556,7 @@ class AdaptiveMatrix(AdaptiveBase):
         # Map.
         self.tab(page, "Map")
         expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
-        tools = page.get_by_role("toolbar", name="Sketch tools")
+        tools = page.get_by_role("toolbar", name="Map tools")
         for button in tools.get_by_role("button").all():
             self.primary(page, button, f"the map tool “{button.inner_text().strip() or button.get_attribute('aria-label')}”")
         options = open_map_options(page) if page.get_by_role('button', name='Map options', exact=True).is_visible() else None
@@ -1036,7 +1036,7 @@ class AdaptiveTransitions(AdaptiveBase):
         tea = page.locator(f'.sk-node[data-id="{self.ids["thoughts"]["tof"]}"]')
         tea.click()
         expect(tea).to_have_attribute("aria-pressed", "true")
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Thought", exact=True).click()
+        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).click()
         draft = page.get_by_role("form", name="New thought draft").get_by_label("Thought text")
         text = "Unsent: measure the radar again with the curtain closed"
         draft.fill(text)

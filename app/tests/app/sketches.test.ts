@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import type { CreatedThought, MessagePlace, MovedThoughts, WorkAssociations, PositionsConflict, Project, Sketch, SketchDetail, SketchPage, Thought, ThoughtLink, VersionConflict, Workspace } from '@flux/contracts';
+import { UNTITLED_SKETCH, type CreatedThought, type MessagePlace, type MovedThoughts, type WorkAssociations, type PositionsConflict, type Project, type Sketch, type SketchDetail, type SketchPage, type Thought, type ThoughtLink, type VersionConflict, type Workspace } from '@flux/contracts';
 import { authorize, createAgent, policySketchAccess, revokeAgent, ForbiddenError, NotFoundError, type Principal } from '@flux/core';
 import { accessPorts, accessReader } from '@flux/db';
 import { db, pool } from './support/db.js';
@@ -403,14 +403,34 @@ describe('sketch access', () => {
     assert.equal(events.rows[0].n, 2, 'one event per applied change, none for replays');
   });
 
+  test('two tabs opening My map at once make one map: the web client sends one key for the person and company (#866)', async () => {
+    const frank = await person('sketch-frank');
+    const home = await workspace(frank, 'My map once');
+    const key = `my-map:${home.id}`;
+    const ask = () => frank.browser.request('POST', `/api/v1/workspaces/${home.id}/sketches`, { body: { title: 'My map', scope: 'private' }, headers: { 'idempotency-key': key } });
+    // Both tabs found no map and made one in the same moment, then a third asked later.
+    const [first, second] = await Promise.all([ask(), ask()]);
+    const later = await ask();
+    for (const response of [first, second, later]) assert.equal(response.status, 201, response.text);
+    const ids = new Set([first, second, later].map((response) => (response.json as { id: string }).id));
+    assert.equal(ids.size, 1, 'one map, whichever tab asked first');
+    const listed = expectStatus(await frank.browser.request('GET', `/api/v1/workspaces/${home.id}/sketches?scope=private&limit=100`), 200) as { items: { id: string }[]; total: number };
+    assert.equal(listed.total, 1, 'the person has one private map');
+    // The key belongs to the person: someone else's identical key makes their own map.
+    const gina = await person('sketch-gina');
+    const hers = await workspace(gina, 'Her map');
+    const mine = expectStatus(await gina.browser.request('POST', `/api/v1/workspaces/${hers.id}/sketches`, { body: { title: 'My map', scope: 'private' }, headers: { 'idempotency-key': `my-map:${hers.id}` } }), 201) as { id: string };
+    assert.notEqual(mine.id, [...ids][0]);
+  });
+
   test('hideEmpty leaves out sketches with no thought and the default title, and a list gives each thought count (#508)', async () => {
     const list = async (actor: Person, query: string) => expectStatus(await actor.browser.request('GET', `/api/v1/workspaces/${ws.id}/sketches?${query}`), 200) as SketchPage;
-    const empty = await createSketch(carol, ws.id, { title: 'Untitled sketch', scope: 'private' });
+    const empty = await createSketch(carol, ws.id, { title: UNTITLED_SKETCH, scope: 'private' });
     const named = await createSketch(carol, ws.id, { title: 'Bed layout', scope: 'private' });
-    const filled = await createSketch(carol, ws.id, { title: 'Untitled sketch', scope: 'private' });
+    const filled = await createSketch(carol, ws.id, { title: UNTITLED_SKETCH, scope: 'private' });
     await addThought(carol, filled.id, { text: 'Beans on the south side', x: 0, y: 0 });
     await addThought(carol, filled.id, { text: 'Radio range', x: 200, y: 0 });
-    const projectEmpty = await createSketch(bob, ws.id, { title: 'Untitled sketch', scope: 'project', projectId: lamp.id });
+    const projectEmpty = await createSketch(bob, ws.id, { title: UNTITLED_SKETCH, scope: 'project', projectId: lamp.id });
 
     const all = await list(carol, 'scope=private');
     assert.ok([empty, named, filled].every((sketch) => all.items.some((item) => item.id === sketch.id)), 'without hideEmpty every sketch is listed');
