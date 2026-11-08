@@ -26,7 +26,7 @@ test('without SMTP, settings say email delivery is unavailable and the inbox sti
 
   const view = expectStatus(await reader.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
   assert.equal(view.email.available, false);
-  const add = await reader.browser.request('POST', '/api/v1/notification-address', { body: { email: uniqueEmail('extra') } });
+  const add = await reader.browser.request('POST', '/api/v1/notification-addresses', { body: { email: uniqueEmail('extra') } });
   assert.equal(add.status, 503);
   assert.equal((add.json as { code: string }).code, 'EMAIL_UNAVAILABLE');
 

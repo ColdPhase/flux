@@ -117,7 +117,7 @@ async function generate(event: Omit<GeneratorEvent, 'seq' | 'workspaceId'>, reci
     preferences: preferenceRepository({ find: async () => ({ ...DEFAULT_PREFERENCES }), save: async () => undefined, isMuted: async () => false, mutes: async () => [], setMuted: async () => undefined }),
     authorizer: { canRead: async () => ({ visible: true, allowed: true, workspaceId: ws.id }) },
     insertNotification: async (notification) => { written.push(notification.id); return rows.insertNotification(notification); },
-    deliverableSubscriptions: async () => [], emailedRecently: async () => false, insertEmail: async () => true,
+    deliverableSubscriptions: async () => [], emailedRecently: async () => false, insertEmails: async () => [randomUUID()],
     enqueuePush: async () => null, enqueueEmail: async () => null, recordFailure: async () => 1, deadLetter: async () => undefined,
     isolate: async (work) => work(),
   };

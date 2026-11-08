@@ -78,10 +78,11 @@ The settings page sends its saves one after another, numbered, and shows only th
   invitation is Inbox and push only, because the call can be over before a mail is read (live-sessions.md). Nothing else is stored per reason: the per-kind
   matrix and the per-reason inbox switches went with C-33.
 - **Email me too** (`emailMe`, default on, C-32 and C-35): the same events as the level, by email, to every
-  enabled, confirmed address (today the sign-in address and a confirmed extra address; one switch per address
-  comes with several notification emails). It is a switch beside the level, not a second level: at `nothing`
-  it sends nothing. `GET` reports `level`, `emailMe`, `email` (`accountAddress`, `extra`, `available`,
-  `lastFailureAt`), `quietHours` and `muted`.
+  address that is switched on and confirmed (the sign-in address and each confirmed extra address, each with its own
+  switch, C-49). It is a switch beside the level, not a second level: at `nothing` it sends nothing, and with it off no
+  address gets anything whatever its own switch says. `GET` reports `level`, `emailMe`, `email` (`accountAddress`,
+  `accountEnabled`, `addresses`, `available`, `lastFailureAt`), `quietHours` and `muted`; `PATCH` takes `accountEnabled`
+  for the sign-in address's switch (`notification_preferences.account_enabled`, default on).
 - **Mute a place** (a project or DM the person can read): nothing from it notifies, on any
   channel. The page keeps it behind a "Muted places" row with Change.
 - **Quiet hours** (`start`/`end` as `HH:MM`, may cross midnight, IANA `timeZone`; C-31): while they last Flux
@@ -98,20 +99,23 @@ pushes the reason, a muted place or quiet hours skip it. The payload and its loc
 
 ## Delivery addresses
 
-One extra address per person, in `notification_addresses` — not an auth table. Better Auth never
-reads it, so it can never sign in, receive a password reset, or change sessions or grants, and
-turning it off never changes the account. `POST /api/v1/notification-address` replaces it and
-emails a single-use link (SHA-256 of the token stored, 24 hours, earlier links invalidated);
-`POST …/resend`. Verification sends are bounded per person across add, replace and resend — at
-least 60 s apart and at most 5 per rolling hour — by one conditional upsert on
-`notification_verification_sends` (concurrent requests cannot both pass); otherwise `429
-VERIFICATION_RECENTLY_SENT` with `Retry-After`; `POST …/verify` with the token, signed in as the
-account that added it (anyone else, a used or an expired token get the same `400
-VERIFICATION_INVALID`); `DELETE` removes it and changes nothing else (`emailMe` stays as it was). The
-sign-in address cannot be added as extra. The page lists the sign-in address first, then the extra address as
-"Confirmed" or waiting ("Send again", Remove), then a field to add another, with the line "We send a
-confirmation link to a new address before any notification goes there."; the first email goes only after
-confirmation.
+Up to five extra addresses per person (`MAX_EXTRA_ADDRESSES`), in `notification_addresses` — not an auth table.
+Better Auth never reads it, so an extra address can never sign in, receive a password reset, or change sessions or
+grants, and switching it off never changes the account. Each row has its own `enabled` switch (default on); the
+sign-in address, which is not a row, has `account_enabled` in the preferences. `POST /api/v1/notification-addresses`
+adds one and emails a single-use link (SHA-256 of the token stored, 24 hours, earlier links of that address
+invalidated); `POST …/:id/resend`; `PATCH …/:id` with `{ enabled }`; `DELETE …/:id` removes it and changes nothing else
+(`emailMe` and the other addresses stay as they were). Verification sends are bounded per person across add and resend,
+for all of a person's addresses — at least 60 s apart and at most 5 per rolling hour — by one conditional upsert on
+`notification_verification_sends` (concurrent requests cannot both pass); otherwise `429 VERIFICATION_RECENTLY_SENT`
+with `Retry-After`. `POST …/verify` takes the token, signed in as the account that added the address (anyone else, a
+used or an expired token get the same `400 VERIFICATION_INVALID`) and answers the settings with `confirmed`, the
+address. The sign-in address, an address already in the list (any letter case) or a sixth extra address answers `409`
+(`ADDRESS_IS_ACCOUNT`, `ADDRESS_EXISTS`, `TOO_MANY_ADDRESSES`). The page lists the sign-in address first with its
+switch, then each extra address in the order added: confirmed ones with their switch and Remove, unconfirmed ones as
+"Waiting for you to open the link" with Send again and Remove, then a field to add another, with the line "We send a
+confirmation link to a new address before any notification goes there."; no copy is queued for an address before
+it is confirmed.
 
 ## Email
 
@@ -126,10 +130,12 @@ confirmation.
 - **Unavailable.** Without `FLUX_SMTP_URL` no email rows are queued, settings show "Email
   delivery unavailable", adding an address answers `503 EMAIL_UNAVAILABLE`, and the inbox and push
   keep working (`app/tests/app/email-unavailable.check.ts`).
-- **Outbox and no duplicates.** `notification_emails` holds one row per (notification, address
-  kind), each sent by a `notification.email.v1` job carrying only the row id. The worker locks the
+- **Outbox and no duplicates.** `notification_emails` holds one row per (notification, address): one for the
+  sign-in address when its switch is on, and one (`address_id`) for each confirmed extra address that is switched on,
+  each sent by a `notification.email.v1` job carrying only the row id. The worker locks the
   row, rechecks source access, the level and Email me too for the reason, mute, quiet hours and the address
-  (the current sign-in address, or the verified extra one), marks it `sending` with a fresh
+  (the current sign-in address, or the extra one: still there, confirmed and switched on; otherwise the row is
+  skipped as `address switched off`, `address removed` or `no verified address`), marks it `sending` with a fresh
   unsubscribe token and commits — only then talks to SMTP. A row that is not `queued` is never
   sent again, so a retry, a concurrent job or a crash after SMTP accepted cannot send it twice
   (at most once). An SMTP failure puts it back to `queued` with `last_error`, pg-boss retries 5
@@ -149,14 +155,13 @@ confirmation.
   since. `Message-ID` is `<notification-<row id>@host>`.
 - **Unsubscribe.** `List-Unsubscribe: <…/api/v1/notifications/unsubscribe?token=…>` and
   `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058). The token is bound to the exact
-  address the email went to. The POST needs no session. For the sign-in address it turns **Email me too**
-  off (`stopped: "account"`, answered with the current `emailMe`); for the extra address it removes that
-  address (`stopped: "extra"`), only while that address is still the current one. A link for a replaced
-  extra address or a changed sign-in address answers `result: "stale"`, changes nothing, and the page says
-  "This link no longer applies". The body links to `/unsubscribe?token=…`, a page with one button. The words
-  say what the link does: an email to the sign-in address offers "Stop all notification email" and the page
-  before the click says that it turns off Email me too for every address; an email to an extra address offers
-  "Stop notification email to this address".
+  address the email went to. The POST needs no session. It switches off the address that email came to and
+  nothing else (C-49): the sign-in address's switch (`stopped: "account"`) or the extra address's (`stopped:
+  "extra"`); the address stays in the list, Email me too and the other addresses keep their state, and the person
+  switches it back on in settings. Repeating it is harmless. A link for a removed extra address or a changed sign-in
+  address answers `result: "stale"`, changes nothing, and the page says "This link no longer applies". The body
+  links to `/unsubscribe?token=…`, a page with one button; every email offers "Stop notification email to this
+  address" and the page says the same.
 
 ## Inbox UI
 
@@ -175,8 +180,8 @@ offers it. The account menu has no notifications row any more: the name, Setting
 - `app/tests/app/notifications.test.ts`: generation per reason, once per (person, event) after a
   cursor rewind, mute, Nothing keeping the inbox, generic email content through Mailpit with
   one-click unsubscribe, access recheck before email and push, push preferences, duplicate and
-  concurrent sends, extra address verification and expiry, extra address never signing in or
-  receiving a reset, the two-SSO-user Email me too matrix (#113), quiet hours dropping what a queued job held,
+  concurrent sends, extra address verification and expiry, a second address with its own switch, the limit of five,
+  per-address unsubscribe, extra address never signing in or receiving a reset, the two-SSO-user Email me too matrix (#113), quiet hours dropping what a queued job held,
   STARTTLS and smtps paths. `notification-levels-core.test.ts` and `notifications-core.test.ts`: the level and
   Email me too rules, and quiet hours across daylight-saving changes.
 - `app/tests/app/live-invitation-notifications.test.ts`: one invitation item with the exact link,
@@ -184,7 +189,7 @@ offers it. The account menu has no notifications row any more: the name, Setting
   session ended before generation (the cursor is held while they change).
 - `app/tests/app/email-unavailable.check.ts` after restarting API and worker without SMTP.
 - `app/tests/ui/test_notifications.py`: inbox from the rail, opening sources, mark read, the level, Email me too,
-  quiet hours, muting, verifying an address through Mailpit, phone layout, dark mode and the unsubscribe page, a
+  quiet hours, muting, verifying an address through Mailpit and switching each address, phone layout, dark mode and the unsubscribe page, a
   failed add keeping its error and address, the first-load error and its Retry, queued saves acknowledging only
   the newest, a failed mute keeping the choice. `test_focus_lifecycle.py`: a queued save is never sent as the next
   account.

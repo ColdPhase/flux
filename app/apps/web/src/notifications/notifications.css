@@ -38,8 +38,8 @@
 .nset__times label { display: grid; gap: 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--t3); }
 .nset__zone .ui-select { max-width: 260px; }
 
-/* The addresses: the extra one is a row with its actions, or a row with the field to add one. */
-.nset__extra .ui-btn { flex: none; }
+/* The addresses: each extra one is a row with its switch (or Send again) and Remove, then a row with the field to add one. */
+.nset__extra .ui-btn, .nset .sset-row > .ui-btn { flex: none; }
 .nset__add { flex-wrap: wrap; gap: 8px; }
 .nset__add input { flex: 1; min-width: 0; }
 .nset__row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }

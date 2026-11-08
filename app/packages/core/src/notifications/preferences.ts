@@ -19,8 +19,10 @@ import type { PreferenceRepository, PreferenceStore } from './ports.js';
 export interface StoredPreferences {
   /** What may interrupt the person with push, and with email when `emailMe`. */
   level: NotificationLevel;
-  /** "Email me too" (C-32): the same events as the level, by email. */
+  /** "Email me too" (C-32): the same events as the level, by email, to each address that is switched on. */
   emailMe: boolean;
+  /** The sign-in address's own switch (C-49); an extra address has its own on its row. */
+  accountEnabled: boolean;
   quietEnabled: boolean;
   /** Minutes after local midnight. */
   quietStart: number;
@@ -35,6 +37,7 @@ export interface StoredPreferences {
 export const DEFAULT_PREFERENCES: StoredPreferences = {
   level: 'needsYou',
   emailMe: true,
+  accountEnabled: true,
   quietEnabled: false,
   quietStart: 22 * 60,
   quietEnd: 7 * 60,
@@ -97,6 +100,10 @@ export function applyPreferenceChange(current: StoredPreferences, command: Updat
     if (typeof command.emailMe !== 'boolean') throw new InvalidInputError('emailMe must be true or false', 'INVALID_EMAIL_ME');
     next.emailMe = command.emailMe;
   }
+  if (command.accountEnabled !== undefined) {
+    if (typeof command.accountEnabled !== 'boolean') throw new InvalidInputError('accountEnabled must be true or false', 'INVALID_ACCOUNT_ENABLED');
+    next.accountEnabled = command.accountEnabled;
+  }
   const quiet = command.quietHours;
   if (quiet !== undefined) {
     if (!quiet || typeof quiet !== 'object') throw new InvalidInputError('quietHours must be an object', 'INVALID_QUIET_HOURS');
@@ -142,9 +149,6 @@ export function inQuietHours(stored: StoredPreferences, now: Date): boolean {
   const { quietStart: start, quietEnd: end } = stored;
   return start < end ? minute >= start && minute < end : minute >= start || minute < end;
 }
-
-/** The address kinds a notification email can go to: the sign-in address and a confirmed extra address. */
-export const EMAIL_KINDS: readonly ('account' | 'extra')[] = ['account', 'extra'];
 
 /** Preferences with the documented defaults for anyone without a stored row. */
 export function preferenceRepository(store: PreferenceStore): PreferenceRepository {

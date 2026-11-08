@@ -127,14 +127,14 @@ test('a valid ID token from the mock provider signs in through the same callback
   // Erin gets something worth stealing: a grant and a verified private notification address.
   state.workspace = (await api<{ id: string }>(context, 'POST', '/api/v1/workspaces', { name: 'Erin garden' })).id;
   state.extra = `erin.private-${randomUUID()}@gmail.test`;
-  await api(context, 'POST', '/api/v1/notification-address', { email: state.extra });
+  await api(context, 'POST', '/api/v1/notification-addresses', { email: state.extra });
   const mail = await waitFor(async () => {
     const search = await (await fetch(`${mailpit}/api/v1/search?query=${encodeURIComponent(`to:"${state.extra}"`)}`)).json() as { messages: { ID: string }[] };
     return search.messages[0] ?? null;
   }, 'the verification email');
   const text = (await (await fetch(`${mailpit}/api/v1/message/${mail.ID}`)).json() as { Text: string }).Text;
   const token = new URL(/(http\S+verify\?token=\S+)/.exec(text)![1]!).searchParams.get('token')!;
-  await api(context, 'POST', '/api/v1/notification-address/verify', { token });
+  await api(context, 'POST', '/api/v1/notification-addresses/verify', { token });
   await api(context, 'POST', '/api/auth/sign-out', {});
   assert.equal((await me(context)).status, 401);
 });
@@ -178,8 +178,8 @@ test('after the refused tokens a valid one still signs in the same person with h
   // F-037: besides the company everyone the provider lets in joins, the person keeps what they had.
   const workspaces = await api<{ id: string; company: boolean }[]>(context, 'GET', '/api/v1/workspaces');
   assert.deepEqual(workspaces.filter((item) => !item.company).map((item) => item.id), [state.workspace]);
-  const preferences = await api<{ email: { extra: { email: string; verified: boolean } | null } }>(context, 'GET', '/api/v1/notification-preferences');
-  assert.deepEqual({ email: preferences.email.extra?.email, verified: preferences.email.extra?.verified }, { email: state.extra, verified: true });
+  const preferences = await api<{ email: { addresses: { email: string; verified: boolean }[] } }>(context, 'GET', '/api/v1/notification-preferences');
+  assert.deepEqual({ email: preferences.email.addresses[0]?.email, verified: preferences.email.addresses[0]?.verified }, { email: state.extra, verified: true });
   // Every token the provider issued in this file: the valid ones plus two refused ones per mode.
   const modes = (await issued()).map((entry) => entry.mode);
   assert.deepEqual(modes, ['valid', ...BAD_MODES.flatMap((mode) => [mode, mode]), 'valid']);

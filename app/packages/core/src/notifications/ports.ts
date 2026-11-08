@@ -153,8 +153,11 @@ export interface GeneratorPorts {
   deliverableSubscriptions(userId: string): Promise<string[]>;
   /** Whether an email about the same source was queued for this person since `since`. */
   emailedRecently(userId: string, source: SourceLookup, since: Date): Promise<boolean>;
-  /** Queues the copy for one address kind; false when it already exists, or when the person has no confirmed extra address (the `extra` kind). */
-  insertEmail(row: { id: string; notificationId: string; userId: string; addressKind: EmailAddressKind }): Promise<boolean>;
+  /**
+   * Queues one copy of the notification for each address that is switched on: the sign-in address when `account` is true, and every
+   * confirmed extra address whose switch is on. Returns the ids of the copies it inserted (none that already exist).
+   */
+  insertEmails(row: { notificationId: string; userId: string; account: boolean }): Promise<string[]>;
   enqueuePush(job: PushSendJob): Promise<string | null>;
   enqueueEmail(job: EmailJob): Promise<string | null>;
   /** Counts a failed generation of the event (outside its savepoint) and returns the attempts so far. */
@@ -184,6 +187,8 @@ export interface ClaimableEmail {
   id: string;
   userId: string;
   addressKind: EmailAddressKind;
+  /** The extra address this copy is for; null for the sign-in address, or once that address was removed. */
+  addressId: string | null;
   status: 'queued' | 'sending' | 'sent' | 'skipped';
   /** SMTP attempts made so far (counted when the row is marked `sending`). */
   attempts: number;
@@ -202,8 +207,8 @@ export interface EmailDeliveryPorts {
   preferences: PreferenceRepository;
   /** The sign-in address, or null when the account is gone. */
   accountAddress(userId: string): Promise<string | null>;
-  /** The verified extra address, or null. */
-  verifiedExtraAddress(userId: string): Promise<string | null>;
+  /** An extra address by id, or null once it is gone. */
+  extraAddress(addressId: string): Promise<{ email: string; verified: boolean; enabled: boolean } | null>;
   markSkipped(id: string, reason: string): Promise<void>;
   markSending(id: string, address: string, unsubscribeHash: string): Promise<void>;
   markSent(id: string): Promise<void>;
@@ -244,15 +249,20 @@ export interface AddressRecord {
   id: string;
   userId: string;
   email: string;
+  enabled: boolean;
   verifiedAt: Date | null;
   lastSentAt: Date | null;
 }
 
 export interface AddressRepository {
-  find(userId: string): Promise<AddressRecord | null>;
-  /** Replaces the person's extra address (and its tokens) with a new unverified one. */
-  replace(userId: string, id: string, email: string): Promise<AddressRecord>;
-  remove(userId: string): Promise<boolean>;
+  /** The person's extra addresses, in the order added. */
+  list(userId: string): Promise<AddressRecord[]>;
+  /** One of the person's addresses, or null. */
+  find(userId: string, id: string): Promise<AddressRecord | null>;
+  /** Adds an unverified address, switched on; null when the person already has it. */
+  add(userId: string, id: string, email: string): Promise<AddressRecord | null>;
+  setEnabled(userId: string, id: string, enabled: boolean): Promise<AddressRecord | null>;
+  remove(userId: string, id: string): Promise<boolean>;
   /** Stores a new token hash for the address, removing earlier ones, and records the send time. */
   issueToken(addressId: string, tokenHash: string, expiresAt: Date): Promise<void>;
   /** Consumes a token that belongs to `userId`'s address and has not expired; marks it verified. */
@@ -269,12 +279,10 @@ export interface VerificationMailer {
 }
 
 export interface UnsubscribeRepository {
-  /** The email the token was placed in: its recipient, address kind and the exact address used. */
-  findByToken(tokenHash: string): Promise<{ userId: string; addressKind: EmailAddressKind; address: string | null } | null>;
+  /** The email the token was placed in: its recipient, address kind, the extra address's id and the exact address used. */
+  findByToken(tokenHash: string): Promise<{ userId: string; addressKind: EmailAddressKind; addressId: string | null; address: string | null } | null>;
   /** The current sign-in address. */
   accountAddress(userId: string): Promise<string | null>;
-  /** The current verified extra address. */
-  verifiedExtraAddress(userId: string): Promise<string | null>;
   /** The latest SMTP failure of an email to this person that is still unsent, since `since`. */
   lastFailure(userId: string, since: Date): Promise<Date | null>;
 }

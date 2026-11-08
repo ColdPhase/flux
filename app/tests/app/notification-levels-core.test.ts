@@ -59,7 +59,8 @@ describe('notification levels', () => {
 });
 
 describe('quiet hours', () => {
-  function generator(preferences: StoredPreferences, extraConfirmed = false) {
+  /** `extras`: how many confirmed extra addresses are switched on (the repository queues a copy for each). */
+  function generator(preferences: StoredPreferences, extras = 0) {
     const workspaceId = randomUUID();
     const counts = { notifications: 0, pushes: 0, emails: 0 };
     const ports: GeneratorPorts = {
@@ -76,8 +77,8 @@ describe('quiet hours', () => {
       insertNotification: async () => { counts.notifications++; return true; },
       deliverableSubscriptions: async () => ['phone'],
       emailedRecently: async () => false,
-      // A copy for the extra address exists only when the person has confirmed one (the repository refuses it otherwise).
-      insertEmail: async ({ addressKind }) => addressKind === 'account' || extraConfirmed,
+      // One copy for the sign-in address when its switch is on, and one for each confirmed extra address that is switched on.
+      insertEmails: async ({ account }) => [...(account ? [randomUUID()] : []), ...Array.from({ length: extras }, () => randomUUID())],
       enqueuePush: async () => { counts.pushes++; return null; },
       enqueueEmail: async () => { counts.emails++; return null; },
       recordFailure: async () => 1,
@@ -104,10 +105,16 @@ describe('quiet hours', () => {
     }
   });
 
-  test('Email me too goes to every confirmed address: one copy for the sign-in address, one more for a confirmed extra address', async () => {
-    const { counts, uow } = generator(fresh(), true);
+  test('Email me too goes to every address that is switched on: the sign-in address and each confirmed extra address', async () => {
+    const { counts, uow } = generator(fresh(), 2);
     await generateNotifications(uow, { emailAvailable: true, now });
-    assert.deepEqual(counts, { notifications: 1, pushes: 1, emails: 2 });
+    assert.deepEqual(counts, { notifications: 1, pushes: 1, emails: 3 });
+  });
+
+  test('a sign-in address that is switched off gets no copy, and the extra addresses still do (C-49)', async () => {
+    const { counts, uow } = generator({ ...fresh(), accountEnabled: false }, 1);
+    await generateNotifications(uow, { emailAvailable: true, now });
+    assert.deepEqual(counts, { notifications: 1, pushes: 1, emails: 1 });
   });
 
   test('Email me too off keeps push and the inbox but queues no email', async () => {

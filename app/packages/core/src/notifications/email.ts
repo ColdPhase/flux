@@ -19,8 +19,8 @@ export function unsubscribeLinks(origin: string, token: string) {
 }
 
 /** The whole email: a fixed subject and body, an in-app link that rechecks access, and unsubscribe. */
-export function buildNotificationEmail(input: { origin: string; to: string; emailId: string; notificationId: string; token: string; company?: string | null; addressKind?: 'account' | 'extra' }): OutgoingMail {
-  const { origin, to, emailId, notificationId, token, company, addressKind = 'account' } = input;
+export function buildNotificationEmail(input: { origin: string; to: string; emailId: string; notificationId: string; token: string; company?: string | null }): OutgoingMail {
+  const { origin, to, emailId, notificationId, token, company } = input;
   const links = unsubscribeLinks(origin, token);
   const host = new URL(origin).hostname || 'flux.invalid';
   const text = [
@@ -32,8 +32,8 @@ export function buildNotificationEmail(input: { origin: string; to: string; emai
     'Flux never puts messages or space details in email. Choose what reaches you by email:',
     `${origin}/settings/notifications`,
     '',
-    // The link of the sign-in address turns "Email me too" off, which stops notification email to every address; an extra address's link removes that address.
-    addressKind === 'extra' ? 'Stop notification email to this address:' : 'Stop all notification email:',
+    // Each email's link switches off the address it came to (C-49); the person's other addresses keep their own switches.
+    'Stop notification email to this address:',
     links.page,
     '',
   ].join('\n');
@@ -83,7 +83,7 @@ export interface EmailDeliveryOptions {
 /**
  * Sends one queued notification email at most once. In a first transaction it locks the row,
  * rechecks that the recipient can read the source now, that their preferences still want email
- * for this reason and place and that the address is still theirs (verified, for the extra one),
+ * for this reason and place and that the address is still theirs and switched on (and verified, for an extra one),
  * and marks the row `sending` with a fresh unsubscribe token. Only then does it talk to SMTP. A
  * row that is not `queued` is never sent again, so a retry after an uncertain send (the process
  * died after SMTP accepted) cannot duplicate it; a failure SMTP reports puts it back to queued,
@@ -103,7 +103,17 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
     const preferences = await ports.preferences.get(row.userId);
     if (notification.reason && !channelOn(preferences, notification.reason, 'email')) return skip('email turned off for this reason');
     if (await ports.preferences.isMuted(row.userId, notification.source)) return skip('place muted');
-    const address = row.addressKind === 'account' ? await ports.accountAddress(row.userId) : await ports.verifiedExtraAddress(row.userId);
+    let address: string | null;
+    if (row.addressKind === 'account') {
+      if (!preferences.accountEnabled) return skip('address switched off');
+      address = await ports.accountAddress(row.userId);
+    } else {
+      const extra = row.addressId ? await ports.extraAddress(row.addressId) : null;
+      if (!extra) return skip('address removed');
+      if (!extra.verified) return skip('no verified address');
+      if (!extra.enabled) return skip('address switched off');
+      address = extra.email;
+    }
     if (!address) return skip('no verified address');
     // One message per actual mailbox: the account and the extra address can be the same one,
     // including after an identity email change between queueing and sending (#113).
@@ -118,7 +128,7 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
 
   const { row, address, token } = claim;
   const company = await options.company?.() ?? null;
-  const mail = buildNotificationEmail({ origin: options.origin, to: address, emailId: row.id, notificationId: row.notification.id, token, company, addressKind: row.addressKind });
+  const mail = buildNotificationEmail({ origin: options.origin, to: address, emailId: row.id, notificationId: row.notification.id, token, company });
   const admission = await options.uow.admitSend(row.notification.id, () => options.mailer.send(mail));
   if (admission.status === 'unknown') {
     // SMTP may already have accepted it. A skipped row would free its mailbox for another copy.

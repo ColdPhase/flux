@@ -151,7 +151,7 @@ describe('project export', () => {
     connectionId = (await createConnection(connectionPool, owner.browser, { agentId })).id;
 
     // Notification data of another person (#116): an extra delivery address and preferences.
-    const address = await post(partner, '/api/v1/notification-address', { email: token('extra-address') + '@example.test' });
+    const address = await post(partner, '/api/v1/notification-addresses', { email: token('extra-address') + '@example.test' });
     assert.ok(address.status < 300, `notification address: ${address.status} ${address.text}`);
     json(await partner.browser.request('PATCH', '/api/v1/notification-preferences', {
       body: { quietHours: { enabled: true, start: '21:15', end: '07:05', timeZone: 'Pacific/Chatham' } },

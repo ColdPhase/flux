@@ -49,7 +49,7 @@ function harness(events: GeneratorEvent[], failures: Map<string, number>) {
     insertNotification: async (notification) => { state.notifications.push(notification.eventId); return true; },
     deliverableSubscriptions: async () => [],
     emailedRecently: async () => false,
-    insertEmail: async () => true,
+    insertEmails: async () => [randomUUID()],
     enqueuePush: async () => null,
     enqueueEmail: async () => null,
     recordFailure: async (eventId, error) => { state.errors.push(error); const attempts = (state.attempts.get(eventId) ?? 0) + 1; state.attempts.set(eventId, attempts); return attempts; },

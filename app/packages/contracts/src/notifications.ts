@@ -30,9 +30,12 @@ export type ChannelChoice = Record<NotificationChannel, boolean>;
 
 export const NOTIFICATION_PREFERENCES_PATH = '/api/v1/notification-preferences';
 export const NOTIFICATION_MUTES_PATH = `${NOTIFICATION_PREFERENCES_PATH}/mutes`;
-export const NOTIFICATION_ADDRESS_PATH = '/api/v1/notification-address';
-export const NOTIFICATION_ADDRESS_RESEND_PATH = `${NOTIFICATION_ADDRESS_PATH}/resend`;
-export const NOTIFICATION_ADDRESS_VERIFY_PATH = `${NOTIFICATION_ADDRESS_PATH}/verify`;
+export const NOTIFICATION_ADDRESSES_PATH = '/api/v1/notification-addresses';
+export const NOTIFICATION_ADDRESS_VERIFY_PATH = `${NOTIFICATION_ADDRESSES_PATH}/verify`;
+export const notificationAddressPath = (id: string) => `${NOTIFICATION_ADDRESSES_PATH}/${id}`;
+export const notificationAddressResendPath = (id: string) => `${notificationAddressPath(id)}/resend`;
+/** At most this many extra addresses beside the sign-in address. */
+export const MAX_EXTRA_ADDRESSES = 5;
 /** RFC 8058 one-click target (`POST ?token=`); also used by the unsubscribe page. */
 export const NOTIFICATION_UNSUBSCRIBE_PATH = '/api/v1/notifications/unsubscribe';
 export const INBOX_READ_ALL_PATH = '/api/v1/inbox/read-all';
@@ -55,9 +58,15 @@ export interface MutedPlace {
   name: string;
 }
 
-/** The extra delivery address. Only one; replacing it starts a new verification. */
+/**
+ * An extra delivery address (up to MAX_EXTRA_ADDRESSES), in the order added. It gets no notification email until its
+ * confirmation link is opened; `enabled` is its own switch and starts on.
+ */
 export interface NotificationAddress {
+  id: string;
   email: string;
+  /** Its switch: while off, nothing goes to it. */
+  enabled: boolean;
   verified: boolean;
   verifiedAt: string | null;
   /** When the latest verification link was sent. */
@@ -67,12 +76,15 @@ export interface NotificationAddress {
 export interface NotificationPreferences {
   /** What may interrupt you with push (and email, when `emailMe`). */
   level: NotificationLevel;
-  /** "Email me too" (C-32): the same events as the level, by email to the sign-in address and a confirmed extra address. */
+  /** "Email me too" (C-32): the same events as the level, by email, to each address that is switched on. Off: no address gets any. */
   emailMe: boolean;
   email: {
-    /** The sign-in address; changing email delivery never changes it. */
+    /** The sign-in address, listed first; changing email delivery never changes it. */
     accountAddress: string;
-    extra: NotificationAddress | null;
+    /** Its own switch, like every address's; starts on. */
+    accountEnabled: boolean;
+    /** The extra addresses, in the order added. */
+    addresses: NotificationAddress[];
     /** False when the operator has not configured SMTP: "email delivery unavailable"; the inbox still works. */
     available: boolean;
     /** The latest failed attempt to email you in the past day that is still unsent, or null. */
@@ -86,6 +98,8 @@ export interface NotificationPreferences {
 export interface UpdateNotificationPreferencesCommand {
   level?: NotificationLevel;
   emailMe?: boolean;
+  /** The sign-in address's own switch. An extra address's is `PATCH /notification-addresses/:id`. */
+  accountEnabled?: boolean;
   quietHours?: Partial<QuietHours>;
 }
 
@@ -96,25 +110,34 @@ export interface SetMuteCommand {
   muted: boolean;
 }
 
-/** `POST /api/v1/notification-address`: replaces the extra address and emails a verification link. */
+/** `POST /api/v1/notification-addresses`: adds an extra address, switched on, and emails it a confirmation link. */
 export interface AddNotificationAddressCommand {
   email: string;
 }
 
-/** `POST /api/v1/notification-address/verify`, signed in as the account that added the address. */
+/** `PATCH /api/v1/notification-addresses/:id`: switches one extra address on or off. */
+export interface SetNotificationAddressCommand {
+  enabled: boolean;
+}
+
+/** `POST /api/v1/notification-addresses/verify`, signed in as the account that added the address. */
 export interface VerifyNotificationAddressCommand {
   token: string;
 }
 
+/** The settings after a link confirmed an address, and which address it was. */
+export interface VerifiedNotificationAddress extends NotificationPreferences {
+  confirmed: string;
+}
+
 /**
- * Which address stopped receiving email. The sign-in address stops with "Email me too" (`emailMe` is then false); an extra
- * address is removed. Either can be turned on or added again in settings.
+ * One email's link stops notification email to the address it came to, by switching that address off (C-49): the others and
+ * "Email me too" stay as they are, and the address can be switched back on in settings.
  */
 export interface UnsubscribeResponse {
-  /** `stale`: the link belongs to an address that is no longer yours (replaced or changed); nothing changed. */
+  /** `stale`: the link belongs to an address that is no longer yours (removed or changed); nothing changed. */
   result: 'stopped' | 'stale';
   stopped: 'account' | 'extra';
-  emailMe: boolean;
 }
 
 /** Fixed subject of every notification email: it never names a project, person or message. */

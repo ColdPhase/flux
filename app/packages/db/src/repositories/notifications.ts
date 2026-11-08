@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { messagePreview } from '@flux/contracts';
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, ne, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
@@ -46,6 +47,7 @@ type SourceType = 'workspace' | 'project' | 'dm';
 export interface StoredPreferenceRow {
   level: 'needsYou' | 'everything' | 'nothing';
   emailMe: boolean;
+  accountEnabled: boolean;
   quietEnabled: boolean;
   quietStart: number;
   quietEnd: number;
@@ -54,7 +56,7 @@ export interface StoredPreferenceRow {
 
 type PreferenceRecord = typeof schema.notificationPreferences.$inferSelect;
 const storedRow = (row: PreferenceRecord): StoredPreferenceRow => ({
-  level: row.level, emailMe: row.emailMe, quietEnabled: row.quietEnabled, quietStart: row.quietStart,
+  level: row.level, emailMe: row.emailMe, accountEnabled: row.accountEnabled, quietEnabled: row.quietEnabled, quietStart: row.quietStart,
   quietEnd: row.quietEnd, timeZone: row.timeZone,
 });
 
@@ -114,14 +116,15 @@ export function notificationGeneratorRows(db: DbExecutor) {
       const f = schema.notificationGenerationFailures;
       await db.update(f).set({ deadAt: sql`now()` }).where(eq(f.eventId, eventId));
     },
-    async insertEmail(row: { id: string; notificationId: string; userId: string; addressKind: 'account' | 'extra' }) {
-      // "Email me too" goes to every confirmed address (C-32): a person without a confirmed extra address has no row for it.
-      if (row.addressKind === 'extra') {
-        const [confirmed] = await db.select({ id: a.id }).from(a).where(and(eq(a.userId, row.userId), isNotNull(a.verifiedAt)));
-        if (!confirmed) return false;
-      }
-      const inserted = await db.insert(ob).values(row).onConflictDoNothing().returning({ id: ob.id });
-      return inserted.length > 0;
+    /** One copy for the sign-in address when `account`, and one for each confirmed extra address that is switched on (C-49). */
+    async insertEmails(row: { notificationId: string; userId: string; account: boolean }) {
+      const values: { id: string; notificationId: string; userId: string; addressKind: 'account' | 'extra'; addressId: string | null }[] = [];
+      if (row.account) values.push({ id: randomUUID(), notificationId: row.notificationId, userId: row.userId, addressKind: 'account', addressId: null });
+      const extras = await db.select({ id: a.id }).from(a).where(and(eq(a.userId, row.userId), eq(a.enabled, true), isNotNull(a.verifiedAt))).orderBy(a.createdAt, a.id);
+      for (const extra of extras) values.push({ id: randomUUID(), notificationId: row.notificationId, userId: row.userId, addressKind: 'extra', addressId: extra.id });
+      if (!values.length) return [];
+      const inserted = await db.insert(ob).values(values).onConflictDoNothing().returning({ id: ob.id });
+      return inserted.map((item) => item.id);
     },
   };
 }
@@ -330,22 +333,29 @@ export function notificationPlaceRows(db: DbExecutor) {
 }
 
 type AddressRow = typeof a.$inferSelect;
-const addressRecord = (row: AddressRow) => ({ id: row.id, userId: row.userId, email: row.email, verifiedAt: row.verifiedAt, lastSentAt: row.lastSentAt });
+const addressRecord = (row: AddressRow) => ({ id: row.id, userId: row.userId, email: row.email, enabled: row.enabled, verifiedAt: row.verifiedAt, lastSentAt: row.lastSentAt });
 
-/** The extra delivery address and its verification tokens (`AddressRepository`). */
+/** The extra delivery addresses and their verification tokens (`AddressRepository`). */
 export function notificationAddressRows(db: DbExecutor) {
   return {
-    async find(userId: string) {
-      const [row] = await db.select().from(a).where(eq(a.userId, userId));
+    async list(userId: string) {
+      return (await db.select().from(a).where(eq(a.userId, userId)).orderBy(asc(a.createdAt), asc(a.id))).map(addressRecord);
+    },
+    async find(userId: string, id: string) {
+      const [row] = await db.select().from(a).where(and(eq(a.userId, userId), eq(a.id, id)));
       return row ? addressRecord(row) : null;
     },
-    async replace(userId: string, id: string, email: string) {
-      await db.delete(a).where(eq(a.userId, userId));
-      const [row] = await db.insert(a).values({ id, userId, email }).returning();
-      return addressRecord(row!);
+    /** Null when the person already has the address (compared without regard to case). */
+    async add(userId: string, id: string, email: string) {
+      const [row] = await db.insert(a).values({ id, userId, email }).onConflictDoNothing().returning();
+      return row ? addressRecord(row) : null;
     },
-    async remove(userId: string) {
-      return (await db.delete(a).where(eq(a.userId, userId)).returning({ id: a.id })).length > 0;
+    async setEnabled(userId: string, id: string, enabled: boolean) {
+      const [row] = await db.update(a).set({ enabled }).where(and(eq(a.userId, userId), eq(a.id, id))).returning();
+      return row ? addressRecord(row) : null;
+    },
+    async remove(userId: string, id: string) {
+      return (await db.delete(a).where(and(eq(a.userId, userId), eq(a.id, id))).returning({ id: a.id })).length > 0;
     },
     /**
      * Reserves one verification send for the person, or answers how long to wait. A single
@@ -406,7 +416,7 @@ export function notificationEmailRows(db: DbExecutor) {
       return {
         lifecycleActive: await assignmentNotificationActive(db, row.notification),
         aiOff: await notificationHiddenWhileAiOff(db, row.notification.id),
-        id: row.email.id, userId: row.email.userId, addressKind: row.email.addressKind, status: row.email.status, attempts: row.email.attempts,
+        id: row.email.id, userId: row.email.userId, addressKind: row.email.addressKind, addressId: row.email.addressId, status: row.email.status, attempts: row.email.attempts,
         notification: { id: row.notification.id, reason: row.notification.reason ?? null, source: { workspaceId: row.notification.workspaceId, type: row.notification.sourceType, id: row.notification.sourceId } },
       };
     },
@@ -419,9 +429,9 @@ export function notificationEmailRows(db: DbExecutor) {
       const [row] = await db.select({ email: schema.authUsers.email }).from(schema.authUsers).where(eq(schema.authUsers.id, userId));
       return row?.email ?? null;
     },
-    async verifiedExtraAddress(userId: string) {
-      const [row] = await db.select({ email: a.email }).from(a).where(and(eq(a.userId, userId), isNotNull(a.verifiedAt)));
-      return row?.email ?? null;
+    async extraAddress(addressId: string) {
+      const [row] = await db.select({ email: a.email, verifiedAt: a.verifiedAt, enabled: a.enabled }).from(a).where(eq(a.id, addressId));
+      return row ? { email: row.email, verified: !!row.verifiedAt, enabled: row.enabled } : null;
     },
     async markSkipped(id: string, reason: string) {
       await db.update(ob).set({ status: 'skipped', skipReason: reason.slice(0, 200) }).where(eq(ob.id, id));
@@ -456,7 +466,7 @@ export function notificationEmailRows(db: DbExecutor) {
       return row?.at ?? null;
     },
     async findByToken(tokenHash: string) {
-      const [row] = await db.select({ userId: ob.userId, addressKind: ob.addressKind, address: ob.address }).from(ob).where(eq(ob.unsubscribeHash, tokenHash));
+      const [row] = await db.select({ userId: ob.userId, addressKind: ob.addressKind, addressId: ob.addressId, address: ob.address }).from(ob).where(eq(ob.unsubscribeHash, tokenHash));
       return row ?? null;
     },
   };
