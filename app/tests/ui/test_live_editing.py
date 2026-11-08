@@ -129,7 +129,7 @@ class LiveFixture(unittest.IsolatedAsyncioTestCase):
         await field.click()
         await page.keyboard.press("Control+End")
         await page.keyboard.type(text)
-        await expect(page.get_by_role("status").filter(has_text=SAVED)).to_be_visible()
+        await expect(page.locator(".wiki-head__meta").filter(has_text=SAVED)).to_be_visible()
 
     async def saved_doc(self, page, snippet, absent=None, timeout=60.0):
         """The saved page once a version holds `snippet` (and not `absent`): versions save by themselves when typing rests (#869)."""
@@ -243,7 +243,7 @@ class LiveEditingJourney(LiveFixture):
         field = ada.locator('.cm-content[aria-label="Page text"]')
         await expect(field).to_have_attribute('contenteditable', 'true')
         await expect(field).to_contain_text('Reloaded before forty milliseconds 🚀.')
-        await expect(ada.get_by_role('status').filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator('.wiki-head__meta').filter(has_text=SAVED)).to_be_visible()
         actual = [(header, chunk) for header, chunk in sent if header.get('uuid') == original['envelope']['uuid']]
         self.assertTrue(actual, 'Reload retransmitted the sealed original UUID')
         for header, _chunk in actual:
@@ -421,14 +421,14 @@ class LiveEditingJourney(LiveFixture):
         await ada.keyboard.press("Control+End")
         await ada.keyboard.insert_text(" Exact recovered text 🚀.")
         await expect(kai.locator(".doc-prose")).to_contain_text("Exact recovered text 🚀.")
-        await expect(ada.get_by_role("status").filter(has_text="Saving…")).to_be_visible()
+        await expect(ada.locator(".wiki-head__meta").filter(has_text="Saving…")).to_be_visible()
         self.assertIsNotNone(dropped["uuid"], "Real committed update ACK was dropped")
         dropped["active"] = False
         await ada.reload()
         field = ada.locator('.cm-content[aria-label="Page text"]')
         await expect(field).to_have_attribute("contenteditable", "true")
         await expect(field).to_contain_text("Exact recovered text 🚀.")
-        await expect(ada.get_by_role("status").filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator(".wiki-head__meta").filter(has_text=SAVED)).to_be_visible()
         self.assertIsNone(await ada.evaluate("key => sessionStorage.getItem(key)", f"flux:wiki-live:{self.ada_id}:{self.doc_id}"))
         live = await self.api(kai, "GET", f"/api/v1/docs/{self.doc_id}/live")
         self.assertEqual(live["body"].count("Exact recovered text 🚀."), 1)
@@ -610,6 +610,56 @@ class LiveEditingJourney(LiveFixture):
         saved = await self.saved_doc(self.pages["ada"], "Second part, then the tab closed.", timeout=15)
         self.assertIn("First part.", saved["body"])
 
+    async def test_10f_a_rename_while_someone_types_lands_and_the_other_page_follows_without_reading(self):
+        # #950: Rename saves the head with its title; Kai typing meanwhile moves the head on, so the rename is tried again on
+        # the newer head. Kai's page shows the new title from the room's "saved" message, without reading the page.
+        await self.create_doc("Rename while typing.")
+        ada, kai = self.pages["ada"], self.pages["kai"]
+        await self.editor("ada")
+        kai_field = await self.editor("kai")
+        await kai_field.focus()
+        await kai.keyboard.press("Control+End")
+        reads = []
+        kai.on("request", lambda request: reads.append(request.url) if request.method == "GET" and request.url.split("?")[0].endswith(f"/api/v1/docs/{self.doc_id}") else None)
+        typing = asyncio.create_task(kai.keyboard.type(" Kai keeps typing while the page is renamed, word after word after word after word.", delay=40))
+        await asyncio.sleep(0.6)
+        await ada.get_by_role("button", name="Page actions").click()
+        await ada.get_by_role("menu", name="Page actions").get_by_role("menuitem", name="Rename page").click()
+        field = ada.get_by_label("Page title")
+        await field.fill("Renamed while Kai types")
+        await field.press("Enter")
+        await expect(ada.get_by_role("heading", level=2, name="Renamed while Kai types")).to_be_visible(timeout=15000)
+        await expect(ada.locator(".wiki-rename__error")).to_have_count(0)
+        await typing
+        await expect(kai.get_by_role("heading", level=2, name="Renamed while Kai types")).to_be_visible(timeout=10000)
+        self.assertEqual((await self.api(ada, "GET", f"/api/v1/docs/{self.doc_id}"))["title"], "Renamed while Kai types")
+        self.assertEqual(reads, [], "Kai's page followed the title without reading the page")
+
+    async def test_10g_an_idle_caret_is_renewed_rarely_and_then_not_at_all(self):
+        # #950, #862: a focused editor that does not type renews its caret every 2.5 s (the server keeps it 5 s), and only
+        # within 30 s of its last keystroke or caret move; then the caret leaves the other screen.
+        await self.create_doc("Caret presence.")
+        ada, kai = self.pages["ada"], self.pages["kai"]
+        field = await self.editor("ada")
+        await self.editor("kai")
+        await field.click()
+        await ada.keyboard.press("End")
+        def sent_cursors(since):
+            return sum(1 for frame in self.frames["ada"] if frame["direction"] == "sent" and frame["header"].get("type") == "cursor" and frame["at"] >= since)
+        await asyncio.sleep(1)
+        start = time.perf_counter()
+        await asyncio.sleep(10)
+        renewals = sent_cursors(start)
+        self.assertTrue(3 <= renewals <= 5, f"{renewals} caret renewals in 10 s")
+        await expect(kai.locator(".editing-caret")).to_have_count(1)
+        await asyncio.sleep(25)
+        quiet = time.perf_counter()
+        await asyncio.sleep(6)
+        self.assertEqual(sent_cursors(quiet), 0, "no caret renewal after 30 s without a keystroke or a caret move")
+        await expect(kai.locator(".editing-caret")).to_have_count(0)
+        await ada.keyboard.press("Home")
+        await expect(kai.locator(".editing-caret")).to_have_count(1)
+
     async def test_11_quota_and_concurrent_own_undo_keep_100k_body(self):
         await self.create_doc('A' * 99_999 + 'B')
         ada, kai = self.pages['ada'], self.pages['kai']
@@ -669,7 +719,7 @@ class LiveEditingJourney(LiveFixture):
         await field.click()
         await ada.keyboard.press('Control+Home')
         await ada.keyboard.press('Delete')
-        await expect(ada.get_by_role('status').filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator('.wiki-head__meta').filter(has_text=SAVED)).to_be_visible()
         await expect(field).to_contain_text('A' * 32)
         deleted = await confirmed_body('ada')
         exact_text(deleted['body'], 'A' * 99_998 + 'B')
@@ -690,7 +740,7 @@ class LiveEditingJourney(LiveFixture):
         exact_text(await copied_document(kai, peer), before)
         await expect(field).to_contain_text('BK')
         await expect(peer).to_contain_text('BK')
-        await expect(ada.get_by_role('status').filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator('.wiki-head__meta').filter(has_text=SAVED)).to_be_visible()
         after_undo = await confirmed_body('ada', exact_local=False)
         exact_text(after_undo['body'], before)
         self.assertEqual(after_undo['generation'], latest['generation'])
@@ -864,7 +914,7 @@ class LiveEditingJourney(LiveFixture):
                     await ada.evaluate('title => { document.title = title; }', previous_title)
 
         await compose(ada_field)
-        await expect(ada.get_by_role("status").filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator(".wiki-head__meta").filter(has_text=SAVED)).to_be_visible()
         await expect(kai_field).to_contain_text("日本 notes")
         for page in (ada, kai):
             text = await page.locator('.cm-content[aria-label="Page text"]').inner_text()
@@ -888,7 +938,7 @@ class LiveEditingJourney(LiveFixture):
             await ada.keyboard.press('Shift+ArrowLeft')
         await ada.keyboard.press('Backspace')
         await compose(ada_field)
-        await expect(ada.get_by_role('status').filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator('.wiki-head__meta').filter(has_text=SAVED)).to_be_visible()
         # The peer's100k editor virtualizes the beginning while its caret stays there.
         # Reach the committed end through its real keyboard before inspecting that text.
         await kai_field.click()
@@ -1268,7 +1318,7 @@ class LiveEditingJourney(LiveFixture):
         await ada.keyboard.insert_text("x")
         editor = ada.locator("[data-live-wiki-editor]")
         await expect(editor).to_have_attribute("data-live-input-revision", "1", timeout=3000)
-        await expect(ada.get_by_role("status").filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator(".wiki-head__meta").filter(has_text=SAVED)).to_be_visible()
         self.assertEqual(await ada.get_by_role("alert").count(), 0, "No input was refused")
         last = await ada.evaluate("""() => {
           const walker = document.createTreeWalker(document.querySelector('.cm-content'), NodeFilter.SHOW_TEXT);
@@ -1300,7 +1350,7 @@ class LiveEditingJourney(LiveFixture):
         for key in ("Shift+ArrowLeft", "ArrowRight", "ArrowLeft", "Shift+ArrowRight"):
             await ada.keyboard.press(key)
         await ada.keyboard.insert_text("E")
-        await expect(ada.get_by_role("status").filter(has_text=SAVED)).to_be_visible()
+        await expect(ada.locator(".wiki-head__meta").filter(has_text=SAVED)).to_be_visible()
         arrows = await ada.evaluate("window.__arrows")
         # Control: the document end is still the editor's own move, which the probe sees.
         self.assertEqual(arrows[0], ["End", False, True], arrows)

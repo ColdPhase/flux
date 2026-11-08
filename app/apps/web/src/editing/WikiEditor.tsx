@@ -9,7 +9,7 @@ import { DOC_LIMITS, docRef, type Doc, type DocMention, type DocVersion, type Li
 import { Button, useToast } from '../ui';
 import { useAgentOwners } from '../agents/owners';
 import { LinkPicker, type PickedRef } from '../docs/LinkPicker';
-import { docUrl, getDoc, getVersion } from '../docs/api';
+import { docUrl, getVersion } from '../docs/api';
 import { ago } from '../docs/format';
 import type { PageMode } from '../docs/DocViews';
 import { Faces, PageFrame, hereToo, scrollPage, useNow, useReferenceClicks } from '../docs/WikiParts';
@@ -292,7 +292,6 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
   const location = useLocation();
   const revalidator = useRevalidator();
   const toast = useToast();
-  const owners = useAgentOwners(project);
   const onClick = useReferenceClicks();
   const now = useNow();
   const [title, setTitle] = useState(doc.title);
@@ -306,6 +305,9 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
   const comparison = useRef<HTMLTextAreaElement>(null);
   const hosts = useMemo(() => new RefHosts(), []);
   const placed = useSyncExternalStore(hosts.subscribe, hosts.get);
+  // Agent owners name an agent on a decision card only; the space's people are read (and re-read on its events) only
+  // while the page shows one (#950: a save made every open page read them).
+  const owners = useAgentOwners(placed.some(({ mark }) => mark.kind === 'decision') ? project : null);
   const collab = useMemo(() => new Compartment(), []);
   const editability = useMemo(() => new Compartment(), []);
   const landing = useRef<() => void>(() => undefined);
@@ -439,21 +441,16 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
   };
   useEffect(() => () => landing.current(), []);
 
-  // Someone else renamed the page: its title follows the saved version.
+  // Someone renamed the page: its title follows the saved version, which the room names with each save (#950: no read).
   const savedVersion = shared?.head?.savedVersion ?? doc.version;
-  const knownVersion = useRef(doc.version);
-  useEffect(() => {
-    if (savedVersion <= knownVersion.current) return;
-    knownVersion.current = savedVersion;
-    const controller = new AbortController();
-    getDoc(doc.id, controller.signal).then((latest) => setTitle(latest.title), () => undefined);
-    return () => controller.abort();
-  }, [savedVersion, doc.id]);
+  const savedTitle = shared?.savedTitle ?? null;
+  const [followedTitle, setFollowedTitle] = useState<string | null>(null);
+  if (savedTitle !== null && savedTitle !== followedTitle) { setFollowedTitle(savedTitle); setTitle(savedTitle); }
 
   const rename = async (next: string) => {
     if (local) { await local.rename(next); setTitle(local.title); }
     else if (shared) {
-      const receipt = await shared.save({ title: next });
+      const receipt = await shared.saveVersion({ title: next });
       setTitle(receipt.savedDoc?.title ?? next);
     } else throw new Error('The page is still opening');
     revalidator.revalidate();
@@ -480,7 +477,7 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
         if (source instanceof LocalWiki) await source.restore(restore);
         else {
           source.document.transact(() => { source.text.delete(0, source.text.length); source.text.insert(0, restore.body); }, 'restore');
-          const receipt = await source.save({ ...(restore.title !== title ? { title: restore.title } : {}), reason: `Restored version ${restore.version}` });
+          const receipt = await source.saveVersion({ ...(restore.title !== title ? { title: restore.title } : {}), reason: `Restored version ${restore.version}` });
           if (receipt.savedDoc) setTitle(receipt.savedDoc.title);
         }
         done(`Version ${restore.version} is the page again.`);
@@ -553,7 +550,7 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
 
   return (
     <PageFrame docId={doc.id} title={title} headings={headings} onHeading={go} rename={rename} notices={notices} onBodyClick={onClick}
-      meta={<>{state}{people.length ? ` · ${hereToo(people)}` : ''}</>}
+      meta={<>{state}<span role="status">{people.length ? ` · ${hereToo(people)}` : ''}</span></>}
       metaData={{ 'data-live-status': shared?.status ?? (ordinary ? 'ordinary' : 'connecting'), 'data-live-pending': shared?.pendingCount ?? (local?.dirty ? 1 : 0) }}
       faces={<Faces people={people} />}
       shown={{ title, body: () => view?.state.doc.toString() ?? doc.body, version: savedVersion, current: true }}>

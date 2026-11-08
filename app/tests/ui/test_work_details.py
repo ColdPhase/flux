@@ -281,7 +281,8 @@ class NativeDetailsJourney(unittest.TestCase):
             expect(panel).not_to_contain_text("rewritten as version")
             panel.get_by_role("button",name="Add or update section",exact=True).click()
             expect(page.get_by_text(f"Added to “{doc['title']}”")).to_be_visible();page.get_by_role("button",name="Open",exact=True).click()
-            expect(page.locator(".doc-prose").get_by_role("heading",name=f"Result: {result['title']}",exact=True)).to_be_visible()
+            # The page opens in its editor, written where it is read (#869): the section's heading is a heading line there.
+            expect(page.locator(".wiki-editor .cm-md-h").filter(has_text=re.compile("^"+re.escape(f"Result: {result['title']}")+"$"))).to_be_visible()
             saved=api(self.ctx,"GET",f"/api/v1/docs/{doc['id']}")
             self.assertEqual(saved["version"],doc["version"]+(0 if unchanged else 1));doc=saved
 

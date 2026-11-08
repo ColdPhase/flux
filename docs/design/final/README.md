@@ -526,9 +526,10 @@ the composer. The right-hand phone above shows the sheet.
 - **The title is the page switcher.** "Lending rules ▾" opens the space's pages with "Find a page"
   and "+ New page" at the bottom. It sits in the same place with 1 page or 50.
 - **The row above the title:** "Saved · just now · Jonas is here too", the faces of people editing,
-  **Contents** (≡) and ⋯ (History, Copy link, Export, Import a Markdown file, Delete page).
-  Contents lists the page's headings and scrolls to the one you choose; with none it says "No
-  headings yet".
+  **Contents** (≡) and ⋯ (History, Copy link, Export, Import a Markdown file, Rename page, Delete
+  page). Contents lists the page's headings and scrolls to the one you choose; with none it says
+  "No headings yet". Rename page edits the title where it is, since the title itself opens the
+  switcher.
 - You edit on the rendered page, and versions save by themselves. Live co-editing shows the other
   person's cursor and name.
 

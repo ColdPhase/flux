@@ -1,0 +1,1 @@
+- Wiki: a screen reader no longer hears "Saving…" and "Saved" at every pause (only who joins), Rename works while someone else types, an open page follows a rename without reading the page again, and a caret left idle stops renewing itself after 30 s ([#950](https://github.com/ColdPhase/flux/issues/950)).

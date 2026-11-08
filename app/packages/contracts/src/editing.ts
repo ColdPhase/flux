@@ -150,7 +150,8 @@ export type EditingServerMessage =
   | { type: 'map-move'; generation: string; connectionId: string; actor: NamedPrincipal; gestureId: string; leaseId: string; sequence: number; positions: LiveMapPosition[]; expiresAt: string }
   | { type: 'map-clear'; generation: string; leaseId: string }
   | ({ type: 'map-delta' } & LiveMapDelta)
-  | { type: 'saved'; generation: string; sequence: number; hash: string; savedVersion: number; savedSequence: number }
+  /** `title`: the saved version's title, so an open page follows a rename without reading the page (#950). */
+  | { type: 'saved'; generation: string; sequence: number; hash: string; savedVersion: number; savedSequence: number; title: string }
   | { type: 'resync'; reason: 'gap' | 'generation' | 'backpressure'; generation: string }
   | { type: 'error'; code: string; commandId?: string; outcome: 'refused' | 'unknown'; retryable: boolean }
   | { type: 'revoked' };
