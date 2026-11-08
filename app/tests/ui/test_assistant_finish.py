@@ -235,6 +235,10 @@ class AssistantFinish(unittest.TestCase):
         self.assertEqual(result, [], f"axe violations on {where}")
 
     def test_13_the_agent_screens_have_no_axe_violations_at_both_widths_in_both_themes(self) -> None:
+        # Opening Settings does not make an agent (it is made when the person connects AI, #857): this person has Assistant first.
+        first = self.page()
+        if not self.api(first, "GET", "/api/v1/my-agents", status=200).get("items"):
+            self.api(first, "POST", "/api/v1/my-agents", {"workspaceId": self.ids["workspace"]}, status=201)
         for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
             with self.subTest(phone=phone, dark=dark):
                 tag = self.tag(phone, dark)

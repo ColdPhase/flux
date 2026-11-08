@@ -32,7 +32,6 @@
 .agp__who { flex: 1; min-width: 0; }
 .agp__name { margin: 0; font-size: var(--fs-title); font-weight: 600; color: var(--t1); overflow-wrap: anywhere; }
 .agp__sub { margin: 2px 0 0; font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
-.agp__message { flex: none; }
 .agp__saved { display: block; min-height: 20px; }
 .agp__card { display: flex; flex-direction: column; gap: 6px; padding: 16px 18px 18px; }
 .agp__card > * + * { border-top: 0; }

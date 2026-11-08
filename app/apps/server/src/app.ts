@@ -53,6 +53,8 @@ import { notificationRoutes } from './notifications/routes.js';
 import { searchRoutes } from './search/routes.js';
 import { personalRunRoutes } from './personal-runs/routes.js';
 import { personalRunServerComposition } from './personal-runs/composition.js';
+import { firstAgentMaker } from './personal-runs/make-agent.js';
+import { pgBossPersonalRunQueue } from './personal-runs/adapters.js';
 import { registerPersonalRunTokenRoute } from './personal-runs/run-tokens.js';
 import { personalRuntimeAvailability } from './personal-runs/runtime.js';
 import { exportRoutes } from './export/routes.js';
@@ -286,8 +288,13 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(aiRoutes(projectAgentRoutes), { db, sessions: identity });
   await app.register(aiRoutes(agentStopRoutes), { db, sessions: identity });
   await app.register(aiRoutes(agentQuestionRoutes), { db, sessions: identity });
+  // Connecting AI the first time (a key saved, a plan signed in) gives a person Assistant (F-036 AG-1).
+  const personalRuns = personalRunServerComposition(env, db);
+  if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
+  const firstAgent = firstAgentMaker(db, { queue: pgBossPersonalRunQueue(boss), connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
+    runtime: personalRuntimeAvailability(config.agentRuntime, db) }, app.log);
   await app.register(aiRoutes(proactiveComparisonRoutes), { db, sessions: identity, backgroundMasterKey: config.backgroundMasterKey,
-    comparisonsEnabled: config.backgroundComparisons });
+    comparisonsEnabled: config.backgroundComparisons, afterConnect: firstAgent });
   // The agents' web page reads (#918): the link cards' guard, a test deployment's closed world, and only when the operator turned them on.
   const webReader = createWebReader({ enabled: config.webReads.enabled, ...(config.linkPreviews.testHosts.size ? { rules: CLOSED_WORLD_RULES,
     connectTo: (host: string) => config.linkPreviews.testHosts.get(host) ?? null } : {}) });
@@ -302,8 +309,6 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(docRoutes, { db, sessions: identity });
   await app.register(notificationRoutes, { db, sessions: identity, smtp: identityConfig.smtp, publicOrigin: identityConfig.publicOrigin });
   // Personal assistant runs (#68): the server queues; the worker dispatches.
-  const personalRuns = personalRunServerComposition(env, db);
-  if (personalRuns.mode !== 'production') app.log.warn({ mode: personalRuns.mode }, 'TEST ONLY: personal runs use fixture connections and a mock provider');
   await app.register(aiRoutes(assistantRoutes), { db, sessions: identity, boss });
   await app.register(aiRoutes(personalRunRoutes), { db, sessions: identity, boss, connections: personalRuns.connections, providerEnabled: personalRuns.providerEnabled,
     runtime: personalRuntimeAvailability(config.agentRuntime, db) });
@@ -313,7 +318,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(searchRoutes, { db, sessions: identity, cursorSecret: identityConfig.secret, exposeWork });
   await app.register(exportRoutes, { db, sessions: identity, publicOrigin: identityConfig.publicOrigin, storage: fileStorage });
   // The `runtime` transport (F-022 AIM-3): off unless the operator set FLUX_AGENT_RUNTIME.
-  await app.register(aiRoutes(agentRuntimeRoutes), { db, sessions: identity, config: config.agentRuntime, secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin });
+  await app.register(aiRoutes(agentRuntimeRoutes), { db, sessions: identity, config: config.agentRuntime, secret: identityConfig.secret, publicOrigin: identityConfig.publicOrigin,
+    afterSignIn: firstAgent });
 
   registerHealth(app, { pool, boss, manifest: migrationManifest, filesDir });
   registerFixtureRoutes(app, { config: config.fixture, db, boss, publicOrigin: identityConfig.publicOrigin });

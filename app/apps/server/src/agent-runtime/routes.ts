@@ -23,8 +23,10 @@ import { accountFingerprinter, CONSOLE_METHODS, ConsoleTickets, serveBrowserCons
  * key, a session or a credential file. With FLUX_AGENT_RUNTIME empty the status says the instance has
  * not enabled it and the commands answer AGENT_RUNTIME_OFF.
  */
-export async function agentRuntimeRoutes(app: FastifyInstance, { db, sessions, config, secret, publicOrigin }: {
+export async function agentRuntimeRoutes(app: FastifyInstance, { db, sessions, config, secret, publicOrigin, afterSignIn }: {
   db: Database; sessions: SessionResolver; config: AgentRuntimeConfig; secret: string; publicOrigin: string;
+  /** Called after a plan's sign-in was recorded (the first connection gives the person Assistant). */
+  afterSignIn?: (ownerUserId: string) => Promise<void>;
 }) {
   useDomainErrors(app);
   const store = agentRuntimeStore(db);
@@ -113,6 +115,7 @@ export async function agentRuntimeRoutes(app: FastifyInstance, { db, sessions, c
     serveBrowserConsole(socket, owner, {
       runtime, tickets, manager: config.manager, open: consoles, live: liveConsoles,
       sessionAlive: async () => (await sessions.resolveSession(headers))?.sessionId === owner.sessionId,
+      ...(afterSignIn ? { afterSignIn } : {}),
     });
   });
 

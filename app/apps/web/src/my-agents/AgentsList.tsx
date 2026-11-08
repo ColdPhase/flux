@@ -1,10 +1,10 @@
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link, useNavigate, useRevalidator } from 'react-router';
 import { AGENT_ALWAYS_WAITS, type MyAgent } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
 import { Button, Icon, Kreska } from '../ui';
-import { refreshAssistantModel, useAssistantModel } from '../assistant/model';
+import { useAssistantModel } from '../assistant/model';
 import { createMyAgent } from './api';
 import { jobLine, mayDoLabel, modelLine } from './agentLabel';
 import './my-agents.css';
@@ -12,7 +12,8 @@ import './my-agents.css';
 // Settings › AI › Your agents (F-036 AG-1, #857; mockup Main): one row per agent with its Kreska in its own colour, its name, one
 // line about its job, its "What it may do" tag and its model with the connection. The first, Assistant, carries "Answers /ai".
 // "New agent" asks only for a name; the agent starts on Connect AI's default model and is given a colour, and its page is where
-// the rest is set. Connecting AI the first time gives a person their Assistant.
+// the rest is set. Connecting AI the first time gives a person their Assistant: the server makes it once, when the connection is
+// made, so deleting it (or every agent) is never undone by opening this page.
 
 const failure = (cause: unknown) => (cause instanceof ApiError && cause.status < 500 && cause.message ? cause.message : 'Couldn’t make it. Try again.');
 
@@ -25,16 +26,7 @@ export function AgentsList() {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const first = useRef(false);
   const connected = !!choice?.groups.length;
-
-  // A person who has connected AI and has no agent yet gets Assistant (AG-1). Naming nothing asks for the first one only: a second
-  // request finds an agent already there and is refused, so two tabs never make two.
-  useEffect(() => {
-    if (!workspace || !loaded || !connected || agents.length || first.current) return;
-    first.current = true;
-    createMyAgent({ workspaceId: workspace.id }).then(() => revalidator.revalidate(), () => { void revalidator.revalidate(); void refreshAssistantModel(); });
-  }, [workspace, loaded, connected, agents.length, revalidator]);
 
   async function add(event: FormEvent) {
     event.preventDefault();
@@ -71,7 +63,9 @@ export function AgentsList() {
           {agents.map((agent, index) => <AgentRow key={agent.id} agent={agent} answers={index === 0} choice={choice} />)}
         </ul>
       ) : loaded && !connected ? (
-        <div className="sset-card agl__empty"><span className="agl__empty-text">Connect AI first. Your first agent, Assistant, uses it and answers <code>/ai</code>.</span></div>
+        <div className="sset-card agl__empty"><span className="agl__empty-text">Connect AI first. Your first agent, Assistant, appears then and answers <code>/ai</code>.</span></div>
+      ) : loaded ? (
+        <div className="sset-card agl__empty"><span className="agl__empty-text">You have no agents. Make one with New agent.</span></div>
       ) : null}
       {agents.length ? <p className="agl__note"><Icon name="lock" size={13} />{AGENT_ALWAYS_WAITS}</p> : null}
     </section>

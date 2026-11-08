@@ -15,6 +15,8 @@ import { aiConnectionServerComposition, type AiConnectionServerComposition } fro
 
 interface Options {
   db: Database; sessions: SessionResolver; backgroundMasterKey: Buffer | null; ai?: AiConnectionServerComposition;
+  /** Called after a key was saved: connecting AI the first time gives the person Assistant (F-036 AG-1). */
+  afterConnect?: (ownerUserId: string) => Promise<void>;
   /** `FLUX_BACKGROUND_COMPARISONS=on` (ServerConfig): the worker runs comparisons, so owners may enable their rules (#58). */
   comparisonsEnabled: boolean;
 }
@@ -35,7 +37,7 @@ const microsPerMTok = { type: 'integer', minimum: 0, maximum: AI_PRICE_MAX_MICRO
 const dailyBudget = { type: 'integer', minimum: API_KEY_DAILY_BUDGET_CENTS.min, maximum: API_KEY_DAILY_BUDGET_CENTS.max };
 
 export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sessions, backgroundMasterKey, ai = aiConnectionServerComposition(process.env),
-  comparisonsEnabled }: Options) {
+  comparisonsEnabled, afterConnect }: Options) {
   const outcomes = comparisonOutcomes(db);
   const outcomeReads = comparisonOutcomeReads(db);
   const connections = backgroundConnectionUseCases(backgroundConnectionRepository(db), {
@@ -75,7 +77,9 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
   }, async (request, reply) => {
     const { principal } = await sessions.requirePrincipal(request);
     await requireNotGuest(db, principal.id);
-    return reply.code(201).send(await connections.connect(principal, request.body));
+    const connected = await connections.connect(principal, request.body);
+    await afterConnect?.(principal.id);
+    return reply.code(201).send(connected);
   });
   // PROV-1: all of the owner's own connections; never another person's.
   app.get('/api/v1/background-compute-connections', async (request) => connections.list(
