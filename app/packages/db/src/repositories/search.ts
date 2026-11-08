@@ -151,8 +151,8 @@ export function visibleKeys(audiences: SearchAudienceRows[]): SQL {
   return sql`ARRAY(${sql.join(audiences.map((audience) => AUDIENCE_KEYS[audience.type](audience)), sql` UNION ALL `)})`;
 }
 
-/** Everything a hit must satisfy apart from the cursor. `withKinds` is false for the per-type counts. */
-function hitConditions(plan: SearchPlanRows, withKinds: boolean): SQL {
+/** Everything a hit must satisfy apart from the cursor. */
+function hitConditions(plan: SearchPlanRows): SQL {
   const conditions: SQL[] = [
     sql`sd.keys && (SELECT lookups FROM aud)`,
     sql`sd.audience_key = ANY ((SELECT keys FROM aud)::text[])`,
@@ -163,11 +163,11 @@ function hitConditions(plan: SearchPlanRows, withKinds: boolean): SQL {
       WHERE active_work.id = (CASE WHEN sd.kind = 'work' THEN sd.object_id::uuid END)), false))`,
     plan.fuzzy ? sql`(sd.tsv @@ ${tsquery(plan)} OR sd.title %> ${plan.text})` : sql`sd.tsv @@ ${tsquery(plan)}`,
     // A task agent thread (#400) has no people-facing surface yet (its UI and agent reads are not built), so its
-    // messages are not findable. Its rows stay stored; people search never shows, ranks, counts or pages them.
+    // messages are not findable. Its rows stay stored; people search never shows, ranks or pages them.
     sql`(sd.kind <> 'message' OR NOT EXISTS (SELECT 1 FROM project_conversations agent_thread
       WHERE agent_thread.id = (CASE WHEN sd.kind = 'message' THEN sd.parent_id::uuid END) AND agent_thread.space = 'agents'))`,
   ];
-  if (withKinds && plan.kinds?.length) conditions.push(sql`sd.kind IN (${sql.join(plan.kinds.map((kind) => sql`${kind}`), sql`, `)})`);
+  if (plan.kinds?.length) conditions.push(sql`sd.kind IN (${sql.join(plan.kinds.map((kind) => sql`${kind}`), sql`, `)})`);
   const place = plan.place;
   if (place?.type === 'project') conditions.push(sql`sd.project_id = ${place.id}::uuid`);
   // A DM's own messages carry its audience; its sketches and thoughts keep the sketch audience
@@ -203,7 +203,7 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
         round((ts_rank(sd.tsv, ${q}) + 0.5 * word_similarity(${plan.text}, sd.title))::numeric, 6)${exactNumber(plan)} AS score,
         row_number() OVER (PARTITION BY sd.kind, sd.object_id ORDER BY sd.version DESC NULLS LAST) AS newest
       FROM search_documents sd
-      WHERE ${hitConditions(plan, true)}
+      WHERE ${hitConditions(plan)}
     ),
     -- One result per object: of several matching versions of a material, the newest.
     hits AS (SELECT * FROM matched WHERE newest = 1)
@@ -228,13 +228,6 @@ function pageStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows): S
     LEFT JOIN project_work_items wi ON h.kind = 'work' AND wi.id = h.object_id::uuid
     LEFT JOIN dms d ON d.id = (CASE WHEN h.kind = 'dm_message' THEN h.parent_id ELSE h.dm_id END)
     ORDER BY h.score DESC, h.at DESC, h.id DESC`;
-}
-
-function countStatement(audiences: SearchAudienceRows[], plan: SearchPlanRows, cap: number): SQL {
-  return sql`
-    WITH ${audienceCte(audiences, plan)}
-    SELECT kind, count(DISTINCT object_id)::int AS n, count(*)::int AS sampled
-    FROM (SELECT sd.kind, sd.object_id FROM search_documents sd WHERE ${hitConditions(plan, false)} LIMIT ${cap + 1}) x GROUP BY kind`;
 }
 
 interface PageRow {
@@ -349,26 +342,12 @@ export function searchRows(db: SearchExecutor) {
       }));
     },
 
-    /** Visible matches per kind, over every kind, counting at most `cap + 1` rows. */
-    async counts(audiences: SearchAudienceRows[], plan: SearchPlanRows, cap: number) {
-      const counts = new Map<SearchKind, number>();
-      if (!audiences.length) return { counts, capped: false };
-      const result = await planned(db, countStatement(audiences, plan, cap));
-      let total = 0;
-      for (const row of result.rows as unknown as { kind: SearchKind; n: number; sampled: number }[]) { counts.set(row.kind, row.n); total += row.sampled; }
-      // Counting stopped when the sample of `cap + 1` rows was full (versions of one material count once).
-      return { counts, capped: total > cap };
-    },
-
-    /** Test support: what the page and count statements of this plan read, and the keys each index scan looks up. */
-    async explain(audiences: SearchAudienceRows[], plan: SearchPlanRows, cap: number) {
+    /** Test support: what the page statement of this plan reads, and the keys each index scan looks up. */
+    async explain(audiences: SearchAudienceRows[], plan: SearchPlanRows) {
       if (!audiences.length) return { rows: 0, indexRows: 0, searchBuffers: 0, buffers: 0, indexScans: 0, lookups: 0, nodes: [] as string[] };
       const page = await examined(db, pageStatement(audiences, plan));
-      const count = await examined(db, countStatement(audiences, plan, cap));
       const keys = await planned(db, sql`WITH ${audienceCte(audiences, plan)} SELECT cardinality(lookups) AS n FROM aud`);
-      return { rows: page.rows + count.rows, indexRows: page.indexRows + count.indexRows, searchBuffers: page.searchBuffers + count.searchBuffers,
-        buffers: page.buffers + count.buffers, indexScans: page.indexScans + count.indexScans,
-        lookups: Number((keys.rows[0] as { n: number | string }).n), nodes: [...page.nodes, '|', ...count.nodes] };
+      return { ...page, lookups: Number((keys.rows[0] as { n: number | string }).n) };
     },
   };
 }

@@ -1159,7 +1159,7 @@ an **encrypted index at rest, decrypted into RAM**:
   `search_documents.id`, so the one sealed cursor (already the position of the last visible result) serves both
   sources: each applies it, returns its best `limit + 1` rows, and the use case merges them. The in-RAM score
   approximates `ts_rank` (title weight 1.0, body 0.4) plus half the title similarity, so ordering between the
-  two sources is approximate (the sets of results are the same). Counts add up, and each source counts at most 500.
+  two sources is approximate (the sets of results are the same).
   Highlighting marks the title whole and a long body as a window around the first match (`ts_headline`'s shape).
 - **Bound.** The index is bounded by its **estimated heap**, not by the text: each distinct term of a document costs a map entry, a
   string and an array, so the heap measured 16 to 112 times the text on the test corpora (many short titles are the worst case).

@@ -300,4 +300,35 @@ describe('a client stops when its owner leaves the company or becomes a guest of
     expect(await world.host.browser.request('PATCH', `/api/v1/workspaces/${world.host.workspaceId}/members/${world.memberId}`, { body: { role: 'guest' } }), 200);
     await assertStopped(world);
   });
+
+  // #978: the role that counts is the company's. A member of some other workspace (an encrypted space) who is a guest of the company
+  // has no AI: the client they had stops, and a person who never connected gets no page and no agent.
+  const makeCompanyGuest = async (userId: string) => {
+    const company = String((await pool.query('SELECT id FROM workspaces WHERE company')).rows[0].id);
+    await pool.query("INSERT INTO workspace_members (workspace_id, user_id, role, created_by) VALUES ($1, $2, 'guest', $2) ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = 'guest'", [company, userId]);
+  };
+
+  test('a guest of the company stops a client they had, though they are still a member of the workspace it was made in', async () => {
+    const world = await clientOfMember('c22-company-guest');
+    assert.deepEqual(await listedProjects(world.tokens), [world.host.projectId], 'control: a member of that workspace reaches it');
+    await makeCompanyGuest(world.memberId);
+    assert.equal(String((await pool.query('SELECT role FROM workspace_members WHERE workspace_id = $1 AND user_id = $2', [world.host.workspaceId, world.memberId])).rows[0].role), 'member', 'their role there is unchanged');
+    await assertStopped(world);
+  });
+
+  test('a guest of the company who is a member of another workspace cannot connect: no page, no agent, no connection, no code', async () => {
+    const host = await owner('c22-company-guest-host');
+    const { browser } = await register(uniqueEmail('c22-company-guest-new'), password, 'Company Guest New');
+    const userId = await userIdOf(browser);
+    const email = String((await pool.query('SELECT email FROM auth_users WHERE id = $1', [userId])).rows[0].email);
+    expect(await host.browser.request('POST', `/api/v1/workspaces/${host.workspaceId}/members`, { body: { email, role: 'member' } }), 201);
+    await makeCompanyGuest(userId);
+    const { clientId, redirectUri } = await registerOauthClient(pool);
+    const begun = await beginOauth(browser, clientId, redirectUri);
+    assert.equal((await browser.request('GET', `/api/v1/agent-oauth/consent-context?oauth_query=${encodeURIComponent(begun.oauthQuery)}`)).status, 403);
+    const answer = await decideConsent(browser, begun, true);
+    assert.ok(answer.status >= 400 && answer.status < 500, `Allow answered ${answer.status}`);
+    assert.equal(JSON.stringify(answer.json ?? '').includes('code='), false);
+    assert.deepEqual(await made(userId), nothing);
+  });
 });

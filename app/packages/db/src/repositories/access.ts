@@ -277,11 +277,13 @@ export async function memberFilter(principal: AccessPrincipal, workspaceId: stri
 /**
  * Whether the person is a guest of the company (F-037: one company per Flux; C-22 says "a member of the company"; F-036: a guest has no
  * AI). It is the person's role in the company workspace, as the web reads it. Someone who is in no company is not a guest: they have no
- * company to be a guest of, and this is not a place to refuse them. A role in any other workspace does not count.
+ * company to be a guest of, and this is not a place to refuse them. A role in any other workspace does not count, and nor does it undo
+ * this one: a guest of the company who is a member of an encrypted space is still a guest (#978). With `lock`, inside a transaction,
+ * the membership row is read `FOR SHARE`, so a role change waits for what is being decided on it.
  */
-export async function isCompanyGuest(db: DbExecutor, userId: string): Promise<boolean> {
+export async function isCompanyGuest(db: DbExecutor, userId: string, options: { lock?: boolean } = {}): Promise<boolean> {
   const result = await db.execute<{ role: string }>(sql`SELECT m.role FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id
-    WHERE m.user_id = ${userId} AND w.company`);
+    WHERE m.user_id = ${userId} AND w.company${options.lock ? sql` FOR SHARE OF m` : sql``}`);
   return result.rows[0]?.role === 'guest';
 }
 

@@ -67,8 +67,9 @@ describe('agents of a company admin who is not in the space (C-15, #955)', () =>
     const outside = await asked('Which reading is full?', '{"agent": "Fieldbot", "question": "Which reading means full?"}');
     await waitFor(async () => (await readTask(outside.id)).owner?.kind === 'human', 'the task to go back to Lee');
     const lines = (await thread(outside.id)).map((message) => message.body);
-    // Mira is in the task (she wrote in it); what is true is that her agent can't work in this space, and the line says that.
-    assert.ok(lines.includes(`I can't ask Fieldbot (${miraName}'s agent): ${miraName} is in this task but not in this space, so their agent can't work here. This needs a person.`), lines.join(' | '));
+    // Mira is in the task (she wrote in it); what is true is that her agent can't work in this space, and the line says that and no reason
+    // (she may be outside the space, a guest or gone from the company).
+    assert.ok(lines.includes(`I can't ask Fieldbot (${miraName}'s agent): that agent can't work in this space. This needs a person.`), lines.join(' | '));
     // An agent nobody has is still "not in this task".
     const nobody = await asked('Which reading is full, Ghost?', '{"agent": "Ghost", "question": "Which reading means full?"}');
     await waitFor(async () => (await readTask(nobody.id)).owner?.kind === 'human', 'the task to go back to Lee');

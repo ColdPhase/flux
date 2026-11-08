@@ -4,6 +4,7 @@ import type { AgentConnection, ExternalClientDesignation } from '@flux/contracts
 // Structural adapter output avoids the current core/db build cycle; core owns the port.
 type AgentOauthGrant = { referenceId: string; clientId: string | null; connection: AgentConnection };
 import * as schema from '../schema.js';
+import { isCompanyGuest } from './access.js';
 import { idpStandingRepository } from './idp-standing.js';
 import type { createDatabase } from '../index.js';
 import type { DbExecutor } from './push.js';
@@ -62,10 +63,15 @@ export function agentConnectionRepository(db: Database) {
     if (!agent) return null;
     // C-22: a client lives only while its owner is a member of the company and not a guest of it. Someone removed or made a guest
     // gets no token, no refresh and no sign-in without a page, whatever the connection row still says. Nothing is revoked.
-    const [member] = await tx.select({ userId: schema.workspaceMembers.userId }).from(schema.workspaceMembers).where(and(
-      eq(schema.workspaceMembers.workspaceId, row.workspaceId), eq(schema.workspaceMembers.userId, ownerUserId),
-      ne(schema.workspaceMembers.role, 'guest'))).for('share');
-    return member ? serializeConnection(row) : null;
+    const [member] = await tx.select({ company: schema.workspaces.company }).from(schema.workspaceMembers)
+      .innerJoin(schema.workspaces, eq(schema.workspaces.id, schema.workspaceMembers.workspaceId)).where(and(
+        eq(schema.workspaceMembers.workspaceId, row.workspaceId), eq(schema.workspaceMembers.userId, ownerUserId),
+        ne(schema.workspaceMembers.role, 'guest'))).for('share', { of: schema.workspaceMembers });
+    if (!member) return null;
+    // A role in the connection's own workspace is not the company's (an encrypted space is another workspace): a guest of the
+    // company has no AI wherever else they are a member (AG-2, #978).
+    if (!member.company && await isCompanyGuest(tx, ownerUserId, { lock: true })) return null;
+    return serializeConnection(row);
   };
 
   const grantOfBinding = async (tx: Transaction, ownerUserId: string, binding: typeof schema.agentOauthBindings.$inferSelect): Promise<AgentOauthGrant | null> => {
@@ -148,12 +154,15 @@ export function agentConnectionRepository(db: Database) {
 
     /**
      * Where a company's agent for a first sign-in is made: the person's own company workspace (one per instance), or null when
-     * the person is in none or is only a guest of it.
+     * the person is in none or is only a guest of it. A guest of the company gets none, whatever role another workspace (an
+     * encrypted space) gives them there (C-22, AG-2, #978).
      */
     async personalWorkspaceId(tx: Transaction, ownerUserId: string): Promise<string | null> {
+      if (await isCompanyGuest(tx, ownerUserId, { lock: true })) return null;
       const [member] = await tx.select({ workspaceId: schema.workspaceMembers.workspaceId }).from(schema.workspaceMembers)
+        .innerJoin(schema.workspaces, eq(schema.workspaces.id, schema.workspaceMembers.workspaceId))
         .where(and(eq(schema.workspaceMembers.userId, ownerUserId), ne(schema.workspaceMembers.role, 'guest')))
-        .orderBy(asc(schema.workspaceMembers.createdAt), asc(schema.workspaceMembers.workspaceId)).limit(1);
+        .orderBy(desc(schema.workspaces.company), asc(schema.workspaceMembers.createdAt), asc(schema.workspaceMembers.workspaceId)).limit(1);
       return member?.workspaceId ?? null;
     },
 

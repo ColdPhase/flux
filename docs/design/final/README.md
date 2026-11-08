@@ -345,7 +345,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S13 | A working agent is always visible: one state line under its last message in the task's discussion, with Stop, and its face in the space header while it works. The agent's owner or the space admin can Stop it. |
 | S14 | An agent's question is a message with two to four ready answers, and an Inbox item for the person asked. |
 | S15 | On the phone the map is for viewing and for adding a thought. Connecting and arranging happen on the computer. |
-| S16 | **One search** over spaces, people, messages, tasks, Wiki pages and thoughts you can see, grouped by kind, with no filter chips. |
+| S16 | **One search** over spaces, people, messages, tasks, Wiki pages, files and thoughts you can see, grouped by kind, with no filter chips. |
 | S17 | Larger small text on the phone; the phone's text size setting applies. |
 | S18 | Keyboard shortcuts, shown in menus. |
 | S19 | A collapsible sidebar. Quiet hours, in Notifications, is the only way to pause notifications. |
@@ -543,8 +543,9 @@ the composer. The right-hand phone above shows the sheet.
   Each row is 48 px: a tile, the matching text and one line of where it lives. The first result is
   selected, and `↵` opens it. A list that is too long is narrowed by typing more words; there is
   no second page.
-- The hint is one plain sentence: "Finds spaces, people, messages, tasks, Wiki pages and thoughts
-  you can see." There are no filter chips and no Create group.
+- The hint is one plain sentence: "Finds spaces, people, messages, tasks, Wiki pages, files and
+  thoughts you can see." A list of more than 20 ends with one quiet line, "Showing 20 · type more words
+  to narrow". There are no filter chips and no Create group.
 
 ### My map
 

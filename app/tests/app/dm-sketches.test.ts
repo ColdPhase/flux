@@ -357,7 +357,6 @@ describe('DM sketches', () => {
     for (const who of [olga, mo]) {
       const outside = await search(who, { q: 'quokkafish' });
       assert.equal(outside.items.length, 0);
-      assert.deepEqual(outside.counts, {});
       const forced = await search(who, { q: 'quokkafish', place: `dm:${group.id}` });
       assert.equal(forced.items.length, 0);
     }

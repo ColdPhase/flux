@@ -348,9 +348,10 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     const people = await askable(tx, work, run.ownerUserId);
     const resolved = resolveAsked(ask, people.found);
     if ('none' in resolved) {
-      // An agent of someone who is in the task but not in the space (a company admin who was not added) cannot work here: say that.
+      // An agent whose owner is in the task but cannot use the space (not added to it, made a guest, or no longer in the company)
+      // cannot work here: say that, not a reason that may not be the true one (#978).
       const shut = resolveAsked(ask, people.outside);
-      if ('found' in shut) return toThePeople(tx, work, asker, `I can't ask ${agentLabel(shut.found)}: ${shut.found.ownerName} is in this task but not in this space, so their agent can't work here. This needs a person.`, `asked-outside:${run.id}`);
+      if ('found' in shut) return toThePeople(tx, work, asker, `I can't ask ${agentLabel(shut.found)}: that agent can't work in this space. This needs a person.`, `asked-outside:${run.id}`);
       return toThePeople(tx, work, asker, `I can't ask ${ask.agent}${ask.owner ? ` (${ask.owner}'s agent)` : ''}: they are not in this task. This needs a person.`, `asked-nobody:${run.id}`);
     }
     // Never a guess: two agents of that name, and the block did not say whose, is a question for the people.

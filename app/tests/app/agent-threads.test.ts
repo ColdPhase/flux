@@ -161,8 +161,7 @@ test('agent-thread messages are not people search results while no people surfac
   const people = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/conversations`, { body: { body: `${token} people message`, clientMessageId: randomUUID() } }), 201) as { id: string };
   const query = new URLSearchParams({ q: token, type: 'message', limit: '10' });
   const answer = expectStatus(await f.viewer.browser.request('GET', `/api/v1/search?${query}`), 200) as SearchResponse;
-  assert.equal(answer.counts.message, 1, 'agent-thread rows neither count nor rank');
-  assert.equal(answer.items.length, 1);
+  assert.equal(answer.items.length, 1, 'agent-thread rows are neither found nor ranked');
   assert.equal(answer.items[0]!.label, 'Message');
   assert.equal(answer.items[0]!.target.type, 'message');
   assert.ok(JSON.stringify(answer).includes(people.id));
