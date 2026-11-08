@@ -370,7 +370,7 @@ a.me__item { text-decoration: none; }
 .pane-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; }
 .pane-in { max-width: calc(var(--col) + 48px); margin: 0 auto; padding: 20px 24px 40px; }
 .view-empty { padding: 36px 0 32px; }
-/* Home's Tasks (#190 HOME-2): your unfinished work grouped by project, in calm rows like "Since you left". */
+/* Home's Tasks (#190 HOME-2): your unfinished work grouped by project, in calm rows. */
 .home-tasks { padding: 24px 0 32px; }
 .home-tasks__h { margin: 0 0 4px; font-size: var(--fs-lg); letter-spacing: -.01em; }
 .home-tasks__note { margin: 4px 0 8px; color: var(--t1); font-size: var(--fs-sm); }

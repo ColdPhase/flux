@@ -1,5 +1,5 @@
 /* The conversation as drawn (F-026 S5-S8, P5): one author column, task notices with their source, several
-   notices folded into one line, "Since you left" with a jump, and the agent-thinking row. */
+   notices folded into one line, the Unread divider, and the agent-thinking row. */
 
 /* Task notice: who made it and where it came from, in one line, then the task as one row. Its author column is
    the message column (32px face, 12px gap on a computer, 10px on a phone). */

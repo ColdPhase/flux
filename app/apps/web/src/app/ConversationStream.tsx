@@ -216,7 +216,7 @@ export function useConversationRoots(projectId: string, window: ConversationRoot
     return () => { cancelled = true; };
   }, [projectId, window]);
 
-  // A link to a root older than the loaded window (search, inbox, "Since you left"): read back to it.
+  // A link to a root older than the loaded window (search, the Inbox, a notice): read back to it.
   useEffect(() => {
     // A root in the refreshed newest window (not merged yet) is newer, never older: nothing to read back.
     const loaded = (root: ConversationRoot) => root.conversationId === seek;

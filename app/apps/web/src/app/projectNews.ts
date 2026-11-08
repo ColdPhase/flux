@@ -5,7 +5,7 @@ import { useShellData } from './data';
 
 /**
  * Whether a project has something new for this person (#763 H11-4): what others did there since they last left its
- * conversation, from the same "Since you left" summary the project shows. Nothing else set `hasNew`, so Home called every
+ * conversation, from the same return-point summary the project reads. Nothing else set `hasNew`, so Home called every
  * project "quiet" after a week of activity. Read once per project and kept for a minute; the project the person is in is
  * read again when they leave it, since leaving moves its return point.
  */
