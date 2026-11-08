@@ -1,25 +1,28 @@
 import assert from 'node:assert/strict';
 import { before, describe, test } from 'node:test';
-import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CONSOLE_PATH, backgroundComputeConnectionsPath, type Workspace } from '@flux/contracts';
+import { AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CONSOLE_PATH, backgroundComputeConnectionsPath } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { addMember, expectStatus, person, workspace as createWorkspace, type Person } from './support/people.js';
 
 // A guest has no AI (F-036, assistant.md): the pages that connect it are hidden, and the server refuses the two steps that make a
 // connection, saving an API key and starting a plan sign-in, so a direct address or a hand-made request changes nothing (#959).
 // A control for each: a member saving the same key, and a member asking for the same sign-in, are not refused for this.
+// A guest is decided by the role in the company (F-037: one company per Flux; C-22), the role the web reads: a role in any other
+// workspace changes nothing (#968).
 
 const key = (tag: string) => `sk-ant-api03-owner-budget-key-owner-budget-key-owner-budget-key-${tag}`;
 const keyBody = (tag: string) => ({ provider: 'anthropic', model: 'claude-sonnet-5', apiKey: key(tag), dailyBudgetCents: 50 });
 const codeOf = (response: { json: unknown }) => (response.json as { code?: string } | null)?.code;
 
-describe('a guest has no AI (#959)', () => {
-  let owner: Person; let member: Person; let guest: Person; let outsider: Person; let ws: Workspace;
+describe('a guest has no AI (#959, #968)', () => {
+  let member: Person; let guest: Person; let outsider: Person; let guestWithRoom: Person; let memberGuestElsewhere: Person;
 
   before(async () => {
-    [owner, member, guest, outsider] = await Promise.all(['gna-owner', 'gna-member', 'gna-guest', 'gna-outsider'].map(person));
-    ws = await createWorkspace(owner, 'No AI for guests');
-    await addMember(owner, ws.id, member, 'member');
-    await addMember(owner, ws.id, guest, 'guest');
+    [member, guest, outsider, guestWithRoom, memberGuestElsewhere] = await Promise.all(['gna-member', 'gna-guest', 'gna-outsider', 'gna-guest-room', 'gna-member-guest-elsewhere'].map(person));
+    // The company's roles, written as an invitation would have (a new account is in no company).
+    const company = (await pool.query<{ id: string }>('SELECT id FROM workspaces WHERE company')).rows[0]!.id;
+    for (const [someone, role] of [[member, 'member'], [guest, 'guest'], [guestWithRoom, 'guest'], [memberGuestElsewhere, 'member']] as const)
+      await pool.query('INSERT INTO workspace_members (workspace_id, user_id, role, created_by) VALUES ($1, $2, $3, $2)', [company, someone.id, role]);
   });
 
   const saved = async (someone: Person) => Number((await pool.query('SELECT count(*)::int AS n FROM background_compute_connections WHERE owner_user_id = $1', [someone.id])).rows[0].n);
@@ -50,10 +53,17 @@ describe('a guest has no AI (#959)', () => {
     assert.notEqual(codeOf(response), 'GUEST_NO_AI', response.text);
   });
 
-  test('a person who is a guest in one company and a member in another keeps AI (a guest in every workspace they belong to has none)', async () => {
+  test('the role in the company decides: a guest of the company with a place of their own elsewhere is still refused, and a member who is a guest elsewhere is not', async () => {
+    // The guest is a member of another workspace; that does not make them a member of the company.
     const other = await createWorkspace(member, 'Where the guest is a member');
-    await addMember(member, other.id, guest, 'member');
-    const response = await guest.browser.request('POST', backgroundComputeConnectionsPath, { body: keyBody('GU02') });
-    assert.notEqual(codeOf(response), 'GUEST_NO_AI', response.text);
+    await addMember(member, other.id, guestWithRoom, 'member');
+    const refused = await guestWithRoom.browser.request('POST', backgroundComputeConnectionsPath, { body: keyBody('GU02') });
+    assert.equal(refused.status, 403, refused.text);
+    assert.equal(codeOf(refused), 'GUEST_NO_AI');
+    // A member of the company who is only a guest in another workspace keeps AI.
+    const theirs = await createWorkspace(member, 'Where the member is a guest');
+    await addMember(member, theirs.id, memberGuestElsewhere, 'guest');
+    const allowed = await memberGuestElsewhere.browser.request('POST', backgroundComputeConnectionsPath, { body: keyBody('ME02') });
+    assert.notEqual(codeOf(allowed), 'GUEST_NO_AI', allowed.text);
   });
 });

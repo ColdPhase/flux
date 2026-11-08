@@ -275,14 +275,14 @@ export async function memberFilter(principal: AccessPrincipal, workspaceId: stri
 }
 
 /**
- * Whether the person is a guest in every workspace they belong to (F-036 AG-2: a guest has no AI). Someone who belongs to no workspace
- * is not a guest: they have no company to be a guest of, and this is not a place to refuse them.
+ * Whether the person is a guest of the company (F-037: one company per Flux; C-22 says "a member of the company"; F-036: a guest has no
+ * AI). It is the person's role in the company workspace, as the web reads it. Someone who is in no company is not a guest: they have no
+ * company to be a guest of, and this is not a place to refuse them. A role in any other workspace does not count.
  */
-export async function isGuestOnly(db: DbExecutor, userId: string): Promise<boolean> {
-  const result = await db.execute<{ guest: boolean }>(sql`SELECT (
-    EXISTS (SELECT 1 FROM workspace_members WHERE user_id = ${userId} AND role = 'guest')
-    AND NOT EXISTS (SELECT 1 FROM workspace_members WHERE user_id = ${userId} AND role <> 'guest')) AS guest`);
-  return result.rows[0]?.guest === true;
+export async function isCompanyGuest(db: DbExecutor, userId: string): Promise<boolean> {
+  const result = await db.execute<{ role: string }>(sql`SELECT m.role FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id
+    WHERE m.user_id = ${userId} AND w.company`);
+  return result.rows[0]?.role === 'guest';
 }
 
 /**

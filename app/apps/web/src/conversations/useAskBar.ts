@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import { useNavigate } from 'react-router';
 import { tellOperator } from '../assistant/api';
 import { grantPerson } from '../people/api';
@@ -20,8 +21,17 @@ export function useAskBar({ project, me, outside, audienceShort, revalidateRef }
   // A refused ask of someone who belongs here: the owner can no longer read here, so neither can their assistant. (Someone outside is told by the state.)
   const notIn = !outside && ask.askFailureCode === 'PERSONAL_RUN_NO_PROJECT_ACCESS';
   const notInText = 'You can\'t open this space any more, so neither can your assistant.';
+  // A second press while the first is on its way, or while its answer is still being read, changes nothing: it would only meet "already added".
+  const joining = useRef(false);
+  function join() {
+    if (joining.current) return;
+    joining.current = true;
+    void grantPerson(project.id, me.user.id, 'manager', crypto.randomUUID())
+      .then(() => { setAskFailure(''); return revalidateRef.current(); }, () => setAskFailure('You couldn’t be added. Try again.'))
+      .finally(() => { joining.current = false; });
+  }
   function onAction(action: string) {
-    if (action === 'join') void grantPerson(project.id, me.user.id, 'manager', crypto.randomUUID()).then(() => { setAskFailure(''); revalidateRef.current(); }, () => setAskFailure('You couldn’t be added. Try again.'));
+    if (action === 'join') join();
     else if (action === 'connect') openDetails('connect-ai');
     else if (action === 'tell') void tellOperator(project.workspaceId, assistant.status?.setup.runtime.client).then(() => setAskFailure('Told whoever runs Flux.'), () => setAskFailure('Couldn’t tell them. Try again.'));
     else if (action === 'key') navigate('/settings/ai-connections?new=1');

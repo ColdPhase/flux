@@ -465,8 +465,13 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(ask).to_contain_text("Your assistant works only in spaces you’re in.")
         expect(ask).not_to_contain_text("any more")
         shot(page, f"955-ask-outside-1440-{UI_BROWSER}")
-        ask.get_by_role("button", name="Add me").click()
+        # A double press is one request (#968): the second would only meet "already added" and say it could not add her.
+        added: list[str] = []
+        page.on("request", lambda request: added.append(request.url) if request.method == "POST" and request.url.endswith("/grants") else None)
+        ask.get_by_role("button", name="Add me").dblclick()
         expect(sidebar.get_by_role("link", name=re.compile("Olek’s room"))).to_be_visible()
+        expect(ask).not_to_contain_text("couldn’t be added")
+        self.assertEqual(len(added), 1, f"one request for a double press: {added}")
         expect(ask).not_to_contain_text("works only in spaces you’re in")
         expect(ask).not_to_contain_text("Add me")  # what the ask bar says next depends on whether she has an agent: it no longer says she cannot be here
 
