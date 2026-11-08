@@ -44,6 +44,24 @@ test('an answer that has arrived is never reused: the next read asks again', asy
   assert.deepEqual(await again, { count: 2 });
 });
 
+test('a write ends the sharing: a read asked for after it never joins one that started before it', async (context) => {
+  const calls = stub(context);
+  const before = request<{ status: string }>('/api/v1/projects/p/work-view');
+  await settle();
+  const write = request('/api/v1/work/w', { method: 'PATCH', body: { status: 'done' } });
+  await settle();
+  const after = request<{ status: string }>('/api/v1/projects/p/work-view');
+  await settle();
+  assert.deepEqual(calls.map((call) => `${call.method} ${call.path}`), ['GET /api/v1/projects/p/work-view', 'PATCH /api/v1/work/w', 'GET /api/v1/projects/p/work-view'],
+    'the read after the write is its own request');
+  calls[0]!.finish({ status: 'open' });
+  calls[1]!.finish({});
+  calls[2]!.finish({ status: 'done' });
+  assert.deepEqual(await before, { status: 'open' });
+  await write;
+  assert.deepEqual(await after, { status: 'done' }, 'and answers with what the write left');
+});
+
 test('a caller that aborts leaves the others their answer, and the request stops only when every caller has left', async (context) => {
   const calls = stub(context);
   const one = new AbortController(); const two = new AbortController();

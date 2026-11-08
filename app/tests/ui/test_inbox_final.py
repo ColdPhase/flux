@@ -667,6 +667,8 @@ class InboxFinal(unittest.TestCase):
             page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
             seen(page, "acceptHeld")
             self.addCleanup(lambda: [route.abort() for route in accepted])
+            # Home's own read of the queue has been answered, so the focus below asks for a read of its own (reads in flight together are one request, #850).
+            page.wait_for_function("() => window.__needsYouPending === 0")
 
         def on_queue(route):
             answer = route.fetch()
