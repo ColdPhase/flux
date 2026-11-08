@@ -3,9 +3,10 @@ import {
   INBOX_READ_ALL_PATH,
   inboxItemPath,
   inboxItemReadPath,
-  NOTIFICATION_ADDRESS_PATH,
-  NOTIFICATION_ADDRESS_RESEND_PATH,
+  NOTIFICATION_ADDRESSES_PATH,
   NOTIFICATION_ADDRESS_VERIFY_PATH,
+  notificationAddressPath,
+  notificationAddressResendPath,
   NOTIFICATION_MUTES_PATH,
   NOTIFICATION_PREFERENCES_PATH,
   NOTIFICATION_UNSUBSCRIBE_PATH,
@@ -15,6 +16,7 @@ import {
   type SetMuteCommand,
   type UnsubscribeResponse,
   type UpdateNotificationPreferencesCommand,
+  type VerifiedNotificationAddress,
 } from '@flux/contracts';
 import { request } from '../api/client';
 import { noteLockedWorkspaces } from '../encryption/api';
@@ -29,10 +31,11 @@ export const getPreferences = (signal?: AbortSignal) => request<NotificationPref
 export const updatePreferences = (change: UpdateNotificationPreferencesCommand) =>
   request<NotificationPreferences>(NOTIFICATION_PREFERENCES_PATH, { method: 'PATCH', body: change });
 export const setMute = (command: SetMuteCommand) => request<NotificationPreferences>(NOTIFICATION_MUTES_PATH, { method: 'PUT', body: command });
-export const addAddress = (email: string) => request<NotificationPreferences>(NOTIFICATION_ADDRESS_PATH, { method: 'POST', body: { email } });
-export const removeAddress = () => request<NotificationPreferences>(NOTIFICATION_ADDRESS_PATH, { method: 'DELETE' });
-export const resendVerification = () => request<NotificationPreferences>(NOTIFICATION_ADDRESS_RESEND_PATH, { method: 'POST' });
-export const verifyAddress = (token: string) => request<NotificationPreferences>(NOTIFICATION_ADDRESS_VERIFY_PATH, { method: 'POST', body: { token } });
+export const addAddress = (email: string) => request<NotificationPreferences>(NOTIFICATION_ADDRESSES_PATH, { method: 'POST', body: { email } });
+export const setAddressEnabled = (id: string, enabled: boolean) => request<NotificationPreferences>(notificationAddressPath(id), { method: 'PATCH', body: { enabled } });
+export const removeAddress = (id: string) => request<NotificationPreferences>(notificationAddressPath(id), { method: 'DELETE' });
+export const resendVerification = (id: string) => request<NotificationPreferences>(notificationAddressResendPath(id), { method: 'POST' });
+export const verifyAddress = (token: string) => request<VerifiedNotificationAddress>(NOTIFICATION_ADDRESS_VERIFY_PATH, { method: 'POST', body: { token } });
 export const unsubscribe = (token: string) => request<UnsubscribeResponse>(`${NOTIFICATION_UNSUBSCRIBE_PATH}?token=${encodeURIComponent(token)}`, { method: 'POST' });
 
 /** Tells the rail's quiet dot that inbox state changed (an item was read). */

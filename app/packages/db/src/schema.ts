@@ -1550,6 +1550,8 @@ export const notificationPreferences = pgTable('notification_preferences', {
   userId: text('user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
   level: text('level').$type<'needsYou' | 'everything' | 'nothing'>().notNull().default('needsYou'),
   emailMe: boolean('email_me').notNull().default(true),
+  /** 0031 (C-49): the sign-in address's own switch; an extra address's is its row's `enabled`. */
+  accountEnabled: boolean('account_enabled').notNull().default(true),
   quietEnabled: boolean('quiet_enabled').notNull().default(false),
   quietStart: integer('quiet_start').notNull().default(1320),
   quietEnd: integer('quiet_end').notNull().default(420),
@@ -1567,12 +1569,17 @@ export const notificationMutes = pgTable('notification_mutes', {
 
 export const notificationAddresses = pgTable('notification_addresses', {
   id: uuid('id').primaryKey(),
-  userId: text('user_id').notNull().unique().references(() => authUsers.id, { onDelete: 'cascade' }),
+  userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   email: text('email').notNull(),
+  /** 0031 (C-49): this address's own switch; nothing goes to it while off, or before `verifiedAt`. */
+  enabled: boolean('enabled').notNull().default(true),
   verifiedAt: timestamp('verified_at', { withTimezone: true }),
   lastSentAt: timestamp('last_sent_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (table) => [
+  uniqueIndex('notification_addresses_user_email_idx').on(table.userId, sql`lower(${table.email})`),
+  index('notification_addresses_user_created_idx').on(table.userId, table.createdAt),
+]);
 
 export const notificationAddressTokens = pgTable('notification_address_tokens', {
   tokenHash: text('token_hash').primaryKey(),
@@ -1586,6 +1593,8 @@ export const notificationEmails = pgTable('notification_emails', {
   notificationId: uuid('notification_id').notNull().references(() => notifications.id, { onDelete: 'cascade' }),
   userId: text('user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   addressKind: text('address_kind').$type<'account' | 'extra'>().notNull(),
+  /** 0031: the extra address this copy is for; null for the sign-in address and once the address is removed. */
+  addressId: uuid('address_id').references(() => notificationAddresses.id, { onDelete: 'set null' }),
   address: text('address'),
   status: text('status').$type<'queued' | 'sending' | 'sent' | 'skipped'>().notNull().default('queued'),
   skipReason: text('skip_reason'),
@@ -1595,7 +1604,10 @@ export const notificationEmails = pgTable('notification_emails', {
   sentAt: timestamp('sent_at', { withTimezone: true }),
   lastError: text('last_error'),
   lastErrorAt: timestamp('last_error_at', { withTimezone: true }),
-}, (table) => [unique().on(table.notificationId, table.addressKind)]);
+}, (table) => [
+  uniqueIndex('notification_emails_account_idx').on(table.notificationId).where(sql`${table.addressKind} = 'account'`),
+  uniqueIndex('notification_emails_extra_idx').on(table.notificationId, table.addressId).where(sql`${table.addressKind} = 'extra' AND ${table.addressId} IS NOT NULL`),
+]);
 
 // Owner-invoked personal assistant runs (migration 0024, #68, O-008). No key material is stored.
 export const personalRuns = pgTable('personal_runs', {

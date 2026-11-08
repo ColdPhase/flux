@@ -12,7 +12,7 @@ import {
   type NotificationMailer,
   type PushSendJob,
 } from '@flux/core';
-import type { InboxItem, InboxResponse, NotificationPreferences, NotificationReason } from '@flux/contracts';
+import { MAX_EXTRA_ADDRESSES, type InboxItem, type InboxResponse, type NotificationPreferences, type NotificationReason, type VerifiedNotificationAddress } from '@flux/contracts';
 import { emailUnitOfWork, smtpNotificationMailer } from '../../apps/worker/src/notifications/index.js';
 import { PgBoss } from 'pg-boss';
 import { createVapidAuthorizer, deliverPush } from '../../apps/worker/src/push/index.js';
@@ -131,7 +131,8 @@ function quietNow(timeZone = 'UTC') {
  */
 async function queueEmailRow(userId: string, notificationId: string, addressKind: 'account' | 'extra' = 'account') {
   const id = randomUUID();
-  await pool.query('INSERT INTO notification_emails (id, notification_id, user_id, address_kind) VALUES ($1, $2, $3, $4)', [id, notificationId, userId, addressKind]);
+  const addressId = addressKind === 'extra' ? (await pool.query('SELECT id FROM notification_addresses WHERE user_id = $1 ORDER BY created_at LIMIT 1', [userId])).rows[0]?.id ?? null : null;
+  await pool.query('INSERT INTO notification_emails (id, notification_id, user_id, address_kind, address_id) VALUES ($1, $2, $3, $4, $5)', [id, notificationId, userId, addressKind, addressId]);
   await queue.send(NOTIFICATION_EMAIL_JOB, { emailId: id }, { singletonKey: id, startAfter: new Date(Date.now() + 3_600_000) });
   return id;
 }
@@ -346,9 +347,10 @@ describe('email and push delivery', () => {
       method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click',
     });
     assert.equal(oneClick.status, 200, await oneClick.clone().text());
-    assert.deepEqual(await oneClick.json(), { result: 'stopped', stopped: 'account', emailMe: false });
+    assert.deepEqual(await oneClick.json(), { result: 'stopped', stopped: 'account' });
     const settings = expectStatus(await reader.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
-    assert.equal(settings.emailMe, false, 'the sign-in address stops with Email me too');
+    assert.equal(settings.email.accountEnabled, false, 'the link switches off the address it came to');
+    assert.equal(settings.emailMe, true, 'and leaves Email me too as it was (C-49)');
     // Unsubscribing changes nothing about sign-in.
     assert.equal((await signIn(reader.email, password)).response.status, 200);
 
@@ -358,7 +360,7 @@ describe('email and push delivery', () => {
     await generatorCaughtUp();
     await sleep(1500);
     assert.equal((await mailsTo(reader.email)).length, count, 'no email after unsubscribing');
-    await prefs(reader, { emailMe: true });
+    await prefs(reader, { accountEnabled: true });
   });
 
   test('access is rechecked before email and push: someone removed meanwhile receives nothing', async () => {
@@ -455,31 +457,33 @@ describe('email and push delivery', () => {
 
   test('an extra address is verified by a single-use link, receives email once confirmed and can never sign in', async () => {
     const extra = `raf.home-${randomUUID()}@example.test`;
-    const added = expectStatus(await reader.browser.request('POST', '/api/v1/notification-address', { body: { email: extra } }), 200) as NotificationPreferences;
-    assert.deepEqual({ ...added.email.extra, sentAt: null }, { email: extra, verified: false, verifiedAt: null, sentAt: null });
-    expectStatus(await reader.browser.request('POST', '/api/v1/notification-address', { body: { email: reader.email.toUpperCase() } }), 409);
-    expectStatus(await reader.browser.request('POST', '/api/v1/notification-address/resend'), 429);
+    const added = expectStatus(await reader.browser.request('POST', '/api/v1/notification-addresses', { body: { email: extra } }), 200) as NotificationPreferences;
+    const [address] = added.email.addresses;
+    assert.deepEqual({ ...address, id: 'id', sentAt: null }, { id: 'id', email: extra, enabled: true, verified: false, verifiedAt: null, sentAt: null });
+    expectStatus(await reader.browser.request('POST', '/api/v1/notification-addresses', { body: { email: reader.email.toUpperCase() } }), 409);
+    expectStatus(await reader.browser.request('POST', `/api/v1/notification-addresses/${address!.id}/resend`), 429);
     const [verification] = await waitForMails(extra, 1, 'the verification email');
     const text = (await mailText(verification!.ID)).Text;
     assert.match(text, /can never be used to sign in/);
     const token = new URL(/(http\S+verify\?token=\S+)/.exec(text)![1]!).searchParams.get('token')!;
 
     // Only the account that added it can verify it.
-    expectStatus(await owner.browser.request('POST', '/api/v1/notification-address/verify', { body: { token } }), 400);
-    const verified = expectStatus(await reader.browser.request('POST', '/api/v1/notification-address/verify', { body: { token } }), 200) as NotificationPreferences;
-    assert.equal(verified.email.extra?.verified, true);
-    expectStatus(await reader.browser.request('POST', '/api/v1/notification-address/verify', { body: { token } }), 400, 'single use');
+    expectStatus(await owner.browser.request('POST', '/api/v1/notification-addresses/verify', { body: { token } }), 400);
+    const verified = expectStatus(await reader.browser.request('POST', '/api/v1/notification-addresses/verify', { body: { token } }), 200) as VerifiedNotificationAddress;
+    assert.equal(verified.confirmed, extra);
+    assert.equal(verified.email.addresses[0]?.verified, true);
+    expectStatus(await reader.browser.request('POST', '/api/v1/notification-addresses/verify', { body: { token } }), 400, 'single use');
 
     // An expired link is refused.
     const other = await person('Tess Marlow');
     const pending = `tess.other-${randomUUID()}@example.test`;
-    expectStatus(await other.browser.request('POST', '/api/v1/notification-address', { body: { email: pending } }), 200);
+    expectStatus(await other.browser.request('POST', '/api/v1/notification-addresses', { body: { email: pending } }), 200);
     const [otherMail] = await waitForMails(pending, 1, 'Tess\'s verification email');
     const otherToken = new URL(/(http\S+verify\?token=\S+)/.exec((await mailText(otherMail!.ID)).Text)![1]!).searchParams.get('token')!;
     await pool.query('UPDATE notification_address_tokens SET expires_at = now() - interval \'1 minute\' WHERE address_id = (SELECT id FROM notification_addresses WHERE user_id = $1)', [other.id]);
-    expectStatus(await other.browser.request('POST', '/api/v1/notification-address/verify', { body: { token: otherToken } }), 400);
+    expectStatus(await other.browser.request('POST', '/api/v1/notification-addresses/verify', { body: { token: otherToken } }), 400);
 
-    // Email me too (on again after the unsubscribe above) reaches every confirmed address: the sign-in address and this one.
+    // Email me too (on again after the unsubscribe above) reaches every address that is switched on: the sign-in address and this one.
     await prefs(reader, { emailMe: true });
     const accountBefore = (await mailsTo(reader.email)).length;
     const room = (await project(owner, workspaceId, 'Compost rota', 'workspace')).id;
@@ -502,10 +506,47 @@ describe('email and push delivery', () => {
     assert.equal((await mailsTo(extra)).length, extraMails);
     assert.equal((await signIn(reader.email, password)).response.status, 200, 'the sign-in address still works');
 
-    // Removing the extra address changes nothing else: Email me too stays as it was.
-    const removed = expectStatus(await reader.browser.request('DELETE', '/api/v1/notification-address'), 200) as NotificationPreferences;
-    assert.equal(removed.email.extra, null);
+    // A second address is listed after the first, gets a confirmation link and no notification until it is opened.
+    await skipCooldown(reader);
+    const second = `raf.work-${randomUUID()}@example.test`;
+    const both = expectStatus(await reader.browser.request('POST', '/api/v1/notification-addresses', { body: { email: second } }), 200) as NotificationPreferences;
+    assert.deepEqual(both.email.addresses.map((item) => [item.email, item.verified, item.enabled]), [[extra, true, true], [second, false, true]]);
+    expectStatus(await reader.browser.request('POST', '/api/v1/notification-addresses', { body: { email: second.toUpperCase() } }), 409);
+    await waitForMails(second, 1, 'the second verification email');
+
+    // Each address has its own switch: this one is off, so the next notification reaches only the sign-in address.
+    const off = expectStatus(await reader.browser.request('PATCH', `/api/v1/notification-addresses/${address!.id}`, { body: { enabled: false } }), 200) as NotificationPreferences;
+    assert.deepEqual(off.email.addresses.map((item) => item.enabled), [false, true]);
+    assert.equal(off.emailMe, true);
+    const next = await conversation(owner, (await project(owner, workspaceId, 'Compost rota II', 'workspace')).id, '@Raf Okoye the rota for November');
+    await waitForItem(reader, (entry) => entry.url?.endsWith(next.messages[0]!.id) === true, 'the next mention');
+    await waitForMails(reader.email, accountBefore + 2, 'the next email to the sign-in address');
+    await sleep(1000);
+    assert.equal((await mailsTo(extra)).length, extraMails, 'a switched-off address gets nothing');
+    assert.equal((await mailsTo(second)).length, 1, 'and neither does one that is not confirmed yet: only its link');
+    expectStatus(await reader.browser.request('PATCH', `/api/v1/notification-addresses/${randomUUID()}`, { body: { enabled: true } }), 404);
+    expectStatus(await owner.browser.request('PATCH', `/api/v1/notification-addresses/${address!.id}`, { body: { enabled: true } }), 404);
+
+    // Removing an address changes nothing else: Email me too and the other address stay as they were.
+    const removed = expectStatus(await reader.browser.request('DELETE', `/api/v1/notification-addresses/${address!.id}`), 200) as NotificationPreferences;
+    assert.deepEqual(removed.email.addresses.map((item) => item.email), [second]);
     assert.equal(removed.emailMe, true);
+    assert.equal(removed.email.accountEnabled, true);
+    expectStatus(await reader.browser.request('DELETE', `/api/v1/notification-addresses/${address!.id}`), 404);
+  });
+
+  test('a person keeps up to five extra addresses', async () => {
+    const someone = await person('Bea Quill');
+    for (let index = 0; index < MAX_EXTRA_ADDRESSES; index++) {
+      await skipCooldown(someone);
+      expectStatus(await someone.browser.request('POST', '/api/v1/notification-addresses', { body: { email: `bea.${index}-${randomUUID()}@example.test` } }), 200);
+    }
+    await skipCooldown(someone);
+    const refused = await someone.browser.request('POST', '/api/v1/notification-addresses', { body: { email: `bea.six-${randomUUID()}@example.test` } });
+    assert.equal(refused.status, 409);
+    assert.match(refused.text, /TOO_MANY_ADDRESSES/);
+    const stored = expectStatus(await someone.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
+    assert.equal(stored.email.addresses.length, MAX_EXTRA_ADDRESSES);
   });
 
   test('read-all quiets the inbox without deleting anything', async () => {
@@ -529,10 +570,10 @@ describe('recipient matrix and operator TLS (#113)', () => {
     await addMember(lead, space, jon, 'member');
     const extras = new Map<Person, string>([[iga, `iga.private-${randomUUID()}@gmail.test`], [jon, `jon.private-${randomUUID()}@gmail.test`]]);
     for (const [someone, address] of extras) {
-      expectStatus(await someone.browser.request('POST', '/api/v1/notification-address', { body: { email: address } }), 200);
+      expectStatus(await someone.browser.request('POST', '/api/v1/notification-addresses', { body: { email: address } }), 200);
       const [mail] = await waitForMails(address, 1, 'the verification email');
       const token = new URL(/(http\S+verify\?token=\S+)/.exec((await mailText(mail!.ID)).Text)![1]!).searchParams.get('token')!;
-      expectStatus(await someone.browser.request('POST', '/api/v1/notification-address/verify', { body: { token } }), 200);
+      expectStatus(await someone.browser.request('POST', '/api/v1/notification-addresses/verify', { body: { token } }), 200);
     }
     const counts = async () => Object.fromEntries(await Promise.all([iga, jon].flatMap((someone) => [
       mailsTo(someone.email).then((mails) => [`${someone.id}:account`, mails.length] as const),
@@ -874,10 +915,10 @@ describe('recipient matrix and operator TLS (#113)', () => {
 });
 
 async function verifyExtra(someone: Person, address: string) {
-  expectStatus(await someone.browser.request('POST', '/api/v1/notification-address', { body: { email: address } }), 200);
+  expectStatus(await someone.browser.request('POST', '/api/v1/notification-addresses', { body: { email: address } }), 200);
   const [mail] = await waitForMails(address, 1, 'the verification email');
   const token = new URL(/(http\S+verify\?token=\S+)/.exec((await mailText(mail!.ID)).Text)![1]!).searchParams.get('token')!;
-  expectStatus(await someone.browser.request('POST', '/api/v1/notification-address/verify', { body: { token } }), 200);
+  expectStatus(await someone.browser.request('POST', '/api/v1/notification-addresses/verify', { body: { token } }), 200);
 }
 
 /** Lets the next verification send pass the 60 s cooldown (the hourly window still counts). */
@@ -895,7 +936,7 @@ function unsubscribeUrl(headers: Record<string, string[]>) {
 async function oneClick(url: URL) {
   const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click' });
   assert.equal(response.status, 200);
-  return await response.json() as { result: string; stopped: string; emailMe: boolean };
+  return await response.json() as { result: string; stopped: string };
 }
 
 describe('review fixes: exact unsubscribe, bounded verification, quiet hours at delivery', () => {
@@ -925,7 +966,7 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     assert.equal((expectStatus(await someone.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences).quietHours.start, '20:45');
   });
 
-  test('an old unsubscribe link cannot stop a newer address, or a changed sign-in address', async () => {
+  test('an unsubscribe link for a removed address or a changed sign-in address changes nothing', async () => {
     const lead = await person('Uma Kerr');
     const reader = await person('Vic Lamb');
     const space = (await workspace(lead, 'Link lane')).id;
@@ -942,13 +983,15 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     const [toFirst] = await waitForMails(first, 2, 'the email to address A');
     const staleLink = unsubscribeUrl((await mailText(toFirst!.ID)).headers);
 
-    // Replace A with a verified B; B is the extra address now.
+    // Remove A and add a verified B: A's old link finds no such address and changes nothing.
+    const withFirst = expectStatus(await reader.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
+    expectStatus(await reader.browser.request('DELETE', `/api/v1/notification-addresses/${withFirst.email.addresses[0]!.id}`), 200);
     await skipCooldown(reader);
     await verifyExtra(reader, second);
-    assert.deepEqual(await oneClick(staleLink), { result: 'stale', stopped: 'extra', emailMe: true });
+    assert.deepEqual(await oneClick(staleLink), { result: 'stale', stopped: 'extra' });
     const settings = expectStatus(await reader.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
     assert.equal(settings.emailMe, true);
-    assert.equal(settings.email.extra?.email, second, 'B is still the extra address');
+    assert.deepEqual(settings.email.addresses.map((item) => [item.email, item.enabled]), [[second, true]], 'B is still switched on');
     await mention('Rota B');
     const [toSecond] = await waitForMails(second, 2, 'B still receives email');
     assert.equal((await mailText(toSecond!.ID)).Subject, 'New activity in Flux');
@@ -959,13 +1002,16 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     const accountLink = unsubscribeUrl((await mailText(toAccount!.ID)).headers);
     const renamed = `vic.new-${randomUUID()}@example.test`;
     await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [renamed, reader.id]);
-    assert.deepEqual(await oneClick(accountLink), { result: 'stale', stopped: 'account', emailMe: true });
+    assert.deepEqual(await oneClick(accountLink), { result: 'stale', stopped: 'account' });
     await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [reader.email, reader.id]);
-    // The current link still works.
-    assert.deepEqual(await oneClick(accountLink), { result: 'stopped', stopped: 'account', emailMe: false });
+    assert.equal((expectStatus(await reader.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences).email.accountEnabled, true);
+    // The current link still works, and switches off the sign-in address alone.
+    assert.deepEqual(await oneClick(accountLink), { result: 'stopped', stopped: 'account' });
+    const after = expectStatus(await reader.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
+    assert.deepEqual([after.email.accountEnabled, after.emailMe, after.email.addresses.map((item) => item.enabled)], [false, true, [true]]);
   });
 
-  test('the unsubscribe link of an extra address removes that address and nothing else; replaying it changes nothing, and each footer says what its link does', async () => {
+  test('the unsubscribe link of an extra address switches off that address and nothing else; replaying it changes nothing, and every footer says what its link does', async () => {
     const lead = await person('Wilf Crane');
     const reader = await person('Xan Pike');
     const space = (await workspace(lead, 'Extra link lane')).id;
@@ -980,47 +1026,53 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     await mention('Rota X');
     const [toExtra] = await waitForMails(extra, 2, 'the email to the extra address');
     const [toAccount] = await waitForMails(reader.email, 1, 'the email to the sign-in address');
-    // The footer names what the link does: the sign-in address's link stops all notification email, an extra address's only that address.
-    assert.match((await mailText(toAccount!.ID)).Text, /Stop all notification email:/);
+    // Each footer's link stops the address that email came to (C-49).
+    assert.match((await mailText(toAccount!.ID)).Text, /Stop notification email to this address:/);
     assert.match((await mailText(toExtra!.ID)).Text, /Stop notification email to this address:/);
     const link = unsubscribeUrl((await mailText(toExtra!.ID)).headers);
-    assert.deepEqual(await oneClick(link), { result: 'stopped', stopped: 'extra', emailMe: true });
+    assert.deepEqual(await oneClick(link), { result: 'stopped', stopped: 'extra' });
     const settings = expectStatus(await reader.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
-    assert.equal(settings.email.extra, null, 'the extra address is removed');
-    assert.equal(settings.emailMe, true, 'Email me too is untouched: the sign-in address still gets mail');
-    assert.deepEqual(await oneClick(link), { result: 'stale', stopped: 'extra', emailMe: true }, 'a replay changes nothing');
+    assert.deepEqual(settings.email.addresses.map((item) => [item.email, item.enabled, item.verified]), [[extra, false, true]], 'the address stays listed, switched off');
+    assert.equal(settings.emailMe, true, 'Email me too is untouched');
+    assert.equal(settings.email.accountEnabled, true, 'and so is the sign-in address, which still gets mail');
+    assert.deepEqual(await oneClick(link), { result: 'stopped', stopped: 'extra' }, 'a replay changes nothing');
     const before = (await mailsTo(reader.email)).length;
     await mention('Rota Y');
     await waitForMails(reader.email, before + 1, 'the next email to the sign-in address');
     await sleep(800);
-    assert.equal((await mailsTo(extra)).length, 2, 'the removed address got nothing more (its confirmation and one notification)');
+    assert.equal((await mailsTo(extra)).length, 2, 'the switched-off address got nothing more (its confirmation and one notification)');
+    // Switching it back on is the person\'s own choice, in settings.
+    expectStatus(await reader.browser.request('PATCH', `/api/v1/notification-addresses/${settings.email.addresses[0]!.id}`, { body: { enabled: true } }), 200);
   });
 
-  test('verification sends are bounded across add, replace and resend, also when requests race', async () => {
+  test('verification sends are bounded across add and resend, for all of a person\'s addresses, also when requests race', async () => {
     const someone = await person('Wes Moor');
     const target = `wes.target-${randomUUID()}@example.test`;
-    expectStatus(await someone.browser.request('POST', '/api/v1/notification-address', { body: { email: target } }), 200);
-    const again = await someone.browser.request('POST', '/api/v1/notification-address', { body: { email: target } });
-    assert.equal(again.status, 429, 'replacing does not reset the cooldown');
+    const added = expectStatus(await someone.browser.request('POST', '/api/v1/notification-addresses', { body: { email: target } }), 200) as NotificationPreferences;
+    const targetId = added.email.addresses[0]!.id;
+    const again = await someone.browser.request('POST', '/api/v1/notification-addresses', { body: { email: `wes.other-${randomUUID()}@example.test` } });
+    assert.equal(again.status, 429, 'a second address does not get around the cooldown');
     assert.ok(Number(again.headers.get('retry-after')) >= 1);
-    assert.equal((await someone.browser.request('POST', '/api/v1/notification-address/resend')).status, 429);
+    assert.equal((await someone.browser.request('POST', `/api/v1/notification-addresses/${targetId}/resend`)).status, 429);
 
-    // Concurrent replacements after the cooldown: exactly one sends.
+    // Concurrent additions after the cooldown: exactly one sends.
     await skipCooldown(someone);
-    const racing = await Promise.all([1, 2, 3, 4].map(() => someone.browser.request('POST', '/api/v1/notification-address', { body: { email: target } })));
+    const racers = [1, 2, 3, 4].map((n) => `wes.race${n}-${randomUUID()}@example.test`);
+    const racing = await Promise.all(racers.map((email) => someone.browser.request('POST', '/api/v1/notification-addresses', { body: { email } })));
     assert.deepEqual(racing.map((response) => response.status).sort(), [200, 429, 429, 429]);
 
     // Even with the cooldown out of the way, at most 5 per hour.
     const statuses: number[] = [];
     for (let i = 0; i < 6; i += 1) {
       await skipCooldown(someone);
-      const response = await someone.browser.request('POST', '/api/v1/notification-address', { body: { email: target } });
+      const response = await someone.browser.request('POST', `/api/v1/notification-addresses/${targetId}/resend`);
       statuses.push(response.status);
       if (response.status === 429) assert.ok(Number(response.headers.get('retry-after')) > 60, 'the hourly limit says when it resets');
     }
     assert.deepEqual(statuses, [200, 200, 200, 429, 429, 429], 'two sends before plus three here make five');
     await sleep(1000);
-    assert.equal((await mailsTo(target)).length, 5, 'five verification emails, no more');
+    const sent = (await mailsTo(target)).length + (await Promise.all(racers.map((email) => mailsTo(email)))).flat().length;
+    assert.equal(sent, 5, 'five verification emails in all, no more');
   });
 
   test('quiet hours switched on after a job was queued drop its email and push, and nothing catches up when they end (C-31)', async () => {

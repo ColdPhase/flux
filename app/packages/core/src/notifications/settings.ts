@@ -1,11 +1,14 @@
 import { randomUUID } from 'node:crypto';
+import { MAX_EXTRA_ADDRESSES } from '@flux/contracts';
 import type {
   MutedPlace,
   NotificationAddress,
   NotificationPreferences,
   SetMuteCommand,
+  SetNotificationAddressCommand,
   UnsubscribeResponse,
   UpdateNotificationPreferencesCommand,
+  VerifiedNotificationAddress,
 } from '@flux/contracts';
 import { ConflictError, DomainError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { SourceReadAuthorizer } from '../push/ports.js';
@@ -14,9 +17,9 @@ import type { AddressRecord, AddressRepository, PreferenceRepository, Unsubscrib
 import { applyPreferenceChange, formatClock } from './preferences.js';
 
 // Notification settings of one signed-in person (issue #116): preferences, muted places, the
-// extra delivery address and its verification, and one-click unsubscribe. A delivery address is
-// only a destination for notification email: nothing here touches sign-in, sessions, grants or
-// password reset, which keep using the account's own address.
+// extra delivery addresses, their switches and verification, and one-click unsubscribe. A delivery
+// address is only a destination for notification email: nothing here touches sign-in, sessions,
+// grants or password reset, which keep using the account's own address.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** A deliberately plain check; verification proves the mailbox. */
@@ -63,9 +66,8 @@ export interface Account {
   email: string;
 }
 
-function addressView(record: AddressRecord | null): NotificationAddress | null {
-  if (!record) return null;
-  return { email: record.email, verified: !!record.verifiedAt, verifiedAt: record.verifiedAt?.toISOString() ?? null, sentAt: record.lastSentAt?.toISOString() ?? null };
+function addressView(record: AddressRecord): NotificationAddress {
+  return { id: record.id, email: record.email, enabled: record.enabled, verified: !!record.verifiedAt, verifiedAt: record.verifiedAt?.toISOString() ?? null, sentAt: record.lastSentAt?.toISOString() ?? null };
 }
 
 export function normalizeEmail(value: unknown) {
@@ -89,7 +91,7 @@ export function createNotificationSettings(ports: SettingsPorts) {
       level: stored.level,
       emailMe: stored.emailMe,
       email: {
-        accountAddress: account.email, extra: addressView(await ports.addresses.find(account.userId)), available: ports.mailer.available,
+        accountAddress: account.email, accountEnabled: stored.accountEnabled, addresses: (await ports.addresses.list(account.userId)).map(addressView), available: ports.mailer.available,
         lastFailureAt: (await ports.unsubscribes.lastFailure(account.userId, new Date(now().getTime() - 24 * 3600_000)))?.toISOString() ?? null,
       },
       quietHours: { enabled: stored.quietEnabled, start: formatClock(stored.quietStart), end: formatClock(stored.quietEnd), timeZone: stored.timeZone },
@@ -136,26 +138,37 @@ export function createNotificationSettings(ports: SettingsPorts) {
       return view(account);
     },
 
-    /** Replaces the extra address and sends a single-use link that expires in 24 hours. */
+    /** Adds an extra address, switched on, and sends a single-use link that expires in 24 hours; nothing goes to it before it is opened. */
     async addAddress(account: Account, input: { email: unknown }) {
       if (!ports.mailer.available) throw new MailUnavailableError();
       const email = normalizeEmail(input?.email);
       if (email.toLowerCase() === account.email.toLowerCase()) {
-        throw new ConflictError('This is already your sign-in address; it receives notification email whenever “Email me too” is on', 'ADDRESS_IS_ACCOUNT');
+        throw new ConflictError('This is your sign-in address; it is already in the list', 'ADDRESS_IS_ACCOUNT');
       }
-      // Reserved before the address changes, so replacing it cannot reset the limit.
+      const current = await ports.addresses.list(account.userId);
+      if (current.some((item) => item.email.toLowerCase() === email.toLowerCase())) throw new ConflictError('This address is already in your list', 'ADDRESS_EXISTS');
+      if (current.length >= MAX_EXTRA_ADDRESSES) throw new ConflictError(`You can add up to ${MAX_EXTRA_ADDRESSES} more addresses; remove one first`, 'TOO_MANY_ADDRESSES');
+      // Reserved before the address is stored, so adding and removing cannot reset the limit.
       await reserveSend(account.userId);
-      const address = await ports.addresses.replace(account.userId, randomUUID(), email);
+      const address = await ports.addresses.add(account.userId, randomUUID(), email);
+      if (!address) throw new ConflictError('This address is already in your list', 'ADDRESS_EXISTS');
       await sendVerification(address);
       return view(account);
     },
 
-    async resend(account: Account) {
+    async resend(account: Account, addressId: string) {
       if (!ports.mailer.available) throw new MailUnavailableError();
-      const address = await ports.addresses.find(account.userId);
+      const address = await ports.addresses.find(account.userId, addressId);
       if (!address || address.verifiedAt) throw new NotFoundError('Unverified address', 'ADDRESS_NOT_PENDING');
       await reserveSend(account.userId);
       await sendVerification(address);
+      return view(account);
+    },
+
+    /** An extra address's own switch. An address not yet confirmed has one too, but nothing goes to it before it is. */
+    async setAddressEnabled(account: Account, addressId: string, command: SetNotificationAddressCommand) {
+      if (!command || typeof command.enabled !== 'boolean') throw new InvalidInputError('enabled must be true or false', 'INVALID_ADDRESS_ENABLED');
+      if (!await ports.addresses.setEnabled(account.userId, addressId, command.enabled)) throw new NotFoundError('Address', 'ADDRESS_NOT_FOUND');
       return view(account);
     },
 
@@ -163,43 +176,41 @@ export function createNotificationSettings(ports: SettingsPorts) {
      * Verifies the address with a token from the link, for the signed-in account that added it.
      * A used, expired, replaced or someone else's token gives the same answer.
      */
-    async verify(account: Account, input: { token: unknown }) {
+    async verify(account: Account, input: { token: unknown }): Promise<VerifiedNotificationAddress> {
       const token = typeof input?.token === 'string' ? input.token.trim() : '';
       if (!token || token.length > 128) throw new InvalidInputError('The verification link is not valid', 'VERIFICATION_INVALID');
       const address = await ports.addresses.consumeToken(account.userId, hashToken(token));
       if (!address) throw new InvalidInputError('This verification link has expired or was already used', 'VERIFICATION_INVALID');
-      return view(account);
+      return { ...await view(account), confirmed: address.email };
     },
 
-    /** Removing the extra address never starts email to the sign-in address by itself. */
-    async removeAddress(account: Account) {
-      if (!await ports.addresses.remove(account.userId)) throw new NotFoundError('Address', 'ADDRESS_NOT_FOUND');
+    /** Removing an extra address never switches another address on by itself. */
+    async removeAddress(account: Account, addressId: string) {
+      if (!await ports.addresses.remove(account.userId, addressId)) throw new NotFoundError('Address', 'ADDRESS_NOT_FOUND');
       return view(account);
     },
   };
 }
 
 /**
- * One-click unsubscribe (RFC 8058) with the token from one email. The link of the sign-in address turns
- * "Email me too" off, which stops notification email to every address; the link of an extra address removes that
- * address. Either only while that address is still the person's current one of that kind: a link from a replaced
- * extra address or a changed sign-in address is harmless (`stale`). It needs no session and changes nothing but
- * where notification email goes. Repeating it is harmless.
+ * One-click unsubscribe (RFC 8058) with the token from one email. It switches off the address that email came to (C-49): the
+ * sign-in address's own switch, or the extra address's. The person's other addresses and "Email me too" keep their state, and
+ * the address stays in the list to be switched back on. A link whose address has since been removed or changed is harmless
+ * (`stale`). It needs no session and changes nothing but where notification email goes. Repeating it is harmless.
  */
 export async function unsubscribe(ports: Pick<SettingsPorts, 'preferences' | 'unsubscribes' | 'addresses'>, token: unknown): Promise<UnsubscribeResponse> {
   const value = typeof token === 'string' ? token.trim() : '';
   if (!value || value.length > 128) throw new NotFoundError('Unsubscribe link', 'UNSUBSCRIBE_INVALID');
   const email = await ports.unsubscribes.findByToken(hashToken(value));
   if (!email) throw new NotFoundError('Unsubscribe link', 'UNSUBSCRIBE_INVALID');
-  const current = email.addressKind === 'account' ? await ports.unsubscribes.accountAddress(email.userId) : await ports.unsubscribes.verifiedExtraAddress(email.userId);
-  if (!email.address || !current || current.toLowerCase() !== email.address.toLowerCase()) {
-    return { result: 'stale', stopped: email.addressKind, emailMe: (await ports.preferences.get(email.userId)).emailMe };
+  if (email.addressKind === 'account') {
+    const current = await ports.unsubscribes.accountAddress(email.userId);
+    if (!email.address || !current || current.toLowerCase() !== email.address.toLowerCase()) return { result: 'stale', stopped: 'account' };
+    await ports.preferences.modify(email.userId, (stored) => ({ ...stored, accountEnabled: false }));
+    return { result: 'stopped', stopped: 'account' };
   }
-  // The sign-in address stops with "Email me too"; an extra address is removed (step 3 gives each address its own switch).
-  if (email.addressKind === 'extra') {
-    await ports.addresses.remove(email.userId);
-    return { result: 'stopped', stopped: 'extra', emailMe: (await ports.preferences.get(email.userId)).emailMe };
-  }
-  const { emailMe } = await ports.preferences.modify(email.userId, (stored) => ({ ...stored, emailMe: false }));
-  return { result: 'stopped', stopped: 'account', emailMe };
+  const extra = email.addressId ? await ports.addresses.find(email.userId, email.addressId) : null;
+  if (!email.address || !extra || extra.email.toLowerCase() !== email.address.toLowerCase()) return { result: 'stale', stopped: 'extra' };
+  await ports.addresses.setEnabled(email.userId, extra.id, false);
+  return { result: 'stopped', stopped: 'extra' };
 }

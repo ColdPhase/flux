@@ -7,7 +7,7 @@ import { readsSource } from '../push/notifications.js';
 import type { SourceLookup } from '../push/ports.js';
 import { isQuestion, mentions } from './addressing.js';
 import type { GeneratorEvent, GeneratorPorts, GeneratorUnitOfWork, NotificationFacts } from './ports.js';
-import { channelsOf, EMAIL_KINDS, inQuietHours } from './preferences.js';
+import { channelsOf, inQuietHours } from './preferences.js';
 
 // Notifications from committed domain events (issue #116, foundation 8.9). The worker reads the
 // event log after its cursor, in commit order, and for each event decides who it concerns and
@@ -244,10 +244,8 @@ async function deliver(ports: GeneratorPorts, event: GeneratorEvent, candidate: 
   }
   if (channels.email && options.emailAvailable
     && !await ports.emailedRecently(candidate.userId, candidate.source, new Date(now.getTime() - EMAIL_CALM_WINDOW_MS))) {
-    for (const addressKind of EMAIL_KINDS) {
-      const emailId = randomUUID();
-      if (await ports.insertEmail({ id: emailId, notificationId, userId: candidate.userId, addressKind })) await ports.enqueueEmail({ emailId });
-    }
+    // One copy for each address that is switched on: the sign-in address, and every confirmed extra address (C-49).
+    for (const emailId of await ports.insertEmails({ notificationId, userId: candidate.userId, account: preferences.accountEnabled })) await ports.enqueueEmail({ emailId });
   }
   return true;
 }

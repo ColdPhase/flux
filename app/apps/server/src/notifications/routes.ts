@@ -1,13 +1,13 @@
 import type { FastifyInstance } from 'fastify';
 import {
-  NOTIFICATION_ADDRESS_PATH,
-  NOTIFICATION_ADDRESS_RESEND_PATH,
+  NOTIFICATION_ADDRESSES_PATH,
   NOTIFICATION_ADDRESS_VERIFY_PATH,
   NOTIFICATION_MUTES_PATH,
   NOTIFICATION_PREFERENCES_PATH,
   NOTIFICATION_UNSUBSCRIBE_PATH,
   type AddNotificationAddressCommand,
   type SetMuteCommand,
+  type SetNotificationAddressCommand,
   type UpdateNotificationPreferencesCommand,
   type VerifyNotificationAddressCommand,
 } from '@flux/contracts';
@@ -60,6 +60,7 @@ export async function notificationRoutes(app: FastifyInstance, { db, sessions, s
         type: 'object', additionalProperties: false,
         properties: {
           emailMe: { type: 'boolean' },
+          accountEnabled: { type: 'boolean' },
           quietHours: {
             type: 'object', additionalProperties: false,
             properties: { enabled: { type: 'boolean' }, start: { type: 'string', maxLength: 5 }, end: { type: 'string', maxLength: 5 }, timeZone: { type: 'string', maxLength: 64 } },
@@ -79,19 +80,23 @@ export async function notificationRoutes(app: FastifyInstance, { db, sessions, s
     },
   }, async (request) => settings.setMute(await account(request), request.body));
 
-  app.post<{ Body: AddNotificationAddressCommand }>(NOTIFICATION_ADDRESS_PATH, {
+  app.post<{ Body: AddNotificationAddressCommand }>(NOTIFICATION_ADDRESSES_PATH, {
     schema: { body: { type: 'object', required: ['email'], additionalProperties: false, properties: { email: { type: 'string', maxLength: 320 } } } },
   }, async (request) => settings.addAddress(await account(request), request.body));
 
-  app.delete(NOTIFICATION_ADDRESS_PATH, async (request) => settings.removeAddress(await account(request)));
+  app.patch<{ Params: { addressId: string }; Body: SetNotificationAddressCommand }>(`${NOTIFICATION_ADDRESSES_PATH}/:addressId`, {
+    schema: { body: { type: 'object', required: ['enabled'], additionalProperties: false, properties: { enabled: { type: 'boolean' } } } },
+  }, async (request) => settings.setAddressEnabled(await account(request), request.params.addressId, request.body));
 
-  app.post(NOTIFICATION_ADDRESS_RESEND_PATH, async (request) => settings.resend(await account(request)));
+  app.delete<{ Params: { addressId: string } }>(`${NOTIFICATION_ADDRESSES_PATH}/:addressId`, async (request) => settings.removeAddress(await account(request), request.params.addressId));
+
+  app.post<{ Params: { addressId: string } }>(`${NOTIFICATION_ADDRESSES_PATH}/:addressId/resend`, async (request) => settings.resend(await account(request), request.params.addressId));
 
   app.post<{ Body: VerifyNotificationAddressCommand }>(NOTIFICATION_ADDRESS_VERIFY_PATH, {
     schema: { body: { type: 'object', required: ['token'], additionalProperties: false, properties: { token: { type: 'string', maxLength: 128 } } } },
   }, async (request) => settings.verify(await account(request), request.body));
 
-  // No session: the token is the authority, and it can only stop notification email: all of it (the sign-in address's link) or an extra address's.
+  // No session: the token is the authority, and it can only switch off notification email to the address that email came to.
   app.post<{ Querystring: { token?: string }; Body: { token?: string } | undefined }>(NOTIFICATION_UNSUBSCRIBE_PATH, async (request) => {
     const token = request.query.token ?? (request.body && typeof request.body === 'object' ? request.body.token : undefined);
     return unsubscribe(settingsPorts(db, mailer, publicOrigin), token);

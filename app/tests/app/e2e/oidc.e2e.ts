@@ -111,11 +111,11 @@ async function waitFor<T>(check: () => Promise<T | null | false>, what: string, 
 }
 
 async function verifyExtra(context: BrowserContext, address: string) {
-  await api(context, 'POST', '/api/v1/notification-address', { email: address });
+  await api(context, 'POST', '/api/v1/notification-addresses', { email: address });
   const [mail] = await waitFor(async () => { const found = await mailsTo(address); return found.length ? found : null; }, 'the verification email');
   const text = await (await fetch(`${mailpit}/api/v1/message/${mail!.ID}`)).json() as { Text: string };
   const token = new URL(/(http\S+verify\?token=\S+)/.exec(text.Text)![1]!).searchParams.get('token')!;
-  await api(context, 'POST', '/api/v1/notification-address/verify', { token });
+  await api(context, 'POST', '/api/v1/notification-addresses/verify', { token });
 }
 
 async function mailText(id: string) {
@@ -233,15 +233,17 @@ test('another single sign-on person cannot claim or receive at someone else\'s v
   // Bob verified his own address moments ago; let this send pass the 60 s per-person cooldown.
   await pool.query("UPDATE notification_verification_sends SET last_sent_at = now() - interval '2 minutes' WHERE user_id = $1", [state.bobId]);
   // Bob names Alice's verified private address as his own. It stays an unverified address of his.
-  const added = await api<{ email: { extra: { email: string; verified: boolean } | null } }>(bobContext, 'POST', '/api/v1/notification-address', { email: state.extra });
-  assert.deepEqual({ email: added.email.extra?.email, verified: added.email.extra?.verified }, { email: state.extra, verified: false });
+  const added = await api<{ email: { addresses: { id: string; email: string; verified: boolean }[] } }>(bobContext, 'POST', '/api/v1/notification-addresses', { email: state.extra });
+  // Bob already holds his own verified private address; Alice's is a second, unverified one beside it.
+  const named = added.email.addresses.find((item) => item.email === state.extra);
+  assert.deepEqual({ email: named?.email, verified: named?.verified }, { email: state.extra, verified: false });
   // Its verification link goes to that mailbox (Alice's), never to Bob, and only Bob's session could use it.
   const [verification] = await waitFor(async () => { const found = await mailsTo(state.extra!); return found.length === aliceExtraBefore + 1 ? found : null; }, 'the verification email');
   const token = new URL(/(http\S+verify\?token=\S+)/.exec((await mailText(verification!.ID)).Text)![1]!).searchParams.get('token')!;
-  const aliceTries = await aliceContext.request.post(`${origin}/api/v1/notification-address/verify`, { data: { token }, headers: { origin } });
+  const aliceTries = await aliceContext.request.post(`${origin}/api/v1/notification-addresses/verify`, { data: { token }, headers: { origin } });
   assert.equal(aliceTries.status(), 400, 'Alice\'s session cannot verify the address Bob added');
-  const alicePrefs = await api<{ email: { extra: { email: string; verified: boolean } | null } }>(aliceContext, 'GET', '/api/v1/notification-preferences');
-  assert.deepEqual({ email: alicePrefs.email.extra?.email, verified: alicePrefs.email.extra?.verified }, { email: state.extra, verified: true }, 'Alice keeps her verified address');
+  const alicePrefs = await api<{ email: { addresses: { id: string; email: string; verified: boolean }[] } }>(aliceContext, 'GET', '/api/v1/notification-preferences');
+  assert.deepEqual({ email: alicePrefs.email.addresses[0]?.email, verified: alicePrefs.email.addresses[0]?.verified }, { email: state.extra, verified: true }, 'Alice keeps her verified address');
   const rows = (await pool.query('SELECT user_id, verified_at IS NOT NULL AS verified FROM notification_addresses WHERE lower(email) = lower($1) ORDER BY user_id', [state.extra])).rows;
   assert.deepEqual(rows.sort((a, b) => Number(b.verified) - Number(a.verified)), [{ user_id: state.aliceId, verified: true }, { user_id: state.bobId, verified: false }]);
   // Bob names that address as his own: it stays unconfirmed for him, so his notifications never reach it.
@@ -255,7 +257,7 @@ test('another single sign-on person cannot claim or receive at someone else\'s v
   assert.deepEqual({ aliceExtra: (await mailsTo(state.extra!)).length, bobAccount: (await mailsTo('bob@acme.test')).length },
     { aliceExtra: before.aliceExtra, bobAccount: before.bobAccount + 1 }, 'Bob\'s email reaches only his sign-in address, never Alice\'s mailbox');
   // Bob withdraws the address; Alice's stays verified.
-  await api(bobContext, 'DELETE', '/api/v1/notification-address');
+  await api(bobContext, 'DELETE', `/api/v1/notification-addresses/${named!.id}`);
   assert.equal((await pool.query('SELECT verified_at IS NOT NULL AS verified FROM notification_addresses WHERE user_id = $1', [state.aliceId])).rows[0].verified, true);
 });
 
@@ -331,8 +333,8 @@ test('a single sign-on session can be revoked or signed out, and an email link o
   const alice = await me(aliceContext);
   assert.equal(alice.body!.user.id, state.aliceId);
   assert.deepEqual((await api<{ id: string }[]>(aliceContext, 'GET', '/api/v1/workspaces')).map((entry) => entry.id).sort(), [state.company!, state.workspace!].sort());
-  const preferences = await api<{ email: { extra: { email: string; verified: boolean } | null } }>(aliceContext, 'GET', '/api/v1/notification-preferences');
-  assert.deepEqual({ email: preferences.email.extra?.email, verified: preferences.email.extra?.verified }, { email: state.extra, verified: true });
+  const preferences = await api<{ email: { addresses: { id: string; email: string; verified: boolean }[] } }>(aliceContext, 'GET', '/api/v1/notification-preferences');
+  assert.deepEqual({ email: preferences.email.addresses[0]?.email, verified: preferences.email.addresses[0]?.verified }, { email: state.extra, verified: true });
   // Both mailboxes for the email-change check that follows.
   await api(aliceContext, 'PATCH', '/api/v1/notification-preferences', { emailMe: true });
 });
@@ -348,8 +350,8 @@ test('the same subject keeps the same person, grants and verified address when t
   assert.equal(alice.body!.user.email, state.extra, 'with the provider\'s new verified email');
   const workspaces = await api<{ id: string }[]>(again, 'GET', '/api/v1/workspaces');
   assert.deepEqual(workspaces.map((item) => item.id).sort(), [state.company!, state.workspace!].sort(), 'grants stay with the person');
-  const preferences = await api<{ email: { extra: { email: string; verified: boolean } | null } }>(again, 'GET', '/api/v1/notification-preferences');
-  assert.deepEqual({ email: preferences.email.extra?.email, verified: preferences.email.extra?.verified }, { email: state.extra, verified: true });
+  const preferences = await api<{ email: { addresses: { id: string; email: string; verified: boolean }[] } }>(again, 'GET', '/api/v1/notification-preferences');
+  assert.deepEqual({ email: preferences.email.addresses[0]?.email, verified: preferences.email.addresses[0]?.verified }, { email: state.extra, verified: true });
   // Account and extra are now one mailbox: one message, not two.
   const before = (await mailsTo(state.extra!)).length;
   const room = await api<{ id: string }>(bobContext, 'POST', `/api/v1/workspaces/${state.workspace}/projects`, { name: 'Shared mailbox', visibility: 'workspace' });

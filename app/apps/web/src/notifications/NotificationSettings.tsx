@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router';
-import { type NotificationLevel, type NotificationPreferences, type UpdateNotificationPreferencesCommand } from '@flux/contracts';
+import { MAX_EXTRA_ADDRESSES, type NotificationAddress, type NotificationLevel, type NotificationPreferences, type UpdateNotificationPreferencesCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
 import { InstallFlux, NotificationsButton } from '../pwa';
@@ -8,7 +8,7 @@ import { getPushState, pushOnServer } from '../pwa/push';
 import { SwitchRow } from '../ui/SwitchRow';
 import { captureNotificationSession, isCurrentNotificationSession } from './session';
 import { Button, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
-import { addAddress, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
+import { addAddress, getPreferences, removeAddress, resendVerification, setAddressEnabled, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
 import './notifications.css';
 
 type MutedPlace = NotificationPreferences['muted'][number];
@@ -140,7 +140,12 @@ function AccountNotificationSettings() {
   const missing = pushServerOff && !email.available ? 'Push and email aren’t set up on this Flux server, so everything waits in your Inbox.'
     : pushServerOff ? 'Push isn’t set up on this Flux server. Your inbox always works.'
       : !email.available ? 'Email isn’t set up on this Flux server. Your inbox and push still work.' : '';
-  const addresses = 1 + (email.extra?.verified ? 1 : 0);
+  // The addresses a notification email goes to: the sign-in address and each confirmed extra one that is switched on (C-49).
+  const addresses = (email.accountEnabled ? 1 : 0) + email.addresses.filter((item) => item.verified && item.enabled).length;
+  const switchExtra = (id: string, enabled: boolean) => {
+    setPrefs((current) => current && { ...current, email: { ...current.email, addresses: current.email.addresses.map((item) => item.id === id ? { ...item, enabled } : item) } });
+    void save(() => setAddressEnabled(id, enabled));
+  };
   const muted = new Set(prefs.muted.map((place) => `${place.type}:${place.id}`));
   const mutable = [
     ...projects.map((project) => ({ type: 'project' as const, id: project.id, name: project.name })),
@@ -186,7 +191,7 @@ function AccountNotificationSettings() {
       <div className="sset-card" role="group" aria-labelledby={ids.where}>
         {email.available ? (
           <SwitchRow label="Email me too" checked={prefs.emailMe}
-            detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : `To ${addresses} ${addresses === 1 ? 'address' : 'addresses'}`}
+            detail={prefs.level === 'nothing' ? 'Not used while you hear about Nothing' : addresses === 0 ? 'No address is switched on' : `To ${addresses} ${addresses === 1 ? 'address' : 'addresses'}`}
             onChange={(emailMe) => change({ emailMe }, (current) => ({ ...current, emailMe }))} />
         ) : null}
         {pushServerOff ? null : (
@@ -202,13 +207,15 @@ function AccountNotificationSettings() {
             <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span><b>A recent notification email could not be delivered.</b> Flux will retry for a while. Everything is in your inbox.</span></p>
           ) : null}
           <div className="sset-card" role="group" aria-labelledby={ids.email}>
-            <div className="sset-row">
-              <span className="sset-row__ic" aria-hidden="true"><Icon name="mail" size={16} /></span>
-              <span className="sset-row__b"><span className="sset-row__t">{email.accountAddress}</span><span className="sset-row__s">Your sign-in address</span></span>
-            </div>
-            <ExtraAddress prefs={prefs} save={save} />
+            <SwitchRow icon={<Icon name="mail" size={16} />} label={email.accountAddress} switchLabel={`Notification email to ${email.accountAddress}`}
+              detail={email.accountEnabled ? 'Your sign-in address' : 'Your sign-in address · switched off'} checked={email.accountEnabled}
+              onChange={(accountEnabled) => change({ accountEnabled }, (current) => ({ ...current, email: { ...current.email, accountEnabled } }))} />
+            {email.addresses.map((address) => <ExtraAddress key={address.id} address={address} save={save} onSwitch={switchExtra} />)}
+            <AddAddress full={email.addresses.length >= MAX_EXTRA_ADDRESSES} save={save} />
           </div>
-          <p className="sset-note">We send a confirmation link to a new address before any notification goes there.</p>
+          <p className="sset-note">
+            {prefs.emailMe ? 'We send a confirmation link to a new address before any notification goes there.' : '“Email me too” is off, so no address gets notification email. Each address keeps its own switch.'}
+          </p>
         </>
       ) : null}
 
@@ -311,13 +318,34 @@ function QuietHours({ prefs, open, panelId, onToggle, onChange }: { prefs: Notif
 
 type Save = (run: () => Promise<NotificationPreferences>, done?: string, onError?: (error: unknown) => void) => Promise<boolean>;
 
-/** The one extra address: confirmed or waiting for its link, with Send again and Remove, or a field to add one. */
-function ExtraAddress({ prefs, save }: { prefs: NotificationPreferences; save: Save }) {
+/** One extra address: waiting for its link (Send again, Remove), or confirmed with its own switch and Remove. */
+function ExtraAddress({ address, save, onSwitch }: { address: NotificationAddress; save: Save; onSwitch: (id: string, enabled: boolean) => void }) {
+  const remove = <Button variant="quiet" size="sm" aria-label={`Remove ${address.email}`} onClick={() => void save(() => removeAddress(address.id), 'Address removed')}>Remove</Button>;
+  if (address.verified) {
+    return (
+      <SwitchRow icon={<Icon name="mail" size={16} />} label={address.email} switchLabel={`Notification email to ${address.email}`} checked={address.enabled} aside={remove}
+        detail={address.enabled ? 'Confirmed · receives notification email only' : 'Confirmed · switched off'} onChange={(enabled) => onSwitch(address.id, enabled)} />
+    );
+  }
+  return (
+    <div className="sset-row nset__extra">
+      <span className="sset-row__ic" aria-hidden="true"><Icon name="mail" size={16} /></span>
+      <span className="sset-row__b">
+        <span className="sset-row__t">{address.email}</span>
+        <span className="sset-row__s">Waiting for you to open the link we sent. It works once and expires in 24 hours.</span>
+      </span>
+      <Button variant="quiet" size="sm" aria-label={`Send again to ${address.email}`} onClick={() => void save(() => resendVerification(address.id), 'Sent again')}>Send again</Button>
+      {remove}
+    </div>
+  );
+}
+
+/** The field to add another address, until the person has as many as they may. */
+function AddAddress({ full, save }: { full: boolean; save: Save }) {
   const [value, setValue] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const inputId = useId();
-  const extra = prefs.email.extra;
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -335,19 +363,7 @@ function ExtraAddress({ prefs, save }: { prefs: NotificationPreferences; save: S
     }
   };
 
-  if (extra) {
-    return (
-      <div className="sset-row nset__extra">
-        <span className="sset-row__ic" aria-hidden="true"><Icon name="mail" size={16} /></span>
-        <span className="sset-row__b">
-          <span className="sset-row__t">{extra.email}</span>
-          <span className="sset-row__s">{extra.verified ? 'Confirmed · receives notification email only' : 'Waiting for you to open the link we sent. It works once and expires in 24 hours.'}</span>
-        </span>
-        {!extra.verified ? <Button variant="quiet" size="sm" onClick={() => void save(resendVerification, 'Sent again')}>Send again</Button> : null}
-        <Button variant="quiet" size="sm" onClick={() => void save(removeAddress, 'Address removed')}>Remove</Button>
-      </div>
-    );
-  }
+  if (full) return <p className="sset-row sset-row__s">You can keep up to {MAX_EXTRA_ADDRESSES} more addresses. Remove one to add another.</p>;
   return (
     <form className="sset-row nset__add" onSubmit={(event) => void submit(event)} noValidate>
       <label className="ui-vh" htmlFor={inputId}>Add another address</label>
@@ -384,7 +400,7 @@ function MutePicker({ places, onMute, pending }: { places: MutedPlace[]; onMute:
   );
 }
 
-/** `/settings/notifications/verify?token=`: confirms the extra address for the signed-in account. */
+/** `/settings/notifications/verify?token=`: confirms one extra address for the signed-in account. */
 export function VerifyAddress() {
   const [params] = useSearchParams();
   const token = params.get('token') ?? '';
@@ -393,7 +409,7 @@ export function VerifyAddress() {
   useEffect(() => {
     if (started.current) return;
     started.current = true;
-    verifyAddress(token).then((prefs) => setState({ status: 'done', email: prefs.email.extra?.email ?? '' }),
+    verifyAddress(token).then((prefs) => setState({ status: 'done', email: prefs.confirmed }),
       (error: unknown) => setState({ status: 'failed', text: message(error, 'The address could not be confirmed. Try again.') }));
   }, [token]);
   return (
@@ -425,13 +441,13 @@ export function UnsubscribePage() {
     setState('working');
     unsubscribe(token).then((result) => setState(result.result === 'stale' ? 'stale' : result.stopped), () => setState('failed'));
   };
-  // The link of the sign-in address turns "Email me too" off, which stops notification email to every address; an extra address's link removes that address.
-  const ask = 'Flux will stop sending notification email. If this message came to your sign-in address, that turns off “Email me too”, so no address of yours gets notification email any more; if it came to an extra address, that address is removed. Your Inbox and push stay as they are, and so does how you sign in.';
+  // Each email's link switches off the address it came to (C-49); the person's other addresses keep their own switches.
+  const ask = 'Flux will stop sending notification email to the address this message came to. Your other addresses, your Inbox and push stay as they are, and so does how you sign in. You can switch the address back on in notification settings.';
   const copy = {
-    ask: ['Stop notification emails?', ask],
-    working: ['Stop notification emails?', ask],
-    account: ['Emails stopped', '“Email me too” is now off, so Flux sends no notification email. Your Inbox and push are unchanged, and you can turn email back on in notification settings.'],
-    extra: ['Emails stopped', 'Flux removed this address and will not send notification email to it. Your Inbox, push and other addresses are unchanged.'],
+    ask: ['Stop notification emails to this address?', ask],
+    working: ['Stop notification emails to this address?', ask],
+    account: ['Emails stopped', 'Flux will not send notification email to your sign-in address any more. Your other addresses, your Inbox and push are unchanged, and you can switch it back on in notification settings.'],
+    extra: ['Emails stopped', 'Flux will not send notification email to this address any more. Your other addresses, your Inbox and push are unchanged, and you can switch it back on in notification settings.'],
     stale: ['This link no longer applies', 'It was for an address that is no longer one Flux emails, so nothing changed. You can manage your email addresses in notification settings.'],
     failed: ['This link has expired', 'You can change email in notification settings after signing in.'],
   }[state];
