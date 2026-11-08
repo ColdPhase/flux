@@ -17,8 +17,6 @@ export const docVersionsPath = (docId: string) => `${docPath(docId)}/versions`;
 export const docVersionPath = (docId: string, version: number) => `${docVersionsPath(docId)}/${version}`;
 /** Adds or updates the section for a result or decision ("Add to docs"). */
 export const docSectionsPath = (docId: string) => `${docPath(docId)}/sections`;
-/** Docs of every project in the workspace that the caller can currently read. */
-export const workspaceDocsPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/docs`;
 
 export const DOC_LIMITS = { title: 200, body: 100_000, reason: 500, mentions: 200, fileName: 200 } as const;
 

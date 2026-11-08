@@ -35,7 +35,7 @@ export async function removeAgent(tx: Database, composition: PersonalRunComposit
     await lockAssistantOwner(tx, actor.id);
     for (const held of await agentTaskRows(tx).heldBy(agentId.toLowerCase(), actor.id)) {
       try {
-        await workUseCases(tx).updateWork(actor, held.id, { owner: { kind: 'human', id: actor.id } }, held.version, 'agent_rule');
+        await workUseCases(tx).updateWork(actor, held.id, { owner: { kind: 'human', id: actor.id } }, held.version, 'agent_deleted');
       } catch (error) {
         if (!(error instanceof DomainError)) throw error;
       }

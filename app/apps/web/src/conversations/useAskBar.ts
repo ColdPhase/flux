@@ -13,11 +13,11 @@ import type { PaneCore } from './paneCore';
  * every space its owner belongs to; nobody asks a manager to let it in. A company owner or admin can open a space without being in it
  * (C-15): there the bar says the assistant works only in spaces they are in, and offers Add me, the same step as in Settings › Company.
  */
-export function useAskBar({ project, me, outside, revalidateRef }: PaneCore, assistant: ReturnType<typeof useConversationAssistant>, ask: AssistantAsk) {
+export function useAskBar({ project, me, outside, guest, revalidateRef }: PaneCore, assistant: ReturnType<typeof useConversationAssistant>, ask: AssistantAsk) {
   const navigate = useNavigate();
   const { openDetails } = useShellActions();
   const { setAskFailure } = ask;
-  const state = askState(assistant.status, outside);
+  const state = askState(assistant.status, outside, guest);
   // A refused ask of someone who belongs here: the owner can no longer read here, so neither can their assistant. (Someone outside is told by the state.)
   const notIn = !outside && ask.askFailureCode === 'PERSONAL_RUN_NO_PROJECT_ACCESS';
   const notInText = 'You can\'t open this space any more, so neither can your assistant.';

@@ -122,7 +122,9 @@ export async function loadActor(principal: AccessPrincipal, workspaceId: string,
     if (!agent || agent.revokedAt) return inactive;
     // An agent acts only while its owner is a company member, with exactly the owner's rights (F-036 AG-3). A guest has no AI (AG-2).
     const ownerRole = await memberRole(db, workspaceId, agent.ownerUserId, lock);
-    return { ...inactive, agent: { ownerUserId: agent.ownerUserId, ownerRole }, active: ownerRole !== null && ownerRole !== 'guest' };
+    // A guest of the company has no AI wherever else they hold a role: the company's role decides, not the agent's own workspace's (#1003).
+    return { ...inactive, agent: { ownerUserId: agent.ownerUserId, ownerRole },
+      active: ownerRole !== null && ownerRole !== 'guest' && !(await isCompanyGuest(db, agent.ownerUserId, { lock })) };
   }
   return inactive;
 }
@@ -255,6 +257,15 @@ export async function isCompanyGuest(db: DbExecutor, userId: string, options: { 
   const result = await db.execute<{ role: string }>(sql`SELECT m.role FROM workspace_members m JOIN workspaces w ON w.id = m.workspace_id
     WHERE m.user_id = ${userId} AND w.company${options.lock ? sql` FOR SHARE OF m` : sql``}`);
   return result.rows[0]?.role === 'guest';
+}
+
+/**
+ * SQL: the person in `userId` (a column or a value) is a guest of the company. Their agents, API keys and client connections are kept
+ * but hidden and refused while they are (#1035, C-50): a statement that lists or finds one of them adds `NOT` this, so the same rows come
+ * back when the person is a member again.
+ */
+export function companyGuestSql(userId: SQLWrapper): SQL {
+  return sql`EXISTS (SELECT 1 FROM workspace_members gm JOIN workspaces gw ON gw.id = gm.workspace_id WHERE gm.user_id = ${userId} AND gw.company AND gm.role = 'guest')`;
 }
 
 /**

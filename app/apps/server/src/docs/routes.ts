@@ -7,7 +7,6 @@ import {
   docVersionsPath,
   projectDocPreviewPath,
   projectDocsPath,
-  workspaceDocsPath,
   type AddDocSectionCommand,
   type CreateDocCommand,
   type DocPreviewCommand,
@@ -117,7 +116,4 @@ export async function docRoutes(app: FastifyInstance, { db, sessions }: Options)
     async (request) => docs.listVersions(await principal(request), request.params.docId, request.query));
   app.get<{ Params: { docId: string; version: string } }>(docVersionPath(':docId', ':version' as unknown as number),
     async (request) => docs.getVersion(await principal(request), request.params.docId, request.params.version));
-
-  app.get<{ Params: { workspaceId: string }; Querystring: PageQuery }>(workspaceDocsPath(':workspaceId'), { schema: { querystring: page } },
-    async (request) => docs.listWorkspaceDocs(await principal(request), request.params.workspaceId, request.query));
 }

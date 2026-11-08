@@ -19,7 +19,7 @@ interface Options {
  * Asking the person's own assistant in a conversation or a space's main conversation (#68, #842): the private prompt goes out, a refused one comes back
  * with the reason, and one made offline waits as "Sends when you're back" and goes out once on reconnect.
  */
-export function useAssistantAsk({ me, place, writable, outside, composerId }: PaneCore, { drafts, assistant, scrollRef, scrollToEnd }: Options) {
+export function useAssistantAsk({ me, place, writable, outside, guest, composerId }: PaneCore, { drafts, assistant, scrollRef, scrollToEnd }: Options) {
   const { helperComposer, setAsking, captureHelperScope } = drafts;
   const [askFailure, setAskFailure] = useState('');
   const [askFailureCode, setAskFailureCode] = useState<string | null>(null);
@@ -71,7 +71,7 @@ export function useAssistantAsk({ me, place, writable, outside, composerId }: Pa
     return () => { stopped = true; window.removeEventListener('online', flush); window.clearInterval(timer); };
   }, [heldHere, here]);
   async function sendToAssistant() {
-    if (!writable || drafts.askBusy || askState(assistant.status, outside).kind !== 'ready') return;
+    if (!writable || drafts.askBusy || askState(assistant.status, outside, guest).kind !== 'ready') return;
     const command = helperComposer.begin();
     if (!command) return;
     const active = captureHelperScope();

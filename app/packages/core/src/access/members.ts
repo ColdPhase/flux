@@ -100,6 +100,8 @@ export async function changeRole(principal: Principal, workspaceId: string, user
     if (isManager(target.role) && !isManager(role)) await dropUnlockPassword(tx, ports, workspaceId, userId, sealedChange);
     const updated = await workspaces.setRole(workspaceId, userId, role);
     if (role === 'guest') {
+      // Their agents, API keys and client connections are not touched: they are kept, hidden and refused while the person is a guest, and
+      // come back if they are a member again (AG-2, C-50). Every list and lookup of them reads the company role now.
       await workspaces.endSpaceAdmin(workspaceId, userId);
       // A guest of the company is in no encrypted space: becoming one ends the place, as leaving does, with the same key change (C-24).
       await endPlacesInEncryptedSpaces(principal, workspaceId, userId, tx, ports);

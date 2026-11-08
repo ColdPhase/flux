@@ -236,6 +236,8 @@ class MyAgentsJourney(unittest.TestCase):
         gus.goto("/settings")
         expect(gus.get_by_role("navigation", name="Settings sections").get_by_role("link", name="Account")).to_be_visible()
         expect(gus.get_by_role("navigation", name="Settings sections").get_by_role("link", name="AI", exact=True)).to_have_count(0)
+        # Messages lists no agent of a guest's, and the server lists none (#1035).
+        expect(gus.locator("[data-agent]")).to_have_count(0)
         gus.goto("/settings/agents")
         expect(gus.get_by_text("Guests don’t have AI.")).to_be_visible()
         expect(gus.get_by_role("region", name="Connect AI", exact=True)).to_have_count(0)

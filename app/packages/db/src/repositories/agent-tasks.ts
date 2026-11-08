@@ -78,7 +78,7 @@ export function agentTaskRows(db: DbExecutor) {
         await db.insert(ev).values({ kind: 'assigned', workId, ownerAgentId: owner.id, byKind: by.kind, byId: by.id });
         return;
       }
-      if (via === 'agent_rule' || (by.kind === 'human' && by.id === owner.id)) return;
+      if (via === 'agent_rule' || via === 'agent_deleted' || (by.kind === 'human' && by.id === owner.id)) return;
       if (by.kind === 'agent') {
         const [mine] = await db.select({ id: a.id }).from(a).where(and(eq(a.id, by.id), eq(a.ownerUserId, owner.id)));
         if (mine) return;

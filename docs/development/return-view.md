@@ -14,8 +14,10 @@ The Inbox is the one place that lists what needs the person ([#865](https://gith
 "Continue where you left off" row (the summary's `nextStep`, or the task in progress), the conversation's quiet "Unread"
 divider above the first unread item (the stream still reads the project summary when it opens and saves the point when
 the person leaves it), and the new-activity dot on a space in the sidebar. The summary's `scope`, `from`, `until`, `digest`
-and `history` parameters were used only by the recap; the web client no longer sends them and they are left for a
-follow-up that removes them from the API.
+and `history` parameters, `ReturnDigest`, `ReturnScope` and `ReturnPeriod` were used only by the recap and are gone from the
+API (#962): `GET /api/v1/return` takes a place and always starts at the saved return point, and a request that still sends
+one of them gets the plain summary, as the server does not read them. `GET /api/v1/workspaces/:workspaceId/docs` (the workspace-wide Wiki) and `ProjectWorkSummary.state`, which
+only the recap's "Now" read, went with them; nothing in the web app, the MCP tools or the local clients read any of the three.
 
 ## Return points
 
@@ -102,40 +104,11 @@ which the client says as "Due 4 Nov 2026" on Home's card, in What matters and in
 (reason: "Ari asked you in “…”."), "Review the result Ari attached" (reason: "It reports on
 “…”, which is yours."). When nothing needs you, there is no step.
 
-## What matters: the private project recap (#133)
+## What matters: the private project recap (#133), removed
 
-Accepted by the evaluator on [#133](https://github.com/ColdPhase/flux/issues/133#issuecomment-5901555136)
-(2026-09-30). It replaces the project's slim line with one compact **What matters** entry beside
-Details, which opens a private view of the Details panel. Since #763 A2 (2026-10-30) the header's "N needs you" counts
-this project's items of the Inbox's one "Needs you" queue (S1) and opens the Inbox on them (`/inbox?project=<id>`);
-What matters is a row in the header's More.
-
-- **"I have the context" moves a project's return point**, to the mark of the snapshot shown (and, since #763 A3,
-  leaving the project conversation does too, above).
-  Opening, reading, closing, choosing a scope or period and opening sources never move it. Chat
-  read markers and Home's behaviour are independent of it.
-- **Interface (additive; a call without the new parameters behaves as before):**
-  `GET /api/v1/return?place=…&id=…` with optional
-  - `scope=all|mine` (default `all`): `mine` keeps what needs you, your work (owned or created),
-    decisions you proposed or must decide, results about your work, and conversations you started
-    or wrote in;
-  - `from=last-visit|24h|7d` (default `last-visit`): a period starts at the reader's last audience
-    row at or before `now − period`, ignores the return point and never moves it;
-  - `until=<mark>`: keeps one snapshot; only rows up to that mark are read and `mark` is echoed;
-  - `digest=1`: adds `ReturnDigest`, the latest three whole messages of up to eight recently
-    active conversations (with how many more) and the recorded results, in the same scope.
-
-  The response adds `scope`, `period` and `since`. Unknown values are 400; a mark that is not the
-  reader's own is `INVALID_MARK`.
-- **One fixed mark per panel visit** across scope, period and digest requests. Newer changes are
-  announced ("Newer changes arrived … Show them") and never merged into the list being read.
-- **Every source is authorized for the current reader** by the same final check as the summary;
-  nothing is posted, notified or recorded as a shared event. There is no model: the digest quotes
-  messages.
-- **Client races:** requests are keyed by account, project, scope, period and digest, and a late
-  answer for another key is dropped. A source opened from an overlaid panel or phone sheet closes
-  it; reopening restores the same snapshot, choices, digest and scroll from memory only and asks
-  the server again, so access changes apply.
+The recap and its query options (`scope`, `from`, `until`, `digest`, `history`) were removed with the recap's panel (#865, #962). What
+stays of #133 is the rule that "I have the context" is the only thing that moves a project's return point: leaving the project
+conversation does too (#763 A3, above), and reading never does.
 
 ## Structure
 
@@ -157,8 +130,8 @@ What matters is a row in the header's More.
 the grouping and sources, the next step and how it changes when the question is answered,
 forward-only saving and restore, revoked access, and a restricted project leaking nothing (no
 items, ids, names or counts). It also covers a replacing decision (#871): the reader is told "Decision changed: …" and no task is
-told as set aside, nothing of a space the reader cannot read, nothing after access is revoked, and a plain acceptance is only a "New decision: …". `app/tests/app/return-recap.test.ts` covers #133's scope, period, `until` snapshot, digest, privacy
-(per person, no shared event, outsider and revoked 404) and refused parameters.
+told as set aside, nothing of a space the reader cannot read, nothing after access is revoked, and a plain acceptance is only a "New decision: …".
+It also covers that the removed recap parameters are not read: a request that still sends them gets the plain summary (#962).
 `app/tests/ui/test_return_view.py` (Playwright) covers Home's "Continue where you left off" (a reload keeps the
 row, following it moves Home's point, the first visit's starting point), leaving a conversation saving the project's point,
 matched viewports, and that another account's or a revoked person's items never show. The recap panel's browser tests

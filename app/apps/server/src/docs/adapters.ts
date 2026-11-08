@@ -1,4 +1,4 @@
-import { docLiveVersions, docRows, type DbExecutor, visibleFilter, type Database, type Transaction } from '@flux/db';
+import { docLiveVersions, docRows, type DbExecutor, type Database, type Transaction } from '@flux/db';
 import { createDocUseCases, recordEvent, type DocPorts, type DocRepository, type DocUnitOfWork } from '@flux/core';
 import { policyWorkAccess, workRepository } from '../work/adapters.js';
 import type { TransactionEventSession } from '../work/transaction-events.js';
@@ -10,14 +10,7 @@ import { withTaskUseErrors } from '../work/task-use-errors.js';
 // the #101 link rows, the event log and the Markdown renderer. Core defines the ports (#46).
 
 export function docRepository(tx: DbExecutor): DocRepository {
-  const rows = docRows(tx);
-  return {
-    ...rows,
-    /** The policy's own list condition (`visibleFilter`) is applied before the limit and in the total. */
-    async listVisible(principal, workspaceId, page) {
-      return rows.listVisible(workspaceId, await visibleFilter(principal, workspaceId, 'project', tx), page);
-    },
-  };
+  return docRows(tx);
 }
 
 export function docPorts(tx: DbExecutor, events?: DocPorts['events']): DocPorts {

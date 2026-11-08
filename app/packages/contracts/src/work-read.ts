@@ -14,7 +14,7 @@ export const projectWorkDetailPath = (projectId: string, kind: WorkObjectType, i
 export const WORK_GROUPS = ['needs', 'in_progress', 'blocked', 'open', 'parked', 'finished', 'rules', 'results'] as const;
 export type WorkGroup = typeof WORK_GROUPS[number];
 export type WorkCounts = Record<WorkGroup, number>;
-export const WORK_READ_LIMITS = { defaultPage: 50, page: 100, sourceIds: 100, relationObjects: 100, edges: 100, thoughtIds: 100, query: 200, cursor: 512, owners: 3 } as const;
+export const WORK_READ_LIMITS = { defaultPage: 50, page: 100, sourceIds: 100, relationObjects: 100, edges: 100, thoughtIds: 100, query: 200, cursor: 512 } as const;
 
 export interface WorkReadQuery {
   /** 1..100, default 50. A row page never hydrates implicit unlimited links. */
@@ -156,18 +156,6 @@ export interface ProjectWorkSummary {
   workTotal: number;
   /** Unparked open/in-progress/blocked work; the Tasks tab count. */
   unfinishedTotal: number;
-  state: {
-    rule: WorkReadRef | null;
-    /** The project's current (accepted) decisions, newest first, at most 5 (CW-15); `rule` is the first. */
-    rules?: WorkReadRef[];
-    proposal: WorkReadRef | null;
-    active: { count: number; first: WorkReadRef | null; owners: NamedPrincipal[]; ownerTotal: number };
-    blocked: { count: number; first: WorkReadRef | null };
-    open: { count: number; first: WorkReadRef | null };
-    history: { completed: number; notPursued: number; parked: number; firstWork: WorkReadRef | null;
-      decisionCount: number; firstDecision: WorkReadRef | null };
-    result: (WorkReadRef & { finding: ResultFinding }) | null;
-  };
 }
 
 export interface WorkPage<T> {

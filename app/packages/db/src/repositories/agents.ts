@@ -1,6 +1,6 @@
 import { and, asc, eq, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
-import { isCompanyGuest, type AccessPrincipal } from './access.js';
+import { companyGuestSql, isCompanyGuest, type AccessPrincipal } from './access.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -12,15 +12,17 @@ import type { DbExecutor } from './push.js';
 /**
  * Personal assistant identities are private discovery state; shared message attribution is separate (#522).
  * The condition over an agent id: the agent is not a person's assistant, or it is one that person's
- * connection is connected (a client's agent reaches what its owner reaches).
+ * connection is connected (a client's agent reaches what its owner reaches). The agents of a guest of the company are nobody's to see
+ * (they are kept, hidden and refused until the person is a member again, C-50), so they are in no list or picker.
  */
 export function visibleAgentIdentity(principal: AccessPrincipal, agentId: SQL = sql`${schema.agents.id}`): SQL {
   const assistant = schema.assistantSettings, connection = schema.agentConnections;
-  return sql`(not exists (select 1 from ${assistant} where ${assistant.agentId} = ${agentId}
+  return sql`((not exists (select 1 from ${assistant} where ${assistant.agentId} = ${agentId}
     and ${principal.kind === 'human' ? sql`${assistant.ownerUserId} <> ${principal.id}` : sql`true`})
     or exists (select 1 from ${connection}
       where ${connection.agentId} = ${agentId} and ${connection.computeSource} <> 'owner_assistant'
-      and ${connection.revokedAt} is null))`;
+      and ${connection.revokedAt} is null))
+    and not exists (select 1 from agents ga where ga.id = ${agentId} and ${companyGuestSql(sql`ga.owner_user_id`)}))`;
 }
 
 export function agentRepository(db: DbExecutor) {

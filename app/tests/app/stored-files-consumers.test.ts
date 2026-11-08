@@ -90,16 +90,8 @@ describe('a file-only message in every consumer that quotes it', () => {
     assert.deepEqual(bytes.items, []);
   });
 
-  test('the return list and digest quote a file-only message and opening as "1 attached file"', async () => {
-    const recap = expectStatus(await owner.browser.request('GET', `/api/v1/return?place=project&id=${place.id}&digest=1`), 200) as ReturnSummary;
-    const digest = recap.digest!;
-    const replyTalk = digest.conversations.find((entry) => entry.conversationId === talk.id);
-    assert.ok(replyTalk, 'the digest covers the conversation with the file-only reply');
-    assert.equal(replyTalk.quotes.find((quote) => quote.messageId === reply.id)?.excerpt, '1 attached file');
-    const openedTalk = digest.conversations.find((entry) => entry.conversationId === opened.id);
-    assert.ok(openedTalk, 'the digest covers the file-only opening');
-    assert.equal(openedTalk.opening, '1 attached file');
-    assert.equal(openedTalk.quotes.find((quote) => quote.messageId === opened.messages[0]!.id)?.excerpt, '1 attached file');
+  test('the return list quotes a file-only message as "1 attached file"', async () => {
+    const recap = expectStatus(await owner.browser.request('GET', `/api/v1/return?place=project&id=${place.id}`), 200) as ReturnSummary;
     // The "since you left" line for that conversation shows the file-only reply as its detail too.
     assert.equal(recap.items.find((item) => item.id === `conversation:${talk.id}`)?.detail, '1 attached file');
     assert.equal(JSON.stringify(recap).includes(SECRET), false);

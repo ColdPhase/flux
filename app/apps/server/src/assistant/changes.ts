@@ -124,7 +124,8 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     return (row) => principal?.kind === 'human' && (row.operation !== 'work.create' || row.ownerUserId === principal.id)
       && (!REMOVAL_OPERATIONS.has(row.operation) || principal.id === row.ownerUserId) && (principal.id === row.ownerUserId || projects.get(row.projectId) === true);
   }
-  async function view(list: AssistantChangeInView[], mayUndo: (row: AssistantChangeRow) => boolean = () => true): Promise<AssistantChange[]> {
+  /** `hideState`: a space the viewer can no longer read does not tell them where a hand-off's unit stands now (#1003). */
+  async function view(list: AssistantChangeInView[], mayUndo: (row: AssistantChangeRow) => boolean = () => true, hideState: (row: AssistantChangeRow) => boolean = () => false): Promise<AssistantChange[]> {
     const names = await rows().names(list.flatMap((row) => [row.ownerUserId, row.otherUserId, row.decidedBy].filter((id): id is string => !!id)));
     const states = await rows().runStates([...new Set(list.flatMap((row) => row.runId ? [row.runId] : []))]);
     // A hand-off says where the unit stands now, in the owner's words for the agent: "Codex hasn't started it yet".
@@ -136,7 +137,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       const forOther = row.operation === 'work.create' && row.waitReason === 'others' && row.otherUserId;
       return { id: row.id, runId: changeGroup(row), agentName: row.agentName, projectId: row.projectId, conversationId: row.conversationId, operation: row.operation,
         objectType: row.objectType, objectId: row.objectId, objectTitle: row.objectTitle, state: row.state, waitReason: row.waitReason, phrase, verb: words.verb,
-        line: threadLineRemoved(row, names) ?? handoffLine(row, units) ?? assistantWaitLine({ state: row.state, waitReason: row.waitReason, noun: words.noun, operation: row.operation,
+        line: threadLineRemoved(row, names) ?? (hideState(row) ? null : handoffLine(row, units)) ?? assistantWaitLine({ state: row.state, waitReason: row.waitReason, noun: words.noun, operation: row.operation,
           otherName: row.otherUserId ? names.get(row.otherUserId) ?? null : null, refusal: row.refusal,
           decidedByName: (row.state === 'applied_after_wait' || row.state === 'undone') && row.decidedBy ? names.get(row.decidedBy) ?? null : null }),
         forPerson: forOther ? { id: row.otherUserId!, name: names.get(row.otherUserId!) ?? '' } : null,
@@ -291,7 +292,11 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       for (const row of all) if (row.state === 'waiting' && !guestIn.has(row.projectId))
         guestIn.set(row.projectId, (await evaluateProject(principal, 'project.read', row.projectId, accessReader(db))).actor?.role === 'guest');
       const list = all.filter((row) => !(row.state === 'waiting' && guestIn.get(row.projectId)));
-      return { items: await view(list, await undoers(principal, list)) };
+      // Someone removed from a space still reads what their assistant did there, as before, but not where a hand-off's unit stands now.
+      const readable = new Map<string, boolean>();
+      for (const row of list) if (!readable.has(row.projectId))
+        readable.set(row.projectId, (await evaluateProject(principal, 'project.read', row.projectId, accessReader(db))).allowed);
+      return { items: await view(list, await undoers(principal, list), (row) => !readable.get(row.projectId)) };
     },
     /** Approve (or Delete) one waiting change. A target changed since applies nothing. */
     async apply(principal: Principal, changeId: string, expected?: number): Promise<AssistantChangeDecision> {

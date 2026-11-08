@@ -29,9 +29,12 @@ export async function createAgent(principal: Principal, workspaceId: string, com
   const agentName = name(command?.name);
   if (command.owner !== undefined) oneOf(command.owner, ['self'] as const, 'owner');
   return db.transaction(async (tx) => {
+    // The company's membership row first, as a change to guest takes it before it ends a person's places in other workspaces; the
+    // workspace's own row comes after, so the two orders cannot cross (#1003). The refusal still comes after the workspace's own.
+    const guest = await ports.agents(tx).isCompanyGuest(principal.id);
     enforce(await evaluateWorkspace(principal, 'agent.create', workspaceId, ports.access(tx), { lock: true }), 'workspace');
     // A guest of the company has no AI (AG-2, C-22), whatever role another workspace gives them (an encrypted space, #978).
-    if (await ports.agents(tx).isCompanyGuest(principal.id)) throw new ForbiddenError('A guest has no AI', 'GUEST_NO_AI');
+    if (guest) throw new ForbiddenError('A guest has no AI', 'GUEST_NO_AI');
     const id = randomUUID();
     const row = await ports.agents(tx).insert({ id, workspaceId, name: agentName, ownerUserId: principal.id, createdBy: principal.id });
     await recordEvent(eventPorts(ports, tx), principal, workspaceId, 'agent.created.v1', id, { owner: 'self' });

@@ -292,11 +292,26 @@ class NewProject(unittest.TestCase):
         expect(card.get_by_label("Repeat", exact=True)).to_be_visible()
         expect(card.get_by_role("button", name="Download recovery code")).to_be_visible()
         expect(card).to_contain_text("After each server restart, an admin of this space unlocks it")
+        # Hubert's answer on C-24 (2026-11-08, #980): company admins see the name, never the contents, and the creator is told so here, in one line.
+        admins = card.locator("[data-admins-see-name]")
+        expect(admins).to_have_text("Company admins will see this space’s name, never what’s in it.")
         shot(page, f"874-newspace-encrypted-1440-{UI_BROWSER}")
         # Off again before Create: the AI switch is back, and nothing is asked.
         encrypted.click()
         expect(card.get_by_role("switch", name="AI")).to_be_visible()
         expect(card.get_by_label("Your unlock password", exact=True)).to_have_count(0)
+        expect(card.locator("[data-admins-see-name]")).to_have_count(0)
+        # The phone says the same, inside the width of the card and the screen.
+        phone = self.page("light", PHONE)
+        phone_card, phone_encrypted = self.encrypted_card(phone, phone=True)
+        phone_encrypted.tap()
+        line = phone_card.locator("[data-admins-see-name]")
+        expect(line).to_have_text("Company admins will see this space’s name, never what’s in it.")
+        box, frame = line.bounding_box(), phone_card.bounding_box()
+        self.assertGreaterEqual(box["x"], frame["x"])
+        self.assertLessEqual(box["x"] + box["width"], frame["x"] + frame["width"] + 1)
+        self.assertLessEqual(phone.evaluate("document.documentElement.scrollWidth"), phone.evaluate("window.innerWidth"))
+        shot(phone, f"980-newspace-encrypted-390-{UI_BROWSER}")
 
     def test_09_creating_an_encrypted_space_asks_the_download_first_and_leaves_no_plain_space_behind(self) -> None:
         self.ensure_account()

@@ -96,7 +96,9 @@ describe('an encrypted space of the company', () => {
     const outsider = await create(ada, { name: 'Refused people', people: [stranger.id] });
     assert.equal(outsider.status, 409);
     assert.equal(codeOf(outsider), 'NOT_A_MEMBER');
-    for (const recoveryCode of ['AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA', 'short']) {
+    // One character, too short, the alphabet in order and backwards, every second character, and one block repeated to fill the code (#980).
+    for (const recoveryCode of ['AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA-AAAA', 'short', '0123-4567-89AB-CDEF-GHJK-MNPQ-RSTV-WXYZ', 'ZYXW-VTSR-QPNM-KJHG-FEDC-BA98-7654-3210',
+      '0246-8ACE-GJMP-RTWY-1357-9BDF-HKNQ-SVXZ', 'K7QD-2M9X-TR4J-8WNH-K7QD-2M9X-TR4J-8WNH']) {
       const weak = await create(ada, { name: 'Refused code', recoveryCode });
       assert.equal(weak.status, 400, recoveryCode);
       assert.equal(codeOf(weak), 'RECOVERY_CODE_INVALID');
@@ -125,6 +127,16 @@ describe('an encrypted space of the company', () => {
     // Deleting: a plain member of the space and a stranger cannot; the company's admin can, and it is gone with its keys.
     for (const who of [cy, stranger]) assert.equal((await who.browser.request('DELETE', encryptedSpacePath(space))).status, 404, who.email);
     expectStatus(await admin.browser.request('DELETE', encryptedSpacePath(space)), 204);
+    // Its people hear of it, and only they: one event for their lists, one Inbox notice each naming the space and who deleted it (#980).
+    const event = (await pool.query("SELECT id FROM events WHERE kind = 'project.deleted.v1' AND object_id = $1", [result.project!.id])).rows;
+    assert.equal(event.length, 1, 'the deletion is an event');
+    const heard = (await pool.query('SELECT recipient FROM event_audience WHERE event_id = $1 ORDER BY recipient', [event[0].id])).rows.map((row) => row.recipient as string);
+    assert.deepEqual(heard, [`human:${ada.id}`, `human:${cy.id}`].sort(), 'for the people who were in the space, not the admin who was outside it');
+    const notices = async (who: Person) => (await pool.query("SELECT title, body, url FROM notifications WHERE user_id = $1 AND reason = 'security' AND title LIKE 'Board minutes was deleted%'", [who.id])).rows;
+    const adminName = (await pool.query('SELECT name FROM auth_users WHERE id = $1', [admin.id])).rows[0].name as string;
+    for (const who of [ada, cy]) assert.deepEqual(await notices(who), [{ title: `Board minutes was deleted by ${adminName}`, body: '', url: null }], who.email);
+    assert.deepEqual(await notices(admin), [], 'whoever deleted it needs no notice of it');
+    assert.deepEqual(await notices(stranger), []);
     for (const table of ['workspaces', 'projects', 'workspace_members', 'workspace_holders', 'workspace_keys']) {
       const column = table === 'workspaces' ? 'id' : 'workspace_id';
       assert.equal((await pool.query(`SELECT count(*)::int AS n FROM ${table} WHERE ${column} = $1`, [space])).rows[0].n, 0, table);

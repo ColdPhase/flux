@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
 import { sql } from 'drizzle-orm';
 import { ZxcvbnFactory } from '@zxcvbn-ts/core';
@@ -6,7 +7,7 @@ import * as zxcvbnEnglish from '@zxcvbn-ts/language-en';
 import { WORKSPACE_ENCRYPTION_RESUME_JOB, type WorkspaceEncryptionResumeJob } from '@flux/contracts';
 import {
   authorize, createEncryptionUseCases, DerivationSemaphore, ForbiddenError, getWorkspace, keyPinStatus, keyringFromEnv, NotFoundError, ProcessKeys,
-  recordEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
+  principalKey, recordEvent, sealFor, swapFiles, swapSafety, testSwapRoot, type EncryptionPorts, type EncryptionUnitOfWork, type PasswordEstimator,
 } from '@flux/core';
 import { accessPorts, accessReader, configureRemovalPin, configureSeals, dropSealedSearchIndex, loadActor, workspaceEncryptionRows, type DbExecutor, type SealResolver, type Database } from '@flux/db';
 import { eventPorts } from '../events.js';
@@ -29,6 +30,11 @@ function encryptionPorts(tx: Database, boss: Pick<PgBoss, 'send'>): EncryptionPo
     },
     async event(principal, workspaceId, kind, data) {
       return recordEvent(eventPorts(tx), principal, workspaceId, kind, workspaceId, data);
+    },
+    async eventTo(principal, workspaceId, kind, objectId, data, recipients) {
+      const id = randomUUID();
+      await eventPorts(tx).repository.insert({ id, kind, objectId, actorId: principalKey(principal), data, workspaceId }, recipients);
+      return id;
     },
     async resume(workspaceId) {
       const job: WorkspaceEncryptionResumeJob = { workspaceId };

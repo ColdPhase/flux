@@ -31,6 +31,7 @@ function unitOfWork(db: Database): EncryptionUnitOfWork {
       rotation: keyRotationRows(tx as unknown as DbExecutor),
       access: { manager: async () => { throw new Error('The worker makes no access decision for encryption'); } },
       event: (principal, workspaceId, kind, data) => recordEvent(eventPorts(tx), principal, workspaceId, kind, workspaceId, data),
+      eventTo: async () => { throw new Error('The worker deletes no space'); },
       resume: async () => undefined,
     } as EncryptionPorts)),
   };

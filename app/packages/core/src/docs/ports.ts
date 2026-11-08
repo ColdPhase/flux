@@ -58,11 +58,6 @@ export interface DocRepository {
   locate(id: string): Promise<{ projectId: string } | null>;
   /** Docs of a project, the most recently changed first. */
   list(projectId: string, page: PageWindow): Promise<Paged<DocWithCurrent>>;
-  /**
-   * Docs of the workspace's projects that pass the policy's list filter (`visibleFilter`) for
-   * `principal`, applied before the page and the total.
-   */
-  listVisible(principal: Principal, workspaceId: string, page: PageWindow): Promise<Paged<DocWithCurrent>>;
   find(id: string, options?: { lock?: boolean }): Promise<DocWithCurrent | null>;
   version(id: string, version: number): Promise<DocVersionRecord | null>;
   /** Versions, newest first. */

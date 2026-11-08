@@ -39,7 +39,6 @@ version table.
 | `GET /api/v1/docs/:docId/versions`, `GET /api/v1/docs/:docId/versions/:version` | Newest first, each `{ version, title, reason, author, createdAt }`; one version adds `body`, `html` and `mentions`. |
 | `DELETE /api/v1/docs/:docId` | Deletes the page for everyone with access (#941, [below](#deleting-a-page-941)). Needs `If-Match: "<version>"` like an edit: 428 without, `409 VERSION_CONFLICT` with the latest doc when stale. `204`. A page that is gone, or that the caller cannot see, is `404 DOC_NOT_FOUND`; so a retry after the answer was lost is 404. |
 | `POST /api/v1/docs/:docId/sections` | "Add to docs": `{ from: { type: 'result' \| 'decision', id } }`, with `If-Match`. |
-| `GET /api/v1/workspaces/:workspaceId/docs` | Docs in every project of the workspace that the policy's `visibleFilter` lets the caller read, applied before the page and the total. The web app has no workspace-wide Wiki page any more (#865: the Wiki lives inside a space); the read stays for API clients. |
 
 Every POST/PATCH accepts `Idempotency-Key` through the shared runner in
 `app/apps/server/src/http/commands.ts`; a replay rechecks current project read access. Responses with

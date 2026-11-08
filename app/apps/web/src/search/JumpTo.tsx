@@ -180,8 +180,10 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
     </div>
   ) : state.status === 'failed' ? <p className="jump__empty" role="alert">{state.message}</p> : null;
 
-  // More than the dialog lists (it does not page): one quiet last line says so, and typing more words narrows the list.
-  const more = text && state.status === 'ready' && state.answer.next && found
+  // More than the dialog lists (it does not page): one quiet last line says so, and typing more words narrows the list. It stays while the
+  // next answer loads, as the rows above it do, so the dialog's bottom edge does not move on each keystroke.
+  const settled = state.status === 'ready' ? state.answer : state.status === 'loading' ? state.previous : null;
+  const more = text && settled?.next && found
     ? <p className="jump__hint jump__more">Showing {found} · type more words to narrow</p> : null;
 
   if (pickingWhere) {
