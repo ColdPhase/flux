@@ -1,5 +1,7 @@
 """Real same-tab account lifetime and same-owner queue controls for header composition.
 
+A notification save queued by one account is never sent as the next account to sign in to the same tab (#872).
+
 These identity/ring probes block service workers only to isolate the account boundary.
 The original project/header and dedicated PWA lanes retain enabled service workers.
 """
@@ -9,7 +11,6 @@ import os
 import re
 import time
 import unittest
-from datetime import datetime, timezone
 from uuid import uuid4
 from urllib.parse import urlsplit
 from playwright.sync_api import expect, sync_playwright
@@ -80,10 +81,7 @@ class CompositionProbe(unittest.TestCase):
 
     def instrument(self, page):
         epoch = uuid4().hex
-        page.evaluate("""epoch => {
-          window.__peer372={epoch,phase:'A',events:[]};
-          window.addEventListener('flux:pause-changed',e=>window.__peer372.events.push({phase:window.__peer372.phase,detail:e.detail}));
-        }""", epoch)
+        page.evaluate("epoch => { window.__peer372 = { epoch, phase: 'A' }; }", epoch)
         return epoch
 
     def hold_patch(self, page):
@@ -96,7 +94,7 @@ class CompositionProbe(unittest.TestCase):
             if 'route' not in held:
                 response = route.fetch()
                 self.assertEqual(response.status,200,'the first A request really committed before the response was held')
-                held.update(route=route,response=response,body=body,serverPause=response.json()['pause'])
+                held.update(route=route,response=response,body=body)
             else:
                 route.continue_()
         page.route('**/api/v1/notification-preferences',handler)
@@ -121,14 +119,12 @@ class CompositionProbe(unittest.TestCase):
         self.assertEqual(self.api(page,'GET','/api/v1/me')['user']['id'],B['id'])
         page.get_by_role('link',name=B['projectName'],exact=True).click()
         expect(page.locator('header.top').get_by_role('heading',level=1,name=B['projectName'],exact=True)).to_be_visible()
-        expect(page.locator('header.top').get_by_role('button',name=re.compile(r'^Focus · notifications paused until'))).to_have_count(0)
 
-    def test_01_account_switch_rejects_old_response_broadcast_and_queued_save(self):
+    def test_01_account_switch_rejects_old_response_and_queued_save(self):
         page,A = self.actor('Boundary A')
         other,B = self.actor('Boundary B')
-        baselineB = self.api(other,'PATCH','/api/v1/notification-preferences',{'level':'needsYou','pause':{'until':None},'quietHours':{'enabled':False}})
-        until=datetime.fromtimestamp(time.time()+3600,tz=timezone.utc).isoformat(timespec='milliseconds').replace('+00:00','Z')
-        self.api(page,'PATCH','/api/v1/notification-preferences',{'pause':{'until':until},'quietHours':{'enabled':False}})
+        baselineB = self.api(other,'PATCH','/api/v1/notification-preferences',{'level':'needsYou','quietHours':{'enabled':False}})
+        self.api(page,'PATCH','/api/v1/notification-preferences',{'quietHours':{'enabled':False}})
         self.settings(page,A)
         epoch=self.instrument(page)
         held,requests=self.hold_patch(page)
@@ -136,7 +132,6 @@ class CompositionProbe(unittest.TestCase):
             page.get_by_role('radio',name=re.compile(r'^Everything(?:\s|$)')).check()
             self.wait_held(page,held)
             self.assertEqual(held['body'],{'level':'everything'})
-            self.assertEqual(held['serverPause']['until'],until)
             page.get_by_role('radio',name='Nothing',exact=True).check()
             expect(page.get_by_role('radio',name='Nothing',exact=True)).to_be_checked()
             page.wait_for_timeout(100)
@@ -151,38 +146,29 @@ class CompositionProbe(unittest.TestCase):
             self.assertEqual(page.evaluate('window.__peer372?.epoch'),epoch)
             afterMe=self.api(page,'GET','/api/v1/me')['user']['id']
             after=self.api(page,'GET','/api/v1/notification-preferences')
-            events=page.evaluate('window.__peer372.events')
             postRequests=[r for r in requests if r['phase']=='B']
-            visible=page.locator('header.top').get_by_role('button',name=re.compile(r'^Focus · notifications paused until')).count()
-            observed={'engine':ENGINE,'sameDocument':True,'stillB':afterMe==B['id'],'beforeLevel':before['level'],
-                'afterLevel':after['level'],'beforePause':before['pause'],'afterPause':after['pause'],
-                'oldQueueRequestsAfterB':postRequests,'pauseEventsAfterB':[e for e in events if e['phase']=='B'],'focusPills':visible}
-            print('PEER_IDENTITY_OBSERVED '+json.dumps(observed),flush=True)
+            print('PEER_IDENTITY_OBSERVED '+json.dumps({'engine':ENGINE,'sameDocument':True,'stillB':afterMe==B['id'],'beforeLevel':before['level'],
+                'afterLevel':after['level'],'oldQueueRequestsAfterB':postRequests}),flush=True)
             self.assertEqual(afterMe,B['id'],'the held response must not change the signed-in identity')
             self.assertEqual(postRequests,[],'old A queued command must never dispatch using B cookies')
-            self.assertEqual([e for e in events if e['phase']=='B'],[],'old A completion must not broadcast into B session')
             self.assertEqual(after,baselineB,'B preferences must stay exactly unchanged')
-            self.assertEqual(visible,0,'A pause cannot be shown as B focus')
             self.settings(page,B)
             expect(page.locator('.nset__saved')).to_be_empty()
-            expect(page.locator('.nset__read-feedback')).to_have_count(0)
-            expect(page.locator('.nset > .nset__problem, .nset__mute-read').filter(has_text='Current notification')).to_have_count(0)
+            expect(page.locator('.nset > .nset__problem').filter(has_text='Current notification')).to_have_count(0)
             self.assertEqual(self.api(page,'GET','/api/v1/notification-preferences'),baselineB,'retired A feedback cannot affect current B settings')
         finally:
             if 'route' in held and not held.get('released'):
                 held['route'].fulfill(response=held['response'])
 
-    def test_02_same_owner_navigation_keeps_queued_save_and_confirmed_pause(self):
+    def test_02_same_owner_navigation_keeps_queued_save(self):
         page,A=self.actor('Same owner')
-        until=datetime.fromtimestamp(time.time()+3600,tz=timezone.utc).isoformat(timespec='milliseconds').replace('+00:00','Z')
-        self.api(page,'PATCH','/api/v1/notification-preferences',{'pause':{'until':until},'quietHours':{'enabled':False},'level':'needsYou'})
+        self.api(page,'PATCH','/api/v1/notification-preferences',{'quietHours':{'enabled':False},'level':'needsYou'})
         self.settings(page,A)
         epoch=self.instrument(page);held,requests=self.hold_patch(page)
         try:
-            page.get_by_role('button',name='Resume now',exact=True).click()
+            page.get_by_role('radio',name='Nothing',exact=True).check()
             self.wait_held(page,held)
-            self.assertEqual(held['body'],{'pause':{'until':None}})
-            self.assertEqual(held['serverPause'],{'until':None})
+            self.assertEqual(held['body'],{'level':'nothing'})
             page.get_by_role('radio',name=re.compile(r'^Everything(?:\s|$)')).check()
             expect(page.get_by_role('radio',name=re.compile(r'^Everything(?:\s|$)'))).to_be_checked()
             page.wait_for_timeout(100);self.assertEqual(len(requests),1)
@@ -192,11 +178,9 @@ class CompositionProbe(unittest.TestCase):
             held['route'].fulfill(response=held['response']);held['released']=True
             page.wait_for_timeout(1500)
             preferences=self.api(page,'GET','/api/v1/notification-preferences')
-            print('PEER_SAME_OWNER_OBSERVED '+json.dumps({'engine':ENGINE,'requests':requests,'level':preferences['level'],'pause':preferences['pause']}),flush=True)
+            print('PEER_SAME_OWNER_OBSERVED '+json.dumps({'engine':ENGINE,'requests':requests,'level':preferences['level']}),flush=True)
             self.assertEqual(self.api(page,'GET','/api/v1/me')['user']['id'],A['id'])
             self.assertEqual(preferences['level'],'everything','ordinary navigation keeps already queued same-session saves')
-            self.assertEqual(preferences['pause'],{'until':None})
-            expect(page.locator('header.top').get_by_role('button',name=re.compile(r'^Focus · notifications paused until'))).to_have_count(0)
         finally:
             if 'route' in held and not held.get('released'):
                 held['route'].fulfill(response=held['response'])

@@ -34,8 +34,8 @@ import { WorkReadProvider, useProjectWorkSummary } from '../work/WorkReadContext
 import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
 import { ProjectAgentStop } from './WorkingAgent';
-import { useFocus } from './focus';
-import { FocusPill, HeaderFaces, MoreMenu, type MoreItem } from './HeaderParts';
+import { HeaderFaces, MoreMenu, type MoreItem } from './HeaderParts';
+import { beginNotificationSession, retireNotificationSession } from '../notifications/session';
 import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, PhoneTitleMenu, phoneHidesDock, phoneOffersCreate, phonePlaces, type PhoneMenuItem } from './PhoneChrome';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
@@ -298,12 +298,11 @@ function AppLayoutContent() {
     try { if (next) localStorage.setItem(SIDEBAR_KEY, 'rail'); else localStorage.removeItem(SIDEBAR_KEY); } catch { /* this visit only */ }
     return next;
   }), []);
-  // Focus mode (`F`, F-026 S19): the rail, a quiet header, and push and email held by the server.
-  const focus = useFocus(me.user.id);
-  const focusing = !!focus.until && !phone;
-  const toggleFocus = focus.toggle;
-  // "[", the sidebar control and the More menu share one rule: under Focus, ending Focus shows the sidebar (F-026 rule 7).
-  const toggleSidebar = useCallback(() => { if (focusing) void toggleFocus(); else toggleRail(); }, [focusing, toggleFocus, toggleRail]);
+  // The account this tab shows owns the settings saves still queued (notifications/session.ts).
+  useEffect(() => {
+    const session = beginNotificationSession(me.user.id);
+    return () => retireNotificationSession(session);
+  }, [me.user.id]);
 
   const projectId = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const detailsOwner = useMemo(() => ({ accountId: me.user.id, projectId }), [me.user.id, projectId]);
@@ -337,10 +336,9 @@ function AppLayoutContent() {
     openNavigation() { setDetailsOpen(false); setNavOpen(true); },
     actionSlot,
     metadataSlot,
-    toggleFocus() { void toggleFocus(); },
-    toggleSidebar,
-    sidebarHidden: railed || focusing,
-  }), [toggleDetails, actionSlot, metadataSlot, projectId, detailsOwner, toggleSidebar, railed, toggleFocus, focusing, showPanel, hidePanel, reopenPanel, panelSlot, detailsOpen, detailsView, owned, labelOf]);
+    toggleSidebar: toggleRail,
+    sidebarHidden: railed,
+  }), [toggleDetails, actionSlot, metadataSlot, projectId, detailsOwner, toggleRail, railed, showPanel, hidePanel, reopenPanel, panelSlot, detailsOpen, detailsView, owned, labelOf]);
 
   // A link inside an overlaid panel or sheet (#117 overview) leads to its destination.
   const [shownPath, setShownPath] = useState(location.pathname);
@@ -436,23 +434,21 @@ function AppLayoutContent() {
     return () => document.removeEventListener('keydown', onKey);
   }, []);
 
-  // "[" collapses or expands the sidebar, "F" turns focus on and off, and "G" then "I" goes to the
-  // Inbox (F-026 §4 keyboard).
+  // "[" collapses or expands the sidebar, and "G" then "I" goes to the Inbox (F-026 §4 keyboard).
   useEffect(() => {
     let leader = 0;
     const onKey = (event: KeyboardEvent) => {
       if (event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented || isTyping(event.target)) return;
       if (document.getElementById('root')?.hasAttribute('data-modal')) return;
       // On a tablet the sidebar is always the rail (Spokój); "[" opens it as the drawer instead.
-      if (event.key === '[') { event.preventDefault(); if (tablet) setNavOpen((open) => !open); else toggleSidebar(); return; }
+      if (event.key === '[') { event.preventDefault(); if (tablet) setNavOpen((open) => !open); else toggleRail(); return; }
       const key = event.key.toLowerCase();
-      if (key === 'f' && !phone) { event.preventDefault(); void toggleFocus(); return; }
       if (key === 'g') { leader = Date.now(); return; }
       if (key === 'i' && Date.now() - leader < 1200) { event.preventDefault(); leader = 0; navigate('/inbox'); }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [toggleSidebar, toggleFocus, navigate, phone, tablet]);
+  }, [toggleRail, navigate, tablet]);
 
 
   // Typing on a touch phone (#266 PF-3): the view bar steps aside for the keyboard once a text field
@@ -517,8 +513,7 @@ function AppLayoutContent() {
   useQuietViewKeys(!!switching);
   const switchingName = switching ? projects.find((project) => switching.startsWith(`/projects/${project.id}/`))?.name ?? directMessages.find((dm) => switching === `/dm/${dm.id}`)?.title ?? 'the conversation' : '';
 
-  // In focus the rail shows no counts.
-  const sidebarProps = { workspace, projects, directMessages, agents, user: me.user, session: me.session, inboxUnread: focusing ? 0 : inboxUnread };
+  const sidebarProps = { workspace, projects, directMessages, agents, user: me.user, session: me.session, inboxUnread };
   const where = placeOf(location.pathname);
   // Home's computer layout has no header row; keep its name available to assistive technology.
   const homeRoot = where === 'home' && location.pathname === '/';
@@ -648,8 +643,7 @@ function AppLayoutContent() {
   if ('noDetails' in place && detailsOpen && detailsView === 'place') setDetailsOpen(false);
 
   // The computer's header is one row (F-026 §4): the name, the place's views as a segmented control,
-  // then what needs you, the people and agents, and More. Focus keeps only the name, the view and
-  // the way out.
+  // then what needs you, the people and agents, and More.
   // ⌘K's "Recent" lists the places the person opened on this device (F-026 E02): a project's view, a direct message, the
   // Inbox, Home. A project or conversation this account cannot open (the not-found page) is not remembered.
   const openable = projectId ? !!activeProject : dmId && dmId !== 'new' ? !!activeDm : true;
@@ -674,8 +668,7 @@ function AppLayoutContent() {
     ...(activeProject && projectId ? [{ label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
     ...('noDetails' in place ? [] : [{ label: activeProject ? 'Space details' : activeDm ? 'Message info' : 'Details', run: () => shell.openDetails('place') }]),
     ...addViewItems,
-    { label: focus.uncertain ? 'Check notification pause' : 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
-    tablet ? { label: 'Show the sidebar', keys: '[', run: () => setNavOpen(true) } : { label: railed || focusing ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleSidebar },
+    tablet ? { label: 'Show the sidebar', keys: '[', run: () => setNavOpen(true) } : { label: railed ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleRail },
   ];
 
   // The phone's header (F-026 §4 Phone): inside a project or a conversation the round Back and the
@@ -725,7 +718,7 @@ function AppLayoutContent() {
     const view = projectViews.find((item) => item.id === id);
     return view ? [{ id, label: view.label, to: view.to, icon, note, current: currentProjectView === id }] : [];
   }) : [];
-  const tabletMenu = tablet && !phone && !focusing && !!activeProject && projectMenu.length > 0;
+  const tabletMenu = tablet && !phone && !!activeProject && projectMenu.length > 0;
   const mainPlace = ['/projects', '/inbox', '/dm', '/settings'].includes(location.pathname) || /^\/inbox\//.test(location.pathname);
   const homePage = /^\/(tasks|map|docs)(\/|$)/.test(location.pathname);
   const backOnly = settingsPage || dmId === 'new' || homePage;
@@ -779,10 +772,10 @@ function AppLayoutContent() {
         </Drawer>
       ) : (
         // Tablet (Spokój): the sidebar is the 64 px rail (its width is set in CSS); its expand control opens the sidebar as a drawer.
-        <aside className={`app__side${railed || focusing ? ' app__side--rail' : ''}`} aria-label="Sidebar" ref={sideRef}>
+        <aside className={`app__side${railed ? ' app__side--rail' : ''}`} aria-label="Sidebar" ref={sideRef}>
           {/* Folding to the rail and unfolding take a short size change; the control used keeps focus (#720). */}
-          <SizeSwap id={railed || focusing ? 'rail' : 'full'} host={sideRef} dress="app__side" keep=".side__toggle" widths={SIDE_WIDTHS} still={tablet}>
-            <Sidebar {...sidebarProps} collapsed={railed || focusing || tablet} onToggleCollapsed={focusing ? () => void focus.toggle() : tablet ? () => setNavOpen(true) : toggleSidebar} />
+          <SizeSwap id={railed ? 'rail' : 'full'} host={sideRef} dress="app__side" keep=".side__toggle" widths={SIDE_WIDTHS} still={tablet}>
+            <Sidebar {...sidebarProps} collapsed={railed || tablet} onToggleCollapsed={tablet ? () => setNavOpen(true) : toggleRail} />
           </SizeSwap>
         </aside>
       )}
@@ -794,7 +787,7 @@ function AppLayoutContent() {
 
       <div className="app__main">
         {phone ? phoneHeader : (
-        <header className={`top${activeProject ? ' top--project' : ''} top--row${focusing ? ' top--focus' : ''}${homeRoot && !navDrawer ? ' top--bare' : ''}`}>
+        <header className={`top${activeProject ? ' top--project' : ''} top--row${homeRoot && !navDrawer ? ' top--bare' : ''}`}>
           {navDrawer ? (
             <IconButton icon="menu" label="Open navigation" size={18} aria-expanded={navOpen} aria-controls={navOpen ? 'nav-drawer' : undefined}
               aria-haspopup="dialog" data-tip-align="start" onClick={() => { setDetailsOpen(false); setNavOpen(true); }} className="top__menu" />
@@ -807,21 +800,16 @@ function AppLayoutContent() {
             <div className="top__title">
               {place.crumb && !activeProject ? <><span className="top__crumb">{place.crumb}</span><span className="top__slash" aria-hidden="true">/</span></> : null}
               <h1 title={place.title}>{place.title}</h1>
-              {focusing && viewName ? <span className="top__topic">{viewName}</span>
-                : !rowViews || where === 'dm' ? <span className="top__topic">{activeProject ? null : place.topic}</span> : null}
+              {!rowViews || where === 'dm' ? <span className="top__topic">{activeProject ? null : place.topic}</span> : null}
             </div>
           )}
-          {rowViews && !focusing && !tabletMenu ? <Tabs variant="segmented" className="top__views" label={rowViews.label} items={rowViews.items} /> : null}
+          {rowViews && !tabletMenu ? <Tabs variant="segmented" className="top__views" label={rowViews.label} items={rowViews.items} /> : null}
           <div className="top__right">
             {/* A view can put one quiet action here (a DM's Select, #96). */}
             <span className="top__actions" ref={setActionSlot} />
-            {focusing && focus.until ? <FocusPill until={focus.until} uncertain={focus.uncertain} onEnd={() => void focus.toggle()} /> : (
-              <>
-                {project?.people ? <HeaderFaces people={project.people} audience={audience} onOpen={openAudience} /> : null}
-                {activeProject ? <LiveEntry /> : null}
-                <MoreMenu items={moreItems} />
-              </>
-            )}
+            {project?.people ? <HeaderFaces people={project.people} audience={audience} onOpen={openAudience} /> : null}
+            {activeProject ? <LiveEntry /> : null}
+            <MoreMenu items={moreItems} />
           </div>
         </header>
         )}

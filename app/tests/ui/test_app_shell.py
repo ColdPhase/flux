@@ -700,7 +700,7 @@ class AppShellJourney(unittest.TestCase):
                 self.assertLessEqual(geometry["menu"]["right"], geometry["viewport"], geometry)
                 self.assertAlmostEqual(geometry["menu"]["right"], anchor["x"] + anchor["width"], delta=1, msg=f"menu is right aligned to More: {geometry}")
                 self.assertGreaterEqual(geometry["menu"]["top"], geometry["button"]["bottom"] - 1, geometry)
-                self.assertGreaterEqual(len(geometry["rowHeights"]), 4, f"Focus, sidebar and Project details are shown: {geometry}")
+                self.assertGreaterEqual(len(geometry["rowHeights"]), 3, f"Settings, Space details and the sidebar are shown: {geometry}")
                 if device == "tablet":
                     self.assertTrue(all(height >= 44 for height in geometry["rowHeights"]), geometry)
                 if device == "desktop":

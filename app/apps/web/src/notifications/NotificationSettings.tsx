@@ -12,13 +12,12 @@ import {
 } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellData } from '../app/data';
-import { clock } from '../app/focus';
 import { SwitchRow } from '../app/SettingsHome';
 import { InstallFlux, NotificationsButton } from '../pwa';
 import { getPushState, pushOnServer } from '../pwa/push';
 import { Button, ErrorState, Icon, MEDIA, Spinner, useMediaQuery, useToast, Select, Option, OptionGroup } from '../ui';
-import { PAUSE_CHANGED, addAddress, announcePauseChange, announcePauseUncertainty, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress, type PauseChange } from './api';
-import { captureNotificationSession, confirmedNotificationPauseSince, isCurrentNotificationSession, notificationPauseRevision, notificationPauseUncertain } from './session';
+import { captureNotificationSession, isCurrentNotificationSession } from './session';
+import { addAddress, getPreferences, removeAddress, resendVerification, setMute, unsubscribe, updatePreferences, verifyAddress } from './api';
 import './notifications.css';
 
 const ROWS: Record<NotificationReason, { label: string; hint: string }> = {
@@ -83,8 +82,7 @@ function AccountNotificationSettings() {
   const [emailNoticeAtHead, setEmailNoticeAtHead] = useState(false);
   const emailReadNoticeRef = useRef<HTMLParagraphElement | null>(null);
   const emailHeadingRef = useRef<HTMLHeadingElement | null>(null);
-  const [refreshWarning, setRefreshWarning] = useState<'pause' | 'settings' | null>(null);
-  const [pauseExpired, setPauseExpired] = useState(false);
+  const [refreshWarning, setRefreshWarning] = useState<'settings' | null>(null);
   const hasPreferences = useRef(false);
   const toast = useToast();
   const ids = { email: useId(), level: useId(), what: useId(), mute: useId() };
@@ -92,44 +90,22 @@ function AccountNotificationSettings() {
   const queue = useRef<Promise<void>>(Promise.resolve());
   const sequence = useRef(0);
   const reads = useRef(0);
-  const reconcilePause = useCallback((next: NotificationPreferences, revision: number): NotificationPreferences => {
-    const latest = confirmedNotificationPauseSince(captureNotificationSession(ownerId), revision);
-    return latest === undefined ? next : { ...next, pause: { until: latest } };
-  }, [ownerId]);
   const load = useCallback(() => {
     const mine = ++reads.current, edit = sequence.current;
-    const session = captureNotificationSession(ownerId);
-    const pauseVersion = notificationPauseRevision(session);
     getPreferences().then((next) => {
-      if (mounted.current && mine === reads.current && edit === sequence.current && (!session || isCurrentNotificationSession(session))) {
-        const result = reconcilePause(next, pauseVersion);
+      if (mounted.current && mine === reads.current && edit === sequence.current) {
         hasPreferences.current = true;
-        setPrefs(result); setFailed(false); setRefreshWarning(null);
+        setPrefs(next); setFailed(false); setRefreshWarning(null);
         setMuteReceipt(null); setEmailTarget(null); setEmailNoticeAtHead(false);
-        setPauseExpired(result.pause.until !== null && Date.parse(result.pause.until) <= Date.now());
-        announcePauseChange(ownerId, result.pause.until);
       }
     }, () => {
-      if (mounted.current && mine === reads.current && edit === sequence.current && (!session || isCurrentNotificationSession(session))) {
+      if (mounted.current && mine === reads.current && edit === sequence.current) {
         if (hasPreferences.current) setRefreshWarning('settings');
         else setFailed(true);
-        if (session && notificationPauseRevision(session) === pauseVersion) announcePauseUncertainty(session);
       }
     });
-  }, [ownerId, reconcilePause]);
+  }, []);
   useEffect(load, [load]);
-  useEffect(() => {
-    const changed = (event: Event) => {
-      const update = (event as CustomEvent<PauseChange>).detail;
-      if (update.ownerId === ownerId && isCurrentNotificationSession(captureNotificationSession(ownerId))) {
-        setPrefs((current) => current ? { ...current, pause: { until: update.until } } : current);
-        setPauseExpired(update.until !== null && Date.parse(update.until) <= Date.now());
-        setRefreshWarning((current) => current === 'settings' ? current : update.uncertain ? 'pause' : null);
-      }
-    };
-    window.addEventListener(PAUSE_CHANGED, changed);
-    return () => window.removeEventListener(PAUSE_CHANGED, changed);
-  }, [ownerId]);
   // Push cannot reach anyone when the server has no VAPID keys or the browser has no push. The server's reason comes
   // first: a channel this server lacks is not offered at all, whatever the browser (#763 SG-3).
   const [pushServerOff, setPushServerOff] = useState(false);
@@ -145,13 +121,14 @@ function AccountNotificationSettings() {
   // Saves run one after another in the order they were made, each numbered. Only the answer to
   // the newest one replaces what is shown, so an older response never undoes a newer edit.
   function save(run: () => Promise<NotificationPreferences>, done = 'Saved', onError?: (error: unknown) => void, area: FeedbackArea = 'email', mute?: MuteReceipt, address?: string): Promise<boolean> {
+    // A save belongs to the account that asked for it: if the tab signs out and in as another account while it waits in the
+    // queue, it is never sent (the shell retires the session with the account).
     const session = captureNotificationSession(ownerId);
     if (!session) return Promise.resolve(false);
     const mine = ++sequence.current;
     if (mounted.current) { setSaved(''); setFeedbackArea(area); setMuteReceipt(null); setPendingMute(mute ?? null); setEmailTarget(null); setEmailNoticeAtHead(false); }
     const next = queue.current.then(async () => {
       if (!isCurrentNotificationSession(session)) return false;
-      const pauseVersion = notificationPauseRevision(session);
       let result: NotificationPreferences;
       try { result = await run(); }
       catch (error) {
@@ -162,37 +139,13 @@ function AccountNotificationSettings() {
         return false;
       }
       if (!isCurrentNotificationSession(session)) return false;
-      let refreshFailed = false, refreshed = false, pauseReadUnavailable = false;
-      if (notificationPauseRevision(session) !== pauseVersion || notificationPauseUncertain(session)) {
-        const readVersion = notificationPauseRevision(session);
-        try {
-          const current = await getPreferences();
-          if (!isCurrentNotificationSession(session)) return false;
-          result = reconcilePause(current, readVersion);
-          refreshed = true;
-        } catch {
-          if (!isCurrentNotificationSession(session)) return false;
-          // The mutation was acknowledged. Preserve its other facts, never an obsolete pause,
-          // and report read unavailability without suggesting the side effect needs repeating.
-          result = reconcilePause(result, pauseVersion);
-          refreshFailed = true;
-          pauseReadUnavailable = notificationPauseRevision(session) === readVersion;
-        }
-      }
-      if (refreshFailed) {
-        if (pauseReadUnavailable) announcePauseUncertainty(session, !mounted.current
-          ? `${done}. Current notification settings could not be refreshed; the last confirmed settings are shown.` : undefined);
-      }
-      else announcePauseChange(ownerId, result.pause.until);
       if (mounted.current && mine === sequence.current) {
         hasPreferences.current = true;
         setPrefs(result); setSaved(done); setFeedbackArea(area);
         setPendingMute(null);
         setMuteReceipt(mute ? { ...mute, place: result.muted.find((place) => place.type === mute.place.type && place.id === mute.place.id) ?? mute.place } : null);
         setEmailTarget(address ?? null);
-        setPauseExpired(result.pause.until !== null && Date.parse(result.pause.until) <= Date.now());
-        if (refreshFailed) setRefreshWarning('settings');
-        else if (refreshed) setRefreshWarning(null);
+        setRefreshWarning(null);
       }
       return true;
     });
@@ -214,7 +167,7 @@ function AccountNotificationSettings() {
     const notice = emailReadNoticeRef.current, heading = emailHeadingRef.current;
     const pane = notice?.closest('.pane-scroll');
     if (!notice || !heading || !pane) return;
-    const session = captureNotificationSession(ownerId), action = sequence.current;
+    const action = sequence.current;
     let active = true, frame = 0;
     let observer: ResizeObserver | null = null;
     const retire = () => {
@@ -227,7 +180,7 @@ function AccountNotificationSettings() {
     const measure = () => {
       frame = 0;
       if (!active) return;
-      if (!mounted.current || action !== sequence.current || !isCurrentNotificationSession(session)
+      if (!mounted.current || action !== sequence.current
         || !notice.isConnected || !heading.isConnected || !pane.isConnected) { retire(); return; }
       const box = notice.getBoundingClientRect(), view = pane.getBoundingClientRect();
       const top = heading.getBoundingClientRect().bottom + (parseFloat(getComputedStyle(heading).marginBottom) || 0);
@@ -288,8 +241,7 @@ function AccountNotificationSettings() {
   const emailReadNotice = refreshWarning && !showMuteReceipt ? <p ref={emailReadNoticeRef} className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
     {refreshWarning === 'settings' && feedbackArea === 'email' && saved ? `${saved}. ` : ''}
     {refreshWarning === 'settings' && feedbackArea === 'email' && saved && emailTarget ? <span className="nset__email-target">{emailTarget}</span> : null}
-    {refreshWarning === 'settings' ? 'Current notification settings could not be refreshed. The last confirmed settings are shown.'
-      : 'Current notification pause could not be checked. The last confirmed state is shown.'}{' '}
+    Current notification settings could not be refreshed. The last confirmed settings are shown.{' '}
     <Button variant="quiet" onClick={load}>Retry current settings</Button>
   </span></p> : null;
 
@@ -305,8 +257,7 @@ function AccountNotificationSettings() {
       </div>
 
       {refreshWarning && !showMuteReceipt ? <p className="nset__problem" role="note"><Icon name="alert" size={14} /><span>
-        {refreshWarning === 'settings' ? 'Current notification settings could not be refreshed. Showing last confirmed settings.'
-          : 'Current notification pause could not be checked. The last confirmed state is shown.'}{' '}
+        Current notification settings could not be refreshed. Showing last confirmed settings.{' '}
         <Button variant="quiet" aria-label="Retry current settings" onClick={load}>Refresh</Button>
       </span></p> : null}
 
@@ -326,12 +277,6 @@ function AccountNotificationSettings() {
       {workingFeedback('level')}
       {level === 'custom' ? <p className="sset-note" role="note">You chose channels for each kind below, so none of the three matches. Pick one to reset them.</p> : null}
 
-      {prefs.pause.until && !pauseExpired ? (
-        <p className="nset__focus" role="status">
-          <Icon name="focus" size={14} /><span>{refreshWarning ? 'Last confirmed pause: push and email were paused until ' : 'Focus: push and email are paused until '}<time dateTime={prefs.pause.until}>{clock(new Date(prefs.pause.until))}</time>.</span>
-          <Button variant="secondary" onClick={() => change({ pause: { until: null } }, (current) => ({ ...current, pause: { until: null } }))}>Resume now</Button>
-        </p>
-      ) : null}
       <div className="sset-card sset-gap">
         <QuietHoursRow prefs={prefs} onChange={change} feedback={workingFeedback('quietHours')} />
       </div>
@@ -421,12 +366,11 @@ function MutedPlaces({ headingId, ownerId, muted, places, pending, receipt, onMu
     if (!receipt) return;
     const section = sectionRef.current, heading = headingRef.current;
     const pane = section?.closest('.pane-scroll');
-    const session = captureNotificationSession(ownerId);
-    if (!section || !heading || !pane || !session) return;
+    if (!section || !heading || !pane) return;
     let active = true, frame = 0;
     const measure = () => {
       frame = 0;
-      if (!active || !isCurrentNotificationSession(session) || !section.isConnected || !heading.isConnected || !pane.isConnected) return;
+      if (!active || !section.isConnected || !heading.isConnected || !pane.isConnected) return;
       const note = section.querySelector('.nset__mute-read'), row = note?.closest('li');
       if (!row) return;
       const view = pane.getBoundingClientRect(), box = row.getBoundingClientRect(), group = section.getBoundingClientRect();

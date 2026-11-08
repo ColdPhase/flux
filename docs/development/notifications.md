@@ -83,13 +83,8 @@ The settings page sends its saves one after another, numbered, and shows only th
   send re-evaluates the person's *current* quiet hours: a job queued before they were turned on
   is deferred (queued again with `startAfter` at the window's end, the email row stays
   `queued`). The inbox is never held back.
-- **Focus pause** (`pause: { until }`, #340, F-026 S19): `F` on the computer sets `until` to the
-  first full hour at least 30 minutes away; a pause must end in the future and within 12 hours
-  (`MAX_NOTIFICATION_PAUSE_HOURS`), or `INVALID_PAUSE`. Until then push and email wait exactly
-  as for quiet hours (`startAfter` at `until`, then quiet hours still apply), and each send
-  re-evaluates it. `{ until: null }` resumes; a pause that has ended reads as `null`. Jobs
-  already deferred to `until` are not released early: they arrive by `until`, and the Inbox has
-  everything meanwhile. Stored in `notification_preferences.paused_until` (migration 0059).
+- **Focus mode** (#340, F-026 S19) **went in v0.2** (F-038, #872): there is no pause, no `F` key and no `paused_until`
+  column (dropped by migration 0019). Quiet hours are the only way to hold push and email.
 - **Where email goes**: `account` (the sign-in/SSO address, default), `extra` (the verified
   extra address), `both`, or `none` (in-app only).
 
@@ -158,7 +153,7 @@ The sidebar's **Inbox**, between Home and My tasks, shows how many items are unr
 the 64 px rail shows the same number). `/inbox` lists "New" and "Earlier" items,
 each with its reason, title, excerpt and time; opening one marks it read and opens the source;
 "Mark all read" only quiets the dot. `/settings/notifications` (Settings → Notifications, #350)
-holds a running focus pause with Resume now, the level (Only "Needs you", Everything, Nothing), quiet hours (the focus pause goes in v0.2, F-038; the plain morning summary is gone, F-038, #858), then
+holds the level (Only "Needs you", Everything, Nothing) and quiet hours (the focus pause went with F-038, #872; the plain morning summary is gone, F-038, #858), then
 the channel table, push on this device, email destination and extra address, and muted places. `/inbox/:id` (email link) and
 `/settings/notifications/verify` are routes of the signed-in app.
 

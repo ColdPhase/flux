@@ -457,7 +457,6 @@ export const SHORTCUTS: { keys: string[]; action: string }[] = [
   { keys: ['T'], action: 'Create a task from a message' },
   { keys: ['1', '–', '5'], action: 'Task state' },
   { keys: ['['], action: 'Collapse the sidebar' },
-  { keys: ['F'], action: 'Focus mode' },
   { keys: ['Esc'], action: 'Close a panel or menu' },
 ];
 

@@ -307,7 +307,6 @@ a.me__item { text-decoration: none; }
 .top--row .top__title { flex: 0 1 auto; min-width: min(7.5em, 20%); }
 .top--row .top__title h1 { letter-spacing: -0.2px; }
 .top.top--row .top__right { margin-left: auto; gap: 10px; padding-top: 0; }
-.top--row.top--focus .top__title { flex: 1; }
 /* The views never shrink: a squeezed track cut "Agents" at 1024 px with "+ Task" beside it (#763 sweep). The name gives way instead. */
 .top__views { flex: none; }
 @container main (max-width: 760px) { .top--row .top__title { min-width: 4em; } }
@@ -330,14 +329,12 @@ a.me__item { text-decoration: none; }
 .top__more-menu .top__more-narrow { display: none; }
 .top__more-menu .newmenu__item:hover { background: var(--hov); }
 .top__more-menu .newmenu__item:focus-visible { outline: 2px solid var(--t1); outline-offset: -2px; }
-.top__more-menu .newmenu__item kbd, .top__focus kbd {
+.top__more-menu .newmenu__item kbd {
   margin-left: auto; display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 4px;
   border-radius: 5px; background: var(--sub); box-shadow: inset 0 -1px 0 var(--line2); font: 500 var(--fs-glyph)/1 var(--mono); color: var(--t2);
 }
 @media (pointer: coarse) { .top__more-menu .newmenu__item { min-height: 44px; } }
-.top__focus { display: inline-flex; align-items: center; gap: 8px; }
-.top__focus-pill { height: 28px; padding: 0 12px; gap: 6px; font-weight: 600; cursor: pointer; }
-@media (pointer: coarse) { .top__focus-pill { min-height: 44px; } .top__audience.top__faces { min-height: 44px; } }
+@media (pointer: coarse) { .top__audience.top__faces { min-height: 44px; } }
 /* 641–680 px (the drawer, e.g. a Fold 5 unfolded): the project header's 22 px audience line must not shrink the faces control (#763). */
 @media (pointer: coarse) and (min-width: 641px) { header.top .top__audience.top__faces { min-height: 44px; } }
 /* Spokój rule 3: the header is one row at every width, with the panel open or closed (the panel sits under it).

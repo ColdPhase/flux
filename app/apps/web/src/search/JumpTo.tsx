@@ -73,7 +73,7 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
   // The empty field lists the places the person opened (F-026 E02).
   const recentPlaces = useRecentPlaces(userId);
   const { projects, lockedWorkspaces, directMessages } = useShellData();
-  const { toggleFocus, toggleSidebar, sidebarHidden } = useShellActions();
+  const { toggleSidebar, sidebarHidden } = useShellActions();
   const location = useLocation();
   const here = location.pathname.match(/^\/projects\/([^/]+)/)?.[1];
   const text = query.trim();
@@ -123,7 +123,6 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
     { kind: 'command', section: 'Actions', id: 'action-inbox', label: 'Go to Inbox', icon: 'inbox', keys: ['G', 'I'], run: () => navigate('/inbox') },
     ...askMine,
     ...(phone ? [] : [
-      { kind: 'command' as const, section: 'Actions', id: 'action-focus', label: 'Focus mode', icon: 'focus' as const, keys: ['F'], run: toggleFocus },
       { kind: 'command' as const, section: 'Actions', id: 'action-rail', label: sidebarHidden ? 'Show the sidebar' : 'Hide the sidebar', icon: 'sidebar' as const, keys: ['['], run: toggleSidebar },
     ]),
   ];

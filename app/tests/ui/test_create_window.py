@@ -234,7 +234,7 @@ class CreateWindow(unittest.TestCase):
         page.keyboard.press("Escape")
         # With no query: the actions with their keys (E02), none of them creates; Go to Inbox runs.
         palette, field = self.jump(page, "")
-        for name in ("Go to Inbox", "Focus mode", "Hide the sidebar"):
+        for name in ("Go to Inbox", "Hide the sidebar"):
             expect(palette.get_by_role("option", name=name, exact=True)).to_be_visible()
         expect(palette.get_by_role("option", name=re.compile("^New "))).to_have_count(0)
         palette.get_by_role("option", name="Go to Inbox", exact=True).click()
@@ -785,7 +785,7 @@ class CreateWindow(unittest.TestCase):
         self.visit(page, "/", "Home")
         palette, field = self.jump(page, "")
         expect(palette.get_by_role("listbox", name="Actions")).to_be_visible()
-        expect(palette.get_by_role("option")).to_have_text([re.compile("^Go to Inbox"), re.compile("^Focus mode"), re.compile("^Hide the sidebar")])
+        expect(palette.get_by_role("option")).to_have_text([re.compile("^Go to Inbox"), re.compile("^Hide the sidebar")])
         page.keyboard.press("Escape")
         expect(palette).to_have_count(0)
         # Places by identity, most recent first: a second visit moves a place up once, a doc's version is its doc (named by
@@ -802,7 +802,7 @@ class CreateWindow(unittest.TestCase):
         palette, field = self.jump(page, "")
         listbox = palette.get_by_role("listbox", name="Recent places and actions")
         self.assertEqual(self.option_names(listbox), ["How the garden sensors work · Wiki", "Community garden sensors · Tasks", "Cargo bike co-op · Conversation", "Home",
-                                                      "Go to Inbox", "Focus mode", "Hide the sidebar"])
+                                                      "Go to Inbox", "Hide the sidebar"])
         options = listbox.get_by_role("option")
         expect(options.first.locator(".jump__side")).to_have_text("Wiki")
         expect(options.nth(3).locator(".jump__side")).to_have_count(0)
@@ -832,7 +832,7 @@ class CreateWindow(unittest.TestCase):
         field.press("Escape")
         expect(palette).to_have_count(0)
 
-    def test_24_focus_mode_and_hide_the_sidebar_run_from_the_empty_command_k(self) -> None:
+    def test_24_hide_the_sidebar_runs_from_the_empty_command_k(self) -> None:
         self.ensure_account()
         page = self.page()
         self.visit(page, f"/projects/{self.ids['project']}", "Community garden sensors")
@@ -846,20 +846,11 @@ class CreateWindow(unittest.TestCase):
         palette, field = self.jump(page, "")
         palette.get_by_role("option", name="Show the sidebar", exact=True).click()
         expect(side.locator(".side--rail")).to_have_count(0)
-        pill = page.get_by_role("button", name=re.compile(r"^Focus · notifications paused until"))
+        # There is no Focus mode (F-038): the palette lists no such action and the notification settings have no pause.
         palette, field = self.jump(page, "")
-        palette.get_by_role("option", name="Focus mode", exact=True).click()
-        expect(pill).to_be_visible()
-        expect(side.locator(".side--rail")).to_have_count(1)
-        self.assertIsNotNone(self.api(page, "GET", "/api/v1/notification-preferences", status=200)["pause"]["until"])
-        # Focus folds the sidebar to its rail, so the action says what it would do now.
-        palette, field = self.jump(page, "")
-        expect(palette.get_by_role("option", name="Show the sidebar", exact=True)).to_be_visible()
-        expect(palette.get_by_role("option", name="Hide the sidebar", exact=True)).to_have_count(0)
-        palette.get_by_role("option", name="Focus mode", exact=True).click()
-        expect(pill).to_have_count(0)
-        expect(side.locator(".side--rail")).to_have_count(0)
-        self.assertIsNone(self.api(page, "GET", "/api/v1/notification-preferences", status=200)["pause"]["until"])
+        expect(palette.get_by_role("option", name="Focus mode", exact=True)).to_have_count(0)
+        page.keyboard.press("Escape")
+        self.assertNotIn("pause", self.api(page, "GET", "/api/v1/notification-preferences", status=200))
 
     def test_25_the_phone_search_sheet_shows_the_same_empty_content_without_keys(self) -> None:
         self.ensure_account()

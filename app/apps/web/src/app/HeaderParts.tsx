@@ -1,7 +1,6 @@
 import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { ProjectPerson } from '@flux/contracts';
-import { Avatar, Icon, IconButton, Kreska, usePop } from '../ui';
-import { clock } from './focus';
+import { Avatar, IconButton, Kreska, usePop } from '../ui';
 
 /**
  * The people and agents of a project as faces, one button to "Who can see this" (F-026 §4 header).
@@ -20,20 +19,6 @@ export function HeaderFaces({ people, audience, onOpen }: { people: ProjectPerso
         : <span key={person.id} className="top__face"><Avatar name={person.name} size="sm" /></span>)}
       {more > 0 ? <span className="top__more-faces" aria-hidden="true">+{more}</span> : null}
     </button>
-  );
-}
-
-/** Focus on: the one thing the header says, and the way out (`F`). */
-export function FocusPill({ until, onEnd, uncertain = false }: { until: Date; onEnd: () => void; uncertain?: boolean }) {
-  return (
-    <span className="top__focus">
-      <button type="button" className="ui-pill ui-pill--inv top__focus-pill" aria-keyshortcuts="F" onClick={onEnd}
-        title={uncertain ? 'Check current notification pause (F)' : 'End focus (F)'}>
-        <Icon name="focus" size={13} />Focus · {uncertain ? 'last confirmed pause until ' : 'notifications paused until '}<time dateTime={until.toISOString()}>{clock(until)}</time>
-        <span className="ui-vh">{uncertain ? '. Check current notification pause' : '. End focus'}</span>
-      </button>
-      <kbd aria-hidden="true">F</kbd>
-    </span>
   );
 }
 

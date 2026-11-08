@@ -67,11 +67,6 @@ export async function notificationRoutes(app: FastifyInstance, { db, sessions, s
             properties: { enabled: { type: 'boolean' }, start: { type: 'string', maxLength: 5 }, end: { type: 'string', maxLength: 5 }, timeZone: { type: 'string', maxLength: 64 } },
           },
           level: { type: 'string', maxLength: 16 },
-          // Focus mode (#340): an ISO instant within 12 hours, or null to resume.
-          pause: {
-            type: 'object', required: ['until'], additionalProperties: false,
-            properties: { until: { type: ['string', 'null'], maxLength: 40 } },
-          },
         },
       },
     },
