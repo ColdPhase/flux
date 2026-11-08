@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { STREAM_CLOSE_UNAUTHENTICATED, STREAM_PATH, type StreamEvent, type StreamMessage } from '@flux/contracts';
 import { reconnectDelay } from './busy.js';
-import { endSharedReads } from './client.js';
+import { forgetKeptReads } from './client.js';
 import { onPageLive, pageLeaving } from './pageLeaving.js';
 
 /**
@@ -59,8 +59,8 @@ function forgetHeld() {
 
 /** Tells listeners to refetch what they show, now or, while paused, once when live again. */
 function requestResync() {
-  // Events may have been missed, so a read already on its way may not show the change either (#1023).
-  endSharedReads();
+  // Events may have been missed, so neither a kept answer nor a read already on its way may show the change (#1023, #862).
+  forgetKeptReads();
   if (paused()) { resyncWanted = true; return; }
   for (const { listener } of [...subscriptions]) listener.onResync?.();
 }
@@ -133,9 +133,10 @@ function connect() {
     if (data.type !== 'event' || seen.has(data.id)) return;
     seen.add(data.id);
     if (seen.size > 500) seen.delete(seen.values().next().value!);
-    // A change somewhere else has arrived: a read that began before it must not answer a re-read that this event causes (#1023). This is
-    // when the event arrives, not when it is delivered, so a held event (a page being left or hidden) ends them too.
-    endSharedReads();
+    // A change somewhere else has arrived: neither a kept answer nor a read that began before it may answer a re-read that this event
+    // causes (#1023, #862; live invalidation will name the entries instead). This is when the event arrives, not when it is delivered,
+    // so a held event (a page being left or hidden) forgets them too.
+    forgetKeptReads();
     deliver(data);
   };
   ws.onclose = (event) => {

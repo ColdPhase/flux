@@ -2,7 +2,7 @@ import {
   AGENT_CHATS_PATH, agentChatMessagesPath, agentChatReadPath, MY_AGENTS_PATH, myAgentMemoryItemPath, myAgentMemoryPath, myAgentPath,
   type AddAgentMemoryCommand, type AgentChatMessage, type AgentChatSummary, type AgentMemory, type AgentMemoryItem, type CreateMyAgentCommand, type EditAgentMemoryCommand, type MyAgent, type MyAgentList, type UpdateMyAgentCommand,
 } from '@flux/contracts';
-import { request } from '../api/client';
+import { KEEP_MS, request } from '../api/client';
 
 // A person's agents (F-036 AG-1, #857). Every call acts as the signed-in person; only their own agents are ever returned.
 
@@ -19,6 +19,8 @@ export const editAgentMemory = (agentId: string, itemId: string, command: EditAg
 export const deleteAgentMemory = (agentId: string, itemId: string) => request<null>(myAgentMemoryItemPath(agentId, itemId), { method: 'DELETE' });
 
 // The private chats (#842): what an agent said on its own, and what the owner has not read. The owner's words and the answers are runs.
-export const listAgentChats = (signal?: AbortSignal) => request<{ items: AgentChatSummary[] }>(AGENT_CHATS_PATH, { signal }).then((list) => list.items);
+/** `fresh`: a refresh (focus, an event, the poll); a move to another page may take the answer kept from a moment ago (#862). */
+export const listAgentChats = (signal?: AbortSignal, fresh = false) =>
+  request<{ items: AgentChatSummary[] }>(AGENT_CHATS_PATH, { signal, share: true, keep: KEEP_MS, fresh }).then((list) => list.items);
 export const listAgentChatMessages = (agentId: string, signal?: AbortSignal) => request<{ items: AgentChatMessage[] }>(agentChatMessagesPath(agentId), { signal }).then((list) => list.items);
 export const readAgentChat = (agentId: string) => request<null>(agentChatReadPath(agentId), { method: 'POST' });

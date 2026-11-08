@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { request } from '../../apps/web/src/api/client.js';
+import { forgetKeptReads, request } from '../../apps/web/src/api/client.js';
 
 // A navigation asked for the same project and people up to four times (#850, #862 target: at most 8 requests, none repeated).
 // Reads that ask to share (the project, its people and its docs) and are of one address in flight together are one request; nothing else is shared.
@@ -32,7 +32,7 @@ test('reads of one address in flight together are one request, and each caller g
   assert.deepEqual(await other, { other: true });
 });
 
-test('an answer that has arrived is never reused: the next read asks again', async (context) => {
+test('without keep, an answer that has arrived is never reused: the next read asks again', async (context) => {
   const calls = stub(context);
   const first = request('/api/v1/needs-you', { share: true });
   await settle();
@@ -113,4 +113,105 @@ test('only reads that ask to share are shared: writes, reads with headers, and r
   void request('/api/v1/things/2').catch(() => undefined);
   await settle();
   assert.equal(calls.length, 6, 'nothing here was shared: a view that holds or reorders its own reads needs each answer to be its own');
+});
+
+// #862: the reads every view of a space or the shell asks for are kept for a moment, so the next view takes them without a request.
+test('a kept answer is given to later callers without a request until it expires; a fresh read asks again and keeps its answer', async (context) => {
+  forgetKeptReads();
+  const calls = stub(context);
+  const first = request<{ count: number }>('/api/v1/kept/needs-you', { share: true, keep: 40 });
+  await settle();
+  calls[0]!.finish({ count: 1 });
+  assert.deepEqual(await first, { count: 1 });
+  const again = await request<{ count: number }>('/api/v1/kept/needs-you', { share: true, keep: 40 });
+  assert.deepEqual(again, { count: 1 });
+  assert.equal(calls.length, 1, 'the next view took the kept answer');
+  again.count = 99;
+  assert.deepEqual(await request('/api/v1/kept/needs-you', { share: true, keep: 40 }), { count: 1 }, 'each caller parses its own copy');
+
+  const refresh = request<{ count: number }>('/api/v1/kept/needs-you', { share: true, keep: 40, fresh: true });
+  await settle();
+  assert.equal(calls.length, 2, 'a refresh (focus, a poll) reads');
+  calls[1]!.finish({ count: 2 });
+  assert.deepEqual(await refresh, { count: 2 });
+  assert.deepEqual(await request('/api/v1/kept/needs-you', { share: true, keep: 40 }), { count: 2 }, 'and keeps what it got');
+
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  const expired = request<{ count: number }>('/api/v1/kept/needs-you', { share: true, keep: 40 });
+  await settle();
+  assert.equal(calls.length, 3, 'an expired answer is not given');
+  calls[2]!.finish({ count: 3 });
+  assert.deepEqual(await expired, { count: 3 });
+
+  const failed = request('/api/v1/kept/boom', { share: true, keep: 1000 });
+  await settle();
+  calls[3]!.finish({ code: 'NOT_FOUND', error: 'Not here' }, 404);
+  await assert.rejects(failed);
+  void request('/api/v1/kept/boom', { share: true, keep: 1000 }).catch(() => undefined);
+  await settle();
+  assert.equal(calls.length, 5, 'a refused read is never kept');
+  const plain = request('/api/v1/kept/plain', { keep: 1000 });
+  await settle();
+  calls[5]!.finish({ plain: true });
+  await plain;
+  void request('/api/v1/kept/plain', { keep: 1000 }).catch(() => undefined);
+  await settle();
+  assert.equal(calls.length, 7, 'only a shared read is kept');
+});
+
+test('a write, an event or sign-out forgets kept answers; a write that cannot change them leaves them; an answer read across a write is not kept', async (context) => {
+  forgetKeptReads();
+  const calls = stub(context);
+  const read = () => request<{ n: number }>('/api/v1/kept/project', { share: true, keep: 10_000 });
+  const first = read();
+  await settle();
+  calls[0]!.finish({ n: 1 });
+  await first;
+
+  const receipt = request('/api/v1/return-points', { method: 'PUT', body: {}, leavesReads: true });
+  await settle();
+  calls[1]!.finish({});
+  await receipt;
+  assert.deepEqual(await read(), { n: 1 });
+  assert.equal(calls.length, 2, 'where the person stopped reading changes no kept answer');
+
+  const write = request('/api/v1/work/w', { method: 'PATCH', body: { status: 'done' } });
+  await settle();
+  const during = read();
+  await settle();
+  assert.equal(calls.length, 4, 'the write forgot the kept answer');
+  calls[3]!.finish({ n: 2 });
+  assert.deepEqual(await during, { n: 2 });
+  calls[2]!.finish({});
+  await write;
+  const after = read();
+  await settle();
+  assert.equal(calls.length, 5, 'the answer read while the write ran was not kept');
+  calls[4]!.finish({ n: 3 });
+  assert.deepEqual(await after, { n: 3 });
+  assert.deepEqual(await read(), { n: 3 });
+  assert.equal(calls.length, 5);
+
+  forgetKeptReads();
+  void read().catch(() => undefined);
+  await settle();
+  assert.equal(calls.length, 6, 'an event of the live stream, a resync or sign-out forgets it too');
+});
+
+test('a refusal that says access changed forgets kept answers, so the next read hears it too (a locked workspace, #655)', async (context) => {
+  forgetKeptReads();
+  const calls = stub(context);
+  const project = request('/api/v1/kept/locked-project', { share: true, keep: 10_000 });
+  await settle();
+  calls[0]!.finish({ id: 'p' });
+  await project;
+  const work = request('/api/v1/kept/locked-project/work-view', { share: true });
+  await settle();
+  calls[1]!.finish({ code: 'WORKSPACE_LOCKED', error: 'Locked' }, 423);
+  await assert.rejects(work, (error: unknown) => (error as { status?: number }).status === 423);
+  const again = request('/api/v1/kept/locked-project', { share: true, keep: 10_000 });
+  await settle();
+  assert.equal(calls.length, 3, 'the kept project was forgotten');
+  calls[2]!.finish({ code: 'WORKSPACE_LOCKED', error: 'Locked' }, 423);
+  await assert.rejects(again, (error: unknown) => (error as { status?: number }).status === 423);
 });

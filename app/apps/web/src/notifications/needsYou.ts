@@ -7,7 +7,7 @@ import {
   type NeedsYouResponse,
   type ResolveNeedsYouCommand,
 } from '@flux/contracts';
-import { request } from '../api/client';
+import { KEEP_MS, request } from '../api/client';
 import { noteLockedWorkspaces } from '../encryption/api';
 import { useStreamEvents } from '../api/stream';
 import { INBOX_CHANGED, NEEDS_YOU_ACCEPTED, announceInboxChange, type AcceptedInboxItem } from './api';
@@ -16,7 +16,8 @@ import { onPlacesForgotten } from '../place/memory';
 import { useProjectAiBlocked } from '../ai/spaceAi';
 
 /** The Inbox "Needs you" queue (#342): what asks something of you, computed for you alone. */
-export const getNeedsYou = (signal?: AbortSignal) => request<NeedsYouResponse>(NEEDS_YOU_PATH, { signal }).then(noteLockedWorkspaces);
+/** `fresh`: a refresh (focus, an event, a change of the Inbox, a poll); the first read of a view may take the answer kept from a moment ago (#862). */
+export const getNeedsYou = (signal?: AbortSignal, fresh = false) => request<NeedsYouResponse>(NEEDS_YOU_PATH, { signal, share: true, keep: KEEP_MS, fresh }).then(noteLockedWorkspaces);
 export const resolveNeedsYou = (key: string, command: ResolveNeedsYouCommand) =>
   request<NeedsYouResolved>(needsYouItemPath(key), { method: 'POST', body: command });
 /** Undo of `resolveNeedsYou`: the item is back as it was. */
@@ -100,7 +101,7 @@ export function useNeedsYou(userId: string, fromMemory = false): Queue {
     const changes = scope.current.changes;
     // Remember which intents this read can authoritatively reconcile. A write may settle before its answer.
     const started = new Map([...changes].filter(([, entry]) => !entry.pending));
-    getNeedsYou(controller.signal).then((response) => {
+    getNeedsYou(controller.signal, version > 0).then((response) => {
       if (controller.signal.aborted) return;
       const items = new Map(response.items.map((item) => [item.key, item]));
       for (const [key, entry] of changes) {

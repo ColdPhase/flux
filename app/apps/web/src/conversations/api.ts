@@ -33,7 +33,7 @@ export const removeMessage = (conversationId: string, messageId: string) =>
 export const observeProjectMessages = (projectId: string, messageIds: string[]) =>
   request<ObserveMessagesResult>(projectObservationsPath(projectId), { method: 'POST', body: { messageIds } });
 export const projectReceipts = (projectId: string, runs: string[][], signal?: AbortSignal) =>
-  request<MessageReceiptsResult>(projectReceiptsPath(projectId), { method: 'POST', body: { runs }, signal });
+  request<MessageReceiptsResult>(projectReceiptsPath(projectId), { method: 'POST', body: { runs }, signal, leavesReads: true });
 /** The conversation a project message belongs to (CW-2), for a link that knows only the message. */
 export const getMessagePlace = (projectId: string, messageId: string, signal?: AbortSignal) =>
   request<MessagePlace>(projectMessagePlacePath(encodeURIComponent(projectId), encodeURIComponent(messageId)), { signal });

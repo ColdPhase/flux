@@ -10,7 +10,7 @@ import {
   signIn,
   signUp,
 } from '../api/auth';
-import { ApiError, NetworkError } from '../api/client';
+import { ApiError, NetworkError, forgetKeptReads } from '../api/client';
 import { signOutDevice } from '../pwa';
 import { forgetRecentPlaces } from '../search/recent';
 import { resetStream } from '../api/stream';
@@ -278,6 +278,7 @@ export async function signOutAction(): Promise<FormResult | Response> {
   forgetComposerDrafts();
   forgetBrowserDrafts();
   forgetDocumentDrafts();
+  forgetKeptReads();
   forgetThoughtImages();
   forgetPlaces();
   return redirect('/sign-in?notice=signed-out');

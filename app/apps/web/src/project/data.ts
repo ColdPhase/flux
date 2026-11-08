@@ -1,6 +1,6 @@
 import { useRouteLoaderData, type LoaderFunctionArgs } from 'react-router';
 import { projectPeoplePath, workspaceSketchesPath, type DocSummary, type Project, type ProjectPerson, type Sketch, type SketchPage } from '@flux/contracts';
-import { request } from '../api/client';
+import { KEEP_MS, request } from '../api/client';
 import './project.css';
 import { getProject } from './api';
 import { listProjectDocs } from '../docs/api';
@@ -18,7 +18,7 @@ export interface ProjectShell {
   docs: DocSummary[] | null;
 }
 
-export const listProjectPeople = (projectId: string, signal?: AbortSignal) => request<ProjectPerson[]>(projectPeoplePath(projectId), { signal, share: true });
+export const listProjectPeople = (projectId: string, signal?: AbortSignal) => request<ProjectPerson[]>(projectPeoplePath(projectId), { signal, share: true, keep: KEEP_MS });
 /** A project's sketches, without empty ones (#508): the Map index, Details and the pickers list only sketches with something on them. */
 export const listProjectSketches = (workspaceId: string, projectId: string, limit: number, offset: number, signal?: AbortSignal) =>
   request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=${limit}&offset=${offset}&projectId=${encodeURIComponent(projectId)}&hideEmpty=true`, { signal });

@@ -24,19 +24,19 @@ from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, start_forwarder, view_tab
 PASSWORD = "a light way to move around"
 STAMP = int(time.time() * 1000)
 EMAIL = f"nav.requests+{STAMP}@example.test"
-# #862: at most 8 requests per navigation and none repeated. What each navigation costs today (measured 2026-11-08 on this scene, plus one for
-# a poll that lands in the quiet window) and how many addresses it sends twice; the ones above TARGET wait for the client's data layer.
+# #862: at most 8 requests per navigation and none repeated. What each navigation costs with kept reads (measured 2026-11-08 on this scene, plus
+# one for a poll that lands in the quiet window) and how many addresses it sends twice; the ones above TARGET wait for the rest of the data layer.
 TARGET = 8
 BUDGET = {
-    "Home → Inbox": (4, 1),
-    "Inbox → Home": (5, 1),
-    "Home → a space (Conversation)": (20, 1),
-    "Conversation → Tasks": (11, 0),
-    "Tasks → Map": (5, 0),
-    "Map → Wiki": (9, 2),
-    "Wiki → Conversation": (16, 1),
-    "Conversation → another space": (19, 1),
-    "another space → My tasks": (5, 0),
+    "Home → Inbox": (2, 0),
+    "Inbox → Home": (3, 0),
+    "Home → a space (Conversation)": (14, 0),
+    "Conversation → Tasks": (7, 0),
+    "Tasks → Map": (4, 0),
+    "Map → Wiki": (6, 0),
+    "Wiki → Conversation": (16, 0),
+    "Conversation → another space": (16, 0),
+    "another space → My tasks": (4, 0),
 }
 
 

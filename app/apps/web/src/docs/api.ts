@@ -3,7 +3,7 @@ import {
   type CreateDocCommand, type Doc, type DocPreview, type DocSectionSource, type DocSummary, type DocVersion, type DocVersionSummary,
   type Page, type UpdateDocCommand,
 } from '@flux/contracts';
-import { request, responseError, send } from '../api/client.js';
+import { KEEP_MS, request, responseError, send } from '../api/client.js';
 import { liveDocPath, liveDocEnrollPath, liveDocSavePath, type LiveDocBootstrap, type EnrollLiveDoc, type EnrolledLiveDoc, type SaveSharedDoc, type LiveReceipt } from '@flux/contracts';
 
 export const getLiveDoc = (id: string, signal?: AbortSignal) => request<LiveDocBootstrap>(liveDocPath(id), { signal });
@@ -19,7 +19,7 @@ const LIMIT = 100;
 async function everything<T>(path: string, signal?: AbortSignal, share = false): Promise<T[]> {
   const items: T[] = [];
   for (let offset = 0; offset <= 10_000; offset += LIMIT) {
-    const page = await request<Page<T>>(`${path}?limit=${LIMIT}&offset=${offset}`, { signal, share });
+    const page = await request<Page<T>>(`${path}?limit=${LIMIT}&offset=${offset}`, { signal, share, ...(share ? { keep: KEEP_MS } : {}) });
     items.push(...page.items);
     if (!page.items.length || offset + page.items.length >= page.total) break;
   }
