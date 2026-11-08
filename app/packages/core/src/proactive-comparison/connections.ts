@@ -47,7 +47,7 @@ const budgetProblem = 'The daily budget is whole cents from $0.10 to $1,000';
 function assertBudgetFitsRequest(price: AiPrice | null, budgetCents: number, model: string | null = null) {
   const largest = requestReservationMicros(price, PERSONAL_RUN_LIMITS.maxToolInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens);
   if (largest !== null && largest > budgetCents * 10_000)
-    throw new InvalidInputError(`One request on ${model ? `${assistantModelName(model)}, one of your agents' models on this key,` : 'this model'} can cost up to $${(Math.ceil(largest / 10_000) / 100).toFixed(2)}, so the daily budget must be at least that`, 'AI_BUDGET_TOO_SMALL');
+    throw new InvalidInputError(`One request on ${model ? `${assistantModelName(model)}, your assistant's model on this key,` : 'this model'} can cost up to $${(Math.ceil(largest / 10_000) / 100).toFixed(2)}, so the daily budget must be at least that`, 'AI_BUDGET_TOO_SMALL');
 }
 function connectionName(value: unknown): value is string {
   return typeof value === 'string' && value.trim() === value && value.length >= 1 && value.length <= 80;
