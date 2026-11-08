@@ -113,7 +113,7 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
       .where(eq(schema.liveSessions.id, sessionId));
     if (!located) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
     await locked(located.workspaceId, async (signal, held) => {
-      await lifecycle?.recoverWorkspaceUnderLock(located.workspaceId);
+      await lifecycle?.recoverWorkspaceUnderLock(located.workspaceId, held);
       signal.throwIfAborted();
       await recoverUnderLock(located.workspaceId, held);
       signal.throwIfAborted();
@@ -147,7 +147,7 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
 
   async function change<T>(scope: Scope, mutation: () => Promise<T>): Promise<T> {
     return locked(scope.workspaceId, async (signal, held) => {
-      await lifecycle?.recoverWorkspaceUnderLock(scope.workspaceId);
+      await lifecycle?.recoverWorkspaceUnderLock(scope.workspaceId, held);
       signal.throwIfAborted();
       await recoverUnderLock(scope.workspaceId, held);
       // From here every step is one the lock protects: if its connection is lost, the next holder may be doing them (#916).
@@ -189,7 +189,7 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
       const pending = await db.select({ workspaceId: schema.liveAccessFences.workspaceId })
         .from(schema.liveAccessFences).groupBy(schema.liveAccessFences.workspaceId);
       for (const row of pending) await locked(row.workspaceId, async (signal, held) => {
-        await lifecycle?.recoverWorkspaceUnderLock(row.workspaceId);
+        await lifecycle?.recoverWorkspaceUnderLock(row.workspaceId, held);
         signal.throwIfAborted();
         await recoverUnderLock(row.workspaceId, held);
       });

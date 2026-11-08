@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { eq, sql } from 'drizzle-orm';
-import { schema } from '@flux/db';
+import { schema, SessionLockLostError } from '@flux/db';
 import { DomainError } from '@flux/core';
 import type { Conversation } from '@flux/contracts';
 import { liveSessionStore } from '../../apps/server/src/live/store.js';
@@ -156,4 +156,38 @@ test('sweep reaches sessions beyond 32 rooms whose SFU presence stays unknown', 
   await lifecycle.sweep();
   assert.ok(observed.includes(last.room_id), 'a failed first page cannot starve later rows');
   assert.deepEqual(deleted, [last.room_id]);
+});
+
+test('#975: when the workspace lock is lost, the write that ends a session does not commit and the next holder finishes it', async () => {
+  const { owner, place, anchor } = await fixture('live-ending-lock-lost');
+  const store = liveSessionStore(db);
+  const principal = { kind: 'human' as const, id: owner.id };
+  const session = await store.createOrGet(principal, place.id, anchor, randomUUID(), noRoom);
+  const [{ emptySince }] = await db.select({ emptySince: schema.liveSessions.emptySince }).from(schema.liveSessions).where(eq(schema.liveSessions.id, session.id));
+  const clock = new Date(emptySince!.getTime() + 301_000);
+  const lockPid = async () => (await pool.query<{ pid: number }>(`SELECT pid FROM pg_locks WHERE locktype = 'advisory' AND classid = 62061
+    AND objid::bigint = (hashtext($1)::bigint & 4294967295) AND granted`, [place.workspaceId])).rows[0]?.pid;
+  const deleted: string[] = [];
+  let killed = false;
+  const lifecycle = liveLifecycle(db, pool, {
+    async occupancy() { return 0; },
+    async deleteRoom(roomId) {
+      deleted.push(roomId);
+      // The holder's connection dies under it, as in a restart or a failover: the server drops the lock and a rival may take it.
+      if (!killed) {
+        killed = true;
+        const pid = await lockPid();
+        assert.ok(pid, 'the reconcile holds the workspace lock');
+        await pool.query('SELECT pg_terminate_backend($1)', [pid]);
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
+    },
+  }, () => clock);
+  await assert.rejects(lifecycle.reconcile(session.id), (error: unknown) => error instanceof SessionLockLostError);
+  assert.equal(killed, true);
+  // The room was removed, but the write that ends the session went through the lost lock's connection and did not commit: the fence stays.
+  assert.equal((await store.find(session.id))?.state, 'ending');
+  await lifecycle.recoverPending();
+  assert.equal((await store.find(session.id))?.state, 'ended');
+  assert.equal(deleted.length, 2, 'the next holder removes the room again, which is safe');
 });
