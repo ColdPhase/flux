@@ -4,7 +4,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import WebSocket from 'ws';
 import {
   AGENT_RUNTIME_BINDING_PATH, AGENT_RUNTIME_CONSOLE_PATH, AGENT_RUNTIME_PATH, AGENT_RUNTIME_SIGN_OUT_PATH, assistantRunPath,
-  conversationAssistantRunsPath, PERSONAL_ASSISTANT_PATH, type AgentRuntimeConsoleServerMessage, type AgentRuntimeStatus, type AssistantRun, type PersonalAssistantStatus,
+  conversationAssistantRunsPath, MY_AGENTS_PATH, myAgentPath, PERSONAL_ASSISTANT_PATH, type AgentRuntimeConsoleServerMessage, type AgentRuntimeStatus, type AssistantRun, type PersonalAssistantStatus,
 } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
 import { apiUrl, publicOrigin, signIn } from './support/http.js';
@@ -320,7 +320,7 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     const agent = expectStatus(await someone.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string };
     const assistant = await someone.browser.request('GET', PERSONAL_ASSISTANT_PATH);
     assert.equal((assistant.json as PersonalAssistantStatus).setup.runtime.state, 'signed_in', 'the API sees the owner signed in to Claude Code');
-    const enabled = await someone.browser.request('POST', PERSONAL_ASSISTANT_PATH, { body: { agentId: agent.id, connection: 'claude_plan', model: 'sonnet' } });
+    const enabled = await someone.browser.request('POST', MY_AGENTS_PATH, { body: { agentId: agent.id, connection: 'claude_plan', model: 'sonnet' } });
     assert.equal(enabled.status, 201, enabled.text);
     const started = expectStatus(await someone.browser.request('POST', conversationAssistantRunsPath(thread.id),
       { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Which projects can you see?' } }), 202) as AssistantRun;
@@ -359,8 +359,6 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
    */
   async 'codex-run'(label) {
     const someone = await owner(label!);
-    const removed = await someone.browser.request('DELETE', PERSONAL_ASSISTANT_PATH);
-    assert.ok(removed.status === 204 || removed.status === 404, removed.text);
     const before = expectStatus(await someone.browser.request('GET', PERSONAL_ASSISTANT_PATH), 200) as PersonalAssistantStatus;
     assert.deepEqual([before.setup.runtime.state, before.setup.runtime.client, before.setup.runtime.payer], ['signed_in', 'codex', 'chatgpt_plan']);
     const ws = await company(someone);
@@ -370,8 +368,12 @@ const steps: Record<string, (...args: string[]) => Promise<void>> = {
     // One company, so the assistant keeps the identity of the run before.
     const agents = expectStatus(await someone.browser.request('GET', `/api/v1/workspaces/${ws.id}/agents`), 200) as { id: string; name: string; ownerUserId?: string }[];
     const agent = agents.find((item) => item.name === 'My assistant')!;
-    const enabled = await someone.browser.request('POST', PERSONAL_ASSISTANT_PATH, { body: { agentId: agent.id, connection: 'chatgpt_plan', model: 'gpt-6.1-sol' } });
-    assert.equal(enabled.status, 201, enabled.text);
+    // The agent made for the Claude run changes to the ChatGPT plan (an agent's model is its own); a person without one makes it now.
+    const mine = expectStatus(await someone.browser.request('GET', MY_AGENTS_PATH), 200) as { items: { id: string }[] };
+    const enabled = mine.items.some((item) => item.id === agent.id)
+      ? await someone.browser.request('PATCH', myAgentPath(agent.id), { body: { connection: 'chatgpt_plan', model: 'gpt-6.1-sol' } })
+      : await someone.browser.request('POST', MY_AGENTS_PATH, { body: { agentId: agent.id, connection: 'chatgpt_plan', model: 'gpt-6.1-sol' } });
+    assert.ok(enabled.status === 200 || enabled.status === 201, enabled.text);
     const started = expectStatus(await someone.browser.request('POST', conversationAssistantRunsPath(thread.id),
       { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'Which projects can you see?' } }), 202) as AssistantRun;
     assert.equal(started.runtimeClient, 'codex');

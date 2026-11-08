@@ -138,11 +138,10 @@ function ConnectAi({ onBack }: { onBack: () => void }) {
         <h4 id="details-ai-ways">Ways to connect</h4>
         <ul className="details__rows">
           <li><b>Your MCP client on your computer</b><span>Claude Code, Codex or another MCP client, with your own account for compute and your personal Flux grant. Flux never receives your provider credentials.</span></li>
-          <li><b>Your assistant in Flux</b><span>Answers here when you ask, with your own API key from the provider and model you choose, your consent and your daily cap. Only you can use it.</span></li>
+          <li><b>Your agents in Flux</b><span>Answer here when you ask, on your Claude plan, your ChatGPT plan or your own API key, with the model you choose for each. Only you can use them.</span></li>
         </ul>
         <p><Link className="ui-link" to="/settings/agents">Ways to connect, in Settings → AI</Link></p>
         <p><Link className="ui-link" to="/connect-agent">Set up or revoke an MCP client connection</Link></p>
-        <p><Link className="ui-link" to="/settings/assistant">Set up your assistant in Flux</Link></p>
       </section>
       <section className="details__sec" aria-labelledby="details-ai-now">
         <h4 id="details-ai-now">Nobody else’s assistant</h4>

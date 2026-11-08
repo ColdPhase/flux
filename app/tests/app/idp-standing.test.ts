@@ -448,10 +448,13 @@ describe('the check', () => {
       { status: 200, body: { access_token: 'at' } },
     ]);
     const userId = await person(id, { session: false });
-    await db.insert(schema.personalRunEnablements).values({
-      ownerUserId: userId, provider: 'anthropic', engine, connectionId: engine === 'server' ? randomUUID() : null,
-      assistantModel: engine === 'runtime' ? 'sonnet' : 'claude-sonnet-5',
-    });
+    const [workspaceId, agentId, connectionId] = [randomUUID(), randomUUID(), randomUUID()];
+    await pool.query(`INSERT INTO workspaces (id, name, created_by) VALUES ($1, 'Standing', $2)`, [workspaceId, userId]);
+    await pool.query(`INSERT INTO agents (id, workspace_id, name, owner_user_id, created_by) VALUES ($1, $2, 'Assistant', $3, $3)`, [agentId, workspaceId, userId]);
+    await pool.query(`INSERT INTO agent_connections (id, workspace_id, owner_user_id, agent_id, name, compute_source)
+      VALUES ($1, $2, $3, $4, 'Assistant', 'owner_assistant')`, [connectionId, workspaceId, userId, agentId]);
+    await pool.query(`INSERT INTO assistant_settings (workspace_id, owner_user_id, agent_id, connection_id, engine, api_key_id, provider, model)
+      VALUES ($1, $2, $3, $4, $5, $6, 'anthropic', $7)`, [workspaceId, userId, agentId, connectionId, engine, engine === 'server' ? randomUUID() : null, engine === 'runtime' ? 'sonnet' : 'claude-sonnet-5']);
     await service.recordSignIn(userId, 'kept-offline-token');
     await due(userId);
     assert.equal(await service.runOnce(), 1, 'enabled automation needs no browser or MCP refresh token');
@@ -462,9 +465,9 @@ describe('the check', () => {
     assert.equal(await service.stands(userId), true);
     assert.equal(script.tokenCalls().length, 2);
     assert.equal(openToken(key, userId, id, (await row(userId)).refresh_token_enc), 'kept-offline-token');
-    await pool.query(`UPDATE personal_run_enablements SET status = 'paused' WHERE owner_user_id = $1`, [userId]);
+    await pool.query(`UPDATE agents SET revoked_at = now() WHERE owner_user_id = $1`, [userId]);
     await due(userId);
-    assert.equal(await service.runOnce(), 0, 'paused automation alone is idle');
+    assert.equal(await service.runOnce(), 0, 'a deleted agent alone is idle');
   });
 
   // Each remaining authority in claim() (#490): a person with no browser session, no MCP refresh token and no

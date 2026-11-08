@@ -126,7 +126,7 @@ export function AppLayout() {
 }
 
 function AppLayoutContent() {
-  const { me, workspace, workspaces, lockedWorkspaces, projects, reachableSpaces, directMessages } = useShellData();
+  const { me, workspace, workspaces, lockedWorkspaces, projects, reachableSpaces, directMessages, agents } = useShellData();
   // F-030 (#655): the workspaces that wait to be unlocked, as the latest read has them, for the handler of `423` below.
   const lockedNow = useRef(lockedWorkspaces);
   useLayoutEffect(() => { lockedNow.current = lockedWorkspaces; });
@@ -539,7 +539,7 @@ function AppLayoutContent() {
   const switchingName = switching ? projects.find((project) => switching.startsWith(`/projects/${project.id}/`))?.name ?? directMessages.find((dm) => switching === `/dm/${dm.id}`)?.title ?? 'the conversation' : '';
 
   // In focus the rail shows no counts.
-  const sidebarProps = { workspace, projects, directMessages, user: me.user, session: me.session, inboxUnread: focusing ? 0 : inboxUnread };
+  const sidebarProps = { workspace, projects, directMessages, agents, user: me.user, session: me.session, inboxUnread: focusing ? 0 : inboxUnread };
   const where = placeOf(location.pathname);
   // Home's computer layout has no header row; keep its name available to assistive technology.
   const homeRoot = where === 'home' && location.pathname === '/';
@@ -627,6 +627,7 @@ function AppLayoutContent() {
   const needsYou = activeProject && projectId ? inboxCounts.byProject.get(projectId) ?? 0 : 0;
   const openNeedsYou = () => { if (projectId) navigate(`/inbox?project=${encodeURIComponent(projectId)}`); };
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
+  const activeAgent = agents.find((agent) => agent.id === location.pathname.match(/^\/agents\/([^/]+)/)?.[1]);
   const activeDm = directMessages.find((dm) => dm.id === dmId);
   // A direct message has one view, Messages; its sketches are gone (#866).
   const dmViews = activeDm ? [{ id: 'messages', label: 'Messages', to: `/dm/${activeDm.id}` }] : null;
@@ -646,10 +647,10 @@ function AppLayoutContent() {
     ? { crumb: null, title: 'Background suggestions', topic: 'Your usage and space rules', noDetails: true }
     : aiConnections
     ? { crumb: null, title: 'Your API keys', topic: 'Each with one daily budget', noDetails: true }
-    : location.pathname === '/settings/assistant/how'
-    ? { crumb: null, title: 'How your assistant works', topic: 'Only you can use it · optional', noDetails: true }
     : location.pathname === '/settings/assistant'
-    ? { crumb: null, title: 'Your assistant', topic: 'Only you can use it · optional', noDetails: true }
+    ? { crumb: null, title: 'Schedules', topic: 'Work your first agent does on its own', noDetails: true }
+    : activeAgent
+    ? { crumb: null, title: activeAgent.name, topic: 'Your agent · only you talk to it', noDetails: true }
     : activeProject
     ? { crumb: null, title: activeProject.name, topic: audience }
     : /^\/map(\/|$)/.test(location.pathname)

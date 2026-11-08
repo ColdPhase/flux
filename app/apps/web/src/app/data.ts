@@ -1,8 +1,9 @@
 import { redirect, useRouteLoaderData, type LoaderFunctionArgs } from 'react-router';
-import type { ProjectAccess, ProjectVisibility, SpaceAiState, WorkspaceRole } from '@flux/contracts';
+import type { MyAgent, ProjectAccess, ProjectVisibility, SpaceAiState, WorkspaceRole } from '@flux/contracts';
 import { getMe, type MeResponse } from '../api/auth';
 import { signInPath } from '../auth/logic';
 import { listAllDms } from '../api/direct-messages';
+import { listMyAgents } from '../my-agents/api';
 import { audienceLine, dmTitle, othersIn } from '../dm/names';
 import { listAccessibleProjects } from '../project/api';
 import type { WorkspaceEncryption } from '../encryption/api';
@@ -51,6 +52,8 @@ export interface ShellData {
   /** Every space they can open. A company owner or admin reaches more than they belong to: Settings › Company lists those. */
   reachableSpaces: ProjectSummary[];
   directMessages: DirectMessageSummary[];
+  /** The person's own agents, oldest first: the first is Assistant, pinned first in Messages (F-036 AG-1). */
+  agents: MyAgent[];
 }
 
 /** The latest shell read, so a route loader can ask whether a space has AI off before it asks the server (#614). */
@@ -87,13 +90,13 @@ async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
   }
   const { workspaces, lockedWorkspaces, projects: reachableSpaces } = await listAccessibleProjects(request.signal);
   const projects = reachableSpaces.filter((project) => project.member !== false);
-  const dms = await listAllDms(request.signal, workspaces);
+  const [dms, agents] = await Promise.all([listAllDms(request.signal, workspaces), listMyAgents(request.signal).catch((): MyAgent[] => [])]);
   const directMessages = dms.map((dm) => ({
     id: dm.id, workspaceId: dm.workspaceId, kind: dm.kind, title: dmTitle(dm, me.user.id),
     people: othersIn(dm, me.user.id).map((person) => person.name), participantIds: dm.audience.participantIds,
     audience: audienceLine(dm, me.user.id), preview: dm.lastMessageBody, lastAt: dm.lastMessageAt,
   }));
-  return { me, workspace: workspaces.find((space) => space.company) ?? workspaces[0] ?? null, workspaces, lockedWorkspaces, projects, reachableSpaces, directMessages };
+  return { me, workspace: workspaces.find((space) => space.company) ?? workspaces[0] ?? null, workspaces, lockedWorkspaces, projects, reachableSpaces, directMessages, agents };
 }
 
 export function useShellData(): ShellData {

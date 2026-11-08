@@ -1,16 +1,21 @@
 import { budgetLine } from '../assistant/job-result.js';
+import type { AgentSetup } from '../assistant/ports.js';
 import { randomUUID } from 'node:crypto';
 import {
+  AGENT_LIMITS,
   ASSISTANT_PLAN_MODELS,
   assistantModelName,
+  type AddAgentMemoryCommand,
+  type AgentMemory,
+  type AgentMemoryItem,
   type AiConnectionRef,
   type AssistantAnswer,
   type AssistantModelChoice,
-  type AssistantModelPick,
   type AssistantRun,
   type AssistantRunBehind,
-  type ChangeAssistantModelCommand,
-  type EnablePersonalRunsCommand,
+  type AssistantModelPick as ModelPick,
+  type CreateMyAgentCommand,
+  type EditAgentMemoryCommand,
   type InvokeAssistantRunCommand,
   type Page,
   type PageQuery,
@@ -18,23 +23,24 @@ import {
   type PersonalAssistantUnavailableReason,
   type PersonalRunEnablement,
   type RetryAssistantRunCommand,
-  type SelectPersonalAgentCommand,
+  type MyAgent,
+  type UpdateMyAgentCommand,
 } from '@flux/contracts';
 import {
   ConflictError, ForbiddenError, InvalidInputError, NotFoundError, ServiceUnavailableError,
 } from '../access/errors.js';
 import type { Principal } from '../principal.js';
-import { id, isId, page } from '../work/validation.js';
+import { isId, page } from '../work/validation.js';
 import type {
-  EnablementChanges, EnablementRecord, KeySpend, NewRun, PersonalConnection, PersonalConnectionLookup, PersonalRunPorts, PersonalRunUnitOfWork,
+  EnablementRecord, KeySpend, NewRun, PersonalConnection, PersonalConnectionLookup, PersonalRunPorts, PersonalRunUnitOfWork,
   PersonalRuntimeAvailability, PersonalRuntimeClient, PersonalRuntimeStanding, RunRecord,
 } from './ports.js';
 import {
-  apiModelAccount, CODEX_RUNTIME_MODEL, connectionOnModel, isModelId, modelChoice, modelNameOf, RUNTIME_MODEL, runtimeModelAccount, type ConnectionModels,
+  apiModelAccount, CODEX_RUNTIME_MODEL, connectionOnModel, defaultPick, isModelId, modelChoice, modelNameOf, RUNTIME_MODEL, runtimeModelAccount, type ConnectionModels,
 } from './model.js';
 import { announce, updateAndAnnounce } from './progress.js';
 import {
-  budgetedReservationMicros, centsToMicros, connectionRef, normalizeEnable, normalizeInvoke, retryRequest, runReservationMicros,
+  budgetedReservationMicros, centsToMicros, connectionRef, memoryText, normalizeAgentChange, normalizeEnable, normalizeInvoke, retryRequest, runReservationMicros,
   type NormalizedInvoke,
 } from './validation.js';
 
@@ -138,9 +144,8 @@ function modelOf(record: EnablementRecord): string {
 
 function enablementView(record: EnablementRecord): PersonalRunEnablement {
   return {
-    ownerUserId: record.ownerUserId, connection: enablementConnection(record), status: record.status, engine: record.engine,
-    model: modelOf(record), agents: record.agents.map((agent) => ({ ...agent })), version: record.version,
-    createdAt: iso(record.createdAt), updatedAt: iso(record.updatedAt),
+    ownerUserId: record.ownerUserId, agentId: record.agentId, workspaceId: record.workspaceId, connection: enablementConnection(record), engine: record.engine,
+    model: modelOf(record), version: record.version, createdAt: iso(record.createdAt), updatedAt: iso(record.updatedAt),
   };
 }
 
@@ -229,8 +234,8 @@ function unavailable(reason: PersonalAssistantUnavailableReason) {
 }
 
 /** A body that names another owner, agent or connection is refused before anything is read or reserved. */
-function refuseForeignIds(claimed: NormalizedInvoke['claimed'], owner: string, enablement: EnablementRecord | null, workspaceId: string) {
-  const agentId = enablement?.agents.find((agent) => agent.workspaceId === workspaceId)?.agentId ?? null;
+function refuseForeignIds(claimed: NormalizedInvoke['claimed'], owner: string, enablement: EnablementRecord | null) {
+  const agentId = enablement?.agentId ?? null;
   const foreign = (claimed.ownerId !== null && claimed.ownerId !== owner)
     || (claimed.agentId !== null && claimed.agentId.toLowerCase() !== agentId)
     || (claimed.connectionId !== null && (!enablement?.connectionId || claimed.connectionId.toLowerCase() !== enablement.connectionId));
@@ -311,11 +316,28 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     return { item, model: option.id };
   }
 
-  /** The enablement fields of a picked model: the engine, key and provider of its connection. */
-  function placement(item: ConnectionModels, model: string): Required<Pick<EnablementChanges, 'engine' | 'connectionId' | 'provider' | 'assistantModel'>> {
-    if (item.connection) return { engine: 'server', connectionId: item.connection.id, provider: item.connection.provider, assistantModel: model };
-    return { engine: 'runtime', connectionId: null, provider: runtimeVendor(clientOfPlan(item.ref)).provider, assistantModel: model };
+  /** The engine, key and provider of a picked model's connection. */
+  function placement(item: ConnectionModels, model: string): Pick<AgentSetup, 'engine' | 'apiKeyId' | 'provider' | 'model'> {
+    if (item.connection) return { engine: 'server', apiKeyId: item.connection.id, provider: item.connection.provider, model };
+    return { engine: 'runtime', apiKeyId: null, provider: runtimeVendor(clientOfPlan(item.ref)).provider, model };
   }
+
+  /** The model of a new agent: the one named, else Connect AI's default (the connection made first, at its default model). */
+  async function modelFor(owner: string, connectionWanted: unknown, modelWanted: unknown, still: string) {
+    if (connectionWanted === undefined && modelWanted === undefined) {
+      const first = defaultPick(await ownConnections(owner));
+      if (!first) throw modelUnavailable(`Connect AI first.${still}`);
+      return pick(owner, first.connection, first.model, still);
+    }
+    return pick(owner, connectionWanted, modelWanted, still);
+  }
+
+  /** The agents of a person, read and changed only by them (F-036 AG-1): the identity port exists on the API, not in the worker. */
+  function agentsOf(ports: PersonalRunPorts) {
+    if (!ports.assistants) throw new ServiceUnavailableError('Agents can be changed from the API only', 'AGENTS_UNAVAILABLE');
+    return ports.assistants;
+  }
+  const agentNotFound = () => new NotFoundError('Agent', 'AGENT_NOT_FOUND');
 
   async function status(ports: PersonalRunPorts, owner: string): Promise<PersonalAssistantStatus> {
     const enablement = await ports.runs.enablement(owner);
@@ -332,13 +354,11 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     if (enablement.engine === 'runtime') {
       // A plan: its limits are the provider's, never Flux's (#843).
       const problem = runtimeProblem(standing);
-      if (enablement.status === 'paused') return { state: 'paused', unavailableReason: null, enablement: view, setup, today: null };
       return { state: problem ? 'unavailable' : 'ready', unavailableReason: problem, enablement: view, setup, today: null };
     }
     const key = providerEnabled && enablement.connectionId ? await connections.resolve(owner, enablement.connectionId) : null;
     const spend = key ? await ports.runs.keySpend(key) : null;
     const today = spend ? { chargedMicros: spend.chargedMicros, reservedMicros: spend.reservedMicros, budgetCents: spend.budgetCents, resetsAt: iso(spend.resetsAt) } : null;
-    if (enablement.status === 'paused') return { state: 'paused', unavailableReason: null, enablement: view, setup, today };
     const usableNow = await usableConnection(connections, providerEnabled, enablement);
     if (usableNow.problem) return { state: 'unavailable', unavailableReason: usableNow.problem, enablement: view, setup, today };
     const one = runReservationMicros(usableNow.connection.price, false) ?? 0;
@@ -346,9 +366,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     return { state: capped ? 'capped' : 'ready', unavailableReason: null, enablement: view, setup, today };
   }
 
-  async function lockedEnablement(ports: PersonalRunPorts, owner: string) {
-    const enablement = await ports.runs.enablement(owner, { lock: true });
-    if (!enablement) throw new ConflictError('Your assistant is not enabled', 'PERSONAL_RUN_NOT_ENABLED');
+  async function lockedEnablement(ports: PersonalRunPorts, owner: string, agentId?: string) {
+    const enablement = await ports.runs.enablement(owner, { lock: true, ...(agentId ? { agentId } : {}) });
+    if (!enablement) throw new ConflictError('You have no agent yet', 'PERSONAL_RUN_NOT_ENABLED');
     return enablement;
   }
 
@@ -397,8 +417,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     // AG-10: no run, and no replay of an earlier one, while AI is off in this space.
     const { epoch: aiEpoch } = await ports.access.requireSpaceAi(place.projectId, { lock: true });
     // The owner's row lock serializes this owner's invocations: same-key retries and the budget reservation cannot race.
-    const enablement = await ports.runs.enablement(owner, { lock: true });
-    refuseForeignIds(request.claimed, owner, enablement, place.workspaceId);
+    const enablement = await ports.runs.enablement(owner, { lock: true, workspaceId: place.workspaceId });
+    refuseForeignIds(request.claimed, owner, enablement);
     const existing = await ports.runs.runByClientId(owner, request.clientRunId);
     if (existing) {
       if (existing.requestFingerprint !== request.fingerprint || existing.conversationId !== conversationId.toLowerCase() || existing.retryOfRunId !== retryOfRunId)
@@ -411,11 +431,10 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       if (earlier.answerBody === null) throw new ConflictError('Only a committed answer can be continued', 'ASSISTANT_RUN_NOT_CONTINUABLE');
     }
     if (request.target && !(await ports.access.canReadSketch(principal, request.target.sketchId))) throw new NotFoundError('Thought', 'THOUGHT_NOT_FOUND');
-    if (!enablement) throw new ConflictError('Your assistant is not enabled', 'PERSONAL_RUN_NOT_ENABLED');
-    if (enablement.status === 'paused') throw new ConflictError('Your assistant is paused', 'PERSONAL_RUN_PAUSED');
-    const agentId = enablement.agents.find((agent) => agent.workspaceId === place.workspaceId)?.agentId;
-    if (!agentId || !(await ports.access.canInvoke(principal, agentId, { lock: true })))
-      throw new ConflictError('Choose your assistant for this company first', 'PERSONAL_RUN_NO_AGENT');
+    if (!enablement) throw new ConflictError('You have no agent to answer yet. Make one in Settings › AI', 'PERSONAL_RUN_NOT_ENABLED');
+    const agentId = enablement.agentId;
+    if (!(await ports.access.canInvoke(principal, agentId, { lock: true })))
+      throw new ConflictError('Your agent is not available', 'PERSONAL_RUN_NO_AGENT');
     const agent = { kind: 'agent' as const, id: agentId };
     if (!(await ports.access.canUseProject(agent, 'read', place.projectId, { lock: true })))
       throw new ConflictError('Your assistant has no access to this project', 'PERSONAL_RUN_NO_PROJECT_ACCESS');
@@ -468,11 +487,10 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     if (!(await ports.access.canUseProject(principal, 'write', spec.projectId, { lock: true }))) return skipped('Skipped: you no longer have access to this project');
     const existing = await ports.runs.runByClientId(owner, spec.clientRunId);
     if (existing) return { started: true, run: existing, created: false };
-    const enablement = await ports.runs.enablement(owner, { lock: true });
-    if (!enablement) return skipped('Skipped: your assistant is off');
-    if (enablement.status === 'paused') return skipped('Skipped: your assistant is paused');
-    const agentId = enablement.agents.find((agent) => agent.workspaceId === place.workspaceId)?.agentId;
-    if (!agentId || !(await ports.access.canInvoke(principal, agentId, { lock: true }))) return skipped('Skipped: your assistant is not available');
+    const enablement = await ports.runs.enablement(owner, { lock: true, workspaceId: place.workspaceId });
+    if (!enablement) return skipped('Skipped: you have no agent');
+    const agentId = enablement.agentId;
+    if (!(await ports.access.canInvoke(principal, agentId, { lock: true }))) return skipped('Skipped: your assistant is not available');
     if (!(await ports.access.canUseProject({ kind: 'agent', id: agentId }, 'read', place.projectId, { lock: true }))) return skipped('Skipped: I\'m not in this project');
     const admitted = await admit(ports, owner, enablement);
     if (!admitted.ok) {
@@ -519,10 +537,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     // An answer uses only what every person of the task can see: if one of them can no longer read the space, nothing is answered.
     if (kind === 'task_answer') for (const person of spec.audience ?? [])
       if (!(await ports.access.canUseProject({ kind: 'human', id: person }, 'read', spec.projectId, { lock: true }))) return refused('I can\'t answer: not everyone in this task can read this space.');
-    const enablement = await ports.runs.enablement(owner, { lock: true });
-    if (!enablement) return refused('I can\'t start: your AI is not connected.');
-    if (enablement.status === 'paused') return refused('I can\'t start: your agent is paused.');
-    if (enablement.agents.find((agent) => agent.workspaceId === place.workspaceId)?.agentId !== spec.agentId || !(await ports.access.canInvoke(principal, spec.agentId, { lock: true })))
+    // The agent's own setup (F-036 AG-1) is locked first, the task graph after it (`prepareTaskUse`), as everywhere else.
+    const enablement = await ports.runs.enablement(owner, { lock: true, agentId: spec.agentId });
+    if (!enablement || enablement.workspaceId !== place.workspaceId || !(await ports.access.canInvoke(principal, spec.agentId, { lock: true })))
       return refused('I can\'t start: I\'m not one of your agents here.');
     if (!(await ports.access.canUseProject({ kind: 'agent', id: spec.agentId }, 'read', spec.projectId, { lock: true }))) return refused('I can\'t start: I\'m not in this space.');
     const taskFence = await ports.runs.prepareTaskUse(place.projectId, spec.conversationId);
@@ -548,99 +565,146 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     startTask,
     status: (principal: Principal) => uow.run((ports) => status(ports, ownerOf(principal))),
 
-    /** The caller's own assistant model and what they may choose, grouped by connection (#854). */
+    /** What the caller may choose for an agent's model, grouped by connection (#854); `current` is their first agent's. */
     model: (principal: Principal): Promise<AssistantModelChoice> => {
       const owner = ownerOf(principal);
       return uow.run(async (ports) => {
         const enablement = await ports.runs.enablement(owner);
-        const current: AssistantModelPick | null = enablement ? { connection: enablementConnection(enablement), model: modelOf(enablement) } : null;
+        const current: ModelPick | null = enablement ? { connection: enablementConnection(enablement), model: modelOf(enablement) } : null;
         return modelChoice(await ownConnections(owner), current, !!enablement);
       });
     },
 
     /**
-     * Changes the assistant's one model (AST-11), from any of the owner's connections (#854): picking a model of another
-     * connection moves the assistant to it. Only a model in that connection's list is accepted; anything else is a plain
-     * error and the previous model stays. A request already sent keeps the model it recorded.
+     * Changes an agent's one model (AST-11, #857), from any of the owner's connections (#854): picking a model of another
+     * connection moves the agent to it. Only a model in that connection's list is accepted; anything else is a plain error and
+     * the previous model stays. A request already sent keeps the model it recorded. Without `agentId`: their first agent.
      */
-    async chooseModel(principal: Principal, command: ChangeAssistantModelCommand): Promise<AssistantModelChoice> {
+    async chooseModel(principal: Principal, command: ModelPick & { agentId?: string }): Promise<AssistantModelChoice> {
       const owner = ownerOf(principal);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Choose a model of one of your connections');
       return uow.run(async (ports) => {
         // The owner's assistant lock first, as a change of a key's budget takes it: one of the two goes first, and the other sees it (#915).
         await ports.assistants?.lockOwner(owner);
-        const enablement = await lockedEnablement(ports, owner);
+        const enablement = await lockedEnablement(ports, owner, command.agentId);
         const still = ` It is still ${modelNameOf({ model: modelOf(enablement) })}.`;
         const chosen = await pick(owner, command.connection, command.model, still);
         const next = placement(chosen.item, chosen.model);
-        const unchanged = next.engine === enablement.engine && next.connectionId === enablement.connectionId && next.provider === enablement.provider
-          && next.assistantModel === modelOf(enablement);
-        if (!unchanged) await ports.runs.updateEnablement(owner, next);
+        const unchanged = next.engine === enablement.engine && next.apiKeyId === enablement.connectionId && next.provider === enablement.provider
+          && next.model === modelOf(enablement);
+        if (!unchanged) await agentsOf(ports).change(enablement.agentId, next);
         return modelChoice(await ownConnections(owner), { connection: chosen.item.ref, model: chosen.model }, true);
       });
     },
 
-    /** Turns the assistant on with a model of one of the owner's connections; there is nothing else to agree to or set (#854). */
-    async enable(principal: Principal, command: EnablePersonalRunsCommand): Promise<PersonalAssistantStatus> {
+    /**
+     * Gives an agent identity of the owner its AI setup (#857): a model of one of their connections (Connect AI's default when
+     * none is named), saved instructions and a colour. There is nothing else to agree to or set (#854).
+     */
+    async enable(principal: Principal, command: CreateMyAgentCommand): Promise<MyAgent> {
       const owner = ownerOf(principal);
       const input = normalizeEnable(command);
       return uow.run(async (ports) => {
-        await ports.assistants?.lockOwner(owner);
+        const agents = agentsOf(ports);
+        await agents.lockOwner(owner);
         const { workspaceId } = await ports.access.requireInvoke(principal, input.agentId, { lock: true });
-        if (await ports.runs.enablement(owner, { lock: true })) throw new ConflictError('Your assistant is already enabled', 'PERSONAL_RUN_ALREADY_ENABLED');
-        const chosen = await pick(owner, input.connection, input.model, ' Nothing was turned on.');
-        const created = await ports.runs.insertEnablement({ ownerUserId: owner, ...placement(chosen.item, chosen.model) } as Parameters<typeof ports.runs.insertEnablement>[0]);
-        if (!created) throw new ConflictError('Your assistant is already enabled', 'PERSONAL_RUN_ALREADY_ENABLED');
-        await ports.runs.selectAgent(owner, workspaceId, input.agentId);
-        await ports.assistants?.ensure(owner, workspaceId, input.agentId);
-        return status(ports, owner);
+        if (await agents.get(owner, input.agentId)) throw new ConflictError('This agent is already set up', 'PERSONAL_RUN_ALREADY_ENABLED');
+        const chosen = await modelFor(owner, input.connection, input.model, ' Nothing was turned on.');
+        return agents.ensure(owner, workspaceId, input.agentId, { ...placement(chosen.item, chosen.model), instructions: input.instructions, colour: input.colour });
       });
     },
 
-    async selectAgent(principal: Principal, command: SelectPersonalAgentCommand): Promise<PersonalAssistantStatus> {
+    /** The caller's own agents, the first being Assistant. */
+    async listAgents(principal: Principal): Promise<MyAgent[]> {
       const owner = ownerOf(principal);
-      const agentId = id(command?.agentId, 'agentId');
-      return uow.run(async (ports) => {
-        await ports.assistants?.lockOwner(owner);
-        const { workspaceId } = await ports.access.requireInvoke(principal, agentId, { lock: true });
-        await lockedEnablement(ports, owner);
-        await ports.runs.selectAgent(owner, workspaceId, agentId);
-        await ports.assistants?.ensure(owner, workspaceId, agentId);
-        await ports.runs.updateEnablement(owner, {});
-        return status(ports, owner);
-      });
+      return uow.run((ports) => agentsOf(ports).list(owner));
     },
 
-    /** Pausing ends queued work at zero cost; a dispatching run commits nothing (commit recheck). */
-    async pause(principal: Principal): Promise<PersonalAssistantStatus> {
+    async getAgent(principal: Principal, agentId: unknown): Promise<MyAgent> {
       const owner = ownerOf(principal);
-      return uow.run(async (ports) => {
-        const current = await lockedEnablement(ports, owner);
-        if (current.status !== 'paused') await ports.runs.updateEnablement(owner, { status: 'paused' });
-        for (const ended of await ports.runs.endUndispatched(owner, 'paused')) await announce(ports, ended);
-        return status(ports, owner);
-      });
+      if (!isId(agentId)) throw agentNotFound();
+      return uow.run(async (ports) => (await agentsOf(ports).get(owner, agentId.toLowerCase())) ?? Promise.reject(agentNotFound()));
     },
 
-    async resume(principal: Principal): Promise<PersonalAssistantStatus> {
+    /** Changes the fields given: name, instructions, colour, or model with its connection. Only the owner, only their own. */
+    async updateAgent(principal: Principal, agentId: unknown, command: UpdateMyAgentCommand): Promise<MyAgent> {
       const owner = ownerOf(principal);
+      if (!isId(agentId)) throw agentNotFound();
+      const change = normalizeAgentChange(command);
       return uow.run(async (ports) => {
-        const current = await lockedEnablement(ports, owner);
-        if (current.status !== 'active') await ports.runs.updateEnablement(owner, { status: 'active' });
-        return status(ports, owner);
+        const agents = agentsOf(ports);
+        await agents.lockOwner(owner);
+        const current = await agents.get(owner, agentId.toLowerCase());
+        if (!current) throw agentNotFound();
+        if (change.name !== undefined && change.name !== current.name) await agents.rename(current.id, change.name);
+        if (change.model) {
+          const chosen = await pick(owner, change.model.connection, change.model.model, ` It is still ${modelNameOf(current.model)}.`);
+          await agents.change(current.id, placement(chosen.item, chosen.model));
+        }
+        if (change.instructions !== undefined || change.colour !== undefined)
+          await agents.change(current.id, { ...(change.instructions !== undefined ? { instructions: change.instructions } : {}), ...(change.colour ? { colour: change.colour } : {}) });
+        return (await agents.get(owner, current.id))!;
       });
     },
 
-    /** Turns the assistant off; queued work ends at zero cost. */
-    async remove(principal: Principal): Promise<void> {
+    /** Deletes an agent (the caller's first one when none is named): queued work ends at zero cost and its tasks go back to the caller. */
+    async remove(principal: Principal, agentId?: string): Promise<void> {
       const owner = ownerOf(principal);
       await uow.run(async (ports) => {
-        await ports.assistants?.lockOwner(owner);
-        await lockedEnablement(ports, owner);
-        for (const ended of await ports.runs.endUndispatched(owner, 'revoked')) await announce(ports, ended);
-        await ports.assistants?.remove(owner);
-        await ports.runs.deleteEnablement(owner);
+        const agents = agentsOf(ports);
+        await agents.lockOwner(owner);
+        // A named agent that is not the caller's is not found (never a clue that it exists); without one, the caller's first agent goes.
+        if (agentId !== undefined && (!isId(agentId) || !(await agents.get(owner, agentId.toLowerCase())))) throw agentNotFound();
+        const target = await lockedEnablement(ports, owner, agentId?.toLowerCase());
+        for (const ended of await ports.runs.endUndispatched(owner, 'revoked', target.agentId)) await announce(ports, ended);
+        await agents.remove(owner, target.agentId);
       });
+    },
+
+    /** What an agent remembers (F-036 AG-1). Only its owner reads or changes it. */
+    memory: {
+      async list(principal: Principal, agentId: unknown): Promise<AgentMemory> {
+        const owner = ownerOf(principal);
+        if (!isId(agentId)) throw agentNotFound();
+        return uow.run(async (ports) => {
+          const agents = agentsOf(ports);
+          if (!(await agents.get(owner, agentId.toLowerCase()))) throw agentNotFound();
+          return { items: await agents.memory.list(agentId.toLowerCase()) };
+        });
+      },
+      /** The owner adds an item by hand; `source` says where it came from ("From your conversation" when they said "remember that …"). */
+      async add(principal: Principal, agentId: unknown, command: AddAgentMemoryCommand, source = 'Added by you'): Promise<AgentMemoryItem> {
+        const owner = ownerOf(principal);
+        if (!isId(agentId)) throw agentNotFound();
+        const body = memoryText(command?.body);
+        return uow.run(async (ports) => {
+          const agents = agentsOf(ports);
+          await agents.lockOwner(owner);
+          const agent = await agents.get(owner, agentId.toLowerCase());
+          if (!agent) throw agentNotFound();
+          if (await agents.memory.count(agent.id) >= AGENT_LIMITS.memoryItems) throw new ConflictError(`${agent.name} remembers ${AGENT_LIMITS.memoryItems} things already. Delete one first.`, 'AGENT_MEMORY_FULL');
+          return agents.memory.add(owner, agent.id, agent.workspaceId, body, source);
+        });
+      },
+      async edit(principal: Principal, agentId: unknown, itemId: unknown, command: EditAgentMemoryCommand): Promise<AgentMemoryItem> {
+        const owner = ownerOf(principal);
+        if (!isId(agentId) || !isId(itemId)) throw agentNotFound();
+        const body = memoryText(command?.body);
+        return uow.run(async (ports) => {
+          const agents = agentsOf(ports);
+          if (!(await agents.get(owner, agentId.toLowerCase()))) throw agentNotFound();
+          return (await agents.memory.edit(agentId.toLowerCase(), itemId.toLowerCase(), body)) ?? Promise.reject(new NotFoundError('Remembered item', 'AGENT_MEMORY_NOT_FOUND'));
+        });
+      },
+      async remove(principal: Principal, agentId: unknown, itemId: unknown): Promise<void> {
+        const owner = ownerOf(principal);
+        if (!isId(agentId) || !isId(itemId)) throw agentNotFound();
+        await uow.run(async (ports) => {
+          const agents = agentsOf(ports);
+          if (!(await agents.get(owner, agentId.toLowerCase()))) throw agentNotFound();
+          if (!(await agents.memory.remove(agentId.toLowerCase(), itemId.toLowerCase()))) throw new NotFoundError('Remembered item', 'AGENT_MEMORY_NOT_FOUND');
+        });
+      },
     },
 
     async invoke(principal: Principal, conversationId: string, command: InvokeAssistantRunCommand): Promise<{ run: AssistantRun; created: boolean }> {

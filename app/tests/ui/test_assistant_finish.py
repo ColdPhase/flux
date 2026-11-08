@@ -195,47 +195,6 @@ class AssistantFinish(unittest.TestCase):
         where.get_by_role("button", name="Back").click()
         expect(page.get_by_role("combobox", name="Search", exact=True)).to_be_visible()
 
-    # ---------------------------------------------------------------- turn-on must not make a second assistant on a retry
-
-    def test_10_turn_on_reuses_the_assistant_an_earlier_try_made(self) -> None:
-        # Bea has one workspace and no assistant yet: Turn on makes one there, and a failed try must not make another.
-        context = self.browser.new_context(service_workers="block", base_url=ORIGIN, viewport={"width": 1440, "height": 900}, locale="en-GB", timezone_id="UTC")
-        self.addCleanup(context.close)
-        page = context.new_page()
-        page.goto("/sign-up")
-        page.get_by_label("Name").fill("Bea Ortiz")
-        page.get_by_label("Email").fill(f"bea.finish+{base.STAMP}@example.test")
-        page.get_by_label("Password").fill(PASSWORD)
-        page.get_by_role("button", name="Create account").click()
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        fresh = self.api(page, "POST", "/api/v1/workspaces", {"name": "Second workshop"}, status=201)
-        world = self.stub_assistant(page, enabled=False)
-        failures = {"left": 1}
-        posted: list[dict] = []
-
-        def enable(route: Route) -> None:
-            if route.request.method != "POST":
-                self.json(route, world["status"])
-                return
-            posted.append(json.loads(route.request.post_data or "{}"))
-            if failures["left"]:
-                failures["left"] -= 1
-                self.json(route, {"code": "INTERNAL", "message": "Couldn't turn it on."}, 500)
-            else:
-                world["status"] = self.status(page, enabled=True)
-                self.json(route, world["status"], 201)
-        page.route("**/api/v1/personal-assistant", enable)
-        page.route(re.compile(r".*/api/v1/personal-assistant/agents$"), lambda route: self.json(route, world["status"]))
-        page.goto("/settings/assistant")
-        card = page.get_by_role("region", name="Your assistant is ready")
-        card.get_by_role("button", name="Turn on", exact=True).click()
-        expect(card.get_by_role("alert")).to_be_visible()
-        card.get_by_role("button", name="Turn on", exact=True).click()
-        expect(page.get_by_role("switch", name="Your assistant is on")).to_be_visible()
-        made = [agent for agent in self.api(page, "GET", f"/api/v1/workspaces/{fresh['id']}/agents", status=200) if agent["owner"]["kind"] == "human"]
-        self.assertEqual(len(made), 1, "one assistant in the new workspace after a failed try and its retry")
-        self.assertEqual(len(posted), 2)
-
     # ---------------------------------------------------------------- Journey 6: subscription sign-in off
 
     def test_11_when_the_operator_turns_subscriptions_off_the_row_offers_to_tell_them_or_connect_a_key(self) -> None:
@@ -275,19 +234,21 @@ class AssistantFinish(unittest.TestCase):
             .violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 3).map((n) => n.target.join(' ') + ' :: ' + n.failureSummary.split('\\n').slice(1, 3).join(' ')) }))""", scope)
         self.assertEqual(result, [], f"axe violations on {where}")
 
-    def test_13_the_assistant_screens_have_no_axe_violations_at_both_widths_in_both_themes(self) -> None:
+    def test_13_the_agent_screens_have_no_axe_violations_at_both_widths_in_both_themes(self) -> None:
         for phone, dark in ((False, False), (True, False), (False, True), (True, True)):
             with self.subTest(phone=phone, dark=dark):
                 tag = self.tag(phone, dark)
                 page = self.page(phone=phone, dark=dark)
-                self.stub_assistant(page)
-                self.stub_model(page)
+                page.goto("/settings/agents")
+                row = page.get_by_role("list", name="Your agents").get_by_role("listitem").first
+                expect(row).to_be_visible()
+                self.axe(page, f"your agents ({tag})")
+                row.get_by_role("link").click()
+                expect(page.get_by_label("Instructions")).to_be_visible()
+                self.axe(page, f"an agent's page ({tag})")
                 page.goto("/settings/assistant")
-                expect(page.get_by_role("switch", name="Your assistant is on")).to_be_visible()
-                self.axe(page, f"the assistant screen ({tag})")
-                page.get_by_role("button", name="Model: Sonnet. Change").click()
-                expect(page.get_by_role("menu", name="Model")).to_be_visible()
-                self.axe(page, f"the assistant screen with the model list open ({tag})")
+                expect(page.get_by_role("heading", name=re.compile("schedules", re.I)).first).to_be_visible()
+                self.axe(page, f"the schedules page ({tag})")
 
     def stub_model(self, page: Page) -> None:
         options = [{"id": "sonnet", "name": "Sonnet", "note": "Everyday work", "callsTools": True}, {"id": "opus", "name": "Opus", "note": "Harder requests", "callsTools": True}]
@@ -296,16 +257,10 @@ class AssistantFinish(unittest.TestCase):
         choice = {"current": pick, "default": pick, "groups": groups, "saved": True}
         page.route(re.compile(r".*/api/v1/personal-assistant/model(\?.*)?$"), lambda route: self.json(route, choice))
 
-    def test_14_the_ready_card_the_panel_and_the_conversation_have_no_axe_violations(self) -> None:
+    def test_14_the_panel_and_the_conversation_have_no_axe_violations(self) -> None:
         for phone, dark in ((False, False), (True, True)):
             with self.subTest(phone=phone, dark=dark):
                 tag = self.tag(phone, dark)
-                page = self.page(phone=phone, dark=dark)
-                self.stub_assistant(page, enabled=False)
-                self.stub_model(page)
-                page.goto("/settings/assistant")
-                expect(page.get_by_role("region", name="Your assistant is ready")).to_be_visible()
-                self.axe(page, f"the ready card ({tag})")
                 page2 = self.page(phone=phone, dark=dark)
                 self.stub_assistant(page2)
                 self.stub_model(page2)

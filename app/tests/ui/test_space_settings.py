@@ -373,7 +373,7 @@ class SpaceSettings(unittest.TestCase):
         agent = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/agents", {"name": "Ada’s analyst", "owner": "self"}, status=201)
         # #854: the model of a connection (Connect AI's default: the TEST-ONLY fixture key); nothing else to agree to.
         default = self.api(page, "GET", "/api/v1/personal-assistant/model", status=200)["default"]
-        self.api(page, "POST", "/api/v1/personal-assistant", {"agentId": agent["id"], **default}, status=201)
+        self.api(page, "POST", "/api/v1/my-agents", {"agentId": agent["id"], **default}, status=201)
         conversation = self.api(page, "POST", f"/api/v1/projects/{space['id']}/conversations", {"body": "Which sensor should we test?", "clientMessageId": str(uuid.uuid4())}, status=201)
         mock("/__script", {"reset": True, "delay": 20})
         try:

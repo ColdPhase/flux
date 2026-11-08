@@ -1,10 +1,10 @@
 import {
-  ASSISTANT_RUNS_PATH, PERSONAL_ASSISTANT_AGENTS_PATH, PERSONAL_ASSISTANT_PATH, PERSONAL_ASSISTANT_PAUSE_PATH, PERSONAL_ASSISTANT_RESUME_PATH,
+  ASSISTANT_RUNS_PATH, PERSONAL_ASSISTANT_PATH,
   assistantProposalAcceptPath, assistantProposalDismissPath, assistantRunPath, assistantRunRetryPath, assistantRunStopPath,
   conversationAssistantAnswersPath, conversationAssistantRunsPath, projectAssistantProposalsPath,
   assistantChangeActionPath, assistantOperatorRequestPath, assistantRunChangesActionPath, conversationAssistantActivityPath, conversationAssistantChangesPath,
   type AssistantActivity, type AssistantChange, type AssistantChangeDecision, type AssistantChangesDecided, type AssistantRunUndone,
-  type AssistantAnswer, type AssistantProposal, type AssistantRun, type EnablePersonalRunsCommand, type InvokeAssistantRunCommand,
+  type AssistantAnswer, type AssistantProposal, type AssistantRun, type InvokeAssistantRunCommand,
   type Page, type PersonalAssistantStatus,
 } from '@flux/contracts';
 import { request } from '../api/client';
@@ -13,11 +13,6 @@ import { request } from '../api/client';
 // resolves the owner, agent and key connection from the session, never from these bodies.
 
 export const getAssistantStatus = (signal?: AbortSignal) => request<PersonalAssistantStatus>(PERSONAL_ASSISTANT_PATH, { signal });
-export const enableAssistant = (command: EnablePersonalRunsCommand) => request<PersonalAssistantStatus>(PERSONAL_ASSISTANT_PATH, { method: 'POST', body: command });
-export const selectAssistantAgent = (agentId: string) => request<PersonalAssistantStatus>(PERSONAL_ASSISTANT_AGENTS_PATH, { method: 'PUT', body: { agentId } });
-export const pauseAssistant = () => request<PersonalAssistantStatus>(PERSONAL_ASSISTANT_PAUSE_PATH, { method: 'POST' });
-export const resumeAssistant = () => request<PersonalAssistantStatus>(PERSONAL_ASSISTANT_RESUME_PATH, { method: 'POST' });
-export const removeAssistant = () => request<null>(PERSONAL_ASSISTANT_PATH, { method: 'DELETE' });
 
 /** "Tell whoever runs Flux": one Needs-you item to the workspace's owners (F-027 Journey 6). */
 export const tellOperator = (workspaceId: string, client: 'claude_code' | 'codex' | null | undefined) =>

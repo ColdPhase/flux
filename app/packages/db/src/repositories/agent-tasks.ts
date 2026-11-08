@@ -12,7 +12,7 @@ type Actor = { kind: 'human' | 'agent'; id: string };
 const t = schema.agentTaskTaking;
 const ev = schema.agentTaskEvents;
 const a = schema.agents;
-const pa = schema.personalRunAgents;
+const as = schema.assistantSettings;
 const r = schema.personalRuns;
 
 /** A row that keeps failing is left after this many tries; it is a bound, not a rule anybody meets. */
@@ -24,13 +24,13 @@ export const AGENT_TASK_EVENT_ATTEMPTS = 5;
 export const AGENT_TASK_GIVE_UP_ATTEMPTS = 5;
 
 /**
- * The agents a person may give a task to: their own agents that run on the server. Today that is the agent of their
- * assistant, per company; the agents of #857 are listed here too, which is the one place that changes.
+ * The agents a person may give a task to: their own agents (F-036 AG-1, #857), every one that has an AI setup in Flux and
+ * has not been deleted. Local clients are not among them: they work on their owner's own computer.
  */
 export function ownServerAgents(db: DbExecutor, ownerUserId: string) {
-  return db.select({ id: a.id, name: a.name, workspaceId: a.workspaceId }).from(pa)
-    .innerJoin(a, and(eq(a.workspaceId, pa.workspaceId), eq(a.id, pa.agentId)))
-    .where(and(eq(pa.ownerUserId, ownerUserId), eq(a.ownerUserId, ownerUserId), isNull(a.revokedAt)))
+  return db.select({ id: a.id, name: a.name, workspaceId: a.workspaceId }).from(as)
+    .innerJoin(a, eq(a.id, as.agentId))
+    .where(and(eq(as.ownerUserId, ownerUserId), eq(a.ownerUserId, ownerUserId), isNull(a.revokedAt)))
     .orderBy(asc(a.createdAt), asc(a.id));
 }
 
@@ -46,8 +46,8 @@ export function agentTaskRows(db: DbExecutor) {
 
     /** Whether the agent is one of this person's own server agents (the Owner field offers these and no others). */
     async isOwnServerAgent(ownerUserId: string, agentId: string) {
-      const [row] = await db.select({ id: a.id }).from(pa).innerJoin(a, and(eq(a.workspaceId, pa.workspaceId), eq(a.id, pa.agentId)))
-        .where(and(eq(pa.ownerUserId, ownerUserId), eq(a.ownerUserId, ownerUserId), eq(a.id, agentId), isNull(a.revokedAt)));
+      const [row] = await db.select({ id: a.id }).from(as).innerJoin(a, eq(a.id, as.agentId))
+        .where(and(eq(as.ownerUserId, ownerUserId), eq(a.ownerUserId, ownerUserId), eq(a.id, agentId), isNull(a.revokedAt)));
       return Boolean(row);
     },
 

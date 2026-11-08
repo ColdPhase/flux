@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router';
 import { useProjectNews } from './projectNews';
-import { Avatar, Button, Icon, MEDIA, useMediaQuery } from '../ui';
+import { Avatar, Button, Icon, Kreska, MEDIA, useMediaQuery } from '../ui';
 import { useShellData } from './data';
 import { useShellActions } from './shellContext';
 import './settings.css';
@@ -12,7 +12,7 @@ import './settings.css';
  * Each row opens the project on its conversation; a dot says something is new there.
  */
 export function ProjectsIndex() {
-  const { projects, directMessages, lockedWorkspaces } = useShellData();
+  const { projects, directMessages, agents, lockedWorkspaces } = useShellData();
   const { openCreate } = useShellActions();
   const news = useProjectNews(useMemo(() => projects.map((project) => project.id), [projects]));
   const phone = useMediaQuery(MEDIA.phone);
@@ -63,8 +63,19 @@ export function ProjectsIndex() {
           <section className="proj-index__dms" aria-labelledby="proj-index-dms">
             <h2 id="proj-index-dms">Direct messages</h2>
             {/* The same card and grid as the spaces, with a fixed time column, so a long preview never pushes the date out (#763 NV-5). */}
-            {directMessages.length ? (
+            {directMessages.length || agents.length ? (
               <ul className="set-card proj-index__dmlist" aria-label="Conversations">
+                {agents.map((agent, index) => (
+                  <li key={agent.id}>
+                    <Link to={`/agents/${agent.id}`} className="set-row" data-agent={agent.id}>
+                      <Kreska size={36} hue={agent.colour} />
+                      <span className="set-row__b">
+                        <span className="set-row__t proj-index__one">{agent.name}</span>
+                        <span className="set-row__s proj-index__one">{index === 0 ? 'Your agent · answers /ai' : 'Your agent'}</span>
+                      </span>
+                    </Link>
+                  </li>
+                ))}
                 {directMessages.map((dm) => (
                   <li key={dm.id}>
                     <Link to={`/dm/${dm.id}`} className="set-row">

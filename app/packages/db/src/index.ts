@@ -232,7 +232,7 @@ export * from './repositories/task-targets.js';
 export * from './repositories/notification-lifecycle.js';
 export * from './repositories/agent-runtime.js';
 
-export { assistantSettingsRows, type AssistantAuthority } from './repositories/assistant-settings.js';
+export { assistantSettingsRows, type AgentSetup, type AgentSetupChanges, type AssistantAuthority } from './repositories/assistant-settings.js';
 
 
 export { lockAssistantOwner } from './repositories/assistant-lock.js';

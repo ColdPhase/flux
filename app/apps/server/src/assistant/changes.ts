@@ -49,7 +49,7 @@ function savedTools(db: Database, claims: FluxMcpClaims): Map<string, SavedTool>
 type Outcome = { ok: true } | { ok: false; code: string; error: string };
 /** Re-executes a saved change's exact call on its owner's Approve; the executor repeats every check and compares the target's version. */
 export async function reexecuteChange(db: Database, change: AssistantChangeRow, decidedBy: string): Promise<Outcome> {
-  const settings = await db.transaction((tx) => assistantChangeRows(tx as DbExecutor).settings(change.ownerUserId, change.workspaceId));
+  const settings = await db.transaction((tx) => assistantChangeRows(tx as DbExecutor).settings(change.ownerUserId, change.agentId));
   const call = change.preparedCommand as AssistantCall | null;
   if (!call || change.runId && !settings || !change.runId && !change.connectionId) return { ok: false, code: 'ASSISTANT_CHANGE_INVALIDATED', error: 'Your assistant is no longer available' };
   const approval: AssistantApproval = { changeId: change.id, runId: change.runId, purpose: 'owner_approval', decidedBy };

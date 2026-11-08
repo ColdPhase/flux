@@ -6,7 +6,7 @@ import { apiKeySpendToday } from './api-key-spend.js';
 import { lockAssistantOwner } from './assistant-lock.js';
 
 const c = schema.backgroundComputeConnections;
-const enablements = schema.personalRunEnablements;
+const settings = schema.assistantSettings;
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'select' | 'update' | 'insert' | 'transaction' | 'execute'>;
 type ConnectionRow = typeof c.$inferSelect;
 
@@ -74,12 +74,12 @@ export function backgroundConnectionRepository(db: Database) {
       return row ? metadata(db, row) : null;
     },
     /**
-     * `guard` gets the model the owner's assistant runs on this key, read under the owner's assistant lock (the one a model change
-     * takes first), so a budget saved while the assistant moves to another model is checked against the model it ends up on (#909, #915).
+     * `guard` gets the models the owner's agents run on this key, read under the owner's assistant lock (the one a model change
+     * takes first), so a budget saved while an agent moves to another model is checked against the model it ends up on (#909, #915).
      * It throws to refuse the change; nothing is written then.
      */
     async update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number; usedForBackground?: true },
-      guard?: (assistantModel: string | null) => void): Promise<BackgroundComputeConnection | null> {
+      guard?: (agentModels: readonly string[]) => void): Promise<BackgroundComputeConnection | null> {
       return db.transaction(async (tx) => {
         if (guard) await lockAssistantOwner(tx, ownerUserId);
         await tx.select({ id: schema.authUsers.id }).from(schema.authUsers)
@@ -88,9 +88,9 @@ export function backgroundConnectionRepository(db: Database) {
           .where(and(eq(c.id, connectionId), eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt))).for('update');
         if (!target) return null;
         if (guard) {
-          const [enabled] = await tx.select({ model: enablements.assistantModel }).from(enablements)
-            .where(and(eq(enablements.ownerUserId, ownerUserId), eq(enablements.connectionId, connectionId), eq(enablements.engine, 'server')));
-          guard(enabled?.model ?? null);
+          const rows = await tx.select({ model: settings.model }).from(settings)
+            .where(and(eq(settings.ownerUserId, ownerUserId), eq(settings.apiKeyId, connectionId), eq(settings.engine, 'server')));
+          guard([...new Set(rows.flatMap((row) => (row.model ? [row.model] : [])))]);
         }
         if (change.usedForBackground) await tx.update(c).set({ usedForBackground: false })
           .where(and(eq(c.ownerUserId, ownerUserId), eq(c.usedForBackground, true)));

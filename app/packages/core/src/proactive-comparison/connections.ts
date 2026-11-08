@@ -20,11 +20,11 @@ export interface BackgroundConnectionPort {
   /** The one background comparisons use, or null. */
   current(ownerUserId: string): Promise<BackgroundComputeConnection | null>;
   /**
-   * `guard` runs inside the change, after the owner's assistant lock and the key's row lock are held, with the model the assistant uses
-   * on this key (null when it is on another connection or has none stored); it throws to refuse (#909, #915).
+   * `guard` runs inside the change, after the owner's assistant lock and the key's row lock are held, with the models the owner's agents use
+   * on this key (none when they are on another connection); it throws to refuse (#909, #915).
    */
   update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number; usedForBackground?: true },
-    guard?: (assistantModel: string | null) => void): Promise<BackgroundComputeConnection | null>;
+    guard?: (agentModels: readonly string[]) => void): Promise<BackgroundComputeConnection | null>;
   revoke(ownerUserId: string, connectionId: string): Promise<boolean>;
 }
 /** What a connection save needs beyond storage (F-020): the endpoint policy of owner-set URLs. */
@@ -131,18 +131,20 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
         throw new InvalidInputError(budgetProblem, 'AI_BUDGET_INVALID');
       if (change.usedForBackground !== undefined && change.usedForBackground !== true)
         throw new InvalidInputError('Choose another connection for background comparisons by marking it');
-      let guard: ((assistantModel: string | null) => void) | undefined;
+      let guard: ((agentModels: readonly string[]) => void) | undefined;
       if (change.dailyBudgetCents !== undefined) {
         const cents = change.dailyBudgetCents;
         const key = (await port.list(ownerUserId)).find((item) => item.id === connectionId);
         if (key) {
           assertBudgetFitsRequest(key.price, cents);
-          // The assistant may run on another model of this key (F-027 AST-11): one request on that must fit too, or it would
-          // stay paused on a budget too small for it (#909). A model with no table price cannot be reserved at all. The model is
+          // An agent may run on another model of this key (F-027 AST-11): one request on that must fit too, or it would
+          // stay paused on a budget too small for it (#909). A model with no table price cannot be reserved at all. The models are
           // read again inside the change, under the lock a model change also takes first (#915).
-          guard = (model) => {
-            const price = model && model !== key.model ? assistantApiPrice(key.provider, model) : null;
-            if (model && price) assertBudgetFitsRequest(price, cents, model);
+          guard = (models) => {
+            for (const model of models) {
+              const price = model !== key.model ? assistantApiPrice(key.provider, model) : null;
+              if (price) assertBudgetFitsRequest(price, cents, model);
+            }
           };
         }
       }

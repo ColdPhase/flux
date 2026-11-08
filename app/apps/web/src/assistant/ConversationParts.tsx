@@ -39,7 +39,7 @@ function runExpression(run: AssistantRun): KreskaExpression {
 
 /** "Your assistant ×" above the box, and what will happen: who sees it and who pays, or why not. */
 export function AskBar({ id, state, onExit, onAction, error }: {
-  id: string; state: AskState; onExit: () => void; onAction: (action: 'connect' | 'resume' | 'settings' | 'tell' | 'key' | 'join') => void; error: string;
+  id: string; state: AskState; onExit: () => void; onAction: (action: 'connect' | 'settings' | 'tell' | 'key' | 'join') => void; error: string;
 }) {
   return (
     <div className="ask assistant-ask" id={id}>
@@ -238,7 +238,7 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
       </div>
       {failed ? <p className="assistant-answer__error" role="alert">{failed}</p> : null}
       <AssistantPanel open={panel} onClose={() => setPanel(false)} name={answer.assistant.label} mine={mine} ownerName={firstName(answer.askedBy.name)} provider={answer.provenance.provider}
-        userId={answer.assistant.ownerUserId} onMessage={onAskAbout} />
+        onMessage={onAskAbout} />
     </li>
   );
 }

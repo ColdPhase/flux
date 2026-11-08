@@ -133,6 +133,7 @@ export * from './agent-questions.js';
 export * from './agent-runtime.js';
 export * from './agent-tools.js';
 
+export * from './agents.js';
 export * from './assistant.js';
 export * from './assistant-jobs.js';
 export * from './assistant-model.js';

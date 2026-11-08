@@ -6,7 +6,7 @@ import type { AiConnectionRef } from './personal-runs.js';
 // person made first, at its default model. The server accepts only a model in a connection's list. Nothing here is an
 // id a person types.
 
-/** `GET` the caller's own choice and `PUT` a new one; `POST /api/v1/personal-assistant` also takes `connection` and `model`. */
+/** `GET` the caller's own choices: every connection's models and Connect AI's default; `PUT` changes the first agent's model (the ask bar). An agent's own model is `PATCH /api/v1/my-agents/:id`. */
 export const ASSISTANT_MODEL_PATH = '/api/v1/personal-assistant/model';
 /** What a plan model id may look like before it reaches a command template (never a flag, a path or a space). */
 export const ASSISTANT_PLAN_MODEL_PATTERN = /^[a-z0-9][a-z0-9.-]{0,63}$/;
@@ -39,18 +39,17 @@ export interface AssistantModelGroup {
 /** A model of one connection. */
 export interface AssistantModelPick { connection: AiConnectionRef; model: string }
 
-/** The caller's own assistant model and what they may choose, from every connection they have. Never another person's. */
+/** What the caller may choose for an agent's model, from every connection they have. Never another person's. */
 export interface AssistantModelChoice {
-  /** The model in force; null before Turn on. */
+  /** The model of the caller's first agent (Assistant); null while they have none. */
   current: AssistantModelPick | null;
   /** Connect AI's default for a new agent: the connection made first, at its default model; null without a connection. */
   default: AssistantModelPick | null;
   /** One group per usable connection, in the order they were made. */
   groups: AssistantModelGroup[];
-  /** The assistant is on and the choice is stored; false before Turn on (the ready card keeps it locally). */
+  /** The caller has an agent, so `current` is its stored model. */
   saved: boolean;
 }
-export type ChangeAssistantModelCommand = AssistantModelPick;
 
 /** Everything a person may read about a model: the names of the models Flux knows. */
 const NAMES: Record<string, string> = {

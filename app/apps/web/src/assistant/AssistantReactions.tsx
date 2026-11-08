@@ -14,7 +14,7 @@ const save = (scope: ScheduleScope, id: string | null, body: SaveAssistantReacti
 /** The fixed two pickers of AST-7. Empty starter opens a prepared sentence; Turn on is the second tap. */
 export function AssistantReactions({ status, userId }: { status: PersonalAssistantStatus; userId: string }) {
   const { projects: allProjects } = useShellData();
-  const workspaceId = status.enablement?.agents[0]?.workspaceId ?? '';
+  const workspaceId = status.enablement?.workspaceId ?? '';
   const scope = useMemo(() => ({ workspaceId, ownerId: userId }), [workspaceId, userId]);
   const projects = allProjects.filter((project) => project.workspaceId === workspaceId);
   const [items, setItems] = useState<AssistantReaction[] | null>(null);

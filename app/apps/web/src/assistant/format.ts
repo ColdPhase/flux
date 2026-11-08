@@ -54,17 +54,6 @@ export function runtimePayerText(payer: AgentRuntimePayer | null | undefined, cl
     default: return runtimeNames(client).account;
   }
 }
-/** The longer payer line: never zero, never a number Flux cannot see. */
-export function runtimePayerDetail(payer: AgentRuntimePayer | null | undefined, client?: RuntimeClientName) {
-  switch (payer) {
-    case 'anthropic_console': return 'your Anthropic Console organization (API billing, cost not reported to Flux)';
-    case 'claude_plan': return 'your Claude plan (plan limits or paid extra usage, not visible to Flux)';
-    case 'chatgpt_plan': return 'your ChatGPT plan (plan limits or credits, not visible to Flux)';
-    case 'openai_api': return 'your OpenAI API organization (API billing, cost not reported to Flux)';
-    default: return `${runtimeNames(client).account} (usage not visible to Flux)`;
-  }
-}
-
 /** "14:00": the reset time of a plan limit in the reader's clock. */
 const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 /** "at 14:00" today, otherwise "tomorrow at 0:00" or the day: when a paused request starts again. */
@@ -168,7 +157,7 @@ export const canRetry = (run: AssistantRun) => run.endReason !== 'ai_off' && (ru
 
 export type AskState =
   | { kind: 'ready'; note: string }
-  | { kind: 'blocked'; note: string; action: 'connect' | 'resume' | 'settings' | 'tell' | 'join' | null; actionLabel?: string;
+  | { kind: 'blocked'; note: string; action: 'connect' | 'settings' | 'tell' | 'join' | null; actionLabel?: string;
       /** A second way out (Journey 6: "Connect an API key"). */
       also?: { action: 'key'; label: string } };
 
@@ -183,7 +172,6 @@ export function askState(status: PersonalAssistantStatus | null, audience: strin
   switch (status.state) {
     case 'ready': return { kind: 'ready', note: runtime ? `Answer shown to ${audience} · on ${runtimePayerText(status.setup.runtime?.payer, status.setup.runtime?.client)}` : `Answer shown to ${audience} · on your API key` };
     case 'not_enabled': return { kind: 'blocked', note: 'You haven’t set up your assistant. Nobody else’s can be used for you.', action: 'connect', actionLabel: 'Connect your AI' };
-    case 'paused': return { kind: 'blocked', note: 'Your assistant is paused.', action: 'resume', actionLabel: 'Resume' };
     // #854: the API key's one daily budget; a request asked now waits for the key's next day.
     case 'capped': return { kind: 'ready', note: `Not enough left of your API key’s ${dollars(status.today?.budgetCents ?? 0)} daily budget. A request now starts ${status.today ? resumeWords(status.today.resetsAt) : 'tomorrow'}.` };
     default:
@@ -204,26 +192,14 @@ export function unavailableText(status: PersonalAssistantStatus) {
   }
 }
 
-/** The one-line state of the owner's assistant, for settings and Details. */
-export function stateLine(status: PersonalAssistantStatus) {
-  switch (status.state) {
-    case 'ready': return 'Ready · only you can use it';
-    case 'paused': return 'Paused · nothing runs';
-    case 'capped': return 'Not enough budget left · resumes tomorrow';
-    case 'unavailable': return `Unavailable · ${unavailableText(status)}`;
-    default: return 'Not set up';
-  }
-}
-
 /** A refused ask or retry in words, with no internal codes. */
 export function askError(error: unknown): string {
   if (error instanceof NetworkError) return 'Flux can’t be reached. Your question is still here; try again.';
   if (!(error instanceof ApiError)) return 'Your assistant couldn’t start. Try again.';
   switch (error.code) {
     case 'PERSONAL_RUN_NOT_ENABLED': return 'You haven’t set up your assistant.';
-    case 'PERSONAL_RUN_PAUSED': return 'Your assistant is paused.';
     case 'PERSONAL_RUN_UNAVAILABLE': return 'Your assistant is unavailable right now. Nothing was sent.';
-    case 'PERSONAL_RUN_NO_AGENT': return 'Choose your assistant in assistant settings first.';
+    case 'PERSONAL_RUN_NO_AGENT': return 'Your agent isn’t available. Check it in Settings › AI.';
     case 'PERSONAL_RUN_NO_PROJECT_ACCESS': return 'Your assistant can’t read this project yet.';
     case 'PERSONAL_RUN_IN_FLIGHT': return 'Your assistant is already working on many requests. Try again when one is done.';
     default: return error.status === 403 ? 'You can read this project, but cannot ask here.' : error.status === 404 ? 'This conversation is no longer available to you.' : 'Your assistant couldn’t start. Try again.';

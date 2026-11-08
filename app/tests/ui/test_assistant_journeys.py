@@ -87,85 +87,6 @@ class AssistantJourneys(unittest.TestCase):
 
     # ---------------------------------------------------------------- Journey 1: ready, Turn on, suggestions, 6 taps
 
-    def test_02_ready_card_has_the_exact_copy_and_turn_on_is_the_consent(self) -> None:
-        for phone, dark in ((False, False), (True, False), (False, True)):
-            with self.subTest(phone=phone, dark=dark):
-                page = self.page(phone=phone, dark=dark)
-                world = self.stub_assistant(page, enabled=False)
-                enabled = self.status(page, enabled=True)
-                posted: list[dict] = []
-
-                def enable(route: Route) -> None:
-                    if route.request.method == "POST":
-                        posted.append(json.loads(route.request.post_data or "{}"))
-                        world["status"] = enabled
-                        self.json(route, enabled)
-                    else:
-                        self.json(route, world["status"])
-                page.route("**/api/v1/personal-assistant", enable)
-                stub_plan_model(page, self.json)
-                page.goto("/settings/assistant")
-                card = page.get_by_role("region", name="Your assistant is ready")
-                expect(card).to_be_visible()
-                expect(card).to_contain_text("It can read and edit tasks, the Wiki and maps, reply in conversations and suggest decisions.")
-                expect(card).to_contain_text("It does things and tells you what it did, with Undo. Deleting and other people's things always wait for your OK.")
-                expect(card).to_contain_text("It has your rights: it can open and change only what you can.")
-                expect(card).to_contain_text("Others in the conversation see what you ask it and what it does.")
-                expect(card).to_contain_text("Uses your Claude plan. Flux adds no limits of its own; your plan’s limits apply.")
-                expect(card.get_by_role("button", name="Turn on", exact=True)).to_be_visible()
-                expect(card.get_by_role("button", name="Change what it can do")).to_be_visible()
-                expect(card.get_by_role("checkbox")).to_have_count(0)
-                self.no_horizontal_scroll(page)
-                text = card.inner_text()
-                self.assertIsNone(FORBIDDEN.search(text), FORBIDDEN.search(text))
-                shot(page, f"ready-{self.tag(phone, dark)}")
-                card.get_by_role("button", name="Turn on", exact=True).click()
-                expect(page.get_by_role("switch", name="Your assistant is on")).to_be_visible()
-                self.assertEqual((posted[0]["connection"], posted[0]["model"]), ("claude_plan", "sonnet"))
-                self.assertNotIn("consentVersion", posted[0], "Turn on is all there is to agree to")
-
-    def test_03_from_set_up_to_the_runs_message_in_at_most_six_taps(self) -> None:
-        for phone in (False, True):
-            with self.subTest(phone=phone):
-                page = self.page(phone=phone)
-                world = self.stub_assistant(page, enabled=False)
-                enabled = self.status(page, enabled=True)
-
-                def status(route: Route) -> None:
-                    if route.request.method == "POST":
-                        world["status"] = enabled
-                    self.json(route, world["status"])
-                page.route("**/api/v1/personal-assistant", status)
-                stub_plan_model(page, self.json)
-                asked = self.stub_runs(page, lambda body: (202, self.run_json(clientRunId=body["clientRunId"], prompt=body["prompt"])))
-                run = self.run_json()
-                page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), lambda route: self.json(route, run))
-                self.stub_thread_answers = self.stub_thread(page, [])
-                page.route(re.compile(r".*/api/v1/assistant-runs\?limit=\d+$"), lambda route: self.json(route, {"items": [run], "total": 1, "limit": 10, "offset": 0}))
-                taps = 0
-                page.goto("/")
-                page.get_by_role("link", name="Set up").click(); taps += 1                                   # 1
-                page.get_by_role("button", name="Turn on", exact=True).click(); taps += 1                    # 2
-                expect(page.get_by_role("switch", name="Your assistant is on")).to_be_visible()
-                if phone:
-                    page.get_by_role("link", name="Spaces").click(); taps += 1                             # 3 (tab bar)
-                    page.get_by_role("link", name="Gesture lamp").first.click(); taps += 1                   # 4
-                else:
-                    page.get_by_role("link", name="Gesture lamp").first.click(); taps += 1                   # 3
-                page.goto(self.thread_url())  # the thread the person came from; reaching it is not a counted tap of this flow
-                chips = page.get_by_role("group", name="Suggestions for your assistant")
-                for text in ("Catch me up", "Turn this thread into tasks", "Tidy this project's tasks"):
-                    expect(chips.get_by_role("button", name=text)).to_be_visible()
-                shot(page, f"suggestions-{self.tag(phone)}")
-                chips.get_by_role("button", name="Tidy this project's tasks").click(); taps += 1
-                expect(page.locator(".assistant-working")).to_contain_text("Working…")
-                expect(page.locator(".assistant-working").get_by_role("button", name="Stop")).to_be_visible()
-                self.assertEqual(asked[0]["prompt"], "Tidy this project's tasks")
-                self.assertLessEqual(taps, 6, taps)
-                shot(page, f"working-{self.tag(phone)}")
-
-    # ---------------------------------------------------------------- AST-10.6 / 10.15
-
     def test_05_stop_is_a_44px_keyboard_reachable_button_and_says_offline(self) -> None:
         page = self.page()
         self.stub_assistant(page)
@@ -204,7 +125,7 @@ class AssistantJourneys(unittest.TestCase):
         page = self.page()
         self.stub_assistant(page)
         self.stub_thread(page, [])
-        asked = self.stub_runs(page, lambda body: (409, {"code": "PERSONAL_RUN_PAUSED", "message": "Your assistant is paused"}))
+        asked = self.stub_runs(page, lambda body: (409, {"code": "PERSONAL_RUN_UNAVAILABLE", "message": "Your assistant is unavailable"}))
         page.goto(self.thread_url())
         chips = page.get_by_role("group", name="Suggestions for your assistant")
         expect(chips).to_be_visible()
@@ -214,7 +135,7 @@ class AssistantJourneys(unittest.TestCase):
         page.context.set_offline(False)
         # Refused on reconnect: not lost. The words are back in the ask field and the reason shows, as for a refused ask.
         expect(page.get_by_text("Sends when you're back")).to_have_count(0)
-        expect(page.locator("#project-ask")).to_contain_text("Your assistant is paused.")
+        expect(page.locator("#project-ask")).to_contain_text("Your assistant is unavailable right now. Nothing was sent.")
         expect(page.get_by_role("textbox", name="Ask your assistant")).to_have_value("Catch me up")
         self.assertEqual([body["prompt"] for body in asked], ["Catch me up"], "refused once, not retried")
 

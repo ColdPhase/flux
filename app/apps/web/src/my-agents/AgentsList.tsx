@@ -1,0 +1,98 @@
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Link, useNavigate, useRevalidator } from 'react-router';
+import { AGENT_ALWAYS_WAITS, type MyAgent } from '@flux/contracts';
+import { ApiError } from '../api/client';
+import { useShellData } from '../app/data';
+import { Button, Icon, Kreska } from '../ui';
+import { refreshAssistantModel, useAssistantModel } from '../assistant/model';
+import { createMyAgent } from './api';
+import { jobLine, mayDoLabel, modelLine } from './agentLabel';
+import './my-agents.css';
+
+// Settings › AI › Your agents (F-036 AG-1, #857; mockup Main): one row per agent with its Kreska in its own colour, its name, one
+// line about its job, its "What it may do" tag and its model with the connection. The first, Assistant, carries "Answers /ai".
+// "New agent" asks only for a name; the agent starts on Connect AI's default model and is given a colour, and its page is where
+// the rest is set. Connecting AI the first time gives a person their Assistant.
+
+const failure = (cause: unknown) => (cause instanceof ApiError && cause.status < 500 && cause.message ? cause.message : 'Couldn’t make it. Try again.');
+
+export function AgentsList() {
+  const { agents, workspace } = useShellData();
+  const { choice, loaded } = useAssistantModel();
+  const revalidator = useRevalidator();
+  const navigate = useNavigate();
+  const [adding, setAdding] = useState(false);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const first = useRef(false);
+  const connected = !!choice?.groups.length;
+
+  // A person who has connected AI and has no agent yet gets Assistant (AG-1). Naming nothing asks for the first one only: a second
+  // request finds an agent already there and is refused, so two tabs never make two.
+  useEffect(() => {
+    if (!workspace || !loaded || !connected || agents.length || first.current) return;
+    first.current = true;
+    createMyAgent({ workspaceId: workspace.id }).then(() => revalidator.revalidate(), () => { void revalidator.revalidate(); void refreshAssistantModel(); });
+  }, [workspace, loaded, connected, agents.length, revalidator]);
+
+  async function add(event: FormEvent) {
+    event.preventDefault();
+    const named = name.trim();
+    if (!workspace || !named || busy) return;
+    setBusy(true); setError('');
+    try {
+      const agent = await createMyAgent({ workspaceId: workspace.id, name: named });
+      await revalidator.revalidate();
+      navigate(`/settings/agents/${agent.id}`);
+    } catch (cause) { setError(failure(cause)); setBusy(false); }
+  }
+
+  return (
+    <section className="agl" aria-labelledby="your-agents">
+      <div className="agl__head">
+        <div className="agl__title">
+          <h3 className="sset-sub agl__h" id="your-agents">Your agents</h3>
+          <span className="agl__lead">Message them in Messages, or make one the owner of a task.</span>
+        </div>
+        {connected && !adding ? <Button variant="secondary" icon="plus" onClick={() => setAdding(true)}>New agent</Button> : null}
+      </div>
+      {adding ? (
+        <form className="sset-card agl__new" onSubmit={(event) => void add(event)}>
+          <label className="agl__label" htmlFor="new-agent-name">Name</label>
+          <input id="new-agent-name" className="agl__input" value={name} maxLength={80} autoComplete="off" placeholder="Planner, Reviewer…" onChange={(event) => setName(event.target.value)} autoFocus />
+          <Button type="submit" variant="primary" busy={busy} disabled={!name.trim()}>Make agent</Button>
+          <Button variant="quiet" onClick={() => { setAdding(false); setName(''); setError(''); }}>Cancel</Button>
+          {error ? <p className="nset__error agl__error" role="alert"><Icon name="alert" size={14} />{error}</p> : null}
+        </form>
+      ) : null}
+      {agents.length ? (
+        <ul className="sset-card agl__list" aria-label="Your agents">
+          {agents.map((agent, index) => <AgentRow key={agent.id} agent={agent} answers={index === 0} choice={choice} />)}
+        </ul>
+      ) : loaded && !connected ? (
+        <div className="sset-card agl__empty"><span className="agl__empty-text">Connect AI first. Your first agent, Assistant, uses it and answers <code>/ai</code>.</span></div>
+      ) : null}
+      {agents.length ? <p className="agl__note"><Icon name="lock" size={13} />{AGENT_ALWAYS_WAITS}</p> : null}
+    </section>
+  );
+}
+
+function AgentRow({ agent, answers, choice }: { agent: MyAgent; answers: boolean; choice: ReturnType<typeof useAssistantModel>['choice'] }) {
+  const model = modelLine(agent, choice);
+  const job = jobLine(agent);
+  return (
+    <li>
+      <Link className="sset-row sset-row--link agl__row" to={`/settings/agents/${agent.id}`} data-agent={agent.id}>
+        <span className="sset-row__ic agl__face" aria-hidden="true"><Kreska size={36} hue={agent.colour} /></span>
+        <span className="sset-row__b">
+          <span className="sset-row__t agl__name">{agent.name}{answers ? <span className="agl__tag">Answers /ai</span> : null}</span>
+          {job ? <span className="sset-row__s agl__job">{job}</span> : null}
+        </span>
+        <span className="agl__may">{mayDoLabel(agent)}</span>
+        <span className="agl__model"><span>{model.name}</span>{model.connection ? <span>{model.connection}</span> : null}</span>
+        <Icon name="chevron-right" size={14} className="sset-row__go" />
+      </Link>
+    </li>
+  );
+}

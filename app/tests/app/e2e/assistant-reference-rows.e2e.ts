@@ -108,7 +108,7 @@ before(async () => {
   agentId = (await post<{id:string}>(manager, `/api/v1/workspaces/${ws.id}/agents`, { name: 'Reference analyst', owner: 'self' })).id;
   // The API container's fixture key (FLUX_TEST_PERSONAL_RUNS): Connect AI's default pick, read back from the model list.
   const pick = (expectStatus(await manager.browser.request('GET', '/api/v1/personal-assistant/model'), 200) as { default: { connection: string; model: string } }).default;
-  await post(manager, '/api/v1/personal-assistant', { agentId, ...pick });
+  await post(manager, '/api/v1/my-agents', { agentId, ...pick });
   thread = await post<Conversation>(manager, `/api/v1/projects/${place.id}/conversations`, {body:'Measured native references',clientMessageId:randomUUID()});
 });
 after(async () => {

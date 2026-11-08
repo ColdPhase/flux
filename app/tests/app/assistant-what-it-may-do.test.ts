@@ -42,7 +42,7 @@ async function laboratory(own: AssistantScene) {
   const rig = await createProject(own.peer, lab.id, 'Shared rig', 'restricted');
   await grant(own.peer, rig.id, own.owner, 'contributor');
   const newAgent = async (name: string) => (expectStatus(await own.owner.browser.request('POST', `/api/v1/workspaces/${lab.id}/agents`, { body: { name, owner: 'self' } }), 201) as { id: string }).id;
-  await own.runs.selectAgent(human(own.owner), { agentId: await newAgent('Ada assistant') });
+  await own.runs.enable(human(own.owner), { agentId: await newAgent('Ada assistant') });
   const thread = expectStatus(await own.peer.browser.request('POST', `/api/v1/projects/${rig.id}/conversations`, { body: { body: 'Rig notes', clientMessageId: randomUUID() } }), 201) as Conversation;
   return { lab, rig, thread, newAgent };
 }

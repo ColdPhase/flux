@@ -75,10 +75,11 @@ describe('personal runs on any provider through the same path (#179)', () => {
     test(`${target.provider}: the model of a key, a run that reserves against the key's daily budget when it starts, the answer names provider and model`, async () => {
       await mock('/__reset', {});
       const enabled = await runs.status(human(owner)).then((status) => status.enablement);
-      if (enabled) await runs.remove(human(owner));
+      if (enabled) { await runs.remove(human(owner)); agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id; }
       const connectionId = randomUUID();
       connections.connect(owner.id, connectionId, target);
-      const status = await runs.enable(human(owner), { agentId, connection: connectionId, model: target.model });
+      await runs.enable(human(owner), { agentId, connection: connectionId, model: target.model });
+      const status = await runs.status(human(owner));
       assert.equal(status.state, 'ready');
       assert.deepEqual([status.enablement!.connection, status.enablement!.engine, status.enablement!.model], [connectionId, 'server', target.model]);
       assert.equal(status.today!.budgetCents, 1_000, 'the key\'s one daily budget');
@@ -108,6 +109,7 @@ describe('personal runs on any provider through the same path (#179)', () => {
 // `unknown`, the whole reservation stays counted against the key's daily budget, nothing is posted.
 describe('a personal run is never charged above its reservation (#179 PROV-3, #192 B1)', () => {
   let owner: Person;
+  let ws: Workspace;
   let thread: Conversation;
   let agentId: string;
   const PRICE = { inputMicrosPerMTok: 1_000_000, outputMicrosPerMTok: 2_000_000, source: 'owner' as const, checkedOn: null };
@@ -116,7 +118,7 @@ describe('a personal run is never charged above its reservation (#179 PROV-3, #1
 
   before(async () => {
     owner = await person('pr-bound-owner');
-    const ws = await createWorkspace(owner, 'Bounded assistant charges');
+    ws = await createWorkspace(owner, 'Bounded assistant charges');
     const place = await createProject(owner, ws.id, 'Lamp sensor bound', 'workspace');
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
@@ -125,7 +127,7 @@ describe('a personal run is never charged above its reservation (#179 PROV-3, #1
 
   async function runOn(target: { provider: 'openai_compatible' | 'openrouter'; model: string; baseUrl: string | null }, script: Record<string, unknown>) {
     await mock('/__reset', {});
-    if ((await runs.status(human(owner))).enablement) await runs.remove(human(owner));
+    if ((await runs.status(human(owner))).enablement) { await runs.remove(human(owner)); agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id; }
     const key = randomUUID();
     connections.connect(owner.id, key, { ...target, price: PRICE });
     await runs.enable(human(owner), { agentId, connection: key, model: target.model });
@@ -214,8 +216,8 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
     assert.equal((await runs.status(human(owner))).state, 'not_enabled');
 
     await mock('/__reset', {});
-    const status = await runs.enable(human(owner), { agentId, connection: sonnet5, model: 'claude-haiku-4-5' });
-    assert.deepEqual([status.enablement!.connection, status.enablement!.model], [sonnet5, 'claude-haiku-4-5']);
+    const enabled = await runs.enable(human(owner), { agentId, connection: sonnet5, model: 'claude-haiku-4-5' });
+    assert.deepEqual([enabled.model.connection, enabled.model.model], [sonnet5, 'claude-haiku-4-5']);
     choice = await runs.model(human(owner));
     assert.deepEqual([choice.current, choice.saved], [{ connection: sonnet5, model: 'claude-haiku-4-5' }, true]);
 
@@ -294,12 +296,13 @@ describe('the assistant\'s model from any connection (F-027 AST-11, #854)', () =
 // a request that finds the key's budget used waits, queued, for the key's next day, and nothing is sent to anyone.
 describe('no payer switching; the API key\'s one daily budget pauses a request until the next day (#854, #843)', () => {
   let owner: Person;
+  let ws: Workspace;
   let thread: Conversation;
   let agentId: string;
 
   before(async () => {
     owner = await person('pr-budget-owner');
-    const ws = await createWorkspace(owner, 'Budget assistant');
+    ws = await createWorkspace(owner, 'Budget assistant');
     const place = await createProject(owner, ws.id, 'Lamp sensor budget', 'workspace');
     agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
     thread = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
@@ -322,6 +325,7 @@ describe('no payer switching; the API key\'s one daily budget pauses a request u
     await runs.chooseModel(human(owner), { connection: spare, model: 'gpt-6-luna' });
     assert.equal((await runs.status(human(owner))).state, 'ready');
     await runs.remove(human(owner));
+    agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
   });
 
   test('at the key\'s budget a request waits for the next day, with one line and no switch; the assistant reads "capped"', async () => {
@@ -344,6 +348,7 @@ describe('no payer switching; the API key\'s one daily budget pauses a request u
     assert.equal((await row(asked.run.id)).status, 'queued');
     await runs.stop(human(owner), asked.run.id);
     await runs.remove(human(owner));
+    agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
   });
 
   test('#910: a key\'s day ends at the next local midnight, also on a day the clocks change', async () => {

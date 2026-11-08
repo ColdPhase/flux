@@ -321,7 +321,7 @@ describe('a budget that one request of the assistant\'s model would not fit is r
         AND ((classid::bigint << 32) | objid::bigint) = hashtextextended($1, 0)`, [`assistant-owner:${owner.id}`]);
       for (let tries = 0; tries < 100 && !(await waiting()).rowCount; tries += 1) await new Promise((resolve) => setTimeout(resolve, 50));
       assert.equal((await waiting()).rowCount, 1, 'the save is waiting for the lock');
-      await holder.query(`UPDATE personal_run_enablements SET assistant_model = 'claude-fable-5-1' WHERE owner_user_id = $1`, [owner.id]);
+      await holder.query(`UPDATE assistant_settings SET model = 'claude-fable-5-1' WHERE owner_user_id = $1`, [owner.id]);
       await holder.query('COMMIT');
       const refused = await saving;
       assert.equal(codeOf(refused), 'AI_BUDGET_TOO_SMALL', refused.text);

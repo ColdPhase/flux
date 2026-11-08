@@ -96,17 +96,18 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     }
   });
 
-  test('AST-5.4: a paused assistant blocks Apply; after the owner resumes it, the same unchanged item still needs a fresh Apply', async () => {
+  test('AST-5.4: an agent the owner deleted cannot be Applied; nothing is changed and nothing is revived', async () => {
     const { theirs, live, row } = await waiting();
-    await pool.query(`UPDATE personal_run_enablements SET status = 'paused' WHERE owner_user_id = $1`, [scene.owner.id]);
-    const paused = await apply(scene.owner, row.id, { expectedVersion: row.version });
-    assert.equal(paused.status, 409);
-    assert.equal(code(paused), 'ASSISTANT_PAUSED');
-    assert.equal((await rowOf(row.id)).state, 'waiting', 'still waiting, not closed');
-    assert.notEqual((await scene.taskRow(theirs.id)).status, 'done');
-    await pool.query(`UPDATE personal_run_enablements SET status = 'active' WHERE owner_user_id = $1`, [scene.owner.id]);
-    expectStatus(await apply(scene.owner, row.id, { expectedVersion: row.version }), 200);
-    assert.equal((await scene.taskRow(theirs.id)).status, 'done');
+    const current = (await scene.settings()).agentId;
+    await pool.query(`UPDATE agents SET revoked_at = now() WHERE id = $1`, [current]);
+    try {
+      const gone = await apply(scene.owner, row.id, { expectedVersion: row.version });
+      assert.notEqual(gone.status, 200);
+      assert.equal(code(gone), 'ASSISTANT_CHANGE_INVALIDATED');
+      assert.notEqual((await scene.taskRow(theirs.id)).status, 'done');
+    } finally {
+      await pool.query(`UPDATE agents SET revoked_at = NULL WHERE id = $1`, [current]);
+    }
     assert.equal((await pool.query(`SELECT status FROM personal_runs WHERE id = $1`, [live.runId])).rows[0].status, 'completed', 'the source run was not revived');
   });
 
@@ -342,7 +343,8 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     const refused = await apply(scene.owner, row.id, { expectedVersion: row.version });
     assert.ok(refused.status === 403 || refused.status === 404 || refused.status === 409, `refused (${refused.status})`);
     assert.notEqual((await scene.taskRow(theirs.id)).status, 'done');
-    await scene.runs.enable(human_(scene.owner), { agentId: scene.agentId, connection: scene.connectionId, model: 'claude-sonnet-5' });
+    const fresh = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Ada assistant', owner: 'self' } }), 201) as { id: string }).id;
+    await scene.runs.enable(human_(scene.owner), { agentId: fresh, connection: scene.connectionId, model: 'claude-sonnet-5' });
     const again = await apply(scene.owner, row.id, { expectedVersion: row.version });
     assert.ok(again.status >= 400, 'the old intent is not revived');
     assert.notEqual((await scene.taskRow(theirs.id)).status, 'done');

@@ -27,14 +27,6 @@ export function assistantRunTools(mayDo: AgentMayDo): string[] {
     && (entry.access === 'read' || mayDo !== 'read' && effects.has(entry.name))).map((entry) => entry.name).sort();
 }
 
-/** The owner's assistant settings. Its "What it may do" is the assistant connection's own row (`mayDo`), read here for the screen. */
-export interface AssistantSettings {
-  workspaceId: string; ownerUserId: string; agentId: string; connectionId: string;
-  mayDo: AgentMayDo;
-  version: number; createdAt: string; updatedAt: string;
-}
-export const assistantSettingsPath = (workspaceId: string, ownerUserId: string) =>
-  `/api/v1/workspaces/${workspaceId}/assistants/${ownerUserId}/settings`;
 /** "Tell whoever runs Flux" (F-027 Journey 6): one Needs-you item to the workspace's owners; the body may name the plan (`claude_code`, the default, or `codex`). */
 export const assistantOperatorRequestPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/assistant-operator-requests`;
 

@@ -103,7 +103,7 @@ describe('a run on the owner\'s own Codex in the agent runtime (F-022 T6, #281)'
     const status = await runs.status(human(owner));
     assert.equal(status.state, 'ready');
     assert.deepEqual([status.enablement?.connection, status.enablement?.engine, status.enablement?.model], ['chatgpt_plan', 'runtime', 'gpt-6.1-sol']);
-    const stored = (await pool.query('SELECT connection_id, provider FROM personal_run_enablements WHERE owner_user_id = $1', [owner.id])).rows[0];
+    const stored = (await pool.query('SELECT api_key_id AS connection_id, provider FROM assistant_settings WHERE owner_user_id = $1 ORDER BY created_at DESC LIMIT 1', [owner.id])).rows[0];
     assert.deepEqual(stored, { connection_id: null, provider: 'openai' });
   });
 
