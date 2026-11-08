@@ -171,7 +171,8 @@ def view_tab(page: Page, name: str, tap: bool = False) -> None:
 
 def open_details(page: Page, tap: bool = False) -> None:
     """Details: More, then Details, in the computer's one-row header (#340); Home has its own quiet
-    Details button (#342); on the phone a project's title menu ends with "Details and people" (#341)."""
+    Details button in the date line only for a person with an encrypted space (#865); on the phone a project's title menu
+    ends with "Details and people" (#341)."""
     home = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
     if page.viewport_size["width"] <= 640:
         page.locator("#content .home button:text-is('Details'), header .phead__menu").first.wait_for()
@@ -183,7 +184,7 @@ def open_details(page: Page, tap: bool = False) -> None:
         return
     close_modal_thread(page, tap)
     header = page.locator("header.top")
-    # Home has no header row (#342): its Details are one quiet button under what needs you.
+    # Home has no header row (#342): its Details, only with an encrypted space, are one quiet button in the date line.
     page.locator("#content .home button:text-is('Details'), header.top:not(.top--bare) button[aria-label='More']").first.wait_for()
     if home.count():
         home.click()
@@ -515,19 +516,19 @@ class AppShellJourney(unittest.TestCase):
 
     def test_03_sign_in_and_reload_keep_the_session(self) -> None:
         page = self.page(signed_in=False)
-        page.goto("/sign-in?next=%2Fdocs")
+        page.goto("/sign-in?next=%2Ftasks")
         page.get_by_label("Email").fill(EMAIL)
         page.get_by_label("Password").fill("not the password")
         page.get_by_role("button", name="Sign in").click()
         expect(page.get_by_role("alert")).to_contain_text("don’t match")
         page.get_by_label("Password").fill(PASSWORD)
         page.get_by_role("button", name="Sign in").click()
-        expect(page).to_have_url(f"{ORIGIN}/docs")
-        expect(page.get_by_role("heading", name="No docs yet")).to_be_visible()
+        expect(page).to_have_url(f"{ORIGIN}/tasks")
+        expect(page.get_by_role("heading", name="Nothing is waiting for you")).to_be_visible()
         page.reload()
-        expect(page).to_have_url(f"{ORIGIN}/docs")
-        # The Wiki reached from Home names itself (#763 NV-1).
-        expect(page.get_by_role("heading", level=1, name="Wiki")).to_be_visible()
+        expect(page).to_have_url(f"{ORIGIN}/tasks")
+        # My tasks, reached from Home, names itself (#763 NV-1).
+        expect(page.get_by_role("heading", level=1, name="My tasks")).to_be_visible()
         # A signed-in person who opens sign-in is taken to their work.
         page.goto("/sign-in")
         expect(page).to_have_url(f"{ORIGIN}/")
@@ -570,10 +571,10 @@ class AppShellJourney(unittest.TestCase):
         # test_project_header.py and retain Conversation · Map · Tasks · Wiki · Agents (#340).
         views = page.get_by_role("navigation", name="Views")
         expect(views).to_have_count(0)
-        # #763 FT-1: with no project yet Home is one first step; the links to empty pages, Needs you and Projects wait.
-        expect(page.locator(".home__more").get_by_role("link")).to_have_count(0)
+        # #763 FT-1: with no project yet Home is one first step; the waiting rows and the rows to empty pages wait.
+        expect(page.locator(".home__rows")).to_have_count(0)
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good "))).to_be_visible()
-        expect(page.get_by_role("region", name="Needs you")).to_have_count(0)
+        expect(page.get_by_role("region", name="Waiting for you")).to_have_count(0)
         expect(page.get_by_role("region", name="You’re in Personal")).to_be_visible()
         shot(page, "desktop-1440-home-light")
 
@@ -747,6 +748,9 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), "rgb(11, 11, 11)", "the dark outer background")
         self.assertEqual(page.locator(".app__main").evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(17, 17, 17)", "the dark panel")
         shot(page, "desktop-1440-dark")
+        # Home has no Details for an unencrypted company (#865); My map has.
+        page.goto("/map")
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         open_details(page)
         expect(page.get_by_role("complementary", name="Details")).to_be_visible()
         shot(page, "desktop-1440-details-dark")
@@ -775,7 +779,7 @@ class AppShellJourney(unittest.TestCase):
 
         # Coarse pointer: primary targets are at least 44px.
         targets = [page.get_by_role("link", name="Settings and account"), page.get_by_role("button", name="Search", exact=True),
-                   page.get_by_role("button", name="Create", exact=True), page.get_by_role("link", name="All my tasks")]
+                   page.get_by_role("button", name="Create", exact=True), page.get_by_role("link", name=re.compile(r"^My tasks"))]
         for target in targets:
             size = box(page, target)
             self.assertGreaterEqual(round(min(size["width"], size["height"]), 2), 44, f"44px target: {target}")
@@ -784,9 +788,14 @@ class AppShellJourney(unittest.TestCase):
         for size in page.locator(".ui-bottomnav__label").evaluate_all("els => els.map(e => parseFloat(getComputedStyle(e).fontSize))"):
             self.assertGreaterEqual(size, 12.5, "places bar label at least 12.5px")
 
-        # Home's quiet Details button opens a full-screen sheet; the title menus of projects are in test_phone_final.
-        details = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
-        details.click()
+        # Details opens a full-screen sheet from a space's title menu (Home has the button only with an encrypted space, #865); Jo's space
+        # is the one test_04aa made, and the title menus of projects are in test_phone_final.
+        spaces = [item for workspace in page.request.get(f"{ORIGIN}/api/v1/workspaces").json()
+                  for item in page.request.get(f"{ORIGIN}/api/v1/workspaces/{workspace['id']}/projects?limit=100").json()["items"]]
+        self.assertTrue(spaces, "test_04aa made a space")
+        page.goto(f"/projects/{spaces[0]['id']}")
+        expect(page.locator(".project-convo")).to_be_visible()
+        open_details(page)
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet).to_be_visible()
         page.wait_for_timeout(400)
@@ -803,7 +812,7 @@ class AppShellJourney(unittest.TestCase):
         self.assertTrue(ring["visible"] and ring["style"] == "solid" and ring["width"] >= 2 and ring["offset"] < 0, ring)
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog")).to_have_count(0)
-        details.click()
+        open_details(page)
         page.get_by_role("dialog", name="Details").get_by_role("button", name="Close details").click()
         expect(page.get_by_role("dialog")).to_have_count(0)
 
@@ -909,7 +918,8 @@ class AppShellJourney(unittest.TestCase):
         self.assertIsNone(page.evaluate("document.documentElement.dataset.theme ?? null"))
 
         calm = self.page(reduced_motion="reduce")
-        calm.goto("/")
+        calm.goto("/map")
+        expect(calm.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         self.assertEqual(calm.evaluate("parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dur-in'))"), 0)
         open_details(calm)
         panel = calm.get_by_role("complementary", name="Details")

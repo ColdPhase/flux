@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import type { NeedsYouItem, NeedsYouKind } from '@flux/contracts';
 import { createPortal } from 'react-dom';
 import { Button, ErrorState, Icon, Kreska, MEDIA, Spinner, Tabs, useMediaQuery, useRowMotion, type TabItem } from '../ui';
@@ -69,24 +69,16 @@ export function InboxView() {
   const arrival = useArrival();
   const queue = useNeedsYou(me.user.id, !!arrival);
   const handlers = useNeedsYouActions(queue);
-  // `?show=decisions` is where the retired Decisions view's links lead.
-  const [asked, setAsked] = useSearchParams();
-  // A replace on this page keeps the entry's state, so the origin it was followed from stays (#592).
   const location = useLocation();
-  // The filter and the selected item come back as they were left.
-  const [filter, setFilter] = usePlaceState<Filter>('inbox.filter', () => FILTERS.find((entry) => `${entry.id}s` === asked.get('show') || entry.id === asked.get('show'))?.id ?? 'all', arrival,
-    (value): value is Filter => FILTERS.some((entry) => entry.id === value));
-  const [selected, setSelected] = usePlaceState<string | null>('inbox.selected', () => null, arrival, (value): value is string | null => value === null || typeof value === 'string');
+  // The filter and the selected item come back as they were left. A row of Home's top three arrives with its item selected (#865).
+  const [filter, setFilter] = usePlaceState<Filter>('inbox.filter', () => 'all', arrival, (value): value is Filter => FILTERS.some((entry) => entry.id === value));
+  const [selected, setSelected] = usePlaceState<string | null>('inbox.selected', () => (location.state as { select?: unknown } | null)?.select as string | null ?? null, arrival, (value): value is string | null => value === null || typeof value === 'string');
   const [menu, setMenu] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
   // A decision accepted, a question answered or a task marked done collapses where it stood; the next one comes up (#593 AC-4).
   useRowMotion(listRef, '.nyc[data-key]', (el) => el.dataset.key, `${filter}|${queue.items === null ? 'loading' : 'ready'}`);
 
-  // `?project=<id>`: the project header's "N needs you" opens the same queue on that project's items (#763 A2).
-  const projectId = asked.get('project');
-  const all = useMemo(() => (queue.items ?? []).filter((item) => !projectId || item.project?.id === projectId), [queue.items, projectId]);
-  const projectName = projectId ? queue.items?.find((item) => item.project?.id === projectId)?.project?.name ?? null : null;
-  const allProjects = () => setAsked((now) => { const next = new URLSearchParams(now); next.delete('project'); return next; }, { replace: true, state: location.state });
+  const all = useMemo(() => queue.items ?? [], [queue.items]);
   const counts = useMemo(() => {
     const result: Record<Filter, number> = { all: all.length, decision: 0, question: 0, blocked: 0, mention: 0 };
     for (const item of all) result[item.kind] += 1;
@@ -107,18 +99,16 @@ export function InboxView() {
 
   // A filter with nothing in it is not offered (#763 LD-5, Spokój rule 4); All stays, and so does the one you are on.
   const tabs: TabItem[] = FILTERS.filter((entry) => entry.id === 'all' || entry.id === filter || counts[entry.id] > 0).map((entry) => ({ id: entry.id, label: entry.label, count: counts[entry.id], countLabel: `, ${counts[entry.id]}` }));
-  const where = projectId ? projectName ?? 'this space' : 'all spaces';
-  const summary = queue.items === null ? '' : counts.all ? `${counts.all} need${counts.all === 1 ? 's' : ''} you · ${where}` : `all clear · ${where}`;
+  const summary = queue.items === null ? '' : counts.all ? `${counts.all} need${counts.all === 1 ? 's' : ''} you · all spaces` : 'all clear · all spaces';
 
   return (
     <div className="pane-scroll"><div className="pane-in nyq" ref={listRef}>
       {/* On the computer the summary and the filters sit in the header row, as drawn; on a tablet or phone they head the list. */}
       {(() => {
         // An empty Inbox is only Kreska, one sentence and the settings link (E06): nothing to filter yet. Snoozed items keep the summary, which says how many are for later.
-        const bar = queue.items?.length === 0 && filter === 'all' && !queue.later && !projectId ? null : (
+        const bar = queue.items?.length === 0 && filter === 'all' && !queue.later ? null : (
           <>
-            <p className="nyq__summary" aria-live="polite">{summary}{queue.later ? ` · ${queue.later} for later` : ''}
-              {projectId ? <> · <button type="button" className="nyq__all" onClick={allProjects}>Show all spaces</button></> : null}</p>
+            <p className="nyq__summary" aria-live="polite">{summary}{queue.later ? ` · ${queue.later} for later` : ''}</p>
             <Tabs variant="segmented" className="nyq__filters" label="Show" items={tabs} value={filter} onChange={(id) => setFilter(id as Filter)} />
           </>
         );

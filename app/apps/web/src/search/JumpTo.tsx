@@ -35,7 +35,7 @@ const PROJECT_VIEW: Record<string, { side: string; icon: IconName }> = {
   docs: { side: 'Wiki', icon: 'doc' },
 };
 const OWN_PLACE: Record<string, PlaceName> = {
-  home: { label: 'Home', icon: 'home' }, 'home:tasks': { label: 'Home', side: 'Tasks', icon: 'tasks' }, 'home:docs': { label: 'Home', side: 'Wiki', icon: 'doc' },
+  home: { label: 'Home', icon: 'home' }, 'home:tasks': { label: 'Home', side: 'Tasks', icon: 'tasks' },
   sketchbook: { label: 'My map', icon: 'map' }, inbox: { label: 'Inbox', icon: 'inbox' },
 };
 const placeName = (name: PlaceName) => (name.side ? `${name.label} · ${name.side}` : name.label);

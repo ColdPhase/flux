@@ -454,10 +454,8 @@ class ScenarioJourney:
         market = re.search(r"/projects/([0-9a-f-]{36})", page.url).group(1)
         workspace = self.api("ada", "GET", f"/api/v1/projects/{market}", status=200)["workspaceId"]
 
-        # She adds the others to the company by email (Home → Details → People → Settings › Company).
-        page.goto("/")
-        open_details(page, tap=self.phone)
-        self.tap(page.get_by_role("region", name="People").get_by_role("link", name=re.compile(f"^{WORKSPACE}")))
+        # She adds the others to the company by email in Settings › Company.
+        page.goto("/settings/company")
         expect(page).to_have_url(re.compile(r"/settings/company$"))
         self.tap(page.get_by_role("button", name="Invite", exact=True))
         for key in ("jonas", "mia", "lee"):
@@ -990,7 +988,7 @@ class ScenarioJourney:
         page = self.page("ada")
         page.goto("/")
         # Home continues with the one next step (F5, #342); the changes themselves are in the summary.
-        card = page.get_by_role("link", name=re.compile("^Continue where you left off"))
+        card = page.get_by_role("region", name="Continue where you left off").get_by_role("link")
         expect(card).to_be_visible()
         expect(card).to_contain_text("Answer Jonas's question")
         changed = [item for item in self.api("ada", "GET", "/api/v1/return?place=home", status=200)["items"] if item["text"] == f"Decision changed: {D2}"]

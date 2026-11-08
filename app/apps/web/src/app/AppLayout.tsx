@@ -35,7 +35,7 @@ import { OverviewContext } from '../project/OverviewContext';
 import { remember, remembered } from './remembered';
 import { ProjectAgentStop } from './WorkingAgent';
 import { useFocus } from './focus';
-import { FocusPill, HeaderFaces, MoreMenu, NeedsYouChip, type MoreItem } from './HeaderParts';
+import { FocusPill, HeaderFaces, MoreMenu, type MoreItem } from './HeaderParts';
 import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, PhoneTitleMenu, phoneHidesDock, phoneOffersCreate, phonePlaces, type PhoneMenuItem } from './PhoneChrome';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
@@ -290,8 +290,7 @@ function AppLayoutContent() {
     if (!known || event.kind !== 'dm.message_sent.v1' || location.pathname === '/dm') revalidator.revalidate();
   }, () => revalidator.revalidate());
 
-  const inboxCounts = useInboxDot(me.user.id, location.pathname);
-  const inboxUnread = inboxCounts.count;
+  const inboxUnread = useInboxDot(me.user.id, location.pathname);
   // The computer's sidebar collapses to its 64px rail with "[" (F-026 S19), remembered on this device.
   const [railed, setRailed] = useState(() => { try { return localStorage.getItem(SIDEBAR_KEY) === 'rail'; } catch { return false; } });
   const toggleRail = useCallback(() => setRailed((current) => {
@@ -598,10 +597,6 @@ function AppLayoutContent() {
   // from the pending navigation's entry while it is out, from the arrival's once it has committed (`sheetStart`).
   const threadSheet = threadOpening && navigation.location ? recall<unknown>('sheet', arrivalEntry(navigation.location, NavigationType.Push) ?? entryOf(navigation.location)) : undefined;
   const cancelThread = () => void navigate(`${location.pathname}${location.search}${location.hash}`, { replace: true, defaultShouldRevalidate: false, state: location.state });
-  // "N needs you" counts this project's items of the Inbox's one queue (#763 A2), as the sidebar counts them all; it
-  // opens the Inbox on them. "What matters" stays its own quiet entry in More.
-  const needsYou = activeProject && projectId ? inboxCounts.byProject.get(projectId) ?? 0 : 0;
-  const openNeedsYou = () => { if (projectId) navigate(`/inbox?project=${encodeURIComponent(projectId)}`); };
   const dmId = location.pathname.match(/^\/dm\/([^/]+)/)?.[1];
   const activeAgent = agents.find((agent) => agent.id === location.pathname.match(/^\/agents\/([^/]+)/)?.[1]);
   const activeDm = directMessages.find((dm) => dm.id === dmId);
@@ -646,8 +641,6 @@ function AppLayoutContent() {
       // space is named above them (#190).
       : location.pathname === '/tasks'
         ? { crumb: null, title: 'My tasks', topic: 'Assigned to you, in every space' }
-      : location.pathname === '/docs'
-        ? { crumb: null, title: 'Wiki', topic: 'Pages of every space you are in', noDetails: true }
       : notFound
         ? { crumb: null, title: 'Page not found', topic: '', noDetails: true }
       : { crumb: workspace?.name ?? null, title: 'Home', topic: 'What needs you and where you left off' };
@@ -826,7 +819,6 @@ function AppLayoutContent() {
             <span className="top__actions" ref={setActionSlot} />
             {focusing && focus.until ? <FocusPill until={focus.until} uncertain={focus.uncertain} onEnd={() => void focus.toggle()} /> : (
               <>
-                {activeProject && needsYou ? <NeedsYouChip count={needsYou} project={activeProject?.name ?? null} onOpen={openNeedsYou} /> : null}
                 {project?.people ? <HeaderFaces people={project.people} audience={audience} onOpen={openAudience} /> : null}
                 {activeProject ? <LiveEntry /> : null}
                 <MoreMenu items={moreItems} />

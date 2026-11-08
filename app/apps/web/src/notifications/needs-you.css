@@ -3,8 +3,6 @@
 .pane-in.nyq { max-width: 808px; }
 .nyq__bar { display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; padding: 4px 0 16px; }
 .nyq__summary { margin: 0; font-size: var(--fs-sm); color: var(--t3); }
-.nyq__all { font: inherit; color: var(--t2); text-decoration: underline; text-underline-offset: 3px; }
-@media (pointer: coarse) { .nyq__all { min-height: 44px; } }
 .nyq__filters { max-width: 100%; }
 .nyq__list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
 .nyq__keys { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 14px 4px 0; font-size: var(--fs-xs); color: var(--t3); }
@@ -64,19 +62,11 @@
   .nyc--question:not(.is-selected, :hover, :focus-within) .nyc__quiet { opacity: 0; }
 }
 
-/* Home's compact row */
-.nyc--row .nyc__card { grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; padding: 10px 16px; border-radius: 0; box-shadow: none; background: transparent; }
-.nyc--row .nyc__body { gap: 1px; }
-.nyc--row .nyc__title { font-size: var(--fs-base); line-height: 1.35; }
-.nyc--row .nyc__scroll { border-radius: 0; }
 .nyc__rowactions { display: flex; align-items: center; gap: 8px; }
 /* An agent's ready answers wrap inside their button, and the row of them wraps, so a long answer never runs into the next
    or squeezes the question to a letter per line (#763 H11-1). */
 .nyc__answer.ui-btn { white-space: normal; text-align: center; height: auto; min-height: var(--ctl); padding-block: 6px; overflow-wrap: anywhere; max-width: 100%; }
 .nyc__actions:has(.nyc__answer), .nyc__rowactions:has(.nyc__answer) { flex-wrap: wrap; }
-/* On Home the answers go under the question at every width, so the Details panel never squeezes the question. */
-.nyc--row .nyc__card:has(.nyc__answer) { grid-template-columns: 32px minmax(0, 1fr); }
-.nyc--row .nyc__rowactions:has(.nyc__answer) { grid-column: 2; justify-content: flex-start; margin-top: 8px; }
 
 /* The others are one line: who and what, the title and their one action (#763 LD-1, desktop-inbox). */
 .nyc--compact .nyc__card { align-items: center; padding: 12px 20px; cursor: pointer; }
@@ -116,12 +106,7 @@
   /* An agent's ready answers share the row evenly, as drawn (phone-inbox, S14). */
   .nyc__answer { flex: 1 1 calc(50% - 4px); min-width: 0; }
   .nyc--compact .nyc__card { grid-template-columns: 32px minmax(0, 1fr) auto; padding: 10px 12px 10px 16px; }
-  .nyc--row .nyc__card { grid-template-columns: 32px minmax(0, 1fr); }
-  .nyc--row .nyc__rowactions { grid-column: 2; margin-top: 8px; }
-  .nyc--row .nyc__rowactions .ui-btn { flex: 1; }
-  /* A text action starts where the dark one does, on the same left edge, not centred in its half (#763). */
-  .nyc--row .nyc__rowactions .ui-btn:not(.ui-btn--primary) { justify-content: flex-start; padding-left: 0; }
-  .nyc--row .nyc__rowactions .nyc__answer.ui-btn, .nyc__actions .nyc__answer.ui-btn { flex: 1 1 calc(50% - 4px); }
+  .nyc__actions .nyc__answer.ui-btn { flex: 1 1 calc(50% - 4px); }
 }
 /* Under 375 px (a Fold cover, a Z Flip) three buttons don't fit one row: the primary pair stays on the first line and the
    third takes the whole second line, inside the card (#763 P2-4). */

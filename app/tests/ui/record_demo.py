@@ -198,7 +198,7 @@ def jonas_replies(request: APIRequestContext) -> None:
 def journey(page: Page, rec: Recorder) -> None:
     # 1. The return view: what changed since Ada left, and one next step.
     page.goto("/")
-    since = page.get_by_role("link", name=re.compile("^Continue where you left off"))
+    since = page.get_by_role("region", name="Continue where you left off").get_by_role("link")
     expect(since).to_be_visible()
     rec.hold(3000)
 

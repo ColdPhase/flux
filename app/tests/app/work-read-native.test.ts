@@ -85,8 +85,9 @@ describe('bounded native work reads through HTTP and current native fences', () 
     assert.equal(parkedRow.parked?.decisionId, rule.id); assert.equal(parkedRow.parkedBy?.title, rule.title);
     const resultRow = seen.find(({ id }) => id === result.id)!; assert.equal('version' in resultRow, false);
     const mine = await get<ProjectWorkView>(`${base()}/work-view?mine=true`);
-    assert.equal(mine.summary.mine.in_progress, 1); assert.equal(mine.summary.mine.rules, 0); assert.equal(mine.summary.mine.results, 0);
-    assert.equal(mine.total, 1);
+    // Mine is the person's own task and the two tasks of their own agents (#865); the other human's and the same-name rows stay out.
+    assert.equal(mine.summary.mine.in_progress, 3); assert.equal(mine.summary.mine.rules, 0); assert.equal(mine.summary.mine.results, 0);
+    assert.equal(mine.total, 3);
   });
 
   test('bounded state retains native open and history refs with stable tie ordering and actual parking transitions', async () => {

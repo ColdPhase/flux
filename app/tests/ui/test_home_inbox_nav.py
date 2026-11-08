@@ -3,10 +3,10 @@
 Ada owns a project in which her own agent ("Claude Code") works on a task and asks her questions over a real MCP bearer
 (the same OAuth/PKCE client as test_scenarios). Each test names its finding:
 
-- IN-1/IN-2: an agent's question in Home and the Inbox carries Kreska, the Agent tag, its task and the ready answers; an answer
-  applies with Undo, reaches the question itself, and the item leaves Home, the Inbox and the Agents view together; a question
-  answered elsewhere leaves Needs you too.
-- NV-1: Your tasks, the Wiki, New project and a missing page name themselves, and nothing marks Home current there.
+- IN-1/IN-2: an agent's question is a row on Home (Kreska, the Agent tag, no actions; "Your agent" only for a run's changes) and a card in the Inbox with the Agent tag,
+  its task and the ready answers; an answer applies with Undo, reaches the question itself, and the item leaves Home, the Inbox
+  and the Agents view together; a question answered elsewhere leaves the Inbox too.
+- NV-1: My tasks, New project and a missing page name themselves, and nothing marks Home current there.
 - NV-2: the working-agent card stays in the sidebar on Home (Spokój rule 7); only the phone's Home carries its own.
 - NV-4/IN-5: at 768 px the Inbox header keeps ⋯ on screen and the filters head the list.
 - NV-5/NV-6: the phone's Projects lists DMs in the projects' card with whole dates, and projects with letter tiles.
@@ -106,10 +106,11 @@ class HomeInboxNav(unittest.TestCase):
     def no_sideways_scroll(self, page: Page) -> None:
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "no horizontal page scroll")
 
-    def ask(self, question: str, options: list[str] | None = None) -> dict:
-        assert self.agent
-        return self.agent.tool("flux_ask_question", {
-            "projectId": self.ids["project"], "runtimeSessionId": self.agent.runtime,
+    def ask(self, question: str, options: list[str] | None = None, agent: McpAgent | None = None) -> dict:
+        agent = agent or self.agent
+        assert agent
+        return agent.tool("flux_ask_question", {
+            "projectId": self.ids["project"], "runtimeSessionId": agent.runtime,
             "clientCommandId": str(uuid.uuid4()), "sources": [], "conversationId": self.ids["thread"], "question": question,
             "options": options or ["Per bed", "One value"], "askUserId": self.ids["ada"]})
 
@@ -162,17 +163,18 @@ class HomeInboxNav(unittest.TestCase):
         page = self.page()
         page.goto("/")
         home = page.get_by_role("list", name="Top of your Inbox")
-        row = home.locator(f'.nyc[data-key="{key}"]')
+        row = home.locator(".home__row", has_text="Offsets per bed, or one value for all six?")
         expect(row).to_be_visible()
         expect(row.locator(".nyc__face .kreska")).to_be_visible()
-        expect(row.get_by_text("Agent", exact=True)).to_be_visible()
-        expect(row).to_contain_text(f"on #{number}")
-        expect(row.get_by_role("button", name="Per bed", exact=True)).to_be_visible()
-        expect(row.get_by_role("button", name="One value", exact=True)).to_be_visible()
-        expect(row.get_by_role("button", name="Reply")).to_have_count(0)
+        expect(row).to_contain_text("Question")
+        expect(row.locator(".home__row-k")).to_contain_text(re.compile(r"Question · .+ · Agent · Community garden sensors"))
+        # Home only lists (#865): the ready answers are in the Inbox, and the row opens it on this item.
+        expect(row.get_by_role("button")).to_have_count(0)
         shot(page, "home-question-1440")
+        row.click()
+        expect(page).to_have_url(re.compile(r"/inbox$"))
+        expect(page.locator(f'.nyc.is-selected[data-key="{key}"]')).to_be_visible()
 
-        page.goto("/inbox")
         card = page.get_by_role("list", name="Needs you").locator(f'.nyc[data-key="{key}"]')
         expect(card).to_contain_text("Offsets per bed, or one value for all six?")
         expect(card).to_contain_text(f"on #{number}")
@@ -199,6 +201,24 @@ class HomeInboxNav(unittest.TestCase):
         expect(page.locator(f'.nyc[data-key="{key}"]')).to_have_count(0)
         page.goto("/")
         expect(page.locator(f'.nyc[data-key="{key}"]')).to_have_count(0)
+
+    def test_01b_another_persons_agent_asking_is_an_agent_not_your_agent(self) -> None:
+        """Any agent that can read the space can ask a person; only a run's changes are always the viewer's own agent (#971 review)."""
+        jonas_agent = McpAgent(self, "jonas", self.ids["project"])
+        self.addCleanup(jonas_agent.close)
+        asked = self.ask("Should the gate latch face the lane?", agent=jonas_agent)
+        key = f"question:{asked['questionId']}"
+        self.wait_for_item(key)
+        item = next(item for item in self.needs_you() if item["key"] == key)
+        self.assertEqual((item.get("from") or {}).get("kind"), "agent")
+        page = self.page()
+        page.goto("/")
+        row = page.get_by_role("list", name="Top of your Inbox").locator(".home__row", has_text="Should the gate latch face the lane?")
+        expect(row).to_be_visible()
+        expect(row.locator(".home__row-k")).to_have_text(re.compile(r"^Question · .+ · Agent · Community garden sensors$"))
+        expect(row).not_to_contain_text("Your agent")
+        # Answered, so the later tests find only their own questions.
+        self.api("ada", "POST", f"/api/v1/agent-questions/{asked['questionId']}/answer", {"optionIndex": 0}, status=200)
 
     def test_02_question_answered_elsewhere_leaves_needs_you(self) -> None:
         asked = self.ask("Probe depth at 5 cm, or 10 cm?")
@@ -231,7 +251,7 @@ class HomeInboxNav(unittest.TestCase):
             self.no_sideways_scroll(page)
             shot(page, f"inbox-question-390-{'dark' if dark else 'light'}")
             page.goto("/")
-            expect(page.locator(f'.nyc[data-key="{key}"]').get_by_role("button", name="Per bed", exact=True)).to_be_visible()
+            expect(page.locator(".home__row", has_text="Mount the box at 40 cm, or at 60 cm?")).to_be_visible()
             self.no_sideways_scroll(page)
 
     def test_03b_long_answers_wrap_and_never_overlap(self) -> None:
@@ -254,35 +274,32 @@ class HomeInboxNav(unittest.TestCase):
             apart = a["x"] + a["width"] <= b["x"] + 1 or b["x"] + b["width"] <= a["x"] + 1 or a["y"] + a["height"] <= b["y"] + 1 or b["y"] + b["height"] <= a["y"] + 1
             self.assertTrue(apart, f"the answers do not overlap: {boxes}")
 
-        for engine_page, where in ((lambda: self.page(phone=True), "/inbox"), (lambda: self.page(phone=True), "/")):
-            page = engine_page()
-            page.goto(where)
-            card = page.locator(f'.nyc[data-key="{key}"]')
-            expect(card).to_be_visible()
-            if "nyc--compact" in (card.get_attribute("class") or ""):
-                card.get_by_role("button", name="Answer").click()
-            check(page, card)
-            self.no_sideways_scroll(page)
-            shot(page, f"question-long-answers-390-{'inbox' if where == '/inbox' else 'home'}")
-        # Home on the computer with Details open: the question is not squeezed to a letter per line.
-        page = self.page()
+        page = self.page(phone=True)
+        page.goto("/inbox")
+        card = page.locator(f'.nyc[data-key="{key}"]')
+        expect(card).to_be_visible()
+        if "nyc--compact" in (card.get_attribute("class") or ""):
+            card.get_by_role("button", name="Answer").click()
+        check(page, card)
+        self.no_sideways_scroll(page)
+        shot(page, "question-long-answers-390-inbox")
+        # Home's row for it never scrolls sideways.
         page.goto("/")
-        page.locator("#content .home").get_by_role("button", name="Details", exact=True).click()
-        expect(page.get_by_role("complementary", name="Details")).to_be_visible()
-        row = page.locator(f'.nyc[data-key="{key}"]')
-        expect(row).to_be_visible()
-        self.assertGreater(row.locator(".nyc__title").bounding_box()["width"], 160, "the question keeps a readable width")
-        check(page, row)
-        shot(page, "question-long-answers-1440-home-details")
+        expect(page.locator(".home__row", has_text="Which calibration should I apply before the dawn log?")).to_be_visible()
+        self.no_sideways_scroll(page)
         # Answer it so the next tests start from the same queue.
-        row.get_by_role("button", name=long[0], exact=True).click()
+        page.goto("/inbox")
+        card = page.locator(f'.nyc[data-key="{key}"]')
+        if "nyc--compact" in (card.get_attribute("class") or ""):
+            card.get_by_role("button", name="Answer").click()
+        card.get_by_role("button", name=long[0], exact=True).click()
 
     # ---------------------------------------------------------------- NV-1
 
     def test_04_pages_reached_from_home_name_themselves(self) -> None:
         page = self.page()
         places = page.get_by_role("navigation", name="Places")
-        for path, title in (("/tasks", "My tasks"), ("/docs", "Wiki"), ("/no-such-page", "Page not found")):
+        for path, title in (("/tasks", "My tasks"), ("/no-such-page", "Page not found")):
             page.goto(path)
             expect(page.locator("header.top").get_by_role("heading", level=1)).to_have_text(title)
             expect(page.locator("header.top")).not_to_contain_text("Your private notes")
@@ -290,7 +307,7 @@ class HomeInboxNav(unittest.TestCase):
         page.goto("/")
         expect(places.get_by_role("link", name="Home")).to_have_attribute("aria-current", "page")
         phone = self.page(phone=True)
-        for path, title in (("/tasks", "My tasks"), ("/docs", "Wiki"), ("/no-such-page", "Page not found")):
+        for path, title in (("/tasks", "My tasks"), ("/no-such-page", "Page not found")):
             phone.goto(path)
             expect(phone.locator("header.phead").get_by_role("heading", level=1)).to_have_text(title)
             bar = phone.get_by_role("navigation", name="Main places")

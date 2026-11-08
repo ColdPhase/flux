@@ -374,28 +374,28 @@ class PhoneFinal(unittest.TestCase):
     def test_09_every_place_stays_reachable(self):
         page = self.page(SIZES[0])
         page.goto("/")
-        # Settings through the avatar; Home's pages, My map and Details from Home; Messages through Projects.
+        # Settings through the avatar; Home's rows for My tasks and My map; Messages through Projects.
         page.get_by_role("link", name="Settings and account").click()
         expect(page).to_have_url(f"{ORIGIN}/settings")
         expect(page.get_by_role("heading", level=1, name="Settings")).to_be_visible()
-        for link, path, shell_title, content_title in (("All my tasks", "/tasks", "My tasks", "Nothing is waiting for you"), ("Wiki", "/docs", "Wiki", "No docs yet")):
+        for link, path, shell_title, content_title in ((re.compile(r"^My tasks"), "/tasks", "My tasks", "Nothing is waiting for you"),):
             page.goto("/")
-            page.locator(".home__more").get_by_role("link", name=link).click()
+            page.get_by_role("list", name="Your places").get_by_role("link", name=link).click()
             expect(page).to_have_url(f"{ORIGIN}{path}")
-            # Each names itself in the header: Your tasks and Wiki (#763 NV-1).
+            # Each names itself in the header: My tasks (#763 NV-1).
             expect(page.get_by_role("heading", level=1, name=shell_title, exact=True)).to_be_visible()
             expect(page.get_by_role("heading", level=2, name=content_title)).to_be_visible()
             page.get_by_role("button", name="Back", exact=True).click()
             expect(page).to_have_url(f"{ORIGIN}/")
         # My map opens the person's one private map at its own address; Back leads Home (#866).
         page.goto("/")
-        page.locator(".home__more").get_by_role("link", name="My map").click()
+        page.get_by_role("list", name="Your places").get_by_role("link", name=re.compile(r"^My map")).click()
         expect(page).to_have_url(re.compile(rf"{ORIGIN}/map/[0-9a-f-]{{36}}$"))
         expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
+        # Details is only for an encrypted space's people and keys (test_encrypted_workspaces); a company's people are in Settings.
         page.goto("/")
-        page.locator(".home__more").get_by_role("button", name="Details", exact=True).click()
-        expect(page.get_by_role("dialog", name="Details")).to_be_visible()
-        page.keyboard.press("Escape")
+        expect(page.get_by_role("list", name="Your places")).to_be_visible()
+        expect(page.locator(".home__details")).to_have_count(0)
         page.goto("/inbox")
         expect(page.get_by_role("link", name="Settings and account")).to_be_visible()
 

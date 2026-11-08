@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { unlessLocked } from '../encryption/api';
 import { Link, redirect, useLoaderData, useNavigate, useSearchParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
-import type { Doc, DocSummary, DocVersion, DocVersionSummary, LiveDocBootstrap } from '@flux/contracts';
+import type { Doc, DocVersion, DocVersionSummary, LiveDocBootstrap } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { EmptyState, Icon, Select, Option } from '../ui';
+import { Icon, Select, Option } from '../ui';
 import { useShellData } from '../app/data';
 import { useRegisterLiveHere } from '../live/LiveProvider';
-import { docUrl, getDoc, getLiveDoc, getVersion, listVersions, listWorkspaceDocs } from './api';
+import { docUrl, getDoc, getLiveDoc, getVersion, listVersions } from './api';
 import { diffDocs, diffStats, readableRefs, type DiffRow } from './diff';
 import { authorLabel, longDate, shortDate } from './format';
 import { DocProse } from './DocProse';
@@ -36,54 +35,6 @@ function inProject(doc: Doc, projectId: string | undefined) {
 /** The Wiki without a page to open: the space has none yet (otherwise the loader opens one). */
 export function WikiHome() {
   return <NoPages />;
-}
-
-function DocRow({ doc, showProject }: { doc: DocSummary; showProject?: boolean }) {
-  return (
-    <li>
-      <Link className="doc-item" to={docUrl(doc.projectId, doc.id)}>
-        <span className="doc-item__ic" aria-hidden="true"><Icon name="doc" size={16} /></span>
-        <span className="doc-item__b">
-          <span className="doc-item__t">{doc.title}</span>
-          <span className="doc-item__s">
-            {showProject ? <>{doc.projectName} · </> : null}
-            {authorLabel(doc.updatedBy)} · {doc.reason}
-          </span>
-          {doc.excerpt ? <span className="doc-item__x">{doc.excerpt}</span> : null}
-        </span>
-        <span className="doc-item__r"><time dateTime={doc.updatedAt}>{shortDate(doc.updatedAt)}</time></span>
-      </Link>
-    </li>
-  );
-}
-
-/** Home › Docs: the docs of every project the person can read in the workspace. */
-export function WorkspaceDocs() {
-  const { workspaces } = useShellData();
-  const [docs, setDocs] = useState<DocSummary[] | null>(null);
-  const [failed, setFailed] = useState(false);
-  const ids = workspaces.map((space) => space.id).join(',');
-  useEffect(() => {
-    const controller = new AbortController();
-    // F-030 (#655): a space that locked since the shell read it lists nothing until it is unlocked; the others still do.
-    Promise.all(ids ? ids.split(',').map((id) => unlessLocked(listWorkspaceDocs(id, controller.signal), [])) : [])
-      .then((lists) => setDocs(lists.flat().sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))), () => { if (!controller.signal.aborted) setFailed(true); });
-    return () => controller.abort();
-  }, [ids]);
-  return (
-    <div className="pane-scroll">
-      <div className="pane-in doc-list">
-        {failed ? <p className="doc-notice" role="alert"><Icon name="alert" size={14} />Wiki pages could not be loaded. Check the connection and try again.</p> : null}
-        {docs === null && !failed ? <p className="doc-muted" aria-busy="true">Loading docs…</p> : null}
-        {docs && !docs.length ? (
-          <div className="view-empty"><EmptyState icon="doc" title="No docs yet">
-            <p>Notes worth keeping, what you learned from an experiment, and how things work, written with the people in your spaces, will collect here.</p>
-          </EmptyState></div>
-        ) : null}
-        {docs?.length ? <section className="doc-group" aria-labelledby="docs-all"><h2 className="doc-group__h" id="docs-all">Wiki pages in your spaces <span>{docs.length}</span></h2><ul className="doc-ul">{docs.map((doc) => <DocRow key={doc.id} doc={doc} showProject />)}</ul></section> : null}
-      </div>
-    </div>
-  );
 }
 
 /** Live: the room's head read with the page (null when the room is not reachable now, and the editor connects itself). */

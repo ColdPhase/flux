@@ -149,7 +149,7 @@ class SmallMomentsJourney(unittest.TestCase):
         page.keyboard.press("Space")
         expect(switch).to_have_attribute("aria-checked", "false")
         page.goto("/")
-        expect(page.locator(".home__clear")).to_contain_text("Nothing needs you right now")
+        expect(page.locator(".home__clear")).to_contain_text("Nothing is waiting for you")
         expect(page.locator(".home__clear .kreska")).to_have_count(0)
         page.goto("/inbox")
         expect(page.get_by_role("heading", name="Nothing needs you right now")).to_be_visible()

@@ -12,7 +12,7 @@ export type PendingKind = 'feed' | 'list' | 'cards' | 'wiki';
 export function pendingKind(view: string): PendingKind {
   if (/^\/projects\/[^/]+\/conversation$/.test(view) || /^\/dm\/[^/]+$/.test(view)) return 'feed';
   if (/^\/projects\/[^/]+\/map$/.test(view) || view === '/map') return 'cards';
-  if (/^\/projects\/[^/]+\/docs$/.test(view) || view === '/docs' || view.startsWith('/materials/')) return 'wiki';
+  if (/^\/projects\/[^/]+\/docs$/.test(view) || view.startsWith('/materials/')) return 'wiki';
   return 'list';
 }
 

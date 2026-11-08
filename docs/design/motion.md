@@ -53,8 +53,9 @@ motion audit and the coordinator's reading, not from Hubert's decision on #863. 
    it knows: a task opened from its row shows its own title in the title's box, and the rows below it (fixed heights)
    follow at their places; ⌘K lists as many recent places as it will. Where the layout depends on text not yet read (a
    decision's lead, a task's title when the opener does not have it) the skeleton is a title bar and some quiet lines,
-   with no rows or sections at guessed places. A space for content that may not come (Home's Continue card) is kept
-   only for someone who had it the last time.
+   with no rows or sections at guessed places. Content that may not come (Home's Continue card) is last on its page, so
+   nothing sits under it and no space is kept for it; a control that must stay put (Home's Details) sits above
+   everything that arrives later.
 7. **Press is colour only.** A pressed control changes its fill or colour. Small controls (a button or icon button up
    to 64 px on its longest side) may also scale to .98 and back over `--dur-1` on `--ease-out`, with no spring. Rows,
    cards, list items, links and sidebar items never scale.
@@ -144,7 +145,7 @@ Paths are under `app/apps/web/src/`.
 | 7 | Rows, cards and sidebar items scaled to 0.97 with a 250 ms spring (`ui/press.ts`) | A press is colour (`--act`, `--inv-act`, in `ui/ui.css`), so it shows with a mouse as well as a touch; a small button also scales to .98 and back over `--dur-1`, no spring |
 | 3 | Dialogs and toasts scaled; panels, sheets, dialogs, menus and toasts each entered differently; three switches used three timings | 180 ms in on `--ease-out`, 120 ms out on `--ease-in`, a fade plus a short travel (the drawer and the phone sheet fade as well), no scale; one switch rule (`--dur-1`) |
 | 2 | A hidden view's key handlers (the Inbox's `e` and `a`) still acted while a switch waited | `useQuietViewKeys` in `app/PendingView.tsx` |
-| 6 | Phone Home shifted 0.50–0.62 when Continue arrived | `app/Home.tsx` keeps the card's space, at the height it had, while it is read, for someone who had it the last time (nothing is kept for someone who has none) |
+| 6 | Phone Home shifted 0.50–0.62 when Continue arrived | `app/Home.tsx` puts Continue last, so nothing sits under it and no space is kept for it while it is read; Details, the one control that was under it, sits in the date line above everything that arrives (`test_light_motion` `test_25`, `test_encrypted_workspaces` `test_10b`) |
 | 8 | Literal durations and easings; rows grew and collapsed on `height` | Every duration and easing comes from a token; rows never animate `height` (`ui/rowMotion.ts`); the two-height phone sheet moves with `transform` in both directions (`ui/DetentSheet.tsx`) |
 | 9 | The in-app Reduce motion kept animation delays; two rules checked only the system setting | Both settings zero durations and delays |
 

@@ -37,7 +37,7 @@ There is no second version table.
 | `GET/PATCH /api/v1/docs/:docId` | `PATCH { title?, body?, state?, reason? }` needs `If-Match: "<version>"` (or `expectedVersion`): 428 without, `409 VERSION_CONFLICT` with the latest doc (`current`) when stale. A save that changes nothing returns the doc without a new version. |
 | `GET /api/v1/docs/:docId/versions`, `GET /api/v1/docs/:docId/versions/:version` | Newest first, each `{ version, title, state, reason, author, createdAt }`; one version adds `body`, `html` and `mentions`. |
 | `POST /api/v1/docs/:docId/sections` | "Add to docs": `{ from: { type: 'result' \| 'decision', id } }`, with `If-Match`. |
-| `GET /api/v1/workspaces/:workspaceId/docs` | Docs in every project of the workspace that the policy's `visibleFilter` lets the caller read, applied before the page and the total. |
+| `GET /api/v1/workspaces/:workspaceId/docs` | Docs in every project of the workspace that the policy's `visibleFilter` lets the caller read, applied before the page and the total. The web app has no workspace-wide Wiki page any more (#865: the Wiki lives inside a space); the read stays for API clients. |
 
 Every POST/PATCH accepts `Idempotency-Key` through the shared runner in
 `app/apps/server/src/http/commands.ts`; a replay rechecks current project read access. Responses with

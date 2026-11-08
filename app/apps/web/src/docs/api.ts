@@ -1,5 +1,5 @@
 import {
-  docPath, docSectionsPath, projectExportPath, docVersionPath, docVersionsPath, projectDocPreviewPath, projectDocsPath, workspaceDocsPath,
+  docPath, docSectionsPath, projectExportPath, docVersionPath, docVersionsPath, projectDocPreviewPath, projectDocsPath,
   type CreateDocCommand, type Doc, type DocPreview, type DocSectionSource, type DocSummary, type DocVersion, type DocVersionSummary,
   type Page, type UpdateDocCommand,
 } from '@flux/contracts';
@@ -30,7 +30,6 @@ const key = (idempotencyKey: string) => ({ 'idempotency-key': idempotencyKey });
 const ifMatch = (version: number) => ({ 'if-match': `"${version}"` });
 
 export const listProjectDocs = (projectId: string, signal?: AbortSignal) => everything<DocSummary>(projectDocsPath(projectId), signal);
-export const listWorkspaceDocs = (workspaceId: string, signal?: AbortSignal) => everything<DocSummary>(workspaceDocsPath(workspaceId), signal);
 export const getDoc = (id: string, signal?: AbortSignal) => request<Doc>(docPath(id), { signal });
 export const listVersions = (id: string, signal?: AbortSignal) => everything<DocVersionSummary>(docVersionsPath(id), signal);
 export const getVersion = (id: string, version: number, signal?: AbortSignal) => request<DocVersion>(docVersionPath(id, version), { signal });

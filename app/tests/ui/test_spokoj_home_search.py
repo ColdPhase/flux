@@ -99,14 +99,17 @@ class SpokojHomeSearch(unittest.TestCase):
 
     # ---------------------------------------------------------------- Home (#508, AC-1)
 
-    def test_02_home_has_no_views_bar_and_keeps_its_quiet_links(self) -> None:
+    def test_02_home_has_no_views_bar_and_no_footer_links(self) -> None:
         for kwargs in ({}, {"phone": True}):
             page = self.page(**kwargs)
             page.goto("/")
             expect(page.get_by_role("heading", level=2, name=re.compile("Good "))).to_be_visible()
             self.assertEqual(page.locator(".top__views").count(), 0)
-            for name in ("All my tasks", "My map", "Wiki"):
-                expect(page.locator(".home__more").get_by_role("link", name=name, exact=True)).to_be_visible()
+            # No footer links (#865): My tasks and My map are the sidebar's rows on a computer, and Home's rows on the phone.
+            expect(page.locator(".home__more")).to_have_count(0)
+            places = page.get_by_role("list", name="Your places") if kwargs else page.get_by_role("navigation", name="Places")
+            for name in ("My tasks", "My map"):
+                expect(places.get_by_role("link", name=re.compile(rf"^{name}")).first).to_be_visible()
             self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), page.evaluate("window.innerWidth"))
         page = self.page()
         for path in ("/map",):

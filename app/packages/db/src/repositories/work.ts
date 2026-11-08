@@ -269,9 +269,12 @@ export function workRows(db: DbExecutor) {
     async listAssigned(workspaceId: string, owner: Actor, visibleProjects: SQL, window: Window) {
       // F-030 (AC-6): a locked encrypted workspace answers 423 even when nothing is assigned.
       await sealOf(db, workspaceId, { write: false });
+      // A person's tasks include those owned by their own agents (#865).
       const where = and(
         eq(w.workspaceId, workspaceId),
-        owner.kind === 'human' ? eq(w.ownerUserId, owner.id) : eq(w.ownerAgentId, owner.id),
+        owner.kind === 'human'
+          ? or(eq(w.ownerUserId, owner.id), sql`${w.ownerAgentId} IN (SELECT ${schema.agents.id} FROM ${schema.agents} WHERE ${schema.agents.ownerUserId} = ${owner.id})`)
+          : eq(w.ownerAgentId, owner.id),
         isNull(w.creationRevertedAt), notInArray(w.status, ['done', 'not_pursued']), isNull(w.parkedAt),
         sql`${w.projectId} IN (SELECT ${schema.projects.id} FROM ${schema.projects} WHERE ${visibleProjects})`,
       )!;

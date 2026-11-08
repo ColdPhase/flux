@@ -4,12 +4,11 @@ import { EmptyState } from '../ui';
 import { useShellData } from './data';
 import { useReadingPosition } from '../drafts/store';
 
-/** Home's views: the overview first, then the Map, Tasks and the Wiki. */
+/** Home's places, for the direction a switch between them slides: the overview first, then the Map and Tasks. */
 export const VIEWS = [
   { id: 'conversation', label: 'Overview', path: '/' },
   { id: 'map', label: 'Map', path: '/map' },
   { id: 'tasks', label: 'Tasks', path: '/tasks' },
-  { id: 'docs', label: 'Wiki', path: '/docs' },
 ] as const;
 
 export function viewIndex(pathname: string): number {

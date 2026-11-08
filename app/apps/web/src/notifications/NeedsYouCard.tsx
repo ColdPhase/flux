@@ -84,7 +84,7 @@ export function NotNowButton({ buttonRef, open, onToggle, className = '' }: { bu
   );
 }
 
-function Face({ item }: { item: NeedsYouItem }) {
+export function Face({ item }: { item: NeedsYouItem }) {
   if (item.kind === 'blocked') return <span className="nyc__face nyc__face--glyph"><StatusGlyph status="blocked" size={16} /></span>;
   if (item.from?.kind === 'agent' || item.assistantChanges) return <span className="nyc__face"><Kreska size={32} /></span>;
   if (item.from) return <span className="nyc__face"><Avatar name={item.from.name} size="lg" /></span>;
@@ -111,15 +111,13 @@ export function WaitingLine({ item }: { item: NeedsYouItem }) {
 }
 
 /**
- * One thing that needs the person (#342, F-026 S1, P4). `card` is the Inbox's, `row` is Home's compact line
- * (the same actions, the same keys). A decision is one card on every device: "Proposed decision",
+ * One thing that needs the person (#342, F-026 S1, P4), a card of the Inbox. Home lists the top of the Inbox as plain rows
+ * that lead here (#865), so no action is offered twice. A decision is one card on every device: "Proposed decision",
  * "Needs you", the reason, what it rests on, then Accept / Not now / Discuss. The tray after the card
  * holds Not now and Done for a swipe left on a phone; on a computer they are quiet buttons.
  */
-export function NeedsYouCard({ item, variant = 'card', selected = false, compact = false, lead = true, onSelect, handlers, menuOpen, onMenuOpen, children }: {
-  item: NeedsYouItem; variant?: 'card' | 'row'; selected?: boolean;
-  /** A row that carries the screen's one inverted primary (direction C, #763): Home's first row; the rest use text buttons. */
-  lead?: boolean;
+export function NeedsYouCard({ item, selected = false, compact = false, onSelect, handlers, menuOpen, onMenuOpen, children }: {
+  item: NeedsYouItem; selected?: boolean;
   /** An Inbox card that is not the selected one: one line with its one action, as drawn (desktop-inbox, #763 LD-1). */
   compact?: boolean; onSelect?: () => void; handlers: CardHandlers;
   menuOpen: boolean; onMenuOpen: (open: boolean) => void; children?: ReactNode;
@@ -159,7 +157,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
         : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}
     </div>
   ) : null;
-  const full = variant === 'card' && !compact;
+  const full = !compact;
 
   const actions = (
     <div className="nyc__actions">
@@ -167,7 +165,7 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
         <>
           <Button variant="primary" className="nyc__accept" aria-keyshortcuts="A" onClick={() => handlers.accept(item)}>Accept<kbd aria-hidden="true">A</kbd></Button>
           <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} />
-          {variant === 'card' ? <Button variant="quiet" onClick={() => handlers.discuss(item)}>Discuss</Button> : null}
+          <Button variant="quiet" onClick={() => handlers.discuss(item)}>Discuss</Button>
         </>
       ) : item.kind === 'blocked' ? (
         <>
@@ -189,12 +187,12 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
       ) : (
         <Button variant="secondary" onClick={() => handlers.open(item)}>{item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>
       )}
-      {!decision && !item.proposal && !touch && variant === 'card' ? <span className="nyc__quiet"><NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} className=" nyc__nn--quiet" /><Button variant="quiet" aria-keyshortcuts="E" onClick={() => handlers.done(item)}>Done</Button></span> : null}
+      {!decision && !item.proposal && !touch ? <span className="nyc__quiet"><NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} className=" nyc__nn--quiet" /><Button variant="quiet" aria-keyshortcuts="E" onClick={() => handlers.done(item)}>Done</Button></span> : null}
     </div>
   );
 
   return (
-    <li className={`nyc nyc--${variant} nyc--${item.kind}${selected ? ' is-selected' : ''}${compact ? ' nyc--compact' : ''}`} data-key={item.key} data-ai-surface={item.from?.kind === 'agent' || item.key.startsWith('assistant:') ? 'needs-you-ai' : undefined} aria-current={selected ? 'true' : undefined} aria-label={label}>
+    <li className={`nyc nyc--card nyc--${item.kind}${selected ? ' is-selected' : ''}${compact ? ' nyc--compact' : ''}`} data-key={item.key} data-ai-surface={item.from?.kind === 'agent' || item.key.startsWith('assistant:') ? 'needs-you-ai' : undefined} aria-current={selected ? 'true' : undefined} aria-label={label}>
       <div className="nyc__scroll">
         {/* A click on a compact card's free space selects it, and it opens up; its title and button keep their own actions. */}
         <div className="nyc__card" onClick={compact && onSelect ? (event) => { if (!(event.target as HTMLElement).closest('button, a')) onSelect(); } : undefined}>
@@ -211,11 +209,8 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
               </div>
             ) : (
               <p className="nyc__eyebrow">
-                {asked ? <><b>{who}</b><AgentTag />{askedMeta ? <span className="nyc__meta">{[askedMeta, variant === 'card' ? when(item.at) : null].filter(Boolean).join(' · ')}</span> : null}</>
-                  : variant === 'row'
-                  ? run ? <><b>{run.agentName}</b><AgentTag /><span className="nyc__meta">{meta}</span></>
-                    : [KIND_WORD[item.kind], who, project].filter(Boolean).join(' · ')
-                  : <>{who ? <b>{who}</b> : null}{item.from?.kind === 'agent' || run ? <AgentTag /> : null}<span className="nyc__meta">{[meta, variant === 'card' && item.kind !== 'blocked' ? when(item.at) : null].filter(Boolean).join(' · ')}</span></>}
+                {asked ? <><b>{who}</b><AgentTag />{askedMeta ? <span className="nyc__meta">{[askedMeta, when(item.at)].filter(Boolean).join(' · ')}</span> : null}</>
+                  : <>{who ? <b>{who}</b> : null}{item.from?.kind === 'agent' || run ? <AgentTag /> : null}<span className="nyc__meta">{[meta, item.kind !== 'blocked' ? when(item.at) : null].filter(Boolean).join(' · ')}</span></>}
               </p>
             )}
             <h3 className="nyc__title">
@@ -242,15 +237,10 @@ export function NeedsYouCard({ item, variant = 'card', selected = false, compact
             ) : full ? actions : null}
           </div>
           {single}
-          {variant === 'row' ? <div className="nyc__rowactions">{decision ? <>
-            <Button variant={lead ? 'primary' : 'secondary'} onClick={() => handlers.accept(item)}>Accept</Button>
-            <NotNowButton buttonRef={notNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} /></> : answers ? answers : item.proposal ? <Button variant="secondary" onClick={() => handlers.open(item)}>Review</Button> : run
-              ? <Button variant={lead ? 'primary' : 'secondary'} onClick={() => handlers.applyChanges(item)}>Approve all</Button>
-              : <Button variant="secondary" onClick={() => handlers.open(item)}>{item.kind === 'blocked' ? 'Open task' : item.reason === 'invitation' ? 'Open' : 'Reply'}</Button>}</div> : null}
           {children}
         </div>
         {/* A swipe left on a phone: the card slides over this tray. Reachable by keyboard and touch alike. */}
-        {touch && variant === 'card' ? (
+        {touch ? (
           <div className="nyc__tray">
             {!decision ? <NotNowButton buttonRef={trayNotNow} open={menuOpen} onToggle={() => onMenuOpen(!menuOpen)} className=" nyc__tray-b" /> : null}
             <Button variant="primary" className="nyc__tray-b nyc__tray-done" aria-keyshortcuts="E" onClick={() => handlers.done(item)}><Icon name="check" size={16} />Done</Button>

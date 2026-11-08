@@ -14,7 +14,7 @@ import { useShellData, type ProjectSummary } from './data';
 
 /** The places of the tab capsule; Messages live inside Projects. */
 export function phonePlaces(pathname: string, inboxUnread: number): BottomNavItem[] {
-  // Only Home itself is Home (#763 NV-1); Your tasks, the Wiki and the Sketchbook are pages reached from it, with "‹ Home".
+  // Only Home itself is Home (#763 NV-1); My tasks and My map are pages reached from its rows, with "‹ Home".
   const home = pathname === '/';
   const inbox = /^\/inbox(\/|$)/.test(pathname);
   const projects = /^\/(projects|dm)(\/|$)/.test(pathname);
@@ -36,7 +36,7 @@ export function phoneHidesDock(pathname: string): boolean {
 
 /** The places that offer "+": lists and views, not editors, sketches, settings or Search. */
 export function phoneOffersCreate(pathname: string): boolean {
-  return /^\/(inbox|dm|projects|tasks|map|docs)?$/.test(pathname) || /^\/projects\/[^/]+\/(tasks|map|docs|agents)$/.test(pathname);
+  return /^\/(inbox|dm|projects|tasks|map)?$/.test(pathname) || /^\/projects\/[^/]+\/(tasks|map|docs|agents)$/.test(pathname);
 }
 
 /**
