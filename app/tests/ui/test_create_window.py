@@ -18,7 +18,7 @@ from playwright.sync_api import Browser, Page, expect, sync_playwright
 from app_select import choose, expect_value
 
 from message_gestures import open_message_menu
-from create_window import create_other, dialog, kind_tab, open_from_tasks, submit_button, title_field, window
+from create_window import create_other, dialog, kind_tab, linked_labels, open_from_tasks, submit_button, title_field, window
 from native_work_performance import TASKS_READY, close_create, draft_value, open_create
 from touch_targets import has_minimum_touch_size
 from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
@@ -262,10 +262,19 @@ class CreateWindow(unittest.TestCase):
             page.get_by_role("button", name="Create", exact=True).tap()
             sheet = page.get_by_role("dialog", name="Create")
             expect(sheet).to_be_visible()
-            tiles = sheet.locator(".phone-create__grid").get_by_role("button")
-            self.assertEqual([item.strip() for item in tiles.all_inner_texts()], ["Task", "Thought", "Decision", "Page", "Space"])
-            for tile in tiles.all():
-                self.assertGreaterEqual(tile.bounding_box()["height"], 44)
+            self.at_rest(page)
+            # #1013: five list rows (not a tile grid), the computer's order, no Space picker of its own, and the guide's line.
+            rows = sheet.locator(".phone-create__rows").get_by_role("button")
+            self.assertEqual([item.strip() for item in rows.all_inner_texts()], ["Task", "Thought", "Decision", "Page", "Space"])
+            boxes = [row.bounding_box() for row in rows.all()]
+            for box in boxes:
+                self.assertGreaterEqual(box["height"], 44)
+                self.assertGreaterEqual(box["width"], PHONE["width"] - 48, "a row is as wide as the sheet, not a tile of three in a row")
+            self.assertEqual(len({round(box["x"]) for box in boxes}), 1, "the rows sit in one column")
+            self.assertEqual(sorted(box["y"] for box in boxes), [box["y"] for box in boxes], "in the computer's order, top to bottom")
+            expect(sheet.get_by_role("combobox")).to_have_count(0)
+            expect(sheet.get_by_text("The same five on the computer (C).", exact=True)).to_be_visible()
+            self.assertLessEqual(sheet.bounding_box()["x"] + sheet.bounding_box()["width"], PHONE["width"])
             shot(page, f"345-create-sheet-390-{scheme}")
             sheet.get_by_role("button", name="Task", exact=True).tap()
             window = dialog(page)
@@ -286,6 +295,25 @@ class CreateWindow(unittest.TestCase):
             expect(dialog(page)).to_have_count(0)
         stored = self.api(page, "GET", f"/api/v1/projects/{self.ids['other']}/work?limit=100", status=200)["items"]
         self.assertTrue([item for item in stored if item["title"] == "Print labels for the beds"])
+
+    def test_08b_the_phone_sheet_fits_a_small_phone(self) -> None:
+        self.ensure_account()
+        page = self.page(phone=True)
+        page.set_viewport_size({"width": 320, "height": 568})
+        page.goto("/")
+        page.get_by_role("button", name="Create", exact=True).tap()
+        sheet = page.get_by_role("dialog", name="Create")
+        expect(sheet).to_be_visible()
+        self.at_rest(page)
+        rows = sheet.locator(".phone-create__rows").get_by_role("button")
+        self.assertEqual(rows.count(), 5)
+        for box in [row.bounding_box() for row in rows.all()]:
+            self.assertGreaterEqual(box["height"], 44)
+            self.assertGreaterEqual(box["x"], 0)
+            self.assertLessEqual(box["x"] + box["width"], 320)
+        self.assertLessEqual(page.evaluate("() => document.documentElement.scrollWidth"), 320, "no horizontal scroll")
+        self.assertLessEqual(sheet.bounding_box()["y"] + sheet.bounding_box()["height"], 568.5)
+        shot(page, "1013-create-sheet-320")
 
     # ---------------------------------------------------------------- the phone's Search (S-P-Search, S-P-NoResults)
 
@@ -410,7 +438,7 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual(len(stored), 1)
         self.assertEqual((stored[0]["outcome"], stored[0]["status"]), ("Blank form details", "in_progress"))
 
-    def test_12_the_phone_chooser_proposes_a_decision_in_the_project_it_shows(self) -> None:
+    def test_12_the_phone_sheet_proposes_a_decision_in_the_space_the_window_shows(self) -> None:
         self.ensure_account()
         page = self.page(phone=True)
         for start in (f"/projects/{self.ids['project']}/tasks", "/"):
@@ -420,13 +448,15 @@ class CreateWindow(unittest.TestCase):
                 page.goto(start)
                 page.get_by_role("button", name="Create", exact=True).tap()
                 sheet = page.get_by_role("dialog", name="Create")
-                choose(sheet.get_by_role("combobox", name="Space"), self.ids["other"])
-                tile = sheet.get_by_role("button", name="Decision", exact=True)
-                expect(tile).not_to_have_attribute("aria-disabled", "true")
-                tile.tap()
-                # The same Create window as the computer's, on its Decision tab (#867), in the space the sheet showed.
+                expect(sheet.get_by_role("combobox")).to_have_count(0)  # #1013: the sheet has no Space picker, the window has
+                row = sheet.get_by_role("button", name="Decision", exact=True)
+                expect(row).not_to_have_attribute("aria-disabled", "true")
+                row.tap()
+                # The same Create window as the computer's, on its Decision tab (#867): in the space you are in, and its picker moves it.
                 window = page.get_by_role("dialog", name="New decision")
-                expect_value(window.get_by_role("combobox", name="Space"), self.ids["other"])
+                if start != "/":
+                    expect_value(window.get_by_role("combobox", name="Space"), self.ids["project"])
+                choose(window.get_by_role("combobox", name="Space"), self.ids["other"])
                 window.get_by_role("textbox", name="Decision", exact=True).fill(title)
                 window.get_by_label("Why", exact=True).fill("Because the picker said so")
                 window.get_by_role("button", name=re.compile("^Propose decision")).tap()
@@ -1105,6 +1135,32 @@ class CreateWindow(unittest.TestCase):
         self.assertEqual(title_field(page).evaluate("el => [el.selectionStart, el.selectionEnd]"), [0, len("The resistive probes in bed 5 read 92 % today")])
         expect(dialog(page).get_by_role("button", name=re.compile("^Remove link to"))).to_have_count(1)
         page.keyboard.press("Escape")
+
+    def test_30_a_task_a_person_makes_in_the_window_counts_under_the_thought_it_links(self) -> None:
+        """#1013 P3: with Create task gone from the Map, a thought's task count is not only agents' and the API's: the window's
+        "+ Link a message or thought" links a thought, and the Map counts the task under it."""
+        self.ensure_account()
+        page = self.page()
+        words = f"Wire the second gateway {uuid.uuid4().hex[:6]}"
+        sketch = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/sketches", {"title": "Gateways", "scope": "project", "projectId": self.ids["project"]}, 201)["id"]
+        thought = self.api(page, "POST", f"/api/v1/sketches/{sketch}/thoughts", {"text": words, "x": 120, "y": 120}, 201)["thought"]["id"]
+        page.goto(f"/projects/{self.ids['project']}/tasks")
+        field = open_from_tasks(page)
+        title = f"Mount the gateway {uuid.uuid4().hex[:6]}"
+        field.fill(title)
+        dialog(page).get_by_role("button", name="+ Link a message or thought").click()
+        dialog(page).get_by_role("searchbox", name="Search messages and thoughts").fill(words)
+        dialog(page).get_by_role("list", name="Messages and thoughts").get_by_role("button", name=re.compile(words)).click()
+        expect(linked_labels(page)).to_have_count(1)
+        submit_button(page).click()
+        expect(dialog(page)).to_have_count(0)
+        made = next(item for item in self.work(page) if item["title"] == title)
+        links = self.api(page, "GET", f"/api/v1/work/{made['id']}", status=200)["links"]
+        self.assertEqual([link["to"]["id"] for link in links if link["to"]["type"] == "thought"], [thought], "the task is linked to the thought")
+        page.goto(f"/projects/{self.ids['project']}/map/{sketch}")
+        badge = page.locator(f'.sk-node[data-id="{thought}"] + .sk-work-slot .sk-work')
+        expect(badge).to_have_accessible_name(re.compile(r"^1 task linked to "))
+        shot(page, "1013-thought-task-count")
 
 
 if __name__ == "__main__":

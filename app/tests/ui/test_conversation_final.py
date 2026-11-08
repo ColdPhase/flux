@@ -399,11 +399,12 @@ class ConversationFinal(unittest.TestCase):
         touch(bubble, "pointerup", x + 70, y)
         expect(page.locator("#thread-composer")).to_be_focused()
         page.get_by_role("button", name="Close replies").click()
-        # Long press opens the menu with the five drawn actions, the stream dimmed behind it.
+        # Long press opens one bottom sheet (#1013): the message at the top, the drawn actions below, the stream dimmed behind it.
         bubble.scroll_into_view_if_needed()
         long_press(bubble)
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu).to_be_visible()
+        expect(page.get_by_role("dialog", name="Message", exact=True).locator(".msg-sheet__message")).to_be_visible()
         names = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
         self.assertEqual(names, ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text"])
         self.assertNotIn("Done", names, "a message has no Done: the Inbox is the one queue")
@@ -422,7 +423,11 @@ class ConversationFinal(unittest.TestCase):
         expect(menu).to_be_visible()
         names = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
         self.assertEqual(names, ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text"])
+        expect(menu.get_by_role("menuitem").first).to_be_focused()  # opened by the keyboard: focus is on the first action
+        page.keyboard.press("ArrowDown")
+        expect(menu.get_by_role("menuitem", name="Create task")).to_be_focused()
         page.keyboard.press("Escape")
+        expect(menu).to_have_count(0)
         # A scroll gesture is not a long press: nothing opens.
         swipe_down = bubble.bounding_box()
         page.mouse.move(swipe_down["x"] + 20, swipe_down["y"] + 10)

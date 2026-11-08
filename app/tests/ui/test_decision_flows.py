@@ -295,7 +295,8 @@ class DecisionFlows(unittest.TestCase):
 
     # ---------------------------------------------------------------- B3 (phone)
 
-    def test_12_a_phone_long_press_lifts_the_message_over_five_items(self) -> None:
+    def test_12_a_phone_long_press_opens_one_bottom_sheet_with_the_message_at_the_top(self) -> None:
+        """#1013 (F-026 phone-actions-create): no lifted copy of the bubble and no small menu: one sheet, the message above the actions."""
         page = self.page(phone=True)
         page.goto(f"/projects/{self.ids['project']}")
         message = self.message(page)
@@ -303,30 +304,38 @@ class DecisionFlows(unittest.TestCase):
         bubble = message.locator(".message-bubble > .message-body")
         bubble.scroll_into_view_if_needed()
         long_press(bubble)
-        menu = page.get_by_role("menu", name="Message actions")
+        sheet = page.get_by_role("dialog", name="Message", exact=True)
+        expect(sheet).to_be_visible()
+        menu = sheet.get_by_role("menu", name="Message actions")
         expect(menu).to_be_visible()
         items = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
-        self.assertEqual(items, PHONE_MENU, "one level (#867): the toolbar's two actions, Add to map and Copy link, then Edit and Delete on one's own message")
-        lifted = page.locator(".msg-menu__lift")
-        expect(lifted).to_be_visible()
-        expect(lifted).to_contain_text("The resistive probes in bed 5")
-        page.wait_for_timeout(400)  # the menu has come in
-        lift_box, menu_box = lifted.bounding_box(), menu.bounding_box()
-        self.assertIsNotNone(lift_box)
-        self.assertIsNotNone(menu_box)
-        self.assertGreaterEqual(menu_box["y"], lift_box["y"] + lift_box["height"] - 1, "the menu sits under the lifted message, not over it")
-        self.assertLessEqual(menu_box["y"] - (lift_box["y"] + lift_box["height"]), 16, "directly under it")
-        self.assertLessEqual(menu_box["y"] + menu_box["height"], PHONE["height"], "the whole menu is on screen")
-        self.assertGreaterEqual(lift_box["y"], 0, "the lifted message is on screen")
-        # The lifted copy is above the blur: it is what a touch at its centre hits.
-        hit = page.evaluate("([x, y]) => document.elementFromPoint(x, y)?.closest('.msg-menu__lift, .msg-menu__scrim')?.className ?? ''",
-                            [lift_box["x"] + lift_box["width"] / 2, lift_box["y"] + lift_box["height"] / 2])
-        self.assertIn("msg-menu__lift", hit)
+        self.assertEqual(items, PHONE_MENU, "one level (#867): the toolbar's two actions, Add to map, Copy link and Copy text, then Edit and Delete on one's own message")
+        expect(page.locator(".msg-menu, .msg-menu__lift")).to_have_count(0)
+        expect(menu.get_by_role("menuitem").first).not_to_be_focused()  # a touch leaves no row looking selected
+        preview = sheet.locator(".msg-sheet__message")
+        expect(preview).to_contain_text("The resistive probes in bed 5")
+        page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
+        sheet_box, preview_box, menu_box = sheet.bounding_box(), preview.bounding_box(), menu.bounding_box()
+        self.assertIsNotNone(sheet_box)
+        self.assertAlmostEqual(sheet_box["y"] + sheet_box["height"], PHONE["height"], delta=1, msg="the sheet rests on the bottom edge")
+        self.assertAlmostEqual(sheet_box["width"], PHONE["width"], delta=1, msg="the sheet is as wide as the screen")
+        self.assertLessEqual(preview_box["y"] + preview_box["height"], menu_box["y"], "the message is above the actions")
+        for box in menu.get_by_role("menuitem").evaluate_all("items => items.map((el) => el.getBoundingClientRect().height)"):
+            self.assertGreaterEqual(box, 44, "every row is a touch target")
         shot(page, "decision-flows-b3-longpress")
+        # A small phone (320 wide): the sheet still fits, nothing scrolls sideways and the rows stay touch targets.
+        page.set_viewport_size({"width": 320, "height": 568})
+        page.evaluate("() => Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming().iterations !== Infinity).map((a) => a.finished.catch(() => null)))")
+        small = sheet.bounding_box()
+        self.assertGreaterEqual(small["x"], 0)
+        self.assertLessEqual(small["x"] + small["width"], 320.5)
+        self.assertLessEqual(page.evaluate("() => document.documentElement.scrollWidth"), 320, "no horizontal scroll")
+        for box in menu.get_by_role("menuitem").evaluate_all("items => items.map((el) => el.getBoundingClientRect().height)"):
+            self.assertGreaterEqual(box, 44)
+        shot(page, "decision-flows-b3-longpress-320")
         menu.get_by_role("menuitem", name="Copy link").focus()
         page.keyboard.press("Escape")
-        expect(menu).to_have_count(0)
-        expect(lifted).to_have_count(0)
+        expect(sheet).to_have_count(0)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import { Avatar, BottomNav, FluxLogo, Icon, IconButton, Overlay, publishTopEdge, type BottomNavItem, type IconName, Select, Option } from '../ui';
-import { useDraft } from '../drafts/store';
+import { Avatar, BottomNav, FluxLogo, Icon, IconButton, Overlay, publishTopEdge, type BottomNavItem, type IconName } from '../ui';
 import { useShellActions } from './shellContext';
 import { useShellData, type ProjectSummary } from './data';
 
@@ -129,57 +128,45 @@ export function PhoneHomeLead() {
   return <span className="phead__logo"><FluxLogo size={28} /></span>;
 }
 
-interface Tile { id: string; label: string; icon: IconName; run: (() => void) | null; hint?: string }
+interface Row { id: string; label: string; icon: IconName; run: (() => void) | null; hint?: string }
 
 /**
- * "+" Create (F-026 S2, S3, #867): the same five types as the computer's New: Task, Thought, Decision, Page and Space. Each tile opens the
- * one Create window on that type, in the space you are in or the one chosen here (a thought needs none, and a space is made in the
- * company; a guest does not start spaces). Writing a message and attaching a file or link happen in the composer.
+ * "+" Create (F-026 S2, S3, #867, #1013): the same five types as the computer's New (C), as five rows: Task, Thought, Decision, Page and
+ * Space. A row opens the one Create window on that type, in the space you are in or your first one (the window has the space picker; a
+ * thought needs none, and a space is made in the company, so a guest does not start spaces). Writing a message and attaching a file or
+ * link happen in the composer.
  */
 export function PhoneCreate({ open, onClose, projects, projectId }: {
   open: boolean; onClose: () => void; projects: ProjectSummary[]; projectId: string | undefined;
 }) {
   const titleId = useId();
-  const { me, workspace } = useShellData();
+  const { workspace } = useShellData();
   const { openCreate } = useShellActions();
-  const selectedProject = useDraft(me.user.id, 'phone-create-project');
-  const preferredProjectId = projects.some((project) => project.id === selectedProject.text)
-    ? selectedProject.text
-    : projectId;
-  const chosen = projects.find((project) => project.id === preferredProjectId) ?? projects[0];
+  const chosen = projects.find((project) => project.id === projectId) ?? projects[0];
   const create = (request: Parameters<typeof openCreate>[0]) => () => { onClose(); requestAnimationFrame(() => openCreate(request)); };
-  const tiles: Tile[] = [
-    { id: 'task', label: 'Task', icon: 'plus', run: chosen ? create({ kind: 'task', projectId: chosen.id }) : null, hint: 'needs a space' },
-    { id: 'thought', label: 'Thought', icon: 'edit', run: create({ kind: 'thought' }) },
-    { id: 'decision', label: 'Decision', icon: 'rule', run: chosen ? create({ kind: 'decision', projectId: chosen.id }) : null, hint: 'needs a space' },
+  const rows: Row[] = [
+    { id: 'task', label: 'Task', icon: 'tasks', run: chosen ? create({ kind: 'task', projectId: chosen.id }) : null, hint: 'needs a space' },
+    { id: 'thought', label: 'Thought', icon: 'chat', run: create({ kind: 'thought' }) },
+    { id: 'decision', label: 'Decision', icon: 'goal', run: chosen ? create({ kind: 'decision', projectId: chosen.id }) : null, hint: 'needs a space' },
     { id: 'page', label: 'Page', icon: 'doc', run: chosen ? create({ kind: 'page', projectId: chosen.id }) : null, hint: 'needs a space' },
-    { id: 'space', label: 'Space', icon: 'people', run: workspace?.role === 'guest' ? null : create({ kind: 'space' }), hint: 'not for guests' },
+    { id: 'space', label: 'Space', icon: 'grid', run: workspace?.role === 'guest' ? null : create({ kind: 'space' }), hint: 'not for guests' },
   ];
   return (
-    <Overlay open={open} onClose={onClose} placement="bottom" labelledBy={titleId} className="phone-create">
-      <span className="phone-create__grab" aria-hidden="true" />
-      <div className="phone-create__head">
-        <h2 id={titleId}>Create</h2>
-        {projects.length ? (
-          <label className="phone-create__project">
-            <span className="phone-create__tile" aria-hidden="true">{(chosen?.name.trim()[0] ?? '?').toUpperCase()}</span>
-            <Select aria-label="Space" value={chosen?.id ?? ''} onChange={(next) => selectedProject.setText(next)}>
-              {projects.map((project) => <Option key={project.id} value={project.id}>{project.name}</Option>)}
-            </Select>
-          </label>
-        ) : null}
-      </div>
-      <ul className="phone-create__grid">
-        {tiles.map((tile) => (
-          <li key={tile.id}>
-            <button type="button" className="phone-create__item" aria-disabled={tile.run ? undefined : true}
-              onClick={() => { tile.run?.(); }}>
-              <Icon name={tile.icon} size={24} /><span>{tile.label}</span>
-              {!tile.run && tile.hint ? <small>{tile.hint}</small> : null}
+    <Overlay open={open} onClose={onClose} placement="bottom" labelledBy={titleId} className="ui-list-sheet phone-create">
+      <div className="ui-grabber" aria-hidden="true"><span /></div>
+      <h2 id={titleId} className="ui-list-sheet__title">Create</h2>
+      <ul className="ui-list-sheet__rows phone-create__rows">
+        {rows.map((row) => (
+          <li key={row.id}>
+            <button type="button" className="ui-list-sheet__row" aria-disabled={row.run ? undefined : true} onClick={() => { row.run?.(); }}>
+              <span className="ui-list-sheet__tile" aria-hidden="true"><Icon name={row.icon} size={20} /></span>
+              <span>{row.label}</span>
+              {!row.run && row.hint ? <small className="ui-list-sheet__note">{row.hint}</small> : null}
             </button>
           </li>
         ))}
       </ul>
+      <p className="ui-list-sheet__foot">The same five on the computer (C).</p>
     </Overlay>
   );
 }

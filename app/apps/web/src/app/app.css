@@ -676,24 +676,6 @@ kbd { display: inline-grid; place-items: center; min-width: 18px; height: 18px; 
 .phone-menu__n { font-size: var(--fs-xs); color: var(--t2); }
 .phone-menu__ok { flex: none; }
 .phone-menu__details { margin-top: 6px; border-top: 1px solid var(--line); border-radius: 0; color: var(--t2); }
-/* "+" Create: a half sheet from the bottom. */
-.ui-overlay--bottom .phone-create { inset: auto 0 0 0; max-height: calc(100dvh - env(safe-area-inset-top) - 12px); overflow-y: auto; overscroll-behavior: contain; border-radius: 26px 26px 0 0; padding: 8px 16px max(24px, env(safe-area-inset-bottom)); }
-.phone-create__grab { display: block; width: 36px; height: 5px; margin: 4px auto 14px; border-radius: 3px; background: var(--line2); }
-.phone-create__head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
-.phone-create__head h2 { margin: 0; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.03em; }
-.phone-create__project {
-  position: relative; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; max-width: 60%; padding: 0 12px 0 6px;
-  border-radius: 22px; background: var(--sub); color: var(--t1); font-size: var(--fs-base);
-}
-.phone-create__project .ui-select { min-width: 0; max-width: 100%; min-height: 44px; border: 0; background: transparent; color: inherit; font: inherit; padding: 0; }
-.phone-create__tile { display: grid; place-items: center; width: 28px; height: 28px; border-radius: 10px; background: var(--el); font-size: var(--fs-md); font-weight: 600; flex: none; }
-.phone-create__grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 0; padding: 0; list-style: none; }
-.phone-create__item {
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 96px; padding: 10px 4px;
-  border-radius: 20px; background: var(--el); box-shadow: var(--sh-card); font-size: var(--fs-base); font-weight: 500; color: var(--t1); text-align: center;
-}
-.phone-create__item[aria-disabled="true"] { opacity: .55; }
-.phone-create__item small { font-size: var(--fs-xs); color: var(--t2); font-weight: 400; }
 .proj-index__dms { display: grid; gap: 10px; margin-top: 22px; justify-items: start; }
 .proj-index__dms h2 { margin: 0; font-size: var(--fs-base); font-weight: 500; color: var(--t2); }
 .proj-index__dms .dm-index { width: 100%; }
