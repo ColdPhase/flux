@@ -270,7 +270,7 @@ class DecisionFlows(unittest.TestCase):
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu.get_by_role("menuitem", name="Reply in thread")).to_have_count(0)
         self.assertEqual([text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()], ["Add to map", "Copy link", "Copy text", "Edit", "Delete"], "the viewer wrote it (#1006)")
-        for gone in ("Record a result", "Propose a decision", "Hand off to an agent", "Cite", "Copy text", "Details"):
+        for gone in ("Record a result", "Propose a decision", "Hand off to an agent", "Cite", "Details"):
             expect(menu.get_by_role("menuitem", name=gone, exact=True)).to_have_count(0)
         page.keyboard.press("Escape")
 
