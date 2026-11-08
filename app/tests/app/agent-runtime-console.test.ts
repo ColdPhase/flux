@@ -20,9 +20,12 @@ import { createRuntimeManagerClient, runtimeManagerPort } from '@flux/runtime-pr
 import { createManagerServer } from '../../apps/runtime/src/manager/server.js';
 import { agentRuntimeRoutes } from '../../apps/server/src/agent-runtime/routes.js';
 import { loadIdentityConfig, registerIdentity } from '../../apps/server/src/identity/index.js';
+import { pgBossPersonalRunQueue } from '../../apps/server/src/personal-runs/adapters.js';
+import { firstAgentMaker } from '../../apps/server/src/personal-runs/make-agent.js';
+import { personalRuntimeAvailability } from '../../apps/server/src/personal-runs/runtime.js';
 import { connectionString } from './support/db.js';
 import { Browser } from './support/http.js';
-import { expectStatus, password, person, type Person } from './support/people.js';
+import { expectStatus, password, person, workspace, type Person } from './support/people.js';
 import { slotSecret, startTestSlot, type TestSlot } from './support/runtime-slot.js';
 import { pastedLine } from './support/runtime-login.js';
 
@@ -39,6 +42,7 @@ const base = 900 + Math.floor(Math.random() * 98);
 const slotNames = [`runtime-${base}`, `runtime-${base + 1}`];
 const managerSecret = slotSecret();
 const logs: string[] = [];
+const afterSignIns: string[] = [];
 const managerLogs: Record<string, unknown>[] = [];
 const slots = new Map<string, TestSlot>();
 let manager: Server;
@@ -57,7 +61,10 @@ before(async () => {
   app = Fastify({ logger: { level: 'trace', stream: new Writable({ write(chunk, _encoding, done) { logs.push(String(chunk)); done(); } }) } });
   const identity = registerIdentity(app, { db, config: loadIdentityConfig({ FLUX_PUBLIC_ORIGIN: origin, FLUX_AUTH_SECRET: authSecret, FLUX_AUTH_RATE_LIMIT: 'false' }), mailer: null });
   await app.register(websocket, { options: { maxPayload: 1024 } });
-  await app.register(agentRuntimeRoutes, { db, sessions: identity, config, secret: authSecret, publicOrigin: origin });
+  // The app's own hook for a plan signed in (F-036 AG-1, #945): the first Assistant, on the plan. Every call is kept to show it runs once.
+  const firstAgent = firstAgentMaker(db, { queue: pgBossPersonalRunQueue({ send: async () => null }), providerEnabled: false, runtime: personalRuntimeAvailability(config, db) });
+  await app.register(agentRuntimeRoutes, { db, sessions: identity, config, secret: authSecret, publicOrigin: origin,
+    afterSignIn: async (ownerUserId) => { afterSignIns.push(ownerUserId); await firstAgent(ownerUserId); } });
   await app.listen({ host: '127.0.0.1', port: 0 });
   appUrl = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
   // The worker's reconciliation sees the slot and offers it.
@@ -207,6 +214,7 @@ describe('signing in through the console', () => {
   const seen: string[] = [];
   before(async () => {
     ada = await person('Signin Ada');
+    await workspace(ada, 'Signin club');
     browser = await session(ada);
     await ticketFor(browser);
     const { home } = await bindingOf(ada);
@@ -239,6 +247,14 @@ describe('signing in through the console', () => {
     const reread = await status(browser);
     seen.push(JSON.stringify(reread));
     assert.equal(reread.connections.claude_code?.state, 'signed_in');
+  });
+
+  test('the first sign-in of a plan gives the person Assistant on it, once (#945, #959)', async () => {
+    const made = () => pool.query<{ name: string; engine: string; provider: string }>(`SELECT a.name, s.engine, s.provider FROM assistant_settings s
+      JOIN agents a ON a.id = s.agent_id WHERE s.owner_user_id = $1`, [ada.id]).then((result) => result.rows);
+    await until('the first agent', async () => (await made()).length > 0);
+    assert.deepEqual(await made(), [{ name: 'Assistant', engine: 'runtime', provider: 'anthropic' }]);
+    assert.deepEqual(afterSignIns.filter((id) => id === ada.id), [ada.id], 'the hook ran once, for the one sign-in');
   });
 
   test('seeded-secret scan: the login never appears in the database, the logs, the frames or the API answers; the code never in the database or the logs', async () => {
