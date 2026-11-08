@@ -229,13 +229,16 @@ keeps the words. Migration `0029` adds `project_messages.edited_at`.
   message and answers `201` with the marker, in a reply (`store.ts` `sendInTransaction`), in the start of a conversation
   (`createConversation`) and in a contribution to a task (`task-discussions/service.ts` `appendToTask`, which also checks that it was
   text): the web outbox ends the send and the deleted words do not return to the composer. What stays `409
-  IDEMPOTENCY_CONFLICT`: the same id for another place (another conversation, a reply used to start one) and, for a message that is
-  not deleted, other words. An edited message still finds its retry (the fingerprint is kept), with the new words.
+  IDEMPOTENCY_CONFLICT`: the same id for another place (another conversation, a reply used to start one), the id of a deleted message
+  of a task's conversation sent to the generic routes (a task's messages are made by a contribution, whose identity the delete cannot
+  tell from a generic send, so the generic routes keep the conflict they gave before the delete) and, for a message that is not
+  deleted, other words. An edited message still finds its retry (the fingerprint is kept), with the new words.
 - **Locks.** Notice generation reads each message of its batch `FOR SHARE` (so a delete waits and then removes the notices written from
   the words), and a space's delete cascades over that space's messages in the database's own order. Two messages of one space in a running
   batch can therefore, in theory, make the generator and the space's delete wait for each other; PostgreSQL then cancels one (`40P01`),
-  probably the delete, which keeps nothing. `DELETE /api/v1/projects/:projectId` runs once more after such a cancel (`afterDeadlock`
-  in `@flux/db`, #1052); a second deadlock is the caller's failure.
+  probably the delete, which keeps nothing. `DELETE /api/v1/projects/:projectId` and the delete of an encrypted space
+  (`DELETE /api/v1/encrypted-spaces/:id`) run once more after such a cancel (`afterDeadlock` in `@flux/db`, #1052); a second deadlock is
+  the caller's failure.
 - **Events.** `project.message_edited.v1` and `project.message_removed.v1`, object the project, `data` `{ conversationId, messageId }`
   (ids only, which is all an encrypted space allows); a change that changes nothing records nothing. An open stream or thread reads the
   conversation again; the author's own page replaces the message at once.

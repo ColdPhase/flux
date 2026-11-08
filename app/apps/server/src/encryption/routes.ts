@@ -3,6 +3,7 @@ import { ENCRYPTED_SPACES_AVAILABILITY_PATH, ENCRYPTED_WORKSPACES_PATH, WORKSPAC
   type CreateEncryptedWorkspaceCommand, type EncryptedSpacesAvailability, type GrantUnlockPasswordCommand, type NewRecoveryCodeCommand, type Project,
   type SetUnlockPasswordCommand, type UnlockWorkspaceCommand } from '@flux/contracts';
 import { InvalidInputError, RateLimitedError, type Principal } from '@flux/core';
+import { afterDeadlock } from '@flux/db';
 import { bearerMatches } from '../fixture/index.js';
 import type { SessionResolver } from '../identity/index.js';
 import type { EncryptionComposition } from './adapters.js';
@@ -71,7 +72,10 @@ export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, f
   app.get<{ Params: { companyId: string } }>(companyEncryptedSpacesPath(':companyId'), async (request) =>
     useCases.companySpaces(await principal(request), request.params.companyId));
   app.delete<{ Params: { workspaceId: string } }>(encryptedSpacePath(':workspaceId'), async (request, reply) => {
-    await useCases.deleteSpace(await principal(request), request.params.workspaceId);
+    const who = await principal(request);
+    // The cascade locks the space's messages in the database's own order, as for a plain space's delete: run it once more if PostgreSQL
+    // cancels it to break a deadlock with a notice batch (#1052). The cancelled attempt kept nothing, and the keys are forgotten only after a commit.
+    await afterDeadlock(() => useCases.deleteSpace(who, request.params.workspaceId));
     return reply.code(204).send();
   });
   app.post<{ Params: { workspaceId: string }; Body: UnlockWorkspaceCommand }>(`${WORKSPACES_PATH}/:workspaceId/unlock`, {

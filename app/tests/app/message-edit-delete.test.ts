@@ -278,20 +278,33 @@ describe('an author edits and deletes their own message (#1006)', () => {
       assert.equal((expectStatus(await post(cy, `/api/v1/conversations/${first.id}/messages`, 'cy has the same id', replyId), 201) as ConversationMessage).body, 'cy has the same id');
     });
 
-    test('a contribution to a task retried after its message was deleted finds the marker too (#1052)', async () => {
-      const gone = word('taskretrygone');
+    test('a contribution to a task retried after its message was deleted finds the marker too; the generic routes do not take it for theirs (#1052)', async () => {
+      const gone = word('taskretrygone'); const goneToo = word('taskretrytoo');
       const task = expectStatus(await ada.browser.request('POST', `/api/v1/projects/${lamp.id}/work`, { body: { title: word('Retry task'), clientCommandId: randomUUID() } }), 201) as { id: string };
       const path = `/api/v1/work/${task.id}/discussion`;
-      const clientMessageId = randomUUID();
-      const post = (body: string, extra: Record<string, unknown> = {}, id = clientMessageId) => ben.browser.request('POST', path, { body: { body, clientMessageId: id, ...extra } });
-      const sent = expectStatus(await post(gone), 201) as ConversationMessage;
-      assert.equal(codeOf(await post(word('other words'))), 'IDEMPOTENCY_CONFLICT', 'control: other words under the same id are a conflict while the message is there');
-      expectStatus(await remove(ben, sent.conversationId, sent.id), 200);
-      const retried = expectStatus(await post(gone), 201) as ConversationMessage;
-      assert.deepEqual([retried.id, retried.body, Boolean(retried.removedAt)], [sent.id, REMOVED_BY_AUTHOR_BODY, true]);
-      assert.deepEqual((await read(ben, sent.conversationId)).map((item) => [item.id, item.body]), [[sent.id, REMOVED_BY_AUTHOR_BODY]], 'nothing was stored by the retry');
-      assert.ok(!(await databaseText()).includes(gone), 'and the words did not come back');
-      assert.equal(codeOf(await post(gone, { kind: 'handoff' })), 'IDEMPOTENCY_CONFLICT', 'a hand-off is not the text that was deleted');
+      const rootId = randomUUID(); const replyId = randomUUID();
+      const contribute = (body: string, id: string, extra: Record<string, unknown> = {}) => ben.browser.request('POST', path, { body: { body, clientMessageId: id, ...extra } });
+      const root = expectStatus(await contribute(gone, rootId), 201) as ConversationMessage;
+      const second = expectStatus(await contribute(goneToo, replyId), 201) as ConversationMessage;
+      assert.equal(codeOf(await contribute(word('other words'), rootId)), 'IDEMPOTENCY_CONFLICT', 'control: other words under the same id are a conflict while the message is there');
+      expectStatus(await remove(ben, root.conversationId, root.id), 200);
+      expectStatus(await remove(ben, root.conversationId, second.id), 200);
+
+      for (const [sent, words, id] of [[root, gone, rootId], [second, goneToo, replyId]] as const) {
+        const retried = expectStatus(await contribute(words, id), 201) as ConversationMessage;
+        assert.deepEqual([retried.id, retried.body, Boolean(retried.removedAt)], [sent.id, REMOVED_BY_AUTHOR_BODY, true]);
+      }
+      assert.deepEqual((await read(ben, root.conversationId)).map((item) => [item.id, item.body]), [[root.id, REMOVED_BY_AUTHOR_BODY], [second.id, REMOVED_BY_AUTHOR_BODY]], 'nothing was stored by the retries');
+      assert.ok(!(await databaseText()).includes(gone) && !(await databaseText()).includes(goneToo), 'and the words did not come back');
+      assert.equal(codeOf(await contribute(gone, rootId, { kind: 'handoff' })), 'IDEMPOTENCY_CONFLICT', 'a hand-off is not the text that was deleted');
+
+      // The generic routes did not make these messages (their identity wraps the operation, which the delete cannot tell any more), so as before
+      // the delete the same ids are a conflict there: the start of a conversation, and a reply in the task's conversation.
+      const conversations = (await pool.query('SELECT count(*)::int AS n FROM project_conversations WHERE project_id = $1', [lamp.id])).rows[0].n as number;
+      assert.equal(codeOf(await ben.browser.request('POST', `/api/v1/projects/${lamp.id}/conversations`, { body: { body: gone, clientMessageId: rootId } })), 'IDEMPOTENCY_CONFLICT');
+      assert.equal(codeOf(await ben.browser.request('POST', `/api/v1/conversations/${root.conversationId}/messages`, { body: { body: goneToo, clientMessageId: replyId } })), 'IDEMPOTENCY_CONFLICT');
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_conversations WHERE project_id = $1', [lamp.id])).rows[0].n, conversations, 'no conversation was made');
+      assert.equal((await read(ben, root.conversationId)).length, 2, 'and no message was stored');
     });
 
     test('a send retried after its message was edited still finds it, with the new words (#1052)', async () => {
