@@ -92,17 +92,20 @@ export async function revokeProjectGrant(principal: Principal, projectId: string
 }
 
 /**
- * The event of a removed grant, for the space's people and for the person it removed (#862). That person can no longer read
- * the space, so the ordinary audience (decided after the grant is gone) leaves them out, and their open tabs kept showing the
- * space from what they had read until the next refresh. They are added by name; the stream's final check lets this one kind
- * through to its own audience rows (`authorizeDelivery`). Like every event it carries the space's id and its kind, nothing else.
+ * The events of a removed grant (#862). `project.grant_revoked.v1` goes to the space's people, decided after the grant is gone.
+ * The person it removed can no longer read the space, so they would hear nothing and their open tabs would keep showing it:
+ * `project.access_ended.v1` goes to them alone, by name, and the stream's final check lets this one kind through to its own
+ * audience rows (`authorizeDelivery`). Someone who still opens the space through the company lost only the grant and is told by
+ * the first event. Like every event they carry the space's id and their kind, nothing else.
  */
 export async function recordGrantRevoked(ports: Pick<AccessPorts, 'access' | 'events'>, tx: Executor, principal: Principal, workspaceId: string, grant: GrantRecord) {
   const events = eventPorts(ports, tx);
   const recipients = await eventAudience(events, { kind: GRANT_REVOKED, workspaceId, objectId: grant.projectId });
   const removed = principalKey({ kind: 'human', id: grant.userId });
-  await events.repository.insert({ id: randomUUID(), kind: GRANT_REVOKED, objectId: grant.projectId, actorId: principalKey(principal), data: { grantId: grant.id }, workspaceId },
-    recipients.includes(removed) ? recipients : [...recipients, removed]);
+  const event = { objectId: grant.projectId, actorId: principalKey(principal), workspaceId };
+  await events.repository.insert({ id: randomUUID(), kind: GRANT_REVOKED, data: { grantId: grant.id }, ...event }, recipients);
+  if (!recipients.includes(removed)) await events.repository.insert({ id: randomUUID(), kind: ACCESS_ENDED, data: {}, ...event }, [removed]);
 }
 
 const GRANT_REVOKED = 'project.grant_revoked.v1';
+const ACCESS_ENDED = 'project.access_ended.v1';

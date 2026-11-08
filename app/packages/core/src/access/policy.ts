@@ -365,15 +365,15 @@ export async function authorizeEvent(principal: Principal, event: EventRef, read
 }
 
 /**
- * The stream's final check of one of the recipient's own audience rows: `authorizeEvent`, except that the removal of a person's grant
- * reaches that person although they can no longer read the space (#862). Their row was written for them by name when the grant went
- * (`recordGrantRevoked`), so their open tabs forget what they kept of the space and drop it from the sidebar at once; the event says
- * which space and nothing else. Only for delivery from the recipient's own rows: an audience is decided, and an event looked up by id,
- * with `authorizeEvent` alone.
+ * The stream's final check of one of the recipient's own audience rows: `authorizeEvent`, except that `project.access_ended.v1` reaches
+ * the person it was written for although they can no longer read the space (#862). Only that person ever has a row of this kind (it is
+ * written for them by name when their grant goes, `recordGrantRevoked`), so their open tabs forget what they kept of the space and drop
+ * it from the sidebar at once; the event says which space and nothing else. Only for delivery from the recipient's own rows: an audience
+ * is decided, and an event looked up by id, with `authorizeEvent` alone.
  */
 export async function authorizeDelivery(principal: Principal, event: EventRef, reader: AccessReader): Promise<boolean> {
   if (await authorizeEvent(principal, event, reader)) return true;
-  return event.kind === 'project.grant_revoked.v1' && principal.kind === 'human' && !!event.workspaceId && isUuid(event.objectId)
+  return event.kind === 'project.access_ended.v1' && principal.kind === 'human' && !!event.workspaceId && isUuid(event.objectId)
     && (await reader.loadActor(principal, event.workspaceId)).active;
 }
 

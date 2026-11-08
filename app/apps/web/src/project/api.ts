@@ -54,5 +54,6 @@ export const leaveProject = (projectId: string) => request<null>(projectLeavePat
 /** Turns AI off or on in the space (AG-10); turning it off stops what agents were doing there at once. */
 export const setSpaceAi = (projectId: string, state: SpaceAiState, idempotencyKey: string) =>
   request<SetSpaceAiResult>(projectAiPolicyPath(projectId), { method: 'PUT', body: { state }, headers: { [IDEMPOTENCY_KEY_HEADER]: idempotencyKey } });
-export const getProject = (id: string, signal?: AbortSignal) => request<Project>(projectPath(id), { signal, share: true, keep: KEEP_MS });
+/** `fresh`: read now, not from the answer kept a moment ago (the entry into a space, #862). */
+export const getProject = (id: string, signal?: AbortSignal, fresh = false) => request<Project>(projectPath(id), { signal, share: true, keep: KEEP_MS, fresh });
 export const listWorkspaceMembers = (workspaceId: string, signal?: AbortSignal) => request<WorkspaceMember[]>(workspaceMembersPath(workspaceId), { signal, share: true, keep: KEEP_MS });

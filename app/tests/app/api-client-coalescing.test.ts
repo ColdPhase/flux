@@ -248,3 +248,18 @@ test('a 403 refuses what a role may not do and leaves kept answers; an answer ke
   calls[3]!.finish({ count: 0 });
   assert.deepEqual(await next, { count: 0 });
 });
+
+test('a fresh read drops the kept answer, so a caller that asks while it is on its way joins it (the entry into a space)', async (context) => {
+  forgetKeptReads();
+  const calls = stub(context);
+  const first = request('/api/v1/kept/entered', { share: true, keep: 10_000 });
+  await settle();
+  calls[0]!.finish({ id: 'p', name: 'Before' });
+  await first;
+  const shell = request('/api/v1/kept/entered', { share: true, keep: 10_000, fresh: true });
+  const view = request('/api/v1/kept/entered', { share: true, keep: 10_000 });
+  await settle();
+  assert.equal(calls.length, 2, 'one read for the shell and the view');
+  calls[1]!.finish({ code: 'NOT_FOUND', error: 'Gone' }, 404);
+  for (const read of [shell, view]) await assert.rejects(read, (error: unknown) => (error as { status?: number }).status === 404, 'neither is given the older answer');
+});

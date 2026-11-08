@@ -47,8 +47,8 @@ export interface ApiRequestInit {
    */
   leavesReads?: true;
   /**
-   * With `keep`: a refresh the person or the stream asked for (focus, a poll, an event, a change of the Inbox) does not take a kept answer;
-   * it reads, and keeps what it gets for the next view that opens.
+   * With `keep`: a refresh the person or the stream asked for (focus, a poll, an event, a change of the Inbox), or the entry into a space,
+   * does not take a kept answer; it reads, other callers of the address join it, and it keeps what it gets for the next view that opens.
    */
   fresh?: boolean;
   /**
@@ -236,6 +236,8 @@ function sharedRead(path: string, signal: AbortSignal | undefined): Promise<Answ
 export async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
   const plainRead = init.share === true && (!init.method || init.method === 'GET') && !init.headers && !init.keepalive && init.cache === undefined;
   const keep = plainRead && init.keep ? init.keep : 0;
+  // A fresh read drops what was kept, so a caller that asks while it is on its way joins it instead of taking the older answer.
+  if (keep && init.fresh) kept.delete(path);
   const held = keep && !init.fresh ? kept.get(path) : undefined;
   let response: Answer;
   if (held && held.until > Date.now() && (held.page === null || held.page === page())) {

@@ -322,11 +322,10 @@ class ReturnToOrigin(unittest.TestCase):
         page.goto(f"/projects/{self.project}/conversations/{self.thread}")
         self.wait_thread(page)
         feed, target = ".thread__feed", f"#message-{self.chip_reply}"
-        # The thread is the one panel: a sheet on the phone (the person may have lowered it to half height), an overlay on a tablet.
+        # The thread is the one panel: a sheet on the phone, which opens at half height (#868), an overlay on a tablet.
         sheet = page.locator("#details[data-detent-sheet]")
         if size == "phone":
             expect(sheet).to_have_count(1)
-            self.activate(sheet.locator(".ui-grabber"), tap)
             expect(sheet).to_have_attribute("data-height", "half")
         self.read_at(page, feed, target, 20 if size == "phone" else 120, touch=tap and engine == "webkit")
         page.locator("#thread-composer").fill("Draft reply: the ToF board first")
@@ -374,7 +373,6 @@ class ReturnToOrigin(unittest.TestCase):
         sheet = page.locator("#details[data-detent-sheet]")
         if size == "phone":
             expect(sheet).to_have_count(1)
-            self.activate(sheet.locator(".ui-grabber"), tap)
             expect(sheet).to_have_attribute("data-height", "half")
         self.read_at(page, feed, target, 20 if size == "phone" else 110, touch=tap and engine == "webkit")
         page.locator("#thread-composer").fill("Draft reply: shortlist first")
@@ -562,13 +560,16 @@ class ReturnToOrigin(unittest.TestCase):
                 page.go_back()
                 expect(page).to_have_url(f"{ORIGIN}/projects/{lost['id']}")
                 self.stream_ready(page)
-                # Ada takes Jonas's access away while the conversation is open on his screen.
-                response = self.contexts["ada"].request.delete(f"{ORIGIN}/api/v1/projects/{lost['id']}/grants/{lost['grant']}", headers={"origin": ORIGIN})
-                self.assertIn(response.status, (200, 204), response.text())
                 page.locator("a.project-convo__person").first.click()
                 expect(page).to_have_url(re.compile(r"/dm/[0-9a-f-]{36}$"))
-                expect(page.get_by_role("heading", name=re.compile("Ada Kowalska")).first).to_be_visible()
+                expect(self.origin_back(page, "Conversation")).to_have_count(1)
+                # Ada takes Jonas's access away while he is in his conversation with her. He hears of it at once (#862): the space leaves
+                # his lists, so the way back to it has no control. (A place of the space that is open lands on the project list at once,
+                # test_space_settings test_10.)
+                response = self.contexts["ada"].request.delete(f"{ORIGIN}/api/v1/projects/{lost['id']}/grants/{lost['grant']}", headers={"origin": ORIGIN})
+                self.assertIn(response.status, (200, 204), response.text())
                 expect(self.origin_back(page)).to_have_count(0)
+                expect(page.get_by_role("heading", name=re.compile("Ada Kowalska")).first).to_be_visible()
                 # Back lands on the nearest place that still opens, with one line, never an error page.
                 page.go_back()
                 expect(page).to_have_url(f"{ORIGIN}/projects")

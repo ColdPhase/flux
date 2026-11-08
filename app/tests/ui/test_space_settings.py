@@ -361,6 +361,8 @@ class SpaceSettings(unittest.TestCase):
         window = as_member.get_by_role("dialog", name="New task")
         expect(window).to_be_visible()
         listbox = open_select(window.get_by_role("combobox", name="Owner"))
+        # The space's people arrive after the window opens (until then it offers "you" alone).
+        expect(listbox.get_by_role("option", name=re.compile("Lee Moreno"))).to_have_count(1)
         texts = listbox.get_by_role("option").all_inner_texts()
         self.assertTrue(any("Kai Tanaka" in text for text in texts) and any("Lee Moreno" in text for text in texts), texts)
         self.assertFalse(any("Ada Kowalska" in text or "Małgorzata" in text for text in texts), texts)
@@ -430,6 +432,56 @@ class SpaceSettings(unittest.TestCase):
                 expect(lee).to_have_url(re.compile(r"/projects$"))
                 expect(lee.get_by_text("Glaze recipes")).to_have_count(0)
                 self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": self.ids["lee"]}, "role": "contributor"}, status=201)
+
+
+    def test_10_removed_from_the_company_back_into_a_space_says_so_and_removed_inside_lands_calmly(self) -> None:
+        """#862: removal from the company sends the person no event, so entering a space reads the space itself: Back into its Map lands on
+        the project list with one line (#592), not on what the tab had kept. Someone removed from a space while on its Map lands there too."""
+        self.ensure_world()
+        ada = self.page("ada")
+        email = f"max.spaceset+{STAMP}@example.test"
+        self.sign_up("max", "Max Weber", email)
+        self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/members", {"email": email, "role": "member"}, status=201)
+        max_id = self.api(self.page("max"), "GET", "/api/v1/me")["user"]["id"]
+        space = self.api(ada, "POST", f"/api/v1/workspaces/{self.ids['workspace']}/projects", {"name": "Kiln log", "visibility": "restricted", "people": [max_id]}, status=201)
+        pid = space["id"]
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/conversations", {"body": "Bisque firing at 950", "clientMessageId": str(uuid.uuid4())}, status=201)
+
+        def open_map(page: Page) -> None:
+            page.goto("/")
+            page.get_by_role("navigation", name="Spaces").get_by_role("link", name=re.compile("^Kiln log")).click()
+            expect(page.get_by_text("Bisque firing at 950").first).to_be_visible()
+            view_tab(page, "Map")
+            expect(page).to_have_url(re.compile(rf"/projects/{pid}/map"))
+
+        def lands_calmly(page: Page) -> None:
+            expect(page.get_by_text("That space is no longer available to you.", exact=True)).to_be_visible()
+            expect(page).to_have_url(re.compile(r"/projects$"))
+            expect(page.get_by_text("This place isn’t available")).to_have_count(0)
+
+        # Removed from the space while its Map is open: the calm landing, not the error page.
+        inside = self.page("max")
+        open_map(inside)
+        grant = next(g for g in self.api(ada, "GET", f"/api/v1/projects/{pid}/grants") if g["principal"]["id"] == max_id)
+        removed = ada.request.delete(f"{ORIGIN}/api/v1/projects/{pid}/grants/{grant['id']}", headers={"origin": ORIGIN})
+        self.assertEqual(removed.status, 204, removed.text())
+        lands_calmly(inside)
+        # The event also took the space off its lists.
+        expect(inside.locator("#content").get_by_text("Kiln log")).to_have_count(0)
+        expect(inside.get_by_role("navigation", name="Spaces").get_by_text("Kiln log")).to_have_count(0)
+        self.api(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": max_id}, "role": "contributor"}, status=201)
+
+        # Removed from the company while on Home: Back into the Map reads the space and says so.
+        max_page = self.page("max")
+        open_map(max_page)
+        max_page.get_by_role("navigation", name="Places").get_by_role("link", name="Home", exact=True).click()
+        expect(max_page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        gone = ada.request.delete(f"{ORIGIN}/api/v1/workspaces/{self.ids['workspace']}/members/{max_id}", headers={"origin": ORIGIN})
+        self.assertEqual(gone.status, 204, gone.text())
+        self.assertEqual(max_page.context.request.get(f"{ORIGIN}/api/v1/projects/{pid}").status, 404)
+        max_page.go_back()
+        lands_calmly(max_page)
+        # The company's lists in this tab are read again on the next refresh, as on `main`: removal from the company sends no event here.
 
 
 if __name__ == "__main__":

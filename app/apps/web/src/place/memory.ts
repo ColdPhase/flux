@@ -147,6 +147,11 @@ export function useArrival(): Entry | null {
 }
 
 /** Whether this screen opened by returning to an entry (a pop after the first screen, or the origin control with no earlier entry). */
+/** Spaces this tab heard it can no longer open (#862): a place of one that then fails lands on the nearest place, as a return does (#592). */
+const lostSpaces = new Set<string>();
+export const noteSpaceLost = (projectId: string) => { lostSpaces.add(projectId); };
+export const spaceLost = (projectId: string) => lostSpaces.has(projectId);
+
 export function useReturning(): boolean {
   const location = useLocation();
   const type = useNavigationType();

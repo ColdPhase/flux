@@ -30,7 +30,7 @@ TARGET = 8
 BUDGET = {
     "Home → Inbox": (3, 0),
     "Inbox → Home": (4, 0),
-    "Home → a space (Conversation)": (15, 0),
+    "Home → a space (Conversation)": (16, 0),
     "Conversation → Tasks": (8, 0),
     "Tasks → Map": (5, 0),
     "Map → Wiki": (6, 0),
