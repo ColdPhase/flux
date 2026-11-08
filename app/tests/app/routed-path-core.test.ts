@@ -47,7 +47,13 @@ describe('the path as the router reads it', () => {
     assert.equal(originFormTarget('HTTPS://Host:8443/%61pi/v1/me'), '/%61pi/v1/me');
     assert.equal(originFormTarget('http://host'), '/');
     assert.equal(originFormTarget('http://host?x=1'), '/?x=1');
-    for (const unchanged of ['ftp://host/api', '*api/v1/me', 'api/v1/me', '*', 'http://', 'http:///api', 'http://host#/api', 'http://[/api', 'http://a%zz/api', 'http://a:99999/api']) {
+    // A first character that is not `/` is skipped by the router, so it is written as the `/` the router reads.
+    assert.equal(originFormTarget('*api/v1/me'), '/api/v1/me');
+    assert.equal(originFormTarget('*%61pi/v1/me?x'), '/%61pi/v1/me?x');
+    assert.equal(originFormTarget('api/v1/me'), '/pi/v1/me');
+    assert.equal(originFormTarget('ftp://host/api'), '/tp://host/api');
+    // The lone `*` and an absolute-form that does not parse (the router answers it a 400) are left as they are.
+    for (const unchanged of ['*', 'http://', 'http:///api', 'http://host#/api', 'http://[/api', 'http://a%zz/api', 'http://a:99999/api']) {
       assert.equal(originFormTarget(unchanged), unchanged, unchanged);
     }
     assert.equal(decodedPath('http://host/api/v1/me'), '/api/v1/me');

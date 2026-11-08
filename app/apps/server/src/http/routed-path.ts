@@ -15,16 +15,16 @@ export interface RoutedRequest {
 }
 
 /**
- * A request target in origin-form, the way find-my-way reads it before it routes (`getPathFromAbsoluteUrl`): `GET http://host/api/v1/me?x`
- * (absolute-form, which a server must accept) is `/api/v1/me?x`, and `http://host` is `/`. A target that is already origin-form, is not an
- * http(s) absolute-form, or does not parse is returned as it is: the router answers a 400 to the last before any hook or route.
+ * A request target as the path find-my-way routes (`find`, `getPathFromAbsoluteUrl`): `GET http://host/api/v1/me?x` (absolute-form, which a
+ * server must accept) is `/api/v1/me?x`, and `http://host` is `/`; a target that is neither that nor origin-form has its first character
+ * skipped by the router, so `*api/v1/me` is `/api/v1/me` and is written so. The lone `*` and an absolute-form that does not parse (the
+ * router answers it a 400 before any hook or route) are returned as they are.
  */
 export function originFormTarget(url: string): string {
-  if (url.charCodeAt(0) === 47) return url;
+  if (url.charCodeAt(0) === 47 || url === '*') return url;
   const schemeEnd = url.indexOf('://');
-  if (schemeEnd === -1) return url;
-  const scheme = url.slice(0, schemeEnd).toLowerCase();
-  if (scheme !== 'http' && scheme !== 'https') return url;
+  const scheme = schemeEnd === -1 ? '' : url.slice(0, schemeEnd).toLowerCase();
+  if (scheme !== 'http' && scheme !== 'https') return `/${url.slice(1)}`;
   const authorityStart = schemeEnd + 3;
   let authorityEnd = url.length;
   const pathStart = url.indexOf('/', authorityStart);
@@ -43,9 +43,8 @@ export function originFormTarget(url: string): string {
 }
 
 /**
- * The path as Fastify's router (find-my-way, `Router.sanitizeUrlPath`) reads it: a target that is not origin-form made origin-form, and a
- * first character that is not `/` skipped as the router skips it (`*api/v1/me` is `/api/v1/me`); then cut before the first `?` or `#` and
- * percent-decoded once with `decodeURI`. A letter written as `%61` is that letter, and so is a dot (`%2e`), a hyphen or a space; the characters that mean
+ * The path as Fastify's router (find-my-way, `Router.sanitizeUrlPath`) reads it: the target made a path (`originFormTarget`), cut before the
+ * first `?` or `#` and percent-decoded once with `decodeURI`. A letter written as `%61` is that letter, and so is a dot (`%2e`), a hyphen or a space; the characters that mean
  * something in a URL (`%2F`, `%3F`, `%23`, `%3A`, `%40`, `%26`, `%3D`, `%2B`, `%24`, `%2C`, `%3B`) and `%25` itself stay as written, so a
  * double-encoded `%2561` is `%61`, never `a`. Dot segments, `//` and a trailing slash are left alone (Flux sets none of the router's
  * `ignore…` options), which is why `/api/v1/../v1/me` matches no route. A path that does not decode is a 400 before any route, so it stays as written.
