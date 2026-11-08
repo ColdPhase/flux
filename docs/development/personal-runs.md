@@ -350,11 +350,15 @@ else edited. Nothing that waits ever expires.
   message with Undo beside it (`assistantChangeLine`), then "Undone by Ada"; there is no Activity list. The restore is recorded as "Jonas
   undid Ada's assistant's change". Task fields come back where untouched since: title, outcome, status (with the
   blocker and who it waited for, when leaving Blocked), done-when, prerequisites and who a task waits for; a map's
-  name; a page's text; a thought's text and position; created thoughts, links and tasks are removed; a created page
-  stays, as there is no Draft to move it back to (#942). **A created map, a recorded result, a proposed decision and a posted message** (founder direction
+  name; a page's text; a thought's text and position; created thoughts, links and tasks are removed. **A created map, a recorded result, a proposed decision and a posted message** (founder direction
   2026-10-29, #68 closeout) are taken back by `assistantRemovalRows` (`packages/db/src/repositories/assistant-removals.ts`), reachable only
   from this Undo, only for the assistant's owner, only for what this agent made and only while nobody used it (edited, decided,
-  replied to, cited; the reason comes back in words). It takes the project's task-graph lock first (a map's own row before that, `FOR NO KEY UPDATE`, as the writers
+  replied to, cited; the reason comes back in words). **A created page** (#1021) is taken back the same way (owner only, the AI switch
+  on), by the page delete of #941 (`docs.deleteDoc`): `untouchedDoc` first checks, under the page's row lock, that every version was written
+  by this agent (or is the owner's own Undo of its edit, so an Undo of a whole run, which takes the edit back first, can then take the page),
+  that nothing names it (a link to it, a message that cited it, an agent suggestion or a task plan item made from it) and that nobody has
+  unsaved text in its shared copy; otherwise it says "Changed since. Open it" or "Used since. Open it" and the page stays. A page does not
+  take the task-graph lock first (the page delete takes it after the page). It takes the project's task-graph lock first (a map's own row before that, `FOR NO KEY UPDATE`, as the writers
   of its thoughts do), and every work path that cites one of them re-checks its targets right after taking the same lock. (A message reference once held the cited message `FOR SHARE` through
   `lockCitable`; messages are no longer citable, #867.) A citation and the
   Undo serialize and the loser is refused (race tests in `assistant-changes.test.ts`). A message stays as a tombstone (`project_messages.removed_at`, migration 0129, text "[Removed with

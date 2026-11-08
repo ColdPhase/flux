@@ -9,8 +9,7 @@ import { openRows } from '../sealing.js';
  * `packages/contracts/src/export.ts`. They satisfy the `ProjectExportRows` port of
  * `packages/core/src/export/ports.ts` structurally and make no access decisions: the core use
  * case asks the policy for `project.manage` first. Every query is scoped to the project, and the
- * selections leave out what an export never contains: private sketches, note placements, the
- * private source note of a material, client mutation ids and fingerprints.
+ * selections leave out what an export never contains: private sketches, client mutation ids and fingerprints.
  */
 
 type Actor = { kind: 'human' | 'agent'; id: string };
@@ -128,7 +127,7 @@ export function projectExportRows(db: DbExecutor) {
       }));
     },
 
-    /** Project sketches only; a private sketch is never selected, and placements are left out. */
+    /** Project sketches only; a private sketch is never selected. */
     async sketches(projectId: string) {
       const sketches = await openRows(db, 'sketches', await db.select().from(s).where(and(eq(s.projectId, projectId), eq(s.scope, 'project'))).orderBy(asc(s.createdAt), asc(s.id)));
       if (!sketches.length) return [];

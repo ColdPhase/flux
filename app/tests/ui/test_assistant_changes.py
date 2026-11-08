@@ -263,6 +263,41 @@ class AssistantChanges(unittest.TestCase):
             self.no_horizontal_scroll(page)
             shot(page, f"assistant-changes-390-{'dark' if dark else 'light'}-waiting")
 
+    def test_08_a_page_the_assistant_started_has_undo_and_a_refusal_opens_the_page(self) -> None:
+        page = self.page()
+        calls: list[tuple[str, str]] = []
+        page_id = str(uuid.uuid4())
+        current = self.stub_changes(page, [
+            self.change(state="applied", waitReason=None, line=None, undoable=True, operation="doc.create", objectType="doc", objectId=page_id,
+                        objectTitle="Probe notes", phrase="add page", verb="Add", done="added the Wiki page Probe notes", after="Probe notes"),
+        ], calls)
+        refused = {"once": True}
+
+        def refuse_once(route: Route) -> None:
+            if not refused["once"]:
+                route.fallback()
+                return
+            refused["once"] = False
+            calls.append(("run", "refused"))
+            route.fulfill(status=200, content_type="application/json", body=json.dumps({
+                "changes": [{"change": current["items"][0], "message": "Changed since. Open it"}], "undone": 0, "changedSince": ["Probe notes"],
+                "message": "Nothing undone. 1 changed since: Probe notes"}))
+        page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}/changes/undo$"), refuse_once)
+        self.open_conversation(page)
+        line = page.locator(".assistant-message__line")
+        expect(line).to_contain_text("Added the Wiki page Probe notes")
+        # A page someone edited since stays: the line says so and "Open it" goes to the page (#1021).
+        line.get_by_role("button", name="Undo", exact=True).click()
+        note = page.locator(".assistant-message__note")
+        expect(note).to_contain_text("Changed since.")
+        expect(note.get_by_role("link", name="Open it")).to_have_attribute("href", f"/projects/{self.ids['project']}/docs/{page_id}")
+        expect(line.get_by_role("button", name="Undo", exact=True)).to_be_visible()
+        # An untouched one is taken back, and the line says who did it.
+        line.get_by_role("button", name="Undo", exact=True).click()
+        expect(line).to_contain_text(f"Undone by {ADA['name']}")
+        expect(line.get_by_role("button", name="Undo", exact=True)).to_have_count(0)
+        self.assertEqual(calls, [("run", "refused"), ("run", "undo")])
+
 
 if __name__ == "__main__":
     unittest.main()

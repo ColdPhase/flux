@@ -17,8 +17,8 @@ import { transactionEventSession } from '../work/transaction-events.js';
 export interface UndoResult { done: boolean; message: string | null }
 export const CHANGED_SINCE = 'Changed since. Open it';
 export const NOT_UNDOABLE = 'This one can’t be undone';
-/** The changes whose Undo removes something no person can remove (#68): they follow the space's AI switch (AG-10), as the assistant's work does. */
-export const REMOVAL_OPERATIONS: ReadonlySet<string> = new Set(['map.create', 'decision.propose', 'result.record', 'conversation.create', 'conversation.reply']);
+/** The changes whose Undo removes something no person can remove (#68), or a page (#1021, which a person deletes after an OK): they follow the space's AI switch (AG-10), as the assistant's work does. */
+export const REMOVAL_OPERATIONS: ReadonlySet<string> = new Set(['doc.create', 'map.create', 'decision.propose', 'result.record', 'conversation.create', 'conversation.reply']);
 export const requireAiOn = (db: Database, projectId: string) => db.transaction(async (tx) => { await requireSpaceAi(accessReader(tx as DbExecutor), projectId); });
 class Since extends Error { constructor(readonly message: string = CHANGED_SINCE) { super(message); } }
 
@@ -138,6 +138,19 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
             unitId: plan.unitId, creationVersion: plan.creationVersion });
           if (cancelled.result === 'started') throw new Since(`Your ${cancelled.recipient} already started. Open the task`);
           if (cancelled.result !== 'cancelled') throw new Since();
+          break;
+        }
+        case 'doc.create': {
+          // A page the assistant started (#1021): deleted through the page delete (#941) while only this agent has written it and nothing uses it.
+          if (plan.kind !== 'removal' || !id) throw new Since(NOT_UNDOABLE);
+          await requireSpaceAi(accessReader(tx as DbExecutor), row.projectId, { lock: true });
+          // The page's row, then its shared copy, as every writer takes them; the task graph is taken by the delete itself, after the page.
+          const page = await assistantRemovalRows(tx as DbExecutor).untouchedDoc({ docId: id, agentId: row.agentId, ownerUserId: row.ownerUserId });
+          if (!page.ok) throw new Since(page.why === 'foreign' ? NOT_UNDOABLE : page.reason);
+          await docs.deleteDoc(owner, id, page.version);
+          await session.record(by, row.workspaceId, 'project.assistant_change_undone.v1', row.projectId,
+            { changeId: row.id, objectType: row.objectType, objectId: id });
+          removal = { ok: true, snapshot: { projectId: row.projectId, version: page.version } };
           break;
         }
         case 'map.create': case 'decision.propose': case 'result.record': case 'conversation.create': case 'conversation.reply': {

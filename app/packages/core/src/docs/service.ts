@@ -219,18 +219,25 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
 
   /**
    * The sentence for a person's save: the server's own words for a cause it checked against the page, or the empty string
-   * when the change describes itself ("Edited the text"). A restored or replaced version must exist, so a cause cannot name
-   * one that is not there.
+   * when the change describes itself ("Edited the text"). Every sentence says only what happened (#1021):
+   * - `restore` names a version that exists, and is worded only when the saved title and text are that version's;
+   * - `keep_mine` and `page_left` name the version the save replaces, the page's head, whichever version the request named;
+   *   keeping one's own text over one's own version replaces nobody's.
+   * A request that names a version the page does not have is refused.
    */
-  async function causeSentence(ports: DocPorts, docId: string, by: ActorRef, given: DocChangeCause | undefined, head: number): Promise<string> {
+  async function causeSentence(ports: DocPorts, docId: string, by: ActorRef, given: DocChangeCause | undefined, head: number,
+    next?: { title: string; body: string }): Promise<string> {
     if (!given) return '';
     if (given.kind === 'import') return text.causeSentence(given, null);
     if (given.version > head) throw new InvalidInputError('cause.version is a version this page does not have');
-    const version = await ports.docs.version(docId, given.version);
-    if (!version) throw versionNotFound();
-    if (given.kind !== 'keep_mine') return text.causeSentence(given, null);
-    if (version.author.kind === by.kind && version.author.id === by.id) return '';
-    return text.causeSentence(given, (await names(ports, [version.author]))(version.author).name);
+    const named = await ports.docs.version(docId, given.version);
+    if (!named) throw versionNotFound();
+    if (given.kind === 'restore') return next && named.title === next.title && named.body === next.body ? text.causeSentence(given, null) : '';
+    if (given.kind === 'page_left') return text.causeSentence({ kind: 'page_left', version: head }, null);
+    const replaced = given.version === head ? named : await ports.docs.version(docId, head);
+    if (!replaced) throw versionNotFound();
+    if (replaced.author.kind === by.kind && replaced.author.id === by.id) return '';
+    return text.causeSentence({ kind: 'keep_mine', version: head }, (await names(ports, [replaced.author]))(replaced.author).name);
   }
 
   return {
@@ -347,7 +354,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         const next = { title: title ?? current.current.title, body: body ?? current.current.body };
         const change = text.describeChange(current.current, next);
         if (!change) return present(ports, current);
-        const caused = await causeSentence(ports, id, by, cause, current.doc.currentVersion);
+        const caused = await causeSentence(ports, id, by, cause, current.doc.currentVersion, next);
         const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, next.body]);
         const row = await ports.docs.append(id, { ...next, reason: given || caused || change, author: by });
         await ports.live.rebindSaved(row, randomUUID());
@@ -437,7 +444,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         const next = { title: title ?? current.current.title, body: head.body };
         const change = text.describeChange(current.current, next);
         if (!change) return present(ports, current);
-        const caused = await causeSentence(ports, id, by, cause, current.doc.currentVersion);
+        const caused = await causeSentence(ports, id, by, cause, current.doc.currentVersion, next);
         const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, next.body]);
         const row = await ports.docs.append(id, { ...next, reason: caused || change, author: by });
         const snapshot = await ports.live.bindSnapshot(row, head);

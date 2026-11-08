@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import { docRef, type DocSectionSource } from '@flux/contracts';
 import { describeChange, upsertSection } from '@flux/core';
-import { cause, causeSentence, dateLine, sectionSource, sourceLine } from '../../packages/core/src/docs/text.js';
+import { cause, causeSentence, dateLine, FILE_NAME_SHOWN, fileLabel, sectionSource, sourceLine } from '../../packages/core/src/docs/text.js';
 
 // The input rules and wording of project docs (#112): the version-history text and the `Source:`
 // line that links a doc section to its result or decision. All are pure: no database, no network.
@@ -82,6 +82,20 @@ describe('a cause is the only thing a person says about why a version was made (
     assert.equal(causeSentence({ kind: 'keep_mine', version: 4 }, 'Ada'), 'In place of Ada’s version 4');
     assert.equal(causeSentence({ kind: 'keep_mine', version: 4 }, null), '', 'the saver\'s own version is no "in place of": the change describes itself');
     assert.equal(causeSentence({ kind: 'page_left', version: 5 }, null), 'Saved as the page was left, in place of version 5');
+  });
+
+  test('a file name in a reason is the last part of the name, on one line, without direction characters, and short (#1021)', () => {
+    assert.equal(fileLabel('notes.md'), 'notes.md');
+    assert.equal(fileLabel('C:\\Users\\Ada\\Lamp notes.md'), 'Lamp notes.md');
+    assert.equal(fileLabel('../../etc/passwd'), 'passwd');
+    assert.equal(fileLabel('a\u202Eb\u200B\nc\td.md'), 'ab c d.md', 'a direction override is dropped, a control becomes a space');
+    assert.equal(fileLabel('dir/'), 'dir');
+    assert.equal(fileLabel('///'), '///', 'a name with nothing in it is kept as it is');
+    assert.equal(fileLabel(' \u0007 '), 'a file');
+    const long = fileLabel(`${'x'.repeat(150)}.markdown`);
+    assert.deepEqual([Array.from(long).length, long.endsWith('….markdown'), long.startsWith('xxx')], [FILE_NAME_SHOWN, true, true]);
+    assert.equal(fileLabel('y'.repeat(FILE_NAME_SHOWN)), 'y'.repeat(FILE_NAME_SHOWN), 'a name of exactly the limit is not shortened');
+    assert.equal(causeSentence({ kind: 'import', fileName: `${'z'.repeat(150)}.md` }, null).length, 'Imported from '.length + FILE_NAME_SHOWN);
   });
 });
 

@@ -1,0 +1,1 @@
+- Undo on an agent's message now takes back a page the agent started, by deleting it, while only that agent has written it and nothing names it; a page edited, linked or being typed in since stays, and the line says why. A Wiki page switcher that is already open drops a page deleted meanwhile ([#1021](https://github.com/ColdPhase/flux/issues/1021)).

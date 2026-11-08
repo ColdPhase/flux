@@ -49,12 +49,29 @@ export function cause(value: unknown, allowed: readonly CauseKind[]): DocChangeC
 }
 
 /**
+ * What a file's name looks like in a reason (#1021): the last part of a path, without control or direction characters (a name can
+ * carry U+202E, which turns the end of a line around), on one line, and at most {@link FILE_NAME_SHOWN} characters; a long one keeps
+ * the start and its extension ("Quarterly review of the lamp sensor ….md").
+ */
+export const FILE_NAME_SHOWN = 60;
+export function fileLabel(name: string): string {
+  const clean = name.replace(/\p{Cf}/gu, '').replace(/[\p{C}\p{Zl}\p{Zp}]/gu, ' ').replace(/\s+/g, ' ').trim();
+  const last = clean.split(/[\\/]/).filter((part) => part.trim()).at(-1)?.trim() || clean || 'a file';
+  const shown = Array.from(last);
+  if (shown.length <= FILE_NAME_SHOWN) return last;
+  const extension = /\.[A-Za-z0-9]{1,8}$/.exec(last)?.[0] ?? '';
+  return `${shown.slice(0, FILE_NAME_SHOWN - 1 - extension.length).join('').trimEnd()}…${extension}`;
+}
+
+/**
  * The sentence for a cause. `theirs` is who wrote the version a `keep_mine` save kept the text over, when that was someone
- * else: a person's own earlier version is no "in place of" and the change is described instead (empty here).
+ * else: a person's own earlier version is no "in place of" and the change is described instead (empty here). The version of
+ * `keep_mine` and `page_left` is the one the save really replaced, which the caller reads from the page, never the one the
+ * request named (#1021).
  */
 export function causeSentence(given: DocChangeCause, theirs: string | null): string {
   switch (given.kind) {
-    case 'import': return `Imported from ${given.fileName}`;
+    case 'import': return `Imported from ${fileLabel(given.fileName)}`;
     case 'restore': return `Restored version ${given.version}`;
     case 'keep_mine': return theirs ? `In place of ${theirs}’s version ${given.version}` : '';
     case 'page_left': return `Saved as the page was left, in place of version ${given.version}`;

@@ -34,11 +34,11 @@ export interface ProjectExportRows {
   workspaceRoles(workspaceId: string): Promise<{ userId: string; role: WorkspaceRole }[]>;
   conversations(projectId: string): Promise<ProjectExportConversation[]>;
   agentThreads?(projectId: string): Promise<ProjectExportAgentThread[]>;
-  /** Materials of kind `material` with every version, without the private source note. */
+  /** Materials of kind `material` with every version. */
   materials(projectId: string): Promise<ProjectExportMaterial[]>;
   /** Docs with every version. */
   docs(projectId: string): Promise<Omit<ProjectExportDoc, 'file'>[]>;
-  /** Sketches shared with the project (scope `project`) only, without placements. */
+  /** Sketches shared with the project (scope `project`) only. */
   sketches(projectId: string): Promise<ProjectExportSketch[]>;
   work(projectId: string): Promise<ProjectExportWork[]>;
   decisions(projectId: string): Promise<ProjectExportDecision[]>;

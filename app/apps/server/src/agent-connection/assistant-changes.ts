@@ -60,7 +60,7 @@ export function redactCall<T>(value: T): T {
 }
 
 const created = (title: string): UndoRecord => ({ plan: { kind: 'created' }, before: null, after: title || null });
-/** A map, a result, a decision or a message the assistant made, which only the assistant's Undo can take back while nobody used it (#68). */
+/** A map, a result, a decision, a message or a page the assistant made, which only the assistant's Undo can take back (a page also by its owner's delete) while nobody used it (#68, #1021). */
 const removal = (title: string, plan: Omit<Extract<UndoRecord['plan'], { kind: 'removal' }>, 'kind'> = {}): UndoRecord => ({ plan: { kind: 'removal', ...plan }, before: null, after: title || null });
 const enforceRead = (allowed: boolean) => { if (!allowed) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found'); };
 /**
@@ -130,6 +130,11 @@ async function removalUndo(tx: Transaction, operation: string, value: Record<str
     case 'map.create': {
       const map = await rows.map(made);
       return map ? removal(map.title, { title: map.title }) : null;
+    }
+    case 'doc.create': {
+      // The page as it was made (a trimmed title): Undo deletes it only while it is still this agent's and unused.
+      const doc = await rows.doc(made);
+      return doc ? removal(doc.title) : null;
     }
     case 'decision.propose': {
       const version = afterVersion(postconditions);
@@ -201,7 +206,7 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       const forOther = assignee?.kind === 'human' && typeof assignee.id === 'string' && assignee.id !== owner;
       return { ...base, objectId: null, title: text(payload.title), forOther, maker: forOther ? assignee!.id! : null, undo: created(text(payload.title)) };
     }
-    // A page the assistant started stays: there is no Draft to move it back to, and taking a page away is the person's own act (#941).
+    // A page the assistant started is taken back by deleting it while only this agent has written it and nothing uses it (#1021, through #941's delete).
     case 'doc.create': case 'map.create': case 'decision.propose':
       return { ...base, objectId: null, title: text(payload.title), undo: null };
     case 'result.record': {
@@ -540,7 +545,7 @@ export function assistantChangeExecutor(db: Database, claims: FluxMcpClaims) {
         const produced = await effect(natives(tx, session, authority.runtime, live, input.clientCommandId, operation, fingerprint, releases));
         // What the change really wrote (a redacted text differs from the call), so Undo compares with the truth.
         let undo = target.undo;
-        // A map, a result, a decision and a message are the agent's own to take back (#68).
+        // A map, a result, a decision, a message and a page are the agent's own to take back (#68, #1021).
         undo = await removalUndo(tx, operation, produced.value as Record<string, unknown>, produced.postconditions, target, authority.agentId) ?? undo;
         if (undo?.plan.kind === 'fields' && objectId) {
           const fields = undo.plan.fields;
