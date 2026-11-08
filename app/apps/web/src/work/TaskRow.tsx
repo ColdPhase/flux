@@ -126,7 +126,7 @@ export function TaskRow({ item, meId, owners, writable, muted, onOpen, onChange 
       <div className="ws-task__fg" style={{ transform: dx ? `translateX(${dx}px)` : undefined }}
         onPointerDown={down} onPointerMove={move} onPointerUp={up} onPointerCancel={cancel} onKeyDown={key}>
         {writable ? (
-          <button type="button" className="ws-task__glyph" aria-label={label} title={`${label} (keys 1 to 5)`} aria-keyshortcuts="1 2 3 4 5"
+          <button type="button" className="ws-task__glyph" aria-label={label} title={`${label} (keys 1 to 4)`} aria-keyshortcuts="1 2 3 4"
             onClick={() => onChange(item, nextStatus(item.status))}>
             <StatusGlyph status={item.status} changeKey={item.id} className={item.parked ? 'ui-glyph--parked' : undefined} />
           </button>
