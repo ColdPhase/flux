@@ -157,7 +157,6 @@
 
 /* "What it may do" (F-036 AG-3), on the assistant's screen and on each local client. */
 .may-do { margin: 8px 0; align-self: flex-start; width: fit-content; max-width: 100%; }
-.may-do .seg__b { min-height: 44px; }
 .may-do__hint { display: block; color: var(--t3); font-size: var(--fs-xs); }
 .connection__may-do { width: 100%; padding: 2px 16px 8px; }
 .connection__may-do-label { margin: 0; font-size: var(--fs-sm); font-weight: 600; color: var(--t2); }

@@ -94,3 +94,21 @@
 .people__check span { display: flex; flex-direction: column; gap: 2px; }
 .people__check small { color: var(--t3); }
 .access__alone { color: var(--t2); font-size: var(--fs-sm); margin: 0; }
+
+/* The company's page in Settings' own language (#872, SettingsCompany): a title for each block, its list in a card, the role as "Admin ▾". */
+.people--page .details__sec { margin-top: 0; }
+.people--page .details__sec > h4, .people--page .access__head h4 { margin: 26px 0 10px; font-size: var(--fs-lg); font-weight: 600; color: var(--t1); letter-spacing: -.005em; }
+.people--page .access__head { align-items: baseline; margin-bottom: 0; }
+.people--page .access__invite.ui-btn { margin-right: 0; }
+.people__count { font-family: var(--mono, ui-monospace, monospace); font-size: var(--fs-sm); font-weight: 400; color: var(--t3); }
+.people--page .people__row { min-height: 56px; padding: 8px 18px; }
+.people--page .people__card > .people__list { margin: 0; }
+.people--page .people__sso { margin: 0; padding: 14px 18px; border-radius: 0; background: transparent; border-bottom: 1px solid var(--line); }
+.people--page .people__sso svg { margin-top: 2px; }
+.people--page .people__edit { margin: 0 18px 14px; }
+.people--page .people__confirm { margin: 0 18px 14px; }
+.people--page .people__nameform { padding: 14px 18px 16px; }
+.people--page .people__guests { margin: 10px 4px 0; }
+.people__rolebtn.ui-btn { flex: none; gap: 2px; min-height: 32px; padding: 0 6px 0 10px; font-size: var(--fs-sm); color: var(--t2); }
+.people__rolebtn[aria-expanded="true"] { background: var(--sub); color: var(--t1); }
+@media (pointer: coarse) { .people__rolebtn.ui-btn { min-height: 44px; } }

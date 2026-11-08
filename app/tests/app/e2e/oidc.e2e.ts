@@ -313,7 +313,7 @@ test('a single sign-on session can be revoked or signed out, and an email link o
   await afterRemoval.getByText('This is not available to you').waitFor();
   assert.notEqual(new URL(afterRemoval.url()).pathname, target);
 
-  // Signing out ends the session; Alice's mail keeps going only to her own private address.
+  // Signing out ends the session; Alice's mail keeps going to every address she confirmed (Email me too, C-32), once each.
   await api(aliceContext, 'POST', '/api/auth/sign-out', {});
   for (const path of ['/api/v1/me', '/api/v1/inbox', '/api/v1/notification-preferences']) assert.equal(await status(aliceContext, path), 401, `signed out: ${path}`);
   await api(returning, 'POST', '/api/auth/sign-out', {});
@@ -321,9 +321,9 @@ test('a single sign-on session can be revoked or signed out, and an email link o
   const quiet = await counts();
   const later = await api<{ id: string }>(bobContext, 'POST', `/api/v1/workspaces/${state.workspace}/projects`, { name: 'After hours', visibility: 'workspace' });
   await api(bobContext, 'POST', `/api/v1/projects/${later.id}/conversations`, { body: '@Alice Nowak the door code changed', clientMessageId: randomUUID() });
-  await waitFor(async () => (await counts()).aliceExtra === quiet.aliceExtra + 1, 'the email while Alice has no session');
+  await waitFor(async () => { const now = await counts(); return now.aliceExtra === quiet.aliceExtra + 1 && now.aliceAccount === quiet.aliceAccount + 1 ? now : null; }, 'the email to each of Alice\'s addresses while she has no session');
   await new Promise((resolve) => setTimeout(resolve, 1500));
-  assert.deepEqual(await counts(), { ...quiet, aliceExtra: quiet.aliceExtra + 1 }, 'only Alice\'s private address, once');
+  assert.deepEqual(await counts(), { ...quiet, aliceAccount: quiet.aliceAccount + 1, aliceExtra: quiet.aliceExtra + 1 }, 'her sign-in address and her private address, once each, and nobody else\'s');
 
   // Single sign-on again: the same person, her grants and her verified address.
   aliceContext = await fresh();

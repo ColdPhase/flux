@@ -158,19 +158,21 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
 
       <section className="details__sec" aria-labelledby="people-here">
         <div className="access__head">
-          <h4 id="people-here" ref={rosterRef} tabIndex={-1}>{ordered ? (page ? `People · ${ordered.length}` : `In ${workspace.name} · ${ordered.length}`) : `You in ${workspace.name}`}</h4>
+          <h4 id="people-here" ref={rosterRef} tabIndex={-1}>{ordered ? (page ? <>People<span className="people__count"> · {ordered.length}</span></> : `In ${workspace.name} · ${ordered.length}`) : `You in ${workspace.name}`}</h4>
           {page && canAdd ? <Button variant="quiet" icon="plus" className="access__invite" aria-expanded={inviting} onClick={() => setInviting((open) => !open)}>Invite</Button> : null}
         </div>
+        {page && inviting ? addPerson : null}
+        {/* On the company's page the people are one card, as Settings draws its cards: the single sign-on line first, then each person. */}
+        <div className={page ? 'sset-card people__card' : undefined}>
         {page && sso ? (
           <p className="people__sso" data-people-sso>
             <Icon name="key" size={14} /><span><b>Everyone who signs in with {sso.label} joins automatically</b><span>Who can sign in is managed in your identity provider.</span></span>
           </p>
         ) : null}
-        {page && inviting ? addPerson : null}
         {ordered ? (
           <ul className="people__list" ref={listRef} aria-label={`People in ${workspace.name}`}>
             {ordered.map((member) => (
-              <MemberRow key={member.userId} member={member} self={member.userId === me.user.id} workspace={workspace} myRole={myRole}
+              <MemberRow key={member.userId} member={member} self={member.userId === me.user.id} workspace={workspace} myRole={myRole} page={page}
                 editable={manager && (member.role !== 'owner' || myRole === 'owner')}
                 editing={editing === member.userId} onEdit={(open) => { setDone(''); setEditing(open ? member.userId : null); }}
                 onChanged={(message, holderLeft) => changed(message, true, holderLeft)} />
@@ -181,6 +183,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
             <li className="people__item"><div className="people__row"><Avatar name={me.user.name} size="md" tone="me" /><span className="people__who"><b>{me.user.name} (you)</b><span>{me.user.email}</span></span><span className="people__role">{ROLE_LABEL[myRole]}</span></div></li>
           </ul>
         )}
+        </div>
         <p className="people__done" role="status">{done ? <><Icon name="check" size={13} />{done}</> : null}</p>
         {!manager ? (
           <p className="ov-note">{members
@@ -229,8 +232,8 @@ function RemovedPeople({ workspaceId, reload, onRestored }: { workspaceId: strin
   };
   return (
     <section className="details__sec" aria-labelledby="people-removed">
-      <h4 id="people-removed">Removed · {people.length}</h4>
-      <ul className="people__list" aria-label="People who were removed">
+      <h4 id="people-removed">Removed<span className="people__count"> · {people.length}</span></h4>
+      <ul className="people__list sset-card" aria-label="People who were removed">
         {people.map((person) => (
           <li className="people__item" key={person.userId}><div className="people__row">
             <Avatar name={person.name} size="md" /><span className="people__who"><b>{person.name}</b><span>{person.email}</span></span>
@@ -269,8 +272,8 @@ function CompanySpaces({ workspaceId }: { workspaceId: string }) {
   };
   return (
     <section className="details__sec" aria-labelledby="company-spaces">
-      <h4 id="company-spaces">Spaces · {spaces.length + sealed.length}</h4>
-      <ul className="people__list" aria-label="Every space in the company">
+      <h4 id="company-spaces">Spaces<span className="people__count"> · {spaces.length + sealed.length}</span></h4>
+      <ul className="people__list sset-card" aria-label="Every space in the company">
         {spaces.map((space) => (
           <li className="people__item" key={space.id}><div className="people__row">
             <span className="people__who"><b>{space.member === false ? space.name : <Link to={`/projects/${space.id}`}>{space.name}</Link>}</b></span>
@@ -320,7 +323,7 @@ function CompanyName({ workspace, manager, onChanged }: { workspace: Workspace; 
     <section className="details__sec" aria-labelledby="company-name">
       <h4 id="company-name">Name</h4>
       {editing ? (
-        <form className="people__add" onSubmit={(event) => void save(event)} noValidate aria-label="Change the company name"
+        <form className="people__add sset-card people__nameform" onSubmit={(event) => void save(event)} noValidate aria-label="Change the company name"
           onKeyDown={(event) => { if (event.key === 'Escape') { event.stopPropagation(); close(); } }}>
           <Input id="company-name-input" label="Company name" value={value} maxLength={200} autoFocus onChange={(event) => { setValue(event.target.value); setProblem(''); }}
             error={problem || undefined} hint="Shown on the sign-in page and in emails." />
@@ -330,10 +333,10 @@ function CompanyName({ workspace, manager, onChanged }: { workspace: Workspace; 
           </div>
         </form>
       ) : (
-        <div className="people__row people__name">
+        <div className="sset-card"><div className="people__row people__name">
           <span className="people__who"><b>{workspace.name}</b><span>Shown on the sign-in page and in emails</span></span>
           {manager ? <Button ref={changeRef} variant="quiet" className="people__change" onClick={() => { setValue(workspace.name); setEditing(true); }}>Change<span className="ui-vh"> the company name</span></Button> : null}
-        </div>
+        </div></div>
       )}
     </section>
   );
@@ -396,8 +399,8 @@ function AddPerson({ workspace, members, myRole, invitesSeen, onJoined, onAdded 
   );
 }
 
-function MemberRow({ member, self, workspace, myRole, editable, editing, onEdit, onChanged }: {
-  member: WorkspaceMember; self: boolean; workspace: EncryptedWorkspace; myRole: WorkspaceRole; editable: boolean;
+function MemberRow({ member, self, workspace, myRole, page, editable, editing, onEdit, onChanged }: {
+  member: WorkspaceMember; self: boolean; workspace: EncryptedWorkspace; myRole: WorkspaceRole; page: boolean; editable: boolean;
   editing: boolean; onEdit: (open: boolean) => void; onChanged: (message: string, holderLeft?: boolean) => void;
 }) {
   const editId = useId();
@@ -408,8 +411,12 @@ function MemberRow({ member, self, workspace, myRole, editable, editing, onEdit,
       <div className="people__row">
         <Avatar name={member.name} size="md" tone={self ? 'me' : 'neutral'} />
         <span className="people__who"><b>{member.name}{self ? ' (you)' : ''}</b><span>{member.email}</span></span>
-        <span className="people__role">{ROLE_LABEL[member.role]}</span>
-        {editable ? (
+        {/* On the company's page the role is the control: "Admin ▾" opens the same editor under the row. */}
+        {page && editable ? (
+          <Button ref={changeRef} variant="quiet" className="people__rolebtn" aria-expanded={editing} aria-controls={editing ? editId : undefined} aria-label={`Change ${self ? 'your role' : member.name}, ${ROLE_LABEL[member.role]}`}
+            onClick={() => onEdit(!editing)}>{ROLE_LABEL[member.role]}<Icon name="chevron-down" size={14} /></Button>
+        ) : <span className="people__role">{ROLE_LABEL[member.role]}</span>}
+        {!page && editable ? (
           <Button ref={changeRef} variant="quiet" className="people__change" aria-expanded={editing} aria-controls={editing ? editId : undefined} onClick={() => onEdit(!editing)}>
             Change<span className="ui-vh"> {self ? 'your role' : member.name}</span>
           </Button>

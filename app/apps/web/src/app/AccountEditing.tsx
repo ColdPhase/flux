@@ -4,6 +4,7 @@ import type { IdentityCapabilities, SessionSummary } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { changeEmail, changePassword, endOtherSessions, endSession, getCapabilities, getMe, listSessions, PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH, updateName } from '../api/auth';
 import { Button, Icon, Input, Spinner } from '../ui';
+import { SwitchRow } from '../ui/SwitchRow';
 
 // Settings → Account (#763 SG-1): the person changes their own name, address and password and sees where they are signed
 // in. Each is one row with its value and Change; the form opens in place, and saving says so on the row. Under single
@@ -140,17 +141,14 @@ function PasswordForm({ onDone }: { onDone: (others: boolean) => void }) {
       else setErrors({ form: failure(cause, 'Your password could not be changed. Try again.') });
     } finally { setBusy(false); }
   }
-  const othersId = useId();
   return (
     <form className="sset-acct__fields" noValidate onSubmit={(event) => void submit(event)}>
       <Input label="Current password" type="password" autoComplete="current-password" autoFocus value={currentPassword} error={errors.current}
         onChange={(event) => { setCurrent(event.target.value); setErrors({}); }} />
       <Input label="New password" type="password" autoComplete="new-password" value={next} error={errors.next}
         hint={`At least ${PASSWORD_MIN_LENGTH} characters. A short sentence works well.`} onChange={(event) => { setNext(event.target.value); setErrors({}); }} />
-      <label className="sset-acct__check" htmlFor={othersId}>
-        <input id={othersId} type="checkbox" checked={others} onChange={(event) => setOthers(event.target.checked)} />
-        <span>Sign out my other devices</span>
-      </label>
+      {/* An on/off in Settings is always this switch (#872). */}
+      <div className="sset-acct__switch"><SwitchRow label="Sign out my other devices" checked={others} onChange={setOthers} /></div>
       {errors.form ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{errors.form}</p> : null}
       <div className="details__actions"><Button type="submit" variant="primary" busy={busy}>Change password</Button></div>
     </form>
