@@ -9,6 +9,7 @@ import {
   type DmTaskCopyPreviewCommand,
   type DmTaskCopyResult,
   type DmThread,
+  type EditMessageCommand,
   type MessageReceiptsQuery,
   type MessageReceiptsResult,
   type ObserveMessagesCommand,
@@ -23,8 +24,8 @@ import {
   type SendDmMessageCommand,
   type UpdateDmCommand,
 } from '@flux/contracts';
-import { ConflictError, InvalidInputError, NotFoundError, PreconditionRequiredError, RuleViolationError, VersionConflictError } from '../access/errors.js';
-import { normalizeConversationWindow, normalizeMessage } from '../conversation/commands.js';
+import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, PreconditionRequiredError, RuleViolationError, VersionConflictError } from '../access/errors.js';
+import { normalizeConversationWindow, normalizeMessage, normalizeMessageEdit } from '../conversation/commands.js';
 import type { Principal } from '../principal.js';
 import type { DmMessageRecord, DmPorts, DmRecord, DmUnitOfWork } from './ports.js';
 
@@ -110,7 +111,8 @@ function toSummary(record: DmRecord, self: string): DmSummary {
 
 function toMessage(record: DmMessageRecord): DmMessage {
   return { id: record.id, conversationId: record.dmId, authorId: record.authorId, body: record.body, source: null, sequence: record.sequence, createdAt: record.createdAt.toISOString(),
-    threadRootId: record.threadRootId, replyCount: record.replyCount, ...(record.via ? { via: record.via } : {}), ...(record.kind === 'ai_used' ? { notice: 'ai_used' as const } : {}) };
+    threadRootId: record.threadRootId, replyCount: record.replyCount, ...(record.via ? { via: record.via } : {}), ...(record.kind === 'ai_used' ? { notice: 'ai_used' as const } : {}),
+    ...(record.editedAt && !record.removedAt ? { editedAt: record.editedAt.toISOString() } : {}), ...(record.removedAt ? { removedAt: record.removedAt.toISOString() } : {}) };
 }
 
 function messageIds(value: unknown, max: number, label: string): string[] {
@@ -177,7 +179,7 @@ function validMessage(value: unknown): string {
 
 async function taskCopyPreview(ports: DmPorts, principal: Principal, dm: DmRecord, messageId: string, requested: unknown, requestedProject: unknown): Promise<DmTaskCopyPreview> {
   const message = await ports.dms.message(dm.id, messageId);
-  if (!message) throw missingMessage();
+  if (!message || message.removedAt) throw missingMessage();
   const excerpt = chosenExcerpt(message.body, requested);
   const projects = await ports.taskCopy.targets(principal, dm.workspaceId);
   const wanted = requestedProject === undefined || requestedProject === null ? projects[0]?.id ?? null
@@ -228,7 +230,59 @@ export function createDmUseCases(uow: DmUnitOfWork) {
     });
   }
 
+  /**
+   * An author's Edit or Delete of their own message (#1006): `dm.write` with the DM locked, then the message row locked, and only
+   * if it is this DM's and this person's. Someone else's message is a 403 for a participant (they can read it) and a 404 for anyone who
+   * is not one. A 1:1 whose other person left still lets its author change or delete their own words.
+   */
+  async function changeOwn(principal: Principal, dmId: string, messageId: unknown,
+    change: (ports: DmPorts, dm: DmRecord, message: DmMessageRecord) => Promise<'edited' | 'removed' | null>): Promise<DmMessage> {
+    const self = person(principal);
+    const id = validMessage(messageId);
+    return uow.run(async (ports) => {
+      await ports.access.requireDm(principal, 'dm.write', dmId, { lock: true });
+      const dm = await found(ports, dmId);
+      const locked = await ports.dms.lockMessage(dm.id, id);
+      if (!locked) throw missingMessage();
+      if (locked.authorId !== self) throw new ForbiddenError('Only the person who wrote a message can change or delete it', 'MESSAGE_NOT_YOURS');
+      // The line "Ada used AI here" (#842) is the conversation's own notice, not words of the author.
+      if (locked.kind !== 'text') throw new ConflictError('This line is part of the conversation, so it cannot be changed here', 'MESSAGE_NOT_CHANGEABLE');
+      const op = await change(ports, dm, locked);
+      const message = toMessage((await ports.dms.message(dm.id, locked.id))!);
+      // The ids, and in its kind what was done, never the words; last, because recording an event takes the sequence lock.
+      if (op) await ports.events.record(principal, dm.workspaceId, op === 'edited' ? 'dm.message_edited.v1' : 'dm.message_removed.v1', dm.id, { messageId: locked.id, ...(locked.threadRootId ? { rootId: locked.threadRootId } : {}) });
+      return message;
+    });
+  }
+
   return {
+    /**
+     * The author changes the words of their own message in place (#1006). The earlier words are not kept; the message shows "edited".
+     * Saving the words it already has changes nothing and records nothing, so a retry is safe. A deleted message cannot be edited.
+     */
+    async editMessage(principal: Principal, dmId: string, messageId: string, command: EditMessageCommand): Promise<DmMessage> {
+      const { body } = normalizeMessageEdit(command);
+      if (!body) throw new InvalidInputError('Message must be 1–100000 characters');
+      return changeOwn(principal, dmId, messageId, async (ports, dm, message) => {
+        if (message.removedAt) throw new ConflictError('This message was deleted, so it cannot be edited', 'MESSAGE_REMOVED');
+        if (message.body === body) return null;
+        await ports.dms.editMessage({ id: message.id, workspaceId: dm.workspaceId }, body);
+        return 'edited';
+      });
+    },
+
+    /**
+     * The author deletes their own message (#1006): the words are replaced by a marker and leave search and notices; the message keeps its
+     * place, so replies and links still make sense. Deleting a deleted message answers the marker again.
+     */
+    async removeMessage(principal: Principal, dmId: string, messageId: string): Promise<DmMessage> {
+      return changeOwn(principal, dmId, messageId, async (ports, dm, message) => {
+        if (message.removedAt) return null;
+        await ports.dms.removeMessage({ id: message.id, workspaceId: dm.workspaceId, dmId: dm.id, authorId: message.authorId });
+        return 'removed';
+      });
+    },
+
     async list(principal: Principal, workspaceId: string, query: PageQuery = {}): Promise<Page<DmSummary>> {
       const bounds = page(query);
       return uow.run(async (ports) => {

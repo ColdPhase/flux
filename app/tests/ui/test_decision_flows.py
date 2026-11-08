@@ -44,7 +44,7 @@ NO_SOURCE = "Water the beds before eight in the morning"
 RULE = "Log moisture every ten minutes"
 RESULT = "Capacitive probes hold steady for three weeks"
 PAGE = "Decisions and why"
-PHONE_MENU = ["Reply in thread", "Create task", "Add to map", "Copy link"]
+PHONE_MENU = ["Reply in thread", "Create task", "Add to map", "Copy link", "Edit", "Delete"]  # the viewer wrote the message (#1006)
 
 
 class DecisionFlows(unittest.TestCase):
@@ -269,7 +269,7 @@ class DecisionFlows(unittest.TestCase):
         message.get_by_role("button", name="More actions").click()
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu.get_by_role("menuitem", name="Reply in thread")).to_have_count(0)
-        self.assertEqual([text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()], ["Add to map", "Copy link"])
+        self.assertEqual([text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()], ["Add to map", "Copy link", "Edit", "Delete"], "the viewer wrote it (#1006)")
         for gone in ("Record a result", "Propose a decision", "Hand off to an agent", "Cite", "Copy text", "Details"):
             expect(menu.get_by_role("menuitem", name=gone, exact=True)).to_have_count(0)
         page.keyboard.press("Escape")
@@ -310,7 +310,7 @@ class DecisionFlows(unittest.TestCase):
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu).to_be_visible()
         items = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
-        self.assertEqual(items, PHONE_MENU, "one level (#867): the toolbar's two actions, then Add to map and Copy link")
+        self.assertEqual(items, PHONE_MENU, "one level (#867): the toolbar's two actions, Add to map and Copy link, then Edit and Delete on one's own message")
         lifted = page.locator(".msg-menu__lift")
         expect(lifted).to_be_visible()
         expect(lifted).to_contain_text("The resistive probes in bed 5")

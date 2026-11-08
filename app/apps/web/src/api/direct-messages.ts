@@ -1,5 +1,5 @@
 import {
-  IDEMPOTENCY_KEY_HEADER, dmLeavePath, dmMessagesPath, dmObservationsPath, dmPath, dmReceiptsPath, dmRepliesPath, dmTaskCopiesPath, dmTaskCopyPreviewPath, dmThreadPath, workspaceDmsPath,
+  IDEMPOTENCY_KEY_HEADER, dmLeavePath, dmMessagePath, dmMessagesPath, dmObservationsPath, dmPath, dmReceiptsPath, dmRepliesPath, dmTaskCopiesPath, dmTaskCopyPreviewPath, dmThreadPath, workspaceDmsPath,
   type Dm, type DmMessage, type DmSummary, type DmTaskCopyPreview, type DmTaskCopyPreviewCommand, type DmTaskCopyResult, type DmThread,
   type MessageReceiptsResult, type ObserveMessagesResult, type Page, type SendDmMessageCommand, type Workspace, WORKSPACES_PATH,
 } from '@flux/contracts';
@@ -35,6 +35,9 @@ export const getDm = (id: string, signal?: AbortSignal) => request<Dm>(dmPath(id
 export const olderDmMessages = (id: string, beforeSequence: number, signal?: AbortSignal, limit?: number) =>
   request<Dm>(`${dmPath(id)}?beforeSequence=${beforeSequence}${limit ? `&limit=${limit}` : ''}`, { signal });
 export const sendDmMessage = (id: string, command: SendDmMessageCommand) => request<DmMessage>(dmMessagesPath(id), { method: 'POST', body: command });
+/** The author changes the words of their own message, root or reply, or deletes it (#1006). */
+export const editDmMessage = (id: string, messageId: string, body: string) => request<DmMessage>(dmMessagePath(id, messageId), { method: 'PATCH', body: { body } });
+export const removeDmMessage = (id: string, messageId: string) => request<DmMessage>(dmMessagePath(id, messageId), { method: 'DELETE' });
 /** A private reply (#536): the thread of one root, readable by the DM's current participants only. */
 export const getDmThread = (id: string, rootId: string, signal?: AbortSignal) => request<DmThread>(dmThreadPath(id, rootId), { signal });
 export const olderDmReplies = (id: string, rootId: string, beforeSequence: number, signal?: AbortSignal) =>

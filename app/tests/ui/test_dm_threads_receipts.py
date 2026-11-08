@@ -422,7 +422,8 @@ class DmThreadsReceipts(unittest.TestCase):
         # Long press opens the menu; Create task opens the preview as a sheet.
         long_press(row.locator(".dm-msg__body"))
         menu = page.get_by_role("menu", name="Message actions")
-        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Reply in thread", "Create task", "Add to map", "Copy link"])
+        # The pressed message is Ada's own: Edit and Delete follow Copy link below a line (#1006).
+        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Reply in thread", "Create task", "Add to map", "Copy link", "Edit", "Delete"])
         menu.get_by_role("menuitem", name="Create task").click()
         dialog = page.get_by_role("dialog", name="Create a task from this message")
         expect(dialog).to_be_visible()

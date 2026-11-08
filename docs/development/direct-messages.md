@@ -59,7 +59,7 @@ Migration `0010_direct_messages.sql` adds three tables.
 ## Events and the stream
 
 Every change records exactly one event in its transaction: `dm.created.v1`,
-`dm.message_sent.v1` or `dm.changed.v1` (rename, leave or rejoin, with `data.op`). The object is
+`dm.message_sent.v1`, `dm.message_edited.v1`, `dm.message_removed.v1` (#1006) or `dm.changed.v1` (rename, leave or rejoin, with `data.op`). The object is
 the DM id, and the data never contains message text. The event type is `dm`, so `authorizeEvent`
 checks `dm.read`. `recordEvent` then writes `event_audience` rows for exactly the participants at
 that moment. Delivery and replay check the current participant row again, so:
@@ -127,6 +127,24 @@ on their behalf and no message goes to an audience of one:
 - **When the other person left.** Choosing them (in New message or from their name) shows the
   server's calm explanation instead of a thread. An open 1:1 whose other person left keeps its
   history, shows a quiet notice above the composer, and disables sending.
+
+## Edit and delete your own message (#1006)
+
+`PATCH /api/v1/dms/:dmId/messages/:messageId` with `{ body }` and `DELETE` on the same address, for a root and a reply alike; the answer
+is the message as it now stands. Migration `0029` adds `dm_messages.edited_at` and
+`dm_messages.removed_at`. The rules are the space's (see [conversations](conversations.md#edit-and-delete-your-own-message-1006)):
+
+- **Who.** The author only, and only while they are a current participant (`dm.write`, the DM locked first). Another participant gets
+  `403 MESSAGE_NOT_YOURS`; anyone who is not a participant, the company's owner and admin included, gets `404 DM_NOT_FOUND`; a message
+  of another DM is `404`. A 1:1 whose other person left still lets its author edit or delete their own words (only sending is closed).
+- **Edit** overwrites the words and stamps `editedAt`; **Delete** replaces them with the marker `Message removed`, stamps `removedAt`
+  and removes the message's citations, its notices (`/dm/<id>#message-<id>`), its search row (trigger) and the author's stored
+  `Idempotency-Key` answers for message sends, which held the words. A root with replies keeps them and its reply count. A removed
+  message cannot be copied to a task or edited again. The list's last-message line shows the marker.
+- **Events.** `dm.message_edited.v1` and `dm.message_removed.v1`, object the DM, `data` `{ messageId }` plus `rootId` for a reply.
+  The participants' open conversation reads again, as for any `dm.*` event.
+
+Tests: `app/tests/app/message-edit-delete.test.ts` (the DM section) and `app/tests/ui/test_message_edit_delete.py`.
 
 ## Reply threads, receipts and task copies (#536, #534, #537)
 

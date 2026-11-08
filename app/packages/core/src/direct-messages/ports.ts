@@ -37,6 +37,10 @@ export interface DmMessageRecord {
   threadRootId: string | null;
   /** Replies of a root; always 0 for a reply. */
   replyCount: number;
+  /** When the author last changed the words (#1006); null when they never did. */
+  editedAt: Date | null;
+  /** When the author deleted the message (#1006): `body` is then the fixed marker; null otherwise. */
+  removedAt: Date | null;
   /** The agent whose answer the author posted with Show everyone; null for a message they wrote. */
   via: string | null;
   /** `ai_used` is the line "used AI here" (#842), whose body names the company that receives the conversation. */
@@ -108,6 +112,12 @@ export interface DmRepository {
   appendMessage(message: NewDmMessage): Promise<DmMessageRecord>;
   /** One message of this DM, root or reply; null for any other id (including another DM's). */
   message(dmId: string, messageId: string): Promise<DmMessageRecord | null>;
+  /** The message `FOR UPDATE` for its author's Edit or Delete (#1006); null for any other id (including another DM's). */
+  lockMessage(dmId: string, messageId: string): Promise<DmMessageRecord | null>;
+  /** Overwrites the words (sealed in an encrypted workspace) and stamps `editedAt`. */
+  editMessage(message: { id: string; workspaceId: string }, body: string): Promise<void>;
+  /** Replaces the words with the marker and removes everything that carried them: its citations, its notices and search row. */
+  removeMessage(message: { id: string; workspaceId: string; dmId: string; authorId: string }): Promise<void>;
   /** The newest `limit` replies of one root below `beforeSequence` (all when null), ascending. */
   threadWindow(dmId: string, rootId: string, window: { limit: number; beforeSequence: number | null }): Promise<{ messages: DmMessageRecord[]; hasMoreBefore: boolean }>;
   /** Author, sequence and level of the messages of this DM among `ids`; ids of other DMs are absent. */
@@ -122,7 +132,7 @@ export interface DmRepository {
   names(userIds: string[]): Promise<DmPerson[]>;
 }
 
-export type DmEventKind = 'dm.created.v1' | 'dm.message_sent.v1' | 'dm.changed.v1' | 'dm.observed.v1';
+export type DmEventKind = 'dm.created.v1' | 'dm.message_sent.v1' | 'dm.message_edited.v1' | 'dm.message_removed.v1' | 'dm.changed.v1' | 'dm.observed.v1';
 
 /** Records a versioned event for the stream in the unit of work (identifiers only, never content). */
 export interface DmEventLog {

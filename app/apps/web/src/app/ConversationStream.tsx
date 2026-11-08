@@ -6,6 +6,8 @@ import { newBelowText } from '../ui/motion-rules';
 import { useSpareHeight } from '../ui/spareHeight';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
+import { useOwnMessage } from '../work/ownMessage';
+import { onMessageChanged, projectMessageEdits } from '../conversations/messageChanges';
 import { useMessageWorkRead, type MessageWorkRead } from '../work/useMessageWork';
 import { useReferenceWork } from '../work/useReferenceWork';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
@@ -262,6 +264,10 @@ export function useConversationRoots(projectId: string, window: ConversationRoot
     const newer = (root: ConversationRoot) => root.conversationId === message.conversationId && root.replyCount < message.sequence - 1;
     setRoots((current) => current.some(newer) ? current.map((root) => newer(root) ? { ...root, replyCount: message.sequence - 1, lastReplyAt: message.createdAt } : root) : current);
   }), []);
+
+  // The author edited or deleted a root (#1006): it is replaced in place, keeping its thread size.
+  useEffect(() => onMessageChanged((message) => setRoots((current) => current.some((root) => root.message.id === message.id)
+    ? current.map((root) => root.message.id === message.id ? { ...root, message } : root) : current)), []);
 
   const threadSize = useCallback((conversationId: string, replyCount: number, lastReplyAt: string | null) => {
     setRoots((current) => current.some((root) => root.conversationId === conversationId && (root.replyCount !== replyCount || root.lastReplyAt !== lastReplyAt))
@@ -838,9 +844,14 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
   const writable = !!stored;
   const mapDraft = useAddToMap(stored?.project ?? null);
   const addToMap = stored && message ? () => mapDraft({ messageId: message.id, body: message.body }) : undefined;
+  // Edit and Delete are the author's, on a message that is still there (#1006).
+  const own = useOwnMessage(stored && message && message.authorId === stored.meId && !message.removedAt ? {
+    body: message.body, hasFiles: !!message.files?.length, focusId: `message-${message.id}`,
+    ...projectMessageEdits(message),
+  } : null);
   const actions = stored && message ? {
     projectId: stored.project.id, message, writable, onCreateWork: () => void stored.makeWork.create(message),
-    onReply: () => stored.onOpen(stored.root, true), onAddToMap: addToMap,
+    onReply: () => stored.onOpen(stored.root, true), onAddToMap: addToMap, onEdit: own.onEdit, onDelete: own.onDelete, removed: !!message.removedAt,
   } : null;
   // The same hooks run for the queued root and the stored one, so the stored root keeps the queued root's list item.
   const touch = useTouchActions(actions);
@@ -860,7 +871,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
         <ViaTag via={message.via} />
       </div> : null}
       {mine && message.via ? <div className="project-convo__message-meta"><ViaTag via={message.via} /></div> : null}
-      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
+      <MessageContent body={own.slot ?? (message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null)} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
         <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
         <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />
         {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
@@ -868,7 +879,7 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
       <Replies root={root} open={open} onOpen={(reply) => onOpen(root, reply)} />
-      {stored.groupLast !== false ? <MessageTime at={message.createdAt} seenBy={stored.seenBy} /> : null}
+      {stored.groupLast !== false ? <MessageTime at={message.createdAt} seenBy={stored.seenBy} edited={message.editedAt} /> : null}
       <MessageActions {...actions} />
       {touch.node}
     </li>

@@ -7,6 +7,9 @@ import { MessageDay, MessageTime } from '../app/messageParts';
 import { MessageText } from '../app/MessageText';
 import { useAddToMyMap } from '../sketch/myMap';
 import { MessageActions, useTouchActions, type DmActionOptions } from '../work/messageActions';
+import { useOwnMessage } from '../work/ownMessage';
+import { editDmMessage, removeDmMessage } from '../api/direct-messages';
+import { announceMessageChanged } from '../conversations/messageChanges';
 
 /** The part of this message the person selected with the pointer, if any: the starting excerpt of a task copy. */
 function selectedIn(messageId: string, body: string): string | undefined {
@@ -43,11 +46,18 @@ export function DmBubble({ dmId, message, pending, mine, name, continued, groupL
   onRetry?: () => void; onRemove?: () => void;
 }) {
   const addToMyMap = useAddToMyMap();
+  // Edit and Delete are the author's, on a message that is still there (#1006). They stay open to the author of a 1:1 whose other person left.
+  const own = useOwnMessage(message && mine && !message.removedAt ? {
+    body: message.body, focusId: `${nav === 'thread' ? 'thread-message' : 'message'}-${message.id}`,
+    save: async (body) => announceMessageChanged(await editDmMessage(dmId, message.id, body)),
+    remove: async () => announceMessageChanged(await removeDmMessage(dmId, message.id)),
+  } : null);
   const actions: DmActionOptions | null = !message ? null : {
     kind: 'dm', dmId, messageId: message.id, threadRootId: message.threadRootId, body: message.body, writable,
     onCreateWork: () => onCreateTask(message, selectedIn(message.id, message.body)),
     onReply,
     onAddToMap: () => void addToMyMap(message.body),
+    onEdit: own.onEdit, onDelete: own.onDelete, removed: !!message.removedAt,
   };
   const touch = useTouchActions<HTMLLIElement>(actions);
   const { className: touchClass, ...touchHandlers } = touch.props;
@@ -86,14 +96,14 @@ export function DmBubble({ dmId, message, pending, mine, name, continued, groupL
         <div className={`dm-msg__main${mine ? ' is-mine' : ''}`}>
           {continued || mine ? null : <p className="dm-msg__meta"><b>{name}</b>{message.via ? <span className="dm-msg__via">via {message.via}</span> : null}</p>}
           {mine && message.via ? <p className="dm-msg__meta"><span className="dm-msg__via">via {message.via}</span></p> : null}
-          <MessageContent body={<div className="dm-msg__body"><MessageText body={message.body} /></div>} references={message.references} />
+          <MessageContent body={own.slot ?? <div className={`dm-msg__body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} /></div>} references={message.references} />
           {nav === 'stream' && message.replyCount > 0 ? (
             <button type="button" className="dm-replies" data-replies={message.replyCount} aria-label={`${message.replyCount} ${message.replyCount === 1 ? 'reply' : 'replies'}, open thread`}
               onClick={(event) => onOpenThread?.(message, event.currentTarget)}>
               <Icon name="reply" size={13} />{message.replyCount} {message.replyCount === 1 ? 'reply' : 'replies'}
             </button>
           ) : null}
-          {groupLast ? <MessageTime at={message.createdAt} seenBy={seenBy} /> : null}
+          {groupLast ? <MessageTime at={message.createdAt} seenBy={seenBy} edited={message.editedAt} /> : null}
           {actions ? <MessageActions {...actions} /> : null}
         </div>
       </div>

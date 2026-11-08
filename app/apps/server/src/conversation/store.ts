@@ -1,13 +1,13 @@
 import { messagePreview } from '@flux/contracts';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, lt, sql, type SQL } from 'drizzle-orm';
-import { agentThreadGuardRows, artifactResetRows, fileRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealFor, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, type DbExecutor, type Database, type Transaction } from '@flux/db';
+import { agentThreadGuardRows, artifactResetRows, fileRows, messageChangeRows, openAliased, openRows, prepareCanonicalArtifactTaskUse, schema, sealFor, sealsOf, openField, taskDiscussionRows, taskUseRows, workRows, accessReader, type DbExecutor, type Database, type Transaction } from '@flux/db';
 import type {
   Conversation, ConversationMessage, ConversationRootWindow, ConversationSummary, Material, MaterialOrDoc,
   AgentProjectOwner, AuthenticatedAgentRuntime, MaterialVersion, MessageReferenceCard, Page, PageQuery, TaskAgentThread,
 } from '@flux/contracts';
 import {
-  ConflictError, conversationUseCases, enforce, evaluateProject, InvalidInputError, NotFoundError,
+  ConflictError, conversationUseCases, enforce, evaluateProject, ForbiddenError, InvalidInputError, NotFoundError,
   lockAttachments, messageContribution, storedDetail, positiveVersion, uuid, type FileStorage,
   parsePage, recordEvent, ServiceUnavailableError, type Principal,
 } from '@flux/core';
@@ -24,7 +24,7 @@ type MessageRow = typeof schema.projectMessages.$inferSelect;
 type MaterialRow = typeof schema.projectMaterials.$inferSelect;
 type VersionRow = typeof schema.projectMaterialVersions.$inferSelect;
 type Actor = { kind: 'human' | 'agent'; id: string };
-type MessageEventKind = 'project.conversation_created.v1' | 'project.message_sent.v1' | 'project.agent_thread_message_sent.v1';
+type MessageEventKind = 'project.conversation_created.v1' | 'project.message_sent.v1' | 'project.agent_thread_message_sent.v1' | 'project.message_edited.v1' | 'project.message_removed.v1';
 /** Where a committed start or reply records its one event. */
 export interface ConversationEventLog {
   record(principal: Principal, workspaceId: string, kind: MessageEventKind, projectId: string,
@@ -61,7 +61,7 @@ function message(row: MessageRow & { files?: import('@flux/contracts').MessageFi
     author: { kind: 'agent' as const, id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent',
       ...(owners.has(row.authorAgentId!) ? { projectOwner: owners.get(row.authorAgentId!)! } : {}) } }), body: row.body,
     source: row.sourceMaterialId && row.sourceMaterialVersion ? { materialId: row.sourceMaterialId, version: row.sourceMaterialVersion } : null,
-    sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(row.via ? { via: row.via } : {}), ...(row.removedAt ? { removedAt: row.removedAt.toISOString() } : {}), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}),
+    sequence: row.sequence, createdAt: row.createdAt.toISOString(), ...(row.via ? { via: row.via } : {}), ...(row.removedAt ? { removedAt: row.removedAt.toISOString() } : row.editedAt ? { editedAt: row.editedAt.toISOString() } : {}), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}),
     ...(row.references?.length ? { references: row.references } : {}) };
 }
 
@@ -242,6 +242,30 @@ export function conversationStore(db: Database, options: ConversationStoreOption
   const eventLog = (tx: Tx): ConversationEventLog => options.events ?? { record: async (principal, workspaceId, kind, projectId, data) => {
     await recordEvent(eventPorts(tx), principal, workspaceId, kind, projectId, data);
   } };
+  async function changeOwnMessage(principal: Principal, conversationId: string, messageId: string,
+    change: (rows: ReturnType<typeof messageChangeRows>, found: NonNullable<Awaited<ReturnType<ReturnType<typeof messageChangeRows>['lockProject']>>>) => Promise<'edited' | 'removed' | null>): Promise<ConversationMessage> {
+    const authorId = human(principal);
+    uuid(messageId, 'messageId');
+    return db.transaction(async (tx) => {
+      const conversation = await locateConversation(principal, conversationId, tx, true, true);
+      // A task's agent thread has its own rules (its lines are their owner's to delete, #938); this is the people's conversation.
+      if (conversation.space !== 'people') throw new NotFoundError('Message', 'MESSAGE_NOT_FOUND');
+      const rows = messageChangeRows(tx as unknown as DbExecutor);
+      const found = await rows.lockProject(conversation.id, messageId.toLowerCase());
+      if (!found) throw new NotFoundError('Message', 'MESSAGE_NOT_FOUND');
+      if (found.authorId !== authorId) throw new ForbiddenError('Only the person who wrote a message can change or delete it', 'MESSAGE_NOT_YOURS');
+      // A saved blocker, a published result and a public hand-off are the work's own record; they are taken back through their own commands.
+      if (found.contributionKind !== 'text' || found.resultId !== null) throw new ConflictError('This message is part of a task’s record, so it cannot be changed here', 'MESSAGE_NOT_CHANGEABLE');
+      const op = await change(rows, found);
+      const [row] = await openRows(tx as unknown as DbExecutor, 'project_messages', await tx.select().from(schema.projectMessages).where(eq(schema.projectMessages.id, found.id)));
+      const files = await fileRows(tx).messageFiles([found.id]);
+      const cards = await messageReferences(tx).cards(principal, { kind: 'project', workspaceId: conversation.workspaceId }, [found.id]);
+      const result = message({ ...row!, files: files.get(found.id), references: cards.get(found.id) });
+      // Last: recording an event takes the stream's sequence lock. The ids, and in its kind what was done, never the words (an encrypted space allows no more).
+      if (op) await eventLog(tx).record(principal, conversation.workspaceId, op === 'edited' ? 'project.message_edited.v1' : 'project.message_removed.v1', conversation.projectId, { conversationId: conversation.id, messageId: found.id });
+      return result;
+    });
+  }
   return {
     async getAgentThread(principal: Principal, taskId: string, window: AgentThreadWindow): Promise<TaskAgentThread> {
       // Access, task, count, page and all author/file reads are one coherent observation.
@@ -454,6 +478,30 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           row.space === 'agents' ? 'project.agent_thread_message_sent.v1' : 'project.message_sent.v1', row.projectId,
           { conversationId: row.id, messageId: sent.message.id });
         return sent.message;
+      });
+    },
+
+    /**
+     * An author's Edit or Delete of their own message (#1006). Current write access to the message's space is checked with the space's
+     * access rows held, so a person removed or made a reader meanwhile changes nothing; then the message row is locked, and only a plain
+     * message of THIS conversation written by THIS person qualifies. Someone else's message (an agent's line included) is a 403 for a
+     * reader of the space; an id from another conversation is a 404, so the check made for one conversation cannot be borrowed for another.
+     */
+    async editMessage(principal: Principal, conversationId: string, messageId: string, input: Parameters<ConversationPort['editMessage']>[3]): Promise<ConversationMessage> {
+      return changeOwnMessage(principal, conversationId, messageId, async (rows, found) => {
+        if (found.removedAt) throw new ConflictError('This message was deleted, so it cannot be edited', 'MESSAGE_REMOVED');
+        if (!input.body && found.attachmentCount === 0) throw new InvalidInputError('Message must be 1–100000 characters');
+        if (found.body === input.body) return null;
+        await rows.editProject(found, input.body);
+        return 'edited';
+      });
+    },
+
+    async removeMessage(principal: Principal, conversationId: string, messageId: string): Promise<ConversationMessage> {
+      return changeOwnMessage(principal, conversationId, messageId, async (rows, found) => {
+        if (found.removedAt) return null;
+        await rows.removeProject(found);
+        return 'removed';
       });
     },
 

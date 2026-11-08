@@ -9,6 +9,8 @@ export const DMS_PATH = '/api/v1/dms';
 export const workspaceDmsPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/dms`;
 export const dmPath = (dmId: string) => `${DMS_PATH}/${dmId}`;
 export const dmMessagesPath = (dmId: string) => `${dmPath(dmId)}/messages`;
+/** `PATCH` edits and `DELETE` removes a message its author wrote (#1006); a root and a reply alike. */
+export const dmMessagePath = (dmId: string, messageId: string) => `${dmMessagesPath(dmId)}/${messageId}`;
 export const dmLeavePath = (dmId: string) => `${dmPath(dmId)}/leave`;
 export const dmThreadPath = (dmId: string, rootId: string) => `${dmPath(dmId)}/threads/${rootId}`;
 export const dmRepliesPath = (dmId: string, rootId: string) => `${dmThreadPath(dmId, rootId)}/replies`;

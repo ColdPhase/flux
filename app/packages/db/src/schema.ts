@@ -688,6 +688,8 @@ export const projectMessages = pgTable('project_messages', {
   via: text('via'),
   /** The assistant's Undo took this message back (migration 0129, #68): the text is the fixed marker and the row keeps its place. */
   removedAt: timestamp('removed_at', { withTimezone: true }),
+  /** The author changed the words after sending them (migration 0029, #1006); the earlier words are not kept. */
+  editedAt: timestamp('edited_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.conversationId, table.sequence),
@@ -1449,6 +1451,10 @@ export const dmMessages = pgTable('dm_messages', {
   body: text('body').notNull(),
   /** Null for a root; a reply names a root of the same DM (migration 0103, #536). */
   threadRootId: uuid('thread_root_id'),
+  /** The author changed the words (migration 0029, #1006); the earlier words are not kept. */
+  editedAt: timestamp('edited_at', { withTimezone: true }),
+  /** The author deleted the message (migration 0029, #1006): the text is the fixed marker and the row keeps its place. */
+  removedAt: timestamp('removed_at', { withTimezone: true }),
   /** 0022 (#842): the agent whose answer the author posted with Show everyone. */
   via: text('via'),
   /** 0022 (#842): `ai_used` is the line "Ada used AI here (Claude)": its body names the company that receives the conversation. */

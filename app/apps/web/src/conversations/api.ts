@@ -1,5 +1,5 @@
 import {
-  conversationMessagesPath, conversationPath, projectConversationRootsPath, projectConversationsPath, projectObjectNoticesPath, projectTaskNoticesPath, type Conversation, type ConversationMessage, type ConversationRootWindow, type ConversationSummary, type Page, type SendMessageCommand, type TaskCreationNotice, projectObservationsPath, projectReceiptsPath, type MessageReceiptsResult, type ObserveMessagesResult, type ObjectNotice, type MessagePlace, projectMessagePlacePath,
+  conversationMessagePath, conversationMessagesPath, conversationPath, projectConversationRootsPath, projectConversationsPath, projectObjectNoticesPath, projectTaskNoticesPath, type Conversation, type ConversationMessage, type ConversationRootWindow, type ConversationSummary, type Page, type SendMessageCommand, type TaskCreationNotice, projectObservationsPath, projectReceiptsPath, type MessageReceiptsResult, type ObserveMessagesResult, type ObjectNotice, type MessagePlace, projectMessagePlacePath,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
@@ -24,6 +24,11 @@ export const olderMessages = (id: string, beforeSequence: number, signal?: Abort
   request<Conversation>(`${conversationPath(id)}?beforeSequence=${beforeSequence}${limit ? `&limit=${limit}` : ''}`, { signal });
 export const startConversation = (projectId: string, command: SendMessageCommand) => request<Conversation>(projectConversationsPath(projectId), { method: 'POST', body: command });
 export const reply = (id: string, command: SendMessageCommand) => request<ConversationMessage>(conversationMessagesPath(id), { method: 'POST', body: command });
+/** The author changes the words of their own message in place, or deletes it (#1006); the server refuses anyone else. */
+export const editMessage = (conversationId: string, messageId: string, body: string) =>
+  request<ConversationMessage>(conversationMessagePath(conversationId, messageId), { method: 'PATCH', body: { body } });
+export const removeMessage = (conversationId: string, messageId: string) =>
+  request<ConversationMessage>(conversationMessagePath(conversationId, messageId), { method: 'DELETE' });
 /** Viewing receipts of the project's conversation (#534): what this person saw, and who saw the runs of their own messages. */
 export const observeProjectMessages = (projectId: string, messageIds: string[]) =>
   request<ObserveMessagesResult>(projectObservationsPath(projectId), { method: 'POST', body: { messageIds } });

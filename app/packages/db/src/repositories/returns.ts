@@ -1,5 +1,5 @@
 import { messagePreview } from '@flux/contracts';
-import { and, asc, desc, eq, gt, gte, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gt, gte, inArray, isNull, lt, lte, sql, type SQL } from 'drizzle-orm';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
 import { openAliased, openRows } from '../sealing.js';
@@ -200,7 +200,7 @@ export function returnRows(db: DbExecutor) {
       if (!ids.length) return new Map();
       const m = schema.projectMessages;
       const rows = await openRows(db, 'project_messages', await db.select({ id: m.id, workspaceId: m.workspaceId, projectId: m.projectId, conversationId: m.conversationId, authorId: m.authorId, authorAgentId: m.authorAgentId, body: m.body, attachmentCount: m.attachmentCount, sequence: m.sequence, createdAt: m.createdAt })
-        .from(m).where(inArray(m.id, ids)));
+        .from(m).where(and(inArray(m.id, ids), isNull(m.removedAt))));
       return byId(rows.map(({ authorId, authorAgentId, id, projectId, conversationId, body, attachmentCount, sequence, createdAt }) =>
         ({ id, projectId, conversationId, body, attachmentCount, sequence, createdAt, author: actor(authorId, authorAgentId) })));
     },

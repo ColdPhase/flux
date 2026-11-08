@@ -4,6 +4,8 @@ import type { SearchTarget } from './search.js';
 export const projectConversationsPath = (projectId: string) => `/api/v1/projects/${projectId}/conversations`;
 export const conversationPath = (conversationId: string) => `/api/v1/conversations/${conversationId}`;
 export const conversationMessagesPath = (conversationId: string) => `${conversationPath(conversationId)}/messages`;
+/** `PATCH` edits and `DELETE` removes a message its author wrote (#1006). */
+export const conversationMessagePath = (conversationId: string, messageId: string) => `${conversationMessagesPath(conversationId)}/${messageId}`;
 /** Internal app entry; public MCP exposure/version transition remains a separate #400 gate. */
 export const taskAgentThreadPath = (workId: string) => `/api/v1/work/${workId}/agent-thread`;
 export const projectMaterialsPath = (projectId: string) => `/api/v1/projects/${projectId}/materials`;
@@ -32,8 +34,13 @@ export interface ConversationMessageFields {
   /** Monotonic per conversation, including concurrent sends. */
   sequence: number;
   createdAt: string;
-  /** Present only when the assistant's Undo took the message back (#68): `body` is then a fixed marker, and the message keeps its place. */
+  /**
+   * Present only when the message was taken back (the assistant's Undo, #68; an agent's owner deleting its line, #938; the author's
+   * Delete, #1006): `body` is then a fixed marker, and the message keeps its place.
+   */
   removedAt?: string;
+  /** Present only when the author changed the words after sending them (#1006): when they last did. The earlier words are not kept. */
+  editedAt?: string;
   /**
    * Present only when the author posted an agent's answer with Show everyone (#842, F-036 AG-4): the agent's name at that time,
    * shown as "Ada · via Assistant". The person stays the author.
@@ -213,6 +220,14 @@ export interface ConversationRootWindow {
     limit: number;
   };
 }
+
+/** `PATCH /api/v1/conversations/:conversationId/messages/:messageId` and its direct-message twin (#1006): the new words, 1–100000 characters. */
+export interface EditMessageCommand {
+  body: string;
+}
+
+/** What a message says in place of its words once its author deleted it (#1006); the stream, search and export show this and nothing else. */
+export const REMOVED_BY_AUTHOR_BODY = 'Message removed';
 
 export interface SendMessageCommand {
   /** 1–100000 characters, or empty when `attachmentIds` names at least one file. */

@@ -159,8 +159,9 @@ export function seenLabel(names: readonly string[]) {
   return `Seen by ${first.slice(0, 2).join(', ')} and ${first.length - 2} ${first.length - 2 === 1 ? 'other' : 'others'}`;
 }
 
-export function MessageTime({ at, seenBy = [] }: { at: string; seenBy?: readonly string[] }) {
+export function MessageTime({ at, seenBy = [], edited }: { at: string; seenBy?: readonly string[]; edited?: string }) {
   return <div className="message-time"><time dateTime={at} title={when(at)}>{clock(at)}</time>
+    {edited ? <span className="message-edited" title={`Edited ${when(edited)}`}> · edited</span> : null}
     {seenBy.length ? <span className="message-seen" title={seenBy.join(', ')}> · {seenLabel(seenBy)}</span> : null}</div>;
 }
 

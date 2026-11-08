@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { FILE_LIMITS, MESSAGE_REFERENCE_LIMIT, type MessageReference, type ConversationRootQuery, type ConversationWindowQuery, type CreateMaterialCommand, type MaterialSource, type SendMessageCommand, type UpdateMaterialCommand } from '@flux/contracts';
+import { FILE_LIMITS, MESSAGE_REFERENCE_LIMIT, type MessageReference, type ConversationRootQuery, type ConversationWindowQuery, type CreateMaterialCommand, type EditMessageCommand, type MaterialSource, type SendMessageCommand, type UpdateMaterialCommand } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -102,6 +102,16 @@ export function normalizeMessage(command: SendMessageCommand) {
   const references = normalizeReferences(command.references);
   return { body, clientMessageId, source, attachmentIds, references,
     fingerprint: fingerprint({ body, source, ...(attachmentIds.length ? { attachmentIds } : {}), ...(references.length ? { references } : {}) }) };
+}
+
+/**
+ * The new words of an edit (#1006), trimmed as a send's are. Empty is allowed here and refused where the message is known to have no files:
+ * a message with files may have no words, any other needs 1–100000 characters.
+ */
+export function normalizeMessageEdit(command: EditMessageCommand) {
+  if (!command || typeof command !== 'object' || typeof command.body !== 'string' || command.body.trim().length > 100_000)
+    throw new InvalidInputError('Message must be 1–100000 characters');
+  return { body: command.body.trim() };
 }
 
 export function normalizeMaterial(command: CreateMaterialCommand) {
