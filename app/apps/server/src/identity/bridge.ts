@@ -1,7 +1,8 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { fromNodeHeaders } from 'better-auth/node';
 import { AUTH_BASE_PATH, type ApiError, type IdentityCapabilities } from '@flux/contracts';
-import { CLIENT_IP_HEADER, type FluxAuth } from './auth.js';
+import { CLIENT_IP_HEADER, REQUEST_ID_HEADER, type FluxAuth } from './auth.js';
+import { securityEvent } from '../security-log.js';
 import { oauthRequestContext, type OauthRequests } from './oauth-flow.js';
 import type { OfflineStep } from './offline-step.js';
 import type { SignInFacts, SignIns } from './sign-in.js';
@@ -11,7 +12,7 @@ import { LINK_COOKIE, linkCookie, type LinkIntents } from './link.js';
 
 // Forwarding headers are dropped before Better Auth sees a request. Client addresses come
 // from Fastify's request.ip, which honours only the configured trusted proxies.
-const UNTRUSTED_FORWARDING_HEADERS = ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port', 'x-real-ip', 'x-client-ip', 'cf-connecting-ip', 'true-client-ip', CLIENT_IP_HEADER];
+const UNTRUSTED_FORWARDING_HEADERS = ['forwarded', 'x-forwarded-for', 'x-forwarded-host', 'x-forwarded-proto', 'x-forwarded-port', 'x-real-ip', 'x-client-ip', 'cf-connecting-ip', 'true-client-ip', CLIENT_IP_HEADER, REQUEST_ID_HEADER];
 const PASSWORD_RESET_REQUEST_PATHS = new Set([`${AUTH_BASE_PATH}/request-password-reset`, `${AUTH_BASE_PATH}/forget-password`]);
 const SOCIAL_SIGN_IN_PATH = `${AUTH_BASE_PATH}/sign-in/social`;
 
@@ -98,11 +99,12 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       }
       // Better Auth reads the session itself on the authorization steps. Resolving it first ends a session whose
       // provider confirmation lapsed, so the person is sent through the provider again.
-      if (request.headers.cookie && (url.pathname.startsWith(`${AUTH_BASE_PATH}/oauth2/`) || url.pathname === `${AUTH_BASE_PATH}/get-session`))
-        await sessions.resolveSession(request.headers);
+      // Any request that carries a session: a session past FLUX_SESSION_MAX_AGE ends here too, before Better Auth reads it (#993).
+      if (request.headers.cookie) await sessions.resolveSession(request.headers);
       const headers = fromNodeHeaders(request.headers);
       for (const name of UNTRUSTED_FORWARDING_HEADERS) headers.delete(name);
       headers.set(CLIENT_IP_HEADER, request.ip);
+      headers.set(REQUEST_ID_HEADER, String(request.id));
       const body = request.body === undefined || request.body === null ? undefined : typeof request.body === 'string' ? request.body : JSON.stringify(request.body);
       let context;
       try { context = await oauthRequestContext(url, request.body, (await auth.$context).secret, `${publicOrigin}/mcp`); }
@@ -120,6 +122,8 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       const handle = () => signIns.run(facts, () => auth.handler(incoming));
       const response = context ? await oauthRequests.run(Object.freeze(context), handle) : await handle();
       reply.status(response.status);
+      // Better Auth's per-address limiter answered (the account's own back-off is recorded where it is decided): the route, never its query (#997).
+      if (response.status === 429 && response.headers.has('x-retry-after')) securityEvent(request.log, { event: 'rate_limited', outcome: 'limited', reason: 'address_limit', route: url.pathname, ip: request.ip });
       // A refused sign-in (no refresh token, #311; an address another account holds, #313) comes back to the page
       // with the reason. An address an unverified account holds goes to the claim page instead.
       const destination = (value: string) => {

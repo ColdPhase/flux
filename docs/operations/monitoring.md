@@ -52,6 +52,41 @@ These answer without signing in, so a monitor can also watch that optional featu
 
 Push and email delivery show in each person's **Settings → Notifications**.
 
+## Security events
+
+The API writes one structured line for each event an operator may want to alert on. Every line has `"channel":"security"`, an `event` and
+an `outcome`, so one filter finds them all:
+
+```sh
+dc logs api | grep '"channel":"security"'
+dc logs api | grep '"channel":"security"' | grep '"outcome":"failure"\|"outcome":"limited"'
+```
+
+| `event` | `outcome` | When | Fields besides the common ones |
+| --- | --- | --- | --- |
+| `sign_in` | `success`, `failure`, `limited` | A password sign-in. `failure` has `reason` `bad_credentials` or `email_not_verified`; `limited` is the account's own back-off (`account_back_off`) | `userId` on success, `account` otherwise |
+| `rate_limited` | `limited` | The per-address limit answered `429` (`address_limit`) | `route` |
+| `password_reset_requested` | `success` | A reset mail was asked for, whether or not the address has an account (the answer is the same) | `account` |
+| `password_reset` | `success`, `failure` | A reset was completed, or its link was refused (`invalid_token`) | `userId` on success |
+| `password_changed`, `email_changed` | `success`, `failure`, `limited` | Settings → Account. `failure` is a wrong current password (`bad_current_password`) | `userId` |
+| `sessions_revoked` | `success` | `password_reset`, `password_change`, `sign_out_everywhere` or `one_session` | `userId`, `count` |
+| `client_disconnected` | `success` | A local AI client was disconnected, by the person (`disconnect`) or with their sessions (`password_reset`, `password_change`, `sign_out_everywhere`) | `userId`, `count` |
+| `oauth_consent` | `allowed`, `denied`, `refused` | The decision on a client's consent page. `allowed` is the connection being made | `userId`, `clientId` |
+| `oauth_token` | `refused` | A client's code exchange or refresh was refused (`refresh_token:invalid_grant`), for instance after a disconnect | `clientId` |
+| `origin_refused` | `refused` | A state-changing request from another origin (`foreign_origin`, `cross_site_request`, `foreign_referer`, `missing_origin`) | `route`, `ip` |
+| `access_denied` | `denied`, `sampled` | A request the access policy refused with `403`; `reason` is the policy's code. At most ten per person a minute are written, then one `sampled` line | `userId`, `route` (the template, `GET /api/v1/projects/:projectId`) |
+| `space_unlock`, `space_lock` | `success`, `failure` | An encrypted space was unlocked or locked; `failure` has the code (a wrong secret, a rate limit) | `userId`, `workspaceId` |
+
+Common fields: `ip` (the client address Flux believes, see [trusting the proxy](reverse-proxy.md#trust-only-the-measured-proxy-peer)), `reqId`
+(the id of the request's access-log lines, so `grep` finds both), and `level`: 40 (a warning) for every outcome other than `success` and `allowed`, which are 30.
+
+An address that may belong to nobody (a failed sign-in) appears as `account`, a keyed hash: the same address always gives the same value, so
+a spraying run against one account can be counted, and the log never holds the address. A line never holds a password, a token, a reset
+link, a request body, a query string, a name or any content (the encrypted-space rule of F-030 applies to all of it).
+
+Suggested alerts: more than 20 `sign_in` `failure` or `limited` lines a minute (spraying), several `account` values with `limited`, any
+`origin_refused`, any `space_unlock` `failure`, and a rise in `access_denied` for one `userId`.
+
 ## Metrics
 
 Flux has no metrics endpoint (Prometheus or other) in this version. Monitor the host and the

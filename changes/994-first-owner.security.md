@@ -1,0 +1,1 @@
+- The install guides create the owner account while the server is still on its loopback address, before it is public, and `./flux up` and the API log warn while nobody has signed up on a public address, because the first account becomes the company's owner ([#994](https://github.com/ColdPhase/flux/issues/994)).

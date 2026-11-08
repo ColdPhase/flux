@@ -104,6 +104,8 @@ the variable.
 | [`FLUX_SEALED_SEARCH_IDLE_MS`](#flux_sealed_search_idle_ms) | Encrypted spaces and the keyring | `300000` |
 | [`FLUX_SEALED_SEARCH_MAX_BYTES`](#flux_sealed_search_max_bytes) | Encrypted spaces and the keyring | `268435456` (256 MiB), at most the process bound |
 | [`FLUX_SEALED_SEARCH_PROCESS_MAX_BYTES`](#flux_sealed_search_process_max_bytes) | Encrypted spaces and the keyring | a quarter of the container memory, 64–512 MiB |
+| [`FLUX_SESSION_IDLE`](#flux_session_idle) | Accounts, sign-up and sessions | empty |
+| [`FLUX_SESSION_MAX_AGE`](#flux_session_max_age) | Accounts, sign-up and sessions | empty |
 | [`FLUX_SIGNUP`](#flux_signup) | Accounts, sign-up and sessions | `open` |
 | [`FLUX_SMTP_URL`](#flux_smtp_url) | Email | empty (`./flux dev`: `smtp://mailpit:1025`) |
 | [`FLUX_SSO_MODE`](#flux_sso_mode) | Single sign-on (OpenID Connect) | `sso` |
@@ -195,6 +197,18 @@ Who may create a password account. `open`: anyone who reaches Flux. `verified`: 
 **Type** integer, 60–86400 s · **Default** `3600` · **Used by** api (release, source)
 
 Lifetime of a password reset link. Links are single use and stored hashed. Example: `3600`.
+
+### `FLUX_SESSION_IDLE`
+
+**Type** number and unit: `30m`, `12h`, `7d` (5m–365d) · **Default** empty · **Used by** api (release, source)
+
+How long a signed-in session lasts without use. Using it renews it. Empty is `7d`, or `FLUX_SESSION_MAX_AGE` if that is shorter. Set, it must not be longer than `FLUX_SESSION_MAX_AGE`. Example: `empty (7d)`.
+
+### `FLUX_SESSION_MAX_AGE`
+
+**Type** number and unit: `30m`, `12h`, `7d` (5m–365d) · **Default** empty · **Used by** api (release, source)
+
+The longest a session lasts from sign-in, however much it is used; the person then signs in again. Empty is `30d`. OWASP ASVS Level 2 asks for `12h` with `FLUX_SESSION_IDLE=30m`. Example: `empty (30d)`.
 
 ### `FLUX_AUTH_RATE_LIMIT`
 

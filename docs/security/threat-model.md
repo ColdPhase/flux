@@ -115,17 +115,17 @@ is what remains, and an issue number marks a finding of this audit.
 | Cross-site WebSocket hijacking | Origin compared with the public origin on the stream, typing and editing upgrades | None found |
 | Clickjacking of consent and approvals | `X-Frame-Options: DENY` and `frame-ancestors 'none'` on every response (`http/framing.ts`) | None |
 | Stored XSS (messages, Wiki, file names, link cards) | React escaping; Wiki Markdown rendered by markdown-it with `html:false` and sanitize-html with an allow-list (`docs/markdown.ts`); links limited to http, https and mailto; files served as `attachment` with `sandbox` CSP and `nosniff` | No script CSP to limit the damage of a future XSS: [#979](https://github.com/ColdPhase/flux/issues/979). Missing `nosniff`, Referrer-Policy and `no-store` elsewhere: [#992](https://github.com/ColdPhase/flux/issues/992) |
-| Session theft or fixation | HttpOnly cookies, `Secure` with a `__Secure-` prefix on https; new token on sign-in; server-side sessions read on every request (no cookie cache) | 7-day sliding sessions with no absolute limit: [#993](https://github.com/ColdPhase/flux/issues/993) |
-| Information leak in errors | Domain errors mapped to safe bodies; sealed requests redacted | Other unexpected errors answer their internal message: [#991](https://github.com/ColdPhase/flux/issues/991) |
+| Session theft or fixation | HttpOnly cookies, `Secure` with a `__Secure-` prefix on https; new token on sign-in; server-side sessions read on every request (no cookie cache) | None found. Sessions end after 7 days unused and 30 days from sign-in, both settable ([#993](https://github.com/ColdPhase/flux/issues/993), fixed) |
+| Information leak in errors | Domain errors mapped to safe bodies; every unexpected error answers a code only and logs the redacted error ([#991](https://github.com/ColdPhase/flux/issues/991), fixed) | None found |
 
 ### B1/B9 Authentication
 
 | Threat | Control on `main` | Residual |
 | --- | --- | --- |
 | Password guessing and stuffing | At least 12 characters, no common or easy-to-guess password (bundled list, no network call); Better Auth limiter per address (IPv6 as /64) stored in PostgreSQL, so every API process counts together; each account backs off after five attempts, 30 s up to 15 min, whatever the address, and a browser that has signed in to the account (signed device cookie) counts in a wait of its own, so a stranger cannot lock the owner out ([#990](https://github.com/ColdPhase/flux/issues/990), fixed) | Someone who knows an address can keep a browser that never signed in to it waiting up to 15 minutes at a time; the reset mail is the way back, and the browser that finishes it is remembered. No MFA in password mode; SSO is the recommended path |
-| Account enumeration | Password reset answers the same for every address | Sign-up says an address exists: [#993](https://github.com/ColdPhase/flux/issues/993) |
+| Account enumeration | Password reset answers the same for every address; `verified` sign-up too, and mails the owner; sign-in back-off is the same for unknown addresses | `open` sign-up says an address exists, because it signs the new account in: accepted and documented ([#993](https://github.com/ColdPhase/flux/issues/993)) |
 | Reset or verification token abuse | Tokens stored hashed, single use, expiring; reset redirect limited to the trusted origin (probe: `INVALID_REDIRECT_URL`); sessions revoked on reset, and the person's local clients disconnected ([#989](https://github.com/ColdPhase/flux/issues/989), fixed) | None found |
-| Claiming a new server | API only on loopback until the operator adds a proxy | Whoever signs up first after the proxy goes live owns the company: [#994](https://github.com/ColdPhase/flux/issues/994) |
+| Claiming a new server | API only on loopback until the operator adds a proxy | An operator who exposes the server before creating the owner: the install guides create it first and `./flux up` and the API log warn ([#994](https://github.com/ColdPhase/flux/issues/994), fixed) |
 | SSO account takeover by email | Accounts keyed by OIDC `sub`; implicit linking off; an address held by a verified account is refused; ID token verified with PKCE; back-channel logout and standing check | Depends on the IdP. Not re-tested here (covered by the OIDC suites) |
 
 ### B3 Local MCP clients

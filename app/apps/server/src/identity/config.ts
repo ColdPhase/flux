@@ -38,6 +38,10 @@ export interface IdentityConfig {
   smtp: SmtpConfig | null;
   rateLimit: boolean;
   passwordResetTtlSeconds: number;
+  /** A session ends after this long without use (FLUX_SESSION_IDLE, default 7 days, as before). */
+  sessionIdleSeconds: number;
+  /** A session ends this long after sign-in however much it is used (FLUX_SESSION_MAX_AGE, default 30 days, #993). */
+  sessionMaxAgeSeconds: number;
   /** Null keeps email/password sign-in only. */
   oidc: OidcConfig | null;
   /**
@@ -100,6 +104,25 @@ export function parseConfirmationMaxAge(value: string | undefined): number {
   const ms = match ? Number(match[1]) * (match[2] === 'd' ? 24 : 1) * HOUR_MS : NaN;
   if (!(ms >= HOUR_MS && ms <= 30 * 24 * HOUR_MS)) throw new Error('FLUX_OIDC_CONFIRMATION_MAX_AGE must be from 1h to 30d, such as 12h or 7d');
   return ms;
+}
+
+const MINUTE_MS = 60_000;
+export const DEFAULT_SESSION_IDLE_SECONDS = 7 * 24 * 3600;
+export const DEFAULT_SESSION_MAX_AGE_SECONDS = 30 * 24 * 3600;
+
+/** A length of time such as `30m`, `12h` or `7d`: a whole number and one unit. Empty means `fallbackSeconds`. */
+export function parseSessionDuration(name: string, value: string | undefined, fallbackSeconds: number, minSeconds: number, maxSeconds: number): number {
+  const text = value?.trim();
+  if (!text) return fallbackSeconds;
+  const match = /^([1-9]\d{0,4})([mhd])$/.exec(text);
+  const seconds = match ? Number(match[1]) * ({ m: MINUTE_MS, h: HOUR_MS, d: 24 * HOUR_MS }[match[2] as 'm' | 'h' | 'd']) / 1000 : NaN;
+  if (!(seconds >= minSeconds && seconds <= maxSeconds)) throw new Error(`${name} must be from 5m to 365d, such as 30m, 12h or 7d`);
+  return seconds;
+}
+
+/** Whether the public origin is this computer (localhost, 127.0.0.0/8, [::1]): a local try-out, not a server. */
+export function isLoopbackOrigin(origin: string): boolean {
+  try { return isLoopbackHost(new URL(origin).hostname); } catch { return false; }
 }
 
 export function oidcProviderId(issuer: string) {
@@ -166,6 +189,11 @@ export function loadIdentityConfig(env: NodeJS.ProcessEnv = process.env): Identi
   if (!Number.isInteger(ttl) || ttl < 60 || ttl > 86_400) throw new Error('FLUX_PASSWORD_RESET_TTL_SECONDS must be an integer from 60 to 86400');
   const rateLimit = (env.FLUX_AUTH_RATE_LIMIT ?? 'true').trim().toLowerCase();
   if (rateLimit !== 'true' && rateLimit !== 'false') throw new Error('FLUX_AUTH_RATE_LIMIT must be true or false');
+  const sessionMaxAgeSeconds = parseSessionDuration('FLUX_SESSION_MAX_AGE', env.FLUX_SESSION_MAX_AGE, DEFAULT_SESSION_MAX_AGE_SECONDS, 300, 365 * 86_400);
+  // Left alone, the idle time is the default 7 days or the maximum if that is shorter; named, it may not be longer than the maximum.
+  const idleSetting = env.FLUX_SESSION_IDLE?.trim();
+  const sessionIdleSeconds = idleSetting ? parseSessionDuration('FLUX_SESSION_IDLE', idleSetting, 0, 300, 365 * 86_400) : Math.min(DEFAULT_SESSION_IDLE_SECONDS, sessionMaxAgeSeconds);
+  if (sessionIdleSeconds > sessionMaxAgeSeconds) throw new Error('FLUX_SESSION_IDLE must not be longer than FLUX_SESSION_MAX_AGE');
   const requested = (env.FLUX_SIGNUP ?? 'open').trim().toLowerCase();
   if (requested !== 'open' && requested !== 'verified' && requested !== 'off') throw new Error('FLUX_SIGNUP must be open, verified or off');
   const oidc = loadOidcConfig(env);
@@ -184,6 +212,8 @@ export function loadIdentityConfig(env: NodeJS.ProcessEnv = process.env): Identi
     smtp: smtpUrl && from ? { url: smtpUrl, from } : null,
     rateLimit: rateLimit === 'true',
     passwordResetTtlSeconds: ttl,
+    sessionIdleSeconds,
+    sessionMaxAgeSeconds,
     oidc,
   };
 }

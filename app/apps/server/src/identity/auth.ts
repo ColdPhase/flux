@@ -23,12 +23,16 @@ import { offlineStepProblem } from './offline-step.js';
 import { createConfirmation, type Confirmation } from './confirmation.js';
 import { signInAgainMessage, type IdpStanding } from './standing.js';
 import { SESSION_COOKIE_PREFIX } from './session-cookie.js';
+import { accountKey, securityEvent, type SecurityLogger } from '../security-log.js';
+import { authSecurityEvent } from './security-events.js';
 import { PASSWORD_TOO_WEAK_MESSAGE, passwordProblem } from './password-policy.js';
 import { createSignInThrottle } from './sign-in-throttle.js';
 import { DEVICE_COOKIE_MAX_AGE_SECONDS, deviceCookieName, knows, readDevice, withAccount, writeDevice } from './device-cookie.js';
 
 /** Set by the Fastify bridge from the socket or trusted-proxy address; client copies are dropped. */
 export const CLIENT_IP_HEADER = 'x-flux-client-ip';
+/** Set by the bridge to the Fastify request id, so a security event of an auth route carries the id of its access-log lines. */
+export const REQUEST_ID_HEADER = 'x-flux-request-id';
 const AUTH_VERIFY_PATH = '/api/auth/verify-email';
 /** Ordinary password routes. They exist only in password mode: with a sign-on provider configured, they are refused (#313). */
 const PASSWORD_ROUTES = ['/sign-in/email', '/change-password', '/request-password-reset', '/forget-password', '/reset-password'];
@@ -46,7 +50,7 @@ export interface AuthDependencies {
   confirmation?: Confirmation;
   /** Present with a provider and the standing check on (#311): sign-in stores the offline token. */
   standing?: IdpStanding | null;
-  log?: { error(object: object, message: string): void };
+  log?: SecurityLogger & { error(object: object, message: string): void };
   /** Defaults to one over `db` (#313): provider sign-ins whose email another account holds. */
   claims?: EmailClaims;
   /** Explicit links of password accounts to the provider before cutover (#315). Defaults to one over `db`. */
@@ -170,15 +174,21 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
   // next time it signs in with a password once a provider is configured, so an administrator can find it by address.
   // One per address per minute; the link works once for a day and lands on the sign-in page.
   const lastVerificationMail = new Map<string, number>();
+  const lastExistingMail = new Map<string, number>();
   // The guide: the company's name is in its emails. Nothing is added before setup or while it has the name setup gave it.
   const atCompany = async () => { const name = await companyDisplayName(db, accessPorts); return name ? ` at ${name}` : ''; };
+  /** One mail of a kind per address per minute (the map is bounded), so sign-up cannot be used to mail someone repeatedly. */
+  const oncePerMinute = (sent: Map<string, number>, key: string) => {
+    const last = sent.get(key);
+    if (last && Date.now() - last < 60_000) return false;
+    if (sent.size > 5000) sent.clear();
+    sent.set(key, Date.now());
+    return true;
+  };
   const sendVerification = async (email: string, url?: string) => {
     if (!mailer) return;
     const key = email.toLowerCase();
-    const last = lastVerificationMail.get(key);
-    if (last && Date.now() - last < 60_000) return;
-    if (lastVerificationMail.size > 5000) lastVerificationMail.clear();
-    lastVerificationMail.set(key, Date.now());
+    if (!oncePerMinute(lastVerificationMail, key)) return;
     const link = url ?? `${config.publicOrigin}${AUTH_VERIFY_PATH}?token=${await createEmailVerificationToken(config.secret, key, undefined, 86_400)}&callbackURL=${encodeURIComponent('/sign-in?notice=email-verified')}`;
     try {
       await mailer.send({ to: email, subject: 'Verify your email for Flux',
@@ -187,6 +197,11 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
   };
   const verifiedSignUp = config.signup === 'verified';
   const ssoOnly = config.ssoOnly;
+  /** Where a request came from and which access-log lines are its own, for a security event (#997). */
+  const whereFrom = (ctx: { request?: Request; headers?: Headers }) => {
+    const headers = ctx.request?.headers ?? ctx.headers;
+    return { ip: headers?.get(CLIENT_IP_HEADER) ?? undefined, reqId: headers?.get(REQUEST_ID_HEADER) ?? undefined };
+  };
   /** The address (and browser) whose back-off a request already counted in `before`, found again in `after` (the same request context). */
   const counted = new WeakMap<object, { email: string; device?: string }>();
   /** The address whose password a reset is about to change, so the browser that finishes the reset is remembered. */
@@ -238,8 +253,11 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     // at once; a verified one only after the link sent to the new address is opened. The hook below asks for the
     // current password first, and single sign-on refuses it (the provider owns the address).
     user: { modelName: 'authUsers', changeEmail: { enabled: true, updateEmailWithoutVerification: true } },
-    // No cookie cache: every request reads the session row, so revocation applies immediately.
-    session: { modelName: 'authSessions', cookieCache: { enabled: false } },
+    // No cookie cache: every request reads the session row, so revocation applies immediately. A session ends after `sessionIdleSeconds`
+    // without use (it is renewed when used after `updateAge`); the longest it can last is `sessionMaxAgeSeconds`, enforced when it is read
+    // (`createSessionResolver`), because Better Auth only renews it (#993).
+    session: { modelName: 'authSessions', cookieCache: { enabled: false }, expiresIn: config.sessionIdleSeconds,
+      updateAge: Math.min(86_400, Math.max(60, Math.floor(config.sessionIdleSeconds / 4))) },
     // A new identity never acquires an existing account by asserting the same email (#113).
     account: { modelName: 'authAccounts', accountLinking: { disableImplicitLinking: true } },
     verification: { modelName: 'authVerifications', storeIdentifier: 'hashed' },
@@ -329,7 +347,11 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           const holder = (await getSessionFromCtx(ctx))?.user.email;
           if (holder) {
             const device = knownDevice(ctx, holder);
-            if (await throttle.attempt(holder, device?.id) > 0) throw throttledSignIn('change');
+            if (await throttle.attempt(holder, device?.id) > 0) {
+              if (log) securityEvent(log, { event: ctx.path === '/change-password' ? 'password_changed' : 'email_changed', outcome: 'limited', reason: 'account_back_off',
+                account: accountKey(config.secret, holder), ...whereFrom(ctx) });
+              throw throttledSignIn('change');
+            }
             counted.set(ctx.context, { email: holder, device: device?.id });
           }
         }
@@ -352,7 +374,10 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           // The account's own back-off, shared by every API process and not escaped by changing the client address (#990). A browser that
           // has signed in to this account before counts in a wait of its own.
           const device = knownDevice(ctx, email);
-          if (await throttle.attempt(email, device?.id) > 0) throw throttledSignIn('sign-in');
+          if (await throttle.attempt(email, device?.id) > 0) {
+            if (log) securityEvent(log, { event: 'sign_in', outcome: 'limited', reason: 'account_back_off', account: accountKey(config.secret, email), ...whereFrom(ctx) });
+            throw throttledSignIn('sign-in');
+          }
           counted.set(ctx.context, { email, device: device?.id });
           const [pending] = await db.select({ id: schema.authUsers.id, hash: schema.authAccounts.password }).from(schema.authUsers)
             .innerJoin(schema.authAccounts, and(eq(schema.authAccounts.userId, schema.authUsers.id), eq(schema.authAccounts.providerId, 'credential'), isNotNull(schema.authAccounts.password)))
@@ -381,7 +406,19 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           rememberDevice(ctx, resetFor);
         }
         // "Sign out my other devices" with a password change ends the person's other browsers, and so their local AI clients (#989).
-        if (ctx.path === '/change-password' && ctx.body?.revokeOtherSessions === true && signedIn) await connectionStore.disconnectClients(signedIn.id);
+        let disconnected = 0;
+        if (ctx.path === '/change-password' && ctx.body?.revokeOtherSessions === true && signedIn) disconnected = await connectionStore.disconnectClients(signedIn.id);
+        if (!log) return;
+        // The security event of the route (#997). A reset is recorded where its person is known (`onPasswordReset`).
+        const place = whereFrom(ctx);
+        const acting = signedIn?.id ?? (/^\/(change-password|change-email|oauth2\/consent)$/.test(ctx.path) ? (await getSessionFromCtx(ctx))?.user.id : undefined);
+        const event = authSecurityEvent({ path: ctx.path, body: ctx.body, returned: ctx.context.returned, userId: acting });
+        if (!event || (ctx.path === '/reset-password' && event.outcome === 'success')) return;
+        const named = typeof ctx.body?.email === 'string' && (ctx.path === '/sign-in/email' || ctx.path === '/request-password-reset' || ctx.path === '/forget-password');
+        securityEvent(log, { ...event, ...(named ? { account: accountKey(config.secret, ctx.body.email) } : {}), ...place });
+        if (disconnected > 0 && acting) securityEvent(log, { event: 'client_disconnected', outcome: 'success', reason: 'password_change', userId: acting, count: disconnected, ...place });
+        if (ctx.path === '/change-password' && ctx.body?.revokeOtherSessions === true && acting && event.outcome === 'success')
+          securityEvent(log, { event: 'sessions_revoked', outcome: 'success', reason: 'password_change', userId: acting, ...place });
       }),
     },
     emailVerification: {
@@ -440,11 +477,29 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
       maxPasswordLength: PASSWORD_MAX_LENGTH,
       revokeSessionsOnPasswordReset: true,
       // A reset is the recovery from a stolen password or session, so it also ends what a local AI client holds and clears the account's back-off (#989, #990).
-      onPasswordReset: async ({ user }) => {
-        await connectionStore.disconnectClients(user.id);
+      onPasswordReset: async ({ user }, request) => {
+        const disconnected = await connectionStore.disconnectClients(user.id);
         await throttle.clear(user.email);
+        if (!log) return;
+        const place = whereFrom({ request });
+        securityEvent(log, { event: 'password_reset', outcome: 'success', userId: user.id, ...place });
+        securityEvent(log, { event: 'sessions_revoked', outcome: 'success', reason: 'password_reset', userId: user.id, ...place });
+        if (disconnected > 0) securityEvent(log, { event: 'client_disconnected', outcome: 'success', reason: 'password_reset', userId: user.id, count: disconnected, ...place });
       },
       resetPasswordTokenExpiresIn: config.passwordResetTtlSeconds,
+      // `verified` sign-up answers an address that has an account like a new one (Better Auth's generic answer, because there is no automatic
+      // sign-in), so the page cannot tell. The mailbox's owner is told instead: the verification link if they never verified, else where to sign in.
+      // `open` sign-up signs the new account in, so the answer cannot be the same; that is the accepted risk in docs/operations/hardening.md (#993).
+      onExistingUserSignUp: async ({ user }) => {
+        if (!mailer || !verifiedSignUp) return;
+        const [row] = await db.select({ pending: schema.authUsers.verificationRequired }).from(schema.authUsers).where(eq(schema.authUsers.id, user.id));
+        if (row?.pending && !user.emailVerified) { await sendVerification(user.email); return; }
+        if (!oncePerMinute(lastExistingMail, user.email.toLowerCase())) return;
+        try {
+          await mailer.send({ to: user.email, subject: 'You already have a Flux account',
+            text: `Someone used this address to create a Flux account${await atCompany()}. You already have one, so nothing changed.\n\nSign in: ${config.publicOrigin}/sign-in\nForgot the password: ${config.publicOrigin}/forgot-password\n\nIf this was not you, ignore this message.\n` });
+        } catch (error) { onMailError?.(error); }
+      },
       sendResetPassword: mailer
         ? async ({ user, url }) => {
           // A reset never creates a password (password mode only; the route is refused under single sign-on).

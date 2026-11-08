@@ -82,6 +82,7 @@ import { disabledEditingUpgrade } from './editing/disabled-upgrade.js';
 import { useJsonCompression } from './http/compress.js';
 import { useFramingProtection } from './http/framing.js';
 import { useApiRateLimit } from './http/rate-limit.js';
+import { useSecurityHeaders } from './http/security-headers.js';
 
 /**
  * S3 SWITCH (F-030, #655): encrypted-space creation is a production route, for the company's owners and admins (F-037).
@@ -127,11 +128,13 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
     });
   }
   // AC-7 error paths, test deployment only: `x-flux-test-fail: 500` fails the request after its handler ran, with an
-  // error whose message and detail quote the request body, so the test proves such text is never answered or logged.
+  // error whose message and detail quote the request body, so the test proves such text is never answered or logged (#991: in any space).
   if (testDeployment) app.addHook('preSerialization', async (request, _reply, payload) => {
     if (request.headers['x-flux-test-fail'] !== '500' || (request as { injected?: boolean }).injected) return payload;
     (request as { injected?: boolean }).injected = true;
     const quoted = JSON.stringify(request.body ?? null);
+    // The positive control of the log scan (scripts/check_encryption.sh): a request that asks for it has its text logged on purpose.
+    if (request.headers['x-flux-test-log'] === '1') request.log.info({ quoted }, 'Test control: the request text is logged on purpose');
     throw Object.assign(new Error(`Injected failure after ${quoted}`), { detail: quoted });
   });
   const encryptionKeys = processKeysFromEnv(env);
@@ -142,6 +145,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   useFramingProtection(app);
   // The floor under every route's own limits (#838); off with FLUX_AUTH_RATE_LIMIT=false, as the sign-in limit is.
   useApiRateLimit(app, { enabled: identityConfig.rateLimit });
+  // nosniff, Referrer-Policy, no-store on /api/ and, for an https origin, Strict-Transport-Security (#992).
+  useSecurityHeaders(app, { hsts: identityConfig.publicOrigin.startsWith('https:') });
   const { pool, db } = registerDatabase(app, connectionString);
   let gateSessions: Awaited<ReturnType<typeof startIdentity>> | null = null;
   registerLockGate(app, { db, keys: encryptionKeys,

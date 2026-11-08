@@ -5,6 +5,7 @@ import { agentConnectionUseCases, agentProposalUseCases, DomainError, enforce, e
 import type { SessionResolver } from '../identity/index.js';
 import { createAgentConnectionStore } from './store.js';
 import { eventPorts } from '../events.js';
+import { securityEvent } from '../security-log.js';
 
 interface Options { db: Database; sessions: SessionResolver }
 
@@ -37,7 +38,9 @@ export async function agentProposalRoutes(app: FastifyInstance, { db, sessions }
     schema: { body: { type: 'object', required: ['mayDo'], additionalProperties: false, properties: { mayDo: { type: 'string', enum: [...AGENT_MAY_DO] } } } },
   }, async (request) => connections.update((await sessions.requirePrincipal(request)).principal, request.params.connectionId, request.body));
   app.delete<{ Params: { connectionId: string } }>('/api/v1/agent-connections/:connectionId', async (request, reply) => {
-    await connections.revoke((await sessions.requirePrincipal(request)).principal, request.params.connectionId);
+    const who = (await sessions.requirePrincipal(request)).principal;
+    await connections.revoke(who, request.params.connectionId);
+    securityEvent(request.log, { event: 'client_disconnected', outcome: 'success', reason: 'disconnect', userId: who.id, count: 1, ip: request.ip });
     return reply.code(204).send();
   });
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>('/api/v1/projects/:projectId/agent-proposals',

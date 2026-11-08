@@ -95,6 +95,14 @@ resolves the client address through its configured peers and strips arbitrary fo
 headers before authentication. No Caddy `trusted_proxies` option is needed for this direct
 edge; putting another proxy ahead of Caddy requires a separate, narrow trust configuration.
 
+### HSTS
+
+For an `https` `FLUX_PUBLIC_ORIGIN` the API itself sends `Strict-Transport-Security: max-age=31536000`, and the proxy passes it on, so
+the proxy needs no `header` or `add_header` line for it. Add `includeSubDomains` or `preload` at the proxy only when every subdomain
+of your name serves `https` for good: a browser keeps the rule for the whole period. Do not set a second, different value at the
+proxy (nginx's `add_header` adds a second header rather than replacing the first; use `proxy_hide_header Strict-Transport-Security;`
+first if you do).
+
 ### Public hostname and streaming
 
 For a public hostname, keep the same whole-origin proxy and matching upstream port. Change

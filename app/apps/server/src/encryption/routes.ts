@@ -6,6 +6,7 @@ import { InvalidInputError, RateLimitedError, type Principal } from '@flux/core'
 import { bearerMatches } from '../fixture/index.js';
 import type { SessionResolver } from '../identity/index.js';
 import type { EncryptionComposition } from './adapters.js';
+import { audited } from '../security-log.js';
 
 /**
  * The encrypted-workspace routes (F-030, #655; docs/product/encrypted-workspaces.md#api). Every one needs a live session
@@ -75,9 +76,16 @@ export function encryptionRoutes(app: FastifyInstance, { sessions, encryption, f
   });
   app.post<{ Params: { workspaceId: string }; Body: UnlockWorkspaceCommand }>(`${WORKSPACES_PATH}/:workspaceId/unlock`, {
     schema: { body: body({ password: secret, recoveryCode: { type: 'string', minLength: 1, maxLength: 200 } }) },
-  }, async (request) => useCases.unlock(await principal(request), request.params.workspaceId, request.body ?? {}));
-  app.post<{ Params: { workspaceId: string } }>(`${WORKSPACES_PATH}/:workspaceId/lock`,
-    async (request) => useCases.lock(await principal(request), request.params.workspaceId));
+  }, async (request) => {
+    // Who tried to unlock which space, and whether it worked (a wrong secret, a rate limit): a security event, never the secret (#997).
+    const who = await principal(request);
+    return audited(request.log, { event: 'space_unlock', userId: who.id, workspaceId: request.params.workspaceId, ip: request.ip },
+      () => useCases.unlock(who, request.params.workspaceId, request.body ?? {}));
+  });
+  app.post<{ Params: { workspaceId: string } }>(`${WORKSPACES_PATH}/:workspaceId/lock`, async (request) => {
+    const who = await principal(request);
+    return audited(request.log, { event: 'space_lock', userId: who.id, workspaceId: request.params.workspaceId, ip: request.ip }, () => useCases.lock(who, request.params.workspaceId));
+  });
   app.post<{ Params: { workspaceId: string }; Body: GrantUnlockPasswordCommand }>(`${WORKSPACES_PATH}/:workspaceId/unlock-password-grants`, {
     schema: { body: body({ userId: { type: 'string', minLength: 1, maxLength: 200 }, password: secret }, ['userId', 'password']) },
   }, async (request, reply) => reply.code(201).send(await useCases.grant(await principal(request), request.params.workspaceId, request.body)));

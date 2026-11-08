@@ -1,0 +1,1 @@
+- An unexpected server error now answers `500` with a code only in every space, and logs only its class and code: its message (a SQL or file-path text, or text it quotes from the request) no longer reaches the browser or the log. Fastify's own 4xx answers keep their messages ([#991](https://github.com/ColdPhase/flux/issues/991)).

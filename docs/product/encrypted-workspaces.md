@@ -925,7 +925,11 @@ helper, `redactedError(error)` in `packages/core/src/encryption`, replaces the m
 is stored or logged. It keeps the error class, the domain code, the PostgreSQL SQLSTATE and constraint
 name, and the ids, and never the message, `detail` or stack text that quotes values. Worker handlers
 wrap such errors in `SealedJobError(code)` before pg-boss sees them. API 500 responses for these
-requests carry only the code. AC-7 has an [error-path part](#tests-and-acceptance-criteria).
+requests carry only the code. Since #991 that holds for every unexpected API error in every space, not
+only a sealed workspace's: the answer is `500 {"error":"Internal Server Error","code":…}` and the log
+line the redacted error, because a driver, SQL or file-path message reaches a browser and a log file
+otherwise (OWASP ASVS V7.4.1). Fastify's own 4xx answers (an invalid body, an unsupported media type)
+keep their messages. AC-7 has an [error-path part](#tests-and-acceptance-criteria).
 
 ## Unlock lifecycle across processes
 

@@ -144,6 +144,11 @@ VARIABLES: dict[str, Var] = {
         "[who can sign up](install.md#5-decide-who-can-sign-up).", "off"),
     "FLUX_PASSWORD_RESET_TTL_SECONDS": Var("identity", "integer, 60–86400 s",
         "Lifetime of a password reset link. Links are single use and stored hashed.", "3600"),
+    "FLUX_SESSION_IDLE": Var("identity", "number and unit: `30m`, `12h`, `7d` (5m–365d)",
+        "How long a signed-in session lasts without use. Using it renews it. Empty is `7d`, or `FLUX_SESSION_MAX_AGE` if that is shorter. Set, it must not be longer than `FLUX_SESSION_MAX_AGE`.", "empty (7d)"),
+    "FLUX_SESSION_MAX_AGE": Var("identity", "number and unit: `30m`, `12h`, `7d` (5m–365d)",
+        "The longest a session lasts from sign-in, however much it is used; the person then signs in again. Empty is `30d`. "
+        "OWASP ASVS Level 2 asks for `12h` with `FLUX_SESSION_IDLE=30m`.", "empty (30d)"),
     "FLUX_AUTH_RATE_LIMIT": Var("identity", "`true` · `false`",
         "Rate limits: Better Auth's on sign-in, sign-up and reset (per client address, an IPv6 address as its /64, kept in PostgreSQL so every API process shares it), "
         "and the API-wide floor under every other route (in memory: 1,200 requests a minute per session, 600 per address without one, 600 new sessions a minute per address; no total per address). "

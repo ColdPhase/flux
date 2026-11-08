@@ -3,6 +3,7 @@ import { fromNodeHeaders } from 'better-auth/node';
 import { eq } from 'drizzle-orm';
 import { schema, type Database } from '@flux/db';
 import type { Principal } from '@flux/core';
+import { rememberPrincipal } from '../security-log.js';
 import type { FluxAuth } from './auth.js';
 import type { Confirmation } from './confirmation.js';
 import type { IdpStanding } from './standing.js';
@@ -40,8 +41,11 @@ export interface SessionResolver {
  */
 export interface SsoOnlySessions { db: Database; providerId: string }
 
+/** The longest a session lasts from sign-in, however much it is used (FLUX_SESSION_MAX_AGE, #993). */
+export interface SessionLimits { db: Database; maxAgeMs: number }
+
 export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding, 'stands'> | null = null, confirmation?: Confirmation,
-  ssoOnly: SsoOnlySessions | null = null): SessionResolver {
+  ssoOnly: SsoOnlySessions | null = null, limits: SessionLimits | null = null): SessionResolver {
   async function resolveSession(headers: IncomingHttpHeaders): Promise<SessionContext | null> {
     if (!headers.cookie) return null;
     const result = await auth.api.getSession({
@@ -50,6 +54,11 @@ export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding
     });
     if (!result) return null;
     const { session, user } = result;
+    // Better Auth renews a session that is used, so its own expiry is the idle limit; the absolute limit is checked here, on the session row.
+    if (limits && Date.now() - new Date(session.createdAt).getTime() > limits.maxAgeMs) {
+      await limits.db.delete(schema.authSessions).where(eq(schema.authSessions.id, session.id));
+      return null;
+    }
     if (ssoOnly) {
       const [identity] = await ssoOnly.db.select({ method: schema.authSessionIdentities.method }).from(schema.authSessionIdentities)
         .where(eq(schema.authSessionIdentities.sessionId, session.id));
@@ -71,6 +80,8 @@ export function createSessionResolver(auth: FluxAuth, standing: Pick<IdpStanding
     async requirePrincipal(request) {
       const context = await resolveSession(request.headers);
       if (!context) throw new UnauthenticatedError();
+      // A refused request (403) is logged with the person it was refused to (#997).
+      rememberPrincipal(request, context.principal.id);
       return context;
     },
   };
