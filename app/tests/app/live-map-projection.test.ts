@@ -9,9 +9,9 @@ function native(count = 500): SketchDetail {
   const thoughts: Thought[] = Array.from({ length: count }, (_, index) => ({ id: `thought-${index}`, sketchId: 'map',
     text: `Native thought ${index}`, x: index * 12, y: index * 7, width: 184, height: 72, shape: 'card',
     placement: null, source: null, createdBy: { kind: 'human', ...me }, version: 3, createdAt: now, updatedAt: now }));
-  return { id: 'map', workspaceId: 'workspace', scope: 'project', projectId: 'project', dmId: null,
-    title: 'Stable native graph', access: 'write', createdBy: { kind: 'human', ...me }, origin: null,
-    version: 2, createdAt: now, updatedAt: now, thoughts, links: [], copies: [] };
+  return { id: 'map', workspaceId: 'workspace', scope: 'project', projectId: 'project',
+    title: 'Stable native graph', access: 'write', createdBy: { kind: 'human', ...me },
+    version: 2, createdAt: now, updatedAt: now, thoughts, links: [] };
 }
 const position = (thought: Thought, changed: Partial<LiveMapPosition> = {}): LiveMapPosition => ({ id: thought.id, x: thought.x, y: thought.y, ...changed });
 
@@ -37,7 +37,7 @@ test('real movement/resize changes are immutable while all unaffected thought an
   assert.equal(projected.thoughts[1]!.width, 220); assert.equal(projected.thoughts[1]!.height, 90);
   assert.equal(projected.thoughts[0]!.version, first.version);
   for (let index = 2; index < confirmed.thoughts.length; index++) assert.equal(projected.thoughts[index], confirmed.thoughts[index]);
-  assert.equal(projected.links, confirmed.links); assert.equal(projected.copies, confirmed.copies);
+  assert.equal(projected.links, confirmed.links);
   assert.deepEqual(confirmed, original); assert.equal(applyLivePreviews(confirmed, new Map()), confirmed, 'Expiry restores native identities');
 });
 

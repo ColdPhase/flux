@@ -227,49 +227,8 @@
 .sk-index__s { font-size: var(--fs-sm); color: var(--t3); }
 .sk-index-more { display: flex; align-items: center; gap: 12px; padding: 12px 0 4px; border-top: 1px solid var(--line); }
 
-/* #96: DM sketches. "Make it a project…" sits beside Map/List; copies and origins are one quiet line each. */
-.sk-promote { margin-left: auto; }
-.sk-copies { list-style: none; margin: 0; padding: 0; }
-.sk-origin__short { display: none; }
-@media (max-width: 640px) { .sk-origin__short { display: inline; } }
-.sk-copies li, .sk-origin { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; font-size: var(--fs-sm); color: var(--t3); }
-.sk-copies svg { color: var(--t1); }
-.sk-copies a { color: var(--t2); font-weight: 500; }
-@keyframes sk-note-in { from { opacity: 0; transform: translateY(-4px); } }
-
-/* The promotion preview in Details: exact audience, what goes in, what stays private. */
-.promote__eyebrow { display: flex; align-items: center; gap: 5px; }
-.promote .ui-field { margin-top: 18px; }
-.promote__body { transition: opacity var(--dur-in) var(--ease-out); }
-.promote__body.is-loading { opacity: .55; }
-.promote__loading { display: flex; justify-content: center; padding: 28px 0; }
-.promote__seg { margin: 18px 0 14px; }
-.promote__seg .seg__b { flex: 1; }
-.promote__field { display: grid; gap: 6px; margin-top: 14px; font-size: var(--fs-sm); font-weight: 500; color: var(--t2); }
-.promote__field .ui-select { min-height: var(--ctl); padding: 0 8px; border: 1px solid var(--line2); border-radius: var(--r); background: var(--el); color: var(--t1); font: inherit; font-size: var(--fs-md); font-weight: 400; }
-.promote__hint { margin-top: 10px; font-size: var(--fs-sm); color: var(--t3); line-height: 1.5; }
-.promote__aud { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: var(--r-lg); box-shadow: inset 0 0 0 1px var(--line2); animation: sk-note-in var(--dur-in) var(--ease-out) backwards; }
-.promote__aud > span:last-child { min-width: 0; }
-.promote__aud b { display: block; font-size: var(--fs-md); font-weight: 600; color: var(--t1); line-height: 1.4; overflow-wrap: anywhere; }
-.promote__faces { display: flex; flex: none; }
-.promote__faces .ui-avatar { box-shadow: 0 0 0 2px var(--bg); }
-.promote__faces .ui-avatar + .ui-avatar { margin-left: -6px; }
-.promote__why { display: block; margin-top: 2px; font-size: var(--fs-sm); color: var(--t3); line-height: 1.45; }
-.promote__left { display: flex; gap: 5px; align-items: flex-start; color: var(--t2); }
-.promote__left svg { flex: none; margin-top: 2px; }
-.promote__all { margin-top: 8px; font-size: var(--fs-sm); color: var(--t3); }
-.promote__inc { list-style: none; margin: 0; padding: 0; }
-.promote__inc li { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 8px; padding: 8px 0; font-size: var(--fs-md); color: var(--t2); line-height: 1.5; }
-.promote__inc li + li { border-top: 1px solid var(--line); }
-.promote__inc svg { margin-top: 3px; color: var(--t3); }
-.promote__inc b { font-weight: 600; color: var(--t1); }
-.promote__notice, .promote__problem { display: flex; align-items: flex-start; gap: 6px; margin-top: 16px; padding: 8px 10px; border-radius: var(--r); background: var(--sub); font-size: var(--fs-sm); color: var(--t2); line-height: 1.45; }
-.promote__notice svg, .promote__problem svg { flex: none; margin-top: 2px; color: var(--t3); }
-.promote__problem button { margin-left: auto; font-weight: 500; text-decoration: underline; color: var(--t1); }
-.promote__acts { margin-top: 24px; }
 
 @media (pointer: coarse) {
-  .promote__field .ui-select { min-height: 44px; }
   .sk-bar .ui-btn { min-height: 44px; }
   .sk-plus { width: 44px; height: 44px; }
   .sk-plus--labelled { width: auto; }
@@ -293,12 +252,10 @@
   /* Without "Make it a project…" (a project copy) the Map/List switch shares the title row; a DM
      sketch keeps the switch and that action together on one row. */
   .sk-lead { flex: 1 1 100%; gap: 2px 6px; }
-  .sk-head:not(:has(.sk-promote)) { flex-wrap: nowrap; align-items: flex-start; }
-  .sk-head:not(:has(.sk-promote)) .sk-lead { flex: 1 1 0; min-width: 0; }
+  .sk-head { flex-wrap: nowrap; align-items: flex-start; }
+  .sk-head .sk-lead { flex: 1 1 0; min-width: 0; }
   .sk-lead .sk-aud { flex-basis: 100%; }
   .sk-back, .sk-sep { display: none; }
-  .sk-promote { order: 3; flex: 1 1 auto; justify-content: center; }
-  .sk-origin__long { display: none; }
   .sk-bar { flex-direction: column; align-items: stretch; padding: 2px; gap: 0; }
   /* One row of tools, each an icon over a short label (#266 PF-6): the canvas gets the second row
      back. Below about 340px the row scrolls sideways instead of wrapping. */
@@ -364,8 +321,7 @@ span.sk-li-img { width: 160px; height: 96px; }
 .sk--map .sk-lead { flex-wrap: nowrap; position: relative; }
 .sk--map .sk-aud { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .sk--map .sk-mode .seg__b { min-width: 48px; }
-.sk--map .sk-copies, .sk--map .sk-origin, .sk--map .sk-readonly { padding: 6px 12px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
-.sk--map .sk-copies { max-width: 100%; }
+.sk--map .sk-readonly { padding: 6px 12px; border-radius: var(--r-pill); background: var(--el); box-shadow: var(--sh-card), inset 0 0 0 1px var(--line); }
 .sk-over .sk-draft { width: min(440px, 100%); margin: 0; box-shadow: var(--sh-pop); }
 /* The inset also keeps fractional-height borders inside WebKit's integer scroll clip. */
 .sk-composition { position: absolute; z-index: 8; width: min(440px, calc(100% - 28px)); max-height: calc(100% - 28px); padding: 1px; overflow: auto; }
@@ -418,7 +374,7 @@ span.sk-li-img { width: 160px; height: 96px; }
   .sk-over { left: auto; right: 10px; top: 64px; align-items: flex-end; }
   .sk--map .sk-lead:not(:has(.sk-title-edit)) { display: none; }
   .sk--map .sk-head { padding: 3px; }
-  .sk--map .sk-head:not(:has(.sk-title-edit, .sk-promote)) { display: none; }
+  .sk--map .sk-head:not(:has(.sk-title-edit)) { display: none; }
   .sk-over .sk-draft { width: calc(100vw - 20px); }
   /* Composition replaces the Add dock while open and reserves space below the phone
      projection. Map options and the useful map context remain above it. */

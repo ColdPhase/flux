@@ -62,9 +62,8 @@ export type SearchTarget =
   /** A doc (#112) at the version that matched. */
   | { type: 'doc'; projectId: string; docId: string; version: number }
   | { type: 'work' | 'decision' | 'result'; projectId: string; id: string }
-  /** `dmId`: the sketch belongs to this DM and opens inside it (#96); null otherwise. */
-  | { type: 'sketch'; sketchId: string; dmId: string | null }
-  | { type: 'thought'; sketchId: string; thoughtId: string; dmId: string | null }
+  | { type: 'sketch'; sketchId: string }
+  | { type: 'thought'; sketchId: string; thoughtId: string }
   | { type: 'draft'; draftId: string }
   | { type: 'person'; userId: string; workspaceId: string };
 

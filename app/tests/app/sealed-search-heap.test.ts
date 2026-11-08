@@ -18,7 +18,7 @@ const word = (n: number) => `w${n.toString(36)}`;
 function doc(n: number, title: string, body: string): IndexDoc {
   const audience = `project:${n % 8}`;
   return { id: String(n + 1), key: `message:${n}`, kind: 'message', audience, workspaceId: 'w', projectId: String(n % 8), objectId: `object-${n}-${randomBytes(6).toString('hex')}`,
-    parentId: null, dmId: null, version: null, status: null, author: { kind: 'human', id: 'user-1' }, at: new Date(1_700_000_000_000 + n), atKey: '2026-01-01 00:00:00+00',
+    parentId: null, version: null, status: null, author: { kind: 'human', id: 'user-1' }, at: new Date(1_700_000_000_000 + n), atKey: '2026-01-01 00:00:00+00',
     atMicros: 1n, title, body, number: null, hidden: false, cost: docHeapCost(title, body), indexCost: 0 };
 }
 

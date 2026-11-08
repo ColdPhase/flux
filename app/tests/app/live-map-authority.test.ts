@@ -13,7 +13,6 @@ import { prepareNativeMap } from '../../apps/server/src/editing/native-map-journ
 import { transactionEventSession } from '../../apps/server/src/work/transaction-events.js';
 import { sketchRoutes } from '../../apps/server/src/sketches/routes.js';
 import { editingRoutes } from '../../apps/server/src/editing/routes.js';
-import { decodeMapChange } from '../../apps/server/src/editing/map-state.js';
 import { apiEditingOutputBudget } from '../../apps/server/src/editing/output.js';
 import { diskFileStorage } from '../../apps/server/src/files/storage.js';
 import type { SessionContext,SessionResolver } from '../../apps/server/src/identity/session.js';
@@ -43,14 +42,6 @@ function native(session:SessionContext,sketchId:string,commandId:string,paramete
 async function delta(backend:ReturnType<typeof mapBackend>,session:SessionContext,head:LiveMapBootstrap,after:number) {
   const deltas:LiveMapDelta[]=[];await backend.deliver(who(session),head.resourceId,head.generation,after,result=>{if(result.delta)deltas.push(result.delta);});return deltas[0]??null;
 }
-
-test('legacy retained DM-source journal entries normalize before native replay comparison',()=>{
-  const legacy={id:randomUUID(),sketchId:randomUUID(),text:'A retained DM source',x:1,y:2,width:184,height:72,shape:'card' as const,placement:null,
-    source:{authorId:randomUUID(),authorName:'A person',sentAt:'2026-01-01T00:00:00.000Z',dmId:randomUUID(),messageId:randomUUID()},
-    createdBy:{kind:'human' as const,id:randomUUID(),name:'A person'},version:1,createdAt:'2026-01-01T00:00:00.000Z',updatedAt:'2026-01-01T00:00:00.000Z'};
-  const change=decodeMapChange({sketchBefore:null,sketchAfter:null,thoughts:[{id:legacy.id,before:legacy,after:null}],links:[],dependencies:[],removedThoughts:[],clearedLeaseIds:[]});
-  assert.deepEqual(change.thoughts[0]!.before!.source,{...legacy.source,authorKind:'human',projectMessageId:null,sentAt:new Date(legacy.source.sentAt)});
-});
 
 test('atomic500-thought bootstrap/200-position live preview is visible before native drop and binds one real connection', {timeout:15000},async()=>{
   const f=await scene(500);const backend=mapBackend({pool});const authority=mapAuthority(backend,apiEditingOutputBudget);
@@ -188,9 +179,6 @@ test('private/DM rooms stay opaque, expired preview cannot revive, and final SQL
     const privateMap=expectStatus(await f.owner.browser.request('POST',`/api/v1/workspaces/${f.ws.id}/sketches`,{body:{scope:'private',title:'Private recovery is never broadcast'}}),201) as Sketch;
     await bootstrap(backend,f.ownerSession,privateMap.id);
     await assert.rejects(backend.bootstrap(who(f.peerSession),privateMap.id,()=>assert.fail('An outsider cannot join a private map')),error=>error instanceof Error&&'status' in error&&error.status===404);
-    const dmResponse=await f.peer.browser.request('POST',`/api/v1/workspaces/${f.ws.id}/dms`,{body:{participantIds:[f.viewer.id]}});assert.ok([200,201].includes(dmResponse.status));const dm=dmResponse.json as {id:string};
-    const dmMap=expectStatus(await f.peer.browser.request('POST',`/api/v1/workspaces/${f.ws.id}/sketches`,{body:{scope:'dm',dmId:dm.id,title:'Only this direct message'}}),201) as Sketch;
-    await bootstrap(backend,f.peerSession,dmMap.id);await assert.rejects(backend.bootstrap(who(f.ownerSession),dmMap.id,()=>assert.fail('Workspace ownership cannot disclose a private DM')),error=>error instanceof Error&&'status' in error&&error.status===404);
     const head=await bootstrap(backend,f.ownerSession,f.sketch.id);const lease=await authority.acquire(f.ownerSession,f.sketch.id,{gestureId:randomUUID(),thoughts:[{id:f.ids[0]!,expectedVersion:1}]});
     await pool.query("UPDATE map_live_gestures SET expires_at=clock_timestamp()-interval'1 second' WHERE lease_id=$1",[lease.leaseId]);
     await assert.rejects(authority.move(f.ownerSession,f.sketch.id,randomUUID(),{generation:head.generation,gestureId:lease.gestureId,leaseId:lease.leaseId,sequence:1,positions:[{id:f.ids[0]!,x:9,y:9}]}),refused('EDITING_LEASE_CHANGED'));

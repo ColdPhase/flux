@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { SKETCH_LIMITS, type CreatedThought, type Dm, type LinkLabelConflict, type Project, type Sketch, type SketchDetail, type ThoughtLink, type UpdateLinkLabelCommand, type Workspace } from '@flux/contracts';
+import { SKETCH_LIMITS, type CreatedThought, type LinkLabelConflict, type Project, type Sketch, type SketchDetail, type ThoughtLink, type UpdateLinkLabelCommand, type Workspace } from '@flux/contracts';
 import { DomainError, createSketchUseCases, type SketchUnitOfWork } from '@flux/core';
 import { sketchPorts, sketchUseCases } from '../../apps/server/src/sketches/adapters.js';
 import { db, pool } from './support/db.js';
@@ -95,16 +95,6 @@ describe('connection labels', () => {
     const privateMap = await linked(editor, { scope: 'private' });
     expectStatus(await patch(owner, privateMap.link, 'no'), 404, 'workspace owner cannot edit private sketch');
     expectStatus(await patch(editor, privateMap.link, 'my label'), 200);
-
-    const dm = expectStatus(await editor.browser.request('POST', `/api/v1/workspaces/${ws.id}/dms`, {
-      body: { participantIds: [viewer.id] },
-    }), 201) as Dm;
-    const dmMap = await linked(editor, { scope: 'dm', dmId: dm.id });
-    expectStatus(await patch(owner, dmMap.link, 'no'), 404, 'workspace owner outside DM');
-    expectStatus(await patch(viewer, dmMap.link, 'shared label'), 200, 'DM participant edits despite project viewer grant');
-    expectStatus(await viewer.browser.request('POST', `/api/v1/dms/${dm.id}/leave`), 204, 'leave DM');
-    expectStatus(await patch(viewer, dmMap.link, 'no'), 404, 'former participant cannot edit');
-    expectStatus(await patch(editor, dmMap.link, 'no'), 403, 'closed one-to-one DM is read-only');
   });
 
   test('concurrent edits compare under the sketch lock and stale retries leave data and events unchanged', async () => {

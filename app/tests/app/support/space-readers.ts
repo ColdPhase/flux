@@ -3,7 +3,7 @@ import { expectStatus, type Person } from './people.js';
 
 /**
  * Everyone who can read a space now (F-037): the people added to it, which is what its People list shows, and the company's owners and
- * admins, who reach every space without being added. A promotion preview names exactly these.
+ * admins, who reach every space without being added.
  */
 export async function spaceReaders(who: Person, workspaceId: string, projectId: string) {
   const listed = expectStatus(await who.browser.request('GET', `/api/v1/projects/${projectId}/people`), 200) as ProjectPerson[];

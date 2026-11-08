@@ -240,8 +240,8 @@ export interface LockedWorkspaceRef { id: string; name: string }
  * exactly this list, and `tests/app/encryption-registry.test.ts` compares the two. No free word passes.
  */
 export const EVENT_DATA_TOKENS = [
-  'about', 'accepted', 'admin', 'affects', 'agent', 'assigned', 'blocked', 'contributor', 'conversation', 'copied_from_dm',
-  'copied_to_project', 'creation_reverted', 'decision', 'denied', 'dm', 'doc', 'done', 'group', 'guest', 'human', 'in_progress',
+  'about', 'accepted', 'admin', 'affects', 'agent', 'assigned', 'blocked', 'contributor', 'conversation',
+  'creation_reverted', 'decision', 'denied', 'dm', 'doc', 'done', 'group', 'guest', 'human', 'in_progress',
   'invitation', 'left', 'link_added', 'link_removed', 'link_updated', 'manager', 'map', 'material', 'member', 'mention', 'mentions', 'message',
   'not_pursued', 'open', 'owner', 'pair', 'password', 'person', 'private', 'project', 'proposed', 'question', 'recovery', 'rejoined',
   'related', 'renamed', 'reply', 'restart', 'restricted', 'result', 'review', 'self', 'sketch', 'source', 'still_applies',

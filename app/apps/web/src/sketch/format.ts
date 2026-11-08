@@ -26,13 +26,13 @@ export function who(person: PersonRef, meId: string) {
 export function provenance(thought: Pick<Thought, 'source' | 'version' | 'createdBy' | 'createdAt'>, meId: string) {
   if (thought.source) {
     const author = thought.source.author.id === meId ? 'you' : firstName(thought.source.author.name);
-    return `${thought.source.dmMessageId ? 'Message from' : 'From a message by'} ${author} · ${when(thought.source.sentAt)}`;
+    return `From a message by ${author} · ${when(thought.source.sentAt)}`;
   }
   if (thought.version === 0) return 'Added by you · just now';
   return `From ${who(thought.createdBy, meId)} · ${when(thought.createdAt)}`;
 }
 
-/** Who can see the map, in words: "Only you" or "Everyone in Gesture lamp". */
+/** Who can see the map, in words: "Only you" (a private map is always its creator's) or "Everyone in Gesture lamp". */
 export function audience(sketch: Sketch, meId: string, projectName?: string | null) {
   if (sketch.scope === 'project') return projectName ? `Everyone in ${projectName}` : 'Everyone in the space';
   return sketch.createdBy.id === meId ? 'Only you' : `Only ${firstName(sketch.createdBy.name)}`;

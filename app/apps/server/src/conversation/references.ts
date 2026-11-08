@@ -25,7 +25,7 @@ export function messageReferences(db: DbExecutor) {
   async function thought(principal: Principal, located: LocatedThought): Promise<Opened | null> {
     if (!(await evaluateSketch(principal, 'sketch.read', located.sketchId, reader)).allowed) return null;
     return { author: located.author, card: { kind: 'thought', state: 'available', title: oneLine(located.text) || 'Thought', author: null, at: located.updatedAt.toISOString(),
-      place: located.sketchTitle, target: { type: 'thought', sketchId: located.sketchId, thoughtId: located.id, dmId: located.dmId } } };
+      place: located.sketchTitle, target: { type: 'thought', sketchId: located.sketchId, thoughtId: located.id } } };
   }
 
   async function message(principal: Principal, located: LocatedMessage): Promise<Opened | null> {

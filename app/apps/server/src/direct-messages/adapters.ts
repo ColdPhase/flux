@@ -1,16 +1,19 @@
-import { dmRows, schema, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
+import { accessPorts, dmRows, schema, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
 import { eq, and } from 'drizzle-orm';
 import {
   createDmUseCases,
+  getProject,
+  listProjectPeople,
+  listProjects,
   policyDmAccess,
   recordEvent,
+  RuleViolationError,
   type DmPorts,
   type DmRepository,
   type DmTaskCopy,
   type DmUnitOfWork,
 } from '@flux/core';
 import { eventPorts } from '../events.js';
-import { sketchPromotion } from '../sketches/adapters.js';
 import { nativeWorkInTransaction } from '../work/adapters.js';
 import { messageReferences } from '../conversation/references.js';
 
@@ -29,16 +32,26 @@ export function dmRepository(db: DbExecutor): DmRepository {
 }
 
 /**
- * The project side of an excerpt copy (#537), over the sketch promotion's target and audience reads and the
- * work use cases, so `project.write`, the project's people and task creation are the existing ones.
+ * The project side of an excerpt copy (#537), over the project and work use cases, so `project.write`, the
+ * project's people and task creation are the existing ones. The audience is people only: an agent is no reader of
+ * its own, it reads with exactly its owner's rights (F-036 AG-1, AG-3), so naming the owner covers it.
  */
 function dmTaskCopy(tx: Transaction): DmTaskCopy {
-  const promotion = sketchPromotion(tx);
   return {
-    async targets(principal, workspaceId) { return (await promotion.targets(principal, workspaceId)).projects; },
+    async targets(principal, workspaceId) {
+      const projects: { id: string; name: string }[] = [];
+      for (let offset = 0; ; offset += 100) {
+        const page = await listProjects(principal, workspaceId, { limit: 100, offset }, tx, accessPorts);
+        projects.push(...page.items.filter((p) => p.access === 'contributor' || p.access === 'manager').map((p) => ({ id: p.id, name: p.name })));
+        if (offset + page.items.length >= page.total || !page.items.length) break;
+      }
+      return projects.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    },
     async audience(principal, workspaceId, projectId) {
-      const { people, projectName } = await promotion.audience(principal, workspaceId, [], { kind: 'existing', projectId });
-      return { people, projectName: projectName ?? '' };
+      const project = await getProject(principal, projectId, tx, accessPorts);
+      if (project.workspaceId !== workspaceId) throw new RuleViolationError('The space belongs to another company', 'CROSS_WORKSPACE');
+      const people = await listProjectPeople(principal, project.id, tx, accessPorts);
+      return { people: people.filter((p) => p.kind === 'human').map((p) => ({ id: p.id, name: p.name, reason: 'project' as const })), projectName: project.name };
     },
     async lockDestination(workspaceId, projectId) {
       // The rows a change of the audience locks first, FOR SHARE: the workspace (member changes), then the project (grants).

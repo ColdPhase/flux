@@ -17,7 +17,7 @@ DM capabilities below; #534 tracks the unimplemented receipts in AC-3.
   or automatic source grant. Before confirmation, show the deliberately selected
   excerpt, destination and its actual audience. Cancel writes nothing. Only the
   approved excerpt is copied; other messages and later edits do not flow into it.
-- Use the [sketch promotion preview/token/transaction pattern](sketches.md#sketches-in-a-direct-message):
+- Use a preview/token/transaction pattern like the one DM task copies use (#537):
   bind the token to selected canonical message versions, approved excerpt,
   destination and previewed audience. Recheck source participant/read authority,
   destination write authority and audience under the canonical authority locks in

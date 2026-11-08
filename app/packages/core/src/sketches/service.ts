@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   DEFAULT_THOUGHT_SIZE,
   SKETCH_LIMITS,
@@ -9,11 +9,7 @@ import {
   type MovedThoughts,
   type MoveThoughtsCommand,
   type Placement,
-  type PromotedSketch,
-  type PromoteSketchCommand,
   type Sketch,
-  type SketchCopy,
-  type SketchPromotionPreview,
   type SketchDetail,
   type SketchListQuery,
   type SketchPage,
@@ -24,7 +20,7 @@ import {
   type UpdateLinkLabelCommand,
   type UpdateThoughtCommand,
 } from '@flux/contracts';
-import { ConflictError, ForbiddenError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError } from '../access/errors.js';
+import { ConflictError, InvalidInputError, NotFoundError, RuleViolationError, VersionConflictError } from '../access/errors.js';
 import type { Principal } from '../principal.js';
 import type { LinkRecord, SketchPorts, SketchRecord, SketchTarget, SketchUnitOfWork, ThoughtChanges, ThoughtRecord, ThoughtSourceRecord } from './ports.js';
 import * as valid from './validation.js';
@@ -51,35 +47,15 @@ export class LinkLabelConflictError extends ConflictError {
   }
 }
 
-/** 409 for a promotion whose preview is out of date: nothing was copied; `details.preview` is the current one. */
-export class PromotionChangedError extends ConflictError {
-  constructor(preview: SketchPromotionPreview) {
-    super('Who could see the copy, or what goes in, changed since the preview. Check it again.', 'PROMOTION_CHANGED');
-    this.details = { preview };
-  }
-}
-
 const iso = (date: Date) => date.toISOString();
 
 export function presentSketch(record: SketchRecord, access: 'read' | 'write'): Sketch {
   return {
-    id: record.id, workspaceId: record.workspaceId, scope: record.scope, projectId: record.projectId, dmId: record.dmId, title: record.title,
-    createdBy: record.createdBy, origin: record.copied ? { kind: 'dm_copy', copiedBy: record.copied.by, copiedAt: iso(record.copied.at) } : null,
+    id: record.id, workspaceId: record.workspaceId, scope: record.scope, projectId: record.projectId, title: record.title,
+    createdBy: record.createdBy,
     access, version: record.version, createdAt: iso(record.createdAt), updatedAt: iso(record.updatedAt),
     ...(record.thoughtCount === undefined ? {} : { thoughtCount: record.thoughtCount }),
   };
-}
-
-/** A message body as a thought's text: the thought keeps up to the text limit, marked when clipped. */
-function thoughtText(body: string) {
-  const text = body.trim();
-  return text.length > SKETCH_LIMITS.text ? `${text.slice(0, SKETCH_LIMITS.text - 1)}…` : text;
-}
-
-/** Staggered columns in conversation order, so the first thoughts read top to bottom. */
-function messageSpot(index: number) {
-  const column = index % 3;
-  return { x: 40 + column * 232, y: 40 + Math.floor(index / 3) * 136 + (column === 1 ? 44 : 0) };
 }
 
 export function presentThoughtLink(record: LinkRecord): ThoughtLink {
@@ -106,7 +82,7 @@ export async function presentThoughts(ports: Pick<SketchPorts, 'access' | 'files
     id: record.id, sketchId: record.sketchId, text: record.text, x: record.x, y: record.y, width: record.width, height: record.height,
     shape: record.shape, placement: record.placement ? placements.get(record.placement.id)! : null,
     source: record.source ? { author: { kind: record.source.authorKind, id: record.source.authorId, name: record.source.authorName },
-      sentAt: iso(record.source.sentAt), dmMessageId: record.source.messageId, projectMessageId: record.source.projectMessageId } : null,
+      sentAt: iso(record.source.sentAt), projectMessageId: record.source.projectMessageId } : null,
     ...(files.has(record.id) ? { file: files.get(record.id)! } : {}),
     createdBy: record.createdBy,
     version: record.version, createdAt: iso(record.createdAt), updatedAt: iso(record.updatedAt),
@@ -132,62 +108,6 @@ async function lockedThought(ports: SketchPorts, sketchId: string, thoughtId: st
   return thought;
 }
 
-type PromotionChoice = { kind: 'new' } | { kind: 'existing'; projectId: string } | null;
-
-/**
- * Whether a new project from a DM sketch gives the DM's other participants access (#188). `grant`
- * (the #96 default) or `none`; the web app states it, unchecked by default, so nobody is added
- * without the person choosing it. An existing project's audience never changes by a promotion.
- */
-function participantChoice(value: unknown): boolean {
-  if (value === undefined || value === 'grant') return true;
-  if (value === 'none') return false;
-  throw new InvalidInputError('participants must be grant or none');
-}
-
-/** The participants a new project is granted to: all of them, or only the caller. */
-const grantees = (participants: { id: string; name: string }[], principal: Principal, grant: boolean) =>
-  grant ? participants : participants.filter((person) => person.id === principal.id);
-
-/**
- * The exact audience and content of copying `sketch` (a DM sketch) to `choice`. The token names
- * the target, every reader and every thought, link and version, so a promotion commits only what
- * the person saw. Without a choice it proposes a new project, or else the first project they can change.
- */
-async function promotionPreview(ports: SketchPorts, principal: Principal, sketch: SketchRecord, requested: PromotionChoice,
-  participants: { id: string; name: string }[], grant = true): Promise<SketchPromotionPreview> {
-  const dmId = sketch.dmId!;
-  const [targets, thoughts, links, messageCount] = await Promise.all([
-    ports.promotion.targets(principal, sketch.workspaceId),
-    ports.sketches.thoughts(sketch.id), ports.sketches.links(sketch.id), ports.sketches.dmMessageCount(dmId),
-  ]);
-  let choice = requested;
-  if (!choice) choice = targets.canCreateProject ? { kind: 'new' } : targets.projects[0] ? { kind: 'existing', projectId: targets.projects[0].id } : null;
-  if (choice?.kind === 'new' && !targets.canCreateProject) throw new ForbiddenError('Guests do not start spaces; copy it into a space you can change', 'PROJECT_CREATE_FORBIDDEN');
-  const { people, projectName } = choice ? await ports.promotion.audience(principal, sketch.workspaceId, grantees(participants, principal, grant), choice) : { people: [], projectName: null };
-  const readers = new Set(people.map((person) => person.id));
-  const fromMessages = thoughts.filter((thought) => thought.source?.messageId);
-  const quoted = new Set(fromMessages.map((thought) => thought.source!.messageId));
-  const content = { thoughts: thoughts.length, links: links.length, fromMessages: fromMessages.length };
-  const target = !choice ? null : choice.kind === 'new' ? { kind: 'new' as const } : { kind: 'existing' as const, projectId: choice.projectId, projectName: projectName ?? '' };
-  const token = createHash('sha256').update(JSON.stringify({
-    sketch: sketch.id, target: choice, readers: [...readers].sort(),
-    thoughts: thoughts.map((t) => `${t.id}:${t.version}`).sort(), links: links.map((l) => l.id).sort(),
-  })).digest('base64url');
-  return {
-    sketchId: sketch.id, target, canCreateProject: targets.canCreateProject, projects: targets.projects, audience: people,
-    leftOut: participants.filter((person) => choice && !readers.has(person.id)), content,
-    staysInDm: { messages: Math.max(0, messageCount - quoted.size) }, token,
-  };
-}
-
-function promotionChoice(query: { target?: unknown; projectId?: unknown }): PromotionChoice {
-  if (query.projectId !== undefined) return { kind: 'existing', projectId: valid.id(query.projectId, 'projectId') };
-  if (query.target === 'new') return { kind: 'new' };
-  if (query.target !== undefined) throw new InvalidInputError('target must be new, or name a projectId');
-  return null;
-}
-
 export function createSketchUseCases(uow: SketchUnitOfWork) {
   const changed = (ports: SketchPorts, principal: Principal, sketch: SketchRecord, data: Record<string, unknown>) =>
     ports.sketches.touchSketch(sketch.id, principal).then(async () => {
@@ -199,14 +119,13 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
     async list(principal: Principal, workspaceId: string, query: SketchListQuery = {}): Promise<SketchPage> {
       const page = valid.page(query);
       const projectId = valid.optionalId(query.projectId, 'projectId') ?? undefined;
-      const dmId = valid.optionalId(query.dmId, 'dmId') ?? undefined;
       if (query.scope !== undefined && query.scope !== 'private') throw new InvalidInputError('scope can only be private', 'INVALID_SCOPE');
       const scope = query.scope;
       if (query.hideEmpty !== undefined && typeof query.hideEmpty !== 'boolean') throw new InvalidInputError('hideEmpty must be true or false');
       const hideEmpty = query.hideEmpty === true;
       return uow.run(async (ports) => {
         await ports.access.requireWorkspace(principal, workspaceId);
-        const { items, total } = await ports.sketches.listVisible(principal, workspaceId, { projectId, dmId, scope, hideEmpty }, page);
+        const { items, total } = await ports.sketches.listVisible(principal, workspaceId, { projectId, scope, hideEmpty }, page);
         const sketches: Sketch[] = [];
         for (const item of items) {
           const access = await ports.access.accessOf(principal, item.id);
@@ -220,38 +139,24 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
       const title = valid.text(command?.title, 'title', SKETCH_LIMITS.title);
       let target: SketchTarget;
       if (command?.scope !== 'project' && command?.projectId !== undefined) throw new InvalidInputError('projectId applies to project sketches only');
-      if (command?.scope !== 'dm' && (command?.dmId !== undefined || command?.fromMessageIds !== undefined)) throw new InvalidInputError('dmId and fromMessageIds apply to DM sketches only');
       if (command?.scope === 'project') {
         target = { scope: 'project', workspaceId, projectId: valid.id(command.projectId, 'projectId') };
       } else if (command?.scope === 'private') {
         target = { scope: 'private', workspaceId };
-      } else if (command?.scope === 'dm') {
-        target = { scope: 'dm', workspaceId, dmId: valid.id(command.dmId, 'dmId') };
       } else {
-        throw new InvalidInputError('scope must be one of project, private, dm');
+        throw new InvalidInputError('scope must be one of project, private');
       }
-      const fromMessages = command.fromMessageIds === undefined ? [] : valid.ids(command.fromMessageIds, 'fromMessageIds', SKETCH_LIMITS.fromMessages);
       return uow.run(async (ports) => {
         await ports.access.requireCreate(principal, target);
-        const dmId = target.scope === 'dm' ? target.dmId : null;
-        // "Start sketch from these messages": only messages of this DM, which the caller reads now.
-        const messages = dmId && fromMessages.length ? await ports.sketches.dmMessages(dmId, fromMessages) : [];
-        if (messages.length !== fromMessages.length) throw new NotFoundError('Message', 'MESSAGE_NOT_FOUND');
+        // One private map for each person in a company (#947); the database holds the same rule for a race.
+        if (target.scope === 'private') {
+          if (await ports.sketches.privateSketchOf(workspaceId, principal.id)) throw new ConflictError('You already have your map', 'MY_MAP_EXISTS');
+        }
         const record = await ports.sketches.insertSketch({
-          id: randomUUID(), workspaceId, scope: target.scope, projectId: target.scope === 'project' ? target.projectId : null, dmId,
+          id: randomUUID(), workspaceId, scope: target.scope, projectId: target.scope === 'project' ? target.projectId : null,
           title, createdBy: principal,
         });
-        const thoughtIds: string[] = [];
-        for (const [index, message] of messages.entries()) {
-          const thought = await ports.sketches.insertThought({
-            id: randomUUID(), workspaceId, sketchId: record.id, text: thoughtText(message.body), ...messageSpot(index),
-            ...DEFAULT_THOUGHT_SIZE, shape: 'card', placement: null, createdBy: principal,
-            source: { authorId: message.authorId, authorKind: 'human', authorName: message.authorName, sentAt: message.createdAt,
-              dmId: message.dmId, messageId: message.id, projectMessageId: null },
-          });
-          thoughtIds.push(thought.id);
-        }
-        await ports.events.record(principal, workspaceId, 'sketch.created.v1', record.id, { scope: record.scope, thoughtIds });
+        await ports.events.record(principal, workspaceId, 'sketch.created.v1', record.id, { scope: record.scope, thoughtIds: [] });
         return presentSketch(record, 'write');
       });
     },
@@ -260,19 +165,10 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
       return uow.run(async (ports) => {
         const { sketch, access } = await authorized(ports, principal, 'sketch.read', sketchId);
         const [thoughts, links] = await Promise.all([ports.sketches.thoughts(sketch.id), ports.sketches.links(sketch.id)]);
-        // A DM sketch lists only the project copies the caller can open now.
-        const copies: SketchCopy[] = [];
-        if (sketch.scope === 'dm') {
-          for(const copy of await ports.sketches.copiesOf(sketch.id)) {
-            try {await ports.access.requireSketch(principal,'sketch.read',copy.sketchId,{lock:true});copies.push(copy);}
-            catch(error){if(!(error instanceof ForbiddenError||error instanceof NotFoundError))throw error;}
-          }
-        }
         return {
           ...presentSketch(sketch, access),
           thoughts: await presentThoughts(ports, principal, sketch, thoughts),
           links: links.map(presentThoughtLink),
-          copies,
         };
       });
     },
@@ -329,24 +225,17 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         label: valid.label(command.linkFrom.label),
         linkId: valid.optionalId(command.linkFrom.linkId, 'linkFrom.linkId') ?? randomUUID(),
       };
-      const sourceMessageId = valid.optionalId(command.sourceMessageId, 'sourceMessageId');
       const sourceProjectMessageId = valid.optionalId(command.sourceProjectMessageId, 'sourceProjectMessageId');
-      if (sourceMessageId && sourceProjectMessageId) throw new InvalidInputError('Choose one message source');
       const fileId = valid.optionalId(command.fileId, 'fileId');
       return uow.run(async (ports) => {
         const { sketch } = await authorized(ports, principal, 'sketch.write', sketchId);
         let source: ThoughtSourceRecord | null = null;
-        if (sourceMessageId) {
-          if (sketch.scope !== 'dm') throw new RuleViolationError('Only a thought in a DM sketch can quote a message of that DM', 'NOT_A_DM_SKETCH');
-          const [message] = await ports.sketches.dmMessages(sketch.dmId!, [sourceMessageId]);
-          if (!message) throw new NotFoundError('Message', 'MESSAGE_NOT_FOUND');
-          source = { authorId: message.authorId, authorKind: 'human', authorName: message.authorName, sentAt: message.createdAt, dmId: message.dmId, messageId: message.id, projectMessageId: null };
-        } else if (sourceProjectMessageId) {
+        if (sourceProjectMessageId) {
           if (sketch.scope !== 'project' || !sketch.projectId) throw new RuleViolationError('Only a thought on a space map can quote a space message', 'NOT_A_PROJECT_SKETCH');
           const [message] = await ports.sketches.projectMessages(sketch.projectId, [sourceProjectMessageId]);
           if (!message) throw new NotFoundError('Message', 'MESSAGE_NOT_FOUND');
           source = { authorId: message.authorId, authorKind: message.authorKind, authorName: message.authorName, sentAt: message.createdAt,
-            dmId: null, messageId: null, projectMessageId: message.id };
+            projectMessageId: message.id };
         }
         if (placement) {
           const view = await ports.access.placement(principal, placement);
@@ -486,86 +375,6 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         await ports.live.before(principal,sketch,{thoughtIds:[],linkIds:[id]});
         if (!await ports.sketches.deleteLink(sketch.id, id)) throw new NotFoundError('Link', 'LINK_NOT_FOUND');
         await changed(ports, principal, sketch, { op: 'link_removed', thoughtIds: [], linkIds: [id] });
-      });
-    },
-
-    /** What copying a DM sketch into a project would share, and with whom (#96). Changes nothing. */
-    async previewPromotion(principal: Principal, sketchId: string, query: { target?: unknown; projectId?: unknown; participants?: unknown } = {}): Promise<SketchPromotionPreview> {
-      const choice = promotionChoice(query);
-      const grant = participantChoice(query.participants);
-      return uow.run(async (ports) => {
-        const { sketch, access } = await authorized(ports, principal, 'sketch.read', sketchId);
-        if (sketch.scope !== 'dm') throw new RuleViolationError('Only a sketch in a direct message is copied into a space', 'NOT_A_DM_SKETCH');
-        await ports.access.requireDmOpen(principal, sketch.dmId!);
-        if (access !== 'write') throw new ForbiddenError('Not allowed to perform this action on the sketch');
-        return promotionPreview(ports, principal, sketch, choice, await ports.sketches.dmParticipants(sketch.dmId!), grant);
-      });
-    },
-
-    /**
-     * Copies a DM sketch into a new restricted project (granted to exactly the DM's participants, or
-     * with `participants: 'none'` to nobody but its managers, #188) or an existing project the caller can change. Only the sketch's thoughts, links and each source
-     * message's author and time are copied; the copy keeps no reference into the DM, so later DM
-     * messages and sketch changes never reach it. `token` must match the current preview.
-     */
-    async promote(principal: Principal, sketchId: string, command: PromoteSketchCommand): Promise<PromotedSketch> {
-      const target = command?.target;
-      let choice: NonNullable<PromotionChoice>;
-      let name: string | null = null;
-      if (target?.kind === 'new') { choice = { kind: 'new' }; name = valid.text(target.name, 'target.name', 200); }
-      else if (target?.kind === 'existing') choice = { kind: 'existing', projectId: valid.id(target.projectId, 'target.projectId') };
-      else throw new InvalidInputError('target.kind must be new or existing');
-      if (typeof command.token !== 'string' || !command.token) throw new InvalidInputError('token must be the preview token');
-      const grant = participantChoice(command.participants);
-      return uow.run(async (ports) => {
-        // The audience is locked before it is read, and read once: every row whose change would
-        // alter who can open the copy (workspace members, the target project's grants, the DM's
-        // participants) stays as it is until this commits, so the token is checked against the
-        // audience that is actually granted.
-        await ports.access.lockPromotion(sketchId, choice.kind === 'existing' ? choice.projectId : null);
-        // Read with the locks of a change, so a closed DM explains itself instead of a bare 403.
-        const access = await ports.access.requireSketch(principal, 'sketch.read', sketchId, { lock: true });
-        const sketch = await ports.sketches.findSketch(sketchId);
-        if (!sketch) throw new NotFoundError('Sketch', 'SKETCH_NOT_FOUND');
-        if (sketch.scope !== 'dm') throw new RuleViolationError('Only a sketch in a direct message is copied into a space', 'NOT_A_DM_SKETCH');
-        const locked = new Set(await ports.access.lockParticipants(sketch.dmId!));
-        await ports.access.requireDmOpen(principal, sketch.dmId!);
-        if (access !== 'write') throw new ForbiddenError('Not allowed to perform this action on the sketch');
-        const participants = (await ports.sketches.dmParticipants(sketch.dmId!)).filter((p) => locked.has(p.id));
-        await ports.live.before(principal,sketch,{thoughtIds:[],linkIds:[]});
-        const preview = await promotionPreview(ports, principal, sketch, choice, participants, grant);
-        if (preview.token !== command.token) throw new PromotionChangedError(preview);
-        const project = choice.kind === 'new'
-          ? await ports.promotion.createProject(principal, sketch.workspaceId, name!, grantees(participants, principal, grant).map((p) => p.id))
-          : { id: choice.projectId, name: preview.target?.kind === 'existing' ? preview.target.projectName : '' };
-        const copy = await ports.sketches.insertSketch({
-          id: randomUUID(), workspaceId: sketch.workspaceId, scope: 'project', projectId: project.id, dmId: null, title: sketch.title,
-          createdBy: principal, copy: { fromSketchId: sketch.id, byUserId: principal.id },
-        });
-        const ids = new Map<string, string>();
-        for (const thought of await ports.sketches.thoughts(sketch.id)) {
-          const id = randomUUID();
-          ids.set(thought.id, id);
-          await ports.sketches.insertThought({
-            id, workspaceId: sketch.workspaceId, sketchId: copy.id, text: thought.text, x: thought.x, y: thought.y,
-            width: thought.width, height: thought.height, shape: thought.shape,
-            // A placement names an object with its own audience; the copy carries only the text.
-            placement: null,
-            source: thought.source ? { ...thought.source, dmId: null, messageId: null } : null,
-            createdBy: { kind: thought.createdBy.kind, id: thought.createdBy.id }, createdAt: thought.createdAt, updatedAt: thought.updatedAt,
-          });
-        }
-        for (const link of await ports.sketches.links(sketch.id)) {
-          await ports.sketches.insertLink({
-            id: randomUUID(), workspaceId: sketch.workspaceId, sketchId: copy.id, fromId: ids.get(link.fromId)!, toId: ids.get(link.toId)!,
-            label: link.label, createdBy: principal,
-          });
-        }
-        await ports.events.record(principal, sketch.workspaceId, 'sketch.created.v1', copy.id, { scope: 'project', op: 'copied_from_dm' });
-        await ports.sketches.touchSketch(sketch.id);await ports.live.commit(principal,sketch);
-        // The DM's own record of the copy; its audience is the DM's participants.
-        await ports.events.record(principal, sketch.workspaceId, 'sketch.changed.v1', sketch.id, { op: 'copied_to_project', sketchId: copy.id, projectId: project.id });
-        return { sketch: presentSketch(copy, 'write'), project };
       });
     },
   };

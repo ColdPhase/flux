@@ -56,7 +56,7 @@ describe('message references', () => {
     const conversation = await started(jonas, open.id, 'What about this one?', [{ kind: 'thought', id: idea.id }]);
     const card = conversation.messages[0]!.references![0]!;
     assert.deepEqual(card, { kind: 'thought', state: 'available', title: 'Solar panel on the enclosure?', author: 'ref-ada', at: card.state === 'available' ? card.at : '',
-      place: 'Enclosure ideas', target: { type: 'thought', sketchId: map.id, thoughtId: idea.id, dmId: null } });
+      place: 'Enclosure ideas', target: { type: 'thought', sketchId: map.id, thoughtId: idea.id } });
     // The same card in the project's stream and the thread, for another reader of the project.
     const roots = expectStatus(await kai.browser.request('GET', `/api/v1/projects/${open.id}/conversation-roots`), 200) as ConversationRootWindow;
     assert.deepEqual(roots.roots.find((root) => root.conversationId === conversation.id)!.message.references, [card]);
@@ -110,8 +110,7 @@ describe('message references', () => {
       assert.equal(response.text, absentAnswer, 'another workspace\'s id answers exactly like an absent one');
     }
     assert.equal((await start(dave, open.id, 'Dave is not in this workspace', [])).status, 404);
-    const crossWorkspace = await sketch(ada, { title: 'Mine', scope: 'private' });
-    const own = await thought(ada, crossWorkspace.id, 'Mine');
+    const own = mine;
     // A person cites their own private thought; nobody else sees it.
     const sent = await started(ada, open.id, 'Thinking about this one', [{ kind: 'thought', id: own.id }]);
     assert.equal(sent.messages[0]!.references![0]!.state, 'available');
@@ -168,17 +167,6 @@ describe('message references', () => {
     const thread = expectStatus(await jonas.browser.request('GET', `/api/v1/dms/${dmAdaJonas.id}/threads/${sent.id}`), 200) as { root: DmMessage; replies: DmMessage[] };
     assert.equal(thread.root.references!.length, 2);
     assert.equal(thread.replies[0]!.references![0]!.state, 'available');
-    // A thought in a DM's sketch opens inside the DM and is read by its participants only.
-    const dmMap = await sketch(ada, { title: 'Our sketch', scope: 'dm', dmId: dmAdaJonas.id });
-    const dmIdea = await thought(ada, dmMap.id, 'Ask the landlord about the roof');
-    const cited = await started(ada, open.id, 'From our sketch', [{ kind: 'thought', id: dmIdea.id }]);
-    const dmCard = cited.messages[0]!.references![0]!;
-    assert.deepEqual(dmCard.state === 'available' ? dmCard.target : null, { type: 'thought', sketchId: dmMap.id, thoughtId: dmIdea.id, dmId: dmAdaJonas.id });
-    assert.equal((await read(kai, cited.id)).messages[0]!.references![0]!.state, 'unavailable');
-    assert.equal((await read(jonas, cited.id)).messages[0]!.references![0]!.state, 'available');
-    // A person who leaves the DM no longer reads what it cited.
-    expectStatus(await jonas.browser.request('POST', `/api/v1/dms/${dmAdaJonas.id}/leave`), 204);
-    assert.equal((await read(jonas, cited.id)).messages[0]!.references![0]!.state, 'unavailable');
   });
 
   test('a task\'s discussion cites too, with the same rules, and its bound conversation shows the card', async () => {

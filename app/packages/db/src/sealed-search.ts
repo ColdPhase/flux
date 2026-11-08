@@ -150,7 +150,6 @@ export interface IndexDoc {
   projectId: string | null;
   objectId: string;
   parentId: string | null;
-  dmId: string | null;
   version: number | null;
   status: string | null;
   author: { kind: 'human' | 'agent'; id: string } | null;
@@ -419,8 +418,8 @@ export class SealedSearchIndex {
       if (doc.hidden) return false;
       const place = plan.place;
       if (place?.type === 'project' && doc.projectId !== place.id) return false;
-      if (place?.type === 'dm' && doc.audience !== `dm:${place.id}` && doc.dmId !== place.id) return false;
-      if (place?.type === 'private' && !((doc.kind === 'draft' && doc.status === 'private') || ((doc.kind === 'sketch' || doc.kind === 'thought') && doc.projectId === null && doc.dmId === null))) return false;
+      if (place?.type === 'dm' && doc.audience !== `dm:${place.id}`) return false;
+      if (place?.type === 'private' && !((doc.kind === 'draft' && doc.status === 'private') || ((doc.kind === 'sketch' || doc.kind === 'thought') && doc.projectId === null))) return false;
       if (plan.author && (doc.author?.kind !== plan.author.kind || doc.author.id !== plan.author.id)) return false;
       return true;
     };
@@ -447,7 +446,7 @@ export function pgMicros(text: string): bigint {
 
 interface Placeholder {
   id: string; doc_key: string; kind: SearchKindRow; audience_key: string; project_id: string | null; object_id: string; parent_id: string | null;
-  dm_id: string | null; version: number | null; status: string | null; author_kind: 'human' | 'agent' | null; author_id: string | null; at: Date; at_key: string;
+  version: number | null; status: string | null; author_kind: 'human' | 'agent' | null; author_id: string | null; at: Date; at_key: string;
 }
 interface Content { title: string; body: string; number?: number | null; hidden?: boolean }
 
@@ -519,7 +518,7 @@ async function docsOf(db: DbExecutor, workspaceId: string, placeholders: Placeho
       const found = content.get(kind === 'material' || kind === 'doc' ? `${row.object_id}:${row.version}` : row.object_id);
       if (!found) continue;
       docs.push({ id: row.id, key: row.doc_key, kind: row.kind, audience: row.audience_key, workspaceId, projectId: row.project_id, objectId: row.object_id,
-        parentId: row.parent_id, dmId: row.dm_id, version: row.version, status: row.status,
+        parentId: row.parent_id, version: row.version, status: row.status,
         author: row.author_kind && row.author_id ? { kind: row.author_kind, id: row.author_id } : null,
         at: row.at instanceof Date ? row.at : new Date(row.at), atKey: row.at_key, atMicros: pgMicros(row.at_key), title: found.title, body: found.body,
         number: found.number ?? null, hidden: found.hidden === true, cost: docHeapCost(found.title, found.body), indexCost: 0 });
@@ -528,7 +527,7 @@ async function docsOf(db: DbExecutor, workspaceId: string, placeholders: Placeho
   return docs;
 }
 
-const PLACEHOLDERS = sql`id::text AS id, doc_key, kind, audience_key, project_id::text AS project_id, object_id, parent_id::text AS parent_id, dm_id::text AS dm_id,
+const PLACEHOLDERS = sql`id::text AS id, doc_key, kind, audience_key, project_id::text AS project_id, object_id, parent_id::text AS parent_id,
   version, status, author_kind, author_id, at, at::text AS at_key`;
 
 /** The index does not fit: `retryAfterMs` says when to try again (its own bound is a longer wait than a busy process). */
@@ -719,7 +718,7 @@ async function hydrate(db: DbExecutor, index: SealedSearchIndex, hits: Hit[], co
   const materialIds = ids((doc) => (doc.kind === 'material' || doc.kind === 'doc' ? doc.objectId : null));
   const versions = materialIds.length ? new Map((await get<{ id: string; current_version: number }>(sql`SELECT id::text AS id, current_version FROM project_materials WHERE id = ANY(${uuids(materialIds)})`)).map((r) => [r.id, Number(r.current_version)])) : new Map<string, number>();
   // A DM is named by its title (sealed), else by the other people in it.
-  const dmIds = ids((doc) => (doc.kind === 'dm_message' ? doc.parentId : doc.dmId));
+  const dmIds = ids((doc) => (doc.kind === 'dm_message' ? doc.parentId : null));
   const dmNames = new Map<string, string | null>();
   if (dmIds.length) {
     const dms = await rowsOf(db, 'dms', sql`SELECT id, workspace_id, kind, pair_key, title FROM dms WHERE id = ANY(${uuids(dmIds)})`);
@@ -737,12 +736,12 @@ async function hydrate(db: DbExecutor, index: SealedSearchIndex, hits: Hit[], co
   }
   return hits.map(({ doc, score }) => {
     const { title, snippet } = headlines(doc, compiled);
-    const dmId = doc.kind === 'dm_message' ? doc.parentId : doc.dmId;
+    const dmId = doc.kind === 'dm_message' ? doc.parentId : null;
     const project = doc.projectId && visible.has(`project:${doc.projectId}`) ? index.doc(`project:${doc.projectId}`) : null;
     return {
       position: { score: scoreText(score), at: doc.atKey, id: doc.id },
       kind: doc.kind, workspaceId: doc.workspaceId, workspaceName: workspaceNames.get(doc.workspaceId) ?? null, objectId: doc.objectId, parentId: doc.parentId,
-      projectId: doc.projectId, projectName: project?.title ?? null, dmId, dmName: dmId ? dmNames.get(dmId) ?? null : null,
+      projectId: doc.projectId, projectName: project?.title ?? null, dmName: dmId ? dmNames.get(dmId) ?? null : null,
       sketchTitle: doc.kind === 'thought' && doc.parentId ? index.doc(`sketch:${doc.parentId}`)?.title ?? null : null,
       workNumber: doc.number, version: doc.version, currentVersion: versions.get(doc.objectId) ?? null, status: doc.status, title, snippet, hasBody: doc.body.length > 0,
       authorName: doc.author ? (doc.author.kind === 'human' ? people.get(doc.author.id) : agents.get(doc.author.id)) ?? null : null,

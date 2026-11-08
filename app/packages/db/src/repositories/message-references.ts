@@ -10,7 +10,7 @@ export type ReferenceOwner = { kind: 'project' | 'dm'; id: string };
 /** What a located map thought is, before any reader's access is decided. Never returned to a caller without that decision. */
 export interface LocatedThought {
   id: string; workspaceId: string; sketchId: string; text: string; updatedAt: Date; sketchTitle: string;
-  scope: 'project' | 'private' | 'dm'; projectId: string | null; dmId: string | null;
+  scope: 'project' | 'private'; projectId: string | null;
   author: { kind: 'human' | 'agent'; id: string } | null;
 }
 export type LocatedMessage =
@@ -72,7 +72,7 @@ export function messageReferenceRows(db: DbExecutor) {
     async thought(id: string, workspaceId: string): Promise<LocatedThought | null> {
       const [row] = await db.select({ id: schema.sketchThoughts.id, workspaceId: schema.sketchThoughts.workspaceId, sketchId: schema.sketchThoughts.sketchId,
         text: schema.sketchThoughts.text, updatedAt: schema.sketchThoughts.updatedAt, sketchTitle: schema.sketches.title, scope: schema.sketches.scope,
-        projectId: schema.sketches.projectId, dmId: schema.sketches.dmId, userId: schema.sketchThoughts.createdByUserId, agentId: schema.sketchThoughts.createdByAgentId })
+        projectId: schema.sketches.projectId, userId: schema.sketchThoughts.createdByUserId, agentId: schema.sketchThoughts.createdByAgentId })
         .from(schema.sketchThoughts).innerJoin(schema.sketches, eq(schema.sketches.id, schema.sketchThoughts.sketchId))
         .where(and(eq(schema.sketchThoughts.id, id), eq(schema.sketchThoughts.workspaceId, workspaceId)));
       if (!row) return null;

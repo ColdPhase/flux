@@ -22,6 +22,12 @@ async function addThought(actor: Person, sketchId: string, body: Record<string, 
   return expectStatus(await actor.browser.request('POST', `/api/v1/sketches/${sketchId}/thoughts`, { body }), 201, 'add thought') as CreatedThought;
 }
 
+/** The person's one private map in a workspace (#947): found, or made the first time. */
+async function ownMap(actor: Person, workspaceId: string, title = 'My map') {
+  const listed = expectStatus(await actor.browser.request('GET', `/api/v1/workspaces/${workspaceId}/sketches?scope=private&limit=100`), 200) as SketchPage;
+  return listed.items[0] ?? await createSketch(actor, workspaceId, { title, scope: 'private' });
+}
+
 async function detail(actor: Person, sketchId: string) {
   return expectStatus(await actor.browser.request('GET', `/api/v1/sketches/${sketchId}`), 200, 'get sketch') as SketchDetail;
 }
@@ -90,7 +96,6 @@ describe('sketch access', () => {
     assert.deepEqual(created.thought.source, {
       author: { kind: 'human', id: bob.id, name: 'sketch-bob' },
       sentAt: conversation.messages[0]!.createdAt,
-      dmMessageId: null,
       projectMessageId: sourceId,
     });
     assert.ok(Number.isFinite(Date.parse(created.thought.source!.sentAt)));
@@ -134,14 +139,14 @@ describe('sketch access', () => {
     const elsewhere = await project(alice, ws.id, 'Place elsewhere', 'workspace');
     expectStatus(await alice.browser.request('GET', `/api/v1/projects/${elsewhere.id}/messages/${messageId}/place`), 404, 'a message of another project');
     // A private sketch's thought from the same message is not the project's: the chip never names it.
-    const mine = await createSketch(alice, ws.id, { title: 'Mine', scope: 'private' });
+    const mine = await ownMap(alice, ws.id);
     expectStatus(await alice.browser.request('POST', `/api/v1/sketches/${mine.id}/thoughts`, { body: { text: 'private', x: 0, y: 0 } }), 201);
     const again = expectStatus(await alice.browser.request('GET', `/api/v1/projects/${lamp.id}/work-associations?messageIds=${messageId}&relation=source`), 200) as WorkAssociations;
     assert.equal(again.thoughts?.length, 1);
   });
 
   test('a private sketch is visible only to its author: never through the project, to admins or to agents', async () => {
-    const mine = await createSketch(alice, ws.id, { title: 'Just me', scope: 'private' });
+    const mine = await ownMap(alice, ws.id);
     assert.equal(mine.scope, 'private');
     assert.equal(mine.projectId, null);
     assert.equal('participants' in mine, false, 'no participant lists until DM-bound sketches (#36)');
@@ -154,7 +159,7 @@ describe('sketch access', () => {
       assert.equal(event.objectType, 'sketch');
       assert.equal(JSON.stringify(event).includes('Half'), false, 'events carry identifiers, never content');
       // A later workspace event reaches the admin; the private one before it never did.
-      const marker = await createSketch(carol, ws.id, { title: 'Carol’s own', scope: 'private' });
+      const marker = await ownMap(carol, ws.id);
       await carolStream.event(marker.id);
       assert.ok(!carolStream.events.some((e) => e.objectId === mine.id), 'the private event never reached the admin');
     } finally {
@@ -425,32 +430,55 @@ describe('sketch access', () => {
 
   test('hideEmpty leaves out sketches with no thought and the default title, and a list gives each thought count (#508)', async () => {
     const list = async (actor: Person, query: string) => expectStatus(await actor.browser.request('GET', `/api/v1/workspaces/${ws.id}/sketches?${query}`), 200) as SketchPage;
-    const empty = await createSketch(carol, ws.id, { title: UNTITLED_SKETCH, scope: 'private' });
-    const named = await createSketch(carol, ws.id, { title: 'Bed layout', scope: 'private' });
-    const filled = await createSketch(carol, ws.id, { title: UNTITLED_SKETCH, scope: 'private' });
-    await addThought(carol, filled.id, { text: 'Beans on the south side', x: 0, y: 0 });
-    await addThought(carol, filled.id, { text: 'Radio range', x: 200, y: 0 });
-    const projectEmpty = await createSketch(bob, ws.id, { title: UNTITLED_SKETCH, scope: 'project', projectId: lamp.id });
+    const empty = await createSketch(bob, ws.id, { title: UNTITLED_SKETCH, scope: 'project', projectId: lamp.id });
+    const named = await createSketch(bob, ws.id, { title: 'Bed layout', scope: 'project', projectId: lamp.id });
+    const filled = await createSketch(bob, ws.id, { title: UNTITLED_SKETCH, scope: 'project', projectId: lamp.id });
+    await addThought(bob, filled.id, { text: 'Beans on the south side', x: 0, y: 0 });
+    await addThought(bob, filled.id, { text: 'Radio range', x: 200, y: 0 });
 
-    const all = await list(carol, 'scope=private');
+    const all = await list(bob, `projectId=${lamp.id}`);
     assert.ok([empty, named, filled].every((sketch) => all.items.some((item) => item.id === sketch.id)), 'without hideEmpty every sketch is listed');
-    const shown = await list(carol, 'scope=private&hideEmpty=true');
+    const shown = await list(bob, `projectId=${lamp.id}&hideEmpty=true`);
     assert.ok(!shown.items.some((item) => item.id === empty.id), 'an empty, untitled sketch is not listed');
     assert.ok(shown.items.some((item) => item.id === named.id), 'a named sketch stays, even with no thought');
     assert.equal(shown.items.find((item) => item.id === filled.id)?.thoughtCount, 2, 'a sketch with thoughts stays and counts them');
     assert.equal(shown.items.find((item) => item.id === named.id)?.thoughtCount, 0);
-    assert.equal(shown.total, all.total - 1, 'the total leaves the empty sketch out too');
+    const hidden = all.items.filter((item) => item.title === UNTITLED_SKETCH && item.thoughtCount === 0).length;
+    assert.ok(hidden >= 1);
+    assert.equal(shown.total, all.total - hidden, 'the total leaves the empty sketches out too');
     // The filter runs before the limit: a page of one is the newest sketch with content, not an empty slot.
-    const first = await list(carol, 'scope=private&hideEmpty=true&limit=1');
+    const first = await list(bob, `projectId=${lamp.id}&hideEmpty=true&limit=1`);
     assert.equal(first.items.length, 1);
     assert.notEqual(first.items[0]!.id, empty.id);
-    const shownProject = await list(bob, `projectId=${lamp.id}&hideEmpty=true`);
-    assert.ok(!shownProject.items.some((item) => item.id === projectEmpty.id), 'the project Map index leaves it out too');
-    expectStatus(await carol.browser.request('GET', `/api/v1/workspaces/${ws.id}/sketches?hideEmpty=maybe`), 400, 'hideEmpty is true or false');
+    expectStatus(await bob.browser.request('GET', `/api/v1/workspaces/${ws.id}/sketches?hideEmpty=maybe`), 400, 'hideEmpty is true or false');
+  });
+
+  test('a person has one private map in a company: a second is refused, whoever else may have theirs (#947)', async () => {
+    const solo = await person('sketch-solo');
+    const home = await workspace(solo, 'One map each');
+    await createSketch(solo, home.id, { title: 'My map', scope: 'private' });
+    const second = await solo.browser.request('POST', `/api/v1/workspaces/${home.id}/sketches`, { body: { title: 'Another map', scope: 'private' } });
+    assert.equal(second.status, 409, second.text);
+    assert.equal((second.json as { code: string }).code, 'MY_MAP_EXISTS');
+    // Two requests with different keys at the same moment make one map: the database stops the one the check could not see.
+    const racer = await person('sketch-racer');
+    await addMember(solo, home.id, racer, 'member');
+    const raced = await Promise.all([1, 2].map((n) => racer.browser.request('POST', `/api/v1/workspaces/${home.id}/sketches`,
+      { body: { title: 'Raced', scope: 'private' }, headers: { 'idempotency-key': `race-${n}-${randomUUID()}` } })));
+    assert.deepEqual(raced.map((response) => response.status).sort(), [201, 409]);
+    // Project maps are many, another person has their own, and so does the same person in another company.
+    await createSketch(solo, home.id, { title: 'A space map', scope: 'project', projectId: (await project(solo, home.id, 'A space', 'workspace')).id });
+    const friend = await person('sketch-solo-friend');
+    await addMember(solo, home.id, friend, 'member');
+    await createSketch(friend, home.id, { title: 'My map', scope: 'private' });
+    const elsewhere = await workspace(solo, 'Another company');
+    await createSketch(solo, elsewhere.id, { title: 'My map', scope: 'private' });
+    const listed = expectStatus(await solo.browser.request('GET', `/api/v1/workspaces/${home.id}/sketches?scope=private&limit=100`), 200) as SketchPage;
+    assert.equal(listed.total, 1);
   });
 
   test('input is validated', async () => {
-    const sketch = await createSketch(alice, ws.id, { title: 'Checks', scope: 'private' });
+    const sketch = await ownMap(alice, ws.id);
     const cases: [Record<string, unknown>, string][] = [
       [{ text: '   ', x: 0, y: 0 }, 'blank text'],
       [{ text: 'x', x: 200_001, y: 0 }, 'x out of range'],

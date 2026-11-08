@@ -276,20 +276,6 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
     }
   });
 
-  test('a promoted DM map lists its copy with the opened project name', async () => {
-    for (const [side, ws] of [['A', A], ['B', B]] as const) {
-      const c = canaries[side];
-      const dm = await post(ada, `/api/v1/workspaces/${ws}/dms`, { participantIds: [ben.id, cy.id], title: `Copy ${side}` }, 201);
-      const sketch = await post(ada, `/api/v1/workspaces/${ws}/sketches`, { title: `${c.mapTitle} dm`, scope: 'dm', dmId: dm.id }, 201);
-      await post(ada, `/api/v1/sketches/${String(sketch.id)}/thoughts`, { text: `${c.thought} dm`, x: 0, y: 0 }, 201);
-      const preview = expectStatus(await ada.browser.request('GET', `/api/v1/sketches/${String(sketch.id)}/promotion?target=new&participants=none`), 200, `${side}: preview`) as { token: string };
-      const name = `${c.project} copy`;
-      await post(ada, `/api/v1/sketches/${String(sketch.id)}/promotion`, { target: { kind: 'new', name }, token: preview.token, participants: 'none' }, 201);
-      const source = expectStatus(await ada.browser.request('GET', `/api/v1/sketches/${String(sketch.id)}`), 200, `${side}: source`) as { copies?: { projectName: string }[] };
-      assert.deepEqual(source.copies?.map((copy) => copy.projectName), [name], `${side}: the copy shows the opened project name`);
-    }
-  });
-
   test('a file of A is sealed on disk as it arrives and served opened; its name and digest are sealed; a tampered object is never served (S2a-2b-2)', async () => {
     const objectFile = async (id: string) => {
       const find = async (dir: string): Promise<string | null> => {

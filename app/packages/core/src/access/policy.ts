@@ -45,10 +45,7 @@ export type { Actor, LoadOptions, SpaceAi } from './ports.js';
  *   contributor. A `private` sketch is readable and changeable only by the
  *   person who created it while they are active in the workspace; owners and admins do not
  *   see it, and agents never do. `sketch.create` in a workspace is a private sketch by an
- *   active person; a project sketch needs `project.write` on its project. A `dm` sketch (#96)
- *   belongs to one DM: exactly its current participants read it, and they change it while the
- *   DM is open (a 1:1 whose other person left is read-only until that person reopens it).
- *   Owners, admins and agents outside the DM never see it.
+ *   active person (one for each person in a company, #947); a project sketch needs `project.write` on its project.
  * - Direct messages (issue #107): a DM's audience is exactly its current participants. Only a
  *   participant who is active in the workspace reads or writes it; workspace owners and admins
  *   who are not participants never see it, and agents never do in this slice. `dm.create` is
@@ -124,31 +121,6 @@ export function accessName(level: number): ProjectAccess | null {
   if (level >= LEVEL.manager) return 'manager';
   if (level >= LEVEL.contributor) return 'contributor';
   return null;
-}
-
-/**
- * Promotion of a DM sketch (#96) must commit exactly the audience it previewed. Before the
- * sketch is evaluated, this takes the rows every audience change locks first, FOR SHARE: the
- * workspace row (member added, removed or re-roled: `lockWorkspace`, FOR NO KEY UPDATE) and, for
- * an existing target, the project row (grants and visibility: `lockProjectForGrantChange`). The
- * global order stays workspace, project, membership, sketch, DM, participants.
- */
-export async function lockPromotionScope(reader: Pick<AccessReader, 'sketchWorkspace' | 'lockWorkspaceForShare' | 'lockProjectForShare'>, sketchId: string, projectId: string | null): Promise<void> {
-  if (!isUuid(sketchId)) return;
-  const workspaceId = await reader.sketchWorkspace(sketchId);
-  if (workspaceId === null) return;
-  await reader.lockWorkspaceForShare(workspaceId);
-  if (projectId && isUuid(projectId)) await reader.lockProjectForShare(projectId);
-}
-
-/**
- * Locks every participant row of a DM FOR SHARE, in user id order, after the DM row, and returns
- * the participants. A leave (DM row, then its own row) or a membership removal (which deletes
- * participant rows by cascade) then waits until the caller's change commits.
- */
-export async function lockDmParticipants(reader: Pick<AccessReader, 'lockDmForShare' | 'lockParticipantsForShare'>, dmId: string): Promise<string[]> {
-  await reader.lockDmForShare(dmId);
-  return reader.lockParticipantsForShare(dmId);
 }
 
 /** Why a DM cannot take changes now: the other person of a 1:1 left it or the workspace (#107, #96). */
@@ -307,20 +279,11 @@ export async function evaluateSketch<S extends SketchFacts = SketchFacts>(princi
     await reader.lockSketchForNoKeyUpdate(sketchId);
     // A private sketch depends only on its owner's membership, which loadActor locked.
     if (located.projectId) await reader.lockProjectAccess(actor, located.projectId);
-    // A DM sketch depends on the caller's participant row: a concurrent leave (which deletes it)
-    // or membership removal (which cascades to it) is either seen or waits for this change (#96).
-    // The DM row comes first (FOR SHARE), as leave() takes it first (FOR NO KEY UPDATE), so a
-    // leave either commits before this change or waits for it, and the two never deadlock.
-    if (located.dmId && principal.kind === 'human') {
-      await reader.lockDmForShare(located.dmId);
-      await reader.lockParticipantForShare(located.dmId, principal.id);
-    }
   }
   const row = await reader.readSketch(actor, sketchId);
   if (!row || !row.readable) return { ...none, actor };
   let allowed: boolean;
   if (action === 'sketch.read' || row.sketch.scope === 'private') allowed = true;
-  else if (row.sketch.scope === 'dm') allowed = !(await dmClosedFor(reader, row.sketch.dmId!, principal.id));
   else allowed = row.level >= LEVEL.contributor;
   return { allowed, visible: true, actor, sketch: row.sketch };
 }

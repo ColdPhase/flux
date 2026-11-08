@@ -1,4 +1,4 @@
-import type { DmKind, DmPerson, MessageReference, PageQuery, PromotionPerson, WorkItem } from '@flux/contracts';
+import type { DmKind, DmPerson, MessageReference, PageQuery, DmTaskCopyPerson, WorkItem } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 
 /**
@@ -126,13 +126,13 @@ export interface DmEventLog {
 
 /**
  * What copying a private message excerpt into a project task needs from the project side (#537). Implemented over
- * the same project use cases and access policy as the sketch promotion: no second authority.
+ * the project use cases and the access policy: no second authority.
  */
 export interface DmTaskCopy {
   /** Projects the caller may change, sorted by name. */
   targets(principal: Principal, workspaceId: string): Promise<{ id: string; name: string }[]>;
   /** Who can open a task in this project now (the policy's list, per person). Throws like `project.write`. */
-  audience(principal: Principal, workspaceId: string, projectId: string): Promise<{ people: PromotionPerson[]; projectName: string }>;
+  audience(principal: Principal, workspaceId: string, projectId: string): Promise<{ people: DmTaskCopyPerson[]; projectName: string }>;
   /** Locks the rows every change of that audience locks (workspace, then the project), FOR SHARE, until commit. */
   lockDestination(workspaceId: string, projectId: string): Promise<void>;
   /** The project's own task creation, in this unit of work: its checks, retry identity, events and history. */

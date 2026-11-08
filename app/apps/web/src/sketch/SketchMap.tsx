@@ -387,7 +387,7 @@ export function SketchMap(props: SketchMapProps) {
       const gap = 12;
       const maxX = Math.max(14, pane.width - box.width - 14);
       const maxY = Math.max(14, pane.height - box.height - 14);
-      const obstacles = [...wrap.parentElement!.querySelectorAll<HTMLElement>('.sk-node, .sk-work-slot, .sk-actions, .sk-ghost--draft, .sk-wires .sk-wire, .sk-head, .sk-dock__row, .sk-dock .sk-line, .sk-dock > .sk-hint, .sk-origin, .sk-copies')]
+      const obstacles = [...wrap.parentElement!.querySelectorAll<HTMLElement>('.sk-node, .sk-work-slot, .sk-actions, .sk-ghost--draft, .sk-wires .sk-wire, .sk-head, .sk-dock__row, .sk-dock .sk-line, .sk-dock > .sk-hint')]
         .map((el) => {
           const r = el.getBoundingClientRect();
           return { left: r.left - pane.left, top: r.top - pane.top, right: r.right - pane.left, bottom: r.bottom - pane.top,

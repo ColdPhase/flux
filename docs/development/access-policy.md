@@ -147,11 +147,9 @@ a private draft, not even to owners.
 **Sketches** (#69, details in [sketches.md](sketches.md)). A `project` sketch is
 readable and changeable with project access, so every project rule above applies unchanged. A `private` sketch is readable and
 changeable only by the person who created it, while they are active in the workspace.
-Owners, admins and agents (including the author's own agent) never see it. A `dm`
-sketch ([#96](https://github.com/ColdPhase/flux/issues/96)) references its DM by a foreign key.
-Exactly the DM's current participants read it, and they change it while the DM is open. A 1:1
-whose other person left is read-only (`403`) until that person reopens it. Owners, admins,
-agents and people who left get `404`. Sketch events (`sketch.*.v1`) are authorized as
+Owners, admins and agents (including the author's own agent) never see it. Each person has at most one
+private sketch in a company (#947; a second answers `409 MY_MAP_EXISTS`, and a unique index holds the rule). A direct message
+has no sketches (#947). Sketch events (`sketch.*.v1`) are authorized as
 `sketch.read` on the sketch.
 
 **Direct messages** (#107, details in [direct-messages.md](direct-messages.md)). A DM's

@@ -51,8 +51,7 @@ export interface SearchRow {
   parentId: string | null;
   projectId: string | null;
   projectName: string | null;
-  /** The DM of a DM message, or of a sketch or thought that belongs to a DM (#96). */
-  dmId: string | null;
+  /** The name of the DM of a DM message. */
   dmName: string | null;
   sketchTitle: string | null;
   /** A task's number in its project (#514). */
