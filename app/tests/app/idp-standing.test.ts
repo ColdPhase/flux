@@ -451,8 +451,8 @@ describe('the check', () => {
     const [workspaceId, agentId, connectionId] = [randomUUID(), randomUUID(), randomUUID()];
     await pool.query(`INSERT INTO workspaces (id, name, created_by) VALUES ($1, 'Standing', $2)`, [workspaceId, userId]);
     await pool.query(`INSERT INTO agents (id, workspace_id, name, owner_user_id, created_by) VALUES ($1, $2, 'Assistant', $3, $3)`, [agentId, workspaceId, userId]);
-    await pool.query(`INSERT INTO agent_connections (id, workspace_id, owner_user_id, agent_id, name, compute_source, scopes)
-      VALUES ($1, $2, $3, $4, 'Assistant', 'owner_assistant', ARRAY['flux.context.read'])`, [connectionId, workspaceId, userId, agentId]);
+    await pool.query(`INSERT INTO agent_connections (id, workspace_id, owner_user_id, agent_id, name, compute_source)
+      VALUES ($1, $2, $3, $4, 'Assistant', 'owner_assistant')`, [connectionId, workspaceId, userId, agentId]);
     await pool.query(`INSERT INTO assistant_settings (workspace_id, owner_user_id, agent_id, connection_id, engine, api_key_id, provider, model)
       VALUES ($1, $2, $3, $4, $5, $6, 'anthropic', $7)`, [workspaceId, userId, agentId, connectionId, engine, engine === 'server' ? randomUUID() : null, engine === 'runtime' ? 'sonnet' : 'claude-sonnet-5']);
     await service.recordSignIn(userId, 'kept-offline-token');
