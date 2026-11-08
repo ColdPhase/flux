@@ -64,5 +64,3 @@ test('a genuine foreign agent exact grant cannot Undo another creator; revoked c
   assert.notEqual(revoked.status, 200, 'Revocation refuses before tool execution');
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM task_creation_undo_receipts WHERE work_id=$1', [item.id])).rows[0].n, 0);
 });
-
-});

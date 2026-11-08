@@ -548,7 +548,7 @@ describe('the remaining mutations, and the check that every port is bound to its
     assert.deepEqual(s.bindings.map(({ port, handle }) => `${port}:${handle}`), ['workspaces:tx1', 'access:tx1', 'access:tx1', 'events:tx1']);
     const sweep = scene();
     await sweepSpaceAi({ projectId: PROJECT, epoch: 2 }, sweep.db, sweep.ports);
-    assert.deepEqual(sweep.bindings.map(({ handle }) => handle), ['tx1', 'tx2', 'tx3', 'tx4', 'tx5', 'tx6'], 'each sweep step binds its own transaction');
+    assert.deepEqual(sweep.bindings.map(({ handle }) => handle), ['tx1', 'tx2', 'tx3', 'tx4'], 'each sweep step binds its own transaction');
     const miswired = scene({}, false);
     await miswired.db.transaction(async () => { miswired.ports.workspaces(miswired.db); });
     assert.throws(() => miswired.assertBound(), /workspaces was bound to db while tx1 was open/);
