@@ -20,7 +20,7 @@ class LiveUndoStatus(LiveFixture):
         first, second = self.thoughts[0], self.thoughts[1]
         node = lambda thought: ada.locator(f'.sk-node[data-id="{thought["id"]}"]')
         status = ada.locator('.sk-status')
-        undo = ada.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Undo', exact=True)
+        undo = ada.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Undo', exact=True)
 
         await node(first).focus()
         await ada.keyboard.press('Delete')

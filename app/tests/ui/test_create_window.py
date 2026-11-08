@@ -270,7 +270,7 @@ class CreateWindow(unittest.TestCase):
             sheet = page.get_by_role("dialog", name="Create")
             expect(sheet).to_be_visible()
             tiles = sheet.locator(".phone-create__grid").get_by_role("button")
-            self.assertEqual([item.strip() for item in tiles.all_inner_texts()], ["Task", "Thought", "Message", "Decision", "File or link", "Sketch", "Space"])
+            self.assertEqual([item.strip() for item in tiles.all_inner_texts()], ["Task", "Thought", "Message", "Decision", "File or link", "Map", "Space"])
             for tile in tiles.all():
                 self.assertGreaterEqual(tile.bounding_box()["height"], 44)
             shot(page, f"345-create-sheet-390-{scheme}")
@@ -625,7 +625,7 @@ class CreateWindow(unittest.TestCase):
         expect(title_field(page)).to_have_value(f"{text} today")
         expect(kind_tab(page, "Task")).to_have_attribute("aria-selected", "true")
 
-    def test_18_thought_saves_a_private_note_from_the_window(self) -> None:
+    def test_18_thought_is_added_to_my_map_from_the_window(self) -> None:
         self.ensure_account()
         page = self.page()
         self.open_window(page)
@@ -635,11 +635,26 @@ class CreateWindow(unittest.TestCase):
         thought = page.get_by_role("dialog", name="New thought")
         expect(thought.get_by_role("textbox", name="Thought", exact=True)).to_have_value(text)
         expect(thought.get_by_role("tabpanel").locator(".create__where")).to_contain_text("Only you")
+        expect(thought.get_by_role("tabpanel").locator(".create__foot")).to_contain_text("Added to My map")
         thought.get_by_role("button", name=re.compile("^Save thought")).click()
         expect(window(page)).to_have_count(0)
-        expect(page.locator(".ui-toast").filter(has_text="Thought saved to Your notes")).to_be_visible()
-        drafts = self.api(page, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/drafts?limit=100", status=200)["items"]
-        self.assertEqual([(item["body"], item["visibility"]) for item in drafts if item["body"] == text], [(text, "private")])
+        expect(page.locator(".ui-toast").filter(has_text="Thought added to My map")).to_be_visible()
+        # It is a thought on the person's one private map: a second one lands on the same map, in its own place.
+        maps = self.api(page, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/sketches?scope=private&limit=100", status=200)["items"]
+        self.assertEqual([item["title"] for item in maps], ["My map"])
+        first = self.api(page, "GET", f"/api/v1/sketches/{maps[0]['id']}", status=200)
+        self.assertEqual([(item["text"]) for item in first["thoughts"] if item["text"] == text], [text])
+        page.locator("body").press("c")
+        create_other(page, "Thought")
+        second = f"A second thought for My map {uuid.uuid4().hex[:6]}"
+        page.get_by_role("dialog", name="New thought").get_by_role("textbox", name="Thought", exact=True).fill(second)
+        page.get_by_role("dialog", name="New thought").get_by_role("button", name=re.compile("^Save thought")).click()
+        expect(window(page)).to_have_count(0)
+        again = self.api(page, "GET", f"/api/v1/sketches/{maps[0]['id']}", status=200)
+        placed = {item["text"]: (item["x"], item["y"]) for item in again["thoughts"] if item["text"] in (text, second)}
+        self.assertEqual(set(placed), {text, second})
+        self.assertNotEqual(placed[text], placed[second], "each thought has its own place")
+        self.assertEqual(len(self.api(page, "GET", f"/api/v1/workspaces/{self.ids['workspace']}/sketches?scope=private&limit=100", status=200)["items"]), 1, "still one map")
         # What it was made from is done with: the next window starts blank.
         page.locator("body").press("c")
         expect(title_field(page)).to_have_value("")

@@ -112,7 +112,7 @@ class LiveEditingOffJourney(unittest.TestCase):
         thought.press("Delete")
         expect(page.locator(".sk-status")).to_contain_text("Saved")
         expect(thought).to_have_count(0)
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
+        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Undo", exact=True).click()
         expect(page.locator(".sk-status")).to_contain_text("Undid: removed a thought")
         expect(page.locator(".sk-node", has_text="Distance sensor")).to_be_visible()
         time.sleep(0.5)
@@ -138,7 +138,7 @@ class LiveEditingOffJourney(unittest.TestCase):
         resized = self.api(page, 'GET', f'/api/v1/sketches/{map_id}', status=200)['thoughts'][0]
         self.assertEqual((resized['width'], resized['height']), (before['width'] + 48, start_height + 24))
         self.assertEqual((resized['text'], resized['x'], resized['y']), (before['text'], before['x'], before['y']))
-        page.get_by_role('toolbar', name='Sketch tools').get_by_role('button', name='Undo', exact=True).click()
+        page.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Undo', exact=True).click()
         expect(thought).to_have_attribute('data-thought-version', str(resized['version'] + 1))
         undone = self.api(page, 'GET', f'/api/v1/sketches/{map_id}', status=200)['thoughts'][0]
         self.assertEqual((undone['width'], undone['height']), (before['width'], before['height']))

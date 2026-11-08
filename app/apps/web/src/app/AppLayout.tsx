@@ -20,7 +20,7 @@ import { arrivalEntry, entryOf, onFlush, recall, remember as keepPlace, setCurre
 import { RouteOriginBack, useGoToOrigin, useRouteOrigin } from '../place/origin';
 import { restoreTop, usePaneMemory } from '../place/scroll';
 import { Sidebar } from './Sidebar';
-import { startCapture, viewIndex } from './views';
+import { viewIndex } from './views';
 import { PROJECT_VIEWS, SPACE_AI_POLICY_CHANGED_EVENT, type ProjectViewId } from '@flux/contracts';
 import { addProjectView } from '../project/api';
 import { addableViews, audienceLine, shownViews, useProjectShell } from '../project/data';
@@ -655,8 +655,8 @@ function AppLayoutContent() {
     ? { crumb: null, title: 'Your assistant', topic: 'Only you can use it · optional', noDetails: true }
     : activeProject
     ? { crumb: null, title: activeProject.name, topic: audience }
-    : location.pathname === '/map'
-    // The Sketchbook is named as such (#508); its privacy line is the first line of the page, at every width.
+    : /^\/map(\/|$)/.test(location.pathname)
+    // My map (#866) is named in the header at its own address too; its privacy line is the first thing in the map's head.
     ? { crumb: null, title: 'My map', topic: '' }
     : where === 'inbox'
       ? location.pathname.startsWith('/settings/')
@@ -891,7 +891,7 @@ function AppLayoutContent() {
         ) : null}
       </div>
 
-      {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} go={(to) => void navigate(to)} onThought={() => startCapture(navigate)} /> : null}
+      {phone ? <PhoneCreate open={createOpen} onClose={() => setCreateOpen(false)} projects={projects} projectId={projectId} go={(to) => void navigate(to)} /> : null}
       <CreateHost request={create} onClose={() => setCreate(null)} />
       <DeferredJumpTo open={jumpOpen} onClose={() => setJumpOpen(false)} userId={me.user.id} />
     </div>

@@ -141,15 +141,15 @@ export function PhoneHomeLead() {
 interface Tile { id: string; label: string; icon: IconName; run: (() => void) | null; hint?: string; pick?: boolean }
 
 /**
- * "+" Create (F-026 S2, S3): Task, Thought, Message, Decision, File or link, Sketch and Space. Each tile starts that
+ * "+" Create (F-026 S2, S3): Task, Thought, Message, Decision, File or link, Map and Space. Each tile starts that
  * thing where it is made, in the project you are in or the one chosen here: Task opens a new task,
  * Decision the "Propose a decision" sheet, and File or link the file picker inside the tap; the picked
  * files join the project's message draft (a cancelled picker leaves the composer ready for a link). Space
  * opens the New space window (F-037), which is made in the company and needs no space chosen; a guest does not start spaces.
  */
-export function PhoneCreate({ open, onClose, projects, projectId, go, onThought }: {
+export function PhoneCreate({ open, onClose, projects, projectId, go }: {
   open: boolean; onClose: () => void; projects: ProjectSummary[]; projectId: string | undefined;
-  go: (to: string) => void; onThought: () => void;
+  go: (to: string) => void;
 }) {
   const titleId = useId();
   const { me, workspace } = useShellData();
@@ -178,11 +178,11 @@ export function PhoneCreate({ open, onClose, projects, projectId, go, onThought 
   });
   const tiles: Tile[] = [
     { id: 'task', label: 'Task', icon: 'plus', run: chosen ? () => { onClose(); requestAnimationFrame(() => openCreate({ kind: 'task', projectId: chosen.id })); } : null, hint: 'needs a space' },
-    { id: 'thought', label: 'Thought', icon: 'edit', run: () => { onClose(); onThought(); } },
+    { id: 'thought', label: 'Thought', icon: 'edit', run: () => { onClose(); requestAnimationFrame(() => openCreate({ kind: 'thought' })); } },
     { id: 'message', label: 'Message', icon: 'chat', run: to('/dm/new') },
     { id: 'decision', label: 'Decision', icon: 'rule', run: to(inProject && `${inProject}?open=propose-decision`), hint: 'needs a space' },
     { id: 'file', label: 'File or link', icon: 'clip', hint: 'needs a space', pick: true, run: inProject ? () => setPickerOpen(true) : null },
-    { id: 'sketch', label: 'Sketch', icon: 'shape', run: to(inProject ? `${inProject}/map` : '/map') },
+    { id: 'map', label: 'Map', icon: 'shape', run: to(inProject ? `${inProject}/map` : '/map') },
     { id: 'space', label: 'Space', icon: 'people', run: workspace?.role === 'guest' ? null : () => { onClose(); requestAnimationFrame(() => openCreate({ kind: 'project' })); },
       hint: 'not for guests' },
   ];

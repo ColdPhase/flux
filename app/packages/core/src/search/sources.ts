@@ -80,7 +80,7 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
     target: (row) => ({ type: 'result', projectId: inProject(row), id: row.objectId }),
   },
   sketch: {
-    filter: 'sketch', audience: 'sketch', textIsTitle: false, label: (row) => (row.status === 'private' ? 'Private sketch' : row.status === 'dm' ? 'Sketch in a direct message' : 'Sketch'),
+    filter: 'sketch', audience: 'sketch', textIsTitle: false, label: (row) => (row.status === 'private' ? 'My map' : row.status === 'dm' ? 'Map in a direct message' : 'Map'),
     target: (row) => ({ type: 'sketch', sketchId: row.objectId, dmId: row.dmId }),
   },
   thought: {

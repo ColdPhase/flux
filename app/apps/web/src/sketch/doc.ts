@@ -260,7 +260,7 @@ export function useSketchDoc(sketchId: string, me: Me) {
     inFlight.current += 1;
     setSaving(true);
     queue.current = queue.current.then(() => send(op)).catch(() => {
-      setProblem('A change couldn’t be saved. The sketch was reloaded from the server.');
+      setProblem('A change couldn’t be saved. The map was reloaded from the server.');
       staleRef.current = true;
     }).finally(() => {
       inFlight.current -= 1;

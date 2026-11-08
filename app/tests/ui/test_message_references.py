@@ -284,7 +284,7 @@ class MessageReferences(unittest.TestCase):
 
     def test_e_cite_the_selected_thought_from_the_map(self) -> None:
         page = self.page("ada", path=f"/map/{self.ids['sketch']}")
-        tools = page.get_by_role("toolbar", name="Sketch tools")
+        tools = page.get_by_role("toolbar", name="Map tools")
         cite = tools.get_by_role("button", name="Cite the selected thought in the conversation")
         expect(cite).to_have_attribute("aria-disabled", "true")
         page.locator(f".sk-node[data-id='{self.ids['thought']}']").click()

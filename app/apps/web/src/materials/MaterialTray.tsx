@@ -1,5 +1,5 @@
 import type { Material } from '@flux/contracts';
-import { Button, Icon, Input, Option, Select } from '../ui';
+import { Button, Icon, Input } from '../ui';
 import { day } from '../app/messageParts';
 import { RefLink } from '../place/origin';
 import type { ProjectMaterials } from './useProjectMaterials';
@@ -30,11 +30,9 @@ export function MaterialTray({ materials, projectName, writable, inThread, compo
 
 function MaterialForm({ form, composerId }: { form: ProjectMaterials['form']; composerId: string }) {
   return <form className="project-convo__material-form" onSubmit={(event) => void form.submit(event)}><fieldset className="project-convo__material-fields" disabled={form.busy}>
-    {form.privateDrafts.length ? <label>Start from a private draft<Select value={form.sourceDraft?.id ?? ''} onChange={form.chooseDraft}><Option value="">No private draft</Option>{form.privateDrafts.map((item) => <Option key={item.id} value={item.id}>{item.title} · v{item.version}</Option>)}</Select></label> : null}
     <Input label="Title" value={form.title} onChange={(event) => form.setTitle(event.target.value)} required maxLength={200} />
     <label htmlFor={`${composerId}-material-body`}>Text</label><textarea id={`${composerId}-material-body`} value={form.body} onChange={(event) => form.setBody(event.target.value)} maxLength={100000} />
     <Input label="Link (optional)" type="url" value={form.url} onChange={(event) => form.setUrl(event.target.value)} />
-    {form.sourceDraft ? <p className="project-convo__publication">Publishing selected content from private draft v{form.sourceDraft.version}. Review the exact text and link above. Your original draft remains private.</p> : null}
     {form.error ? <p role="alert">{form.error}</p> : null}
     <div className="project-convo__form-actions"><Button type="submit" variant="primary" busy={form.busy}>Save for this space</Button><Button variant="quiet" disabled={form.busy} onClick={() => form.setOpen(false)}>Cancel</Button></div>
   </fieldset></form>;

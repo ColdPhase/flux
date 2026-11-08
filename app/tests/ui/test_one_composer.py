@@ -1,4 +1,4 @@
-"""One composer in the conversation, a thread, a direct message, the task panel and the Sketchbook (#504).
+"""One composer in the conversation, a thread, a direct message, and the task panel (#504; the Sketchbook's note composer is gone, #866).
 
 Writing looks and works the same everywhere: "+", the field and the inverted round send button, in the same
 places; only the placeholder says where the text goes; the audience line sits under the box in one form.
@@ -81,7 +81,6 @@ class OneComposer(unittest.TestCase):
         yield "dm", f"/dm/{self.dm}", "#dm-composer"
         yield "dm-thread", f"/dm/{self.dm}?thread={self.dm_root}", "#dm-thread-composer"
         yield "task", f"/projects/{self.project}/tasks?open=work:{self.task}", "#details .wd-composer textarea"
-        yield "notes", "/map", "#composer"
 
     def measure(self, field):
         return field.evaluate("""el => {

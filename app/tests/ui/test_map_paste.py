@@ -182,7 +182,7 @@ class MapPasteJourney(unittest.TestCase):
         self.assertEqual([method for method, url in writes if url.endswith(f"/{self.sketch}/thoughts")], ["POST", "POST"])
         expect(page.locator(f'.sk-li-t[data-id="{added[0]["id"]}"]')).to_contain_text(added[0]["text"])
         # One undo step removes everything the paste added.
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
+        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Undo", exact=True).click()
         expect(page.locator(".sk-status")).to_contain_text("Undid: added 2 thoughts")
         restored = self.wait_stored(self.owner, lambda current: len(current["thoughts"]) == 1)
         self.assertEqual(restored["thoughts"], self.before["thoughts"])
@@ -247,7 +247,7 @@ class MapPasteJourney(unittest.TestCase):
         expect(page.get_by_role("link", name="Open link example.test in a new tab")).to_have_attribute("rel", "noopener noreferrer")
         # Another scheme stays plain text: no link is rendered for it.
         page.locator(".sk-canvas").click(position={"x": 600, "y": 400})
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Thought", exact=True).click()
+        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).click()
         page.get_by_role("button", name="Cancel", exact=True).click()
         self.paste(page, "javascript:alert(document.cookie)")
         draft = page.get_by_role("form", name="New thought draft")
@@ -303,7 +303,7 @@ class MapPasteJourney(unittest.TestCase):
         node.click()
         page.get_by_role("toolbar", name="Selection actions").get_by_role("button", name="Remove from map").click()
         self.wait_stored(self.owner, lambda current: len(current["thoughts"]) == 1)
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
+        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Undo", exact=True).click()
         restored = self.wait_stored(self.owner, lambda current: len(current["thoughts"]) == 2)
         self.assertEqual(next(t for t in restored["thoughts"] if t["id"] == thought["id"])["file"], thought["file"])
         reader = self.page("viewer")
@@ -328,7 +328,8 @@ class MapPasteJourney(unittest.TestCase):
         # Stored files belong to a project: a private map refuses an image but still takes text.
         private = self.api(page, "POST", f"/api/v1/workspaces/{self.workspace}/sketches", {"title": "Jonas's notes", "scope": "private"}, 201)["id"]
         page.goto(f"/map/{private}")
-        expect(page.get_by_role('button', name="Rename map Jonas's notes", exact=True)).to_be_visible()
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
+        expect(page.locator(".sk-aud")).to_have_text("Only you")  # the map is open, not only the header around it
         self.paste(page, None, self.image())
         expect(page.locator(".sk-status")).to_contain_text("Images can be added to a space’s maps only")
         self.assertEqual(writes, [])
@@ -354,7 +355,7 @@ class MapPasteJourney(unittest.TestCase):
         row.press("F2")
         expect(page.locator(".sk-status")).to_contain_text("Wait for the pasted image to finish uploading")
         expect(page.get_by_label("Thought text", exact=True)).to_have_count(0)
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Thought", exact=True).click()
+        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).click()
         expect(page.get_by_role("form")).to_have_count(0)
         row.focus()
         self.paste(page, "Another idea while uploading")
@@ -481,7 +482,7 @@ class MapPasteJourney(unittest.TestCase):
         self.open(page)
         writes = self.writes(page)
         page.evaluate("text => navigator.clipboard.writeText(text)", LINES)
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Thought", exact=True).tap()
+        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).tap()
         page.get_by_role("button", name="Paste lines, a link or an image", exact=True).tap()
         draft = page.get_by_role("form", name="Pasted thoughts draft")
         expect(draft.get_by_role("textbox")).to_have_count(3)
@@ -498,7 +499,7 @@ class MapPasteJourney(unittest.TestCase):
           const bytes = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
           await navigator.clipboard.write([new ClipboardItem({ 'image/png': new Blob([bytes], { type: 'image/png' }) })]);
         }""", base64.b64encode(IMAGE).decode())
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Thought", exact=True).tap()
+        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).tap()
         page.get_by_role("button", name="Paste lines, a link or an image", exact=True).tap()
         draft = page.get_by_role("form", name="New thought draft")
         expect(draft.locator("img.sk-draft__img")).to_be_visible()

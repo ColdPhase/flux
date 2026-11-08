@@ -160,7 +160,7 @@ class MapOutlineJourney(unittest.TestCase):
             if selected.count():
                 selected.first.focus()
                 page.keyboard.press("Escape")
-            page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Thought", exact=True).click()
+            page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).click()
         else:
             self.pick(page, parent_index)
             self.row(page, parent_index).get_by_role("button", name="Add a child thought", exact=True).click()
@@ -314,7 +314,7 @@ class MapOutlineJourney(unittest.TestCase):
         page = self.page()
         self.open(page)
         baseline = self.pairs(page)
-        tools = page.get_by_role("toolbar", name="Sketch tools")
+        tools = page.get_by_role("toolbar", name="Map tools")
         # Tab puts the selected thought under the one above it: on the map it is connected from there.
         self.pick(page, 7)
         self.row(page, 7).press("Tab")
@@ -406,7 +406,7 @@ class MapOutlineJourney(unittest.TestCase):
         self.saved(page)
         added = page.locator(".sk-li-t", has_text="A new top-level direction")
         expect(added).to_have_attribute("aria-level", "1")
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
+        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Undo", exact=True).click()
         expect(added).to_have_count(0)
         self.wait_graph(page, lambda data: len(data["thoughts"]) == 8)
         # Delete and graph Undo restore the exact thought and connection IDs, and so the same tree.
@@ -416,7 +416,7 @@ class MapOutlineJourney(unittest.TestCase):
         expect(self.row(page, 2)).to_have_count(0)
         self.assertEqual(self.row(page, 3).get_attribute("aria-level"), "4", "its child now sits under its oldest other parent")
         self.wait_graph(page, lambda data: all(thought["id"] != self.thoughts[2] for thought in data["thoughts"]))
-        page.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Undo", exact=True).click()
+        page.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Undo", exact=True).click()
         expect(page.locator(".sk-status")).to_contain_text("Undid: removed a thought")
         expected_links = {link["id"] for link in original["links"]}
         restored = self.wait_graph(page, lambda data: any(thought["id"] == self.thoughts[2] for thought in data["thoughts"]) and {link["id"] for link in data["links"]} == expected_links)
@@ -472,7 +472,7 @@ class MapOutlineJourney(unittest.TestCase):
         self.api(owner, "DELETE", f"/api/v1/projects/{self.project_id}/grants/{gone}", status=204)
         self.api(viewer, "GET", f"/api/v1/sketches/{self.sketch_id}", status=404)
         viewer.goto(f"/map/{self.sketch_id}")
-        expect(viewer.get_by_role("heading", name="This sketch isn’t available")).to_be_visible()
+        expect(viewer.get_by_role("heading", name="This map isn’t available")).to_be_visible()
         expect(viewer.locator("body")).not_to_contain_text(LABELS[4])
 
     def test_07_render_matched_light_dark_phone_tablet_and_enlarged_text(self):

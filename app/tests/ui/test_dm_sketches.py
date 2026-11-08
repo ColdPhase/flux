@@ -412,9 +412,9 @@ class DmSketchJourney(unittest.TestCase):
 
         page.wait_for_url(re.compile(rf"/dm/{self.dm_id}/sketches/[0-9a-f-]{{36}}$"))
         type(self).sketch_id = page.url.rsplit("/", 1)[-1]
-        expect(page.get_by_label("Sketch name")).to_be_focused()
+        expect(page.get_by_label("Map name")).to_be_focused()
         page.keyboard.press("Escape")  # keep the proposed name
-        expect(page.get_by_label("Sketch name")).to_have_count(0)
+        expect(page.get_by_label("Map name")).to_have_count(0)
         expect(page.locator(".sk-status")).to_contain_text("Started from 2 messages · only you and Kai can see it")
         expect(page.locator(".sk-aud")).to_contain_text("Only you and Kai, in this direct message")
         expect(page.get_by_role("navigation", name="Direct message views").get_by_role("link", name=re.compile(r"^Sketches"))).to_contain_text("1")
@@ -439,7 +439,7 @@ class DmSketchJourney(unittest.TestCase):
         expect(kai.locator(".sk-node")).to_have_count(2)
         # Kai can change it: add a connected thought.
         kai.locator(".sk-node").first.click()
-        kai.get_by_role("toolbar", name="Sketch tools").get_by_role("button", name="Thought", exact=True).click()
+        kai.get_by_role("toolbar", name="Map tools").get_by_role("button", name="Thought", exact=True).click()
         editor = kai.get_by_label("Thought text")
         expect(editor).to_be_focused()
         editor.fill("60 GHz radar sees through the shade")
@@ -544,7 +544,7 @@ class DmSketchJourney(unittest.TestCase):
             self.assertLessEqual(top, 440, f"{label}: the map starts near the upper half of the screen (at {top:.0f}px)")
             self.assertLessEqual(chrome, 300, f"{label}: the sketch's own header, context and tools stay compact ({chrome:.0f}px)")
             # S15: no toolbar row on the phone; the map views and adds, and says where to connect.
-            expect(page.get_by_role("toolbar", name="Sketch tools")).to_have_count(0)
+            expect(page.get_by_role("toolbar", name="Map tools")).to_have_count(0)
             add = page.get_by_role("button", name="Add a thought", exact=True)
             expect(add).to_be_visible()
             self.assertGreaterEqual(add.bounding_box()["height"], 43.5, f"{label}: Add a thought is a touch target")
@@ -614,7 +614,7 @@ class DmSketchJourney(unittest.TestCase):
         jo.goto(f"/dm/{self.dm_id}/sketches/{self.sketch_id}")
         expect(jo.locator(".sk-readonly")).to_contain_text("read-only until the other person reopens it")
         expect(jo.get_by_role("button", name="Make it a space…")).to_have_count(0)
-        expect(jo.get_by_role("toolbar", name="Sketch tools")).to_have_count(0)
+        expect(jo.get_by_role("toolbar", name="Map tools")).to_have_count(0)
         jo.goto(f"/dm/{self.dm_id}")
         expect(jo.locator(".dm__notice")).to_contain_text("left this conversation")
         expect(jo.get_by_role("button", name="Choose messages", exact=True)).to_have_count(0)

@@ -1,5 +1,5 @@
 import { useRef, type ReactNode } from 'react';
-import { Link, useLocation, type NavigateFunction } from 'react-router';
+import { Link, useLocation } from 'react-router';
 import { EmptyState } from '../ui';
 import { useShellData } from './data';
 import { useReadingPosition } from '../drafts/store';
@@ -27,13 +27,6 @@ function Pane({ children }: { children: ReactNode }) {
       <div className="pane-in">{children}</div>
     </div>
   );
-}
-
-/** Focus the notes composer in the Sketchbook, e.g. from "New > Private note". */
-export function startCapture(navigate: NavigateFunction) {
-  const composer = document.getElementById('composer');
-  if (composer && window.location.pathname === '/map') { composer.focus(); return; }
-  navigate('/map', { state: { capture: Date.now() } });
 }
 
 export function NotFoundView() {

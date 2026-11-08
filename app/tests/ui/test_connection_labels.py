@@ -326,7 +326,7 @@ class ConnectionLabels(unittest.TestCase):
         recovery = page.get_by_role('textbox', name='Recoverable connection label', exact=True)
         expect(recovery).to_be_visible()
         expect(recovery).to_have_value('Keep this unsaved explanation after access changes')
-        expect(page.get_by_role('heading', name='This sketch isn’t available')).to_be_visible()
+        expect(page.get_by_role('heading', name='This map isn’t available')).to_be_visible()
         recovery.focus()
         expect(recovery).to_be_focused()
         self.assertIsNone(self.link(page, sketch)['label'], 'no label was written by the failed save')

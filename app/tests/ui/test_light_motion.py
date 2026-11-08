@@ -1472,32 +1472,6 @@ class LightMotionJourney(unittest.TestCase):
         self.assertIn("translateY", entered[0]["from"].get("transform", ""))
         self.assertEqual(set(entered[0]["props"]), {"opacity", "transform"})
 
-    def test_24_notes_do_not_rise_when_a_view_opens_only_the_note_just_saved_does(self):
-        page = self.page()
-        self.open(page, "/map")
-        field = page.get_by_placeholder("Write a note…")
-        expect(field).to_be_visible()
-        field.fill("Check the gate latch before the volunteers arrive")
-        clear(page)
-        page.get_by_role("button", name="Save note").click()
-        note = page.locator(".note", has_text="Check the gate latch")
-        expect(note).to_be_visible()
-        page.wait_for_timeout(400)
-        rose = [entry for entry in recorded(page) if entry["kind"] == "css" and entry.get("name") == "rise" and "note" in entry["target"]]
-        self.assertEqual(len(rose), 1, f"the note just saved rises in: {recorded(page)}")
-        self.assertIn("note--new", rose[0]["target"])
-        page.reload()
-        ready(page)
-        expect(page.locator(".note", has_text="Check the gate latch")).to_be_visible()
-        page.wait_for_timeout(500)
-        self.assertEqual([entry for entry in recorded(page) if "note" in entry["target"]], [], "notes already there do not rise on a visit, nor on a reload")
-        self.open(page, self.fx.project_url())
-        clear(page)
-        page.get_by_role("navigation", name="Places").get_by_role("link", name="My map").first.click()
-        expect(page.locator(".note", has_text="Check the gate latch")).to_be_visible()
-        page.wait_for_timeout(500)
-        self.assertEqual([entry for entry in recorded(page) if "note" in entry["target"]], [], "nor when the view is switched to")
-
     SHIFT = """() => { const el = document.querySelector('.home__need, .home__first'); return el ? el.getBoundingClientRect().top : null; }"""
 
     def home_tops(self, context, wait_for_card: bool) -> tuple[float, float, int]:
