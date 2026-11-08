@@ -7,7 +7,7 @@ import type { JobRetryPolicy } from '../push/config.js';
 import { isId } from '../work/validation.js';
 import type {
   AgentBrief, PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup,
-  MessageSource, PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunEndStatus, RunRecord,
+  PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunEndStatus, RunRecord,
 } from './ports.js';
 import { isPrivateAnswer } from './ports.js';
 import { connectionOnModel } from './model.js';
@@ -20,8 +20,10 @@ import { reserveOnKey } from './service.js';
 import { updateAndAnnounce } from './progress.js';
 import { requestParts, runToolLoop, type LoopResult, type RunAccount } from './tool-loop.js';
 import {
-  agentBriefText, centsToMicros, connectionCallsTools, parseOutput, privateSystemPrompt, requestInput, runChargeMicros, runReservationMicros, runTokensWithinLimits, SYSTEM_PROMPT, taskSystemPrompt, TOOL_SYSTEM_PROMPT, type SuppliedSource,
+  centsToMicros, connectionCallsTools, parseOutput, runChargeMicros, runReservationMicros, runTokensWithinLimits, type SuppliedSource,
 } from './validation.js';
+import { buildBrief } from './brief.js';
+import { CHAT_TURNS, latestMessages, readBriefFacts, type BriefFacts } from './brief-facts.js';
 
 // The worker side of a personal run (`personal-run.dispatch.v1`, O-008 §3–§5). The job payload
 // is the run id only. Before reading, before dispatch and inside the commit transaction the run
@@ -91,9 +93,6 @@ export interface PersonalRunProcessorDeps {
 type Stage = 'before_read' | 'before_dispatch' | 'before_commit';
 type Refusal = Extract<RunRecord['status'], 'denied' | 'revoked' | 'unavailable' | 'cap_reached'> | 'ai_off';
 
-const MESSAGE_WINDOW = 40;
-/** How many earlier exchanges of a private chat the agent is told. */
-const CHAT_TURNS = 6;
 const WORK_WINDOW = 20;
 
 function isAccessDenial(error: unknown) {
@@ -141,16 +140,23 @@ async function stopped(ports: PersonalRunPorts, run: RunRecord): Promise<RunEndS
   return (await spaceSwitchAllows(ports, run, false)) ? 'stopped' : 'ai_off';
 }
 
-/** What the model is given to read in a message source: the message with its author and any files. */
-const messageText = (message: MessageSource) =>
-  `Message ${message.sequence}${message.contribution ? ` (${message.contribution.kind}${message.contribution.kind === 'result' ? `; result ${message.contribution.resultId}` : ''})` : ''} by ${message.authorName}${message.author.kind === 'agent' ? ' (agent)' : ''}: ${message.body}${message.files?.length ? `\nAttached files (contents not included): ${message.files.map((file) => `${file.name} (${file.size} bytes; file ${file.id})`).join(', ')}` : ''}`;
+/** What an API-key run reads before its request (#1064): the numbered sources, the earlier answer it continues, the chat's turns and the brief's facts. */
+interface ReadSources {
+  sources: SuppliedSource[];
+  earlier: string | null;
+  brief: AgentBrief | null;
+  turns: { prompt: string; answer: string }[];
+  facts: BriefFacts;
+  /** Older messages of the place than those read exist. */
+  leftOut: boolean;
+}
 
 /**
  * Reads what the run may use, as its agent, and only what the place's audience can see (#842, F-036 AG-4 / C-12): a space's conversation
  * (or its main conversation) and the space's open work; a direct message, only the DM; a private chat, the earlier turns of the chat and
  * whatever the owner can see through the tools. The owner's other places are never read for a shared place.
  */
-async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ sources: SuppliedSource[]; earlier: string | null; brief: AgentBrief | null; turns: { prompt: string; answer: string }[] } | null> {
+async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<ReadSources | null> {
   const agent: Principal = { kind: 'agent', id: run.agentId };
   const owner: Principal = { kind: 'human', id: run.ownerUserId };
   if (run.projectId !== null) {
@@ -166,14 +172,16 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
     if (run.projectId === null || !(await ports.access.canReadSketch(agent, run.targetSketchId))) return null;
     const thought = await ports.runs.thought(run.targetSketchId, run.targetThoughtId);
     if (!thought || thought.sketchScope !== 'project' || thought.sketchProjectId !== run.projectId) return null;
-    sources.push({ label: next(), ref: { type: 'thought', id: thought.id, sketchId: thought.sketchId, revision: thought.version }, text: `Selected map thought: ${thought.text}` });
+    sources.push({ label: next(), ref: { type: 'thought', id: thought.id, sketchId: thought.sketchId, revision: thought.version }, item: { kind: 'thought', text: thought.text } });
   }
   // A silent background run's conversation is only where it is anchored: its messages are not its context (AST-9).
-  const messages = run.silent ? [] : run.conversationId !== null ? await ports.runs.messages(run.conversationId, MESSAGE_WINDOW)
-    : run.projectId !== null ? await ports.runs.spaceMessages(run.projectId, MESSAGE_WINDOW) : run.dmId !== null ? await ports.runs.dmMessages(run.dmId, MESSAGE_WINDOW, run.dmThreadRootId) : [];
-  for (const message of messages) sources.push({ label: next(), ref: { type: 'message', id: message.id, revision: 1 }, text: messageText(message) });
-  if (run.projectId !== null) for (const work of await ports.runs.openWork(run.projectId, WORK_WINDOW))
-    sources.push({ label: next(), ref: { type: 'work', id: work.id, revision: work.version }, text: `Open work item "${work.title}" (${work.status})${work.outcome ? `: ${work.outcome}` : ''}` });
+  const { projectId, conversationId, dmId, dmThreadRootId } = run;
+  const { messages, leftOut } = run.silent ? { messages: [], leftOut: false } : await latestMessages((limit) => conversationId !== null ? ports.runs.messages(conversationId, limit)
+    : projectId !== null ? ports.runs.spaceMessages(projectId, limit) : dmId !== null ? ports.runs.dmMessages(dmId, limit, dmThreadRootId) : Promise.resolve([]));
+  for (const message of messages) sources.push({ label: next(), ref: { type: 'message', id: message.id, revision: 1 }, item: { kind: 'message', message } });
+  // The task a run works on is told whole in its brief, not again among the open tasks.
+  if (projectId !== null) for (const work of (await ports.runs.openWork(projectId, WORK_WINDOW)).filter((item) => item.id !== run.workId))
+    sources.push({ label: next(), ref: { type: 'work', id: work.id, revision: work.version }, item: { kind: 'task', number: work.number, title: work.title, status: work.status, outcome: work.outcome } });
   let earlier: string | null = null;
   if (run.continuesRunId) {
     const previous = await ports.runs.findRun(run.continuesRunId);
@@ -181,7 +189,7 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
   }
   // The private chat has no conversation to read: it remembers what was said in it last (the agent's memory is told in its brief).
   const turns = run.projectId === null && run.dmId === null ? await ports.runs.chatTurns(run.agentId, run.id, CHAT_TURNS) : [];
-  return { sources, earlier, brief, turns };
+  return { sources, earlier, brief, turns, facts: await readBriefFacts(ports, run, brief), leftOut };
 }
 
 /**
@@ -191,11 +199,12 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
  * rechecks the run's standing before every count request and ends the fit with its outcome when the
  * run may no longer send anything. A run with tools has the larger bound (#484).
  */
-async function fit(compute: PersonalCompute, base: Omit<PersonalComputeRequest, 'input'>, run: RunRecord,
-  read: { sources: SuppliedSource[]; earlier: string | null; brief?: AgentBrief | null; turns?: { prompt: string; answer: string }[] }, beforeCount: () => Promise<PersonalRunOutcome | null>, maxInputTokens: number) {
+async function fit(compute: PersonalCompute, base: Omit<PersonalComputeRequest, 'input'>, read: ReadSources, input: (sources: SuppliedSource[], dropped: boolean) => string,
+  beforeCount: () => Promise<PersonalRunOutcome | null>, maxInputTokens: number) {
   let sources = read.sources;
   for (;;) {
-    const request = { ...base, input: requestInput(run, sources, read.earlier, read.turns) };
+    // The brief says when older messages were left out: before the read's window, or dropped here.
+    const request = { ...base, input: input(sources, sources !== read.sources) };
     let tokens = conservativeTokenEstimate(requestParts(request));
     if (tokens <= maxInputTokens && compute.countInputTokens) {
       const refused = await beforeCount();
@@ -217,13 +226,6 @@ export const unavailablePersonalCompute: PersonalCompute = {
   enabled: false,
   dispatch: async () => ({ kind: 'failed', reason: 'provider_error', billed: 'none' }),
 };
-
-/** The brief of a run: the answer to `/ai` or a chat is written for its place (#842); a task and a schedule keep theirs. */
-function systemPromptOf(run: RunRecord, withTools: boolean): string {
-  if (run.kind === 'task' || run.kind === 'task_answer') return taskSystemPrompt(withTools, run.kind === 'task_answer');
-  if (isPrivateAnswer(run)) return privateSystemPrompt(run.projectId !== null ? 'space' : run.dmId !== null ? 'dm' : 'chat', withTools);
-  return withTools ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT;
-}
 
 /** The safety clock of a run with tools (#843): the same as a run on a plan. */
 const WALL_CLOCK_MS = RUNTIME_RUN_LIMITS.wallClockSeconds * 1000;
@@ -367,15 +369,21 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
   }
 
   /** Fits, rechecks and sends the run: one request, or the bounded loop when it has tools. */
-  async function dispatchRun(run: RunRecord, read: { sources: SuppliedSource[]; earlier: string | null; brief?: AgentBrief | null; turns?: { prompt: string; answer: string }[] }, connection: PersonalConnection,
+  async function dispatchRun(run: RunRecord, read: ReadSources, connection: PersonalConnection,
     session: PersonalToolSession | null, beforeSend: () => Promise<PersonalRunOutcome | null>): Promise<PersonalRunOutcome> {
+    // One brief for every place and both engines (#1064); its request is rendered again as the fit drops old messages.
+    const asked = new Date(now());
+    const brief = (sources: SuppliedSource[], dropped: boolean) => buildBrief({
+      engine: 'server', kind: run.kind, silent: run.silent, tools: session ? session.tools.map((tool) => tool.name) : [], ...read.facts, now: asked,
+      agent: read.brief, prompt: run.prompt, requestedAt: run.createdAt, sources, leftOut: read.leftOut || dropped, turns: read.turns, earlier: read.earlier, thought: null,
+    });
     let fitted: Awaited<ReturnType<typeof fit>>;
     try {
       fitted = await fit(compute, {
         connection: { id: connection.id, keyRef: connection.keyRef, provider: connection.provider, baseUrl: connection.baseUrl }, model: run.model,
         maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort,
-        system: [systemPromptOf(run, !!session), agentBriefText(read.brief ?? null)].filter(Boolean).join('\n\n'), ...(session ? { tools: session.tools } : {}),
-      }, run, read, beforeSend, personalRunMaxInputTokens(!!session));
+        system: brief(read.sources, false).system, ...(session ? { tools: session.tools } : {}),
+      }, read, (sources, dropped) => brief(sources, dropped).request, beforeSend, personalRunMaxInputTokens(!!session));
     } catch {
       // The preflight count failed (provider down, key refused). Counting is free and nothing
       // was dispatched: the run ends at zero cost and the owner may retry it as a new run.

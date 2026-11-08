@@ -6,6 +6,7 @@ import type {
 import type { AssistantIdentityPort } from '../assistant/ports.js';
 import type { Principal } from '../principal.js';
 import type { Paged, PageWindow } from '../work/ports.js';
+import type { TaskFacts } from './brief.js';
 
 /**
  * Ports of the personal assistant runs (issue #68, decision O-008). Core states what it needs;
@@ -168,11 +169,18 @@ export type NewProposal = Pick<ProposalRecord, 'id' | 'workspaceId' | 'projectId
 export type ProposalChanges = Partial<Pick<ProposalRecord, 'status' | 'decidedBy' | 'decidedAt' | 'resultId'>>;
 
 /** Rows a run may read. The use cases authorize the run's agent (and owner) before calling these. */
-export interface MessageSource { contribution?: MessageContribution; files?: MessageFile[]; id: string; sequence: number; body: string; authorName: string; author: { kind: 'human' | 'agent'; id: string } }
+export interface MessageSource {
+  contribution?: MessageContribution; files?: MessageFile[]; id: string; sequence: number; body: string; authorName: string; author: { kind: 'human' | 'agent'; id: string };
+  /** #1064: when it was written; whether its author changed the words since; the agent whose answer its author posted with Show everyone. */
+  createdAt: Date; edited?: boolean; via?: string | null;
+  /** #1064, a space's main conversation only: the opening words of the thread it belongs to. */
+  thread?: string | null;
+}
 /** One place of the owner's runs (#842): exactly one of these. */
 export type RunPlaceFilter = { conversationId: string } | { spaceId: string } | { dmId: string; dmThreadRootId: string | null } | { chatAgentId: string };
 
-export interface WorkSource { id: string; version: number; title: string; outcome: string; status: string }
+export interface PlaceNames { spaceName: string | null; task: { number: number; title: string } | null; people: { id: string; name: string }[] }
+export interface WorkSource { id: string; version: number; number: number; title: string; outcome: string; status: string }
 export interface ThoughtSource { id: string; sketchId: string; version: number; text: string; sketchScope: 'project' | 'private'; sketchProjectId: string | null }
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link PersonalRunAccess}). */
@@ -190,6 +198,15 @@ export interface PersonalRunRepository {
   /** The AI setup of one of the owner's agents: the one named, else their first (Assistant). A deleted agent has none. */
   enablement(ownerUserId: string, options?: { lock?: boolean; agentId?: string; workspaceId?: string }): Promise<EnablementRecord | null>;
   agentBrief(agentId: string): Promise<AgentBrief | null>;
+  /** The person's own time zone (their notification settings'; UTC when unset): a schedule they ask for runs in it, and their agents tell time in it (#1064). */
+  personTimeZone(userId: string): Promise<string>;
+  /**
+   * The names a run's brief gives its place (#1064): the space's, the task a conversation of it discusses, and a DM's people. Rows only:
+   * callers authorize the place first.
+   */
+  placeNames(place: { projectId: string | null; conversationId: string | null; dmId: string | null }): Promise<PlaceNames>;
+  /** A task as a run on it is told it (#1064), with the space it is in; null when it is gone. Callers authorize the space first. */
+  taskBrief(workId: string): Promise<(TaskFacts & { projectId: string }) | null>;
   /**
    * Today's use of an API key's one daily budget (#854), in the key's time zone: what everything on the key was charged,
    * and what work in progress or of unknown cost holds. `exceptRunId` leaves one run out. Null when the key is gone.

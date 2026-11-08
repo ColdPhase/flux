@@ -3,7 +3,8 @@ import { createServer, type IncomingMessage } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { PERSONAL_RUN_LIMITS, tablePrice } from '@flux/contracts';
-import { runToolLoop, TOOL_SYSTEM_PROMPT, type PersonalCompute, type PersonalComputeRequest, type PersonalToolCall, type PersonalTurn } from '@flux/core';
+import { runToolLoop, type PersonalCompute, type PersonalComputeRequest, type PersonalToolCall, type PersonalTurn } from '@flux/core';
+import { BRIEF } from './support/brief.js';
 import { parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
 import {
   ANTHROPIC_DUPLICATE_IDS, ANTHROPIC_FINAL, ANTHROPIC_TOOL_USE, ANTHROPIC_TWO_CALLS, ANTHROPIC_TOOL_USE_TRUNCATED, ANTHROPIC_TOOL_USE_WITH_THINKING, CHAT_FINAL, CHAT_TOOL_CALLS,
@@ -20,7 +21,8 @@ import {
 
 const KEY = 'test-only-not-a-key-tool-7f3a';
 const KEY_REF = 'key-ref-of-owner';
-const INPUT = 'Task: Answer the request.\nRequest: What is open?\n\nSources:\n[S1] Message 1 by Kai: Camera fails below 5 lux';
+const INPUT = BRIEF.request;
+const TOOL_SYSTEM_PROMPT = BRIEF.system;
 
 interface WireMessage { role: string; content?: unknown; tool_call_id?: string; tool_calls?: { function: { arguments: string } }[] }
 interface Body { tools?: unknown; messages: WireMessage[]; system?: unknown; model?: unknown; max_tokens?: unknown; max_completion_tokens?: unknown; [field: string]: unknown }

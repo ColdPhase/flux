@@ -90,7 +90,12 @@ describe('/ai everywhere, answered privately (#842)', () => {
     await finish(started.run.id);
     assert.match(sentToTheModel(), new RegExp(TOKENS.space));
     for (const hidden of [TOKENS.otherSpace, TOKENS.dm]) assert.equal(sentToTheModel().includes(hidden), false, `the model was given ${hidden}`);
-    assert.match(compute.dispatched.at(-1)!.system, /Only your owner sees your answer/);
+    // The brief (#1064): who asks, where and when; each message with its author and time; the request last.
+    assert.match(compute.dispatched.at(-1)!.system, /^You are Assistant, the AI agent of pai-hubert in Flux[^]*\nWho reads your answer\nOnly pai-hubert\. They may post it with Show everyone/);
+    assert.match(compute.dispatched.at(-1)!.system, /It is now \w+day, \d{4}-\d\d-\d\d \d\d:\d\d in pai-hubert's time zone, UTC\./);
+    assert.ok(sentToTheModel().startsWith('<place space="Lamp sensor" conversation="thread"/>'), sentToTheModel());
+    assert.match(sentToTheModel(), /^All 2 messages of this thread, oldest first\.\n<conversation>\n<message ref="S1" from="pai-kai" at="\d{4}-\d\d-\d\d \d\d:\d\d">Camera fails below 5 lux /m);
+    assert.match(sentToTheModel(), /<request from="pai-hubert" at="[^"]+">Summarise this<\/request>$/);
 
     // The people of the space see nothing: not the run, not the answer, not that an assistant is working.
     for (const other of [kai, ada, maurycy]) {
@@ -132,6 +137,7 @@ describe('/ai everywhere, answered privately (#842)', () => {
     assert.equal((await row(started.run.id)).ai_epoch !== null, true, 'a space run is admitted under the space\'s AI epoch');
     await finish(started.run.id);
     assert.match(sentToTheModel(), new RegExp(TOKENS.space), 'the main conversation is what its roots say');
+    assert.match(sentToTheModel(), new RegExp(`<message ref="S\\d+" thread="Camera fails below 5 lux ${TOKENS.space}" from="pai-hubert"`), 'a message names the thread it belongs to (#1064)');
     assert.equal(sentToTheModel().includes(TOKENS.otherSpace), false);
     // The route of the space's main conversation, and a person outside the space.
     // The route exists and reaches the same use case (this API composes no provider, so it answers that, not that the place is unknown).
@@ -145,6 +151,23 @@ describe('/ai everywhere, answered privately (#842)', () => {
     assert.equal(after.roots.length, roots + 1);
     const root = after.roots.find((item) => item.message.id === shown.messageId)!;
     assert.deepEqual([root.message.authorId, root.message.via], [hubert.id, 'Assistant']);
+  });
+
+  test('the brief tells the time in the asker\'s own zone and says when older messages were left out (#1064)', async () => {
+    expectStatus(await hubert.browser.request('PATCH', '/api/v1/notification-preferences', { body: { quietHours: { timeZone: 'Asia/Tokyo' } } }), 200);
+    const long = await post<Conversation>(kai, `/api/v1/projects/${lamp.id}/conversations`, { body: 'Count to forty-one: 1', clientMessageId: randomUUID() });
+    for (let n = 2; n <= 41; n++) await post(kai, `/api/v1/conversations/${long.id}/messages`, { body: `Count to forty-one: ${n}`, clientMessageId: randomUUID() });
+    try {
+      const started = await ask(long.id, 'Where did the count end?');
+      await finish(started.run.id);
+      assert.match(compute.dispatched.at(-1)!.system, /in pai-hubert's time zone, Asia\/Tokyo\. Every time below is in that zone\./);
+      const input = sentToTheModel();
+      assert.match(input, /^The latest 40 messages of this thread, oldest first\. Older messages were left out\.$/m);
+      assert.equal(input.includes('>Count to forty-one: 1</message>'), false, 'the oldest is the one left out');
+      assert.ok(input.includes('>Count to forty-one: 41</message>'));
+    } finally {
+      expectStatus(await hubert.browser.request('PATCH', '/api/v1/notification-preferences', { body: { quietHours: { timeZone: 'UTC' } } }), 200);
+    }
   });
 
   test('Dismiss puts an answer away for good: it cannot be shown afterwards', async () => {
@@ -175,6 +198,8 @@ describe('/ai everywhere, answered privately (#842)', () => {
     const input = sentToTheModel();
     assert.match(input, new RegExp(TOKENS.dm));
     for (const hidden of [TOKENS.space, TOKENS.thread, TOKENS.otherSpace]) assert.equal(input.includes(hidden), false, `the model was given ${hidden}`);
+    assert.ok(input.startsWith('<place direct_message_with="pai-kai"/>'), 'the DM names its other people as data (#1064)');
+    assert.equal(compute.dispatched.at(-1)!.system.includes('pai-kai'), false, 'and never in the instructions');
     assert.equal(compute.dispatched.at(-1)!.tools?.length ?? 0, 0, 'no tool reads anything of the owner\'s other places');
     // A third person cannot ask in it, and Kai cannot read the run.
     assert.equal((await maurycy.browser.request('POST', `/api/v1/dms/${dm.id}/assistant-runs`, { body: { clientRunId: randomUUID(), kind: 'ask', prompt: 'x' } })).status, 404);
@@ -218,7 +243,8 @@ describe('/ai everywhere, answered privately (#842)', () => {
     for (const given of [TOKENS.dmThread, TOKENS.dmReply]) assert.match(input, new RegExp(given));
     for (const hidden of [TOKENS.dm, TOKENS.otherDmThread, TOKENS.otherDm, TOKENS.space, TOKENS.thread, TOKENS.otherSpace]) assert.equal(input.includes(hidden), false, `the model was given ${hidden}`);
     assert.equal(compute.dispatched.at(-1)!.tools?.length ?? 0, 0, 'no tool reads anything of the owner\'s other places');
-    assert.match(compute.dispatched.at(-1)!.system, /Only your owner sees your answer/);
+    assert.match(compute.dispatched.at(-1)!.system, /in a thread of a direct message[^]*Only pai-hubert\. They may post it with Show everyone, as their own message, for the other people of this direct message/);
+    assert.ok(input.startsWith('<place direct_message_with="pai-kai" thread="yes"/>'));
 
     // The answer is the asker's: Kai cannot read, show or dismiss it, and finds no run in this place; the run is listed in its thread and not in the DM's main line.
     for (const [method, path] of [['GET', ''], ['POST', '/show'], ['POST', '/dismiss']] as const)
@@ -324,7 +350,8 @@ describe('/ai everywhere, answered privately (#842)', () => {
     const second = await ask({ kind: 'chat', agentId }, 'What number was it?');
     await finish(second.run.id);
     assert.match(sentToTheModel(), new RegExp(TOKENS.chat), 'the earlier turn of the chat is told to the model');
-    assert.match(compute.dispatched.at(-1)!.system, /private chat with your owner/);
+    assert.match(compute.dispatched.at(-1)!.system, /pai-hubert is talking to you in your private chat\.[^]*Only pai-hubert: nobody else reads this chat/);
+    assert.match(sentToTheModel(), new RegExp(`<chat>\\n<turn from="pai-hubert">Remember the number ${TOKENS.chat}</turn>`));
     const chat = await get<Page<AssistantRun>>(hubert, `/api/v1/assistant-runs?chatAgentId=${agentId}`);
     assert.deepEqual(chat.items.map((item) => item.id), [second.run.id, first.run.id]);
     // The chat's answers are no one else's: not Kai's, not the agent owner's other places.

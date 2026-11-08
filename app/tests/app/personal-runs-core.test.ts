@@ -7,9 +7,9 @@ import { costMicros, parseOutput, runReservationMicros, withoutCitationMarks, ty
 // Pure output and cost rules of personal runs (#68, O-008 §3/§5). No database, no provider.
 
 const workId = randomUUID();
-const sources: SuppliedSource[] = [
-  { label: 'S1', ref: { type: 'message', id: randomUUID(), revision: 1 }, text: 'Message 1' },
-  { label: 'S2', ref: { type: 'work', id: workId, revision: 3 }, text: 'Open work item' },
+const sources: Pick<SuppliedSource, 'label' | 'ref'>[] = [
+  { label: 'S1', ref: { type: 'message', id: randomUUID(), revision: 1 } },
+  { label: 'S2', ref: { type: 'work', id: workId, revision: 3 } },
 ];
 
 describe('personal run output rules', () => {
