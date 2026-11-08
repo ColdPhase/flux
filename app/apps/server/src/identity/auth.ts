@@ -27,7 +27,7 @@ import { accountKey, securityEvent, type SecurityLogger } from '../security-log.
 import { authSecurityEvent } from './security-events.js';
 import { PASSWORD_TOO_WEAK_MESSAGE, passwordProblem } from './password-policy.js';
 import { createSignInThrottle } from './sign-in-throttle.js';
-import { DEVICE_COOKIE_MAX_AGE_SECONDS, deviceCookieName, knows, readDevice, withAccount, writeDevice } from './device-cookie.js';
+import { createDevices } from './devices.js';
 
 /** Set by the Fastify bridge from the socket or trusted-proxy address; client copies are dropped. */
 export const CLIENT_IP_HEADER = 'x-flux-client-ip';
@@ -146,6 +146,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
   const connectionStore = createAgentConnectionStore(db);
   const connections = agentOauthUseCases(connectionStore);
   const throttle = createSignInThrottle(db, config.secret);
+  const devices = createDevices(db, config.secret, config.publicOrigin.startsWith('https:'));
   const signIn = createOneClickSignIn(db);
   const resource = mcpResourceIdentifier(config.publicOrigin);
   const unavailable = () => new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
@@ -204,8 +205,8 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
   };
   /** The address (and browser) whose back-off a request already counted in `before`, found again in `after` (the same request context). */
   const counted = new WeakMap<object, { email: string; device?: string }>();
-  /** The address whose password a reset is about to change, so the browser that finishes the reset is remembered. */
-  const resetting = new WeakMap<object, string>();
+  /** The address whose password a reset is about to change, and the device of this browser if it knew the account, so the browser that finishes the reset is remembered. */
+  const resetting = new WeakMap<object, { email: string; device?: string }>();
   // The answer says neither when the wait ends nor how long it is: with the exact second, a stranger could time one guess for each end (#990).
   const throttledSignIn = (what: 'sign-in' | 'change') => new APIError('TOO_MANY_REQUESTS', {
     message: what === 'sign-in' ? 'Too many sign-in attempts for this account. Try again in a few minutes'
@@ -213,17 +214,12 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     code: 'SIGN_IN_THROTTLED' });
   // A browser that signed in to an account, or finished its password reset, is remembered (a signed cookie that names the account): its
   // wrong guesses count in a wait of their own, so a stranger's guesses at the address never keep the person out (OWASP device cookies).
-  const secureCookies = config.publicOrigin.startsWith('https:');
-  const deviceName = deviceCookieName(secureCookies);
+  // A reset and "Sign out all other devices" end every older copy of the cookie (the account's device generation, `devices.ts`, #1031).
+  const { cookie: deviceCookie } = devices;
   type CookieContext = { getCookie(name: string): string | null | undefined; setCookie(name: string, value: string, options: Record<string, unknown>): unknown };
-  const knownDevice = (ctx: CookieContext, email: string) => {
-    const device = readDevice(config.secret, ctx.getCookie(deviceName));
-    return knows(device, throttle.accountKey(email)) ? device : null;
-  };
-  const rememberDevice = (ctx: CookieContext, email: string) => {
-    const current = readDevice(config.secret, ctx.getCookie(deviceName));
-    ctx.setCookie(deviceName, writeDevice(config.secret, withAccount(current, throttle.accountKey(email))),
-      { maxAge: DEVICE_COOKIE_MAX_AGE_SECONDS, httpOnly: true, sameSite: 'lax', secure: secureCookies, path: '/' });
+  const knownDevice = (ctx: CookieContext, email: string) => devices.known(ctx.getCookie(deviceCookie.name), email);
+  const rememberDevice = async (ctx: CookieContext, email: string) => {
+    ctx.setCookie(deviceCookie.name, await devices.remember(ctx.getCookie(deviceCookie.name), email), deviceCookie.options);
   };
   return betterAuth({
     appName: 'Flux',
@@ -327,7 +323,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           const token = ctx.body?.token ?? ctx.query?.token;
           const reset = typeof token === 'string' ? await ctx.context.internalAdapter.findVerificationValue(`reset-password:${token}`) : null;
           resetUser = reset ? await ctx.context.internalAdapter.findUserById(reset.value) : null;
-          if (typeof resetUser?.email === 'string') resetting.set(ctx.context, resetUser.email);
+          if (typeof resetUser?.email === 'string') resetting.set(ctx.context, { email: resetUser.email, device: (await knownDevice(ctx, resetUser.email))?.id });
         }
         // A password the person chooses (sign-up, reset, change) must not be a common or easy-to-guess one, nor built from their own name or
         // address (#990). The length rule is Better Auth's (`minPasswordLength`), so a password outside it falls through to its own error.
@@ -346,7 +342,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         if (ctx.path === '/change-password' || ctx.path === '/change-email') {
           const holder = (await getSessionFromCtx(ctx))?.user.email;
           if (holder) {
-            const device = knownDevice(ctx, holder);
+            const device = await knownDevice(ctx, holder);
             if (await throttle.attempt(holder, device?.id) > 0) {
               if (log) securityEvent(log, { event: ctx.path === '/change-password' ? 'password_changed' : 'email_changed', outcome: 'limited', reason: 'account_back_off',
                 account: accountKey(config.secret, holder), ...whereFrom(ctx) });
@@ -373,7 +369,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           if (!email || !password) return;
           // The account's own back-off, shared by every API process and not escaped by changing the client address (#990). A browser that
           // has signed in to this account before counts in a wait of its own.
-          const device = knownDevice(ctx, email);
+          const device = await knownDevice(ctx, email);
           if (await throttle.attempt(email, device?.id) > 0) {
             if (log) securityEvent(log, { event: 'sign_in', outcome: 'limited', reason: 'account_back_off', account: accountKey(config.secret, email), ...whereFrom(ctx) });
             throw throttledSignIn('sign-in');
@@ -398,16 +394,22 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         const countedFor = counted.get(ctx.context);
         const succeeded = ctx.path === '/sign-in/email' ? !!signedIn : !(ctx.context.returned instanceof APIError);
         if (countedFor && succeeded) await throttle.clear(countedFor.email, countedFor.device);
-        if (signedIn && (ctx.path === '/sign-in/email' || ctx.path === '/sign-up/email')) rememberDevice(ctx, signedIn.email);
-        // A reset is the way back for the owner of the mailbox: the browser that finished it is remembered too.
+        if (signedIn && (ctx.path === '/sign-in/email' || ctx.path === '/sign-up/email')) await rememberDevice(ctx, signedIn.email);
+        // A reset is the way back for the owner of the mailbox: the browser that finished it is remembered too, with the new device
+        // generation (`onPasswordReset` raised it, so a copy of its old cookie is no longer this browser, #1031).
         const resetFor = resetting.get(ctx.context);
         if (resetFor && !(ctx.context.returned instanceof APIError)) {
-          await throttle.clear(resetFor, knownDevice(ctx, resetFor)?.id);
-          rememberDevice(ctx, resetFor);
+          await throttle.clear(resetFor.email, resetFor.device);
+          await rememberDevice(ctx, resetFor.email);
         }
-        // "Sign out my other devices" with a password change ends the person's other browsers, and so their local AI clients (#989).
+        // "Sign out my other devices" with a password change ends the person's other browsers, and so their local AI clients (#989)
+        // and every copy of the device cookie but this browser's own (#1031).
         let disconnected = 0;
-        if (ctx.path === '/change-password' && ctx.body?.revokeOtherSessions === true && signedIn) disconnected = await connectionStore.disconnectClients(signedIn.id);
+        if (ctx.path === '/change-password' && ctx.body?.revokeOtherSessions === true && signedIn) {
+          disconnected = await connectionStore.disconnectClients(signedIn.id);
+          await devices.endAll(signedIn.id);
+          await rememberDevice(ctx, signedIn.email);
+        }
         if (!log) return;
         // The security event of the route (#997). A reset is recorded where its person is known (`onPasswordReset`).
         const place = whereFrom(ctx);
@@ -480,6 +482,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
       onPasswordReset: async ({ user }, request) => {
         const disconnected = await connectionStore.disconnectClients(user.id);
         await throttle.clear(user.email);
+        await devices.endAll(user.id);
         if (!log) return;
         const place = whereFrom({ request });
         securityEvent(log, { event: 'password_reset', outcome: 'success', userId: user.id, ...place });

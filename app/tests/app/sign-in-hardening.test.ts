@@ -24,6 +24,13 @@ function withoutDevice(browser: Browser) {
   for (const [name, value] of browser.cookies) if (!name.endsWith('flux.device')) copy.cookies.set(name, value);
   return copy;
 }
+/** A stranger holding only a copy of the device cookie of a browser (an HttpOnly cookie someone took from it). */
+function onlyDevice(browser: Browser) {
+  const copy = new Browser();
+  const [name, value] = deviceCookieOf(browser)!;
+  copy.cookies.set(name, value);
+  return copy;
+}
 const wrongPassword = (browser: Browser, email: string, label: string) =>
   browser.request('POST', '/api/auth/sign-in/email', { body: { email, password: `wrong password ${label}` } });
 
@@ -319,6 +326,67 @@ describe('a stranger cannot keep the owner out (#990)', () => {
     assert.equal((await signIn(email, 'the harbour lights at dawn')).response.status, 429, 'a browser nobody knows waits');
     const back = await phone.request('POST', '/api/auth/sign-in/email', { body: { email, password: 'the harbour lights at dawn' } });
     assert.equal(back.status, 200, 'the browser that reset the password signs in at once');
+  });
+
+  /**
+   * After the owner ended the old cookies (#1031): a copy of the cookie waits in the account's own wait like any stranger, the owner's browser
+   * (given a new cookie) signs in at once, and a browser with no cookie waits with the account, which shows the copy's guesses went there.
+   */
+  async function assertCopyIsNoLongerTheBrowser(owner: Browser, copy: Browser, email: string, ownerPassword: string) {
+    const answers = [];
+    for (let attempt = 1; attempt <= 6; attempt++) answers.push((await wrongPassword(copy, email, `copy ${attempt}`)).status);
+    assert.deepEqual(answers, [401, 401, 401, 401, 401, 429], 'the copy counts in the account\'s wait');
+    assert.equal((await signIn(email, ownerPassword)).response.status, 429, 'a browser with no cookie waits with the account');
+    assert.equal((await owner.request('POST', '/api/auth/sign-in/email', { body: { email, password: ownerPassword } })).status, 200, 'the owner\'s browser is not held by the copy');
+  }
+
+  test('a password reset ends the copies of the device cookie, and the browser that finishes it gets a new one (#1031)', async () => {
+    const email = uniqueEmail('reset-copy');
+    const { browser: owner } = await register(email, password);
+    const copy = onlyDevice(owner);
+    const before = deviceCookieOf(owner)![1];
+    assert.equal((await owner.request('POST', '/api/auth/request-password-reset', { body: { email, redirectTo: `${publicOrigin}/reset-password` } })).status, 200);
+    const token = (await waitForMail(email)).match(/reset-password\/([^?\s]+)/)?.[1];
+    assert.ok(token);
+    const reset = await owner.request('POST', '/api/auth/reset-password', { body: { token, newPassword: 'the harbour lights at dawn' } });
+    assert.equal(reset.status, 200);
+    assert.notEqual(deviceCookieOf(owner)![1], before, 'the browser that finished the reset is given a new cookie');
+    await assertCopyIsNoLongerTheBrowser(owner, copy, email, 'the harbour lights at dawn');
+  });
+
+  test('"Sign out all other devices" ends the copies of the device cookie and keeps the browser that asked (#1031)', async () => {
+    const email = uniqueEmail('revoke-copy');
+    const { browser: owner } = await register(email, password);
+    const copy = onlyDevice(owner);
+    const before = deviceCookieOf(owner)![1];
+    const out = await owner.request('POST', '/api/v1/sessions/revoke-others');
+    assert.equal(out.status, 200);
+    const set = out.setCookies.find((cookie) => /flux\.device=/.test(cookie));
+    assert.ok(set, 'the answer gives this browser a new cookie');
+    assert.match(set, /HttpOnly/i);
+    assert.match(set, /SameSite=Lax/i);
+    assert.notEqual(deviceCookieOf(owner)![1], before);
+    await assertCopyIsNoLongerTheBrowser(owner, copy, email, password);
+  });
+
+  test('a password change that signs out the other devices ends the copies of the device cookie too (#1031)', async () => {
+    const email = uniqueEmail('change-copy');
+    const { browser: owner } = await register(email, password);
+    const copy = onlyDevice(owner);
+    const before = deviceCookieOf(owner)![1];
+    const changed = await owner.request('POST', '/api/auth/change-password', { body: { currentPassword: password, newPassword: 'a brand new passphrase here', revokeOtherSessions: true } });
+    assert.equal(changed.status, 200);
+    assert.notEqual(deviceCookieOf(owner)![1], before);
+    await assertCopyIsNoLongerTheBrowser(owner, copy, email, 'a brand new passphrase here');
+  });
+
+  test('a password change that keeps the other devices leaves the cookie as it was', async () => {
+    const email = uniqueEmail('change-keep');
+    const { browser: owner } = await register(email, password);
+    const before = deviceCookieOf(owner)![1];
+    const changed = await owner.request('POST', '/api/auth/change-password', { body: { currentPassword: password, newPassword: 'a brand new passphrase here', revokeOtherSessions: false } });
+    assert.equal(changed.status, 200);
+    assert.equal(deviceCookieOf(owner)![1], before);
   });
 
   test('the owner\'s known browser keeps its session guard on change-password, and a thief with only a session waits', async () => {

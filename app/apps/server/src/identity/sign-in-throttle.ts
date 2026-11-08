@@ -13,7 +13,8 @@ import { schema, type Database } from '@flux/db';
  *
  * A stranger could use that wait to keep a person out (a wrong guess whenever it ends), so the wait is not for a browser that has signed in
  * to the account before: it carries a signed device cookie (`device-cookie.ts`) and counts in a wait of its own. The browser that
- * finishes a password reset gets the cookie too, so the reset really is the way back. What a stranger can still keep waiting is a browser
+ * finishes a password reset gets the cookie too, so the reset really is the way back, and a reset ends every older copy of the cookie
+ * (`devices.ts`, #1031). What a stranger can still keep waiting is a browser
  * that has never signed in to that account, for the same window, and the answer does not say how long.
  * An address nobody holds is counted and slowed exactly like a real one, so the answer does not say which addresses have accounts.
  */
@@ -38,8 +39,6 @@ export interface SignInThrottle {
   attempt(email: string, device?: string): Promise<number>;
   /** The address signed in or reset its password: the count (of this browser, with `device`) starts again. */
   clear(email: string, device?: string): Promise<void>;
-  /** The key of an address in the cookie of a device. */
-  accountKey(email: string): string;
 }
 
 export function createSignInThrottle(db: Database, secret: string): SignInThrottle {
@@ -48,7 +47,6 @@ export function createSignInThrottle(db: Database, secret: string): SignInThrott
   const key = (email: string, device?: string) => createHmac('sha256', secret)
     .update(device ? 'flux-sign-in-throttle-device\0' : 'flux-sign-in-throttle\0').update(address(email)).update(device ? `\0${device}` : '').digest('hex');
   return {
-    accountKey: (email) => createHmac('sha256', secret).update('flux-device-account\0').update(address(email)).digest('hex').slice(0, 16),
     async attempt(email, device) {
       const accountHash = key(email, device);
       return db.transaction(async (tx) => {

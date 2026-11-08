@@ -31,7 +31,8 @@ described in the [security policy](../SECURITY.md).
   by itself after five wrong passwords, 30 seconds up to 15 minutes, whatever the address. Both counts
   live in PostgreSQL, so every API process shares them. A browser that has signed in to the account
   keeps a signed `flux.device` cookie and counts in a wait of its own, so someone guessing at an address
-  cannot keep its owner out of the browser they use; the cookie is not a credential.
+  cannot keep its owner out of the browser they use; the cookie is not a credential. A password reset and signing out the other
+  devices end every older copy of the cookie (only the browser that did it is given a new one).
 - **Single-use hashed reset tokens, sessions stored server-side** and revocable from
   **Settings → Account**. A password reset, and signing out the other devices, also disconnect the
   person's local AI clients; they connect again with one click on the consent page.

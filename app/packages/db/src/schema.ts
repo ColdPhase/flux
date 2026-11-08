@@ -46,6 +46,8 @@ export const authUsers = pgTable('auth_users', {
   emailVerified: boolean('email_verified').notNull().default(false),
   /** Set on a password sign-up while sign-up is `verified` (migration 0091, #313): no password sign-in until the address is verified. */
   verificationRequired: boolean('verification_required').notNull().default(false),
+  /** Raised by a password reset and by "Sign out all other devices" (migration 0028, #1031): device cookies of an older generation stop counting. */
+  deviceGeneration: integer('device_generation').notNull().default(0),
   image: text('image'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),

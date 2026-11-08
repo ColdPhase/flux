@@ -70,6 +70,11 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
   is guessed at in the same five-then-wait bucket. What remains: a stranger who knows an address can keep a browser that has never
   signed in to it (a new device, cleared cookies) waiting for up to 15 minutes at a time. The reset mail is the way back, the browser
   that finishes the reset is remembered, and a reset clears the account's wait. MFA stays the identity provider's job (see 2.2.x).
+  **A copied cookie does not outlive a recovery** ([#1031](https://github.com/ColdPhase/flux/issues/1031)): the cookie names an account by a keyed
+  hash of its address and the account's *device generation* (`auth_users.device_generation`, migration 0028). A password reset, a password
+  change that signs out the other devices and "Sign out all other devices" raise it, so a copy taken before then names an older generation and
+  counts in the account's wait like any stranger; the browser that did the reset or the sign-out is given a cookie with the new generation in
+  the same answer. A plain password change that keeps the other devices leaves the cookie as it was.
 - **#991, errors.** Every error that is not a domain refusal, a 401 or a Fastify 4xx answers `500` with a class code and logs only the
   redacted error. The encrypted-space rule of F-030 now holds for every space, so there is one path to keep correct, not two.
 - **#992, headers.** `nosniff`, `Referrer-Policy: same-origin`, `no-store` for `/api/` answers that set no rule of their own, and HSTS
