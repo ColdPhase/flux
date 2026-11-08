@@ -8,7 +8,7 @@ type MetadataRow = { id: string; title: string; version: number | null; updated_
 function source(scope: AgentOrientationScope, kind: AgentSourceKind): SQL {
   if (kind === 'doc' || kind === 'material') return sql`
     SELECT m.id, left(v.title, 300) AS title, m.current_version AS version,
-      m.updated_at, NULL::integer AS sequence, v.state
+      m.updated_at, NULL::integer AS sequence, NULL::text AS state
     FROM project_materials m JOIN project_material_versions v
       ON v.workspace_id = m.workspace_id AND v.project_id = m.project_id AND v.material_id = m.id AND v.version = m.current_version
     WHERE m.workspace_id = ${scope.workspaceId} AND m.project_id = ${scope.projectId} AND m.kind = ${kind}`;

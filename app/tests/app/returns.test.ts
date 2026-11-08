@@ -175,10 +175,10 @@ describe('return view: since you left', () => {
     assert.deepEqual(started.map((item) => [item.text, item.detail, item.needsYou]), [['Ari started a Wiki page: Lamp wiring', null, false]]);
     assert.deepEqual(started[0]!.source, { type: 'doc', projectId: lamp.id, docId: doc.id, version: 1, since: null });
     await view(nia, place);
-    json(await patch(ari, `/api/v1/docs/${doc.id}`, { body: 'Mains to the 24 V driver.', reason: 'Named the driver' }, { 'if-match': '"1"' }), 200);
-    json(await patch(ari, `/api/v1/docs/${doc.id}`, { state: 'published' }, { 'if-match': '"2"' }), 200);
+    json(await patch(ari, `/api/v1/docs/${doc.id}`, { body: 'Mains to the 24 V driver.' }, { 'if-match': '"1"' }), 200);
+    json(await patch(ari, `/api/v1/docs/${doc.id}`, { body: 'Mains to the 24 V driver, fused.' }, { 'if-match': '"2"' }), 200);
     const updated = (await summary(nia, place)).items.filter((item) => item.kind === 'doc');
-    assert.deepEqual(updated.map((item) => [item.text, item.detail]), [['Wiki page updated: Lamp wiring', '2 new versions by Ari · latest: Published']]);
+    assert.deepEqual(updated.map((item) => [item.text, item.detail]), [['Wiki page updated: Lamp wiring', '2 new versions by Ari · latest: Edited the text']]);
     assert.deepEqual(updated[0]!.source, { type: 'doc', projectId: lamp.id, docId: doc.id, version: 3, since: 1 });
     // A person's own edits are not news to them.
     assert.equal((await summary(ari, place)).items.some((item) => item.kind === 'doc'), false);

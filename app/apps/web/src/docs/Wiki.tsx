@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import { Outlet, redirect, useLoaderData, useNavigate, useParams, type LoaderFunctionArgs, type ShouldRevalidateFunctionArgs } from 'react-router';
-import type { DocSummary, Project } from '@flux/contracts';
+import { DOC_LIMITS, type DocSummary, type Project } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useIntentKeys } from '../api/intent-keys';
 import { useToast } from '../ui';
@@ -67,7 +67,7 @@ export function WikiLayout() {
       if (!read.ok) { setImportError(read.error); return; }
       // The same file chosen again after a lost answer reuses its key (#178): one page, never two.
       const intent = JSON.stringify(['import', project.id, file.name, read.title, read.body]);
-      const doc = await createDoc(project.id, { title: read.title, body: read.body, reason: `Imported from ${file.name}` }, intents.keyFor(intent));
+      const doc = await createDoc(project.id, { title: read.title, body: read.body, cause: { kind: 'import', fileName: file.name.slice(0, DOC_LIMITS.fileName) } }, intents.keyFor(intent));
       intents.settle(intent);
       toast({ message: `Imported “${doc.title}”.`, tone: 'success' });
       navigate(docUrl(project.id, doc.id));

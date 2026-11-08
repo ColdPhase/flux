@@ -71,7 +71,7 @@ names.
 | `agentThreads` | Task-bound agents-space conversation history, with `workId` and the same ordered message/author/source/files fields. Additive in format1; readers ignore unknown fields. |
 | `files` (optional) | Published attachments: id, display name, size, SHA-256, message and conversation ids, order, and bundle path. Absent for projects without published files. Message `files` lists id, name and size in attachment order. |
 | `materials` | Published materials with every immutable version: title, text, URL, author, time. |
-| `docs` | Docs with every version: title, Markdown text, `draft`/`published`, reason, author, time, and `file` (the Markdown file of the current text). |
+| `docs` | Docs with every version: title, Markdown text, `state` (always `published` since v0.2: a page has no Draft, and format 1 keeps the field because removing it needs a new `formatVersion`), reason, author, time, and `file` (the Markdown file of the current text). |
 | `sketches` | Project sketches with their thoughts (text, position, size, shape, author, version) and links between thoughts (label). |
 | `work`, `decisions`, `results` | All fields: status, blocker, owner, parking, who proposed and who accepted, supersession, finding, evidence. |
 | `githubSources` (optional) | Only for projects with GitHub task rules: `dormant: true`, the project's default rule mode and `rules` (task id, mode, the state it had, `enabled: false`). Repository bindings are never exported here: a repository's name, URL and id are private GitHub facts that need the exporter's own current GitHub proof, which this export does not check. No installation or App ids, tokens, connecting person, deliveries or pull request data either. Nothing imports it yet (`reimportSupported: false`); a future import must create rules disabled and require a person to connect and authorize repositories on the destination. |
@@ -81,9 +81,7 @@ names.
 
 - other projects of the workspace;
 - direct messages;
-- private notes (drafts), including the private note a material was published from: the
-  material's text is exported, its source note and the note's id are not;
-- private sketches, and the placement of a note on any sketch;
+- private sketches;
 - images placed on map thoughts: the thought and its caption are exported, the image
   is not in format version 1; a full backup keeps it;
 - accounts, e-mail addresses, sessions, push subscriptions and notifications;

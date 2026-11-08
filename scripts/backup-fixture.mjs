@@ -175,7 +175,7 @@ async function snapshot(ada, jonas, state) {
   const threads = [];
   for (const item of conversations) threads.push((await ada.expect('GET', `/api/v1/conversations/${item.id}?limit=100`)).messages.map((message) => [message.sequence, message.body]));
   const docVersions = [];
-  for (const doc of await all(ada, `/api/v1/projects/${projectId}/docs`)) docVersions.push((await all(ada, `/api/v1/docs/${doc.id}/versions`)).map((version) => [version.version, version.state, version.reason]));
+  for (const doc of await all(ada, `/api/v1/projects/${projectId}/docs`)) docVersions.push((await all(ada, `/api/v1/docs/${doc.id}/versions`)).map((version) => [version.version, version.reason]));
   const dms = await all(ada, `/api/v1/workspaces/${workspaceId}/dms`);
   const dmMessages = [];
   for (const dm of dms) dmMessages.push((await ada.expect('GET', `/api/v1/dms/${dm.id}`)).messages.map((message) => message.body));
@@ -219,7 +219,7 @@ async function seed() {
   await ada.expect('POST', `/api/v1/decisions/${decision.id}/accept`, {}, [200], { 'if-match': `"${decision.version}"` });
   await jonas.expect('POST', `/api/v1/projects/${projectId}/results`, { title: token('BACKUP-result'), finding: 'positive', work: [work.id], finishes: { id: work.id, expectedVersion: work.version } });
   const doc = await ada.expect('POST', `/api/v1/projects/${projectId}/docs`, { title: token('BACKUP-doc'), body: token('BACKUP-doc-v1') }, [201], { 'idempotency-key': ids() });
-  await jonas.expect('PATCH', `/api/v1/docs/${doc.id}`, { body: `${token('BACKUP-doc-v2')} [work](flux:work/${work.id})`, state: 'published', reason: 'Second version' }, [200], { 'if-match': `"${doc.version}"` });
+  await jonas.expect('PATCH', `/api/v1/docs/${doc.id}`, { body: `${token('BACKUP-doc-v2')} [work](flux:work/${work.id})` }, [200], { 'if-match': `"${doc.version}"` });
   const note = await ada.expect('POST', `/api/v1/workspaces/${workspaceId}/drafts`, { title: token('BACKUP-private-note'), body: token('BACKUP-private-body'), projectId });
   const dm = (await all(ada, `/api/v1/workspaces/${workspaceId}/dms`))[0];
   assert.ok(dm, 'the demo DM exists');

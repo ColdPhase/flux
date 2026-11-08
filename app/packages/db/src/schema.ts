@@ -670,7 +670,6 @@ export const projectMaterialVersions = pgTable('project_material_versions', {
   sourceDraftId: uuid('source_draft_id'),
   sourceDraftVersion: integer('source_draft_version'),
   /** Doc versions only (#112): draft or published, and why this version was made. */
-  state: text('state', { enum: ['draft', 'published'] }),
   reason: text('reason').notNull().default(''),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
@@ -679,8 +678,6 @@ export const projectMaterialVersions = pgTable('project_material_versions', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.materialId], foreignColumns: [projectMaterials.workspaceId, projectMaterials.projectId, projectMaterials.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.authorAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
   check('project_material_version_exact_actor', sql`num_nonnulls(${table.authorId}, ${table.authorAgentId}) = 1`),
-  // Only doc versions carry a state; a plain #36 material version stays person-written.
-  check('project_material_version_agent_doc', sql`${table.authorAgentId} IS NULL OR ${table.state} IS NOT NULL`),
 ]);
 
 export const projectMessages = pgTable('project_messages', {

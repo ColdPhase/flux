@@ -49,7 +49,7 @@ export function projectExportRows(db: DbExecutor) {
     if (!materials.length) return [];
     // F-030: an encrypted workspace's export opens every sealed field (a deliberate copy to the person who asked).
     const versions = groupBy(await openRows(db, 'project_material_versions', await db.select({
-      materialId: v.materialId, workspaceId: v.workspaceId, version: v.version, title: v.title, body: v.body, url: v.url, state: v.state, reason: v.reason,
+      materialId: v.materialId, workspaceId: v.workspaceId, version: v.version, title: v.title, body: v.body, url: v.url, reason: v.reason,
       authorId: v.authorId, authorAgentId: v.authorAgentId, createdAt: v.createdAt,
     }).from(v).where(and(eq(v.projectId, projectId), inArray(v.materialId, materials.map((row) => row.id)))).orderBy(asc(v.materialId), asc(v.version))), (row) => row.materialId);
     return materials.map((row) => ({ row, versions: versions.get(row.id) ?? [] }));
@@ -122,7 +122,7 @@ export function projectExportRows(db: DbExecutor) {
         // A doc and its versions may be agent-written under a standing grant (#152, migration 0043).
         id: row.id, createdBy: creator(row.createdBy, row.createdByAgentId), createdAt: iso(row.createdAt), currentVersion: row.currentVersion,
         versions: versions.map((version) => ({
-          version: version.version, title: version.title, body: version.body, state: version.state ?? 'published' as const, reason: version.reason,
+          version: version.version, title: version.title, body: version.body, state: 'published' as const, reason: version.reason,
           author: creator(version.authorId, version.authorAgentId), createdAt: iso(version.createdAt),
         })),
       }));

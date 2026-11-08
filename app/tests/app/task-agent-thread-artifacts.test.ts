@@ -18,7 +18,7 @@ import { person } from './support/people.js';
 async function setup(){const f=await actionScene(pool);
   const task=async(title:string)=>expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/work`,{body:{title}}),201) as unknown as WorkItem;
   return{...f,task};}
-async function doc(f:ThreadNativeScene,body:string){return expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/docs`,{body:{title:'Measured work',body,state:'published'}}),201) as unknown as Doc;}
+async function doc(f:ThreadNativeScene,body:string){return expect(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/docs`,{body:{title:'Measured work',body}}),201) as unknown as Doc;}
 const edit=(f:ThreadNativeScene,d:Doc,body:Record<string,unknown>,key=randomUUID())=>f.owner.request('PATCH',`/api/v1/docs/${d.id}`,
   {body,headers:{'if-match':`"${d.version}"`,'idempotency-key':key}});
 const link=(f:ThreadNativeScene,from:{type:'work'|'result';id:string},to:Record<string,unknown>)=>f.owner.request('POST',`/api/v1/projects/${f.projectId}/links`,{body:{from,to}});
@@ -71,7 +71,7 @@ test('pinned material/doc revisions never follow a later version; actual materia
 test('real native doc creation is a canonical reset; document reads and reset without a thread create no agent conversation',async()=>{
   const f=await setup(),item=await f.task('Native doc task'),empty=await f.task('No thread yet');await fillThread(f,item.id);
 
-  const value=toolValue(await f.tool('flux_create_doc',{projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,clientCommandId:randomUUID(),peerRequestClass:'execute',sources:[],doc:{title:'Actual native artifact',body:mentions(item.id,empty.id),state:'published'}}));
+  const value=toolValue(await f.tool('flux_create_doc',{projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,clientCommandId:randomUUID(),peerRequestClass:'execute',sources:[],doc:{title:'Actual native artifact',body:mentions(item.id,empty.id)}}));
   assert.equal(await threadBudget(item.id),0);
   assert.equal((await pool.query('SELECT count(*)::int n FROM project_conversations WHERE work_id=$1',[empty.id])).rows[0].n,0);
   expect(await f.owner.request('GET',`/api/v1/docs/${value.docId}`),200);assert.equal(await threadBudget(item.id),0);
@@ -197,7 +197,7 @@ test('a live co-editing save of a doc a closed task cites resets that task budge
     await authority.submit(owner,d.id,command.envelope,command.bytes,authority.reserve(command.bytes));
     const latest=await authority.bootstrap(owner,d.id);
     const saved=await authority.save(owner,d.id,{clientCommandId:randomUUID(),expectedVersion:d.version,generation:latest.generation,
-      headSequence:latest.sequence,headHash:latest.hash,reason:'Live save'});
+      headSequence:latest.sequence,headHash:latest.hash});
     assert.equal(saved.savedDoc?.version,d.version+1);
   }finally{text.destroy();}
   assert.equal(await threadBudget(a.id),0,'the live save reset the closed task budget');

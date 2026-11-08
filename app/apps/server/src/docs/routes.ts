@@ -28,14 +28,16 @@ interface Options { db: Database; sessions: SessionResolver }
 const page = { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' } } } as const;
 const title = { type: 'string', minLength: 1, maxLength: DOC_LIMITS.title } as const;
 const body = { type: 'string', maxLength: DOC_LIMITS.body } as const;
-const state = { type: 'string', enum: ['draft', 'published'] } as const;
-const reason = { type: 'string', maxLength: DOC_LIMITS.reason } as const;
+/** Why a save is the version it is (a restore, a kept text, a file); the server writes the sentence from it, nobody types one. */
+const cause = { type: 'object', required: ['kind'], additionalProperties: false, properties: {
+  kind: { type: 'string', enum: ['import', 'restore', 'keep_mine', 'page_left'] }, version: { type: 'integer', minimum: 1 },
+  fileName: { type: 'string', minLength: 1, maxLength: DOC_LIMITS.fileName } } } as const;
 const source = { type: 'object', required: ['type', 'id'], additionalProperties: false,
   properties: { type: { type: 'string', enum: ['result', 'decision'] }, id: { type: 'string' } } } as const;
 const version = { type: 'integer', minimum: 1 } as const;
 
-const createDoc = { type: 'object', required: ['title'], additionalProperties: false, properties: { title, body, state, reason, from: source } } as const;
-const updateDoc = { type: 'object', additionalProperties: false, minProperties: 1, properties: { title, body, state, reason, expectedVersion: version } } as const;
+const createDoc = { type: 'object', required: ['title'], additionalProperties: false, properties: { title, body, cause, from: source } } as const;
+const updateDoc = { type: 'object', additionalProperties: false, minProperties: 1, properties: { title, body, cause, expectedVersion: version } } as const;
 const addSection = { type: 'object', required: ['from'], additionalProperties: false, properties: { from: source, expectedVersion: version, under: { type: 'string', maxLength: 300 } } } as const;
 const preview = { type: 'object', required: ['body'], additionalProperties: false, properties: { body } } as const;
 

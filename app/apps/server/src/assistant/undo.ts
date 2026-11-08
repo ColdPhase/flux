@@ -89,12 +89,6 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
           await maps.rename(owner, id!, { title: String(restore.title), expectedVersion: map.version });
           break;
         }
-        case 'doc.create': {
-          const current = gone(await rows.doc(id!)) as { version: number; state: string | null };
-          if (row.afterVersion !== null && current.version !== row.afterVersion) throw new Since();
-          if (current.state !== 'draft') await docs.updateDoc(owner, id!, { state: 'draft', reason }, current.version);
-          break;
-        }
         case 'doc.update': {
           if (plan.kind !== 'doc' || !row.beforeVersion || !row.afterVersion) throw new Since(NOT_UNDOABLE);
           const [current, before, after] = [gone(await rows.doc(id!)) as Record<string, unknown> & { version: number },
@@ -102,7 +96,7 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
           const fields = Object.fromEntries(plan.fields.map((key) => [key, { before: before[key], after: after[key] }]));
           const { restore, changedSince } = restorableFields(fields, current);
           if (changedSince.length) throw new Since();
-          await docs.updateDoc(owner, id!, { ...restore, reason }, current.version);
+          await docs.updateDoc(owner, id!, restore, current.version, reason);
           break;
         }
         case 'map.thought.create': {
@@ -185,7 +179,7 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
         receipt: { ...((scrubbed as { receipt?: Record<string, unknown> }).receipt ?? locked.receipt ?? {}), undone: { by: owner.id, at: decidedAt.toISOString(), ...(removal?.ok ? { removed: removal.snapshot } : {}) } } as never });
       await session.flushEvents();
     });
-    return { done: true, message: row.operation === 'doc.create' ? 'Moved to your drafts' : null };
+    return { done: true, message: null };
   } catch (error) {
     if (error instanceof Since) return { done: false, message: error.message };
     if (error instanceof SpaceAiOffError) throw error;

@@ -426,8 +426,8 @@ The same executor runs the canonical doc (#112) and conversation (#36, #154) com
 
 | Tool | Operation | Target | Change |
 | --- | --- | --- | --- |
-| `flux_create_doc` | `doc.create` | none | One project doc: title, Markdown text, draft or published state, reason |
-| `flux_update_doc` | `doc.update` | the doc | The next version at the version last read (like `If-Match`): title, the complete text, state, reason |
+| `flux_create_doc` | `doc.create` | none | One project doc: title, Markdown text, reason |
+| `flux_update_doc` | `doc.update` | the doc | The next version at the version last read (like `If-Match`): title, the complete text, reason |
 | `flux_start_conversation` | `conversation.create` | none | One new project conversation with its first message, optionally citing one material or doc version |
 | `flux_reply_in_conversation` | `conversation.reply` | the conversation | One reply in an existing project conversation, including a task's discussion thread |
 | `flux_post_agent_thread` | `conversation.reply` | the task's agents' thread | One work message about a task in its agents' thread (#400, below) |

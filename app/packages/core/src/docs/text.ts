@@ -1,4 +1,4 @@
-import { DOC_LIMITS, docRef, type DocSectionSource, type DocState } from '@flux/contracts';
+import { DOC_LIMITS, docRef, type DocChangeCause, type DocSectionSource } from '@flux/contracts';
 import { InvalidInputError } from '../access/errors.js';
 
 // Pure input rules and text composition for project docs (#112).
@@ -16,17 +16,49 @@ export function body(value: unknown): string {
   return value.replace(/\r\n?/g, '\n');
 }
 
-export function state(value: unknown): DocState {
-  if (value !== 'draft' && value !== 'published') throw new InvalidInputError('state must be draft or published');
-  return value;
-}
-
-export function reason(value: unknown): string {
+/**
+ * A sentence a server-side caller wrote for a version: the assistant's "Asked by Ada: …", an Undo, an agent's own words.
+ * The HTTP routes never take one; a person sends a {@link cause} and the server writes the sentence.
+ */
+export function sentence(value: unknown): string {
   if (value === undefined || value === null) return '';
   if (typeof value !== 'string') throw new InvalidInputError('reason must be text');
   const trimmed = value.trim().replace(/\s+/g, ' ');
   if (trimmed.length > DOC_LIMITS.reason) throw new InvalidInputError(`reason must be at most ${DOC_LIMITS.reason} characters`);
   return trimmed;
+}
+
+/** The causes a save may name; a cause that does not belong to the call is refused. */
+export type CauseKind = DocChangeCause['kind'];
+
+/** A person's cause: exactly the shape the contract states, of a kind this call allows. */
+export function cause(value: unknown, allowed: readonly CauseKind[]): DocChangeCause | undefined {
+  if (value === undefined || value === null) return undefined;
+  const raw = value as { kind?: unknown; version?: unknown; fileName?: unknown } | null;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !allowed.includes(raw.kind as CauseKind)) throw new InvalidInputError(`cause.kind must be ${allowed.join(' or ')}`);
+  const keys = Object.keys(raw);
+  if (raw.kind === 'import') {
+    if (keys.some((key) => key !== 'kind' && key !== 'fileName') || typeof raw.fileName !== 'string') throw new InvalidInputError('cause must be { kind: "import", fileName }');
+    const fileName = raw.fileName.trim().replace(/\s+/g, ' ');
+    if (!fileName || fileName.length > DOC_LIMITS.fileName) throw new InvalidInputError(`cause.fileName must be 1–${DOC_LIMITS.fileName} characters`);
+    return { kind: 'import', fileName };
+  }
+  if (keys.some((key) => key !== 'kind' && key !== 'version') || !Number.isSafeInteger(raw.version) || (raw.version as number) < 1)
+    throw new InvalidInputError(`cause must be { kind: "${String(raw.kind)}", version }`);
+  return { kind: raw.kind as 'restore' | 'keep_mine' | 'page_left', version: raw.version as number };
+}
+
+/**
+ * The sentence for a cause. `theirs` is who wrote the version a `keep_mine` save kept the text over, when that was someone
+ * else: a person's own earlier version is no "in place of" and the change is described instead (empty here).
+ */
+export function causeSentence(given: DocChangeCause, theirs: string | null): string {
+  switch (given.kind) {
+    case 'import': return `Imported from ${given.fileName}`;
+    case 'restore': return `Restored version ${given.version}`;
+    case 'keep_mine': return theirs ? `In place of ${theirs}’s version ${given.version}` : '';
+    case 'page_left': return `Saved as the page was left, in place of version ${given.version}`;
+  }
 }
 
 export function sectionSource(value: unknown): DocSectionSource {
@@ -39,10 +71,9 @@ export function sectionSource(value: unknown): DocSectionSource {
 
 const quote = (text: string) => `“${text.length > 80 ? `${text.slice(0, 79)}…` : text}”`;
 
-/** What changed between two versions, in words, when the author gave no reason. */
-export function describeChange(previous: { title: string; body: string; state: DocState }, next: { title: string; body: string; state: DocState }): string {
+/** What changed between two versions, in words, when no cause or sentence says why. */
+export function describeChange(previous: { title: string; body: string }, next: { title: string; body: string }): string {
   const parts: string[] = [];
-  if (previous.state !== next.state) parts.push(next.state === 'published' ? 'Published' : 'Moved back to draft');
   if (previous.title !== next.title) parts.push(`Renamed to ${quote(next.title)}`);
   if (previous.body !== next.body) parts.push('Edited the text');
   return parts.join(' · ');

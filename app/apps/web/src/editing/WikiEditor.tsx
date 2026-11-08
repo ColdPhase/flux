@@ -477,7 +477,7 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
         if (source instanceof LocalWiki) await source.restore(restore);
         else {
           source.document.transact(() => { source.text.delete(0, source.text.length); source.text.insert(0, restore.body); }, 'restore');
-          const receipt = await source.saveVersion({ ...(restore.title !== title ? { title: restore.title } : {}), reason: `Restored version ${restore.version}` });
+          const receipt = await source.saveVersion({ ...(restore.title !== title ? { title: restore.title } : {}), cause: { kind: 'restore', version: restore.version } });
           if (receipt.savedDoc) setTitle(receipt.savedDoc.title);
         }
         done(`Version ${restore.version} is the page again.`);

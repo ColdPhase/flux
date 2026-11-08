@@ -26,9 +26,10 @@ test('standing doc grants start and edit a project doc as the agent at the read 
     doc: { title: 'Battery notes', body: 'Measured **four hours** against [the plan](flux:doc/00000000-0000-4000-8000-000000000000).' } };
   const created = toolValue(await f.tool('flux_create_doc', started));
   const docId = String(created.docId);
-  assert.deepEqual([created.version, created.state, created.replayed], [1, 'draft', false]);
+  assert.deepEqual([created.version, created.replayed], [1, false]);
+  assert.ok(!('state' in created), 'a page has no Draft or Published state');
   let doc = await getDoc(f, docId);
-  assert.deepEqual([doc.title, doc.state, doc.version, doc.audience], ['Battery notes', 'draft', 1, { kind: 'project', projectId: f.projectId }]);
+  assert.deepEqual([doc.title, doc.version, doc.audience], ['Battery notes', 1, { kind: 'project', projectId: f.projectId }]);
   assert.deepEqual([doc.author, doc.createdBy], [{ kind: 'agent', id: f.agentId, name: 'Planning agent' }, { kind: 'agent', id: f.agentId, name: 'Planning agent' }],
     'the agent is the real author, never a person account');
   assert.ok(doc.html.includes('<strong>four hours</strong>'));
@@ -43,11 +44,12 @@ test('standing doc grants start and edit a project doc as the agent at the read 
   // An edit at the read version, like If-Match: the next immutable version, written by the agent.
   const edit = randomUUID();
   const published = { ...base(f, 'execute', edit), docId, expectedVersion: 1,
-    changes: { body: 'Measured four hours, twice.', state: 'published', reason: 'Second measurement' } };
+    changes: { body: 'Measured four hours, twice.', reason: 'Second measurement' } };
   const edited = toolValue(await f.tool('flux_update_doc', published));
-  assert.deepEqual([edited.version, edited.state, edited.replayed], [2, 'published', false]);
+  assert.deepEqual([edited.version, edited.replayed], [2, false]);
+  assert.ok(!('state' in edited), 'a page has no Draft or Published state');
   doc = await getDoc(f, docId);
-  assert.deepEqual([doc.version, doc.state, doc.reason, doc.author.kind, doc.author.id], [2, 'published', 'Second measurement', 'agent', f.agentId]);
+  assert.deepEqual([doc.version, doc.reason, doc.author.kind, doc.author.id], [2, 'Second measurement', 'agent', f.agentId]);
   const history = expect(await f.owner.request('GET', `/api/v1/docs/${docId}/versions`), 200) as unknown as Page<DocVersionSummary>;
   assert.deepEqual(history.items.map((item) => [item.version, item.author.kind, item.author.id]), [[2, 'agent', f.agentId], [1, 'agent', f.agentId]]);
   assert.deepEqual([await versions(docId), await docEvents(docId)], [2, 2]);
@@ -84,7 +86,7 @@ test('standing doc grants start and edit a project doc as the agent at the read 
 
 test('doc actions never reach a private draft, a guessed or other project doc, another doc than a targeted grant names, or an expired or revoked authority', async () => {
   const f = await actionScene(pool);
-  const docA = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`, { body: { title: 'Wiring', state: 'published' } }), 201) as unknown as Doc;
+  const docA = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`, { body: { title: 'Wiring' } }), 201) as unknown as Doc;
   const docB = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`, { body: { title: 'Housing' } }), 201) as unknown as Doc;
   const draft = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/drafts`, { body: { title: 'Private plan' } }), 201);
   // Another person's space: the client has its owner's rights and no more.

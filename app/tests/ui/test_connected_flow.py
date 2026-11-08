@@ -100,7 +100,7 @@ class ConnectedFlow(unittest.TestCase):
         body = "\n".join([f"From the [Pickup ideas](flux:sketch/{sketch['id']}) map and its [SMS thought](flux:thought/{thought['id']}).", "",
                           "## Pickup", "", f"[{D_SMS}](flux:decision/{decisions[0]})", "", "Codes go out the evening before.", "",
                           "## Still open", "", "Lockers?", ""])
-        doc = call("ola", "POST", f"/api/v1/projects/{pid}/docs", {"title": PAGE, "body": body, "state": "published"}, {"idempotency-key": str(uuid.uuid4())})
+        doc = call("ola", "POST", f"/api/v1/projects/{pid}/docs", {"title": PAGE, "body": body}, {"idempotency-key": str(uuid.uuid4())})
         # Lena joins after all of that.
         call("ola", "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": cls.ids["lena"]}, "role": "contributor"})
         for context in contexts.values():

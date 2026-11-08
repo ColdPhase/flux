@@ -63,7 +63,7 @@ export async function fullProject() {
   expect(await f.owner.request('POST', `/api/v1/work/${task.id}/agent-thread`,
     { body: { body: 'A person answers in the thread.', clientMessageId: randomUUID() } }), 201);
   expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`,
-    { body: { title: 'Erasure notes', body: `[The task](flux:work/${task.id}) has a measured note.`, state: 'published' } }), 201);
+    { body: { title: 'Erasure notes', body: `[The task](flux:work/${task.id}) has a measured note.` } }), 201);
   expect(await f.owner.request('PATCH', `/api/v1/materials/${f.source.materialId}`,
     { body: { clientMutationId: randomUUID(), expectedVersion: f.source.version, body: 'A revised release plan.' } }), 200);
   expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/results`,

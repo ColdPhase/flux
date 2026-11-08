@@ -142,12 +142,12 @@ export function liveWiki<State extends WikiCodecState, Lease>(ports: WikiPorts<S
       await ports.session.assertCurrent(identity); await ports.rows.notify(docId);
     },
     async save(identity: WikiIdentity, docId: string, command: SaveSharedDoc): Promise<LiveReceipt> {
-      if (!command || Object.keys(command).some((key) => !['clientCommandId','expectedVersion','generation','headSequence','headHash','title','state','reason'].includes(key))) throw new InvalidInputError('Unknown snapshot parameter');
+      if (!command || Object.keys(command).some((key) => !['clientCommandId','expectedVersion','generation','headSequence','headHash','title','cause'].includes(key))) throw new InvalidInputError('Unknown snapshot parameter');
       const { principal } = await authorized(identity, docId, 'write', command.clientCommandId);
       const current = await ports.rows.lockHeadSummary(docId);
       if (!current) throw generationChanged();
       const parameters = { expectedVersion: command.expectedVersion, generation: command.generation, headSequence: command.headSequence,
-        headHash: command.headHash, title: command.title ?? null, state: command.state ?? null, reason: command.reason ?? null };
+        headHash: command.headHash, title: command.title ?? null, cause: command.cause ?? null };
       const fingerprint = createHash('sha256').update(canonical({ workspace: current.workspaceId, kind: 'wiki', room: docId,
         generation: command.generation, actor: identity.actorId, operation: 'save', uuid: command.clientCommandId, parameters })).digest('hex');
       const original = await replay(identity, command.clientCommandId, current, 'save', fingerprint, 0);

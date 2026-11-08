@@ -28,7 +28,7 @@ test('erasing a project removes its thread rows and provenance; ordinary updates
   // A second project in the same workspace keeps every row.
   const kept = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/projects`,
     { body: { name: 'Kept project', visibility: 'restricted' } }), 201) as { id: string };
-  expect(await f.owner.request('POST', `/api/v1/projects/${kept.id}/docs`, { body: { title: 'Kept doc', body: 'Kept body', state: 'published' } }), 201);
+  expect(await f.owner.request('POST', `/api/v1/projects/${kept.id}/docs`, { body: { title: 'Kept doc', body: 'Kept body' } }), 201);
   const keptBefore = await rows(kept.id);
   assert.ok(keptBefore.agent_thread_artifact_boundaries > 0 && keptBefore.agent_thread_artifact_mutations > 0);
 

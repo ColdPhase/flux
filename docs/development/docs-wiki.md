@@ -1,17 +1,18 @@
 # Project docs and wiki (issue #112)
 
 Foundation 8.7 and the #44 rule "results inform knowledge without rewriting historical
-statements". A project has many docs. Each doc has a title, a Markdown text, a draft or
-published state and **immutable versions**, each with its author, time and reason. Docs link
+statements". A project has many docs. Each doc has a title, a Markdown text and **immutable
+versions**, each with its author, time and reason (the server's words; nobody types it). A page has no
+Draft / Published state (#942). Docs link
 to work, decisions, results, messages, sketches and other docs, and every linked object shows the
 docs that link to it. Everything is visible exactly to the principals with current read access to
-the project; draft is a state, not a second audience (private notes stay #36 private drafts).
+the project.
 
 ## Reusing #36 materials
 
 A doc **is** a #36 project material of `kind = 'doc'` (migration `0013_docs.sql`). Its versions
-are the same `project_material_versions` snapshots, with two new columns: `state` and `reason`.
-There is no second version table.
+are the same `project_material_versions` snapshots, with a new `reason` column. There is no second
+version table.
 
 - A message cites a doc version exactly as it cites a material:
   `source: { materialId: <docId>, version: 3 }`. The citation keeps reading version 3 after
@@ -32,18 +33,33 @@ There is no second version table.
 
 | Method and path | Notes |
 | --- | --- |
-| `GET/POST /api/v1/projects/:projectId/docs` | List (most recently changed first; `limit`/`offset`) or create `{ title, body?, state?, reason?, from? }`. New docs are drafts unless `state` says otherwise. |
+| `GET/POST /api/v1/projects/:projectId/docs` | List (most recently changed first; `limit`/`offset`) or create `{ title, body?, cause?, from? }` (`cause` is only `import`). |
 | `POST /api/v1/projects/:projectId/docs/preview` | `{ body }` → `{ html, mentions }`, rendered exactly as a saved version (project read access). |
-| `GET/PATCH /api/v1/docs/:docId` | `PATCH { title?, body?, state?, reason? }` needs `If-Match: "<version>"` (or `expectedVersion`): 428 without, `409 VERSION_CONFLICT` with the latest doc (`current`) when stale. A save that changes nothing returns the doc without a new version. |
-| `GET /api/v1/docs/:docId/versions`, `GET /api/v1/docs/:docId/versions/:version` | Newest first, each `{ version, title, state, reason, author, createdAt }`; one version adds `body`, `html` and `mentions`. |
+| `GET/PATCH /api/v1/docs/:docId` | `PATCH { title?, body?, cause? }` (`cause`: `restore`, `keep_mine` or `page_left`) needs `If-Match: "<version>"` (or `expectedVersion`): 428 without, `409 VERSION_CONFLICT` with the latest doc (`current`) when stale. A save that changes nothing returns the doc without a new version. |
+| `GET /api/v1/docs/:docId/versions`, `GET /api/v1/docs/:docId/versions/:version` | Newest first, each `{ version, title, reason, author, createdAt }`; one version adds `body`, `html` and `mentions`. |
 | `POST /api/v1/docs/:docId/sections` | "Add to docs": `{ from: { type: 'result' \| 'decision', id } }`, with `If-Match`. |
 | `GET /api/v1/workspaces/:workspaceId/docs` | Docs in every project of the workspace that the policy's `visibleFilter` lets the caller read, applied before the page and the total. The web app has no workspace-wide Wiki page any more (#865: the Wiki lives inside a space); the read stays for API clients. |
 
 Every POST/PATCH accepts `Idempotency-Key` through the shared runner in
 `app/apps/server/src/http/commands.ts`; a replay rechecks current project read access. Responses with
 a version carry `ETag`. A doc in a project the caller cannot see is `404 DOC_NOT_FOUND`, the same
-as a missing one. When no reason is given, the server writes one from the change: "Started the
-doc", "Published", "Moved back to draft", "Renamed to “…”", "Edited the text" (joined with " · ").
+as a missing one. **A person never types a version's reason or state** (#942): `state` and `reason`
+are not fields any more and are dropped like any unknown field. The server writes the reason from the change, "Started the page",
+"Renamed to “…”", "Edited the text" (joined with " · "), or, when the save names a **cause**, from the
+cause it has checked against the page:
+
+| `cause` | Allowed on | The reason the server writes |
+| --- | --- | --- |
+| `{ kind: 'import', fileName }` | create | "Imported from notes.md" |
+| `{ kind: 'restore', version }` | save | "Restored version 3" (the version must exist) |
+| `{ kind: 'keep_mine', version }` | save | "In place of Ada’s version 4": the saver kept their text over version 4, which Ada wrote; over their own version the change describes itself |
+| `{ kind: 'page_left', version }` | save | "Saved as the page was left, in place of version 4" |
+
+A cause names no more than a kind and a version or file name; it adds nothing else to the page. The same
+cause is accepted on the live save (`POST /api/v1/docs/:docId/live/save`), except `import`. Agents and the
+assistant reach the same commands through MCP: an agent may say why in its own words (`reason`), and an
+assistant's version reads "Asked by Ada: …" (F-036). Undo writes its own sentence. Export format 1 keeps
+`state` on each doc version, always `published`, because removing a field needs a new `formatVersion`.
 
 ## Markdown and safety
 
@@ -139,9 +155,8 @@ draws it since #869: two columns only, the sidebar and the page.
   reader's chip or card (F-034) and opens what it refers to; on the line being written it reads as
   its label and kind (CW-4). ⌘/Ctrl K inserts a reference from the link picker, Enter continues a
   list or quote, ⌘/Ctrl B and I wrap bold and italic. There is no Write / Preview / Both, no raw
-  Markdown field, no reason field and no Draft / Published in the interface; the API keeps `state`
-  and `reason`, and versions get the server's generated reasons ("Edited the text", "Renamed to
-  “…”", "Restored version N").
+  Markdown field, no reason field and no Draft / Published in the interface or the API; versions get the
+  server's reasons ("Edited the text", "Renamed to “…”", "Restored version N").
 - **Versions save by themselves.** With live editing (#228) the text is the page's shared Y.Text;
   typing is shared at once, and an editor saves the confirmed head as the next version once its own
   text has rested for 2 s, at most once per 30 s per person, and at once when the person leaves the
@@ -150,7 +165,7 @@ draws it since #869: two columns only, the sidebar and the page.
   starts a new generation; an editor with nothing pending opens it afresh. Without live editing
   (`FLUX_LIVE_EDITING=off`) the editor holds this tab's copy and saves it with `If-Match` 1.2 s
   after typing rests; a concurrent save shows who saved, with "Keep my text" or "Use their version"
-  (the kept version's reason names the version it replaced), and unsaved text survives a reload of
+  (the server writes the kept version's reason from the cause, naming the version it replaced), and unsaved text survives a reload of
   the tab. A tab that closes with unsaved text sends it at once and also leaves a copy on this
   device (localStorage, removed at sign-out and once a save holds the text), which the next visit
   to the page restores whatever order the closing saves reached the server in (#967).

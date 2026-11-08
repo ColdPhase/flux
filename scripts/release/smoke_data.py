@@ -120,11 +120,11 @@ def seed(client: Client, state_file: Path) -> None:
     )
     client.expect(
         "PATCH", f"/api/v1/docs/{doc['id']}",
-        {"body": f"{doc_title}-v2", "state": "published", "reason": "Second version"}, (200,),
+        {"body": f"{doc_title}-v2"}, (200,),
         {"If-Match": f'"{doc["version"]}"'},
     )
     doc_versions = [
-        [item["version"], item["state"], item["reason"]]
+        [item["version"], item["reason"]]
         for item in client.all(f"/api/v1/docs/{doc['id']}/versions")
     ]
     if len(doc_versions) != 2:
@@ -187,7 +187,7 @@ def read_back(client: Client, state: dict[str, Any]) -> dict[str, Any]:
         "project_names": {item["id"]: item["name"] for item in projects},
         "messages": [[message["sequence"], message["body"]] for message in messages],
         "file_hex": file_bytes.hex() if status == 200 else "",
-        "doc_versions": [[item["version"], item["state"], item["reason"]] for item in versions],
+        "doc_versions": [[item["version"], item["reason"]] for item in versions],
         "work_title": work.get("title"),
         "note_titles": {item["id"]: item["title"] for item in notes},
     }

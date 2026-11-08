@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { DOC_LIMITS, EDITING_LIMITS, type DocMention, type EditingServerMessage, type LiveCursor, type LiveDocBootstrap, type NamedPrincipal, type SaveSharedDoc, type WikiTextEnvelope } from '@flux/contracts';
+import { DOC_LIMITS, EDITING_LIMITS, type DocChangeCause, type DocMention, type EditingServerMessage, type LiveCursor, type LiveDocBootstrap, type NamedPrincipal, type SaveSharedDoc, type WikiTextEnvelope } from '@flux/contracts';
 import { ApiError } from '../api/client.js';
 import { enrollLiveDoc, getLiveDoc, saveLiveDoc } from '../docs/api.js';
 import { setReloadRetention } from '../app/reload-retention.js';
@@ -9,6 +9,12 @@ import { decode64, EditingConnection, encode64, type ReceivedEditing } from './w
 const REMOTE = Symbol('authorized shared update');
 interface Pending { envelope: WikiTextEnvelope; bytes: string }
 interface Recovery { generation: string; body: string; pending: Pending[]; save?: SaveSharedDoc | null }
+/** A kept save's cause is one of the shapes the server takes, or the copy is not trusted. */
+const savedCause = (value: unknown) => {
+  const cause = value as { kind?: unknown; version?: unknown } | null;
+  return !!cause && typeof cause === 'object' && ['restore', 'keep_mine', 'page_left'].includes(String(cause.kind)) && Number.isSafeInteger(cause.version) && (cause.version as number) >= 1
+    && Object.keys(cause).length === 2;
+};
 export interface WikiPeer { connectionId: string; actor: NamedPrincipal; cursor: LiveCursor | null; /** The person's slot in this room, from the server: it fixes their shape for every viewer. */ slot: number; expiresAt: string }
 export interface WriterRange { actor: NamedPrincipal; anchor: string; head: string }
 
@@ -147,7 +153,7 @@ export class SharedWiki {
       if (!raw || raw.length > 2_200_000) return null;
       const value = JSON.parse(raw) as Recovery;
       if (typeof value.generation !== 'string' || typeof value.body !== 'string' || value.body.length > EDITING_LIMITS.bodyUnits || !Array.isArray(value.pending) || value.pending.length > 1024) return null;
-      if (value.save && (value.save.generation !== value.generation || typeof value.save.clientCommandId !== 'string' || !Number.isSafeInteger(value.save.expectedVersion) || !Number.isSafeInteger(value.save.headSequence) || typeof value.save.headHash !== 'string' || (value.save.title !== undefined && (typeof value.save.title !== 'string' || value.save.title.length > DOC_LIMITS.title)) || (value.save.reason !== undefined && (typeof value.save.reason !== 'string' || value.save.reason.length > DOC_LIMITS.reason)) || (value.save.state !== undefined && value.save.state !== 'draft' && value.save.state !== 'published'))) return null;
+      if (value.save && (value.save.generation !== value.generation || typeof value.save.clientCommandId !== 'string' || !Number.isSafeInteger(value.save.expectedVersion) || !Number.isSafeInteger(value.save.headSequence) || typeof value.save.headHash !== 'string' || (value.save.title !== undefined && (typeof value.save.title !== 'string' || value.save.title.length > DOC_LIMITS.title)) || (value.save.cause !== undefined && !savedCause(value.save.cause)))) return null;
       let size = 0;
       for (const item of value.pending) {
         const envelope = item.envelope;
@@ -471,7 +477,7 @@ export class SharedWiki {
       if (this.ownUnsaved && this.lastOwnSaveAt && now - this.lastOwnSaveAt < AUTOSAVE.spacingMs) return Promise.resolve();
     }
     const prior = this.saveAttempt;
-    this.running = this.save(prior ? { title: prior.title, reason: prior.reason } : {}, undefined, leaving)
+    this.running = this.save(prior ? { title: prior.title, cause: prior.cause } : {}, undefined, leaving)
       .then(() => { this.lastOwnSaveAt = Date.now(); }, () => { this.saveRetryAt = Date.now() + AUTOSAVE.retryMs; })
       .finally(() => { this.running = null; });
     return this.running;
@@ -480,11 +486,11 @@ export class SharedWiki {
   private savingVersion = false;
   private openedAt = Date.now();
   /**
-   * A rename or a restore saves the head as a version with its title or reason. Someone typing meanwhile moves the head
+   * A rename or a restore saves the head as a version with its title or cause. Someone typing meanwhile moves the head
    * on, and someone else's save moves the version on: the save is tried again once this editor has the newer head, for
    * up to 10 s (#950: a rename failed while someone else typed).
    */
-  async saveVersion(metadata: { title?: string; reason?: string }) {
+  async saveVersion(metadata: { title?: string; cause?: DocChangeCause }) {
     const deadline = Date.now() + 10_000;
     this.savingVersion = true;
     try {
@@ -520,12 +526,12 @@ export class SharedWiki {
   }
   /** Every change of this editor is confirmed, so the head holds it. */
   private get settledText() { return !this.pending.size && !this.unsealed.length; }
-  async save(metadata: { title?: string; reason?: string }, metadataVersion?: number, keepalive = false) {
+  async save(metadata: { title?: string; cause?: DocChangeCause }, metadataVersion?: number, keepalive = false) {
     this.seal();
     const deadline = Date.now() + 10_000;
     while (this.pending.size && this.status !== 'private' && Date.now() < deadline) await new Promise((resolve) => window.setTimeout(resolve, 20));
     if (!this.editable || this.pending.size) throw new Error('Wait until every change is shared before saving a version.');
-    const sameMetadata = this.saveAttempt && this.saveAttempt.title === metadata.title && this.saveAttempt.reason === metadata.reason;
+    const sameMetadata = this.saveAttempt && this.saveAttempt.title === metadata.title && JSON.stringify(this.saveAttempt.cause ?? null) === JSON.stringify(metadata.cause ?? null);
     if (this.saveAttempt && !sameMetadata) throw new Error('An earlier save is not confirmed yet. Try again in a moment.');
     const command = sameMetadata ? this.saveAttempt! : { ...metadata, generation: this.head.generation, headSequence: this.head.sequence, headHash: this.head.hash, expectedVersion: metadataVersion ?? this.head.savedVersion, clientCommandId: crypto.randomUUID() };
     this.saveAttempt = command;

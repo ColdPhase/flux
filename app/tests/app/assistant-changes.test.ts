@@ -373,22 +373,22 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     expectStatus(await stranger.browser.request('POST', assistantChangeActionPath(log[3]!.id, 'undo'), { body: {} }), 404);
   });
 
-  test('AST-6.2: a created thought and link are removed; a created page moves to drafts; a map thought text is restored only when untouched', async () => {
+  test('AST-6.2: a created thought and link are removed; a created page stays (no Draft to move it to); a map thought text is restored only when untouched', async () => {
     const sketch = await map(owner);
     const mine = await thought(owner, sketch.id, 'Sensor rig');
     const run = await liveRun();
     const added = JSON.parse(text((await run.call('flux_add_thought', { mapId: sketch.id, thought: { text: 'Mount the lamp', x: 40, y: 40, linkFrom: { thoughtId: thoughtId(mine) } } })).message)) as { thoughtId: string; linkId: string };
     await run.call('flux_update_thought', { mapId: sketch.id, thoughtId: thoughtId(mine), expectedVersion: thoughtVersion(mine), changes: { text: 'Sensor rig v2' } });
-    const page = JSON.parse(text((await run.call('flux_create_doc', { doc: { title: 'Mounting', body: 'How to mount', state: 'published' } })).message)) as { docId: string };
+    const page = JSON.parse(text((await run.call('flux_create_doc', { doc: { title: 'Mounting', body: 'How to mount' } })).message)) as { docId: string };
     await complete(run.runId);
     const undone = await undoRun(run.runId);
-    assert.equal(undone.undone, 3, undone.message);
+    assert.equal(undone.undone, 2, undone.message);
+    assert.ok(undone.changes.every((entry) => entry.change.objectType !== 'doc'), 'a page the assistant started is not taken back');
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM sketch_thoughts WHERE id = $1`, [added.thoughtId])).rows[0].n, 0, 'the created thought is removed');
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM sketch_links WHERE id = $1`, [added.linkId])).rows[0].n, 0);
     assert.equal((await pool.query(`SELECT text FROM sketch_thoughts WHERE id = $1`, [thoughtId(mine)])).rows[0].text, 'Sensor rig');
-    const moved = (await pool.query(`SELECT v.state FROM project_materials m JOIN project_material_versions v ON v.material_id = m.id AND v.version = m.current_version WHERE m.id = $1`, [page.docId])).rows[0];
-    assert.equal(moved.state, 'draft', 'moved to the owner\'s drafts');
-    assert.ok(undone.changes.some((entry) => entry.message === 'Moved to your drafts'));
+    const kept = (await pool.query(`SELECT m.current_version AS version, v.title FROM project_materials m JOIN project_material_versions v ON v.material_id = m.id AND v.version = m.current_version WHERE m.id = $1`, [page.docId])).rows[0];
+    assert.deepEqual([kept.version, kept.title], [1, 'Mounting'], 'the page stays as the assistant wrote it');
   });
 
   test('AST-6.3: a worker killed after two committed changes leaves a message with exactly those two changes once recovery ends the run', async () => {

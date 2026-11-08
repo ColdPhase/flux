@@ -440,8 +440,7 @@ def run_main() -> None:
         for who in people:
             if who not in ("ada", "lee"):
                 ok(ada, "POST", f"/api/v1/projects/{pid}/grants", {"principal": {"kind": "human", "id": ids[who]}, "role": "contributor"}, 201)
-        doc = ok(ada, "POST", f"/api/v1/projects/{pid}/docs", {"title": DOC, "body": "## Path\n\nTURN over TLS on 443.", "state": "published",
-                                                               "reason": "Notes for the call"}, 201, {"idempotency-key": str(uuid.uuid4())})
+        doc = ok(ada, "POST", f"/api/v1/projects/{pid}/docs", {"title": DOC, "body": "## Path\n\nTURN over TLS on 443."}, 201, {"idempotency-key": str(uuid.uuid4())})
         url = f"/projects/{pid}/docs/{doc['id']}"
         if "ai-off" in PHASES:
             # The workspace administrator turns AI off for the whole workspace before anyone calls (F-029).

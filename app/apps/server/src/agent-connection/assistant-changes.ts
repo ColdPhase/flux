@@ -193,8 +193,9 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       const forOther = assignee?.kind === 'human' && typeof assignee.id === 'string' && assignee.id !== owner;
       return { ...base, objectId: null, title: text(payload.title), forOther, maker: forOther ? assignee!.id! : null, undo: created(text(payload.title)) };
     }
+    // A page the assistant started stays: there is no Draft to move it back to, and taking a page away is the person's own act (#941).
     case 'doc.create': case 'map.create': case 'decision.propose':
-      return { ...base, objectId: null, title: text(payload.title), undo: operation === 'decision.propose' || operation === 'map.create' ? null : created(text(payload.title)) };
+      return { ...base, objectId: null, title: text(payload.title), undo: null };
     case 'result.record': {
       const finishes = payload.finishes as { id?: string } | undefined;
       const work = finishes?.id ? await rows.work(finishes.id) : null;
@@ -230,7 +231,7 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       if (!doc) return { ...base, mine: false };
       const mine = ours(doc) && !await rows.docEditedByOthers(doc.id, owner, agents);
       const changes = (payload.changes ?? {}) as Record<string, unknown>;
-      const names = (['title', 'body', 'state'] as const).filter((key) => typeof changes[key] === 'string' && changes[key] !== (doc as Record<string, unknown>)[key]);
+      const names = (['title', 'body'] as const).filter((key) => typeof changes[key] === 'string' && changes[key] !== (doc as Record<string, unknown>)[key]);
       const words = names.includes('body') ? { before: null, after: (() => { const n = changedParagraphs(doc.body, String(changes.body));
         return `${n} paragraph${n === 1 ? '' : 's'} changed`; })() } : fieldWords(Object.fromEntries(names.map((key) => [key, { before: (doc as Record<string, unknown>)[key], after: changes[key] }])));
       return { ...base, undo: names.length ? { plan: { kind: 'doc', fields: names }, ...words } : null, title: doc.title, mine, maker: otherPerson(doc),

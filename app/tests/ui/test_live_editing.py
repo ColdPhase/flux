@@ -298,7 +298,7 @@ class LiveEditingJourney(LiveFixture):
         await self.create_doc()
         ada = self.pages["ada"]
         await ada.goto(self.doc_url)
-        await ada.evaluate("([key, body]) => sessionStorage.setItem(key, JSON.stringify({title:'Private old title',body,state:'draft',reason:'',base:1}))", [f"flux:doc-edit:{self.ada_id}:{self.doc_id}", "Never automatically shared private text"])
+        await ada.evaluate("([key, body]) => sessionStorage.setItem(key, JSON.stringify({title:'Private old title',body,base:1}))", [f"flux:doc-edit:{self.ada_id}:{self.doc_id}", "Never automatically shared private text"])
         field = await self.editor("ada")
         await expect(field).not_to_contain_text("Never automatically")
         await ada.get_by_role("button", name="Compare private text").click()

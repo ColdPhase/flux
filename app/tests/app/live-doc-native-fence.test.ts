@@ -86,7 +86,7 @@ test('dirty shared text fences HTTP body, no-op, metadata and section writers be
   const finding = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.place.id}/results`,
     { body: { title: 'Found together', finding: 'positive' } }), 201) as WorkResult;
   const before = await unchangedState(f.doc.id);
-  for (const change of [{ body: 'External replacement' }, { body: f.doc.body }, { title: f.doc.title }, { title: 'External title' }, { state: 'published' }]) {
+  for (const change of [{ body: 'External replacement' }, { body: f.doc.body }, { title: f.doc.title }, { title: 'External title' }]) {
     const response = await f.owner.browser.request('PATCH', `/api/v1/docs/${f.doc.id}`, { body: change, headers: { 'if-match': '"1"' } });
     assert.equal(response.status, 409); assert.equal(code(response.json), 'DOC_LIVE_WORKING_COPY_CHANGED');
   }
@@ -111,7 +111,7 @@ test('shared Save snapshots exactly the locked head, names contributors and pres
   }
   const docs = docUseCases(db); const actor = { kind: 'human' as const, id: f.owner.id };
   await assert.rejects(docs.saveLiveVersion(actor, f.doc.id, { ...h, headSequence: 2 }, 1), refusal('DOC_LIVE_HEAD_CHANGED'));
-  const saved = await docs.saveLiveVersion(actor, f.doc.id, { ...h, reason: 'Joint review' }, 1);
+  const saved = await docs.saveLiveVersion(actor, f.doc.id, h, 1);
   assert.equal(saved.body, body); assert.equal(saved.version, 2); assert.equal(saved.author.id, f.owner.id);
   assert.deepEqual(new Set(saved.contributors?.map((by) => by.id)), new Set([f.owner.id, f.partner.id]));
   assert.ok(saved.contributors?.every((by) => by.kind === 'human' && by.name));
@@ -164,7 +164,7 @@ test('the real OAuth/MCP standing-grant doc adapter obeys the same dirty fence b
   const doc = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/docs`, { body: { title: 'People working', body: 'Saved.' } }), 201) as unknown as Doc;
   await installHead(doc, 'Saved. People typing together.', 1);
   const before = await unchangedState(doc.id);
-  for (const changes of [{ body: 'Agent replacement.' }, { title: doc.title }, { state: 'published' }]) {
+  for (const changes of [{ body: 'Agent replacement.' }, { title: doc.title }]) {
     const result = await f.tool('flux_update_doc', { projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, clientCommandId: randomUUID(), peerRequestClass: 'plan', sources: [], docId: doc.id, expectedVersion: 1, changes });
     assert.equal(toolFailure(result).code, 'DOC_LIVE_WORKING_COPY_CHANGED');
   }

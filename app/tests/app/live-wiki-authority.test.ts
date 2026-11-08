@@ -66,11 +66,11 @@ test('actual SQL wiki ownership/concurrent text/immutable global intents/no-op p
     } finally { otherDoc.destroy(); }
     const beforeNative = expectStatus(await f.owner.browser.request('GET', `/api/v1/docs/${f.doc.id}`), 200) as Doc;
     assert.equal(beforeNative.body, head.body, 'ordinary saved projections remain immutable until Save');
-    const save = { clientCommandId: randomUUID(), expectedVersion: 1, generation: latest.generation, headSequence: latest.sequence, headHash: latest.hash, reason: 'Together' };
+    const save = { clientCommandId: randomUUID(), expectedVersion: 1, generation: latest.generation, headSequence: latest.sequence, headHash: latest.hash, cause: { kind: 'page_left' as const, version: 1 } };
     const saved = await authority.save(owner, f.doc.id, save); assert.equal(saved.savedDoc?.body, latest.body); assert.equal(saved.savedDoc?.version, 2);
     assert.deepEqual(new Set(saved.savedDoc?.contributors?.map((actor) => actor.id)), new Set([owner.principal.id, peer.principal.id]));
     assert.deepEqual(await authority.save(owner, f.doc.id, save), saved);
-    await assert.rejects(authority.save(owner, f.doc.id, { ...save, reason: 'Changed under original UUID' }), refused('EDITING_IDEMPOTENCY_CONFLICT'));
+    await assert.rejects(authority.save(owner, f.doc.id, { ...save, cause: { kind: 'restore' as const, version: 1 } }), refused('EDITING_IDEMPOTENCY_CONFLICT'));
     await pool.query('DELETE FROM auth_sessions WHERE id=$1', [owner.sessionId]);
     await assert.rejects(authority.receipt(owner, f.doc.id, a.envelope.uuid), refused('UNAUTHENTICATED'));
   } finally { first.destroy(); second.destroy(); await authority.close(); }

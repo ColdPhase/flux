@@ -47,7 +47,8 @@ describe('project docs with immutable versions, links and backlinks', () => {
     const created = await post(owner, `/api/v1/projects/${lamp.id}/docs`, { title: 'How the lamp senses gestures', body: 'We use a **PIR** sensor.' });
     const doc = json<Doc>(created, 201);
     assert.equal(created.headers.get('etag'), '"1"');
-    assert.deepEqual([doc.version, doc.state, doc.reason, doc.author.id, doc.author.name], [1, 'draft', 'Started the page', owner.id, 'docs-owner']);
+    assert.deepEqual([doc.version, doc.reason, doc.author.id, doc.author.name], [1, 'Started the page', owner.id, 'docs-owner']);
+    assert.ok(!('state' in doc), 'a page has no Draft or Published state');
     assert.deepEqual(doc.audience, { kind: 'project', projectId: lamp.id });
     assert.equal(doc.html, '<p>We use a <strong>PIR</strong> sensor.</p>\n');
 
@@ -57,20 +58,20 @@ describe('project docs with immutable versions, links and backlinks', () => {
     assert.deepEqual(citing.source, { materialId: doc.id, version: 1 });
 
     assert.equal((await patch(partner, `/api/v1/docs/${doc.id}`, { body: 'We use a **ToF** sensor.' })).status, 428);
-    const edited = json<Doc>(await patch(partner, `/api/v1/docs/${doc.id}`, { body: 'We use a **ToF** sensor.', state: 'published' }, ifMatch(1)), 200);
-    assert.deepEqual([edited.version, edited.state, edited.reason, edited.author.id], [2, 'published', 'Published · Edited the text', partner.id]);
-    const renamed = json<Doc>(await patch(owner, `/api/v1/docs/${doc.id}`, { title: 'Gesture sensing', reason: 'Shorter title' }, ifMatch(2)), 200);
-    assert.deepEqual([renamed.version, renamed.reason, renamed.title], [3, 'Shorter title', 'Gesture sensing']);
+    const edited = json<Doc>(await patch(partner, `/api/v1/docs/${doc.id}`, { body: 'We use a **ToF** sensor.' }, ifMatch(1)), 200);
+    assert.deepEqual([edited.version, edited.reason, edited.author.id], [2, 'Edited the text', partner.id]);
+    const renamed = json<Doc>(await patch(owner, `/api/v1/docs/${doc.id}`, { title: 'Gesture sensing' }, ifMatch(2)), 200);
+    assert.deepEqual([renamed.version, renamed.reason, renamed.title], [3, 'Renamed to “Gesture sensing”', 'Gesture sensing']);
     const same = json<Doc>(await patch(owner, `/api/v1/docs/${doc.id}`, { title: 'Gesture sensing' }, ifMatch(3)), 200);
     assert.equal(same.version, 3, 'saving without a change makes no version');
 
     const first = json<DocVersion>(await get(viewer, `/api/v1/docs/${doc.id}/versions/1`), 200);
-    assert.deepEqual([first.title, first.body, first.state, first.author.id], ['How the lamp senses gestures', 'We use a **PIR** sensor.', 'draft', owner.id]);
+    assert.deepEqual([first.title, first.body, first.author.id], ['How the lamp senses gestures', 'We use a **PIR** sensor.', owner.id]);
     const cited = json<MaterialVersion>(await get(viewer, `/api/v1/materials/${doc.id}/versions/1`), 200);
     assert.equal(cited.body, 'We use a **PIR** sensor.', 'the citation still reads what was cited');
     const history = json<Page<DocVersionSummary>>(await get(viewer, `/api/v1/docs/${doc.id}/versions`), 200);
     assert.deepEqual(history.items.map((item) => [item.version, item.reason, item.author.name]),
-      [[3, 'Shorter title', 'docs-owner'], [2, 'Published · Edited the text', 'docs-partner'], [1, 'Started the page', 'docs-owner']]);
+      [[3, 'Renamed to “Gesture sensing”', 'docs-owner'], [2, 'Edited the text', 'docs-partner'], [1, 'Started the page', 'docs-owner']]);
     assert.ok(history.items.every((item) => !Number.isNaN(Date.parse(item.createdAt))));
     assert.equal((await get(viewer, `/api/v1/docs/${doc.id}/versions/9`)).status, 404);
 
@@ -82,8 +83,45 @@ describe('project docs with immutable versions, links and backlinks', () => {
     assert.ok(materials.items.every((item) => item.materialId !== doc.id));
   });
 
+  test('a person never types a version\'s reason or state; the server words a cause it has checked (#942)', async () => {
+    const docs = `/api/v1/projects/${lamp.id}/docs`;
+    // `state` and `reason` are not fields any more: like any unknown field they are dropped, and the server writes the reason.
+    const plain = json<Doc>(await post(owner, docs, { title: 'Plain page', state: 'published', reason: 'Because I said so' }), 201);
+    assert.deepEqual([plain.reason, 'state' in plain], ['Started the page', false]);
+    for (const body of [{ title: 'Page', cause: { kind: 'restore', version: 1 } }, { title: 'Page', cause: { kind: 'import' } },
+      { title: 'Page', cause: { kind: 'import', fileName: '' } }, { title: 'Page', cause: { kind: 'import', fileName: 'x'.repeat(201) } }, { title: 'Page', cause: 'Restored version 1' }]) {
+      assert.equal((await post(owner, docs, body)).status, 400, JSON.stringify(body));
+    }
+    const doc = json<Doc>(await post(owner, docs, { title: 'Imported page', body: 'From a file', cause: { kind: 'import', fileName: 'notes.md' } }), 201);
+    assert.equal(doc.reason, 'Imported from notes.md');
+    const at = (path: string) => `/api/v1/docs/${doc.id}${path}`;
+
+    assert.equal(json<Doc>(await patch(partner, at(''), { body: 'Second text', reason: 'Because I said so', state: 'draft' }, ifMatch(1)), 200).reason, 'Edited the text');
+    const restored = json<Doc>(await patch(owner, at(''), { body: 'From a file', cause: { kind: 'restore', version: 1 } }, ifMatch(2)), 200);
+    assert.deepEqual([restored.version, restored.reason], [3, 'Restored version 1']);
+    // Keeping one's own text over someone else's version names whose it was; over one's own version nothing is replaced.
+    const kept = json<Doc>(await patch(owner, at(''), { body: 'Owner text', cause: { kind: 'keep_mine', version: 2 } }, ifMatch(3)), 200);
+    assert.equal(kept.reason, 'In place of docs-partner’s version 2');
+    assert.equal(json<Doc>(await patch(owner, at(''), { body: 'Owner text again', cause: { kind: 'keep_mine', version: 3 } }, ifMatch(4)), 200).reason, 'Edited the text');
+    const left = json<Doc>(await patch(owner, at(''), { body: 'Left text', cause: { kind: 'page_left', version: 5 } }, ifMatch(5)), 200);
+    assert.deepEqual([left.version, left.reason], [6, 'Saved as the page was left, in place of version 5']);
+    // A cause does not make a version of text that is already the page.
+    assert.equal(json<Doc>(await patch(owner, at(''), { body: 'Left text', cause: { kind: 'restore', version: 1 } }, ifMatch(6)), 200).version, 6);
+
+    for (const [body, label] of [[{ body: 'x', cause: { kind: 'restore', version: 99 } }, 'a version the page does not have'],
+      [{ body: 'x', cause: { kind: 'keep_mine', version: 7 } }, 'a version that is not there yet'],
+      [{ body: 'x', cause: { kind: 'restore', version: 0 } }, 'version 0'], [{ body: 'x', cause: { kind: 'import', fileName: 'notes.md' } }, 'an import on a save'],
+      [{ body: 'x', cause: { kind: 'published' } }, 'a kind that is not one'], [{ cause: { kind: 'restore', version: 1 } }, 'a cause alone']] as const) {
+      assert.equal((await patch(owner, at(''), body, ifMatch(6))).status, 400, label);
+    }
+    const history = json<Page<DocVersionSummary>>(await get(viewer, at('/versions')), 200);
+    assert.deepEqual(history.items.map((item) => item.reason), ['Saved as the page was left, in place of version 5', 'Edited the text',
+      'In place of docs-partner’s version 2', 'Restored version 1', 'Edited the text', 'Imported from notes.md']);
+    assert.ok(history.items.every((item) => !('state' in item)));
+  });
+
   test('access follows the project: members read, outsiders see nothing, agents read but do not write', async () => {
-    const doc = json<Doc>(await post(partner, `/api/v1/projects/${lamp.id}/docs`, { title: 'Wiring notes', state: 'published' }), 201);
+    const doc = json<Doc>(await post(partner, `/api/v1/projects/${lamp.id}/docs`, { title: 'Wiring notes' }), 201);
     assert.equal(json<Doc>(await get(viewer, `/api/v1/docs/${doc.id}`), 200).title, 'Wiring notes');
     const hidden = await get(outsider, `/api/v1/docs/${doc.id}`);
     const missing = await get(outsider, `/api/v1/docs/${randomUUID()}`);

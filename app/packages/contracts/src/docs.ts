@@ -5,7 +5,7 @@ import type { NamedPrincipal, ObjectLink } from './work.js';
  * Project docs and wiki (issue #112, foundation 8.7). A doc is a #36 project material of kind
  * `doc`: its versions are the same immutable material snapshots, so a message citing
  * `{ materialId: docId, version }` keeps citing exactly that text. Each version records its
- * author, time, draft/published state and the reason for the change. The text is a small
+ * author, time and the reason for the change, which the server writes (a person never types it). The text is a small
  * Markdown subset that the server renders and sanitizes; `flux:<type>/<id>` links refer to
  * objects of the same project and become typed `mentions` links with visible backlinks.
  * Everything is visible exactly to the people and agents with current project access.
@@ -20,8 +20,22 @@ export const docSectionsPath = (docId: string) => `${docPath(docId)}/sections`;
 /** Docs of every project in the workspace that the caller can currently read. */
 export const workspaceDocsPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/docs`;
 
-export type DocState = 'draft' | 'published';
-export const DOC_LIMITS = { title: 200, body: 100_000, reason: 500, mentions: 200 } as const;
+export const DOC_LIMITS = { title: 200, body: 100_000, reason: 500, mentions: 200, fileName: 200 } as const;
+
+/**
+ * Why a person's save is the version it is, when the change itself does not say. The server checks the cause against the
+ * page and writes the sentence History shows ("Restored version 3"); a person never writes a version's reason. Without a
+ * cause the server describes the change ("Edited the text", "Renamed to “…”").
+ * - `import`: a new page made from a file (create only): "Imported from notes.md".
+ * - `restore`: version `version` put back as the next version: "Restored version 3".
+ * - `keep_mine`: the saver kept their own text over the version `version` that someone else saved: "In place of Ada’s version 4".
+ * - `page_left`: the page was left with unsaved text, saved over the head `version`: "Saved as the page was left, in place of version 4".
+ */
+export type DocChangeCause =
+  | { kind: 'import'; fileName: string }
+  | { kind: 'restore'; version: number }
+  | { kind: 'keep_mine'; version: number }
+  | { kind: 'page_left'; version: number };
 
 /** Object types a doc text can refer to with `[label](flux:<type>/<id>)`. */
 export const DOC_REF_TYPES = ['doc', 'work', 'decision', 'result', 'message', 'thought', 'sketch'] as const;
@@ -42,8 +56,7 @@ export interface DocVersionSummary {
   docId: string;
   version: number;
   title: string;
-  state: DocState;
-  /** Why this version was made; generated ("Edited the text", "Published") when none was given. */
+  /** Why this version was made, in the server's words: "Edited the text", "Renamed to “…”", "Restored version 3". */
   reason: string;
   author: NamedPrincipal;
   /** Shared text contributors since the preceding saved binding; author is the deliberate saver. */
@@ -68,7 +81,6 @@ export interface DocSummary {
   projectName: string;
   workspaceId: string;
   title: string;
-  state: DocState;
   version: number;
   /** The last change: its author, time and reason. */
   updatedBy: NamedPrincipal;
@@ -101,9 +113,8 @@ export interface DocSectionSource {
 export interface CreateDocCommand {
   title: string;
   body?: string;
-  /** Defaults to `draft`. */
-  state?: DocState;
-  reason?: string;
+  /** Only `import`. */
+  cause?: DocChangeCause;
   /** Starts the doc with the section for this result or decision and links it as the source. */
   from?: DocSectionSource;
 }
@@ -111,8 +122,8 @@ export interface CreateDocCommand {
 export interface UpdateDocCommand extends VersionPrecondition {
   title?: string;
   body?: string;
-  state?: DocState;
-  reason?: string;
+  /** `restore`, `keep_mine` or `page_left`. */
+  cause?: DocChangeCause;
 }
 
 /** Needs `If-Match` with the version the caller saw, like any edit. */
@@ -140,6 +151,6 @@ export interface SaveLiveDocCommand {
   headSequence: number;
   headHash: string;
   title?: string;
-  state?: DocState;
-  reason?: string;
+  /** `restore`, `keep_mine` or `page_left`. */
+  cause?: DocChangeCause;
 }

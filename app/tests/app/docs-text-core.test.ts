@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
-import { docRef, type DocSectionSource, type DocState } from '@flux/contracts';
+import { docRef, type DocSectionSource } from '@flux/contracts';
 import { describeChange, upsertSection } from '@flux/core';
-import { dateLine, sectionSource, sourceLine } from '../../packages/core/src/docs/text.js';
+import { cause, causeSentence, dateLine, sectionSource, sourceLine } from '../../packages/core/src/docs/text.js';
 
 // The input rules and wording of project docs (#112): the version-history text and the `Source:`
 // line that links a doc section to its result or decision. All are pure: no database, no network.
@@ -15,29 +15,20 @@ const RESULT: DocSectionSource = { type: 'result', id: id(1) };
 const DECISION: DocSectionSource = { type: 'decision', id: id(2) };
 
 describe('describeChange', () => {
-  type Version = { title: string; body: string; state: DocState };
-  const version = (change: Partial<Version> = {}): Version => ({ title: 'Plan', body: 'text', state: 'draft', ...change });
+  type Version = { title: string; body: string };
+  const version = (change: Partial<Version> = {}): Version => ({ title: 'Plan', body: 'text', ...change });
 
   test('gives an empty string when nothing changed', () => {
     assert.equal(describeChange(version(), version()), '');
-    assert.equal(describeChange(version({ state: 'published' }), version({ state: 'published' })), '');
   });
 
   test('names a single change', () => {
-    assert.equal(describeChange(version(), version({ state: 'published' })), 'Published');
-    assert.equal(describeChange(version({ state: 'published' }), version({ state: 'draft' })), 'Moved back to draft');
     assert.equal(describeChange(version(), version({ title: 'New plan' })), 'Renamed to “New plan”');
     assert.equal(describeChange(version(), version({ body: 'other text' })), 'Edited the text');
   });
 
-  test('names the state change first, then the rename, then the edit, joined with a middle dot', () => {
-    assert.equal(describeChange(version(), version({ state: 'published', title: 'New plan', body: 'other' })),
-      'Published · Renamed to “New plan” · Edited the text');
-    assert.equal(describeChange(version({ state: 'published' }), version({ state: 'draft', title: 'New plan', body: 'other' })),
-      'Moved back to draft · Renamed to “New plan” · Edited the text');
+  test('names the rename first, then the edit, joined with a middle dot', () => {
     assert.equal(describeChange(version(), version({ title: 'New plan', body: 'other' })), 'Renamed to “New plan” · Edited the text');
-    assert.equal(describeChange(version(), version({ state: 'published', body: 'other' })), 'Published · Edited the text');
-    assert.equal(describeChange(version(), version({ state: 'published', title: 'New plan' })), 'Published · Renamed to “New plan”');
   });
 
   test('a change of whitespace in the text is an edit', () => {
@@ -53,6 +44,44 @@ describe('describeChange', () => {
 
   test('only the new title is quoted', () => {
     assert.equal(describeChange(version({ title: 'Old title' }), version({ title: 'Fresh title' })), 'Renamed to “Fresh title”');
+  });
+});
+
+describe('a cause is the only thing a person says about why a version was made (#942)', () => {
+  const rejects = (value: unknown, allowed: Parameters<typeof cause>[1]) => assert.throws(() => cause(value, allowed), { name: 'InvalidInputError', code: 'INVALID_INPUT' }, JSON.stringify(value));
+
+  test('nothing is no cause; a cause names a kind this call allows and nothing else', () => {
+    assert.equal(cause(undefined, ['restore']), undefined);
+    assert.equal(cause(null, ['restore']), undefined);
+    assert.deepEqual(cause({ kind: 'restore', version: 3 }, ['restore', 'keep_mine', 'page_left']), { kind: 'restore', version: 3 });
+    assert.deepEqual(cause({ kind: 'keep_mine', version: 4 }, ['restore', 'keep_mine', 'page_left']), { kind: 'keep_mine', version: 4 });
+    assert.deepEqual(cause({ kind: 'page_left', version: 5 }, ['restore', 'keep_mine', 'page_left']), { kind: 'page_left', version: 5 });
+    rejects({ kind: 'import', fileName: 'notes.md' }, ['restore', 'keep_mine', 'page_left']);
+    rejects({ kind: 'restore', version: 3 }, ['import']);
+    rejects('Restored version 3', ['restore']);
+    rejects({ kind: 'published' }, ['restore']);
+  });
+
+  test('a version is a whole number from 1, and a cause carries no other field', () => {
+    for (const version of [0, -1, 1.5, '3', null, undefined, Number.MAX_SAFE_INTEGER + 1]) rejects({ kind: 'restore', version }, ['restore']);
+    rejects({ kind: 'restore', version: 3, reason: 'Because I said so' }, ['restore']);
+    rejects({ kind: 'import', fileName: 'notes.md', version: 1 }, ['import']);
+  });
+
+  test('an import names its file, tidied and at most 200 characters', () => {
+    assert.deepEqual(cause({ kind: 'import', fileName: '  my   notes.md ' }, ['import']), { kind: 'import', fileName: 'my notes.md' });
+    assert.deepEqual(cause({ kind: 'import', fileName: 'x'.repeat(200) }, ['import']), { kind: 'import', fileName: 'x'.repeat(200) });
+    rejects({ kind: 'import', fileName: 'x'.repeat(201) }, ['import']);
+    rejects({ kind: 'import', fileName: '   ' }, ['import']);
+    rejects({ kind: 'import' }, ['import']);
+  });
+
+  test('the server words each cause', () => {
+    assert.equal(causeSentence({ kind: 'import', fileName: 'notes.md' }, null), 'Imported from notes.md');
+    assert.equal(causeSentence({ kind: 'restore', version: 3 }, null), 'Restored version 3');
+    assert.equal(causeSentence({ kind: 'keep_mine', version: 4 }, 'Ada'), 'In place of Ada’s version 4');
+    assert.equal(causeSentence({ kind: 'keep_mine', version: 4 }, null), '', 'the saver\'s own version is no "in place of": the change describes itself');
+    assert.equal(causeSentence({ kind: 'page_left', version: 5 }, null), 'Saved as the page was left, in place of version 5');
   });
 });
 

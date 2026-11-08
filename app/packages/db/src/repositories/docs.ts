@@ -21,7 +21,7 @@ type Window = { limit: number; offset: number };
 type MaterialRow = typeof schema.projectMaterials.$inferSelect;
 type VersionRow = typeof schema.projectMaterialVersions.$inferSelect;
 type SnapshotRow = typeof schema.docLiveSnapshots.$inferSelect;
-type NewVersion = { title: string; body: string; state: 'draft' | 'published'; reason: string; author: Actor };
+type NewVersion = { title: string; body: string; reason: string; author: Actor };
 
 const m = schema.projectMaterials;
 const v = schema.projectMaterialVersions;
@@ -44,7 +44,7 @@ function toDoc(row: MaterialRow) {
 function toVersion(row: VersionRow, snapshot: SnapshotRow | null = null) {
   return {
     docId: row.materialId, projectId: row.projectId, version: row.version, title: row.title, body: row.body,
-    state: row.state ?? 'published', reason: row.reason, author: actor(row.authorId, row.authorAgentId), createdAt: row.createdAt,
+    reason: row.reason, author: actor(row.authorId, row.authorAgentId), createdAt: row.createdAt,
     ...(snapshot ? { contributors: snapshot.contributors, liveSnapshot: { generation: snapshot.generation,
       fromSequence: snapshot.fromSequence, toSequence: snapshot.toSequence } } : {}),
   };
@@ -167,7 +167,7 @@ export function docRows(db: DbExecutor) {
         .where(and(eq(v.materialId,docId),eq(v.version,m.currentVersion)));
       if(current){const version=(await openRows(db,'project_material_versions',[current.version]))[0]!;
         const [previous]=await openRows(db,'project_material_versions',await db.select().from(v).where(and(eq(v.materialId,docId),eq(v.version,version.version-1))));
-        if(!previous||previous.body!==version.body||(previous.state??'published')!==(version.state??'published'))
+        if(!previous||previous.body!==version.body)
           await artifactResetRows(db).canonical(scope,{kind:'doc',id:docId,version:version.version},
             {kind:'doc',id:docId,revision:String(version.version)},fence);
       }

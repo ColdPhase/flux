@@ -173,7 +173,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         idea = self.api(jonas, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "React to gestures in the dark", "x": 0, "y": 0}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
         for index, text in enumerate(("Camera", "ToF distance sensor", "PIR presence")):
             self.api(jonas, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": text, "x": -260 + index * 260, "y": 160, "linkFrom": {"thoughtId": idea["thought"]["id"]}}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
-        doc = self.api(ada, "POST", f"{base}/docs", {"title": "What we learned about low light", "from": {"type": "result", "id": result["id"]}, "state": "published", "reason": "First notes"}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
+        doc = self.api(ada, "POST", f"{base}/docs", {"title": "What we learned about low light", "from": {"type": "result", "id": result["id"]}}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
         type(self).ids = {"workspace": ws["id"], "project": pid, "bike": bike["id"], "conversation": cid, "long_project": long_project["id"], "work": work["id"], "result": result["id"], "rule": rule["id"],
                           "proposal": proposal["id"], "sketch": sketch["id"], "doc": doc["id"], "material": material["materialId"], **messages}
 

@@ -104,7 +104,7 @@ describe('space settings: who may do what', () => {
     // Something in every feature a person writes: a conversation, a task, a Wiki page.
     expectStatus(await spaceAdmin.browser.request('POST', `/api/v1/projects/${space.id}/conversations`, { body: { body: 'To be erased', clientMessageId: randomUUID() } }), 201);
     expectStatus(await spaceAdmin.browser.request('POST', `/api/v1/projects/${space.id}/work`, { body: { title: 'Erased with its space' } }), 201);
-    expectStatus(await spaceAdmin.browser.request('POST', `/api/v1/projects/${space.id}/docs`, { body: { title: 'Erased page', body: 'Erased body', state: 'published' } }), 201);
+    expectStatus(await spaceAdmin.browser.request('POST', `/api/v1/projects/${space.id}/docs`, { body: { title: 'Erased page', body: 'Erased body' } }), 201);
     const before = await projectReferences(space.id);
     assert.ok(before.project_conversations! > 0 && before.project_work_items! > 0 && before.project_grants! > 0, `the space holds its own rows: ${JSON.stringify(before)}`);
     await pool.query(`INSERT INTO notifications (id, user_id, workspace_id, source_type, source_id, title, ai_origin) VALUES ($1, $2, $3, 'project', $4, 'A note', false)`,

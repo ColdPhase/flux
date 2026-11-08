@@ -293,7 +293,7 @@ describe('F-030 S2b: live Wiki and live maps in an encrypted workspace', () => {
       assert.equal(rebuilt.body, latest.body, `${side}: rebuilt from the stored rows`);
       const doc = expectStatus(await ada.browser.request('GET', `/api/v1/docs/${docId}`), 200) as Doc & { currentVersion?: number };
       const saved = await authority.save(ada1, docId, { clientCommandId: randomUUID(), expectedVersion: doc.currentVersion ?? doc.version, generation: rebuilt.generation,
-        headSequence: rebuilt.sequence, headHash: rebuilt.hash, reason: 'Together' });
+        headSequence: rebuilt.sequence, headHash: rebuilt.hash });
       assert.ok(saved.savedDoc?.body.includes(c.wiki), `${side}: Save writes the opened text`);
       const saved2 = expectStatus(await ada.browser.request('GET', `/api/v1/docs/${docId}`), 200) as Doc & { currentVersion?: number };
       expectStatus(await ada.browser.request('PATCH', `/api/v1/docs/${docId}`, { body: { body: `${saved2.body}\nAn ordinary edit.` },

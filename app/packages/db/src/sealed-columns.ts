@@ -152,7 +152,7 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   dm_participants: { user_id: 'a user id' },
   dm_messages: { author_id: 'a user id' },
   project_materials: { created_by: 'a user id', kind: 'an enum' },
-  project_material_versions: { author_id: 'a user id', state: 'an enum' },
+  project_material_versions: { author_id: 'a user id' },
   project_work_items: { status: 'an enum', owner_user_id: 'a user id', created_by_kind: 'an enum', created_by_id: 'a principal id',
     creation_origin: 'an enum', creation_reverted_by_kind: 'an enum', creation_reverted_by_id: 'a principal id', waiting_for_user_id: 'a user id' },
   project_task_activity: { kind: 'an enum (status, owner, due or title changed)', actor_kind: 'an enum', actor_id: 'a principal id' },

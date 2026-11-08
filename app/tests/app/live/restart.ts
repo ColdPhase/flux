@@ -75,7 +75,7 @@ try {
     const actorId=(status(await b.request('GET','/api/v1/me'),200) as {user:{id:string}}).user.id;
     const ws=status(await b.request('POST','/api/v1/workspaces',{body:{name:'Actual live restart'}}),201) as {id:string};
     const project=status(await b.request('POST',`/api/v1/workspaces/${ws.id}/projects`,{body:{name:'Persistent live rooms',visibility:'restricted'}}),201) as {id:string};
-    const saved=status(await b.request('POST',`/api/v1/projects/${project.id}/docs`,{body:{title:'Original pending text',body:'Saved before restart. ',state:'published'}}),201) as Doc;
+    const saved=status(await b.request('POST',`/api/v1/projects/${project.id}/docs`,{body:{title:'Original pending text',body:'Saved before restart. '}}),201) as Doc;
     const head=status(await b.request('GET',`/api/v1/docs/${saved.id}/live`),200) as LiveDocBootstrap;
     const local=new Y.Doc();documents.push(local);const enrollment=status(await b.request('POST',`/api/v1/docs/${saved.id}/live/enroll`,{body:{generation:head.generation,replicaId:local.clientID}}),200) as EnrolledLiveDoc;
     surviving={document:local,enrollment};
@@ -133,7 +133,7 @@ try {
       assert.equal(Number((await database.pool.query('SELECT count(*)::int n FROM doc_live_updates WHERE doc_id=$1',[state.wiki.id])).rows[0].n),2);
       console.log('live-restart enrollment: same live Y.Doc; original collision and instance renewal persist; unseen UUID first-admitted at sequence 2');
     }
-    const save:SaveSharedDoc={clientCommandId:randomUUID(),expectedVersion:1,generation:head.generation,headSequence:head.sequence,headHash:head.hash,reason:'Explicit Save after real API recreation'};
+    const save:SaveSharedDoc={clientCommandId:randomUUID(),expectedVersion:1,generation:head.generation,headSequence:head.sequence,headHash:head.hash};
     const saved=status(await b.request('POST',`/api/v1/docs/${state.wiki.id}/live/save`,{body:save}),200) as LiveReceipt;assert.equal(saved.savedDoc?.body,head.body);assert.equal(saved.savedDoc?.version,2);
     assert.equal((status(await b.request('GET',`/api/v1/docs/${state.wiki.id}/versions/1`),200) as Doc).body,state.wiki.savedBody);assert.deepEqual(status(await b.request('POST',`/api/v1/docs/${state.wiki.id}/live/save`,{body:save}),200),saved);
     const map=status(await b.request('GET',`/api/v1/sketches/${state.map.id}/live`),200) as LiveMapBootstrap;assert.equal(map.generation,state.map.generation);assert.equal(map.sequence,state.map.sequence);assert.equal(map.sketch.thoughts[0]?.version,state.map.version);

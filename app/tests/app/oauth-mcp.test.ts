@@ -112,7 +112,7 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
     assert.ok(!JSON.stringify(refs).includes('Battery lasts four hours.'), 'metadata omits bodies');
     if (kind === 'conversation') assert.equal(own.checkpoint.sequence, 1);
     if (kind === 'map') assert.equal(own.checkpoint.version, 1);
-    if (kind === 'doc') assert.equal(own.state, 'draft', 'publication state is separate from source version');
+    if (kind === 'doc') assert.equal(own.state, null, 'a page has no publication state');
     recorded.push(own.checkpoint);
   }
   const hiddenIndex = await mcp(bearer, 42, 'tools/call', { name: 'flux_project_orientation', arguments: { projectId: hiddenProjectId, kind: 'material' } });

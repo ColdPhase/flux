@@ -750,7 +750,7 @@ its own [error-path rule](#error-paths).
 | `dms` | `title` | — | `kind`, `pair_key` (user ids) |
 | `dm_messages` | `body` | `request_fingerprint` | — |
 | `project_materials` | — | `request_fingerprint` | `kind` |
-| `project_material_versions` (docs and Wiki) | `title`, `body`, `url`, `reason` | `request_fingerprint` | `state` |
+| `project_material_versions` (docs and Wiki) | `title`, `body`, `url`, `reason` | `request_fingerprint` | (none) |
 | `project_work_items` (tasks) | `title`, `outcome`, `blocker`, `criteria`, `creation_baseline` | `request_fingerprint` | `status`, `owner_user_id`, `waiting_for_user_id`, `due_on`, `number`, `creation_origin` |
 | `project_task_activity` | `detail` (old and new values) | — | `kind` (status, owner, due or title changed) |
 | `project_task_updates` | `reason` | — | `kind` |
@@ -816,7 +816,7 @@ This is stated plainly for the review and for the operations guide. Someone with
 - the structure: which message is in which conversation and task, reply order, attachment counts,
   DM participants, task dependencies and links between objects;
 - **tasks: number, status, owner, waiting-for person and due date**; decisions' status; results'
-  positive or negative finding; doc states (draft or published) and contributors;
+  positive or negative finding; doc contributors;
 - maps: thought positions, sizes, shapes and link endpoints (not their text or labels);
 - which thought or message a message cites (`message_references`, #469: a kind and a target id, never the cited title or text,
   which are opened per reader through the seal); and for a file the numbers read from its bytes at upload, its page count (PDF),
