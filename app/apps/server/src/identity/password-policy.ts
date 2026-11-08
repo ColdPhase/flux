@@ -10,7 +10,8 @@ import * as zxcvbnEnglish from '@zxcvbn-ts/language-en';
  * - the password is on `@zxcvbn-ts`'s list of the most common passwords (49,233 entries, far above the 3,000 ASVS asks for), compared
  *   without regard to case or Unicode form; and
  * - `@zxcvbn-ts` estimates fewer than 10^8 guesses (its score 3 or more is required). That catches what a plain list cannot: `password1234`,
- *   `qwertyuiopas`, a word with a year, a keyboard walk, a repeated pattern, and the person's own name or address.
+ *   `qwertyuiopas`, a word with a year, a keyboard walk, a repeated pattern, and words from the person's own name or address;
+ *   a password that is only the name or address with a few characters added is refused outright.
  *
  * Nothing else is required of the characters (NIST SP 800-63B: no composition rules). A phrase of a few unrelated words passes.
  */
@@ -30,9 +31,11 @@ export type PasswordProblem = 'common' | 'guessable';
 export function passwordProblem(password: string, personal: readonly string[] = []): PasswordProblem | null {
   const folded = password.normalize('NFKC').toLowerCase();
   if (common.has(folded)) return 'common';
-  // The whole name, the whole address or its part before the @ inside the password gives it away, however long the rest is.
-  const known = personal.flatMap((value) => [value, value.split('@')[0]!]).map((value) => value.normalize('NFKC').trim().toLowerCase()).filter((value) => value.length >= 4);
-  if (known.some((value) => folded.includes(value))) return 'guessable';
+  // The name, the address or its part before the @ with at most a few characters around it (`ada2024`) is that identifier, not a secret.
+  // A sentence that happens to contain a name has more around it and is left to the estimate below.
+  const letters = folded.replace(/[^\p{L}\p{N}]+/gu, '');
+  const known = personal.flatMap((value) => [value, value.split('@')[0]!]).map((value) => value.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '')).filter((value) => value.length >= 4);
+  if (known.some((value) => letters.includes(value) && letters.length - value.length <= 6)) return 'guessable';
   const inputs = personal.flatMap((value) => [value, ...value.split(/[^\p{L}\p{N}]+/u)]).map((value) => value.trim().toLowerCase()).filter((value) => value.length >= 3);
   return estimate().check(password, inputs).score < MIN_SCORE ? 'guessable' : null;
 }

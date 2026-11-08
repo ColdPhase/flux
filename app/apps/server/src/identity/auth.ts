@@ -186,6 +186,11 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
   };
   const verifiedSignUp = config.signup === 'verified';
   const ssoOnly = config.ssoOnly;
+  /** The address whose back-off a request already counted in `before`, found again in `after` (the same request context). */
+  const counted = new WeakMap<object, string>();
+  const throttledSignIn = (wait: number) => new APIError('TOO_MANY_REQUESTS', {
+    message: `Too many sign-in attempts for this account. Try again in ${wait < 90 ? `${wait} seconds` : `${Math.ceil(wait / 60)} minutes`}`,
+    code: 'SIGN_IN_THROTTLED', retryAfter: wait }, { 'Retry-After': String(wait) });
   return betterAuth({
     appName: 'Flux',
     baseURL: config.publicOrigin,
@@ -293,6 +298,16 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
             if (passwordProblem(chosen, personal)) throw new APIError('BAD_REQUEST', { message: PASSWORD_TOO_WEAK_MESSAGE, code: 'PASSWORD_TOO_WEAK' });
           }
         }
+        // Changing the password or the address asks for the current password, so a session left open could be used to guess it: the same
+        // back-off counts those attempts for the account (#990). A success clears it, as a sign-in does.
+        if (ctx.path === '/change-password' || ctx.path === '/change-email') {
+          const holder = (await getSessionFromCtx(ctx))?.user.email;
+          if (holder) {
+            const wait = await throttle.attempt(holder);
+            if (wait > 0) throw throttledSignIn(wait);
+            counted.set(ctx.context, holder);
+          }
+        }
         if (ctx.path === '/change-email') {
           if (ssoOnly || config.oidc) throw new APIError('FORBIDDEN', { message: 'Your email address comes from single sign-on on this Flux server', code: 'SSO_ONLY' });
           // A change of address proves the person knows the password, like a change of password does, so a session left
@@ -311,10 +326,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           if (!email || !password) return;
           // The account's own back-off, shared by every API process and not escaped by changing the client address (#990).
           const wait = await throttle.attempt(email);
-          if (wait > 0) {
-            throw new APIError('TOO_MANY_REQUESTS', { message: `Too many sign-in attempts for this account. Try again in ${wait < 90 ? `${wait} seconds` : `${Math.ceil(wait / 60)} minutes`}`,
-              code: 'SIGN_IN_THROTTLED', retryAfter: wait }, { 'Retry-After': String(wait) });
-          }
+          if (wait > 0) throw throttledSignIn(wait);
           const [pending] = await db.select({ id: schema.authUsers.id, hash: schema.authAccounts.password }).from(schema.authUsers)
             .innerJoin(schema.authAccounts, and(eq(schema.authAccounts.userId, schema.authUsers.id), eq(schema.authAccounts.providerId, 'credential'), isNotNull(schema.authAccounts.password)))
             .where(and(eq(sql`lower(${schema.authUsers.email})`, email), eq(schema.authUsers.verificationRequired, true), eq(schema.authUsers.emailVerified, false)));
@@ -330,6 +342,9 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         // A pre-F-024 account is unverified; once mail is set it gets the link the next time it signs in with its password (#313).
         if (ctx.path === '/sign-in/email' && signedIn && !signedIn.emailVerified && mailer) await sendVerification(signedIn.email);
         if (ctx.path === '/sign-in/email' && signedIn) await throttle.clear(typeof ctx.body?.email === 'string' ? ctx.body.email : signedIn.email);
+        // A change of password or address that went through: the person knew the current password.
+        const countedFor = counted.get(ctx.context);
+        if (countedFor && !(ctx.context.returned instanceof APIError)) await throttle.clear(countedFor);
         // "Sign out my other devices" with a password change ends the person's other browsers, and so their local AI clients (#989).
         if (ctx.path === '/change-password' && ctx.body?.revokeOtherSessions === true && signedIn) await connectionStore.disconnectClients(signedIn.id);
       }),

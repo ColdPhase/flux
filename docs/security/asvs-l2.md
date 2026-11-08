@@ -60,7 +60,8 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
   cost nothing, then the account refuses sign-in for 30 seconds, then 1, 2, 4 and 8 minutes, and at most 15 minutes from the tenth on,
   whatever the client address. A success, a password reset or an hour without an attempt starts the count again, so the owner of the mailbox
   is never locked out for good (V2.2.1). Every attempt is counted before the password is checked, so parallel guesses cannot all pass a
-  stale count. An address nobody holds is counted and slowed the same way. The cost: someone who knows an address can keep it waiting
+  stale count. The same count covers the current password asked by change-password and change-email, so a session left open cannot be used to
+  guess it. An address nobody holds is counted and slowed the same way. The cost: someone who knows an address can keep it waiting
   up to 15 minutes at a time; the reset mail is the way back. MFA stays the identity provider's job (see 2.2.x).
 
 ## V1 Architecture, design and threat modelling

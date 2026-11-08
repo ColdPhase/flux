@@ -73,7 +73,9 @@ describe('the password rule (#990, ASVS V2.1.1, V2.1.7)', () => {
     assert.equal(passwordProblem('LETMEIN'), 'common', 'case does not matter');
     assert.equal(passwordProblem('password1234'), 'common', 'on the list');
     assert.equal(passwordProblem('qwertyuiopas'), 'guessable', 'a keyboard walk is not on the list but is estimated at a few thousand guesses');
-    assert.equal(passwordProblem('a long phrase by ada@example.test', ['Ada L', 'ada@example.test']), 'guessable', 'it contains the address');
+    assert.equal(passwordProblem('ada@example.test2024', ['Ada L', 'ada@example.test']), 'guessable', 'the address with a year');
+    assert.equal(passwordProblem('Ada-Lovelace!', ['Ada Lovelace']), 'guessable', 'the name with punctuation');
+    assert.equal(passwordProblem('company setup for the checks', ['Company Setup', 'company-setup@example.test']), null, 'a sentence that contains the name is left to the estimate');
     assert.equal(passwordProblem('owner-of-the-flux', ['owner-of-the-flux']), 'guessable');
   });
 
@@ -189,6 +191,24 @@ describe('the account\'s own sign-in back-off (#990, ASVS V2.2.1)', () => {
     assert.equal((await new Browser().request('POST', '/api/auth/sign-in/email', { body: { email: uniqueEmail('trigger'), password: 'wrong for trigger' } })).status, 401);
     assert.equal((await pool.query("SELECT 1 FROM auth_sign_in_throttle WHERE last_failure_at < now() - interval '1 hour'")).rowCount, 0);
     assert.equal((await signIn(stale, password)).response.status, 200);
+  });
+
+  test('guessing the current password through change-password counts for the account too, and a success clears it', async () => {
+    const email = uniqueEmail('change-count');
+    const { browser } = await register(email, password);
+    const change = (current: string) => browser.request('POST', '/api/auth/change-password', { body: { currentPassword: current, newPassword: 'a brand new passphrase here', revokeOtherSessions: false } });
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      const wrong = await change(`wrong current ${attempt}`);
+      assert.equal(wrong.status, 400, `attempt ${attempt}`);
+      assert.equal(code(wrong), 'INVALID_PASSWORD');
+    }
+    const refused = await change(password);
+    assert.equal(refused.status, 429, 'the right current password waits too');
+    assert.equal(code(refused), 'SIGN_IN_THROTTLED');
+    assert.equal((await signIn(email, password)).response.status, 429, 'it is the same count as the sign-in');
+    await pool.query("UPDATE auth_sign_in_throttle SET locked_until = now() - interval '1 second' WHERE locked_until > now()");
+    assert.equal((await change(password)).status, 200, 'the wait is over');
+    assert.equal((await signIn(email, 'a brand new passphrase here')).response.status, 200, 'and the success cleared the count');
   });
 
   test('single sign-on and every other route are untouched: only the password sign-in counts', async () => {
