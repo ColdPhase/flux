@@ -423,12 +423,15 @@ build. Set `FLUX_UI_SCREENSHOT_DIR` to an absolute path (for example
 The pages of that stack send two Content-Security-Policy headers (#979): the enforced one is the policy that ships plus
 `'unsafe-eval'`, because Playwright's `waitForFunction`, which the tests use everywhere, evaluates its predicate with `eval` in the
 page; the other is `Content-Security-Policy-Report-Only` with the policy that ships exactly and a `report-uri` to
-`/api/v1/test/csp-reports` (a test deployment only; an install sends one enforced header and no `report-uri`). Every browser in every
+`/api/v1/test/csp-reports` (a test deployment only; an install sends one enforced header and no `report-uri`). The service worker (`sw.js`)
+gets its own policy and the same report-only copy of it, so a refusal inside the worker (a notification's icon) is listed too. Every browser in every
 test, in either engine, reports there what the shipped policy would refuse, and `check_ui.sh` and `check_live_ui.sh` read the list when
 the tests end and fail with it (`scripts/csp_gate.sh`; `Content-Security-Policy violations seen by the browsers during this run`), so a
 new script, style, connection, image or frame the policy does not allow is found by the module that needs it, and an `eval` from a script
 of the app too (one with no source file is the test driver's own and is left out). `test_csp` shows what the policy refuses, on pages
-named `csp-control-*` that the list leaves out. Tests inject scripts with `page.evaluate`, never `page.add_script_tag(content=...)`: that
+named `csp-control-*` that the list leaves out; a test that causes a report on purpose takes it off the list itself
+(`DELETE /api/v1/test/csp-reports?directive=frame-ancestors`, as `test_oauth_consent` does for the consent page it frames from another origin), so the
+same report from anywhere else is a violation. Tests inject scripts with `page.evaluate`, never `page.add_script_tag(content=...)`: that
 is an inline script, which the policy refuses.
 
 `./scripts/visual_audit.sh [output-dir]` is the visual consistency audit (#763), outside both suites. On the

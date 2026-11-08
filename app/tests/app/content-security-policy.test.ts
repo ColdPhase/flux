@@ -69,8 +69,8 @@ describe('the policy a page gets', () => {
     assert.doesNotMatch(documentPolicy({ publicOrigin: 'https://flux.example.com', scriptHashes: [] }), /report-uri/);
   });
 
-  test('the service worker may fetch its own files and nothing else', () => {
-    assert.deepEqual([...directives(WORKER_POLICY)], [['default-src', ["'none'"]], ['script-src', ["'self'"]], ['connect-src', ["'self'"]]]);
+  test('the service worker may fetch its own files and show its own notification icon, and nothing else', () => {
+    assert.deepEqual([...directives(WORKER_POLICY)], [['default-src', ["'none'"]], ['script-src', ["'self'"]], ['connect-src', ["'self'"]], ['img-src', ["'self'"]]]);
   });
 });
 
@@ -137,6 +137,12 @@ describe('what the server sends', () => {
     const { response } = await page('/sw.js', { accept: '*/*' });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get('content-security-policy'), WORKER_POLICY);
+    // Chromium loads the push notification's icon (sw.js: showNotification) under this policy; without img-src it is refused.
+    assert.ok((directives(response.headers.get('content-security-policy') ?? '').get('img-src') ?? []).includes("'self'"), 'the notification icon loads');
+    // A test deployment's worker also sends the same policy as report-only with the report address, so the stack's list sees what the worker is refused.
+    const reportOnly = response.headers.get('content-security-policy-report-only');
+    if (testDeployment) assert.equal(reportOnly, `${WORKER_POLICY}; report-uri /api/v1/test/csp-reports`);
+    else assert.equal(reportOnly, null, 'an install sends the worker no report-only policy');
   });
 
   test('an API answer keeps the framing policy only', async () => {
@@ -167,5 +173,21 @@ describe('the report list of a test deployment', { skip: testDeployment ? false 
     assert.equal((await fetch(url, { method: 'POST', headers: { 'content-type': 'application/csp-report', origin: publicOrigin }, body: 'not json' })).status, 204, 'a malformed report is ignored');
     assert.equal((await fetch(url, { method: 'DELETE', headers: fixtureBearer() })).status, 204);
     assert.deepEqual(((await (await fetch(url, { headers: fixtureBearer() })).json()) as { reports: unknown[] }).reports, []);
+  });
+
+  test('a test that refuses something on purpose takes only the reports of that directive off the list', async () => {
+    const url = new URL('/api/v1/test/csp-reports', apiUrl);
+    const report = (directive: string) => fetch(url, { method: 'POST', headers: { 'content-type': 'application/csp-report', origin: publicOrigin },
+      body: JSON.stringify({ 'csp-report': { 'document-uri': `${publicOrigin}/`, 'effective-directive': directive, 'blocked-uri': publicOrigin } }) });
+    const listed = async () => ((await (await fetch(url, { headers: fixtureBearer() })).json()) as { reports: Array<{ directive: string }> }).reports.map((r) => r.directive);
+    assert.equal((await fetch(url, { method: 'DELETE', headers: fixtureBearer() })).status, 204);
+    await report('frame-ancestors');
+    await report('script-src-elem');
+    await report('frame-ancestors');
+    assert.equal((await fetch(new URL('?directive=frame-ancestors', url), { method: 'DELETE' })).status, 401, 'this needs the bearer too');
+    assert.deepEqual(await listed(), ['frame-ancestors', 'script-src-elem', 'frame-ancestors']);
+    assert.equal((await fetch(new URL('?directive=frame-ancestors', url), { method: 'DELETE', headers: fixtureBearer() })).status, 204);
+    assert.deepEqual(await listed(), ['script-src-elem'], 'the other directive stays for the gate');
+    assert.equal((await fetch(url, { method: 'DELETE', headers: fixtureBearer() })).status, 204);
   });
 });

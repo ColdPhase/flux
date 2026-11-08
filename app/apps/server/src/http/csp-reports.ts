@@ -17,7 +17,9 @@ const text = (value: unknown, limit = 300) => (typeof value === 'string' ? value
  *
  *   POST   the browser's report (`application/csp-report`; no credentials needed, a report cannot do more than add a line)
  *   GET    the reports, with the fixture bearer
- *   DELETE clears them, with the fixture bearer
+ *   DELETE clears them, with the fixture bearer; `?directive=frame-ancestors` clears only the reports of that directive, which is how a
+ *          test that refuses something on purpose (test_oauth_consent frames the consent page from another origin) takes its own
+ *          report off the list after it has seen it, so the gate still fails for the same report from anywhere else
  */
 export async function cspReportRoutes(app: FastifyInstance, { token }: { token: string }) {
   const reports: CspReport[] = [];
@@ -46,8 +48,11 @@ export async function cspReportRoutes(app: FastifyInstance, { token }: { token: 
     if (!bearerMatches(request.headers.authorization, token)) return reply.code(401).send({ error: 'Unauthorized' });
   } };
   app.get(CSP_REPORT_PATH, guarded, async () => ({ reports }));
-  app.delete(CSP_REPORT_PATH, guarded, async (_request, reply) => {
-    reports.length = 0;
+  app.delete(CSP_REPORT_PATH, guarded, async (request, reply) => {
+    const { directive } = request.query as { directive?: string };
+    if (typeof directive === 'string' && directive) {
+      for (let index = reports.length - 1; index >= 0; index -= 1) if (reports[index]!.directive.split(/\s+/)[0] === directive) reports.splice(index, 1);
+    } else reports.length = 0;
     return reply.code(204).send();
   });
 }

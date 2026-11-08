@@ -5,7 +5,8 @@ picks (Chromium or WebKit) and show what the policy does there:
  1. the app signs in and loads its pages under the policy with no violation event and no console message about one, with the service
     worker allowed, and the offline page runs its button under its own hash;
  2. what the policy must refuse is refused: an injected inline script, an inline handler, eval, a request or socket to another site, an
-    image from another site, a form posted elsewhere, a changed <base>, a frame. These are the attacks a stored XSS bug would try next.
+    image from another site, a form posted elsewhere, a changed <base>, a frame. These are the attacks a stored XSS bug would try next;
+ 3. (Chromium only) the service worker shows a notification as it does for a push, and its own policy lets the icon load.
 The negative controls run on a page named csp-control-*, which the stack's violation list (scripts/check_ui.sh) leaves out, so that
 list only holds what no test meant to cause; the test also reads the list to show that the browser reported what it refused.
 Runs through scripts/check_ui.sh against the running Compose application.
@@ -19,7 +20,7 @@ import time
 import unittest
 import uuid
 
-from playwright.sync_api import BrowserContext, Page, expect, sync_playwright
+from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
 from test_app_shell import DESKTOP, ORIGIN, UI_BROWSER, UPSTREAM, start_forwarder
 
@@ -50,8 +51,8 @@ class ContentSecurityPolicy(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def context(self, **options) -> BrowserContext:
-        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, locale="en-GB", **options)
+    def context(self, browser: Browser | None = None, **options) -> BrowserContext:
+        context = (browser or self.browser).new_context(base_url=ORIGIN, viewport=DESKTOP, locale="en-GB", **options)
         self.addCleanup(context.close)
         context.add_init_script(WATCH)
         return context
@@ -91,7 +92,9 @@ class ContentSecurityPolicy(unittest.TestCase):
         # The service worker is registered under its own policy and serves the shell.
         page.wait_for_function("navigator.serviceWorker.getRegistration().then((r) => !!r && !!r.active)", timeout=15000)
         sw = context.request.get(f"{ORIGIN}/sw.js")
-        self.assertEqual(sw.headers.get("content-security-policy"), "default-src 'none'; script-src 'self'; connect-src 'self'")
+        worker_policy = "default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self'"
+        self.assertEqual(sw.headers.get("content-security-policy"), worker_policy)
+        self.assertEqual(sw.headers.get("content-security-policy-report-only"), f"{worker_policy}; report-uri /api/v1/test/csp-reports")
 
     def test_02_the_offline_page_runs_both_its_scripts_under_their_hashes(self) -> None:
         context = self.context(service_workers="block")
@@ -154,6 +157,37 @@ class ContentSecurityPolicy(unittest.TestCase):
             got = {re.sub(r"-(elem|attr)$", "", r["directive"]) for r in listed.json()["reports"] if control in r["document"]}
             page.wait_for_timeout(300)
         self.assertTrue(wanted <= got, f"reported {sorted(got)}; missing {sorted(wanted - got)}")
+
+    @unittest.skipUnless(UI_BROWSER == "chromium", "Playwright reaches a service worker's scope only in Chromium")
+    def test_04_the_worker_shows_a_notification_with_its_icon_under_its_own_policy(self) -> None:
+        # The default headless Chromium shell never grants the notification permission; the full Chromium (new headless mode) does.
+        full = self.pw.chromium.launch(channel="chromium")
+        self.addCleanup(full.close)
+        context = self.context(full, service_workers="allow", permissions=["notifications"])
+        page = self.sign_in(context, "push")
+        page.wait_for_function("navigator.serviceWorker.getRegistration().then((r) => !!r && !!r.active)", timeout=15000)
+        deadline = time.time() + 15
+        while not context.service_workers and time.time() < deadline:
+            page.wait_for_timeout(200)
+        self.assertTrue(context.service_workers, "the service worker is running")
+        worker = context.service_workers[0]
+        # A push shows its notification from inside the worker (sw.js), and Chromium loads the icon under the worker's own policy: with no
+        # img-src that is refused (default-src 'none'), and the notification loses its icon.
+        worker.evaluate("""async () => {
+          // The worker's own view of its registration follows the page's by a moment.
+          for (let i = 0; i < 50 && !self.registration.active; i += 1) await new Promise((resolve) => setTimeout(resolve, 100));
+          self.__csp = [];
+          self.addEventListener('securitypolicyviolation', (event) => self.__csp.push({ directive: event.effectiveDirective, blocked: event.blockedURI }));
+        }""")
+        shown = worker.evaluate("""async () => {
+          await self.registration.showNotification('Policy probe', { icon: '/icons/icon-192.png?probe=' + Date.now(), tag: 'csp-probe' });
+          const open = await self.registration.getNotifications({ tag: 'csp-probe' });
+          open.forEach((notification) => notification.close());
+          return open.length;
+        }""")
+        self.assertEqual(shown, 1, "the worker showed the notification")
+        page.wait_for_timeout(800)
+        self.assertEqual(worker.evaluate("self.__csp"), [], "the worker's policy refused nothing, the icon included")
 
 
 if __name__ == "__main__":

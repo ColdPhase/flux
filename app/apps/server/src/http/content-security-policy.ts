@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join, relative, sep } from 'node:path';
 
 /**
@@ -22,7 +22,8 @@ import { join, relative, sep } from 'node:path';
  * A TEST DEPLOYMENT sends two headers (`loadDocumentPolicies`): the enforced policy adds `'unsafe-eval'`, because Playwright's
  * `waitForFunction`, which every browser test uses, evaluates its predicate with eval in the page; and the same policy WITHOUT it, as
  * `Content-Security-Policy-Report-Only` with a `report-uri`, so every browser of the test stack reports what the policy that ships
- * would refuse, eval included when it comes from a script of the app (a report with no source file is the test driver's own).
+ * would refuse, eval included when it comes from a script of the app (a report with no source file is the test driver's own). The
+ * service worker's policy goes out the same way, enforced and report-only with the `report-uri`.
  */
 export function documentPolicy({ publicOrigin, scriptHashes, reportUri, allowEval }: { publicOrigin: string; scriptHashes: readonly string[]; reportUri?: string; allowEval?: boolean }): string {
   const sockets = socketOrigins(publicOrigin);
@@ -46,8 +47,12 @@ export function documentPolicy({ publicOrigin, scriptHashes, reportUri, allowEva
   return directives.join('; ');
 }
 
-/** The service worker runs no page: it fetches Flux's own files (the app shell, the offline page) and nothing else. */
-export const WORKER_POLICY = "default-src 'none'; script-src 'self'; connect-src 'self'";
+/**
+ * The service worker runs no page: it fetches Flux's own files (the app shell, the offline page) and calls Flux's own API, and
+ * `showNotification` loads the notification's icon under this policy too (Chromium), so `img-src 'self'` is open for `/icons/icon-192.png`.
+ * `badge` and `image` are not used; nothing else is fetched.
+ */
+export const WORKER_POLICY = "default-src 'none'; script-src 'self'; connect-src 'self'; img-src 'self'";
 
 /** `wss://host` for an https origin, `ws://host` for http (a loopback install); nothing for anything else. */
 export function socketOrigins(publicOrigin: string): string[] {
@@ -59,7 +64,7 @@ export function socketOrigins(publicOrigin: string): string[] {
 
 // A script element with a body and no `src`, and a type a browser runs (none, a JavaScript type or a module). Data blocks
 // (`application/json`, `importmap`) are not executed and need no hash.
-const INLINE_SCRIPT = /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi;
+const INLINE_SCRIPT = /<script\b([^>]*)>([\s\S]*?)<\/script\b[^>]*>/gi;
 const RUNS = /^(?:|module|(?:text|application)\/(?:javascript|ecmascript))$/i;
 
 /** `sha256-<base64>` of each inline script's exact text, in document order, without repeats. */
@@ -101,10 +106,10 @@ export function loadDocumentPolicies(root: string, publicOrigin: string, test?: 
     ? { enforced: documentPolicy({ publicOrigin, scriptHashes, allowEval: test.allowEval }), reportOnly: documentPolicy({ publicOrigin, scriptHashes, reportUri: test.reportUri }) }
     : { enforced: documentPolicy({ publicOrigin, scriptHashes }) };
   const walk = (directory: string) => {
-    for (const name of readdirSync(directory)) {
-      const path = join(directory, name);
-      if (statSync(path).isDirectory()) walk(path);
-      else if (name.endsWith('.html')) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (entry.name.endsWith('.html')) {
         policies.set(relative(root, path).split(sep).join('/'), headers(inlineScriptHashes(readFileSync(path, 'utf8'))));
       }
     }
@@ -115,7 +120,7 @@ export function loadDocumentPolicies(root: string, publicOrigin: string, test?: 
     forFile(filePath) {
       // A precompressed copy (`index.html.br`, #266) takes the policy of the file it stands for.
       const name = relative(root, filePath.replace(/\.(?:br|gz)$/, '')).split(sep).join('/');
-      if (name === 'sw.js') return { enforced: WORKER_POLICY };
+      if (name === 'sw.js') return test ? { enforced: WORKER_POLICY, reportOnly: `${WORKER_POLICY}; report-uri ${test.reportUri}` } : { enforced: WORKER_POLICY };
       if (!name.endsWith('.html')) return null;
       return policies.get(name) ?? bare;
     },

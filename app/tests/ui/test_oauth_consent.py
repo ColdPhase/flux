@@ -237,6 +237,19 @@ class OauthConsentJourney(unittest.TestCase):
         expect(framing.frame_locator("iframe").get_by_role("heading", name=re.compile(r"^Connect .+ to Flux$"))).to_have_count(0)
         # The same page opened directly still works.
         expect(page.get_by_role("heading", level=1, name=re.compile(r"^Connect .+ to Flux$"))).to_be_visible()
+        # The browser may report the refused framing to the stack's Content-Security-Policy list (a test deployment, scripts/csp_gate.sh).
+        # This test caused it on purpose, so it takes the frame-ancestors reports off the list once they have arrived: the gate stays
+        # strict for a frame-ancestors report that comes from anywhere else. Not every engine reports it, so none is required.
+        listed = f"{ORIGIN}/api/v1/test/csp-reports"
+        headers = {"authorization": f"Bearer {os.environ['FLUX_FIXTURE_TOKEN']}", "origin": ORIGIN}  # the context carries her session cookie
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            reports = page.context.request.get(listed, headers=headers).json()["reports"]
+            if any(report["directive"] == "frame-ancestors" for report in reports):
+                break
+            framing.wait_for_timeout(250)
+        removed = page.context.request.delete(f"{listed}?directive=frame-ancestors", headers=headers)
+        self.assertEqual(removed.status, 204, removed.text())
 
     def test_05_allow_on_a_web_client_connects_it_named_after_the_asking_client_and_nothing_else_is_asked(self) -> None:
         """#763 AG-6, #859: during a client's sign-in there is nothing to name or choose; Allow saves one connection that starts from
