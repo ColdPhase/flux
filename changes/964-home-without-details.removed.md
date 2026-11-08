@@ -1,0 +1,1 @@
+- Home's Details button and Home's Details panel are gone. A company's people are in Settings › Company; an encrypted space's people and keys are in the space's own settings ([#964](https://github.com/ColdPhase/flux/issues/964)).

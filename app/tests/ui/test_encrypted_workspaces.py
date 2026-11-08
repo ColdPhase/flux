@@ -286,34 +286,6 @@ class EncryptedWorkspaces(Base):
                 self.assertEqual(page.locator("[data-ai-surface]").count(), 0)
                 shot(page, f"locked-member-{'phone' if phone else 'computer'}")
 
-    def test_10b_details_sits_in_the_date_line_and_stays_put_while_home_fills_in(self) -> None:
-        """Only a person with an encrypted space has Home's Details (a company's people are in Settings); it sits in the date line,
-        above everything that arrives later, so it never moves when the waiting rows or Continue arrive (#971 review, motion rule 6)."""
-        world = self.make_world()
-        watch = """() => {
-          window.__details = [];
-          const start = performance.now();
-          const tick = () => {
-            const el = document.querySelector('.home__details');
-            if (el) { const r = el.getBoundingClientRect(); window.__details.push([r.top, r.left]); }
-            if (performance.now() - start < 3000) requestAnimationFrame(tick);
-          };
-          requestAnimationFrame(tick);
-        }"""
-        for phone in (False, True):
-            with self.subTest(window="phone" if phone else "computer"):
-                page = self.page(world, "ada", phone=phone)
-                page.add_init_script(f"({watch})()")
-                page.goto("/")
-                expect(page.locator(".home__top").get_by_role("button", name="Details", exact=True)).to_be_visible()
-                expect(page.locator(".home__need")).to_be_visible()
-                page.wait_for_timeout(3200)
-                seen = page.evaluate("window.__details")
-                self.assertGreater(len(seen), 5, "Details was on screen over many frames")
-                for axis, name in ((0, "top"), (1, "left")):
-                    values = [point[axis] for point in seen]
-                    self.assertLess(max(values) - min(values), 0.5, f"Details kept its {name} while Home filled in: {min(values)} to {max(values)}")
-
     def test_11_a_deep_link_into_a_locked_space_keeps_its_address_and_back_works(self) -> None:
         world = self.make_world()
         self.lock(world)

@@ -170,25 +170,16 @@ def view_tab(page: Page, name: str, tap: bool = False) -> None:
 
 
 def open_details(page: Page, tap: bool = False) -> None:
-    """Details: More, then Details, in the computer's one-row header (#340); Home has its own quiet
-    Details button in the date line only for a person with an encrypted space (#865); on the phone a project's title menu
-    ends with "Details and people" (#341)."""
-    home = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
+    """Details: More, then Details, in the computer's one-row header (#340); on the phone a project's title menu ends with
+    "Details and people" (#341). Home has no Details (#964)."""
     if page.viewport_size["width"] <= 640:
-        page.locator("#content .home button:text-is('Details'), header .phead__menu").first.wait_for()
-        if home.count():
-            home.tap() if tap else home.click()
-            return
+        page.locator("header .phead__menu").first.wait_for()
         row = phone_menu(page, tap).locator(".phone-menu__details")
         row.tap() if tap else row.click()
         return
     close_modal_thread(page, tap)
     header = page.locator("header.top")
-    # Home has no header row (#342): its Details, only with an encrypted space, are one quiet button in the date line.
-    page.locator("#content .home button:text-is('Details'), header.top:not(.top--bare) button[aria-label='More']").first.wait_for()
-    if home.count():
-        home.click()
-        return
+    page.locator("header.top:not(.top--bare) button[aria-label='More']").first.wait_for()
     header.get_by_role("button", name="More", exact=True).click()
     # One meaning per word (#506 AC-4): "Space details" in a project, "Message info" in a direct message.
     page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Space details|Message info)$")).click()

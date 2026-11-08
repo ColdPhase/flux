@@ -389,10 +389,10 @@ class PhoneFinal(unittest.TestCase):
         page.get_by_role("list", name="Your places").get_by_role("link", name=re.compile(r"^My map")).click()
         expect(page).to_have_url(re.compile(rf"{ORIGIN}/map/[0-9a-f-]{{36}}$"))
         expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
-        # Details is only for an encrypted space's people and keys (test_encrypted_workspaces); a company's people are in Settings.
+        # Home has no Details: a company's people are in Settings › Company, an encrypted space's people and keys in its own settings (#964).
         page.goto("/")
         expect(page.get_by_role("list", name="Your places")).to_be_visible()
-        expect(page.locator(".home__details")).to_have_count(0)
+        expect(page.locator("#content .home").get_by_role("button", name="Details", exact=True)).to_have_count(0)
         page.goto("/inbox")
         expect(page.get_by_role("link", name="Settings and account")).to_be_visible()
 
