@@ -30,7 +30,7 @@ The worker (`app/apps/worker/src/notifications`) runs the core use case
 `generateNotifications` (`app/packages/core/src/notifications/generate.ts`). In one transaction it
 locks `notification_cursor`, reads up to 100 events after it (events commit in `seq` order,
 migration 0004), creates their notifications and advances the cursor. A LISTEN on
-`flux_events` wakes it right after a commit; a 30-second poll is the backstop. Worker replicas
+`flux_events` wakes it right after a commit; a one-minute poll is the backstop. Worker replicas
 serialize on the cursor row. Each event runs in its own savepoint. When one fails, the cursor
 stops just before it (earlier events commit), the attempt is counted in
 `notification_generation_failures`, and the worker retries on a timer with backoff (2, 4 … 60 s), so a

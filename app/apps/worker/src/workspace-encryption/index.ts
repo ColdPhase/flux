@@ -43,7 +43,7 @@ const testNumber = (env: NodeJS.ProcessEnv, name: string) => {
 };
 
 /**
- * The rotation's pace: pages of 500 rows (20 files), 20 ms apart, a sweep every 15 s (an idle sweep is one query). A test deployment may make pages
+ * The rotation's pace: pages of 500 rows (20 files), 20 ms apart, a sweep every minute (an idle sweep is one query). A test deployment may make pages
  * smaller and the sweep faster, and hold the pass after a number of pages so a test can kill the worker mid-rotation.
  */
 export function rotationOptions(env: NodeJS.ProcessEnv): KeyRotationOptions & { sweepMs: number } {
@@ -52,7 +52,7 @@ export function rotationOptions(env: NodeJS.ProcessEnv): KeyRotationOptions & { 
     pageSize: testNumber(env, 'FLUX_TEST_ROTATION_PAGE_SIZE') ?? 500,
     filePageSize: 20,
     pauseMs: 20,
-    sweepMs: testNumber(env, 'FLUX_TEST_ROTATION_SWEEP_MS') ?? 15_000,
+    sweepMs: testNumber(env, 'FLUX_TEST_ROTATION_SWEEP_MS') ?? 60_000,
     afterPage: hold === null ? undefined : async (pages) => {
       if (pages < hold) return;
       console.log(JSON.stringify({ test: 'rotation held', pages }));
@@ -191,7 +191,7 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
     }
   });
   // A wait committed after the unlock's resume job ran (the generator's batch was still open) would sit until the next
-  // unlock; every 30 s, a wait of a workspace this process can open sends the resume job again (#717 review P3-3).
+  // unlock; every minute, a wait of a workspace this process can open sends the resume job again (#717 review P3-3).
   const sweep = setInterval(() => {
     void (async () => {
       const rows = (await db.execute(sql`SELECT DISTINCT workspace_id AS id FROM sealed_job_waits WHERE created_at < now() - interval '5 seconds'`)).rows as { id: string }[];
@@ -201,7 +201,7 @@ export async function startWorkspaceEncryption(boss: PgBoss, db: Database, env: 
         await boss.send(WORKSPACE_ENCRYPTION_RESUME_JOB, { workspaceId: id }, { singletonKey: `sweep:${id}`, singletonSeconds: 60 });
       }
     })().catch((error) => console.error(JSON.stringify({ warning: 'Sealed wait sweep failed', error: redactedError(error).message })));
-  }, 30_000);
+  }, 60_000);
   sweep.unref();
   return {
     keys,

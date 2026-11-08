@@ -8,11 +8,11 @@ import { drainBacklogs } from '../../apps/worker/src/drain-backlogs.js';
 import { connectionString, db, pool } from './support/db.js';
 import { waitFor } from './support/wait.js';
 
-// #862: a worker is woken by one NOTIFY per transaction and polls only every 30 s, so the jobs a single transaction queues must
-// drain back to back (apps/worker/src/drain-backlogs.ts), on every queue. The sample queue is the worker's fixture queue; a
-// backlog taken one job per 30 s backstop would need 150 s for these six.
+// #862: a worker is woken by one NOTIFY per transaction and polls only as a backstop (a minute, #850), so the jobs a single transaction
+// queues must drain back to back (apps/worker/src/drain-backlogs.ts), on every queue. The sample queue is the worker's fixture queue; a
+// backlog taken one job per backstop would need 300 s for these six.
 
-test('six jobs queued in one transaction are all processed within seconds, not one per 30 s backstop', async () => {
+test('six jobs queued in one transaction are all processed within seconds, not one per backstop', async () => {
   const boss = new PgBoss({ connectionString, migrate: false });
   await boss.start();
   try {
@@ -44,7 +44,9 @@ test('a finished handler wakes its queue at once; a failed one rethrows and wake
   const options = { localConcurrency: 4 };
   assert.equal(await (fake.work as (...args: unknown[]) => Promise<string>)('queue.a', options, async () => 'done'), 'first-worker');
   assert.equal(await (fake.work as (...args: unknown[]) => Promise<string>)('queue.a', async () => { throw new Error('boom'); }), 'first-worker');
-  assert.deepEqual(registered.map((entry) => [entry.name, entry.args.length]), [['queue.a', 2], ['queue.a', 1]], 'options pass through');
+  assert.deepEqual(registered.map((entry) => [entry.name, entry.args.length]), [['queue.a', 2], ['queue.a', 2]], 'options pass through');
+  assert.deepEqual(registered[0]!.args[0], { notifyPollingIntervalSeconds: 60, localConcurrency: 4 }, 'a queue looks at itself once a minute, and keeps the options it asked for');
+  assert.deepEqual(registered[1]!.args[0], { notifyPollingIntervalSeconds: 60 }, 'also when it asked for none');
   const [finished, failed] = registered.map((entry) => entry.args.at(-1) as (jobs: unknown[]) => Promise<unknown>);
   assert.equal(await finished!([{}]), 'done');
   assert.deepEqual(woken, ['one', 'three'], 'every worker of that queue, no other queue');
