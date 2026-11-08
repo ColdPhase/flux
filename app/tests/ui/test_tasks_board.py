@@ -627,7 +627,7 @@ class TasksBoardJourney(unittest.TestCase):
                     measured.append(value)
                     self.assertGreaterEqual(value["ratio"], minimum, value)
                 shot(page, f"tasks-board-1440-{theme.lower()}")
-        self.assertEqual(len(measured), 2 * 15)
+        self.assertEqual(len(measured), 2 * 14)
 
     def test_13_delayed_native_columns_say_which_tasks_are_loading(self) -> None:
         for phone in (False, True):  # True: a narrow board whose columns scroll sideways

@@ -246,11 +246,10 @@ class WorkPaginationJourney(unittest.TestCase):
         task = api(owner, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the wall socket before installation"}, 201)
         for phone in (False, True):
             page = self.page(phone=phone)
-            # The project's state is in Details on the computer (#340) and on the phone (#341, no state row).
-            page.goto(f"/projects/{project}/tasks?view=list") if not phone else page.goto(f"/projects/{project}")
-            if not phone: self.ready(page)
-            open_details(page, tap=phone)
-            page.locator("#details").get_by_role("button", name=re.compile(r"To do.*Check the wall socket before installation")).click()
+            # Details no longer lists the space's tasks (#865, #972): the List holds the one open task, and opens it.
+            page.goto(f"/projects/{project}/tasks?view=list")
+            expect(page.locator(".ws-task")).to_have_count(1)
+            page.locator(".ws-task").filter(has_text=task["title"]).locator(".ws-item").click()
             expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
 
     def test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls(self):
