@@ -2,6 +2,12 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useLocation } from 'react-router';
 import type { DmMessage, DmPerson, DmThread } from '@flux/contracts';
 import { dmReceipts, getDmThread, observeDmMessages, olderDmReplies } from '../api/direct-messages';
+import { askError, askState } from '../assistant/format';
+import { noteAssistantUse } from '../assistant/MeetAssistant';
+import { PrivateAiLines } from '../assistant/PrivateAiLines';
+import { useConversationAssistant } from '../assistant/useConversationAssistant';
+import { useFollowEnd } from '../assistant/useFollowEnd';
+import { useShellData } from '../app/data';
 import { ComposerBox } from '../composer/ComposerBox';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { SendAnnouncer } from '../composer/Outbox';
@@ -26,9 +32,11 @@ function merge(current: DmMessage[], incoming: DmMessage[]) {
  * Its audience is the conversation's current participants and nothing else; every read, send and refresh
  * asks the server again. Esc and the close control give focus back to the message that opened it.
  */
-export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, writable, refreshTick, receiptTick, focusComposer, canObserve,
+export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, others, writable, refreshTick, receiptTick, focusComposer, canObserve,
   onDenied, onCreateTask, onCount }: {
-  dmId: string; rootId: string; meId: string; meName: string; nameOf: (id: string) => string; audience: string; writable: boolean;
+  dmId: string; rootId: string; meId: string; meName: string; nameOf: (id: string) => string; audience: string;
+  /** First names of the other people of the conversation: the ones who do not see a private answer. */
+  others: readonly string[]; writable: boolean;
   refreshTick: number; receiptTick: number; focusComposer: boolean; canObserve: boolean;
   onDenied: (cause: unknown) => void; onCreateTask: (message: DmMessage, excerpt: string | undefined) => void;
   onCount: (rootId: string, replies: number) => void;
@@ -49,8 +57,10 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
   const composer = useComposerDraft(meId, 'dm', `dm:${dmId}/${rootId}`);
   const captureScope = useComposerScope(composer.key);
   const draft = composer.draft.body;
-  // `/ai` works in the conversation, where its answer is shown; typed in a thread it is not sent as a reply (#842).
-  const asking = /^\/ai(\s|$)/.test(draft);
+  // `/ai` in this thread (#1016): the answer is a card in this panel that only the asker sees; Show everyone posts it as a reply here. A guest has no AI (AG-2).
+  const { workspace } = useShellData();
+  const [askFailure, setAskFailure] = useState('');
+  const asking = workspace?.role !== 'guest' && /^\/ai(\s|$)/.test(draft);
   const shown = useMemo(() => merge(replies, composer.sent.map((item) => item.message as DmMessage)), [replies, composer.sent]);
   const outbox = outboxView(shown, composer.pending, composer.sent, meId);
 
@@ -125,6 +135,12 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
     feedNode.addEventListener('scroll', note, { passive: true });
     return () => feedNode.removeEventListener('scroll', note);
   }, [feedNode]);
+
+  // The person's own agent asked from this thread (#1016): its work and its answer are theirs alone, at the end of the replies.
+  const toEnd = () => requestAnimationFrame(() => { const el = feed.current; if (el) el.scrollTop = el.scrollHeight; });
+  const assistant = useConversationAssistant({ meId, place: { kind: 'dm', dmId, threadRootId: rootId }, onShown: () => { stick.current = true; void load(); toEnd(); } });
+  const privateItems = [...assistant.privateAnswers.map((item) => item.id), assistant.run?.id ?? ''].join(',');
+  useFollowEnd(() => feed.current, privateItems.replaceAll(',', '') ? privateItems : '');
   useLayoutEffect(() => {
     // A return positions itself, once its reply is loaded.
     if (returned.pending || returned.restore || target) return;
@@ -155,8 +171,26 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
     finally { setOlderBusy(false); }
   }
 
+  /** `/ai …` asks the person's agent about this thread; the words are not a reply. */
+  async function askAgent() {
+    const prompt = draft.replace(/^\/ai\s*/, '').trim();
+    const state = askState(assistant.status);
+    if (!prompt) { setAskFailure('Say what to ask after /ai, for example /ai summarise this thread.'); return; }
+    if (state.kind !== 'ready') { setAskFailure(state.note); return; }
+    const active = captureScope();
+    setAskFailure('');
+    noteAssistantUse(meId);
+    try {
+      await assistant.ask(prompt);
+      if (!active()) return;
+      composer.setBody('');
+      stick.current = true; toEnd();
+    } catch (cause) { if (active()) setAskFailure(askError(cause)); }
+  }
+
   async function send() {
-    if (!writable || asking) return;
+    if (!writable) return;
+    if (asking) { await askAgent(); return; }
     const outcome = composer.submit(shown.at(-1)?.sequence ?? 0);
     if (!outcome) return;
     const active = captureScope();
@@ -215,16 +249,20 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
                   onReply={() => field.current?.focus()} onCreateTask={onCreateTask} />;
               })}
             </ol>
+            {/* The person's own agent at work in this thread and what it answered them: theirs alone, at the end like a reply about to be sent (#1016). */}
+            <PrivateAiLines own assistant={assistant} meId={meId} meName={meName} others={others} composerId="dm-thread-composer"
+              lookups={{ projectId: '', messages: [], work: new Map(), author: nameOf }} />
           </div>
         </div>
         <div className="composer dm__composer dm-thread__composer">
           <div className="composer__in">
-            <ComposerBox id="dm-thread-composer" label="Reply in thread" fieldRef={field} value={draft} onChange={(value) => composer.setBody(value)} onKeyDown={onKey}
+            <ComposerBox id="dm-thread-composer" label="Reply in thread" fieldRef={field} value={draft} onChange={(value) => { setAskFailure(''); composer.setBody(value); }} onKeyDown={onKey}
               disabled={!writable} boxDisabled={!writable} placeholder={writable ? 'Reply in thread…' : 'Nobody else is in this conversation'}
-              sendLabel="Send reply" sendDisabled={!composer.canSend || !writable || asking} onSend={() => void send()} />
-            <p className="composer__audience"><Icon name="lock" size={13} /><span>{audience}<span aria-hidden="true"> · </span><span className="composer__where">private reply</span></span></p>
+              sendLabel={asking ? 'Ask your agent' : 'Send reply'} sendDisabled={!composer.canSend || !writable} onSend={() => void send()} />
+            {asking ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span>Only you see the answer · {others.join(', ') || 'The others'} {others.length === 1 ? 'sees' : 'see'} only a line that AI was used here</span></p>
+              : <p className="composer__audience"><Icon name="lock" size={13} /><span>{audience}<span aria-hidden="true"> · </span><span className="composer__where">private reply</span></span></p>}
             <SendAnnouncer pending={composer.pending} />
-            {asking ? <p className="dm__error" role="status"><Icon name="alert" size={13} />Ask your agent in the conversation: /ai works there, not in a thread. This is not sent.</p> : null}
+            {askFailure ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{askFailure}</p> : null}
             {composer.error ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{composer.error}</p> : null}
           </div>
         </div>

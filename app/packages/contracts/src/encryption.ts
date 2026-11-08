@@ -225,6 +225,7 @@ export const IDEMPOTENCY_ACCOUNT_OPERATIONS: Readonly<Record<string, string>> = 
   'POST /api/v1/conversations/:conversationId/assistant-runs': AI_ONLY,
   'POST /api/v1/projects/:projectId/assistant-runs': AI_ONLY,
   'POST /api/v1/dms/:dmId/assistant-runs': AI_ONLY,
+  'POST /api/v1/dms/:dmId/threads/:rootId/assistant-runs': AI_ONLY,
   'POST /api/v1/my-agents/:agentId/assistant-runs': AI_ONLY,
   'POST /api/v1/assistant-runs/:runId/show': AI_ONLY,
   'POST /api/v1/assistant-runs/:runId/dismiss': AI_ONLY,

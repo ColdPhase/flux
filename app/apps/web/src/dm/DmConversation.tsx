@@ -167,7 +167,7 @@ function DmContent({ initial }: { initial: Dm }) {
     finally { refreshing.current = false; }
   }, [denied, initial.id, learn]);
 
-  const assistant = useConversationAssistant({ meId: me.user.id, place: { kind: 'dm', dmId: initial.id }, onShown: () => { void refresh(); toBottom(); } });
+  const assistant = useConversationAssistant({ meId: me.user.id, place: { kind: 'dm', dmId: initial.id, threadRootId: null }, onShown: () => { void refresh(); toBottom(); } });
   // A new answer, or the agent at work, comes into view at the end, also when the working line becomes the taller answer (#842).
   const privateItems = [...assistant.privateAnswers.map((item) => item.id), assistant.run?.id ?? ''].join(',');
   useFollowEnd(() => feedRef.current, privateItems.replaceAll(',', '') ? privateItems : '');
@@ -421,7 +421,7 @@ function DmContent({ initial }: { initial: Dm }) {
           <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value) => change(value)} onBlur={typing.stop} onKeyDown={onKey}
             disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`}
             fieldProps={{ 'aria-describedby': audienceId }} sendLabel={asking ? 'Ask your agent' : 'Send message'} sendDisabled={!canSend} onSend={() => void send()} />
-          {asking ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span id={audienceId}>Only you see the answer · {firstNames(others.map((person) => person.name)).join(', ') || 'The others'} see only a line that AI was used here</span></p>
+          {asking ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span id={audienceId}>Only you see the answer · {firstNames(others.map((person) => person.name)).join(', ') || 'The others'} {others.length === 1 ? 'sees' : 'see'} only a line that AI was used here</span></p>
             : <p className="composer__audience"><Icon name="lock" size={13} /><span id={audienceId}>{audience}<span aria-hidden="true"> · </span><span className="composer__where">direct message</span></span></p>}
           <TypingNotice {...typing} />
           <SendAnnouncer pending={composer.pending} />
@@ -435,7 +435,7 @@ function DmContent({ initial }: { initial: Dm }) {
     {threadOpen && slot ? (
       <OwnedPanelContent slot={slot} className="thread" id="thread">
       <DmThreadPanel key={threadId} dmId={dm.id} rootId={threadId!} meId={me.user.id} meName={me.user.name} nameOf={nameOf}
-        audience={audience} writable={!recipientGone} refreshTick={refreshTick} receiptTick={receiptTick} focusComposer={replyFocus} canObserve
+        audience={audience} others={firstNames(others.map((person) => person.name))} writable={!recipientGone} refreshTick={refreshTick} receiptTick={receiptTick} focusComposer={replyFocus} canObserve
         onDenied={threadDenied} onCreateTask={startCopy} onCount={threadCount} />
       </OwnedPanelContent>) : null}
     {copy ? <DmTaskCopy dmId={dm.id} message={copy.message} excerpt={copy.excerpt} participants={dm.participants} onClose={() => stopCopy()}

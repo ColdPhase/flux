@@ -24,9 +24,9 @@ async function allAnswers(conversationId: string) {
 /** Whether a run is one of `/ai`'s or a chat's: its answer is the asker's alone. */
 const asked = (run: AssistantRun) => run.kind === 'ask' || run.kind === 'summarize' || run.kind === 'map_thought';
 /** Where a run belongs, as `placeKey` says it for a place. */
-const runPlaceKey = (run: AssistantRun) => (run.dmId ? `dm:${run.dmId}` : run.projectId === null ? `chat:${run.agentId}` : `space:${run.projectId}:${run.conversationId ?? ''}`);
+const runPlaceKey = (run: AssistantRun) => (run.dmId ? `dm:${run.dmId}:${run.dmThreadRootId ?? ''}` : run.projectId === null ? `chat:${run.agentId}` : `space:${run.projectId}:${run.conversationId ?? ''}`);
 /** Where a run belongs, as the key that tells two places apart. */
-export const placeKey = (place: AskPlace | null) => !place ? '' : place.kind === 'dm' ? `dm:${place.dmId}` : place.kind === 'chat' ? `chat:${place.agentId}` : `space:${place.projectId}:${place.conversationId ?? ''}`;
+export const placeKey = (place: AskPlace | null) => !place ? '' : place.kind === 'dm' ? `dm:${place.dmId}:${place.threadRootId ?? ''}` : place.kind === 'chat' ? `chat:${place.agentId}` : `space:${place.projectId}:${place.conversationId ?? ''}`;
 
 export interface ConversationAssistant {
   status: PersonalAssistantStatus | null;

@@ -20,6 +20,7 @@ import {
   assistantRunShowPath,
   assistantRunStopPath,
   dmAssistantRunsPath,
+  dmThreadAssistantRunsPath,
   projectAssistantRunsPath,
   ASSISTANT_MODEL_PATH,
   conversationAssistantAnswersPath,
@@ -85,7 +86,7 @@ const invoke = { type: 'object', required: ['clientRunId', 'kind', 'prompt'], ad
   ownerId: { type: 'string' }, connectionId: { type: 'string' }, agentId: { type: 'string' },
 } } as const;
 const runsQuery = { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' },
-  conversationId: { type: 'string' }, spaceId: { type: 'string' }, dmId: { type: 'string' }, chatAgentId: { type: 'string' } } } as const;
+  conversationId: { type: 'string' }, spaceId: { type: 'string' }, dmId: { type: 'string' }, dmThreadRootId: { type: 'string' }, chatAgentId: { type: 'string' } } } as const;
 const retry = { type: 'object', required: ['clientRunId'], additionalProperties: false, properties: { clientRunId: { type: 'string' } } } as const;
 const decide = { type: 'object', additionalProperties: false, properties: { expectedVersion: version } } as const;
 
@@ -192,7 +193,8 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
   invokeRoute(conversationAssistantRunsPath(':conversationId'), `POST ${conversationAssistantRunsPath(':conversationId')}`,
     ({ conversationId }) => ({ kind: 'space', projectId: '', conversationId: conversationId! }));
   invokeRoute(projectAssistantRunsPath(':projectId'), `POST ${projectAssistantRunsPath(':projectId')}`, ({ projectId }) => ({ kind: 'space', projectId: projectId!, conversationId: null }));
-  invokeRoute(dmAssistantRunsPath(':dmId'), `POST ${dmAssistantRunsPath(':dmId')}`, ({ dmId }) => ({ kind: 'dm', dmId: dmId! }));
+  invokeRoute(dmAssistantRunsPath(':dmId'), `POST ${dmAssistantRunsPath(':dmId')}`, ({ dmId }) => ({ kind: 'dm', dmId: dmId!, threadRootId: null }));
+  invokeRoute(dmThreadAssistantRunsPath(':dmId', ':rootId'), `POST ${dmThreadAssistantRunsPath(':dmId', ':rootId')}`, ({ dmId, rootId }) => ({ kind: 'dm', dmId: dmId!, threadRootId: rootId! }));
   invokeRoute(agentAssistantRunsPath(':agentId'), `POST ${agentAssistantRunsPath(':agentId')}`, ({ agentId }) => ({ kind: 'chat', agentId: agentId! }));
   app.get<{ Params: { conversationId: string }; Querystring: PageQuery }>(conversationAssistantAnswersPath(':conversationId'), { schema: { querystring: page } },
     async (request) => runs.listAnswers(await principal(request), request.params.conversationId, request.query));
@@ -217,7 +219,8 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
       const { run, place, body, via } = await uses.planShow(actor, request.params.runId);
       const message = { body, clientMessageId: run.id };
       let messageId: string;
-      if (place.kind === 'dm') messageId = (await dmUseCases(conn).sendVia(actor, place.dmId, message, via)).id;
+      if (place.kind === 'dm') messageId = (place.threadRootId !== null ? await dmUseCases(conn).replyVia(actor, place.dmId, place.threadRootId, message, via)
+        : await dmUseCases(conn).sendVia(actor, place.dmId, message, via)).id;
       else if (place.kind === 'space' && place.conversationId !== null) messageId = (await conversationUseCases(conversationStore(conn)).sendMessage(actor, place.conversationId, message, via)).id;
       else if (place.kind === 'space') messageId = (await conversationUseCases(conversationStore(conn)).createConversation(actor, place.projectId, message, via)).messages[0]!.id;
       else throw new InvalidInputError('A private chat has nobody to show it to');

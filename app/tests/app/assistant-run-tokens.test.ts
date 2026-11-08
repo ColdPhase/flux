@@ -321,7 +321,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
 
     // A direct message: the only tool reads a web page; the DM itself is given in the request, and no space is reachable.
     compute.respond = calls(doc(place.id, docId), { id: 'ctx', name: 'flux_list_contexts', input: {} });
-    const inDm = await asked({ kind: 'dm', dmId });
+    const inDm = await asked({ kind: 'dm', dmId, threadRootId: null });
     assert.deepEqual(compute.dispatched[0]!.tools?.map((tool) => tool.name), ['flux_read_web']);
     assert.match(compute.dispatched[0]!.input, new RegExp(DM_CANARY), 'the DM is what the model reads');
     assert.ok(results().every((result) => result.isError), 'a call of any other tool is refused');

@@ -203,7 +203,7 @@ export function withoutCitationMarks(body: string, sources: number): string {
 export async function runView(ports: PersonalRunPorts, record: RunRecord): Promise<AssistantRun> {
   return {
     id: record.id, clientRunId: record.clientRunId, workspaceId: record.workspaceId, projectId: record.projectId,
-    conversationId: record.conversationId, dmId: record.dmId, agentId: record.agentId, kind: record.kind, prompt: record.prompt, silent: record.silent,
+    conversationId: record.conversationId, dmId: record.dmId, dmThreadRootId: record.dmThreadRootId, agentId: record.agentId, kind: record.kind, prompt: record.prompt, silent: record.silent,
     target: record.targetSketchId && record.targetThoughtId ? { type: 'thought', sketchId: record.targetSketchId, thoughtId: record.targetThoughtId } : null,
     continuesRunId: record.continuesRunId, retryOfRunId: record.retryOfRunId, status: record.status,
     stoppedAtStage: record.stoppedAtStage, stopRequested: record.stopRequestedAt !== null, stopAcknowledged: record.stopAcknowledgedAt !== null,
@@ -453,14 +453,18 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const lock = { lock: true } as const;
     if (wanted.kind === 'dm') {
       if (!isId(wanted.dmId)) throw new NotFoundError('Direct message', 'DM_NOT_FOUND');
-      const { workspaceId } = await ports.access.requireDm(principal, wanted.dmId.toLowerCase(), lock);
-      return { workspaceId, projectId: null, conversationId: null, dmId: wanted.dmId.toLowerCase(), epoch: null, agentId: null };
+      const dmId = wanted.dmId.toLowerCase();
+      const { workspaceId } = await ports.access.requireDm(principal, dmId, lock);
+      // A thread hangs on a root message of this DM (not a reply, not the line "used AI here"); any other id is as unknown as a missing DM.
+      const threadRootId = wanted.threadRootId === null ? null : isId(wanted.threadRootId) ? wanted.threadRootId.toLowerCase() : 'invalid';
+      if (threadRootId !== null && (threadRootId === 'invalid' || !(await ports.runs.isDmThreadRoot(dmId, threadRootId)))) throw new NotFoundError('Message', 'DM_MESSAGE_NOT_FOUND');
+      return { workspaceId, projectId: null, conversationId: null, dmId, dmThreadRootId: threadRootId, epoch: null, agentId: null };
     }
     if (wanted.kind === 'chat') {
       if (!isId(wanted.agentId)) throw agentNotFound();
       const own = await ports.runs.enablement(ownerOf(principal), { lock: true, agentId: wanted.agentId.toLowerCase() });
       if (!own) throw agentNotFound();
-      return { workspaceId: own.workspaceId, projectId: null, conversationId: null, dmId: null, epoch: null, agentId: own.agentId };
+      return { workspaceId: own.workspaceId, projectId: null, conversationId: null, dmId: null, dmThreadRootId: null, epoch: null, agentId: own.agentId };
     }
     let projectId: string; let conversationId: string | null = null; let workspaceId: string | undefined;
     if (wanted.conversationId !== null) {
@@ -481,7 +485,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     }
     // AG-10: no run, and no replay of an earlier one, while AI is off in this space.
     const { epoch } = await ports.access.requireSpaceAi(projectId, lock);
-    return { workspaceId, projectId, conversationId, dmId: null, epoch, agentId: null };
+    return { workspaceId, projectId, conversationId, dmId: null, dmThreadRootId: null, epoch, agentId: null };
   }
 
   /**
@@ -490,8 +494,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
    * messages in the conversation. A task run's prompt (and the prompt of a question between agents, and of a continuation, which holds the
    * agents' question and answer lines) is built by the server from agents' words, so it is not read for addresses. Fixed here, with the run.
    */
-  async function givenAtStart(ports: PersonalRunPorts, run: { kind: string; prompt: string; projectId: string | null; conversationId: string | null; dmId: string | null; workId?: string | null }): Promise<string[]> {
-    const texts = await ports.runs.personTexts({ projectId: run.projectId, conversationId: run.conversationId, dmId: run.dmId }, run.workId ?? null);
+  async function givenAtStart(ports: PersonalRunPorts, run: { kind: string; prompt: string; projectId: string | null; conversationId: string | null; dmId: string | null; dmThreadRootId?: string | null; workId?: string | null }): Promise<string[]> {
+    const texts = await ports.runs.personTexts({ projectId: run.projectId, conversationId: run.conversationId, dmId: run.dmId, dmThreadRootId: run.dmThreadRootId ?? null }, run.workId ?? null);
     if (run.kind !== 'task' && run.kind !== 'task_answer') texts.unshift(run.prompt);
     return [...givenAddresses(texts)].slice(0, GIVEN_AT_START_MAX);
   }
@@ -511,13 +515,14 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const existing = await ports.runs.runByClientId(owner, request.clientRunId);
     if (existing) {
       if (existing.requestFingerprint !== request.fingerprint || existing.projectId !== place.projectId || existing.conversationId !== place.conversationId
-        || existing.dmId !== place.dmId || (place.agentId !== null && existing.agentId !== place.agentId) || existing.retryOfRunId !== retryOfRunId)
+        || existing.dmId !== place.dmId || existing.dmThreadRootId !== place.dmThreadRootId || (place.agentId !== null && existing.agentId !== place.agentId) || existing.retryOfRunId !== retryOfRunId)
         throw new ConflictError('This clientRunId was used for another run', 'IDEMPOTENCY_CONFLICT');
       return { run: existing, created: false };
     }
     if (request.continuesRunId) {
       const earlier = await ports.runs.findRun(request.continuesRunId);
-      if (!earlier || earlier.ownerUserId !== owner || earlier.projectId !== place.projectId || earlier.conversationId !== place.conversationId || earlier.dmId !== place.dmId) throw runNotFound();
+      if (!earlier || earlier.ownerUserId !== owner || earlier.projectId !== place.projectId || earlier.conversationId !== place.conversationId || earlier.dmId !== place.dmId
+        || earlier.dmThreadRootId !== place.dmThreadRootId) throw runNotFound();
       if (earlier.answerBody === null) throw new ConflictError('Only a committed answer can be continued', 'ASSISTANT_RUN_NOT_CONTINUABLE');
     }
     if (request.target && (place.projectId === null || !(await ports.access.canReadSketch(principal, request.target.sketchId)))) throw new NotFoundError('Thought', 'THOUGHT_NOT_FOUND');
@@ -537,10 +542,10 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const admitted = await admit(ports, owner, enablement);
     if (!admitted.ok) throw unavailable(admitted.problem);
     const run = await ports.runs.insertRun({
-      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: place.conversationId, dmId: place.dmId,
+      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: place.conversationId, dmId: place.dmId, dmThreadRootId: place.dmThreadRootId,
       ownerUserId: owner, agentId, connectionId: enablement.connectionId, clientRunId: request.clientRunId,
       requestFingerprint: request.fingerprint, kind: request.kind, prompt: request.prompt,
-      given: await givenAtStart(ports, { kind: request.kind, prompt: request.prompt, projectId: place.projectId, conversationId: place.conversationId, dmId: place.dmId }),
+      given: await givenAtStart(ports, { kind: request.kind, prompt: request.prompt, projectId: place.projectId, conversationId: place.conversationId, dmId: place.dmId, dmThreadRootId: place.dmThreadRootId }),
       targetSketchId: request.target?.sketchId ?? null, targetThoughtId: request.target?.thoughtId ?? null,
       continuesRunId: request.continuesRunId, retryOfRunId, ...admitted.fields, engine: enablement.engine, aiEpoch: place.epoch,
     });
@@ -604,7 +609,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const taskFence = await ports.runs.prepareTaskUse(place.projectId, spec.conversationId);
     for (const ended of await ports.runs.endStale(owner, STALE_AFTER_SECONDS)) await announce(ports, ended);
     const run = await ports.runs.insertRun({
-      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, dmId: null, ownerUserId: owner, agentId,
+      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, dmId: null, dmThreadRootId: null, ownerUserId: owner, agentId,
       connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `background:${spec.kind}:${spec.clientRunId}`, kind: spec.kind,
       prompt: spec.prompt, given: await givenAtStart(ports, { kind: spec.kind, prompt: spec.prompt, projectId: place.projectId, conversationId: spec.conversationId, dmId: null }),
       targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine, silent: spec.silent,
@@ -651,7 +656,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const admitted = await admit(ports, owner, enablement);
     if (!admitted.ok) return refused(admitted.problem === 'runtime_sign_in' ? `I can't start: sign in to ${admitted.client === 'codex' ? 'ChatGPT' : 'Claude'} again.` : TASK_PROBLEM_LINE[admitted.problem]);
     const run = await ports.runs.insertRun({
-      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, dmId: null, ownerUserId: owner, agentId: spec.agentId,
+      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, dmId: null, dmThreadRootId: null, ownerUserId: owner, agentId: spec.agentId,
       connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `${kind}:${spec.workId}:${spec.clientRunId}`, kind,
       prompt: spec.prompt, given: await givenAtStart(ports, { kind, prompt: spec.prompt, projectId: place.projectId, conversationId: spec.conversationId, dmId: null, workId: spec.workId }),
       targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine,
@@ -905,7 +910,10 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       if (named.length > 1) throw new InvalidInputError('Name at most one place');
       const only = named[0];
       if (only && !isId(only[1])) throw new InvalidInputError(`${only[0]} must be an id`);
-      const place = only ? { [only[0] as string]: (only[1] as string).toLowerCase() } as RunPlaceFilter : undefined;
+      // A thread of a DM narrows the DM's runs to it (#1016); a DM alone is its main line.
+      if (query?.dmThreadRootId !== undefined && (only?.[0] !== 'dmId' || !isId(query.dmThreadRootId))) throw new InvalidInputError('dmThreadRootId names a thread of the direct message in dmId');
+      const place = only ? (only[0] === 'dmId' ? { dmId: (only[1] as string).toLowerCase(), dmThreadRootId: query?.dmThreadRootId?.toLowerCase() ?? null }
+        : { [only[0] as string]: (only[1] as string).toLowerCase() }) as RunPlaceFilter : undefined;
       return uow.run(async (ports) => {
         const { items, total } = await ports.runs.listOwnRuns(owner, window, place);
         return { items: await Promise.all(items.map((item) => runView(ports, item))), total, ...window };

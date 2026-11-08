@@ -101,6 +101,7 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'POST /api/v1/agent-chats/:agentId/read': exempt(OWN_HISTORY),
   'POST /api/v1/projects/:projectId/assistant-runs': gated('params', 'projectId', 'project'),
   'POST /api/v1/dms/:dmId/assistant-runs': useCase('A direct message is in no space, so it has no switch; its participants and the agent\'s standing are checked'),
+  'POST /api/v1/dms/:dmId/threads/:rootId/assistant-runs': useCase('A thread of a direct message is in no space, so it has no switch; the DM\'s participants and the agent\'s standing are checked'),
   'POST /api/v1/my-agents/:agentId/assistant-runs': useCase('A private chat is in no space; whatever its agent reads is checked and gated in that space, call by call'),
   'POST /api/v1/assistant-runs/:runId/show': gated('params', 'runId', 'run'),
   'POST /api/v1/assistant-runs/:runId/dismiss': exempt(REDUCES),

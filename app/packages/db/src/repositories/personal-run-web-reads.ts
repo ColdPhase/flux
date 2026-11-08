@@ -59,11 +59,15 @@ export function personalRunWebReadRows(db: DbExecutor) {
      * line); a private chat has none. What an agent wrote (a question to another agent, an answer, a status line, a task it made or edited) is
      * never returned, and neither is an answer a person posted with Show everyone (`via`): it is the agent's text (#842).
      */
-    async personTexts(place: { projectId: string | null; conversationId: string | null; dmId: string | null }, workId: string | null): Promise<string[]> {
+    async personTexts(place: { projectId: string | null; conversationId: string | null; dmId: string | null; dmThreadRootId?: string | null }, workId: string | null): Promise<string[]> {
       const task = sql`SELECT concat_ws(E'\n', t.title, t.outcome, t.criteria::text) AS text FROM project_work_items t
         WHERE t.id = ${workId}::uuid AND t.created_by_kind = 'human' AND NOT t.text_by_agent AND COALESCE(t.creation_origin, 'human') = 'human'`;
+      // In a DM's thread (#1016) only the thread's own words give an address: they are all the model is given.
       const messages = place.dmId !== null
-        ? sql`SELECT m.body FROM dm_messages m WHERE m.dm_id = ${place.dmId}::uuid AND m.kind = 'text' AND m.via IS NULL ORDER BY m.sequence DESC LIMIT 100`
+        ? place.dmThreadRootId
+          ? sql`SELECT m.body FROM dm_messages m WHERE m.dm_id = ${place.dmId}::uuid AND m.kind = 'text' AND m.via IS NULL
+            AND (m.id = ${place.dmThreadRootId}::uuid OR m.thread_root_id = ${place.dmThreadRootId}::uuid) ORDER BY m.sequence DESC LIMIT 100`
+          : sql`SELECT m.body FROM dm_messages m WHERE m.dm_id = ${place.dmId}::uuid AND m.kind = 'text' AND m.via IS NULL ORDER BY m.sequence DESC LIMIT 100`
         : place.conversationId !== null
           ? sql`SELECT m.body FROM project_messages m WHERE m.conversation_id = ${place.conversationId}::uuid AND m.removed_at IS NULL AND m.author_agent_id IS NULL AND m.via IS NULL
             ORDER BY m.sequence DESC LIMIT 100`

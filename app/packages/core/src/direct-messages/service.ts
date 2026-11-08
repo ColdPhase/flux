@@ -300,6 +300,11 @@ export function createDmUseCases(uow: DmUnitOfWork) {
       return sendMessage(principal, dmId, null, command, via);
     },
 
+    /** Show everyone in a DM's thread (#1016): the asker's reply in that thread, "Ada · via Assistant". Only the server calls it, from the answer itself. */
+    async replyVia(principal: Principal, dmId: string, rootId: string, command: SendDmMessageCommand, via: string): Promise<DmMessage> {
+      return sendMessage(principal, dmId, validRoot(rootId), command, via);
+    },
+
     /**
      * A private reply to a root of this DM (#536). The audience is exactly the DM's current participants: the same
      * `dm.write` check with the same locks, the same 1:1 recipient-left refusal, and a root that is not a message

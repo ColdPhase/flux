@@ -22,6 +22,8 @@ export const conversationAssistantRunsPath = (conversationId: string) => `/api/v
 export const projectAssistantRunsPath = (projectId: string) => `/api/v1/projects/${projectId}/assistant-runs`;
 /** `/ai` in a direct message (#842). */
 export const dmAssistantRunsPath = (dmId: string) => `/api/v1/dms/${dmId}/assistant-runs`;
+/** `/ai` in a thread of a direct message (#1016): `rootId` is the thread's root message. */
+export const dmThreadAssistantRunsPath = (dmId: string, rootId: string) => `/api/v1/dms/${dmId}/threads/${rootId}/assistant-runs`;
 /** A message to one of the caller's own agents in its private chat (#842). */
 export const agentAssistantRunsPath = (agentId: string) => `/api/v1/my-agents/${agentId}/assistant-runs`;
 /** Show everyone (#842): the answer is posted as its asker's message, "Ada · via Assistant". */
@@ -36,12 +38,13 @@ export const assistantProposalDismissPath = (proposalId: string) => `${assistant
 
 /**
  * Where a run belongs (#842, F-036 AG-4). `space`: a space's conversation, a thread or a task's thread (`conversationId`), or the
- * space's main conversation (`null`); its audience is the people who read the space. `dm`: a direct message; its audience is its
- * participants. `chat`: the private chat with one of the owner's agents; its audience is the owner alone.
+ * space's main conversation (`null`); its audience is the people who read the space. `dm`: a direct message, or one of its threads
+ * (`threadRootId`, the thread's root message; `null` for the DM's main line); its audience is the DM's participants either way.
+ * `chat`: the private chat with one of the owner's agents; its audience is the owner alone.
  */
 export type AssistantPlace =
   | { kind: 'space'; projectId: string; conversationId: string | null }
-  | { kind: 'dm'; dmId: string }
+  | { kind: 'dm'; dmId: string; threadRootId: string | null }
   | { kind: 'chat'; agentId: string };
 
 /**
@@ -282,6 +285,8 @@ export interface AssistantRun {
   projectId: string | null;
   conversationId: string | null;
   dmId: string | null;
+  /** The root message of the DM thread the run belongs to (#1016); null for the DM's main line and for every other place. */
+  dmThreadRootId: string | null;
   /** The agent that answers. */
   agentId: string;
   kind: AssistantRunKind;
@@ -379,7 +384,11 @@ export type AssistantAnswerPage = Page<AssistantAnswer>;
  * `GET /api/v1/assistant-runs?…` lists only the caller's runs; at most one of these narrows them to one place (#842):
  * a conversation, a space's main conversation, a direct message or an agent's private chat.
  */
-export interface ListOwnRunsQuery extends PageQuery { conversationId?: string; spaceId?: string; dmId?: string; chatAgentId?: string }
+export interface ListOwnRunsQuery extends PageQuery {
+  conversationId?: string; spaceId?: string; chatAgentId?: string;
+  /** A DM's main line; with `dmThreadRootId`, one of its threads (#1016). */
+  dmId?: string; dmThreadRootId?: string;
+}
 
 /** `POST /api/v1/assistant-runs/:runId/show` (#842): the message the answer became. */
 export interface ShowAnswerResult { run: AssistantRun; messageId: string }

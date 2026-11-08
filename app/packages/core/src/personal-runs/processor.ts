@@ -170,14 +170,14 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
   }
   // A silent background run's conversation is only where it is anchored: its messages are not its context (AST-9).
   const messages = run.silent ? [] : run.conversationId !== null ? await ports.runs.messages(run.conversationId, MESSAGE_WINDOW)
-    : run.projectId !== null ? await ports.runs.spaceMessages(run.projectId, MESSAGE_WINDOW) : run.dmId !== null ? await ports.runs.dmMessages(run.dmId, MESSAGE_WINDOW) : [];
+    : run.projectId !== null ? await ports.runs.spaceMessages(run.projectId, MESSAGE_WINDOW) : run.dmId !== null ? await ports.runs.dmMessages(run.dmId, MESSAGE_WINDOW, run.dmThreadRootId) : [];
   for (const message of messages) sources.push({ label: next(), ref: { type: 'message', id: message.id, revision: 1 }, text: messageText(message) });
   if (run.projectId !== null) for (const work of await ports.runs.openWork(run.projectId, WORK_WINDOW))
     sources.push({ label: next(), ref: { type: 'work', id: work.id, revision: work.version }, text: `Open work item "${work.title}" (${work.status})${work.outcome ? `: ${work.outcome}` : ''}` });
   let earlier: string | null = null;
   if (run.continuesRunId) {
     const previous = await ports.runs.findRun(run.continuesRunId);
-    if (previous?.ownerUserId === run.ownerUserId && previous.conversationId === run.conversationId && previous.dmId === run.dmId) earlier = previous.answerBody;
+    if (previous?.ownerUserId === run.ownerUserId && previous.conversationId === run.conversationId && previous.dmId === run.dmId && previous.dmThreadRootId === run.dmThreadRootId) earlier = previous.answerBody;
   }
   // The private chat has no conversation to read: it remembers what was said in it last (the agent's memory is told in its brief).
   const turns = run.projectId === null && run.dmId === null ? await ports.runs.chatTurns(run.agentId, run.id, CHAT_TURNS) : [];

@@ -194,7 +194,9 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
   it or an agent opening it for its owner ([coordinator default C-2](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)), one line appears in the DM for
   both people, for example "Ada used AI here (Claude)". The line names the provider of the model
   used. No space switch governs DMs, so the line is how the other person learns which AI company
-  receives their messages.
+  receives their messages. `/ai` works in a DM's threads too (#1016): the answer is a card in the
+  thread panel that only the asker sees, Show everyone posts it as a reply in that thread, the
+  model reads that thread and nothing else, and the line appears in the DM's main line.
 - **States.** An answer shows when it is working, failed (with Try again), stopped by the
   provider's limit (with when it resumes) or not possible because AI is off here.
 - **No drafts for other people.** An agent never prepares or sends a message to another person.

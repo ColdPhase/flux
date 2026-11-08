@@ -1,0 +1,1 @@
+- `/ai` works in the threads of a direct message too. The answer is a card in the thread that only you see; Show everyone posts it as a reply in that thread, and the assistant reads that thread and nothing else. Both people still see one line in the conversation that AI was used ([#1016](https://github.com/ColdPhase/flux/issues/1016)).

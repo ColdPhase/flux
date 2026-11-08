@@ -46,6 +46,8 @@ export interface RunRecord {
   projectId: string | null;
   conversationId: string | null;
   dmId: string | null;
+  /** 0032 (#1016): the root message of the DM thread the run belongs to; null for the DM's main line and every other place. */
+  dmThreadRootId: string | null;
   ownerUserId: string;
   agentId: string;
   connectionId: string | null;
@@ -115,9 +117,9 @@ export interface RunRecord {
 }
 
 /** Where a run belongs, from its row: a space, a direct message, or the private chat with its agent (#842). */
-export function placeOf(run: Pick<RunRecord, 'projectId' | 'conversationId' | 'dmId' | 'agentId'>): AssistantPlace {
+export function placeOf(run: Pick<RunRecord, 'projectId' | 'conversationId' | 'dmId' | 'dmThreadRootId' | 'agentId'>): AssistantPlace {
   return run.projectId !== null ? { kind: 'space', projectId: run.projectId, conversationId: run.conversationId }
-    : run.dmId !== null ? { kind: 'dm', dmId: run.dmId } : { kind: 'chat', agentId: run.agentId };
+    : run.dmId !== null ? { kind: 'dm', dmId: run.dmId, threadRootId: run.dmThreadRootId } : { kind: 'chat', agentId: run.agentId };
 }
 /** A run whose answer is its owner's alone until Show everyone: what `/ai` and a chat ask. A schedule's or a task's result is posted. */
 export const isPrivateAnswer = (run: Pick<RunRecord, 'kind'>) => run.kind === 'ask' || run.kind === 'summarize' || run.kind === 'map_thought';
@@ -128,7 +130,7 @@ export const isPrivateAnswer = (run: Pick<RunRecord, 'kind'>) => run.kind === 'a
  */
 export type RunEndStatus = RunRecord['status'] | 'ai_off';
 
-export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'dmId' | 'ownerUserId' | 'agentId' | 'connectionId'
+export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'dmId' | 'dmThreadRootId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
   | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: AssistantEngine; silent?: boolean; authority?: RunRecord['authority']; backgroundLabel?: string | null; workId?: string | null; askedByRunId?: string | null; exchangeTurn?: number;
     /** The web addresses the run may read from the start (#953): see `givenAtStart`. */
@@ -168,7 +170,7 @@ export type ProposalChanges = Partial<Pick<ProposalRecord, 'status' | 'decidedBy
 /** Rows a run may read. The use cases authorize the run's agent (and owner) before calling these. */
 export interface MessageSource { contribution?: MessageContribution; files?: MessageFile[]; id: string; sequence: number; body: string; authorName: string; author: { kind: 'human' | 'agent'; id: string } }
 /** One place of the owner's runs (#842): exactly one of these. */
-export type RunPlaceFilter = { conversationId: string } | { spaceId: string } | { dmId: string } | { chatAgentId: string };
+export type RunPlaceFilter = { conversationId: string } | { spaceId: string } | { dmId: string; dmThreadRootId: string | null } | { chatAgentId: string };
 
 export interface WorkSource { id: string; version: number; title: string; outcome: string; status: string }
 export interface ThoughtSource { id: string; sketchId: string; version: number; text: string; sketchScope: 'project' | 'private'; sketchProjectId: string | null }
@@ -182,7 +184,7 @@ export interface PersonalRunRepository {
    * the place the run is in (#842, C-30): a conversation's, the space's people's conversations for its main conversation, a DM's; a chat has none.
    * What an agent wrote gives no address, and neither does an answer a person posted with Show everyone (`via`).
    */
-  personTexts(place: { projectId: string | null; conversationId: string | null; dmId: string | null }, workId: string | null): Promise<string[]>;
+  personTexts(place: { projectId: string | null; conversationId: string | null; dmId: string | null; dmThreadRootId: string | null }, workId: string | null): Promise<string[]>;
   /** The task graph's lock (after the owner's, #921) for a run in a space; a run in a DM or a chat touches no task graph and holds nothing. */
   prepareTaskUse(projectId: string | null, conversationId: string | null, sources?: readonly { type: string; id: string }[]): Promise<{ mark(): Promise<void> }>;
   /** The AI setup of one of the owner's agents: the one named, else their first (Assistant). A deleted agent has none. */
@@ -245,8 +247,13 @@ export interface PersonalRunRepository {
   messages(conversationId: string, limit: number): Promise<MessageSource[]>;
   /** The latest `limit` messages written in a space's conversations, oldest first: what its main conversation says (#842). */
   spaceMessages(projectId: string, limit: number): Promise<MessageSource[]>;
-  /** The latest `limit` messages of a direct message, oldest first (#842). The line "used AI here" is not one. */
-  dmMessages(dmId: string, limit: number): Promise<MessageSource[]>;
+  /**
+   * The latest `limit` messages of a direct message, oldest first (#842). The line "used AI here" is not one. With `threadRootId` (#1016) only
+   * that thread: its root and its replies, and nothing else of the DM.
+   */
+  dmMessages(dmId: string, limit: number, threadRootId?: string | null): Promise<MessageSource[]>;
+  /** Whether a message is a root (not a reply, not the line "used AI here") of this direct message: the only thing a thread can hang on (#1016). */
+  isDmThreadRoot(dmId: string, messageId: string): Promise<boolean>;
   /** What the owner and this agent said last in their private chat, oldest first: the earlier turns of a chat (#842). */
   chatTurns(agentId: string, beforeRunId: string, limit: number): Promise<{ prompt: string; answer: string }[]>;
   /**
