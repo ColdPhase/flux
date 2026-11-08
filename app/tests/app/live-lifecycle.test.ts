@@ -183,8 +183,11 @@ test('#975: when the workspace lock is lost, the write that ends a session does 
       }
     },
   }, () => clock);
-  await assert.rejects(lifecycle.reconcile(session.id), (error: unknown) => error instanceof SessionLockLostError);
+  const lost = await lifecycle.reconcile(session.id).then(() => null, (error: unknown) => error);
+  assert.ok(lost instanceof SessionLockLostError, 'the caller is told at once that the lock was lost');
   assert.equal(killed, true);
+  // The caller does not wait for the work, which goes on in the background until its next step: let it finish before looking.
+  await lost.abandoned;
   // The room was removed, but the write that ends the session went through the lost lock's connection and did not commit: the fence stays.
   assert.equal((await store.find(session.id))?.state, 'ending');
   await lifecycle.recoverPending();
