@@ -1,0 +1,1 @@
+- A send whose answer was lost, and whose message you then deleted, no longer puts the deleted words back in the composer when it is retried: the retry finds the deleted message and ends quietly. Deleting a space also runs once more if the database cancels it to break a rare deadlock with a notification being made ([#1052](https://github.com/ColdPhase/flux/issues/1052)).

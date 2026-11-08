@@ -35,6 +35,8 @@ export function taskDiscussionRows(db: DbExecutor) {
     return row?.workId ?? null;
   };
   return {
+    /** The task a conversation belongs to: its people discussion (the binding) or, for an agents' thread, its own task; null for any other. */
+    taskOf: boundTask,
     async lockCommand(projectId: string, author: Actor, commandId: string) {
       // Shared namespace with ordinary conversation sends. Collisions merely serialize.
       await db.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`${projectId.toLowerCase()}:${author.kind}:${author.id}:${commandId.toLowerCase()}`}))`);
