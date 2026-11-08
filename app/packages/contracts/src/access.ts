@@ -105,6 +105,8 @@ export interface Workspace {
   createdAt: string;
   /** F-030 (#655): null for a plain workspace; the lock state and the caller's unlock password otherwise. */
   encryption: WorkspaceEncryption | null;
+  /** F-037, F-030 (#874): the company this encrypted workspace is a space of, or null. People see it as the space it holds. */
+  spaceOf: string | null;
 }
 
 /** A space's AI switch (F-037, AG-10): `allowed` is on, `blocked` is off. It starts on; an encrypted space is always off. */

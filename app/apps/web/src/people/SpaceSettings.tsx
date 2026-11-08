@@ -6,6 +6,7 @@ import { whenPageLive } from '../api/pageLeaving';
 import { useShellData } from '../app/data';
 import { useProjectShell } from '../project/data';
 import { leaveProject, renameProject, setSpaceAi } from '../project/api';
+import { useShellActions } from '../app/shellContext';
 import { useWorkspaceEncryption } from '../encryption/state';
 import { Avatar, Button, Icon, Input, Option, Select, useToast } from '../ui';
 import { SwitchRow } from '../ui/SwitchRow';
@@ -41,10 +42,14 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
   const navigate = useNavigate();
   const revalidator = useRevalidator();
   const toast = useToast();
-  const manager = project.access === 'manager';
-  // A space open to the whole company (Everyone) has no list to add to, and it cannot be left or deleted.
-  const everyone = project.visibility === 'workspace';
   const encrypted = !!useWorkspaceEncryption(project.workspaceId);
+  const { openDetails } = useShellActions();
+  // An encrypted space keeps its people and keys in its own internal workspace (F-030, C-24): a space admin changes them in the panel
+  // below, not through grants, so the grant-based controls of this page are off for it and `admin` is what Delete asks.
+  const admin = project.access === 'manager';
+  const manager = admin && !encrypted;
+  // A space open to the whole company (Everyone) has no list to add to, and it cannot be left or deleted.
+  const everyone = project.visibility === 'workspace' && !encrypted;
   const [roster, setRoster] = useState<{ members: WorkspaceMember[]; grants: ProjectGrant[] } | null>(null);
   const [rosterFailed, setRosterFailed] = useState(false);
   const [reload, setReload] = useState(0);
@@ -91,7 +96,7 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
   const grantOf = (id: string) => roster?.grants.find((grant) => grant.principal.kind === 'human' && grant.principal.id === id) ?? null;
   const myGrant = manager ? grantOf(meId) : null;
   // "Leave space" is for someone added to the space; a company admin who only reaches it, or anyone in Everyone, has nothing to leave.
-  const canLeave = !everyone && (manager ? !!myGrant : true);
+  const canLeave = !everyone && !encrypted && (manager ? !!myGrant : true);
 
   const rows: Row[] = (() => {
     if (manager && roster) {
@@ -181,8 +186,9 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
       <div className="pane-in sset-in spset" data-space-settings="">
         <div className="sset-head">
           <h2>Space settings</h2>
-          <p>{everyone ? `Everyone in ${companyName} is in this space. Admins of the space and of the company can change this page.`
-            : 'Only people added here see this space. Admins of the space and of the company can change this page.'}</p>
+          <p>{encrypted ? 'Only the people added here see this space, and only its admins hold the keys. Not even the company’s admins can open it.'
+            : everyone ? `Everyone in ${companyName} is in this space. Admins of the space and of the company can change this page.`
+              : 'Only people added here see this space. Admins of the space and of the company can change this page.'}</p>
         </div>
 
         <h3 className="sset-sec">Name</h3>
@@ -234,6 +240,13 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
             {manager && removing ? <li className="sset-row spset__removing" role="status"><span className="sset-row__s">{firstName(rows.find((row) => row.userId === removing)?.name ?? 'They')} stops seeing {project.name} at once, not even its name.</span></li> : null}
           </ul>
         )}
+        {encrypted ? (
+          <button type="button" className="sset-card spset__keys" data-encrypted-keys="" onClick={() => openDetails({ kind: 'people', workspaceId: project.workspaceId })}>
+            <span className="sset-row"><Icon name="lock" size={16} /><span className="sset-row__b"><span className="sset-row__t">People and encryption</span>
+              <span className="sset-row__s">{admin ? 'Add people, change roles, lock it, unlock passwords and the recovery code' : 'Who is in this space, and how it is locked'}</span></span>
+            <Icon name="chevron-right" size={16} /></span>
+          </button>
+        ) : null}
         <p className="spset__status" role="status">{status}</p>
         {problem ? <p className="people__notice" role="alert"><Icon name="alert" size={13} />{problem}</p> : null}
 
@@ -253,10 +266,10 @@ function SpaceSettingsPage({ project, people, meId, meName, companyName }: {
               </div>
             </div>
           ) : <Button variant="secondary" className="spset__leave" onClick={() => { setProblem(''); setLeaving(true); }}>Leave space</Button>) : null}
-          {manager && !everyone ? <Button variant="danger" className="spset__delete" onClick={() => setDeleting(true)}>Delete space…</Button> : null}
+          {admin && !everyone ? <Button variant="danger" className="spset__delete" onClick={() => setDeleting(true)}>Delete space…</Button> : null}
         </div>
         {everyone ? <p className="spset__note">Everyone holds the whole company, so nobody leaves it and it can’t be deleted.</p> : null}
-        <DeleteSpaceDialog space={deleting ? { id: project.id, name: project.name } : null} onClose={() => setDeleting(false)}
+        <DeleteSpaceDialog space={deleting ? { id: encrypted ? project.workspaceId : project.id, name: project.name, encrypted } : null} onClose={() => setDeleting(false)}
           onDeleted={(_id, name) => { setDeleting(false); toast({ message: `${name} was deleted.` }); void navigate('/', { replace: true }); void revalidator.revalidate(); }} />
       </div>
     </div>

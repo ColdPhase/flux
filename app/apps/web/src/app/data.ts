@@ -21,6 +21,8 @@ export interface WorkspaceSummary {
   role?: WorkspaceRole | null;
   /** F-030 (#655): null or absent for a plain workspace. A locked one is kept in `ShellData.lockedWorkspaces`. */
   encryption?: WorkspaceEncryption | null;
+  /** F-037, F-030 (#874): the company this encrypted workspace is a space of (an internal workspace people see as the space it holds), or null. */
+  spaceOf?: string | null;
 }
 /** A space (a project internally). `member` is false only where a company owner or admin reaches a space they are not in (F-037). */
 export interface ProjectSummary {
@@ -96,7 +98,7 @@ async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
     people: othersIn(dm, me.user.id).map((person) => person.name), participantIds: dm.audience.participantIds,
     audience: audienceLine(dm, me.user.id), preview: dm.lastMessageBody, lastAt: dm.lastMessageAt,
   }));
-  return { me, workspace: workspaces.find((space) => space.company) ?? workspaces[0] ?? null, workspaces, lockedWorkspaces, projects, reachableSpaces, directMessages, agents };
+  return { me, workspace: workspaces.find((space) => space.company) ?? workspaces.find((space) => !space.spaceOf && !space.encryption) ?? workspaces[0] ?? null, workspaces, lockedWorkspaces, projects, reachableSpaces, directMessages, agents };
 }
 
 export function useShellData(): ShellData {

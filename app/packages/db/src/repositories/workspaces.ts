@@ -34,6 +34,26 @@ export function workspaceRepository(db: DbExecutor) {
       return row ?? null;
     },
 
+    /** The company an encrypted space belongs to (F-037, #874), or null. */
+    async companyOf(workspaceId: string): Promise<string | null> {
+      if (!isUuid(workspaceId)) return null;
+      const [row] = await db.select({ company: schema.workspaces.companyWorkspaceId }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId));
+      return row?.company ?? null;
+    },
+
+    /** The encrypted spaces of this company that the person is in. */
+    async spacesOfCompanyWith(companyId: string, userId: string): Promise<string[]> {
+      const rows = await db.select({ id: schema.workspaces.id }).from(schema.workspaces)
+        .innerJoin(schema.workspaceMembers, and(eq(schema.workspaceMembers.workspaceId, schema.workspaces.id), eq(schema.workspaceMembers.userId, userId)))
+        .where(eq(schema.workspaces.companyWorkspaceId, companyId)).orderBy(asc(schema.workspaces.id));
+      return rows.map((row) => row.id);
+    },
+
+    async hasProject(workspaceId: string): Promise<boolean> {
+      const [row] = await db.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.workspaceId, workspaceId)).limit(1);
+      return !!row;
+    },
+
     /** A new name, one version on. */
     async rename(workspaceId: string, name: string) {
       const [row] = await db.update(schema.workspaces).set({ name, version: sql`${schema.workspaces.version} + 1`, updatedAt: new Date() })
@@ -104,9 +124,10 @@ export function workspaceRepository(db: DbExecutor) {
     },
 
     /** Whether the account is in the workspace now. */
-    async isMember(workspaceId: string, userId: string) {
-      const [row] = await db.select({ userId: schema.workspaceMembers.userId }).from(schema.workspaceMembers)
+    async isMember(workspaceId: string, userId: string, options: { lock?: boolean } = {}) {
+      const query = db.select({ userId: schema.workspaceMembers.userId }).from(schema.workspaceMembers)
         .where(and(eq(schema.workspaceMembers.workspaceId, workspaceId), eq(schema.workspaceMembers.userId, userId)));
+      const [row] = options.lock ? await query.for('share') : await query;
       return !!row;
     },
 

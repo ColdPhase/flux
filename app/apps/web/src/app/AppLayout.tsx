@@ -3,7 +3,7 @@ import type { ProjectPerson } from '@flux/contracts';
 import { NavigationType, Outlet, useLocation, useMatches, useNavigate, useNavigation, useNavigationType, useParams, useRevalidator } from 'react-router';
 import { useStreamEvents } from '../api/stream';
 import { WORKSPACE_LOCKED_DOM_EVENT, isEncryptionEvent } from '../encryption/api';
-import { useLockedPlace } from '../encryption/state';
+import { lockedLine, useLockedPlace } from '../encryption/state';
 import { Drawer, IconButton, MEDIA, SidePanel, SizeSwap, Tabs, ViewFade, useMediaQuery, useToast, useSidePanelMode } from '../ui';
 import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
@@ -608,7 +608,7 @@ function AppLayoutContent() {
   const lockedSpace = lockedId ? [...workspaces, ...lockedWorkspaces].find((space) => space.id === lockedId) : undefined;
   const lockedHere = !!lockedId && lockedSpace?.encryption?.state === 'locked';
   const place = lockedHere
-    ? { crumb: null, title: lockedSpace.name, topic: 'Waiting to be unlocked', noDetails: true }
+    ? { crumb: null, title: lockedSpace.name, topic: lockedLine(lockedSpace), noDetails: true }
     : location.pathname === '/projects'
     ? { crumb: null, title: 'Spaces', topic: 'Every space you can open', noDetails: true }
     : /^\/settings(\/(appearance|account|company|notifications|agents|shortcuts)(\/.*)?)?$/.test(location.pathname)

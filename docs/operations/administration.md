@@ -93,12 +93,15 @@ the operator's ([AI providers](configuration.md#ai-providers)), and so is the
 
 ## Encrypted spaces
 
-An owner can create a space with **Encrypt this space**. Its content is encrypted on the server, AI
-is always off there, and after every server restart the space waits until an owner or admin unlocks
-it with their own unlock password. A recovery code is shown once at creation. If every password and
-the recovery code are lost, nobody can recover the space, the operator included. The creation and
-unlock interface arrives with [#670](https://github.com/ColdPhase/flux/pull/670); what the operator
-does is in [operating encrypted spaces](encrypted-spaces.md).
+Anyone in the company who is not a guest can make a space **Encrypted** in the New space window (the
+switch is off by default and cannot be turned off later). Its content is encrypted on the server, AI
+is always off there, and after every server restart the space waits until one of its admins enters
+their own unlock password; its members see "Locked, waiting for an admin", and the rest of the
+company works as usual. The person making it chooses an unlock password and downloads a recovery
+code before Create. Only the space's admins and the recovery code hold the keys. A company owner or
+admin sees the space listed in **Settings → Company** and can delete it, but cannot open it and has no
+Add me for it. If every password and the recovery code are lost, nobody can recover the space, the
+operator included. What the operator does is in [operating encrypted spaces](encrypted-spaces.md).
 
 ## Agents and connections
 

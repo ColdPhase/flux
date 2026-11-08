@@ -1,6 +1,7 @@
 # Operating encrypted spaces
 
-An owner can make a space (workspace) **encrypted** when they create it. Its content is then
+Anyone in the company who is not a guest can make a space **encrypted** when they create it (the
+Encrypted switch in the New space window). Its content is then
 encrypted in the database, in the files volume and in the search index, and its key lives only in
 memory. After every restart of the server the space is **locked** until an owner or admin enters
 their unlock password. An encrypted space is always without AI. What it protects, and what it does

@@ -110,6 +110,15 @@ export function problemText(error: unknown, context: { workspace: string; email?
       return `${context.workspace} needs at least one owner. Make someone else an owner first.`;
     case 'LAST_UNLOCK_PASSWORD':
       return `${context.workspace} needs at least one unlock password. Ask another owner or admin to set theirs first.`;
+    case 'ENCRYPTED_SPACE_LAST_KEYHOLDER': {
+      // The company's change was refused whole: they are the only owner (or the only unlock password) of encrypted spaces (C-24).
+      const spaces = (error.body as { spaces?: unknown } | null)?.spaces;
+      const names = Array.isArray(spaces) ? spaces.filter((name): name is string => typeof name === 'string') : [];
+      const list = names.length ? names.map((name) => `“${name}”`).join(', ') : 'an encrypted space';
+      return `${who} ${context.who ? 'is' : 'are'} the only owner, or the only unlock password, of ${list}. Ask ${context.who ? 'them' : 'them'} to hand ${names.length > 1 ? 'each' : 'it'} over to another owner, or delete ${names.length > 1 ? 'them' : 'it'} in Settings › Company; then they can go.`;
+    }
+    case 'ENCRYPTED_SPACE_NO_GUESTS':
+      return 'Guests can’t be in an encrypted space.';
     case 'OWNER_REQUIRED':
       return 'Only an owner can add, change or remove an owner.';
     case 'MEMBER_NOT_FOUND':

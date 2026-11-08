@@ -42,8 +42,9 @@ to the **space**:
 - After a server restart it stays locked until a **space admin** enters their unlock password.
   Members see "Locked, waiting for an admin"; the rest of the company works normally, with AI.
 
-**Engineering option, to be confirmed** in the independent review of #852 and in #874: an encrypted
-space stays a **hidden internal workspace** that contains exactly one space. People never see that
+**Decided and built (C-24 to C-27, #874, #848): the hidden internal workspace.** An encrypted
+space is a **hidden internal workspace** that contains exactly one space, linked to the company
+(`workspaces.company_workspace_id`, migration 0018). People never see that
 workspace; the space's admins manage its people through the space's settings. The cryptography,
 the key per workspace, holders, unlock lifecycle, rotation, recovery code, inventory and locked
 behaviour below then stay as written, with "workspace" read as "encrypted space" in everything a
@@ -61,8 +62,30 @@ removing or demoting them rotates the key. Because a company admin who could add
 space could add themselves, the right to change its people also stays with its admins (an
 inference to check in the independent review).
 
-Until F-037 is implemented (#874), the rest of this contract describes the current, per-workspace
-behaviour.
+What was built, in short ([C-24](decisions.md) to C-27):
+
+- **Creating.** The New space window (every entry point: Home, the first-run card, the sidebar's and
+  Spaces' New space, the phone's plus) has an **Encrypted** switch. Any company member who is not a
+  guest may turn it on; it asks for the creator's unlock password (twice) and for the recovery code
+  to be downloaded before Create. `POST /api/v1/encrypted-workspaces` takes `companyId`, `people`
+  and the browser's `recoveryCode`, and makes the workspace, its one space (named for it, AI off) and
+  the people's memberships; a retry with the same `creationId` returns the same space.
+- **Holders.** Only the space's owner and admins (with their unlock passwords) and the recovery code.
+  The company's owners and admins are not members: `GET /api/v1/workspaces/:company/encrypted-spaces`
+  tells them a name and a date, and `DELETE /api/v1/encrypted-spaces/:id` erases the space and its
+  key. They cannot read it, change its people or give themselves access; Add me does not list it.
+- **One space, company people.** A second project, an invite link, a person who is not in the
+  company, a guest of the company, or a parent that is not the company (another encrypted space) is
+  refused. Leaving the company or becoming its guest ends a person's place in it, with the key change
+  of removing them; the only owner, or the only unlock password, of an encrypted space cannot go
+  before it has another (the company's admin makes someone else owner there or deletes the space).
+- **After a restart** the space is locked for its members ("Locked, waiting for an admin") until a
+  space admin enters their unlock password; the rest of the company works normally.
+- **Test deployments** can still make a bare encrypted workspace with the fixture bearer (no company,
+  no space), which the F-030 tests use.
+
+The rest of this contract describes the cryptography and the workspace-level behaviour, which the
+internal workspace keeps unchanged.
 
 ## Threat model
 
@@ -1253,6 +1276,13 @@ The [final design](../design/final/README.md) and [Spokój](../design/spokoj/REA
 calm text, few buttons, controls that never move. "Space" is the interface's word for a workspace.
 
 ### Creating an encrypted space
+
+**Superseded by [C-24 to C-27](decisions.md) (#874, #848).** The window is now the **New space**
+window, from every New space entry point: an **Encrypted** switch (off by default, "Can't be turned
+off later"), no AI row, **Your unlock password** and **Repeat** (with **Suggest six random words**),
+and **Download recovery code**, which Create waits for; the browser makes the code. People and keys
+are managed from the space's settings (**People and encryption**) and, while it is locked, from its
+locked panel. The text below is the earlier design of the Details panel and stays for its reasoning.
 
 Today the only workspace creation in the interface is the first space in project setup
 (`project/newProject.ts`, `project/ProjectSetup.tsx`). S3 adds **New space** as the last row of Home → Details

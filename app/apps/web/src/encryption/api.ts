@@ -1,6 +1,6 @@
 import {
-  ENCRYPTED_WORKSPACES_PATH, WORKSPACE_ENCRYPTION_EVENTS, WORKSPACE_LOCKED, workspaceLockPath, workspaceRecoveryCodePath, workspaceUnlockGrantsPath, workspaceUnlockPasswordPath, workspaceUnlockPath,
-  type CreateEncryptedWorkspaceCommand, type CreateEncryptedWorkspaceResult, type EncryptionStateResult, type GrantUnlockPasswordCommand, type GrantUnlockPasswordResult,
+  ENCRYPTED_SPACES_AVAILABILITY_PATH, ENCRYPTED_WORKSPACES_PATH, WORKSPACE_ENCRYPTION_EVENTS, companyEncryptedSpacesPath, encryptedSpacePath, WORKSPACE_LOCKED, workspaceLockPath, workspaceRecoveryCodePath, workspaceUnlockGrantsPath, workspaceUnlockPasswordPath, workspaceUnlockPath,
+  type CreateEncryptedWorkspaceCommand, type CreateEncryptedWorkspaceResult, type EncryptedSpaceRef, type EncryptedSpacesAvailability, type EncryptionStateResult, type GrantUnlockPasswordCommand, type GrantUnlockPasswordResult,
   type LockedWorkspaceRef, type NewRecoveryCodeCommand, type NewRecoveryCodeResult, type SetUnlockPasswordCommand, type UnlockWorkspaceCommand, type Workspace,
   type WorkspaceEncryption,
 } from '@flux/contracts';
@@ -75,9 +75,22 @@ async function whileKeysSettle<T>(send: () => Promise<T>): Promise<T> {
   }
 }
 
-/** `POST /encrypted-workspaces`: one `creationId` per form, so a retry after a lost answer returns the space without a second one or the code. */
-export const createEncryptedWorkspace = (name: string, creationId: string, password: string) =>
-  request<CreateEncryptedWorkspaceResult>(ENCRYPTED_WORKSPACES_PATH, { method: 'POST', body: { name, creationId, password } satisfies CreateEncryptedWorkspaceCommand });
+/**
+ * `POST /encrypted-workspaces`: an encrypted space of the company (F-037, C-24). One `creationId` per form, so a retry after a lost
+ * answer returns the space without a second one. The recovery code is the one the browser made and the person downloaded, so the answer
+ * never has to carry it.
+ */
+export const createEncryptedSpace = (command: CreateEncryptedWorkspaceCommand) =>
+  request<CreateEncryptedWorkspaceResult>(ENCRYPTED_WORKSPACES_PATH, { method: 'POST', body: command });
+
+/** Whether this server can make an encrypted space now (its key service answers). */
+export const getEncryptionAvailability = (signal?: AbortSignal) => request<EncryptedSpacesAvailability>(ENCRYPTED_SPACES_AVAILABILITY_PATH, { signal });
+
+/** The company's encrypted spaces, for its owners and admins: a name and a date, and Delete (they hold no key and are not in them). */
+export const listCompanyEncryptedSpaces = (companyId: string, signal?: AbortSignal) => request<EncryptedSpaceRef[]>(companyEncryptedSpacesPath(companyId), { signal });
+
+/** Erases an encrypted space and everything in it: its admins and the company's owners and admins may. */
+export const deleteEncryptedSpace = (workspaceId: string) => request<null>(encryptedSpacePath(workspaceId), { method: 'DELETE' });
 
 /** `POST …/unlock`: the person's unlock password, or the recovery code (exactly one). */
 export const unlockWorkspace = (workspaceId: string, secret: { password: string } | { recoveryCode: string }) =>

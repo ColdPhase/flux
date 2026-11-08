@@ -1,10 +1,11 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useParams, useRevalidator, useRouteError } from 'react-router';
 import { useShellData } from '../app/data';
+import { useShellActions } from '../app/shellContext';
 import { Button, EmptyState, Icon, Input } from '../ui';
 import { ApiError } from '../api/client';
 import { encryptionProblem, isWorkspaceLocked, lockedWorkspaceId, unlockWorkspace, type WorkspaceEncryption } from './api';
-import { isManagerOf, setLockedPlace, useLockedWorkspaces, useSpace } from './state';
+import { isManagerOf, lockedLine, setLockedPlace, useLockedWorkspaces, useSpace } from './state';
 import './encryption.css';
 
 /**
@@ -37,15 +38,19 @@ export function lockedReason(encryption: WorkspaceEncryption | null, name: strin
 /** "Ada, Jonas or Ben can unlock it.": the owners and admins with an unlock password, by first name. */
 export function whoCanUnlock(encryption: WorkspaceEncryption | null, meId: string): string {
   const names = (encryption?.unlockers ?? []).filter((person) => person.id !== meId).map((person) => firstName(person.name));
-  if (!names.length) return 'An owner or admin needs to unlock it.';
+  if (!names.length) return 'An admin of this space needs to unlock it.';
   const list = names.length === 1 ? names[0]! : `${names.slice(0, -1).join(', ')} or ${names[names.length - 1]}`;
   return `${list} can unlock it.`;
 }
+
+/** False while focus is on purpose inside a panel or dialog (an admin who just pressed Lock now in the keys panel keeps their button). */
+const focusIsFree = () => typeof document === 'undefined' || !document.activeElement?.closest('.ui-panel__body, [role="dialog"]');
 
 export function LockedSpace({ workspaceId }: { workspaceId: string | null }) {
   const space = useSpace(workspaceId);
   const { me } = useShellData();
   const revalidator = useRevalidator();
+  const { openDetails } = useShellActions();
   const name = space?.name ?? 'This space';
   const encryption = space?.encryption ?? null;
   const manager = isManagerOf(space);
@@ -78,11 +83,13 @@ export function LockedSpace({ workspaceId }: { workspaceId: string | null }) {
               {hasPassword ? 'Type your unlock password to open it for everyone.'
                 : unlocker ? `You don’t have an unlock password for ${name} yet. ${whoCanUnlock(encryption, me.user.id)}${codeExists ? ' Or use the recovery code.' : ''}`
                   : `You don’t have an unlock password for ${name} yet. ${whoCanUnlock(encryption, me.user.id)}`}</p>
-            {unlocker && workspaceId ? <UnlockForm workspaceId={workspaceId} name={name} encryption={encryption} autoFocus /> : null}
+            {unlocker && workspaceId ? <UnlockForm workspaceId={workspaceId} name={name} encryption={encryption} autoFocus={focusIsFree()} /> : null}
+            {/* A locked space has no settings page to reach its keys from: its admins open them here (who has a password, a rotation waiting). */}
+            {workspaceId ? <Button variant="quiet" data-encrypted-keys="" onClick={() => openDetails({ kind: 'people', workspaceId })}>People and encryption</Button> : null}
           </EmptyState>
         ) : (
-          <EmptyState icon="lock" level={2} title={`${name} is waiting to be unlocked`}>
-            <p data-locked-reason="">{reason} {space?.role === 'guest' ? 'An owner or admin needs to unlock it.' : whoCanUnlock(encryption, me.user.id)} You can come back then.</p>
+          <EmptyState icon="lock" level={2} title={`${name} is locked`}>
+            <p data-locked-reason="">{reason} Waiting for an admin. {space?.role === 'guest' ? 'An admin of this space unlocks it.' : whoCanUnlock(encryption, me.user.id)} You can come back then.</p>
           </EmptyState>
         )}
       </div>
@@ -205,7 +212,7 @@ export function WaitingSpaces() {
       {locked.map((space) => (
         <li key={space.id}>
           <Link to={`/spaces/${space.id}`} data-locked-space={space.id}>
-            <Icon name="lock" size={13} /><span className="waiting-spaces__name">{space.name}</span><span className="waiting-spaces__state">Waiting to be unlocked</span>
+            <Icon name="lock" size={13} /><span className="waiting-spaces__name">{space.name}</span><span className="waiting-spaces__state">{lockedLine(space)}</span>
           </Link>
         </li>
       ))}

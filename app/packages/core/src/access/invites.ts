@@ -63,6 +63,8 @@ export async function createInvite(principal: Principal, workspaceId: string, co
   return db.transaction(async (tx) => {
     await ports.workspaces(tx).lock(workspaceId);
     const { actor } = enforce(await evaluateWorkspace(principal, 'workspace.manage_members', workspaceId, ports.access(tx), { lock: true }), 'workspace');
+    // An encrypted space belongs to the company: nobody joins it by a link, only a company person added by its admin (C-24).
+    if (await ports.workspaces(tx).companyOf(workspaceId)) throw new ConflictError('People join an encrypted space only by being added from the company', 'ENCRYPTED_SPACE_NO_INVITES');
     // An invite never makes an owner, and only an owner may hand out admin.
     if (role === 'admin' && actor.role !== 'owner') throw new ForbiddenError('Only an owner can invite an admin', 'OWNER_REQUIRED');
     const invites = ports.invites(tx);

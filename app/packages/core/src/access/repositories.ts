@@ -35,7 +35,8 @@ export interface WorkspaceRepository {
   insertMember(row: { workspaceId: string; userId: string; role: WorkspaceRole; createdBy: string }): Promise<MemberRecord | null>;
   /** Someone who became a guest is no longer a space admin: their `manager` grants become plain membership. */
   endSpaceAdmin(workspaceId: string, userId: string): Promise<void>;
-  isMember(workspaceId: string, userId: string): Promise<boolean>;
+  /** With `lock` the membership row is held `FOR SHARE` until the transaction ends (a person leaving the company waits for it). */
+  isMember(workspaceId: string, userId: string, options?: { lock?: boolean }): Promise<boolean>;
   /** Remembers someone who left or was removed, for Restore. */
   recordRemoved(workspaceId: string, userId: string, removedBy: string): Promise<void>;
   /** Everyone who left or was removed and has not joined again, newest first. */
@@ -45,6 +46,12 @@ export interface WorkspaceRepository {
   lockMember(workspaceId: string, userId: string): Promise<MemberRecord | null>;
   setRole(workspaceId: string, userId: string, role: WorkspaceRole): Promise<MemberRecord>;
   deleteMember(workspaceId: string, userId: string): Promise<void>;
+  /** The company this encrypted workspace is a space of (F-037, #874), or null for any other workspace. */
+  companyOf(workspaceId: string): Promise<string | null>;
+  /** The encrypted spaces of this company that the person is a member of: leaving the company ends their place in them. */
+  spacesOfCompanyWith(companyId: string, userId: string): Promise<string[]>;
+  /** Whether the workspace already holds a project (an encrypted space holds exactly one). */
+  hasProject(workspaceId: string): Promise<boolean>;
 }
 
 /** A `workspace_invites` row (F-035). */
@@ -70,7 +77,8 @@ export interface InviteRepository {
 /** The rows of an encrypted workspace (F-030) that membership changes and workspace reads need (`workspaceEncryptionRows`). */
 export interface WorkspaceEncryptionRows {
   sealed(workspaceId: string): Promise<boolean>;
-  memberRole(workspaceId: string, userId: string): Promise<WorkspaceRole | null>;
+  /** The person's role in the workspace, or null; with `lock` the membership row is held `FOR SHARE` until the transaction ends. */
+  memberRole(workspaceId: string, userId: string, options?: { lock?: boolean }): Promise<WorkspaceRole | null>;
   /** With `lock: 'update'`, the key row `FOR UPDATE`. */
   keys(workspaceId: string, options: { lock: 'update' }): Promise<unknown>;
   /** The person's unlock password: `last` when it is the workspace's only one (nothing is deleted). */

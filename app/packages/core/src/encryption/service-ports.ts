@@ -46,7 +46,12 @@ export interface EncryptionRepository extends SealStateReader {
   keyVersions(workspaceId: string): Promise<KeyVersionRecord[]>;
   unlocks(workspaceId: string, options?: { lock?: 'update' | 'share' }): Promise<UnlockRow[]>;
   workspaceByCreation(createdBy: string, creationId: string): Promise<{ id: string; name: string } | null>;
-  insertSealedWorkspace(row: { id: string; name: string; createdBy: string; creationId: string }): Promise<void>;
+  insertSealedWorkspace(row: { id: string; name: string; createdBy: string; creationId: string; companyId?: string | null }): Promise<void>;
+  insertMembers(workspaceId: string, userIds: string[], createdBy: string): Promise<void>;
+  workspaceKind(workspaceId: string, options?: { lock?: boolean }): Promise<{ company: boolean; encrypted: boolean } | null>;
+  companyOf(workspaceId: string): Promise<string | null>;
+  companySpaces(companyId: string, userId: string): Promise<{ id: string; name: string; createdAt: Date; member: boolean }[]>;
+  eraseSpace(workspaceId: string): Promise<string[]>;
   insertKeyVersion(row: { workspaceId: string; keyVersion: number; commitment: string | null; checkValue: string; pin: string }): Promise<void>;
   insertHolder(row: HolderRecord): Promise<void>;
   updateHolder(id: string, row: Pick<HolderRecord, 'kdf' | 'publicKey' | 'wrappedPrivate' | 'holderMac' | 'holderMacVersion' | 'secretCheck' | 'confirmedVersions' | 'pin'>): Promise<void>;
@@ -79,7 +84,7 @@ export interface EncryptionRepository extends SealStateReader {
   grant(workspaceId: string, userId: string, options?: { lock?: boolean }): Promise<{ grantedBy: string; expiresAt: Date } | null>;
   putGrant(workspaceId: string, userId: string, grantedBy: string, seconds: number): Promise<Date>;
   deleteGrant(workspaceId: string, userId: string): Promise<void>;
-  memberRole(workspaceId: string, userId: string): Promise<WorkspaceRole | null>;
+  memberRole(workspaceId: string, userId: string, options?: { lock?: boolean }): Promise<WorkspaceRole | null>;
   managers(workspaceId: string): Promise<string[]>;
   userName(userId: string): Promise<string | null>;
   insertSecurityNotice(row: { userId: string; workspaceId: string; title: string; eventId: string | null }): Promise<void>;
