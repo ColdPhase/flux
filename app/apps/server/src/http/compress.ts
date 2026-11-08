@@ -2,6 +2,7 @@ import { promisify } from 'node:util';
 import { brotliCompress, constants, gzip } from 'node:zlib';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { AUTH_BASE_PATH } from '@flux/contracts';
+import { isRouted } from './routed-path.js';
 
 const brotli = promisify(brotliCompress);
 const gzipAsync = promisify(gzip);
@@ -33,7 +34,8 @@ export function chooseEncoding(acceptEncoding: string | undefined): 'br' | 'gzip
 export function useJsonCompression(app: FastifyInstance) {
   app.addHook('onSend', async (request: FastifyRequest, reply: FastifyReply, payload: unknown) => {
     if (reply.getHeader('content-encoding')) return payload;
-    if (request.url.startsWith(`${AUTH_BASE_PATH}/`) || !request.url.startsWith('/api/')) return payload;
+    // By what the router decided, not the raw URL: `/api/%61uth/…` is an auth route, and its answer is never compressed (#1047).
+    if (isRouted(request, `${AUTH_BASE_PATH}/`) || !isRouted(request, '/api/')) return payload;
     if (typeof payload !== 'string' && !Buffer.isBuffer(payload)) return payload;
     if (!/^application\/(?:[\w.+-]+\+)?json\b/.test(String(reply.getHeader('content-type') ?? ''))) return payload;
     const bytes = typeof payload === 'string' ? Buffer.from(payload) : payload;

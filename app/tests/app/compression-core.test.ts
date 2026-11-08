@@ -44,6 +44,17 @@ describe('compressing JSON answers', () => {
     await instance.close();
   });
 
+  test('what is compressed and what is auth follows the route and the decoded path, not the raw URL (#1047)', async () => {
+    const instance = await app();
+    const accept = { 'accept-encoding': 'br, gzip' };
+    assert.equal((await instance.inject({ url: '/%61pi/v1/big', headers: accept })).headers['content-encoding'], 'br', 'an encoded /api is the API');
+    // An auth answer is never compressed, however its path is written (it may carry tokens next to text the caller chose: BREACH).
+    for (const url of ['/api/%61uth/token', '/%61pi/auth/token', '/%61pi/%61uth/token', '/api/auth/%74oken']) {
+      assert.equal((await instance.inject({ url, headers: accept })).headers['content-encoding'], undefined, url);
+    }
+    await instance.close();
+  });
+
   test('small answers, auth answers, other types, HEAD and clients without encodings pass unchanged', async () => {
     const instance = await app();
     for (const [url, method] of [['/api/v1/small', 'GET'], ['/api/auth/token', 'GET'], ['/api/v1/text', 'GET'], ['/api/v1/big', 'HEAD']] as const) {

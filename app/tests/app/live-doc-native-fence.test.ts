@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { createDocUseCases, DomainError } from '@flux/core';
+import { EDITING_CHANNEL } from '@flux/db';
 import type { Doc, MaterialVersion, Page, DocVersionSummary, WorkResult, WorkItem } from '@flux/contracts';
 import { docPorts, docUnitOfWork, docUseCases } from '../../apps/server/src/docs/adapters.js';
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
@@ -157,6 +158,39 @@ test('a clean legacy CAS change atomically retires its live generation and retai
   assert.deepEqual([archive.generation, archive.body, Number(archive.sequence), archive.codec_state], [h.generation, f.doc.body, 4, h.codecState]);
   assert.deepEqual((await pool.query('SELECT * FROM doc_live_replicas WHERE doc_id=$1', [f.doc.id])).rows, ownership);
   assert.deepEqual((await pool.query('SELECT * FROM live_editing_intents WHERE actor_id=$1 AND command_id=$2', [f.partner.id, command])).rows, receipts);
+});
+
+test('a page saved over HTTP tells the people editing it through the database\'s NOTIFY once it commits; a page nobody opened live tells nobody (#1023)', async () => {
+  const f = await scene(); const h = await installHead(f.doc, f.doc.body, 0);
+  const listener = await pool.connect();
+  const heard: string[] = [];
+  listener.on('notification', (message) => { if (message.channel === EDITING_CHANNEL && message.payload) heard.push(message.payload); });
+  const hears = async (docId: string, within: number) => {
+    const until = Date.now() + within;
+    while (!heard.includes(docId) && Date.now() < until) await new Promise((resolve) => setTimeout(resolve, 20));
+    return heard.includes(docId);
+  };
+  try {
+    await listener.query(`LISTEN ${EDITING_CHANNEL}`);
+    const saved = expectStatus(await f.owner.browser.request('PATCH', `/api/v1/docs/${f.doc.id}`, { body: { body: 'Saved over HTTP.' }, headers: { 'if-match': '"1"' } }), 200) as Doc;
+    assert.equal(saved.version, 2);
+    // An idle editor of the page otherwise reads the room only every two seconds; the NOTIFY reaches it at once.
+    assert.equal(await hears(f.doc.id, 1500), true, 'the editors of the page were told when the save committed');
+    const [head] = (await pool.query('SELECT generation FROM doc_live_heads WHERE doc_id=$1', [f.doc.id])).rows;
+    assert.notEqual(head.generation, h.generation, 'what they are told about is the new generation');
+    // A page whose live room was never opened has no editors to tell.
+    const ordinary = await f.create('An ordinary page', 'Never opened for live editing.');
+    const changed = expectStatus(await f.owner.browser.request('PATCH', `/api/v1/docs/${ordinary.id}`, { body: { body: 'Saved, still ordinary.' }, headers: { 'if-match': '"1"' } }), 200) as Doc;
+    assert.equal(changed.version, 2);
+    assert.equal(await hears(ordinary.id, 400), false, 'no live room, nobody to wake');
+    // A save that is refused (a stale version) commits nothing and tells nobody.
+    heard.length = 0;
+    expectStatus(await f.owner.browser.request('PATCH', `/api/v1/docs/${f.doc.id}`, { body: { body: 'Stale.' }, headers: { 'if-match': '"1"' } }), 409);
+    assert.equal(await hears(f.doc.id, 400), false, 'a refused save is not announced');
+  } finally {
+    await listener.query('UNLISTEN *').catch(() => undefined);
+    listener.release();
+  }
 });
 
 test('the real OAuth/MCP standing-grant doc adapter obeys the same dirty fence before no-op or debit', async () => {

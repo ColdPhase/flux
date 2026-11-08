@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Duplex } from 'node:stream';
 import WebSocket, { WebSocketServer } from 'ws';
 import type { SessionContext, SessionResolver } from '../identity/session.js';
+import { upgradePath } from '../http/routed-path.js';
 import type { UpgradeGate } from '../http/upgrades.js';
 import { editingResourcesChanged } from './resource-observation.js';
 
@@ -65,7 +66,8 @@ export function editingGate(options: EditingGateOptions): EditingGate {
       let url: URL;
       try { url = new URL(request.url ?? '/', 'http://editing.invalid'); }
       catch { return false; }
-      if (url.pathname !== EDITING_PATH) return false;
+      // The path the router reads, so `/api/v1/%65diting` does not slip past to the generic fallback (#1047).
+      if (upgradePath(request.url) !== EDITING_PATH) return false;
       socket.on('error', () => socket.destroy());
       if (closing) { refuse(socket, 503, 'Unavailable'); return true; }
       if (request.headers.origin !== options.publicOrigin) { refuse(socket, 403, 'Forbidden'); return true; }

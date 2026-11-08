@@ -6,6 +6,8 @@ import { MapPresenceStore } from './map-presence';
 
 const RETIRED_PREVIEW_MS = 6000; // Five-second server transient expiry plus one client timer interval.
 const MAX_RETIRED_PREVIEWS = 256;
+/** A presence heartbeat is due after this long. The server keeps presence 5 s and the timer ticks every 1 s: due at 1.5 s, it is sent every 2 s, never every 3 (#1023). */
+const PRESENCE_DUE_MS = 1500;
 
 export interface MapPreview { generation: string; actor: NamedPrincipal; gestureId: string; leaseId: string; positions: LiveMapPosition[]; expiresAt: string; sequence: number }
 interface Gesture { id: string; base: Map<string, number>; lease: Promise<LiveMapLease>; active: boolean; sequence: number; latest: LiveMapPosition[] | null; lastPositions: LiveMapPosition[] | null; serverLease: LiveMapLease | null; lastPreviewAt: number }
@@ -55,7 +57,9 @@ export class SharedMap {
       if (gesture?.active && gesture.serverLease && Date.parse(gesture.serverLease.expiresAt) <= Date.now() && gesture.lastPreviewAt + 5000 <= Date.now()) { this.cancel(true, false); this.problem = 'The movement lease expired. Its unfinished positions are kept privately for comparison.'; expired = true; }
       if (expired) this.changed();
       // The server keeps presence five seconds: a heartbeat every other second is enough, and one that says nothing new is skipped in between (#850).
-      if (this.head && this.status === 'live' && this.head.canWrite && (this.presenceKey() !== this.lastPresence || Date.now() - this.lastPresenceAt >= 2000)) this.sendPresence();
+      // It is due once 1.5 s have passed, so that on this one-second tick it is sent every 2 s and never every 3 (a tick that came a few milliseconds
+      // early skipped a heartbeat that was due at 2,000 ms, and the cursors of a map refreshed up to 3.25 s apart against the five, #1023).
+      if (this.head && this.status === 'live' && this.head.canWrite && (this.presenceKey() !== this.lastPresence || Date.now() - this.lastPresenceAt >= PRESENCE_DUE_MS)) this.sendPresence();
     }, 1000);
     void this.start();
   }

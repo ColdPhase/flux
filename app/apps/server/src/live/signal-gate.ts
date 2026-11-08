@@ -4,6 +4,7 @@ import type { FastifyBaseLogger, FastifyInstance } from 'fastify';
 import { TokenVerifier } from 'livekit-server-sdk';
 import WebSocket, { WebSocketServer, type RawData } from 'ws';
 import type { Principal } from '@flux/core';
+import { upgradePath } from '../http/routed-path.js';
 import type { SessionResolver } from '../identity/index.js';
 import type { MediaSocketRegistry } from './admission-revocation.js';
 import type { LiveAdmission, LiveAdmissionStore, RevokedAdmission } from './admissions.js';
@@ -160,9 +161,11 @@ export function liveSignalGate(options: SignalGateOptions): SignalGate {
   }
 
   const pathOf = (url: string | undefined) => {
+    // The path the router reads: `/%6dedia/rtc` is `/media/rtc` to Fastify, so it is to the gate (#1047).
     const parsed = new URL(url ?? '/', 'http://gate.invalid');
-    if (!parsed.pathname.startsWith(`${MEDIA_GATE_PATH}/`)) return null;
-    return { path: parsed.pathname.slice(MEDIA_GATE_PATH.length), query: parsed.search.slice(1), params: parsed.searchParams };
+    const path = upgradePath(url);
+    if (path === null || !path.startsWith(`${MEDIA_GATE_PATH}/`)) return null;
+    return { path: path.slice(MEDIA_GATE_PATH.length), query: parsed.search.slice(1), params: parsed.searchParams };
   };
 
   return {

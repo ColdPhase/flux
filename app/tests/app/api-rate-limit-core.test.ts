@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { request as httpRequest } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { describe, test } from 'node:test';
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { useDomainErrors } from '../../apps/server/src/http/errors.js';
@@ -52,6 +54,19 @@ async function server(options: Partial<ApiRateLimitOptions> = {}, clock = { at: 
   return { app, clock, ended, revoked };
 }
 const call = (app: FastifyInstance, url: string, headers: Record<string, string> = {}, remoteAddress = '10.0.0.1') => app.inject({ method: 'GET', url, headers, remoteAddress });
+async function listen(app: FastifyInstance) { await app.listen({ host: '127.0.0.1', port: 0 }); }
+/** One GET exactly as a client writes it: `path` goes on the request line as it is (no dot-segment resolution, no fragment dropped). */
+function wire(app: FastifyInstance, path: string, headers: Record<string, string> = {}): Promise<{ statusCode: number }> {
+  const { port } = app.server.address() as AddressInfo;
+  return new Promise((resolve, reject) => {
+    const outgoing = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', headers, agent: false }, (response) => {
+      response.resume();
+      response.on('end', () => resolve({ statusCode: response.statusCode ?? 0 }));
+    });
+    outgoing.on('error', reject);
+    outgoing.end();
+  });
+}
 const cookie = (token: string) => ({ cookie: `${SESSION_COOKIE_PREFIX}.session_token=${token}; theme=dark` });
 const statuses = async (count: number, run: (n: number) => Promise<{ statusCode: number }>) => {
   const answers: number[] = [];
@@ -127,6 +142,80 @@ describe('the API request limit', () => {
       assert.deepEqual([await call(app, path, {}, `10.1.0.${path.length}`), await call(app, path, {}, `10.1.0.${path.length}`), await call(app, path, {}, `10.1.0.${path.length}`)].map((r) => r.statusCode), [200, 200, 429], path);
     }
     await app.close();
+  });
+
+  // The router decodes the path before it matches a route, so what counts is decided from the route that answers and the path it matched, never
+  // from the raw URL (#1047): `/%61pi/v1/me` ran `/api/v1/me` and `/%6dcp` ran `/mcp` with no count at all. These requests go over a real socket:
+  // `inject` parses the URL first, which resolves dot segments and drops a fragment, and a client's bytes are not parsed like that.
+  test('what counts is what the router matched: an encoded letter, a fragment or a mixed-case escape is the same API route and the same budget (#1047)', async () => {
+    const { app, clock } = await server({ anonymousPerMinute: 2 });
+    await listen(app);
+    const counted = [
+      '/%61pi/v1/me', '/%61%70%69/v1/me', '/api/v1/%6de', '/api/v1/%6De', '/api/v1/me#fragment', '/api/v1/me?x=1#y', '/%61pi/v1/me?x=1',
+      '/%68ealth', '/health#x', '/h%65alth?x=1',
+      '/%2ewell-known/oauth-protected-resource', '/%2Ewell-known/oauth-protected-resource', '/.well-known/oauth-protected-resource#x',
+      '/%6dcp', '/%6Dcp', '/mcp#x', '/m%63p?x=1',
+    ];
+    for (const url of counted) {
+      clock.at += 60_000;
+      assert.deepEqual(await statuses(3, () => wire(app, url)), [200, 200, 429], url);
+    }
+    // Written any of these ways they are one budget with the plain spelling, from one address.
+    clock.at += 60_000;
+    const together = ['/api/v1/me', '/%61pi/v1/me', '/api/v1/m%65', '/mcp', '/%6dcp'];
+    assert.deepEqual(await statuses(3, (n) => wire(app, together[n]!)), [200, 200, 429]);
+    assert.equal((await wire(app, '/%6dcp')).statusCode, 429);
+    assert.equal((await wire(app, '/assets/app.js')).statusCode, 200, 'a web file is still not API traffic');
+    await app.close();
+  });
+
+  test('a path that matches no route counts when it is API-shaped once decoded; the web app\'s own files and what is no API path do not (#1047)', async () => {
+    const { app, clock } = await server({ anonymousPerMinute: 2 });
+    await listen(app);
+    // Nothing answers these (404), the router reads each as an /api/ path (or /mcp): a flood of them is counted like `/api/nope`.
+    const unmatched = ['/api/v1/nope', '/%61pi/v1/nope', '/api/v1/%2e%2e/v1/me', '/api/v1/./me', '/api/v1/me/', '/api/v1/me%2F', '/api/v1/%2Fme', '/api/v1/%3Fme', '/%6dcp/x', '/api/v1/me%25', '/api/v1/me%2561'];
+    for (const url of unmatched) {
+      clock.at += 60_000;
+      assert.deepEqual(await statuses(3, () => wire(app, url)), [404, 404, 429], url);
+    }
+    // None of these reaches an API route, and none is API-shaped: a double-encoded name, an encoded slash after the name, `//`, another case,
+    // a dot segment before the name. The 404 is all they get; a limit on what is no API path is not what this is.
+    const notApi = ['/%2561pi/v1/me', '/%2561%70%69/v1/me', '/api%2Fv1/me', '/api%2fv1/me', '//api/v1/me', '/API/v1/me', '/%41pi/v1/me', '/%2e%2e/api/v1/me', '/./api/v1/me', '/%2f%61pi/v1/me', '/x/%61pi/v1/me', '/%252561pi/v1/me'];
+    clock.at += 60_000;
+    for (const url of notApi) {
+      for (let n = 0; n < 6; n += 1) assert.equal((await wire(app, url, cookie('ada'))).statusCode, 404, `${url} reaches no route, even for a signed-in person`);
+    }
+    // While the single encoding runs the route.
+    assert.equal((await wire(app, '/%61pi/v1/me', cookie('ada'))).statusCode, 200);
+    await app.close();
+  });
+
+  test('on /mcp the bearer is the credential however /mcp is written, and the route is what decides it (#1047)', async () => {
+    const { app, clock } = await server({ credentialPerMinute: 2, newCredentialsPerMinute: 3, anonymousPerMinute: 1000 });
+    await listen(app);
+    // Made-up bearers on an encoded /mcp are the address's count, as on /mcp: they are 401 and never accepted.
+    for (const [n, url] of ['/mcp', '/%6dcp', '/%6Dcp', '/mcp#x', '/m%63p'].entries()) {
+      clock.at += 60_000;
+      assert.deepEqual(await statuses(5, (k) => wire(app, url, { authorization: `Bearer junk-${n}-${k}` })), [401, 401, 401, 429, 429], url);
+    }
+    // A bearer the server answers has a budget of its own whichever way the route is written: one charged to the address, then two.
+    clock.at += 60_000;
+    assert.deepEqual(await statuses(4, () => wire(app, '/%6dcp', { authorization: 'Bearer good.token.sig' })), [200, 200, 200, 429]);
+    assert.deepEqual(await statuses(2, () => wire(app, '/mcp', { authorization: 'Bearer good.token.sig' })), [429, 429], 'the same bearer, spelled /mcp: the same budget');
+    await app.close();
+  });
+
+  test('credentialOf takes the bearer from the route that answers or from the decoded path, and cookies from everything else (#1047)', () => {
+    const headers = { authorization: 'Bearer head.body.sigA' };
+    const bearer = credentialOf({ url: '/mcp', headers });
+    assert.equal(bearer?.kind, 'bearer');
+    for (const request of [{ url: '/%6dcp', routeOptions: { url: '/mcp' } }, { url: '/%6dcp' }, { url: '/m%63p?x=1' }, { url: '/mcp#x', routeOptions: { url: '/mcp' } }]) {
+      assert.deepEqual(credentialOf({ ...request, headers }), bearer, request.url);
+    }
+    assert.equal(credentialOf({ url: '/%61pi/v1/me', routeOptions: { url: '/api/v1/me' }, headers }), null, 'a header is nothing outside /mcp');
+    assert.equal(credentialOf({ url: '/%2561pi/v1/me', headers }), null);
+    assert.equal(credentialOf({ url: '/%6dcp', routeOptions: { url: '/mcp' }, headers: cookie('ada') }), null, 'and a cookie is nothing on it');
+    assert.equal(credentialOf({ url: '/%61pi/v1/me', routeOptions: { url: '/api/v1/me' }, headers: cookie('ada') })?.kind, 'session');
   });
 
   test('switched off it limits nothing; a bad setting is refused at start', async () => {

@@ -83,6 +83,7 @@ import { disabledEditingUpgrade } from './editing/disabled-upgrade.js';
 import { useJsonCompression } from './http/compress.js';
 import { useFramingProtection } from './http/framing.js';
 import { useApiRateLimit } from './http/rate-limit.js';
+import { isRouted } from './http/routed-path.js';
 import { sessionCookieName } from './identity/session-cookie.js';
 import { useSecurityHeaders } from './http/security-headers.js';
 
@@ -344,7 +345,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const documentPolicies = loadDocumentPolicies(webRoot, identityConfig.publicOrigin, collectCspReports ? { reportUri: CSP_REPORT_PATH, allowEval: config.fixture.cspEval } : undefined);
   await fastifyStatic(app, { root: webRoot, prefix: '/', cacheControl: false, setHeaders: staticHeaders(documentPolicies), preCompressed: true });
   app.setNotFoundHandler(async (request, reply) => {
-    if (request.url.startsWith('/api/')) return reply.code(404).send({ error: 'Not Found' });
+    if (isRouted(request, '/api/')) return reply.code(404).send({ error: 'Not Found' });
     if (!request.headers.accept?.includes('text/html')) return reply.code(404).send({ error: 'Not Found' });
     return reply.sendFile('index.html');
   });

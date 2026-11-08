@@ -131,6 +131,12 @@ test('editing refusal happens before handshake and a client cannot supply anothe
   assert.equal(await refused(f.port, path, { origin: 'http://other.test' }), 403);
   assert.equal(await refused(f.port, `${path}&actor=other`, { origin }), 400);
   assert.equal(await refused(f.port, `${path}&id=${targetId}`, { origin }), 400);
+  // The router reads `/api/v1/%65diting` as the same path, so the gate owns it too: Fastify's generic fallback never completes its handshake (#1047).
+  for (const spelled of ['/api/v1/%65diting', '/%61pi/v1/editing', '/api/v%31/editing']) {
+    assert.equal(await refused(f.port, `${spelled}?kind=wiki&id=${targetId}`, {}), 403, spelled);
+    assert.equal(await refused(f.port, `${spelled}?kind=wiki&id=${targetId}`, { origin: 'http://other.test' }), 403, spelled);
+    assert.equal(await refused(f.port, `${spelled}?kind=wiki&id=${targetId}&actor=other`, { origin }), 400, spelled);
+  }
   assert.equal(authorizations, 0); assert.equal(f.contexts.length, 0);
   const anonymous = await fixture(t, { resolveSession: async () => null });
   assert.equal(await refused(anonymous.port, path, { origin }), 401);
@@ -145,6 +151,22 @@ test('a session expiring during asynchronous admission sends no accepted frame',
     authorize: async () => { await delay(50); } });
   assert.equal(await refused(f.port, path, { origin }), 401);
   assert.equal(f.contexts.length, 0); assert.equal(f.received.length, 0);
+});
+
+for (const media of [false, true]) test(`editing and media sockets are the same sockets when their path is written with encoded letters, media ${media} (#1047)`, async (t) => {
+  const f = await fixture(t, { media });
+  const editing = await f.open(`/api/v1/%65diting?kind=wiki&id=${targetId}`);
+  const bytes = randomBytes(64);
+  const echoed = once(editing, 'message'); editing.send(bytes); assert.deepEqual((await echoed)[0], bytes);
+  assert.equal(f.contexts.length, 1, 'admitted as the editing socket');
+  const encoded = f.mediaPath.replace('/media/', '/%6dedia/');
+  if (media) {
+    const socket = await f.open(encoded); const reply = once(socket, 'message');
+    socket.send(Buffer.alloc(70_000)); assert.equal(((await reply)[0] as Buffer).length, 70_000, 'proxied as the media socket');
+    assert.equal(await refused(f.port, encoded, {}), 403, 'and its origin is checked');
+  } else {
+    assert.equal(await refused(f.port, encoded, { origin }), 404, 'no media gate: not a socket');
+  }
 });
 
 test('a frame sent in the HTTP upgrade head survives asynchronous admission and synchronous handlers', async (t) => {

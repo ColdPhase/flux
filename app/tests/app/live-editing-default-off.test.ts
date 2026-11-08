@@ -58,8 +58,9 @@ test('an explicitly opted-out API reports unavailable, refuses routes/socket and
       assert.equal(refused.json().code, 'LIVE_EDITING_DISABLED', url);
     }
     // An explicit disabled gate owns this path before the generic WebSocket fallback.
-    for (const kind of ['map', 'wiki']) {
-      const socket = new WebSocket(`${address.replace('http', 'ws')}${EDITING_SOCKET_PATH}?kind=${kind}&id=${randomUUID()}`,
+    // Written with an encoded letter it is the same path to the router, and the same refusal here (#1047).
+    for (const [kind, path] of [['map', EDITING_SOCKET_PATH], ['wiki', EDITING_SOCKET_PATH], ['map', '/api/v1/%65diting'], ['wiki', '/%61pi/v1/editing']] as const) {
+      const socket = new WebSocket(`${address.replace('http', 'ws')}${path}?kind=${kind}&id=${randomUUID()}`,
         { headers: { origin: config.identity.publicOrigin }, perMessageDeflate: false });
       let status: number | null = null;
       const outcome = await new Promise<string>((resolve) => {
@@ -73,7 +74,7 @@ test('an explicitly opted-out API reports unavailable, refuses routes/socket and
         socket.once('close', () => settle('refused'));
       });
       socket.terminate();
-      assert.equal(outcome, 'refused', kind);
+      assert.equal(outcome, 'refused', `${kind} ${path}`);
       assert.equal(status, 503, 'an actual disabled response, not an open socket or reset');
     }
     assert.equal(await server.closeGracefully(), true, 'nothing live to drain');
