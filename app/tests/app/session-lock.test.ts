@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, describe, test } from 'node:test';
-import { createDatabase, holdingSessionLock, SessionLockLostError, withRuntimeReconcileLock } from '@flux/db';
+import { drizzle } from 'drizzle-orm/node-postgres';
+import { createDatabase, holdingSessionLock, SessionLockLostError, sql, withRuntimeReconcileLock } from '@flux/db';
 import { connectionString, pool as admin } from './support/db.js';
 
 // A session advisory lock lives and dies with its connection (#916). The holder's connection is idle while it works, so a restart, a
@@ -105,6 +106,39 @@ describe('a session lock holder is told when its connection dies (#916)', () => 
       await database.pool.query(`INSERT INTO ${table} VALUES (2)`);
       assert.equal((await admin.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n, 1);
     } finally { await admin.query(`DROP TABLE ${table}`); }
+  });
+
+  test('work that fails after a statement timed out never gives the lock\'s connection back inside its open transaction (#961)', async () => {
+    // A statement on the lock's connection that outlasts `query_timeout` makes pg drop the ROLLBACK queued behind it, unsent; the
+    // transaction is then still open on the server when the lock is given up. Handing that connection to the pool would give the next
+    // borrower an old transaction with a half-done write in it.
+    const table = `session_lock_timeout_${randomUUID().replace(/-/g, '')}`;
+    await admin.query(`CREATE TABLE ${table} (n int)`);
+    const quick = createDatabase(connectionString, undefined, { onError: () => undefined, queryTimeoutMs: 300, max: 1 });
+    try {
+      let heldPid = 0;
+      const outcome = await holdingSessionLock(quick.pool, lockOf(randomUUID()), async (_signal, connection) => {
+        heldPid = (await connection.query<{ pid: number }>('SELECT pg_backend_pid() AS pid')).rows[0]!.pid;
+        await drizzle({ client: connection }).transaction(async (tx) => {
+          await tx.execute(sql.raw(`INSERT INTO ${table} VALUES (1)`));
+          await tx.execute(sql.raw('SELECT pg_sleep(0.75)'));
+        });
+      }).then(() => null, (error: unknown) => error);
+      assert.ok(outcome instanceof Error && !(outcome instanceof SessionLockLostError), `the work failed on the timeout: ${String(outcome)}`);
+      // The next borrower of the one-connection pool gets a connection of its own, outside any transaction, that does not see the row.
+      const next = await quick.pool.connect();
+      try {
+        const seen = (await next.query<{ pid: number; rows: number; clean: boolean }>(
+          `SELECT pg_backend_pid() AS pid, (SELECT count(*)::int FROM ${table}) AS rows, pg_current_xact_id_if_assigned() IS NULL AS clean`)).rows[0]!;
+        assert.notEqual(seen.pid, heldPid, 'not the connection the lock was held on');
+        assert.deepEqual([seen.rows, seen.clean], [0, true], 'and it is outside the old transaction');
+      } finally { next.release(); }
+      await settle(900);
+      assert.equal((await admin.query(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n, 0, 'the half-done write never committed');
+    } finally {
+      await quick.pool.end();
+      await admin.query(`DROP TABLE ${table}`);
+    }
   });
 
   test('the reconcile lock of the worker is the same: a killed connection aborts the reconciliation', async () => {

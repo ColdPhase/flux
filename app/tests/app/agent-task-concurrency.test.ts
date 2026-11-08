@@ -85,7 +85,9 @@ describe('agents taking tasks beside the worker and the owner\'s own requests', 
       const talk = expectStatus(await ada.browser.request('GET', taskDiscussionPath(id)), 200) as TaskDiscussion;
       assert.ok([talk.root, ...talk.messages].some((message) => message && message.authorId === null), `${now.title}: the agent said something in the task`);
     }
-    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM agent_task_events WHERE handled_at IS NULL OR attempts > 0`)).rows[0].n, 0, 'no event had to be tried again, none waits');
+    // Only this test's own tasks: other tests on the same stack leave events that were tried again, by design (a give-up that keeps failing).
+    const mine = [...ids, ...created.map((task) => task.id)];
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM agent_task_events WHERE work_id = ANY($1::uuid[]) AND (handled_at IS NULL OR attempts > 0)`, [mine])).rows[0].n, 0, 'no event had to be tried again, none waits');
     // PostgreSQL reports its counters a moment after the transactions end.
     await new Promise((resolve) => setTimeout(resolve, 2000));
     assert.equal(await deadlocks() - before, 0, 'PostgreSQL detected no deadlock');

@@ -62,8 +62,9 @@ export async function holdingSessionLock<T>(pool: Pick<Pool, 'connect'>, lock: S
     workState.ended = running.then(() => undefined, () => undefined);
     return await Promise.race([running, lost]);
   } catch (error) {
-    // A failed statement on the lock's own connection (a lost connection among them) leaves it unfit to give back.
-    if (!broken && error instanceof Error && String((error as { code?: unknown }).code).startsWith('57')) broken = error;
+    // `work` may have left this connection inside a transaction whose ROLLBACK was never sent (a statement past `query_timeout` drops the
+    // ROLLBACK queued behind it, #961): never give it back. Ending the session drops the lock with it.
+    broken ??= error instanceof Error ? error : new Error(String(error));
     throw error;
   } finally {
     if (!broken) await client.query(lock.release.text, lock.release.values).catch((error: Error) => { broken = error; });
