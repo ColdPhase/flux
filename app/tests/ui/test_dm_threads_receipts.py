@@ -149,7 +149,7 @@ class DmThreadsReceipts(unittest.TestCase):
         # More lists only real, authorized commands (#867): Add to map (My map) and Copy link; the toolbar has Reply and Create task.
         actions.get_by_role("button", name="More actions").click()
         menu = page.get_by_role("menu", name="Message actions")
-        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Add to map", "Copy link"])
+        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Add to map", "Copy link", "Copy text"])
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
         # Own bubbles take the actions on their left.
@@ -214,7 +214,7 @@ class DmThreadsReceipts(unittest.TestCase):
         self.assertEqual(actions.get_by_role("button", name="Reply in thread").count() + actions.get_by_role("button", name="Create task").count(), 0, "nothing can be sent")
         actions.get_by_role("button", name="More actions").click()
         menu = gone.get_by_role("menu", name="Message actions")
-        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Add to map", "Copy link"])
+        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Add to map", "Copy link", "Copy text"])
 
     def test_02_a_private_reply_thread_with_a_visible_count_that_survives_reload(self) -> None:
         kai = self.page("kai")
@@ -423,7 +423,7 @@ class DmThreadsReceipts(unittest.TestCase):
         long_press(row.locator(".dm-msg__body"))
         menu = page.get_by_role("menu", name="Message actions")
         # The pressed message is Ada's own: Edit and Delete follow Copy link below a line (#1006).
-        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Reply in thread", "Create task", "Add to map", "Copy link", "Edit", "Delete"])
+        self.assertEqual([i.inner_text().strip() for i in menu.get_by_role("menuitem").all()], ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text", "Edit", "Delete"])
         menu.get_by_role("menuitem", name="Create task").click()
         dialog = page.get_by_role("dialog", name="Create a task from this message")
         expect(dialog).to_be_visible()

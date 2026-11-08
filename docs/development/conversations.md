@@ -227,8 +227,9 @@ keeps the words. Migration `0029` adds `project_messages.edited_at`.
 - **Events.** `project.message_edited.v1` and `project.message_removed.v1`, object the project, `data` `{ conversationId, messageId }`
   (ids only, which is all an encrypted space allows); a change that changes nothing records nothing. An open stream or thread reads the
   conversation again; the author's own page replaces the message at once.
-- **Web.** Edit and Delete are in the ⋯ menu after Copy link, below a line, on the author's messages only, on a computer's hover menu and
-  on a phone's long-press list alike. Edit puts the words in a field where they were (Enter saves on a keyboard, Esc cancels); Delete
+- **Web.** Edit and Delete are in the ⋯ menu after Copy link and Copy text, below a line, on the author's messages only, on a computer's hover menu and
+  on a phone's long-press list alike. Copy text (founder direction 2026-11-08) is on every message a person can read: it copies the plain words
+  (`work/messageWords.ts`: a mention stays `@name`, a Wiki page is its title, a quote loses its `>` marks) and is not offered on a deleted message. Edit puts the words in a field where they were (Enter saves on a keyboard, Esc cancels); Delete
   asks once in place ("Delete this message? ... This cannot be undone."). A deleted message keeps Reply in thread (a root) and Copy link.
 
 Tests: `app/tests/app/message-edit-delete.test.ts` (API, including the attacks above, a file, and an encrypted space) and

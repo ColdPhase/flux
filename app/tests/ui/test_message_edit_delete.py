@@ -27,10 +27,10 @@ PEOPLE = {
     "kai": ("Kai Tanaka", f"kai.ed+{STAMP}@example.test"),
     "lee": ("Lee Moreno", f"lee.ed+{STAMP}@example.test"),
 }
-OWN_MENU = ["Add to map", "Copy link", "Edit", "Delete"]
-OTHER_MENU = ["Add to map", "Copy link"]
-PHONE_OWN = ["Reply in thread", "Create task", "Add to map", "Copy link", "Edit", "Delete"]
-PHONE_OTHER = ["Reply in thread", "Create task", "Add to map", "Copy link"]
+OWN_MENU = ["Add to map", "Copy link", "Copy text", "Edit", "Delete"]
+OTHER_MENU = ["Add to map", "Copy link", "Copy text"]
+PHONE_OWN = ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text", "Edit", "Delete"]
+PHONE_OTHER = ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text"]
 
 
 def words(label: str) -> str:
@@ -81,8 +81,10 @@ class MessageEditDelete(unittest.TestCase):
         finally:
             context.close()
 
-    def context(self, who: str, *, phone: bool = False) -> BrowserContext:
+    def context(self, who: str, *, phone: bool = False, clipboard: bool = False) -> BrowserContext:
         options: dict = {"base_url": ORIGIN, "locale": "en-GB", "timezone_id": "Europe/Warsaw", "storage_state": self.states[who]}
+        if clipboard:
+            options["permissions"] = ["clipboard-read", "clipboard-write"]
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
@@ -91,7 +93,7 @@ class MessageEditDelete(unittest.TestCase):
         self.addCleanup(context.close)
         return context
 
-    def page(self, who: str, **kwargs) -> Page:
+    def page(self, who: str, **kwargs) -> Page:  # kwargs: phone, clipboard
         page = self.context(who, **kwargs).new_page()
         errors: list[str] = []
         page.on("pageerror", lambda error: errors.append(str(error)))
@@ -131,10 +133,10 @@ class MessageEditDelete(unittest.TestCase):
         own = page.locator(f"#message-{mine['id']}")
         self.assertEqual(self.menu_of(page, own), OWN_MENU)
         menu = page.get_by_role("menu", name="Message actions")
-        # One line divides Add to map and Copy link from Edit and Delete.
+        # One line divides Add to map, Copy link and Copy text from Edit and Delete.
         expect(menu.get_by_role("separator")).to_have_count(1)
         order = menu.evaluate("el => [...el.children].map((child) => child.getAttribute('role') === 'separator' ? '---' : child.textContent.trim())")
-        self.assertEqual(order, ["Add to map", "Copy link", "---", "Edit", "Delete"])
+        self.assertEqual(order, ["Add to map", "Copy link", "Copy text", "---", "Edit", "Delete"])
         shot(page, "edit-delete-menu-desktop")
         page.keyboard.press("Escape")
         self.assertEqual(self.menu_of(page, page.locator(f"#message-{theirs['id']}")), OTHER_MENU, "someone else's message has neither")
@@ -285,6 +287,58 @@ class MessageEditDelete(unittest.TestCase):
         expect(field).to_be_visible()
         page.locator(f"#message-{mine['id']}").get_by_role("button", name="Save").click()
         expect(page.locator(f"#message-{mine['id']} .message-body")).to_contain_text("changed on a phone")
+
+    # ---------------------------------------------------------------- Copy text (founder direction 2026-11-08)
+
+    @unittest.skipUnless(UI_BROWSER == "chromium", "WebKit has no clipboard permission to grant")
+    def test_09_copy_text_copies_the_plain_words_of_any_message_a_person_reads_but_never_of_a_removed_one(self) -> None:
+        label = words("copy me")
+        theirs = self.start("kai", f"{label} @Ada Kowalska see [[Sensor network]] and #4")
+        quoting = self.start("kai", "> Ada:\n> the first idea\nI agree")
+        mine = self.start("ada", words("my own words"))
+        page = self.page("ada", clipboard=True)
+        page.goto(f"/projects/{self.project_id}")
+        copied = lambda: page.evaluate("navigator.clipboard.readText()")
+        # Someone else's message: the words as a reader sees them, a mention as @name, a Wiki page as its title, a quote without its marks.
+        self.menu_of(page, page.locator(f"#message-{theirs['id']}"))
+        page.get_by_role("menuitem", name="Copy text", exact=True).click()
+        expect(page.locator(".ui-toast", has_text="Text copied")).to_be_visible()
+        self.assertEqual(copied(), f"{label} @Ada Kowalska see Sensor network and #4")
+        self.menu_of(page, page.locator(f"#message-{quoting['id']}"))
+        page.get_by_role("menuitem", name="Copy text", exact=True).click()
+        self.assertEqual(copied(), "Ada:\nthe first idea\nI agree")
+        # One's own message, after an edit: the new words.
+        own = page.locator(f"#message-{mine['id']}")
+        self.menu_of(page, own)
+        page.get_by_role("menuitem", name="Edit", exact=True).click()
+        changed = words("changed words")
+        field = own.get_by_role("textbox", name="Edit message")
+        field.fill(changed)
+        field.press("Enter")
+        expect(own.locator(".message-body")).to_have_text(changed)
+        self.menu_of(page, own)
+        page.get_by_role("menuitem", name="Copy text", exact=True).click()
+        self.assertEqual(copied(), changed)
+        # A removed message has no words to copy.
+        self.menu_of(page, own)
+        page.get_by_role("menuitem", name="Delete", exact=True).click()
+        own.get_by_role("button", name="Delete", exact=True).click()
+        expect(own.locator(".message-body--removed")).to_have_text("Message removed")
+        self.assertEqual(self.menu_of(page, own), ["Copy link"])
+        page.keyboard.press("Escape")
+
+    @unittest.skipUnless(UI_BROWSER == "chromium", "WebKit has no clipboard permission to grant")
+    def test_10_the_phones_long_press_list_copies_the_text_too(self) -> None:
+        text = words("phone words")
+        theirs = self.start("kai", f"{text} with #7")
+        page = self.page("ada", phone=True, clipboard=True)
+        page.goto(f"/projects/{self.project_id}")
+        bubble = page.locator(f"#message-{theirs['id']} .message-bubble > .message-body")
+        bubble.scroll_into_view_if_needed()
+        long_press(bubble)
+        page.get_by_role("menu", name="Message actions").get_by_role("menuitem", name="Copy text", exact=True).click()
+        expect(page.locator(".ui-toast", has_text="Text copied")).to_be_visible()
+        self.assertEqual(page.evaluate("navigator.clipboard.readText()"), f"{text} with #7")
 
     # ---------------------------------------------------------------- direct messages
 

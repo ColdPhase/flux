@@ -221,7 +221,8 @@ the detail):
   (#866).
 - **Creating:** one Create with the same types everywhere, plus "+" in Tasks, `/task` and
   "Create task" on a message. **Message actions:** Reply in thread, Create task and ⋯ (Add to
-  map, Copy link, Edit and Delete on your own); Cite, Record a result and Details go (#867).
+  map, Copy link, Copy text, Edit and Delete on your own); Cite, Record a result and Details go (#867). Copy text on every
+  readable message: founder direction 2026-11-08.
 - **Tasks:** Board and List have the same controls; cards have no ⋯; empty sections are hidden;
   one discussion per task, where agents write too. Statuses are To do, Doing, Blocked and Done;
   "Not pursued" becomes Done with a "dropped" note. Blocked waits for a person, a decision or a

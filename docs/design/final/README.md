@@ -291,8 +291,8 @@ This board dates from 2026-10-07. Its moments stand, apart from what this guide 
 - **Gestures.** Founder amendment 2026-10-16 ([#343](https://github.com/ColdPhase/flux/issues/343)),
   applied to the v0.2 message actions:
   - **In a conversation, long press** on a message opens one sheet with the message and its
-    actions in the computer's order: Reply in thread, Create task, Add to map, Copy link, and Edit
-    and Delete on your own messages.
+    actions in the computer's order: Reply in thread, Create task, Add to map, Copy link, Copy text
+    (founder direction 2026-11-08), and Edit and Delete on your own messages.
   - **Swipe right** on a message opens Reply in thread.
   - **No swipe-left actions on messages.** Messages have no done or snooze state.
   - **Swipe stays only in the Inbox and Tasks lists** (Done and Not now, as in Gmail). Every
@@ -336,7 +336,7 @@ The IDs come from the first Prostota canvas; rules that no longer apply are left
 | S3 | **One Create.** New, `C` and "+" open the same window or sheet everywhere, with Task, Thought, Decision, Page and Space. In context there are only "+ Task" in Tasks, `/task` in the composer and Create task on a message. |
 | S4 | One detail panel on the computer and one sheet on the phone, for tasks, decisions and threads. At most two content columns. |
 | S5 | The composer has `@` to mention and `/` for actions (`/task`, `/decide`, `/ai`, `/file`), with no separate buttons. Attaching is a paperclip, because "+" means Create. The hint reads "Message · @ mention · / actions". |
-| S6 | **Message actions.** On the computer, hovering a message shows Reply in thread, Create task and ⋯. The ⋯ menu has one level, in the same order everywhere: Add to map, Copy link, then Edit and Delete on your own messages. On the phone, long press opens the same list and swipe right replies in thread (#343). |
+| S6 | **Message actions.** On the computer, hovering a message shows Reply in thread, Create task and ⋯. The ⋯ menu has one level, in the same order everywhere: Add to map, Copy link, Copy text, then Edit and Delete on your own messages. **Copy text** (founder direction by Hubert, 2026-11-08) is on every message a person can read, not only their own: it copies the message's plain words, with no markup (a mention as `@name`, a Wiki page as its title, a quote without its `>` marks). A deleted message has none. On the phone, long press opens the same list and swipe right replies in thread (#343). |
 | S8 | Several task updates in a row fold into one expandable line. |
 | S9 | One tap on the state glyph (or `1`–`4`) changes the state. Swipe left, then Done, then a toast with **Undo**. |
 | S10 | Title and properties are edited in place. |
@@ -488,7 +488,7 @@ Community garden sensors, Rain barrel monitor and Tool library.
   soil moisture probes · 8:05".
 - The message toolbar sits at the bubble's top corner, as
   [Spokój](../spokoj/README.md#message-toolbar-and-selection) places it. A line in the ⋯ menu
-  divides Add to map and Copy link from Edit and Delete.
+  divides Add to map, Copy link and Copy text from Edit and Delete.
 - The composer has the paperclip, the hint and Send. A conversation with its usual audience shows
   no "who can see this" text.
 

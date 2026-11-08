@@ -2,12 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from 'react-dom';
 import type { ConversationMessage } from '@flux/contracts';
 import { Icon, useMediaQuery, usePop, useToast, type IconName } from '../ui';
+import { plainWords } from './messageWords';
 import './message-actions.css';
 
 // Actions on one message (F-026 S6, #867). On a computer they appear on hover and focus: Reply in thread, Create task and ⋯. On a phone
 // they are two gestures, a long press (the message menu) and a swipe right (Reply in thread), plus the same menu for keyboards and
 // screen readers (founder direction 2026-10-16 on #343). A message has no done or snooze state, so nothing swipes left.
-// The ⋯ menu is one level, in the same order everywhere: Add to map, Copy link, then (on your own messages) Edit and Delete.
+// The ⋯ menu is one level, in the same order everywhere: Add to map, Copy link, Copy text, then (on your own messages) Edit and Delete.
+// Copy text is on every message that has words and was not deleted (founder direction 2026-11-08).
 // The phone's list starts with the two actions the computer shows beside the message.
 
 /**
@@ -57,6 +59,9 @@ export interface MessageActionOptions {
 /** `secondary` items sit below a line, apart from the rest (Edit and Delete, on a person's own messages). */
 interface MenuItem { id: string; label: string; icon: IconName; run: () => void; disabled?: boolean; secondary?: boolean }
 
+/** The words Copy text puts on the clipboard: the message's body as plain text. */
+const wordsOf = (options: MessageActionOptions | DmActionOptions) => plainWords(options.kind === 'dm' ? options.body : options.message.body);
+
 /** A message's own address: a project's message opens in its thread, a private one in its conversation. */
 const linkOf = (options: MessageActionOptions | DmActionOptions) => `${window.location.origin}${options.kind === 'dm'
   ? options.messageId && options.threadRootId ? `/dm/${options.dmId}?thread=${options.threadRootId}#thread-message-${options.messageId}`
@@ -65,24 +70,27 @@ const linkOf = (options: MessageActionOptions | DmActionOptions) => `${window.lo
 
 /**
  * The menu's items, in the one order: Reply in thread and Create task (only where the message has no toolbar beside it, that is on a
- * phone), then Add to map and Copy link. The same list on every device and for every kind of message.
+ * phone), then Add to map, Copy link and Copy text. The same list on every device and for every kind of message.
  */
 function useMenuItems(options: MessageActionOptions | DmActionOptions | null, touch: boolean): MenuItem[] {
   const toast = useToast();
   if (!options) return [];
-  const copy = () => {
-    const done = () => toast({ message: 'Link copied', timeout: 2000 });
-    const failed = () => toast({ message: 'Could not copy the link', tone: 'danger' });
+  const copyToClipboard = (what: 'link' | 'text', value: string) => {
+    const done = () => toast({ message: what === 'link' ? 'Link copied' : 'Text copied', timeout: 2000 });
+    const failed = () => toast({ message: `Could not copy the ${what}`, tone: 'danger' });
     if (!navigator.clipboard) { failed(); return; }
-    navigator.clipboard.writeText(linkOf(options)).then(done, failed);
+    navigator.clipboard.writeText(value).then(done, failed);
   };
+  const words = wordsOf(options);
   const { writable, onCreateWork, onReply, onAddToMap, onEdit, onDelete, removed } = options;
   return [
     ...(touch && writable && onReply ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
     ...(touch && writable && !removed ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: onCreateWork }] : []),
     // A private message goes on My map, which does not depend on the conversation taking new messages (a 1:1 whose other person left).
     ...((writable || options.kind === 'dm') && onAddToMap && !removed ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
-    { id: 'link', label: 'Copy link', icon: 'link' as const, run: copy },
+    { id: 'link', label: 'Copy link', icon: 'link' as const, run: () => copyToClipboard('link', linkOf(options)) },
+    // Every message a person can read, not only their own; a deleted one has no words, and a message of files alone has none to copy.
+    ...(words && !removed ? [{ id: 'text', label: 'Copy text', icon: 'copy' as const, run: () => copyToClipboard('text', words) }] : []),
     // Below a line, after Copy link, on the person's own messages only (#1006).
     ...(onEdit && !removed ? [{ id: 'edit', label: 'Edit', icon: 'edit' as const, run: onEdit, secondary: true }] : []),
     ...(onDelete && !removed ? [{ id: 'delete', label: 'Delete', icon: 'trash' as const, run: onDelete, secondary: true }] : []),
