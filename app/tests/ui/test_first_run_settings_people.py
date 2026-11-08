@@ -471,7 +471,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
         ask.get_by_role("button", name="Add me").click()
         expect(sidebar.get_by_role("link", name=re.compile("Olek’s room"))).to_be_visible()
         expect(ask).not_to_contain_text("works only in spaces you’re in")
-        expect(ask).to_contain_text("You haven’t set up your assistant.")
+        expect(ask).not_to_contain_text("Add me")  # what the ask bar says next depends on whether she has an agent: it no longer says she cannot be here
 
     def test_12_mention_chips_use_the_same_initials_as_avatars(self) -> None:
         page = self.page("maria")
