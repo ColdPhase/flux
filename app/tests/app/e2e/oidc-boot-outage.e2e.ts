@@ -15,13 +15,13 @@ test('real Keycloak boot outage recovers on the same signed authorization page',
   try {
     const clientId = `outage-${randomUUID()}`; const redirect = 'http://127.0.0.1:19847/callback';
     await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types, response_types, scopes, require_pkce)
-      VALUES ($1, $2, 'Outage client', $3, 'none', '{authorization_code,refresh_token}', '{code}', '{flux.context.read,offline_access}', true)`, [randomUUID(), clientId, [redirect]]);
+      VALUES ($1, $2, 'Outage client', $3, 'none', '{authorization_code,refresh_token}', '{code}', '{offline_access}', true)`, [randomUUID(), clientId, [redirect]]);
     await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id) VALUES ($1, $2, $3)', [randomUUID(), clientId, mcpUrl]);
     const verifier = randomBytes(32).toString('base64url');
     const url = new URL('/api/auth/oauth2/authorize', origin);
     url.search = new URLSearchParams({ client_id: clientId, redirect_uri: redirect, response_type: 'code',
       code_challenge: createHash('sha256').update(verifier).digest('base64url'), code_challenge_method: 'S256',
-      state: randomUUID(), scope: 'flux.context.read offline_access', resource: mcpUrl }).toString();
+      state: randomUUID(), scope: 'offline_access', resource: mcpUrl }).toString();
     const page = await browser.newPage(); await page.goto(url.toString());
     // A reload would drop this marker; the URL equality below alone cannot tell a reload from no reload.
     await page.evaluate(() => { (window as unknown as { __noReload: string }).__noReload = 'same-document'; });
@@ -45,7 +45,7 @@ test('real Keycloak boot outage recovers on the same signed authorization page',
     await signIn.click(); await page.waitForURL((target) => target.origin === 'http://keycloak:8080');
     await page.locator('#username').fill('erin'); await page.locator('#password').fill(process.env.FLUX_OIDC_TEST_PASSWORD!);
     await page.locator('#kc-login').click();
-    await page.waitForURL(`${origin}/connect-agent?**`, { timeout: 30_000 });
+    await page.waitForURL(`${origin}/consent?**`, { timeout: 30_000 });
     assert.ok(new URL(page.url()).searchParams.get('sig'), 'the recovered provider round trip preserves continuation');
     const me = await page.request.get(`${origin}/api/v1/me`);
     assert.equal(me.status(), 200, 'the genuine provider callback signed the person in');

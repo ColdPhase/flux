@@ -15,9 +15,9 @@ async function bounded<T>(pending: Promise<T>, label: string): Promise<T> {
   })]); } finally { if (timer) clearTimeout(timer); }
 }
 async function fixture() {
-  const f = await actionScene(pool); const grant = await f.grant('work.create', 'execute');
+  const f = await actionScene(pool);
   const value = toolValue(await f.tool('flux_create_task', { projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,
-    grantId:grant.id,clientCommandId:randomUUID(),peerRequestClass:'execute',sources:[],task:{title:'Exact shared graph target'} }));
+    clientCommandId:randomUUID(),peerRequestClass:'execute',sources:[],task:{title:'Exact shared graph target'} }));
   const item = await f.read(String(value.workId)) as unknown as WorkItem;
   const result = expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/results`,
     {body:{title:'Initially unassociated result',finding:'positive'}}),201);

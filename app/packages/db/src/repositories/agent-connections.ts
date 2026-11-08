@@ -1,147 +1,96 @@
 import { randomUUID } from 'node:crypto';
-import { and, desc, eq, gt, inArray, isNull, or, sql } from 'drizzle-orm';
-import type { AgentConnection, AgentMcpPolicy, CreateAgentConnectionCommand } from '@flux/contracts';
-// Structural adapter inputs avoid the current core/db build cycle; core owns the port.
-type AgentOauthFlow = { fingerprint: string; clientId: string; scopes: readonly string[]; expiresAt: Date };
+import { and, asc, desc, eq, isNull, ne, or, sql } from 'drizzle-orm';
+import type { AgentConnection, ExternalClientDesignation } from '@flux/contracts';
+// Structural adapter output avoids the current core/db build cycle; core owns the port.
 type AgentOauthGrant = { referenceId: string; clientId: string | null; connection: AgentConnection };
 import * as schema from '../schema.js';
 import { idpStandingRepository } from './idp-standing.js';
 import type { createDatabase } from '../index.js';
-import { assistantProjectIds, initializeAgentMcpPolicy, lockAgentMcpPolicy } from './agent-mcp-policy.js';
 import type { DbExecutor } from './push.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 type Row = typeof schema.agentConnections.$inferSelect;
 
-export interface AgentConnectionPolicy {
-  initialMcpPolicy(connection: AgentConnection): AgentMcpPolicy;
-  /**
-   * The workspace of the project the agent may reach, or throws. `selecting` is a connection being made to the space (AG-10: not to one
-   * whose AI is off); everywhere else a space with AI off does not make the connection unavailable, so its sign-in stays and each tool
-   * call that names the space is refused for it.
-   */
-  authorizeProject(agentId: string, projectId: string, action: 'project.read' | 'project.write', tx: Transaction, options?: { selecting?: boolean }): Promise<string>;
-}
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const GRANT_PREFIX = 'flux-grant:';
 
-function serialize(row: Row, selectedProjectIds: string[]): AgentConnection {
+/** A connection as the API shows it. There is no scope and no project list: a client acts with its owner's rights (F-036 AG-3, #859). */
+export function serializeConnection(row: Row): AgentConnection {
   return {
     id: row.id, workspaceId: row.workspaceId, ownerUserId: row.ownerUserId, agentId: row.agentId,
-    name: row.name, clientDesignation: row.clientDesignation,
-    selectedProjectIds, scopes: [...row.scopes], computeSource: row.computeSource, mayDo: row.mayDo,
+    name: row.name, clientDesignation: row.clientDesignation, computeSource: row.computeSource, mayDo: row.mayDo,
     revokedAt: row.revokedAt?.toISOString() ?? null, createdAt: row.createdAt.toISOString(),
   };
 }
 
-/** SQL and locking; the composition root supplies the existing #29 policy. */
 /**
  * The workspace of one owner's connection, or null: lets the MCP route tell a lost connection from a refused one before
  * anything else is read. Makes no access decision.
  */
 export async function agentConnectionWorkspaceId(db: DbExecutor, connectionId: string, ownerUserId: string): Promise<string | null> {
-  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(connectionId)) return null;
+  if (!UUID.test(connectionId)) return null;
   const [row] = await db.select({ workspaceId: schema.agentConnections.workspaceId }).from(schema.agentConnections)
     .where(and(eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId)));
   return row?.workspaceId ?? null;
 }
 
-/** The name an enabled OAuth client gives itself (unverified; a recognition aid only), or null (#763 AG-6). */
+/** The name an enabled OAuth client gives itself (unverified; a recognition aid only; empty when it gives none), or null when no enabled client has this id (#763 AG-6). */
 export async function oauthClientName(db: DbExecutor, clientId: string): Promise<string | null> {
   const [client] = await db.select({ name: schema.oauthClient.name }).from(schema.oauthClient).where(and(
     eq(schema.oauthClient.clientId, clientId), or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled))));
-  return client?.name ?? null;
+  return client ? client.name ?? '' : null;
 }
 
-export function agentConnectionRepository(db: Database, policy: AgentConnectionPolicy) {
-  // The assistant reaches every project of its workspace that its owner can (F-036 AG-3); others keep their consented list.
-  const projects = async (tx: Transaction, id: string) => await assistantProjectIds(tx, id) ?? (await tx.select({ id: schema.agentConnectionProjects.projectId })
-    .from(schema.agentConnectionProjects).where(eq(schema.agentConnectionProjects.connectionId, id)))
-    .map((row) => row.id);
-
+/** SQL and locking. A connection is live while it is not revoked, its agent stands and its owner's account stands. */
+export function agentConnectionRepository(db: Database) {
   /**
-   * `reach` (a personal run's read-only token, F-027 A2): the project access the bearer actually needs. Without it, a
-   * connection holding a write scope must reach a project with write access, as before.
+   * The live connection of this owner, or null: not revoked, its agent and its owner's account stand, and the owner is still a
+   * non-guest member of the connection's company. Nothing here narrows what the client reaches: that is decided at each call by
+   * the owner's rights and by the agent's "What it may do".
    */
-  const resolveCurrent = async (tx: Transaction, ownerUserId: string, connectionId: string, mcp = false, reach?: 'project.read') => {
+  const resolveCurrent = async (tx: Transaction, ownerUserId: string, connectionId: string) => {
     const [row] = await tx.select().from(schema.agentConnections).where(and(
       eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId),
       isNull(schema.agentConnections.revokedAt))).for('share');
     if (!row) return null;
     // The owner's account must still stand at the identity provider (F-024 S4, #311). Nothing is revoked.
     if (await idpStandingRepository(tx).refuses(ownerUserId, { lock: true })) return null;
-    const selectedProjectIds = await projects(tx, row.id);
-    const connection = serialize(row, selectedProjectIds);
-    if (mcp) {
-      await initializeAgentMcpPolicy(tx, connection, policy.initialMcpPolicy);
-      if (!await lockAgentMcpPolicy(tx, row.id)) return null;
-    }
     const [agent] = await tx.select({ id: schema.agents.id }).from(schema.agents).where(and(
       eq(schema.agents.id, row.agentId), eq(schema.agents.ownerUserId, ownerUserId),
       isNull(schema.agents.revokedAt))).for('share');
     if (!agent) return null;
-    if (!selectedProjectIds.length) return null;
-    const action = reach ?? (row.scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'project.write' : 'project.read');
-    if (!mcp && row.computeSource !== 'owner_assistant') {
-      for (const projectId of selectedProjectIds.sort()) {
-        if (await policy.authorizeProject(row.agentId, projectId, action, tx) !== row.workspaceId) return null;
-      }
-    } else {
-      // An inaccessible original project must not poison an authorized subset, but a bearer
-      // whose agent reaches none of its selected projects is unavailable (HTTP 403) before dispatch.
-      let reachable = false;
-      for (const projectId of selectedProjectIds.sort()) {
-        try { if (await policy.authorizeProject(row.agentId, projectId, action, tx) === row.workspaceId) { reachable = true; break; } } catch { /* excluded */ }
-      }
-      if (!reachable) return null;
+    // C-22: a client lives only while its owner is a member of the company and not a guest of it. Someone removed or made a guest
+    // gets no token, no refresh and no sign-in without a page, whatever the connection row still says. Nothing is revoked.
+    const [member] = await tx.select({ userId: schema.workspaceMembers.userId }).from(schema.workspaceMembers).where(and(
+      eq(schema.workspaceMembers.workspaceId, row.workspaceId), eq(schema.workspaceMembers.userId, ownerUserId),
+      ne(schema.workspaceMembers.role, 'guest'))).for('share');
+    return member ? serializeConnection(row) : null;
+  };
+
+  const grantOfBinding = async (tx: Transaction, ownerUserId: string, binding: typeof schema.agentOauthBindings.$inferSelect): Promise<AgentOauthGrant | null> => {
+    const connection = await resolveCurrent(tx, ownerUserId, binding.connectionId);
+    return connection ? { referenceId: `${GRANT_PREFIX}${binding.id}`, clientId: binding.clientId, connection } : null;
+  };
+
+  /** The live binding this owner last made for this client, newest first; a revoked connection's binding is passed over. */
+  const heldBinding = async (tx: Transaction, ownerUserId: string, clientId: string) => {
+    const bindings = await tx.select().from(schema.agentOauthBindings)
+      .where(and(eq(schema.agentOauthBindings.ownerUserId, ownerUserId), eq(schema.agentOauthBindings.clientId, clientId)))
+      .orderBy(desc(schema.agentOauthBindings.createdAt), desc(schema.agentOauthBindings.id));
+    for (const binding of bindings) {
+      const grant = await grantOfBinding(tx, ownerUserId, binding);
+      // The owner's assistant is never a client's connection: a sign-in is not carried onto it, whatever a binding says.
+      if (grant && grant.connection.computeSource !== 'owner_assistant') return grant;
     }
-    return connection;
+    return null;
   };
 
-  const resolveFlow = async (tx: Transaction, ownerUserId: string, sessionId: string, fingerprint: string): Promise<AgentOauthGrant | null> => {
-    const [row] = await tx.select({ binding: schema.agentOauthBindings }).from(schema.agentOauthFlows)
-      .innerJoin(schema.authSessions, and(eq(schema.authSessions.id, schema.agentOauthFlows.sessionId), eq(schema.authSessions.userId, ownerUserId),
-        gt(schema.authSessions.expiresAt, new Date())))
-      .innerJoin(schema.agentOauthBindings, eq(schema.agentOauthBindings.id, schema.agentOauthFlows.bindingId))
-      .where(and(eq(schema.agentOauthFlows.ownerUserId, ownerUserId), eq(schema.agentOauthFlows.sessionId, sessionId),
-        eq(schema.agentOauthFlows.fingerprint, fingerprint), gt(schema.agentOauthFlows.expiresAt, new Date()))).for('share');
-    if (!row || row.binding.ownerUserId !== ownerUserId) return null;
-    const connection = await resolveCurrent(tx, ownerUserId, row.binding.connectionId);
-    return connection ? { referenceId: `flux-grant:${row.binding.id}`, clientId: row.binding.clientId, connection } : null;
-  };
-
-  const repository = {
-    async create(ownerUserId: string, command: CreateAgentConnectionCommand): Promise<AgentConnection | 'AGENT_NOT_FOUND'> {
-      return db.transaction(async (tx) => {
-        const [agent] = await tx.select({ workspaceId: schema.agents.workspaceId }).from(schema.agents).where(and(
-          eq(schema.agents.id, command.agentId), eq(schema.agents.ownerUserId, ownerUserId),
-          isNull(schema.agents.revokedAt))).for('share');
-        if (!agent) return 'AGENT_NOT_FOUND';
-        const action = command.scopes.some((scope) => scope === 'flux.proposal.write' || scope === 'flux.action.execute') ? 'project.write' : 'project.read';
-        for (const projectId of [...command.selectedProjectIds].sort()) {
-          const workspaceId = await policy.authorizeProject(command.agentId, projectId, action, tx, { selecting: true });
-          if (workspaceId !== agent.workspaceId) return 'AGENT_NOT_FOUND';
-        }
-        const [created] = await tx.insert(schema.agentConnections).values({
-          id: randomUUID(), workspaceId: agent.workspaceId, ownerUserId, agentId: command.agentId,
-          scopes: command.scopes,
-          name: command.name, clientDesignation: command.clientDesignation, computeSource: 'user_operated_external_client',
-        }).returning();
-        await tx.insert(schema.agentConnectionProjects).values(command.selectedProjectIds.map((projectId) => ({
-          workspaceId: agent.workspaceId, connectionId: created!.id, projectId,
-        })));
-        const connection = serialize(created!, command.selectedProjectIds);
-        await initializeAgentMcpPolicy(tx, connection, policy.initialMcpPolicy);
-        return connection;
-      });
-    },
-
+  return {
     list(ownerUserId: string): Promise<AgentConnection[]> {
-      return db.transaction(async (tx) => {
-        const rows = await tx.select().from(schema.agentConnections)
-          .where(eq(schema.agentConnections.ownerUserId, ownerUserId))
-          .orderBy(desc(schema.agentConnections.createdAt), desc(schema.agentConnections.id));
-        return Promise.all(rows.map(async (row) => serialize(row, await projects(tx, row.id))));
-      });
+      return db.transaction(async (tx) => (await tx.select().from(schema.agentConnections)
+        .where(eq(schema.agentConnections.ownerUserId, ownerUserId))
+        .orderBy(desc(schema.agentConnections.createdAt), desc(schema.agentConnections.id))).map(serializeConnection));
     },
 
     /**
@@ -171,7 +120,7 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
         const [row] = await tx.update(schema.agentConnections).set({ mayDo, updatedAt: new Date() })
           .where(and(eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId),
             isNull(schema.agentConnections.revokedAt))).returning();
-        return row ? serialize(row, await projects(tx, row.id)) : null;
+        return row ? serializeConnection(row) : null;
       });
     },
 
@@ -179,87 +128,101 @@ export function agentConnectionRepository(db: Database, policy: AgentConnectionP
       return db.transaction((tx) => resolveCurrent(tx, ownerUserId, connectionId));
     },
 
-    async chooseFlow(ownerUserId: string, sessionId: string, connectionId: string, flow: AgentOauthFlow): Promise<'SELECTED' | 'CONNECTION_NOT_FOUND' | 'ALREADY_SELECTED'> {
-      return db.transaction(async (tx) => {
-        const [session] = await tx.select({ id: schema.authSessions.id }).from(schema.authSessions).where(and(
-          eq(schema.authSessions.id, sessionId), eq(schema.authSessions.userId, ownerUserId),
-          gt(schema.authSessions.expiresAt, new Date()))).for('share');
-        const connection = session ? await resolveCurrent(tx, ownerUserId, connectionId) : null;
-        if (!connection || connection.computeSource === 'owner_assistant' || flow.expiresAt <= new Date()
-          // Partial consent (#548): a connection may grant fewer permissions than the client asks for, but not none of them.
-          || !flow.scopes.some((scope) => connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute')))
-          return 'CONNECTION_NOT_FOUND';
-        const [client] = await tx.select({ id: schema.oauthClient.clientId }).from(schema.oauthClient)
-          .where(and(eq(schema.oauthClient.clientId, flow.clientId), or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled)))).for('share');
-        if (!client) return 'CONNECTION_NOT_FOUND';
-        const key = and(eq(schema.agentOauthBindings.ownerUserId, ownerUserId), eq(schema.agentOauthBindings.connectionId, connectionId),
-          eq(schema.agentOauthBindings.clientId, flow.clientId));
-        await tx.insert(schema.agentOauthBindings).values({ id: randomUUID(), ownerUserId, connectionId, clientId: flow.clientId }).onConflictDoNothing();
-        const [binding] = await tx.select().from(schema.agentOauthBindings).where(key);
-        await tx.insert(schema.agentOauthFlows).values({ ownerUserId, sessionId, fingerprint: flow.fingerprint,
-          bindingId: binding!.id, expiresAt: flow.expiresAt }).onConflictDoNothing();
-        const [selected] = await tx.select().from(schema.agentOauthFlows).where(and(eq(schema.agentOauthFlows.ownerUserId, ownerUserId),
-          eq(schema.agentOauthFlows.sessionId, sessionId), eq(schema.agentOauthFlows.fingerprint, flow.fingerprint))).for('share');
-        return selected?.bindingId === binding!.id && selected.expiresAt > new Date() ? 'SELECTED' : 'ALREADY_SELECTED';
-      });
+    /**
+     * Lets one person's OAuth sign-in of one client be made at most once at a time: two consents of the same client by the same
+     * person (two tabs) end in one connection, not two.
+     */
+    async lockClient(tx: Transaction, ownerUserId: string, clientId: string): Promise<void> {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`flux-oauth-client:${ownerUserId}:${clientId}`}, 0))`);
     },
 
-    flowForOauth(ownerUserId: string, sessionId: string, fingerprint: string): Promise<AgentOauthGrant | null> {
-      return db.transaction((tx) => resolveFlow(tx, ownerUserId, sessionId, fingerprint));
+    /** The live connection this owner already has for this client, if any: a client that signs in again finds it (#312). */
+    held(tx: Transaction, ownerUserId: string, clientId: string): Promise<AgentOauthGrant | null> {
+      return heldBinding(tx, ownerUserId, clientId);
     },
 
-    consentForOauth(ownerUserId: string, sessionId: string, flow: AgentOauthFlow) {
-      return db.transaction(async (tx) => {
-        const grant = await resolveFlow(tx, ownerUserId, sessionId, flow.fingerprint);
-        const granted = flow.scopes.filter((scope) => scope === 'offline_access' || grant?.connection.scopes.includes(scope as 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute'));
-        if (!grant || grant.clientId !== flow.clientId || !granted.some((scope) => scope !== 'offline_access')) return null;
-        const [client] = await tx.select({ name: schema.oauthClient.name }).from(schema.oauthClient).where(and(
-          eq(schema.oauthClient.clientId, flow.clientId), or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled)))).for('share');
-        if (!client) return null;
-        const [agent] = await tx.select({ name: schema.agents.name }).from(schema.agents).where(eq(schema.agents.id, grant.connection.agentId));
-        // resolveFlow holds the central policy's locks while these names are read.
-        const selectedProjects = await tx.select({ id: schema.projects.id, name: schema.projects.name }).from(schema.projects)
-          .where(inArray(schema.projects.id, grant.connection.selectedProjectIds)).orderBy(schema.projects.id);
-        return { clientName: client.name ?? flow.clientId, scopes: granted, notGranted: flow.scopes.filter((scope) => !granted.includes(scope)), connection: grant.connection,
-          agentName: agent!.name, selectedProjects };
-      });
+    /** The connection's name only, for the consent screen of a client that already has one. */
+    heldName(ownerUserId: string, clientId: string): Promise<string | null> {
+      return db.transaction(async (tx) => (await heldBinding(tx, ownerUserId, clientId))?.connection.name ?? null);
     },
 
-    async grantForOauth(ownerUserId: string, referenceId: string, mcp = false, reach?: 'project.read'): Promise<AgentOauthGrant | null> {
+    /**
+     * Where a company's agent for a first sign-in is made: the person's own company workspace (one per instance), or null when
+     * the person is in none or is only a guest of it.
+     */
+    async personalWorkspaceId(tx: Transaction, ownerUserId: string): Promise<string | null> {
+      const [member] = await tx.select({ workspaceId: schema.workspaceMembers.workspaceId }).from(schema.workspaceMembers)
+        .where(and(eq(schema.workspaceMembers.userId, ownerUserId), ne(schema.workspaceMembers.role, 'guest')))
+        .orderBy(asc(schema.workspaceMembers.createdAt), asc(schema.workspaceMembers.workspaceId)).limit(1);
+      return member?.workspaceId ?? null;
+    },
+
+    /**
+     * The agent an earlier connection of this client left behind (disconnected, its agent still the person's): signing in again
+     * gives the same agent back, so what was assigned to it and what it did stay attributed to one identity.
+     */
+    async reusableAgent(tx: Transaction, ownerUserId: string, clientId: string, workspaceId: string): Promise<string | null> {
+      const rows = await tx.select({ agentId: schema.agentConnections.agentId }).from(schema.agentOauthBindings)
+        .innerJoin(schema.agentConnections, eq(schema.agentConnections.id, schema.agentOauthBindings.connectionId))
+        .innerJoin(schema.agents, and(eq(schema.agents.id, schema.agentConnections.agentId), eq(schema.agents.ownerUserId, ownerUserId),
+          eq(schema.agents.workspaceId, workspaceId), isNull(schema.agents.revokedAt)))
+        .where(and(eq(schema.agentOauthBindings.ownerUserId, ownerUserId), eq(schema.agentOauthBindings.clientId, clientId),
+          eq(schema.agentConnections.workspaceId, workspaceId), eq(schema.agentConnections.computeSource, 'user_operated_external_client')))
+        .orderBy(desc(schema.agentOauthBindings.createdAt), desc(schema.agentOauthBindings.id));
+      for (const { agentId } of rows) {
+        const [live] = await tx.select({ id: schema.agentConnections.id }).from(schema.agentConnections)
+          .where(and(eq(schema.agentConnections.agentId, agentId), isNull(schema.agentConnections.revokedAt))).limit(1);
+        if (!live) return agentId;
+      }
+      return null;
+    },
+
+    /**
+     * The one write of a sign-in: a connection of the person's own live agent for this client, and the binding the token's grant
+     * reference points to. Runs in the caller's transaction, so the agent made for it and the connection stand or fall together.
+     */
+    async connect(tx: Transaction, ownerUserId: string, agent: { id: string; workspaceId: string },
+      client: { clientId: string; name: string; clientDesignation: ExternalClientDesignation }): Promise<AgentOauthGrant | 'AGENT_NOT_FOUND' | 'CLIENT_NOT_FOUND'> {
+      const [owned] = await tx.select({ workspaceId: schema.agents.workspaceId }).from(schema.agents).where(and(
+        eq(schema.agents.id, agent.id), eq(schema.agents.workspaceId, agent.workspaceId), eq(schema.agents.ownerUserId, ownerUserId),
+        isNull(schema.agents.revokedAt))).for('share');
+      if (!owned) return 'AGENT_NOT_FOUND';
+      const [known] = await tx.select({ id: schema.oauthClient.clientId }).from(schema.oauthClient).where(and(
+        eq(schema.oauthClient.clientId, client.clientId), or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled)))).for('share');
+      if (!known) return 'CLIENT_NOT_FOUND';
+      const [created] = await tx.insert(schema.agentConnections).values({
+        id: randomUUID(), workspaceId: owned.workspaceId, ownerUserId, agentId: agent.id,
+        name: client.name, clientDesignation: client.clientDesignation, computeSource: 'user_operated_external_client',
+      }).returning();
+      const [binding] = await tx.insert(schema.agentOauthBindings).values({
+        id: randomUUID(), ownerUserId, connectionId: created!.id, clientId: client.clientId }).returning();
+      return { referenceId: `${GRANT_PREFIX}${binding!.id}`, clientId: client.clientId, connection: serializeConnection(created!) };
+    },
+
+    /**
+     * A token's grant: the binding its reference names, while its client is enabled and its connection is live. Everything about
+     * what the client may do is read again at each call; the grant only says who it is.
+     */
+    async grantForOauth(ownerUserId: string, referenceId: string): Promise<AgentOauthGrant | null> {
       return db.transaction(async (tx) => {
-        if (!referenceId.startsWith('flux-grant:')) {
-          // Explicit old token format: never consulted by a new browser request.
-          if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(referenceId)) return null;
-          const connection = await resolveCurrent(tx, ownerUserId, referenceId, mcp, reach);
-          return connection ? { referenceId, clientId: null, connection } : null;
-        }
-        const bindingId = referenceId.slice('flux-grant:'.length);
-        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(bindingId)) return null;
+        if (!referenceId.startsWith(GRANT_PREFIX)) return null;
+        const bindingId = referenceId.slice(GRANT_PREFIX.length);
+        if (!UUID.test(bindingId)) return null;
         const [row] = await tx.select({ binding: schema.agentOauthBindings }).from(schema.agentOauthBindings)
           .innerJoin(schema.oauthClient, eq(schema.oauthClient.clientId, schema.agentOauthBindings.clientId))
           .where(and(eq(schema.agentOauthBindings.id, bindingId), eq(schema.agentOauthBindings.ownerUserId, ownerUserId),
             or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled)))).for('share');
-        const binding = row?.binding;
-        const connection = binding ? await resolveCurrent(tx, ownerUserId, binding.connectionId, mcp) : null;
-        return binding && connection ? { referenceId, clientId: binding.clientId, connection } : null;
+        return row ? grantOfBinding(tx, ownerUserId, row.binding) : null;
       });
     },
 
-    async heldConnectionId(ownerUserId: string, clientId: string): Promise<string | null> {
+    /** The grant of a server-owned run token (F-027 A2): no client signs in for it, so the connection itself is the reference. */
+    async grantForRun(ownerUserId: string, connectionId: string): Promise<AgentOauthGrant | null> {
       return db.transaction(async (tx) => {
-        const bindings = await tx.select({ connectionId: schema.agentOauthBindings.connectionId }).from(schema.agentOauthBindings)
-          .where(and(eq(schema.agentOauthBindings.ownerUserId, ownerUserId), eq(schema.agentOauthBindings.clientId, clientId)))
-          .orderBy(desc(schema.agentOauthBindings.createdAt), desc(schema.agentOauthBindings.id));
-        for (const binding of bindings) if (await resolveCurrent(tx, ownerUserId, binding.connectionId)) return binding.connectionId;
-        return null;
+        if (!UUID.test(connectionId)) return null;
+        const connection = await resolveCurrent(tx, ownerUserId, connectionId);
+        return connection ? { referenceId: connectionId, clientId: null, connection } : null;
       });
     },
-
-  };
-  return { ...repository,
-    /** Original identity/ceiling only; the caller must apply the live policy and actual project action. */
-    grantForMcp: (ownerUserId: string, referenceId: string) => repository.grantForOauth(ownerUserId, referenceId, true),
-    /** A personal run's token (read only in #280's first step): the connection reaches a project it can read. */
-    grantForRun: (ownerUserId: string, connectionId: string) => repository.grantForOauth(ownerUserId, connectionId, true, 'project.read'),
   };
 }

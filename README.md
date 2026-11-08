@@ -167,27 +167,14 @@ To run Flux for a team on your own domain, start with the
 
 ## Connect your own agent
 
-Your own MCP client, such as Claude Code or Codex, can read the projects you choose. It runs on your
-computer with your own model account, which Flux never sees. On the `./flux demo` data:
+Your own MCP client, such as Claude Code or Codex, can work in Flux as you. It runs on your computer
+with your own model account, which Flux never sees. Signing in is one click, and nothing is set up
+first. On the `./flux demo` data:
 
-1. Sign in as Ada, the company's owner (`./flux demo` prints her password), and open the Connect page:
-   your name at the bottom left → **All settings** → **AI** → **Local co-work on this
-   computer** → **Manage**, or go straight to <http://127.0.0.1:8081/connect-agent>. 8081 is the
-   default port; use the one `./flux up` printed.
-2. **Create your personal agent.** Keep the company "Riverside Makers (demo)", give the agent a
-   name and choose **Create personal agent**. The form is already open on a first visit. The demo
-   seeds no agent.
-3. **Grant it the project.** Under **New connection**, name the connection and pick your client.
-   Next to "Community garden sensors", keep **Read and propose** and choose **Grant**; only a
-   project manager can do this, and Ada is one. Under **Allowed actions**, **Read selected project
-   context** and **Suggest a next step** are ticked.
-   - **Claude Code** asks for three permissions when it connects, but you can grant fewer: it gets
-     only the ones you ticked, and a tool outside them answers that the permission wasn't granted.
-     Keep the two.
-   - **Codex** asks for the same three and, like Claude Code, gets only the ones you ticked.
-
-   Tick the project and choose **Save connection**.
-4. **Add Flux to your client** with the commands the page shows:
+1. **Add Flux to your client** with the commands the Connect page shows. Sign in as Ada, the company's
+   owner (`./flux demo` prints her password), and open it: your name at the bottom left → **All
+   settings** → **AI** → **Local co-work on this computer**, or go straight to
+   <http://127.0.0.1:8081/connect-agent>. 8081 is the default port; use the one `./flux up` printed.
 
    ```sh
    claude mcp add --transport http flux http://127.0.0.1:8081/mcp   # Claude Code
@@ -198,23 +185,21 @@ computer with your own model account, which Flux never sees. On the `./flux demo
    ```
 
    `claude mcp login flux` needs a terminal: outside one it stops with "stdin isn't a terminal".
-   If the login times out before you choose **Allow access**, run it again. Claude Code adds the
+   If the login times out before you choose **Allow**, run it again. Claude Code adds the
    server for the folder where you run `claude mcp add` and nowhere else: start `claude` from that
    folder, or add `--scope user` to use it from any folder.
-
-5. **Consent.** The login opens Flux in your browser. Choose the saved connection, then
-   **Continue to consent**. Check that access goes to an address on your own computer and to the
-   selected project only, and choose **Allow access**. The client then says it is authenticated
-   (`claude mcp list` shows Connected).
-6. **Ask it something**, for example: "Using Flux, what is the Community garden sensors project
+2. **Allow it, once.** The login opens Flux in your browser. Check that access goes to an address on
+   your own computer and choose **Allow**. That is the whole setup: Flux makes the client's agent and its
+   connection, and the client says it is authenticated (`claude mcp list` shows Connected).
+3. **It acts as you.** The client sees and changes what you can, in the spaces where AI is on, and no
+   more. **What it may do** (Settings → AI → Local co-work) starts at **Do it and tell me**; choose
+   **Only read** or **Ask me first** any time. Deleting something and changing other people's things
+   always wait for your OK in your **Inbox**, whatever you choose, and only you can approve them.
+4. **Ask it something**, for example: "Using Flux, what is the Community garden sensors project
    working on, and what is still open?" The client reads the project's conversations, tasks and
-   docs with Flux's read tools, and answers in your client; nothing in Flux changes. Claude Code
-   asks before it uses each Flux tool the first time: allow it. From a script, `claude -p "…"
-   --allowedTools mcp__flux` gives the same approval. Replying in
-   Flux or creating tasks needs **Run approved project actions** and a standing grant: on the same
-   page, under **Standing grants** for your connection, add the grant you want. A suggestion the
-   agent sends waits in your **Inbox** under **Needs you**, with what it saw, what it makes of it, what it
-   suggests and the source; choose **Got it** or **Decline**.
+   docs with Flux's tools, and answers in your client. Claude Code asks before it uses each Flux
+   tool the first time: allow it. From a script, `claude -p "…" --allowedTools mcp__flux` gives the
+   same approval. **Disconnect** on the same page ends its access at once.
 
 The loopback `http://` address works only for a client on the same computer. A client on another
 computer needs an HTTPS address: the operator sets `FLUX_PUBLIC_ORIGIN` behind a TLS reverse proxy

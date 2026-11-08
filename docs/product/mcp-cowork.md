@@ -7,8 +7,11 @@ pending ([F-036](decisions.md#f-036--simple-ai-everything-is-an-agent)). It repl
 standing scoped autonomy (CO-1, CO-2) and its formal review gate (CO-4, see LC-3), and keeps one
 Flux task and the GitHub binding (CO-3). The earlier text is at [`a82ee012`](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/mcp-cowork.md).
 
-**Implementation.** #859 lands in steps. Step 1 (this text's waiting rules, no standing grants) is built; scopes, capability
-switches and project selection are removed in the next step.
+**Implementation.** #859 landed in two steps. Step 1 built the waiting rules and removed the standing grants. Step 2 (2026-11-07)
+removed the three OAuth scopes (one remains, `offline_access`, so a client stays connected), the 38 capability switches and the
+permissions page, and project selection; a client signs in with one click on the consent page. What a client reaches is read again
+at every call from its owner's rights, and what it may change comes only from "What it may do"
+([coordinator defaults C-19 to C-23](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
 
 A person's own Claude Code, Codex or other MCP client on their computer connects to Flux for code
 work. **It follows the same rules as their [agents](assistant.md).** The only difference is that
@@ -51,9 +54,12 @@ complicated or different").
   ([coordinator default C-18](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)).
   Taking a task, claiming or releasing it, asking a question, writing in the task's agents' thread and linking a pull request are
   its own work on a task it holds, not changes to anyone's things, so they do not wait; Only read refuses them like any change.
-  Taking back its own unused task (`flux_undo_task_creation`) does not wait either: agents have Undo on their own work, and this is
-  the same take-back. Giving a unit to another person's client (a new child unit or a transfer), and a request to it, are another person's things: they wait like a
-  task for someone else, and Approve repeats the call as the client's own while its claim is still live.
+  Taking back its own unused task (`flux_undo_task_creation`) is a deletion, so it waits like any deletion (AG-3). Giving a unit to
+  another person's client (a new child unit or a transfer), and a request to it, are another person's things: they wait like a task
+  for someone else. Approve repeats the call as the client's own, which works while the claim and session it was made under are live
+  (a 300 second lease). A later Approve cannot apply it, and says so in plain words: "The claim this was made under has ended, so it
+  can't be made now. Ask again with a live claim" (the simpler of the two options; it records that the owner's rights today are not a
+  claim the client holds).
 - Only the person prompts it, from their editor. Flux never starts, wakes or prompts a local
   client, and nothing polls a model while it is idle (F-032).
 - Its messages and changes are labelled "Ada · via Claude Code".

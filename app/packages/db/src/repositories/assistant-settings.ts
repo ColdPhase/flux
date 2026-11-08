@@ -1,10 +1,9 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, isNull, sql } from 'drizzle-orm';
-import { ASSISTANT_PLAN_MODELS, nextAgentColour, type AgentColour, type AgentConnection, type AgentMayDo, type AgentMcpPolicy, type AgentMemoryItem, type AiProviderKind, type MyAgent } from '@flux/contracts';
+import { ASSISTANT_PLAN_MODELS, nextAgentColour, type AgentColour, type AgentMayDo, type AgentMemoryItem, type AiProviderKind, type MyAgent } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 import { lockAssistantOwner } from './assistant-lock.js';
-import { assistantProjectIds, initializeAgentMcpPolicy } from './agent-mcp-policy.js';
 
 type Database = Pick<ReturnType<typeof createDatabase>['db'], 'transaction'>;
 type Transaction = Parameters<Parameters<Database['transaction']>[0]>[0];
@@ -13,7 +12,6 @@ const s = schema.assistantSettings, a = schema.agents, k = schema.agentConnectio
 export interface AssistantAuthority {
   requireWorkspace(ownerUserId: string, workspaceId: string, tx: Transaction): Promise<void>;
   requireAgent(ownerUserId: string, workspaceId: string, agentId: string, tx: Transaction): Promise<void>;
-  initialPolicy(connection: AgentConnection): AgentMcpPolicy;
 }
 
 /** What makes an agent run (F-036 AG-1): its model and where it runs, its instructions and its colour. */
@@ -76,7 +74,7 @@ export function assistantSettingsRows(tx: Transaction, authority: AssistantAutho
       if (!existing) {
         connectionId = randomUUID();
         await tx.insert(k).values({ id: connectionId, workspaceId, ownerUserId, agentId, name: agent?.name ?? 'Agent', clientDesignation: 'other',
-          computeSource: 'owner_assistant', scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] });
+          computeSource: 'owner_assistant' });
         await tx.insert(s).values({ workspaceId, ownerUserId, agentId, connectionId, instructions: setup.instructions, colour,
           engine: setup.engine, apiKeyId: setup.apiKeyId, provider: setup.provider, model: setup.model });
       } else {
@@ -84,11 +82,6 @@ export function assistantSettingsRows(tx: Transaction, authority: AssistantAutho
         await tx.update(s).set({ instructions: setup.instructions, colour, engine: setup.engine, apiKeyId: setup.apiKeyId, provider: setup.provider,
           model: setup.model, version: sql`${s.version} + 1`, updatedAt: new Date() }).where(eq(s.agentId, agentId));
       }
-      const [connection] = await tx.select().from(k).where(eq(k.id, connectionId!));
-      const policyConnection: AgentConnection = { id: connection!.id, workspaceId, ownerUserId, agentId, name: connection!.name, clientDesignation: connection!.clientDesignation,
-        computeSource: connection!.computeSource, scopes: [...connection!.scopes], selectedProjectIds: await assistantProjectIds(tx, connection!.id) ?? [],
-        mayDo: connection!.mayDo, revokedAt: null, createdAt: connection!.createdAt.toISOString() };
-      await initializeAgentMcpPolicy(tx, policyConnection, authority.initialPolicy);
       return (await get(ownerUserId, agentId))!;
     },
     /** Changes only what is given; the agent's name is the identity's (`rename`). */

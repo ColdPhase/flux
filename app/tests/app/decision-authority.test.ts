@@ -147,8 +147,7 @@ describe('decision acceptance authority (#250, O-009)', () => {
     const f = await actionScene(pool);
     const rule = expectMcp(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/decisions`, { body: { title: 'Measure at 5 lux', rationale: 'Bedroom light' } }), 201);
     expectMcp(await f.owner.request('POST', `/api/v1/decisions/${rule.id}/accept`, { body: { expectedVersion: 1 } }), 200);
-    const proposeGrant = await f.grant('decision.propose', 'plan');
-    const base = (decision: Record<string, unknown>) => ({ projectId: f.projectId, runtimeSessionId: f.runtimeSessionId, grantId: proposeGrant.id,
+    const base = (decision: Record<string, unknown>) => ({ projectId: f.projectId, runtimeSessionId: f.runtimeSessionId,
       clientCommandId: randomUUID(), peerRequestClass: 'plan', sources: [f.source], decision });
     const proposed = toolValue(await f.tool('flux_propose_decision', base({ title: 'Measure at 1 lux', rationale: 'Dark rooms', supersedes: rule.id })));
     const decisionId = String(proposed.decisionId);

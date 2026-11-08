@@ -1,4 +1,3 @@
-export type AgentScope = 'flux.context.read' | 'flux.proposal.write' | 'flux.action.execute';
 export type ExternalComputeSource = 'user_operated_claude_code' | 'user_operated_external_client' | 'owner_assistant';
 export type ExternalClientDesignation = 'claude_code' | 'codex' | 'other';
 
@@ -28,8 +27,6 @@ export interface AgentConnection {
   name: string;
   /** Owner-reported description; never proof of client or model identity. */
   clientDesignation: ExternalClientDesignation;
-  selectedProjectIds: string[];
-  scopes: AgentScope[];
   computeSource: ExternalComputeSource;
   /** "What it may do" (F-036 AG-3). */
   mayDo: AgentMayDo;
@@ -48,28 +45,19 @@ export interface AgentOauthRedirect {
   host: string;
 }
 
-/** Current owner-only display projection of a provider-signed authorization request. */
+/**
+ * Current owner-only display projection of a provider-signed authorization request (#859): who asks, where approval sends the
+ * access, and which connection of the person's the sign-in continues, if the client was connected before. The client gets the
+ * person's rights, nothing more, so there is nothing else to list.
+ */
 export interface AgentOauthConsentContext {
   /** Self-asserted by the client; never proof of who runs it. */
   clientName: string;
   /** The client_id's host when the client_id is an https URL (a Client ID Metadata Document); null for a client registered on this server. */
   clientIdHost: string | null;
   redirect: AgentOauthRedirect;
-  /** What approval grants: the client's request narrowed to this connection's permissions (partial consent, #548). */
-  scopes: string[];
-  /** Requested by the client but not part of this connection; approval leaves these out. */
-  notGranted: string[];
-  connection: AgentConnection;
-  agentName: string;
-  selectedProjects: { id: string; name: string }[];
-}
-
-export interface CreateAgentConnectionCommand {
-  agentId: string;
-  selectedProjectIds: string[];
-  scopes: AgentScope[];
-  name?: string;
-  clientDesignation?: ExternalClientDesignation;
+  /** The person's connection this client already holds ("Claude Code on this computer"), or null: signing in makes a new one. */
+  connectionName: string | null;
 }
 
 /** An agent suggestion stays separate from published project material and human decisions. */

@@ -1,5 +1,7 @@
 # O-005 — first supported agent path
 
+**Amended 2026-11-07 ([#859](https://github.com/ColdPhase/flux/issues/859), [C-19 to C-23](decisions.md)):** a local client signs in with one click and acts with its person's rights, under one "What it may do" row. The only OAuth scope is `offline_access`; there are no `flux.*` scopes to ceiling a token, no selected projects and no capability switches. The scope and selection wording below is the 2026-09 record.
+
 **Later requirement, 2026-09-30:** [F-016 local MCP co-work](mcp-cowork.md)
 extends completed #52 / PR #103 with multiple external connections per owner,
 tested Codex support, scoped domain tools and local task handoffs/review. Preserve

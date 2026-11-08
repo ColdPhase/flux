@@ -1,6 +1,7 @@
 import { AI_PROVIDERS } from '@flux/contracts';
 import { and, asc, eq, inArray, isNull, or, sql } from 'drizzle-orm';
 import * as schema from '../schema.js';
+import { connectionReaches } from './agent-reach.js';
 import type { DbExecutor } from './push.js';
 
 /**
@@ -221,16 +222,17 @@ export function assistantChangeRows(db: DbExecutor) {
       const rows = await db.select({ id: u.id, state: u.state, generation: u.generation }).from(u).where(inArray(u.id, ids));
       return new Map(rows.map((row) => [row.id, { state: row.state, generation: row.generation }]));
     },
-    /** An agent connection, as a hand-off recipient: whose it is, what it is called to its owner and whether it works in the project. */
-    async connection(id: string, projectId: string | null) {
+    /**
+     * An agent connection, as a hand-off recipient: whose it is, what it is called to its owner and whether it takes work in this space
+     * (not Only read, and its owner a non-guest member who can see the space with AI on there; `projectId` null asks only the first).
+     */
+    async connection(id: string, projectId: string | null = null) {
       const k = schema.agentConnections;
       const [row] = await db.select({ id: k.id, ownerUserId: k.ownerUserId, computeSource: k.computeSource, revokedAt: k.revokedAt, name: k.name,
-        clientDesignation: k.clientDesignation, scopes: k.scopes }).from(k).where(eq(k.id, id));
+        clientDesignation: k.clientDesignation, mayDo: k.mayDo }).from(k).where(eq(k.id, id));
       if (!row) return null;
-      const [selected] = projectId ? await db.select({ projectId: schema.agentConnectionProjects.projectId }).from(schema.agentConnectionProjects)
-        .where(and(eq(schema.agentConnectionProjects.connectionId, id), eq(schema.agentConnectionProjects.projectId, projectId))) : [];
       const label = row.clientDesignation === 'codex' ? 'Codex' : row.clientDesignation === 'claude_code' ? 'Claude Code' : row.name;
-      return { ...row, label, selected: !!selected && row.scopes.includes('flux.action.execute') };
+      return { ...row, label, usable: row.mayDo !== 'read' && (!projectId || await connectionReaches(db, row.id, projectId)) };
     },
     async names(ids: string[]): Promise<Map<string, string>> {
       const unique = [...new Set(ids.filter(Boolean))];

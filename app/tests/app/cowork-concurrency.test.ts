@@ -60,16 +60,15 @@ async function threeConnections() {
   const codex = await f.connect(f.hubert, 'Codex'), hubertClaude = await f.connect(f.hubert, 'Hubert Claude'), marekClaude = await f.connect(f.marek, 'Marek Claude');
   return { f, codex, hubertClaude, marekClaude };
 }
-const takeCall = (c: CoworkConn, grantId: string, taskId: string, version: number, key = 'take') => c.call('flux_create_unit',
-  { ...c.base(grantId, 'execute'), taskId, unitKey: key, expectedTaskVersion: version, assignmentConnectionId: c.connectionId, parent: null });
+const takeCall = (c: CoworkConn, taskId: string, version: number, key = 'take') => c.call('flux_create_unit',
+  { ...c.base('execute'), taskId, unitKey: key, expectedTaskVersion: version, assignmentConnectionId: c.connectionId, parent: null });
 
 test('three connections take one task at the same time: exactly one wins, the others are refused with nothing debited or created', async () => {
   const { f, codex, hubertClaude, marekClaude } = await threeConnections();
   const all = [codex, hubertClaude, marekClaude];
   for (let round = 0; round < 3; round += 1) {
     const t = await f.task(`Contested task ${round}`);
-    const grants = await Promise.all(all.map((c) => c.standing('cowork.unit.create', t.id, 'execute')));
-    const replies = await Promise.all(all.map((c, index) => takeCall(c, grants[index]!.id, t.id, t.version)));
+    const replies = await Promise.all(all.map((c) => takeCall(c, t.id, t.version)));
     assert.equal(wins(replies).length, 1, `round ${round}: exactly one connection takes the task`);
     assert.deepEqual(codes(errors(replies)), ['COWORK_UNIT_TAKEN', 'COWORK_UNIT_TAKEN']);
     const open = (await pool.query("SELECT assignment_connection_id AS assignee FROM cowork_units WHERE work_id = $1 AND role = 'execute' AND state NOT IN ('completed','stopped')", [t.id])).rows;
@@ -85,8 +84,7 @@ test('two sessions of one connection claim a unit at once: one lease; after it l
   const t = await f.task('Native outcome A');
   const held = await f.take(codex, t);
   const unitId = await f.openUnit(codex, held, t, 'execute', marekClaude, 'help');
-  const grant = await marekClaude.standing('cowork.claim', unitId, 'execute');
-  const claim = (session: typeof second) => marekClaude.call('flux_claim_unit', { ...session.base(grant.id, 'execute'), unitId, expectedVersion: 1 });
+  const claim = (session: typeof second) => marekClaude.call('flux_claim_unit', { ...session.base('execute'), unitId, expectedVersion: 1 });
   const replies = await Promise.all([claim(marekClaude), claim(second)]);
   assert.equal(wins(replies).length, 1, 'exactly one session holds the lease');
   const loserCode = failureCode(errors(replies)[0]!);
@@ -98,15 +96,13 @@ test('two sessions of one connection claim a unit at once: one lease; after it l
 
   // The lease lapses; the other session takes over with a higher generation, and the first session's fence no longer holds.
   await pool.query("UPDATE cowork_units SET lease_expires_at = clock_timestamp() - interval '1 second' WHERE id = $1", [unitId]);
-  const takeover = await marekClaude.call('flux_claim_unit', { ...loserSession.base(grant.id, 'execute'), unitId, expectedVersion: (await f.unit(unitId)).version });
+  const takeover = await marekClaude.call('flux_claim_unit', { ...loserSession.base('execute'), unitId, expectedVersion: (await f.unit(unitId)).version });
   const next = toolValue(takeover) as { generation: number; version: number; lease: { id: string } };
   assert.equal(next.generation, 2);
-  const renew = await marekClaude.standing('cowork.renew', unitId, 'execute');
-  const stale = await marekClaude.call('flux_renew_unit', { ...winnerSession.base(renew.id, 'execute'), unitId, expectedVersion: first.version,
+  const stale = await marekClaude.call('flux_renew_unit', { ...winnerSession.base('execute'), unitId, expectedVersion: first.version,
     generation: first.generation, leaseId: first.lease.id });
   assert.ok(['COWORK_CLAIM_LOST', 'COWORK_VERSION_CONFLICT'].includes(failureCode(stale)!), 'the old generation cannot renew');
-  const complete = await marekClaude.standing('cowork.unit.complete', unitId, 'execute');
-  const staleComplete = await marekClaude.call('flux_complete_unit', { ...winnerSession.base(complete.id, 'execute'), unitId, expectedVersion: first.version,
+  const staleComplete = await marekClaude.call('flux_complete_unit', { ...winnerSession.base('execute'), unitId, expectedVersion: first.version,
     generation: first.generation, leaseId: first.lease.id, outcome: { type: 'material', id: f.material.materialId, version: 1 } });
   assert.ok(['COWORK_CLAIM_LOST', 'COWORK_VERSION_CONFLICT'].includes(failureCode(staleComplete)!), 'the old generation cannot complete');
   assert.deepEqual([(await f.unit(unitId)).state, (await f.unit(unitId)).generation], ['claimed', 2]);
@@ -118,22 +114,19 @@ test('two transfers of one unit at once: exactly one wins, the generation advanc
   const marekClaude = await f.connect(f.hubert, 'Hubert Second');
   const t = await f.task('Handed over');
   const held = await f.take(codex, t);
-  const toMarek = await codex.standing('cowork.unit.transfer', held.unitId, 'execute');
-  const toHubert = await codex.standing('cowork.unit.transfer', held.unitId, 'execute');
-  const renew = await codex.standing('cowork.renew', held.unitId, 'execute');
   const fence = { unitId: held.unitId, expectedVersion: held.claim.version, generation: held.claim.generation, leaseId: held.claim.lease.id };
   const before = await f.unit(held.unitId);
   const replies = await Promise.all([
-    codex.call('flux_transfer_unit', { ...codex.base(toMarek.id, 'execute'), ...fence, assignmentConnectionId: marekClaude.connectionId }),
-    codex.call('flux_transfer_unit', { ...codex.base(toHubert.id, 'execute'), ...fence, assignmentConnectionId: hubertClaude.connectionId })]);
+    codex.call('flux_transfer_unit', { ...codex.base('execute'), ...fence, assignmentConnectionId: marekClaude.connectionId }),
+    codex.call('flux_transfer_unit', { ...codex.base('execute'), ...fence, assignmentConnectionId: hubertClaude.connectionId })]);
   assert.equal(wins(replies).length, 1, 'one transfer wins');
   assert.ok(['COWORK_VERSION_CONFLICT', 'COWORK_CLAIM_LOST', 'COWORK_UNIT_NOT_FOUND'].includes(failureCode(errors(replies)[0]!)!), `the other meets the fence (${failureCode(errors(replies)[0]!)})`);
   const winner = !failed(replies[0]!) ? marekClaude : hubertClaude;
   const after = await f.unit(held.unitId);
   assert.deepEqual([after.assignee, after.state, after.generation, after.version, after.from], [winner.connectionId, 'pending', before.generation + 1, before.version + 1, codex.connectionId]);
   // The former holder can neither renew nor transfer again: its claim, and then its assignment, are gone.
-  assert.ok(failed(await codex.call('flux_renew_unit', { ...codex.base(renew.id, 'execute'), ...fence })));
-  assert.ok(failed(await codex.call('flux_transfer_unit', { ...codex.base(toHubert.id, 'execute'), ...fence, assignmentConnectionId: hubertClaude.connectionId })));
+  assert.ok(failed(await codex.call('flux_renew_unit', { ...codex.base('execute'), ...fence })));
+  assert.ok(failed(await codex.call('flux_transfer_unit', { ...codex.base('execute'), ...fence, assignmentConnectionId: hubertClaude.connectionId })));
   assert.deepEqual([(await f.unit(held.unitId)).assignee, (await f.unit(held.unitId)).generation], [winner.connectionId, before.generation + 1]);
 });
 
@@ -142,17 +135,14 @@ test('a received unit is declined and claimed at the same time, in both orders: 
   const setup = async (title: string) => {
     const t = await f.task(title);
     const held = await f.take(codex, t);
-    const transfer = await codex.standing('cowork.unit.transfer', held.unitId, 'execute');
     // Marek's client is another person's: the transfer waits for Codex's owner, whose Approve hands the unit over.
-    assert.ok(waits(await codex.call('flux_transfer_unit', { ...codex.base(transfer.id, 'execute'), unitId: held.unitId, expectedVersion: held.claim.version,
+    assert.ok(waits(await codex.call('flux_transfer_unit', { ...codex.base('execute'), unitId: held.unitId, expectedVersion: held.claim.version,
       generation: held.claim.generation, leaseId: held.claim.lease.id, assignmentConnectionId: marekClaude.connectionId })));
     await approveWaiting(pool, f.hubert.browser, codex.connectionId, 'cowork.unit.transfer');
     const pending = await f.unit(held.unitId);
     const second = await marekClaude.extraSession();
-    const claimGrant = await marekClaude.standing('cowork.claim', held.unitId, 'execute');
-    const declineGrant = await marekClaude.standing('cowork.unit.decline', held.unitId, 'execute');
-    return { held, pending, claimGrant, declineGrant, claim: () => marekClaude.call('flux_claim_unit', { ...second.base(claimGrant.id, 'execute'), unitId: held.unitId, expectedVersion: pending.version }),
-      decline: () => marekClaude.call('flux_decline_unit', { ...marekClaude.base(declineGrant.id, 'execute'), unitId: held.unitId, expectedVersion: pending.version }) };
+    return { held, pending, claim: () => marekClaude.call('flux_claim_unit', { ...second.base('execute'), unitId: held.unitId, expectedVersion: pending.version }),
+      decline: () => marekClaude.call('flux_decline_unit', { ...marekClaude.base('execute'), unitId: held.unitId, expectedVersion: pending.version }) };
   };
 
   // Decline first: the unit goes back, paused, to its prior assignee; the claim finds it no longer assigned.
@@ -200,12 +190,10 @@ test('a cancel and the recipient\'s claim or answer meet on the request row, in 
   const t = await f.task('Native outcome A');
   const review = await f.startReview(codex, marekClaude, t);
   const target = { type: 'work', id: t.id, version: t.version };
-  const claimGrant = await marekClaude.standing('cowork.request.claim', review.reviewUnit, 'review');
-  const respond = await marekClaude.standing('cowork.request.respond', review.reviewUnit, 'review');
   const fence = (requestId: string, version: number) => ({ unitId: review.reviewUnit, generation: review.reviewClaim.generation,
     leaseId: review.reviewClaim.lease.id, requestId, expectedRequestVersion: version });
-  const claim = (requestId: string) => marekClaude.call('flux_claim_request', { ...marekClaude.base(claimGrant.id, 'review'), ...fence(requestId, 1) });
-  const resolve = (requestId: string, version: number) => marekClaude.call('flux_resolve_request', { ...marekClaude.base(respond.id, 'review'), ...fence(requestId, version),
+  const claim = (requestId: string) => marekClaude.call('flux_claim_request', { ...marekClaude.base('review'), ...fence(requestId, 1) });
+  const resolve = (requestId: string, version: number) => marekClaude.call('flux_resolve_request', { ...marekClaude.base('review'), ...fence(requestId, version),
     evidence: { type: 'material', id: f.material.materialId, version: 1 }, verdict: 'passed' });
   const cancel = (requestId: string, version: number) => f.marek.browser.request('POST', `/api/v1/work/${t.id}/coordination/requests/${requestId}/cancel`, { body: { expectedVersion: version } });
   const fresh = async (key: string) => String(toolValue(await review.send(key, target)).requestId);
@@ -227,13 +215,13 @@ test('a cancel and the recipient\'s claim or answer meet on the request row, in 
 
   // An answer first: the verdict is recorded and the cancel is refused as closed; a cancel first: the answer records no verdict.
   const r3 = await fresh('r3');
-  toolValue(await marekClaude.call('flux_claim_request', { ...marekClaude.base(claimGrant.id, 'review'), ...fence(r3, 1) }));
+  toolValue(await marekClaude.call('flux_claim_request', { ...marekClaude.base('review'), ...fence(r3, 1) }));
   const [answered, cancelledLate] = await ordered({ table: 'cowork_requests', key: 'id', id: r3 }, () => resolve(r3, 2), () => cancel(r3, 2));
   assert.equal(toolValue(answered).state, 'resolved');
   assert.deepEqual([cancelledLate.status, (cancelledLate.json as { code: string }).code], [409, 'COWORK_REQUEST_CLOSED']);
   assert.equal(await verdicts(), 1);
   const r4 = await fresh('r4');
-  toolValue(await marekClaude.call('flux_claim_request', { ...marekClaude.base(claimGrant.id, 'review'), ...fence(r4, 1) }));
+  toolValue(await marekClaude.call('flux_claim_request', { ...marekClaude.base('review'), ...fence(r4, 1) }));
   const [cancelledFirst, answeredLate] = await ordered({ table: 'cowork_requests', key: 'id', id: r4 }, () => cancel(r4, 2), () => resolve(r4, 2));
   assert.equal(cancelledFirst.status, 200);
   assert.equal(failureCode(answeredLate), 'COWORK_REQUEST_CLOSED');

@@ -79,8 +79,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     await rows.insert({ id: randomUUID(), workspaceId: run.workspaceId, projectId: run.projectId, runId: run.id, ownerUserId: run.ownerUserId, agentId: run.agentId,
       clientCommandId, fingerprint: createHash('sha256').update(`agent-task:change:${key}`).digest('hex'), tool: 'flux_task_post', operation: 'conversation.reply',
       objectType: 'message', objectId: message.id, objectTitle: title, state: 'applied', authority: 'owner_request', preparedCommand: { tool: 'flux_task_post', args: {} },
-      // An applied change is never replayed, so no policy version is waited on.
-      policyVersion: 0, receipt: { undo, runId: run.id, ownerUserId: run.ownerUserId, agentId: run.agentId }, createdAt: new Date() });
+      receipt: { undo, runId: run.id, ownerUserId: run.ownerUserId, agentId: run.agentId }, createdAt: new Date() });
   }
 
   /**

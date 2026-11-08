@@ -13,13 +13,14 @@ import type { FluxAuth } from '../../apps/server/src/identity/auth.js';
 import { assistantScene, changesOf, human, text, type AssistantScene } from './support/assistant-scene.js';
 import { db, pool } from './support/db.js';
 import { publicOrigin } from './support/http.js';
-import { beginOauth, expect, mcp, oauthToken, toolValue } from './support/mcp.js';
+import { beginOauth, consentContext, mcp, oauthToken, toolValue } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
 import { dispatchProactiveComparison } from '../../apps/worker/src/proactive-comparison/dispatch.js';
 import type { ComparisonProvider } from '@flux/core';
 import { readFileSync } from 'node:fs';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
+import { createConnection, oauthTokenFor, registerOauthClient } from './support/mcp-actions.js';
 
 // AG-10 (F-029 S1 rows of the AC-5 matrix, #614; per space under F-037), each an AI-off case with its control.
 // Push and e-mail of AI-origin notifications created before the block; the morning summary's facts, anchor and settle across spaces;
@@ -34,17 +35,16 @@ const fakeBoss = () => {
   return { boss, sent };
 };
 
-async function externalConnection(scene: AssistantScene, scopes = ['flux.context.read'], selectedProjectIds = [scene.place.id]) {
-  const connection = expect(await scene.owner.browser.request('POST', '/api/v1/agent-connections',
-    { body: { agentId: scene.agentId, selectedProjectIds, scopes } }), 201);
+async function externalConnection(scene: AssistantScene) {
+  const connection = await createConnection(pool, scene.owner.browser, { agentId: scene.agentId });
   const clientId = `flux-test-${randomUUID()}`;
   const redirectUri = 'http://127.0.0.1:19737/callback';
   await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types,
     response_types, scopes, require_pkce, created_at, updated_at) VALUES ($1, $2, 'Flux HTTP test client', $3, 'none', $4, $5, $6, true, now(), now())`,
-  [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], [...scopes, 'offline_access']]);
+  [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['offline_access']]);
   await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())', [randomUUID(), clientId, `${publicOrigin}/mcp`]);
-  const scope = `${scopes.join(' ')} offline_access`;
-  const tokens = await oauthToken(scene.owner.browser, String(connection.id), clientId, redirectUri, await beginOauth(scene.owner.browser, clientId, redirectUri, { scope }));
+  const scope = 'offline_access';
+  const tokens = await oauthTokenFor(pool, scene.owner.browser, String(connection.id), clientId, redirectUri);
   return { connectionId: String(connection.id), clientId, redirectUri, scope, accessToken: tokens.access_token };
 }
 
@@ -220,20 +220,17 @@ describe('space AI switch: the remaining surfaces', () => {
     }
   });
 
-  test('connecting a client is not a space\'s business: the authorize step, consent context and held connection work while a space\'s AI is off', async () => {
-    const external = await externalConnection(scene);
-    const started = await beginOauth(scene.owner.browser, external.clientId, external.redirectUri, { scope: external.scope });
-    expect(await scene.owner.browser.request('POST', `/api/v1/agent-connections/${external.connectionId}/select-for-oauth`, { body: { oauth_query: started.oauthQuery } }), 204);
-    const held = () => scene.owner.browser.request('GET', `/api/v1/agent-oauth/held-connection?oauth_query=${encodeURIComponent(started.oauthQuery)}`);
+  test('connecting a client is not a space\'s business: the consent page and Allow work while a space\'s AI is off', async () => {
+    const { clientId, redirectUri } = await registerOauthClient(pool);
     await setSpaceAi(scene.place.id, 'blocked');
-    assert.equal((await held()).status, 200, 'the held connection is found');
-    const continued = await scene.owner.browser.request('POST', '/api/auth/oauth2/continue', { body: { postLogin: true, oauth_query: started.oauthQuery } });
-    assert.equal(continued.status, 200, `the authorize step continues: ${continued.text}`);
+    const started = await beginOauth(scene.owner.browser, clientId, redirectUri);
+    assert.equal((await consentContext(scene.owner.browser, started)).clientName, 'Flux HTTP test client', 'the consent page works');
+    assert.ok((await oauthToken(scene.owner.browser, clientId, redirectUri, started)).access_token, 'Allow signs the client in');
   });
 
   test('flux_list_contexts leaves out a space whose AI is off and still lists the client\'s other spaces', async () => {
     const second = await project(scene.owner, scene.ws.id, 'Second room', 'restricted');
-    const { accessToken } = await externalConnection(scene, ['flux.context.read'], [scene.place.id, second.id]);
+    const { accessToken } = await externalConnection(scene);
     let id = 70;
     const listed = async () => (toolValue((await mcp(accessToken, id += 1, 'tools/call', { name: 'flux_list_contexts', arguments: {} })).message).projects as { id: string }[]).map((row) => row.id).sort();
     assert.deepEqual(await listed(), [scene.place.id, second.id].sort(), 'control: both are listed while AI is on');

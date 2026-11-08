@@ -104,9 +104,8 @@ test('live native delete Undo retains human project provenance and edit Undo ret
   await app.register(editingRoutes,{sessions,authority:null,maps:authority,outputBudget:apiEditingOutputBudget});
   try {
     const conversation=expectStatus(await f.owner.request('POST',`/api/v1/projects/${f.projectId}/conversations`,{body:{body:'Human-authored source',clientMessageId:randomUUID()}}),201) as {id:string;messages:{id:string}[]};
-    const replyGrant=await f.grant('conversation.reply','execute');
-    const agentMessage=toolValue(await f.tool('flux_reply_in_conversation',{projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,grantId:replyGrant.id,
-      peerRequestClass:'execute',clientCommandId:randomUUID(),conversationId:conversation.id,message:{body:'Agent-authored source'}})) as {messageId:string};
+
+    const agentMessage=toolValue(await f.tool('flux_reply_in_conversation',{projectId:f.projectId,runtimeSessionId:f.runtimeSessionId,peerRequestClass:'execute',clientCommandId:randomUUID(),conversationId:conversation.id,message:{body:'Agent-authored source'}})) as {messageId:string};
     const sketch=expectStatus(await f.owner.request('POST',`/api/v1/workspaces/${f.workspaceId}/sketches`,{body:{title:'Source Undo',scope:'project',projectId:f.projectId}}),201) as Sketch;
     const head=await bootstrap(backend,ownerSession,sketch.id);assert.equal(head.sequence,0);
     const add=async(sourceProjectMessageId:string,text:string,x:number)=>{

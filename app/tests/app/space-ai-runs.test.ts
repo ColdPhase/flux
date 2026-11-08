@@ -6,9 +6,10 @@ import { personalRunTokenRows } from '@flux/db';
 import { assistantScene, human, type AssistantScene } from './support/assistant-scene.js';
 import { db, pool } from './support/db.js';
 import { apiUrl, publicOrigin } from './support/http.js';
-import { beginOauth, expect, mcp, oauthToken } from './support/mcp.js';
+import { mcp } from './support/mcp.js';
 import { expectStatus } from './support/people.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
+import { createConnection, oauthTokenFor } from './support/mcp-actions.js';
 
 // AG-10 (F-029 S1, #614; per space under F-037): already-issued tokens, existing connections and queued runs never override the
 // block. A request of an external MCP connection bound to the space and a personal run's token are refused before any tool list;
@@ -29,17 +30,15 @@ describe('space AI switch: tokens, connections and runs', () => {
 
   before(async () => {
     scene = await assistantScene('ai-runs');
-    const connection = expect(await scene.owner.browser.request('POST', '/api/v1/agent-connections',
-      { body: { agentId: scene.agentId, selectedProjectIds: [scene.place.id], scopes: ['flux.context.read'] } }), 201);
+    const connection = await createConnection(pool, scene.owner.browser, { agentId: scene.agentId });
     connectionId = String(connection.id);
     clientId = `flux-test-${randomUUID()}`;
     const redirectUri = 'http://127.0.0.1:19737/callback';
     await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types,
       response_types, scopes, require_pkce, created_at, updated_at) VALUES ($1, $2, 'Flux HTTP test client', $3, 'none', $4, $5, $6, true, now(), now())`,
-    [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['flux.context.read', 'offline_access']]);
+    [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['offline_access']]);
     await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())', [randomUUID(), clientId, `${publicOrigin}/mcp`]);
-    const tokens = await oauthToken(scene.owner.browser, String(connection.id), clientId, redirectUri,
-      await beginOauth(scene.owner.browser, clientId, redirectUri, { scope: 'flux.context.read offline_access' }));
+    const tokens = await oauthTokenFor(pool, scene.owner.browser, String(connection.id), clientId, redirectUri);
     accessToken = tokens.access_token; refreshToken = tokens.refresh_token;
   });
   beforeEach(async () => { await ensureSpaceAiAllowed(scene.place.id); });

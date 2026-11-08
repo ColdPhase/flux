@@ -17,8 +17,8 @@
 export type TableClass = 'content' | 'account' | 'system' | 'ai' | 'refused';
 
 const ai = [
-  'agent_command_receipts', 'agent_connection_mcp_policies', 'agent_connection_mcp_projects', 'agent_connection_projects', 'agent_connections',
-  'agent_memory_items', 'agent_oauth_bindings', 'agent_oauth_flows', 'agent_oauth_selections', 'agent_playbook_acknowledgments',
+  'agent_command_receipts', 'agent_connections',
+  'agent_memory_items', 'agent_oauth_bindings', 'agent_playbook_acknowledgments',
   'agent_proposals', 'agent_questions', 'agent_runtime_auth_admission', 'agent_runtime_auth_operations', 'agent_runtime_bindings',
   'agent_runtime_client_history', 'agent_runtime_connections', 'agent_runtime_console_nonces', 'agent_runtime_operator_statements',
   'agent_runtime_sessions', 'agent_runtime_slots', 'agent_stops', 'agent_pauses', 'agent_thread_artifact_boundaries',

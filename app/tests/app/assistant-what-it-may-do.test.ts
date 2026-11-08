@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  agentConnectionPath, agentMcpPolicyPath, assistantChangeActionPath, assistantChangeLine, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunChangesActionPath, assistantRunChangesPath, docPath, NEEDS_YOU_PATH,
-  type AgentConnection, type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone, type Conversation, type NeedsYouResponse,
+  agentConnectionPath, assistantChangeActionPath, assistantChangeLine, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunChangesActionPath, assistantRunChangesPath, docPath, NEEDS_YOU_PATH,
+  type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone, type Conversation, type NeedsYouResponse,
 } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
@@ -260,14 +260,13 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     const theirs = await scene.task(scene.peer, 'Jonas keeps this');
     const other = (expectStatus(await scene.owner.browser.request('POST', `/api/v1/workspaces/${scene.ws.id}/agents`, { body: { name: 'Ada desk', owner: 'self' } }), 201) as { id: string }).id;
     const client = await agentConnection(pool, scene.owner.browser, other, [scene.place.id]);
-    const allowed = await client.grant('work.create', 'execute');
     const live = await scene.liveRun();
     await live.call('flux_update_task', { workId: theirs.id, expectedVersion: theirs.version, changes: { title: 'Saved before the owner left' } });
     const [saved] = await changesOf(live.runId);
     await keptOut(async () => {
       assert.ok(refused(await live.call('flux_create_task', { task: { title: 'After the owner lost it' } })), 'the run cannot write');
       assert.ok(refused(await live.call('flux_get_conversation', { conversationId: scene.thread.id })), 'nor read');
-      assert.ok(refused(await client.raw('flux_create_task', { projectId: scene.place.id, runtimeSessionId: client.runtimeSessionId, grantId: allowed.id, clientCommandId: randomUUID(),
+      assert.ok(refused(await client.raw('flux_create_task', { projectId: scene.place.id, runtimeSessionId: client.runtimeSessionId, clientCommandId: randomUUID(),
         peerRequestClass: 'execute', sources: [], task: { title: 'After the owner lost it' } })), 'the client\'s standing grant is no way round');
       assert.equal((await decide(scene.owner, saved!.id, 'apply')).status, 403);
     });
@@ -321,8 +320,7 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     const mine = await own.task(own.owner, 'Ada wires the rig', rig.id);
     const [first, second] = [await own.task(own.peer, 'Jonas aligns the rig', rig.id), await own.task(own.peer, 'Jonas cleans the rig', rig.id)];
     const client = await agentConnection(pool, own.owner.browser, await newAgent('Ada desk'), [rig.id]);
-    const allowed = await client.grant('work.create', 'execute');
-    const clientCreate = (title: string) => client.raw('flux_create_task', { projectId: rig.id, runtimeSessionId: client.runtimeSessionId, grantId: allowed.id, clientCommandId: randomUUID(),
+    const clientCreate = (title: string) => client.raw('flux_create_task', { projectId: rig.id, runtimeSessionId: client.runtimeSessionId, clientCommandId: randomUUID(),
       peerRequestClass: 'execute', sources: [], task: { title } });
     assert.ok(!refused(await clientCreate('Client before the change')), 'it works while Ada is a member');
     const saved = await own.liveRun(thread);
@@ -505,23 +503,19 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     assert.match(text((await live.call('flux_rename_map', { mapId: theirs.id, expectedVersion: renamed.version, title: 'Overwrites Jonas' })).message), /^Waiting for /);
   });
 
-  test('a restricted space its owner cannot see stays out of every payload: the connection list and the permissions route', async () => {
+  test('a restricted space its owner cannot see stays out of every payload, and the connection list holds no project at all', async () => {
     const own = await assistantScene('wr');
-    const { lab, rig } = await laboratory(own);
+    const { lab, rig, newAgent } = await laboratory(own);
     const hidden = await createProject(own.peer, lab.id, 'Jonas only', 'restricted');
     assert.equal((await own.owner.browser.request('GET', `/api/v1/projects/${hidden.id}`)).status, 404, 'she cannot see it');
-    const connections = expectStatus(await own.owner.browser.request('GET', '/api/v1/agent-connections'), 200) as unknown as AgentConnection[];
-    const assistant = connections.find((connection) => connection.computeSource === 'owner_assistant' && connection.workspaceId === lab.id)!;
-    assert.deepEqual(assistant.selectedProjectIds, [rig.id], 'only what she can see');
-    const policy = expectStatus(await own.owner.browser.request('GET', agentMcpPolicyPath(assistant.id)), 200) as { projects: { id: string }[]; connection: AgentConnection; policy: { selectedProjectIds: string[] } };
-    assert.deepEqual(policy.projects.map((project) => project.id), [rig.id]);
-    assert.deepEqual(policy.connection.selectedProjectIds, [rig.id]);
-    assert.deepEqual(policy.policy.selectedProjectIds, [rig.id]);
-    const raw = JSON.stringify([connections, policy]);
-    assert.ok(!raw.includes(hidden.id), 'its id appears nowhere');
-    // Added to the space, she reaches it at once: nothing is stored for the assistant.
+    const client = await agentConnection(pool, own.owner.browser, await newAgent('Ada desk'), [rig.id]);
+    const listed = async () => (toolValue(await client.tool('flux_list_contexts', {})).projects as { id: string }[]).map((project) => project.id);
+    assert.deepEqual(await listed(), [rig.id], 'only what she can see');
+    const connections = expectStatus(await own.owner.browser.request('GET', '/api/v1/agent-connections'), 200);
+    assert.ok(!JSON.stringify(connections).includes(hidden.id), 'its id appears nowhere');
+    assert.ok(!JSON.stringify(connections).includes('selectedProjectIds'), 'no connection carries a project list');
+    // Added to the space, she reaches it at once: nothing is stored for the client.
     await grant(own.peer, hidden.id, own.owner, 'contributor');
-    const after = expectStatus(await own.owner.browser.request('GET', '/api/v1/agent-connections'), 200) as unknown as AgentConnection[];
-    assert.deepEqual(after.find((connection) => connection.id === assistant.id)!.selectedProjectIds.sort(), [rig.id, hidden.id].sort());
+    assert.deepEqual((await listed()).sort(), [rig.id, hidden.id].sort());
   });
 });

@@ -4,14 +4,13 @@ import { test } from 'node:test';
 import { agentOrientationUseCases, DomainError, normalizeAgentCheckpoint, type AgentConnectionContext } from '@flux/core';
 
 const workspaceId = randomUUID(), projectId = randomUUID();
-const context: AgentConnectionContext = { connectionId: randomUUID(), ownerUserId: randomUUID(), agentId: randomUUID(),
-  scopes: ['flux.context.read'], selectedProjectIds: [projectId], computeSource: 'user_operated_external_client' };
+const context: AgentConnectionContext = { connectionId: randomUUID(), ownerUserId: randomUUID(), agentId: randomUUID(), computeSource: 'user_operated_external_client' };
 
-test('orientation rejects unselected projects and malformed/duplicate checkpoints before querying metadata', async () => {
+test('orientation rejects malformed project ids and malformed/duplicate checkpoints before querying metadata', async () => {
   let queried = false;
   const reads = agentOrientationUseCases({ list: async () => { queried = true; return { items: [], total: 0 }; },
     find: async () => { queried = true; return null; } });
-  await assert.rejects(reads.list(context, { workspaceId, projectId: randomUUID() }, 'work'),
+  await assert.rejects(reads.list(context, { workspaceId, projectId: 'not-a-project-id' }, 'work'),
     (error: unknown) => error instanceof DomainError && error.code === 'PROJECT_NOT_FOUND');
   for (const known of [[{ kind: 'conversation', id: randomUUID(), sequence: -1 }],
     [{ kind: 'work', id: randomUUID(), version: 2_147_483_648 }]]) {

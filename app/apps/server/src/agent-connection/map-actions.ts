@@ -23,7 +23,7 @@ const thought = { text: z.string().min(1).max(SKETCH_LIMITS.text), x: coordinate
  */
 export function registerAgentMapActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
   const execute = nativeActionExecutor(db, claims);
-  const register = (operation: AgentOperation) => tools.forScope('flux.action.execute', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
+  const register = (operation: AgentOperation) => tools.forAccess('write', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
 
   register('map.create').registerTool('flux_create_map', {

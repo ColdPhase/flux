@@ -62,8 +62,7 @@ test('#479: a linked PR event reaches the task\'s current holder once, echoes ar
   const hold = async (who: Person, held: Awaited<ReturnType<typeof makeAgent>>, title: string) => {
     const item = expectStatus(await who.browser.request('POST', `/api/v1/projects/${p.id}/work`, { body: { title } }), 201) as WorkItem;
     const run = { projectId: p.id, runtimeSessionId: held.connected.runtimeSessionId, peerRequestClass: 'execute' };
-    const create = await held.connected.grant('cowork.unit.create', 'execute', 5, item.id);
-    const unit = toolValue(await held.connected.tool('flux_create_unit', { ...run, grantId: create.id, clientCommandId: randomUUID(), taskId: item.id, unitKey: 'take',
+    const unit = toolValue(await held.connected.tool('flux_create_unit', { ...run, clientCommandId: randomUUID(), taskId: item.id, unitKey: 'take',
       expectedTaskVersion: item.version, assignmentConnectionId: held.connected.connectionId, parent: null })) as { unitId: string };
     expectStatus(await who.browser.request('PATCH', `/api/v1/work/${item.id}`, { body: { owner: { kind: 'agent', id: held.agent.id }, status: 'in_progress' },
       headers: { 'if-match': `"${item.version}"` } }), 200);

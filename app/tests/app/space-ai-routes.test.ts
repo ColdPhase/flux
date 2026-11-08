@@ -37,7 +37,7 @@ async function objectsOf(scene: AssistantScene): Promise<Objects> {
     // Test fixture only: foreign keys are not what these rows exercise (only their space is read).
     await client.query(`SET LOCAL session_replication_role = replica`);
     await client.query(`INSERT INTO assistant_changes (id, workspace_id, project_id, run_id, owner_user_id, agent_id, client_command_id, fingerprint, tool, operation,
-      object_type, state, policy_version) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'flux_update_task', 'work.update', 'work', 'skipped', 1)`,
+      object_type, state) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'flux_update_task', 'work.update', 'work', 'skipped')`,
     [ids.change, ws.id, place.id, run.run.id, owner.id, agentId, randomUUID(), createHash('sha256').update(ids.change).digest('hex')]);
     await client.query(`INSERT INTO assistant_proposals (id, workspace_id, project_id, run_id, owner_user_id, fact, interpretation, change_type, result_title, result_finding)
       VALUES ($1, $2, $3, $4, $5, 'Fact', 'Meaning', 'result', 'Result', 'negative')`, [ids.proposal, ws.id, place.id, randomUUID(), owner.id]);

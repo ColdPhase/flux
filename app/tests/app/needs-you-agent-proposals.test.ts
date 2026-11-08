@@ -5,9 +5,10 @@ import { accessReader, agentProposalRepository } from '@flux/db';
 import { agentProposalUseCases, enforce, evaluateProject, recordEvent } from '@flux/core';
 import type { Material, NeedsYouResponse, Project, Workspace } from '@flux/contracts';
 import { eventPorts } from '../../apps/server/src/events.js';
-import { db } from './support/db.js';
+import { db, pool } from './support/db.js';
 import { expectStatus, person } from './support/people.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
+import { createConnection } from './support/mcp-actions.js';
 
 // #661: a suggestion an agent makes through MCP is a "Needs you" item for the person who connected the agent.
 const store = agentProposalUseCases(agentProposalRepository(db, {
@@ -26,10 +27,9 @@ test('an agent suggestion reaches its owner in Needs you, can be answered, and h
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Desk agent', owner: 'self' } }), 201) as { id: string };
   const material = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Low light', body: 'Sensor A misses dim scenes' } }), 201) as Material;
-  const connection = expectStatus(await owner.browser.request('POST', '/api/v1/agent-connections',
-    { body: { agentId: agent.id, selectedProjectIds: [project.id], scopes: ['flux.context.read', 'flux.proposal.write'] } }), 201) as { id: string };
-  const proposal = await store.create({ connectionId: connection.id, ownerUserId: owner.id, agentId: agent.id, selectedProjectIds: [project.id],
-    scopes: ['flux.context.read', 'flux.proposal.write'] as const, computeSource: 'user_operated_claude_code' as const },
+  const connection = await createConnection(pool, owner.browser, { agentId: agent.id }) as { id: string };
+  const proposal = await store.create({ connectionId: connection.id, ownerUserId: owner.id, agentId: agent.id,
+    computeSource: 'user_operated_claude_code' as const },
   { projectId: project.id, source: { materialId: material.materialId, version: 1 }, clientCommandId: randomUUID(),
     fact: 'Sensor A failed in dim scenes', interpretation: 'Exposure may be too short', suggestedAction: 'Compare sensor B' });
   const key = `proposal:${proposal.id}`;

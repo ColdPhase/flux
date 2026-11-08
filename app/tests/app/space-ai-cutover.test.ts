@@ -12,10 +12,11 @@ import { loadServerConfig } from '../../apps/server/src/config.js';
 import { assistantScene, human, lockWaiters, type AssistantScene } from './support/assistant-scene.js';
 import { db, pool } from './support/db.js';
 import { publicOrigin } from './support/http.js';
-import { beginOauth, expect, mcp, oauthToken } from './support/mcp.js';
+import { mcp } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, type Person } from './support/people.js';
 import { waitFor } from './support/wait.js';
 import { ensureSpaceAiAllowed, setSpaceAi, spaceAiRow } from './support/space-ai.js';
+import { createConnection, oauthTokenFor } from './support/mcp-actions.js';
 
 // AG-10 (F-029, #614; per space under F-037): the switch, the flip and the sweep. A space admin and the company's owners and admins
 // turn AI off or on, under Idempotency-Key; the flip is ordered against every check on two real database connections (a check in
@@ -60,17 +61,15 @@ describe('space AI switch: flip and cutover', () => {
     // The company admin is also one of the space's members, so a demotion leaves them an ordinary member of it, with a way in.
     await grant(scene.lead, scene.place.id, scene.admin, 'contributor');
     await grant(scene.lead, scene.place.id, member, 'contributor');
-    const connection = expect(await scene.owner.browser.request('POST', '/api/v1/agent-connections',
-      { body: { agentId: scene.agentId, selectedProjectIds: [scene.place.id], scopes: ['flux.context.read'] } }), 201);
+    const connection = await createConnection(pool, scene.owner.browser, { agentId: scene.agentId });
     const clientId = `flux-test-${randomUUID()}`;
     const redirectUri = 'http://127.0.0.1:19737/callback';
     await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types,
       response_types, scopes, require_pkce, created_at, updated_at) VALUES ($1, $2, 'Flux HTTP test client', $3, 'none', $4, $5, $6, true, now(), now())`,
-    [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['flux.context.read', 'offline_access']]);
+    [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['offline_access']]);
     await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())', [randomUUID(), clientId, `${publicOrigin}/mcp`]);
     connectionId = String(connection.id);
-    accessToken = (await oauthToken(scene.owner.browser, String(connection.id), clientId, redirectUri,
-      await beginOauth(scene.owner.browser, clientId, redirectUri, { scope: 'flux.context.read offline_access' }))).access_token;
+    accessToken = (await oauthTokenFor(pool, scene.owner.browser, String(connection.id), clientId, redirectUri)).access_token;
   });
   beforeEach(async () => { await ensureSpaceAiAllowed(scene.place.id); await scene.reset(); });
   after(async () => { await ensureSpaceAiAllowed(scene.place.id); });

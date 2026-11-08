@@ -16,7 +16,7 @@ import { toolError, toolResult } from './tool-results.js';
  */
 export function registerAgentGithubActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims, github: Provider | null) {
   const execute = coordinationExecutor(db, claims);
-  tools.forScope('flux.action.execute', { operation: 'work.update', classes: AGENT_OPERATION_CLASSES['work.update'] }).registerTool('flux_link_pull_request', {
+  tools.forAccess('write', { operation: 'work.update', classes: AGENT_OPERATION_CLASSES['work.update'] }).registerTool('flux_link_pull_request', {
     title: 'Link a pull request to the task you hold',
     description: 'Link the GitHub pull request you produced to the native task you hold, by its URL '
       + '(https://github.com/<owner>/<repository>/pull/<number>). The repository must already be connected to this project by a person; '

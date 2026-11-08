@@ -2,8 +2,7 @@ import { z } from 'zod';
 import { AGENT_OPERATION_CLASSES, WORK_LIMITS, WORK_STATUSES, type AgentJsonValue, type AgentOperation, type CreateResultCommand,
   type CreateWorkCommand, type ProposeDecisionCommand, type UpdateWorkCommand } from '@flux/contracts';
 import type { Database } from '@flux/db';
-import { actionAnnotations as annotations, actionId as id, actionInput as execution, actionVersion as version, coordinationExecutor, coordinationInput,
-  materialSources, nativeActionExecutor } from './action-execution.js';
+import { actionAnnotations as annotations, actionId as id, actionInput as execution, actionVersion as version, materialSources, nativeActionExecutor } from './action-execution.js';
 import type { FluxMcpClaims } from './context.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
@@ -18,8 +17,7 @@ const waitingForUserId = z.string().min(1).max(200).describe('Optional: the one 
 
 export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
   const execute = nativeActionExecutor(db, claims);
-  const coordinate = coordinationExecutor(db, claims);
-  const register = (operation: AgentOperation) => tools.forScope('flux.action.execute', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
+  const register = (operation: AgentOperation) => tools.forAccess('write', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
 
   register('work.create').registerTool('flux_create_task', {
     title: 'Create a project task',
@@ -79,13 +77,13 @@ export function registerAgentWorkActions(tools: AgentToolRegistry, db: Database,
   register('work.creation.revert').registerTool('flux_undo_task_creation', {
     title: 'Undo your unused task creation',
     description: 'Undo only a native task you created, while its complete creation baseline is unchanged and no persisted use exists. '
-      + 'Needs the runtime from flux_bootstrap and the current task version. '
+      + 'Needs the current task version. Taking a task back is a deletion, so it waits for your owner\'s OK. '
       + 'The task remains as read-only history with a creation-undone notice; repeating the same command returns its receipt.',
-    inputSchema: z.strictObject({ ...coordinationInput(), workId: id, expectedVersion: version }),
+    inputSchema: z.strictObject({ ...execution(), workId: id, expectedVersion: version }),
     annotations: { ...annotations, destructiveHint: true },
   }, async ({ workId, expectedVersion, ...input }) => {
     try {
-      return toolResult(await coordinate(input, 'work.creation.revert', workId, { expectedVersion }, async ({ work: native, agent }) => {
+      return toolResult(await execute(input, 'work.creation.revert', workId, { expectedVersion }, async ({ work: native, agent }) => {
         const reverted = await native.undoTaskCreation(agent, workId, { clientCommandId: input.clientCommandId, expectedVersion });
         return { value: { workId, number: reverted.work.number, noticeId: reverted.noticeId, clientCommandId: reverted.clientCommandId, version: reverted.work.version },
           postconditions: [{ kind: 'work', id: workId, version: reverted.work.version }] };

@@ -1,43 +1,5 @@
-import { AGENT_MCP_ENTRIES, type AgentMcpCapabilityId, type AgentMcpPolicy } from './agent-mcp-policy.js';
-
-export const ASSISTANT_AREAS = [
-  { id: 'tasks', label: 'Read and edit tasks', reads: ['project.work.read', 'project.results.read'],
-    operations: ['work.create', 'work.update', 'result.record', 'cowork.unit.create'] },
-  { id: 'wiki', label: 'Read and edit the Wiki', reads: ['project.knowledge.read'], operations: ['doc.create', 'doc.update'] },
-  { id: 'maps', label: 'Read and edit maps', reads: ['project.maps.read'],
-    operations: ['map.create', 'map.rename', 'map.thought.create', 'map.thought.update', 'map.positions.update', 'map.link.create', 'map.thought.delete', 'map.link.delete'] },
-  { id: 'conversations', label: 'Read conversations and reply', reads: ['project.conversations.read'],
-    operations: ['conversation.reply', 'conversation.create'] },
-  { id: 'decisions', label: 'Read decisions and suggest new ones', reads: ['project.decisions.read'], operations: ['decision.propose'] },
-] as const;
-export type AssistantAreaId = typeof ASSISTANT_AREAS[number]['id'];
-export type AssistantAreaMode = 'off' | 'read' | 'edit';
-export type AssistantAreas = Record<AssistantAreaId, AssistantAreaMode>;
-export const DEFAULT_ASSISTANT_AREAS: Readonly<AssistantAreas> = {
-  tasks: 'edit', wiki: 'edit', maps: 'edit', conversations: 'edit', decisions: 'edit',
-};
-const CONTEXT_CAPABILITIES: AgentMcpCapabilityId[] = ['project.identity.read'];
-
-/**
- * The assistant's tools cover these areas; it has no switches of its own (F-036): its owner's rights and its "What it may
- * do" decide. Membership is explicit: unrelated co-work/bootstrap entries stay off.
- */
-export function compileAssistantAreas(areas: Readonly<AssistantAreas>): Pick<AgentMcpPolicy, 'enabledCapabilityIds' | 'enabledEntryIds'> {
-  const capabilityIds = new Set<AgentMcpCapabilityId>(CONTEXT_CAPABILITIES);
-  for (const area of ASSISTANT_AREAS) {
-    if (areas[area.id] === 'off') continue;
-    for (const id of area.reads) capabilityIds.add(id);
-    if (areas[area.id] === 'edit') for (const id of area.operations) capabilityIds.add(id);
-  }
-  const entries = AGENT_MCP_ENTRIES.filter((entry) => entry.requiredCapabilities.every((id) => capabilityIds.has(id)));
-  return { enabledCapabilityIds: [...capabilityIds].sort(), enabledEntryIds: entries.map((entry) => entry.id).sort() };
-}
-
-/**
- * Capabilities whose tools are never offered to the assistant (F-027 AST-3 "Not offered to the
- * assistant"): the co-work bootstrap, the playbook and the runtime-session reads of external clients.
- */
-const NOT_FOR_RUNS = new Set<AgentMcpCapabilityId>(['cowork.playbook.read', 'connection.runtime.read']);
+import { AGENT_TOOLS, TOOLS_NOT_FOR_RUNS } from './agent-tools.js';
+import type { AgentMayDo } from './agent-proposals.js';
 
 /**
  * The change tools an assistant run may be listed (A3 #403): its run-private input has no runtime or standing grant; the run
@@ -55,23 +17,14 @@ export const ASSISTANT_RUN_EFFECT_TOOLS = [
 ] as const;
 
 /**
- * The exact Flux tools of one assistant run: every read tool the assistant's policy enables and, with `flux.action.execute` in
- * `scopes`, every change tool of `ASSISTANT_RUN_EFFECT_TOOLS`, sorted. "Only read" passes only the read scope, so its run lists
- * the reads without the changes (F-036 AG-3). The same list serves `server` and `runtime` runs, so both engines see the same
- * tools and the MCP route lists exactly these to the run's token.
+ * The exact Flux tools of one assistant run: every read tool the assistant is offered and, unless its "What it may do" is Only
+ * read, every change tool of `ASSISTANT_RUN_EFFECT_TOOLS`, sorted (F-036 AG-3). The same list serves `server` and `runtime`
+ * runs, so both engines see the same tools and the MCP route lists exactly these to the run's token.
  */
-export function assistantRunTools(policy: Pick<AgentMcpPolicy, 'enabledCapabilityIds' | 'enabledEntryIds'>, scopes: readonly string[]): string[] {
+export function assistantRunTools(mayDo: AgentMayDo): string[] {
   const effects = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
-  return AGENT_MCP_ENTRIES.filter((entry) => entry.kind === 'tool' && scopes.includes(entry.requiredScope)
-    && (entry.requiredScope === 'flux.context.read' || entry.requiredScope === 'flux.action.execute' && effects.has(entry.name))
-    && policy.enabledEntryIds.includes(entry.id) && entry.requiredCapabilities.every((id) => policy.enabledCapabilityIds.includes(id) && !NOT_FOR_RUNS.has(id)))
-    .map((entry) => entry.name).sort();
-}
-
-/** The scopes a run token carries for its tools: reads, and changes when any change tool is listed. */
-export function assistantRunScopes(tools: readonly string[]): string[] {
-  const effects = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
-  return tools.some((name) => effects.has(name)) ? ['flux.context.read', 'flux.action.execute'] : ['flux.context.read'];
+  return AGENT_TOOLS.filter((entry) => entry.kind === 'tool' && !TOOLS_NOT_FOR_RUNS.has(entry.name)
+    && (entry.access === 'read' || mayDo !== 'read' && effects.has(entry.name))).map((entry) => entry.name).sort();
 }
 
 /** "Tell whoever runs Flux" (F-027 Journey 6): one Needs-you item to the workspace's owners; the body may name the plan (`claude_code`, the default, or `codex`). */
@@ -180,6 +133,7 @@ const PHRASES: Record<string, { phrase: string; verb: string; noun: string }> = 
   'cowork.unit.create': { phrase: 'hand off', verb: 'Hand off', noun: 'task' },
   'cowork.request': { phrase: 'send', verb: 'Send', noun: 'request' },
   'cowork.unit.transfer': { phrase: 'hand over', verb: 'Hand over', noun: 'unit' },
+  'work.creation.revert': { phrase: 'take back', verb: 'Take back', noun: 'task' },
 };
 
 /** The run-private view of `flux_create_unit` (AST-3 R2): its strict input has no bootstrap runtime or grant. Stored with a waiting hand-off. */
@@ -221,7 +175,7 @@ export function assistantChangeSummary(changes: readonly Pick<AssistantChange, '
 }
 
 const PAST: Record<string, string> = { add: 'added', change: 'changed', close: 'closed', rename: 'renamed', record: 'recorded', propose: 'proposed',
-  edit: 'edited', remove: 'removed', move: 'moved', post: 'posted', set: 'set', hand: 'handed', send: 'sent' };
+  edit: 'edited', remove: 'removed', move: 'moved', post: 'posted', set: 'set', hand: 'handed', send: 'sent', take: 'took' };
 /** "add task" becomes "added task" for a message about what already happened. */
 export function assistantPastPhrase(phrase: string): string {
   const space = phrase.indexOf(' ');

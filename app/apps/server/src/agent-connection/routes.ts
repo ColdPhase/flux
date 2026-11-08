@@ -1,19 +1,17 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import { AGENT_MAY_DO, type UpdateAgentConnectionCommand, type CreateAgentConnectionCommand, type PageQuery } from '@flux/contracts';
+import { AGENT_MAY_DO, type UpdateAgentConnectionCommand, type PageQuery } from '@flux/contracts';
 import { agentProposalRepository, accessReader, type Database } from '@flux/db';
-import { agentConnectionUseCases, agentOauthUseCases, agentProposalUseCases, DomainError, enforce, evaluateProject, recordEvent } from '@flux/core';
+import { agentConnectionUseCases, agentProposalUseCases, DomainError, enforce, evaluateProject, recordEvent } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
 import { createAgentConnectionStore } from './store.js';
-import { oauthFlow, verifiedOauthQuery } from '../identity/oauth-query.js';
 import { eventPorts } from '../events.js';
 
-interface Options { db: Database; sessions: SessionResolver; oauthSecret: string; publicOrigin: string }
+interface Options { db: Database; sessions: SessionResolver }
 
 /** The human review surface uses the same current project policy as conversations. */
-export async function agentProposalRoutes(app: FastifyInstance, { db, sessions, oauthSecret, publicOrigin }: Options) {
+export async function agentProposalRoutes(app: FastifyInstance, { db, sessions }: Options) {
   const connectionStore = createAgentConnectionStore(db);
   const connections = agentConnectionUseCases(connectionStore);
-  const oauth = agentOauthUseCases(connectionStore);
   const store = agentProposalUseCases(agentProposalRepository(db, {
     async authorizeWrite(principal, projectId, tx) {
       const checked = enforce(await evaluateProject(principal, 'project.write', projectId, accessReader(tx), { lock: true }), 'project');
@@ -32,14 +30,6 @@ export async function agentProposalRoutes(app: FastifyInstance, { db, sessions, 
       return reply.code(401).send({ error: 'Authentication required', code: 'UNAUTHENTICATED' });
     throw error;
   });
-  app.post<{ Body: CreateAgentConnectionCommand }>('/api/v1/agent-connections', {
-    schema: { body: { type: 'object', required: ['agentId', 'selectedProjectIds', 'scopes'], additionalProperties: false,
-      properties: { agentId: { type: 'string' }, selectedProjectIds: { type: 'array', minItems: 1, maxItems: 50,
-        items: { type: 'string' } }, scopes: { type: 'array', minItems: 1, maxItems: 3,
-        items: { type: 'string', enum: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] } },
-        name: { type: 'string', minLength: 1, maxLength: 120 }, clientDesignation: { type: 'string', enum: ['claude_code', 'codex', 'other'] } } } },
-  }, async (request, reply) => reply.code(201).send(await connections.create(
-    (await sessions.requirePrincipal(request)).principal, request.body)));
   app.get('/api/v1/agent-connections', async (request) => connections.list(
     (await sessions.requirePrincipal(request)).principal));
   // "What it may do" (F-036 AG-3): a browser session of the owner only; no bearer, run token or MCP client reaches it.
@@ -50,20 +40,6 @@ export async function agentProposalRoutes(app: FastifyInstance, { db, sessions, 
     await connections.revoke((await sessions.requirePrincipal(request)).principal, request.params.connectionId);
     return reply.code(204).send();
   });
-  app.post<{ Params: { connectionId: string }; Body: { oauth_query: string } }>('/api/v1/agent-connections/:connectionId/select-for-oauth',
-    { schema: { body: { type: 'object', required: ['oauth_query'], additionalProperties: false,
-      properties: { oauth_query: { type: 'string', minLength: 1, maxLength: 8192 } } } } },
-    async (request, reply) => {
-      const session = await sessions.requirePrincipal(request);
-      const params = await verifiedOauthQuery(request.body.oauth_query, oauthSecret);
-      const flow = params ? oauthFlow(params, `${publicOrigin}/mcp`) : null;
-      if (!params || !flow || params.get('ba_pl') && params.get('ba_pl') !== session.sessionId)
-        return reply.code(400).send({ error: 'Invalid OAuth request', code: 'INVALID_OAUTH_QUERY' });
-      const result = await oauth.chooseFlow(session.principal.id, session.sessionId, request.params.connectionId, flow);
-      if (result === 'CONNECTION_NOT_FOUND') return reply.code(404).send({ error: 'Connection not found', code: result });
-      if (result === 'ALREADY_SELECTED') return reply.code(409).send({ error: 'A different connection is selected for this OAuth request', code: result });
-      return reply.code(204).send();
-    });
   app.get<{ Params: { projectId: string }; Querystring: PageQuery }>('/api/v1/projects/:projectId/agent-proposals',
     { schema: { querystring: { type: 'object', additionalProperties: false,
       properties: { limit: { type: 'integer' }, offset: { type: 'integer' } } } } },

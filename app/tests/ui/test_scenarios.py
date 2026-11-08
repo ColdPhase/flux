@@ -105,7 +105,6 @@ D3 = "Offer a warm-white shade option"
 QUESTION = "Ada, can you solder the VL53L1X board on Thursday?"
 DRAFT = "Price the lamp at 89 EUR? Ask Jonas after the market."
 REDIRECT = "http://127.0.0.1:19737/callback"
-ACTION_SCOPES = ["flux.context.read", "flux.proposal.write", "flux.action.execute"]
 
 
 class McpAgent:
@@ -113,32 +112,34 @@ class McpAgent:
 
     The UI harness has no database, so the client is registered through the test-only fixture route
     (`FLUX_FIXTURE_TOKEN` and failure injection; browser sessions cannot register clients since #287) instead of
-    the SQL fixture of tests/app/support/mcp-actions.ts; authorize, connection selection, consent, token and MCP
-    are the same real endpoints."""
+    the SQL fixture of tests/app/support/mcp-actions.ts; authorize, consent, token and MCP are the same real endpoints.
+    The sign-in is one decision (#859): Ada approves on the consent page and that makes the client's agent and connection."""
 
-    def __init__(self, test: "ScenarioJourney", owner: str, connection_id: str, project_id: str) -> None:
+    def __init__(self, test: "ScenarioJourney", owner: str, project_id: str) -> None:
         self.test, self.project_id, self.call_id = test, project_id, 0
         client = test.api(owner, "POST", "/api/v1/integration/oauth-clients", {
-            "name": "Ada's Claude Code (scenario client)", "redirectUris": [REDIRECT], "scopes": ACTION_SCOPES + ["offline_access"]},
+            "name": "Ada's Claude Code (scenario client)", "redirectUris": [REDIRECT]},
             status=201, headers={"authorization": f"Bearer {os.environ['FLUX_FIXTURE_TOKEN']}"})
         verifier = secrets.token_urlsafe(32)
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).rstrip(b"=").decode()
         query = urllib.parse.urlencode({"client_id": client["clientId"], "redirect_uri": REDIRECT, "response_type": "code",
                                         "code_challenge": challenge, "code_challenge_method": "S256", "state": str(uuid.uuid4()),
-                                        "scope": " ".join(ACTION_SCOPES + ["offline_access"]), "resource": f"{ORIGIN}/mcp", "prompt": "consent"})
+                                        "scope": "offline_access", "resource": f"{ORIGIN}/mcp", "prompt": "consent"})
         start = test.req[owner].request.fetch(f"{ORIGIN}/api/auth/oauth2/authorize?{query}", headers={"origin": ORIGIN, "accept": "text/html"}, max_redirects=0)
         location = start.headers.get("location") if start.status == 302 else start.json().get("url")
-        choice = urllib.parse.urlsplit(urllib.parse.urljoin(ORIGIN, location))
-        test.assertEqual(choice.path, "/connect-agent", "authorize sends the owner to choose a connection")
-        test.api(owner, "POST", f"/api/v1/agent-connections/{connection_id}/select-for-oauth", {"oauth_query": choice.query}, status=204)
-        continued = test.api(owner, "POST", "/api/auth/oauth2/continue", {"postLogin": True, "oauth_query": choice.query}, status=200)
-        destination = urllib.parse.urlsplit(urllib.parse.urljoin(ORIGIN, continued.get("url") or continued.get("redirect_uri")))
-        callback = destination
-        if destination.path == "/consent":
-            shown = test.api(owner, "GET", f"/api/v1/agent-oauth/consent-context?oauth_query={urllib.parse.quote(destination.query)}", status=200)
-            test.assertEqual(shown["connection"]["id"], connection_id)
-            consent = test.api(owner, "POST", "/api/auth/oauth2/consent", {"accept": True, "oauth_query": destination.query}, status=200)
-            callback = urllib.parse.urlsplit(consent.get("url") or consent.get("redirect_uri"))
+        destination = urllib.parse.urlsplit(urllib.parse.urljoin(ORIGIN, location))
+        test.assertEqual(destination.path, "/consent", "authorize sends the owner straight to the one consent page")
+        clients = lambda: [item for item in test.api(owner, "GET", "/api/v1/agent-connections", status=200)
+                           if item["computeSource"] != "owner_assistant" and not item["revokedAt"]]
+        test.assertEqual(clients(), [], "looking at the request makes no connection")
+        shown = test.api(owner, "GET", f"/api/v1/agent-oauth/consent-context?oauth_query={urllib.parse.quote(destination.query)}", status=200)
+        test.assertIsNone(shown["connectionName"], "the first sign-in has no connection yet")
+        consent = test.api(owner, "POST", "/api/auth/oauth2/consent", {"accept": True, "oauth_query": destination.query}, status=200)
+        callback = urllib.parse.urlsplit(consent.get("url") or consent.get("redirect_uri"))
+        made = clients()
+        test.assertEqual(len(made), 1, "Allow made one connection")
+        self.connection_id, self.agent_id = made[0]["id"], made[0]["agentId"]
+        test.assertEqual((made[0]["name"], made[0]["mayDo"]), ("Claude Code on this computer", "act"))
         code = urllib.parse.parse_qs(callback.query)["code"][0]
         self.http = test.pw.request.new_context()
         token = self.http.post(f"{ORIGIN}/api/auth/oauth2/token", form={"grant_type": "authorization_code", "code": code,
@@ -927,11 +928,9 @@ class ScenarioJourney:
     def test_3_agent_proposes_a_pivot_and_a_person_accepts(self) -> None:
         self.need("thinking_done", "d1", "camera_task", "order_task")
         s, lamp = self.s, self.s["lamp"]
-        # Ada's own external agent, selected for the lamp project only, connected through real OAuth consent.
-        agent = self.api("ada", "POST", f"/api/v1/workspaces/{s['workspace']}/agents", {"name": "Ada's Claude Code", "owner": "self"}, status=201)
-        connection = self.api("ada", "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "name": "Desk laptop", "clientDesignation": "claude_code",
-                                                                            "selectedProjectIds": [lamp], "scopes": ACTION_SCOPES}, status=201)
-        mcp = McpAgent(self, "ada", connection["id"], lamp)
+        # Ada's own external agent signs in with one click on the consent page, which makes its agent and connection.
+        mcp = McpAgent(self, "ada", lamp)
+        agent = {"id": mcp.agent_id}
         s["agent"], s["agent_id"] = mcp, agent["id"]
 
         # The agent proposes the pivot; it stays a proposal and the camera rule stays current.

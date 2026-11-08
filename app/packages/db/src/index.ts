@@ -25,7 +25,7 @@ export * from './repositories/key-rotation.js';
 export * from './sealed-columns.js';
 export * from './sealed-search.js';
 export * from './sealing.js';
-export * from './repositories/agent-mcp-policy.js';
+export * from './repositories/agent-reach.js';
 export * from './repositories/project-agents.js';
 export * from './repositories/agent-project-objects.js';
 export * from './repositories/idp-standing.js';
@@ -230,5 +230,4 @@ export { assistantSettingsRows, type AgentSetup, type AgentSetupChanges, type As
 
 
 export { lockAssistantOwner } from './repositories/assistant-lock.js';
-export * from './repositories/agent-connection-setup.js';
 export { assistantReactionRows } from './repositories/assistant-reactions.js';

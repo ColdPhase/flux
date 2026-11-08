@@ -10,9 +10,10 @@ import { chromium } from 'playwright';
 import { register, uniqueEmail } from '../support/http.js';
 import { password } from '../support/people.js';
 import { expect } from '../support/mcp.js';
+import { seedConnection, userIdOf } from '../support/mcp-actions.js';
 import { coworkProductionInvoke, coworkProductionLogin } from '../support/cowork-production-invoke.js';
 import { createOAuthDiagnostic, oauthComparisonOnly, oauthDefaultCallbackOnly, oauthLoginOnly, oauthPrivateCallback, oauthProductionFirstLoginOnly } from '../support/oauth-diagnostics.js';
-import { authorizeInBrowser, claudeBin, cleanClientHome, clientEvents, connectClient, origin, run, scopes, seedOauthClient, sh, startFluxProxy, waitFor,
+import { authorizeInBrowser, claudeBin, cleanClientHome, clientEvents, connectClient, origin, run, seedOauthClient, sh, startFluxProxy, waitFor,
   type ClientSpec } from '../support/mcp-client-harness.js';
 
 // OPT IN ONLY. Official pinned clients and their configured model accounts, never a scripted endpoint.
@@ -59,8 +60,12 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
           { body: { title: 'Audience', body: 'This workspace is for people recording small experiments; use familiar everyday language.' } }), 201);
         const agent = expect(await owner.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
           { body: { name: spec.label, owner: 'self' } }), 201);
-        const connection = expect(await owner.request('POST', '/api/v1/agent-connections', { body: {
-          name: spec.label, clientDesignation: spec.designation, agentId: agent.id, selectedProjectIds: [projectId], scopes } }), 201);
+        // The cowork host binding below names the connection before the client signs in, so this fixture starts from the client's earlier
+        // sign-in as the database holds it; the person's Allow then signs the same client in again (#859). A first sign-in makes the
+        // connection only on the consent page, so a production first login (a client whose id is learned from its metadata) cannot start here.
+        assert.ok(!productionFirst, 'the production-first login has no connection to name before the client signs in (#859)');
+        const clientId = await seedOauthClient(pool, spec);
+        const connection = { id: await seedConnection(pool, await userIdOf(owner), String(agent.id), clientId, { name: spec.label, clientDesignation: spec.designation }) };
         const home = cleanClientHome(spec, { oauthFileStore: !productionFirst });
         delete home.env.MOCK_MODEL_KEY; delete home.env.ANTHROPIC_API_KEY; home.env.RUST_LOG = 'warn';
         if (loginOnly) {
@@ -78,7 +83,6 @@ test('real configured accounts: supplied Start and Resume reach the model and pr
         const config = ['-c', `mcp_servers.flux.url=${JSON.stringify(coworkHostUrl(binding))}`,
           '-c', 'mcp_servers.flux.required=true'];
         // The actual production first-login path relies solely on native CIMD/discovery. No seeded client or add.
-        const clientId = productionFirst ? undefined : await seedOauthClient(pool, spec);
         const fixtureConfig = [...config, '-c', `mcp_servers.flux.oauth.client_id=${JSON.stringify(clientId)}`,
           '-c', `mcp_oauth_callback_port=${spec.port}`, ...(defaultCallback ? [] : ['-c', `mcp_servers.flux.oauth.callback_url=${JSON.stringify(`http://127.0.0.1:${spec.port}/callback`)}`]),
           '-c', 'mcp_oauth_credentials_store="file"'];

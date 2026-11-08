@@ -60,8 +60,8 @@ function command({ projectId, runtimeSessionId, clientCommandId, peerRequestClas
 }
 
 /** Whether a connection is another person's: what a client gives to it is another person's thing. Unknown connections fall to the ordinary refusal. */
-async function forAnotherPerson(db: Database, claims: FluxMcpClaims, connectionId: string, projectId: string): Promise<boolean> {
-  const connection = await assistantChangeRows(db as DbExecutor).connection(connectionId, projectId);
+async function forAnotherPerson(db: Database, claims: FluxMcpClaims, connectionId: string): Promise<boolean> {
+  const connection = await assistantChangeRows(db as DbExecutor).connection(connectionId);
   return !!connection && connection.ownerUserId !== claims.ownerUserId;
 }
 
@@ -73,7 +73,7 @@ async function forAnotherPerson(db: Database, claims: FluxMcpClaims, connectionI
  */
 export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims, cursorSecret: string) {
   const execute = nativeActionExecutor(db, claims);
-  const register = (operation: AgentOperation) => tools.forScope('flux.action.execute', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
+  const register = (operation: AgentOperation) => tools.forAccess('write', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
 
   register('cowork.unit.create').registerTool('flux_create_unit', {
@@ -111,7 +111,7 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       { unitKey, expectedTaskVersion, assignmentConnectionId, parent }), (await coworkPolicies(tx, input.projectId)).unit);
     // A child unit given to another person's client is another person's thing: it waits for the owner's OK like a task for someone
     // else (C-18, #859), and Approve repeats this call as the client's own, while its runtime session and parent claim stay live.
-    if (parent !== null && (claims.approval || await forAnotherPerson(db, claims, assignmentConnectionId, input.projectId)))
+    if (parent !== null && (claims.approval || await forAnotherPerson(db, claims, assignmentConnectionId)))
       return execute({ ...input, sources: [] } as unknown as ActionInput, 'cowork.unit.create', taskId,
         { unitKey, expectedTaskVersion, assignmentConnectionId, parent, peerRequestClass: input.peerRequestClass },
         async ({ transaction, runtime }) => coWorkUnitOutcome(await create(transaction), { workspaceId: runtime.workspaceId, projectId: input.projectId }));
@@ -186,7 +186,7 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
     const transfer = async (tx: Transaction) => coWorkUnitTransitionInTransaction(tx, claims, command(input, 'cowork.unit.transfer', unitId, payload),
       (await coworkPolicies(tx, input.projectId)).unit);
     // Handing the unit to another person's client is giving it another person's work: it waits for the owner's OK (C-18, #859).
-    if (claims.approval || await forAnotherPerson(db, claims, assignmentConnectionId, input.projectId))
+    if (claims.approval || await forAnotherPerson(db, claims, assignmentConnectionId))
       return execute({ ...input, sources: [] } as unknown as ActionInput, 'cowork.unit.transfer', unitId, payload,
         async ({ transaction }) => ({ value: { ...await transfer(transaction) } as unknown as { [key: string]: AgentJsonValue }, postconditions: [] }));
     return db.transaction(transfer);
@@ -288,14 +288,14 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       const send = async (tx: Transaction) => coWorkRequestInTransaction(tx, claims, command(input, 'cowork.request', unitId, payload),
         (await coworkPolicies(tx, input.projectId)).request);
       // A request to another person's client waits for the owner's OK (C-18, #859), as a unit given to it does.
-      if (claims.approval || await forAnotherPerson(db, claims, recipientConnectionId, input.projectId))
+      if (claims.approval || await forAnotherPerson(db, claims, recipientConnectionId))
         return execute({ ...input, sources: [] } as unknown as ActionInput, 'cowork.request', unitId, payload,
           async ({ transaction }) => ({ value: { ...await send(transaction) } as unknown as { [key: string]: AgentJsonValue }, postconditions: [] }));
       return db.transaction(send);
     })()));
 
   const recover = coWorkRecovery(db, cursorSecret);
-  tools.forScope('flux.context.read').registerTool('flux_coordination_inbox', {
+  tools.forAccess('read').registerTool('flux_coordination_inbox', {
     title: 'Read the requests addressed to you',
     description: 'The durable requests addressed to this connection in one project, oldest first, with their exact targets, '
       + 'sources, criteria and state (queued, deferred, claimed, resolved, declined, superseded, expired). Use it after a '

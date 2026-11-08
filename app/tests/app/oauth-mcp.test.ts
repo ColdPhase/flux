@@ -5,7 +5,8 @@ import { coworkPlaybookReference, DomainError } from '@flux/core';
 import { withAgentConnection } from '../../apps/server/src/agent-connection/context.js';
 import { db, pool } from './support/db.js';
 import { apiUrl, publicOrigin, register, uniqueEmail, type Browser } from './support/http.js';
-import { beginOauth, expect, mcp, oauthToken, toolValue, type Tokens } from './support/mcp.js';
+import { expect, mcp, oauthToken, toolValue, type Tokens } from './support/mcp.js';
+import { createConnection, oauthTokenFor, registerOauthClient } from './support/mcp-actions.js';
 
 test('issued OAuth bearer reads and proposes through MCP, then connection revocation rejects it immediately', async () => {
   const { browser } = await register(uniqueEmail('oauth-mcp'), 'correct horse battery staple');
@@ -25,12 +26,14 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
     { body: { clientMutationId: randomUUID(), title: 'Capacity observation', body: 'Capacity is limited.' } }), 201);
   const doc = expect(await browser.request('POST', `/api/v1/projects/${projectId}/docs`,
     { body: { title: 'Experiment notes', body: 'A project doc source.\n' + 'Observation. '.repeat(4000) } }), 201);
-  const hiddenProject = expect(await browser.request('POST', `/api/v1/workspaces/${workspaceId}/projects`,
-    { body: { name: 'Unselected private project', visibility: 'restricted' } }), 201);
+  // Another person's project, in a company of their own: the owner cannot read it, so neither can the connection (it has the owner's rights).
+  const stranger = (await register(uniqueEmail('oauth-mcp-stranger'), 'correct horse battery staple')).browser;
+  const strangerWorkspace = expect(await stranger.request('POST', '/api/v1/workspaces', { body: { name: 'Stranger company' } }), 201);
+  const hiddenProject = expect(await stranger.request('POST', `/api/v1/workspaces/${strangerWorkspace.id}/projects`,
+    { body: { name: 'Stranger private project', visibility: 'restricted' } }), 201);
   const hiddenProjectId = String(hiddenProject.id);
-  const hiddenMaterial = expect(await browser.request('POST', `/api/v1/projects/${hiddenProjectId}/materials`,
+  const hiddenMaterial = expect(await stranger.request('POST', `/api/v1/projects/${hiddenProjectId}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Secret source title', body: 'Private content.' } }), 201);
-  // The agent can read this other project via its domain grant; this connection still may not.
   const work = expect(await browser.request('POST', `/api/v1/projects/${projectId}/work`,
     { body: { title: 'Battery comparison', outcome: 'Compare current battery runtime' } }), 201);
   const decision = expect(await browser.request('POST', `/api/v1/projects/${projectId}/decisions`,
@@ -47,9 +50,8 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
     { body: { text: 'Battery duration question', x: 200, y: 0 } }), 201);
   const privateMap = expect(await browser.request('POST', `/api/v1/workspaces/${workspaceId}/sketches`,
     { body: { title: 'Secret private battery map', scope: 'private' } }), 201);
-  const connection = expect(await browser.request('POST', '/api/v1/agent-connections',
-    { body: { agentId, selectedProjectIds: [projectId], scopes: ['flux.context.read', 'flux.proposal.write'] } }), 201);
-  const connectionId = String(connection.id);
+  const connection = await createConnection(pool, browser, { agentId });
+  const connectionId = connection.id;
 
   // A local OAuth client fixture exercises the provider's real authorization-code
   // and PKCE endpoints without fetching external client metadata in Docker CI.
@@ -60,16 +62,15 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
      response_types, scopes, require_pkce, created_at, updated_at)
     VALUES ($1, $2, $3, $4, 'none', $5, $6, $7, true, now(), now())`,
   [randomUUID(), clientId, 'Flux HTTP test client', [redirectUri], ['authorization_code', 'refresh_token'], ['code'],
-    ['flux.context.read', 'flux.proposal.write', 'offline_access']]);
+    ['offline_access']]);
   await pool.query(`INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at)
     VALUES ($1, $2, $3, now())`, [randomUUID(), clientId, `${publicOrigin}/mcp`]);
 
-  const bearer = (await oauthToken(browser, connectionId, clientId, redirectUri)).access_token;
+  const bearer = (await oauthTokenFor(pool, browser, connectionId, clientId, redirectUri)).access_token;
   const signedClaims = JSON.parse(Buffer.from(bearer.split('.')[1]!, 'base64url').toString()) as { flux_grant_reference: string; sub: string };
   let projected = false;
   await assert.rejects(withAgentConnection(db, { ownerUserId: signedClaims.sub, connectionId,
-    clientId: 'another-actual-client', grantReferenceId: signedClaims.flux_grant_reference,
-    scopes: ['flux.context.read'] }, 'flux.context.read', projectId, async () => { projected = true; }),
+    clientId: 'another-actual-client', grantReferenceId: signedClaims.flux_grant_reference }, 'read', projectId, async () => { projected = true; }),
   (error: unknown) => error instanceof DomainError && error.code === 'CONNECTION_NOT_FOUND');
   assert.equal(projected, false, 'actual-client substitution is rejected inside the transaction before content');
   const listed = await mcp(bearer, 1, 'tools/call', { name: 'flux_list_contexts', arguments: {} });
@@ -157,17 +158,11 @@ test('issued OAuth bearer reads and proposes through MCP, then connection revoca
   assert.equal((bootstrap.runtime as { clientId: string }).clientId, clientId);
   const discovery = await mcp(bearer, 48, 'tools/list');
   const tools = (discovery.message?.result as { tools: { name: string }[] }).tools;
-  const capabilityRows = bootstrap.capabilities as { name: string; operation: string | null }[];
-  // This token has no action scope (#548): tools/list and bootstrap both omit the action tools.
+  const capabilityRows = bootstrap.capabilities as { name: string; operation: string | null; available: boolean }[];
+  // Every tool is listed and named, whatever the client asked at sign-in: what a call may do is decided when it is made (#859).
   assert.deepEqual(new Set(capabilityRows.map((row) => row.name)), new Set(tools.map((row) => row.name)),
-    'bootstrap names exactly the tools listed for this grant (#548)');
-  assert.ok(!capabilityRows.some((row) => row.name === 'flux_create_task'), 'a tool outside the grant is neither listed nor named');
-  assert.deepEqual(capabilityRows.filter((row) => row.operation !== null), [], 'no action tool is advertised without the action scope');
-  const unscoped = await mcp(bearer, 147, 'tools/call', { name: 'flux_create_task', arguments: { projectId,
-    runtimeSessionId: (bootstrap.runtime as { id: string }).id, grantId: randomUUID(), clientCommandId: randomUUID(),
-    peerRequestClass: 'plan', sources: [], task: { title: 'Not without the action scope' } } });
-  assert.equal((unscoped.message?.result as { isError?: boolean })?.isError, true);
-  assert.ok(JSON.stringify(unscoped.message).includes('MCP_SCOPE_REQUIRED'));
+    'bootstrap names exactly the tools listed');
+  assert.ok(capabilityRows.some((row) => row.name === 'flux_create_task'), 'the change tools are listed');
   await pool.query("UPDATE agent_runtime_sessions SET expires_at=now()-interval '1 second' WHERE id=$1", [(bootstrap.runtime as { id: string }).id]);
   const expiredRuntime = await mcp(bearer, 49, 'tools/call', { name: 'flux_bootstrap', arguments: { projectId, clientSessionId } });
   assert.ok(JSON.stringify(expiredRuntime.message).includes('RUNTIME_UNAVAILABLE'));
@@ -246,93 +241,57 @@ async function refresh(clientId: string, token: string) {
   return { status: response.status, tokens: await response.json() as Tokens };
 }
 
-test('three named connections share one actual client; same-session choices, refresh families and revocation remain independent', async () => {
+test('one client signs in for two people: each gets their own connection with one click, a second sign-in finds it, and refresh families and revocation stay independent', async () => {
   const owner = (await register(uniqueEmail('connections-owner'), 'correct horse battery staple')).browser;
   const peer = (await register(uniqueEmail('connections-peer'), 'correct horse battery staple')).browser;
-  async function connection(browser: Browser, name: string, clientDesignation: 'codex' | 'claude_code', actions = false) {
+  async function company(browser: Browser, name: string) {
     const workspace = expect(await browser.request('POST', '/api/v1/workspaces', { body: { name } }), 201);
     const project = expect(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/projects`,
       { body: { name: `${name} project`, visibility: 'restricted' } }), 201);
-    const agent = expect(await browser.request('POST', `/api/v1/workspaces/${workspace.id}/agents`,
-      { body: { name: `${name} agent`, owner: 'self' } }), 201);
-    const saved = expect(await browser.request('POST', '/api/v1/agent-connections', { body: {
-      name, clientDesignation, agentId: agent.id, selectedProjectIds: [project.id],
-      scopes: ['flux.context.read', 'flux.proposal.write', ...(actions ? ['flux.action.execute'] : [])],
-    } }), 201);
-    assert.equal(saved.name, name); assert.equal(saved.clientDesignation, clientDesignation);
-    assert.equal(saved.computeSource, 'user_operated_external_client');
-    return { id: String(saved.id), projectId: String(project.id) };
+    return { projectId: String(project.id) };
   }
-  const [a, b, c] = await Promise.all([connection(owner, 'Hubert research', 'codex', true),
-    connection(owner, 'Hubert delivery', 'claude_code'), connection(peer, 'Peer research', 'codex')]);
-  const clientId = `flux-test-${randomUUID()}`;
-  const redirectUri = 'http://127.0.0.1:19737/callback';
-  await pool.query(`INSERT INTO oauth_client
-    (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types,
-     response_types, scopes, require_pkce, created_at, updated_at)
-    VALUES ($1, $2, 'Flux HTTP test client', $3, 'none', $4, $5, $6, true, now(), now())`,
-  [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'],
-    ['flux.context.read', 'flux.proposal.write', 'flux.action.execute', 'offline_access']]);
-  await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())',
-    [randomUUID(), clientId, `${publicOrigin}/mcp`]);
-  const actionScope = 'flux.context.read flux.proposal.write flux.action.execute offline_access';
-  const [flowA, flowB, flowC] = await Promise.all([beginOauth(owner, clientId, redirectUri, { prompt: 'consent', scope: actionScope }),
-    beginOauth(owner, clientId, redirectUri), beginOauth(peer, clientId, redirectUri)]);
-  const tampered = new URLSearchParams(flowA.oauthQuery); tampered.set('state', randomUUID());
-  expect(await owner.request('POST', `/api/v1/agent-connections/${a.id}/select-for-oauth`,
-    { body: { oauth_query: tampered.toString() } }), 400);
-  const substitutedScope = new URLSearchParams(flowB.oauthQuery); substitutedScope.set('scope', actionScope);
-  expect(await owner.request('POST', `/api/v1/agent-connections/${b.id}/select-for-oauth`,
-    { body: { oauth_query: substitutedScope.toString() } }), 400);
-  expect(await peer.request('POST', `/api/v1/agent-connections/${a.id}/select-for-oauth`,
-    { body: { oauth_query: flowC.oauthQuery } }), 404);
-  expect(await owner.request('POST', `/api/v1/agent-connections/${a.id}/select-for-oauth`,
-    { body: { oauth_query: flowA.oauthQuery } }), 204);
-  expect(await owner.request('POST', `/api/v1/agent-connections/${b.id}/select-for-oauth`,
-    { body: { oauth_query: flowB.oauthQuery } }), 204);
-  expect(await owner.request('POST', `/api/v1/agent-connections/${a.id}/select-for-oauth`,
-    { body: { oauth_query: flowB.oauthQuery } }), 409);
-  const [tokensA, tokensB, tokensC] = await Promise.all([oauthToken(owner, a.id, clientId, redirectUri, flowA),
-    oauthToken(owner, b.id, clientId, redirectUri, flowB), oauthToken(peer, c.id, clientId, redirectUri, flowC)]);
-  for (const [tokens, actions] of [[tokensA, true], [tokensB, false], [tokensC, false]] as const) {
-    const claims = JSON.parse(Buffer.from(tokens.access_token.split('.')[1]!, 'base64url').toString()) as { scope: string };
-    assert.equal(claims.scope.split(' ').includes('flux.action.execute'), actions, 'only explicitly requested/selected action scope is issued');
-  }
-  for (const [tokens, connection] of [[tokensA, a], [tokensB, b], [tokensC, c]] as const) {
+  const [a, c] = await Promise.all([company(owner, 'Hubert research'), company(peer, 'Peer research')]);
+  const { clientId, redirectUri } = await registerOauthClient(pool);
+  const [tokensA, tokensC] = await Promise.all([oauthToken(owner, clientId, redirectUri), oauthToken(peer, clientId, redirectUri)]);
+  const connectionsOf = async (browser: Browser) => (expect(await browser.request('GET', '/api/v1/agent-connections'), 200) as unknown as { id: string; ownerUserId: string; mayDo: string }[]);
+  const [ownerConnections, peerConnections] = [await connectionsOf(owner), await connectionsOf(peer)];
+  assert.equal(ownerConnections.length, 1); assert.equal(peerConnections.length, 1);
+  assert.notEqual(ownerConnections[0]!.id, peerConnections[0]!.id);
+  assert.equal(ownerConnections[0]!.mayDo, 'act', 'a new connection starts at "Do it and tell me"');
+  const claimsOf = (tokens: Tokens) => JSON.parse(Buffer.from(tokens.access_token.split('.')[1]!, 'base64url').toString()) as { scope: string; flux_connection_id: string; flux_owner_user_id: string };
+  assert.equal(claimsOf(tokensA).scope, 'offline_access', 'the only scope there is');
+  assert.equal(claimsOf(tokensA).flux_connection_id, ownerConnections[0]!.id);
+  assert.equal(claimsOf(tokensC).flux_connection_id, peerConnections[0]!.id);
+  for (const [tokens, mine] of [[tokensA, a], [tokensC, c]] as const) {
     const listed = await mcp(tokens.access_token, 1, 'tools/call', { name: 'flux_list_contexts', arguments: {} });
     assert.equal(listed.status, 200);
-    assert.deepEqual((toolValue(listed.message).projects as { id: string }[]).map((p) => p.id), [connection.projectId]);
+    assert.deepEqual((toolValue(listed.message).projects as { id: string }[]).map((p) => p.id), [mine.projectId]);
   }
-  const anotherConnection = toolValue((await mcp(tokensB.access_token, 62, 'tools/call', { name: 'flux_bootstrap', arguments: {
-    projectId: b.projectId, clientSessionId: randomUUID(),
-  } })).message);
-  assert.equal((anotherConnection.runtime as { connectionId: string }).connectionId, b.id);
-  const hiddenBootstrap = await mcp(tokensB.access_token, 63, 'tools/call', { name: 'flux_bootstrap', arguments: {
+  const otherProject = await mcp(tokensC.access_token, 63, 'tools/call', { name: 'flux_bootstrap', arguments: {
     projectId: a.projectId, clientSessionId: randomUUID(),
   } });
-  assert.equal((hiddenBootstrap.message?.result as { isError?: boolean })?.isError, true);
-  assert.ok(!JSON.stringify(hiddenBootstrap.message).includes('Hubert research project'));
-  // The signed browser query expires independently of the durable token grant.
-  await pool.query(`UPDATE agent_oauth_flows SET expires_at = now() - interval '1 second'
-    WHERE binding_id IN (SELECT id FROM agent_oauth_bindings WHERE connection_id = $1)`, [a.id]);
+  assert.equal((otherProject.message?.result as { isError?: boolean })?.isError, true);
+  assert.ok(!JSON.stringify(otherProject.message).includes('Hubert research project'));
   const rotatedA = await refresh(clientId, tokensA.refresh_token); assert.equal(rotatedA.status, 200);
   const cachedA = await refresh(clientId, tokensA.refresh_token);
   assert.equal(cachedA.status, 200, 'an immediate retry uses the configured provider reuse window');
   assert.equal(cachedA.tokens.refresh_token, rotatedA.tokens.refresh_token);
-  const reconnectedA = await oauthToken(owner, a.id, clientId, redirectUri, await beginOauth(owner, clientId, redirectUri, { scope: actionScope }));
+  // Signing in again finds the held connection: no page, no second connection, and a separate refresh lineage.
+  const reconnectedA = await oauthToken(owner, clientId, redirectUri);
+  assert.equal(claimsOf(reconnectedA).flux_connection_id, ownerConnections[0]!.id);
+  assert.equal((await connectionsOf(owner)).length, 1);
   await pool.query(`UPDATE oauth_refresh_token SET rotation_replay_expires_at = now() - interval '1 second'
-    WHERE reference_id IN (SELECT 'flux-grant:' || id::text FROM agent_oauth_bindings WHERE connection_id = $1) AND revoked IS NOT NULL`, [a.id]);
+    WHERE reference_id = (SELECT 'flux-grant:' || id::text FROM agent_oauth_bindings WHERE connection_id = $1) AND revoked IS NOT NULL`, [ownerConnections[0]!.id]);
   assert.equal((await refresh(clientId, tokensA.refresh_token)).status, 400, 'reuse rejects only its original authorization family');
   assert.equal((await refresh(clientId, rotatedA.tokens.refresh_token)).status, 400);
   const freshA = await refresh(clientId, reconnectedA.refresh_token); assert.equal(freshA.status, 200, 'reconnecting creates a separate lineage');
-  const freshB = await refresh(clientId, tokensB.refresh_token); assert.equal(freshB.status, 200, 'same client/user second connection survives replay');
-  assert.equal((await refresh(clientId, tokensC.refresh_token)).status, 200, 'second owner survives replay');
-  expect(await owner.request('DELETE', `/api/v1/agent-connections/${a.id}`), 204);
+  assert.equal((await refresh(clientId, tokensC.refresh_token)).status, 200, 'the second person survives replay');
+  expect(await owner.request('DELETE', `/api/v1/agent-connections/${ownerConnections[0]!.id}`), 204);
   assert.equal((await mcp(freshA.tokens.access_token, 2, 'tools/list')).status, 403);
   assert.equal((await refresh(clientId, freshA.tokens.refresh_token)).status, 400);
   assert.equal((await refresh(clientId, reconnectedA.refresh_token)).status, 400, 'cached rotation response also rechecks revoked authority');
-  assert.equal((await mcp(freshB.tokens.access_token, 2, 'tools/list')).status, 200);
-  assert.equal((await refresh(clientId, freshB.tokens.refresh_token)).status, 200);
+  const freshC = await refresh(clientId, tokensC.refresh_token); assert.equal(freshC.status, 200);
+  assert.equal((await mcp(freshC.tokens.access_token, 2, 'tools/list')).status, 200, 'the other person\'s connection is untouched');
   await pool.query('UPDATE oauth_client SET disabled = true WHERE client_id = $1', [clientId]);
-  assert.equal((await mcp(freshB.tokens.access_token, 3, 'tools/list')).status, 403, 'a disabled actual OAuth client loses access');
+  assert.equal((await mcp(freshC.tokens.access_token, 3, 'tools/list')).status, 403, 'a disabled actual OAuth client loses access');
 });

@@ -65,9 +65,8 @@ export function coWorkRecovery(db: Database, secret: string) {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 50 || Object.keys(query).some((k) => !['limit', 'cursor'].includes(k))
       || query.cursor !== undefined && (typeof query.cursor !== 'string' || query.cursor.length > 804))
       throw new InvalidInputError('A bounded recovery page and opaque continuation are required');
-    // Reauthorize the actual bearer/binding, selected-project ceiling and central
-    // policy BEFORE decoding any cursor or accessing the durable pending queue.
-    return withAgentConnection(db, claims, 'flux.context.read', projectId, async ({ tx, connection, workspaceId, principal }) => {
+    // Reauthorize the actual bearer/binding and the owner's rights BEFORE decoding any cursor or accessing the durable pending queue.
+    return withAgentConnection(db, claims, 'read', projectId, async ({ tx, connection, workspaceId, principal }) => {
       await getProject(principal, projectId, tx, accessPorts);
       const scope: RecoveryScope = { workspaceId, projectId, connectionId: connection.connectionId,
         ownerUserId: connection.ownerUserId, clientId: claims.clientId, grantReferenceId: claims.grantReferenceId };

@@ -11,7 +11,7 @@ import { actionScene } from './mcp-actions.js';
 
 export type ThreadNativeScene=Awaited<ReturnType<typeof actionScene>>;
 const authByDatabase=new WeakMap<Database,ReturnType<typeof createAuth>>();
-export const threadCommand=(f:Pick<ThreadNativeScene,'projectId'|'runtimeSessionId'>,taskId:string,...named:[grantId?:string])=>(void named,{
+export const threadCommand=(f:Pick<ThreadNativeScene,'projectId'|'runtimeSessionId'>,taskId:string)=>({
   projectId:f.projectId,taskId,runtimeSessionId:f.runtimeSessionId,clientCommandId:randomUUID(),
   sources:[],message:{body:'One meaningful measured observation.'},
 });
@@ -27,5 +27,5 @@ export async function threadBudget(taskId:string){return(await pool.query(`SELEC
   SELECT sequence,turn_count FROM agent_thread_guard_events WHERE task_id=$1
   UNION ALL SELECT sequence,0 FROM agent_thread_artifact_resets WHERE task_id=$1 AND sequence IS NOT NULL
   )b ORDER BY sequence DESC LIMIT 1),0) AS turns`,[taskId])).rows[0].turns as number;}
-export async function fillThread(f:ThreadNativeScene,taskId:string,grantId:string){for(let i=0;i<5;i++)await nativeThreadPost(f,threadCommand(f,taskId,grantId));
-  assert.equal(await threadBudget(taskId),5);await assert.rejects(nativeThreadPost(f,threadCommand(f,taskId,grantId)),turnLimit);}
+export async function fillThread(f:ThreadNativeScene,taskId:string){for(let i=0;i<5;i++)await nativeThreadPost(f,threadCommand(f,taskId));
+  assert.equal(await threadBudget(taskId),5);await assert.rejects(nativeThreadPost(f,threadCommand(f,taskId)),turnLimit);}

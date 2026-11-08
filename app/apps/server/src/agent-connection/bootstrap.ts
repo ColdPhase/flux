@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { AGENT_SOURCE_KINDS, type AgentBootstrap, type AgentSourceCheckpoint } from '@flux/contracts';
-import { agentOrientationUseCases, agentSourcePage, coworkPlaybookReference, DomainError, getProject } from '@flux/core';
+import { agentOrientationUseCases, agentSourcePage, coworkPlaybookReference, getProject } from '@flux/core';
 import { accessPorts, agentExecutionRows, agentOrientationRows, agentPlaybookRows, coworkUnitRows, type Database } from '@flux/db';
-import { requireMcpSourceKinds, withAgentConnection, type FluxMcpClaims } from './context.js';
+import { withAgentConnection, type FluxMcpClaims } from './context.js';
 import { agentRuntimeInTransaction } from './runtime.js';
 import type { AgentToolRegistry } from './tool-registry.js';
 import { toolError, toolResult } from './tool-results.js';
@@ -17,7 +17,7 @@ export const agentSourceCheckpointSchema = z.discriminatedUnion('kind', [
 
 /** Registered read tools use the same verified bearer/current policy boundary as canonical content readers. */
 export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
-  const read = tools.forScope('flux.context.read');
+  const read = tools.forAccess('read');
   read.registerTool('flux_bootstrap', { title: 'Recover authenticated project context',
     description: 'Recover the original server runtime, current project, tool catalog and the trusted co-work playbook version. Your authority is your owner\'s rights at each call, not what this lists. Missing coordination and repository providers are explicit setup gaps; this does not prove instruction loading.',
     inputSchema: z.strictObject({ clientSessionId: z.uuid(), projectId: z.uuid(),
@@ -25,10 +25,8 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
       workLimit: page.limit.optional(), workOffset: page.offset.optional() }),
     annotations: { readOnlyHint: true, idempotentHint: true } }, async ({ clientSessionId, projectId,
       includeWorkRecovery, workLimit, workOffset }) => {
-    if (includeWorkRecovery) requireMcpSourceKinds(claims, ['work']);
     try {
-      const value = await withAgentConnection(db, claims, 'flux.context.read', projectId, async ({ tx, principal, mcpPolicy }) => {
-        if (!mcpPolicy) throw new DomainError(403, 'MCP_ENTRY_UNAVAILABLE', 'This capability is unavailable');
+      const value = await withAgentConnection(db, claims, 'read', projectId, async ({ tx, principal, mayDo }) => {
         const project = await getProject(principal, projectId, tx, accessPorts);
         const { runtime } = await agentRuntimeInTransaction(tx, claims, clientSessionId);
         const rows = agentExecutionRows(tx);
@@ -44,7 +42,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
         const checkpoint = work?.units.find((unit) => unit.checkpointId !== null);
         const result: AgentBootstrap = { contractVersion: 2, observedAt: observedAt.toISOString(), runtime,
           project: { id: project.id, workspaceId: project.workspaceId, name: project.name },
-          capabilities: tools.capabilities(runtime.scopes, mcpPolicy),
+          capabilities: tools.capabilities(mayDo),
           trusted: { playbook,
             coordination: { activeClaimReference: active?.id ?? null, checkpointReference: checkpoint?.checkpointId ?? null,
               inboxContinuation: null, ...(work ? { work } : {}) }, repositoryReferences: null },
@@ -57,12 +55,11 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
       return toolResult(value);
     } catch (error) { return toolError(error); }
   });
-  read.registerTool('flux_project_orientation', { title: 'Index selected project sources',
+  read.registerTool('flux_project_orientation', { title: 'Index project sources',
     description: 'A page of IDs, labels and exact versions or checkpoints for one source kind. No bodies, private maps, DMs or drafts, and no guessed goal or plan classes.',
     inputSchema: z.strictObject({ projectId: z.uuid(), kind: z.enum(AGENT_SOURCE_KINDS), ...page }), annotations: { readOnlyHint: true } },
   async ({ projectId, kind, ...query }) => {
-    requireMcpSourceKinds(claims, [kind]);
-    try { return toolResult(await withAgentConnection(db, claims, 'flux.context.read', projectId, async ({ tx, principal, connection, workspaceId }) => {
+    try { return toolResult(await withAgentConnection(db, claims, 'read', projectId, async ({ tx, principal, connection, workspaceId }) => {
       await getProject(principal, projectId, tx, accessPorts);
       return agentOrientationUseCases(agentOrientationRows(tx)).list(connection, { workspaceId, projectId }, kind, query);
     })); } catch (error) { return toolError(error); }
@@ -71,8 +68,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
     description: 'Compare up to 50 recorded checkpoints under current authorization: changed metadata, unchanged identities and content-free unavailable outcomes. It does not discover new or removed objects; use project orientation for that.',
     inputSchema: z.strictObject({ projectId: z.uuid(), known: z.array(agentSourceCheckpointSchema).max(50) }), annotations: { readOnlyHint: true } },
   async ({ projectId, known }) => {
-    requireMcpSourceKinds(claims, known.map((item) => item.kind));
-    try { return toolResult(await withAgentConnection(db, claims, 'flux.context.read', projectId, async ({ tx, principal, connection, workspaceId }) => {
+    try { return toolResult(await withAgentConnection(db, claims, 'read', projectId, async ({ tx, principal, connection, workspaceId }) => {
       await getProject(principal, projectId, tx, accessPorts);
       return agentOrientationUseCases(agentOrientationRows(tx)).changes(connection, { workspaceId, projectId }, known as AgentSourceCheckpoint[]);
     })); } catch (error) { return toolError(error); }

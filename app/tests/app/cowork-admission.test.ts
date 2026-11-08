@@ -11,6 +11,7 @@ import { coWorkTaskGraphLocks } from '../../apps/server/src/co-work/graph.js';
 import { coWorkRequestInTransaction, type CoWorkRequestPolicy } from '../../apps/server/src/co-work/requests.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { backendPid, barrier, settled, waitUntilBlockedBy } from './support/locks.js';
+import { createConnection } from './support/mcp-actions.js';
 
 // Live sender-unit request admission (#153) over real #152 runtimes/grants/ledger and PostgreSQL.
 // Bearer bindings are trusted fixtures and units are inserted directly (no unit creation command exists
@@ -32,15 +33,14 @@ async function world() {
   const connect = async (who: Person, name: string, sender: boolean) => {
     const agent = expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
       { body: { name, owner: 'self' } }), 201) as Agent;
-    const connection = expectStatus(await who.browser.request('POST', '/api/v1/agent-connections',
-      { body: { agentId: agent.id, selectedProjectIds: [p.id], scopes: ['flux.context.read', 'flux.action.execute'] } }), 201) as AgentConnection;
+    const connection = await createConnection(pool, who.browser, { agentId: agent.id }) as AgentConnection;
     if (!sender) return { who, connection, claims: null, runtimeId: null };
     const clientId = `cowork-admission-${randomUUID()}`, bindingId = randomUUID();
     await pool.query('INSERT INTO oauth_client(id,client_id,name,redirect_uris) VALUES($1,$2,$3,$4)',
       [randomUUID(), clientId, 'Trusted admission fixture', ['https://fixture.invalid/callback']]);
     await pool.query('INSERT INTO agent_oauth_bindings(id,owner_user_id,connection_id,client_id) VALUES($1,$2,$3,$4)',
       [bindingId, who.id, connection.id, clientId]);
-    const claims = { ownerUserId: who.id, connectionId: connection.id, clientId, grantReferenceId: `flux-grant:${bindingId}`, scopes: connection.scopes };
+    const claims = { ownerUserId: who.id, connectionId: connection.id, clientId, grantReferenceId: `flux-grant:${bindingId}` };
     const { runtime } = await db.transaction((tx) => agentRuntimeInTransaction(tx, claims, randomUUID()));
     return { who, connection, claims, runtimeId: runtime.id };
   };
@@ -50,25 +50,20 @@ async function world() {
       runId, unitKey: id, role, assignmentConnectionId: connectionId });
     return id;
   };
-  const actionGrant = async (who: Person, connectionId: string, operation: string, objectId: string | null, role: Role, maximumUses = 10) =>
-    who.browser.request('POST', `/api/v1/agent-connections/${connectionId}/action-grants`,
-      { body: { clientCommandId: randomUUID(), projectId: p.id, operation, ...(objectId ? { objectId } : {}),
-        peerRequestClass: role, maximumUses, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } });
   const material = expectStatus(await hubert.browser.request('POST', `/api/v1/projects/${p.id}/materials`,
     { body: { clientMutationId: randomUUID(), title: 'Review criteria', body: 'Exact current revision' } }), 201) as { materialId: string };
-  return { hubert, marek, ws, p, task, connect, unit, actionGrant, material };
+  return { hubert, marek, ws, p, task, connect, unit, material };
 }
 type World = Awaited<ReturnType<typeof world>>;
 type Connected = Awaited<ReturnType<World['connect']>>;
 
 /** A sender with its own live claim (through the real claim composition and the production graph provider). */
-async function sender(w: World, s: Connected, unitId: string, role: Role = 'execute', maximumUses = 10) {
+async function sender(w: World, s: Connected, unitId: string, role: Role = 'execute') {
   const policy: CoWorkClaimPolicy = { maximumConnectionUnits: 1, leaseSeconds: 120,
     prepareTaskLocks: (tx, context, units) => coWorkTaskGraphLocks(tx, context.workspaceId, units),
     async requireEligible() {}, async requireCheckpointSources() {} };
   const claim = await db.transaction((tx) => coWorkClaimInTransaction(tx, s.claims!, { runtimeSessionId: s.runtimeId!, clientCommandId: randomUUID(), projectId: w.p.id, operation: 'cowork.claim', peerRequestClass: role,
     audience: { kind: 'project', projectId: w.p.id }, objectId: unitId, sources: [], payload: { expectedVersion: 1 } }, policy));
-  const requestGrant = expectStatus(await w.actionGrant(s.who, s.connection.id, 'cowork.request', unitId, role, maximumUses), 201) as { id: string };
   const command = (request: Record<string, unknown>, change: Partial<AgentExecutionCommand> = {}, fence = { generation: claim.generation, leaseId: claim.lease!.id }): AgentExecutionCommand => ({
     runtimeSessionId: s.runtimeId!, clientCommandId: randomUUID(), projectId: w.p.id, operation: 'cowork.request',
     peerRequestClass: role, audience: { kind: 'project', projectId: w.p.id }, objectId: unitId, sources: [],
@@ -79,7 +74,7 @@ async function sender(w: World, s: Connected, unitId: string, role: Role = 'exec
       if (options.failAfter) throw new Error('Injected failure after admission/debit/receipt');
       return outcome;
     });
-  return { claim, requestGrant, command, admit, unitId };
+  return { claim, command, admit, unitId };
 }
 function rejects(promise: Promise<unknown>, code: string) {
   return assert.rejects(promise, (error: unknown) => error instanceof DomainError && error.code === code, code);

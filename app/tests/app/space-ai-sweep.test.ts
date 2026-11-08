@@ -11,10 +11,11 @@ import { assistantScene, human, lockWaiters, type AssistantScene } from './suppo
 import { comparisonDispatchFixtureDue } from './support/comparison-dispatch-fixture.js';
 import { db, pool } from './support/db.js';
 import { publicOrigin } from './support/http.js';
-import { beginOauth, expect, mcp, oauthToken } from './support/mcp.js';
+import { mcp } from './support/mcp.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { waitFor } from './support/wait.js';
 import { ensureSpaceAiAllowed, setSpaceAi, spaceAiRow } from './support/space-ai.js';
+import { createConnection, oauthTokenFor } from './support/mcp-actions.js';
 
 // AG-10 (F-029 S2 review fixes, #614; per space under F-037): the sweep with a real row in every state of every table it touches;
 // a REAL role change of the flipping admin against the REAL flip, in both orders; the backstop per table; no events of the
@@ -203,16 +204,14 @@ describe('space AI switch: sweep, role changes against the flip and remaining ro
   });
 
   test('a chunk of a space-bound request held at the delivery fence when AI is turned off is refused with the JSON-RPC error on HTTP 200', async () => {
-    const connection = expect(await scene.owner.browser.request('POST', '/api/v1/agent-connections',
-      { body: { agentId: scene.agentId, selectedProjectIds: [scene.place.id], scopes: ['flux.context.read'] } }), 201);
+    const connection = await createConnection(pool, scene.owner.browser, { agentId: scene.agentId });
     const clientId = `flux-test-${randomUUID()}`;
     const redirectUri = 'http://127.0.0.1:19737/callback';
     await pool.query(`INSERT INTO oauth_client (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types,
       response_types, scopes, require_pkce, created_at, updated_at) VALUES ($1, $2, 'Flux HTTP test client', $3, 'none', $4, $5, $6, true, now(), now())`,
-    [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['flux.context.read', 'offline_access']]);
+    [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['offline_access']]);
     await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())', [randomUUID(), clientId, `${publicOrigin}/mcp`]);
-    const token = (await oauthToken(scene.owner.browser, String(connection.id), clientId, redirectUri,
-      await beginOauth(scene.owner.browser, clientId, redirectUri, { scope: 'flux.context.read offline_access' }))).access_token;
+    const token = (await oauthTokenFor(pool, scene.owner.browser, String(connection.id), clientId, redirectUri)).access_token;
     const gate = `ai-lock-${randomUUID()}`;
     const held = async (flip: boolean) => {
       const client = await pool.connect();

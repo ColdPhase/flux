@@ -52,7 +52,7 @@ a later release may make **additive** changes:
 
 | | Additive: same version | Breaking: new version |
 | --- | --- | --- |
-| **MCP tools (inputs you send)** | A new tool, prompt or resource. A new optional argument. A wider type, enum or bound. A removed pattern or format restriction. New wording. | A removed or renamed tool, prompt, argument or resource. A removed or newly required argument. A narrower type, enum, bound, pattern or format. A changed required scope, operation, peer-request classes or annotation. A changed error envelope. A removed listed error code or bootstrap key. |
+| **MCP tools (inputs you send)** | A new tool, prompt or resource. A new optional argument. A wider type, enum or bound. A removed pattern or format restriction. New wording. | A removed or renamed tool, prompt, argument or resource. A removed or newly required argument. A narrower type, enum, bound, pattern or format. A changed operation, peer-request classes or annotation. A changed error envelope. A removed listed error code or bootstrap key. |
 | **Export (documents you read)** | A new field, even a required one. A new enum value. A tighter bound. A new bundle file. New wording. | A removed or renamed field. A field that becomes optional or nullable. A changed type, constant, pattern or format. A removed enum value. A removed or renamed bundle file. A changed manifest identification. |
 
 To keep working across additive changes, an integration must:
@@ -73,11 +73,11 @@ then be updated.
 
 ### Connect and sign in
 
-1. In Flux, the person who will own the integration creates a **personal agent**
-   and a **connection**. The connection selects the projects the agent may use
-   and the scopes it may hold. See [agent connection](../development/agent-connection.md).
-   The connection always belongs to that one person ([F-019](../product/decisions.md)).
-   A workspace admin cannot create one on someone else's behalf.
+1. Nothing is set up in Flux first. The person who will own the integration signs in to Flux in their browser
+   when the client asks, and chooses **Allow** on the one consent page; Flux then makes the client's agent and
+   its connection. The connection always belongs to that one person ([F-019](../product/decisions.md)); a
+   workspace admin cannot make one on someone else's behalf. See
+   [agent connection](../development/agent-connection.md).
 2. The client adds the server `<FLUX_PUBLIC_ORIGIN>/mcp`, using Streamable HTTP,
    and signs in with OAuth 2.1 authorization code and PKCE S256. The client finds
    the authorization server through
@@ -104,14 +104,13 @@ then be updated.
 
 ### Permissions
 
-- **Scopes are ceilings.** `flux.context.read` covers reads,
-  `flux.proposal.write` covers proposals and `flux.action.execute` covers native
-  actions. On every call the server checks again that the connection is live,
-  and checks its owner, the agent's grant on the project and the owner's own
-  rights.
-- **Actions need a standing grant.** Creating a task, writing a doc, moving a map
-  and other native actions also need a live standing grant. A grant has an
-  operation, a class, a number of remaining uses and an expiry.
+- **The client is its owner.** The only scope is `offline_access`: a client asks for no read, propose or execute
+  scope, and the person chooses no project and no capability. On every call the server checks again that the
+  connection is live, then checks the owner's own rights, in the spaces where AI is on. A client never sees or
+  changes more than its owner can.
+- **"What it may do" is the owner's.** The connection starts at **Do it and tell me**; the owner sets **Only read**
+  or **Ask me first** in Settings → AI. Deleting and other people's things always wait for the owner's OK, in the
+  owner's signed-in session; a client's token cannot approve its own waiting change.
 - **Revocation is immediate.** When the owner revokes the connection, the next
   request is refused with 403.
 
@@ -136,8 +135,8 @@ text. The codes in the contract are:
 
 | Code | Meaning | What to do |
 | --- | --- | --- |
-| `MCP_SCOPE_REQUIRED` | The token lacks the scope the tool needs. | Ask the owner to reconnect with that scope. |
-| `AGENT_EXECUTION_UNAVAILABLE` | No live standing grant, or no current access, covers this action. | Ask the owner for a grant, or propose instead. |
+| `AGENT_EXECUTION_UNAVAILABLE` | The owner has no current access that covers this action. | Tell the owner; do not look for another path. |
+| `AGENT_ONLY_READS` | The owner set "What it may do" to Only read. | Change nothing and say what you would change. |
 | `VERSION_CONFLICT` | The object changed since you read it. | Read it again and reapply only your change. |
 | `SOURCE_VERSION_CONFLICT` | The source you cited is no longer current. | Read the current version and cite that. |
 | `TASK_PREREQUISITES_UNMET` | A prerequisite task is not done. | Finish or report the prerequisite first. |

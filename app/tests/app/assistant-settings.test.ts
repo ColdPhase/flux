@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { DEFAULT_ASSISTANT_AREAS, MY_AGENTS_PATH, agentConnectionPath, myAgentPath,
-  compileAssistantAreas, type AgentConnection, type MyAgent, type ProjectAgents } from '@flux/contracts';
+import { AGENT_TOOLS, ASSISTANT_RUN_EFFECT_TOOLS, MY_AGENTS_PATH, agentConnectionPath, assistantRunTools, myAgentPath,
+  type AgentConnection, type MyAgent, type ProjectAgents } from '@flux/contracts';
+import { createConnection, oauthTokenFor } from './support/mcp-actions.js';
 import { authorize } from '@flux/core';
 import { accessReader } from '@flux/db';
 import { createPersonalRunUseCases, type Principal } from '@flux/core';
@@ -10,7 +11,7 @@ import { personalRunUnitOfWork, personalRunUseCases } from '../../apps/server/sr
 import { agentSettings } from './support/agent-settings.js';
 import { db, pool } from './support/db.js';
 import { person, workspace, project, addMember, expectStatus, type Person } from './support/people.js';
-import { beginOauth, mcp, oauthToken, toolValue } from './support/mcp.js';
+import { beginOauth, mcp, toolValue } from './support/mcp.js';
 import { Browser, publicOrigin } from './support/http.js';
 import { FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { barrier, waitUntilBlockedBy } from './support/locks.js';
@@ -33,12 +34,13 @@ async function setup(label: string) {
   return { owner, manager, ws, managed, blocked, agent, connections, runs };
 }
 
-test('the assistant\'s tools cover its areas; reserved co-work tools and the project policy are absent', () => {
-  const enabled = compileAssistantAreas(DEFAULT_ASSISTANT_AREAS);
-  for (const operation of ['doc.create','doc.update','conversation.reply','cowork.unit.create']) assert.ok(enabled.enabledCapabilityIds.includes(operation as never));
-  for (const name of ['flux_bootstrap','flux_claim_unit','flux_renew_unit','flux_release_unit','flux_complete_unit','flux_transfer_unit','flux_claim_request','flux_decline_request','flux_resolve_request','flux_send_request','flux_coordination_inbox'])
-    assert.ok(!enabled.enabledEntryIds.includes(`tool:${name}`), name);
-  assert.ok(!enabled.enabledEntryIds.includes('resource:flux_project_policy'), 'no project agent policy (F-036)');
+test('the assistant\'s tools are the reads, and the changes unless it only reads; reserved co-work tools and the project policy are absent', () => {
+  const tools = assistantRunTools('act');
+  for (const name of ['flux_create_doc', 'flux_update_doc', 'flux_reply_in_conversation', 'flux_create_unit']) assert.ok(tools.includes(name), name);
+  for (const name of ['flux_bootstrap', 'flux_claim_unit', 'flux_renew_unit', 'flux_release_unit', 'flux_complete_unit', 'flux_transfer_unit', 'flux_claim_request',
+    'flux_decline_request', 'flux_resolve_request', 'flux_send_request', 'flux_coordination_inbox']) assert.ok(!tools.includes(name), name);
+  assert.ok(!AGENT_TOOLS.some((entry) => entry.id === 'resource:flux_project_policy'), 'no project agent policy (F-036)');
+  assert.ok(!assistantRunTools('read').some((name) => ASSISTANT_RUN_EFFECT_TOOLS.includes(name as never)), 'Only read lists no change tool');
 });
 
 test('#522: private assistant discovery is owner-only while an MCP connection sharing its identity stays visible', async () => {
@@ -56,9 +58,7 @@ test('#522: private assistant discovery is owner-only while an MCP connection sh
   assert.equal((await people(f.owner)).some((row) => row.id === f.agent.id), true, 'own identity remains available for own authorized use');
   expectStatus(await f.manager.browser.request('GET', myAgentPath(f.agent.id)), 404);
 
-  const external = expectStatus(await f.owner.browser.request('POST', '/api/v1/agent-connections', { body: {
-    agentId: f.agent.id, selectedProjectIds: [f.managed.id], scopes: ['flux.context.read'], name: 'Ines coding client', clientDesignation: 'codex',
-  } }), 201) as { id: string };
+  const external = await createConnection(pool, f.owner.browser, { agentId: f.agent.id, name: 'Ines coding client', clientDesignation: 'codex' }) as { id: string };
   const shared = await roster(f.manager);
   assert.deepEqual(shared.connections.map((row) => row.id), [external.id], 'the explicitly connected MCP client is still public to project members');
   assert.equal(shared.connections[0]?.assistant, undefined);
@@ -78,7 +78,6 @@ test('enablement creates one identity and settings with "Do it and tell me"; it 
   const row = (await pool.query('SELECT compute_source, may_do FROM agent_connections WHERE id=$1', [saved.connectionId])).rows[0];
   assert.deepEqual([row.compute_source, row.may_do], ['owner_assistant', 'act']);
   assert.equal((await pool.query("SELECT count(*)::int n FROM agent_connections WHERE owner_user_id=$1 AND workspace_id=$2 AND compute_source='owner_assistant'", [f.owner.id, f.ws.id])).rows[0].n, 1);
-  assert.equal((await pool.query('SELECT count(*)::int n FROM agent_connection_projects WHERE connection_id=$1', [saved.connectionId])).rows[0].n, 0, 'no stored project list');
   const read = (projectId: string) => authorize({ kind: 'agent', id: f.agent.id }, 'project.read', { type: 'project', id: projectId }, accessReader(db));
   assert.deepEqual(await read(f.managed.id), { allowed: true, visible: true }, 'where its owner can');
   assert.deepEqual(await read(f.blocked.id), { allowed: false, visible: false }, 'never where its owner is kept out');
@@ -108,9 +107,10 @@ test('only the owner reads the settings and sets "What it may do"; each choice i
     assert.equal((await settings(f.owner, f.ws.id)).body.mayDo, choice, 'the settings read back what was kept');
   }
   expectStatus(await f.owner.browser.request('PATCH', mayDo, { body: { mayDo: 'everything' } }), 400);
-  const scopes = (await pool.query('SELECT scopes FROM agent_connections WHERE id = $1', [original.connectionId])).rows[0].scopes as string[];
-  expectStatus(await f.owner.browser.request('PATCH', mayDo, { body: { mayDo: 'act', scopes: [] } }), 200);
-  assert.deepEqual((await pool.query('SELECT scopes FROM agent_connections WHERE id = $1', [original.connectionId])).rows[0].scopes, scopes, 'only "What it may do" can be set here');
+  const identity = async () => (await pool.query('SELECT agent_id, compute_source, owner_user_id FROM agent_connections WHERE id = $1', [original.connectionId])).rows[0];
+  const before = await identity();
+  expectStatus(await f.owner.browser.request('PATCH', mayDo, { body: { mayDo: 'act', computeSource: 'user_operated_external_client', agentId: randomUUID(), ownerUserId: other.id } }), 200);
+  assert.deepEqual(await identity(), before, 'only "What it may do" can be set here');
   // Nothing is left to save here (#843, F-036): the settings are read, and "What it may do" is the connection's own row.
   const kept = (await settings(f.owner, f.ws.id)).body;
   for (const removed of [{ backgroundRunsPerDay: 7 }, { approvalMode: 'ask' }, { changesPerRun: 7 }, { areas: { wiki: 'off' } }, { projectMode: 'chosen' }])
@@ -147,30 +147,26 @@ test('"Only read" set from another API process keeps reads, and a bearer credent
   const doc = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.managed.id}/docs`,
     { body: { title: 'Assistant protected Wiki', body: 'ASSISTANT-WIKI-PRIVATE-68192' } }), 201) as { id: string };
   const clientId = `assistant-fixture-${randomUUID()}`; const redirect = 'http://127.0.0.1:19740/callback';
-  const scopes = ['flux.context.read','flux.proposal.write','flux.action.execute'];
   await pool.query(`INSERT INTO oauth_client (id,client_id,name,redirect_uris,token_endpoint_auth_method,grant_types,response_types,scopes,require_pkce,created_at,updated_at)
     VALUES ($1,$2,'Flux HTTP test client',$3,'none',$4,$5,$6,true,now(),now())`,
-  [randomUUID(),clientId,[redirect],['authorization_code','refresh_token'],['code'],[...scopes,'offline_access']]);
+  [randomUUID(),clientId,[redirect],['authorization_code','refresh_token'],['code'],['offline_access']]);
   await pool.query('INSERT INTO oauth_client_resource(id,client_id,resource_id,created_at) VALUES($1,$2,$3,now())', [randomUUID(),clientId,`${publicOrigin}/mcp`]);
   // Test-only AS fixture: authorize the existing connection with real OAuth/PKCE, then restore its
   // assistant provenance. Ordinary external consent cannot select an owner_assistant connection.
   await pool.query("UPDATE agent_connections SET compute_source='user_operated_external_client' WHERE id=$1", [initial.connectionId]);
-  await pool.query('INSERT INTO agent_connection_projects (workspace_id, connection_id, project_id) VALUES ($1, $2, $3)', [f.ws.id, initial.connectionId, f.managed.id]);
   let token: string;
   try {
-    token = (await oauthToken(f.owner.browser, initial.connectionId, clientId, redirect,
-      await beginOauth(f.owner.browser, clientId, redirect, { scope: `${scopes.join(' ')} offline_access` }))).access_token;
+    token = (await oauthTokenFor(pool, f.owner.browser, initial.connectionId, clientId, redirect)).access_token;
   } finally {
-    await pool.query('DELETE FROM agent_connection_projects WHERE connection_id = $1', [initial.connectionId]);
     await pool.query("UPDATE agent_connections SET compute_source='owner_assistant' WHERE id=$1", [initial.connectionId]);
   }
   assert.equal(toolValue((await mcp(token!, 801, 'tools/call', { name: 'flux_get_doc', arguments: { projectId: f.managed.id, id: doc.id } })).message).title, 'Assistant protected Wiki');
   const signedOut = new Browser();
   expectStatus(await signedOut.request('GET', MY_AGENTS_PATH, { headers: { authorization: `Bearer ${token!}` } }), 401);
   expectStatus(await signedOut.request('PATCH', agentConnectionPath(initial.connectionId), { headers: { authorization: `Bearer ${token!}` }, body: { mayDo: 'act' } }), 401);
-  const attempted = await beginOauth(f.owner.browser, clientId, redirect, { scope: `${scopes.join(' ')} offline_access` });
-  expectStatus(await f.owner.browser.request('POST', `/api/v1/agent-connections/${initial.connectionId}/select-for-oauth`,
-    { body: { oauth_query: attempted.oauthQuery } }), 404);
+  // The assistant's own connection is never a client's: a client that opens the authorization URL is not carried onto it.
+  const attempted = await beginOauth(f.owner.browser, clientId, redirect);
+  assert.ok(attempted.consent, 'the client is asked, not signed in to the assistant\'s connection');
   // Only read set from the other API process: reads go on (F-036 AG-3: it reads and answers).
   const otherApi = new Browser(process.env.FLUX_API_URL_2 ?? 'http://api2:8080', publicOrigin);
   for (const [name, value] of f.owner.browser.cookies) otherApi.cookies.set(name, value);

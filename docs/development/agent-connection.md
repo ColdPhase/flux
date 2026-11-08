@@ -1,10 +1,15 @@
 # Personal agent connection (#52)
 
-**v0.2 (#859, F-036):** a local client has no standing grants. It acts with its owner's rights at each call, under the agent's
-"What it may do", and a change that would wait is kept in the change log for its owner's OK
-([mcp-cowork](../product/mcp-cowork.md), [access policy](access-policy.md)). Mentions of standing grants, `grantId` and the
-grants panel below describe v0.1 and are superseded; the scopes, capability switches and project selection are removed in the
-next step of #859.
+**v0.2 (#859, F-036): one-click sign-in.** A local client has no scopes to choose, no project list, no capability switches and
+no standing grants. Signing in is one decision on one consent page (`/consent`: who asks, where access goes, **Allow** or
+**Deny**). Looking at the page and Deny make nothing; **Allow** makes the client's agent (the person's own, in their company) and its
+connection, at "Do it and tell me", or finds the connection the same client already holds for that person. The only OAuth scope is
+`offline_access`. At each call the client acts with its owner's rights, under the connection's "What it may do"; deleting and other
+people's things wait for the owner's OK, in the change log ([mcp-cowork](../product/mcp-cowork.md),
+[access policy](access-policy.md), decisions C-19 to C-23). **Disconnect** ends the token at once and closes what waited; signing in
+again makes a new connection and gives the client's earlier agent back. Everything below that describes scopes as token ceilings,
+the selected-project list, `agent_connection_mcp_*` switches, `select-for-oauth`, grants and the permissions page is v0.1 and removed;
+it is kept as the record of how the path was built.
 
 **Planned extension, 2026-09-30:** [F-016](../product/mcp-cowork.md) extends this
 implemented Claude path with multiple named external connections per owner,
@@ -28,14 +33,10 @@ project/grant/runtime rights remain. #317 opaque keys are canceled; OAuth/SSH
 keeps its supported paths. The implementation rules below are the existing
 seams, not proof of the new exclusive mode or mutable capability controls.
 
-### Owner MCP controls — required new S6 interface
+### Owner MCP controls — removed (#859)
 
-The [current bounded contract](../product/mcp-identity.md#s6--owner-mcp-capability-switches)
-adds a persisted/versioned restrictive policy for the connection owner. It does
-not rewrite the original connection consent/project/scope envelope or receipt
-identities. Current create/list/revoke and standing-grant routes below are not
-an edit API for existing capabilities. The ordinary owner session manages this
-policy; another owner/admin/agent cannot edit the private connection.
+The S6 capability switches and their restrictive policy were removed with the scopes and the project selection; "What it may do"
+(one row per agent) replaces them. The paragraph below is the v0.1 record.
 
 Every protected projection/read/proposal/effect, delivery recheck and receipt
 replay intersects current rights/grants, original signed OAuth scope/place
@@ -378,9 +379,9 @@ Retries and refusals:
   - a stale version (`VERSION_CONFLICT`);
   - an unmet prerequisite (`TASK_PREREQUISITES_UNMET`).
 
-`flux_bootstrap` lists these tools with their operation and whether the current
-bearer's scopes make them available. A connection without the action scope sees
-them as unavailable and gets `MCP_SCOPE_REQUIRED`.
+`flux_bootstrap` lists these tools with their operation and whether the agent's
+"What it may do" makes them available. A connection set to Only read sees them
+as unavailable and gets `AGENT_ONLY_READS` (#859: there are no scopes).
 
 ### Shared project maps
 

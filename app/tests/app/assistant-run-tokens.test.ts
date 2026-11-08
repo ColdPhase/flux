@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunTools, compileAssistantAreas, DEFAULT_ASSISTANT_AREAS, PERSONAL_RUN_LIMITS,
+  agentConnectionPath, ASSISTANT_RUN_EFFECT_TOOLS, assistantRunTools, PERSONAL_RUN_LIMITS,
   personalRunTokenPath, RUN_TOKEN_LIMITS, type AgentMayDo, type Conversation, type Project, type Workspace,
 } from '@flux/contracts';
 import { createPersonalRunProcessor, type PersonalComputeResult, type PersonalToolCall, type Principal } from '@flux/core';
@@ -160,9 +160,9 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.deepEqual(signed.flux_place, { project: place.id, conversation: thread.id });
     assert.equal(signed.aud, `${publicOrigin}/mcp`);
     assert.equal(signed.azp, 'flux-personal-run', 'the MCP resource server requires an authorized party (Better Auth 1.7.18)');
-    assert.equal(signed.scope, 'flux.context.read flux.action.execute', 'reads and changes (A3)');
+    assert.equal(signed.scope, undefined, 'no scope ceiling: what a run may call is its tool list (A3) and its owner\'s rights');
     assert.ok((signed.exp as number) - (signed.iat as number) <= RUN_TOKEN_LIMITS.lifetimeSeconds, 'no longer than the run\'s clock');
-    assert.deepEqual(grant.tools, assistantRunTools(compileAssistantAreas(DEFAULT_ASSISTANT_AREAS), ['flux.context.read', 'flux.action.execute']));
+    assert.deepEqual(grant.tools, assistantRunTools('act'));
     const stored = await pool.query(`SELECT row_to_json(r)::text AS text FROM personal_runs r WHERE id = $1`, [runId]);
     assert.ok(!stored.rows[0].text.includes(grant.token) && !stored.rows[0].text.includes(grant.token.split('.')[2]!), 'the token is never stored');
     assert.ok(!stored.rows[0].text.includes(nonce), 'nor is the nonce');

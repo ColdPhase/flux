@@ -6,12 +6,13 @@ import { gunzipSync } from 'node:zlib';
 import { describe, test } from 'node:test';
 import { PROJECT_EXPORT_BUNDLE_QUERY, PROJECT_EXPORT_FORMAT, PROJECT_EXPORT_FORMAT_VERSION, PROJECT_EXPORT_JSON_SCHEMA,
   PROJECT_EXPORT_SCHEMA_ID, projectExportPath, type ProjectExport, type ProjectExportManifest } from '@flux/contracts';
+import { createConnection, oauthTokenFor } from './support/mcp-actions.js';
 import { COWORK_PLAYBOOK, renderCoworkPlaybook } from '@flux/core';
 import { assertPinned, compareExact, compareKeyed, compareSchema, compareSet, contractReport, structural,
   type ContractChange } from './support/contract-compat.js';
 import { pool } from './support/db.js';
 import { apiUrl, publicOrigin, register, uniqueEmail } from './support/http.js';
-import { beginOauth, expect, mcp, oauthToken, toolValue } from './support/mcp.js';
+import { expect, mcp, toolValue } from './support/mcp.js';
 import { expectStatus, person, project, workspace } from './support/people.js';
 
 // Public extension contracts of v0.1 (O-010, #251, docs/product/extension-contracts.md):
@@ -63,7 +64,6 @@ function compareMcp(before: Json, after: Json): ContractChange[] {
     ...compareSet(before.protectedResource?.scopes, after.protectedResource?.scopes, 'protectedResource.scopes'),
     ...compareKeyed(before.tools ?? [], after.tools ?? [], (tool: Json) => tool.name, 'tools', (a, b, at) => [
       ...text(a.title, b.title, `${at}.title`),
-      ...compareExact(a.requiredScope, b.requiredScope, `${at}.requiredScope`),
       ...compareExact(a.operation, b.operation, `${at}.operation`),
       ...compareExact(a.classes, b.classes, `${at}.classes`),
       ...compareExact(a.annotations, b.annotations, `${at}.annotations`),
@@ -86,22 +86,22 @@ function compareMcp(before: Json, after: Json): ContractChange[] {
   ];
 }
 
-async function connectedAgent(scopes = ['flux.context.read', 'flux.proposal.write', 'flux.action.execute']) {
+async function connectedAgent() {
   const { browser: owner } = await register(uniqueEmail('contracts'), 'correct horse battery staple');
   const ws = expect(await owner.request('POST', '/api/v1/workspaces', { body: { name: 'Contract pins' } }), 201);
   const agent = expect(await owner.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Contract agent', owner: 'self' } }), 201);
   const place = expect(await owner.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Contract project', visibility: 'restricted' } }), 201);
-  const connection = expect(await owner.request('POST', '/api/v1/agent-connections', { body: { agentId: agent.id, selectedProjectIds: [place.id], scopes } }), 201);
+  const connection = await createConnection(pool, owner, { agentId: String(agent.id) });
   const clientId = `flux-test-${randomUUID()}`;
   const redirectUri = 'http://127.0.0.1:19737/callback';
   await pool.query(`INSERT INTO oauth_client
     (id, client_id, name, redirect_uris, token_endpoint_auth_method, grant_types,
      response_types, scopes, require_pkce, created_at, updated_at)
     VALUES ($1, $2, 'Flux HTTP test client', $3, 'none', $4, $5, $6, true, now(), now())`,
-  [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], [...scopes, 'offline_access']]);
+  [randomUUID(), clientId, [redirectUri], ['authorization_code', 'refresh_token'], ['code'], ['offline_access']]);
   await pool.query('INSERT INTO oauth_client_resource (id, client_id, resource_id, created_at) VALUES ($1, $2, $3, now())',
     [randomUUID(), clientId, `${publicOrigin}/mcp`]);
-  const tokens = await oauthToken(owner, String(connection.id), clientId, redirectUri, await beginOauth(owner, clientId, redirectUri, { scope: [...scopes, 'offline_access'].join(' ') }));
+  const tokens = await oauthTokenFor(pool, owner, String(connection.id), clientId, redirectUri);
   let id = 500;
   const call = async (method: string, params: Record<string, unknown> = {}) => {
     const response = await mcp(tokens.access_token, id++, method, params);
@@ -120,7 +120,7 @@ async function connectedAgent(scopes = ['flux.context.read', 'flux.proposal.writ
     } while (cursor);
     return items;
   };
-  return { projectId: String(place.id), call, list };
+  return { projectId: String(place.id), call, list, owner, connectionId: String(connection.id) };
 }
 
 /** The running MCP contract, in the canonical form of the snapshot. */
@@ -137,13 +137,13 @@ async function liveMcpContract(snapshotCodes: readonly string[]) {
   assert.equal((bootstrap.trusted as Json).playbook.toolContractVersion, COWORK_PLAYBOOK.toolContractVersion,
     'bootstrap reports the tool contract version the snapshot is keyed by');
 
-  // A refused call shows the error envelope: a grant without the action scope (#548; the listing above is the full grant's).
-  const narrow = await connectedAgent(['flux.context.read', 'flux.proposal.write']);
-  const refused = (await narrow.call('tools/call', { name: 'flux_create_task', arguments: { projectId: narrow.projectId,
-    runtimeSessionId: (bootstrap.runtime as Json).id, grantId: randomUUID(), clientCommandId: randomUUID(),
-    peerRequestClass: 'plan', sources: [], task: { title: 'Refused without the action scope' } } })).message!.result as Json;
+  // A refused call shows the error envelope: an agent set to Only read (#859; there are no scopes to be refused for).
+  const reader = await connectedAgent();
+  expect(await reader.owner.request('PATCH', `/api/v1/agent-connections/${reader.connectionId}`, { body: { mayDo: 'read' } }), 200);
+  const refused = (await reader.call('tools/call', { name: 'flux_create_task', arguments: { projectId: reader.projectId,
+    clientCommandId: randomUUID(), task: { title: 'Refused: the agent only reads' } } })).message!.result as Json;
   const envelope = JSON.parse(refused.content[0].text);
-  assert.equal(envelope.code, 'MCP_SCOPE_REQUIRED');
+  assert.equal(envelope.code, 'AGENT_ONLY_READS');
 
   const metadata = await fetch(new URL('/.well-known/oauth-protected-resource/mcp', apiUrl));
   assert.equal(metadata.status, 200);
@@ -162,7 +162,7 @@ async function liveMcpContract(snapshotCodes: readonly string[]) {
     protectedResource: { resource: String(resource.resource).replace(publicOrigin, '{origin}'), scopes: sorted(resource.scopes_supported ?? []) },
     tools: tools.map((tool) => {
       const capability = capabilities.get(tool.name);
-      return { name: tool.name, title: tool.title ?? null, requiredScope: capability?.requiredScope ?? null, operation: capability?.operation ?? null,
+      return { name: tool.name, title: tool.title ?? null, operation: capability?.operation ?? null,
         classes: [...capability?.classes ?? []], annotations: tool.annotations ?? null, inputSchema: structural(tool.inputSchema) };
     }).sort((a, b) => a.name.localeCompare(b.name)),
     prompts: prompts.map((prompt) => ({ name: prompt.name, title: prompt.title ?? null,
@@ -264,7 +264,7 @@ describe('public extension contracts (O-010)', () => {
     try { snapshotCodes = JSON.parse(readFileSync(new URL(`./contracts/mcp-tools.v${version}.json`, import.meta.url), 'utf8')).errorCodes ?? []; }
     catch { /* a missing snapshot is reported by assertPinned */ }
     const live = await liveMcpContract(snapshotCodes);
-    assert.ok(live.tools.length > 0 && live.tools.every((tool) => tool.name.startsWith('flux_') && tool.requiredScope), 'every tool has a scope');
+    assert.ok(live.tools.length > 0 && live.tools.every((tool) => tool.name.startsWith('flux_') && !('requiredScope' in tool)), 'every tool is a flux_ tool and none names a scope');
     assertPinned('mcp-tools', version, live, compareMcp);
   });
 
@@ -314,8 +314,8 @@ describe('public extension contracts (O-010)', () => {
       { type: 'object', required: ['a', 'b'], properties: { description: { type: 'string' } } });
   });
 
-  test('a renamed tool, a changed scope and a missing snapshot fail with the version advice', () => {
-    const tool = (name: string, requiredScope = 'flux.context.read') => ({ name, title: name, requiredScope, operation: null, classes: [], annotations: null,
+  test('a renamed tool, a changed operation and a missing snapshot fail with the version advice', () => {
+    const tool = (name: string, operation: string | null = null) => ({ name, title: name, operation, classes: [], annotations: null,
       inputSchema: { type: 'object', properties: { projectId: { type: 'string' } }, required: ['projectId'] } });
     const snapshot = { contract: 'flux.mcp-tools', toolContractVersion: 1, tools: [tool('flux_get_work'), tool('flux_list_work')] };
     const renamed = { ...snapshot, tools: [tool('flux_read_work'), tool('flux_list_work')] };
@@ -325,8 +325,8 @@ describe('public extension contracts (O-010)', () => {
     assert.match(report, /^BREAKING change to mcp-tools version 1\. Do not edit tests\/app\/contracts\/mcp-tools\.v1\.json: bump the version to 2/);
     assert.ok(report.includes('CONTRACT-SNAPSHOT mcp-tools.v1.json {'), 'the report carries the running contract');
 
-    const rescoped = { ...snapshot, tools: [tool('flux_get_work', 'flux.action.execute'), tool('flux_list_work')] };
-    assert.deepEqual(compareMcp(snapshot, rescoped).map((change) => `${change.kind} ${change.path}`), ['breaking tools.flux_get_work.requiredScope']);
+    const reworked = { ...snapshot, tools: [tool('flux_get_work', 'work.update'), tool('flux_list_work')] };
+    assert.deepEqual(compareMcp(snapshot, reworked).map((change) => `${change.kind} ${change.path}`), ['breaking tools.flux_get_work.operation']);
 
     const added = { ...snapshot, tools: [...snapshot.tools, tool('flux_get_result')] };
     assert.match(contractReport('mcp-tools', 1, snapshot, added, compareMcp(snapshot, added))!, /^Additive change to mcp-tools version 1\. Replace /);

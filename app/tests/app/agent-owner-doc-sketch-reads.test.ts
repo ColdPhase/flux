@@ -33,9 +33,8 @@ const expectedAgent = (f: Awaited<ReturnType<typeof scene>>, projectOwner?: { ki
 
 test('a doc an agent last changed names its owner in the project list while that person has access, and drops it when access ends', async () => {
   const f = await scene();
-  const create = await f.connection.grant('doc.create', 'plan');
   const created = toolValue(await f.connection.tool('flux_create_doc', {
-    projectId: f.place.id, runtimeSessionId: f.connection.runtimeSessionId, grantId: create.id, clientCommandId: randomUUID(),
+    projectId: f.place.id, runtimeSessionId: f.connection.runtimeSessionId, clientCommandId: randomUUID(),
     peerRequestClass: 'plan', sources: [], doc: { title: 'Scoped list doc', body: 'Written by the agent.' },
   }));
   const docId = String(created.docId);
@@ -60,9 +59,8 @@ test('a doc an agent last changed names its owner in the project list while that
 
 test('a project sketch an agent created names its creator with the scoped owner, and drops it when access ends', async () => {
   const f = await scene();
-  const create = await f.connection.grant('map.create', 'plan', 10);
   const created = toolValue(await f.connection.tool('flux_create_map', {
-    projectId: f.place.id, runtimeSessionId: f.connection.runtimeSessionId, grantId: create.id, clientCommandId: randomUUID(),
+    projectId: f.place.id, runtimeSessionId: f.connection.runtimeSessionId, clientCommandId: randomUUID(),
     peerRequestClass: 'plan', sources: [], title: 'Scoped list sketch',
   }));
   const sketchId = String(created.mapId);

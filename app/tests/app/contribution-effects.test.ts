@@ -5,6 +5,7 @@ import { eq, sql } from 'drizzle-orm';
 import { schema, TASK_GRAPH_LOCK_NAMESPACE } from '@flux/db';
 import { agentExecutionUseCases, createAssistantProposalUseCases, createWorkContributions, createWorkUseCases, DomainError, type Principal, type ProposalRecord,
   type WorkPorts } from '@flux/core';
+import { createConnection } from './support/mcp-actions.js';
 import type { AgentConnection, AgentExecutionCommand, AgentJsonValue, AgentPostcondition, AssistantProposal, Conversation, ConversationMessage,
   Decision, TaskDiscussion, WorkItem, WorkResult } from '@flux/contracts';
 import { nativeWorkInTransaction, policyWorkAccess, workRepository } from '../../apps/server/src/work/adapters.js';
@@ -424,16 +425,12 @@ test('a generic reply to a task-bound conversation takes the task row before the
 async function agentFixture() {
   const f = await scene();
   const agent = expectStatus(await f.owner.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/agents`, { body: { name: 'Ledger agent', owner: 'self' } }), 201) as { id: string };
-  const connection = expectStatus(await f.owner.browser.request('POST', '/api/v1/agent-connections', {
-    body: { agentId: agent.id, selectedProjectIds: [f.place.id], scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] } }), 201) as AgentConnection;
+  const connection = await createConnection(pool, f.owner.browser, { agentId: agent.id }) as AgentConnection;
   const clientId = `contribution-fixture-${randomUUID()}`; const bindingId = randomUUID();
   await pool.query('INSERT INTO oauth_client(id,client_id,name,redirect_uris) VALUES($1,$2,$3,$4)', [randomUUID(), clientId, 'Contribution ledger fixture', ['https://fixture.invalid/callback']]);
   await pool.query('INSERT INTO agent_oauth_bindings(id,owner_user_id,connection_id,client_id) VALUES($1,$2,$3,$4)', [bindingId, f.owner.id, connection.id, clientId]);
-  const claims = { ownerUserId: f.owner.id, connectionId: connection.id, clientId, grantReferenceId: `flux-grant:${bindingId}`, scopes: connection.scopes };
+  const claims = { ownerUserId: f.owner.id, connectionId: connection.id, clientId, grantReferenceId: `flux-grant:${bindingId}` };
   const { runtime } = await db.transaction((tx) => agentRuntimeInTransaction(tx, claims, randomUUID()));
-  const grantFor = async (operation: 'work.update' | 'result.record') => expectStatus(await f.owner.browser.request('POST', `/api/v1/agent-connections/${connection.id}/action-grants`, { body: {
-    clientCommandId: randomUUID(), projectId: f.place.id, operation, peerRequestClass: 'execute', maximumUses: 5, expiresAt: new Date(Date.now() + 3_600_000).toISOString() } }), 201) as { id: string };
-  const updateGrant = await grantFor('work.update'); const resultGrant = await grantFor('result.record');
   const principal = { kind: 'agent' as const, id: agent.id };
   let effects = 0;
   /** Authority and the ONE ledger first, then the native effect, then one final event batch: the production composition. */
@@ -450,7 +447,7 @@ async function agentFixture() {
       return value;
     });
   }
-  return { ...f, agent, connection, runtime, updateGrant, resultGrant, principal, run, effects: () => effects };
+  return { ...f, agent, connection, runtime, principal, run, effects: () => effects };
 }
 
 test('an agent saving a blocker or publishing a result composes the native effect with the ONE connection-command ledger atomically', async () => {

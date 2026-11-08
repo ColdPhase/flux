@@ -28,11 +28,9 @@ async function scene() {
     expectStatus(await who.browser.request('POST', `/api/v1/projects/${p.id}/work`, { body: { title } }), 201) as WorkItem;
   /** The agent takes the task over MCP: a unit it claims, and the task is handed to it and started. */
   const work = async (item: WorkItem) => {
-    const create = await connected.grant('cowork.unit.create', 'execute', 5, item.id);
-    const unit = toolValue(await connected.tool('flux_create_unit', { ...run(), grantId: create.id, clientCommandId: randomUUID(), taskId: item.id, unitKey: 'take',
+    const unit = toolValue(await connected.tool('flux_create_unit', { ...run(), clientCommandId: randomUUID(), taskId: item.id, unitKey: 'take',
       expectedTaskVersion: item.version, assignmentConnectionId: connected.connectionId, parent: null })) as { unitId: string; version: number };
-    const claimGrant = await connected.grant('cowork.claim', 'execute', 5, unit.unitId);
-    const claim = toolValue(await connected.tool('flux_claim_unit', { ...run(), grantId: claimGrant.id, clientCommandId: randomUUID(), unitId: unit.unitId,
+    const claim = toolValue(await connected.tool('flux_claim_unit', { ...run(), clientCommandId: randomUUID(), unitId: unit.unitId,
       expectedVersion: unit.version })) as { generation: number; version: number; lease: { id: string } };
     expectStatus(await hubert.browser.request('PATCH', `/api/v1/work/${item.id}`, { body: { owner: { kind: 'agent', id: agent.id }, status: 'in_progress' },
       headers: { 'if-match': `"${item.version}"` } }), 200);
@@ -88,12 +86,10 @@ test('a manager stops the agent: the task goes back to nobody, its unit stops, t
   assert.equal((await outsider.browser.request('GET', `/api/v1/projects/${f.p.id}/agent-stops`)).status, 404);
 
   // The agent's next calls report the stop, not a generic lost claim; the unit can never be claimed again.
-  const renew = await f.connected.grant('cowork.renew', 'execute', 5, unitId);
-  const renewed = await f.connected.tool('flux_renew_unit', { ...f.run(), grantId: renew.id, clientCommandId: randomUUID(), unitId, expectedVersion: claim.version,
+  const renewed = await f.connected.tool('flux_renew_unit', { ...f.run(), clientCommandId: randomUUID(), unitId, expectedVersion: claim.version,
     generation: claim.generation, leaseId: claim.lease.id });
   assert.equal(toolFailure(renewed).code, 'COWORK_STOPPED');
-  const again = await f.connected.grant('cowork.claim', 'execute', 5, unitId);
-  assert.equal(toolFailure(await f.connected.tool('flux_claim_unit', { ...f.run(), grantId: again.id, clientCommandId: randomUUID(), unitId,
+  assert.equal(toolFailure(await f.connected.tool('flux_claim_unit', { ...f.run(), clientCommandId: randomUUID(), unitId,
     expectedVersion: ended.version })).code, 'COWORK_STOPPED');
 });
 
@@ -123,8 +119,7 @@ test('an agent asks with ready answers: one message, one card, a question notifi
   const f = await scene();
   const thread = expectStatus(await f.hubert.browser.request('POST', `/api/v1/projects/${f.p.id}/conversations`,
     { body: { body: 'Offsets for the bed probe', clientMessageId: randomUUID() } }), 201) as Conversation;
-  const reply = await f.connected.grant('conversation.reply', 'execute', 10);
-  const ask = (args: Record<string, unknown>) => f.connected.tool('flux_ask_question', { ...f.run(), grantId: reply.id, clientCommandId: randomUUID(), sources: [],
+  const ask = (args: Record<string, unknown>) => f.connected.tool('flux_ask_question', { ...f.run(), clientCommandId: randomUUID(), sources: [],
     conversationId: thread.id, question: 'Should the offsets be per bed, or one value for all six?', options: ['Per bed', 'One value'], askUserId: f.marek.id, ...args });
   const command = randomUUID();
   const asked = toolValue(await ask({ clientCommandId: command })) as { questionId: string; messageId: string; conversationId: string; replayed: boolean };
@@ -180,8 +175,7 @@ test('#763 IN-1/IN-2: Needs you lists an agent question from the question itself
   const opened = await f.hubert.browser.request('POST', `/api/v1/work/${item.id}/discussion`, { body: { body: 'Offsets for the bed probe', clientMessageId: randomUUID() } });
   assert.ok([200, 201].includes(opened.status), opened.text);
   const conversationId = (expectStatus(await f.hubert.browser.request('GET', `/api/v1/work/${item.id}/discussion`), 200) as TaskDiscussion).conversationId!;
-  const reply = await f.connected.grant('conversation.reply', 'execute', 10);
-  const ask = (question: string) => f.connected.tool('flux_ask_question', { ...f.run(), grantId: reply.id, clientCommandId: randomUUID(), sources: [],
+  const ask = (question: string) => f.connected.tool('flux_ask_question', { ...f.run(), clientCommandId: randomUUID(), sources: [],
     conversationId, question, options: ['Per bed', 'One value'], askUserId: f.marek.id });
   const first = toolValue(await ask('Offsets per bed, or one value for all six?')) as { questionId: string; messageId: string };
   const second = toolValue(await ask('Probe depth at 5 cm or 10 cm?')) as { questionId: string; messageId: string };
@@ -219,8 +213,7 @@ test('a free reply answers a question; invalid questions and people without acce
   const f = await scene();
   const thread = expectStatus(await f.hubert.browser.request('POST', `/api/v1/projects/${f.p.id}/conversations`,
     { body: { body: 'Where do we cut?', clientMessageId: randomUUID() } }), 201) as Conversation;
-  const reply = await f.connected.grant('conversation.reply', 'execute', 10);
-  const ask = (args: Record<string, unknown>) => f.connected.tool('flux_ask_question', { ...f.run(), grantId: reply.id, clientCommandId: randomUUID(), sources: [],
+  const ask = (args: Record<string, unknown>) => f.connected.tool('flux_ask_question', { ...f.run(), clientCommandId: randomUUID(), sources: [],
     conversationId: thread.id, question: 'Cut at the seam?', options: ['Yes', 'No'], ...args });
   const messages = async () => (await pool.query('SELECT count(*)::int AS n FROM project_messages WHERE conversation_id=$1', [thread.id])).rows[0].n as number;
   // Too few, too many and repeated options, an empty question and a person outside the project post nothing.
@@ -323,16 +316,13 @@ test('#160 AC-5: Pause keeps the hold, refuses renew and claim with COWORK_PAUSE
   assert.deepEqual(sidebar?.paused, { by: { id: f.hubert.id, name: 'Hubert' } });
 
   // The agent's next renewal is its safe point: refused with COWORK_PAUSED, and it can still release with a checkpoint.
-  const renew = await f.connected.grant('cowork.renew', 'execute', 5, unitId);
-  assert.equal(toolFailure(await f.connected.tool('flux_renew_unit', { ...f.run(), grantId: renew.id, clientCommandId: randomUUID(), unitId,
+  assert.equal(toolFailure(await f.connected.tool('flux_renew_unit', { ...f.run(), clientCommandId: randomUUID(), unitId,
     expectedVersion: claim.version, generation: claim.generation, leaseId: claim.lease.id })).code, 'COWORK_PAUSED');
-  const release = await f.connected.grant('cowork.release', 'execute', 5, unitId);
-  const released = toolValue(await f.connected.tool('flux_release_unit', { ...f.run(), grantId: release.id, clientCommandId: randomUUID(), unitId,
+  const released = toolValue(await f.connected.tool('flux_release_unit', { ...f.run(), clientCommandId: randomUUID(), unitId,
     expectedVersion: claim.version, generation: claim.generation, leaseId: claim.lease.id,
     checkpoint: { summary: 'Measured three corners.', nextAction: 'Measure the fourth corner.', blocker: null } })) as { state: string; version: number };
   assert.equal(released.state, 'paused');
-  const claimAgain = await f.connected.grant('cowork.claim', 'execute', 5, unitId);
-  const refused = toolFailure(await f.connected.tool('flux_claim_unit', { ...f.run(), grantId: claimAgain.id, clientCommandId: randomUUID(), unitId,
+  const refused = toolFailure(await f.connected.tool('flux_claim_unit', { ...f.run(), clientCommandId: randomUUID(), unitId,
     expectedVersion: released.version }));
   assert.equal(refused.code, 'COWORK_PAUSED', 'no new step until a person resumes');
 
@@ -341,7 +331,7 @@ test('#160 AC-5: Pause keeps the hold, refuses renew and claim with COWORK_PAUSE
   assert.equal((await pause(f.hubert, false)).status, 204);
   assert.equal((await pool.query('SELECT count(*)::int AS n FROM agent_pauses WHERE task_id=$1', [item.id])).rows[0].n, 0);
   assert.equal((expectStatus(await f.hubert.browser.request('GET', '/api/v1/working-agents'), 200) as OwnWorkingAgents).items.find((entry) => entry.task.id === item.id)?.paused, null);
-  const resumed = toolValue(await f.connected.tool('flux_claim_unit', { ...f.run(), grantId: claimAgain.id, clientCommandId: randomUUID(), unitId,
+  const resumed = toolValue(await f.connected.tool('flux_claim_unit', { ...f.run(), clientCommandId: randomUUID(), unitId,
     expectedVersion: released.version })) as { state: string; checkpoint: { summary: string } | null };
   assert.deepEqual([resumed.state, resumed.checkpoint?.summary], ['claimed', 'Measured three corners.']);
 

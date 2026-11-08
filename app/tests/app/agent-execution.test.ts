@@ -8,6 +8,7 @@ import { agentExecutionInTransaction } from '../../apps/server/src/agent-connect
 import { nativeWorkInTransaction } from '../../apps/server/src/work/adapters.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, grant as giveAccess, person, project, removeFromSpace, workspace } from './support/people.js';
+import { createConnection } from './support/mcp-actions.js';
 
 async function fixture() {
   // The agent's owner is added to the space, so their access can end (#903); a company owner or admin always reaches every space.
@@ -15,15 +16,14 @@ async function fixture() {
   await addMember(lead, ws.id, owner, 'member'); const p = await project(lead, ws.id, 'Execution target', 'restricted'); await giveAccess(lead, p.id, owner, 'contributor');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
     { body: { name: 'Execution agent', owner: 'self' } }), 201) as Agent;
-  const connection = expectStatus(await owner.browser.request('POST', '/api/v1/agent-connections',
-    { body: { agentId: agent.id, selectedProjectIds: [p.id], scopes: ['flux.context.read', 'flux.proposal.write', 'flux.action.execute'] } }), 201) as AgentConnection;
+  const connection = await createConnection(pool, owner.browser, { agentId: agent.id }) as AgentConnection;
   // Trusted bearer fixture for SQL/port checks; not a model or actual client activation.
   const clientId = `execution-fixture-${randomUUID()}`; const bindingId = randomUUID();
   await pool.query('INSERT INTO oauth_client(id,client_id,name,redirect_uris) VALUES($1,$2,$3,$4)',
     [randomUUID(), clientId, 'Execution boundary fixture', ['https://fixture.invalid/callback']]);
   await pool.query('INSERT INTO agent_oauth_bindings(id,owner_user_id,connection_id,client_id) VALUES($1,$2,$3,$4)',
     [bindingId, owner.id, connection.id, clientId]);
-  const claims = { ownerUserId: owner.id, connectionId: connection.id, clientId, grantReferenceId: `flux-grant:${bindingId}`, scopes: connection.scopes };
+  const claims = { ownerUserId: owner.id, connectionId: connection.id, clientId, grantReferenceId: `flux-grant:${bindingId}` };
   const clientSessionId = randomUUID();
   const { runtime } = await db.transaction((tx) => agentRuntimeInTransaction(tx, claims, clientSessionId));
   const again = await db.transaction((tx) => agentRuntimeInTransaction(tx, claims, clientSessionId));
@@ -121,7 +121,7 @@ test('changed plan/source revisions and actual client or coarse scope substituti
   const command = { ...f.command, sources: [{ materialId: source.materialId, version: 1 }] }; await f.run(command);
   expectStatus(await f.owner.browser.request('PATCH', `/api/v1/materials/${source.materialId}`, { body: { clientMutationId: randomUUID(), expectedVersion: 1, body: 'Version two' } }), 200);
   await rejects(f.run(command), 'SOURCE_VERSION_CONFLICT');
-  for (const claims of [{ ...f.claims, clientId: 'another-actual-client' }, { ...f.claims, scopes: ['flux.context.read'] }]) {
+  for (const claims of [{ ...f.claims, clientId: 'another-actual-client' }]) {
     await assert.rejects(db.transaction((tx) => agentExecutionInTransaction(tx, claims).prepare(normalizeAgentExecution(f.command))),
       (error: unknown) => error instanceof DomainError);
   }

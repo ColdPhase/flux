@@ -34,7 +34,7 @@ function send(connectionId: string, clientCommandId: string, { body, cite }: Age
  */
 export function registerAgentConversationActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
   const execute = nativeActionExecutor(db, claims);
-  const register = (operation: AgentOperation) => tools.forScope('flux.action.execute', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
+  const register = (operation: AgentOperation) => tools.forAccess('write', { operation, classes: AGENT_OPERATION_CLASSES[operation] });
   const run = (handler: () => Promise<unknown>) => handler().then(toolResult, toolError);
   const note = 'The message is attributed to this connection\'s agent, acting for its owner.';
 

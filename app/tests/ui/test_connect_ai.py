@@ -169,8 +169,8 @@ class ConnectAiJourney(unittest.TestCase):
         self.api(ines, "POST", f"/api/v1/workspaces/{ws['id']}/members", {"email": TOM["email"], "role": "member"}, status=201)
         project = self.api(ines, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Two ways", "visibility": "workspace"}, status=201)
         agent = self.api(ines, "POST", f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Ines's coding agent", "owner": "self"}, status=201)
-        connection = self.api(ines, "POST", "/api/v1/agent-connections", {"agentId": agent["id"], "selectedProjectIds": [project["id"]],
-                              "scopes": ["flux.context.read", "flux.proposal.write"], "name": CONNECTION, "clientDesignation": "codex"}, status=201)
+        connection = self.api(ines, "POST", "/api/v1/integration/agent-connections", {"agentId": agent["id"],
+                              "name": CONNECTION, "clientDesignation": "codex"}, status=201)
         type(self).ids = {"workspace": ws["id"], "project": project["id"], "agent": agent["id"], "connection": connection["id"]}
 
     def test_02_settings_ai_puts_connect_ai_first_then_the_assistant_and_the_agent_app(self) -> None:
