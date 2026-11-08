@@ -1959,48 +1959,6 @@ export const coworkCheckpoints = pgTable('cowork_checkpoints', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.unitId], foreignColumns: [coworkUnits.workspaceId, coworkUnits.projectId, coworkUnits.id] }).onDelete('cascade'),
 ]);
 
-export const coworkRequestLineages = pgTable('cowork_request_lineages', {
-  id: uuid('id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
-  taskId: uuid('root_work_id').notNull(), runId: uuid('run_id').notNull(),
-  maximumRequests: integer('maximum_requests').notNull(), maximumDepth: integer('maximum_depth').notNull(),
-  maximumReviewRounds: integer('maximum_review_rounds').notNull(),
-  createdRequests: integer('created_requests').notNull().default(0), reviewRequests: integer('review_requests').notNull().default(0),
-}, (table) => [
-  unique().on(table.workspaceId, table.projectId, table.taskId, table.runId), unique().on(table.workspaceId, table.projectId, table.id),
-  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
-]);
-export const coworkRequests = pgTable('cowork_requests', {
-  /** 0115 (F-029): the workspace AI policy epoch this item was admitted under; no default. */
-  aiEpoch: bigint('ai_epoch', { mode: 'number' }).notNull(),
-  id: uuid('id').primaryKey(), lineageId: uuid('lineage_id').notNull(), workspaceId: uuid('workspace_id').notNull(),
-  projectId: uuid('project_id').notNull(), taskId: uuid('work_id').notNull(), unitId: uuid('unit_id').notNull(),
-  senderConnectionId: uuid('sender_connection_id').notNull(), recipientConnectionId: uuid('recipient_connection_id').notNull(),
-  senderOwnerId: text('sender_owner_id').notNull(), recipientOwnerId: text('recipient_owner_id').notNull(),
-  intentKey: text('intent_key').notNull(), fingerprint: text('fingerprint').notNull(), parentRequestId: uuid('parent_request_id'),
-  kind: text('kind', { enum: ['help', 'review', 'fix', 'handoff'] }).notNull(),
-  target: jsonb('target').$type<CoWorkSourceRef>().notNull(), sourceRefs: jsonb('source_refs').$type<CoWorkSourceRef[]>().notNull(),
-  criteriaRefs: jsonb('criteria_refs').$type<CoWorkSourceRef[]>().notNull(),
-  depth: integer('depth').notNull(), reviewRound: integer('review_round').notNull(), priority: integer('priority').notNull(),
-  peerUnblocking: boolean('peer_unblocking').notNull(), expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  state: text('state', { enum: ['queued', 'deferred', 'claimed', 'resolved', 'declined', 'superseded', 'expired', 'cancelled'] }).notNull().default('queued'),
-  version: integer('version').notNull().default(1), reason: text('reason'), nextBoundary: text('next_boundary'),
-  dependencyRef: jsonb('dependency_ref').$type<CoWorkSourceRef>(),
-  claimedGeneration: integer('claimed_generation'), responseRef: jsonb('response_ref').$type<CoWorkSourceRef>(),
-  /** 0111: the person who cancelled the request from its card; null for any other state. */
-  cancelledBy: text('cancelled_by').references(() => authUsers.id, { onDelete: 'set null' }),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(), updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-}, (table): PgTableExtraConfigValue[] => [
-  unique().on(table.lineageId, table.intentKey), unique().on(table.lineageId, table.id),
-  foreignKey({ columns: [table.workspaceId, table.projectId, table.lineageId], foreignColumns: [coworkRequestLineages.workspaceId, coworkRequestLineages.projectId, coworkRequestLineages.id] }).onDelete('cascade'),
-  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }).onDelete('cascade'),
-  foreignKey({ columns: [table.workspaceId, table.projectId, table.taskId, table.unitId], foreignColumns: [coworkUnits.workspaceId, coworkUnits.projectId, coworkUnits.taskId, coworkUnits.id] }).onDelete('cascade'),
-  foreignKey({ columns: [table.lineageId, table.parentRequestId], foreignColumns: [coworkRequests.lineageId, coworkRequests.id] }),
-  index('cowork_requests_recipient_idx').on(table.workspaceId, table.projectId, table.recipientConnectionId, table.createdAt, table.id),
-]);
-export const coworkDeliveryIntents = pgTable('cowork_delivery_intents', {
-  id: uuid('id').primaryKey(), requestId: uuid('request_id').notNull().unique().references(() => coworkRequests.id, { onDelete: 'cascade' }),
-  acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }), createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
 // Project GitHub App integration (#74). Credentials/inbox are internal; public
 // facts require current Flux + GitHub repository proof, including history reads.
 export const githubCredentials = pgTable('github_credentials', {
@@ -2060,7 +2018,7 @@ export const githubBridgeOutbox = pgTable('github_bridge_outbox', {
   linkId: uuid('link_id').notNull().references(() => githubTaskLinks.id, { onDelete: 'cascade' }),
   taskId: uuid('task_id').notNull(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
   headSha: text('head_sha').notNull(), event: text('event').notNull(), providerObjectId: text('provider_object_id'), correlationKey: text('correlation_key').notNull(),
-  state: text('state', { enum: ['pending_audience_adapter', 'delivered', 'no_recipient', 'no_access', 'suppressed_echo'] }).notNull().default('pending_audience_adapter'),
+  state: text('state', { enum: ['pending_audience_adapter', 'delivered', 'no_recipient', 'no_access'] }).notNull().default('pending_audience_adapter'),
   /** 0132 (#479): the connection the #153 bridge delivered this event to; set exactly when `delivered`. */
   recipientConnectionId: uuid('recipient_connection_id'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

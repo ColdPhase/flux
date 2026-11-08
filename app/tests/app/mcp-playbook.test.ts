@@ -16,7 +16,7 @@ test('the shipped playbook has one stable version/digest that changes with its c
   const edited = { ...COWORK_PLAYBOOK, modules: COWORK_PLAYBOOK.modules.map((module, index) => index ? module : { ...module, text: `${module.text} ` }) };
   assert.notEqual(coworkPlaybookReference(edited).digest, reference.digest, 'any content change changes the digest');
   assert.deepEqual(COWORK_PLAYBOOK.modules.map((module) => module.id),
-    ['start_resume', 'orient_plan', 'execute_checkpoint', 'request_review_fix', 'block_transfer_stop']);
+    ['start_resume', 'orient_plan', 'execute_checkpoint', 'hand_off', 'block_transfer_stop']);
   assert.ok(Object.isFrozen(COWORK_PLAYBOOK) && COWORK_PLAYBOOK.modules.every((module) => Object.isFrozen(module)));
   const rendered = renderCoworkPlaybook();
   assert.ok(rendered.includes(reference.digest));

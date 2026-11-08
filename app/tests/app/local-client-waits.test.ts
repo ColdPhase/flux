@@ -244,26 +244,22 @@ describe('A local client follows the owner\'s rights and waits like the assistan
   });
 });
 
-// Co-work for another person (C-18, #859): a child unit given to another person's client and a request to it are another person's things,
+// Co-work for another person (C-18, #859): a child unit given to another person's client is another person's thing,
 // like a task for someone else, so they wait for the sender's owner. Taking a task and giving a unit to one's own other client do not.
 describe('co-work for another person\'s client waits for the owner\'s OK', () => {
   let jonas: Awaited<ReturnType<typeof agentConnection>>;
   let ownSecond: Awaited<ReturnType<typeof agentConnection>>;
   let task: { id: string; version: number };
-  let material: string;
   before(async () => {
     const make = async (who: Person, name: string) => (expectStatus(await who.browser.request('POST', `/api/v1/workspaces/${f.workspaceId}/agents`, { body: { name, owner: 'self' } }), 201) as { id: string }).id;
     jonas = await agentConnection(pool, peer.browser, await make(peer, 'Jonas Codex'), [f.projectId]);
     ownSecond = await agentConnection(pool, f.owner, await make(owner, 'Second client'), [f.projectId]);
     task = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${f.projectId}/work`, { body: { title: 'Shared outcome' } }), 201) as { id: string; version: number };
-    material = String((expectStatus(await owner.browser.request('POST', `/api/v1/projects/${f.projectId}/materials`,
-      { body: { clientMutationId: randomUUID(), title: 'Review criteria', body: 'Exact revision' } }), 201) as { materialId: string }).materialId);
   });
   const base = (who: { runtimeSessionId: string }, role: string, clientCommandId: string = randomUUID()) =>
     ({ projectId: f.projectId, runtimeSessionId: who.runtimeSessionId, clientCommandId, peerRequestClass: role });
   const unitsOf = async (connectionId: string) => (await pool.query(`SELECT id, state, version FROM cowork_units WHERE assignment_connection_id = $1`, [connectionId])).rows as
     { id: string; state: string; version: number }[];
-  const requests = async () => Number((await pool.query(`SELECT count(*)::int AS n FROM cowork_requests WHERE work_id = $1`, [task.id])).rows[0].n);
   const waitingOf = async (operation: string) => (await rows()).filter((row) => row.operation === operation);
   let root: { unitId: string; version: number }; let claim: { generation: number; version: number; lease: { id: string } };
   const parent = () => ({ unitId: root.unitId, generation: claim.generation, leaseId: claim.lease.id });
@@ -297,33 +293,6 @@ describe('co-work for another person\'s client waits for the owner\'s OK', () =>
     assert.equal((await waitingOf('cowork.unit.create'))[0]!.state, 'applied_after_wait');
     assert.match(text(await give(jonas, 'review-1', waiting!.client_command_id)), /approved this change and it was made/);
     assert.equal((await unitsOf(jonas.connectionId)).length, 1, 'a retry makes no second unit');
-  });
-
-  test('a request to Jonas\'s client waits; Skip sends nothing; Approve queues it once', async () => {
-    const unit = (await unitsOf(jonas.connectionId))[0]!;
-    const send = (key: string, clientCommandId?: string) => {
-      const target = { type: 'work', id: task.id, version: task.version };
-      return f.tool('flux_send_request', { ...base(f, 'execute', clientCommandId), unitId: root.unitId, generation: claim.generation, leaseId: claim.lease.id,
-        recipientUnitId: unit.id, expectedRecipientUnitVersion: unit.version, recipientConnectionId: jonas.connectionId, intentKey: key, parentRequestId: null,
-        kind: 'review', target, sourceRefs: [{ type: 'material', id: material, version: 1 }], criteriaRefs: [target], peerUnblocking: true });
-    };
-    assert.match(text(await send('ask-1')), /^Waiting for /);
-    assert.equal(await requests(), 0, 'nothing reaches Jonas\'s client yet');
-    const first = (await waitingOf('cowork.request'))[0]!;
-    assert.equal(first.wait_reason, 'others');
-    // The card reads "wants to send request to Jonas Codex…", so the title names who it goes to and does not repeat the noun (#930).
-    const title = String((await pool.query('SELECT object_title FROM assistant_changes WHERE id = $1', [first.id])).rows[0].object_title);
-    assert.match(title, /^to /);
-    assert.doesNotMatch(title, /request/);
-    expectStatus(await decide(owner, first.id, 'skip'), 200);
-    assert.equal(await requests(), 0, 'Skip sends nothing');
-    assert.match(text(await send('ask-2')), /^Waiting for /);
-    const second = (await waitingOf('cowork.request')).find((row) => row.state === 'waiting')!;
-    expectStatus(await decide(owner, second.id, 'apply'), 200);
-    assert.equal(await requests(), 1);
-    assert.equal(((await pool.query(`SELECT state, sender_connection_id FROM cowork_requests WHERE work_id = $1`, [task.id])).rows[0] as { state: string; sender_connection_id: string }).sender_connection_id, f.connectionId);
-    expectStatus(await decide(owner, second.id, 'apply'), 409);
-    assert.equal(await requests(), 1, 'a second Approve queues nothing more');
   });
 
   test('Only read refuses both, and nothing waits', async () => {

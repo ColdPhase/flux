@@ -20,9 +20,6 @@ export interface AgentExecutionDomainChecks {
   /** #153 verifies typed claim post-state directly against its canonical rows in this transaction. */
   coordinationPostcondition?(tx: Transaction, context: AuthenticatedAgentRuntime, command: NormalizedAgentExecutionCommand,
     condition: Extract<AgentPostcondition, { kind: 'cowork.claim_state' }>): Promise<boolean>;
-  /** #153 verifies the sender's queued-request identity against its canonical rows; absent means fail closed. */
-  coordinationRequestPostcondition?(tx: Transaction, context: AuthenticatedAgentRuntime, command: NormalizedAgentExecutionCommand,
-    condition: Extract<AgentPostcondition, { kind: 'cowork.request_state' }>): Promise<boolean>;
   /** #153 verifies a created, completed or transferred unit's identity, lineage, role and assignment against its canonical
    * row; absent means fail closed. */
   coordinationUnitPostcondition?(tx: Transaction, context: AuthenticatedAgentRuntime, command: NormalizedAgentExecutionCommand,
@@ -64,7 +61,7 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
     for (const condition of ordered) {
       const target = prepared.command.objectId;
       if (target && (condition.kind === 'work' || condition.kind === 'doc' || condition.kind === 'map' || condition.kind === 'map_checkpoint') && condition.id !== target
-        || target && (condition.kind === 'cowork.claim_state' || condition.kind === 'cowork.request_state') && condition.unitId !== target
+        || target && condition.kind === 'cowork.claim_state' && condition.unitId !== target
         // A created unit belongs to the exact task the command targeted; a completed or transferred unit IS the target.
         || condition.kind === 'cowork.unit_state'
           && (prepared.command.operation === 'cowork.unit.create' ? condition.taskId : condition.unitId) !== target)
@@ -74,19 +71,12 @@ export function agentExecutionInTransaction(tx: Transaction, claims: FluxMcpClai
         || condition.role !== prepared.command.peerRequestClass
         || condition.leaseSessionId !== null && condition.leaseSessionId !== prepared.context.id))
         throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'The claim post-state belongs to another context or role');
-      // The request role is the sender unit's actual class (the unit's), never the recipient's or the request kind.
-      if (condition.kind === 'cowork.request_state' && (condition.workspaceId !== prepared.context.workspaceId
-        || condition.projectId !== prepared.command.projectId || condition.connectionId !== prepared.context.connectionId
-        || condition.role !== prepared.command.peerRequestClass))
-        throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'The request post-state belongs to another context or sender role');
       // The created unit's role is the class; its assignment may be another connection (the receipt records the creator).
       if (condition.kind === 'cowork.unit_state' && (condition.workspaceId !== prepared.context.workspaceId
         || condition.projectId !== prepared.command.projectId || condition.role !== prepared.command.peerRequestClass))
         throw new DomainError(409, 'COMMAND_POSTSTATE_INVALID', 'The unit post-state belongs to another context or role');
       const allowed = condition.kind === 'cowork.claim_state'
         ? !!domain.coordinationPostcondition && await domain.coordinationPostcondition(tx, prepared.context, prepared.command, condition)
-        : condition.kind === 'cowork.request_state'
-        ? !!domain.coordinationRequestPostcondition && await domain.coordinationRequestPostcondition(tx, prepared.context, prepared.command, condition)
         : condition.kind === 'cowork.unit_state'
         ? !!domain.coordinationUnitPostcondition && await domain.coordinationUnitPostcondition(tx, prepared.context, prepared.command, condition)
         : privateTarget && condition.kind === 'message'

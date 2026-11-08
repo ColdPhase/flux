@@ -83,7 +83,7 @@ const OBJECT: Record<string, AssistantObjectType> = {
   'work.create': 'work', 'work.update': 'work', 'result.record': 'result', 'decision.propose': 'decision', 'doc.create': 'doc',
   'doc.update': 'doc', 'map.create': 'map', 'map.rename': 'map', 'map.thought.create': 'thought', 'map.thought.update': 'thought',
   'map.thought.delete': 'thought', 'map.positions.update': 'thought', 'map.link.create': 'link', 'map.link.delete': 'link',
-  'conversation.create': 'message', 'conversation.reply': 'message', 'cowork.unit.create': 'work', 'cowork.request': 'work', 'cowork.unit.transfer': 'work', 'work.creation.revert': 'work',
+  'conversation.create': 'message', 'conversation.reply': 'message', 'cowork.unit.create': 'work', 'cowork.unit.transfer': 'work', 'work.creation.revert': 'work',
 };
 
 interface Target {
@@ -288,16 +288,6 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       if (!client || !to || to.computeSource === 'owner_assistant' || to.revokedAt || !to.usable) throw new DomainError(404, 'COWORK_ASSIGNEE_UNAVAILABLE', 'That agent is not available');
       const forOther = to.ownerUserId !== owner;
       return { ...base, objectId, title: `to ${to.label}`.slice(0, 200), forOther, maker: forOther ? to.ownerUserId : null, recipient: to.label };
-    }
-    case 'cowork.request': {
-      // A local client asks another person's client for something (C-18, #859): another person's thing, so it waits for the owner's OK.
-      const asked = (payload.request ?? {}) as { recipientConnectionId?: unknown; kind?: unknown };
-      const recipient = typeof asked.recipientConnectionId === 'string' ? await rows.connection(asked.recipientConnectionId, projectId) : null;
-      if (!client || !recipient || recipient.computeSource === 'owner_assistant' || recipient.revokedAt || !recipient.usable)
-        throw new DomainError(404, 'COWORK_ASSIGNEE_UNAVAILABLE', 'That agent is not available');
-      const forOther = recipient.ownerUserId !== owner;
-      return { ...base, objectId, title: `to ${recipient.label}`.slice(0, 200), forOther,
-        maker: forOther ? recipient.ownerUserId : null, recipient: recipient.label };
     }
     case 'cowork.unit.create': {
       if (client) {

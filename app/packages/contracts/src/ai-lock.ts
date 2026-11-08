@@ -124,9 +124,6 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   [`POST ${AGENT_RUNTIME_CHECK_PATH}`]: exempt(ACCOUNT),
   [`POST ${AGENT_RUNTIME_NOTICE_PATH}`]: exempt(ACCOUNT),
   // Co-work (#153) and agent threads.
-  'GET /api/v1/work/:workId/coordination': gated('params', 'workId', 'work'),
-  'GET /api/v1/work/:workId/coordination/requests/:requestId/packet': gated('params', 'workId', 'work'),
-  'POST /api/v1/work/:workId/coordination/requests/:requestId/cancel': exempt(REDUCES),
   'GET /api/v1/work/:workId/agent-thread': exempt('Existing agent-thread messages stay readable as history'),
   'POST /api/v1/work/:workId/agent-thread': gated('params', 'workId', 'work'),
 };
@@ -201,7 +198,7 @@ export const AI_WORK_QUEUES = {
     WORKSPACE_ENCRYPTION_RESUME_JOB: 'workspace-encryption.resume.v1 replays a sealed workspace\'s waiting work after an unlock; AI is always off there (F-030)',
   } as Readonly<Record<string, string>>,
   /** Tables whose rows wait for AI work: each has `ai_epoch` (no default) and the `ai_work_admission` trigger. */
-  tables: ['personal_runs', 'cowork_requests', 'cowork_units'],
+  tables: ['personal_runs', 'cowork_units'],
   /** Functions that insert AI work from inside a person's own write; each checks the policy first and never raises. */
   captureFunctions: [] as readonly string[],
 } as const;

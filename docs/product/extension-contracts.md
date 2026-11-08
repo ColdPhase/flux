@@ -188,6 +188,9 @@ policy went: the resource template `flux://policy/{projectId}/{revision}` and bo
 contract 1's snapshot stays. Contract 2 is not published until v0.2 ships (v2 is unreleased and may still change), so later v0.2 changes
 to the same surface, such as #859's (which removes `requiredScope` and `MCP_SCOPE_REQUIRED`), change contract 2 instead of starting a third. That is the answer to the edits that #894, #922 and #928 made to `mcp-tools.v2.json` in place: a breaking edit of the snapshot is allowed only while v2 is unreleased, and the first release of Flux v0.2 freezes it (a later breaking change then starts contract 3).
 #942 is one more: `flux_create_doc` and `flux_update_doc` lose the input `state` (a page has no Draft or Published) and `flux_create_doc`/`flux_update_doc` no longer return it, edited in place in `mcp-tools.v2.json`. Export format 1 keeps `state` on each doc version, always `published`: removing a field needs a new `formatVersion` ([export compatibility](../operations/export.md#compatibility)), so `project-export.v1.json` is unchanged.
+#973 is one more: it removes the tools `flux_send_request`, `flux_claim_request`, `flux_defer_request`, `flux_decline_request`, `flux_resolve_request` and
+`flux_coordination_inbox`, the error code `COWORK_UNIT_REQUESTS_OPEN` and the playbook module `request_review_fix` (now `hand_off`, playbook 1.14.0), in place in
+`mcp-tools.v2.json`; contract 1's snapshot stays as it was.
 
 ## Costs and limitations
 

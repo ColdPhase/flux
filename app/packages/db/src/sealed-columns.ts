@@ -25,8 +25,8 @@ const ai = [
   'agent_thread_artifact_mutations', 'agent_thread_artifact_resets', 'agent_thread_guard_events', 'agents', 'assistant_background_notes',
   'assistant_changes', 'assistant_job_runs', 'assistant_jobs',
   'agent_task_taking', 'assistant_proposals',
-  'assistant_settings', 'background_compute_connections', 'cowork_checkpoints', 'cowork_connection_slots', 'cowork_delivery_intents',
-  'cowork_request_lineages', 'cowork_requests', 'cowork_review_verdicts', 'cowork_units', 'personal_run_web_reads',
+  'assistant_settings', 'background_compute_connections', 'cowork_checkpoints', 'cowork_connection_slots',
+  'cowork_units', 'personal_run_web_reads',
   'personal_runs',
 ] as const;
 const account = [

@@ -22,7 +22,6 @@ import { conversationRoutes } from './conversation/routes.js';
 import { linkPreviewRoutes } from './link-previews/routes.js';
 import { messagePlaceRoutes } from './conversation/message-place.js';
 import { agentThreadRoutes } from './conversation/agent-thread-routes.js';
-import { coWorkRoutes } from './co-work/routes.js';
 import { diskFileStorage } from './files/storage.js';
 import { fileRoutes } from './files/routes.js';
 import { workRoutes } from './work/routes.js';
@@ -210,7 +209,6 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   await app.register(linkPreviewRoutes, { db, sessions: identity, config: config.linkPreviews });
   await app.register(messagePlaceRoutes, { db, sessions: identity });
   await app.register(aiRoutes(agentThreadRoutes), { db, sessions: identity, storage: fileStorage });
-  await app.register(aiRoutes(coWorkRoutes), { db, sessions: identity });
   await app.register(workRoutes, { db, sessions: identity, storage: fileStorage });
   await app.register(workReadRoutes, { db, sessions: identity });
   const githubConfig = loadGithubConfig(env, identityConfig.publicOrigin);

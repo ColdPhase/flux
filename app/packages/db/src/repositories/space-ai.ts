@@ -81,10 +81,6 @@ export function spaceAiSweepRows(db: DbExecutor) {
       return (await db.execute(sql`UPDATE personal_runs SET run_token_closed_at = now(), updated_at = now()
         WHERE project_id = ${projectId} AND ai_epoch < ${epoch} AND run_token_jti IS NOT NULL AND run_token_closed_at IS NULL`)).rowCount ?? 0;
     },
-    async cancelRequests(projectId: string, epoch: number) {
-      return (await db.execute(sql`UPDATE cowork_requests SET state = 'cancelled', reason = 'ai_off', version = version + 1, updated_at = clock_timestamp()
-        WHERE project_id = ${projectId} AND ai_epoch < ${epoch} AND state IN ('queued', 'deferred', 'claimed')`)).rowCount ?? 0;
-    },
     /**
      * Units stop and release their lease, with a new generation, as a revoked connection's units do (cowork_stop_connection_units);
      * the task itself is unchanged. The same lock order as a claim: connection slots, then tasks, then units, each sorted.

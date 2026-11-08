@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { after, before, beforeEach, describe, test } from 'node:test';
 import { AI_WORK_QUEUES, projectAiPolicyPath } from '@flux/contracts';
 import { sweepSpaceAi } from '@flux/core';
@@ -40,7 +40,7 @@ describe('space AI switch: sweep, role changes against the flip and remaining ro
     const work = await scene.task(owner, 'Swept work');
     const template = await scene.runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Template' });
     const ids = { queued: randomUUID(), reading: randomUUID(), dispatching: randomUUID(), fresh: randomUUID(),
-      rq: randomUUID(), rd: randomUUID(), rc: randomUUID(), up: randomUUID(), uc: randomUUID(), ua: randomUUID() };
+      up: randomUUID(), uc: randomUUID(), ua: randomUUID() };
     const old = await epochOf(place.id);
     const client = await pool.connect();
     try {
@@ -53,13 +53,6 @@ describe('space AI switch: sweep, role changes against the flip and remaining ro
           provider, model, engine, $3, ${status === 'dispatching' ? 'now()' : 'NULL'}, ${extra ? `'${randomUUID()}'` : 'NULL'}, ${extra ? "now() + interval '5 minutes'" : 'NULL'}
         FROM personal_runs WHERE id = $4`, [id, status, old, template.run.id, status === 'dispatching' ? scene.peer.id : owner.id]); // one working run per owner
       await run(ids.queued, 'queued'); await run(ids.reading, 'reading', 'token'); await run(ids.dispatching, 'dispatching', 'token');
-      const request = (id: string, state: string, extra: string) => client.query(`INSERT INTO cowork_requests (id, lineage_id, workspace_id, project_id, work_id, unit_id,
-        sender_connection_id, recipient_connection_id, sender_owner_id, recipient_owner_id, intent_key, fingerprint, kind, target, source_refs, criteria_refs,
-        depth, review_round, priority, peer_unblocking, expires_at, state, ai_epoch${extra ? ', reason, next_boundary, claimed_generation' : ''})
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $7, $8, $8, $12, $9, 'help', '{"type":"work"}', '[{"type":"work"}]', '[{"type":"work"}]', 0, 0, 1, false,
-          now() + interval '1 hour', $10, $11${extra})`,
-      [id, randomUUID(), ws.id, place.id, work.id, ids.up, connectionId, owner.id, createHash('sha256').update(id).digest('hex'), state, old, `intent-${id}`]);
-      await request(ids.rq, 'queued', ''); await request(ids.rd, 'deferred', ", 'busy', 'after_step', NULL"); await request(ids.rc, 'claimed', ', NULL, NULL, 1');
       const unit = (id: string, state: string) => client.query(`INSERT INTO cowork_units (id, workspace_id, project_id, work_id, lineage_work_id, run_id, unit_key, role,
         assignment_connection_id, state, generation, lease_id, lease_session_id, lease_expires_at, ai_epoch)
         VALUES ($1, $2, $3, $4, $4, $5, $13, 'execute', $6, $7, $8, $9, $10, $11, $12)`, [id, ws.id, place.id, work.id, randomUUID(), connectionId, state,
@@ -76,18 +69,17 @@ describe('space AI switch: sweep, role changes against the flip and remaining ro
       status, cost_state, reserved_micros, provider, model, engine, ai_epoch) SELECT $1, workspace_id, project_id, conversation_id, owner_user_id, agent_id, gen_random_uuid(),
       request_fingerprint, kind, prompt, 'queued', 'reserved', reserved_micros, provider, model, engine, $3 FROM personal_runs WHERE id = $2`, [ids.fresh, template.run.id, await epochOf(place.id)]);
     const swept = await sweepSpaceAi({ projectId: place.id, epoch }, db, accessPorts);
-    assert.deepEqual(swept, { runs: 3, tokens: 2, requests: 3, units: 3, failed: [] });
+    assert.deepEqual(swept, { runs: 3, tokens: 2, units: 3, failed: [] });
     const one = async (sql: string, id: string) => (await pool.query(sql, [id])).rows[0];
     assert.deepEqual(await one('SELECT status, end_reason, stopped_at_stage FROM personal_runs WHERE id = $1', ids.queued), { status: 'stopped', end_reason: 'ai_off', stopped_at_stage: 'before_read' });
     for (const id of [ids.reading, ids.dispatching]) {
       const row = await one('SELECT stop_requested_at, run_token_closed_at FROM personal_runs WHERE id = $1', id);
       assert.ok(row.stop_requested_at && row.run_token_closed_at, 'in flight: asked to stop, its token closed');
     }
-    for (const id of [ids.rq, ids.rd, ids.rc]) assert.deepEqual(await one('SELECT state, reason FROM cowork_requests WHERE id = $1', id), { state: 'cancelled', reason: 'ai_off' });
     for (const [id, generation] of [[ids.up, 1], [ids.uc, 2], [ids.ua, 1]] as const)
       assert.deepEqual(await one('SELECT state, generation, lease_id FROM cowork_units WHERE id = $1', id), { state: 'stopped', generation, lease_id: null });
     assert.equal((await one('SELECT status FROM personal_runs WHERE id = $1', ids.fresh)).status, 'queued', 'work admitted after re-enable is untouched');
-    assert.deepEqual(await sweepSpaceAi({ projectId: place.id, epoch }, db, accessPorts), { runs: 0, tokens: 0, requests: 0, units: 0, failed: [] });
+    assert.deepEqual(await sweepSpaceAi({ projectId: place.id, epoch }, db, accessPorts), { runs: 0, tokens: 0, units: 0, failed: [] });
   });
 
   test('a real demotion and removal of the flipping admin against the real flip, in both orders: 200 and 403, never a deadlock', async () => {

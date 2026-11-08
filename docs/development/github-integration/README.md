@@ -162,10 +162,8 @@ inbox. It carries no comment text and no authority; the agent reads current PR s
   'head_changed'`, version advances). A claimed review keeps its claim; its verdict stays pinned to its own head.
 - **No recipient.** `no_recipient` when nobody holds the task. Nothing is woken or created; the next holder sees
   current state through ordinary reads.
-- **Read.** The first page of `flux_coordination_inbox` adds `providerEvents` (explained in playbook 1.9.0, not in the tool description): up to 20 rows delivered to this connection in the
-  project within seven days, newest first, `{ id, taskId, linkId, event, headSha, at }`, rechecked now (binding active,
-  link current, private repository still the author's). Reading is not an
-  acknowledgement.
+- **Read.** Nothing reads these rows now: their only reader was the coordination inbox (`flux_coordination_inbox`), which went with the
+  addressed requests (#973). They are written and kept for seven days; removing the bridge, or a reader for it, is a follow-up.
 - **Storage.** Migration 0132 widens `github_bridge_outbox.state` to `pending_audience_adapter` (rows from before
   0132), `delivered`, `no_recipient`, `no_access` and `suppressed_echo`, and adds `recipient_connection_id`.
 

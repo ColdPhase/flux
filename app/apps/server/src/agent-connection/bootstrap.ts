@@ -45,7 +45,7 @@ export function registerAgentBootstrap(tools: AgentToolRegistry, db: Database, c
           capabilities: tools.capabilities(mayDo),
           trusted: { playbook,
             coordination: { activeClaimReference: active?.id ?? null, checkpointReference: checkpoint?.checkpointId ?? null,
-              inboxContinuation: null, ...(work ? { work } : {}) }, repositoryReferences: null },
+              ...(work ? { work } : {}) }, repositoryReferences: null },
           playbookAcknowledgment: acknowledged ? { ...acknowledged, current } : null,
           gaps: ['verified_repository_context_unavailable', 'goal_plan_classification_unavailable', 'dependency_index_unavailable'],
           readiness: { state: 'pending', meaning: 'server_context_available_only' },

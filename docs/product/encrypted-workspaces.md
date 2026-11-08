@@ -727,7 +727,7 @@ text or jsonb V column of these tables with a one-line reason.
 migrations: `draft_versions`, `search_documents`, `flux_schema_version`, `live_webhook_events`,
 `cowork_review_verdicts`, `agent_thread_artifact_boundaries`, `agent_thread_artifact_mutations`,
 `agent_thread_artifact_resets`, `agent_thread_guard_events` and seven `agent_runtime_*` tables
-(found by comparing `CREATE TABLE` in `packages/db/migrations` with `schema.ts`, 2026-10-23). The
+(found by comparing `CREATE TABLE` in `packages/db/migrations` with `schema.ts`, 2026-10-23; `cowork_review_verdicts` went in #973). The
 [registry test](#tests-and-acceptance-criteria) reads `information_schema.tables` and `columns` for
 the `public` schema after all migrations. It requires every table to be in `TABLE_CLASSES` as
 **content** (columns classified as above), **account** (user, session, OAuth, push and preference

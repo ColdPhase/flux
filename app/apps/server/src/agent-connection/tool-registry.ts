@@ -54,7 +54,7 @@ const RUN_EFFECTS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
  * assigned or transferred to it and a request to it wait for the owner's OK like a task for someone else, and taking back a task it created
  * is a deletion, which always waits (C-18). Their other uses do not wait.
  */
-const CHANGE_TOOLS = new Set<string>([...ASSISTANT_RUN_EFFECT_TOOLS, 'flux_send_request', 'flux_transfer_unit', 'flux_undo_task_creation']);
+const CHANGE_TOOLS = new Set<string>([...ASSISTANT_RUN_EFFECT_TOOLS, 'flux_transfer_unit', 'flux_undo_task_creation']);
 const WAITING_NOTE = ' Some changes wait for your owner\'s OK instead of applying (deleting anything, other people\'s things, a task for someone else, '
   + 'and everything when your owner chose Ask me first): the result then says so in plain words. Do not retry it; carry on with other work.';
 type ToolOutput = { content?: { type: string; text?: string }[]; isError?: boolean };

@@ -1,17 +1,14 @@
 import assert from 'node:assert/strict';
-import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import type { TaskCoordination } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { waitUntilBlockedBy } from './support/locks.js';
 import { approveWaiting, waits } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
-import { expectStatus } from './support/people.js';
 import { coworkScene, failed, failureCode, type CoworkConn, type Reply } from './support/cowork-scene.js';
 
 // #153 AC-5: real concurrency over the real OAuth bearer, with two owners (Hubert, Marek) and three connections (Codex and
-// Hubert Claude for Hubert, Marek Claude for Marek). Parallel claims, transfers, declines, requests and cancellations
-// against one unit or request: exactly one wins, the others are refused without a trace, and the generation fence holds.
+// Hubert Claude for Hubert, Marek Claude for Marek). Parallel claims, transfers and declines
+// against one unit: exactly one wins, the others are refused without a trace, and the generation fence holds.
 // A revoked grant or connection is refused even when the command was already in flight. Docker regression evidence only:
 // it is not a trace of a real Codex or Claude Code client, and PR targets (#74) are not covered.
 
@@ -30,7 +27,7 @@ async function waitForWaiters(count: number, timeoutMs = 15_000) {
  * Two commands in a forced order. A held row lock stops the first at the row, the second queues behind it (on the same
  * connection slot, or on the same row), and releasing the lock lets them run one after the other in exactly that order.
  */
-async function ordered<A, B>(lock: { table: 'cowork_units' | 'cowork_requests' | 'cowork_connection_slots'; key: string; id: string },
+async function ordered<A, B>(lock: { table: 'cowork_units' | 'cowork_connection_slots'; key: string; id: string },
   first: () => Promise<A>, second: () => Promise<B>): Promise<[A, B]> {
   const holder = await pool.connect();
   try {
@@ -162,96 +159,20 @@ test('a received unit is declined and claimed at the same time, in both orders: 
   assert.deepEqual([afterB.assignee, afterB.state, afterB.from], [marekClaude.connectionId, 'claimed', null]);
 });
 
-test('duplicate and parallel requests: one command ID is one effect, one intent is one request, and every attempt is accounted for', async () => {
-  // To the owner's own other client, so the requests are made at once: a request to another person's client waits for the owner (C-18).
-  const { f, codex, hubertClaude } = await threeConnections();
-  const t = await f.task('Native outcome A');
-  const review = await f.startReview(codex, hubertClaude, t);
-  const target = { type: 'work', id: t.id, version: t.version };
-  const count = async () => (await pool.query('SELECT count(*)::int AS n FROM cowork_requests WHERE work_id = $1', [t.id])).rows[0].n as number;
-
-  // The same command five times at once (a client that retries before it hears back): one request, one debit, the same answer.
-  const command = randomUUID();
-  const same = await Promise.all(Array.from({ length: 5 }, () => review.send('review-1', target, { clientCommandId: command })));
-  assert.equal(errors(same).length, 0);
-  assert.equal(new Set(same.map((reply) => String(toolValue(reply).requestId))).size, 1);
-  assert.equal(await count(), 1);
-
-  // The same intent under five different commands: one request, and each command is counted once.
-  const intents = await Promise.all(Array.from({ length: 5 }, () => review.send('review-1', target)));
-  assert.equal(errors(intents).length, 0);
-  assert.equal(new Set(intents.map((reply) => String(toolValue(reply).requestId))).size, 1);
-  assert.equal(intents.filter((reply) => toolValue(reply).status === 'created').length, 0, 'the request already existed');
-  assert.equal(await count(), 1);
-});
-
-test('a cancel and the recipient\'s claim or answer meet on the request row, in both orders: one wins, the loser leaves nothing', async () => {
+test('a connection revoked around an in-flight command: the books agree and its unit stops', async () => {
   const { f, codex, marekClaude } = await threeConnections();
   const t = await f.task('Native outcome A');
   const review = await f.startReview(codex, marekClaude, t);
-  const target = { type: 'work', id: t.id, version: t.version };
-  const fence = (requestId: string, version: number) => ({ unitId: review.reviewUnit, generation: review.reviewClaim.generation,
-    leaseId: review.reviewClaim.lease.id, requestId, expectedRequestVersion: version });
-  const claim = (requestId: string) => marekClaude.call('flux_claim_request', { ...marekClaude.base('review'), ...fence(requestId, 1) });
-  const resolve = (requestId: string, version: number) => marekClaude.call('flux_resolve_request', { ...marekClaude.base('review'), ...fence(requestId, version),
-    evidence: { type: 'material', id: f.material.materialId, version: 1 }, verdict: 'passed' });
-  const cancel = (requestId: string, version: number) => f.marek.browser.request('POST', `/api/v1/work/${t.id}/coordination/requests/${requestId}/cancel`, { body: { expectedVersion: version } });
-  const fresh = async (key: string) => String(toolValue(await review.send(key, target)).requestId);
-  const verdicts = async () => (await pool.query('SELECT count(*)::int AS n FROM cowork_review_verdicts WHERE work_id = $1', [t.id])).rows[0].n as number;
-
-  // Claim first, then the cancel that named the version before the claim: it is told the request moved on.
-  const r1 = await fresh('r1');
-  const [claimed1, cancelled1] = await ordered({ table: 'cowork_requests', key: 'id', id: r1 }, () => claim(r1), () => cancel(r1, 1));
-  assert.equal(toolValue(claimed1).state, 'claimed');
-  assert.deepEqual([cancelled1.status, (cancelled1.json as { code: string }).code], [409, 'COWORK_VERSION_CONFLICT']);
-  assert.equal((await f.request(r1)).state, 'claimed');
-
-  // Cancel first: the claim is told the request is closed, debits nothing and the request stays cancelled.
-  const r2 = await fresh('r2');
-  const [cancelled2, claimed2] = await ordered({ table: 'cowork_requests', key: 'id', id: r2 }, () => cancel(r2, 1), () => claim(r2));
-  assert.equal(cancelled2.status, 200);
-  assert.equal(failureCode(claimed2), 'COWORK_REQUEST_CLOSED');
-  assert.deepEqual([(await f.request(r2)).state, (await f.request(r2)).cancelledBy], ['cancelled', f.marek.id]);
-
-  // An answer first: the verdict is recorded and the cancel is refused as closed; a cancel first: the answer records no verdict.
-  const r3 = await fresh('r3');
-  toolValue(await marekClaude.call('flux_claim_request', { ...marekClaude.base('review'), ...fence(r3, 1) }));
-  const [answered, cancelledLate] = await ordered({ table: 'cowork_requests', key: 'id', id: r3 }, () => resolve(r3, 2), () => cancel(r3, 2));
-  assert.equal(toolValue(answered).state, 'resolved');
-  assert.deepEqual([cancelledLate.status, (cancelledLate.json as { code: string }).code], [409, 'COWORK_REQUEST_CLOSED']);
-  assert.equal(await verdicts(), 1);
-  const r4 = await fresh('r4');
-  toolValue(await marekClaude.call('flux_claim_request', { ...marekClaude.base('review'), ...fence(r4, 1) }));
-  const [cancelledFirst, answeredLate] = await ordered({ table: 'cowork_requests', key: 'id', id: r4 }, () => cancel(r4, 2), () => resolve(r4, 2));
-  assert.equal(cancelledFirst.status, 200);
-  assert.equal(failureCode(answeredLate), 'COWORK_REQUEST_CLOSED');
-  assert.equal(await verdicts(), 1, 'the refused answer recorded no verdict');
-  const view = expectStatus(await f.hubert.browser.request('GET', `/api/v1/work/${t.id}/coordination`), 200) as TaskCoordination;
-  assert.deepEqual(view.requests.map((card) => card.state), ['cancelled', 'resolved', 'cancelled', 'claimed']);
-});
-
-test('a connection revoked around an in-flight command: the books agree, its unit stops and what it asked stays readable as history', async () => {
-  const { f, codex, marekClaude } = await threeConnections();
-  const t = await f.task('Native outcome A');
-  const review = await f.startReview(codex, marekClaude, t);
-  const target = { type: 'work', id: t.id, version: t.version };
   const slot = { table: 'cowork_connection_slots', key: 'connection_id', id: codex.connectionId } as const;
-  const sent = toolValue(await review.send('review-0', target));
   const succeeded = (outcome: { status: number; message: Reply }) => outcome.status === 200 && !failed(outcome.message);
-  const rows = async () => (await pool.query('SELECT intent_key FROM cowork_requests WHERE work_id = $1 ORDER BY created_at', [t.id])).rows.map((row) => row.intent_key);
+  const held = await f.unit(review.held.unitId);
+  const renew = () => codex.raw('flux_renew_unit', { ...codex.base('execute'), unitId: review.held.unitId, expectedVersion: held.version,
+    generation: review.held.claim.generation, leaseId: review.held.claim.lease.id });
 
   // The revocation is queued ahead of the command: the command, authorized a moment earlier, cannot commit.
-  const [revoked, refused] = await ordered(slot, () => f.hubert.browser.request('DELETE', `/api/v1/agent-connections/${codex.connectionId}`),
-    () => codex.raw('flux_send_request', review.sendArgs('review-1', target)));
+  const [revoked, refused] = await ordered(slot, () => f.hubert.browser.request('DELETE', `/api/v1/agent-connections/${codex.connectionId}`), renew);
   assert.equal(revoked.status, 204);
   assert.equal(succeeded(refused), false);
-  assert.deepEqual(await rows(), ['review-0']);
-  assert.equal(succeeded(await codex.raw('flux_send_request', review.sendArgs('review-2', target))), false, 'a revoked connection issues nothing');
-  assert.deepEqual(await rows(), ['review-0']);
+  assert.equal(succeeded(await renew()), false, 'a revoked connection renews nothing');
   assert.equal((await f.unit(review.held.unitId)).state, 'stopped', 'its unit stopped with the revocation');
-  // The owners and managers still read what it asked, as history, and can still clear it.
-  const view = expectStatus(await f.hubert.browser.request('GET', `/api/v1/work/${t.id}/coordination`), 200) as TaskCoordination;
-  const card = view.requests.find((item) => item.id === String(sent.requestId))!;
-  assert.deepEqual([card.sender.name, card.canCancel], ['Codex', true]);
-  assert.equal((await f.hubert.browser.request('POST', `/api/v1/work/${t.id}/coordination/requests/${card.id}/cancel`, { body: { expectedVersion: card.version } })).status, 200);
 });

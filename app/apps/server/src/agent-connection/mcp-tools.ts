@@ -61,7 +61,7 @@ export function createFluxMcpServer(db: Database, claims: FluxMcpClaims & { disp
   registerAgentDocActions(tools, db, claims);
   registerAgentConversationActions(tools, db, claims);
   registerAgentQuestionActions(tools, db, claims);
-  registerAgentCoworkActions(tools, db, claims, cursorSecret);
+  registerAgentCoworkActions(tools, db, claims);
   registerAgentGithubActions(tools, db, claims, github);
   registerAgentWebReads(tools, db, claims, webReader);
   tools.forAccess('write').registerTool('flux_create_proposal', {

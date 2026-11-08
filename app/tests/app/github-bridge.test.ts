@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { createHash, createHmac, randomInt, randomUUID } from 'node:crypto';
+import { createHmac, randomInt, randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
 import Fastify from 'fastify';
-import { createDatabase, schema } from '@flux/db';
+import { createDatabase } from '@flux/db';
 import type { Agent, GithubPullFacts, WorkItem } from '@flux/contracts';
 import { NotFoundError, type GithubProvider, type Principal } from '@flux/core';
 import { createGithubUseCases } from '../../apps/server/src/github/adapters.js';
@@ -38,7 +38,7 @@ class Provider implements GithubProvider {
   }
 }
 
-test('#479: a linked PR event reaches the task\'s current holder once, echoes are suppressed, a new head supersedes queued reviews, private facts stay with the author', async () => {
+test('#479: a linked PR event reaches the task\'s current holder once, private facts stay with the author', async () => {
   const provider = new Provider();
   const github = createGithubUseCases(db, provider);
   const app = Fastify({ logger: false });
@@ -79,8 +79,6 @@ test('#479: a linked PR event reaches the task\'s current holder once, echoes ar
   const pullEvent = (repo: string, number: number) => ({ action: 'synchronize', repository: { id: Number(repo) },
     pull_request: { id: Number(`${repo}${number}`), number, base: { repo: { id: Number(repo) } }, head: { sha: provider.head } } });
   const outbox = async (taskId: string) => (await pool.query('SELECT event, state, recipient_connection_id, head_sha FROM github_bridge_outbox WHERE task_id=$1 ORDER BY created_at, id', [taskId])).rows;
-  const inbox = async (held: Awaited<ReturnType<typeof makeAgent>>) =>
-    toolValue(await held.connected.tool('flux_coordination_inbox', { projectId: p.id })) as { providerEvents?: { taskId: string; linkId: string; event: string; headSha: string }[] };
 
   const principal: Principal = { kind: 'human', id: hubert.id };
   const privateBinding = await github.bind(principal, p.id, { installationId: INSTALL, repositoryId: PRIVATE_REPO });
@@ -92,56 +90,28 @@ test('#479: a linked PR event reaches the task\'s current holder once, echoes ar
   await send('pull_request', pullEvent(PRIVATE_REPO, 41));
   assert.deepEqual((await outbox(firmware.id)).map((row) => [row.event, row.state, row.recipient_connection_id]), [['pull_request', 'no_recipient', null]]);
 
-  // Hubert's agent holds the task: the event is delivered to its connection, once, and its inbox lists the reference.
+  // Hubert's agent holds the task: the event is delivered to its connection, once.
   const mine = await hold(hubert, hubertAgent, 'Fix the thermal runaway check');
-  const link = await github.link(principal, mine.item.id, { bindingId: privateBinding.id, number: 42, role: 'required_output' });
+  await github.link(principal, mine.item.id, { bindingId: privateBinding.id, number: 42, role: 'required_output' });
   await send('pull_request', pullEvent(PRIVATE_REPO, 42));
   await send('pull_request', pullEvent(PRIVATE_REPO, 42)); // a redelivery with the same facts
   assert.deepEqual((await outbox(mine.item.id)).map((row) => [row.state, row.recipient_connection_id]), [['delivered', hubertAgent.connected.connectionId]]);
-  const listed = await inbox(hubertAgent);
-  assert.deepEqual(listed.providerEvents?.map((row) => [row.taskId, row.linkId, row.event, row.headSha]), [[mine.item.id, link.id, 'pull_request', SHA('a')]]);
-  assert.equal(JSON.stringify(listed.providerEvents).includes('PRIVATE'), false, 'references only, no provider text');
-  assert.deepEqual((await inbox(marekAgent)).providerEvents, [], 'another connection sees nothing');
-
-  // Flux review requests on this link: a queued one for the old head and one already coordinated for the new head.
-  const lineageId = randomUUID(), runId = randomUUID();
-  await db.insert(schema.coworkRequestLineages).values({ id: lineageId, workspaceId: ws.id, projectId: p.id, taskId: mine.item.id, runId,
-    maximumRequests: 32, maximumDepth: 4, maximumReviewRounds: 4 });
-  const review = async (headSha: string) => {
-    const id = randomUUID();
-    await db.insert(schema.coworkRequests).values({ aiEpoch: 1, id, lineageId, workspaceId: ws.id, projectId: p.id, taskId: mine.item.id, unitId: mine.unitId,
-      senderConnectionId: hubertAgent.connected.connectionId, recipientConnectionId: marekAgent.connected.connectionId, senderOwnerId: hubert.id, recipientOwnerId: marek.id,
-      intentKey: `review:${headSha}`, fingerprint: createHash('sha256').update(id).digest('hex'), kind: 'review', target: { type: 'github_pr', bindingId: privateBinding.id, linkId: link.id, headSha },
-      sourceRefs: [{ type: 'work', id: mine.item.id, version: 1 }], criteriaRefs: [{ type: 'work', id: mine.item.id, version: 1 }], depth: 0, reviewRound: 1,
-      priority: 1, peerUnblocking: false, expiresAt: new Date(Date.now() + 86_400_000) });
-    return id;
-  };
-  const stale = await review(SHA('a'));
   provider.head = SHA('b');
-  const current = await review(SHA('b'));
   await send('pull_request', pullEvent(PRIVATE_REPO, 42));
-  const states = async () => new Map((await pool.query('SELECT id, state, reason FROM cowork_requests WHERE lineage_id=$1', [lineageId])).rows.map((row) => [row.id, [row.state, row.reason]]));
-  assert.deepEqual((await states()).get(stale), ['superseded', 'head_changed'], 'a new head stales the queued review of the old head');
-  assert.deepEqual((await states()).get(current), ['queued', null], 'the review of the current head stays');
-  // The Flux reviewer (Marek) publishing his own GitHub review of that head is the echo: not delivered again. His GitHub
-  // account is known from his App authorization for this App.
-  await db.insert(schema.githubCredentials).values({ userId: marek.id, generation: randomUUID(), githubUserId: '7001', appId: APP, state: 'active' });
+  // A review event on the same head reaches the holder like any other: Flux coordinates no review of its own whose echo it would hold back.
   const reviewEvent = (id: number, user: number, state: string) => ({ action: 'submitted', repository: { id: Number(PRIVATE_REPO) },
     review: { id, user: { id: user }, state }, pull_request: { id: Number(`${PRIVATE_REPO}42`), number: 42, base: { repo: { id: Number(PRIVATE_REPO) } }, head: { sha: SHA('b') } } });
   await send('pull_request_review', reviewEvent(5001, 7001, 'approved'));
-  // A third party's "changes requested" on the same head is not an echo: it reaches the holder.
   await send('pull_request_review', reviewEvent(5002, 8888, 'changes_requested'));
   assert.deepEqual((await outbox(mine.item.id)).map((row) => [row.event, row.state, row.head_sha]),
-    [['pull_request', 'delivered', SHA('a')], ['pull_request', 'delivered', SHA('b')], ['pull_request_review', 'suppressed_echo', SHA('b')],
+    [['pull_request', 'delivered', SHA('a')], ['pull_request', 'delivered', SHA('b')], ['pull_request_review', 'delivered', SHA('b')],
       ['pull_request_review', 'delivered', SHA('b')]]);
-  assert.deepEqual((await inbox(hubertAgent)).providerEvents?.map((row) => row.event).sort(), ['pull_request', 'pull_request', 'pull_request_review']);
 
-  // A G-1c poll window (no webhook at all) that finds a newer head also stales the queued review of the old one.
+  // A G-1c poll window (no webhook at all) that finds a newer head is processed too.
   provider.head = SHA('d');
   const window = String(randomInt(1_000_000, 9_000_000));
   for (let round = 0; round < 50; round++) if (!await github.schedule(APP, window, 'poll')) break;
   assert.equal(await github.process(`poll-${privateBinding.id}-${window}`, privateBinding.id), 'completed');
-  assert.deepEqual((await states()).get(current), ['superseded', 'head_changed'], 'the poll applies the current head too');
 
   // Marek's agent holds a task linked to the PRIVATE repository bound by Hubert: Flux never forwards it (no_access).
   const his = await hold(marek, marekAgent, 'Tune the bed PID');
@@ -153,7 +123,6 @@ test('#479: a linked PR event reaches the task\'s current holder once, echoes ar
   await github.link(principal, open.item.id, { bindingId: publicBinding.id, number: 7, role: 'related' });
   await send('pull_request', pullEvent(PUBLIC_REPO, 7));
   assert.deepEqual((await outbox(open.item.id)).map((row) => [row.state, row.recipient_connection_id]), [['delivered', marekAgent.connected.connectionId]]);
-  assert.deepEqual((await inbox(marekAgent)).providerEvents?.map((row) => row.taskId), [open.item.id]);
 
   // F-029 (#614): the holder is an agent, so the bridge respects the space's AI switch. The flip is applied without its
   // sweep (the window before the sweep commits): while AI is off nobody receives the event, and after AI is on again the
@@ -166,11 +135,9 @@ test('#479: a linked PR event reaches the task\'s current holder once, echoes ar
   await send('pull_request', pullEvent(PUBLIC_REPO, 7));
   assert.deepEqual((await outbox(open.item.id)).map((row) => [row.state, row.head_sha]),
     [['delivered', SHA('d')], ['no_recipient', SHA('e')], ['no_recipient', SHA('f')]]);
-  assert.deepEqual((await inbox(marekAgent)).providerEvents?.map((row) => row.headSha), [SHA('d')], 'only the event from before AI was turned off');
 
   // Disconnecting the binding withdraws what its deliveries showed; nothing is woken.
   await github.disconnect(principal, privateBinding.id);
-  assert.deepEqual((await inbox(hubertAgent)).providerEvents, []);
 });
 
 test('G-1c (#479): conditional GETs send the last ETag for the same URL and token and reuse the body on 304', async () => {

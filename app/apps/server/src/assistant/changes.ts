@@ -44,7 +44,7 @@ function savedTools(db: Database, claims: FluxMcpClaims): Map<string, SavedTool>
     register(registry as unknown as AgentToolRegistry, db, claims);
   // The hand-off tool of the same registry: only its run-private view is ever stored, and Approve decodes exactly that (below).
   // (Its recovery-cursor secret serves tools a saved change never calls; the registration only needs a well-formed one.)
-  registerAgentCoworkActions(registry as unknown as AgentToolRegistry, db, claims, 'a-saved-change-reads-no-recovery-cursor');
+  registerAgentCoworkActions(registry as unknown as AgentToolRegistry, db, claims);
   return callbacks;
 }
 

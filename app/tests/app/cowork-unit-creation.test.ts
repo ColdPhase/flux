@@ -1,14 +1,12 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
-import type { Agent, AgentConnection, AgentExecutionCommand, CoWorkRequestLimits, Project, WorkItem } from '@flux/contracts';
+import type { Agent, AgentConnection, AgentExecutionCommand, Project, WorkItem } from '@flux/contracts';
 import { createDatabase } from '@flux/db';
 import { coWorkRootRunId, DomainError, type CoWorkUnitPolicy } from '@flux/core';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
 import { coWorkClaimInTransaction, type CoWorkClaimPolicy } from '../../apps/server/src/co-work/claims.js';
 import { coWorkTaskGraphLocks } from '../../apps/server/src/co-work/graph.js';
-import { coWorkRequestInTransaction, type CoWorkRequestPolicy } from '../../apps/server/src/co-work/requests.js';
-import { coWorkRequestResponseInTransaction } from '../../apps/server/src/co-work/responses.js';
 import { coWorkUnitCreateInTransaction } from '../../apps/server/src/co-work/units.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
 import { backendPid, barrier, settled, waitUntilBlockedBy } from './support/locks.js';
@@ -22,8 +20,6 @@ const UNITS: CoWorkUnitPolicy = { maximumRunUnits: 4 };
 const CLAIMS: CoWorkClaimPolicy = { maximumConnectionUnits: 1, leaseSeconds: 120,
   prepareTaskLocks: (tx, context, units) => coWorkTaskGraphLocks(tx, context.workspaceId, units),
   async requireEligible() {}, async requireCheckpointSources() {} };
-const LIMITS: CoWorkRequestLimits = { maximumRequests: 128, maximumDepth: 8, maximumReviewRounds: 16 };
-const REQUESTS: CoWorkRequestPolicy = { limits: LIMITS };
 type Role = 'execute' | 'review' | 'plan';
 
 async function world() {
@@ -90,18 +86,17 @@ async function effects(w: World, connections: readonly Connected[]) {
   const ids = connections.map((c) => c.connection.id);
   const units = (await pool.query(`SELECT id, work_id, lineage_work_id, run_id, unit_key, role, assignment_connection_id, state, version,
     generation FROM cowork_units WHERE workspace_id=$1 ORDER BY id`, [w.ws.id])).rows;
-  const lineages = (await pool.query('SELECT count(*)::int AS n FROM cowork_request_lineages WHERE workspace_id=$1', [w.ws.id])).rows[0].n;
   const receipts = (await pool.query('SELECT count(*)::int AS n FROM agent_command_receipts WHERE connection_id = ANY($1::uuid[])', [ids])).rows[0].n;
   const tasks = (await pool.query(`SELECT id, version, status, owner_user_id, owner_agent_id, updated_at FROM project_work_items
     WHERE workspace_id=$1 ORDER BY id`, [w.ws.id])).rows;
   const slots = (await pool.query('SELECT connection_id FROM cowork_connection_slots WHERE workspace_id=$1 ORDER BY connection_id', [w.ws.id])).rows;
-  return { units, lineages, receipts, tasks, slots };
+  return { units, receipts, tasks, slots };
 }
 /** The attempt starts only after the snapshot, so nothing it does can leak into `before`. */
 async function refusedWithoutEffects(w: World, connections: readonly Connected[], attempt: () => Promise<unknown>, code: string) {
   const before = await effects(w, connections);
   await rejects(attempt(), code);
-  assert.deepEqual(await effects(w, connections), before, `${code}: no unit, lineage, slot row, grant use, receipt or task change`);
+  assert.deepEqual(await effects(w, connections), before, `${code}: no unit, slot row, grant use, receipt or task change`);
 }
 /** Lock types the sessions blocked by `holder` are waiting on (row locks show as `transactionid`). */
 async function waitingOn(holder: number) {
@@ -151,7 +146,6 @@ test('a root unit opens its own run for its own assignee; exact replay observes,
     assignmentConnectionId: codex.connection.id, version: 1, state: 'pending' }]]);
   const after = await effects(w, [codex]);
   assert.deepEqual(after.tasks, before.tasks, 'creation never changes the task row, its status or its human assignee');
-  assert.equal(after.lineages, 0, 'creation opens no request lineage');
 
   // Exact replay is an observation: no second unit, debit or receipt. A changed payload under that ID conflicts.
   assert.deepEqual(await execute.run(first), created);
@@ -181,7 +175,7 @@ test('a root unit opens its own run for its own assignee; exact replay observes,
   await rejects(execute.run(reissue), 'COMMAND_POSTSTATE_STALE');
 });
 
-test('a child unit inherits the run; its peer claims it with its own grant and the request lifecycle runs on production units', async () => {
+test('a child unit inherits the run; its peer claims it with its own grant', async () => {
   const f = await setup();
   const { w } = f;
   const created = await f.review.run(f.child('review-a', f.marekClaude.connection.id));
@@ -198,19 +192,6 @@ test('a child unit inherits the run; its peer claims it with its own grant and t
     command(w, f.codex, 'cowork.claim', created.unitId, 'review', { expectedVersion: 1 }), CLAIMS)), 'COWORK_UNIT_NOT_FOUND');
   const marekClaim = await claimUnit(w, f.marekClaude, created.unitId, 'review');
   assert.equal(marekClaim.state, 'claimed');
-
-  // The author's review request is admitted to the created unit and the reviewer claims it.
-  const asked = await db.transaction((tx) => coWorkRequestInTransaction(tx, f.codex.claims, command(w, f.codex, 'cowork.request', f.root.unitId,
-    'execute', { generation: f.claim.generation, leaseId: f.claim.lease!.id, request: { unitId: created.unitId,
-      expectedUnitVersion: 2, recipientConnectionId: f.marekClaude.connection.id, intentKey: 'review-a-1', parentRequestId: null, kind: 'review',
-      target: { type: 'work', id: f.a.id, version: f.a.version }, sourceRefs: [{ type: 'material', id: w.material.materialId, version: 1 }],
-      criteriaRefs: [{ type: 'work', id: f.a.id, version: f.a.version }], priority: 1, peerUnblocking: true, lifetimeSeconds: 3600 } }), REQUESTS));
-  assert.equal(asked.status, 'created');
-  const taken = await db.transaction((tx) => coWorkRequestResponseInTransaction(tx, f.marekClaude.claims,
-    command(w, f.marekClaude, 'cowork.request.claim', created.unitId, 'review', { generation: marekClaim.generation,
-      leaseId: marekClaim.lease!.id, requestId: asked.requestId, expectedRequestVersion: 1 }),
-    { async publishResponse() { throw new Error('No publication on a claim'); } }));
-  assert.equal(taken.state, 'claimed');
 
   // A second child for another connection in the same run, and a plan unit for the author itself, are allowed.
   const claude = await w.connect(w.hubert, 'Hubert Claude');

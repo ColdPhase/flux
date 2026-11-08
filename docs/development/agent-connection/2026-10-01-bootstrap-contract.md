@@ -38,7 +38,7 @@ Trusted providers supplied by server composition return:
 
 - playbook `{ bundleId, version, digest, toolContractVersion, retrievalReference }`;
 - approved project policy `{ policyId, revision, digest, retrievalReference }`;
-- coordination `{ activeClaimReference, checkpointReference, inboxContinuation }`;
+- coordination `{ activeClaimReference, checkpointReference }` (the inbox continuation went with the inbox, #973);
 - verified repository context references through the orientation provider.
 
 Provider values derive from server-owned versioned artifacts/canonical rows under

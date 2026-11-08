@@ -1,8 +1,7 @@
 import { agentQuestionAnswerPath, ownWorkingAgentsPath, projectAgentQuestionsPath, projectAgentStopsPath, projectAgentsPath,
-  taskCoordinationCancelPath, taskCoordinationPacketPath, taskCoordinationPath, type TaskCoordination, type TaskCoordinationRequest,
   type AgentQuestion, type AgentQuestions, type AgentStop, type AgentStops, type AnswerAgentQuestionCommand, type OwnWorkingAgents,
   type ProjectAgents, type StopAgentCommand } from '@flux/contracts';
-import { request, send } from '../api/client';
+import { request } from '../api/client';
 
 /** The Agents view of a project (UI116-2, #136): current connections. */
 export const getProjectAgents = (projectId: string, signal?: AbortSignal) => request<ProjectAgents>(projectAgentsPath(projectId), { signal });
@@ -27,13 +26,3 @@ export const getAgentQuestions = (projectId: string, signal?: AbortSignal) => re
 export const answerAgentQuestion = (questionId: string, command: AnswerAgentQuestionCommand, idempotencyKey: string, keepalive = false) =>
   request<AgentQuestion>(agentQuestionAnswerPath(questionId), { method: 'POST', body: command, headers: { 'idempotency-key': idempotencyKey }, keepalive });
 
-/** A task's request cards and review verdicts (#153, #400 AC-4); whoever can read the task reads them. */
-export const getTaskCoordination = (workId: string, signal?: AbortSignal) => request<TaskCoordination>(taskCoordinationPath(workId), { signal });
-/** A request's handoff packet as a file to save; null when the server refuses it. */
-export async function getCoordinationPacket(workId: string, requestId: string): Promise<Blob | null> {
-  const response = await send(taskCoordinationPacketPath(workId, requestId));
-  return response.ok ? await response.blob() : null;
-}
-/** Cancels an open request at the version the person saw. Repeating it after a lost answer succeeds without a second change. */
-export const cancelCoWorkRequest = (workId: string, requestId: string, expectedVersion: number) =>
-  request<TaskCoordinationRequest>(taskCoordinationCancelPath(workId, requestId), { method: 'POST', body: { expectedVersion } });

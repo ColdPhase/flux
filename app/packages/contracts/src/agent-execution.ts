@@ -3,15 +3,13 @@
 export const AGENT_OPERATIONS = ['work.create', 'work.update', 'work.creation.revert', 'result.record', 'decision.propose',
   'map.create', 'map.rename', 'map.thought.create', 'map.thought.update', 'map.thought.delete',
   'map.positions.update', 'map.link.create', 'map.link.delete', 'doc.create', 'doc.update', 'conversation.create', 'conversation.reply',
-  'cowork.claim', 'cowork.renew', 'cowork.release', 'cowork.request', 'cowork.request.claim', 'cowork.request.respond',
+  'cowork.claim', 'cowork.renew', 'cowork.release',
   'cowork.unit.create', 'cowork.unit.complete', 'cowork.unit.transfer', 'cowork.unit.decline'] as const;
 export type AgentOperation = typeof AGENT_OPERATIONS[number];
 export const AGENT_PEER_REQUEST_CLASSES = ['execute', 'review', 'plan'] as const;
 export type AgentPeerRequestClass = typeof AGENT_PEER_REQUEST_CLASSES[number];
 /** The role of a co-work unit, which is the class of the coordination command acting on it. There are no standing grants: a
  * local client's authority is its owner's rights at the moment of the call (F-036 AG-3).
- * `cowork.request` is queued sender intent only: its class is the SENDER unit's actual role, never the recipient's class or the
- * request kind. `cowork.request.claim` / `cowork.request.respond` are the RECIPIENT's, under that unit's live claim.
  * `cowork.unit.create` targets the native TASK; its class is the role of the unit it CREATES and gives the creator no claim on it.
  * `cowork.unit.complete` / `cowork.unit.transfer` are the current HOLDER's, under the unit's live claim.
  * `cowork.unit.decline` is the RECEIVING assignee's, for its own still-unclaimed transferred unit. */
@@ -25,8 +23,6 @@ export const AGENT_OPERATION_CLASSES: Record<AgentOperation, readonly AgentPeerR
   'doc.create': ['execute', 'plan'], 'doc.update': ['execute', 'plan'],
   'conversation.create': ['execute', 'plan'], 'conversation.reply': ['execute', 'plan'],
   'cowork.claim': ['execute', 'review', 'plan'], 'cowork.renew': ['execute', 'review', 'plan'], 'cowork.release': ['execute', 'review', 'plan'],
-  'cowork.request': ['execute', 'review', 'plan'],
-  'cowork.request.claim': ['execute', 'review', 'plan'], 'cowork.request.respond': ['execute', 'review', 'plan'],
   'cowork.unit.create': ['execute', 'review', 'plan'],
   'cowork.unit.complete': ['execute', 'review', 'plan'], 'cowork.unit.transfer': ['execute', 'review', 'plan'],
   'cowork.unit.decline': ['execute', 'review', 'plan'],
@@ -61,11 +57,6 @@ export type AgentPostcondition =
       unitId: string; role: AgentPeerRequestClass; version: number; generation: number;
       state: 'pending' | 'claimed' | 'paused' | 'completed' | 'stopped'; leaseId: string | null;
       leaseSessionId: string | null; leaseExpiresAt: string | null; checkpointId: string | null }
-  /** Content-free request identity for the ACTING connection: for `cowork.request` the sender and its unit, for
-   * `cowork.request.claim`/`.respond` the recipient and its unit; `role` is that unit's actual class. */
-  | { kind: 'cowork.request_state'; workspaceId: string; projectId: string; connectionId: string;
-      unitId: string; requestId: string; role: AgentPeerRequestClass; version: number;
-      state: 'queued' | 'deferred' | 'claimed' | 'resolved' | 'declined' | 'superseded' | 'expired' | 'cancelled' }
   /** A unit created by `cowork.unit.create`: its task (the command target), canonical lineage/run, actual role (the
    * class) and assignment, which may be another connection; the receipt itself records the creating connection.
    * Also the unit a holder completed or transferred (`cowork.unit.complete`/`.transfer`; the unit is the target). */
