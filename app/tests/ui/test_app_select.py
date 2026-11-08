@@ -505,7 +505,8 @@ class AppSelect(unittest.TestCase):
         source = AXE.read_bytes()
         self.assertEqual(hashlib.sha256(source).hexdigest(), AXE_SHA256, "the vendored axe is the one that was verified")
         page.wait_for_function("() => document.getAnimations().every((a) => a.playState !== 'running' || a.effect?.getComputedTiming().endTime === Infinity)")
-        page.add_script_tag(content=source.decode())
+        # The test driver runs axe in the page; a script element of its own would be an inline script, which the page's policy refuses (#979).
+        page.evaluate(source.decode())
         for scope in scopes:
             result = page.evaluate("""async (scope) => (await axe.run(document.querySelector(scope), { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'] } }))
                 .violations.map((v) => ({ id: v.id, impact: v.impact, help: v.help, nodes: v.nodes.slice(0, 3).map((n) => n.target.join(' ') + ' :: ' + n.failureSummary.split('\\n').slice(1, 3).join(' ')) }))""", scope)

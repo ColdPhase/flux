@@ -1,4 +1,5 @@
 import { basename } from 'node:path';
+import type { DocumentPolicies } from '../http/content-security-policy.js';
 
 /**
  * Cache policy for the built web app (issue #41). Vite's hashed /assets/* never change, so
@@ -18,4 +19,18 @@ export function setStaticHeaders(reply: { header(name: string, value: string): u
   reply.header('Cache-Control', 'no-cache');
   // Content types come from @fastify/send (application/javascript, application/manifest+json).
   if (name === 'sw.js') reply.header('Service-Worker-Allowed', '/');
+}
+
+/**
+ * The static headers plus the Content-Security-Policy of the pages and the service worker (#979). The policy is set here, on the
+ * response of the file, and not in the hook every response passes (framing.ts), because it names the hashes of that file's inline scripts.
+ */
+export function staticHeaders(policies: DocumentPolicies) {
+  return (reply: { header(name: string, value: string): unknown }, filePath: string) => {
+    setStaticHeaders(reply, filePath);
+    const policy = policies.forFile(filePath);
+    if (!policy) return;
+    reply.header('Content-Security-Policy', policy.enforced);
+    if (policy.reportOnly) reply.header('Content-Security-Policy-Report-Only', policy.reportOnly);
+  };
 }

@@ -19,7 +19,7 @@
 # from one session and would be answered 429 for most of them, so it would test the limiter instead of the application. The limits
 # are covered by tests/app/api-rate-limit-core.test.ts and the API suite.
 # FLUX_DAST_PORT / FLUX_DAST_MAILPIT_PORT pick the loopback ports; FLUX_DAST_PEOPLE narrows the API scans (default "ada jonas");
-# FLUX_DAST_SKIP_BASELINE=1 skips the baseline scan.
+# FLUX_DAST_SKIP_BASELINE=1 skips the baseline scan, FLUX_DAST_SKIP_API=1 the API scans (a quick check of the pages' headers).
 set -eu
 
 cd "$(dirname "$0")/.."
@@ -41,6 +41,8 @@ export FLUX_AUTH_SECRET="auth-dast-$$-$(date +%s)-$(od -An -N16 -tx1 /dev/urando
 export FLUX_SMTP_URL="smtp://mailpit:1025"
 export FLUX_MAIL_FROM="Flux <flux@example.test>"
 export FLUX_TEST_FAILURE_INJECTION=true
+# A test stack's enforced Content-Security-Policy allows eval for the browser test driver; ZAP is not one, so it scans the policy that ships (#979).
+export FLUX_TEST_CSP_EVAL=false
 export FLUX_AUTH_RATE_LIMIT=false
 export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 export FLUX_KEY_PIN_SECRET="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
@@ -112,7 +114,7 @@ if [ "${FLUX_DAST_SKIP_BASELINE:-0}" != 1 ]; then
     -r baseline.html -J baseline.json -z "$(replacer "Origin=$FLUX_PUBLIC_ORIGIN")"
   reports="$out/baseline.json"
 fi
-for person in ${FLUX_DAST_PEOPLE:-ada jonas}; do
+for person in $([ "${FLUX_DAST_SKIP_API:-0}" = 1 ] || echo "${FLUX_DAST_PEOPLE:-ada jonas}"); do
   echo "ZAP active API scan, signed in as $person..."
   cookie=$(cat "$out/cookie-$person")
   scan "API ($person)" zap zap-api-scan.py -t /zap/wrk/openapi.json -f openapi -c /zap/wrk/zap-rules.conf -I \

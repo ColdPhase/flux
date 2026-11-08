@@ -119,12 +119,31 @@ class Triage(unittest.TestCase):
 
     def test_the_recorded_rules_pass_and_the_summary_gives_each_its_reason(self):
         code, _, _, summary = summarize(report(("10062", "PII Disclosure", "3", "http://x/api/v1/sketches/1"), ("2", "Private IP Disclosure", "2", "http://x/api/auth/get-session"),
-                                               ("10055", "CSP: script-src unsafe-inline", "2", "http://x/")))
+                                               ("10055", "CSP: style-src unsafe-inline", "2", "http://x/")))
         self.assertEqual(code, 0)
         self.assertIn("## Recorded false positives (1)", summary)
         self.assertIn("last group of a UUID", summary)
-        self.assertIn("## Real findings accepted until their issue lands (1)", summary)
-        self.assertIn("Tracked in #979", summary)
+        self.assertIn("## Accepted risks, kept on purpose (1)", summary)
+        self.assertIn("Accepted risk: style-src keeps 'unsafe-inline'", summary)
+
+    def test_only_the_style_alert_of_the_csp_rule_is_accepted_the_others_of_that_rule_fail_the_run(self):
+        # ZAP's one rule id (10055) has an alert per directive: the policy of #979 is strict for scripts, so each of these is a regression.
+        for name in ("CSP: script-src unsafe-inline", "CSP: script-src unsafe-eval", "CSP: Wildcard Directive", "CSP: Failure to Define Directive with No Fallback",
+                     "CSP: Header & Meta"):
+            code, _, _, summary = summarize(report(("10055", name, "2", "http://x/"), ("10055", "CSP: style-src unsafe-inline", "2", "http://x/")))
+            self.assertEqual(code, 10, name)
+            self.assertIn(f"| {name} |", summary.split("## Accepted risks")[0], name)
+        code, *_ = summarize(report(("10055", "CSP: style-src unsafe-inline", "2", "http://x/")))
+        self.assertEqual(code, 0)
+
+    def test_a_rule_scoped_by_alert_name_leaves_other_rules_of_the_same_id_alone(self):
+        rules = "10055\tIGNORE\t~^CSP: style-src unsafe-inline$\tAccepted risk: kept on purpose, for the test.\n10055\tIGNORE\t~Notices\tA false positive, for the test.\n"
+        code, _, _, summary = summarize(report(("10055", "CSP: style-src unsafe-inline", "2", "http://x/"), ("10055", "CSP: Notices", "2", "http://x/")), rules=rules)
+        self.assertEqual(code, 0)
+        self.assertIn("Accepted risks, kept on purpose (1)", summary)
+        self.assertIn("Recorded false positives (1)", summary)
+        code, *_ = summarize(report(("10055", "CSP: Wildcard Directive", "2", "http://x/")), rules=rules)
+        self.assertEqual(code, 10)
 
     def test_a_private_address_is_excused_on_get_session_only(self):
         code, _, _, summary = summarize(report(("2", "Private IP Disclosure", "2", "http://x/api/auth/get-session")))

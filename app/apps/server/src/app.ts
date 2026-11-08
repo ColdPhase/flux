@@ -16,7 +16,9 @@ import { accessRoutes } from './access/routes.js';
 import { sketchRoutes } from './sketches/routes.js';
 import { dmRoutes } from './direct-messages/routes.js';
 import { pushRoutes } from './push/index.js';
-import { setStaticHeaders } from './pwa/static-headers.js';
+import { staticHeaders } from './pwa/static-headers.js';
+import { loadDocumentPolicies } from './http/content-security-policy.js';
+import { CSP_REPORT_PATH, cspReportRoutes } from './http/csp-reports.js';
 import { streamRoutes } from './stream/index.js';
 import { conversationRoutes } from './conversation/routes.js';
 import { linkPreviewRoutes } from './link-previews/routes.js';
@@ -159,7 +161,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   boss.on('error', (error) => app.log.error(error));
   await boss.start();
   app.addHook('onClose', async () => boss.stop());
-  const identity = await startIdentity(app, { db, config: identityConfig });
+  const identity = await startIdentity(app, { db, config: identityConfig, originExemptPaths: testDeployment ? [CSP_REPORT_PATH] : [] });
   gateSessions = identity;
   const encryption = composeEncryption(db, boss, encryptionKeys, { isolatedCompanies: testDeployment });
   // The keyring heartbeat (5 s): swap again, then the boot id; a new boot deletes the stale unlock rows and records the locks.
@@ -331,11 +333,16 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
 
   registerHealth(app, { pool, boss, manifest: migrationManifest, filesDir });
   registerFixtureRoutes(app, { config: config.fixture, db, boss, publicOrigin: identityConfig.publicOrigin });
+  const collectCspReports = testDeployment && config.fixture.token !== null;
+  if (collectCspReports) await app.register(cspReportRoutes, { token: config.fixture.token! });
   registerFixtureConnectionRoute(app, { config: config.fixture, db, sessions: identity, publicOrigin: identityConfig.publicOrigin });
 
   // The build writes .br/.gz copies of the app's text files (#266 item 9); a client that accepts
   // them gets the smaller copy, everyone else the original.
-  await fastifyStatic(app, { root: join(process.cwd(), 'apps/web/dist'), prefix: '/', cacheControl: false, setHeaders: setStaticHeaders, preCompressed: true });
+  const webRoot = join(process.cwd(), 'apps/web/dist');
+  // A real Content-Security-Policy on the pages and the service worker (#979); a test deployment's pages also report what they refuse.
+  const documentPolicies = loadDocumentPolicies(webRoot, identityConfig.publicOrigin, collectCspReports ? { reportUri: CSP_REPORT_PATH, allowEval: config.fixture.cspEval } : undefined);
+  await fastifyStatic(app, { root: webRoot, prefix: '/', cacheControl: false, setHeaders: staticHeaders(documentPolicies), preCompressed: true });
   app.setNotFoundHandler(async (request, reply) => {
     if (request.url.startsWith('/api/')) return reply.code(404).send({ error: 'Not Found' });
     if (!request.headers.accept?.includes('text/html')) return reply.code(404).send({ error: 'Not Found' });

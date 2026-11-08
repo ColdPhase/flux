@@ -114,8 +114,10 @@ deployment because the OpenAPI document is made from its route listing; the rate
 **What the first runs found** (2026-11-08, ZAP 2.17.0, 288 operations, two signed-in people): no injection, XSS, path traversal or
 authorization alert from the active scan of either person. Fixed in the same change: a NUL character in a name answered 500 on every
 route that stored it (now a 400 for any text, `databaseConflict`); no `X-Content-Type-Options`, `Permissions-Policy` or
-`Cross-Origin-Resource-Policy` header (now on every response, `framing.ts`). Tracked: the web app's missing Content-Security-Policy beyond
-`frame-ancestors` (#979). Recorded as false positives: ZAP's "PII Disclosure" on the last 12 digits of a UUID, and the caller's own session
+`Cross-Origin-Resource-Policy` header (now on every response, `framing.ts`). Tracked then, fixed by #979 (2026-11-08): the web app's missing
+Content-Security-Policy beyond `frame-ancestors`. The baseline scan of the web app with the policy: no alert but one Medium, "CSP: style-src
+unsafe-inline", which `zap-rules.conf` keeps as an accepted risk with its reason (the test stack sends the policy that ships:
+`FLUX_TEST_CSP_EVAL=false`; `FLUX_DAST_SKIP_API=1 ./scripts/check_dast.sh` runs the baseline scan alone). Recorded as false positives: ZAP's "PII Disclosure" on the last 12 digits of a UUID, and the caller's own session
 address in `get-session`. The 503s on the GitHub routes are the App not being configured in this stack.
 
 ### Rate limits and CodeQL `js/missing-rate-limiting` (#956)

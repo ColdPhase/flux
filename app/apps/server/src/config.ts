@@ -10,6 +10,12 @@ export interface FixtureConfig {
   token: string | null;
   /** `FLUX_TEST_FAILURE_INJECTION=true`: lets the fixture force failures and expose test counters. */
   failureInjection: boolean;
+  /**
+   * `FLUX_TEST_CSP_EVAL` (a test deployment only, default on; `false` turns it off): the enforced Content-Security-Policy allows `eval`,
+   * because Playwright's `waitForFunction` needs it (http/content-security-policy.ts). The DAST stack turns it off, so the scanner sees
+   * the policy that ships.
+   */
+  cspEval: boolean;
 }
 
 /** Everything the API reads from its environment, read once at startup (#88). */
@@ -52,7 +58,7 @@ export function loadServerConfig(env: NodeJS.ProcessEnv = process.env, backgroun
     connectionString,
     identity: loadIdentityConfig(env),
     push: loadPushServerConfig(env),
-    fixture: { token: env.FLUX_FIXTURE_TOKEN || null, failureInjection: env.FLUX_TEST_FAILURE_INJECTION === 'true' },
+    fixture: { token: env.FLUX_FIXTURE_TOKEN || null, failureInjection: env.FLUX_TEST_FAILURE_INJECTION === 'true', cspEval: env.FLUX_TEST_CSP_EVAL !== 'false' },
     filesDir: env.FLUX_FILES_DIR ?? '/data/files',
     heartbeatMs,
     port: Number(env.PORT ?? 8080),

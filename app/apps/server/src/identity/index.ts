@@ -33,6 +33,11 @@ export interface IdentityOptions {
   config: IdentityConfig;
   /** Defaults to SMTP from config; pass null to force password reset unavailable. */
   mailer?: Mailer | null;
+  /**
+   * Paths whose POST skips the origin guard. TEST DEPLOYMENTS ONLY (#979): WebKit sends a Content-Security-Policy report with `Origin: null`,
+   * and the report route (http/csp-reports.ts) only appends a bounded line to an in-memory list. Never set in an install.
+   */
+  originExemptPaths?: readonly string[];
 }
 
 export interface Identity extends SessionResolver {
@@ -148,7 +153,9 @@ export function registerIdentity(app: FastifyInstance, options: IdentityOptions)
     { db, maxAgeMs: config.sessionMaxAgeSeconds * 1000 });
   const passwordReset: IdentityCapabilities['passwordReset'] = mailer && !config.ssoOnly ? 'available' : 'unavailable';
 
+  const exempt = new Set(options.originExemptPaths ?? []);
   app.addHook('onRequest', async (request, reply) => {
+    if (exempt.size && request.method === 'POST' && exempt.has(request.url.split('?', 1)[0]!)) return;
     const violation = originViolation(request.method, request.headers, config.publicOrigin);
     if (violation) {
       // The Origin header is the sender's own text and is not copied: the reason says what was wrong with it (#997).

@@ -114,7 +114,7 @@ is what remains, and an issue number marks a finding of this audit.
 | CSRF on cookie-authenticated commands | One accepted origin (`FLUX_PUBLIC_ORIGIN`); Origin, `Sec-Fetch-Site` and Referer checked, and a cookie with none of them refused (`identity/origin.ts:59-69`); `SameSite=Lax` cookies. Probe: foreign origin, missing origin and `same-site` each answered 403 | None found |
 | Cross-site WebSocket hijacking | Origin compared with the public origin on the stream, typing and editing upgrades | None found |
 | Clickjacking of consent and approvals | `X-Frame-Options: DENY` and `frame-ancestors 'none'` on every response (`http/framing.ts`) | None |
-| Stored XSS (messages, Wiki, file names, link cards) | React escaping; Wiki Markdown rendered by markdown-it with `html:false` and sanitize-html with an allow-list (`docs/markdown.ts`); links limited to http, https and mailto; files served as `attachment` with `sandbox` CSP and `nosniff` | No script CSP to limit the damage of a future XSS: [#979](https://github.com/ColdPhase/flux/issues/979). Missing `nosniff`, Referrer-Policy and `no-store` elsewhere: [#992](https://github.com/ColdPhase/flux/issues/992) |
+| Stored XSS (messages, Wiki, file names, link cards) | React escaping; Wiki Markdown rendered by markdown-it with `html:false` and sanitize-html with an allow-list (`docs/markdown.ts`); links limited to http, https and mailto; files served as `attachment` with `sandbox` CSP and `nosniff` | A script Content-Security-Policy limits the damage of a future XSS: the pages run only Flux's own scripts and the hashed inline ones, and connect nowhere but to their own origin (`http/content-security-policy.ts`, [#979](https://github.com/ColdPhase/flux/issues/979)). Styles may still be inline. |
 | Session theft or fixation | HttpOnly cookies, `Secure` with a `__Secure-` prefix on https; new token on sign-in; server-side sessions read on every request (no cookie cache) | None found. Sessions end after 7 days unused and 30 days from sign-in, both settable ([#993](https://github.com/ColdPhase/flux/issues/993), fixed) |
 | Information leak in errors | Domain errors mapped to safe bodies; every unexpected error answers a code only and logs the redacted error ([#991](https://github.com/ColdPhase/flux/issues/991), fixed) | None found |
 
@@ -205,9 +205,7 @@ is what remains, and an issue number marks a finding of this audit.
    Text from other people, web pages or GitHub can steer what it does within those rights, and a private run
    can post what it read where others see it. The waiting rules and Undo limit the damage; they do not stop it.
    This is a design-level risk, not a defect.
-4. **No script Content-Security-Policy** ([#979](https://github.com/ColdPhase/flux/issues/979)). Any future XSS would run with full
-   power, including approving an agent's waiting changes as the owner.
-5. **Web reads can carry data out in a URL** ([#953](https://github.com/ColdPhase/flux/issues/953), PR #983) until the "only addresses it
+4. **Web reads can carry data out in a URL** ([#953](https://github.com/ColdPhase/flux/issues/953), PR #983) until the "only addresses it
    was given" rule lands.
 
 ## What this audit could not verify
