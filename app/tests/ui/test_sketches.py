@@ -515,6 +515,34 @@ class SketchJourney(unittest.TestCase):
         self.assertLessEqual(len(after), 2, f"no reconnect loop: {after}")
         self.assertTrue(any(s["frames"] for s in after), "the second account's stream delivers")
 
+    def test_10b_two_tabs_opening_my_map_at_once_make_one_map(self) -> None:
+        """#866 review: both tabs found no map and each made one, so they showed different maps. Both ask with one key now."""
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP)
+        self.addCleanup(context.close)
+        first = self.page(context)
+        self.api(first, "POST", "/api/auth/sign-up/email", {"name": "Twin Tabs", "email": f"twin+{int(time.time() * 1000)}@example.test", "password": PASSWORD})
+        ws = self.api(first, "POST", "/api/v1/workspaces", {"name": "Twin tabs"})
+        second = self.page(context)
+        # Hold both tabs' look for a private map until each has asked, so both find none and both go on to make one.
+        held: list = []
+        for tab in (first, second):
+            tab.route(re.compile(r"/api/v1/workspaces/[^/]+/sketches\?.*scope=private"), lambda route: held.append(route))
+        first.goto("/map", wait_until="commit")
+        second.goto("/map", wait_until="commit")
+        for _ in range(150):
+            if len(held) == 2:
+                break
+            first.wait_for_timeout(100)
+        self.assertEqual(len(held), 2, "both tabs asked for their private maps")
+        for route in held:
+            route.continue_()
+        for tab in (first, second):
+            expect(tab.get_by_role("group", name="Map: My map")).to_be_visible()
+            expect(tab).to_have_url(re.compile(r"/map/[0-9a-f-]{36}$"))
+        self.assertEqual(first.url, second.url, "both tabs show the same map")
+        listed = self.api(first, "GET", f"/api/v1/workspaces/{ws['id']}/sketches?scope=private&limit=100")
+        self.assertEqual(listed["total"], 1, "one private map was made")
+
     # ---------------------------------------------------------------- Fit and its controls (#222)
 
     def fit_fixture(self, *, viewport: dict, ratios: tuple[float, float], touch: bool = False) -> Page:

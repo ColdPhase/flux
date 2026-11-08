@@ -30,13 +30,14 @@ const key = (idempotencyKey: string) => ({ 'idempotency-key': idempotencyKey });
 
 /**
  * My map (#866): the person's oldest private map, made the first time it is asked for. The API lists their private maps newest change
- * first, and a map nobody put anything on is listed too, so My map is found again before it has a thought. A retry after a lost answer
- * reuses `idempotencyKey`, so it never makes two.
+ * first, and a map nobody put anything on is listed too, so My map is found again before it has a thought. The map is made with one key
+ * for the person and company, so two tabs (or a retry after a lost answer) that ask at the same moment get one map, not two.
  */
-export async function openMyMap(workspaceId: string, idempotencyKey: string, signal?: AbortSignal): Promise<Sketch> {
+export const myMapKey = (workspaceId: string) => `my-map:${workspaceId}`;
+export async function openMyMap(workspaceId: string, signal?: AbortSignal): Promise<Sketch> {
   const listed = await request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=100&offset=0&scope=private`, { signal });
   const mine = [...listed.items].sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
-  return mine ?? request<Sketch>(workspaceSketchesPath(workspaceId), { method: 'POST', body: { title: 'My map', scope: 'private' }, headers: key(idempotencyKey), signal });
+  return mine ?? request<Sketch>(workspaceSketchesPath(workspaceId), { method: 'POST', body: { title: 'My map', scope: 'private' }, headers: key(myMapKey(workspaceId)), signal });
 }
 
 export const getSketch = (sketchId: string, signal?: AbortSignal) => request<SketchDetail>(sketchPath(sketchId), { signal });

@@ -999,6 +999,27 @@ class CreateWindow(unittest.TestCase):
         expect(palette.get_by_role("option", name=re.compile("Cargo bike co-op|^Home"))).to_have_count(0)
         expect(palette.locator(".jump__foot")).to_contain_text("Finds spaces, people, messages, tasks, Wiki pages and thoughts you can see.")
 
+    def test_18b_a_thought_asked_for_by_someone_with_no_space_opens_as_a_thought(self) -> None:
+        """#866 review: the phone's "+" then Thought opened New space for a member with no space; a thought needs none (it goes on My map)."""
+        context = self.browser.new_context(base_url=ORIGIN, color_scheme="light", locale="en-GB", timezone_id="Europe/Warsaw", service_workers="block",
+                                           viewport=PHONE, device_scale_factor=1, is_mobile=True, has_touch=True)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill("Nia Nospace")
+        page.get_by_label("Email").fill(f"nospace.create+{int(time.time() * 1000)}@example.test")
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Create account").click()
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        self.api(page, "POST", "/api/v1/workspaces", {"name": "No spaces yet"}, 201)
+        page.goto("/")
+        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
+        page.get_by_role("button", name="Create", exact=True).tap()
+        page.get_by_role("dialog", name="Create").get_by_role("button", name=re.compile("^Thought")).tap()
+        expect(page.get_by_role("dialog", name="New thought")).to_be_visible()
+        expect(page.get_by_role("dialog", name="New space")).to_have_count(0)
+        expect(page.get_by_role("dialog", name="New thought").get_by_role("textbox", name="Thought", exact=True)).to_be_visible()
+
     def test_20_a_guest_sees_why_the_message_tab_has_no_one_to_pick_and_cannot_send(self) -> None:
         """#555: a guest cannot list the space's people (403), so the Message tab says what a guest can do, not that nobody is there."""
         self.ensure_account()

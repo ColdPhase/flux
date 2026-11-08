@@ -52,7 +52,8 @@ export function CreateHost({ request, onClose }: { request: CreateRequest | null
   // the window is named after the tab it shows, so no heading repeats the tab.
   const { projects, workspace } = useShellData();
   // A guest cannot start spaces, so with none of their own they open on Task like anyone else.
-  const opening: Shown = request?.kind === 'project' || (!projects.length && workspace?.role !== 'guest') ? 'space' : request?.kind === 'decision' ? 'decision' : request?.kind === 'thought' ? 'thought' : 'task';
+  // A thought needs no space (it goes on My map), so a Thought asked for opens as one for someone with no space yet (#866).
+  const opening: Shown = request?.kind === 'thought' ? 'thought' : request?.kind === 'project' || (!projects.length && workspace?.role !== 'guest') ? 'space' : request?.kind === 'decision' ? 'decision' : 'task';
   const [chosen, setChosen] = useState<{ request: CreateRequest | null; kind: Shown; name?: string }>({ request: null, kind: 'task' });
   const kind = chosen.request === request ? chosen.kind : opening;
   const navigate = useNavigate();
@@ -430,8 +431,6 @@ function ThoughtForm({ ids, phone, carried, onClose }: PanelProps) {
   const [busy, setBusy] = useState(false);
   const inFlight = useRef(false);
   const [error, setError] = useState('');
-  // A retry after a lost answer finds or makes the same map once.
-  const mapKey = useRef(crypto.randomUUID());
   const body = carried.text.trim();
   const ready = !!body && body.length <= SKETCH_LIMITS.text && !busy;
   async function submit() {
@@ -443,7 +442,7 @@ function ThoughtForm({ ids, phone, carried, onClose }: PanelProps) {
       const target = workspace?.id;
       if (!target) { setError('You’re not in a company on this Flux yet. Ask an admin for an invite link.'); return; }
       await assertSignedInAs(me.user.id);
-      const map = await openMyMap(target, mapKey.current);
+      const map = await openMyMap(target);
       const found = await getSketch(map.id);
       const size = { w: DEFAULT_THOUGHT_SIZE.width, h: DEFAULT_THOUGHT_SIZE.height };
       const spot = freeSpot(found.thoughts.map((thought) => rectOf(thought, new Map())), null, size);

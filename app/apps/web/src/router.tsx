@@ -1,4 +1,4 @@
-import { Navigate, Outlet, createBrowserRouter, useMatches, useRouteLoaderData, type RouteObject } from 'react-router';
+import { Navigate, Outlet, createBrowserRouter, redirect, useMatches, useRouteLoaderData, type RouteObject } from 'react-router';
 import { useEffect, useState } from 'react';
 import { markBooted } from './place/memory';
 import { ToastProvider, markMotionReady } from './ui';
@@ -172,6 +172,8 @@ export const router = createBrowserRouter([
           { path: 'dm', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).DmIndex })) },
           { path: 'dm/new', ...secondary(async () => ({ Component: (await import('./dm/DmIndex')).NewDm })) },
           { path: 'dm/:dmId', ...secondary(async () => { const page = await import('./dm/DmConversation'); return { Component: page.DmConversation, loader: page.dmLoader }; }) },
+          // A direct message has no maps (#866): its old Sketches addresses lead to the conversation.
+          { path: 'dm/:dmId/sketches/*', loader: ({ params }) => redirect(`/dm/${params.dmId}`) },
           { path: 'inbox', ...secondary(async () => ({ Component: (await import('./notifications/InboxView')).InboxView })) },
           { path: 'inbox/:id', ...secondary(async () => ({ Component: (await import('./notifications/InboxView')).InboxOpen })) },
           // Settings (#350, F-026): every earlier address still opens its section.

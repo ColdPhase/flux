@@ -427,7 +427,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
       lines: lines.map((line, index): DraftLine => ({ id: doc.newId(), linkId: doc.newId(), key: doc.newId(), text: line, x: places[index]!.x, y: places[index]!.y })) });
     setConnectFrom(null);
     setEditing(null);
-    say(`${lines.length} private draft ${lines.length === 1 ? 'thought' : 'thoughts'} from the clipboard · check, then Save`);
+    say(`${lines.length} ${lines.length === 1 ? 'thought' : 'thoughts'} from the clipboard · check, then Save`);
   };
 
   const pasteImage = async (file: Blob) => {

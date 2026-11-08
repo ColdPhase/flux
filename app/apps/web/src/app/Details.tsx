@@ -57,18 +57,18 @@ export function Details({ view, placeTitle, dm = null, onBack, onClose }: {
       </div>
     );
   }
-  // Home and the Sketchbook (#508) are private to you.
+  // Home and My map (#508, #866) are private to you.
   const home = placeTitle === 'Home' || placeTitle === 'My map';
   return (
     <div className="details">
       <p className="details__eyebrow">{placeTitle}</p>
       <h3 className="details__title">Nothing selected</h3>
-      <p className="details__lead">Select a note, task or result to see where it came from, what it connects to and who can see it.</p>
+      <p className="details__lead">Select a thought, task or result to see where it came from, what it connects to and who can see it.</p>
 
       <section className="details__sec" aria-labelledby="details-audience">
         <h4 id="details-audience">Who can see {placeTitle}</h4>
         {home
-          ? <p>Only you. Notes you capture here stay private until you choose to share them.</p>
+          ? <p>Only you. What you put here stays private until you choose to share it.</p>
           : <p>Only the people in each conversation.</p>}
       </section>
 
