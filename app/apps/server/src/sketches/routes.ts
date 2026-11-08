@@ -71,14 +71,9 @@ const routeUrl=(request:FastifyRequest)=>{const url=request.routeOptions.url;if(
  * (`If-Match` or `expectedVersion`; batch moves carry one per thought).
  */
 export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage,developmentEditing=false,liveBackend,confirmation }: SketchRouteOptions) {
-  useDomainErrors(app);
-  const domainErrors=app.errorHandler;
-  app.setErrorHandler(function(error,request,reply) {
-    // Preserve the original error and healthy postimages; a real terminal HTTP
-    // response must not enter the ordinary protected error serializer again.
-    if(error instanceof DomainError&&(reply.raw.writableFinished||'closed' in reply.raw&&reply.raw.closed===true))return reply.hijack();
-    return domainErrors.call(this,error,request,reply);
-  });
+  // Preserve the original error and healthy postimages; a real terminal HTTP response must not enter the ordinary protected error
+  // serializer again.
+  useDomainErrors(app,{answered:(error,reply)=>error instanceof DomainError&&(reply.raw.writableFinished||'closed' in reply.raw&&reply.raw.closed===true)});
   const runner=commandRunner(db,sessions);const {principal}=runner;
   const preparation=new EditingHTTPAdmission(apiEditingOutputBudget);app.addHook('onClose',async()=>preparation.close());
   const lifetimes=new WeakMap<FastifyReply,EditingHTTPLifetime>();

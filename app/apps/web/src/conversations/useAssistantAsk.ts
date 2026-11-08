@@ -18,7 +18,7 @@ interface Options {
  * Asking the person's own assistant in a thread (#68): the private prompt goes out, a refused one comes back
  * with the reason, and one made offline waits as "Sends when you're back" and goes out once on reconnect.
  */
-export function useAssistantAsk({ me, conversation, writable, audience, composerId }: PaneCore, { drafts, assistant, scrollRef, scrollToEnd }: Options) {
+export function useAssistantAsk({ me, conversation, writable, audience, outside, composerId }: PaneCore, { drafts, assistant, scrollRef, scrollToEnd }: Options) {
   const { helperComposer, setAsking, captureHelperScope } = drafts;
   const [askFailure, setAskFailure] = useState('');
   const [askFailureCode, setAskFailureCode] = useState<string | null>(null);
@@ -71,7 +71,7 @@ export function useAssistantAsk({ me, conversation, writable, audience, composer
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [heldHere, conversation?.id]);
   async function sendToAssistant() {
-    if (!conversation || !writable || drafts.askBusy || askState(assistant.status, audience).kind !== 'ready') return;
+    if (!conversation || !writable || drafts.askBusy || askState(assistant.status, audience, outside).kind !== 'ready') return;
     const command = helperComposer.begin();
     if (!command) return;
     const active = captureHelperScope();

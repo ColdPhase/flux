@@ -359,4 +359,14 @@ describe('no payer switching; the API key\'s one daily budget pauses a request u
     assert.equal(await resets('Europe/Warsaw', '2026-11-07T10:00:00Z'), '2026-11-07T23:00:00.000Z');
     assert.equal(await resets('UTC', '2026-11-07T10:00:00Z'), '2026-11-08T00:00:00.000Z');
   });
+
+  test('#915: where the clocks go back at midnight (Havana, 1 Nov 2026) the day begins at the first midnight, and the day before ends there', async () => {
+    const window = async (at: string) => (await apiKeySpendToday(db, randomUUID(), undefined, { dailyBudgetCents: 500, timeZone: 'America/Havana' }, new Date(at)))!.resetsAt.toISOString();
+    // Midnight of 1 Nov comes twice: 04:00Z (summer time) and 05:00Z (winter time). The eve ends at the first.
+    assert.equal(await window('2026-10-31T12:00:00Z'), '2026-11-01T04:00:00.000Z');
+    // The day that follows begins at the same instant, so its first hour counts in it, and it ends at the next midnight, which is single.
+    assert.equal(await window('2026-11-01T04:30:00Z'), '2026-11-02T05:00:00.000Z');
+    assert.equal(await window('2026-11-01T05:30:00Z'), '2026-11-02T05:00:00.000Z');
+    assert.equal(await window('2026-11-01T20:00:00Z'), '2026-11-02T05:00:00.000Z');
+  });
 });

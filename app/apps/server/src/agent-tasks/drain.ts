@@ -1,10 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { AGENT_TASK_EVENT_ATTEMPTS, agentTaskRows, assistantChangeRows, assistantRemovalRows, personalRunRows, workRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
+import { AGENT_TASK_EVENT_ATTEMPTS, AGENT_TASK_GIVE_UP_ATTEMPTS, agentTaskRows, assistantChangeRows, assistantRemovalRows, personalRunRows, workRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
 import { agentLabel, answerLines, askableLines, createPersonalRunUseCases, DomainError, MAX_EXCHANGE_TURNS, noPersonalConnections, resolveAsked, stopRunBy, TAKEN_WORDS, takeAsk, taskRunClientId,
   taskRunPrompt, uuidFrom, type AgentQuestion, type Askable, type Principal, type TaskStart, type UndoRecord, type WorkRecord } from '@flux/core';
 import { personalRunPorts, type PersonalRunComposition, type PersonalRunQueueFactory } from '../personal-runs/adapters.js';
 import { taskDiscussionUseCases } from '../work/task-discussions.js';
 import { workUseCases } from '../work/adapters.js';
+import { policyWorkAccess } from '../work/access.js';
 
 // The server's side of people's agents taking tasks (#856, F-036 AG-5). `agent_task_events` holds what happened in the
 // transaction that caused it; this drains it as soon as the API is told (NOTIFY), so a task is taken within seconds and
@@ -36,6 +37,8 @@ const human = (id: string): Principal => ({ kind: 'human', id });
 const agent = (id: string): Principal => ({ kind: 'agent', id });
 const FINISHED = new Set(['done', 'not_pursued']);
 const IN_FLIGHT = ['queued', 'reading', 'dispatching'];
+/** The person's own line when "Give it to" could not give them the task because their agent has no access to this space. */
+const NOT_TAKEN_WORDS = 'My assistant can\'t work in this space, so it hasn\'t taken this task. It\'s still with me.';
 
 type Event = NonNullable<Awaited<ReturnType<ReturnType<typeof agentTaskRows>['claimNext']>>>;
 type RunRow = NonNullable<Awaited<ReturnType<ReturnType<typeof personalRunRows>['findRun']>>>;
@@ -48,7 +51,7 @@ export interface AgentTaskDrain {
 class Refused extends Error { constructor(readonly line: string) { super(line); } }
 
 export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactory, composition: Omit<PersonalRunComposition, 'queue'>,
-  log: { warn(object: unknown, message: string): void } = { warn: () => undefined }): AgentTaskDrain {
+  log: { warn(object: unknown, message: string): void; error?(object: unknown, message: string): void } = { warn: () => undefined }): AgentTaskDrain {
 
   /** A step a rule may refuse is logged and left; any other failure is not swallowed: it rolls the event back, to be tried again. */
   async function attempt<T>(what: string, step: () => Promise<T>): Promise<T | null> {
@@ -146,13 +149,26 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     const holder = agentId ? await rows.agent(agentId) : null;
     if (!holder?.ownerUserId) return;
     const ports = personalRunPorts(tx, queue);
-    const stopRuns = async (by: string, before?: Date) => {
+    const stopRuns = async (ofAgent: string, by: string, before?: Date) => {
       for (const going of await rows.runsOfWork(work.id, 8))
-        if (going.agentId === holder.id && IN_FLIGHT.includes(going.status) && (!before || going.createdAt <= before)) await stopRunBy(ports, going.id, by);
+        if (going.agentId === ofAgent && IN_FLIGHT.includes(going.status) && (!before || going.createdAt <= before)) await stopRunBy(ports, going.id, by);
     };
+    if (run?.kind === 'task_answer') {
+      // The answering agent's run ended and its answer could not be handled: the agent that asked still holds the task and waits for it,
+      // with no run and no line. It says so and the task goes back to its owner.
+      const asked = run.askedByRunId ? await personalRunRows(tx).findRun(run.askedByRunId) : null;
+      const asker = asked ? await rows.agent(asked.agentId) : null;
+      if (!asker?.ownerUserId || FINISHED.has(work.status)) return;
+      const current = (await workRows(tx).findWork(work.id, { lock: true }))!;
+      if (current.owner?.kind !== 'agent' || current.owner.id !== asker.id) return;
+      await say(tx, current, asker.id, 'I couldn\'t get an answer. It\'s back with you.', `gave-up:${event.id}`);
+      await giveBack(tx, current, asker.ownerUserId, asker.ownerUserId);
+      await stopRuns(asker.id, asker.ownerUserId);
+      return;
+    }
     if (event.kind === 'released') {
       // Only the runs that were going when the task was taken away: a run started since is a later assignment's.
-      await stopRuns(event.byKind === 'human' && event.byId ? event.byId : holder.ownerUserId, event.createdAt);
+      await stopRuns(holder.id, event.byKind === 'human' && event.byId ? event.byId : holder.ownerUserId, event.createdAt);
       return;
     }
     if (FINISHED.has(work.status)) return;
@@ -162,20 +178,26 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       await say(tx, current, holder.id, 'I couldn\'t take care of this. It\'s back with you.', `gave-up:${event.id}`);
       await giveBack(tx, current, holder.ownerUserId, holder.ownerUserId);
       // A rule's hand-back writes no `released` event, so the run is stopped here.
-      await stopRuns(holder.ownerUserId);
+      await stopRuns(holder.id, holder.ownerUserId);
     } else if (event.kind === 'assigned' && event.ownerUserId && current.owner?.kind === 'human' && current.owner.id === holder.ownerUserId) {
       // The person chose this agent and the setting could not give it: the task is as it was, and they are told.
       await say(tx, current, holder.id, 'I couldn\'t take this. It\'s still with you.', `gave-up:${event.id}`);
     }
   }
 
-  /** The agents of the task's other people that an agent may ask (TA-3): both owners are among the task's people. */
-  async function askable(tx: Transaction, workId: string, askerOwner: string): Promise<Askable[]> {
+  /**
+   * The agents of the task's other people that an agent may ask (TA-3): both owners are among the task's people. Only an agent that
+   * can read the space is offered: the agent of a company owner or admin who wrote in the task without being added to the space has
+   * no level there (C-15), and its answer run would be refused (#955).
+   */
+  async function askable(tx: Transaction, work: { id: string; projectId: string }, askerOwner: string): Promise<Askable[]> {
     const rows = agentTaskRows(tx);
+    const access = policyWorkAccess(tx);
     const found: Askable[] = [];
-    for (const person of (await rows.taskPeople(workId)).filter((id) => id !== askerOwner)) {
+    for (const person of (await rows.taskPeople(work.id)).filter((id) => id !== askerOwner)) {
       const ownerName = (await rows.personName(person)) ?? 'Former member';
-      for (const other of await rows.ownServerAgents(person)) found.push({ id: other.id, name: other.name, ownerId: person, ownerName });
+      for (const other of await rows.ownServerAgents(person))
+        if (await access.canRead({ kind: 'agent', id: other.id }, work.projectId)) found.push({ id: other.id, name: other.name, ownerId: person, ownerName });
     }
     // Always in the same order, so a line that names two agents reads the same each time.
     return found.sort((a, b) => a.ownerName.localeCompare(b.ownerName) || a.name.localeCompare(b.name));
@@ -190,8 +212,17 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       if (work.owner?.kind !== 'human' || work.owner.id !== event.ownerUserId) return;
       const agentId = await rows.taking(event.ownerUserId);
       if (!agentId || !(await rows.isOwnServerAgent(event.ownerUserId, agentId))) return;
-      await attempt('give', () => workUseCases(tx as unknown as Database).updateWork(human(event.ownerUserId!), work.id,
-        { owner: { kind: 'agent', id: agentId } }, work.version, 'agent_rule'));
+      try {
+        await workUseCases(tx as unknown as Database).updateWork(human(event.ownerUserId), work.id, { owner: { kind: 'agent', id: agentId } }, work.version, 'agent_rule');
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error;
+        log.warn({ error, what: 'give' }, 'An agent task step was refused');
+        // The agent of a company owner or admin who was not added to this space has no access here (C-15), so it cannot speak: the
+        // line is the person's own. The task stays with them, and now they know why it was not taken (#955).
+        if (error.code === 'OWNER_WITHOUT_ACCESS')
+          await attempt('say', () => taskDiscussionUseCases(tx as unknown as Database).contribute(human(event.ownerUserId!), work.id,
+            { body: NOT_TAKEN_WORDS, clientMessageId: uuidFrom(`agent-task:not-taken:${event.id}`) }));
+      }
       return;
     }
     if (!event.ownerAgentId || work.owner?.kind !== 'agent' || work.owner.id !== event.ownerAgentId) return;
@@ -213,7 +244,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
         const place = await taskDiscussionUseCases(inner as unknown as Database).getDiscussionRoot(human(ownerId), work.id).catch(() => null);
         const started: TaskStart = place
           ? await runs.startTask(ports, { ownerUserId: ownerId, agentId: holder.id, workId: work.id, projectId: work.projectId, conversationId: place.conversationId,
-            prompt: (taskRunPrompt(work) + askableLines((await askable(inner, work.id, ownerId)).map((other) => ({ name: other.name, owner: other.ownerName })))).slice(0, 3900),
+            prompt: (taskRunPrompt(work) + askableLines((await askable(inner, work, ownerId)).map((other) => ({ name: other.name, owner: other.ownerName })))).slice(0, 3900),
             clientRunId: taskRunClientId(event.id) })
           : { started: false, line: 'I can\'t start: this task has no discussion yet.' };
         if (!started.started) throw new Refused(started.line);
@@ -247,8 +278,10 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
   async function released(tx: Transaction, event: Event) {
     if (!event.ownerAgentId) return;
     const ports = personalRunPorts(tx, queue);
+    // Only the runs that were going when the task was taken away: a retried release must not stop a later assignment's run.
     for (const run of await agentTaskRows(tx).runsOfWork(event.workId, 8))
-      if (run.agentId === event.ownerAgentId && IN_FLIGHT.includes(run.status)) await stopRunBy(ports, run.id, event.byKind === 'human' && event.byId ? event.byId : run.ownerUserId);
+      if (run.agentId === event.ownerAgentId && IN_FLIGHT.includes(run.status) && run.createdAt <= event.createdAt)
+        await stopRunBy(ports, run.id, event.byKind === 'human' && event.byId ? event.byId : run.ownerUserId);
   }
 
   async function finished(tx: Transaction, event: Event) {
@@ -305,7 +338,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
   async function asking(tx: Transaction, work: WorkRecord, run: RunRow, ask: AgentQuestion) {
     const asker = { id: run.agentId, ownerUserId: run.ownerUserId };
     if (run.exchangeTurn >= MAX_EXCHANGE_TURNS) return toThePeople(tx, work, asker, 'We have gone back and forth for long enough. This needs a person.', `asked-out:${run.id}`);
-    const resolved = resolveAsked(ask, await askable(tx, work.id, run.ownerUserId));
+    const resolved = resolveAsked(ask, await askable(tx, work, run.ownerUserId));
     if ('none' in resolved) return toThePeople(tx, work, asker, `I can't ask ${ask.agent}${ask.owner ? ` (${ask.owner}'s agent)` : ''}: they are not in this task. This needs a person.`, `asked-nobody:${run.id}`);
     // Never a guess: two agents of that name, and the block did not say whose, is a question for the people.
     if ('ambiguous' in resolved) return toThePeople(tx, work, asker, `There is more than one agent called ${ask.agent} in this task: ${resolved.ambiguous.map(agentLabel).join(' and ')}. Say whose you mean. This needs a person.`, `asked-ambiguous:${run.id}`);
@@ -386,11 +419,14 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     } catch (error) {
       const event = claimed.event;
       if (error instanceof Relock) return true;
-      log.warn({ error, event: event?.id }, 'An agent task event failed and will be tried again');
-      if (!event) return false;
+      if (!event) { log.warn({ error }, 'An agent task event failed'); return false; }
       // Counted only while nobody has handled it: another replica may have taken it just after this try failed and done it.
-      const counted = await agentTaskRows(db).failed(event.id).then(() => true, () => false);
+      const counted = await agentTaskRows(db).failed(event.id).then((result) => ({ attempts: result?.attempts ?? null }), () => null);
+      log.warn({ error, event: event.id, kind: event.kind, workId: event.workId, attempts: counted?.attempts ?? null }, 'An agent task event failed and will be tried again');
       if (!counted) { retryIn = 5; return false; }
+      // Even the give-up failed every time: the event is left as it is, with its count, and says so here once.
+      if (counted.attempts !== null && counted.attempts >= AGENT_TASK_EVENT_ATTEMPTS + AGENT_TASK_GIVE_UP_ATTEMPTS)
+        (log.error ?? log.warn).call(log, { event: event.id, kind: event.kind, workId: event.workId, attempts: counted.attempts }, 'An agent task event could not be given up and is left unhandled');
       return true;
     }
   }

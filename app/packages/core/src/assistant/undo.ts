@@ -17,7 +17,7 @@ export type UndoPlan =
    * `finishes` the task a result finished, as it was before.
    */
   | { kind: 'removal'; title?: string; version?: number; finishes?: { workId: string; status: string; blocker: string | null };
-    /** A line a run put in a task's thread (#923): later lines of other agents in the exchange are not use; a person's are. */
+    /** A line a run put in a task's thread (#923, #938): its agent's owner can always delete it (TA-3), whoever answered it since. */
     thread?: boolean }
   /** A hand-off to the owner's agent: Undo cancels exactly this unit while it is untouched and was never claimed. */
   | { kind: 'handoff'; unitId: string; taskId: string; creationVersion: number };

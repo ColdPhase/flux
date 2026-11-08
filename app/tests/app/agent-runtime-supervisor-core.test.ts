@@ -6,7 +6,9 @@ import type { AddressInfo } from 'node:net';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { callSupervisor, NdjsonReader, parseSupervisorFrame, type ClientStatus, type SupervisorCallOutcome, type SupervisorRequest } from '@flux/runtime-protocol';
-import { clearClientFiles, clearLeftovers, clearScratch, hasUnconfirmed, recordUnconfirmed } from '../../apps/runtime/src/supervisor/data.js';
+import { clearClientFiles, clearLeftovers, clearScratch, hasUnconfirmed, recordUnconfirmed, removeBinding } from '../../apps/runtime/src/supervisor/data.js';
+import { runFixed } from '../../apps/runtime/src/supervisor/process.js';
+import { removeTreeScript, walkTree } from '../../apps/runtime/src/supervisor/tree.js';
 import { Lane } from '../../apps/runtime/src/supervisor/server.js';
 import { CODEX_FEATURE_REVIEW, codexRunOverrides, LOGOUT_TEMPLATES, RUN_TEMPLATES, STATUS_TEMPLATES } from '../../apps/runtime/src/supervisor/templates.js';
 import { classifyCodexError, classifyError, effectiveConfigHolds } from '../../apps/runtime/src/supervisor/run.js';
@@ -313,6 +315,64 @@ describe('fixed command templates and a clean CLI environment', () => {
       await chmod(server.config.tmpDir, 0o700).catch(() => undefined);
       await server.close();
     }
+  });
+
+  // A tree deeper than PATH_MAX, built the only way it can be: a few thousand levels of one-letter names, changing directory each time (#915).
+  const DEEP_TREE = 'const fs = require("node:fs"); fs.mkdirSync(process.argv[1], { mode: 0o755 }); process.chdir(process.argv[1]); for (let level = 0; level < 2200; level += 1) { fs.mkdirSync("d"); process.chdir("d"); } fs.writeFileSync("file", "left");';
+  const deepTree = async (path: string) => {
+    const built = await runFixed(process.execPath, ['-e', DEEP_TREE, path], { env: { PATH: '/usr/bin:/bin' }, cwd: '/', timeoutMs: 60_000, person: null });
+    assert.equal(built.code, 0, 'the tree was built');
+  };
+  const exists = (path: string) => lstat(path).then(() => true, () => false);
+
+  test('#915: a tree deeper than PATH_MAX does not keep a release open: the scratch, the shared /tmp and /data/<id> are all emptied of it', async () => {
+    const server = await startTestSlot();
+    try {
+      const id = randomUUID();
+      assert.ok((await call(server, { kind: 'bind', bindingId: id })).ok);
+      const dir = join(server.config.dataDir, id);
+      const person = { uid: process.getuid!(), gid: process.getgid!() };
+      await deepTree(join(server.config.tmpDir, 'deep'));
+      await assert.rejects(rm(join(server.config.tmpDir, 'deep'), { recursive: true, force: true }), 'control: rm cannot enter it');
+      assert.equal(await clearLeftovers(server.config.tmpDir, person), true);
+      assert.equal(await exists(join(server.config.tmpDir, 'deep')), false);
+      await deepTree(join(dir, 'tmp', 'deep'));
+      assert.equal(await clearScratch(dir, null), true);
+      assert.deepEqual(await readdir(join(dir, 'tmp')), []);
+      await deepTree(join(dir, 'home', 'deep'));
+      assert.equal(await removeBinding(server.config.dataDir, id), true);
+      assert.equal(await exists(dir), false, 'the binding directory is gone');
+      assert.deepEqual(await readdir(server.config.dataDir), [], 'and nothing was made in /data');
+    } finally { await server.close(); }
+  });
+
+  test('#915: the walk removes one person\'s entries wherever they stand, looks through other people\'s, and follows no link', async () => {
+    const server = await startTestSlot();
+    try {
+      const me = { uid: process.getuid!(), gid: process.getgid!() };
+      const nobody = { uid: me.uid + 1, gid: me.gid + 1 };
+      const root = server.config.tmpDir;
+      const outside = join(server.config.dataDir, 'outside');
+      await mkdir(outside);
+      await writeFile(join(outside, 'precious'), 'kept');
+      await mkdir(join(root, 'shared', 'inner', 'deeper'), { recursive: true });
+      await writeFile(join(root, 'shared', 'inner', 'deeper', 'file'), 'left');
+      await symlink(outside, join(root, 'shared', 'inner', 'link'));
+      await symlink(outside, join(root, 'toplink'));
+      // Another user id owns none of it: nothing is removed, and nothing is followed to somewhere else.
+      assert.equal(await walkTree(null, ['sweep', root, String(nobody.uid)]), true);
+      assert.equal(await exists(join(root, 'shared', 'inner', 'deeper', 'file')), true);
+      assert.equal(await exists(join(root, 'toplink')), true);
+      // Its owner's sweep finds all of it, also deep inside, and removes a link without touching what it points to.
+      assert.equal(await walkTree(null, ['sweep', root, String(me.uid)]), true);
+      assert.deepEqual(await readdir(root), []);
+      assert.equal(await readFile(join(outside, 'precious'), 'utf8'), 'kept');
+      // `remove` takes one path: a link at the top is removed itself, and what is not there is already gone.
+      await symlink(outside, join(root, 'again'));
+      assert.equal(await removeTreeScript(null, join(root, 'again')), true);
+      assert.equal(await removeTreeScript(null, join(root, 'not-there')), true);
+      assert.equal(await readFile(join(outside, 'precious'), 'utf8'), 'kept');
+    } finally { await server.close(); }
   });
 
   test('a run is refused while the binding directory exceeds its size limit', async () => {

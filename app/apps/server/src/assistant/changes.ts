@@ -86,6 +86,9 @@ function handoffLine(row: AssistantChangeRow, units: Map<string, { state: string
 }
 const undoOf = (row: AssistantChangeRow) => (row.receipt as { undo?: UndoRecord } | null)?.undo ?? null;
 const isThreadLine = (row: AssistantChangeRow) => { const plan = undoOf(row)?.plan; return plan?.kind === 'removal' && plan.thread === true; };
+/** A line an agent put in a task's thread, once its owner deleted it (TA-3, #938): "Removed by Jonas", not an Undo that restores nothing. */
+const threadLineRemoved = (row: AssistantChangeRow, names: Map<string, string>): string | null =>
+  row.state === 'undone' && isThreadLine(row) ? `Removed by ${row.decidedBy ? names.get(row.decidedBy) ?? 'its owner' : 'its owner'}` : null;
 /** What was done is the message of the conversation, for everyone who can read it; a waiting change or a refusal is the owner's alone. */
 const isDone = (row: AssistantChangeRow) => row.state === 'applied' || row.state === 'applied_after_wait' || row.state === 'undone'
   || row.state === 'refused' && !!row.refusal?.startsWith('Skipped');
@@ -131,7 +134,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       const forOther = row.operation === 'work.create' && row.waitReason === 'others' && row.otherUserId;
       return { id: row.id, runId: changeGroup(row), agentName: row.agentName, projectId: row.projectId, conversationId: row.conversationId, operation: row.operation,
         objectType: row.objectType, objectId: row.objectId, objectTitle: row.objectTitle, state: row.state, waitReason: row.waitReason, phrase, verb: words.verb,
-        line: handoffLine(row, units) ?? assistantWaitLine({ state: row.state, waitReason: row.waitReason, noun: words.noun, operation: row.operation,
+        line: threadLineRemoved(row, names) ?? handoffLine(row, units) ?? assistantWaitLine({ state: row.state, waitReason: row.waitReason, noun: words.noun, operation: row.operation,
           otherName: row.otherUserId ? names.get(row.otherUserId) ?? null : null, refusal: row.refusal,
           decidedByName: (row.state === 'applied_after_wait' || row.state === 'undone') && row.decidedBy ? names.get(row.decidedBy) ?? null : null }),
         forPerson: forOther ? { id: row.otherUserId!, name: names.get(row.otherUserId!) ?? '' } : null,

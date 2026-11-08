@@ -48,14 +48,6 @@ function secondary(load: Extract<NonNullable<RouteObject['lazy']>, () => Promise
     },
   };
 }
-const docReader = secondary(async () => {
-  const page = await docViewsPage();
-  return { Component: page.DocReader, loader: page.docLoader };
-});
-const docEditor = secondary(async () => {
-  const page = await import('./docs/DocEditor');
-  return { Component: page.DocEditor, loader: page.docEditLoader };
-});
 const sketch = secondary(async () => ({ Component: (await import('./sketch/SketchView')).SketchRoute }));
 const material = secondary(async () => {
   const [page, data] = await Promise.all([import('./materials/MaterialView'), import('./materials/loader')]);
@@ -144,16 +136,14 @@ export const router = createBrowserRouter([
               { path: 'map', ...secondary(async () => ({ Component: (await mapPage()).ProjectMap })) },
               { path: 'map/:sketchId', ...sketch },
               {
-                // The wiki (#112) as two panes (#136): the page index beside the open page.
+                // The Wiki (#112, #869): the page, edited where it is read; its title switches pages.
                 id: 'wiki',
                 path: 'docs',
                 ...secondary(async () => { const page = await wikiPage(); return { Component: page.WikiLayout, loader: page.wikiLoader, shouldRevalidate: page.wikiShouldRevalidate }; }),
                 children: [
                   { index: true, ...secondary(async () => ({ Component: (await docViewsPage()).WikiHome })) },
-                  { path: 'new', ...docEditor },
-                  { path: ':docId', ...docReader },
-                  { path: ':docId/versions/:version', ...docReader },
-                  { path: ':docId/edit', ...docEditor },
+                  { path: ':docId', ...secondary(async () => { const page = await docViewsPage(); return { Component: page.DocPage, loader: page.docLoader, shouldRevalidate: page.docShouldRevalidate }; }) },
+                  { path: ':docId/versions/:version', ...secondary(async () => { const page = await docViewsPage(); return { Component: page.VersionPage, loader: page.docVersionLoader }; }) },
                   { path: ':docId/history', ...secondary(async () => { const page = await docViewsPage(); return { Component: page.DocHistory, loader: page.docHistoryLoader }; }) },
                 ],
               },

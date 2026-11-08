@@ -112,10 +112,12 @@ export function mcpResourceIdentifier(publicOrigin: string): string {
 }
 
 /**
- * Inserts the MCP resource row if it is missing (#316). Better Auth's plugin seeds the same row
- * during initialization, but its duplicate check reads only the driver's wrapper message, so two
- * processes starting together can fail on `oauth_resource_identifier_unique`. Inserting first with
- * ON CONFLICT DO NOTHING makes the plugin's lookup find the row and skip its own insert.
+ * Inserts the MCP resource row if it is missing, and fails when it cannot (#316, #916). `startIdentity` calls it before anything is
+ * registered, so a database that cannot take the row stops the server at startup. That is the point of calling it, not a race
+ * workaround: Better Auth 1.7.18 seeds the same row itself, re-reads it after a lost insert (two processes starting together are safe
+ * without this) and, when the insert fails, logs it and retries on the first resource access, which would start a server whose OAuth
+ * does not work. `ON CONFLICT DO NOTHING` makes a second start, or a second process, leave the one row. Do not remove the call:
+ * `oauth-initialization.test.ts` ("startIdentity stops the server...") fails without it.
  */
 export async function ensureOauthResource(db: Database, publicOrigin: string): Promise<void> {
   const identifier = mcpResourceIdentifier(publicOrigin);

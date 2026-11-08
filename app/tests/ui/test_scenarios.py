@@ -59,7 +59,7 @@ from create_window import create_other, linked_labels, open_from_tasks, submit_b
 from message_gestures import open_message_menu
 from message_gestures import open_message_menu
 from test_app_shell import show_map_as, DESKTOP, ORIGIN, PHONE, UPSTREAM, open_details, open_what_matters, shot, start_forwarder
-from wiki_text import LIVE, existing_text, has_text, reason_field, type_at_end, wait_until_shared
+from wiki_text import existing_text, has_text, type_at_end, wait_until_shared
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 if UI_BROWSER not in ("chromium", "webkit"):
@@ -409,11 +409,8 @@ class ScenarioJourney:
     def link_in_doc(self, page: Page, text, kind: str, item_id: str, title: str) -> None:
         """Inserts a reference: Ctrl+K from the text on desktop, the visible Link button on the phone."""
         text.focus()
-        text.press("Control+End")
-        if self.phone:
-            page.get_by_role("button", name="Link", exact=True).tap()
-        else:
-            text.press("Control+k")
+        page.keyboard.press("Control+End")
+        page.keyboard.press("Control+k")
         picker = page.get_by_role("dialog", name="Link to something in this space")
         choose(picker.get_by_label("Reference type"), kind)
         query = picker.get_by_role("combobox", name="Find a Wiki page, decision, result, task, map or message", exact=True)
@@ -745,28 +742,28 @@ class ScenarioJourney:
         # The wiki page cites the result and the experiment.
         page.goto(f"/projects/{lamp}/docs")
         expect(page.get_by_role("heading", name="No pages yet")).to_be_visible()
-        self.tap(page.get_by_role("link", name="New page"))
-        page.get_by_label("Title").fill(DOC_TITLE)
-        text = page.get_by_label("Text (Markdown)")
-        text.fill(DOC_BODY)
-        self.link_in_doc(page, text, "result", result["id"], RESULT)
-        text.press("Control+End")
-        text.press_sequentially(" The experiment: ", delay=20)
-        self.link_in_doc(page, text, "work", experiment["id"], stored["title"])
-        self.tap(page.get_by_role("radio", name="Published"))
-        page.get_by_label("What changed").fill("First notes after the low-light run")
-        if self.phone:
-            page.get_by_role("button", name="Create page").tap()
-        else:
-            text.press("Control+s")
+        self.tap(page.get_by_role("button", name="New page"))
+        page.get_by_role("textbox", name="Name of the new page").fill(DOC_TITLE)
+        page.keyboard.press("Enter")
         expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
+        # The page is written where it is read; its versions save by themselves (#869).
+        text = existing_text(page)
+        wait_until_shared(page)
+        expect(text).to_be_focused()
+        page.keyboard.insert_text(DOC_BODY)
+        self.link_in_doc(page, text, "result", result["id"], RESULT)
+        page.keyboard.press("Control+End")
+        page.keyboard.insert_text(" The experiment: ")
+        self.link_in_doc(page, text, "work", experiment["id"], stored["title"])
         docs = self.api("ada", "GET", f"/api/v1/projects/{lamp}/docs?limit=100", status=200)["items"]
-        doc = self.api("ada", "GET", f"/api/v1/docs/{docs[0]['id']}", status=200)
-        self.assertEqual((doc["title"], doc["version"], doc["state"]), (DOC_TITLE, 1, "published"))
+        doc = self.wait_for("the page's saved version with both links", lambda: (lambda d: d if f"flux:work/{experiment['id']}" in d["body"] else None)(
+            self.api("ada", "GET", f"/api/v1/docs/{docs[0]['id']}", status=200)))
+        self.assertEqual((doc["title"], doc["reason"]), (DOC_TITLE, "Edited the text"))
         mentions = {(link["to"]["type"], link["to"]["id"]) for link in doc["links"] if link["role"] == "mentions"}
         self.assertEqual(mentions, {("result", result["id"]), ("work", experiment["id"])})
         s["doc"] = doc["id"]
         s["doc_v1"] = doc["body"]
+        s["doc_v1_version"] = doc["version"]
 
         # Task first, map later: Jonas adds the order in Tasks and links it to Variant B from its Details (test_2b).
         jonas.goto(f"/projects/{lamp}/tasks?view=list")
@@ -1098,21 +1095,15 @@ class ScenarioJourney:
         # The wiki page gets a second version citing the new rule; version 1 stays as written.
         page.goto(f"/projects/{lamp}/docs/{s['doc']}")
         expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
-        self.tap(page.get_by_role("link", name="Edit"))
         text = existing_text(page)
         wait_until_shared(page)
         type_at_end(page, text, "\n\nAfter the pivot: ")
         self.link_in_doc(page, text, "decision", s["d2"], D2)
-        reason_field(page).fill("The rule changed to the ToF sensor")
-        self.tap(page.get_by_role("button", name="Save version"))
-        if LIVE:
-            # The shared working copy keeps its version and stays on the editor; the page is one step back.
-            expect(page.get_by_role("status").filter(has_text="Version 2 saved")).to_be_visible()
-            self.tap(page.get_by_role("link", name="Back to the Wiki page", exact=True))
-        expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
-        doc = self.wait_for("version 2 of the page", lambda: (lambda d: d if d["version"] == 2 else None)(self.api("ada", "GET", f"/api/v1/docs/{s['doc']}", status=200)))
+        doc = self.wait_for("the page's next version", lambda: (lambda d: d if f"flux:decision/{s['d2']}" in d["body"] else None)(
+            self.api("ada", "GET", f"/api/v1/docs/{s['doc']}", status=200)))
+        self.assertGreater(doc["version"], s["doc_v1_version"])
         self.assertTrue(any(link["role"] == "mentions" and link["to"]["id"] == s["d2"] for link in doc["links"]))
-        first = self.api("ada", "GET", f"/api/v1/docs/{s['doc']}/versions/1", status=200)
+        first = self.api("ada", "GET", f"/api/v1/docs/{s['doc']}/versions/{s['doc_v1_version']}", status=200)
         self.assertEqual(first["body"], s["doc_v1"], "the first version is not rewritten")
         self.api("ada", "GET", f"/api/v1/results/{s['result']}", status=200)
         s["wiki_v2"] = True
@@ -1168,23 +1159,14 @@ class ScenarioJourney:
 
         # Ada exports the whole project from the wiki.
         page.goto(f"/projects/{lamp}/docs/{s['doc']}")
-        # On a phone the page's context sits in the header (F-026 §4: no bar under it) and its one "More" menu ends the
-        # row of page chips (#507: the header is the same in every view); on a computer the bar above the page has Download as its own button.
+        # The page's ⋯ holds Export, on the phone and the computer alike (#869).
         expect(page.get_by_role("heading", level=2, name=DOC_TITLE)).to_be_visible()
-        if self.phone:
-            header = page.locator("header.phead")
-            expect(page.locator(".wiki-bar")).to_have_count(0)
-            expect(header.locator(".wiki-header-meta")).to_have_text(re.compile(r"^Wiki · \d+ pages?$"))
-            actions = page.locator(".wiki-top__menu")
-            expect(actions).to_be_visible()
-            self.tap(actions.get_by_role("button", name="More", exact=True))
-            download = page.get_by_role("dialog", name="Page actions")
-            expect(download.get_by_role("button", name="This page as Markdown")).to_be_visible()
-        else:
-            self.tap(page.locator(".wiki-bar").get_by_role("button", name="Download"))
-            download = page.get_by_role("dialog", name="Download")
+        self.tap(page.get_by_role("button", name="Page actions"))
+        actions = page.get_by_role("menu", name="Page actions")
+        self.tap(actions.get_by_role("menuitem", name="Export"))
+        expect(actions.get_by_role("menuitem", name="This page as Markdown")).to_be_visible()
         with page.expect_download() as info:
-            self.tap(download.get_by_role("button", name=re.compile("^Export the whole space")))
+            self.tap(actions.get_by_role("menuitem", name=re.compile("^The whole space")))
         name, data = info.value.suggested_filename, Path(info.value.path()).read_bytes()
         self.assertRegex(name, rf"^flux-project-{lamp[:8]}-\d{{8}}T\d{{6}}Z\.tar\.gz$")
         root = name.removesuffix(".tar.gz")

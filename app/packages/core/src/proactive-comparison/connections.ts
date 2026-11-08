@@ -19,10 +19,13 @@ export interface BackgroundConnectionPort {
   list(ownerUserId: string): Promise<BackgroundComputeConnection[]>;
   /** The one background comparisons use, or null. */
   current(ownerUserId: string): Promise<BackgroundComputeConnection | null>;
-  update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number; usedForBackground?: true }): Promise<BackgroundComputeConnection | null>;
+  /**
+   * `guard` runs inside the change, after the owner's assistant lock and the key's row lock are held, with the models the owner's agents use
+   * on this key (none when they are on another connection); it throws to refuse (#909, #915).
+   */
+  update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number; usedForBackground?: true },
+    guard?: (agentModels: readonly string[]) => void): Promise<BackgroundComputeConnection | null>;
   revoke(ownerUserId: string, connectionId: string): Promise<boolean>;
-  /** The model the owner's assistant uses on this key, or null when it is on another connection or has none stored (#909). */
-  agentModelsOn(ownerUserId: string, connectionId: string): Promise<string[]>;
 }
 /** What a connection save needs beyond storage (F-020): the endpoint policy of owner-set URLs. */
 export interface BackgroundConnectionProviders {
@@ -44,7 +47,7 @@ const budgetProblem = 'The daily budget is whole cents from $0.10 to $1,000';
 function assertBudgetFitsRequest(price: AiPrice | null, budgetCents: number, model: string | null = null) {
   const largest = requestReservationMicros(price, PERSONAL_RUN_LIMITS.maxToolInputTokens, PERSONAL_RUN_LIMITS.maxOutputTokens);
   if (largest !== null && largest > budgetCents * 10_000)
-    throw new InvalidInputError(`One request on ${model ? `${assistantModelName(model)}, your assistant's model on this key,` : 'this model'} can cost up to $${(Math.ceil(largest / 10_000) / 100).toFixed(2)}, so the daily budget must be at least that`, 'AI_BUDGET_TOO_SMALL');
+    throw new InvalidInputError(`One request on ${model ? `${assistantModelName(model)}, one of your agents' models on this key,` : 'this model'} can cost up to $${(Math.ceil(largest / 10_000) / 100).toFixed(2)}, so the daily budget must be at least that`, 'AI_BUDGET_TOO_SMALL');
 }
 function connectionName(value: unknown): value is string {
   return typeof value === 'string' && value.trim() === value && value.length >= 1 && value.length <= 80;
@@ -128,22 +131,27 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
         throw new InvalidInputError(budgetProblem, 'AI_BUDGET_INVALID');
       if (change.usedForBackground !== undefined && change.usedForBackground !== true)
         throw new InvalidInputError('Choose another connection for background comparisons by marking it');
+      let guard: ((agentModels: readonly string[]) => void) | undefined;
       if (change.dailyBudgetCents !== undefined) {
+        const cents = change.dailyBudgetCents;
         const key = (await port.list(ownerUserId)).find((item) => item.id === connectionId);
         if (key) {
-          assertBudgetFitsRequest(key.price, change.dailyBudgetCents);
+          assertBudgetFitsRequest(key.price, cents);
           // An agent may run on another model of this key (F-027 AST-11): one request on that must fit too, or it would
-          // stay paused on a budget too small for it (#909). A model with no table price cannot be reserved at all.
-          for (const model of await port.agentModelsOn(ownerUserId, key.id)) {
-            const price = model !== key.model ? assistantApiPrice(key.provider, model) : null;
-            if (price) assertBudgetFitsRequest(price, change.dailyBudgetCents, model);
-          }
+          // stay paused on a budget too small for it (#909). A model with no table price cannot be reserved at all. The models are
+          // read again inside the change, under the lock a model change also takes first (#915).
+          guard = (models) => {
+            for (const model of models) {
+              const price = model !== key.model ? assistantApiPrice(key.provider, model) : null;
+              if (price) assertBudgetFitsRequest(price, cents, model);
+            }
+          };
         }
       }
       const updated = typeof connectionId === 'string' && UUID.test(connectionId)
         ? await port.update(ownerUserId, connectionId, { ...(change.name !== undefined ? { name: change.name } : {}),
           ...(change.dailyBudgetCents !== undefined ? { dailyBudgetCents: change.dailyBudgetCents } : {}),
-          ...(change.usedForBackground ? { usedForBackground: true as const } : {}) })
+          ...(change.usedForBackground ? { usedForBackground: true as const } : {}) }, guard)
         : null;
       if (!updated) throw new NotFoundError('Background connection', 'BACKGROUND_CONNECTION_NOT_FOUND');
       return updated;

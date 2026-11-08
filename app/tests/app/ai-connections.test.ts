@@ -302,4 +302,31 @@ describe('a budget that one request of the assistant\'s model would not fit is r
     await runs.chooseModel(me, { connection: key.id, model: 'claude-haiku-4-5' });
     expectStatus(await lower(20), 200);
   });
+
+  test('#915: a budget saved while the assistant moves to another model is checked against the model it ends on', async () => {
+    const owner = await person('budget-race-owner');
+    const ws = await workspace(owner, 'Budget race club');
+    const agentId = (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'My assistant', owner: 'self' } }), 201) as { id: string }).id;
+    const key = expectStatus(await owner.browser.request('POST', path, { body: { provider: 'anthropic', model: 'claude-haiku-4-5', apiKey: keys.anthropic, dailyBudgetCents: 100 } }), 201) as BackgroundComputeConnection;
+    const runs = personalRunUseCases(db, { queue: new FakeQueue().factory, connections: personalConnectionLookup(db), providerEnabled: true });
+    await runs.enable({ kind: 'human', id: owner.id }, { agentId, connection: key.id, model: 'claude-haiku-4-5' });
+    // The model change takes the owner's assistant lock first. Hold it, as a change that has not committed yet would, and save the budget meanwhile.
+    const holder = await pool.connect();
+    try {
+      await holder.query('BEGIN');
+      await holder.query(`SELECT pg_advisory_xact_lock(hashtextextended($1, 0))`, [`assistant-owner:${owner.id}`]);
+      const saving = owner.browser.request('PATCH', `${path}/${key.id}`, { body: { dailyBudgetCents: 20 } });
+      // The save waits for the lock; the model it will be checked against is not read before it has it.
+      const waiting = () => pool.query(`SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted
+        AND ((classid::bigint << 32) | objid::bigint) = hashtextextended($1, 0)`, [`assistant-owner:${owner.id}`]);
+      for (let tries = 0; tries < 100 && !(await waiting()).rowCount; tries += 1) await new Promise((resolve) => setTimeout(resolve, 50));
+      assert.equal((await waiting()).rowCount, 1, 'the save is waiting for the lock');
+      await holder.query(`UPDATE personal_run_enablements SET assistant_model = 'claude-fable-5-1' WHERE owner_user_id = $1`, [owner.id]);
+      await holder.query('COMMIT');
+      const refused = await saving;
+      assert.equal(codeOf(refused), 'AI_BUDGET_TOO_SMALL', refused.text);
+      assert.match((refused.json as { error: string }).error, /Fable 5\.1, your assistant's model on this key/);
+    } finally { await holder.query('ROLLBACK').catch(() => undefined); holder.release(); }
+    assert.equal((expectStatus(await owner.browser.request('GET', path), 200) as BackgroundComputeConnection[]).find((item) => item.id === key.id)!.dailyBudgetCents, 100);
+  });
 });

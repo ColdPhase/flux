@@ -1,7 +1,7 @@
 import type { AgentExecutionCommand, AgentJsonValue, AgentPostcondition, CoWorkRequestLimits, CoWorkRequestState } from '@flux/contracts';
 import { coworkAdmissionRows, coworkRequestRows, coworkResponseRows, type Transaction } from '@flux/db';
 import { coWorkRequestFingerprint, ConflictError, InvalidInputError, normalizeAgentExecution, normalizeCoWorkAdmission,
-  NotFoundError, requireCoWorkAdmission, validateCoWorkRequestLimits, type CoWorkContext, type CoWorkReviewSeparation } from '@flux/core';
+  NotFoundError, requireCoWorkAdmission, validateCoWorkRequestLimits, type CoWorkContext } from '@flux/core';
 import { agentExecutionInTransaction } from '../agent-connection/execution.js';
 import type { FluxMcpClaims } from '../agent-connection/context.js';
 import { coWorkNamedTaskGraphLocks } from './graph.js';
@@ -9,7 +9,6 @@ import { coWorkNamedTaskGraphLocks } from './graph.js';
 /** Server-owned current policy; never supplied by MCP/clientInfo/peer request. */
 export interface CoWorkRequestPolicy {
   limits: CoWorkRequestLimits;
-  reviewSeparation: CoWorkReviewSeparation;
 }
 /** Content-free result of an admission; the request itself stays control metadata. */
 export interface CoWorkRequestAdmission {
@@ -47,10 +46,8 @@ export async function coWorkRequestInTransaction(tx: Transaction, claims: FluxMc
     throw new InvalidInputError('An exact co-work request operation and sender unit are required');
   const senderUnitId = command.objectId;
   const input = normalizeCoWorkAdmission(command.payload, command.clientCommandId);
-  policy = Object.freeze({ limits: Object.freeze({ ...policy.limits }), reviewSeparation: policy.reviewSeparation });
+  policy = Object.freeze({ limits: Object.freeze({ ...policy.limits }) });
   validateCoWorkRequestLimits(policy.limits);
-  if (policy.reviewSeparation !== 'distinct_connection' && policy.reviewSeparation !== 'distinct_owner')
-    throw new Error('Current co-work request policy is required');
   const rows = coworkAdmissionRows(tx);
   let locked = false;
   const execution = agentExecutionInTransaction(tx, claims, {
@@ -88,7 +85,7 @@ export async function coWorkRequestInTransaction(tx: Transaction, claims: FluxMc
     return original;
   }
 
-  requireCoWorkAdmission(context, facts, input, policy.reviewSeparation);
+  requireCoWorkAdmission(context, facts, input);
   const { target, sourceRefs, criteriaRefs } = input.request;
   if (!await rows.referencesReadable(context.workspaceId, context.projectId, [target, ...sourceRefs, ...criteriaRefs]))
     throw sourceUnavailable();

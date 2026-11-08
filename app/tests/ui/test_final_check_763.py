@@ -310,52 +310,38 @@ class FinalCheck763(unittest.TestCase):
         expect(page.locator(".ui-overlay[data-state='open']")).to_have_count(0)
         self.assertEqual(page.evaluate("location.pathname"), doc, "closing it leaves the reader on the page")
 
-    # ------------------------------------------------------------------ Wiki Edit (founder screenshot, iPad Wiki read view)
+    # ------------------------------------------------------------------ The Wiki page (#869): no dark button, a task opens over it
 
-    def test_wiki_edit_is_a_quiet_toolbar_button(self) -> None:
+    def test_wiki_page_has_quiet_controls_and_no_dark_button(self) -> None:
         doc = f"/projects/{self.project_id}/docs/{self.doc_id}"
         for name, viewport, touch in (("tablet", TABLET, True), ("desktop", DESKTOP, False), ("phone", PHONE, True)):
             for theme in ("light", "dark"):
                 with self.subTest(name, theme=theme):
                     page = self.page(viewport, touch=touch, theme=theme)
                     page.goto(doc)
-                    edit = page.get_by_role("link", name="Edit", exact=True)
-                    expect(edit).to_be_visible()
-                    # Soft fill, never the screen's inverted primary: the read page has no dark button.
-                    fill = edit.evaluate("""el => { const probe = document.createElement('i'); probe.style.background = 'var(--inv)'; document.body.append(probe);
-                      const inv = getComputedStyle(probe).backgroundColor; probe.remove(); return [getComputedStyle(el).backgroundColor, inv]; }""")
-                    self.assertNotEqual(fill[0], fill[1], f"{name}/{theme}: Edit is not the dark primary")
-                    self.assertEqual(page.locator(".ui-btn--primary:visible").count(), 0, f"{name}/{theme}: no dark button on the read page")
-                    rect = edit.bounding_box()
-                    if name == "phone":
-                        # The phone keeps Edit in its own space under the page, one touch control high.
-                        self.assertGreaterEqual(rect["height"], 44)
-                        self.assertLessEqual(rect["height"], 46)
-                    else:
-                        icon = page.locator(".wiki-bar .ui-icon-btn:visible").first.bounding_box()
-                        # Exactly the icon buttons' height (32 px (--ctl) with a mouse, 44 on touch), not a block.
-                        self.assertLessEqual(abs(rect["height"] - icon["height"]), 1, f"{name}/{theme}: one height with the icon buttons")
-                        self.assertLessEqual(rect["height"], 44)
-                        self.assertGreaterEqual(rect["height"], 44 if touch else 32, f"{name}/{theme}: a touch target on touch")
-                        self.assertLessEqual(rect["width"], 120, f"{name}/{theme}: compact width")
-                        self.assertLessEqual(abs((rect["y"] + rect["height"] / 2) - (icon["y"] + icon["height"] / 2)), 1, "on the icons' centre line")
-                    shot(page, f"final-763-wiki-edit-{name}-{theme}-{UI_BROWSER}")
+                    contents, actions = page.get_by_role("button", name="Contents"), page.get_by_role("button", name="Page actions")
+                    expect(contents).to_be_visible()
+                    self.assertEqual(page.locator(".ui-btn--primary:visible").count(), 0, f"{name}/{theme}: no dark button on the page")
+                    one, two = contents.bounding_box(), actions.bounding_box()
+                    self.assertEqual(round(one["height"]), round(two["height"]), "one height for the row's controls")
+                    self.assertGreaterEqual(one["height"], 44 if touch else 32, f"{name}/{theme}: a touch target on touch")
+                    self.assertLessEqual(abs((one["y"] + one["height"] / 2) - (two["y"] + two["height"] / 2)), 1, "on one centre line")
+                    shot(page, f"final-763-wiki-page-{name}-{theme}-{UI_BROWSER}")
 
-    def test_wiki_beside_a_panel_keeps_edit_in_its_toolbar(self) -> None:
-        """1024x768 with a task's Details docked: the Wiki pane is narrow, but this is a computer, not a phone (visual sweep, #763)."""
+    def test_a_task_opens_over_the_wiki_page_never_beside_it(self) -> None:
+        """1024x768: the Wiki keeps to two columns, the sidebar and the page; a task's Details open over the page (#869)."""
         page = self.page({"width": 1024, "height": 768}, touch=False)
+        page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}")
+        expect(page.get_by_role("button", name="Contents")).to_be_visible()
+        width = page.locator(".wiki-page").bounding_box()["width"]
         page.goto(f"/projects/{self.project_id}/docs/{self.doc_id}?open=work:{self.task['id']}")
-        expect(page.locator("#details").get_by_text(TASK).first).to_be_visible()
-        edit = page.get_by_role("link", name="Edit", exact=True)
-        expect(edit).to_be_visible()
-        self.assertEqual(page.locator(".wiki-edit").count(), 0, "no floating Edit on a computer")
-        self.assertEqual(edit.evaluate("el => !!el.closest('.wiki-bar')"), True, "Edit sits in the page's toolbar")
-        self.assertLessEqual(abs(edit.bounding_box()["height"] - 32), 1, "the toolbar's control height (--ctl) with a mouse")
-        bar = page.locator(".wiki-bar").bounding_box()
-        title = page.locator(".doc-head__t").bounding_box()
-        self.assertGreaterEqual(title["y"], bar["y"] + bar["height"] - 1, "the page title starts below the bar, not under it")
+        details = page.locator("#details")
+        expect(details.get_by_text(TASK).first).to_be_visible()
+        expect(page.locator(".ui-panel--overlay")).to_have_count(1)
+        expect(page.locator(".ui-panel--docked")).to_have_count(0)
+        self.assertEqual(round(page.locator(".wiki-page").bounding_box()["width"]), round(width), "the page keeps its column")
         self.assertEqual(page.locator(".ui-btn--primary:visible").count(), 0)
-        shot(page, f"final-763-wiki-beside-panel-{UI_BROWSER}")
+        shot(page, f"final-763-wiki-task-over-page-{UI_BROWSER}")
 
 
 if __name__ == "__main__":

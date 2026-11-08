@@ -250,7 +250,10 @@ export function visibleDmsSql(actor: AccessActor): SQL {
  * query and of its count so invisible rows never reach counts, pages or payloads.
  */
 export async function visibleFilter(principal: AccessPrincipal, workspaceId: string, kind: 'project' | 'draft' | 'sketch' | 'dm', db: DbExecutor): Promise<SQL> {
-  const actor = await loadActor(principal, workspaceId, db);
+  return visibleFilterOf(await loadActor(principal, workspaceId, db), kind);
+}
+
+function visibleFilterOf(actor: AccessActor, kind: 'project' | 'draft' | 'sketch' | 'dm'): SQL {
   if (kind === 'sketch') return visibleSketchesSql(actor);
   if (kind === 'dm') return visibleDmsSql(actor);
   return kind === 'project' ? visibleProjectsSql(actor) : visibleDraftsSql(actor);
@@ -260,15 +263,26 @@ export async function visibleFilter(principal: AccessPrincipal, workspaceId: str
  * `visibleFilter` limited to the spaces the person belongs to (F-037, coordinator default, #874): search, the Inbox and Needs you
  * show a company owner or admin only what is in spaces they were added to, though they can reach every other space (Settings ›
  * Company lists those). So do their agents (C-15, #934): an agent belongs where its owner does. Drafts and sketches outside any
- * space are unchanged; direct messages are not spaces.
+ * space are unchanged; direct messages are not spaces. The actor is loaded once for both parts (#955).
  */
 export async function memberFilter(principal: AccessPrincipal, workspaceId: string, kind: 'project' | 'draft' | 'sketch', db: DbExecutor): Promise<SQL> {
-  const base = await visibleFilter(principal, workspaceId, kind, db);
-  if (principal.kind !== 'human' && principal.kind !== 'agent') return base;
   const actor = await loadActor(principal, workspaceId, db);
+  const base = visibleFilterOf(actor, kind);
+  if (principal.kind !== 'human' && principal.kind !== 'agent') return base;
   if (kind === 'project') return and(base, projectMemberSql(actor, schema.projects.id, schema.projects.visibility))!;
   if (kind === 'draft') return and(base, sql`(${schema.drafts.projectId} IS NULL OR ${projectMemberSql(actor, schema.drafts.projectId, draftProjectVisibility)})`)!;
   return and(base, sql`(${schema.sketches.scope} <> 'project' OR ${projectMemberSql(actor, schema.sketches.projectId, sketchProjectVisibility)})`)!;
+}
+
+/**
+ * Whether the person is a guest in every workspace they belong to (F-036 AG-2: a guest has no AI). Someone who belongs to no workspace
+ * is not a guest: they have no company to be a guest of, and this is not a place to refuse them.
+ */
+export async function isGuestOnly(db: DbExecutor, userId: string): Promise<boolean> {
+  const result = await db.execute<{ guest: boolean }>(sql`SELECT (
+    EXISTS (SELECT 1 FROM workspace_members WHERE user_id = ${userId} AND role = 'guest')
+    AND NOT EXISTS (SELECT 1 FROM workspace_members WHERE user_id = ${userId} AND role <> 'guest')) AS guest`);
+  return result.rows[0]?.guest === true;
 }
 
 /**

@@ -187,8 +187,11 @@ class SpokojLayout(unittest.TestCase):
                 self.assertLessEqual(head["x"], panel["x"] + 1)
                 self.assertGreaterEqual(head["x"] + head["width"], panel["x"] + panel["width"] - 1)
                 self.assertGreaterEqual(panel["y"], head["y"] + head["height"] - 1, "the panel opens under the header")
-                # Moving between the views with the panel open moves nothing in the header.
+                # Moving between the views with the panel open moves nothing in the header. The Wiki keeps two columns, so a
+                # panel opens over its page there instead (#869), checked below.
                 for path, name in zip(VIEWS[1:], VIEW_NAMES[1:]):
+                    if path == "/docs":
+                        continue
                     page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile(f"^{name}")).click()
                     expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}{path}") + r"(\?|$|/)"))
                     page.wait_for_function(SETTLED)
@@ -197,6 +200,16 @@ class SpokojLayout(unittest.TestCase):
                 self.assert_same_place(closed, self.header_boxes(page), f"{size['width']} panel closed again")
                 if size is COMPUTER:
                     shot(page, "505-header-1440-panel-closed")
+                page.get_by_role("navigation", name="Space views").get_by_role("link", name=re.compile("^Wiki")).click()
+                expect(page).to_have_url(re.compile(re.escape(f"/projects/{self.project_id}/docs") + r"(\?|$|/)"))
+                page.wait_for_function(SETTLED)
+                page.locator("header.top").get_by_role("button", name="More", exact=True).click()
+                page.get_by_role("menu", name="More").get_by_role("menuitem", name="Space details").click()
+                expect(page.locator(".ui-panel--overlay")).to_be_visible()
+                expect(page.locator(".ui-panel--docked")).to_have_count(0)
+                self.assert_same_place(closed, self.header_boxes(page), f"{size['width']} Wiki with the panel over the page")
+                page.keyboard.press("Escape")
+                expect(page.locator(".ui-panel--overlay")).to_have_count(0)
 
     def test_02_a_narrow_header_moves_the_people_and_together_into_more_and_keeps_the_views(self) -> None:
         for size in (NARROW, {"width": 901, "height": 800}):
@@ -447,8 +460,8 @@ class SpokojLayout(unittest.TestCase):
             with self.subTest(width=size["width"]):
                 page = self.page(size, dark=size is PHONES[1], touch=True)
                 reference = None
-                # The Wiki's page, and its edit and history states (#507: the header is the same in all of them).
-                wiki_states = (f"/projects/{self.project_id}/docs/{self.doc_id}/edit", f"/projects/{self.project_id}/docs/{self.doc_id}/history")
+                # The Wiki's page and its history (#507: the header is the same in all of them).
+                wiki_states = (f"/projects/{self.project_id}/docs/{self.doc_id}", f"/projects/{self.project_id}/docs/{self.doc_id}/history")
                 for path in (*(f"/projects/{self.project_id}{view}" for view in VIEWS), *wiki_states, self.dm_path):
                     page.goto(path)
                     header = page.locator("header.phead")
@@ -462,19 +475,18 @@ class SpokojLayout(unittest.TestCase):
                         "title": self.box(header.get_by_role("heading", level=1).get_by_role("button")),
                         "Search": self.box(header.get_by_role("button", name="Search", exact=True)),
                     }
-                    # Together keeps its place in the Wiki too (#507 gap 3 of the #500 audit): a Wiki page's own "More" is in
-                    # the page's strip below the header, not in it.
+                    # Together keeps its place in the Wiki too (#507 gap 3 of the #500 audit): a Wiki page's own ⋯ is in the
+                    # row above its title, below the header, not in it (#869).
                     controls["Together"] = self.box(header.get_by_role("button", name="Together", exact=True))
                     self.assertEqual(header.locator("button:visible").count(), 4, f"{path}: {header.locator('button:visible').all_inner_texts()}")
-                    if path.endswith("/docs"):
-                        expect(header.get_by_role("button", name="More", exact=True)).to_have_count(0)
-                        menu = page.locator(".wiki-top__menu").get_by_role("button", name="More", exact=True)
+                    if path.endswith("/docs") or path.endswith(self.doc_id):
+                        expect(header.get_by_role("button", name="Page actions", exact=True)).to_have_count(0)
+                        menu = page.locator(".wiki-head").get_by_role("button", name="Page actions", exact=True)
                         expect(menu).to_be_visible()
-                        menu_box, strip = self.box(menu), self.box(page.locator(".wiki-top"))
+                        menu_box, row = self.box(menu), self.box(page.locator(".wiki-head"))
                         self.assertGreaterEqual(min(menu_box["width"], menu_box["height"]), 44, "the page's menu keeps a touch target")
                         self.assertGreaterEqual(menu_box["y"], head["y"] + head["height"] - 0.5, "the page's menu is below the header")
-                        self.assertLessEqual(menu_box["y"] + menu_box["height"], strip["y"] + strip["height"] + 0.5, "in the row of page chips")
-                        expect(page.get_by_role("navigation", name="Wiki pages").get_by_role("button", name="More", exact=True)).to_have_count(0)
+                        self.assertLessEqual(menu_box["y"] + menu_box["height"], row["y"] + row["height"] + 0.5, "in the row above the title")
                         self.assertLessEqual(menu_box["x"] + menu_box["width"], size["width"], "inside the screen")
                     for name, box in controls.items():
                         self.assertGreaterEqual(min(box["width"], box["height"]), 44, f"{name} at {path}")

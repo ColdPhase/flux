@@ -8,7 +8,8 @@ import { liveDocPath, liveDocEnrollPath, liveDocSavePath, type LiveDocBootstrap,
 
 export const getLiveDoc = (id: string, signal?: AbortSignal) => request<LiveDocBootstrap>(liveDocPath(id), { signal });
 export const enrollLiveDoc = (id: string, command: EnrollLiveDoc, signal?: AbortSignal) => request<EnrolledLiveDoc>(liveDocEnrollPath(id), { method: 'POST', body: command, signal });
-export const saveLiveDoc = (id: string, command: SaveSharedDoc) => request<LiveReceipt>(liveDocSavePath(id), { method: 'POST', body: command, headers: { 'idempotency-key': command.clientCommandId, 'if-match': `"${command.expectedVersion}"` } });
+/** `keepalive`: the page is being left, and the version is saved anyway. */
+export const saveLiveDoc = (id: string, command: SaveSharedDoc, keepalive = false) => request<LiveReceipt>(liveDocSavePath(id), { method: 'POST', body: command, keepalive, headers: { 'idempotency-key': command.clientCommandId, 'if-match': `"${command.expectedVersion}"` } });
 
 // Project docs (#112). Create and change commands carry an Idempotency-Key that a retry of the
 // same submission reuses; changes send If-Match with the version the person started from.
@@ -37,8 +38,9 @@ export const previewDoc = (projectId: string, body: string, signal?: AbortSignal
   request<DocPreview>(projectDocPreviewPath(projectId), { method: 'POST', body: { body }, signal });
 export const createDoc = (projectId: string, command: CreateDocCommand, idempotencyKey: string) =>
   request<Doc>(projectDocsPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });
-export const updateDoc = (id: string, version: number, command: UpdateDocCommand, idempotencyKey: string) =>
-  request<Doc>(docPath(id), { method: 'PATCH', body: command, headers: { ...ifMatch(version), ...key(idempotencyKey) } });
+/** `keepalive`: the page is being left, and the version is saved anyway. */
+export const updateDoc = (id: string, version: number, command: UpdateDocCommand, idempotencyKey: string, keepalive = false) =>
+  request<Doc>(docPath(id), { method: 'PATCH', body: command, keepalive, headers: { ...ifMatch(version), ...key(idempotencyKey) } });
 export const addDocSection = (id: string, version: number, from: DocSectionSource, idempotencyKey: string, under?: string) =>
   request<Doc>(docSectionsPath(id), { method: 'POST', body: { from, ...(under ? { under } : {}) }, headers: { ...ifMatch(version), ...key(idempotencyKey) } });
 

@@ -305,13 +305,14 @@ class ConnectedFlow(unittest.TestCase):
         expect(card.locator(".doc-decision__from")).to_contain_text(SMS)
         link = page.locator(".doc-prose a", has_text="SMS thought")
         expect(link).to_have_attribute("href", f"/projects/{self.ids['project']}/map/{self.ids['sketch']}#thought-{self.ids['thought']}")
-        page.goto(f"/projects/{self.ids['project']}/docs/{self.ids['doc']}/edit")
-        editor = page.locator("[data-live-wiki-editor], .doc-edit__text").first
-        expect(editor).to_be_visible()
-        if page.locator("[data-live-wiki-editor]").count():
-            expect(editor.locator(".editing-ref", has_text="Decision card").first).to_be_visible()
-            self.assertNotIn("flux:decision", editor.inner_text())
-            shot(page, "cw4-wiki-editor-references")
+        # Written where it is read (#869): on the line being written a reference reads as its label and its kind, never its id.
+        editor = page.locator(".wiki-editor")
+        expect(editor.locator(".cm-content")).to_have_attribute("contenteditable", "true")
+        editor.locator(".cm-content").evaluate("""el => { const view = el.cmTile?.root?.view; const at = view.state.doc.toString().indexOf('](flux:decision/');
+          view.focus(); view.dispatch({ selection: { anchor: at } }); }""")
+        expect(editor.locator(".editing-ref", has_text="Decision card").first).to_be_visible()
+        self.assertNotIn("flux:decision", editor.inner_text())
+        shot(page, "cw4-wiki-editor-references")
 
     def test_10_search_snippets_show_no_flux_links(self) -> None:
         page = self.page()

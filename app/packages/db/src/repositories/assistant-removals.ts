@@ -19,6 +19,8 @@ import type { DbExecutor } from './push.js';
 
 /** The marker a removed message carries instead of its text. */
 export const REMOVED_MESSAGE_BODY = '[Removed with Undo]';
+/** The marker of a line its agent's owner deleted from a task's thread (TA-3, #938): a deletion, not an Undo that waits for silence. */
+export const REMOVED_BY_OWNER_BODY = '[Removed by its owner]';
 
 export type Removal =
   | { ok: true; snapshot: Record<string, unknown> }
@@ -59,8 +61,12 @@ export function assistantRemovalRows(db: DbExecutor) {
   const forgetNotices = (projectId: string, id: string) =>
     db.execute(sql`DELETE FROM notifications WHERE source_type = 'project' AND source_id = ${projectId} AND url LIKE ${`%${id}%`}`);
 
-  /** Takes a message back to its tombstone. `messageId` locks the row and its conversation, then looks for use. */
-  async function tombstone(messageId: string, agentId: string | null, agentsMayFollow = false): Promise<Removal & { projectId?: string }> {
+  /**
+   * Takes a message back to its tombstone. `messageId` locks the row and its conversation, then looks for use. `byOwner` is the
+   * agent's owner deleting a line it put in a task's thread (TA-3: the owner "can delete" it, with no condition): nobody's later line
+   * and no citation stops it, the line goes to a tombstone that keeps its place, and the marker says it was the owner's choice.
+   */
+  async function tombstone(messageId: string, agentId: string | null, byOwner = false): Promise<Removal & { projectId?: string }> {
     const message = await first<{ id: string; projectId: string; conversationId: string; sequence: number; authorAgentId: string | null; files: number;
       removedAt: Date | null; length: number; hash: string; kind: string }>(db, sql`
       SELECT id, project_id AS "projectId", conversation_id AS "conversationId", sequence, author_agent_id AS "authorAgentId", attachment_count AS files,
@@ -72,14 +78,13 @@ export function assistantRemovalRows(db: DbExecutor) {
     const conversation = await first<{ space: string }>(db, sql`SELECT space FROM project_conversations WHERE id = ${message.conversationId} FOR UPDATE`);
     if (agentId !== null && (message.authorAgentId !== agentId || message.files > 0)) return foreign();
     if (conversation?.space === 'agents') return foreign();
-    // A line in a task's thread is followed by the other agents of its exchange (the asker going on with an answer): only a person's later
-    // line is a reply to it (#923).
-    if (await yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_messages WHERE conversation_id = ${message.conversationId} AND sequence > ${message.sequence} AND removed_at IS NULL
-      ${agentsMayFollow ? sql`AND author_agent_id IS NULL` : sql``}) AS found`))
-      return used(REMOVAL_REASONS.replies);
-    if (await cited(message.id, 'message')) return used(REMOVAL_REASONS.cited);
+    if (!byOwner) {
+      if (await yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_messages WHERE conversation_id = ${message.conversationId} AND sequence > ${message.sequence} AND removed_at IS NULL) AS found`))
+        return used(REMOVAL_REASONS.replies);
+      if (await cited(message.id, 'message')) return used(REMOVAL_REASONS.cited);
+    }
     await db.execute(sql`DELETE FROM message_references WHERE project_message_id = ${message.id}`);
-    await db.execute(sql`UPDATE project_messages SET body = ${REMOVED_MESSAGE_BODY}, removed_at = now(),
+    await db.execute(sql`UPDATE project_messages SET body = ${byOwner ? REMOVED_BY_OWNER_BODY : REMOVED_MESSAGE_BODY}, removed_at = now(),
       contribution_kind = 'text', result_id = NULL, source_material_id = NULL, source_material_version = NULL WHERE id = ${message.id}`);
     await forgetNotices(message.projectId, message.id);
     return { ok: true, projectId: message.projectId, snapshot: { conversationId: message.conversationId, sequence: message.sequence, bodyHash: message.hash, bodyLength: message.length } };
@@ -100,8 +105,8 @@ export function assistantRemovalRows(db: DbExecutor) {
         WHERE m.id = ${messageId} AND m.author_agent_id = ${agentId} AND m.attachment_count = 0 AND c.space = 'people') AS found`);
     },
 
-    async removeMessage(input: { messageId: string; agentId: string; agentsMayFollow?: boolean }): Promise<Removal> {
-      return tombstone(input.messageId, input.agentId, input.agentsMayFollow ?? false);
+    async removeMessage(input: { messageId: string; agentId: string; byOwner?: boolean }): Promise<Removal> {
+      return tombstone(input.messageId, input.agentId, input.byOwner ?? false);
     },
 
     /** A map the assistant created: empty, not renamed, not cited, and not open in a live session (the server checks that). */

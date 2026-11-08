@@ -452,6 +452,27 @@ class FirstRunSettingsPeople(unittest.TestCase):
         expect(fresh.locator(".auth__company")).to_have_text("Riverside Makers")
         expect(fresh.get_by_role("heading", level=1, name="Sign in")).to_be_visible()
 
+    def test_11c_an_admin_outside_a_space_is_told_her_assistant_works_only_where_she_is_and_adds_herself(self) -> None:
+        """#955, C-15: she can open the space, but her assistant has no access there; the ask bar says so (not "you can't open this space")
+        and offers Add me, the step Settings › Company has."""
+        olek = self.page("olek")
+        room = self.api(olek, "POST", f"/api/v1/workspaces/{self.ids['maria:space']}/projects", {"name": "Olek’s room"}, status=201)
+        talk = self.api(olek, "POST", f"/api/v1/projects/{room['id']}/conversations", {"body": "Where do the boards go?", "clientMessageId": str(uuid.uuid4())}, status=201)
+        page = self.page("maria")
+        page.goto(f"/projects/{room['id']}/conversations/{talk['id']}")
+        expect(page.get_by_role("heading", level=1, name="Olek’s room")).to_be_visible()
+        sidebar = page.get_by_role("navigation", name="Spaces")
+        expect(sidebar.get_by_role("link", name=re.compile("Olek’s room"))).to_have_count(0)
+        page.locator("#thread-composer").fill("/ai What changed here?")
+        ask = page.locator("#project-ask")
+        expect(ask).to_contain_text("Your assistant works only in spaces you’re in.")
+        expect(ask).not_to_contain_text("any more")
+        shot(page, f"955-ask-outside-1440-{UI_BROWSER}")
+        ask.get_by_role("button", name="Add me").click()
+        expect(sidebar.get_by_role("link", name=re.compile("Olek’s room"))).to_be_visible()
+        expect(ask).not_to_contain_text("works only in spaces you’re in")
+        expect(ask).to_contain_text("You haven’t set up your assistant.")
+
     def test_12_mention_chips_use_the_same_initials_as_avatars(self) -> None:
         page = self.page("maria")
         project = self.api(page, "POST", f"/api/v1/workspaces/{self.ids['maria:space']}/projects", {"name": "Mentions", "visibility": "workspace"}, status=201)

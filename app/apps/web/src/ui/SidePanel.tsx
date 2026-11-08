@@ -23,6 +23,8 @@ export interface SidePanelProps {
   chip?: string;
   /** On a phone the sheet opens at full height (a thread); the height then stays while the content changes. */
   startFull?: boolean;
+  /** Over the view instead of beside it where it would dock: the Wiki keeps to two columns (#869). */
+  over?: boolean;
   /**
    * Names what the panel shows. When it changes while the panel stays open, the body's content is in place at once
    * and fades in; the shell and the head do not move (#863). Without it the kind chip and the title tell.
@@ -152,7 +154,8 @@ function DockedPanel({ open, onClose, title, closeLabel, back, chip, context, id
 }
 
 export function SidePanel(props: SidePanelProps) {
-  const mode = useSidePanelMode();
+  const media = useSidePanelMode();
+  const mode = props.over && media === 'docked' ? 'overlay' : media;
   const titleId = useId();
   const bodyRef = useRef<HTMLDivElement>(null);
   usePanelSwap(bodyRef, mode !== 'docked', props.open, props.contentKey ?? `${props.chip ?? ''}|${props.title}`);

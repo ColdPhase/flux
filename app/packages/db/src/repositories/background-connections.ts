@@ -3,6 +3,7 @@ import type { AiPrice, BackgroundComputeConnection } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { createDatabase } from '../index.js';
 import { apiKeySpendToday } from './api-key-spend.js';
+import { lockAssistantOwner } from './assistant-lock.js';
 
 const c = schema.backgroundComputeConnections;
 const settings = schema.assistantSettings;
@@ -72,13 +73,25 @@ export function backgroundConnectionRepository(db: Database) {
       const [row] = await db.select().from(c).where(and(eq(c.ownerUserId, ownerUserId), eq(c.usedForBackground, true), isNull(c.revokedAt)));
       return row ? metadata(db, row) : null;
     },
-    async update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number; usedForBackground?: true }): Promise<BackgroundComputeConnection | null> {
+    /**
+     * `guard` gets the models the owner's agents run on this key, read under the owner's assistant lock (the one a model change
+     * takes first), so a budget saved while an agent moves to another model is checked against the model it ends up on (#909, #915).
+     * It throws to refuse the change; nothing is written then.
+     */
+    async update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number; usedForBackground?: true },
+      guard?: (agentModels: readonly string[]) => void): Promise<BackgroundComputeConnection | null> {
       return db.transaction(async (tx) => {
+        if (guard) await lockAssistantOwner(tx, ownerUserId);
         await tx.select({ id: schema.authUsers.id }).from(schema.authUsers)
           .where(eq(schema.authUsers.id, ownerUserId)).for('update');
         const [target] = await tx.select({ id: c.id }).from(c)
           .where(and(eq(c.id, connectionId), eq(c.ownerUserId, ownerUserId), isNull(c.revokedAt))).for('update');
         if (!target) return null;
+        if (guard) {
+          const rows = await tx.select({ model: settings.model }).from(settings)
+            .where(and(eq(settings.ownerUserId, ownerUserId), eq(settings.apiKeyId, connectionId), eq(settings.engine, 'server')));
+          guard([...new Set(rows.flatMap((row) => (row.model ? [row.model] : [])))]);
+        }
         if (change.usedForBackground) await tx.update(c).set({ usedForBackground: false })
           .where(and(eq(c.ownerUserId, ownerUserId), eq(c.usedForBackground, true)));
         const [row] = await tx.update(c).set({ ...(change.name !== undefined ? { name: change.name } : {}),
@@ -86,12 +99,6 @@ export function backgroundConnectionRepository(db: Database) {
           ...(change.usedForBackground ? { usedForBackground: true } : {}) }).where(eq(c.id, connectionId)).returning();
         return metadata(tx, row!);
       });
-    },
-    /** The models the owner's agents run on this key (#909, #857): a budget must also hold one request of each. */
-    async agentModelsOn(ownerUserId: string, connectionId: string): Promise<string[]> {
-      const rows = await db.select({ model: settings.model }).from(settings)
-        .where(and(eq(settings.ownerUserId, ownerUserId), eq(settings.apiKeyId, connectionId), eq(settings.engine, 'server')));
-      return [...new Set(rows.flatMap((row) => (row.model ? [row.model] : [])))];
     },
     async revoke(ownerUserId: string, connectionId: string): Promise<boolean> {
       return db.transaction(async (tx) => {

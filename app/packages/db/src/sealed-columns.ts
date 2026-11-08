@@ -26,7 +26,7 @@ const ai = [
   'assistant_changes', 'assistant_job_runs', 'assistant_jobs',
   'agent_task_taking', 'assistant_morning_summaries', 'assistant_proposals', 'assistant_reaction_events', 'assistant_reaction_notes', 'assistant_reactions',
   'assistant_settings', 'background_compute_connections', 'cowork_checkpoints', 'cowork_connection_slots', 'cowork_delivery_intents',
-  'cowork_request_lineages', 'cowork_requests', 'cowork_review_policies', 'cowork_review_verdicts', 'cowork_units', 'personal_run_web_reads',
+  'cowork_request_lineages', 'cowork_requests', 'cowork_review_verdicts', 'cowork_units', 'personal_run_web_reads',
   'personal_runs', 'proactive_comparison_cursor', 'proactive_comparison_insufficient_outcomes',
   'proactive_comparison_outbox', 'proactive_comparison_project_changes', 'proactive_comparison_proposals', 'proactive_comparison_rules',
 ] as const;

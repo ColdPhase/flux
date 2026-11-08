@@ -19,7 +19,7 @@ import { createConnection } from './support/mcp-actions.js';
 const { db, pool } = createDatabase(process.env.DATABASE_URL!);
 after(() => pool.end());
 const LIMITS: CoWorkRequestLimits = { maximumRequests: 128, maximumDepth: 8, maximumReviewRounds: 16 };
-const POLICY: CoWorkRequestPolicy = { limits: LIMITS, reviewSeparation: 'distinct_connection' };
+const POLICY: CoWorkRequestPolicy = { limits: LIMITS };
 type Role = 'execute' | 'review' | 'plan';
 
 async function world() {
@@ -197,17 +197,16 @@ test('routing and sources: self, foreign lineage, revoked/unknown recipient, for
   await rejects(s.admit(s.command(f.request({ target: { type: 'message', id: randomUUID() } }))), 'COWORK_SOURCE_UNAVAILABLE');
   await rejects(s.admit(s.command(f.request({ sourceRefs: [{ type: 'github_pr', bindingId: randomUUID(), linkId: randomUUID(),
     headSha: 'a'.repeat(40) }] }))), 'COWORK_SOURCE_UNAVAILABLE');
-  // A same-owner (Hubert's Claude) reviewer is refused only under the stricter project policy.
+  // A same-owner (Hubert's Claude) reviewer: admitted below, since there is no project rule to say otherwise (C-9).
   const claude = await w.connect(w.hubert, 'Hubert Claude', false);
   const sameOwner = await w.unit(f.a.id, f.run, 'review', claude.connection.id);
   const toClaude = f.request({ unitId: sameOwner, recipientConnectionId: claude.connection.id, intentKey: 'review-a-claude' });
-  await rejects(s.admit(s.command(toClaude), { ...POLICY, reviewSeparation: 'distinct_owner' }), 'COWORK_REVIEW_SEPARATION');
   await assert.rejects(s.admit(s.command(f.request()), POLICY, { failAfter: true }), /Injected failure after admission/);
   await noEffects(w, codex);
   assert.equal(await count('cowork_requests', 'project_id', w.p.id), 0, 'outer failure rolled the admitted request back');
 
   const tight = { ...POLICY, limits: { ...LIMITS, maximumRequests: 1 } };
-  assert.equal((await s.admit(s.command(toClaude), tight)).status, 'created', 'explicit same-owner review is allowed by default');
+  assert.equal((await s.admit(s.command(toClaude), tight)).status, 'created', 'a same-owner review is admitted: no project rule says otherwise (C-9)');
   await rejects(s.admit(s.command(f.request()), tight), 'COWORK_BUDGET_EXHAUSTED');
   assert.equal(await count('cowork_requests', 'project_id', w.p.id), 1);
 });

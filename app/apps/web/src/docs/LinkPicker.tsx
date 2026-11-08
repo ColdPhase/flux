@@ -11,7 +11,7 @@ import { getConversation, listConversations } from '../conversations/api';
 import { listProjectDocs } from './api';
 import { kindLabel } from './format';
 
-// "Link…" in the doc editor: find something of this project and insert a `flux:` reference.
+// Mod-K in the Wiki page (#869): find something of this project and insert a `flux:` reference.
 // Only objects of the same project are offered; the server checks again when the doc is saved.
 
 export interface PickedRef { type: DocRefType; id: string; title: string }
@@ -27,7 +27,7 @@ async function candidates(projectId: string, workspaceId: string, selfId: string
   const recent = await Promise.all(threads.slice(0, 3).map((thread) => getConversation(thread.id, signal)));
   const line = (text: string) => { const first = text.trim().split('\n', 1)[0] ?? ''; return first.length > 90 ? `${first.slice(0, 89)}…` : first; };
   return [
-    ...docs.filter((doc) => doc.id !== selfId).map((doc) => ({ type: 'doc' as const, id: doc.id, title: doc.title, hint: doc.state === 'draft' ? 'Draft page' : 'Page' })),
+    ...docs.filter((doc) => doc.id !== selfId).map((doc) => ({ type: 'doc' as const, id: doc.id, title: doc.title, hint: 'Page' })),
     ...sketches.filter((sketch) => sketch.scope === 'project' && sketch.projectId === projectId).map((sketch) => ({ type: 'sketch' as const, id: sketch.id, title: sketch.title, hint: 'Map' })),
     ...recent.flatMap((thread) => thread ? [...thread.messages].reverse().map((message) => ({ type: 'message' as const, id: message.id, title: line(message.body), hint: 'Message' })) : []),
   ];

@@ -1,271 +1,451 @@
-import { createContext, useContext, useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type FormEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router';
+import type { DocSummary } from '@flux/contracts';
 import { ApiError } from '../api/client';
-import { Button, Icon, Spinner, trapTab, usePop, useToast } from '../ui';
-import { useShellData } from '../app/data';
+import { useIntentKeys } from '../api/intent-keys';
+import { Icon, Spinner, prefersReducedMotion, usePop, useToast } from '../ui';
 import { useShellActions } from '../app/shellContext';
-import { LiveEntry } from '../live/LiveEntry';
-import { audienceLine, useProjectShell } from '../project/data';
-import { fetchProjectExport } from './api';
+import { createDoc, docUrl, fetchProjectExport, listProjectDocs } from './api';
 import { pageFileName, pageMarkdown, saveBlob } from './markdown-file';
+import { landOn } from './WikiRead';
 import { useWiki } from './wiki-context';
 
-// The wiki's top bar: focus, history, share and download as quiet icon
-// buttons, then the one primary action. Share and Download open small popovers that keep focus
-// inside, close on Escape or outside, and return focus to their button.
-
-/** Wiki-only icons, drawn like ../ui/Icon: 16×16, a 1.5px stroke. */
-const PATHS = {
-  expand: <path d="M2.75 6V2.75H6M10 2.75h3.25V6M13.25 10v3.25H10M6 13.25H2.75V10" />,
-  shrink: <path d="M6 2.75V6H2.75M13.25 6H10V2.75M10 13.25V10h3.25M2.75 10H6v3.25" />,
-  history: <><path d="M3.1 5.75A5.25 5.25 0 1 1 2.75 8" /><path d="M2.75 2.75v3h3" /><path d="M8 5.25V8l2 1.5" /></>,
-  share: <><path d="M13.5 2.5L7 9" /><path d="M13.5 2.5l-4 11-2.5-4.5-4.5-2.5z" /></>,
-  download: <><path d="M8 2.75v7.5M4.75 7L8 10.25 11.25 7" /><path d="M2.75 11.25v1.5a.5.5 0 00.5.5h9.5a.5.5 0 00.5-.5v-1.5" /></>,
-  upload: <><path d="M8 10.25v-7.5M4.75 6L8 2.75 11.25 6" /><path d="M2.75 11.25v1.5a.5.5 0 00.5.5h9.5a.5.5 0 00.5-.5v-1.5" /></>,
-  more: <><circle cx="3.5" cy="8" r=".9" fill="currentColor" /><circle cx="8" cy="8" r=".9" fill="currentColor" /><circle cx="12.5" cy="8" r=".9" fill="currentColor" /></>,
-  outline: <><path d="M3 4h10M3 8h6.5M3 12h8" /></>,
-  archive: <><rect x="2.5" y="3" width="11" height="3" rx="1" /><path d="M3.5 6v6.25a.75.75 0 00.75.75h7.5a.75.75 0 00.75-.75V6M6.5 8.75h3" /></>,
-};
-export type WikiIconName = keyof typeof PATHS;
-
-export function WikiIcon({ name, size = 16 }: { name: WikiIconName; size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round"
-      strokeLinejoin="round" aria-hidden="true" focusable="false">{PATHS[name]}</svg>
-  );
-}
+// The Wiki page as drawn (#869, design guide "Wiki"): two columns only, the sidebar and the page. Above the title one
+// quiet row: "Saved · just now · Jonas is here too", the faces of the people writing, Contents (≡) and ⋯. The title is the
+// page switcher, in the same place with one page or fifty. The page's text is edited where it is read.
 
 const isMac = typeof navigator !== 'undefined' && /Mac|iP(hone|ad|od)/.test(navigator.platform);
+const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+const fold = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase();
 
-/**
- * The one page toolbar (#511, AC-4): the state on the left (with Back first when there is one), then
- * the icons in a fixed order, focus, and the primary action far right. Read, edit and history keep
- * every control at the same place; a control that does not apply is dimmed, never removed.
- */
-export function WikiBar({ meta, back, primary, phoneMeta, children, compactInHeader = false }: {
-  meta: ReactNode; back?: ReactNode; primary?: ReactNode; phoneMeta?: ReactNode; children?: ReactNode; compactInHeader?: boolean;
-}) {
-  const { compact } = useWiki();
-  const { metadataSlot, actionSlot } = useShellActions();
-  if (compact && compactInHeader && metadataSlot && actionSlot) {
-    // No children: the page keeps its actions itself (the phone header takes none, see usePhoneHeader).
-    return <>
-      {createPortal(<span className="wiki-header-meta">{phoneMeta ?? meta}</span>, metadataSlot)}
-      {children ? createPortal(<div className="wiki-header-actions">{children}</div>, actionSlot) : null}
-    </>;
-  }
-  const bar = (
-    <div className="wiki-bar">
-      <div className="wiki-bar__meta">{back}{meta}</div>
-      <div className="wiki-bar__acts">{children}{compact ? null : <FocusToggle />}{primary}</div>
-    </div>
-  );
-  return bar;
-}
-
-/**
- * True while the project header is the phone's. That header is the same in every view (Spokój #507, board C02: Back, the
- * title, Together, Search), so a Wiki page does not add its menu to it; the menu ends the row of page chips (Wiki.tsx), which stays at the top.
- */
-export function usePhoneHeader(): boolean {
-  const { actionSlot } = useShellActions();
-  return !!actionSlot?.closest('.phead');
-}
-
-/** On a phone the page's actions are one menu: history, then the share and download cards. */
-export function PageMenu({ history, sharePath, shareVersion, shown }: {
-  history: ReactNode; sharePath: string; shareVersion: number | null; shown: Shown;
-}) {
-  return (
-    <Popover icon="more" label="More" title="Page actions">
-      {history}
-      <ShareBody path={sharePath} version={shareVersion} />
-      <DownloadBody shown={shown} />
-      <PageCreate />
-      <ProjectActions />
-    </Popover>
-  );
-}
-
-/** On a phone the chip row holds only pages: a new page and Import .md are here (F-026 §4 Phone). */
-function PageCreate() {
-  const close = useContext(ClosePopover);
-  const { project, writable, importing, importError, importErrorId, startImport } = useWiki();
-  if (!writable) return null;
-  return <>
-    <p className="wiki-pop__h">Add a page</p>
-    <Link className="wiki-pop__item" to={`/projects/${project.id}/docs/new`} onClick={() => close(false)}>
-      <Icon name="plus" /><span><b>New page</b><small>Starts as a draft</small></span>
-    </Link>
-    <button type="button" className="wiki-pop__item" aria-label="Import .md" aria-busy={importing || undefined} aria-disabled={importing || undefined}
-      aria-describedby={importError ? importErrorId : undefined} onClick={() => { close(); startImport(); }}>
-      {importing ? <Spinner /> : <WikiIcon name="upload" />}<span><b>Import .md</b><small>A Markdown file becomes a draft page</small></span>
-    </button>
-  </>;
-}
-
-function ProjectActions() {
-  const close = useContext(ClosePopover);
-  const { openDetails } = useShellActions();
-  return <>
-    <LiveEntry variant="menu" onAction={() => close()} />
-    <button type="button" className="wiki-pop__item" onClick={() => { close(); openDetails('place'); }}>
-      <Icon name="panel" /><span><b>Details</b><small>Space and people</small></span>
-    </button>
-  </>;
-}
-
-function FocusToggle() {
-  const { focus, setFocus } = useWiki();
-  return (
-    <button type="button" className="ui-icon-btn wiki-bar__focus" data-slot="focus" aria-pressed={focus} aria-label="Focus on the page"
-      data-tip={focus ? 'Show the page list' : 'Focus on the page'} onClick={() => setFocus(!focus)}>
-      <WikiIcon name={focus ? 'shrink' : 'expand'} />
-    </button>
-  );
-}
-
-/** An icon that does not apply here: it keeps its place in the toolbar and is dimmed (#511, AC-4). */
-export function DimIcon({ slot, name, label }: { slot: string; name: WikiIconName; label: string }) {
-  return <button type="button" className="ui-icon-btn wiki-bar__dim" data-slot={slot} disabled aria-label={label}><WikiIcon name={name} /></button>;
-}
-
-/** Closes the open popover; with `restore`, focus returns to its button. */
-const ClosePopover = createContext<(restore?: boolean) => void>(() => undefined);
-
-function Popover({ icon, label, title, slot, children }: { icon: WikiIconName; label: string; title: string; slot?: string; children: ReactNode }) {
-  const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-  const popRef = useRef<HTMLDivElement>(null);
-  const id = useId();
-  const pop = usePop(open);
-
+/** Closes a surface on a press outside it (and its button). */
+function useAway(open: boolean, close: () => void, ...inside: React.RefObject<HTMLElement | null>[]) {
   useEffect(() => {
     if (!open) return;
-    const surface = popRef.current;
-    (surface?.querySelector<HTMLElement>('[data-autofocus]') ?? surface)?.focus();
-    const onPointer = (event: PointerEvent) => {
-      if (!surface?.contains(event.target as Node) && !buttonRef.current?.contains(event.target as Node)) setOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointer);
-    return () => document.removeEventListener('pointerdown', onPointer);
+    const away = (event: PointerEvent) => { if (!inside.some((ref) => ref.current?.contains(event.target as Node))) close(); };
+    document.addEventListener('pointerdown', away);
+    return () => document.removeEventListener('pointerdown', away);
+    // The refs are stable; `close` is the caller's setter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
+}
 
-  const close = (restore = true) => {
-    setOpen(false);
-    if (restore) buttonRef.current?.focus();
+/** Opens a clicked reference in the app: tasks, decisions and results in the Details panel, the rest by route. */
+export function useReferenceClicks() {
+  const navigate = useNavigate();
+  const { openDetails } = useShellActions();
+  return (event: MouseEvent<HTMLElement>) => {
+    const anchor = (event.target as HTMLElement).closest('a');
+    if (!anchor || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    const type = anchor.dataset.refType;
+    const id = anchor.dataset.refId;
+    if (id && (type === 'work' || type === 'decision' || type === 'result')) {
+      event.preventDefault();
+      openDetails({ kind: type, id });
+      return;
+    }
+    const href = anchor.getAttribute('href') ?? '';
+    if (href.startsWith('/') && !href.startsWith('//')) {
+      event.preventDefault();
+      navigate(href);
+    }
   };
-  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'Escape') { event.stopPropagation(); close(); return; }
-    trapTab(event, popRef.current);
-  };
+}
 
+/**
+ * Scrolls the page so `top()` (the scroll position a heading needs) is reached, smoothly unless the person reduces
+ * motion. Returns how to stop a landing still in progress.
+ */
+export function scrollPage(scroller: HTMLElement, top: () => number | null): () => void {
+  const target = top();
+  if (target === null) return () => undefined;
+  const smooth = !prefersReducedMotion();
+  scroller.scrollTo({ top: Math.max(0, target), behavior: smooth ? 'smooth' : 'auto' });
+  return smooth ? landOn(scroller, top) : () => undefined;
+}
+
+export interface ContentsHeading { id: string; text: string; level: number }
+export interface ShownPage { title: string; body: () => string; version: number; current: boolean }
+
+export interface PageFrameProps {
+  docId: string;
+  title: string;
+  /** "Saved · just now · Jonas is here too", or what an earlier version is. */
+  meta: ReactNode;
+  /** Attributes of the status line (the live editor names its state for tests and tools). */
+  metaData?: Record<string, string | number | undefined>;
+  faces?: ReactNode;
+  headings: ContentsHeading[];
+  onHeading(id: string): void;
+  shown: ShownPage;
+  /** Renames the page; absent on an earlier version. */
+  rename?: (title: string) => Promise<void>;
+  notices?: ReactNode;
+  onBodyClick?: (event: MouseEvent<HTMLElement>) => void;
+  children: ReactNode;
+}
+
+/** The page as drawn: the row above the title, the title switcher, then the page itself. */
+export function PageFrame({ docId, title, meta, metaData, faces, headings, onHeading, shown, rename, notices, onBodyClick, children }: PageFrameProps) {
+  const { project, importError, importErrorId } = useWiki();
+  const [renaming, setRenaming] = useState(false);
+  const [copyFailed, setCopyFailed] = useState(false);
+  const titleId = useId();
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const base = docUrl(project.id, docId);
+  const linkPath = shown.current ? base : `${base}/versions/${shown.version}`;
   return (
-    <div className="wiki-pop-wrap" data-slot={slot}>
-      <button ref={buttonRef} type="button" className="ui-icon-btn" aria-label={label} aria-haspopup="dialog" aria-expanded={open}
-        aria-controls={open ? id : undefined} data-tip={open ? undefined : label} onClick={() => setOpen((value) => !value)}>
-        <WikiIcon name={icon} />
-      </button>
-      {pop.mounted ? <div {...pop.props} ref={popRef} id={id} className="wiki-pop" role="dialog" aria-label={title} tabIndex={-1} onKeyDown={onKeyDown}><ClosePopover.Provider value={close}>{children}</ClosePopover.Provider></div> : null}
-    </div>
+    <article className="wiki-page" aria-labelledby={titleId}>
+      <div className="wiki-head">
+        <p className="wiki-head__meta" role="status" {...metaData}>{meta}</p>
+        {faces}
+        <Contents headings={headings} onHeading={onHeading} />
+        <PageMenu buttonRef={menuButton} historyTo={`${base}/history`} shown={shown} linkPath={linkPath}
+          onRename={rename ? () => setRenaming(true) : undefined} onCopyFailed={() => setCopyFailed(true)} />
+      </div>
+      <div className="wiki-title">
+        {renaming && rename
+          ? <div className="wiki-title__h"><RenameField title={title} rename={rename} done={() => { setRenaming(false); menuButton.current?.focus(); }} /></div>
+          : <PageSwitcher docId={docId} title={title} titleId={titleId} />}
+      </div>
+      {copyFailed ? <CopyFallback path={linkPath} close={() => { setCopyFailed(false); menuButton.current?.focus(); }} /> : null}
+      {importError ? <p className="doc-notice" id={importErrorId} role="alert"><Icon name="alert" size={14} />{importError}</p> : null}
+      {notices}
+      {/* The cards and chips in the page are links: a click opens what they refer to. */}
+      <div className="wiki-body" onClick={onBodyClick}>{children}</div>
+    </article>
   );
 }
 
-/** A link to the page (or the earlier version on screen), with exactly who can open it. */
-export function ShareButton({ path, version }: { path: string; version: number | null }) {
-  return <Popover icon="share" label="Share this page" title="Share this page" slot="share"><ShareBody path={path} version={version} /></Popover>;
-}
-
-function ShareBody({ path, version }: { path: string; version: number | null }) {
-  const close = useContext(ClosePopover);
-  const { project } = useWiki();
-  const shell = useProjectShell();
-  const { me } = useShellData();
+/** "Lending rules ▾": the space's pages with "Find a page", and "+ New page" at the bottom (#869). */
+function PageSwitcher({ docId, title, titleId }: { docId: string; title: string; titleId: string }) {
+  const { project, docs: loaded } = useWiki();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  // The pages read when the switcher opened; until then (and after it closes) the Wiki's own list.
+  const [fresh, setFresh] = useState<DocSummary[] | null>(null);
+  const docs = fresh ?? loaded;
+  const button = useRef<HTMLButtonElement>(null);
+  const surface = useRef<HTMLDivElement>(null);
+  const findRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
-  const [copied, setCopied] = useState<'yes' | 'no' | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const inputId = useId();
-  const people = shell && shell.project.id === project.id ? shell.people : null;
-  const url = `${window.location.origin}${path}`;
-
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied('yes');
-    } catch {
-      setCopied('no');
-      inputRef.current?.focus();
-      inputRef.current?.select();
-    }
-  }
-
+  const pop = usePop(open);
+  const id = useId();
+  const close = useCallback((restore = true) => { setOpen(false); setQuery(''); setFresh(null); if (restore) button.current?.focus(); }, []);
+  useAway(open, () => close(false), surface, button);
+  useEffect(() => {
+    if (!open) return;
+    findRef.current?.focus();
+    // The list as it is now: someone may have added a page since this one opened.
+    const controller = new AbortController();
+    listProjectDocs(project.id, controller.signal).then(setFresh, () => undefined);
+    return () => controller.abort();
+  }, [open, project.id]);
+  const pages = useMemo(() => [...docs].sort((a, b) => collator.compare(a.title, b.title)), [docs]);
+  const needle = fold(query.trim());
+  const shown = needle ? pages.filter((doc) => fold(doc.title).includes(needle)) : pages;
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); return; }
+    const rows = [...(surface.current?.querySelectorAll<HTMLElement>('.wiki-menu__row') ?? [])];
+    const at = rows.indexOf(document.activeElement as HTMLElement);
+    if (event.key === 'ArrowDown') { event.preventDefault(); rows[(at + 1) % rows.length]?.focus(); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); if (at <= 0) findRef.current?.focus(); else rows[at - 1]?.focus(); }
+  };
   return (
     <>
-      <p className="wiki-pop__h">{version ? `Share version ${version}` : 'Share this page'}</p>
-      <p className="wiki-pop__who"><Icon name="lock" size={12} />
-        <span>Opens only for people with access to {project.name}{people ? <>: {audienceLine(people, me.user.id)}</> : null}.</span></p>
-      <div className="wiki-pop__link">
-        <label className="ui-vh" htmlFor={inputId}>Link to this page</label>
-        <input id={inputId} ref={inputRef} className="ui-input" readOnly value={url} onFocus={(event) => event.currentTarget.select()} />
-        <Button variant="secondary" icon={copied === 'yes' ? 'check' : 'link'} onClick={() => void copy()} data-autofocus>{copied === 'yes' ? 'Copied' : 'Copy link'}</Button>
-      </div>
-      <p className="wiki-pop__status" role="status">{copied === 'yes' ? 'Link copied.' : copied === 'no' ? `The browser did not allow copying. The link is selected: press ${isMac ? '⌘ C' : 'Ctrl C'}.` : ''}</p>
-      <Button variant="link" className="wiki-pop__more" onClick={() => { close(); void navigate(`/projects/${project.id}/settings`); }}>See who has access</Button>
+      <h2 className="wiki-title__h" id={titleId}>
+        <button ref={button} type="button" className="wiki-switch" aria-haspopup="dialog" aria-expanded={open} aria-controls={open ? id : undefined}
+          onClick={() => (open ? close() : setOpen(true))}>
+          <span className="wiki-switch__t">{title}</span><Icon name="chevron-down" size={20} />
+        </button>
+      </h2>
+      {pop.mounted ? (
+        <div {...pop.props} ref={surface} id={id} className="wiki-menu wiki-switcher" role="dialog" aria-label={`Pages in ${project.name}`} onKeyDown={onKeyDown}>
+          <label className="wiki-find">
+            <Icon name="search" size={15} />
+            <input ref={findRef} type="text" placeholder="Find a page" aria-label="Find a page" autoComplete="off" value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              onKeyDown={(event) => { if (event.key === 'Enter' && shown[0]) { event.preventDefault(); close(false); navigate(docUrl(project.id, shown[0].id)); } }} />
+          </label>
+          <ul className="wiki-menu__list" aria-label="Pages">
+            {shown.map((doc) => (
+              <li key={doc.id}>
+                <Link className="wiki-menu__row" to={docUrl(project.id, doc.id)} aria-current={doc.id === docId ? 'page' : undefined} title={doc.title}
+                  onClick={() => close(false)}>
+                  <span className="wiki-menu__t">{doc.title}</span>
+                  {doc.id === docId ? <Icon name="check" size={15} /> : null}
+                </Link>
+              </li>
+            ))}
+          </ul>
+          {needle && !shown.length ? <p className="wiki-menu__empty" role="status">No page matches “{query.trim()}”.</p> : null}
+          <div className="wiki-menu__sep" />
+          <NewPage name={query.trim()} done={() => close(false)} />
+        </div>
+      ) : null}
     </>
   );
 }
 
-interface Shown { title: string; body: string; version: number; current: boolean }
-
-/** This page (or version) as Markdown for everyone who can read it; the whole project for managers. */
-export function DownloadButton({ shown }: { shown: Shown }) {
-  return <Popover icon="download" label="Download" title="Download" slot="download"><DownloadBody shown={shown} /></Popover>;
-}
-
-function DownloadBody({ shown }: { shown: Shown }) {
-  const close = useContext(ClosePopover);
+/** "+ New page": names the page in place, then opens it to write. */
+export function NewPage({ name, done }: { name?: string; done?: () => void }) {
   const { project } = useWiki();
-  const toast = useToast();
+  const [naming, setNaming] = useState(false);
+  const [title, setTitle] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const fileName = pageFileName(shown.title, shown.current ? undefined : shown.version);
+  const intents = useIntentKeys();
+  const navigate = useNavigate();
+  const fieldId = useId();
+  async function create(event: FormEvent) {
+    event.preventDefault();
+    const clean = title.trim();
+    if (!clean || busy) return;
+    setBusy(true); setError('');
+    const intent = JSON.stringify(['new-page', project.id, clean]);
+    try {
+      const doc = await createDoc(project.id, { title: clean }, intents.keyFor(intent));
+      intents.settle(intent);
+      done?.();
+      navigate(docUrl(project.id, doc.id), { state: { writeAt: 'start' } });
+    } catch (cause) {
+      setError(cause instanceof ApiError && cause.status === 403 ? 'You can read this space but not add pages to it.' : 'The page was not created. Check the connection and try again.');
+    } finally { setBusy(false); }
+  }
+  if (!naming) {
+    return (
+      <button type="button" className="wiki-menu__row wiki-menu__new" onClick={() => { setTitle(name ?? ''); setNaming(true); }}>
+        <Icon name="plus" size={15} />New page
+      </button>
+    );
+  }
+  return (
+    <form className="wiki-newpage" onSubmit={(event) => void create(event)}>
+      <label className="ui-vh" htmlFor={fieldId}>Name of the new page</label>
+      <input id={fieldId} className="wiki-newpage__field" value={title} placeholder="Name of the new page" maxLength={200} autoFocus autoComplete="off"
+        onChange={(event) => setTitle(event.target.value)}
+        onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setNaming(false); } }} />
+      <button type="submit" className="ui-btn ui-btn--soft wiki-newpage__go" disabled={!title.trim() || busy} aria-busy={busy || undefined}>
+        {busy ? <Spinner /> : null}Create
+      </button>
+      {error ? <p className="wiki-menu__error" role="alert">{error}</p> : null}
+    </form>
+  );
+}
 
-  function page() {
-    saveBlob(new Blob([pageMarkdown(shown.title, shown.body)], { type: 'text/markdown;charset=utf-8' }), fileName);
+/** The title as a field, in the title's place: Enter keeps the new name, Escape the old one. */
+function RenameField({ title, rename, done }: { title: string; rename: (title: string) => Promise<void>; done: () => void }) {
+  const [value, setValue] = useState(title);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const ref = useRef<HTMLInputElement>(null);
+  useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
+  async function keep() {
+    const clean = value.trim();
+    if (busy) return;
+    if (!clean || clean === title) { done(); return; }
+    setBusy(true); setError('');
+    try { await rename(clean); done(); }
+    catch (cause) { setError(cause instanceof Error && cause.message ? `The page was not renamed: ${cause.message.replace(/\.$/, '')}.` : 'The page was not renamed. Try again.'); }
+    finally { setBusy(false); }
+  }
+  return (
+    <span className="wiki-rename">
+      <input ref={ref} className="wiki-rename__field" aria-label="Page title" value={value} maxLength={200} disabled={busy}
+        onChange={(event) => setValue(event.target.value)} onBlur={() => void keep()}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') { event.preventDefault(); void keep(); }
+          else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); done(); }
+        }} />
+      {error ? <span className="wiki-rename__error" role="alert">{error}</span> : null}
+    </span>
+  );
+}
+
+/** Contents (≡): the page's headings; choosing one scrolls to it. Always in the same place; "No headings yet" without any. */
+function Contents({ headings, onHeading }: { headings: ContentsHeading[]; onHeading(id: string): void }) {
+  const [open, setOpen] = useState(false);
+  const button = useRef<HTMLButtonElement>(null);
+  const surface = useRef<HTMLDivElement>(null);
+  const pop = usePop(open);
+  const id = useId();
+  const close = useCallback((restore = true) => { setOpen(false); if (restore) button.current?.focus(); }, []);
+  useAway(open, () => close(false), surface, button);
+  useEffect(() => { if (open) (surface.current?.querySelector<HTMLElement>('[role="menuitem"]') ?? surface.current)?.focus(); }, [open]);
+  const base = headings.length ? Math.min(...headings.map((heading) => heading.level)) : 1;
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => menuKeys(event, surface.current, close);
+  return (
+    <span className="wiki-pop-anchor">
+      <button ref={button} type="button" className="ui-icon-btn wiki-head__btn" aria-label="Contents" data-tip={open ? undefined : 'Contents'}
+        aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => (open ? close() : setOpen(true))}>
+        <ContentsIcon />
+      </button>
+      {pop.mounted ? (
+        <div {...pop.props} ref={surface} id={id} className="wiki-menu wiki-menu--end wiki-contents" role="menu" aria-label="Contents" tabIndex={-1} onKeyDown={onKeyDown}>
+          {headings.length ? headings.map((heading) => (
+            <button key={heading.id} type="button" role="menuitem" className="wiki-menu__row" data-level={heading.level - base}
+              onClick={() => { close(); onHeading(heading.id); }}>
+              <span className="wiki-menu__t">{heading.text}</span>
+            </button>
+          )) : <p className="wiki-menu__empty">No headings yet</p>}
+        </div>
+      ) : null}
+    </span>
+  );
+}
+
+function ContentsIcon() {
+  return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" focusable="false"><path d="M5 7h14M5 12h10M5 17h12" /></svg>;
+}
+
+/** Up and Down move through a menu's rows, Escape closes it and gives focus back. */
+function menuKeys(event: KeyboardEvent<HTMLElement>, surface: HTMLElement | null, close: (restore?: boolean) => void) {
+  const rows = [...(surface?.querySelectorAll<HTMLElement>('[role="menuitem"]') ?? [])];
+  const at = rows.indexOf(document.activeElement as HTMLElement);
+  if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); close(); }
+  else if (event.key === 'ArrowDown') { event.preventDefault(); rows[(at + 1) % rows.length]?.focus(); }
+  else if (event.key === 'ArrowUp') { event.preventDefault(); rows[(at - 1 + rows.length) % rows.length]?.focus(); }
+  else if (event.key === 'Tab') close(false);
+}
+
+/** ⋯ Page actions: History, Copy link, Export, Import a Markdown file, and Rename page for the current page. */
+function PageMenu({ buttonRef, historyTo, shown, linkPath, onRename, onCopyFailed }: {
+  buttonRef: React.RefObject<HTMLButtonElement | null>; historyTo: string; shown: ShownPage; linkPath: string; onRename?: () => void; onCopyFailed(): void;
+}) {
+  const { project, importing, importErrorId, importError, startImport } = useWiki();
+  const [open, setOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const surface = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate();
+  const toast = useToast();
+  const pop = usePop(open);
+  const id = useId();
+  const close = useCallback((restore = true) => { setOpen(false); setExporting(false); if (restore) buttonRef.current?.focus(); }, [buttonRef]);
+  useAway(open, () => close(false), surface, buttonRef);
+  useEffect(() => { if (open) surface.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus(); }, [open, exporting]);
+  const fileName = pageFileName(shown.title, shown.current ? undefined : shown.version);
+  const page = () => {
+    saveBlob(new Blob([pageMarkdown(shown.title, shown.body())], { type: 'text/markdown;charset=utf-8' }), fileName);
     close();
     toast({ message: `Downloaded ${fileName}.`, tone: 'success' });
-  }
-
-  async function wholeProject() {
+  };
+  async function wholeSpace() {
     if (busy) return;
-    setBusy(true); setError('');
+    setBusy(true);
     try {
       const file = await fetchProjectExport(project.id);
       saveBlob(file.blob, file.fileName);
       close();
       toast({ message: `Exported ${project.name} as ${file.fileName}.`, tone: 'success' });
     } catch (cause) {
-      setError(cause instanceof ApiError && cause.status === 403 ? 'Only people who manage this space can export the whole space.'
-        : cause instanceof ApiError && cause.status === 404 ? 'This space is no longer available to you.'
-          : 'The export could not be made. Check the connection and try again.');
+      close();
+      toast({ message: cause instanceof ApiError && cause.status === 403 ? 'Only people who manage this space can export the whole space.' : 'The export could not be made. Check the connection and try again.' });
     } finally { setBusy(false); }
   }
-
+  async function copy() {
+    close();
+    try {
+      await navigator.clipboard.writeText(`${window.location.origin}${linkPath}`);
+      toast({ message: 'Link copied.', tone: 'success' });
+    } catch { onCopyFailed(); }
+  }
   return (
-    <>
-      <p className="wiki-pop__h">Download</p>
-      <button type="button" className="wiki-pop__item" onClick={page} data-autofocus>
-        <Icon name="doc" />
-        <span><b>{shown.current ? 'This page as Markdown' : `Version ${shown.version} as Markdown`}</b><small>{fileName}</small></span>
+    <span className="wiki-pop-anchor">
+      <button ref={buttonRef} type="button" className="ui-icon-btn wiki-head__btn" aria-label="Page actions" data-tip={open ? undefined : 'Page actions'}
+        aria-haspopup="menu" aria-expanded={open} aria-controls={open ? id : undefined} onClick={() => (open ? close() : setOpen(true))}>
+        <Icon name="more" size={16} />
       </button>
-      {project.access === 'manager' ? (
-        <button type="button" className="wiki-pop__item" onClick={() => void wholeProject()} aria-busy={busy || undefined} aria-disabled={busy || undefined}>
-          {busy ? <Spinner /> : <WikiIcon name="archive" />}
-          <span><b>Export the whole space</b><small>A .tar.gz of every page, conversation, task and map, for people who manage {project.name}</small></span>
-        </button>
-      ) : <p className="wiki-pop__note">People who manage this space can also export the whole space.</p>}
-      {error ? <p className="wiki-pop__error" role="alert">{error}</p> : null}
-    </>
+      {pop.mounted ? (
+        <div {...pop.props} ref={surface} id={id} className="wiki-menu wiki-menu--end wiki-actions" role="menu" aria-label="Page actions"
+          onKeyDown={(event) => menuKeys(event, surface.current, close)}>
+          {exporting ? <>
+            <MenuRow label={shown.current ? 'This page as Markdown' : `Version ${shown.version} as Markdown`} run={page} />
+            <MenuRow label={busy ? 'Exporting the whole space…' : 'The whole space as .tar.gz'} run={() => void wholeSpace()} busy={busy} />
+          </> : <>
+            <MenuRow label="History" run={() => { close(false); navigate(historyTo); }} />
+            <MenuRow label="Copy link" run={() => void copy()} />
+            {/* People who manage the space can also take the whole space; everyone else gets this page at once. */}
+            <MenuRow label="Export" run={() => (project.access === 'manager' ? setExporting(true) : page())} more={project.access === 'manager'} />
+            <MenuRow label={importing ? 'Importing…' : 'Import a Markdown file'} run={() => { close(); startImport(); }} busy={importing}
+              describedBy={importError ? importErrorId : undefined} />
+            {onRename ? <MenuRow label="Rename page" run={() => { close(false); onRename(); }} /> : null}
+          </>}
+        </div>
+      ) : null}
+    </span>
   );
+}
+
+function MenuRow({ label, run, busy, more, describedBy }: { label: string; run(): void; busy?: boolean; more?: boolean; describedBy?: string }) {
+  return (
+    <button type="button" role="menuitem" className="wiki-menu__row" onClick={run} aria-busy={busy || undefined} aria-haspopup={more ? 'menu' : undefined}
+      aria-describedby={describedBy}><span className="wiki-menu__t">{label}</span></button>
+  );
+}
+
+/** The browser refused the clipboard: the exact link, selected, to copy by hand. */
+function CopyFallback({ path, close }: { path: string; close(): void }) {
+  const ref = useRef<HTMLInputElement>(null);
+  const fieldId = useId();
+  useEffect(() => { ref.current?.focus(); ref.current?.select(); }, []);
+  return (
+    <div className="doc-notice wiki-copy" role="group" aria-label="Link to this page">
+      <label className="ui-vh" htmlFor={fieldId}>Link to this page</label>
+      <input id={fieldId} ref={ref} className="ui-input wiki-copy__field" readOnly value={`${window.location.origin}${path}`}
+        onFocus={(event) => event.currentTarget.select()}
+        onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); close(); } }} />
+      <span role="status">The browser did not allow copying. The link is selected: press {isMac ? '⌘ C' : 'Ctrl C'}.</span>
+      <button type="button" className="ui-btn ui-btn--quiet" onClick={close}>Done</button>
+    </div>
+  );
+}
+
+/** The people writing on the page with you, as faces (the shape that marks their caret, then initials). */
+export function Faces({ people }: { people: { id: string; name: string }[] }) {
+  if (!people.length) return null;
+  return (
+    <span className="wiki-head__faces" aria-label={`Writing here: ${people.map((person) => person.name).join(', ')}`} role="img">
+      {people.slice(0, 3).map((person) => <span key={person.id} className="wiki-face" aria-hidden="true">{initialsOf(person.name)}</span>)}
+    </span>
+  );
+}
+function initialsOf(name: string) {
+  const parts = name.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? '') + (parts.length > 1 ? parts.at(-1)![0] ?? '' : '')).toUpperCase();
+}
+
+/** "Jonas is here too", "Jonas and Maja are here too", "Jonas and 2 others are here too". */
+export function hereToo(people: { name: string }[]): string {
+  const first = (name: string) => name.trim().split(/\s+/)[0] ?? name;
+  if (!people.length) return '';
+  if (people.length === 1) return `${first(people[0]!.name)} is here too`;
+  if (people.length === 2) return `${first(people[0]!.name)} and ${first(people[1]!.name)} are here too`;
+  return `${first(people[0]!.name)} and ${people.length - 1} others are here too`;
+}
+
+/** The wiki of a space with no pages yet: start one, or import a Markdown file. */
+export function NoPages() {
+  const { project, importing, importError, importErrorId, startImport } = useWiki();
+  return (
+    <div className="wiki-page wiki-empty">
+      <h2 className="wiki-empty__t">No pages yet</h2>
+      <p className="doc-muted">Write down how things work in {project.name} and what you learned. Every change keeps the earlier version.</p>
+      <div className="wiki-empty__acts">
+        <div className="wiki-menu wiki-empty__new"><NewPage /></div>
+        <button type="button" className="ui-btn ui-btn--quiet" onClick={startImport} aria-busy={importing || undefined}
+          aria-describedby={importError ? importErrorId : undefined}>
+          {importing ? <Spinner /> : null}Import a Markdown file
+        </button>
+      </div>
+      {importError ? <p className="doc-notice" id={importErrorId} role="alert"><Icon name="alert" size={14} />{importError}</p> : null}
+    </div>
+  );
+}
+
+/** Time words that stay true while the page stays open. */
+export function useNow(every = 30_000) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), every); return () => window.clearInterval(timer); }, [every]);
+  return now;
 }

@@ -584,6 +584,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       const owner = ownerOf(principal);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Choose a model of one of your connections');
       return uow.run(async (ports) => {
+        // The owner's assistant lock first, as a change of a key's budget takes it: one of the two goes first, and the other sees it (#915).
+        await ports.assistants?.lockOwner(owner);
         const enablement = await lockedEnablement(ports, owner, command.agentId);
         const still = ` It is still ${modelNameOf({ model: modelOf(enablement) })}.`;
         const chosen = await pick(owner, command.connection, command.model, still);

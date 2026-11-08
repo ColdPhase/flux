@@ -210,6 +210,8 @@ export interface WorkRepository extends TaskGraphReader {
    */
   listAssignedVisible(principal: Principal, workspaceId: string, owner: ActorRef, page: PageWindow): Promise<Paged<WorkRecord>>;
   findWork(id: string, options?: { lock?: boolean }): Promise<WorkRecord | null>;
+  /** Several tasks in one read, by id; a missing id is absent from the map (a page of notices needs its tasks, #828). */
+  findWorks(ids: readonly string[]): Promise<Map<string, WorkRecord>>;
   insertWork(work: NewWork): Promise<WorkRecord>;
   /** Acquires the durable retry lock before looking up an earlier creation. */
   createdWork(projectId: string, by: ActorRef, commandId: string): Promise<{ work: WorkRecord; fingerprint: string } | null>;

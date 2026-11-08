@@ -1,8 +1,8 @@
 import { sql, type SQL } from 'drizzle-orm';
-import type { CoWorkRequestKind, CoWorkRequestState, CoWorkRequestStatus, CoWorkReviewRule, CoWorkSourceRef } from '@flux/contracts';
+import type { CoWorkRequestKind, CoWorkRequestState, CoWorkRequestStatus, CoWorkSourceRef } from '@flux/contracts';
 import type { DbExecutor } from './push.js';
 
-// The task's request cards, handoff packets, cancellation and the project's review rule (#153 AC-2/AC-4, #400 AC-4).
+// The task's request cards, handoff packets, and cancellation (#153 AC-2/AC-4, #400 AC-4).
 // Storage only: the server composition has already authorized the caller for the project. Nothing here claims, resolves,
 // acknowledges or defers a request, writes a stream event or invokes a model, and no content of a source is copied:
 // a reference becomes a bounded title only while it exists at the exact version the request named.
@@ -199,32 +199,6 @@ export function coworkCardRows(tx: DbExecutor) {
           AND r.expires_at > clock_timestamp()
         RETURNING r.id`);
       return result.rows.length === 1;
-    },
-  };
-}
-
-/** A project's explicit review rule; no row means the contract default. */
-export function coworkReviewPolicyRows(tx: DbExecutor) {
-  return {
-    async get(projectId: string) {
-      const result = await tx.execute<{ review_separation: CoWorkReviewRule; updated_at: string; updated_by: string | null; updated_by_name: string | null }>(sql`
-        SELECT p.review_separation, p.updated_at::text AS updated_at, p.updated_by, ${userName(sql`p.updated_by`)} AS updated_by_name
-        FROM cowork_review_policies p WHERE p.project_id = ${projectId}::uuid`);
-      const row = result.rows[0];
-      return row ? { reviewSeparation: row.review_separation, updatedAt: row.updated_at,
-        updatedBy: row.updated_by ? { id: row.updated_by, name: row.updated_by_name ?? 'Someone' } : null } : null;
-    },
-    async set(projectId: string, reviewSeparation: CoWorkReviewRule, userId: string) {
-      await tx.execute(sql`
-        INSERT INTO cowork_review_policies (project_id, review_separation, updated_by) VALUES (${projectId}::uuid, ${reviewSeparation}, ${userId})
-        ON CONFLICT (project_id) DO UPDATE SET review_separation = EXCLUDED.review_separation, updated_by = EXCLUDED.updated_by,
-          updated_at = clock_timestamp()`);
-    },
-    /** The rule a co-work command in this project applies now. */
-    async current(projectId: string): Promise<CoWorkReviewRule> {
-      const result = await tx.execute<{ review_separation: CoWorkReviewRule }>(sql`
-        SELECT review_separation FROM cowork_review_policies WHERE project_id = ${projectId}::uuid`);
-      return result.rows[0]?.review_separation ?? 'distinct_connection';
     },
   };
 }

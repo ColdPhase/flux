@@ -1,6 +1,7 @@
 import pg from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import * as schema from './schema.js';
+import { oneStatementAtATime } from './one-statement-at-a-time.js';
 
 export { schema };
 export type { Database, DatabaseHandle, Executor, Transaction } from './handles.js';
@@ -12,6 +13,8 @@ export * from './repositories/agent-proposals.js';
 export * from './repositories/agent-connections.js';
 export * from './repositories/agent-tasks.js';
 export * from './repositories/personal-run-web-reads.js';
+export * from './session-lock.js';
+export { oneStatementAtATime } from './one-statement-at-a-time.js';
 export * from './repositories/space-ai.js';
 export * from './repositories/access.js';
 export { workspaceRepository } from './repositories/workspaces.js';
@@ -32,7 +35,7 @@ export * from './repositories/idp-standing.js';
 export * from './repositories/idp-logout.js';
 export * from './migrations/ledger.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 15;
+export const FLUX_SCHEMA_VERSION = 17;
 // pg-boss 12.38.0 declares schema 46. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 46;
 
@@ -80,9 +83,12 @@ export function createDatabase(connectionString: string, connectTimeoutMs = data
   const report = options.onError ?? ((error: Error) => console.error('Database connection interrupted', error));
   pool.on('error', report);
   // A connection that is checked out has the pool's listener removed; it reports on the client itself, between two
-  // queries of a transaction for instance. The query or the COMMIT that follows fails by itself and the pool destroys
-  // the broken client on release, so this listener only keeps the event from crashing the process.
-  pool.on('connect', (client) => client.on('error', () => undefined));
+  // queries of a transaction for instance. The query or the COMMIT that follows fails by itself, and this listener only keeps
+  // the event from crashing the process. It does not clean up: node-postgres marks the client unusable when the event arrives, and
+  // the pool drops such a client when it is released. A client released between a killed statement and that moment goes back to the
+  // pool, and the next query on it fails (it rejects, it does not hang) before the pool drops it. Code that holds a client itself
+  // and sees it fail passes the error to `release` (`holdingSessionLock` does).
+  pool.on('connect', (client) => { client.on('error', () => undefined); oneStatementAtATime(client); });
   const db = drizzle({ client: pool, schema });
   return { pool, db };
 }

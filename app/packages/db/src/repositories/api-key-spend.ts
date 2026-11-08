@@ -26,10 +26,16 @@ export async function apiKeySpendToday(db: Pick<DbExecutor, 'execute'>, connecti
     ? sql`SELECT ${budget.dailyBudgetCents}::int AS daily_budget_cents, ${budget.timeZone}::text AS time_zone`
     : sql`SELECT daily_budget_cents, time_zone FROM background_compute_connections WHERE id = ${connectionId}`;
   const except = exceptRunId ? sql`AND r.id <> ${exceptRunId}` : sql``;
-  // The next day starts at the next local midnight, not 24 hours on: a day with a clock change has 23 or 25 hours (#910).
+  // The next day starts at the next local midnight, not 24 hours on: a day with a clock change has 23 or 25 hours (#910). Where the clocks
+  // go back at midnight (Havana) that midnight comes twice, and PostgreSQL reads the local time as the later one: the day began at the
+  // earlier, an hour before (#915). `first` takes the earlier instant that shows the same local time.
   const result = await db.execute(sql`WITH b AS (${key}),
     d AS (SELECT daily_budget_cents, time_zone, date_trunc('day', ${now} AT TIME ZONE time_zone) AS local_day FROM b),
-    k AS (SELECT daily_budget_cents, time_zone, (local_day AT TIME ZONE time_zone) AS start, ((local_day + interval '1 day') AT TIME ZONE time_zone) AS next_start FROM d)
+    s AS (SELECT daily_budget_cents, time_zone, local_day, (local_day AT TIME ZONE time_zone) AS at_start, ((local_day + interval '1 day') AT TIME ZONE time_zone) AS at_next,
+      (local_day + interval '1 day') AS local_next FROM d),
+    k AS (SELECT daily_budget_cents, time_zone,
+      CASE WHEN ((at_start - interval '1 hour') AT TIME ZONE time_zone) = local_day THEN at_start - interval '1 hour' ELSE at_start END AS start,
+      CASE WHEN ((at_next - interval '1 hour') AT TIME ZONE time_zone) = local_next THEN at_next - interval '1 hour' ELSE at_next END AS next_start FROM s)
     SELECT k.daily_budget_cents AS budget, k.time_zone AS zone, k.next_start AS resets_at,
       (SELECT COALESCE(sum(r.charged_micros) FILTER (WHERE r.cost_state = 'observed'), 0) + COALESCE(sum(r.reserved_micros) FILTER (WHERE r.cost_state = 'unknown'), 0) FROM personal_runs r
         WHERE r.connection_id = ${connectionId} AND r.engine = 'server' AND r.reserved_at >= k.start ${except})::bigint AS run_charged,

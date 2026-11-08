@@ -1,4 +1,4 @@
-import type { CoWorkRequestState, CoWorkReviewRule } from '@flux/contracts';
+import type { CoWorkRequestState } from '@flux/contracts';
 import { ConflictError, ForbiddenError, InvalidInputError } from '../access/errors.js';
 
 /**
@@ -53,13 +53,4 @@ export function requireCoWorkCancel(actor: CoWorkCancelActor, request: CoWorkCan
   if (!COWORK_OPEN_REQUEST_STATES.includes(request.state)) throw new ConflictError('This request is closed', 'COWORK_REQUEST_CLOSED');
   if (request.version !== expectedVersion) throw new ConflictError('The request changed; read it again', 'COWORK_VERSION_CONFLICT');
   return 'cancel';
-}
-
-/** A project's review rule: only a manager sets it, and only one of the two known values. */
-export function normalizeCoWorkReviewRule(value: unknown): CoWorkReviewRule {
-  const body = value as { reviewSeparation?: unknown } | null;
-  if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some((key) => key !== 'reviewSeparation')
-    || (body.reviewSeparation !== 'distinct_connection' && body.reviewSeparation !== 'distinct_owner'))
-    throw new InvalidInputError('reviewSeparation must be distinct_connection or distinct_owner', 'INVALID_COMMAND');
-  return body.reviewSeparation;
 }

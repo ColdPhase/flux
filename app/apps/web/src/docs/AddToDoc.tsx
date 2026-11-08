@@ -87,7 +87,7 @@ export function AddToDoc({ view }: { view: AddToDocView }) {
         <label htmlFor={selectId}>Wiki page</label>
         <Select id={selectId} value={target ?? ''} onChange={(next) => { setTarget(next); setAttempt(crypto.randomUUID()); setError(''); }}>
           {target === null ? <Option value="">Loading pages…</Option> : null}
-          {(docs ?? []).map((doc) => <Option key={doc.id} value={doc.id}>{doc.title}{view.inDocs.includes(doc.id) ? ' (linked source)' : ''}{doc.state === 'draft' ? ' · draft' : ''}</Option>)}
+          {(docs ?? []).map((doc) => <Option key={doc.id} value={doc.id}>{doc.title}{view.inDocs.includes(doc.id) ? ' (linked source)' : ''}</Option>)}
           <Option value="new">A new page…</Option>
         </Select>
         {chosen && kind === 'decision' && headings.length ? <>

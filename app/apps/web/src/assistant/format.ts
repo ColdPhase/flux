@@ -157,12 +157,16 @@ export const canRetry = (run: AssistantRun) => run.endReason !== 'ai_off' && (ru
 
 export type AskState =
   | { kind: 'ready'; note: string }
-  | { kind: 'blocked'; note: string; action: 'connect' | 'settings' | 'tell' | null; actionLabel?: string;
+  | { kind: 'blocked'; note: string; action: 'connect' | 'settings' | 'tell' | 'join' | null; actionLabel?: string;
       /** A second way out (Journey 6: "Connect an API key"). */
       also?: { action: 'key'; label: string } };
 
-/** What ask mode says under "Your assistant", from the caller's own status. */
-export function askState(status: PersonalAssistantStatus | null, audience: string): AskState {
+/**
+ * What ask mode says under "Your assistant", from the caller's own status. `outside` is a company owner or admin who can open this
+ * space without being in it: their assistant works only where they are (C-15), so nothing else matters until they add themselves.
+ */
+export function askState(status: PersonalAssistantStatus | null, audience: string, outside = false): AskState {
+  if (outside) return { kind: 'blocked', note: 'Your assistant works only in spaces you’re in.', action: 'join', actionLabel: 'Add me' };
   if (!status) return { kind: 'blocked', note: 'Checking your assistant…', action: null };
   const runtime = status.enablement?.engine === 'runtime';
   switch (status.state) {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import type { CoWorkHandoffPacket, ConversationMessage, CoWorkReviewPolicy, TaskCoordination, WorkItem } from '@flux/contracts';
+import type { CoWorkHandoffPacket, ConversationMessage, TaskCoordination, WorkItem } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { toolFailure } from './support/mcp-actions.js';
 import { toolValue } from './support/mcp.js';
@@ -9,7 +9,7 @@ import { expectStatus, type Person } from './support/people.js';
 import { coworkScene, failureCode, type CoworkConn } from './support/cowork-scene.js';
 
 // #153 AC-2/AC-4 and #400 AC-4 over the real OAuth bearer and the people's HTTP API: a task's request cards, the
-// reference packet a person downloads, cancelling an open request, and a project's explicit review rule. Every path has
+// reference packet a person downloads, and cancelling an open request. Every path has
 // its negative controls: another owner, a contributor who owns nothing, a viewer, a stranger and a removed reader.
 // Docker regression evidence, not real-client evidence.
 
@@ -236,65 +236,31 @@ test('the owner of the sender cancels, a removed reader cannot, and the owner of
   assert.equal((await cancel(f.hubert, a.id, second, 1)).status, 200, 'the manager still can');
 });
 
-test('a project\'s review rule: readers see it, only a manager changes it, and it decides who may be given a review', async () => {
+test('there is no project review rule (C-9): the route and table are gone, another connection of the same owner may review, an author never reviews its own work', async () => {
   const f = await coworkScene();
   const policyPath = `/api/v1/projects/${f.p.id}/review-policy`;
-  const codex = await f.connect(f.hubert, 'Codex'), hubertClaude = await f.connect(f.hubert, 'Hubert Claude'), marekClaude = await f.connect(f.marek, 'Marek Claude');
-  const policy = async (who: Person) => expectStatus(await who.browser.request('GET', policyPath), 200) as CoWorkReviewPolicy;
-  assert.deepEqual(await policy(f.hubert), { projectId: f.p.id, reviewSeparation: 'distinct_connection', updatedAt: null, updatedBy: null });
-  for (const reader of [f.marek, f.vera]) assert.equal((await policy(reader)).reviewSeparation, 'distinct_connection');
-  expectStatus(await f.olga.browser.request('GET', policyPath), 404);
+  assert.equal((await f.hubert.browser.request('GET', policyPath)).status, 404, 'there is nothing to read');
+  assert.equal((await f.hubert.browser.request('PUT', policyPath, { body: { reviewSeparation: 'distinct_owner' } })).status, 404, 'and nothing to set');
+  assert.equal((await pool.query("SELECT to_regclass('public.cowork_review_policies') AS table_name")).rows[0].table_name, null, 'the project table is dropped (0017)');
+  const codex = await f.connect(f.hubert, 'Codex'), hubertClaude = await f.connect(f.hubert, 'Hubert Claude');
 
-  // By default another connection of the author's own owner may review.
+  // Another connection of the author's own owner may review.
   const a = await f.task('Native outcome A');
   const held = await f.take(codex, a);
   const sameOwner = await f.openUnit(codex, held, a, 'review', hubertClaude, 'same-owner');
   assert.ok(sameOwner);
+  // The one fixed rule that remains: an author's own connection is never its reviewer in the same run.
   assert.equal(toolFailure(await codex.call('flux_create_unit', { ...codex.base('review'),
     taskId: a.id, unitKey: 'self', expectedTaskVersion: a.version, assignmentConnectionId: codex.connectionId,
     parent: { unitId: held.unitId, generation: held.claim.generation, leaseId: held.claim.lease.id } })).code, 'COWORK_REVIEW_SEPARATION',
   'an author never reviews its own work');
-
-  // Who may change it: not a contributor, not a viewer, not a stranger; bad values and extra fields are refused.
-  const put = (who: Person, body: unknown) => who.browser.request('PUT', policyPath, { body });
-  assert.equal((await put(f.ada, { reviewSeparation: 'distinct_owner' })).status, 403);
-  await f.demote(f.marek);
-  assert.equal((await put(f.marek, { reviewSeparation: 'distinct_owner' })).status, 403, 'owning an agent is not managing the project');
-  assert.equal((await put(f.vera, { reviewSeparation: 'distinct_owner' })).status, 403);
-  assert.equal((await put(f.olga, { reviewSeparation: 'distinct_owner' })).status, 404);
-  assert.equal((await put(f.hubert, { reviewSeparation: 'anyone' })).status, 400);
-  assert.equal((await put(f.hubert, { reviewSeparation: 'distinct_owner', extra: 1 })).status, 400);
-  assert.equal((await put(f.hubert, {})).status, 400);
-  assert.equal((await policy(f.hubert)).reviewSeparation, 'distinct_connection');
-
-  // A manager requires another owner: the review that was allowed before is now refused, a new owner's is not.
-  const tightened = await put(f.hubert, { reviewSeparation: 'distinct_owner' });
-  assert.equal(tightened.status, 200);
-  const stored = tightened.json as CoWorkReviewPolicy;
-  assert.deepEqual([stored.reviewSeparation, stored.updatedBy?.name], ['distinct_owner', 'cw-hubert']);
-  assert.ok(stored.updatedAt);
-  assert.equal(failureCode(await codex.call('flux_create_unit', { ...codex.base('review'),
-    taskId: a.id, unitKey: 'same-owner-2', expectedTaskVersion: a.version, assignmentConnectionId: hubertClaude.connectionId,
-    parent: { unitId: held.unitId, generation: held.claim.generation, leaseId: held.claim.lease.id } })), 'COWORK_REVIEW_SEPARATION');
-  const otherOwner = await f.openUnit(codex, held, a, 'review', marekClaude, 'other-owner');
-  assert.ok(otherOwner);
-  // A request to the review unit that was created under the old rule is refused under the new one.
+  // A review request to that unit is admitted: the owner of the reviewer is the author's own owner, and nothing refuses it.
   const reviewClaim = await hubertClaude.claimUnit(sameOwner, 'review');
-  assert.equal(failureCode(await codex.call('flux_send_request', { ...codex.base('execute'), unitId: held.unitId, generation: held.claim.generation,
-    leaseId: held.claim.lease.id, recipientUnitId: sameOwner, expectedRecipientUnitVersion: reviewClaim.version, recipientConnectionId: hubertClaude.connectionId,
-    intentKey: 'review-1', parentRequestId: null, kind: 'review', target: { type: 'work', id: a.id, version: a.version },
-    sourceRefs: [{ type: 'work', id: a.id, version: a.version }], criteriaRefs: [{ type: 'work', id: a.id, version: a.version }], peerUnblocking: false })),
-  'COWORK_REVIEW_SEPARATION');
-
-  // Loosening it again takes effect for the next command, and the change is recorded once.
-  assert.equal((await put(f.hubert, { reviewSeparation: 'distinct_connection' })).status, 200);
-  assert.equal((await policy(f.marek)).reviewSeparation, 'distinct_connection');
   assert.equal(toolValue(await codex.call('flux_send_request', { ...codex.base('execute'), unitId: held.unitId, generation: held.claim.generation,
     leaseId: held.claim.lease.id, recipientUnitId: sameOwner, expectedRecipientUnitVersion: reviewClaim.version, recipientConnectionId: hubertClaude.connectionId,
     intentKey: 'review-1', parentRequestId: null, kind: 'review', target: { type: 'work', id: a.id, version: a.version },
     sourceRefs: [{ type: 'work', id: a.id, version: a.version }], criteriaRefs: [{ type: 'work', id: a.id, version: a.version }], peerUnblocking: false })).status, 'created');
-  assert.equal((await pool.query("SELECT count(*)::int AS n FROM events WHERE kind = 'project.cowork_review_policy_changed.v1' AND object_id = $1", [f.p.id])).rows[0].n, 2);
-  // Agents never meet the rule as data: it is not in the inbox or bootstrap, only in a refusal.
+  // Agents never meet a rule as data: it is not in the inbox or bootstrap.
   assert.ok(!JSON.stringify(toolValue(await hubertClaude.call('flux_coordination_inbox', { projectId: f.p.id }))).includes('distinct_'));
 });
 
