@@ -75,7 +75,24 @@ describe('the provider\'s discovery document is read lazily and retried', () => 
     assert.equal(await reachable(), false, 'cached');
     assert.equal(probes, 1);
     clock = 5000;
-    assert.equal(await reachable(), true, 'asked again after the interval');
+    // An expired answer does not wait for the provider (#847): the last known one comes at once, and a new probe runs behind it.
+    assert.equal(await reachable(), false, 'the last known answer, at once');
+    assert.equal(probes, 2, 'asked again after the interval');
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(await reachable(), true, 'the provider\'s new answer is the next one');
+    assert.equal(probes, 2);
+  });
+
+  test('only the first answer waits for a probe: an expired one never does (#847)', async () => {
+    let clock = 0; let release: (value: boolean) => void = () => undefined; let probes = 0;
+    const reachable = cachedReachability(issuer, 5000, () => { probes += 1; return probes === 1 ? Promise.resolve(true) : new Promise<boolean>((resolve) => { release = resolve; }); }, () => clock);
+    assert.equal(await reachable(), true);
+    clock = 6000;
+    // The second probe is held (a slow provider): the page still gets an answer.
+    assert.equal(await Promise.race([reachable(), new Promise<string>((resolve) => setTimeout(() => resolve('waited'), 50))]), true, 'answered without waiting');
+    release(false);
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(await reachable(), false, 'the held probe\'s answer replaced it');
   });
 });
 

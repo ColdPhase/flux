@@ -1,12 +1,13 @@
 import { redirect, useRouteLoaderData, type LoaderFunctionArgs } from 'react-router';
-import type { MyAgent, ProjectAccess, ProjectVisibility, SpaceAiState, WorkspaceRole } from '@flux/contracts';
+import { WORKSPACES_PATH, type MyAgent, type ProjectAccess, type ProjectVisibility, type SpaceAiState, type WorkspaceRole } from '@flux/contracts';
+import { request as apiRead } from '../api/client';
 import { getMe, type MeResponse } from '../api/auth';
 import { signInPath } from '../auth/logic';
 import { listAllDms } from '../api/direct-messages';
 import { listMyAgents } from '../my-agents/api';
 import { audienceLine, dmTitle, othersIn } from '../dm/names';
 import { listAccessibleProjects } from '../project/api';
-import type { WorkspaceEncryption } from '../encryption/api';
+import type { EncryptedWorkspace, WorkspaceEncryption } from '../encryption/api';
 
 /**
  * Shapes the shell renders. Projects (spaces) and direct messages come from the workspace, conversation
@@ -85,14 +86,21 @@ export function appLoader(args: LoaderFunctionArgs): Promise<ShellData> {
 }
 
 async function readShell({ request }: LoaderFunctionArgs): Promise<ShellData> {
-  const me = await getMe(request.signal);
+  // The person and the workspaces are read beside each other, then the projects and the conversations of every workspace beside each
+  // other: two round trips before the shell, not four in a row (#850, #862). Without a session the workspaces read is refused and dropped.
+  const [me, read] = await Promise.all([getMe(request.signal), apiRead<EncryptedWorkspace[]>(WORKSPACES_PATH, { signal: request.signal }).catch(() => null)]);
   if (!me) {
     const url = new URL(request.url);
     throw redirect(signInPath(`${url.pathname}${url.search}`));
   }
-  const { workspaces, lockedWorkspaces, projects: reachableSpaces } = await listAccessibleProjects(request.signal);
+  const all = read ?? await apiRead<EncryptedWorkspace[]>(WORKSPACES_PATH, { signal: request.signal });
+  const [{ workspaces, lockedWorkspaces, projects: reachableSpaces }, dms, agents] = await Promise.all([
+    listAccessibleProjects(request.signal, all),
+    // A workspace that locked since this read answers its conversations with a refusal that is ignored (F-030, #655).
+    listAllDms(request.signal, all.filter((workspace) => workspace.encryption?.state !== 'locked')),
+    listMyAgents(request.signal).catch((): MyAgent[] => []),
+  ]);
   const projects = reachableSpaces.filter((project) => project.member !== false);
-  const [dms, agents] = await Promise.all([listAllDms(request.signal, workspaces), listMyAgents(request.signal).catch((): MyAgent[] => [])]);
   const directMessages = dms.map((dm) => ({
     id: dm.id, workspaceId: dm.workspaceId, kind: dm.kind, title: dmTitle(dm, me.user.id),
     people: othersIn(dm, me.user.id).map((person) => person.name), participantIds: dm.audience.participantIds,

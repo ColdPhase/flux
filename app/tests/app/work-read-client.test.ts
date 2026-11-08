@@ -261,7 +261,7 @@ test('six client adapters make one cookie-bearing GET each and preserve failures
   assert.equal(calls.length, 6);
   for (const call of calls) {
     assert.equal(call.init.method, 'GET'); assert.equal(call.init.credentials, 'same-origin');
-    assert.equal(call.init.signal, signal); assert.equal(call.init.body, undefined);
+    assert.ok(call.init.signal instanceof AbortSignal, 'a read in flight is shared and aborted only when every caller has left (#850)'); assert.equal(call.init.body, undefined);
     assert.doesNotMatch(call.path, /offset=|\/work-items/);
   }
   fail = true;

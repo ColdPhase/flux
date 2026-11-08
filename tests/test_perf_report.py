@@ -32,12 +32,17 @@ def served(request_id, url, ms, at, status=200):
 
 
 def summarise(measure, log):
+    rows, phases = summarise_all(measure, log)
+    return {row["path"]: row for row in rows}, phases
+
+
+def summarise_all(measure, log):
     with tempfile.TemporaryDirectory() as directory:
         measure_path, log_path = Path(directory, "measure.jsonl"), Path(directory, "api.log")
         measure_path.write_text("\n".join(json.dumps(row) for row in measure) + "\n", encoding="utf-8")
         log_path.write_text("\n".join(log) + "\n", encoding="utf-8")
         rows, phases, _ = report.summarise(str(measure_path), str(log_path))
-    return {row["path"]: row for row in rows}, phases
+    return rows, phases
 
 
 def client(request_id, path):
@@ -78,6 +83,31 @@ class PerfReport(unittest.TestCase):
         rows, _ = summarise(measure, log)
         stats = rows[ME]["phases"]["warm"]
         self.assertEqual((stats["n"], stats["errors"]), (2, 1))
+
+
+
+
+class PerfTargets(unittest.TestCase):
+    """#850 AC-3: the CPU-limited phase (its name ends in "@<n> cpu") is held to p95 <= 50 ms, and the report names what is over."""
+
+    def test_a_cpu_limited_phase_passes_or_names_the_requests_over_the_target(self) -> None:
+        measure = [PLAN, {"type": "window", "phase": "warm @1.0 cpu", "start": 100, "end": 200}, client("perf-d-1", ME), client("perf-d-2", WORK_OPEN)]
+        quick = [*served("perf-d-1", ME, 8, 150), *served("perf-d-2", WORK_OPEN, 31, 151)]
+        rows, phases = summarise_all(measure, quick)
+        passing = report.target_lines(rows, phases)
+        self.assertEqual(len(passing), 1)
+        self.assertIn("warm @1.0 cpu: PASS", passing[0])
+        slow = [*served("perf-d-1", ME, 8, 150), *served("perf-d-2", WORK_OPEN, 77, 151)]
+        rows, phases = summarise_all(measure, slow)
+        failing = report.target_lines(rows, phases)[0]
+        self.assertIn("warm @1.0 cpu: FAIL", failing)
+        self.assertIn("Tasks: open p95 77 ms", failing)
+        self.assertNotIn("me p95", failing, "a request under the target is not listed")
+
+    def test_a_phase_without_a_cpu_limit_is_not_judged(self) -> None:
+        measure = [PLAN, {"type": "window", "phase": "warm", "start": 100, "end": 200}, client("perf-e-1", ME)]
+        rows, phases = summarise_all(measure, served("perf-e-1", ME, 400, 150))
+        self.assertEqual(report.target_lines(rows, phases), [])
 
 
 if __name__ == "__main__":

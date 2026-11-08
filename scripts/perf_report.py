@@ -11,7 +11,10 @@ The API's request log has no query string (F-030), so a server time is matched t
 `X-Request-ID` and the API logs it as `reqId` (#827). A log line without a known id is matched by its path alone, and only when no
 other request of the plan shares that path; otherwise the row shows "–" rather than the mixed times of several requests.
 
-Usage: perf_report.py MEASURE.jsonl API.log [--json OUT.json]
+With --targets it also holds the CPU-limited phases (their names end in "@<n> cpu", #850 AC-3) to the 2 vCPU / 4 GB targets of #862:
+the p95 of every request at most 50 ms, and says which requests are over.
+
+Usage: perf_report.py MEASURE.jsonl API.log [--json OUT.json] [--targets]
 """
 
 import json
@@ -131,6 +134,24 @@ def summarise(measure_path, log_path):
     return rows, phases, counts
 
 
+# #862, "Server: p95 <= 50 ms", judged where the host is held to two vCPUs.
+TARGET_P95_MS = 50
+
+
+def target_lines(rows, phases):
+    """One line per CPU-limited phase: every request's p95 against the target, and the ones over it."""
+    lines = []
+    for phase in sorted(name for name in phases if "@" in name):
+        every = [value for observed in phases[phase].values() for value, _ in observed]
+        overall = percentile(every, 95)
+        over = sorted(((row["phases"][phase]["p95"], row) for row in rows if row["phases"].get(phase, {}).get("p95") is not None
+                       and row["phases"][phase]["p95"] > TARGET_P95_MS), key=lambda item: -item[0])
+        verdict = "PASS" if not over and overall is not None and overall <= TARGET_P95_MS else "FAIL"
+        lines.append(f"- {phase}: {verdict}, p95 of all {len(every)} requests {fmt(overall)} ms; {len(over)} of {len(rows)} requests over {TARGET_P95_MS} ms"
+                     + ("".join(f"\n  - {row['view']}: {row['label']} p95 {fmt(value)} ms, {row['statements']} statements" for value, row in over[:12])))
+    return lines
+
+
 def fmt(value):
     return "–" if value is None else (f"{value:.0f}" if value >= 10 else f"{value:.1f}")
 
@@ -157,6 +178,10 @@ def main(argv):
               f"{row['bytes'] if row['bytes'] is not None else '–'} | " + " | ".join(cells) + " |")
     samples = {phase: sum(len(values) for values in times.values()) for phase, times in phases.items()}
     print("\nRequests per phase: " + ", ".join(f"{phase} {samples[phase]}" for phase in order))
+    if "--targets" in argv:
+        lines = target_lines(rows, phases)
+        print(f"\nTargets for 2 vCPU / 4 GB (#862): p95 at most {TARGET_P95_MS} ms, in the CPU-limited phases")
+        print("\n".join(lines) if lines else "- no CPU-limited phase ran (FLUX_PERF_PHASES without `limited`)")
     if "--json" in argv:
         with open(argv[argv.index("--json") + 1], "w", encoding="utf-8") as handle:
             json.dump({"rows": rows, "counts": [dict(row, key=None) for row in counts.values()]}, handle, indent=1)

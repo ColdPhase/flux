@@ -90,7 +90,7 @@ export async function send(path: string, init: ApiRequestInit & { accept?: strin
 }
 
 /** The `ApiError` of a failed response, read from its JSON error body when it has one. */
-export function responseError(response: Response, data: unknown): ApiError {
+export function responseError(response: Pick<Response, 'status' | 'statusText'>, data: unknown): ApiError {
   const record = (data && typeof data === 'object' ? data : {}) as { code?: unknown; message?: unknown; error?: unknown };
   const code = typeof record.code === 'string' ? record.code : null;
   const message = typeof record.message === 'string' ? record.message : typeof record.error === 'string' ? record.error : response.statusText;
@@ -104,13 +104,58 @@ export function responseError(response: Response, data: unknown): ApiError {
   return new ApiError(response.status, code, message, data);
 }
 
+interface Answer { ok: boolean; status: number; statusText: string; text: string }
+
+async function read(path: string, init: ApiRequestInit): Promise<Answer> {
+  const response = await send(path, { ...init, accept: 'application/json', batchRead: true });
+  return { ok: response.ok, status: response.status, statusText: response.statusText, text: await response.text() };
+}
+
+/**
+ * Plain reads of the same address that are in flight together share one request (#850, #862: a navigation asked for the same project
+ * and people up to four times, from its route loaders and its components). Only what is in flight is shared, never an answer that has
+ * already arrived, so nothing is served stale; each caller parses its own copy of the text, and aborting stops the request only
+ * when every caller that wanted it has aborted.
+ */
+interface SharedRead { answer: Promise<Answer>; callers: number; abort: AbortController }
+const inFlight = new Map<string, SharedRead>();
+
+function startSharedRead(path: string): SharedRead {
+  const abort = new AbortController();
+  const created: SharedRead = { answer: read(path, { signal: abort.signal }), callers: 0, abort };
+  const finish = () => { if (inFlight.get(path) === created) inFlight.delete(path); };
+  created.answer.then(finish, finish);
+  inFlight.set(path, created);
+  return created;
+}
+
+function sharedRead(path: string, signal: AbortSignal | undefined): Promise<Answer> {
+  const entry = inFlight.get(path) ?? startSharedRead(path);
+  entry.callers += 1;
+  return new Promise<Answer>((resolve, reject) => {
+    let left = false;
+    const leave = () => {
+      if (left) return;
+      left = true;
+      signal?.removeEventListener('abort', onAbort);
+      entry.callers -= 1;
+      if (entry.callers === 0) { if (inFlight.get(path) === entry) inFlight.delete(path); entry.abort.abort(); }
+    };
+    const onAbort = () => { leave(); reject(new DOMException('The operation was aborted.', 'AbortError')); };
+    if (signal?.aborted) { onAbort(); return; }
+    signal?.addEventListener('abort', onAbort, { once: true });
+    entry.answer.then((answer) => { if (!left) { left = true; signal?.removeEventListener('abort', onAbort); entry.callers -= 1; resolve(answer); } },
+      (error: unknown) => { if (!left) { left = true; signal?.removeEventListener('abort', onAbort); entry.callers -= 1; reject(error); } });
+  });
+}
+
 /** A JSON request: the parsed body of a 2xx answer, or an `ApiError`. */
 export async function request<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
-  const response = await send(path, { ...init, accept: 'application/json', batchRead: true });
-  const text = await response.text();
+  const plainRead = (!init.method || init.method === 'GET') && !init.headers && !init.keepalive && init.cache === undefined;
+  const response = plainRead ? await sharedRead(path, init.signal) : await read(path, init);
   let data: unknown = null;
-  if (text) {
-    try { data = JSON.parse(text); } catch { data = null; }
+  if (response.text) {
+    try { data = JSON.parse(response.text); } catch { data = null; }
   }
   if (!response.ok) throw responseError(response, data);
   return data as T;

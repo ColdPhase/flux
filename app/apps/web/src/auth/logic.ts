@@ -1,4 +1,5 @@
 import { redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from 'react-router';
+import type { IdentityCapabilities } from '@flux/contracts';
 import {
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
@@ -122,6 +123,27 @@ export async function redirectIfSignedIn({ request }: LoaderFunctionArgs) {
   return null;
 }
 
+/**
+ * What a sign-in or sign-out page learns before it shows (#847): the server's capabilities, or null when they cannot be read (offline:
+ * the page is the password page it always was). With single sign-on as the only way in, nothing else may show first.
+ */
+async function capabilitiesOrNull(signal: AbortSignal): Promise<IdentityCapabilities | null> {
+  try { return await getCapabilities(signal); } catch { return null; }
+}
+
+/** `/sign-in`: the capabilities are read beside the session, so the page's first frame is the right one. */
+export async function signInLoader(args: LoaderFunctionArgs) {
+  const capabilities = capabilitiesOrNull(args.request.signal);
+  const redirectTo = await redirectIfSignedIn(args);
+  if (redirectTo) return redirectTo;
+  return { capabilities: await capabilities };
+}
+
+/** `/login`, the MCP authorization step: the same page, with no session check of its own. */
+export async function loginLoader({ request }: LoaderFunctionArgs) {
+  return { capabilities: await capabilitiesOrNull(request.signal) };
+}
+
 /** The sign-up page needs to know whether sign-up is open, verified by mail, or closed (#313). */
 export async function signUpLoader(args: LoaderFunctionArgs) {
   const redirectTo = await redirectIfSignedIn(args);
@@ -225,12 +247,14 @@ export async function resetPasswordAction({ request }: ActionFunctionArgs): Prom
 }
 
 export async function signOutLoader({ request }: LoaderFunctionArgs) {
+  // The page says how the person signs in again, which depends on the server's mode (#847).
+  const capabilities = capabilitiesOrNull(request.signal);
   try {
     if (!(await getMe(request.signal))) return redirect('/sign-in');
   } catch {
     // Let the page render; the action reports the failure.
   }
-  return null;
+  return { capabilities: await capabilities };
 }
 
 /** Signs this device out; its push subscription is removed first (#41). */

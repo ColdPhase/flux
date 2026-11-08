@@ -409,7 +409,8 @@ FLUX_PERF_PHASES="count plans" ./scripts/check_performance.sh       # statements
 
 Results go to `perf-results/<time>/` (`report.md`, `measure.jsonl`, `api.log`, `plans.log`,
 `profile/`). The regression tests are `app/tests/app/server-performance.test.ts`, run by
-`./scripts/check_application.sh`.
+`./scripts/check_application.sh`. Since November the script also has a CPU-limited phase, first-screen, idle and restart
+numbers and a `restart` phase of its own: see [performance-2026-11.md](performance-2026-11.md#reproduce).
 
 ## Current-main revalidation, 2026-10-07
 

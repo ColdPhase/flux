@@ -13,8 +13,11 @@ import { EditingHTTPAdmission } from './http-admission.js';
 import { editingJSONSize } from './json-size.js';
 import { editingResourcesChanged } from './resource-observation.js';
 import type { EditingQueueTelemetry } from './telemetry.js';
+import { TICK_MS, newCadence, readDue, touch, type Cadence } from './cadence.js';
 
 interface Connection {
+  /** When it was last touched and last read on the timer (#850). */
+  cadence: Cadence;
   socket: WebSocket; context: EditingContext; output: EditingOutput; generation: string | null;
   sequence: number; previewSequence: number; assemblyCommand: string | null; assembly: CompletedAssembly | null; running: boolean; reading: boolean;
   pendingRead: boolean; closed: boolean; subscribed: boolean; lastHead: string; lastSaved: string; presence: Map<string, { hash: string; release: () => void }>; cursorBusy: boolean; cursor: RetainedCursor | null; releaseBase: () => void;
@@ -138,6 +141,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
    */
   function fanOut(docId: string) {
     const room = [...connections.values()].filter((other) => other.context.target.id === docId);
+    for (const other of room) touch(other.cadence);
     for (const other of room) if (!other.running) void catchup(other);
     for (const other of room) if (other.running) void catchup(other);
   }
@@ -210,18 +214,19 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
     for (const c of connections.values()) {
       if (c.cursor && c.cursor.expiresAt <= Date.now()) { c.cursor.release(); c.cursor = null; editingResourcesChanged(); fail(c, new ServiceUnavailableError('The latest cursor expired before admission', 'EDITING_PRESENCE_CAPACITY')); }
       if (c.assemblyCommand && !assemblies.pending.has(c.context.connectionId)) { const uuid = c.assemblyCommand; c.assembly = null; c.assemblyCommand = null; fail(c, new ServiceUnavailableError('The finite assembly deadline ended', 'EDITING_ASSEMBLY_EXPIRED'), uuid); }
-      void catchup(c);
+      if (readDue(c.cadence, c.output.busy || c.reading || c.pendingRead || c.running || !!c.assembly || !!c.assemblyCommand || !!c.cursor)) void catchup(c);
     }
-  }, 250); timer.unref();
+  }, TICK_MS); timer.unref();
   return {
     accept(socket: WebSocket, context: EditingContext) {
       if (closing || context.target.kind !== 'wiki') { socket.close(1008, 'Unavailable'); return; }
-      const c: Connection = { socket, context, output: new EditingOutput(socket, outputBudget), generation: null,
+      const c: Connection = { cadence: newCadence(), socket, context, output: new EditingOutput(socket, outputBudget), generation: null,
         sequence: 0, previewSequence: -1, assemblyCommand: null, assembly: null, running: false, reading: false, pendingRead: false, closed: false, subscribed: false, lastHead: '', lastSaved: '', presence: new Map(), cursorBusy: false, cursor: null, renewed: null, releaseBase: outputBudget.reserve(2048 + editingContextCharge(context)) };
       connections.set(context.connectionId, c);editingResourcesChanged();
       socket.once('close', () => close(c));
       socket.on('message', (data: RawData, binary) => {
         if (c.closed) return;
+        touch(c.cadence);
         // Only the binary text branch owns an assembly command. A cursor or
         // delivery-ACK refusal must never manufacture a durable text retry.
         let commandId: string | undefined;
@@ -251,7 +256,7 @@ export function wikiController(authority: ControllerAuthority, outputBudget: Edi
         } catch (error) { fail(c, error, commandId); }
       });
     },
-    notifyAll() { for (const c of connections.values()) void catchup(c); },
+    notifyAll() { for (const c of connections.values()) { touch(c.cadence); void catchup(c); } },
     notify(docId: string) { fanOut(docId); },
     async close() { closing = true; clearInterval(timer); unsubscribeCapacity(); preparation.close(); for (const c of [...connections.values()]) { c.socket.terminate(); close(c); } await authority.close();await Promise.allSettled([...operations]); },
     get externalOutputBytes() { return outputBudget.bytes; }, get assemblyBytes() { return assemblies.bytes; },

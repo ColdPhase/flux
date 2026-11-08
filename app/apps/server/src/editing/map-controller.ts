@@ -9,10 +9,13 @@ import { EditingOutput, EditingOutputBudget } from './output.js';
 import type { MapAuthority } from './map-authority.js';
 import { editingResourcesChanged } from './resource-observation.js';
 import type { EditingQueueTelemetry } from './telemetry.js';
+import { TICK_MS, newCadence, readDue, touch, type Cadence } from './cadence.js';
 
 type Command = { type: 'map-move'; command: MapMove } | { type: 'map-cancel'; command: MapCancel } | { type: 'map-presence'; command: MapPresence };
 interface Retained { value: Command; release: () => void; expiresAt: number; rawBytes: number }
 interface Connection {
+  /** When it was last touched and last read on the timer (#850). */
+  cadence: Cadence;
   context: EditingContext; socket: WebSocket; output: EditingOutput; generation: string | null;
   sequence: number; subscribed: boolean; closed: boolean; reading: boolean; pendingRead: boolean;
   working: boolean; movement: Retained | null; presence: Retained | null; releaseBase: () => void;
@@ -81,6 +84,7 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
   function notify(sketchId: string) {
     const room = [...connections.values()].filter((c) => c.context.target.id === sketchId);
     const producer = (c: Connection) => c.working || lastProducer.get(sketchId) === c;
+    for (const c of room) touch(c.cadence);
     for (const c of room) if (!producer(c)) void catchup(c);
     for (const c of room) if (producer(c)) void catchup(c);
   }
@@ -174,12 +178,15 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
     old?.release(); work(c);
   }
   const timer = setInterval(() => {
-    for (const c of connections.values()) { work(c); void catchup(c); }
-  }, 250); timer.unref();
+    for (const c of connections.values()) {
+      work(c);
+      if (readDue(c.cadence, c.output.busy || c.reading || c.pendingRead || c.working || !!c.movement || !!c.presence)) void catchup(c);
+    }
+  }, TICK_MS); timer.unref();
   return {
     accept(socket: WebSocket, context: EditingContext) {
       if (closing || context.target.kind !== 'map') { socket.close(1008, 'Unavailable'); return; }
-      const c: Connection = { context, socket, output: new EditingOutput(socket, outputBudget), generation: null, sequence: 0,
+      const c: Connection = { cadence: newCadence(), context, socket, output: new EditingOutput(socket, outputBudget), generation: null, sequence: 0,
         subscribed: false, closed: false, reading: false, pendingRead: false, working: false, movement: null, presence: null,
         releaseBase: outputBudget.reserve(2048 + editingMapContextCharge(context)), lastHead: '', transient: new Map() };
       connections.set(context.connectionId, c);editingResourcesChanged(); socket.once('close', () => close(c));
@@ -189,6 +196,8 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
           if (binary || !Buffer.isBuffer(data) || data.byteLength > EDITING_LIMITS.frameBytes) throw invalid('Bounded JSON map frames required');
           const message: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(data));
           closed(message, ['type','generation','afterSequence','deliveryId','index','gestureId','leaseId','sequence','positions','selected','cursor']);
+          // A presence heartbeat keeps this person's cursor alive; it is not something this connection has to hear back about (#850).
+          if (message.type !== 'map-presence') touch(c.cadence);
           if (message.type === 'subscribe') {
             closed(message, ['type','generation','afterSequence']);
             if (c.subscribed || !id(message.generation) || !integer(message.afterSequence, 0, Number.MAX_SAFE_INTEGER)) throw invalid('Invalid map subscription');
@@ -213,7 +222,7 @@ export function mapController(authority: MapAuthority, outputBudget: EditingOutp
         } catch (error) { fail(c, error); }
       });
     },
-    notify, notifyAll() { for (const c of connections.values()) void catchup(c); },
+    notify, notifyAll() { for (const c of connections.values()) { touch(c.cadence); void catchup(c); } },
     async close() { closing = true; clearInterval(timer); for (const c of [...connections.values()]) { c.socket.terminate(); close(c); } await authority.close();await Promise.allSettled([...operations]); },
     get externalOutputBytes() { return outputBudget.bytes; },
     get resources(){return{mapConnections:connections.size,mapOperations:operations.size,mapPendingMovement:pendingMovement,mapPendingPresence:pendingPresence};},
