@@ -1,6 +1,7 @@
 """Own native work details, complete relation/choice pages and private command continuity."""
 from __future__ import annotations
 import json
+import time
 import re
 import unittest
 import uuid
@@ -329,11 +330,14 @@ class NativeDetailsJourney(unittest.TestCase):
                 page.route("**/work-relations?**", hold)
                 page.goto(f"/projects/{self.project}/tasks?open=work:{task['id']}")
                 panel = page.locator(f".wd[data-detail-id='{task['id']}']")
-                expect(panel).to_be_visible()
-                expect(panel.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "loading")
+                # The panel waits for its relationships' first read (#899): the task's skeleton stands in, so nothing moves
+                # when they arrive, and there is no false empty state meanwhile.
+                deadline = time.monotonic() + 10
+                while not held and time.monotonic() < deadline:
+                    page.wait_for_timeout(50)
+                expect(page.locator("#details [aria-busy='true']").first).to_be_visible()
+                expect(panel).to_have_count(0)
                 nav = panel.get_by_role("navigation", name="Object relationship pages")
-                expect(nav).to_have_attribute("aria-busy", "true")
-                expect(panel).not_to_contain_text("Added directly on the Tasks tab.")
                 self.assertTrue(held, "the loading state comes from actual held relation reads")
                 holding[0] = False
                 # Only this task's selector is held. Retain every genuine observation
@@ -352,7 +356,8 @@ class NativeDetailsJourney(unittest.TestCase):
                 self.ready(panel)
                 expect(nav).to_have_count(0)
                 expect(panel).not_to_contain_text("No rows on this page")
-                expect(panel).to_contain_text("Added directly on the Tasks tab.")
+                # A task added on Tasks has no source: its "Came from" row is hidden (#868).
+                expect(panel.locator(".wd-row dt", has_text="Came from")).to_have_count(0)
                 shot(page, f"detail-relations-empty-{'phone' if phone else 'desktop'}")
 
                 page.unroute("**/work-relations?**", hold)
@@ -373,7 +378,7 @@ class NativeDetailsJourney(unittest.TestCase):
                 panel.get_by_role("button", name="Refresh relationships", exact=True).click()
                 self.ready(panel)
                 expect(nav).to_have_count(0)
-                expect(panel).to_contain_text("Added directly on the Tasks tab.")
+                expect(panel.locator(".wd-row dt", has_text="Came from")).to_have_count(0)
         self.assertEqual(self.native("work", task["id"]), before, "empty/read/retry never changes native work or links")
 
     def test_12_empty_later_relation_page_still_returns_to_first_page(self):

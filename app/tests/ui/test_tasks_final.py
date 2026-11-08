@@ -4,7 +4,7 @@ Runs with the other tests/ui journeys through scripts/check_ui.sh against the ru
 application. One project with open, in-progress, blocked and done tasks owned by two people and an
 agent. The tests cover what the renders show at 1440x900 and 390x844 in light and dark (state as
 glyph plus word, #number, title, owner as a 20 px avatar or Kreska, inverted Blocked pill, a phone
-list with no toolbar), one tap on the glyph and the keys 1 to 5 changing the state, swipe left then
+list with the one control row), one tap on the glyph and the keys 1 to 4 changing the state, swipe left then
 Done on the phone, a toast with Undo (button and key Z) that restores the previous state through the
 API, and the board's drag and drop keyboard alternative with its announcement. Every change is
 checked against the API.
@@ -37,7 +37,7 @@ ENCLOSURE = "Design a weatherproof enclosure that volunteers can open without to
 BLOCKER = "the probe dimensions from the supplier"
 CALIBRATE = "Calibrate the probes at two soil depths"
 LORA = "Measure LoRa range from the far east beds"
-WORD = {"open": "Open", "in_progress": "In progress", "blocked": "Blocked", "done": "Done", "not_pursued": "Not pursued"}
+WORD = {"open": "To do", "in_progress": "Doing", "blocked": "Blocked", "done": "Done", "not_pursued": "Done"}
 # The phone's feedback keeps an 8 px gap above the real footer (the Create control on a project's views); the toast is
 # fixed to the viewport and the control hangs from the app's own 100dvh height. Observed on main with Playwright 1.62.0
 # WebKit (2026-10-23, #637): in the context opened at 390x844 a fixed 100dvh probe measured 843.984375 while
@@ -105,7 +105,8 @@ class TasksFinalJourney(unittest.TestCase):
 
     def tasks(self, who: str = "ada", *, phone: bool = False, dark: bool = False, reduced: bool = False) -> Page:
         page = self.page(who, phone=phone, dark=dark, reduced=reduced)
-        page.goto(f"/projects/{self.ids['project']}/tasks")
+        # The phone has both views now (#868); its list tests ask for the List.
+        page.goto(f"/projects/{self.ids['project']}/tasks" + ("?view=list" if phone else ""))
         expect(page.locator(".tb-board, .ws-task").first).to_be_visible()
         return page
 
@@ -191,22 +192,21 @@ class TasksFinalJourney(unittest.TestCase):
         for dark in (False, True):
             with self.subTest(dark=dark):
                 page = self.tasks(dark=dark)
-                for name, status in (("Open", "open"), ("In progress", "in_progress"), ("Done", "done")):
+                for name, status in (("To do", "open"), ("Doing", "in_progress"), ("Blocked", "blocked"), ("Done", "done")):
                     column = page.get_by_role("region", name=name, exact=True)
                     expect(column.locator(".tb-col__head .ui-glyph--" + status)).to_have_count(1)
                     expect(column.locator(".tb-col__h")).to_have_text(name)
-                # Number, title, owner; "Blocked" is an inverted pill; the owner is a 20 px avatar or Kreska.
+                # Number, title, owner; a blocked card says what it waits for in one line (#868); the owner is a 20 px avatar or Kreska.
                 supplier = self.card(page, SUPPLIER)
                 expect(supplier.locator(".ui-task-number")).to_have_text(f"#{self.numbers['supplier']}")
                 expect(supplier.get_by_role("button", name=SUPPLIER, exact=True)).to_be_visible()
                 expect(supplier.locator(".tb-card__name")).to_have_text("You")
                 self.assertEqual(supplier.locator(".tb-av").evaluate("el => [el.offsetWidth, el.offsetHeight]"), [20, 20])
                 expect(self.card(page, LABELS).locator(".tb-card__owner")).to_have_text("No owner")
-                enclosure = self.card(page, ENCLOSURE)
-                pill = enclosure.locator(".ui-pill--inv")
-                expect(pill).to_have_text("Blocked")
-                self.assertGreaterEqual(page.evaluate(MEASURE, {"selector": ".tb-card .ui-pill--inv"})["ratio"], 4.5)
-                expect(self.card(page, SUPPLIER).locator(".ui-pill--inv")).to_have_count(0)
+                enclosure = self.card(page.get_by_role("region", name="Blocked", exact=True), ENCLOSURE)
+                expect(enclosure.locator(".tb-card__blocker")).to_have_text(f"Waiting for {BLOCKER}")
+                self.assertGreaterEqual(page.evaluate(MEASURE, {"selector": ".tb-card__blocker"})["ratio"], 4.5)
+                expect(page.locator(".tb-card .ui-pill--inv")).to_have_count(0)
                 agent = self.card(page, CALIBRATE).locator(".tb-card__owner")
                 self.assertEqual(agent.locator(".kreska").first.evaluate("el => el.getBoundingClientRect().width"), 20)
                 expect(self.card(page, SCHOOL).locator(".tb-av")).to_have_text("JB")
@@ -234,7 +234,7 @@ class TasksFinalJourney(unittest.TestCase):
         expect(self.row(page, SUPPLIER).locator(".ws-item__s")).to_contain_text("you")
         shot(page, "346-tasks-list-1440-light")
 
-    # ---------------------------------------------------------------- AC-2: one tap, keys 1-5, Undo
+    # ---------------------------------------------------------------- AC-2: one tap, keys 1-4, Undo
 
     def test_04_one_tap_on_the_glyph_changes_the_state_and_undo_restores_it(self) -> None:
         for dark in (False, True):
@@ -244,14 +244,14 @@ class TasksFinalJourney(unittest.TestCase):
                 self.set_status(page, "supplier", "open")
                 row = self.row(page, SUPPLIER)
                 before = self.task(page, "supplier")
-                row.get_by_role("button", name="Open. Set to In progress").click()
+                row.get_by_role("button", name="To do. Set to Doing").click()
                 toast = page.locator(".ui-toast")
-                expect(toast).to_contain_text(f"#{self.numbers['supplier']} is now in progress")
+                expect(toast).to_contain_text(f"#{self.numbers['supplier']} moved to Doing")
                 self.assertEqual(self.task(page, "supplier")["status"], "in_progress")
                 expect(self.row(page, SUPPLIER).locator(".ws-task__glyph .ui-glyph--in_progress")).to_have_count(1)
                 # Undo is a click on the toast button, through the same versioned command.
                 toast.get_by_role("button", name="Undo").click()
-                expect(page.locator(".ui-toast").filter(has_text="back to open")).to_be_visible()
+                expect(page.locator(".ui-toast").filter(has_text="back to To do")).to_be_visible()
                 after = self.task(page, "supplier")
                 self.assertEqual(after["status"], "open")
                 self.assertEqual(after["version"], before["version"] + 2, "change and undo are two stored versions")
@@ -270,11 +270,11 @@ class TasksFinalJourney(unittest.TestCase):
         self.assertEqual(self.task(page, "supplier")["status"], "done")
         expect(self.card(page.get_by_role("region", name="Done", exact=True), SUPPLIER).get_by_role("button", name=SUPPLIER, exact=True)).to_be_focused()
         page.keyboard.press("z")
-        expect(page.locator(".ui-toast").filter(has_text="back to open")).to_be_visible()
+        expect(page.locator(".ui-toast").filter(has_text="back to To do")).to_be_visible()
         self.assertEqual(self.task(page, "supplier")["status"], "open")
-        expect(self.card(page.get_by_role("region", name="Open", exact=True), SUPPLIER)).to_be_visible()
-        # Every key: 1 Open, 2 In progress, 3 Blocked, 4 Done, 5 Not pursued.
-        for key, status in (("2", "in_progress"), ("3", "blocked"), ("5", "not_pursued"), ("1", "open")):
+        expect(self.card(page.get_by_role("region", name="To do", exact=True), SUPPLIER)).to_be_visible()
+        # Every key: 1 To do, 2 Doing, 3 Blocked, 4 Done (#868: four states).
+        for key, status in (("2", "in_progress"), ("3", "blocked"), ("1", "open")):
             self.card(page, SUPPLIER).get_by_role("button", name=SUPPLIER, exact=True).focus()
             page.keyboard.press(key)
             self.wait_status(page, "supplier", status)
@@ -283,8 +283,7 @@ class TasksFinalJourney(unittest.TestCase):
         row = self.row(page, SUPPLIER)
         row.locator(".ws-item").focus()
         page.keyboard.press("2")
-        expect(page.locator(".ui-toast").filter(has_text="in progress").last).to_be_visible()
-        self.assertEqual(self.task(page, "supplier")["status"], "in_progress")
+        self.wait_status(page, "supplier", "in_progress")
         expect(self.row(page, SUPPLIER).locator(".ws-item")).to_be_focused()
         # Since #377 the only text field for a task is the Create window's title: Z typed there is text, and closing the window leaves Z on the row free to undo.
         field = open_from_tasks(page)
@@ -323,9 +322,9 @@ class TasksFinalJourney(unittest.TestCase):
             page.wait_for_function("window.__groupControl.doneOpen && window.__groupControl.doneFinished")
             page.evaluate("()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
             phase['undo']=True;page.keyboard.press('z')
-            expect(page.locator('.ui-toast').filter(has_text='back to open')).to_be_visible()
+            expect(page.locator('.ui-toast').filter(has_text='back to To do')).to_be_visible()
             page.wait_for_function("window.__groupControl.undoOpen && window.__groupControl.undoFinished")
-            target=self.card(page.get_by_role('region',name='Open',exact=True),SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True)
+            target=self.card(page.get_by_role('region',name='To do',exact=True),SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True)
             target.focus();expect(target).to_be_focused()
             page.evaluate("window.__focusedBeforeRefresh=document.activeElement")
             finished=[item for item in held if item[0]=='finished']
@@ -335,7 +334,7 @@ class TasksFinalJourney(unittest.TestCase):
             before=page.evaluate("id=>({connected:window.__focusedBeforeRefresh.isConnected,active:document.activeElement.className,cards:document.querySelectorAll('[data-card-id=\"'+id+'\"]').length})",supplier)
             page.keyboard.press('2')
             self.wait_status(page,'supplier','in_progress')
-            expect(self.card(page.get_by_role('region',name='In progress',exact=True),SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True)).to_be_focused()
+            expect(self.card(page.get_by_role('region',name='Doing',exact=True),SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True)).to_be_focused()
         finally:
             print('\nTASK_GROUP_CONTROL '+json.dumps({'seen':seen,'patches':events,'browser':page.evaluate('window.__groupControl'),'beforeKey':locals().get('before')}))
             for _,route,response in held:route.fulfill(response=response)
@@ -367,9 +366,9 @@ class TasksFinalJourney(unittest.TestCase):
             page.wait_for_function("window.__groupControl.doneOpen && window.__groupControl.doneFinished")
             page.evaluate("()=>new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))")
             phase['undo']=True;page.keyboard.press('z')
-            expect(page.locator('.ui-toast').filter(has_text='back to open')).to_be_visible()
+            expect(page.locator('.ui-toast').filter(has_text='back to To do')).to_be_visible()
             page.wait_for_function("window.__groupControl.undoOpen && window.__groupControl.undoFinished")
-            target=self.card(page.get_by_role('region',name='Open',exact=True),SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True)
+            target=self.card(page.get_by_role('region',name='To do',exact=True),SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True)
             target.focus();expect(target).to_be_focused()
             page.evaluate("window.__focusedBeforeRefresh=document.activeElement")
             finished=[item for item in held if item[0]=='finished']
@@ -380,7 +379,7 @@ class TasksFinalJourney(unittest.TestCase):
             phase['all']=True
             page.keyboard.press('2')
             self.wait_status(page,'supplier','in_progress')
-            expect(self.card(page.get_by_role('region',name='In progress',exact=True),SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True)).to_be_focused()
+            expect(self.card(page.get_by_role('region',name='Doing',exact=True),SUPPLIER).get_by_role('button',name=SUPPLIER,exact=True)).to_be_focused()
             current=self.task(page,'supplier')
             self.api(peer,'PATCH',f"/api/v1/work/{supplier}",{'owner':{'kind':'human','id':JONAS['id']},'clientCommandId':str(uuid.uuid4())},status=200,headers={'if-match':f'"{current["version"]}"'})
             phase['peer']=True
@@ -433,7 +432,7 @@ class TasksFinalJourney(unittest.TestCase):
         page.reload()
         self.row(page, LABELS).locator(".ws-item").focus()
         page.keyboard.press("3")
-        expect(page.locator(".ui-toast")).to_contain_text(f"#{self.numbers['labels']} is now blocked")
+        expect(page.locator(".ui-toast")).to_contain_text(f"#{self.numbers['labels']} moved to Blocked")
         blocked = self.task(page, "labels")
         self.assertEqual((blocked["status"], blocked["blocker"]), ("blocked", None))
         page.keyboard.press("z")
@@ -457,26 +456,28 @@ class TasksFinalJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- AC-1, AC-2, AC-4: the phone
 
-    def test_07_the_phone_list_is_drawn_with_no_toolbar(self) -> None:
+    def test_07_the_phone_list_has_the_one_control_row(self) -> None:
         for dark in (False, True):
             with self.subTest(dark=dark):
                 page = self.tasks(phone=True, dark=dark)
                 # Spokój (#507): no capsule in a project's views; Search is the header's round control.
                 expect(page.locator(".phone-dock__search")).to_have_count(0)
                 expect(page.locator("header").get_by_role("button", name="Search", exact=True)).to_have_count(1)
-                expect(page.locator(".tb-bar")).to_be_hidden()  # no search, board switch, Decisions or New Task tools
-                expect(page.get_by_role("radiogroup", name="Show tasks as")).to_be_hidden()
-                expect(page.get_by_label("Search tasks")).to_be_hidden()
-                mine = page.get_by_role("group", name="Whose tasks")
-                expect(mine.get_by_role("button")).to_have_count(2)
-                expect(mine.get_by_role("button", name="All", exact=True)).to_have_attribute("aria-pressed", "true")
+                # The computer's one control row (#868): Board | List, Mine and Search, and no "+ Task" (the floating Create).
+                expect(page.locator(".tb-bar")).to_be_visible()
+                expect(page.get_by_role("radiogroup", name="Show tasks as")).to_be_visible()
+                expect(page.get_by_label("Search tasks")).to_be_visible()
+                expect(page.get_by_role("button", name="New Task", exact=True)).to_have_count(0)
+                expect(page.get_by_role("group", name="Whose tasks")).to_have_count(0)
+                mine = page.locator(".tb-bar")
+                expect(mine.get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "false")
                 enclosure = self.row(page, ENCLOSURE)
                 expect(enclosure.locator(".ui-pill--inv")).to_have_text("Blocked")
                 expect(enclosure.locator(".ws-item__s")).to_have_text(f"#{self.numbers['enclosure']} · you · Blocked · waiting for {BLOCKER}", use_inner_text=True)  # the owner stays named and the word accompanies the glyph
                 expect(enclosure.locator(".ws-task__glyph .ui-glyph--blocked")).to_have_count(1)
                 expect(self.row(page, CALIBRATE).locator(".ws-item__s")).to_contain_text("Claude Code")
                 expect(self.row(page, CALIBRATE).locator(".ws-item__s .agent-tag")).to_have_count(1)
-                expect(self.row(page, CALIBRATE).locator(".ws-task__word")).to_contain_text("In progress")
+                expect(self.row(page, CALIBRATE).locator(".ws-task__word")).to_contain_text("Doing")
                 self.assertTrue(self.row(page, CALIBRATE).locator('.ws-task__word').evaluate("""el => {
                     const parent = el.closest('.ws-item__s').getBoundingClientRect();
                     const range = document.createRange(); range.selectNodeContents(el);
@@ -488,7 +489,7 @@ class TasksFinalJourney(unittest.TestCase):
                     box = owner.bounding_box()
                     assert box
                     self.assertEqual((box['width'], box['height']), (20, 20), '#346 AC-1: owner marks are 20 CSS px')
-                for control in (*mine.get_by_role("button").all(), self.row(page, SCHOOL).locator(".ws-task__glyph"), self.row(page, SCHOOL).locator(".ws-item")):
+                for control in (mine.get_by_role("button", name="Mine", exact=True), self.row(page, SCHOOL).locator(".ws-task__glyph"), self.row(page, SCHOOL).locator(".ws-item")):
                     box = control.bounding_box()
                     assert box
                     self.assertGreaterEqual(box["height"], 44, "touch target")
@@ -521,7 +522,7 @@ class TasksFinalJourney(unittest.TestCase):
                 expect(page.locator(".ui-toast").filter(has_text=f"#{self.numbers['labels']} done").locator(".kreska")).to_have_attribute("data-expression", "wink")
                 self.assertEqual(self.task(page, "labels")["status"], "done")
                 toast.get_by_role("button", name="Undo").tap()
-                expect(page.locator(".ui-toast").filter(has_text="back to open")).to_be_visible()
+                expect(page.locator(".ui-toast").filter(has_text="back to To do")).to_be_visible()
                 after = self.task(page, "labels")
                 self.assertEqual(after["status"], "open")
                 self.assertEqual(after["version"], before["version"] + 2)
@@ -540,10 +541,10 @@ class TasksFinalJourney(unittest.TestCase):
         page.reload()
         row = self.row(page, SCHOOL)
         row.locator(".ws-task__glyph").tap()
-        expect(page.locator(".ui-toast")).to_contain_text(f"#{self.numbers['school']} is now in progress")
+        expect(page.locator(".ui-toast")).to_contain_text(f"#{self.numbers['school']} moved to Doing")
         self.assertEqual(self.task(page, "school")["status"], "in_progress")
         page.locator(".ui-toast").get_by_role("button", name="Undo").tap()
-        expect(page.locator(".ui-toast").filter(has_text="back to open")).to_be_visible()
+        expect(page.locator(".ui-toast").filter(has_text="back to To do")).to_be_visible()
         self.assertEqual(self.task(page, "school")["status"], "open")
 
     # ---------------------------------------------------------------- AC-3: drag and drop keeps its keyboard way
@@ -553,17 +554,17 @@ class TasksFinalJourney(unittest.TestCase):
         self.set_status(page, "labels", "open")
         page.reload()
         spoken = page.locator(".tb-wrap > p[aria-live]")
-        open_, doing = page.get_by_role("region", name="Open", exact=True), page.get_by_role("region", name="In progress", exact=True)
+        open_, doing = page.get_by_role("region", name="To do", exact=True), page.get_by_role("region", name="Doing", exact=True)
         button = self.card(open_, LABELS).get_by_role("button", name=LABELS, exact=True)
         button.focus()
         page.keyboard.press("Space")
-        expect(spoken).to_contain_text(f"Picked up “{LABELS}” in Open.")
+        expect(spoken).to_contain_text(f"Picked up “{LABELS}” in To do.")
         page.keyboard.press("ArrowRight")
-        expect(spoken).to_contain_text("In progress.")
+        expect(spoken).to_contain_text("Doing.")
         page.keyboard.press("Space")
         expect(self.card(doing, LABELS)).to_be_visible()
         # The move is confirmed in the bottom toast with Undo, so no banner shifts the board (#763 C3).
-        expect(page.locator(".ui-toast").filter(has_text=f"#{self.numbers['labels']} is now in progress").get_by_role("button", name="Undo")).to_be_visible()
+        expect(page.locator(".ui-toast").filter(has_text=f"#{self.numbers['labels']} moved to Doing").get_by_role("button", name="Undo")).to_be_visible()
         expect(page.locator(".tb-note--ok")).to_have_count(0)
         self.assertEqual(self.task(page, "labels")["status"], "in_progress")
         # The mouse still drags a card into another column, once its arrival has settled.
@@ -594,9 +595,9 @@ class TasksFinalJourney(unittest.TestCase):
                     page.add_style_tag(content=f'html {{ font-size: {16 * factor}px !important; }}')
                     row = self.row(page, LABELS)
                     before = self.task(page, 'labels')
-                    row.get_by_role('button', name='Open. Set to In progress').tap()
+                    row.get_by_role('button', name='To do. Set to Doing').tap()
                     toast = page.locator('.ui-toast')
-                    expect(toast).to_contain_text('in progress')
+                    expect(toast).to_contain_text('moved to Doing')
                     # A changing safe-area footprint must move an already-visible toast.
                     if safe_padding:
                         page.add_style_tag(content=f'.ui-bottomnav {{ padding-bottom: {safe_padding}px !important; }}')
@@ -611,7 +612,7 @@ class TasksFinalJourney(unittest.TestCase):
                         page.set_viewport_size({'width': width, 'height': 844})
                         self.feedback_geometry(page, 'footer returns', dark, width, factor)
                     toast.get_by_role('button', name='Undo', exact=True).tap()
-                    expect(page.locator('.ui-toast').filter(has_text='back to open')).to_be_visible()
+                    expect(page.locator('.ui-toast').filter(has_text='back to To do')).to_be_visible()
                     stored = self.task(page, 'labels')
                     self.assertEqual((stored['status'], stored['version']), ('open', before['version'] + 2))
                     page.locator('.ui-toast__close').last.tap()
@@ -620,7 +621,7 @@ class TasksFinalJourney(unittest.TestCase):
                         shot(page, f"346-tasks-phone-320-{'dark' if dark else 'light'}")
                     page.wait_for_load_state('networkidle')
                     page.context.set_offline(True)
-                    row.get_by_role('button', name='Open. Set to In progress').tap()
+                    row.get_by_role('button', name='To do. Set to Doing').tap()
                     expect(page.locator('.ui-toast--danger')).to_contain_text('Flux could not be reached')
                     self.feedback_geometry(page, 'offline', dark, width, factor)
                     message = page.locator('.ui-toast__msg')
@@ -653,9 +654,9 @@ class TasksFinalJourney(unittest.TestCase):
                     last = self.row(page, LORA).locator('.ws-item__t')
                     last.scroll_into_view_if_needed()
                     before = self.task(page, 'supplier')
-                    self.row(page, SUPPLIER).get_by_role('button', name='Open. Set to In progress').click()
+                    self.row(page, SUPPLIER).get_by_role('button', name='To do. Set to Doing').click()
                     self.wait_status(page, 'supplier', 'in_progress')
-                    toast = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} is now in progress")
+                    toast = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} moved to Doing")
                     expect(toast.get_by_role('button', name='Undo', exact=True)).to_be_visible()
                     # The person scans the last task while feedback is shown; focusing it must
                     # preserve its title rather than let the overlay conceal a focused row.
@@ -665,7 +666,7 @@ class TasksFinalJourney(unittest.TestCase):
                     with self.subTest(feedback='available Undo'):
                         self.desktop_feedback_geometry(page, pane, last, 'undo', dark, height)
                     page.keyboard.press('z')
-                    aftermath = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} back to open")
+                    aftermath = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} back to To do")
                     expect(aftermath).to_be_visible()
                     self.wait_status(page, 'supplier', 'open')
                     self.assertEqual(self.task(page, 'supplier')['version'], before['version'] + 2)
@@ -699,7 +700,7 @@ class TasksFinalJourney(unittest.TestCase):
                     else:
                         route.continue_()
                 page.route(address, hold)
-                self.row(page, SUPPLIER).get_by_role('button', name='Open. Set to In progress').click()
+                self.row(page, SUPPLIER).get_by_role('button', name='To do. Set to Doing').click()
                 page.wait_for_function("window.__statePatchHeld === true")
                 self.assertEqual(len(held), 1)
                 self.assertEqual(held[0][1].status, 200, 'the delayed answer is a genuinely stored change')
@@ -713,7 +714,7 @@ class TasksFinalJourney(unittest.TestCase):
                 # Chromium's Fetch.disable against the state change's follow-up /me request
                 # (microsoft/playwright#41802); that request can disappear before reaching the API.
                 # Later requests pass through above, so only this first PATCH is held.
-                toast = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} is now in progress")
+                toast = page.locator('.ui-toast').filter(has_text=f"#{self.numbers['supplier']} moved to Doing")
                 expect(toast).to_be_visible()
                 page.wait_for_timeout(300)
                 expect(middle).to_be_focused()
@@ -728,7 +729,7 @@ class TasksFinalJourney(unittest.TestCase):
                 page.wait_for_function("() => {const pane=document.querySelector('.tb-root > .pane-scroll').getBoundingClientRect(), root=document.querySelector('.tb-root').getBoundingClientRect();return Math.abs(pane.bottom-root.bottom)<=1;}", timeout=8000)
                 page.get_by_role('radio', name='List', exact=True).click()
                 page.set_viewport_size({'width': 390, 'height': 844})
-                expect(page.get_by_role('group', name='Whose tasks')).to_be_visible()
+                expect(page.locator('.tb-bar').get_by_role('button', name='Mine', exact=True)).to_be_visible()
                 page.wait_for_function("() => {const pane=document.querySelector('.tb-root > .pane-scroll').getBoundingClientRect(), root=document.querySelector('.tb-root').getBoundingClientRect();return Math.abs(pane.bottom-root.bottom)<=1;}", timeout=8000)
                 page.set_viewport_size({'width': 1440, 'height': 900})
                 middle.scroll_into_view_if_needed()

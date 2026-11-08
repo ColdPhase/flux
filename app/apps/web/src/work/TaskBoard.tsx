@@ -1,23 +1,21 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type RefObject } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { useRevalidator } from 'react-router';
-import type { ObjectLink, Project, ProjectWorkView, WorkGroup, WorkItem, WorkRelations, WorkRowProjection, WorkStatus } from '@flux/contracts';
+import type { Project, ProjectWorkView, WorkGroup, WorkItem, WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { ApiError, NetworkError } from '../api/client';
-import { AgentTag, Icon, IconButton, Kreska, StatusGlyph, initials, usePop, useRowMotion, type IconName } from '../ui';
+import { AgentTag, Icon, Kreska, StatusGlyph, initials, useRowMotion } from '../ui';
 import { updateWork } from './api';
-import { useShellActions } from '../app/shellContext';
-import { STATUS_LABEL, blockedLine, isFinished, taskNumber } from './format';
+import { DROPPED, STATUS_LABEL, blockedLine, dueShort, isFinished, taskNumber } from './format';
 import { STATE_KEYS, useStateChanges } from './taskState';
-import { getProjectWorkView, getWorkRelations, workRelationReadUrl, workViewReadUrl } from './read-api';
+import { getProjectWorkView, workViewReadUrl } from './read-api';
 import type { ReadState } from './read-state';
 import { useWorkRead } from './useWorkRead';
 import { useAgentOwners } from '../agents/owners';
 import './board.css';
-import { RefLink } from '../place/origin';
 
-// The Tasks board (#136, UI116-4): three columns over the existing statuses, no new status and no
-// card order. A card moves by dragging with a mouse or pen, by keyboard (Space, arrows, Space) or
-// with its "Move to…" menu on any device; every move is the existing versioned status command.
+// The Tasks board (#136, UI116-4, #868): four columns, the four states, and no
+// card order. A card moves by dragging with a mouse or pen or by keyboard (Space, arrows, Space); on touch its state changes
+// in its panel. Every move is the existing versioned status command.
 //
 // Cards are bounded native rows (#155), never a full project work collection: each column is the
 // first page (at most 50, newest first) of its native Tasks group, read for this account and
@@ -25,20 +23,22 @@ import { RefLink } from '../place/origin';
 // through all of it. Where a card came from is one bounded source-relation read for the loaded
 // cards. See docs/development/performance/2026-10-04-native-task-board-integration.md.
 
-export type ColumnId = 'open' | 'in_progress' | 'done';
+export type ColumnId = 'open' | 'in_progress' | 'blocked' | 'done';
 
-interface Column { id: ColumnId; label: string; status: WorkStatus }
+interface Column { id: ColumnId; label: string; status: WorkStatus; group: WorkGroup }
 
+/** The four columns are the four states (#868): To do, Doing, Blocked and Done. */
 export const COLUMNS: Column[] = [
-  { id: 'open', label: 'Open', status: 'open' },
-  { id: 'in_progress', label: 'In progress', status: 'in_progress' },
-  { id: 'done', label: 'Done', status: 'done' },
+  { id: 'open', label: STATUS_LABEL.open, status: 'open', group: 'open' },
+  { id: 'in_progress', label: STATUS_LABEL.in_progress, status: 'in_progress', group: 'in_progress' },
+  { id: 'blocked', label: STATUS_LABEL.blocked, status: 'blocked', group: 'blocked' },
+  { id: 'done', label: STATUS_LABEL.done, status: 'done', group: 'finished' },
 ];
-const LABEL: Record<ColumnId, string> = { open: 'Open', in_progress: 'In progress', done: 'Done' };
+const LABEL: Record<ColumnId, string> = { open: STATUS_LABEL.open, in_progress: STATUS_LABEL.in_progress, blocked: STATUS_LABEL.blocked, done: STATUS_LABEL.done };
 
-/** Blocked work stays with the work in progress; work that is not pursued is finished with the done work. */
+/** A dropped task is Done with a "dropped" note, in the Done column. */
 export const columnOf = (status: WorkStatus): ColumnId =>
-  status === 'open' ? 'open' : status === 'in_progress' || status === 'blocked' ? 'in_progress' : 'done';
+  status === 'open' ? 'open' : status === 'in_progress' ? 'in_progress' : status === 'blocked' ? 'blocked' : 'done';
 
 /** A short, stable label of the task's own id; the full id is its title and in Details. */
 export const shortId = (id: string) => id.replace(/-/g, '').slice(0, 8).toUpperCase();
@@ -52,25 +52,6 @@ export function matchesTask(item: Pick<BoardTask, 'id' | 'number' | 'title' | 'o
   const q = query.toLowerCase().trim();
   if (/^#\d+$/.test(q)) return taskNumber(item) === q;
   return [item.title, item.owner?.name ?? '', item.blocker ?? '', shortId(item.id), item.id].some((text) => text.toLowerCase().includes(q));
-}
-
-interface Origin { to: string; kind: string; icon: IconName; title: string }
-
-/**
- * Where the task came from: its first source message, thought or material version, from the
- * board's bounded source-relation read. A plan revision is shown in the task's Details.
- */
-function origin(itemId: string, links: ObjectLink[], projectId: string): Origin | null {
-  for (const link of links) {
-    if (link.from.type !== 'work' || link.from.id !== itemId || link.role !== 'source') continue;
-    if (link.to.type === 'message' && link.conversationId)
-      return { to: `/projects/${projectId}/conversations/${link.conversationId}#message-${link.to.id}`, kind: 'From a message', icon: 'chat', title: link.toTitle };
-    if (link.to.type === 'thought' && link.sketchId)
-      return { to: `/projects/${projectId}/map/${link.sketchId}#thought-${link.to.id}`, kind: 'From a thought', icon: 'map', title: link.toTitle };
-    if (link.to.type === 'material')
-      return { to: `/materials/${link.to.id}/versions/${link.to.version}`, kind: `From material version ${link.to.version}`, icon: 'doc', title: link.toTitle };
-  }
-  return null;
 }
 
 /** A calm sentence for a refused or failed move; the board then shows the stored state. */
@@ -99,100 +80,41 @@ interface Drag {
 }
 
 
-/** One card's "Move to…" menu: the three columns, the current one checked, then Details. */
-function MoveMenu({ item, column, busy, buttonRef, onMove, onOpen, onClose, popProps }: {
-  item: BoardTask; column: ColumnId; busy: boolean; buttonRef: RefObject<HTMLButtonElement | null>;
-  onMove: (to: ColumnId) => void; onOpen: () => void; onClose: (restore: boolean) => void;
-  popProps?: ReturnType<typeof usePop>['props'];
-}) {
-  const ref = useRef<HTMLDivElement>(null);
-  const close = useRef(onClose);
-  useEffect(() => { close.current = onClose; });
-  useEffect(() => {
-    const menu = ref.current;
-    if (!menu) return;
-    const choices = [...menu.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)')];
-    (choices.find((choice) => choice.getAttribute('aria-checked') === 'false') ?? choices[0])?.focus();
-    const onPointer = (event: PointerEvent) => {
-      if (!menu.contains(event.target as Node) && !buttonRef.current?.contains(event.target as Node)) close.current(false);
-    };
-    document.addEventListener('pointerdown', onPointer);
-    return () => document.removeEventListener('pointerdown', onPointer);
-  }, [buttonRef]);
-  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const choices = [...(ref.current?.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]:not(:disabled)') ?? [])];
-    const index = choices.indexOf(document.activeElement as HTMLButtonElement);
-    const focus = (next: number) => { event.preventDefault(); choices[(next + choices.length) % choices.length]?.focus(); };
-    if (event.key === 'ArrowDown') focus(index + 1);
-    else if (event.key === 'ArrowUp') focus(index - 1);
-    else if (event.key === 'Home') focus(0);
-    else if (event.key === 'End') focus(choices.length - 1);
-    else if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onClose(true); }
-    else if (event.key === 'Tab') onClose(false);
-  };
-  return (
-    <div {...popProps} ref={ref} className="tb-menu" role="menu" aria-label={`Move “${item.title}”`} onKeyDown={onKeyDown}>
-      <p className="tb-menu__k" aria-hidden="true">Move to</p>
-      {COLUMNS.map((choice) => (
-        <button key={choice.id} type="button" role="menuitemradio" className="tb-menu__i" tabIndex={-1} aria-checked={choice.id === column}
-          disabled={busy} onClick={() => onMove(choice.id)}>
-          <StatusGlyph status={choice.status} /><span>{choice.label}</span>
-          {choice.id === column ? <Icon name="check" size={14} className="tb-menu__check" /> : null}
-        </button>
-      ))}
-      <div className="tb-menu__sep" role="separator" />
-      <button type="button" role="menuitem" className="tb-menu__i" tabIndex={-1} onClick={onOpen}><Icon name="panel" size={14} /><span>Open details</span></button>
-    </div>
-  );
-}
-
 interface CardProps {
   agentOwner?: string;
-  item: BoardTask; from: Origin | null; column: ColumnId; meId: string; writable: boolean; hintId: string;
-  saving: boolean; dragged: boolean; lifted: boolean; menuOpen: boolean;
+  item: BoardTask; meId: string; writable: boolean; hintId: string;
+  saving: boolean; dragged: boolean; lifted: boolean;
   onPointerDown: (event: ReactPointerEvent<HTMLLIElement>) => void;
   onClickCapture: (event: ReactMouseEvent) => void;
   onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
   onKeyUp: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
   onBlur: () => void;
   onOpen: () => void;
-  onMenu: (open: boolean, restore?: boolean) => void;
-  onMove: (to: ColumnId) => void;
 }
 
-function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, dragged, lifted, menuOpen, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen, onMenu, onMove }: CardProps) {
-  const menuButton = useRef<HTMLButtonElement>(null);
-  const pop = usePop(menuOpen);
+/**
+ * One card as drawn (#868): its title, its number, a due day when it has one, and its owner's face, an agent tag or "No owner".
+ * A blocked card says what it waits for in one line. There is no ⋯: a card opens its task, whose panel holds the actions; a
+ * mouse or pen drags it, and the keyboard moves it (Space, arrows, Space) or sets its state (1–4).
+ */
+function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifted, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen }: CardProps) {
   const blocked = item.status === 'blocked';
-  const waiting = isFinished(item) ? 0 : item.prerequisiteCounts.unmet;
-  const results = item.relations.results;
   const owner = item.owner;
-  const state = saving ? 'Saving…' : item.status === 'not_pursued' ? 'Not pursued' : null;
+  const note = saving ? 'Saving…' : item.status === 'not_pursued' ? DROPPED : null;
   const classes = ['tb-card', blocked && 'tb-card--blocked', item.status === 'not_pursued' && 'tb-card--set-aside',
-    dragged && 'is-dragging', lifted && 'is-lifted', saving && 'is-saving', menuOpen && 'has-menu'].filter(Boolean).join(' ');
+    dragged && 'is-dragging', lifted && 'is-lifted', saving && 'is-saving'].filter(Boolean).join(' ');
   return (
     <li className={classes} data-card-id={item.id} aria-busy={saving || undefined}
       onPointerDown={onPointerDown} onClickCapture={onClickCapture} onDragStart={(event) => event.preventDefault()}>
-      <div className="tb-card__top">
-        <span className="tb-card__id" title={`Task ${taskNumber(item)} · ${item.id}`}><span className="ui-vh">Task </span><span className="ui-task-number">{taskNumber(item)}</span></span>
-        {blocked ? <span className="ui-pill ui-pill--inv">Blocked</span> : null}
-        {state ? <span className="tb-card__state">{state}</span> : null}
-        {writable ? (
-          <IconButton ref={menuButton} icon="more" size={15} label="Move to…" className="tb-card__menu" aria-haspopup="menu" aria-expanded={menuOpen}
-            onClick={() => onMenu(!menuOpen)} />
-        ) : null}
-      </div>
       <h3 className="tb-card__t">
         <button type="button" className="tb-card__open" onClick={onOpen} onKeyDown={onKeyDown} onKeyUp={onKeyUp} onBlur={onBlur}
           aria-describedby={writable ? hintId : undefined}><span className="tb-card__title">{item.title}</span></button>
       </h3>
-      {blocked ? <p className="tb-card__blocker">{blockedLine(item) ?? 'Blocked; nobody wrote down what it waits for yet.'}</p> : null}
-      {from ? (
-        <RefLink className="tb-card__from" to={from.to} draggable={false} title={`${from.kind}: ${from.title}`}>
-          <Icon name={from.icon} size={12} /><span><span className="ui-vh">{from.kind}: </span>{from.title}</span>
-        </RefLink>
-      ) : null}
+      {blocked ? <p className="tb-card__blocker">{blockedLine(item) ?? 'Waiting for something not written down yet'}</p> : null}
       <div className="tb-card__foot">
+        <span className="tb-card__id" title={`Task ${taskNumber(item)} · ${item.id}`}><span className="ui-vh">Task </span><span className="ui-task-number">{taskNumber(item)}</span></span>
+        {item.dueOn ? <span className="tb-card__due">{dueShort(item.dueOn)}</span> : null}
+        {note ? <span className="tb-card__state">{note}</span> : null}
         {owner ? (
           <span className={`tb-card__owner${owner.kind === 'agent' ? ' tb-card__owner--agent' : ''}`}>
             {owner.kind === 'agent' ? <Kreska size={20} /> : <span className="tb-av" aria-hidden="true">{initials(owner.name)}</span>}
@@ -200,24 +122,7 @@ function Card({ item, agentOwner, from, column, meId, writable, hintId, saving, 
             {owner.kind === 'agent' ? <><AgentTag />{agentOwner ? <span className="agent-for">for {agentOwner}</span> : null}</> : null}
           </span>
         ) : <span className="tb-card__owner tb-card__owner--none">No owner</span>}
-        {waiting || results ? (
-          <span className="tb-card__facts">
-            {waiting ? <span>Waits for {waiting}</span> : null}
-            {results ? <span>{results} {results === 1 ? 'result' : 'results'}</span> : null}
-          </span>
-        ) : null}
       </div>
-      {pop.mounted ? (
-        <MoveMenu item={item} column={column} busy={saving} buttonRef={menuButton} popProps={pop.props}
-          onMove={(to) => {
-            onMenu(false);
-            // Its own column changes nothing: focus goes back to the menu's button, as on Escape.
-            if (to === column) menuButton.current?.focus();
-            else onMove(to);
-          }}
-          onOpen={() => { onMenu(false); onOpen(); }}
-          onClose={(restore) => { onMenu(false); if (restore) menuButton.current?.focus(); }} />
-      ) : null}
     </li>
   );
 }
@@ -252,7 +157,6 @@ const loaded = (read: ReadState<ProjectWorkView>) => read.phase === 'ready' || r
 const rowsOf = (page: ProjectWorkView | null) => page?.items.filter((item): item is BoardTask => item.kind === 'work') ?? [];
 /** Tasks of this group that the bounded first page does not show. */
 const beyond = (page: ProjectWorkView | null) => page ? Math.max(0, page.total - page.items.length) : 0;
-const SOURCE_EDGES = 100;
 interface ConfirmedTask {
   item: WorkItem;
   row: BoardTask | null;
@@ -266,7 +170,6 @@ const withStoredState = (row: BoardTask, saved: WorkItem): BoardTask => ({
 export function TaskBoard({ project, openRead, meId, mine, query, writable, revision, openWork, refresh, showInList, clearFilters }: TaskBoardProps) {
   const owners = useAgentOwners(project);
   const hintId = useId();
-  const { openCreate } = useShellActions();
   const boardRef = useRef<HTMLDivElement>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
   // Moves in flight (shown in their target column) and the stored result of each finished move
@@ -274,8 +177,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const [pending, setPending] = useState<Record<string, ColumnId>>({});
   const [confirmed, setConfirmed] = useState<Record<string, ConfirmedTask>>({});
   const [spoken, setSpoken] = useState('');
-  const [menuFor, setMenuFor] = useState<string | null>(null);
-  const [picked, setPicked] = useState<ColumnId | null>(null);
   const [dragging, setDragging] = useState<{ id: string; number: number; title: string; width: number; x: number; y: number } | null>(null);
   const [over, setOver] = useState<ColumnId | null>(null);
   const [lifted, setLifted] = useState<{ id: string; from: ColumnId; to: ColumnId } | null>(null);
@@ -297,7 +198,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const blockedPage = loaded(blockedRead);
   const finishedPage = loaded(finishedRead);
   const unavailable = reads.some((read) => read.phase === 'unavailable');
-  const waitingFor: Record<ColumnId, boolean> = { open: !openPage, in_progress: !progressPage || !blockedPage, done: !finishedPage };
+  const waitingFor: Record<ColumnId, boolean> = { open: !openPage, in_progress: !progressPage, blocked: !blockedPage, done: !finishedPage };
   // A card that moves to another column slides there, a new one grows in and one that left collapses (#593 AC-4); the first
   // read of each column only replaces what the board showed.
   useRowMotion(boardRef, '.tb-card[data-card-id]', (el) => el.dataset.cardId, [meId, project.id, mine, query, Object.values(waitingFor).join()].join('|'));
@@ -351,25 +252,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
     // Work a pivot parked is set aside, not part of the plan: the List shows it.
     .filter((item) => !item.parked || isFinished(item));
 
-  // Where each loaded card came from: one bounded source-relation read per 100 loaded tasks.
-  const ids = [...rows.keys()].sort();
-  const chunks: string[] = [];
-  for (let start = 0; start < ids.length; start += 100) chunks.push(ids.slice(start, start + 100).map((id) => `work:${id}`).join(','));
-  const relationSelector = chunks.map((objects) => workRelationReadUrl(project.id, { objects, role: 'source', limit: SOURCE_EDGES })).join(' ');
-  const relationScope = useMemo(() => relationSelector ? { accountId: meId, projectId: project.id, selector: relationSelector } : null, [meId, project.id, relationSelector]);
-  const loadRelations = useCallback((signal: AbortSignal) => {
-    const objects = relationSelector ? relationSelector.split(' ').map((url) => new URL(url, window.location.origin).searchParams.get('objects')!) : [];
-    return Promise.all(objects.map((set) => getWorkRelations(project.id, { objects: set, role: 'source', limit: SOURCE_EDGES }, signal)));
-  }, [project.id, relationSelector]);
-  // Read once every column has its rows, so the selector does not change (and cancel itself) column by column.
-  const columnsRead = !!(openPage && progressPage && blockedPage && finishedPage);
-  const relationRead = useWorkRead<WorkRelations[]>(relationScope, loadRelations, revision, idle && columnsRead);
-  const sourceLinks = relationRead.phase === 'ready' || relationRead.phase === 'refreshing' ? relationRead.value.flatMap((page) => page.items) : [];
-  const origins = new Map<string, Origin | null>();
-  const originOf = (id: string) => {
-    if (!origins.has(id)) origins.set(id, origin(id, sourceLinks, project.id));
-    return origins.get(id)!;
-  };
 
   // After a keyboard or menu move the card is drawn in another column (and again if the move is
   // refused): keep focus on it for a moment, unless the person has moved on to something else.
@@ -390,15 +272,10 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const isMine = (item: BoardTask) => item.owner?.id === meId || (item.owner?.kind === 'agent' && item.owner.projectOwner?.id === meId);
   const shown = items.filter((item) => (!mine || isMine(item)) && matchesTask(item, query));
   const columnFor = (item: BoardTask) => pending[item.id] ?? columnOf(item.status);
-  const cards: Record<ColumnId, BoardTask[]> = { open: [], in_progress: [], done: [] };
+  const cards: Record<ColumnId, BoardTask[]> = { open: [], in_progress: [], blocked: [], done: [] };
   for (const item of shown) cards[columnFor(item)].push(item);
-  // Blocked work leads its column so it is never lost below the rest; otherwise the stored order.
-  cards.in_progress.sort((a, b) => Number(b.status === 'blocked' && !(b.id in pending)) - Number(a.status === 'blocked' && !(a.id in pending)));
-  // Tasks of each column beyond its bounded first page(s); the List shows them.
-  const hidden: Record<ColumnId, number> = { open: beyond(openPage), in_progress: beyond(progressPage) + beyond(blockedPage), done: beyond(finishedPage) };
-  const blocked = cards.in_progress.filter((item) => item.status === 'blocked' && !(item.id in pending)).length + beyond(blockedPage);
-  // On a narrow board one column shows at a time: the one chosen, else active work, else what is open.
-  const current: ColumnId = picked ?? (cards.in_progress.length ? 'in_progress' : cards.open.length ? 'open' : 'in_progress');
+  // Tasks of each column beyond its bounded first page; the List shows them.
+  const hidden: Record<ColumnId, number> = { open: beyond(openPage), in_progress: beyond(progressPage), blocked: beyond(blockedPage), done: beyond(finishedPage) };
   const highlight = dragging ? over : lifted && lifted.to !== lifted.from ? lifted.to : null;
   const filtered = !!query || mine;
 
@@ -412,11 +289,8 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
     const key = JSON.stringify([item.id, item.version, status]);
     const commandId = attempts.current.get(key) ?? crypto.randomUUID();
     attempts.current.set(key, commandId);
-    if (keepFocus) {
-      focusCard.current = { id: item.id, until: focusDeadline() };
-      // On a narrow board one column shows: it follows the card, so focus stays on a visible card.
-      setPicked(to);
-    }
+    // Focus follows the card to its new column; a narrow board scrolls to it with the focus.
+    if (keepFocus) focusCard.current = { id: item.id, until: focusDeadline() };
     setPending((now) => ({ ...now, [item.id]: to }));
     setRefusal(null);
     try {
@@ -430,8 +304,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
       if (cause instanceof ApiError) attempts.current.delete(key);
       // A refusal says why where it happened, until dismissed (the card is back where it was).
       setRefusal(moveError(cause, item.title));
-      // Refused: the card is back where it was, and so is the narrow board's column.
-      if (keepFocus) setPicked(from);
     } finally {
       setPending((now) => without(now, item.id));
       refresh();
@@ -447,9 +319,9 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   };
 
   const startDrag = (event: ReactPointerEvent<HTMLLIElement>, item: BoardTask, from: ColumnId) => {
-    // Touch scrolls the board; touch moves use "Move to…". Links and the menu keep their own actions.
+    // Touch scrolls the board; on touch a task's state changes in its panel (Status).
     if (!writable || event.button !== 0 || event.pointerType === 'touch' || item.id in pending || drag.current) return;
-    if ((event.target as Element).closest('a, .tb-card__menu, .tb-menu')) return;
+    if ((event.target as Element).closest('a')) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const state: Drag = { id: item.id, number: item.number, title: item.title, from, pointerId: event.pointerId, x0: event.clientX, y0: event.clientY,
       dx: event.clientX - rect.left, dy: event.clientY - rect.top, width: rect.width, started: false, cancelled: false, over: null };
@@ -474,7 +346,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
         state.started = true;
         window.getSelection()?.removeAllRanges();
         document.documentElement.classList.add('tb-is-dragging');
-        setMenuFor(null);
         setLifted(null);
         setDragging({ id: state.id, number: state.number, title: state.title, width: state.width, x: pointer.clientX - state.dx, y: pointer.clientY - state.dy });
       }
@@ -537,20 +408,18 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const onCardKey = (event: ReactKeyboardEvent<HTMLButtonElement>, item: BoardTask, from: ColumnId) => {
     if (!writable) return;
     if (!lifted || lifted.id !== item.id) {
-      // 1-5 set the state at once (F-026 S9); the toast offers Undo.
+      // 1-4 set the state at once (F-026 S9); the toast offers Undo.
       const status = STATE_KEYS[event.key];
       if (status && !event.ctrlKey && !event.metaKey && !event.altKey && !event.repeat && !(item.id in pending)) {
         event.preventDefault();
         if (status === item.status) { say(`“${item.title}” is already ${STATUS_LABEL[status]}.`); return; }
         focusCard.current = { id: item.id, until: focusDeadline() };
-        setPicked(columnOf(status));
-        void changeState(item, status).then((stored) => { if (stored) say(`${taskNumber(item)} is now ${STATUS_LABEL[status]}.`); else setPicked(from); });
+        void changeState(item, status).then((stored) => { if (stored) say(`${taskNumber(item)} is now ${STATUS_LABEL[status]}.`); });
         return;
       }
       if (event.key !== ' ' || event.repeat || item.id in pending) return;
       event.preventDefault();
       spaceLift.current = true;
-      setMenuFor(null);
       setLifted({ id: item.id, from, to: from });
       say(`Picked up “${item.title}” in ${LABEL[from]}. Left and Right arrows choose a column, Space moves it there, Escape cancels.`);
       return;
@@ -586,18 +455,14 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
   const totals: Record<ColumnId, number> = {
     open: cards.open.length + (query ? 0 : hidden.open),
     in_progress: cards.in_progress.length + (query ? 0 : hidden.in_progress),
+    blocked: cards.blocked.length + (query ? 0 : hidden.blocked),
     done: cards.done.length + (query ? 0 : hidden.done),
   };
-  const truncated = hidden.open + hidden.in_progress + hidden.done > 0;
-  const more = (column: ColumnId): { group: WorkGroup; count: number; label: string }[] => column === 'open'
-    ? [{ group: 'open', count: hidden.open, label: 'open' }]
-    : column === 'in_progress'
-      ? [{ group: 'blocked', count: beyond(blockedPage), label: 'blocked' }, { group: 'in_progress', count: beyond(progressPage), label: 'in progress' }]
-      : [{ group: 'finished', count: hidden.done, label: 'finished' }];
+  const truncated = Object.values(hidden).some(Boolean);
 
   return (
     <div className="tb-wrap">
-      <p id={hintId} className="ui-vh">Space picks the task up to move it between columns; “Move to…” offers the same choices. The keys 1 to 5 set its state: Open, In progress, Blocked, Done, Not pursued. Z undoes the last change.</p>
+      <p id={hintId} className="ui-vh">Space picks the task up to move it between columns. The keys 1 to 4 set its state: To do, Doing, Blocked, Done. Z undoes the last change.</p>
       <p className="ui-vh" aria-live="polite">{spoken}</p>
       {/* While a card is picked up by keyboard, say where it goes and how, on screen too (the live
           region above already speaks it, so this copy is hidden from assistive technology). */}
@@ -607,17 +472,6 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
           <span>Moving “{items.find((item) => item.id === lifted.id)?.title ?? 'task'}” to <b>{LABEL[lifted.to]}</b>. ← → choose a column · Enter or Space drops it · Esc cancels.</span>
         </p>
       ) : null}
-      {/* A narrow board shows one column at a time; this overview names every status and what is blocked. */}
-      <nav className="tb-overview" aria-label="Task status">
-        {COLUMNS.map((column) => (
-          <button key={column.id} type="button" className="tb-ov" aria-pressed={current === column.id} onClick={() => setPicked(column.id)}>
-            <span className="tb-ov__l"><StatusGlyph status={column.status} />{column.label}</span>
-            <span className="tb-ov__n">{totals[column.id]}<span className="ui-vh"> {totals[column.id] === 1 ? 'task' : 'tasks'}</span>
-              {column.id === 'in_progress' && blocked ? <span className="tb-ov__b"><Icon name="alert" size={12} />{blocked} blocked</span> : null}
-            </span>
-          </button>
-        ))}
-      </nav>
       {refusal ? (
         <div className="tb-note tb-note--error" role="alert">
           <Icon name="alert" size={14} /><span>{refusal}</span>
@@ -639,7 +493,7 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
           <button type="button" className="ws-none__b" onClick={clearFilters}>Show every task</button>
         </p>
       ) : null}
-      <div className={`tb-board${writable ? ' tb-board--movable' : ''}`} ref={boardRef} data-current={current}>
+      <div className={`tb-board${writable ? ' tb-board--movable' : ''}`} ref={boardRef}>
         {COLUMNS.map((column) => {
           const list = cards[column.id];
           const headingId = `${hintId}-${column.id}`;
@@ -649,35 +503,29 @@ export function TaskBoard({ project, openRead, meId, mine, query, writable, revi
                 <StatusGlyph status={column.status} className="tb-col__g" />
                 <h2 className="tb-col__h" id={headingId}>{column.label}</h2>
                 <span className="tb-col__n">{totals[column.id]}<span className="ui-vh"> {totals[column.id] === 1 ? 'task' : 'tasks'}</span></span>
-                {column.id === 'in_progress' && blocked ? <span className="tb-col__b"><Icon name="alert" size={12} />{blocked} blocked</span> : null}
-                {writable && column.id !== 'done' ? (
-                  <IconButton icon="plus" size={15} label={`New task in ${column.label}`} className="tb-col__add" onClick={() => openCreate({ kind: 'task', projectId: project.id, status: column.status })} />
-                ) : null}
               </div>
               <div className={`tb-col__cards${highlight === column.id ? ' is-over' : ''}`}>
                 {list.length ? (
                   <ol className="tb-col__list">
                     {list.map((item) => (
-                      <Card key={item.id} item={item} agentOwner={item.owner?.kind === 'agent' ? owners.get(item.owner.id) : undefined} from={originOf(item.id)} column={column.id} meId={meId} writable={writable} hintId={hintId}
+                      <Card key={item.id} item={item} agentOwner={item.owner?.kind === 'agent' ? owners.get(item.owner.id) : undefined} meId={meId} writable={writable} hintId={hintId}
                         saving={item.id in pending} dragged={dragging?.id === item.id} lifted={lifted?.id === item.id}
-                        menuOpen={menuFor === item.id}
                         onPointerDown={(event) => startDrag(event, item, column.id)}
                         onClickCapture={(event) => { if (suppressClick.current) { event.preventDefault(); event.stopPropagation(); } }}
                         onKeyDown={(event) => onCardKey(event, item, column.id)} onKeyUp={onCardKeyUp}
                         onBlur={() => { if (lifted?.id === item.id) { setLifted(null); say(`Cancelled. “${item.title}” stays in ${LABEL[lifted.from]}.`); } }}
                         onOpen={() => { if (lifted?.id !== item.id) openWork(item.id, item.title); }}
-                        onMenu={(open) => setMenuFor(open ? item.id : null)}
-                        onMove={(to) => void move(item, to, true)} />
+ />
                     ))}
                   </ol>
                 ) : waitingFor[column.id] || !(filtered && !shown.length)
                   // One empty message for a search that matches nothing: the line above the board says it, not each column (#763 C7).
-                  ? <p className="tb-col__empty">{waitingFor[column.id] ? `Loading ${column.label.toLowerCase()} tasks…` : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p> : null}
-                {more(column.id).filter((entry) => entry.count > 0).map((entry) => (
-                  <button key={entry.group} type="button" className="ws-none__b tb-col__more" onClick={() => showInList(entry.group)}>
-                    {entry.count} more {entry.label} in the List
+                  ? <p className="tb-col__empty">{waitingFor[column.id] ? `Loading ${column.label} tasks…` : filtered ? 'Nothing here matches.' : 'Nothing here yet.'}</p> : null}
+                {hidden[column.id] ? (
+                  <button type="button" className="ws-none__b tb-col__more" onClick={() => showInList(column.group)}>
+                    {hidden[column.id]} more in the List
                   </button>
-                ))}
+                ) : null}
               </div>
             </section>
           );

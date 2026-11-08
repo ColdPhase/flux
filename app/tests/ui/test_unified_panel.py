@@ -182,7 +182,8 @@ class UnifiedPanel(unittest.TestCase):
         thread = page.get_by_role("dialog", name="Replies")
         expect(thread.locator(".thread")).to_be_visible()
         expect(page.locator("[data-detent-sheet]")).to_have_count(1)
-        expect(thread).to_have_attribute("data-height", "full")
+        # A thread opens at half like every sheet (guide §4, #868): no large blank area above a short thread.
+        expect(thread).to_have_attribute("data-height", "half")
         expect(thread.locator(".ui-panel__kind")).to_have_text("Thread")
         expect(thread.locator(".thread__root")).to_contain_text("Should the first sensors measure soil moisture")
         thread.locator(".ui-panel__body").focus()
@@ -197,15 +198,19 @@ class UnifiedPanel(unittest.TestCase):
             with self.subTest(scheme=scheme):
                 page = self.page(scheme=scheme)
                 panel = self.open_task(page, task)
+                # Rows of label and value; empty ones are hidden (#868). This task came from a message, so it has "Came from".
                 for label in ("Status", "Owner", "Came from", "Due"):
                     expect(panel.locator(".wd-row dt", has_text=label)).to_be_visible()
                 expect(panel.locator(".wd-row")).to_have_count(4)
+                # A ⋯ that held only Copy link is gone (#868); Hand off is the Owner field (S12), not a button.
+                expect(page.get_by_role("button", name="Task actions")).to_have_count(0)
+                expect(panel.get_by_role("button", name="Hand off to an agent")).to_have_count(0)
                 card = panel.get_by_role("region", name="Blocker")
                 expect(card).to_contain_text("Waiting for Jonas Berg")
                 expect(card).to_contain_text("Waiting for the probe dimensions")
                 expect(card.get_by_label("What is it waiting for?")).to_have_count(0)  # the field shows only while editing
                 actions = panel.get_by_role("group", name="Task actions")
-                for name in ("Hand off to an agent", "Attach a result", "Link thought"):
+                for name in ("Attach a result", "Link thought"):
                     box = actions.get_by_role("button", name=name).bounding_box()
                     self.assertAlmostEqual(box["height"], 32, delta=1, msg=f"{name} is a small action at the 32 px control height (#789)")
                 # Empty sections are not shown, a single page has no pagination, and nothing is a select.
@@ -229,7 +234,7 @@ class UnifiedPanel(unittest.TestCase):
         task = self.new_task("Calibrate the probes at two soil depths")
         page = self.page()
         panel = self.open_task(page, task)
-        names = ["Status", "Owner", "Hand off to an agent", "Attach a result", "Link thought", "Close details"]
+        names = ["Status", "Owner", "Attach a result", "Link thought", "Close details"]
         before = self.positions(page, names)
         # Owner: a menu of people and agents, no select; the choice is stored.
         owner = panel.get_by_role("button", name="Owner", exact=True)
@@ -285,7 +290,7 @@ class UnifiedPanel(unittest.TestCase):
         expect(card).to_contain_text("Waiting for the label printer to arrive")
         self.assertEqual(self.stored(task)["blocker"], "Waiting for the label printer to arrive")
         card.get_by_role("button", name="Resolve").click()
-        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("In progress")
+        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Doing")
         page.get_by_role("status").get_by_role("button", name="Undo").click()
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Blocked")
         stored = self.stored(task)
@@ -311,14 +316,10 @@ class UnifiedPanel(unittest.TestCase):
         expect(page).to_have_url(re.compile(r"/tasks"))
         expect(panel.get_by_role("link", name="Open in Conversation")).to_be_visible()
 
-    def test_09_hand_off_result_and_link_thought_are_real_actions_with_back(self):
+    def test_09_result_and_link_thought_are_real_actions_with_back(self):
         task = self.new_task("Write the wiring notes")
         page = self.page()
         panel = self.open_task(page, task)
-        panel.get_by_role("button", name="Hand off to an agent").click()
-        expect(page.get_by_role("dialog", name="Hand off a task")).to_be_visible()
-        page.keyboard.press("Escape")
-        expect(page.get_by_role("dialog", name="Hand off a task")).to_have_count(0)
         panel.get_by_role("button", name="Link thought").click()
         expect(panel.get_by_role("group", name=re.compile("^Thoughts to link to"))).to_be_visible()
         page.keyboard.press("Escape")
@@ -330,7 +331,7 @@ class UnifiedPanel(unittest.TestCase):
 
     # ------------------------------------------------------------------------ phone (AC-2, S10)
 
-    def test_10_on_the_phone_status_is_one_row_that_opens_a_menu_of_five_states(self):
+    def test_10_on_the_phone_status_is_one_row_that_opens_a_menu_of_four_states(self):
         task = self.new_task("Pick a gateway spot")
         page = self.page(phone=True)
         page.goto(f"/projects/{self.project}/tasks?open=work:{task['id']}")
@@ -342,20 +343,20 @@ class UnifiedPanel(unittest.TestCase):
         status.tap()
         menu = page.get_by_role("menu", name="Status")
         items = menu.get_by_role("menuitemradio")
-        expect(items).to_have_count(5)
-        for index in range(5):
+        expect(items).to_have_count(4)  # To do, Doing, Blocked, Done (#868)
+        for index in range(4):
             # The menu may still be on its short travel in: a box read from a moving, fractionally placed element is 44 to within a rounding error.
             self.assertGreaterEqual(round(items.nth(index).bounding_box()["height"], 2), 44, "a real 44px target")
         shot(page, "unified-panel-status-menu-phone")
         items.nth(1).tap()
-        expect(status).to_contain_text("In progress")
+        expect(status).to_contain_text("Doing")
         self.assertEqual(self.stored(task)["status"], "in_progress")
         page.get_by_role("status").get_by_role("button", name="Undo").tap()
-        expect(status).to_contain_text("Open")
+        expect(status).to_contain_text("To do")
         self.assertEqual(self.stored(task)["status"], "open")
         shot(page, "unified-panel-task-phone")
 
-    # --------------------------------------------------- AC-4: the glyph, 1 to 5 and Undo on stored state
+    # --------------------------------------------------- AC-4: the glyph, 1 to 4 and Undo on stored state
 
     def test_11_the_glyph_and_the_keys_change_the_stored_state_and_undo_restores_it(self):
         task = self.new_task("Order the second supplier's probes")
@@ -370,8 +371,8 @@ class UnifiedPanel(unittest.TestCase):
         page.get_by_role("status").get_by_role("button", name="Undo").click()
         expect(row).to_have_attribute("data-status", "open")
         self.assertEqual(self.stored(task)["status"], "open")
-        # The keys 1 to 5 on the focused row.
-        for key, status in (("3", "blocked"), ("4", "done"), ("5", "not_pursued"), ("1", "open"), ("2", "in_progress")):
+        # The keys 1 to 4 on the focused row.
+        for key, status in (("3", "blocked"), ("4", "done"), ("1", "open"), ("2", "in_progress")):
             row.locator(".ws-item").focus()
             page.keyboard.press(key)
             expect(row).to_have_attribute("data-status", status)
@@ -383,14 +384,14 @@ class UnifiedPanel(unittest.TestCase):
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Done")
         self.assertEqual(self.stored(task)["status"], "done")
         page.get_by_role("status").get_by_role("button", name="Undo").click()
-        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("In progress")
+        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Doing")
         self.assertEqual(self.stored(task)["status"], "in_progress")
         panel.get_by_role("button", name="Status", exact=True).click()
-        page.get_by_role("menu", name="Status").get_by_role("menuitemradio", name="Open").click()
-        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Open")
+        page.get_by_role("menu", name="Status").get_by_role("menuitemradio", name="To do").click()
+        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("To do")
         self.assertEqual(self.stored(task)["status"], "open")
         page.get_by_role("status").get_by_role("button", name="Undo").click()
-        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("In progress")
+        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Doing")
         self.assertEqual(self.stored(task)["status"], "in_progress")
 
     def test_12_a_thoughts_linked_tasks_open_in_the_one_sheet_and_a_task_opens_over_them_with_back(self):

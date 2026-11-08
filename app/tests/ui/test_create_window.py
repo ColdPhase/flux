@@ -137,15 +137,8 @@ class CreateWindow(unittest.TestCase):
         expect_value(dialog(page).get_by_role("combobox", name="Space"), self.ids["project"])
         page.keyboard.press("Escape")
         expect(dialog(page)).to_have_count(0)
-        page.get_by_role("button", name="New task in In progress").click()
-        expect(dialog(page)).to_be_visible()
-        expect_value(dialog(page).get_by_role("combobox", name="Status"), "in_progress")
-        field = title_field(page)
-        field.fill("Started from a column")
-        submit_button(page).click()
-        expect(dialog(page)).to_have_count(0)
-        stored = {item["title"]: item for item in self.work(page)}
-        self.assertEqual(stored["Started from a column"]["status"], "in_progress")
+        # Columns have no "+" (#868): "+ Task" is the board's one way to the window.
+        expect(page.locator(".tb-col__head button")).to_have_count(0)
 
     def test_03_create_another_and_command_enter(self) -> None:
         self.ensure_account()

@@ -46,8 +46,22 @@ export function OwnedPanelContent({ slot, className, id, children }: { slot: HTM
   // the control that was pressed is gone. A panel that has just opened already holds focus.
   useLayoutEffect(() => {
     const el = ref.current;
+    // A copy left by the content this replaces goes at once: only a closing panel shows it (below).
+    for (const copy of slot.querySelectorAll(':scope > [data-exiting]')) copy.remove();
     if (el && !el.closest('.ui-panel')?.contains(document.activeElement)) el.focus({ preventScroll: true });
-  }, []);
+    // The panel leaves with what it showed (#901, motion rule 3): the view takes its content away in the same moment the panel
+    // starts its 120 ms exit, so an inert copy stands in the slot until the panel is gone or other content takes its place.
+    return () => {
+      if (!el || !slot.isConnected) return;
+      const copy = el.cloneNode(true) as HTMLElement;
+      copy.removeAttribute('id');
+      copy.setAttribute('data-exiting', '');
+      copy.setAttribute('aria-hidden', 'true');
+      copy.inert = true;
+      slot.appendChild(copy);
+      window.setTimeout(() => copy.remove(), 400);
+    };
+  }, [slot]);
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (event.key === 'Escape') {
       // An Escape that a field or a menu inside already used, or that ends an input method's composition, is not a request to close.

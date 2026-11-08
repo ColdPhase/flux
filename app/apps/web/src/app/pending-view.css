@@ -12,6 +12,20 @@
 .pending-view__cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; max-width: calc(var(--col) + 220px); margin: 0 auto; padding: 20px 24px; }
 .pending-view__card { display: grid; align-content: center; gap: 12px; height: 132px; padding: 0 18px; border-radius: var(--r-card); background: var(--sub); }
 .pending-view__card b { background: var(--hov); }
+/* Tasks (#902): the control row and the four columns, as the board lays them out; a narrow board's columns run on sideways. */
+.pending-view__tasks { height: 100%; container: pending-tasks / inline-size; }
+.pending-view__bar { display: flex; align-items: center; gap: 10px; padding: 16px var(--space-page, 24px) 0; }
+.pending-view__bar b { height: 30px; border-radius: var(--r-pill); }
+.pending-view__bar b:nth-child(1) { width: 112px; } .pending-view__bar b:nth-child(2) { width: 64px; } .pending-view__bar b:nth-child(3) { width: 180px; }
+.pending-view__board { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 12px var(--space-page, 24px) 32px; align-items: start; }
+.pending-view__col { display: grid; gap: 8px; min-width: 0; }
+.pending-view__colhead { width: 46%; margin: 8px 0 10px; }
+.pending-view__task { display: grid; gap: 10px; height: 76px; align-content: center; padding: 0 12px; border-radius: 16px; background: var(--sub); }
+.pending-view__task b { background: var(--hov); }
+@container pending-tasks (max-width: 699px) {
+  .pending-view__board { display: flex; overflow: hidden; }
+  .pending-view__col { flex: 0 0 min(86%, 340px); }
+}
 /* The Wiki: one page column, its quiet row, its title and its lines (#869). */
 .pending-view__wiki { height: 100%; }
 .pending-view__page { display: grid; align-content: start; gap: 16px; max-width: 760px; margin: 0 auto; padding: 38px 40px; }
@@ -22,7 +36,7 @@
   .pending-view__list, .pending-view__cards { padding: 16px; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  :root:not([data-motion="reduce"]) .pending-view__list, :root:not([data-motion="reduce"]) .pending-view__cards, :root:not([data-motion="reduce"]) .pending-view__wiki { animation: opening-pulse var(--dur-loop) var(--ease-loop) infinite; }
+  :root:not([data-motion="reduce"]) .pending-view__list, :root:not([data-motion="reduce"]) .pending-view__cards, :root:not([data-motion="reduce"]) .pending-view__wiki, :root:not([data-motion="reduce"]) .pending-view__tasks { animation: opening-pulse var(--dur-loop) var(--ease-loop) infinite; }
 }
 /* The thread's panel while the thread's reads are out: the panel's earlier content stays mounted (it names itself for "‹ back") but is not shown.
    Two classes, so it outranks a content's own `display` (a task's `.wd--task` is a flex column that loads later and would otherwise stay on screen). */

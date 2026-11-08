@@ -224,7 +224,7 @@ class TaskAnnouncements(unittest.TestCase):
         expect(root.locator(".message-body").first).to_have_text(FIRST_WORD)
         chip = root.get_by_role("button", name=re.compile(r"^Discussion of task #\d+: " + re.escape(MEASURE) + "$"))
         expect(chip).to_be_visible()
-        expect(chip).to_contain_text("Open")
+        expect(chip).to_contain_text("To do")
         root.get_by_role("button", name=re.compile("^1 reply")).click()
         thread = page.locator("#thread")
         expect(thread.locator(".project-convo__message", has_text=FIRST_REPLY)).to_be_visible()
@@ -430,7 +430,8 @@ class TaskAnnouncements(unittest.TestCase):
         page.goto(f"/projects/{pid}")
         before = self.counts(page)
         section = self.open_task_from_stream(page, self.ids["from_message"], FROM_MESSAGE)
-        expect(section).to_contain_text("Nobody has written about this task yet.")
+        # An empty discussion says nothing (#868: empty sections are hidden).
+        expect(section).not_to_contain_text("Nobody has written")
         box = section.get_by_label("First message about this task")
         text = "I can pick the boards up on Friday; the shop keeps two for us."
         box.fill(text)

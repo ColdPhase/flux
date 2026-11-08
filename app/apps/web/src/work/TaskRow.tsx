@@ -25,7 +25,7 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
     item.status === 'blocked' && item.waitingFor ? `waiting for ${item.waitingFor.name}` : null,
     item.status === 'blocked' ? (({ person, reason, thing }) => reason && thing && !person ? `waiting for ${reason}` : reason)(blockedParts(item)) : null,
     waiting ? `waits for ${waiting} ${waiting === 1 ? 'task' : 'tasks'}` : null,
-    parkedBy ? `Parked · was ${STATUS_LABEL[item.status].toLowerCase()}` : null,
+    parkedBy ? `Parked · was ${STATUS_LABEL[item.status]}` : null,
     // The rule a task follows is in its panel or sheet, not on the row (#763 LD-2).
     item.relations.sourceMessages > 0 ? 'from a message' : null,
     results ? `${results} ${results === 1 ? 'result' : 'results'}` : null,

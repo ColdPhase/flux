@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import { Opening, OpeningRows } from '../ui';
+import { preferredMode } from '../work/taskMode';
 
 /** What a view is made of, for the quiet bars that stand in for it while its code and reads arrive. */
-export type PendingKind = 'feed' | 'list' | 'cards' | 'wiki';
+export type PendingKind = 'feed' | 'list' | 'board' | 'cards' | 'wiki';
 
 /**
  * The shape of the view a navigation is going to (#863, docs/design/motion.md rule 2): a project's conversation and a direct message are
- * a feed, the Map and the Sketchbook are cards, the Wiki is one page (#869), everything else (Tasks, Inbox, Settings, …) a list.
- * `view` is `routeView(path)`.
+ * a feed, the Map and the Sketchbook are cards, the Wiki is one page (#869), a space's Tasks are its four columns unless the person
+ * shows them as a list (#902), everything else (Inbox, Settings, …) a list. `view` is `routeView(path)`.
  */
-export function pendingKind(view: string): PendingKind {
+export function pendingKind(view: string, userId?: string): PendingKind {
   if (/^\/projects\/[^/]+\/conversation$/.test(view) || /^\/dm\/[^/]+$/.test(view)) return 'feed';
+  if (/^\/projects\/[^/]+\/tasks$/.test(view)) return userId && preferredMode(userId) === 'list' ? 'list' : 'board';
   if (/^\/projects\/[^/]+\/map$/.test(view) || view === '/map') return 'cards';
   if (/^\/projects\/[^/]+\/docs$/.test(view) || view.startsWith('/materials/')) return 'wiki';
   return 'list';
@@ -24,13 +26,20 @@ const bars = (count: number, widths: number[]) => Array.from({ length: count }, 
  * real view in the same layout when its code and reads are here. It is decoration: the "Opening …" row of the navigation
  * (`RouteProgress`) says in words that something is loading, once the wait is long enough to need saying.
  */
-export function PendingView({ view, name }: { view: string; name: string }) {
-  const kind = pendingKind(view);
+export function PendingView({ view, name, userId }: { view: string; name: string; userId?: string }) {
+  const kind = pendingKind(view, userId);
   return (
     <div className={`pending-view pending-view--${kind}`} data-pending-view={view} aria-hidden="true">
       {kind === 'feed' ? <Opening name={name} /> : kind === 'wiki' ? (
         <div className="pending-view__wiki">
           <div className="pending-view__page"><b className="pending-view__meta" /><b className="pending-view__title" />{bars(9, [100, 94, 98, 86, 100, 92, 70, 96, 60])}</div>
+        </div>
+      ) : kind === 'board' ? (
+        <div className="pending-view__tasks">
+          <div className="pending-view__bar"><b /><b /><b /></div>
+          <div className="pending-view__board">{[3, 2, 1, 2].map((count, column) => (
+            <div key={column} className="pending-view__col"><b className="pending-view__colhead" />{Array.from({ length: count }, (_, index) => <div key={index} className="pending-view__task"><b style={{ width: '82%' }} /><b style={{ width: '40%' }} /></div>)}</div>
+          ))}</div>
         </div>
       ) : kind === 'cards' ? (
         <div className="pending-view__cards">{Array.from({ length: 6 }, (_, index) => <div key={index} className="pending-view__card"><b style={{ width: '58%' }} /><b style={{ width: '34%' }} /></div>)}</div>

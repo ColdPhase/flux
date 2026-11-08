@@ -135,9 +135,9 @@ class HomeTasksJourney(unittest.TestCase):
         self.assertEqual(names, ["Bike light", "Gesture lamp"], "projects in name order")
         # The project Tasks order: in progress, then blocked, then open.
         statuses = [label.inner_text() for label in lamp.locator(".home-tasks__status").all()]
-        self.assertEqual(statuses[0], "In progress")
+        self.assertEqual(statuses[0], "Doing")
         self.assertEqual(statuses[1:3], ["Blocked", "Blocked"])
-        self.assertTrue(all(status == "Open" for status in statuses[3:]))
+        self.assertTrue(all(status == "To do" for status in statuses[3:]))
         blocked = lamp.get_by_role("link", name=re.compile("Calibrate the camera at 5 lux"))
         expect(blocked).to_contain_text("Waiting for the lens")
         expect(lamp.get_by_role("link", name=re.compile("Write the night-mode note"))).to_contain_text("No reason was recorded.")

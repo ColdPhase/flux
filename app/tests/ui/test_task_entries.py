@@ -1,6 +1,6 @@
 """Every task-creation entry, by two authors, shows one root in Conversation, Tasks, Map and Agents (#154 AC-5).
 
-Entries: a message's Create task (Conversation), "New task in Open" on the Tasks board, and "Create task
+Entries: a message's Create task (Conversation), "+ Task" on the Tasks board, and "Create task
 from selected thoughts" on the Map. Each author creates a task, the other author writes the task's first
 message, and the four views must reach the same root: the root's message in Conversation, the Discussion
 link in Details (Tasks and Map), and the "Open in Conversation" link of the Agents thread. A first attempt
@@ -232,7 +232,8 @@ class TaskEntries(unittest.TestCase):
         title = f"Check the lamp driver, {tag}"
         page = self.page(who)
         page.goto(f"/projects/{self.ids['project']}/tasks?view=board")
-        page.get_by_role("button", name="New task in Open").click()
+        # Columns have no "+" (#868): the Tasks control row's "+ Task" opens the same window.
+        page.get_by_role("button", name="New Task", exact=True).click()
         expect(dialog(page)).to_be_visible()
         title_field(page).fill(title)
         self.submit_with_recovery(page, title)

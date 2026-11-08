@@ -1,8 +1,17 @@
 import type { Decision, ObjectLink, WorkItem, WorkResult, WorkStatus } from '@flux/contracts';
 
+/**
+ * A task has four states (#868): To do, Doing, Blocked and Done. A task that was dropped (`not_pursued`) is Done with a
+ * "dropped" note (`DROPPED`), never a fifth state.
+ */
 export const STATUS_LABEL: Record<WorkStatus, string> = {
-  open: 'Open', in_progress: 'In progress', blocked: 'Blocked', done: 'Done', not_pursued: 'Not pursued',
+  open: 'To do', in_progress: 'Doing', blocked: 'Blocked', done: 'Done', not_pursued: 'Done',
 };
+/** The four states people choose from, in order (keys 1–4). */
+export const TASK_STATES = ['open', 'in_progress', 'blocked', 'done'] as const satisfies readonly WorkStatus[];
+export const DROPPED = 'dropped';
+/** The state as one phrase: "Done · dropped" for a dropped task, else its word. */
+export const statusPhrase = (status: WorkStatus) => status === 'not_pursued' ? `Done · ${DROPPED}` : STATUS_LABEL[status];
 
 /** The name a task goes by on every surface (#276): its number in its project, "#12". */
 const dueFormat = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -55,10 +64,23 @@ export function blockedParts(item: { blocker: string | null; waitingFor?: { name
   return { person: item.waitingFor?.name ?? null, reason, thing };
 }
 
+/** What a blocked task waits for, as the one line of its card (#868): "Waiting for Jonas", else its reason. */
 export function blockedLine(item: { blocker: string | null; waitingFor?: { name: string } | null }) {
   const { person, reason, thing } = blockedParts(item);
-  if (person) return reason ? `Waiting for ${person} · ${reason}` : `Waiting for ${person}`;
+  if (person) return `Waiting for ${person}`;
   return reason && thing ? `Waiting for ${reason}` : reason;
+}
+
+const weekday = new Intl.DateTimeFormat(undefined, { weekday: 'short' });
+const monthDay = new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' });
+/** A due day on a card: "Due Fri" within the coming week, else "Due 12 Nov"; "Due today" and "Overdue" say so. */
+export function dueShort(day: string) {
+  const date = new Date(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)));
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = Math.round((date.getTime() - today.getTime()) / 86_400_000);
+  if (days < 0) return `Overdue · ${monthDay.format(date)}`;
+  if (days === 0) return 'Due today';
+  return `Due ${days < 7 ? weekday.format(date) : monthDay.format(date)}`;
 }
 
 /** The first line of a message, for prefilled titles. */

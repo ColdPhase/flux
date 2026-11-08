@@ -388,7 +388,7 @@ class WikiReferences(unittest.TestCase):
         expect(task).to_have_count(1)
         expect(task.locator("svg.ui-glyph--in_progress")).to_have_count(1)
         expect(task).to_contain_text(f"#{self.number}")
-        expect(task).to_contain_text("In progress")
+        expect(task).to_contain_text("Doing")
         card = page.locator("a.doc-decision")
         expect(card).to_have_count(2)
         first = card.first

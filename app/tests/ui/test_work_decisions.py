@@ -143,7 +143,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         submit_button(page).click()
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=IDEA)).to_be_visible()
-        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Open")
+        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("To do")
         expect(panel).to_contain_text("Everyone in Gesture lamp")
         expect(panel.get_by_role("link", name=re.compile("^Message: Test the camera"))).to_be_visible()
         # The source stays in place, and the work shows up under it.
@@ -151,10 +151,10 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(message.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(IDEA) + "$"))).to_be_visible()
         # The panel's controls change the stored work (If-Match under the hood).
         panel.get_by_role("button", name="Status", exact=True).click()
-        page.get_by_role("menuitemradio", name="In progress").click()
-        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("In progress")
+        page.get_by_role("menuitemradio", name="Doing").click()
+        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Doing")
         # One change, one toast, and Undo puts the state back at once (S9).
-        expect(page.locator(".ui-toast").filter(has_text=re.compile(r"is now in progress")).get_by_role("button", name="Undo")).to_be_visible()
+        expect(page.locator(".ui-toast").filter(has_text=re.compile(r"moved to Doing")).get_by_role("button", name="Undo")).to_be_visible()
         # Details names the task by its number in the project (#276), in the head beside the Task chip.
         expect(panel.locator(".wd__foot")).to_contain_text("Everyone in Gesture lamp")
         expect(page.locator(".ui-panel__meta")).to_have_text("#1")
@@ -313,7 +313,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         sheet.get_by_role("button", name="Thread", exact=True).tap()
         expect(message.get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape(FINDING_TASK) + "$"))).to_be_visible()
         view_tab(page, "Tasks", tap=True)
-        expect(page.get_by_role("region", name=re.compile("^Open"))).to_contain_text(FINDING_TASK)
+        expect(page.get_by_role("region", name=re.compile("^To do"))).to_contain_text(FINDING_TASK)
         shot(page, "tasks-phone-390")
         titles = [item["title"] for item in self.work(page)["work"]]
         self.assertEqual(titles.count(FINDING_TASK), 1)
@@ -338,10 +338,11 @@ class WorkDecisionsJourney(unittest.TestCase):
         # No pointer to the Inbox on the board or the List: what waits for the person is listed in the Inbox alone (#865).
         expect(page.get_by_role("link",name=re.compile("need you in the Inbox"))).to_have_count(0)
         page.get_by_role("radio", name="List", exact=True).click()
-        views=page.get_by_role("navigation",name="Task views")
-        expect(views.get_by_role("button",name=re.compile("^Open"))).to_contain_text("101")
-        # Decisions are not a view of the Tasks tab any more; they wait in the Inbox.
-        expect(views.get_by_role("button",name=re.compile("^(Needs you|Decisions|Results)"))).to_have_count(0)
+        # The List has no row of state views (#868): To do counts its 101 tasks in its heading.
+        expect(page.get_by_role("navigation",name="Task views")).to_have_count(0)
+        expect(page.get_by_role("region",name=re.compile("^To do"))).to_contain_text("101")
+        # Decisions are not a section of the Tasks tab any more; they wait in the Inbox.
+        expect(page.get_by_role("region",name=re.compile("^(Needs you|Decisions|Results)"))).to_have_count(0)
         pager=page.get_by_role("navigation",name="Work pages");seen=set();sizes=[]
         for index in range(3):
             before=index*50
@@ -373,20 +374,18 @@ class WorkDecisionsJourney(unittest.TestCase):
         self.api(owner, "POST", base, {"title": "Measure the lamp current", "status": "in_progress", "owner": me}, status=201)
 
         page = self.page("partner", phone=True)
-        page.goto(f"/projects/{self.project_id}/tasks")
-        # The phone has no group views: the list with its own Mine | All row (F-026 S-P-Tasks).
+        page.goto(f"/projects/{self.project_id}/tasks?view=list")
+        # The phone has the computer's one control row and no row of state views (#868).
         expect(page.get_by_role("navigation", name="Task views")).to_have_count(0)
-        filters = page.get_by_role("group", name="Whose tasks")
-        expect(filters.get_by_role("button", name="All", exact=True)).to_have_attribute("aria-pressed", "true")
-        for button in filters.get_by_role("button").all():
-            self.assertGreaterEqual(button.bounding_box()["height"], 44, "touch target")
+        expect(page.locator(".tb-bar").get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "false")
+        self.assertGreaterEqual(page.locator(".tb-bar").get_by_role("button", name="Mine", exact=True).bounding_box()["height"], 44, "touch target")
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth"), PHONE["width"], "no sideways page scroll")
         row = page.locator(".ws-task").filter(has_text=mine)
         expect(row).to_be_visible()
         expect(page.locator(".ws-task").filter(has_text=theirs)).to_be_visible()
         shot(page, "tasks-phone-390-views")
 
-        filters.get_by_role("button", name="Mine", exact=True).tap()
+        page.locator(".tb-bar").get_by_role("button", name="Mine", exact=True).tap()
         self.assertIn("show=mine", page.url)
         expect(row).to_be_visible()
         expect(page.locator(".ws-task").filter(has_text=theirs)).to_have_count(0)
@@ -398,40 +397,38 @@ class WorkDecisionsJourney(unittest.TestCase):
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet.get_by_role("heading", name=mine)).to_be_visible()
         sheet.get_by_role("button", name="Close details").tap()
-        expect(filters.get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
+        expect(page.locator(".tb-bar").get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
         view_tab(page, "Conversation", tap=True)
         expect(page.locator(".project-convo__message-list")).to_be_visible()
         page.go_back()
-        expect(page.get_by_role("group", name="Whose tasks").get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
+        expect(page.locator(".tb-bar").get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
         view_tab(page, "Conversation", tap=True)
         view_tab(page, "Tasks", tap=True)
         expect(page).to_have_url(re.compile(r"/tasks\?(?=[^#]*show=mine)"))
-        expect(page.get_by_role("group", name="Whose tasks").get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
+        expect(page.locator(".tb-bar").get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "true")
 
-        # Computer: the group views keep whole labels with counts, a pressed state, and one Mine in the toolbar.
+        # Computer: a List of one state says so in one line, and Mine is the one in the control row.
         desk = self.page("partner")
         desk.goto(f"/projects/{self.project_id}/tasks?status=blocked")
-        views = desk.get_by_role("navigation", name="Task views")
-        blocked = views.get_by_role("button", name=re.compile("^Blocked"))
-        expect(blocked).to_have_attribute("aria-pressed", "true")
-        expect(blocked).to_contain_text("2")
+        expect(desk.locator(".ws-only")).to_contain_text("Only Blocked")
         region = desk.get_by_role("region", name=re.compile("^Blocked"))
+        expect(region).to_contain_text("2")
         expect(region).to_contain_text(mine)
         expect(region).to_contain_text(theirs)
         desk.get_by_role("button", name="Mine", exact=True).click()
         self.assertIn("show=mine", desk.url)
         expect(region).not_to_contain_text(theirs)
         desk.goto(f"/projects/{self.project_id}/tasks?status=parked&show=mine")
-        expect(desk.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Parked"))).to_have_attribute("aria-pressed", "true")
-        expect(desk.locator(".ws-none")).to_contain_text("Nothing of yours in parked right now.")
+        expect(desk.locator(".ws-only")).to_contain_text("Only Parked")
+        expect(desk.locator(".ws-none")).to_contain_text("Nothing of yours in Parked right now.")
         desk.get_by_role("button", name="Show everyone’s").click()
         expect(desk.get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "false")
 
-        # Keyboard on desktop: views are buttons in reading order with a visible pressed state.
+        # A List of Doing, as the board's "more in the List" opens it.
         desk = self.page("partner")
         desk.goto(f"/projects/{self.project_id}/tasks?status=in_progress")
-        expect(desk.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^In progress"))).to_have_attribute("aria-pressed", "true")
-        expect(desk.get_by_role("region", name=re.compile("^In progress"))).to_contain_text("Measure the lamp current")
+        expect(desk.locator(".ws-only")).to_contain_text("Only Doing")
+        expect(desk.get_by_role("region", name=re.compile("^Doing"))).to_contain_text("Measure the lamp current")
         shot(desk, "tasks-desktop-1440-in-progress")
 
     # ---------------------------------------------------------------- author sides (F-026, #481)
@@ -526,8 +523,7 @@ class WorkDecisionsJourney(unittest.TestCase):
             self.api(owner, "POST", f"/api/v1/projects/{self.project_id}/work",
                      {"title": f"Blocked step {index:02d}: check the ToF bracket", "status": "blocked", "blocker": "parts", "owner": me}, status=201)
         page = self.page("partner", phone=True)
-        page.goto(f"/projects/{self.project_id}/tasks")
-        filters = page.get_by_role("group", name="Whose tasks")
+        page.goto(f"/projects/{self.project_id}/tasks?view=list")
         pane = page.locator(".pane-scroll").first
         expect(page.locator(".ws-task").filter(has_text="Blocked step 45")).to_have_count(1)
         pane.evaluate("(el) => { el.scrollTop = 850; }")
@@ -541,10 +537,11 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(page.locator(".ws-task").first).to_be_visible()
         page.wait_for_timeout(300)
         self.assertLess(abs(page.locator(".pane-scroll").first.evaluate("(el) => el.scrollTop") - saved), 8, "the Tasks tab returns to the same reading position")
-        # Mine and back to All, pressing the buttons directly (no automatic scrolling into view).
-        page.get_by_role("group", name="Whose tasks").get_by_role("button", name="Mine", exact=True).evaluate("(button) => button.click()")
+        # Mine on and off in the one control row (#868), pressed directly (no automatic scrolling into view).
+        mine = page.locator(".tb-bar").get_by_role("button", name="Mine", exact=True)
+        mine.evaluate("(button) => button.click()")
         page.wait_for_timeout(300)
-        page.get_by_role("group", name="Whose tasks").get_by_role("button", name="All", exact=True).evaluate("(button) => button.click()")
+        mine.evaluate("(button) => button.click()")
         page.wait_for_timeout(300)
         self.assertLess(abs(page.locator(".pane-scroll").first.evaluate("(el) => el.scrollTop") - saved), 8, "switching views keeps each view's position")
 

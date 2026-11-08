@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useLoaderData, useLocation, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
-import type { Project, ProjectWorkViewQuery, WorkCounts, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
+import type { Project, ProjectWorkViewQuery, WorkItem, WorkObjectType, WorkRowProjection } from '@flux/contracts';
 import { Button, EmptyState, ErrorState, Icon, MEDIA, useMediaQuery, useRowMotion } from '../ui';
 import { getProject } from '../project/api';
 import { useShellActions } from '../app/shellContext';
 import { useShellData } from '../app/data';
 import { remember } from '../app/remembered';
-import { isFinished } from './format';
+import { STATUS_LABEL, isFinished } from './format';
 import { TaskRow, type TaskRowProps } from './TaskRow';
 import { useStateChange } from './taskState';
 import { getProjectWorkView, workViewReadUrl } from './read-api';
@@ -18,6 +18,7 @@ import { useTaskFeedback } from './useTaskFeedback';
 import { TaskBoard } from './TaskBoard';
 import { useAgentOwners } from '../agents/owners';
 import './work.css';
+import { preferredMode, rememberMode, type TaskMode } from './taskMode';
 
 interface TasksData { project: Project }
 
@@ -45,57 +46,11 @@ const GROUPS = ['in_progress', 'blocked', 'open', 'parked', 'finished'] as const
 type GroupId = typeof GROUPS[number];
 const GROUP_LABEL: Record<GroupId, string> = {
   // "Done", the board's word for the same tasks (#763 C5); the URL keeps `finished`.
-  in_progress: 'In progress', blocked: 'Blocked', open: 'Open', parked: 'Parked', finished: 'Done',
+  in_progress: STATUS_LABEL.in_progress, blocked: STATUS_LABEL.blocked, open: STATUS_LABEL.open, parked: 'Parked', finished: STATUS_LABEL.done,
 };
 const isGroup = (value: string | null): value is GroupId => GROUPS.includes(value as GroupId);
 
-/**
- * One readable row of views instead of a board of clipped columns (#136 AC-2): All, then only
- * the groups that have something. The chosen view and "Mine" live in the URL, so returning
- * from a source or Details comes back to the same view and reading position.
- */
-function TaskViews({ counts, status, onStatus }: {
-  counts: WorkCounts | null; status: GroupId | null;
-  onStatus: (status: GroupId | null) => void;
-}) {
-  const row = useRef<HTMLDivElement>(null);
-  // Keep the chosen view in sight by scrolling only the row sideways; scrollIntoView would also
-  // scroll the Tasks pane and undo its restored reading position.
-  useEffect(() => {
-    const bar = row.current;
-    const chosen = bar?.querySelector<HTMLElement>('[aria-pressed="true"]');
-    if (!bar || !chosen || bar.scrollWidth <= bar.clientWidth) return;
-    const start = chosen.offsetLeft - bar.offsetLeft;
-    const end = start + chosen.offsetWidth;
-    if (start < bar.scrollLeft) bar.scrollLeft = Math.max(0, start - 16);
-    else if (end > bar.scrollLeft + bar.clientWidth) bar.scrollLeft = end - bar.clientWidth + 16;
-  }, [status]);
-  const shown = GROUPS.filter((id) => !counts || counts[id] || id === status);
-  return (
-    <nav className="ws-views" aria-label="Task views">
-      <div className="ws-views__row" ref={row}>
-        <button type="button" className="ws-view" aria-pressed={!status} onClick={() => onStatus(null)}>All</button>
-        {shown.map((id) => (
-          <button key={id} type="button" className="ws-view" aria-pressed={status === id} onClick={() => onStatus(id)}>
-            {GROUP_LABEL[id]} <span className="ws-view__n">{counts ? counts[id] : '…'}</span>
-          </button>
-        ))}
-      </div>
-    </nav>
-  );
-}
-
-type Mode = 'board' | 'list';
-const MODE_KEY = 'flux.tasks.mode.';
-
-/** Kanban or List, as this person last chose on this device (#136). Kanban is the default. */
-function preferredMode(userId: string): Mode {
-  try { return localStorage.getItem(MODE_KEY + userId) === 'list' ? 'list' : 'board'; } catch { return 'board'; }
-}
-
-function rememberMode(userId: string, mode: Mode) {
-  try { localStorage.setItem(MODE_KEY + userId, mode); } catch { /* remembered for this visit only */ }
-}
+type Mode = TaskMode;
 
 /**
  * The Tasks toolbar (S6, T2): Board | List, Mine and the search in the same places in both views, then the one
@@ -183,12 +138,10 @@ export function ProjectTasks() {
   // the person's own choice unless the URL names one (`view`).
   const fromUrl = () => {
     const status = isGroup(search.get('status')) ? search.get('status') as GroupId : null;
-    // The phone lists whatever the address names (a section jump or a shared link) and keeps its own continuation.
-    const onPhone = window.matchMedia(MEDIA.phone).matches;
     const cursor = search.get('cursor') || null;
     const asked = search.get('view');
     const mode: Mode = asked === 'board' || asked === 'list' ? asked : status || cursor ? 'list' : preferredMode(me.user.id);
-    return { routeKey, status, mine: search.get('show') === 'mine', cursor: mode === 'list' || onPhone ? cursor : null, mode };
+    return { routeKey, status, mine: search.get('show') === 'mine', cursor: mode === 'list' ? cursor : null, mode };
   };
   const [saved, setSaved] = useState<Record<string, WorkItem>>({});
   const focusRow = useRef<{ id: string; until: number } | null>(null);
@@ -197,19 +150,19 @@ export function ProjectTasks() {
   // A router POP, account switch or project switch selects its actual URL immediately.
   const view = stored.routeKey === routeKey ? stored : fromUrl();
   const { status: viewStatus, mine, cursor: viewCursor, mode: viewMode } = view;
-  // The phone shows the list as drawn (S-P-Tasks): Mine | All over the rows, no board and no group views.
+  // Every device has the same control row and both views (#868): the phone's board scrolls its four columns sideways.
   const phone = useMediaQuery(MEDIA.phone);
   const status = viewStatus;
   const cursor = viewCursor;
-  const listing = phone || viewMode === 'list';
+  const listing = viewMode === 'list';
   const mode = viewMode;
   const boardSearch = searched.routeKey === `${me.user.id}:${project.id}` ? searched.text : '';
   const setBoardSearch = (text: string) => setSearched({ routeKey: `${me.user.id}:${project.id}`, text });
   // The List reads its chosen view page by page. The board's Open column is the same bounded read
   // of the open group; its other columns are read by the board (see TaskBoard).
-  const query = useMemo<ProjectWorkViewQuery>(() => phone || mode === 'list'
+  const query = useMemo<ProjectWorkViewQuery>(() => mode === 'list'
     ? { purpose: 'tasks', group: status ?? 'all', mine, kinds: 'work', ...(cursor ? { cursor } : {}) }
-    : { purpose: 'tasks', group: 'open', mine, kinds: 'work' }, [phone, mode, status, mine, cursor]);
+    : { purpose: 'tasks', group: 'open', mine, kinds: 'work' }, [mode, status, mine, cursor]);
   const selector = workViewReadUrl(project.id, query);
   const load = useCallback((signal: AbortSignal) => getProjectWorkView(project.id, query, signal), [project.id, query]);
   const { page: read, refresh: refreshPage } = useProjectWorkPage(project.id, selector, load);
@@ -225,7 +178,7 @@ export function ProjectTasks() {
   if (listing && status) params.set('status', status);
   if (mine) params.set('show', 'mine');
   if (listing && cursor) params.set('cursor', cursor);
-  if (!phone && mode !== (mode === 'list' && (status || cursor) ? 'list' : preference)) params.set('view', mode);
+  if (mode !== (mode === 'list' && (status || cursor) ? 'list' : preference)) params.set('view', mode);
   const viewSearch = params.toString();
   useEffect(() => {
     if (listing) keepCursor(viewKey, cursor);
@@ -243,7 +196,7 @@ export function ProjectTasks() {
     const nextMine = next.mine ?? mine;
     const nextMode = next.mode ?? mode;
     setViewState({ routeKey, status: nextStatus, mine: nextMine, mode: nextMode,
-      cursor: nextMode === 'list' || phone ? storedCursor(taskViewKey(me.user.id, project.id, nextStatus, nextMine)) : null });
+      cursor: nextMode === 'list' ? storedCursor(taskViewKey(me.user.id, project.id, nextStatus, nextMine)) : null });
   };
   const chooseMode = (next: Mode) => { setChosen({ userId: me.user.id, mode: next }); rememberMode(me.user.id, next); setView({ mode: next }); };
   const movePage = (nextCursor: string) => {
@@ -260,7 +213,7 @@ export function ProjectTasks() {
   // The board's own column reads follow this revision as well as the router's revalidation.
   const [boardRevision, setBoardRevision] = useState(0);
   const refreshBoard = () => { refreshPage(); setBoardRevision((current) => current + 1); };
-  // One tap on a glyph, or the keys 1-5 on a row, change its state; the toast offers Undo (F-026 S9).
+  // One tap on a glyph, or the keys 1-4 on a row, change its state; the toast offers Undo (F-026 S9).
   const shownSaved = useCallback((item: WorkItem) => setSaved((now) => ({ ...now, [item.id]: item })), []);
   const storeState = useStateChange(shownSaved, refreshPage);
   useTaskFeedback(scroller, !phone && listing, data?.summary.observedAt, saved);
@@ -329,25 +282,22 @@ export function ProjectTasks() {
         </div>
       ) : (
       <div className="pane-in ws-tasks" data-work-observed-at={data?.summary.observedAt}>
+        {/* The one control row above holds Mine for both views on every device (#868); a list opened on one state from the board
+            says so in one line with its way back. */}
         <div className="ws-task-controls">
-          {phone ? (
-            <div className="ws-mineall" role="group" aria-label="Whose tasks">
-              <button type="button" aria-pressed={mine} onClick={() => setView({ mine: true })}>Mine</button>
-              <button type="button" aria-pressed={!mine} onClick={() => setView({ mine: false, status: null })}>All</button>
-            </div>
-          ) : <TaskViews counts={counts} status={status} onStatus={(next) => setView({ status: next })} />}
+          {status ? <p className="ws-only">Only {GROUP_LABEL[status]} · <button type="button" className="ws-none__b" onClick={() => setView({ status: null })}>Show all tasks</button></p> : null}
           <WorkPagination noun="tasks" page={data} busy={read.phase !== 'ready' && read.phase !== 'unavailable'} onCursor={movePage} onRefresh={refresh} stepsWhenPaged />
         </div>
         {read.phase === 'unavailable' ? <ErrorState title="Work could not be loaded" actions={<button type="button" className="ws-none__b" onClick={refresh}>Refresh work</button>}><p>Your private draft is kept. Refresh to read the current view.</p></ErrorState> : null}
         {nothing ? <div className="view-empty"><EmptyState icon="tasks" title="No tasks yet"><p>A task starts when one of you makes it from a message, or adds it here. Not every idea has to become a task.</p></EmptyState></div> : null}
         {emptyContinuation ? <p className="ws-none" role="status">This page changed and has no rows. Use Previous or Next if available, or <button type="button" className="ws-none__b" onClick={refresh}>refresh from the start</button>.</p> : null}
         {data && !nothing && !emptyContinuation && !data.total ? <p className="ws-none" role="status">
-          {mine ? `Nothing of yours${status ? ` in ${GROUP_LABEL[status].toLowerCase()}` : ''} right now.` : `Nothing in ${status ? GROUP_LABEL[status].toLowerCase() : 'this view'} right now.`}{' '}
+          {mine ? `Nothing of yours${status ? ` in ${GROUP_LABEL[status]}` : ''} right now.` : `Nothing in ${status ? GROUP_LABEL[status] : 'this view'} right now.`}{' '}
           <button type="button" className="ws-none__b" onClick={() => setView(mine ? { mine: false } : { status: null })}>{mine ? 'Show everyone’s' : 'Show all'}</button>
         </p> : null}
-        <Group id="progress" title="In progress" count={groupCount('in_progress', by('in_progress').length)}>{by('in_progress').map((item) => workRow(item))}</Group>
-        <Group id="blocked" title="Blocked" count={groupCount('blocked', by('blocked').length)}>{by('blocked').map((item) => workRow(item))}</Group>
-        <Group id="open" title="Open" count={groupCount('open', by('open').length)}>{by('open').map((item) => workRow(item))}</Group>
+        <Group id="progress" title={GROUP_LABEL.in_progress} count={groupCount('in_progress', by('in_progress').length)}>{by('in_progress').map((item) => workRow(item))}</Group>
+        <Group id="blocked" title={GROUP_LABEL.blocked} count={groupCount('blocked', by('blocked').length)}>{by('blocked').map((item) => workRow(item))}</Group>
+        <Group id="open" title={GROUP_LABEL.open} count={groupCount('open', by('open').length)}>{by('open').map((item) => workRow(item))}</Group>
         <Group id="parked" title="Parked by a pivot" count={groupCount('parked', parked.length)}>{parked.map((item) => workRow(item, true))}</Group>
         <Group id="finished" title={GROUP_LABEL.finished} count={groupCount('finished', finished.length)}>{finished.map((item) => workRow(item, true))}</Group>
       </div>

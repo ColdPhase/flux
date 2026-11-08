@@ -4,7 +4,7 @@ import { useRevalidator } from 'react-router';
 import type { ObjectLink, Project, ProjectPerson, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
-import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelActions, PanelGlyph, PanelMeta, StatusGlyph, useToast, usePop, Select, Option } from '../ui';
+import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelGlyph, PanelMeta, StatusGlyph, useToast, usePop, Select, Option } from '../ui';
 import { getProject, listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
 import { DetailsSkeleton } from '../app/SurfaceSkeletons';
@@ -18,11 +18,10 @@ import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
 import { acceptDecision, createResult, proposeDecision, undoTaskCreation, updateWork } from './api';
 import { ownTaskAgents } from '../agents/taskAgents';
-import { STATUS_LABEL, decisionLine, firstClause, firstLine, isFinished, linked, resultLine, shortDate, taskNumber } from './format';
+import { STATUS_LABEL, decisionLine, firstClause, firstLine, isFinished, linked, resultLine, shortDate, statusPhrase, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
 import { getDoc } from '../docs/api';
 import { useAgentOwners } from '../agents/owners';
-import { HandOffDialog } from '../agents/HandOff';
 import { TaskPeople } from '../agents/TaskPeople';
 import { listProjectPeople, useProjectShell } from '../project/data';
 import { useWorkRead } from './useWorkRead';
@@ -31,7 +30,6 @@ import { WorkPagination } from './WorkPagination';
 import { ActivityTimeline, TaskComposer, useTaskActivity } from './TaskActivity';
 import { LinkThoughtButton, LinkedThoughts, useThoughtLinks } from './TaskThoughtLinks';
 import { PropertyMenu } from './PropertyMenu';
-import { MoreMenu, type MoreItem } from '../app/HeaderParts';
 import { useComposerDraft } from '../composer/draft';
 import { RefLink } from '../place/origin';
 import { ReadyToClose, TaskPullRequests } from '../github/TaskPullRequests';
@@ -119,6 +117,7 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   const own = useNativeOwn(accountId, projectId, 'id' in view ? view.kind : 'work', 'id' in view ? view.id : undefined, !!context, tick);
   const detail = context ? own.value : null;
   const relations = useDetailRelations(accountId, projectId, detail);
+  const [shownWith, setShownWith] = useState<string | null>(null);
   const [picks, setPicks] = useState<{ owner: typeof owner; values: Record<string, Choice> }>({ owner, values: {} });
   const choices = picks.owner === owner ? picks.values : {};
   const setChoices = (update: (current: Record<string, Choice>) => Record<string, Choice>) => { if (activeOwner.current === owner) setPicks((current) => ({ owner, values: update(current.owner === owner ? current.values : {}) })); };
@@ -129,7 +128,11 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   if (view.kind === 'propose-decision') return <ProposeDecision key={key} view={view} context={context} contextStatus={contextStatus} revision={tick} isCurrent={commands.isCurrent} />;
   if (view.kind === 'attach-result') return <AttachResult key={key} view={view} context={context} contextStatus={contextStatus} reload={reload} revision={tick} isCurrent={commands.isCurrent} />;
   if (!projectId || unavailable) return <div className="details"><p className="details__eyebrow">Details</p><h3 className="details__title">Not available</h3><p className="details__lead" role="alert">{contextRead.phase === 'unavailable' ? readable(contextRead.error) : own.read.phase === 'unavailable' ? readable(own.read.error) : 'Open this object in its space.'}</p><Button variant="secondary" onClick={reload}>Refresh details</Button></div>;
-  if (!context || !detail) return <DetailsSkeleton title={view.kind === 'work' ? view.title : undefined} />;
+  // A task's panel appears in its final layout (#899, motion rule 2): its relationships decide which rows and sections it has,
+  // so their first read finishes before it is shown. Once shown, a refresh or another page keeps the panel (and its drafts).
+  const relationsSettled = relations.read.phase !== 'loading' && relations.read.phase !== 'idle';
+  if (relationsSettled && shownWith !== key) setShownWith(key);
+  if (!context || !detail || (detail.object.kind === 'work' && shownWith !== key && !relationsSettled)) return <DetailsSkeleton title={view.kind === 'work' ? view.title : undefined} />;
   const currentContext = { ...context, project: { ...context.project, access: detail.access } };
   const object = detail.object;
   if (object.kind === 'work') return <WorkPanel key={key} item={object} context={currentContext} detail={detail} relations={relations} reload={reload} commands={commands} />;
@@ -316,7 +319,6 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const { busy, error } = commands.state;
   const { setBusy, setError, setBlocker, isCurrent } = commands;
   const blocker = commands.state.blocker ?? item.blocker ?? '';
-  const [handingOff, setHandingOff] = useState(false);
   const [editingBlocker, setEditingBlocker] = useState(false);
   // Closing the blocker's field (Save or Cancel) gives focus back to its Edit, so the keyboard keeps its place.
   const editButton = useRef<HTMLButtonElement>(null);
@@ -410,7 +412,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       // The one wink (F-026 §3) on a task closed: the words carry it without the face.
       const mascot = next === 'done' ? 'wink' as const : undefined;
       if (item.parked && (next === 'done' || next === 'not_pursued')) {
-        toast({ message: `${taskNumber(item)} is now ${STATUS_LABEL[next].toLowerCase()} and no longer parked`, timeout: 8000, mascot });
+        toast({ message: `${taskNumber(item)} moved to ${STATUS_LABEL[next]} and is no longer parked`, timeout: 8000, mascot });
         return;
       }
       // A put-back blocker is not said again in the task's conversation (restore).
@@ -451,19 +453,14 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const composer = useComposerDraft(me.user.id, context.project.id, `task:${item.id}`);
   const activity = useTaskActivity({ item, links: relations.links, project: context.project, members: context.members, me: { id: me.user.id, name: me.user.name }, revision: detail.observedAt });
   const composerId = useId();
-  const linkedThoughts = relations.links.some((link) => link.from.type === 'work' && link.from.id === item.id && link.to.type === 'thought' && link.role !== 'source');
-  const nothingLinked = !results.length && !decisions.length && !docs.length && !linkedThoughts;
-  const copyLink = () => {
-    const url = `${window.location.origin}/projects/${context.project.id}/tasks?open=work:${item.id}`;
-    void navigator.clipboard?.writeText(url).then(() => toast({ message: 'Link copied', timeout: 3000 }), () => toast({ message: 'The link could not be copied.', tone: 'danger' }));
-  };
-  const more: MoreItem[] = [{ label: 'Copy link', run: copyLink }];
+  // Empty sections are hidden (#868): a task without a source has no "Came from" row. While the relationships have more pages
+  // than the one shown, the row stays, so paging never adds or takes rows away.
+  const cameFrom = relations.links.some((link) => link.from.type === 'work' && link.from.id === item.id && link.role === 'source') || !!item.planIntent || !relations.complete;
 
   return (
     <div className="details wd wd--task" data-detail-kind="work" data-detail-id={item.id} data-version={item.version}>
       <PanelMeta>{taskNumber(item)}</PanelMeta>
       <PanelGlyph><StatusGlyph status={item.status} size={14} /></PanelGlyph>
-      <PanelActions><MoreMenu label="Task actions" items={more} /></PanelActions>
       <div className="wd__scroll">
         {item.parked ? <p className="wd-where">Parked, not done</p> : null}
         <TitleField title={item.title} editable={writable} onEdit={() => { titleBase.current = item.version; }}
@@ -473,7 +470,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         <dl className="wd-rows">
           <div className="wd-row">
             <dt>Status</dt>
-            <dd>{writable ? <StatusControl status={item.status} disabled={busy} onChoose={(status) => void setState(status)} /> : <span className="wd-value"><StatusGlyph status={item.status} size={16} /><span>{reverted ? 'Creation undone · read-only history' : STATUS_LABEL[item.status]}</span></span>}</dd>
+            <dd>{writable ? <StatusControl status={item.status} disabled={busy} onChoose={(status) => void setState(status)} /> : <span className="wd-value"><StatusGlyph status={item.status} size={16} /><span>{reverted ? 'Creation undone · read-only history' : statusPhrase(item.status)}</span></span>}</dd>
           </div>
           <div className="wd-row">
             <dt>Owner</dt>
@@ -486,14 +483,14 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
               : <span className="wd-value">{item.owner ? ownerView : 'Nobody yet'}</span>}</dd>
           </div>
           <TaskPeople workId={item.id} revision={`${detail.observedAt}:${activity.lines.length}`} />
-          <div className="wd-row">
+          {cameFrom ? <div className="wd-row">
             <dt>Came from</dt>
-            <dd className="wd-from"><CameFrom item={item} links={relations.links} project={context.project} empty={emptyLinks(relations, 'Added directly on the Tasks tab.')} /></dd>
-          </div>
-          <div className="wd-row">
+            <dd className="wd-from"><CameFrom item={item} links={relations.links} project={context.project} empty={emptyLinks(relations, '')} /></dd>
+          </div> : null}
+          {writable || item.dueOn ? <div className="wd-row">
             <dt>Due</dt>
             <dd><DueField value={item.dueOn} editable={writable} finished={finished} disabled={busy} onSave={(day) => change({ dueOn: day })} /></dd>
-          </div>
+          </div> : null}
         </dl>
         {reverted ? <p className="wd-muted wd-history" data-task-lifecycle="creation_reverted">Creation undone by {reverted.revertedBy.name} on {shortDate(reverted.revertedAt)}. This task stays here as history.</p> : null}
 
@@ -532,13 +529,10 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
         {writable ? (
           <div className="wd-acts" role="group" aria-label="Task actions">
-            {/* Finished work cannot be handed off: the action is dimmed, not removed, so nothing else moves (Spokój rule 7). */}
-            {aiOff ? null : <Button variant="secondary" size="sm" icon="chevron-right" aria-label="Hand off to an agent" data-ai-surface="task-hand-off" disabled={finished} onClick={() => setHandingOff(true)}>Hand off</Button>}
             <Button variant="secondary" size="sm" icon="plus" aria-label="Attach a result" onClick={() => openDetails({ kind: 'attach-result', projectId: item.projectId, workId: item.id }, { back: 'push' })}>Result</Button>
             <LinkThoughtButton links={thoughts} toggle={thoughtToggle} />
           </div>
         ) : null}
-        {writable && !aiOff ? <HandOffDialog open={handingOff} onClose={() => setHandingOff(false)} project={context.project} task={{ id: item.id, version: item.version, number: item.number, title: item.title }} onDone={reload} /> : null}
         <ReadyToClose item={item} writable={writable} busy={busy} done={() => void setState('done')} />
         {!reverted && !finished ? <LiveEntry variant="inline" anchor={liveAnchor} /> : null}
         <LinkedThoughts links={thoughts} />
@@ -583,8 +577,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         <OtherRelationships object={item} relations={relations} project={context.project} />
         {docs.length ? <InDocs object={item} project={context.project} relations={relations} /> : null}
 
-        <ActivityTimeline state={activity} composer={composer} item={item} project={context.project} me={{ id: me.user.id, name: me.user.name }} writable={writable} composerId={composerId}
-          empty={nothingLinked && relations.read.phase === 'ready' && relations.complete ? <p className="wd-muted wd-act__none">No results, decisions or Wiki pages yet.</p> : null} />
+        <ActivityTimeline state={activity} composer={composer} item={item} project={context.project} me={{ id: me.user.id, name: me.user.name }} writable={writable} composerId={composerId} />
       </div>
       <div className="wd__foot" data-version={item.version}>
         <TaskComposer state={activity} composer={composer} item={item} meId={me.user.id} writable={writable} readOnly={!!reverted} id={composerId}

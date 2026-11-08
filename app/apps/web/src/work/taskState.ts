@@ -11,15 +11,16 @@ import { STATUS_LABEL, taskNumber } from './format';
 // and offers Undo (the key Z), which restores the previous state through the same versioned command.
 
 /** Keys 1-5 in the order of the glyphs in the final design. */
-export const STATE_KEYS: Record<string, WorkStatus> = { '1': 'open', '2': 'in_progress', '3': 'blocked', '4': 'done', '5': 'not_pursued' };
+export const STATE_KEYS: Record<string, WorkStatus> = { '1': 'open', '2': 'in_progress', '3': 'blocked', '4': 'done' };
 
-/** A tap on the glyph moves work forward: open, in progress, done, then back to open; the other two states re-enter the flow. */
+/** A tap on the glyph moves work forward: To do, Doing, Done, then back to To do; Blocked goes on to Doing. */
 export const nextStatus = (status: WorkStatus): WorkStatus =>
   status === 'open' ? 'in_progress' : status === 'in_progress' ? 'done' : status === 'blocked' ? 'in_progress' : 'open';
 
 export type StateTarget = Pick<WorkRowProjection, 'id' | 'number' | 'title' | 'status' | 'blocker' | 'version'> & Partial<Pick<WorkRowProjection, 'waitingFor'>>;
 
-const lower = (status: WorkStatus) => STATUS_LABEL[status].toLowerCase();
+/** A state named in a sentence, as its column is: "moved to Doing", "back to To do" (#868). */
+const word = (status: WorkStatus) => STATUS_LABEL[status];
 
 /** A calm sentence for a refused or failed change; the view then shows the stored state. */
 export function changeError(error: unknown, item: Pick<StateTarget, 'number' | 'title'>) {
@@ -34,7 +35,7 @@ export function changeError(error: unknown, item: Pick<StateTarget, 'number' | '
 
 /** The one phrasing of a state change, on the board, the list and the panel (#763 C2): "#6 done", "#6 is now in progress". */
 export const stateWords = (item: Pick<StateTarget, 'number'>, status: WorkStatus) =>
-  status === 'done' ? `${taskNumber(item)} done` : `${taskNumber(item)} is now ${lower(status)}`;
+  status === 'done' ? `${taskNumber(item)} done` : `${taskNumber(item)} moved to ${word(status)}`;
 
 /** What Undo sends to put a task back as it was before a state change: a put-back blocker and person are not said again. */
 export function restoreOf(item: Pick<StateTarget, 'status' | 'blocker'> & Partial<Pick<StateTarget, 'waitingFor'>>) {
@@ -83,7 +84,7 @@ export function useStateChanges(saved: (item: WorkItem) => void, done: () => voi
               if (!(await sameSession())) return;
               noteChange(restored.id);
               saved(restored);
-              toast({ message: `${taskNumber(item)} back to ${lower(item.status)}` });
+              toast({ message: `${taskNumber(item)} back to ${word(item.status)}` });
             } catch (cause) {
               if (await sameSession()) toast({ message: changeError(cause, item), tone: 'danger' });
             } finally {

@@ -4,7 +4,7 @@ Anna owns a space with a restricted project "Volunteer sign-up app". Dev is a me
 
 * FT-1 as F-036 AG-3 changed it: Dev's own agent has Dev's rights, so Connect offers the project at once and nobody asks a manager.
 * FT-2 as #859 changed it: Dev's own agent has Dev's rights and there are no standing grants, so handing it a task is one
-  click, "Hand off", and nothing is granted.
+  click in the Owner field, and nothing is granted.
 * FT-3: An invite link made from the project's People also opens the project; the new person lands in it.
 * FT-4: A phone's long-press menu offers "Propose a decision" under More…, and a visible ⋯ opens the same menu.
 * FT-7, FT-11, FT-13: Change access alone offers Invite; the project field is "Space name"; Revoke asks once.
@@ -128,21 +128,14 @@ class FirstTimeUser(unittest.TestCase):
         connection = self.api(dev, "POST", "/api/v1/integration/agent-connections", {"agentId": self.ids["agent"], "name": "Dev laptop", "clientDesignation": "claude_code"}, status=201)
         type(self).ids["connection"] = connection["id"]
         dev.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}")
-        dev.get_by_role("button", name="Hand off to an agent").first.click()
-        dialog = dev.get_by_role("dialog", name="Hand off a task")
-        if dialog.get_by_text("Step 1 of 2").count():
-            dialog.locator("label.handoff__agent", has_text="Dev's Claude Code").click()
-            dialog.get_by_role("button", name="Next").click()
-        expect(dialog.get_by_text("Step 2 of 2")).to_be_visible()
-        expect(dialog.locator("[data-needs-grants]")).to_have_count(0)
-        button = dialog.get_by_role("button", name=re.compile("^Hand off"))
-        expect(button).to_be_enabled()
-        box = button.bounding_box()
-        foot = dialog.locator(".handoff__foot").bounding_box()
-        self.assertLessEqual(box["x"] + box["width"], foot["x"] + foot["width"] + 1, "the button is not clipped")
+        # There is no hand-off window (S12, #868). A local client's agent takes a task when told to (#859); giving it the task as
+        # its owner needs no grant, and the panel's Owner field shows it.
+        task = self.api(dev, "GET", f"/api/v1/work/{self.ids['task']}", status=200)
+        self.api(dev, "PATCH", f"/api/v1/work/{self.ids['task']}", {"owner": {"kind": "agent", "id": self.ids["agent"]}, "expectedVersion": task["version"]}, status=200)
+        dev.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}")
+        expect(dev.locator("#details").get_by_role("button", name="Owner", exact=True)).to_contain_text("Claude Code")
+        expect(dev.get_by_role("button", name="Hand off to an agent")).to_have_count(0)
         shot(dev, "ftu-handoff-allow")
-        button.click()
-        expect(dev.get_by_text(re.compile("^Handed #\\d+ to Dev's Claude Code"))).to_be_visible()
         self.api(dev, "GET", f"/api/v1/agent-connections/{connection['id']}/action-grants?limit=50", status=404)  # no grant list exists any more
         self.assertEqual(self.api(dev, "GET", f"/api/v1/work/{self.ids['task']}", status=200)["owner"]["id"], self.ids["agent"])
 

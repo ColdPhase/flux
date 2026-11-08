@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useMemo, useState, type FormEvent, type KeyboardEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState, type FormEvent, type KeyboardEvent } from 'react';
 import type { AssistantChange, ConversationMessage, NamedPrincipal, ObjectLink, Project, TaskActivityEntry, TaskDiscussion as Discussion, WorkItem, WorkspaceMember } from '@flux/contracts';
 import { AgentIdentity, Avatar, Button, Kreska, MEDIA, sendsOnEnter, useMediaQuery } from '../ui';
 import { useComposerScope, type useComposerDraft } from '../composer/draft';
@@ -66,7 +66,7 @@ function changeText(entry: TaskActivityEntry): string {
       const reason = [blocker, waitingFor ? `waiting for ${waitingFor.name}` : null].filter(Boolean).join(' · ');
       return `marked it blocked${reason ? `: ${reason}` : ''}${rule}`;
     }
-    return `marked it ${STATUS_LABEL[to].toLowerCase()}${rule}`;
+    return to === 'not_pursued' ? `marked it done (dropped)${rule}` : `marked it ${STATUS_LABEL[to].toLowerCase()}${rule}`;
   }
   if (entry.kind === 'owner' && entry.owner) {
     const { from, to } = entry.owner;
@@ -196,10 +196,8 @@ function PostedLine({ change, onChanged }: { change: AssistantChange; onChanged:
 }
 
 /** The timeline: newest first, each line with its author and time. */
-export function ActivityTimeline({ state, composer, item, project, me, writable, composerId, empty }: {
+export function ActivityTimeline({ state, composer, item, project, me, writable, composerId }: {
   state: TaskActivityState; composer: TaskComposerDraft; item: Pick<WorkItem, 'id' | 'version' | 'number' | 'title'>; project: Project; me: { id: string; name: string }; writable: boolean; composerId: string;
-  /** One quiet line after the timeline when the task has no results, decisions or Wiki pages yet. */
-  empty?: ReactNode;
 }) {
   const owners = useAgentOwners(project);
   const makeWork = useCreateWorkFromMessage(project);
@@ -277,9 +275,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
           );
         })}
       </ol>
-      {discussion && !discussion.root ? <p className="wd-muted wd-act__none">Nobody has written about this task yet. The first message starts its discussion in the space conversation.</p> : null}
       {state.hasEarlier ? <button type="button" className="wd-inline wd-act__earlier" disabled={state.busyEarlier} onClick={() => void state.loadEarlier()}>{state.busyEarlier ? 'Loading…' : 'Show earlier activity'}</button> : null}
-      {empty}
       <AgentsThreadSection task={{ id: item.id, number: item.number, title: item.title }} projectId={project.id} meId={me.id} revision={state.lines.length} />
     </section>
   );

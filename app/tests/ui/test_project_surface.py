@@ -208,7 +208,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             self.assertLessEqual(box["width"], 700, "readable measure per message")
         # Calm chips under a message open their object.
         chip = page.locator(f"#message-{self.ids['m0']}").get_by_role("button", name=re.compile(r"^Task #\d+: " + re.escape("Test the camera in low light") + "$"))
-        expect(chip).to_contain_text("In progress")
+        expect(chip).to_contain_text("Doing")
         self.assert_whole_messages(page)
         shot(page, "project-conversation-desktop-1440")
         small = self.page("ada", viewport={"width": 1280, "height": 800})
@@ -274,7 +274,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
         conversation_url = page.url
         tabs.get_by_role("link", name=re.compile("^Tasks")).click()
         expect(page).to_have_url(re.compile(r"/tasks$"))
-        expect(page.get_by_role("region", name=re.compile("^In progress"))).to_contain_text("Test the camera in low light")
+        expect(page.get_by_role("region", name=re.compile("^Doing"))).to_contain_text("Test the camera in low light")
         expect(tabs.get_by_role("link", name=re.compile("^Tasks"))).to_have_attribute("aria-current", "page")
         shot(page, "project-tasks-desktop-1440")
         # The project's only sketch opens directly (#189); its Sketches link shows the list.
@@ -646,6 +646,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
             with self.subTest(phone=phone):
                 page = self.open_project("ada", phone=phone)
                 self.tasks(page)
+                # The phone shows the board or the List like the computer (#868); this checks the List.
+                as_list = page.get_by_role("radio", name="List", exact=True)
+                if as_list.get_attribute("aria-checked") != "true":
+                    as_list.click()
                 mutations = []
                 page.on("request", lambda request: mutations.append(request.url) if request.method in ("POST", "PATCH", "DELETE") and not request.url.endswith("/receipts") else None)  # read receipts (#574) are not work
                 field = open_from_tasks(page)
@@ -655,16 +659,12 @@ class ProjectSurfaceJourney(unittest.TestCase):
                 page.set_viewport_size({"width": 412 if phone else 1500, "height": 900})
                 self.assertEqual(field.evaluate("el => [document.activeElement === el, el.selectionStart, el.selectionEnd]"), [True, 6, 18])
                 self.close_create(page)
-                if not phone:  # Phone Tasks has only Mine | All, not group views.
-                    views = page.get_by_role("navigation", name="Task views")
-                    mine_toggle = page.get_by_role("button", name="Mine", exact=True)
-                    mine_toggle.click()
-                    views.get_by_role("button", name="All", exact=True).click()
-                    expect(open_from_tasks(page)).to_have_value(draft)
-                    self.close_create(page)
-                    mine_toggle.click()
-                    views.get_by_role("button", name="In progress", exact=False).click()
-                    views.get_by_role("button", name="All", exact=True).click()
+                # Mine is in the one control row on every device (#868); toggling it keeps the draft.
+                mine_toggle = page.locator(".tb-bar").get_by_role("button", name="Mine", exact=True)
+                mine_toggle.click()
+                mine_toggle.click()
+                expect(open_from_tasks(page)).to_have_value(draft)
+                self.close_create(page)
                 page.locator(".ws-list").get_by_role("button", name=re.compile("Test the camera in low light")).click()
                 expect(self.details(page).get_by_role("heading", name="Test the camera in low light")).to_be_visible()
                 source = self.details(page).get_by_role("link", name=re.compile("I ran the camera prototype"))
