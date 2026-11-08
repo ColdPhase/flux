@@ -85,7 +85,7 @@ export interface AgentToolRegistrar {
  * (an agent set to Only read gets plain words for a change), never by a scope or a switch chosen at sign-in (#859).
  */
 export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, bound?: (result: unknown) => Promise<unknown>,
-  run?: { projectId: string }) {
+  run?: { projectId: string | null }) {
   const entries = new Map<string, Omit<AgentToolCapability, 'available'>>();
   const handles = new Map<string, { disable(): void }>();
   /** Declared tools this server does not offer to this caller: not registered, not listed, and the manifest still adds up. */

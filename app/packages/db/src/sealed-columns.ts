@@ -17,7 +17,7 @@
 export type TableClass = 'content' | 'account' | 'system' | 'ai' | 'refused';
 
 const ai = [
-  'agent_command_receipts', 'agent_connections',
+  'agent_chat_messages', 'agent_chat_reads', 'agent_command_receipts', 'agent_connections',
   'agent_memory_items', 'agent_oauth_bindings', 'agent_playbook_acknowledgments',
   'agent_proposals', 'agent_questions', 'agent_runtime_auth_admission', 'agent_runtime_auth_operations', 'agent_runtime_bindings',
   'agent_runtime_client_history', 'agent_runtime_connections', 'agent_runtime_console_nonces', 'agent_runtime_operator_statements',
@@ -143,14 +143,14 @@ export const VISIBLE_COLUMNS: Readonly<Record<string, Readonly<Record<string, st
   projects: { visibility: 'an enum', created_by: 'a user id', views: 'enum values' },
   project_grants: { user_id: 'a user id', role: 'an enum', created_by: 'a user id' },
   project_conversations: { created_by: 'a user id', space: 'an enum' },
-  project_messages: { author_id: 'a user id', contribution_kind: 'an enum' },
+  project_messages: { author_id: 'a user id', contribution_kind: 'an enum', via: 'the name of the agent whose answer the author posted, as visible as an author\'s name (an agent name is metadata)' },
   message_references: { kind: 'an enum (thought or message)' },
   project_message_observations: { viewer_id: 'a user id' },
   dm_message_observations: { viewer_id: 'a user id' },
   return_points: { user_id: 'a user id', place_key: 'object ids and positions', place_type: 'an enum' },
   dms: { kind: 'an enum', pair_key: 'user ids', created_by: 'a user id' },
   dm_participants: { user_id: 'a user id' },
-  dm_messages: { author_id: 'a user id' },
+  dm_messages: { author_id: 'a user id', kind: 'an enum (text or ai_used)', via: 'the name of the agent whose answer the author posted, as visible as an author\'s name (an agent name is metadata)' },
   project_materials: { created_by: 'a user id', kind: 'an enum' },
   project_material_versions: { author_id: 'a user id' },
   project_work_items: { status: 'an enum', owner_user_id: 'a user id', created_by_kind: 'an enum', created_by_id: 'a principal id',

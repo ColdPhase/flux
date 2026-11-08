@@ -58,11 +58,14 @@ async function patchTask(item: WorkItem, body: Record<string, unknown>) {
   return expectStatus(await manager.browser.request('PATCH', `/api/v1/work/${item.id}`, { body: { ...body, clientCommandId: randomUUID() }, headers: { 'if-match': `"${item.version}"` } }), 200) as WorkItem;
 }
 async function script(text: string) {
-  const response = await fetch('http://anthropic-mock:8090/__script', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, output_tokens: 90 }) });
+  const response = await fetch('http://anthropic-mock:8090/__script', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, output_tokens: 90, delay: 2 }) });
   assert.equal(response.status, 200);
 }
 async function answer(prompt: string) {
   const run = await post<AssistantRun>(manager, `/api/v1/conversations/${thread.id}/assistant-runs`, { prompt, kind: 'ask', clientRunId: randomUUID() }, 202);
+  // The answer to `/ai` is its asker's alone (#842), so it has no proposal and no card for everyone. These checks are about what a proposal shows
+  // to a project's readers, so the run is a schedule's: the mock's two-second delay leaves time to say so before the worker commits it.
+  await pool.query(`UPDATE personal_runs SET kind = 'scheduled', authority = 'owner_schedule', background_label = 'Reference check' WHERE id = $1`, [run.id]);
   let completed: AssistantRun | null = null;
   await expect.poll(async () => {
     completed = expectStatus(await manager.browser.request('GET', `/api/v1/assistant-runs/${run.id}`), 200) as AssistantRun;

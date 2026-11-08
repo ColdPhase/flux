@@ -28,12 +28,14 @@ const OWN_REQUESTS = 6;
 const CREATED = 24;
 
 describe('agents taking tasks beside the worker and the owner\'s own requests', { skip: !live && 'needs FLUX_TEST_PERSONAL_RUNS=anthropic-mock' }, () => {
-  let ada: Person; let kai: Person; let ws: Workspace; let lamp: Project; let thread: Conversation; let agentId: string; let boss: PgBoss;
+  let ada: Person; let kai: Person; let ws: Workspace; let lamp: Project; let thread: Conversation; let agentId: string; let dmId: string; let boss: PgBoss;
 
   const deadlocks = async () => Number((await pool.query(`SELECT deadlocks FROM pg_stat_database WHERE datname = current_database()`)).rows[0].deadlocks);
   const createTask = async (title: string, owner: { kind: 'human'; id: string } | null) => expectStatus(await ada.browser.request('POST', `/api/v1/projects/${lamp.id}/work`,
     { body: { title, ...(owner ? { owner } : {}) } }), 201, `create ${title}`) as WorkItem;
-  const ask = (index: number) => kai.browser.request('POST', `/api/v1/conversations/${thread.id}/assistant-runs`,
+  // Kai asks his own agent from every place there is (#842): a thread, the space's main conversation, a direct message and the agent's private chat.
+  const ask = (index: number) => kai.browser.request('POST', [`/api/v1/conversations/${thread.id}/assistant-runs`, `/api/v1/projects/${lamp.id}/assistant-runs`,
+    `/api/v1/dms/${dmId}/assistant-runs`, `/api/v1/my-agents/${agentId}/assistant-runs`][index % 4]!,
     { body: { clientRunId: randomUUID(), kind: 'ask', prompt: `What is left on the lamp? (${index})` } });
 
   before(async () => {
@@ -45,6 +47,7 @@ describe('agents taking tasks beside the worker and the owner\'s own requests', 
     const connection = (await testFixturePersonalConnections.resolve(kai.id))!.id;
     expectStatus(await kai.browser.request('POST', '/api/v1/my-agents', { body: { agentId, connection, model: 'claude-sonnet-5' } }), 201);
     thread = expectStatus(await kai.browser.request('POST', `/api/v1/projects/${lamp.id}/conversations`, { body: { body: 'The lamp flickers', clientMessageId: randomUUID() } }), 201) as Conversation;
+    dmId = (expectStatus(await kai.browser.request('POST', `/api/v1/workspaces/${ws.id}/dms`, { body: { participantIds: [ada.id] } }), 201) as { id: string }).id;
     expectStatus(await kai.browser.request('PUT', TASK_TAKING_PATH, { body: { agentId } }), 200);
     boss = new PgBoss({ connectionString });
     boss.on('error', () => undefined);
@@ -73,6 +76,21 @@ describe('agents taking tasks beside the worker and the owner\'s own requests', 
       return rows.length >= TASKS + OWN_REQUESTS && !rows.some((row) => RUNNING.includes(row.status)) ? rows : null;
     }, 'every run of Kai to end', 90_000);
     assert.deepEqual([...new Set(left.map((row) => row.status))].sort(), ['completed'], 'the worker finished every run on the mock provider');
+
+    // Show everyone beside agents taking more tasks (#842): the post takes the conversation and the task order, the agent's runs the owner's lock
+    // first and the task graph after it; neither waits for the other.
+    const asked = (await pool.query(`SELECT id FROM personal_runs WHERE owner_user_id = $1 AND kind = 'ask' AND dm_id IS NULL AND project_id IS NOT NULL AND committed_at IS NOT NULL`, [kai.id])).rows as { id: string }[];
+    assert.ok(asked.length >= 2, 'Kai has answers to show');
+    const [more, shown] = await Promise.all([
+      Promise.all(Array.from({ length: 6 }, (_, index) => createTask(`Second wave ${index}`, { kind: 'human', id: kai.id }))),
+      Promise.all(asked.map((run) => kai.browser.request('POST', `/api/v1/assistant-runs/${run.id}/show`))),
+    ]);
+    assert.deepEqual(shown.map((response) => response.status), asked.map(() => 200), `every answer was shown: ${shown.map((response) => response.text).join(' | ')}`);
+    ids.push(...more.map((task) => task.id));
+    await waitFor(async () => {
+      const rows = (await pool.query(`SELECT status FROM personal_runs WHERE owner_user_id = $1`, [kai.id])).rows as { status: string }[];
+      return rows.length >= TASKS + OWN_REQUESTS + 6 && !rows.some((row) => RUNNING.includes(row.status)) ? rows : null;
+    }, 'every run of Kai to end, the second wave too', 90_000);
 
     // Every task the agent was given is out of its hands: Done, or back with Kai, to check. None is lost.
     for (const id of ids) {

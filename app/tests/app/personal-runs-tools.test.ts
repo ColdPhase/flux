@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  createPersonalRunProcessor, SYSTEM_PROMPT, TOOL_SYSTEM_PROMPT,
+  createPersonalRunProcessor, privateSystemPrompt,
   type PersonalComputeResult, type PersonalTool, type PersonalToolCall, type PersonalToolHost, type PersonalToolSession, type Principal,
 } from '@flux/core';
 import { PERSONAL_RUN_LIMITS, type Conversation, type Project, type Workspace } from '@flux/contracts';
@@ -128,7 +128,7 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
     assert.equal(session.closed, 1);
     // Each request carried the tools and the earlier turns with their results.
     assert.deepEqual(compute.dispatched[0]!.tools, FLUX_TOOLS);
-    assert.equal(compute.dispatched[0]!.system, TOOL_SYSTEM_PROMPT);
+    assert.equal(compute.dispatched[0]!.system, privateSystemPrompt('space', true));
     assert.deepEqual(compute.dispatched[2]!.turns!.map((turn) => turn.results[0]!.content), ['done call-1', 'done call-2']);
     assert.deepEqual(compute.dispatched[2]!.turns![0]!.replay, { turn: 1 }, 'the provider\'s own assistant message goes back unchanged');
   });
@@ -184,7 +184,7 @@ describe('the server tool loop in the worker (AST-8.2, AST-8.3; fake provider an
       assert.equal(compute.dispatched.length, 1, 'one request');
       assert.equal('tools' in compute.dispatched[0]!, false, 'no tools on the request');
       assert.equal('turns' in compute.dispatched[0]!, false);
-      assert.equal(compute.dispatched[0]!.system, SYSTEM_PROMPT, 'the brief of O-008, without the tool paragraph');
+      assert.equal(compute.dispatched[0]!.system, privateSystemPrompt('space', false), 'the brief of a private answer, without the tool paragraph');
       assert.equal(opened, 0, 'the run\'s tools were never even opened');
       assert.equal(session.changes.length, 0);
       assert.equal((await row(started.run.id)).charged_micros, 900 * 2 + 30 * 10);

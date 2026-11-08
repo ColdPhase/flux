@@ -59,7 +59,12 @@ export interface DmSummary {
  * A DM message (#536). A root has `threadRootId: null` and counts its private replies; a reply names its
  * root and has no replies of its own. A reply is read only by the DM's current participants.
  */
-export type DmMessage = HumanConversationMessage & { threadRootId: string | null; replyCount: number };
+export type DmMessage = HumanConversationMessage & { threadRootId: string | null; replyCount: number;
+  /**
+   * `ai_used` is the line "Ada used AI here (Claude)" both people of a DM see when `/ai` is used in it (#842, F-036 AG-4): its
+   * `body` is the name of the company that receives the conversation. Absent on a message.
+   */
+  notice?: 'ai_used' };
 
 /** A DM with its newest window of ROOT messages, in ascending display order (as #36 conversations). */
 export interface Dm extends DmSummary {

@@ -71,7 +71,8 @@ class AssistantFinish(unittest.TestCase):
     def messages(self, page: Page, conversation: str) -> list[str]:
         return [message["body"] for message in self.api(page, "GET", f"/api/v1/conversations/{conversation}", status=200)["messages"]]
 
-    def test_05_a_request_appears_in_the_stream_as_sent_with_the_assistant_as_one_chip(self) -> None:
+    def test_05_a_request_is_private_and_leaves_no_message_in_the_conversation(self) -> None:
+        # #842: what a person asks their agent is not a message of the conversation (it used to post "@Ada's assistant …" for everyone).
         for phone in (False, True):
             with self.subTest(phone=phone):
                 page = self.page(phone=phone)
@@ -81,21 +82,17 @@ class AssistantFinish(unittest.TestCase):
                 sends: list[tuple[str, int]] = []
                 page.on("response", lambda response: sends.append((response.request.post_data or "", response.status)) if response.request.method == "POST" and response.url.endswith("/messages") else None)
                 page.goto(self.thread_url())
-                posted = "@Ada's assistant Tidy this project's tasks"
-                before = sum(body == posted for body in self.messages(page, self.ids["conversation"]))
+                before = len(self.messages(page, self.ids["conversation"]))
                 page.get_by_role("group", name="Suggestions for your assistant").get_by_role("button", name="Tidy this project's tasks").click()
                 deadline = time.time() + 15
-                while len(sends) < 1 and time.time() < deadline:
+                while len(asked) < 1 and time.time() < deadline:
                     page.wait_for_timeout(100)
                 self.assertEqual(len(asked), 1)
-                self.assertEqual([status for _, status in sends], [201], f"the request was posted once: {sends}")
-                self.assertEqual(json.loads(sends[0][0])["body"], posted)
-                self.assertEqual(sum(body == posted for body in self.messages(page, self.ids["conversation"])), before + 1, "one message per request, in the real conversation")
-                expect(page.get_by_role("listitem", name="Your message").filter(has_text="Tidy this project's tasks").last).to_be_visible()
-                chip = page.locator(".ref-chip--agent", has_text="Ada's assistant").first
-                expect(chip).to_be_visible()
-                self.assertIsNone(FORBIDDEN.search(chip.inner_text()))
-                shot(page, f"j1-stream-message-{self.tag(phone)}")
+                page.wait_for_timeout(500)
+                self.assertEqual(sends, [], "nothing was posted to the conversation")
+                self.assertEqual(len(self.messages(page, self.ids["conversation"])), before)
+                expect(page.locator(".ref-chip--agent")).to_have_count(0)
+                shot(page, f"j1-private-request-{self.tag(phone)}")
 
     def test_06_a_refused_request_leaves_no_message_behind(self) -> None:
         page = self.page()

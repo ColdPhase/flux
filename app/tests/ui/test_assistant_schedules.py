@@ -521,7 +521,7 @@ class AssistantSchedules(unittest.TestCase):
                 page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-runs$"), lambda route: self.json(route, run, 202))
                 # The paused request stays queued: every read of it says so until the reset.
                 page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), lambda route: self.json(route, run))
-                page.route(re.compile(r".*/api/v1/assistant-runs\?limit=\d+$"), lambda route: self.json(route, {"items": [run], "total": 1, "limit": 10, "offset": 0}))
+                page.route(re.compile(r".*/api/v1/assistant-runs\?(?:limit=\d+|conversationId=[0-9a-f-]{36}&limit=\d+&offset=\d+)$"), lambda route: self.json(route, {"items": [run], "total": 1, "limit": 10, "offset": 0}))
                 page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")
                 page.locator("#thread-composer").fill("/ai Summarize the sensor notes")
                 page.get_by_role("button", name="Send to your assistant").click()

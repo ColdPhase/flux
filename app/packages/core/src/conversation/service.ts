@@ -5,6 +5,9 @@ import type {
 import type { Principal } from '../types.js';
 import { normalizeConversationWindow, normalizeMaterial, normalizeMaterialUpdate, normalizeMessage, normalizeRootWindow } from './commands.js';
 
+/** Show everyone (#842): the agent whose answer a person posts as their own message, "Ada · via Assistant". Only the server sets it, from the answer itself. */
+export interface ViaAgent { via?: string | null }
+
 /** Storage and current-access boundary. The adapter must authorize before every read and
  * authorize under the write transaction before every mutation or idempotent replay. */
 export interface ConversationPort {
@@ -12,8 +15,8 @@ export interface ConversationPort {
   /** The project's one stream (UI116-1): authorize the project first, then count and page its roots. */
   listRoots(principal: Principal, projectId: string, window: ReturnType<typeof normalizeRootWindow>): Promise<ConversationRootWindow>;
   getConversation(principal: Principal, conversationId: string, window: ReturnType<typeof normalizeConversationWindow>): Promise<Conversation>;
-  createConversation(principal: Principal, projectId: string, input: ReturnType<typeof normalizeMessage>): Promise<Conversation>;
-  sendMessage(principal: Principal, conversationId: string, input: ReturnType<typeof normalizeMessage>): Promise<ConversationMessage>;
+  createConversation(principal: Principal, projectId: string, input: ReturnType<typeof normalizeMessage> & ViaAgent): Promise<Conversation>;
+  sendMessage(principal: Principal, conversationId: string, input: ReturnType<typeof normalizeMessage> & ViaAgent): Promise<ConversationMessage>;
   listMaterials(principal: Principal, projectId: string, query?: PageQuery): Promise<Page<Material>>;
   /** Any material or doc by ID; a doc's current version may be agent-written (#152). */
   getMaterial(principal: Principal, materialId: string): Promise<MaterialOrDoc>;
@@ -30,10 +33,10 @@ export function conversationUseCases(port: ConversationPort) {
       port.listRoots(principal, projectId, normalizeRootWindow(query)),
     getConversation: (principal: Principal, conversationId: string, query?: ConversationWindowQuery) =>
       port.getConversation(principal, conversationId, normalizeConversationWindow(query)),
-    createConversation: (principal: Principal, projectId: string, command: SendMessageCommand) =>
-      port.createConversation(principal, projectId, normalizeMessage(command)),
-    sendMessage: (principal: Principal, conversationId: string, command: SendMessageCommand) =>
-      port.sendMessage(principal, conversationId, normalizeMessage(command)),
+    createConversation: (principal: Principal, projectId: string, command: SendMessageCommand, via?: string) =>
+      port.createConversation(principal, projectId, { ...normalizeMessage(command), via: via ?? null }),
+    sendMessage: (principal: Principal, conversationId: string, command: SendMessageCommand, via?: string) =>
+      port.sendMessage(principal, conversationId, { ...normalizeMessage(command), via: via ?? null }),
     listMaterials: (principal: Principal, projectId: string, query?: PageQuery) => port.listMaterials(principal, projectId, query),
     getMaterial: (principal: Principal, materialId: string) => port.getMaterial(principal, materialId),
     getMaterialVersion: (principal: Principal, materialId: string, version: number) => port.getMaterialVersion(principal, materialId, version),

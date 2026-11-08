@@ -167,3 +167,8 @@ export function MessageTime({ at, seenBy = [] }: { at: string; seenBy?: readonly
 export function MessageDay({ label, as: Tag = 'li' }: { label: string; as?: 'li' | 'p' }) {
   return <Tag className="message-day project-convo__day"><span>{label}</span></Tag>;
 }
+
+/** "Ada · via Assistant" (#842, F-036 AG-4): the person posted an agent's answer with Show everyone. They stay the author. */
+export function ViaTag({ via }: { via?: string | undefined }) {
+  return via ? <span className="project-convo__via">via {via}</span> : null;
+}

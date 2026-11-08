@@ -15,8 +15,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 export interface RunTokenClaims {
   id: string;
   jti: string;
-  projectId: string;
-  conversationId: string;
+  /** The run's place (#842): a space and its conversation (none for its main one), a direct message, or neither: a private chat. */
+  projectId: string | null;
+  conversationId: string | null;
+  dmId: string | null;
   /** The run's exact tools that the owner's switches still allow, set by the route before dispatch. */
   tools: readonly string[];
 }
@@ -27,10 +29,18 @@ export function runTokenClaims(token: Record<string, unknown>): Omit<RunTokenCla
   const place = token.flux_place;
   if (typeof token.flux_run_id !== 'string' || !UUID.test(token.flux_run_id) || typeof token.jti !== 'string' || !UUID.test(token.jti)
     || !place || typeof place !== 'object' || Array.isArray(place)) return 'invalid';
-  const { project, conversation } = place as Record<string, unknown>;
-  if (typeof project !== 'string' || !UUID.test(project) || typeof conversation !== 'string' || !UUID.test(conversation)) return 'invalid';
-  return { id: token.flux_run_id, jti: token.jti, projectId: project, conversationId: conversation };
+  const { project, conversation, dm } = place as Record<string, unknown>;
+  const id = (value: unknown) => (value === null || value === undefined ? null : typeof value === 'string' && UUID.test(value) ? value : 'invalid' as const);
+  const [projectId, conversationId, dmId] = [id(project), id(conversation), id(dm)];
+  if (projectId === 'invalid' || conversationId === 'invalid' || dmId === 'invalid' || (conversationId !== null && projectId === null) || (dmId !== null && projectId !== null)) return 'invalid';
+  return { id: token.flux_run_id, jti: token.jti, projectId, conversationId, dmId };
 }
+
+/**
+ * Whether a run's token reaches this space (#842, C-12). A run in a space reaches that space only; a run in a direct message reaches no
+ * space at all; a private chat reaches what its owner can see, because nobody else reads the answer.
+ */
+export const runReaches = (run: Pick<RunTokenClaims, 'projectId' | 'dmId'>, projectId: string) => (run.projectId !== null ? run.projectId === projectId : run.dmId === null);
 
 export const runEnded = () => new DomainError(403, 'RUN_TOKEN_UNAVAILABLE', 'This assistant run has ended');
 
@@ -45,11 +55,11 @@ export async function requireLiveRun(tx: Transaction, claims: { ownerUserId: str
   const row = await rows.find(claims.run.id, options.lock ? { lock: 'share' } : {});
   if (!row || row.ownerUserId !== claims.ownerUserId || (row.status !== 'reading' && row.status !== 'dispatching')
     || row.runTokenJti !== claims.run.jti || row.runTokenClosedAt !== null || !row.runTokenExpiresAt || row.runTokenExpiresAt.getTime() <= Date.now()
-    || row.projectId !== claims.run.projectId || row.conversationId !== claims.run.conversationId || row.stopRequestedAt !== null
+    || row.projectId !== claims.run.projectId || row.conversationId !== claims.run.conversationId || row.dmId !== claims.run.dmId || row.stopRequestedAt !== null
     || (options.newCall && row.mcpLimit !== null)) throw runEnded();
   if (await rows.assistantConnectionId(row.ownerUserId, row.agentId) !== claims.connectionId) throw runEnded();
   // AG-10: the run works only while AI is on in its space, at the epoch it was admitted under.
-  await requireSpaceAi(accessReader(tx), row.projectId, { lock: options.lock ?? false, epoch: row.aiEpoch });
+  if (row.projectId !== null) await requireSpaceAi(accessReader(tx), row.projectId, { lock: options.lock ?? false, ...(row.aiEpoch !== null ? { epoch: row.aiEpoch } : {}) });
   return row;
 }
 

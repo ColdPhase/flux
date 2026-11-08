@@ -4,7 +4,7 @@ import { agentProjectReads, DomainError, enforce, evaluateProject, requireAgentP
 import { agentProjectObjectRows, reachableProjectIds, accessReader, type Database, type Transaction } from '@flux/db';
 import { createAgentConnectionStore } from './store.js';
 import type { McpDispatch } from './mcp-dispatch.js';
-import { requireLiveRun, type RunTokenClaims } from './run-token.js';
+import { requireLiveRun, runReaches, type RunTokenClaims } from './run-token.js';
 import type { AssistantApproval } from './assistant-changes.js';
 
 /** Constructed only from the verified authorization-server bearer, never MCP clientInfo. */
@@ -71,11 +71,11 @@ export async function agentConnectionInTransaction(tx: Transaction, claims: Flux
     if (access === 'write' && row.mayDo === 'read')
       throw new DomainError(403, 'AGENT_ONLY_READS', 'This agent only reads: its owner set "What it may do" to Only read');
     const connection: AgentConnectionContext = { connectionId: row.id, ownerUserId: row.ownerUserId, agentId: row.agentId, computeSource: row.computeSource };
-    const reachable = async () => (await reachableProjectIds(tx, row.id)).filter((id) => (!claims.run || id === claims.run.projectId) && (!claims.boundProjectId || id === claims.boundProjectId));
+    const reachable = async () => (await reachableProjectIds(tx, row.id)).filter((id) => (!claims.run || runReaches(claims.run, id)) && (!claims.boundProjectId || id === claims.boundProjectId));
     const requireProject = async (id: string, action: 'project.read' | 'project.write' = 'project.read') => {
       requireAgentProject(connection, id);
       // A run reaches only its place (F-022), and a request bound to one project only that one.
-      if (claims.run && id !== claims.run.projectId || claims.boundProjectId && id !== claims.boundProjectId) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found');
+      if (claims.run && !runReaches(claims.run, id) || claims.boundProjectId && id !== claims.boundProjectId) throw new DomainError(404, 'PROJECT_NOT_FOUND', 'Project not found');
       // AG-10: every tool, resource and prompt that names a space refuses while AI is off there.
       await requireSpaceAi(accessReader(tx), id, { lock: true });
       const checked = enforce(await evaluateProject({ kind: 'agent', id: row.agentId }, action, id, accessReader(tx), { lock: true }), 'project');

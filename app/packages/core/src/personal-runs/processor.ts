@@ -7,18 +7,20 @@ import type { JobRetryPolicy } from '../push/config.js';
 import { isId } from '../work/validation.js';
 import type {
   AgentBrief, PersonalCompute, PersonalComputeRequest, PersonalComputeResult, PersonalConnection, PersonalConnectionLookup,
-  PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunEndStatus, RunRecord,
+  MessageSource, PersonalRunPorts, PersonalRunTokenIssuer, PersonalRunUnitOfWork, PersonalRuntime, PersonalToolHost, PersonalToolSession, RunChanges, RunEndStatus, RunRecord,
 } from './ports.js';
+import { isPrivateAnswer } from './ports.js';
 import { connectionOnModel } from './model.js';
 import { redactSecrets } from './redaction.js';
 import { answerWithSchedule } from './schedule-request.js';
+import { placeAllows, spaceSwitchAllows } from './place.js';
 import { answerWithWebSources } from './web-sources.js';
 import { createRuntimeRunProcessor, type RuntimeCaps } from './runtime-run.js';
 import { reserveOnKey } from './service.js';
 import { updateAndAnnounce } from './progress.js';
 import { requestParts, runToolLoop, type LoopResult, type RunAccount } from './tool-loop.js';
 import {
-  agentBriefText, centsToMicros, connectionCallsTools, parseOutput, requestInput, runChargeMicros, runReservationMicros, runTokensWithinLimits, SYSTEM_PROMPT, taskSystemPrompt, TOOL_SYSTEM_PROMPT, type SuppliedSource,
+  agentBriefText, centsToMicros, connectionCallsTools, parseOutput, privateSystemPrompt, requestInput, runChargeMicros, runReservationMicros, runTokensWithinLimits, SYSTEM_PROMPT, taskSystemPrompt, TOOL_SYSTEM_PROMPT, type SuppliedSource,
 } from './validation.js';
 
 // The worker side of a personal run (`personal-run.dispatch.v1`, O-008 §3–§5). The job payload
@@ -90,6 +92,8 @@ type Stage = 'before_read' | 'before_dispatch' | 'before_commit';
 type Refusal = Extract<RunRecord['status'], 'denied' | 'revoked' | 'unavailable' | 'cap_reached'> | 'ai_off';
 
 const MESSAGE_WINDOW = 40;
+/** How many earlier exchanges of a private chat the agent is told. */
+const CHAT_TURNS = 6;
 const WORK_WINDOW = 20;
 
 function isAccessDenial(error: unknown) {
@@ -102,11 +106,9 @@ function isAccessDenial(error: unknown) {
  */
 async function recheck(ports: PersonalRunPorts, connections: PersonalConnectionLookup, compute: PersonalCompute, run: RunRecord, stage: Stage, lock: boolean): Promise<{ refusal: Refusal } | { connection: PersonalConnection }> {
   // AG-10, first: AI on in the run's space, at the epoch the run was admitted under (policy row before the others).
-  const ai = await ports.access.spaceAi(run.projectId, { lock });
-  if (ai.state !== 'allowed' || ai.epoch !== run.aiEpoch) return { refusal: 'ai_off' };
+  if (!(await spaceSwitchAllows(ports, run, lock))) return { refusal: 'ai_off' };
   if (!(await ports.runs.enablement(run.ownerUserId, { lock, agentId: run.agentId }))) return { refusal: 'revoked' };
   const owner: Principal = { kind: 'human', id: run.ownerUserId };
-  const agent: Principal = { kind: 'agent', id: run.agentId };
   if (!(await ports.access.canInvoke(owner, run.agentId, { lock }))) return { refusal: 'revoked' };
   // A run that holds a run token acts as the owner's assistant connection (F-027 AST-3): revoking it ends the run.
   if (run.runTokenJti && ports.runs.assistantConnectionLive && !(await ports.runs.assistantConnectionLive(run.ownerUserId, run.agentId)))
@@ -117,10 +119,9 @@ async function recheck(ports: PersonalRunPorts, connections: PersonalConnectionL
   const connection = run.connectionId ? await connections.resolve(run.ownerUserId, run.connectionId) : null;
   if (!connection || connection.status !== 'active' || connection.ownerUserId !== run.ownerUserId
     || connection.id !== run.connectionId) return { refusal: 'unavailable' };
-  // The sources are what the owner can read in this project, as the agent;
+  // The sources are what the owner can read in this place, as the agent;
   // the answer is posted to the place, so its owner must still be able to write there.
-  if (!(await ports.access.canUseProject(owner, 'write', run.projectId, { lock })) || !(await ports.access.canUseProject(agent, 'read', run.projectId, { lock })))
-    return { refusal: 'denied' };
+  if (!(await placeAllows(ports, run, lock))) return { refusal: 'denied' };
   if (stage === 'before_dispatch') {
     // The key's one daily budget (#854): what the rest of the day's work holds, and this run's own reservation.
     const spend = await ports.runs.keySpend(connection, run.id);
@@ -137,37 +138,50 @@ const free: RunChanges = { costState: 'released', chargedMicros: 0 };
 
 /** F-029: a stop request the turn-off sweep made ends the run `ai_off`; the owner's own Stop stays `stopped`. */
 async function stopped(ports: PersonalRunPorts, run: RunRecord): Promise<RunEndStatus> {
-  const ai = await ports.access.spaceAi(run.projectId);
-  return ai.state !== 'allowed' || ai.epoch !== run.aiEpoch ? 'ai_off' : 'stopped';
+  return (await spaceSwitchAllows(ports, run, false)) ? 'stopped' : 'ai_off';
 }
 
-/** Reads the project-audience sources of the run as its agent. Private places are never read. */
-async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ sources: SuppliedSource[]; earlier: string | null; brief: AgentBrief | null } | null> {
+/** What the model is given to read in a message source: the message with its author and any files. */
+const messageText = (message: MessageSource) =>
+  `Message ${message.sequence}${message.contribution ? ` (${message.contribution.kind}${message.contribution.kind === 'result' ? `; result ${message.contribution.resultId}` : ''})` : ''} by ${message.authorName}${message.author.kind === 'agent' ? ' (agent)' : ''}: ${message.body}${message.files?.length ? `\nAttached files (contents not included): ${message.files.map((file) => `${file.name} (${file.size} bytes; file ${file.id})`).join(', ')}` : ''}`;
+
+/**
+ * Reads what the run may use, as its agent, and only what the place's audience can see (#842, F-036 AG-4 / C-12): a space's conversation
+ * (or its main conversation) and the space's open work; a direct message, only the DM; a private chat, the earlier turns of the chat and
+ * whatever the owner can see through the tools. The owner's other places are never read for a shared place.
+ */
+async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ sources: SuppliedSource[]; earlier: string | null; brief: AgentBrief | null; turns: { prompt: string; answer: string }[] } | null> {
   const agent: Principal = { kind: 'agent', id: run.agentId };
-  // AG-10: the reads run under the policy row's share lock, at the run's admission epoch (a read after the change sees it).
-  await ports.access.requireSpaceAi(run.projectId, { lock: true, epoch: run.aiEpoch });
-  await ports.access.requireProject(agent, 'read', run.projectId);
+  const owner: Principal = { kind: 'human', id: run.ownerUserId };
+  if (run.projectId !== null) {
+    // AG-10: the reads run under the policy row's share lock, at the run's admission epoch (a read after the change sees it).
+    await ports.access.requireSpaceAi(run.projectId, { lock: true, epoch: run.aiEpoch! });
+    await ports.access.requireProject(agent, 'read', run.projectId);
+  } else if (run.dmId !== null) await ports.access.requireDm(owner, run.dmId);
   const sources: SuppliedSource[] = [];
   const next = () => `S${sources.length + 1}`;
   const brief = await ports.runs.agentBrief(run.agentId);
   if (run.targetSketchId && run.targetThoughtId) {
     // Agents never see private sketches; the thought must be on a project sketch of this project.
-    if (!(await ports.access.canReadSketch(agent, run.targetSketchId))) return null;
+    if (run.projectId === null || !(await ports.access.canReadSketch(agent, run.targetSketchId))) return null;
     const thought = await ports.runs.thought(run.targetSketchId, run.targetThoughtId);
     if (!thought || thought.sketchScope !== 'project' || thought.sketchProjectId !== run.projectId) return null;
     sources.push({ label: next(), ref: { type: 'thought', id: thought.id, sketchId: thought.sketchId, revision: thought.version }, text: `Selected map thought: ${thought.text}` });
   }
   // A silent background run's conversation is only where it is anchored: its messages are not its context (AST-9).
-  for (const message of !run.silent ? await ports.runs.messages(run.conversationId, MESSAGE_WINDOW) : [])
-    sources.push({ label: next(), ref: { type: 'message', id: message.id, revision: 1 }, text: `Message ${message.sequence}${message.contribution ? ` (${message.contribution.kind}${message.contribution.kind === 'result' ? `; result ${message.contribution.resultId}` : ''})` : ''} by ${message.authorName}${message.author.kind === 'agent' ? ' (agent)' : ''}: ${message.body}${message.files?.length ? `\nAttached files (contents not included): ${message.files.map((file) => `${file.name} (${file.size} bytes; file ${file.id})`).join(', ')}` : ''}` });
-  for (const work of await ports.runs.openWork(run.projectId, WORK_WINDOW))
+  const messages = run.silent ? [] : run.conversationId !== null ? await ports.runs.messages(run.conversationId, MESSAGE_WINDOW)
+    : run.projectId !== null ? await ports.runs.spaceMessages(run.projectId, MESSAGE_WINDOW) : run.dmId !== null ? await ports.runs.dmMessages(run.dmId, MESSAGE_WINDOW) : [];
+  for (const message of messages) sources.push({ label: next(), ref: { type: 'message', id: message.id, revision: 1 }, text: messageText(message) });
+  if (run.projectId !== null) for (const work of await ports.runs.openWork(run.projectId, WORK_WINDOW))
     sources.push({ label: next(), ref: { type: 'work', id: work.id, revision: work.version }, text: `Open work item "${work.title}" (${work.status})${work.outcome ? `: ${work.outcome}` : ''}` });
   let earlier: string | null = null;
   if (run.continuesRunId) {
     const previous = await ports.runs.findRun(run.continuesRunId);
-    if (previous?.ownerUserId === run.ownerUserId && previous.conversationId === run.conversationId) earlier = previous.answerBody;
+    if (previous?.ownerUserId === run.ownerUserId && previous.conversationId === run.conversationId && previous.dmId === run.dmId) earlier = previous.answerBody;
   }
-  return { sources, earlier, brief };
+  // The private chat has no conversation to read: it remembers what was said in it last (the agent's memory is told in its brief).
+  const turns = run.projectId === null && run.dmId === null ? await ports.runs.chatTurns(run.agentId, run.id, CHAT_TURNS) : [];
+  return { sources, earlier, brief, turns };
 }
 
 /**
@@ -178,10 +192,10 @@ async function readSources(ports: PersonalRunPorts, run: RunRecord): Promise<{ s
  * run may no longer send anything. A run with tools has the larger bound (#484).
  */
 async function fit(compute: PersonalCompute, base: Omit<PersonalComputeRequest, 'input'>, run: RunRecord,
-  read: { sources: SuppliedSource[]; earlier: string | null; brief?: AgentBrief | null }, beforeCount: () => Promise<PersonalRunOutcome | null>, maxInputTokens: number) {
+  read: { sources: SuppliedSource[]; earlier: string | null; brief?: AgentBrief | null; turns?: { prompt: string; answer: string }[] }, beforeCount: () => Promise<PersonalRunOutcome | null>, maxInputTokens: number) {
   let sources = read.sources;
   for (;;) {
-    const request = { ...base, input: requestInput(run, sources, read.earlier) };
+    const request = { ...base, input: requestInput(run, sources, read.earlier, read.turns) };
     let tokens = conservativeTokenEstimate(requestParts(request));
     if (tokens <= maxInputTokens && compute.countInputTokens) {
       const refused = await beforeCount();
@@ -203,6 +217,13 @@ export const unavailablePersonalCompute: PersonalCompute = {
   enabled: false,
   dispatch: async () => ({ kind: 'failed', reason: 'provider_error', billed: 'none' }),
 };
+
+/** The brief of a run: the answer to `/ai` or a chat is written for its place (#842); a task and a schedule keep theirs. */
+function systemPromptOf(run: RunRecord, withTools: boolean): string {
+  if (run.kind === 'task' || run.kind === 'task_answer') return taskSystemPrompt(withTools, run.kind === 'task_answer');
+  if (isPrivateAnswer(run)) return privateSystemPrompt(run.projectId !== null ? 'space' : run.dmId !== null ? 'dm' : 'chat', withTools);
+  return withTools ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT;
+}
 
 /** The safety clock of a run with tools (#843): the same as a run on a plan. */
 const WALL_CLOCK_MS = RUNTIME_RUN_LIMITS.wallClockSeconds * 1000;
@@ -275,7 +296,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const located = await ports.runs.findRun(runId);
       if (!located || located.status !== 'dispatching') return 'skipped';
       const initial = await recheck(ports, connections, compute, located, 'before_commit', true).catch((error: unknown) => { if (isAccessDenial(error)) return { refusal: 'denied' as const }; throw error; });
-      const preview = result?.kind === 'completed' ? parseOutput(redactSecrets(result.text).text, sources, result.stopReason !== 'max_tokens') : null;
+      const preview = result?.kind === 'completed' ? parseOutput(redactSecrets(result.text).text, sources, result.stopReason !== 'max_tokens' && !isPrivateAnswer(located)) : null;
       const refs = [...sources.map((source) => source.ref), ...(preview?.proposal?.finishesWorkId ? [{ type: 'work', id: preview.proposal.finishesWorkId }] : [])];
       const taskFence = !('refusal' in initial) && preview
         ? await ports.runs.prepareTaskUse(located.projectId, located.conversationId, refs) : null;
@@ -306,7 +327,7 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       const truncated = result.stopReason === 'max_tokens';
       // The same redaction as a runtime answer's (F-022 AIM-3, F-027 AST-9, #484): token-shaped strings never reach the conversation.
       const redacted = redactSecrets(result.text);
-      const parsed = parseOutput(redacted.text, sources, !truncated);
+      const parsed = parseOutput(redacted.text, sources, !truncated && !isPrivateAnswer(run));
       parsed.body = await answerWithWebSources(ports, run, await answerWithSchedule(ports, run, parsed.body));
       const agent: Principal = { kind: 'agent', id: run.agentId };
       const committedAt = new Date();
@@ -316,14 +337,15 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
       }));
       if (parsed.proposal) {
         const proposal = await ports.runs.insertProposal({
-          id: randomUUID(), workspaceId: run.workspaceId, projectId: run.projectId, runId: run.id, ownerUserId: run.ownerUserId,
+          id: randomUUID(), workspaceId: run.workspaceId, projectId: run.projectId!, runId: run.id, ownerUserId: run.ownerUserId,
           fact: parsed.proposal.fact, interpretation: parsed.proposal.interpretation, resultTitle: parsed.proposal.title,
           resultFinding: parsed.proposal.finding, resultEvidence: parsed.proposal.evidence, finishesWorkId: parsed.proposal.finishesWorkId,
         });
-        await ports.events.record(agent, run.workspaceId, 'project.assistant_proposal_created.v1', run.projectId, { runId: run.id, proposalId: proposal.id });
+        await ports.events.record(agent, run.workspaceId, 'project.assistant_proposal_created.v1', run.projectId!, { runId: run.id, proposalId: proposal.id });
       }
       // A silent background run is not announced to the project: its result is the owner's (Recent, the Inbox).
-      if (!run.silent) await ports.events.record(agent, run.workspaceId, 'project.assistant_answer_committed.v1', run.projectId, { conversationId: run.conversationId, runId: run.id });
+      // The answer to `/ai` and to a chat is its owner's alone: the space hears nothing until Show everyone (#842).
+      if (!run.silent && !isPrivateAnswer(run) && run.projectId !== null) await ports.events.record(agent, run.workspaceId, 'project.assistant_answer_committed.v1', run.projectId, { conversationId: run.conversationId, runId: run.id });
       await taskFence?.mark();
       return updated.status;
     });
@@ -345,14 +367,14 @@ export function createPersonalRunProcessor({ uow, connections, compute, stopPoll
   }
 
   /** Fits, rechecks and sends the run: one request, or the bounded loop when it has tools. */
-  async function dispatchRun(run: RunRecord, read: { sources: SuppliedSource[]; earlier: string | null; brief?: AgentBrief | null }, connection: PersonalConnection,
+  async function dispatchRun(run: RunRecord, read: { sources: SuppliedSource[]; earlier: string | null; brief?: AgentBrief | null; turns?: { prompt: string; answer: string }[] }, connection: PersonalConnection,
     session: PersonalToolSession | null, beforeSend: () => Promise<PersonalRunOutcome | null>): Promise<PersonalRunOutcome> {
     let fitted: Awaited<ReturnType<typeof fit>>;
     try {
       fitted = await fit(compute, {
         connection: { id: connection.id, keyRef: connection.keyRef, provider: connection.provider, baseUrl: connection.baseUrl }, model: run.model,
         maxTokens: PERSONAL_RUN_LIMITS.maxOutputTokens, effort: PERSONAL_RUN_LIMITS.effort,
-        system: [run.kind === 'task' || run.kind === 'task_answer' ? taskSystemPrompt(!!session, run.kind === 'task_answer') : session ? TOOL_SYSTEM_PROMPT : SYSTEM_PROMPT, agentBriefText(read.brief ?? null)].filter(Boolean).join('\n\n'), ...(session ? { tools: session.tools } : {}),
+        system: [systemPromptOf(run, !!session), agentBriefText(read.brief ?? null)].filter(Boolean).join('\n\n'), ...(session ? { tools: session.tools } : {}),
       }, run, read, beforeSend, personalRunMaxInputTokens(!!session));
     } catch {
       // The preflight count failed (provider down, key refused). Counting is free and nothing

@@ -47,6 +47,15 @@ export function DmBubble({ message, pending, mine, name, continued, groupLast, d
   const touch = useTouchActions<HTMLLIElement>(actions);
   const { className: touchClass, ...touchHandlers } = touch.props;
   const label = mine ? 'Your message' : `${name}’s message`;
+  // AI used in this conversation (#842, F-036 AG-4): one line for both people, naming the company that receives the conversation.
+  if (message?.notice === 'ai_used') {
+    return (
+      <li id={`${nav === 'thread' ? 'thread-message' : 'message'}-${message.id}`} tabIndex={-1} className="dm-notice" data-message-id={message.id} data-sequence={message.sequence} aria-label="AI was used here">
+        {day ? <MessageDay as="p" label={day} /> : null}
+        <p className="dm-notice__line"><Icon name="lock" size={12} />{mine ? 'You' : name} used AI here ({message.body})</p>
+      </li>
+    );
+  }
   if (!message) {
     const item = pending!;
     return (
@@ -70,7 +79,8 @@ export function DmBubble({ message, pending, mine, name, continued, groupLast, d
       <div className="dm-msg__row">
         <span className="dm-msg__face">{continued || mine ? null : <Avatar name={name} size="lg" tone="neutral" />}</span>
         <div className={`dm-msg__main${mine ? ' is-mine' : ''}`}>
-          {continued || mine ? null : <p className="dm-msg__meta"><b>{name}</b></p>}
+          {continued || mine ? null : <p className="dm-msg__meta"><b>{name}</b>{message.via ? <span className="dm-msg__via">via {message.via}</span> : null}</p>}
+          {mine && message.via ? <p className="dm-msg__meta"><span className="dm-msg__via">via {message.via}</span></p> : null}
           <MessageContent body={<div className="dm-msg__body"><MessageText body={message.body} /></div>} references={message.references} />
           {nav === 'stream' && message.replyCount > 0 ? (
             <button type="button" className="dm-replies" data-replies={message.replyCount} aria-label={`${message.replyCount} ${message.replyCount === 1 ? 'reply' : 'replies'}, open thread`}

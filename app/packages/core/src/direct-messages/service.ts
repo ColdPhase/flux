@@ -110,7 +110,7 @@ function toSummary(record: DmRecord, self: string): DmSummary {
 
 function toMessage(record: DmMessageRecord): DmMessage {
   return { id: record.id, conversationId: record.dmId, authorId: record.authorId, body: record.body, source: null, sequence: record.sequence, createdAt: record.createdAt.toISOString(),
-    threadRootId: record.threadRootId, replyCount: record.replyCount };
+    threadRootId: record.threadRootId, replyCount: record.replyCount, ...(record.via ? { via: record.via } : {}), ...(record.kind === 'ai_used' ? { notice: 'ai_used' as const } : {}) };
 }
 
 function messageIds(value: unknown, max: number, label: string): string[] {
@@ -192,7 +192,7 @@ async function taskCopyPreview(ports: DmPorts, principal: Principal, dm: DmRecor
 }
 
 export function createDmUseCases(uow: DmUnitOfWork) {
-  async function sendMessage(principal: Principal, dmId: string, rootId: string | null, command: SendDmMessageCommand): Promise<DmMessage> {
+  async function sendMessage(principal: Principal, dmId: string, rootId: string | null, command: SendDmMessageCommand, via: string | null = null): Promise<DmMessage> {
     const authorId = person(principal);
     if (command && typeof command === 'object' && 'source' in command && (command as { source?: unknown }).source !== undefined)
       throw new RuleViolationError('Direct messages cannot cite space material yet', 'DM_SOURCE_UNSUPPORTED');
@@ -219,7 +219,7 @@ export function createDmUseCases(uow: DmUnitOfWork) {
       await ports.references.assertReadable(principal, dm.workspaceId, input.references);
       const message = await ports.dms.appendMessage({
         id: randomUUID(), workspaceId: dm.workspaceId, dmId: dm.id, authorId,
-        clientMessageId: input.clientMessageId, requestFingerprint: fingerprint, body: input.body, threadRootId: rootId,
+        clientMessageId: input.clientMessageId, requestFingerprint: fingerprint, body: input.body, threadRootId: rootId, via,
       });
       await ports.references.save(message.id, dm.workspaceId, input.references);
       // The message id (an identifier, never content) lets notifications (#116) name the message.
@@ -293,6 +293,11 @@ export function createDmUseCases(uow: DmUnitOfWork) {
     /** A message inherits the DM's audience. A retry with the same clientMessageId returns the original. */
     async send(principal: Principal, dmId: string, command: SendDmMessageCommand): Promise<DmMessage> {
       return sendMessage(principal, dmId, null, command);
+    },
+
+    /** Show everyone in a DM (#842): the person posts an agent's answer as their message, "Ada · via Assistant". Only the server calls it, from the answer itself. */
+    async sendVia(principal: Principal, dmId: string, command: SendDmMessageCommand, via: string): Promise<DmMessage> {
+      return sendMessage(principal, dmId, null, command, via);
     },
 
     /**

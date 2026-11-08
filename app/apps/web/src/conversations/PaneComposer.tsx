@@ -46,16 +46,15 @@ export function PaneComposer({ core, drafts, menu, actions, ask, askBar, materia
     {writable ? <ComposerBox id={composerId} label={asking ? 'Ask your assistant' : conversation ? 'Reply' : 'Write a message'} value={draft}
       placeholder={asking ? 'Ask your assistant…' : conversation ? 'Reply in thread…' : 'Message · @ mention · / actions'}
       onChange={(value, position) => menu.changeDraft(value, position)} onSelect={menu.setCaret} onBlur={typing.stop} onKeyDown={actions.onKey} disabled={busy || askBusy}
-      fieldProps={{ 'aria-describedby': asking ? 'project-ask' : actions.assistantInStream ? `${composerId}-ai-hint` : undefined, 'aria-controls': menuOpen ? `${composerId}-menu` : undefined,
+      fieldProps={{ 'aria-describedby': asking ? 'project-ask' : undefined, 'aria-controls': menuOpen ? `${composerId}-menu` : undefined,
         'aria-activedescendant': menuOpen ? `${composerId}-menu-${options[activeIndex]!.id}` : undefined }}
       attach={asking ? null : publicComposer}
       sendLabel={asking ? 'Send to your assistant' : conversation ? 'Send reply' : 'Send message'}
-      sendDisabled={!drafts.composer.canSend || busy || askBusy || actions.assistantInStream || (asking && askBar.state.kind !== 'ready')} onSend={() => void actions.send()}
+      sendDisabled={!drafts.composer.canSend || busy || askBusy || (asking && askBar.state.kind !== 'ready')} onSend={() => void actions.send()}
       menu={<ComposerMenu open={menuOpen} id={`${composerId}-menu`} options={options} active={activeIndex} trigger={menu.trigger?.char ?? '@'} aiOff={aiOff} onPick={menu.pick} onHover={menu.setMenuIndex} />} />
       : <div className="composer__box"><button type="button" className="composer__ask project-convo__sources-btn" aria-expanded={trayOpen} aria-controls={trayOpen ? sourcesId : undefined} aria-label={`Sources${materials.total ? `, ${materials.total} saved` : ''}`} data-tip="Saved sources to read" data-tip-align="start" onClick={() => { if (trayOpen) materials.setSourcesOpen(false); else materials.setSourcesOpen(true); }}><Icon name="doc" /><span className="project-convo__sources-t" aria-hidden="true">Sources</span>{materials.total ? <span className="project-convo__sources-n" aria-hidden="true">{materials.total > 99 ? '99+' : materials.total}</span> : null}</button><p className="project-convo__read-only">Read-only · <span>You have read access to this space.</span></p></div>}
     {conversation ? <TypingNotice {...typing} /> : null}
     {writable ? <SendAnnouncer pending={publicComposer.pending} /> : null}
-    {writable && actions.assistantInStream ? <p id={`${composerId}-ai-hint`} className="project-convo__hint" role="status">Your assistant answers inside a conversation. Open one and type /ai there. This text is not posted.</p> : null}
     {menu.commandHint ? <p className="project-convo__hint" role="status">{menu.commandHint}</p> : null}
     {readFailure ? <p className="project-convo__error" role="alert">{readFailure.message} <button type="button" onClick={readFailure.retry}>Retry read</button></p> : null}
   </div></div>;

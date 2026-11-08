@@ -21,8 +21,8 @@ type MessageRow = typeof m.$inferSelect;
 const activity = sql`coalesce(${d.lastMessageAt}, ${d.createdAt})`;
 // Qualified by hand: Drizzle leaves columns of a single-table select unqualified, and an unqualified
 // `id` inside this subquery would name dm_messages.id.
-const lastBody = sql<string | null>`(SELECT lm.body FROM dm_messages lm WHERE lm.dm_id = "dms"."id" ORDER BY lm.sequence DESC LIMIT 1)`;
-const lastId = sql<string | null>`(SELECT lm.id FROM dm_messages lm WHERE lm.dm_id = "dms"."id" ORDER BY lm.sequence DESC LIMIT 1)`;
+const lastBody = sql<string | null>`(SELECT lm.body FROM dm_messages lm WHERE lm.dm_id = "dms"."id" AND lm.kind = 'text' ORDER BY lm.sequence DESC LIMIT 1)`;
+const lastId = sql<string | null>`(SELECT lm.id FROM dm_messages lm WHERE lm.dm_id = "dms"."id" AND lm.kind = 'text' ORDER BY lm.sequence DESC LIMIT 1)`;
 
 export interface NewDmRow {
   id: string; workspaceId: string; kind: 'pair' | 'group'; pairKey: string | null; title: string | null; createdBy: string; participantIds: string[];
@@ -31,10 +31,12 @@ export interface NewDmMessageRow {
   id: string; workspaceId: string; dmId: string; authorId: string; clientMessageId: string; requestFingerprint: string; body: string;
   /** Set for a private reply: a root of the same DM. */
   threadRootId?: string | null;
+  /** The agent whose answer the author posted with Show everyone (#842). */
+  via?: string | null;
 }
 
 function toMessage(row: MessageRow, replyCount = 0) {
-  return { id: row.id, dmId: row.dmId, authorId: row.authorId, body: row.body, sequence: row.sequence, requestFingerprint: row.requestFingerprint, createdAt: row.createdAt, threadRootId: row.threadRootId, replyCount };
+  return { id: row.id, dmId: row.dmId, authorId: row.authorId, body: row.body, sequence: row.sequence, requestFingerprint: row.requestFingerprint, createdAt: row.createdAt, threadRootId: row.threadRootId, replyCount, via: row.via, kind: row.kind };
 }
 
 export function dmRows(db: DbExecutor) {
@@ -144,7 +146,7 @@ export function dmRows(db: DbExecutor) {
       const [updated] = await db.update(d).set({ nextSequence: sql`${d.nextSequence} + 1`, lastMessageAt: sql`now()` })
         .where(eq(d.id, message.dmId)).returning({ nextSequence: d.nextSequence });
       const [row] = await db.insert(m).values(await sealFor(db, 'dm_messages', message.workspaceId,
-        { ...message, threadRootId: message.threadRootId ?? null, sequence: updated!.nextSequence - 1 })).returning();
+        { ...message, threadRootId: message.threadRootId ?? null, via: message.via ?? null, sequence: updated!.nextSequence - 1 })).returning();
       return toMessage({ ...row!, body: message.body, requestFingerprint: message.requestFingerprint });
     },
     /** Messages of this DM among `ids`, with the facts a receipt run is checked against. Foreign ids are absent. */

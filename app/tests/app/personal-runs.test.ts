@@ -62,11 +62,19 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
   const agents: Record<string, string> = {};
   let projectSketch: { id: string; thoughtId: string };
   let privateSketch: { id: string; thoughtId: string };
+  let answeredRunId = '';
   const hubertConnection = randomUUID();
   const maurycyConnection = randomUUID();
 
   const ask = (someone: Person, prompt = 'Summarize where we are', extra: Record<string, unknown> = {}) =>
     runs.invoke(human(someone), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt, ...extra });
+
+  /** A proposal is an object of the whole conversation, so only a run that posts there can draft one (#842): the run of a schedule. */
+  async function scheduledAsk(prompt: string) {
+    const run = await ask(hubert, prompt);
+    await pool.query(`UPDATE personal_runs SET kind = 'scheduled', authority = 'owner_schedule', background_label = 'Test schedule' WHERE id = $1`, [run.run.id]);
+    return run;
+  }
 
   /** Hubert removed from the space: his assistant loses it with him (F-036 AG-3). */
   async function keepHubertOut() {
@@ -194,13 +202,13 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.equal(compute.dispatched.length, 1);
     assert.equal(compute.dispatched[0]!.connection.id, hubertConnection);
     assert.deepEqual(new Set(connections.resolved), new Set([hubert.id]), 'only the owner\'s connection was ever looked up');
-    await live.until(() => live.events.find((event) => event.kind === 'project.assistant_answer_committed.v1'), 8000, 'answer event for the conversation audience');
+    // The answer to `/ai` is its asker's alone (#842): the project's audience is told nothing, not even that it exists.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    assert.deepEqual(live.events.filter((event) => event.kind.startsWith('project.assistant_')), []);
     await live.close();
-    const audience = await pool.query(`SELECT a.recipient FROM event_audience a JOIN events e ON e.id = a.event_id
-      WHERE e.kind = 'project.assistant_answer_committed.v1' AND e.data->>'runId' = $1`, [mine.run.id]);
-    const recipients = audience.rows.map((item: { recipient: string }) => item.recipient);
-    assert.ok(recipients.includes(`human:${kai.id}`) && recipients.includes(`human:${viewer.id}`));
-    assert.ok(!recipients.includes(`human:${outsider.id}`));
+    const audience = await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind LIKE 'project.assistant_%' AND data->>'runId' = $1`, [mine.run.id]);
+    assert.equal(audience.rows[0].n, 0);
+    answeredRunId = mine.run.id;
   });
 
   test('AC-5: DMs, private captures and other projects never reach the input or the output; sources are openable by the audience', async () => {
@@ -208,14 +216,16 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.match(dispatched, /Camera fails below 5 lux/);
     for (const token of Object.values(TOKENS)) assert.equal(dispatched.includes(token), false, `input contains ${token}`);
 
+    // The answer is the asker's alone: their own view of it names the agent and the provenance, and nobody else lists it.
     const kaiView = expectStatus(await kai.browser.request('GET', `/api/v1/conversations/${thread.id}/assistant-answers`), 200) as Page<AssistantAnswer>;
-    const answer = kaiView.items.at(-1)!;
-    assert.equal(answer.assistant.label, 'pr-hubert\'s assistant');
+    assert.equal(kaiView.items.length, 0);
+    const answer = (await runs.get(human(hubert), answeredRunId)).answer!;
+    assert.equal(answer.assistant.label, 'hubert assistant');
     assert.equal(answer.askedBy.id, hubert.id);
     assert.deepEqual(answer.provenance, { provider: 'anthropic', model: 'claude-sonnet-5' });
     for (const token of Object.values(TOKENS)) assert.equal(answer.body.includes(token), false, `answer contains ${token}`);
-    const text = JSON.stringify(kaiView);
-    for (const hidden of ['Micros', 'reserved', 'test-key-ref', hubertConnection]) assert.equal(text.includes(hidden), false, `audience view shows ${hidden}`);
+    const text = JSON.stringify(answer);
+    for (const hidden of ['Micros', 'reserved', 'test-key-ref', hubertConnection]) assert.equal(text.includes(hidden), false, `the answer shows ${hidden}`);
     assert.equal((await outsider.browser.request('GET', `/api/v1/conversations/${thread.id}/assistant-answers`)).status, 404);
 
     assert.ok(answer.sources.length >= 2);
@@ -475,7 +485,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
         text: `Fact: the camera failed below 5 lux [S1].\n<proposal>${JSON.stringify({ fact: 'Camera fails below 5 lux', interpretation: 'Exposure is too short',
           title: 'Camera fails in low light', finding: 'negative', evidence: 'Low-light test, 20 gestures', finishes: label })}</proposal>` };
     };
-    const drafting = await ask(hubert, 'Record the low-light result');
+    const drafting = await scheduledAsk('Record the low-light result');
     assert.equal(await processor.process(drafting.run.id), 'completed');
     const run = await runs.get(human(hubert), drafting.run.id);
     const proposalId = run.answer!.proposalId!;
@@ -546,15 +556,15 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.match(compute.dispatched.at(-1)!.input, /Your earlier answer, to continue/);
   });
 
-  test('progress: every state change of a run reaches only its owner; others learn only that an assistant is working (names, no run) and then of the committed answer', async () => {
+  test('progress: every state change of a run reaches only its owner; the others hear nothing, not even that an assistant worked (#842)', async () => {
     const [own, peer, admin] = await Promise.all([hubert, kai, ada].map((someone) => StreamClient.connect(someone.browser)));
     const run = await ask(hubert, 'Where are we on the sensor?');
     const progressOf = (client: StreamClient) => client.events.filter((event) => event.objectType === 'assistant_run');
     await own.until(() => progressOf(own).find((event) => event.objectId === run.run.id), 8000, 'the owner hears the queued run');
     assert.equal(await processor.process(run.run.id), 'completed');
     await own.until(() => progressOf(own).filter((event) => event.objectId === run.run.id).length >= 4, 8000, 'queued, reading, dispatching and completed');
-    for (const other of [peer, admin]) await other.until(() => other.events.find((event) => event.kind === 'project.assistant_answer_committed.v1' && event.createdAt >= run.run.createdAt), 8000, 'the committed answer');
-    for (const other of [peer, admin]) assert.ok(other.events.some((event) => event.kind === 'project.assistant_working.v1' && event.objectType === 'project'), 'they hear that an assistant is working, nothing more');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    for (const other of [peer, admin]) assert.deepEqual(other.events.filter((event) => event.kind.startsWith('project.assistant_')), [], 'they hear nothing about the run');
     assert.deepEqual(progressOf(peer), [], 'a project member hears nothing about the run');
     assert.deepEqual(progressOf(admin), [], 'a workspace owner hears nothing about the run');
     for (const client of [own, peer, admin]) await client.close();
@@ -655,7 +665,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     try {
       // A decision-shaped block that says it accepts the pending decision is not a proposal at all.
       compute.respond = answer({ type: 'decision', decisionId: pending.id, status: 'accepted', title: 'Use the ToF sensor', rationale: 'Accepted for the team' });
-      const decisionShaped = await ask(hubert, 'Accept the ToF decision for us');
+      const decisionShaped = await scheduledAsk('Accept the ToF decision for us');
       assert.equal(await processor.process(decisionShaped.run.id), 'completed');
       assert.equal((await runs.get(human(hubert), decisionShaped.run.id)).answer?.proposalId, null, 'a decision-shaped block is dropped');
       assert.deepEqual(await decisionState(), untouched);
@@ -664,7 +674,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       compute.respond = answer({ fact: 'ToF tracked 19 of 20 gestures at 1 lux', interpretation: 'The sensor suits a dark bedroom',
         title: 'ToF works in the dark', finding: 'positive', evidence: '19/20 gestures at 1 lux', finishes: null,
         status: 'accepted', decidedBy: hubert.id, decisionId: pending.id });
-      const claimed = await ask(hubert, 'Record the ToF result and accept the decision');
+      const claimed = await scheduledAsk('Record the ToF result and accept the decision');
       assert.equal(await processor.process(claimed.run.id), 'completed');
       const proposalId = (await runs.get(human(hubert), claimed.run.id)).answer!.proposalId!;
       assert.ok(proposalId);

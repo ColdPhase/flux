@@ -8,7 +8,7 @@ import type { PersonalRunPorts, RunRecord } from './ports.js';
 export async function answerWithSchedule(ports: PersonalRunPorts, run: Pick<RunRecord, 'id' | 'kind' | 'silent' | 'ownerUserId' | 'projectId'>, answer: string): Promise<string> {
   if (!answer.includes('<schedule>')) return answer;
   const taken = takeScheduleBlocks(answer);
-  if (run.kind !== 'ask' || run.silent || !taken.request || !ports.schedules) return taken.text;
+  if (run.kind !== 'ask' || run.silent || !taken.request || !ports.schedules || run.projectId === null) return taken.text;
   const prepared = await ports.schedules.prepare(run.ownerUserId, run.projectId, run.id, taken.request);
   if (!prepared.ok) return `${taken.text}\n\nI couldn't prepare that schedule: ${prepared.message}`.trim();
   return taken.text || `Ready: ${prepared.title}, ${prepared.words}. It stays off until you turn it on.`;

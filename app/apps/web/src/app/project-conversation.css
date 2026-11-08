@@ -219,3 +219,11 @@ button.project-convo__contribution { cursor: pointer; }
   .project-convo__message:not(.is-mine):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid),
   .thread__root:not(.is-mine):has(.message-bubble :is(.ws-chip, .wiki-card, .message-files, .link-preview), > .photo-grid) { min-width: min(342px, 100%); }
 }
+
+/* "Ada · via Assistant" (#842): the person posted an agent's answer with Show everyone. */
+.project-convo__via { margin-left: 6px; color: var(--t3); font-weight: 400; }
+.project-convo__via:first-child { margin-left: 0; }
+/* Not the time's mono face the message meta gives its other spans. */
+.project-convo__message-meta > .project-convo__via, .thread__root-meta > .project-convo__via { font-family: inherit; font-variant-numeric: normal; }
+/* After a name it reads "Jo Weber · via Assistant" (mockup AiPrivate). */
+strong + .project-convo__via::before, b + .project-convo__via::before { content: "· "; }

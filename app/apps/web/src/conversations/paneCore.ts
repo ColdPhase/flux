@@ -7,6 +7,7 @@ import { useShellData } from '../app/data';
 import { useSpaceAi } from '../ai/spaceAi';
 import { audienceLine, useProjectShell } from '../project/data';
 import { getProject } from '../project/api';
+import type { AskPlace } from '../assistant/api';
 import type { ProjectData } from './loader';
 
 /** What every part of one conversation pane (the stream's or a thread's) reads: who, where, and what they may do. */
@@ -14,6 +15,8 @@ export interface PaneCore {
   me: MeResponse; project: Project; conversation: Conversation | null; people: ProjectPerson[] | null;
   /** The pane's own field: the stream's composer, or the open thread's reply field. */
   composerId: string;
+  /** Where `/ai` asks from this pane: the open conversation, or the space's main conversation (#842). */
+  place: AskPlace;
   writable: boolean;
   /**
    * A company owner or admin who can open this space without being in it (C-15): their assistant works only in spaces they are in,
@@ -22,6 +25,8 @@ export interface PaneCore {
   outside: boolean;
   /** AG-10: while the space's AI is off this conversation is human-only: no assistant, no AI commands, no suggestions. */
   aiOff: boolean;
+  /** The person is a guest in the company: no AI at all (AG-2), whatever the space's switch says. */
+  guest: boolean;
   /** "Only you and Kai", and the same without "only you two" for the assistant's line. */
   audience: string; audienceShort: string;
   /**
@@ -36,15 +41,18 @@ export function usePaneCore(data: ProjectData, variant: 'stream' | 'thread'): Pa
   const { project } = data;
   const conversation = variant === 'thread' ? data.conversation : null;
   const people = useProjectShell()?.people ?? null;
-  const { me, reachableSpaces } = useShellData();
+  const { me, workspace, reachableSpaces } = useShellData();
   const revalidator = useRevalidator();
   const revalidateRef = useRef<() => unknown>(revalidator.revalidate);
   useEffect(() => { revalidateRef.current = revalidator.revalidate; });
-  const aiOff = useSpaceAi(project.id).blocked;
+  // A guest has no AI (F-036 AG-2): the pane is human-only for them, as it is while the space's AI is off.
+  const guest = workspace?.role === 'guest';
+  const aiOff = useSpaceAi(project.id).blocked || guest;
   const outside = reachableSpaces.find((space) => space.id === project.id)?.member === false;
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   return {
     me, project, conversation, people, composerId: conversation ? 'thread-composer' : 'project-composer', writable: true, aiOff, outside,
+    place: { kind: 'space', projectId: project.id, conversationId: conversation?.id ?? null }, guest,
     audience, audienceShort: audience.replace(/ · only you two$/, ''), revalidateRef,
   };
 }

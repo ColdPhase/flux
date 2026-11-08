@@ -26,13 +26,11 @@ interface Options {
 const COMMAND_EXAMPLE = { task: 'Order the probes', decide: 'Use the second supplier', map: 'Lockers in the hallway', handoff: 'Calibrate the probes' } as const;
 
 /** What Send does in a pane (#264): a message joins the end at once and the field empties; a command opens its window. */
-export function useComposerSend({ project, conversation, writable, aiOff, composerId }: PaneCore, options: Options) {
+export function useComposerSend({ project, conversation, writable, aiOff, guest, composerId }: PaneCore, options: Options) {
   const { drafts, menu, ask, thread, typing, touch, rootMessageId, newestRootAt, scrollToEnd, hideIfDenied, closeSources, onPosted, onSending } = options;
   const { asking, publicComposer, draft, captureScope } = drafts;
   const { openDetails, openCreate } = useShellActions();
   const addToMap = useAddToMap(project);
-  // The stream has no assistant: `/ai …` there would post the prompt for the whole project.
-  const assistantInStream = !aiOff && !conversation && /^\/ai(\s|$)/.test(draft.trimStart());
   async function runCommand(name: keyof typeof COMMAND_EXAMPLE, text: string) {
     // `/map` alone in a thread puts its opening message on the map (CW-1), with that message as the thought's source.
     if (name === 'map' && (text || (conversation && rootMessageId))) {
@@ -58,11 +56,11 @@ export function useComposerSend({ project, conversation, writable, aiOff, compos
     typing.stop();
     if (asking) { await ask.sendToAssistant(); return; }
     // AG-10: `/ai` and `/handoff` in a space whose AI is off are not messages for the people here: the words stay in the field.
-    if (aiOff && writable && /^\/(ai|handoff)(\s|$)/.test(draft.trim())) { menu.setCommandHint('AI is off in this space. Remove the command to send these words as a message.'); return; }
+    if (aiOff && writable && /^\/(ai|handoff)(\s|$)/.test(draft.trim())) { menu.setCommandHint(`${guest ? 'Guests don’t have AI.' : 'AI is off in this space.'} Remove the command to send these words as a message.`); return; }
     const command = writable ? /^\/(task|decide|map|handoff)(?:\s+([\s\S]*))?$/.exec(draft.trim()) : null;
     if (command) { await runCommand(command[1] as keyof typeof COMMAND_EXAMPLE, (command[2] ?? '').trim()); return; }
     // A private helper prompt is never published as a root (UI116-3); it stays in the private draft.
-    if (!writable || assistantInStream) return;
+    if (!writable) return;
     // The message joins the end of the stream or thread at once and the field empties (#264); the
     // queue sends it with its command, and a second tap finds nothing to send.
     const outcome = publicComposer.submit(conversation ? thread.messages.at(-1)?.sequence ?? 0 : newestRootAt);
@@ -96,6 +94,6 @@ export function useComposerSend({ project, conversation, writable, aiOff, compos
       document.getElementById(composerId)?.focus();
     } catch (cause) { hideIfDenied(cause); thread.setReadFailure({ message: readableError(cause), retry: () => void cite(material) }); }
   }
-  return { send, onKey, cite, assistantInStream };
+  return { send, onKey, cite };
 }
 export type ComposerSend = ReturnType<typeof useComposerSend>;

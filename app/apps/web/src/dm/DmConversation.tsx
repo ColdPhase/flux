@@ -9,6 +9,11 @@ import { dmReceipts, getDm, observeDmMessages, olderDmMessages } from '../api/di
 import { ComposerBox } from '../composer/ComposerBox';
 import { outboxView, useComposerDraft, useComposerScope } from '../composer/draft';
 import { ConnectionLine, SendAnnouncer } from '../composer/Outbox';
+import { askError, askState } from '../assistant/format';
+import { PrivateAiLines, firstNames } from '../assistant/PrivateAiLines';
+import { useConversationAssistant } from '../assistant/useConversationAssistant';
+import { useFollowEnd } from '../assistant/useFollowEnd';
+import { noteAssistantUse } from '../assistant/MeetAssistant';
 import { CiteTile } from '../composer/References';
 import { takeHeldCite } from '../app/citeBus';
 import { useStreamEvents } from '../api/stream';
@@ -73,7 +78,7 @@ function merge(current: DmMessage[], incoming: DmMessage[]) {
 function DmContent({ initial }: { initial: Dm }) {
   // Touch devices add a line with Enter and send with the button (#189).
   const touch = useMediaQuery(MEDIA.touch);
-  const { me } = useShellData();
+  const { me, workspace } = useShellData();
   const revalidator = useRevalidator();
   const audienceId = useId();
   const [dm, setDm] = useState(initial);
@@ -88,6 +93,10 @@ function DmContent({ initial }: { initial: Dm }) {
   useEffect(() => { const held = takeHeldCite(`dm:${initial.id}`); if (held) composer.addCite(held); }, [initial.id, composer]);
   const draft = composer.draft.body;
   const [gone, setGone] = useState(false);
+  // `/ai` in this conversation (#842): the answer is the asker's alone, and both people see one line that AI was used here.
+  const [askFailure, setAskFailure] = useState('');
+  // A guest has no AI (AG-2): `/ai` is only words for them.
+  const asking = workspace?.role !== 'guest' && /^\/ai(\s|$)/.test(draft);
   const [leftNotice, setLeftNotice] = useState('');
   const feedRef = useRef<HTMLDivElement | null>(null);
   // The feed element as state too, so the reading-position owner starts once it is on screen.
@@ -158,6 +167,10 @@ function DmContent({ initial }: { initial: Dm }) {
     finally { refreshing.current = false; }
   }, [denied, initial.id, learn]);
 
+  const assistant = useConversationAssistant({ meId: me.user.id, place: { kind: 'dm', dmId: initial.id }, onShown: () => { void refresh(); toBottom(); } });
+  // A new answer, or the agent at work, comes into view at the end, also when the working line becomes the taller answer (#842).
+  const privateItems = [...assistant.privateAnswers.map((item) => item.id), assistant.run?.id ?? ''].join(',');
+  useFollowEnd(() => feedRef.current, privateItems.replaceAll(',', '') ? privateItems : '');
   useStreamEvents(me.user.id, (event) => {
     if (event.objectType !== 'dm' || event.objectId !== initial.id) return;
     // Someone saw a message: only the "Seen by" lines ask again, not the whole conversation.
@@ -220,13 +233,33 @@ function DmContent({ initial }: { initial: Dm }) {
   useLayoutEffect(autosize, [draft]);
 
   function change(value: string) {
-    typing.input(Boolean(value.trim()));
+    setAskFailure('');
+    typing.input(Boolean(value.trim()) && !/^\/ai(\s|$)/.test(value));
     composer.setBody(value);
+  }
+
+  /** `/ai …` asks the person's agent; the words are not a message (#842). */
+  async function askAgent() {
+    const prompt = draft.replace(/^\/ai\s*/, '').trim();
+    const state = askState(assistant.status);
+    if (!prompt) { setAskFailure('Say what to ask after /ai, for example /ai summarise this conversation.'); return; }
+    if (state.kind !== 'ready') { setAskFailure(state.note); return; }
+    const active = captureScope();
+    setAskFailure('');
+    noteAssistantUse(me.user.id);
+    try {
+      await assistant.ask(prompt);
+      if (!active()) return;
+      composer.setBody('');
+      toBottom();
+      void refresh();
+    } catch (cause) { if (active()) setAskFailure(askError(cause)); }
   }
 
   async function send() {
     typing.stop();
     if (recipientGone) return;
+    if (asking) { await askAgent(); return; }
     // The message shows at once at the end, marked "Sending…", and the field empties (#264).
     const outcome = composer.submit(shown.at(-1)?.sequence ?? 0);
     if (!outcome) return;
@@ -268,7 +301,7 @@ function DmContent({ initial }: { initial: Dm }) {
   }
 
   // Stored messages, then the ones being sent, grouped by day and author as one list.
-  const lines = [...shown.map((message) => ({ message, item: null, authorId: message.authorId, at: message.createdAt })),
+  const lines = [...shown.map((message) => ({ message, item: null, authorId: message.notice ? `~${message.id}` : message.authorId, at: message.createdAt })),
     ...outbox.pending.map((item) => ({ message: null, item, authorId: me.user.id, at: item.at }))];
   const rows = groupRows(lines);
   // A short conversation sits against its composer instead of at the top of a tall screen (ui/spareHeight.ts).
@@ -278,7 +311,7 @@ function DmContent({ initial }: { initial: Dm }) {
   // #534: what this person observed, and who observed every message of their own whole runs.
   const feedBox = feedRef;
   useObservation({ scope: dm.id, observe: (ids) => observeDmMessages(dm.id, ids), enabled: !gone && !returned.pending, feed: feedBox,
-    ids: shown.filter((m) => m.authorId !== me.user.id).map((m) => m.id), depend: shown.length });
+    ids: shown.filter((m) => m.authorId !== me.user.id && !m.notice).map((m) => m.id), depend: shown.length });
   const runs = ownRuns(lines.map((line) => ({ id: line.message?.id ?? null, authorId: line.authorId, createdAt: line.at })), me.user.id, olderCursor !== null);
   const seen = useReceipts({ scope: dm.id, fetchReceipts: (list, signal) => dmReceipts(dm.id, list, signal), runs, tick: receiptTick + refreshTick });
 
@@ -375,6 +408,9 @@ function DmContent({ initial }: { initial: Dm }) {
           ) : (
             <p className="dm__first">No messages yet. Say hello{others.length === 1 ? ` to ${others[0]!.name.split(/\s+/)[0]}` : ''}.</p>
           )}
+          {/* The person's own agent at work and what it answered them: theirs alone, at the end like a message about to be sent (#842). */}
+          <PrivateAiLines own assistant={assistant} meId={me.user.id} meName={me.user.name} others={firstNames(others.map((person) => person.name))} composerId="dm-composer"
+            lookups={{ projectId: '', messages: [], work: new Map(), author: nameOf }} />
         </div>
       </div>
       <div className="composer dm__composer">
@@ -384,10 +420,12 @@ function DmContent({ initial }: { initial: Dm }) {
           {composer.draft.cites.map((cite) => <CiteTile key={`${cite.kind}:${cite.id}`} cite={cite} disabled={composer.sending} onRemove={() => composer.removeCite(cite.kind, cite.id)} />)}
           <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value) => change(value)} onBlur={typing.stop} onKeyDown={onKey}
             disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`}
-            fieldProps={{ 'aria-describedby': audienceId }} sendLabel="Send message" sendDisabled={!canSend} onSend={() => void send()} />
-          <p className="composer__audience"><Icon name="lock" size={13} /><span id={audienceId}>{audience}<span aria-hidden="true"> · </span><span className="composer__where">direct message</span></span></p>
+            fieldProps={{ 'aria-describedby': audienceId }} sendLabel={asking ? 'Ask your agent' : 'Send message'} sendDisabled={!canSend} onSend={() => void send()} />
+          {asking ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span id={audienceId}>Only you see the answer · {firstNames(others.map((person) => person.name)).join(', ') || 'The others'} see only a line that AI was used here</span></p>
+            : <p className="composer__audience"><Icon name="lock" size={13} /><span id={audienceId}>{audience}<span aria-hidden="true"> · </span><span className="composer__where">direct message</span></span></p>}
           <TypingNotice {...typing} />
           <SendAnnouncer pending={composer.pending} />
+          {askFailure ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{askFailure}</p> : null}
           {composer.error && composer.error !== goneNotice ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{composer.error}</p> : null}
           <p hidden className="composer__hint" ><span className="composer__keys">Enter sends · Shift+Enter adds a line · </span>Unsent text stays in this tab</p>
         </div>

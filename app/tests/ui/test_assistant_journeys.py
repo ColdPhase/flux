@@ -72,7 +72,7 @@ class AssistantJourneys(unittest.TestCase):
     def stub_runs(self, page, on_ask) -> list[dict]:
         """Own runs, one run and the ask endpoint; `on_ask(body)` returns (status, run)."""
         asked: list[dict] = []
-        page.route(re.compile(r".*/api/v1/assistant-runs\?limit=\d+$"), lambda route: self.json(route, {"items": [], "total": 0, "limit": 10, "offset": 0}))
+        page.route(re.compile(r".*/api/v1/assistant-runs\?(?:limit=\d+|conversationId=[0-9a-f-]{36}&limit=\d+&offset=\d+)$"), lambda route: self.json(route, {"items": [], "total": 0, "limit": 10, "offset": 0}))
 
         def ask(route: Route) -> None:
             if page.evaluate("!navigator.onLine"):  # routed requests bypass the emulated network, so offline is aborted here
@@ -92,7 +92,7 @@ class AssistantJourneys(unittest.TestCase):
         self.stub_assistant(page)
         run = self.run_json()
         self.stub_thread(page, [])
-        page.route(re.compile(r".*/api/v1/assistant-runs\?limit=\d+$"), lambda route: self.json(route, {"items": [run], "total": 1, "limit": 10, "offset": 0}))
+        page.route(re.compile(r".*/api/v1/assistant-runs\?(?:limit=\d+|conversationId=[0-9a-f-]{36}&limit=\d+&offset=\d+)$"), lambda route: self.json(route, {"items": [run], "total": 1, "limit": 10, "offset": 0}))
         page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), lambda route: self.json(route, run))
         page.goto(self.thread_url())
         stop = page.locator(".assistant-working").get_by_role("button", name="Stop")

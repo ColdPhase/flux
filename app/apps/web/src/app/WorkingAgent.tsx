@@ -241,9 +241,11 @@ export function WorkingAssistant({ compact = false }: { compact?: boolean }) {
   const stopButton = useRef<HTMLButtonElement>(null);
   const moments = useSmallMoments();
   const aiOff = useProjectAiBlocked();
-  if (!run || aiOff(run.projectId)) return null;
+  if (!run || (run.projectId !== null && aiOff(run.projectId))) return null;
   const label = stopping ? 'Stopping your assistant…' : `Your assistant is ${doing(run)}`;
-  const destination = `/projects/${run.projectId}/conversations/${run.conversationId}`;
+  // Where the person asked (#842): a conversation, a space's main conversation, a direct message or the agent's own chat.
+  const destination = run.projectId !== null ? (run.conversationId !== null ? `/projects/${run.projectId}/conversations/${run.conversationId}` : `/projects/${run.projectId}`)
+    : run.dmId !== null ? `/dm/${run.dmId}` : `/agents/${run.agentId}`;
   return (
     <>
     <div className={`agentlive${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-ai-surface="working-assistant">

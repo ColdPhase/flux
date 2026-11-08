@@ -15,7 +15,7 @@ import { useShellActions } from './shellContext';
 import { listConversationRoots, listObjectNotices, listTaskNotices, observeProjectMessages, projectReceipts } from '../conversations/api';
 import { QuestionCard, WhenNoQuestion } from '../agents/QuestionCard';
 import { ownRuns, useObservation, useReceiptTick, useReceipts } from './receipts';
-import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, SourceTag, MessageDay, MessageTime, sameMessageAuthor, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
+import { AgentAuthor, AuthorFace, ContributionMark, OPENING_REVEAL_MS, SourceCitation, SourceTag, MessageDay, MessageTime, ViaTag, sameMessageAuthor, clock, day, openOnWholeMessages, pendingMessageRow, when } from './messageParts';
 import { agentAuthorOwner, useAgentOwners, type AgentOwners } from '../agents/owners';
 import { MessageContent } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
@@ -296,6 +296,8 @@ export interface StreamProps {
   audience: string;
   /** The root whose thread is open beside the stream. */
   openId: string | null;
+  /** What ends the stream: the person's own agent at work and its private answers, list items for the list below (#842). */
+  end?: ReactNode;
   /** A root to bring into view: a link named it, rather than the person choosing it here. */
   reveal: { conversationId: string; key: string } | null;
   /** The message a link points at (`#message-…`), when it is a root. */
@@ -309,7 +311,7 @@ export interface StreamProps {
 }
 
 /** The project's stream of roots, oldest first, with day dividers, each root's thread size and reply action. */
-export function ConversationStream({ project, meId, meName, roots: stream, notices, objects = [], author, audience, openId, reveal, arrived, endToken, restore = null, onOpen, onDenied }: StreamProps) {
+export function ConversationStream({ project, meId, meName, roots: stream, notices, objects = [], author, audience, openId, reveal, arrived, endToken, restore = null, onOpen, onDenied, end = null }: StreamProps) {
   const owners = useAgentOwners(project);
   // Roots the person sent from the stream's composer (#264): queued ones at the end, and confirmed ones
   // shown at once in their place until the stream's own read includes them.
@@ -677,6 +679,8 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
               })]}
             </ol>
           ) : null}
+          {/* The person's own agent at work and what it answered them: theirs alone, at the end like a message about to be sent (#842). */}
+          {end}
           {/* Until someone writes, the stream says so, below any task announcements: they are not messages. */}
           {roots.length || stream.hasOlder || outbox.pending.length ? null
             : <EmptyState icon="chat" mascot="hello" title="Where do we start?"><p>Write a thought. You don’t need a topic or a ready plan. {audience === 'Only you' ? 'Only you see it for now; people you add to the space will see it too.' : `Everyone in ${project.name} sees it.`} Any message can later become a task, a decision or a thought on the map.</p></EmptyState>}
@@ -854,7 +858,9 @@ function RootItem(props: RootItemProps | QueuedRootProps) {
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta">
         <strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong>
+        <ViaTag via={message.via} />
       </div> : null}
+      {mine && message.via ? <div className="project-convo__message-meta"><ViaTag via={message.via} /></div> : null}
       <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? () => onOpen(root, true) : undefined, onCreateTask: writable ? () => void makeWork.create(message) : undefined }}>
         <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
         <MessageObjects message={message} projectId={project.id} preview={messageWork.previews?.get(message.id) ?? null} thread={root.task ?? null} threadRow={taskRow} />

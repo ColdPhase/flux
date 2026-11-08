@@ -24,7 +24,7 @@ export const changeGroup = (row: Pick<AssistantChangeRow, 'id' | 'runId' | 'conn
 export type AssistantChangeInView = AssistantChangeRow & { conversationId: string; agentName: string };
 
 export interface AssistantRunRow {
-  id: string; workspaceId: string; projectId: string; conversationId: string; ownerUserId: string; agentId: string;
+  id: string; workspaceId: string; projectId: string | null; conversationId: string | null; ownerUserId: string; agentId: string;
   status: string; stopRequestedAt: Date | null; engine: 'server' | 'runtime'; completedAt: Date | null;
   /** What started the run: the owner's request or one of their stored schedules. */
   authority: 'owner_request' | 'owner_schedule';
@@ -52,6 +52,11 @@ export function assistantChangeRows(db: DbExecutor) {
         ownerUserId: r.ownerUserId, agentId: r.agentId, status: r.status, stopRequestedAt: r.stopRequestedAt, engine: r.engine,
         completedAt: r.completedAt, authority: r.authority }).from(r).where(eq(r.id, runId)).for('update');
       return row ?? null;
+    },
+    /** Who owns a run, whether or not it made changes: the asker's own view of a run with none (#842). */
+    async runOwner(runId: string): Promise<string | null> {
+      const [row] = await db.select({ ownerUserId: schema.personalRuns.ownerUserId }).from(schema.personalRuns).where(eq(schema.personalRuns.id, runId));
+      return row?.ownerUserId ?? null;
     },
     /** A local client's connection with its "What it may do", held `FOR SHARE` like the assistant's, so a concurrent change of it waits (#859). */
     async lockClient(connectionId: string) {
@@ -129,15 +134,6 @@ export function assistantChangeRows(db: DbExecutor) {
       const [row] = await db.select({ projectId: schema.projectConversations.projectId, workspaceId: schema.projectConversations.workspaceId })
         .from(schema.projectConversations).where(eq(schema.projectConversations.id, conversationId));
       return row ?? null;
-    },
-    /** The people whose assistant is working in a conversation right now (reading or dispatching), by name: nothing else about the run. */
-    async workingOwners(conversationId: string): Promise<{ ownerId: string; ownerName: string }[]> {
-      const r = schema.personalRuns;
-      const rows = await db.selectDistinct({ ownerId: r.ownerUserId, ownerName: schema.authUsers.name }).from(r)
-        .innerJoin(schema.authUsers, eq(schema.authUsers.id, r.ownerUserId))
-        .where(and(eq(r.conversationId, conversationId), inArray(r.status, ['reading', 'dispatching']), sql`${r.stopRequestedAt} IS NULL`))
-        .orderBy(asc(schema.authUsers.name));
-      return rows;
     },
     /** The conversation a group shows in: its run's, or none for a local client's group. */
     async conversationOf(groupId: string): Promise<string | null> {

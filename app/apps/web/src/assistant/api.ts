@@ -2,10 +2,11 @@ import {
   ASSISTANT_RUNS_PATH, PERSONAL_ASSISTANT_PATH,
   assistantProposalAcceptPath, assistantProposalDismissPath, assistantRunPath, assistantRunRetryPath, assistantRunStopPath,
   conversationAssistantAnswersPath, conversationAssistantRunsPath, projectAssistantProposalsPath,
-  assistantChangeActionPath, assistantOperatorRequestPath, assistantRunChangesActionPath, conversationAssistantActivityPath, conversationAssistantChangesPath,
-  type AssistantActivity, type AssistantChange, type AssistantChangeDecision, type AssistantChangesDecided, type AssistantRunUndone,
-  type AssistantAnswer, type AssistantProposal, type AssistantRun, type InvokeAssistantRunCommand,
-  type Page, type PersonalAssistantStatus,
+  agentAssistantRunsPath, assistantChangeActionPath, assistantOperatorRequestPath, assistantRunChangesActionPath, assistantRunChangesPath, assistantRunDismissPath,
+  assistantRunShowPath, conversationAssistantChangesPath, dmAssistantRunsPath, projectAssistantRunsPath,
+  type AssistantChange, type AssistantChangeDecision, type AssistantChangesDecided, type AssistantRunUndone,
+  type AssistantAnswer, type AssistantPlace, type AssistantProposal, type AssistantRun, type InvokeAssistantRunCommand,
+  type Page, type PersonalAssistantStatus, type ShowAnswerResult,
 } from '@flux/contracts';
 import { request } from '../api/client';
 
@@ -18,10 +19,24 @@ export const getAssistantStatus = (signal?: AbortSignal) => request<PersonalAssi
 export const tellOperator = (workspaceId: string, client: 'claude_code' | 'codex' | null | undefined) =>
   request<{ sent: number }>(assistantOperatorRequestPath(workspaceId), { method: 'POST', body: client === 'codex' ? { client } : {} });
 
-export const askAssistant = (conversationId: string, command: InvokeAssistantRunCommand) =>
-  request<AssistantRun>(conversationAssistantRunsPath(conversationId), { method: 'POST', body: command });
+/** Where `/ai` is asked (#842): a conversation or a space's main conversation, a direct message, or an agent's private chat. */
+export type AskPlace = AssistantPlace;
+const askPath = (place: AskPlace) => place.kind === 'dm' ? dmAssistantRunsPath(place.dmId) : place.kind === 'chat' ? agentAssistantRunsPath(place.agentId)
+  : place.conversationId ? conversationAssistantRunsPath(place.conversationId) : projectAssistantRunsPath(place.projectId);
+const placeQuery = (place: AskPlace) => place.kind === 'dm' ? `dmId=${place.dmId}` : place.kind === 'chat' ? `chatAgentId=${place.agentId}`
+  : place.conversationId ? `conversationId=${place.conversationId}` : `spaceId=${place.projectId}`;
+export const askAssistant = (place: AskPlace, command: InvokeAssistantRunCommand) => request<AssistantRun>(askPath(place), { method: 'POST', body: command });
 export const getRun = (runId: string, signal?: AbortSignal) => request<AssistantRun>(assistantRunPath(runId), { signal });
+/** The caller's own runs at one place, newest first: the private answers of a conversation, or the turns of an agent's chat. */
+export const listPlaceRuns = (place: AskPlace, options: { limit?: number; offset?: number } = {}, signal?: AbortSignal) =>
+  request<Page<AssistantRun>>(`${ASSISTANT_RUNS_PATH}?${placeQuery(place)}&limit=${options.limit ?? 20}&offset=${options.offset ?? 0}`, { signal });
 export const listOwnRuns = (signal?: AbortSignal) => request<Page<AssistantRun>>(`${ASSISTANT_RUNS_PATH}?limit=10`, { signal });
+/** Show everyone: the answer becomes the asker's own message, "Ada · via Assistant" (#842). */
+export const showAnswer = (runId: string) => request<ShowAnswerResult>(assistantRunShowPath(runId), { method: 'POST' });
+/** Dismiss: puts an answer, or the line of a run that ended, away (#842). */
+export const dismissAnswer = (runId: string) => request<AssistantRun>(assistantRunDismissPath(runId), { method: 'POST' });
+/** One run's changes with their Undo: the change line on the asker's answer (#842). */
+export const listRunChanges = (runId: string, signal?: AbortSignal) => request<{ items: AssistantChange[] }>(assistantRunChangesPath(runId), { signal });
 export const stopRun = (runId: string) => request<AssistantRun>(assistantRunStopPath(runId), { method: 'POST' });
 export const retryRun = (runId: string, clientRunId: string) => request<AssistantRun>(assistantRunRetryPath(runId), { method: 'POST', body: { clientRunId } });
 
@@ -54,6 +69,3 @@ export const skipRunChanges = (runId: string) => request<AssistantChangesDecided
 export const undoChange = (change: Pick<AssistantChange, 'id'>) =>
   request<AssistantChangeDecision>(assistantChangeActionPath(change.id, 'undo'), { method: 'POST', body: {} });
 export const undoRunChanges = (runId: string) => request<AssistantRunUndone>(assistantRunChangesActionPath(runId, 'undo'), { method: 'POST', body: {} });
-// Who has an assistant working in a conversation, for everyone who can read it: names only (AST-6 "Visible to everyone").
-export const getAssistantActivity = (conversationId: string, signal?: AbortSignal) =>
-  request<AssistantActivity>(conversationAssistantActivityPath(conversationId), { signal });

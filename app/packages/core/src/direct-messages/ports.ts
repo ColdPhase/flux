@@ -37,6 +37,10 @@ export interface DmMessageRecord {
   threadRootId: string | null;
   /** Replies of a root; always 0 for a reply. */
   replyCount: number;
+  /** The agent whose answer the author posted with Show everyone; null for a message they wrote. */
+  via: string | null;
+  /** `ai_used` is the line "used AI here" (#842), whose body names the company that receives the conversation. */
+  kind: 'text' | 'ai_used';
 }
 
 /** Adapter over the core access policy (`evaluateDm`, `evaluateWorkspace`, `loadActor`). */
@@ -74,6 +78,7 @@ export interface NewDmMessage {
   requestFingerprint: string;
   body: string;
   threadRootId?: string | null;
+  via?: string | null;
 }
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link DmAccess}). */

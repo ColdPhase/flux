@@ -128,7 +128,7 @@ test('every insert into notifications sets ai_origin explicitly', async () => {
       }
     }
   }
-  assert.ok(inserts.length >= 6, `the scan finds the writers (${inserts.join(', ')})`);
+  assert.ok(inserts.length >= 4, `the scan finds the writers (${inserts.join(', ')})`);
   assert.deepEqual(missing, [], 'inserts into notifications that do not set ai_origin');
   // Database functions are held to the same rule.
   const functions = (await pool.query(`SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'public'

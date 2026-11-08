@@ -4,7 +4,7 @@ import { ApiError, NetworkError } from '../api/client';
 
 import { Button } from '../ui';
 import { useShellActions } from '../app/shellContext';
-import { applyChange, editChange, listConversationChanges, skipChange, undoRunChanges } from './api';
+import { applyChange, editChange, listConversationChanges, listRunChanges, skipChange, undoRunChanges } from './api';
 import { RefLink } from '../place/origin';
 import { useKeepFocus } from './useKeepFocus';
 
@@ -41,6 +41,29 @@ export function useAssistantChanges(conversationId: string | null, refreshKey: u
     return runs;
   }, [shown]);
   return { byRun, refresh };
+}
+
+/**
+ * One run's changes, for the asker's own answer (#842): the change line with Undo, and what waits for them. `refreshKey` reads them again when
+ * the run moves; a run with none shows nothing.
+ */
+export const readRunChanges = async (runId: string) => (await listRunChanges(runId)).items.filter((change) => waiting(change) || made(change) || skipped(change) || decided(change));
+
+/** `initial` is what the page read already, so the card has its change line when it first appears and does not grow after. */
+export function useRunChanges(runId: string | null, refreshKey: unknown, enabled = true, initial: AssistantChange[] = []) {
+  const [changes, setChanges] = useState<AssistantChange[]>(initial);
+  const read = useCallback(() => readRunChanges(runId!), [runId]);
+  const refresh = useCallback(async () => {
+    if (!runId || !enabled) return;
+    try { setChanges(await read()); } catch { /* the answer is shown without its change line */ }
+  }, [runId, enabled, read]);
+  useEffect(() => {
+    if (!runId || !enabled) return;
+    let live = true;
+    read().then((items) => { if (live) setChanges(items); }).catch(() => undefined);
+    return () => { live = false; };
+  }, [runId, enabled, read, refreshKey]);
+  return { changes, refresh };
 }
 
 // Undo, Approve and Skip never fail silently offline: they say "Offline" (AST-10.15).

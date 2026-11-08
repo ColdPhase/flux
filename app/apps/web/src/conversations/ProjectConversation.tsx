@@ -12,6 +12,8 @@ import { useSpaceAi } from '../ai/spaceAi';
 import { useProjectQuestions } from '../agents/questions';
 import { useAgentOwners } from '../agents/owners';
 import { useConversationAssistant } from '../assistant/useConversationAssistant';
+import { PrivateAiLines } from '../assistant/PrivateAiLines';
+import { useFollowEnd } from '../assistant/useFollowEnd';
 import { useAssistantChanges } from '../assistant/WaitingChanges';
 import { agentAuthorLabel, FORMER_MEMBER } from '../docs/format';
 import { useProjectMaterials } from '../materials/useProjectMaterials';
@@ -19,7 +21,7 @@ import { useTyping } from '../typing/useTyping';
 import { useCreateWorkFromMessage } from '../work/inline';
 import { MessageWorkPages } from '../work/MessageWorkPages';
 import '../app/project-conversation.css';
-import { feedEntries, mergeMessages } from './feed';
+import { feedEntries } from './feed';
 import type { ProjectData } from './loader';
 import { PaneComposer } from './PaneComposer';
 import { usePaneAccess, usePaneCore } from './paneCore';
@@ -64,10 +66,13 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const materials = useProjectMaterials({ userId: me.user.id, project, inThread: !!conversation, writable, initial: data.materials, initialTotal: data.materialTotal,
     onDenied: hideIfDenied, onSaved: () => { void thread.refresh(); } });
   const thread = useThreadReplies(core, { sent: publicComposer.sent, hideIfDenied, mergeMaterials: materials.merge, onThreadSize });
-  const { messages, setMessages } = thread;
-  // The signed-in person's own assistant (#68): ask mode, their working line, shared answers.
-  const assistant = useConversationAssistant({ meId: me.user.id, meName: me.user.name, projectId: project.id, conversationId: conversation?.id ?? null, enabled: !aiOff,
-    onPosted: (message) => setMessages((current) => mergeMessages(current, [message])) });
+  const { messages } = thread;
+  // The signed-in person's own assistant (#68, #842): ask mode, their working line and their private answers, here or in the space's main conversation.
+  const assistant = useConversationAssistant({ meId: me.user.id, place: core.place, enabled: !aiOff,
+    onShown: () => { if (conversation) void thread.refresh(); else onSending?.(); } });
+  // The person's own agent at work, and what it answered, are at the end of the stream or thread: a new one comes into view (#842).
+  const privateItems = [...assistant.privateAnswers.map((item) => item.id), assistant.run?.id ?? ''].join(',');
+  useFollowEnd(() => document.querySelector<HTMLElement>(conversation ? '.thread__feed' : '.project-convo__feed.is-stream'), privateItems.replaceAll(',', '') ? privateItems : '');
   const outbox = outboxView(messages, conversation ? publicComposer.pending : [], publicComposer.sent, me.user.id);
   const reading = useThreadReading(core, { messages, pendingCount: outbox.pending.length, rootMessageId, assistant, accessLost, hideIfDenied });
   // Typing (#155) is the thread's: an ephemeral signal to the people who can read this conversation. The
@@ -95,12 +100,14 @@ function ProjectConversationContent({ data, variant, feed, rootHeader, rootMessa
   const made = conversation ? threadObjects(conversation.id, new Set(messages.map((message) => message.id)), objects) : [];
   const entries = feedEntries(messages.filter((message) => message.sequence > 1), assistant.answers, !!thread.olderCursor, made);
   const { messageWork, referenceWork } = reading;
-  const answers = { meId: me.user.id, projectId: project.id, writable, messages, assistant, changes, referenceWork, author,
+  const others = (core.people ?? []).filter((person) => person.kind === 'human' && person.id !== me.user.id).map((person) => person.name.trim().split(/\s+/)[0] || person.name);
+  const answers = { meId: me.user.id, projectId: project.id, writable, messages, assistant, changes, referenceWork, author, others,
+    lookups: { projectId: project.id, messages, work: referenceWork.rows, author },
     onAskAbout: writable && !aiOff ? () => { setAsking(true); document.getElementById(composerId)?.focus(); } : null, onDecided: () => { void revalidator.revalidate(); } };
   return <div className={`${conversation ? 'thread__pane' : 'project-convo'}${drop.dropping ? ' is-dropping' : ''}`} {...drop.handlers} data-project-id={conversation ? undefined : project.id}
     data-associations-observed-at={conversation ? messageWork.page?.observedAt : undefined} data-associations-phase={conversation ? messageWork.state.phase : undefined}
     data-references-observed-at={conversation ? referenceWork.observation?.observedAt : undefined} data-references-phase={conversation ? referenceWork.state.phase : undefined}>
-    {!conversation ? feed : <ThreadFeed core={core} thread={thread} reading={reading} entries={entries} outbox={outbox} publicComposer={publicComposer} answers={answers} owners={owners}
+    {!conversation ? feed?.(<PrivateAiLines assistant={assistant} meId={me.user.id} meName={me.user.name} others={others} composerId={composerId} lookups={answers.lookups} own />) : <ThreadFeed core={core} thread={thread} reading={reading} entries={entries} outbox={outbox} publicComposer={publicComposer} answers={answers} owners={owners}
       people={core.people} makeWork={makeWork} arrived={arrived} seen={seen} messageAuthor={messageAuthor} openDetails={openDetails} hideIfDenied={hideIfDenied}
       waitingHere={ask.waitingHere} rootHeader={rootHeader} rootMessageId={rootMessageId} />}
     {conversation ? <MessageWorkPages read={messageWork} /> : null}

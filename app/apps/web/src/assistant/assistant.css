@@ -202,3 +202,18 @@
 .aset-where__s { flex: none; color: var(--t3); font-size: var(--fs-xs); }
 .aset-where__none { margin: 0; color: var(--t2); font-size: var(--fs-sm); line-height: 1.5; }
 .aset-where .ui-btn { justify-self: start; min-height: 44px; }
+
+/* The answer to `/ai` (#842, mockup AiPrivate): a card only its asker sees, in the place they asked, with Dismiss and Show everyone. */
+.assistant-private { list-style: none; margin: 14px 0 0; padding: 14px 16px; border-radius: var(--r-lg); background: var(--el); box-shadow: inset 0 0 0 1px var(--line2); max-width: min(640px, 100%); overflow-wrap: anywhere; }
+.assistant-private:focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: 2px; }
+.assistant-private__who { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; font-size: var(--fs-md); }
+.assistant-private__lock { display: inline-flex; align-items: center; gap: 5px; color: var(--t3); font-size: var(--fs-xs); }
+.assistant-private__asked { margin: 10px 0 0; color: var(--t3); font-size: var(--fs-sm); }
+.assistant-private__asked code { font-family: var(--mono); color: var(--t2); }
+.assistant-private .assistant-answer__body { margin-top: 8px; }
+.assistant-private__source { margin: 8px 0 0; color: var(--t3); font-size: var(--fs-xs); }
+.assistant-private__foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.assistant-private__note { flex: 1 1 220px; min-width: 0; color: var(--t3); font-size: var(--fs-sm); line-height: 1.45; }
+@media (max-width: 600px) {
+  .assistant-private__foot .ui-btn { min-height: 44px; }
+}

@@ -35,6 +35,8 @@ export interface DiscussionMessage {
   resultId: string | null;
   createdAt: Date;
   files?: MessageFile[];
+  /** The agent whose answer the author posted with Show everyone (#842). */
+  via?: string | null;
 }
 export interface NewDiscussionMessage {
   /** Validated immutable attachment metadata, never supplied directly by an entry point. */

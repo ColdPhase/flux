@@ -48,6 +48,8 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
   const composer = useComposerDraft(meId, 'dm', `dm:${dmId}/${rootId}`);
   const captureScope = useComposerScope(composer.key);
   const draft = composer.draft.body;
+  // `/ai` works in the conversation, where its answer is shown; typed in a thread it is not sent as a reply (#842).
+  const asking = /^\/ai(\s|$)/.test(draft);
   const shown = useMemo(() => merge(replies, composer.sent.map((item) => item.message as DmMessage)), [replies, composer.sent]);
   const outbox = outboxView(shown, composer.pending, composer.sent, meId);
 
@@ -128,7 +130,7 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
   }
 
   async function send() {
-    if (!writable) return;
+    if (!writable || asking) return;
     const outcome = composer.submit(shown.at(-1)?.sequence ?? 0);
     if (!outcome) return;
     const active = captureScope();
@@ -193,9 +195,10 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, wr
           <div className="composer__in">
             <ComposerBox id="dm-thread-composer" label="Reply in thread" fieldRef={field} value={draft} onChange={(value) => composer.setBody(value)} onKeyDown={onKey}
               disabled={!writable} boxDisabled={!writable} placeholder={writable ? 'Reply in thread…' : 'Nobody else is in this conversation'}
-              sendLabel="Send reply" sendDisabled={!composer.canSend || !writable} onSend={() => void send()} />
+              sendLabel="Send reply" sendDisabled={!composer.canSend || !writable || asking} onSend={() => void send()} />
             <p className="composer__audience"><Icon name="lock" size={13} /><span>{audience}<span aria-hidden="true"> · </span><span className="composer__where">private reply</span></span></p>
             <SendAnnouncer pending={composer.pending} />
+            {asking ? <p className="dm__error" role="status"><Icon name="alert" size={13} />Ask your agent in the conversation: /ai works there, not in a thread. This is not sent.</p> : null}
             {composer.error ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{composer.error}</p> : null}
           </div>
         </div>

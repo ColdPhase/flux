@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { ConversationMessage, ProjectPerson } from '@flux/contracts';
 import type { ComposerState, outboxView } from '../composer/draft';
-import { BehindLine, OthersWorkingLine, WorkingLine } from '../assistant/ConversationParts';
+import { PrivateAiLines } from '../assistant/PrivateAiLines';
 import { WaitingChanges } from '../assistant/WaitingChanges';
 import { MessageDay, day, sameMessageAuthor } from '../app/messageParts';
 import { ObjectNoticeItem } from '../app/ObjectNotices';
@@ -72,16 +72,12 @@ export function ThreadFeed(props: Props) {
       <section aria-label="Replies to this message" className="project-convo__messages">
         {thread.olderCursor ? <Button variant="quiet" busy={thread.olderBusy} onClick={() => void thread.loadOlder()}>Load earlier replies</Button> : null}
         <ol className="thread__list">{list}
-        {[...changes.byRun].filter(([runId]) => !assistant.answers.some((answer) => answer.runId === runId)).map(([runId, runChanges]) => (
+        {[...changes.byRun].filter(([runId]) => !assistant.privateAnswers.some((answered) => answered.id === runId)).map(([runId, runChanges]) => (
           <li key={`changes-${runId}`} className="project-convo__message assistant-waiting-item"><WaitingChanges changes={runChanges} onChanged={changes.refresh} meId={me.user.id} standalone /></li>
         ))}
-        {assistant.run ? <WorkingLine key="assistant-working" run={assistant.run} onStop={assistant.stop} onRetry={() => assistant.retry(assistant.run!.id)} onDismiss={assistant.dismissRun} composerId={composerId}
-          changed={(changes.byRun.get(assistant.run.id) ?? []).filter((change) => change.state === 'applied' || change.state === 'applied_after_wait' || change.state === 'undone').length} /> : null}
-        {assistant.others.map((other) => <OthersWorkingLine key={`working-${other.ownerId}`} name={other.ownerName} />)}
+        <PrivateAiLines assistant={assistant} meId={me.user.id} meName={me.user.name} others={answers.others} composerId={composerId} lookups={answers.lookups}
+          changed={(changes.byRun.get(assistant.run?.id ?? '') ?? []).filter((change) => change.state === 'applied' || change.state === 'applied_after_wait' || change.state === 'undone').length} />
         {props.waitingHere.map((item) => <li key={item.clientRunId} className="assistant-queued" aria-live="polite">Sends when you&apos;re back</li>)}
-        {assistant.queued?.behind && assistant.queued.behind.authority !== 'owner_request' ? <BehindLine label={assistant.queued.behind.label} onStop={assistant.stopBehind} />
-          : assistant.queued ? <li className="assistant-queued" aria-live="polite">Next: “{assistant.queued.prompt.length > 60 ? `${assistant.queued.prompt.slice(0, 60)}…` : assistant.queued.prompt}”. It starts when this one ends ·
-          <Button variant="link" onClick={() => void assistant.cancelQueued().catch(() => undefined)}>Cancel</Button></li> : null}
         </ol>
       </section>
     </div>
