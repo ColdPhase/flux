@@ -8,6 +8,10 @@ conversation's audience reads as "Jo's assistant · asked by Jo". A consequentia
 change becomes an assistant proposal. Only a person with authority over its target
 can accept it.
 
+**Since v0.2 (#842, F-036 AG-4) the answer to `/ai` is private, and a run has a place.** The text
+above is the history of #68; read [Places and private answers](#places-and-private-answers-842)
+for what holds now.
+
 **Production still fails closed.** Slice 2 adds the UI, owner-only progress events
 and the real Anthropic adapter, but there is still no key storage. The owner's key
 connection belongs to [#124](https://github.com/ColdPhase/flux/pull/124). Until it
@@ -289,12 +293,10 @@ rows and its stream delivery are the owner's alone. The run, its prompt, its sta
 progress never leave the owner. The event carries identifiers and the status only; the owner's
 client refetches `GET /api/v1/assistant-runs/:id`.
 
-F-027 AST-6 ("Visible to everyone, controlled by the owner", 2026-10-17, #404) adds one thing for the
-others: `project.assistant_working.v1` (project audience, `{ conversationId }` and nothing else) when a
-run starts working (`reading`) and when it stops (any end). Readers of the conversation refetch
-`GET /api/v1/conversations/:id/assistant-activity`, which answers the names of the people whose
-assistant is working there, and show "Ada's assistant is working…" with no detail and no Stop. Someone
-who cannot read the project gets the same 404 as for a conversation that does not exist.
+F-027 AST-6 ("Visible to everyone", 2026-10-17, #404) told the others that an assistant was working
+(`project.assistant_working.v1`, and `GET /api/v1/conversations/:id/assistant-activity`). Since #842 that is
+gone for `/ai` and for a chat: the others hear nothing about a private run. The event is still sent for a
+task's run and a schedule's firing, which post their results in the conversation.
 
 ## Changes, Undo and the owner's lane (F-036 AG-3, #855; F-027 A3 and A4, #403, #404)
 
@@ -358,6 +360,44 @@ else edited. Nothing that waits ever expires.
   queued request carries `behind` (the working run's authority and label) so its line reads "Next: '…'" or
   "Finishing your Daily check first. Yours starts next. · Stop the daily check".
 
+## Places and private answers (#842)
+
+A run belongs to a **place** (`projectId`, `conversationId` and `dmId` on `personal_runs`, all nullable; migration `0022`):
+
+| Place | Columns | Audience of the answer | Reads | Tools of its run token |
+| --- | --- | --- | --- | --- |
+| A conversation, thread or task thread of a space | `project_id`, `conversation_id` | the people who read the space | the conversation and the space's open work | the space's, as before |
+| A space's main conversation | `project_id` | the same | the latest messages of the space's conversations and its open work | the space's |
+| A direct message | `dm_id` | the DM's participants | the DM's latest messages, given in the request | `flux_read_web` only |
+| An agent's private chat | none | its owner | the chat's earlier turns, and what the owner can see through the tools | every read tool of the owner's reach, no change tool |
+
+Only a run in a space has an AI epoch and is held to the space's switch (`place.ts`); a run in a DM is held to its owner still taking part
+in it; a chat's tools are gated by each space on every call. `flux_place` in the run token carries `{ project, conversation, dm }`, and
+`runReaches` is the one test the MCP route uses: a run in a space reaches that space, a run in a DM no space, a chat every space of its owner.
+
+**Routes.** `POST` `/api/v1/conversations/:id/assistant-runs`, `/api/v1/projects/:id/assistant-runs` (the main conversation),
+`/api/v1/dms/:id/assistant-runs` and `/api/v1/my-agents/:id/assistant-runs` (a chat) start a run through the one `start`. `GET
+/api/v1/assistant-runs` lists the caller's own runs, narrowed by `conversationId`, `spaceId`, `dmId` or `chatAgentId`.
+
+**The answer is its asker's alone.** `isPrivateAnswer(run)` (kinds `ask`, `summarize`, `map_thought`) means: no entry in
+`conversation-assistant-answers`, no `project.assistant_answer_committed.v1`, no working event, no proposal. The asker sees it as a card
+(`PrivateAnswer`) with **Dismiss** (`POST /assistant-runs/:id/dismiss`, final) and **Show everyone** (`POST /assistant-runs/:id/show`): the
+core plans it (`planShow`: their own, committed, not dismissed, still allowed to write there, and AI still on in the space), the adapter posts
+it as their own message with `via` set to the agent's name, under the run's id, and `markShown` records it. A DM also gets the line "Ada used
+AI here (Claude)" (`dm_messages.kind = 'ai_used'`) when the run is made.
+
+**An agent's own lines in its chat (#919 builds on this).** The owner's words and the agent's answers to them are runs; what the agent says on its
+own (a report: "Done: #4 … · 3 changes · Undo", "Stopped by Maja") is a line in `agent_chat_messages`, each about one run of that agent. There is one
+way in, `postToAgentChat(ports, { agentId, runId, key, body })` (`packages/core/src/personal-runs/agent-chat.ts`), usable from the server or the
+worker in the caller's unit of work: once per `key` for the agent, redacted like every agent text, and it sends the run's owner-only event so an open
+chat reads again. What is unread is `unreadAgentChats(ports, ownerUserId)`: per agent, the lines and chat answers after `agent_chat_reads.read_at`, which
+opening the chat sets (`POST /api/v1/agent-chats/:agentId/read`); `GET /api/v1/agent-chats` lists it and
+`GET /api/v1/agent-chats/:agentId/messages` the lines. An agent has one owner, so per agent is per person.
+
+**Locks (#921).** Unchanged: the owner's lock first (`enablement(…, { lock: true })`), then the task graph (`prepareTaskUse`, which holds nothing
+for a run outside a space), then the run row. Dismiss and `markShown` take only the run row; Show everyone posts in its own transaction
+before it.
+
 ## WebSocket commands
 
 Not planned (founder direction 2026-10-16, [#68](https://github.com/ColdPhase/flux/issues/68)).
@@ -383,7 +423,7 @@ tokens:
   conversation…" with **Stop**; afterwards "Stopped. Nothing was posted." or the failure, with
   Retry where it makes sense. It follows the owner's progress events, and polls while the
   stream reconnects.
-- **Answer.** An ordinary message from "<Owner>'s assistant" with a ✦ avatar and an
+- **Answer.** (Since #842 this is the asker's private card, see above; the text below describes a schedule's posted answer.) An ordinary message from "<Owner>'s assistant" with a ✦ avatar and an
   *Assistant* tag, "asked by …", the request, the body and `[n]` citations that open exactly
   their source (a message in the conversation, a work item in Details, a map thought).
   Committed answers renumber the model's `[S<n>]` labels to `[1]…` in the order of `sources`.

@@ -5,7 +5,6 @@ import { ApiError, NetworkError } from '../api/client';
 import { AgentTag, Button, Icon, IconButton, Kreska, useLoopPause, type KreskaExpression } from '../ui';
 import { useSmallMoments } from '../app/smallMoments';
 import { AssistantPanel, companyName } from './AssistantPanel';
-import { AssistantModelControl } from './ModelPicker';
 import { ReadySchedule } from './ReadySchedule';
 import { useShellActions } from '../app/shellContext';
 import { answeredBy, canRetry, endedText, isWorking, onRuntime, workingText, type AskState } from './format';
@@ -46,7 +45,6 @@ export function AskBar({ id, state, onExit, onAction, error }: {
       <span className="ask__who"><Kreska size={14} />Your assistant
         <IconButton icon="x" size={12} label="Stop asking your assistant" className="ask__off" onClick={onExit} />
       </span>
-      {state.kind === 'ready' ? <AssistantModelControl variant="chip" placement="up" /> : null}
       <span className={`ask__note${state.kind === 'blocked' ? ' assistant-ask__blocked' : ''}`}>{state.note}</span>
       {state.kind === 'blocked' && state.action ? <button type="button" className="ui-link ask__connect" onClick={() => onAction(state.action!)}>{state.actionLabel}</button> : null}
       {state.kind === 'blocked' && state.also ? <button type="button" className="ui-link ask__connect" onClick={() => onAction(state.also!.action)}>{state.also.label}</button> : null}
@@ -108,22 +106,10 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss, composerId, chang
       <div className="assistant-working__actions">
         {working && !run.stopRequested ? <Button variant="secondary" icon="stop" busy={busy} onClick={() => void act(onStop)}>Stop</Button> : null}
         {!working && run.endReason === 'sign_in_again' ? <Link className="ui-btn ui-btn--secondary" to="/settings/agents">Sign in</Link> : null}
-        {!working && run.endReason === 'model_unavailable' ? <AssistantModelControl variant="action" placement="up" /> : null}
+        {!working && run.endReason === 'model_unavailable' ? <Link className="ui-btn ui-btn--secondary" to={`/settings/agents/${run.agentId}`}>Choose a model</Link> : null}
         {!working && canRetry(run) ? <Button variant="quiet" busy={busy} onClick={() => void act(onRetry)}>Retry</Button> : null}
         {!working ? <IconButton icon="x" label="Dismiss" onClick={dismiss} /> : null}
       </div>
-    </li>
-  );
-}
-
-/** "Ada's assistant is working…": what everyone else sees, by name only: no detail, no Stop. Kreska shows only with small moments on. */
-export function OthersWorkingLine({ name }: { name: string }) {
-  const loop = useLoopPause<HTMLLIElement>();
-  const moments = useSmallMoments();
-  return (
-    <li ref={loop} className="assistant-working assistant-working--others" aria-live="polite">
-      {moments ? <AssistantAvatar expression="thinking" /> : null}
-      <div className="assistant-working__body"><p className="assistant-working__text">{name.trim().split(/\s+/)[0] || name}’s assistant is working…</p></div>
     </li>
   );
 }
@@ -146,7 +132,7 @@ export function BehindLine({ label, onStop }: { label: string | null; onStop: ()
   );
 }
 
-interface SourceLookups {
+export interface SourceLookups {
   projectId: string;
   messages: ConversationMessage[];
   work: ReadonlyMap<string, NativeWorkRow>;
@@ -170,7 +156,7 @@ function SourceLink({ source, index, lookups }: { source: AssistantSourceRef; in
 }
 
 /** The body with `[n]` citations as links that open exactly the cited object. */
-function AnswerBody({ answer, lookups }: { answer: AssistantAnswer; lookups: SourceLookups }) {
+export function AnswerBody({ answer, lookups }: { answer: AssistantAnswer; lookups: SourceLookups }) {
   const parts: ReactNode[] = [];
   let last = 0;
   for (const match of answer.body.matchAll(/\[(\d{1,3})\]/g)) {
@@ -185,9 +171,9 @@ function AnswerBody({ answer, lookups }: { answer: AssistantAnswer; lookups: Sou
   return <p className="assistant-answer__body">{parts}</p>;
 }
 
-function sourceSummary(count: number) {
+export function sourceSummary(count: number, from = 'this project') {
   if (!count) return 'No sources cited';
-  return `${count} ${count === 1 ? 'source' : 'sources'} from this project`;
+  return `${count} ${count === 1 ? 'source' : 'sources'} from ${from}`;
 }
 
 const firstName = (name: string) => name.trim().split(/\s+/)[0] || name;
@@ -230,7 +216,7 @@ export function AnswerItem({ answer, mine, lookups, when, clock, proposal, propo
       {answer.truncated ? <p className="assistant-answer__truncated"><Icon name="alert" size={13} />Stopped at the length limit, so this answer is incomplete.</p> : null}
       {proposal ? proposalControls : null}
       {changes}
-      {mine ? <ReadySchedule runId={answer.runId} projectId={answer.projectId} body={answer.body} /> : null}
+      {mine && answer.projectId ? <ReadySchedule runId={answer.runId} projectId={answer.projectId} body={answer.body} /> : null}
       <div className="assistant-answer__foot">
         <span>{sourceSummary(answer.sources.length)} · {answeredBy(answer.provenance)}</span>
         {mine ? <>

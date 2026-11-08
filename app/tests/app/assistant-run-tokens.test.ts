@@ -55,7 +55,7 @@ async function row(runId: string) {
 
 describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #280, #484)', () => {
   let owner: Person; let ws: Workspace; let place: Project; let other: Project; let thread: Conversation;
-  let agentId: string; let docId: string; let otherDocId: string; let bigThreadId: string;
+  let agentId: string; let docId: string; let otherDocId: string; let bigThreadId: string; let dmId: string;
   const WIKI_CANARY = `wiki-canary-${randomBytes(4).toString('hex')}`;
   const OTHER_CANARY = `other-project-canary-${randomBytes(4).toString('hex')}`;
   const DM_CANARY = `dm-canary-${randomBytes(4).toString('hex')}`;
@@ -107,6 +107,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const opened = await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/dms`, { body: { participantIds: [peer.id] } });
     assert.ok(opened.status === 201 || opened.status === 200, `open DM: ${opened.status}`);
     const dm = opened.json as { id: string };
+    dmId = dm.id;
     expectStatus(await owner.browser.request('POST', `/api/v1/dms/${dm.id}/messages`, { body: { body: DM_CANARY, clientMessageId: randomUUID() } }), 201);
     const connectionId = randomUUID();
     connections.connect(owner.id, connectionId);
@@ -157,7 +158,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.equal(signed.sub, owner.id); assert.equal(signed.flux_owner_user_id, owner.id);
     assert.equal(signed.flux_connection_id, assistant.connectionId, 'the run uses the assistant\'s one owner_assistant connection');
     assert.equal(signed.flux_run_id, runId);
-    assert.deepEqual(signed.flux_place, { project: place.id, conversation: thread.id });
+    assert.deepEqual(signed.flux_place, { project: place.id, conversation: thread.id, dm: null });
     assert.equal(signed.aud, `${publicOrigin}/mcp`);
     assert.equal(signed.azp, 'flux-personal-run', 'the MCP resource server requires an authorized party (Better Auth 1.7.18)');
     assert.equal(signed.scope, undefined, 'no scope ceiling: what a run may call is its tool list (A3) and its owner\'s rights');
@@ -303,6 +304,59 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     assert.ok(compute.dispatched[0]!.input.includes('Summarize the canary'), 'the owner\'s request is input');
     const stored = await row(started.run.id);
     assert.ok(stored.run_token_closed_at, 'the session closed the token');
+  });
+
+  test('#842 (C-37): the tools of a run follow its place: a DM run has one and reaches no space, a chat reads like its owner and changes nothing, the main conversation reaches its own space', async () => {
+    const calls = (...tools: PersonalToolCall[]): typeof compute.respond => async () => compute.dispatched.length === 1
+      ? { kind: 'completed', text: 'looking', stopReason: 'tool_use', usage: { inputTokens: 800, outputTokens: 40 }, toolCalls: tools }
+      : { kind: 'completed', text: 'Fact: done [S1].', stopReason: 'end_turn', usage: { inputTokens: 800, outputTokens: 40 } };
+    const asked = async (place: Parameters<typeof runs.invoke>[1]) => {
+      const started = await runs.invoke(human(owner), place, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Summarise what you can' });
+      compute.dispatched = [];
+      assert.equal(await processor.process(started.run.id), 'completed', JSON.stringify(place));
+      return started.run.id;
+    };
+    const results = () => compute.dispatched.flatMap((request) => (request.turns ?? []).flatMap((turn) => turn.results));
+    const doc = (project: string, id: string): PersonalToolCall => ({ id: `doc-${id}`, name: 'flux_get_doc', input: { projectId: project, id } });
+
+    // A direct message: the only tool reads a web page; the DM itself is given in the request, and no space is reachable.
+    compute.respond = calls(doc(place.id, docId), { id: 'ctx', name: 'flux_list_contexts', input: {} });
+    const inDm = await asked({ kind: 'dm', dmId });
+    assert.deepEqual(compute.dispatched[0]!.tools?.map((tool) => tool.name), ['flux_read_web']);
+    assert.match(compute.dispatched[0]!.input, new RegExp(DM_CANARY), 'the DM is what the model reads');
+    assert.ok(results().every((result) => result.isError), 'a call of any other tool is refused');
+    for (const canary of [WIKI_CANARY, OTHER_CANARY, PRIVATE_CANARY]) assert.ok(!JSON.stringify(compute.dispatched).includes(canary), `${canary} never reaches the provider`);
+    const dmToken = await pool.query('SELECT run_tools FROM personal_runs WHERE id = $1', [inDm]);
+    assert.deepEqual(dmToken.rows[0].run_tools, ['flux_read_web']);
+
+    // A chat: every read tool, in every space its owner reaches, and no tool that changes anything.
+    compute.respond = calls(doc(other.id, otherDocId), { id: 'make', name: 'flux_create_task', input: { projectId: place.id, title: 'From the chat', clientCommandId: randomUUID() } },
+      { id: 'ctx-chat', name: 'flux_list_contexts', input: {} });
+    const inChat = await asked({ kind: 'chat', agentId });
+    const names = compute.dispatched[0]!.tools!.map((tool) => tool.name);
+    assert.equal(names.length, 20, 'the 20 read tools');
+    assert.ok(ASSISTANT_RUN_EFFECT_TOOLS.every((tool) => !names.includes(tool)), 'no change tool');
+    assert.ok(JSON.stringify(compute.dispatched).includes(OTHER_CANARY), 'another space of its owner is read: nobody else reads this answer');
+    assert.ok(results().some((result) => result.isError), 'the call to change something is refused');
+    // It can find its owner's spaces itself, with no id given to it (the list of what a run reaches follows its place, not a project it has none of).
+    const listed = JSON.stringify(compute.dispatched.flatMap((request) => (request.turns ?? []).flatMap((turn) => turn.results.filter((result) => !result.isError))));
+    assert.ok(listed.includes(place.id) && listed.includes(other.id), 'flux_list_contexts lists the spaces of its owner');
+    assert.equal((await pool.query(`SELECT count(*)::int AS n FROM project_work_items WHERE title = 'From the chat'`)).rows[0].n, 0);
+    const armed = await runs.invoke(human(owner), { kind: 'chat', agentId }, { clientRunId: randomUUID(), kind: 'ask', prompt: 'x' });
+    await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [armed.run.id]);
+    assert.deepEqual(claims((await token(armed.run.id)).token).flux_place, { project: null, conversation: null, dm: null });
+    await end(armed.run.id);
+    assert.ok(inChat);
+
+    // The space's main conversation: its own space and no other (a small space of its own, so that the reading fits one request).
+    const quiet = await createProject(owner, ws.id, 'Quiet corner', 'workspace');
+    const QUIET = `quiet-canary-${randomBytes(4).toString('hex')}`;
+    const quietDoc = (expectStatus(await owner.browser.request('POST', `/api/v1/projects/${quiet.id}/docs`, { body: { title: 'Quiet notes', body: QUIET } }), 201) as { id: string }).id;
+    expectStatus(await owner.browser.request('POST', `/api/v1/projects/${quiet.id}/conversations`, { body: { body: 'Short hello', clientMessageId: randomUUID() } }), 201);
+    compute.respond = calls(doc(other.id, otherDocId), doc(quiet.id, quietDoc));
+    await asked({ kind: 'space', projectId: quiet.id, conversationId: null });
+    assert.ok(JSON.stringify(compute.dispatched).includes(QUIET), 'its own space is read');
+    assert.ok(!JSON.stringify(compute.dispatched).includes(OTHER_CANARY), 'another space of its owner is not');
   });
 
   test('AST-8.2 through /mcp: a provider that keeps calling tools stops at a safety bound, every call made through the route', async (t) => {

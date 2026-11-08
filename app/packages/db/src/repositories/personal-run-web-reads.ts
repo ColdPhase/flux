@@ -54,16 +54,25 @@ export function personalRunWebReadRows(db: DbExecutor) {
     },
     /**
      * The text a person wrote that a run may be given when it starts (#953, C-30): the task's title, outcome and criteria when a person
-     * made the task and no agent has written them since, and the last 100 messages of the run's conversation that a person wrote and that
-     * were not taken back. What an agent wrote (a question to another agent, an answer, a status line, a task it made or edited) is never
-     * returned.
+     * made the task and no agent has written them since, and the last 100 messages of the run's place that a person wrote and that were not
+     * taken back: the conversation's, the space's people's conversations for its main conversation, a DM's text messages (not its "used AI"
+     * line); a private chat has none. What an agent wrote (a question to another agent, an answer, a status line, a task it made or edited) is
+     * never returned, and neither is an answer a person posted with Show everyone (`via`): it is the agent's text (#842).
      */
-    async personTexts(conversationId: string, workId: string | null): Promise<string[]> {
-      const result = await db.execute<{ text: string | null }>(sql`
-        SELECT concat_ws(E'\n', t.title, t.outcome, t.criteria::text) AS text FROM project_work_items t
-          WHERE t.id = ${workId}::uuid AND t.created_by_kind = 'human' AND NOT t.text_by_agent AND COALESCE(t.creation_origin, 'human') = 'human'
-        UNION ALL (SELECT m.body FROM project_messages m
-          WHERE m.conversation_id = ${conversationId}::uuid AND m.removed_at IS NULL AND m.author_agent_id IS NULL ORDER BY m.sequence DESC LIMIT 100)`);
+    async personTexts(place: { projectId: string | null; conversationId: string | null; dmId: string | null }, workId: string | null): Promise<string[]> {
+      const task = sql`SELECT concat_ws(E'\n', t.title, t.outcome, t.criteria::text) AS text FROM project_work_items t
+        WHERE t.id = ${workId}::uuid AND t.created_by_kind = 'human' AND NOT t.text_by_agent AND COALESCE(t.creation_origin, 'human') = 'human'`;
+      const messages = place.dmId !== null
+        ? sql`SELECT m.body FROM dm_messages m WHERE m.dm_id = ${place.dmId}::uuid AND m.kind = 'text' AND m.via IS NULL ORDER BY m.sequence DESC LIMIT 100`
+        : place.conversationId !== null
+          ? sql`SELECT m.body FROM project_messages m WHERE m.conversation_id = ${place.conversationId}::uuid AND m.removed_at IS NULL AND m.author_agent_id IS NULL AND m.via IS NULL
+            ORDER BY m.sequence DESC LIMIT 100`
+          : place.projectId !== null
+            ? sql`SELECT m.body FROM project_messages m JOIN project_conversations c ON c.id = m.conversation_id
+              WHERE c.project_id = ${place.projectId}::uuid AND c.space = 'people' AND m.removed_at IS NULL AND m.author_agent_id IS NULL AND m.via IS NULL
+              ORDER BY m.created_at DESC, m.id DESC LIMIT 100`
+            : null;
+      const result = await db.execute<{ text: string | null }>(messages ? sql`${task} UNION ALL (${messages})` : task);
       return result.rows.flatMap((row) => (row.text ? [row.text] : []));
     },
   };

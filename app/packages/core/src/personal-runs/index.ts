@@ -1,11 +1,12 @@
 export * from './ports.js';
 export * from './service.js';
 export * from './processor.js';
+export { postToAgentChat, unreadAgentChats } from './agent-chat.js';
 export * from './proposals.js';
 export { recoverLostRuntimeRuns, recoverPersonalRuns } from './recovery.js';
 export {
-  connectionCallsTools, costMicros, parseOutput, requestInput, runChargeMicros, runReservationMicros, SYSTEM_PROMPT, budgetedReservationMicros, TOOL_SYSTEM_PROMPT, taskSystemPrompt,
-  type SuppliedSource,
+  connectionCallsTools, costMicros, parseOutput, privateSystemPrompt, requestInput, runChargeMicros, runReservationMicros, SYSTEM_PROMPT, budgetedReservationMicros, TOOL_SYSTEM_PROMPT, taskSystemPrompt,
+  type AnswerPlace, type SuppliedSource,
 } from './validation.js';
 export { emptyAccount, nextRequestFits, reconcileRequest, requestParts, runToolLoop, type Gate, type LoopEnd, type LoopLimit, type LoopOptions, type LoopResult, type RunAccount } from './tool-loop.js';
 export { announce as announceRunProgress } from './progress.js';

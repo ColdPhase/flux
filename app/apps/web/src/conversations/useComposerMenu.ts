@@ -15,7 +15,7 @@ interface Options {
 }
 
 /** "@" and "/" in the composer (F-026 S5): the caret decides which menu shows, if any, and a pick edits the draft. */
-export function useComposerMenu({ me, people, conversation, writable, aiOff, composerId }: PaneCore, { drafts, assistant, ask, typing, openSources }: Options) {
+export function useComposerMenu({ me, people, writable, aiOff, composerId }: PaneCore, { drafts, assistant, ask, typing, openSources }: Options) {
   const navigate = useNavigate();
   const { asking, setAsking, publicComposer, helperComposer, composer, draft } = drafts;
   const [caret, setCaret] = useState(0);
@@ -26,14 +26,14 @@ export function useComposerMenu({ me, people, conversation, writable, aiOff, com
   // "My assistant" in the @ list: first once it is ready; while it is not set up, first until the Home card is dismissed, then last.
   const assistantEntry = aiOff ? null : assistant.status ? (assistant.status.state === 'ready' ? { mode: 'ask' as const, last: false }
     : assistant.status.state === 'not_enabled' ? { mode: 'setup' as const, last: meetAssistantDismissed(me.user.id) } : null) : null;
-  const options = trigger ? composerOptions(trigger, { people, meId: me.user.id, inThread: !!conversation, assistant: assistantEntry, aiOff }) : [];
+  const options = trigger ? composerOptions(trigger, { people, meId: me.user.id, assistant: assistantEntry, aiOff }) : [];
   const menuOpen = !!trigger && options.length > 0 && menuClosedAt !== draft;
   const activeIndex = Math.min(menuIndex, Math.max(0, options.length - 1));
   function changeDraft(input: string, position = input.length) {
     setCaret(position); setMenuIndex(0); setMenuClosedAt(null); setCommandHint('');
     typing.input(Boolean(input.trim()) && !asking && !/^\/(ai|task|decide|map|handoff)(\s|$)/.test(input));
     // Private prompts keep their own draft; invoking /ai never overwrites a public task draft.
-    if (!aiOff && !asking && conversation && writable && /^\/ai(\s|$)/.test(input)) {
+    if (!aiOff && !asking && writable && /^\/ai(\s|$)/.test(input)) {
       // Typed key by key, "/" and "/a" were the reply's draft a moment ago; they were the command, not words to keep.
       if (/^\/[a-z]{0,1}$/i.test(publicComposer.draft.body)) publicComposer.setBody('');
       helperComposer.setBody(input.replace(/^\/ai\s?/, '')); setAsking(true); ask.setAskFailure(''); return;

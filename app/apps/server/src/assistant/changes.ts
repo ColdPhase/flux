@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import {
   ASSISTANT_UNIT_CREATE_VIEW, assistantChangeActionPath, assistantChangeWords, assistantDoneWords, assistantWorkChangeArgs, assistantRunChangesActionPath, assistantRunChangesPath,
-  conversationAssistantActivityPath, conversationAssistantChangesPath, WORK_LIMITS, type AssistantActivity, type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone,
+  conversationAssistantChangesPath, WORK_LIMITS, type AssistantChange, type AssistantChangeDecision, type AssistantRunUndone,
 } from '@flux/contracts';
 import { assistantChangeRows, changeGroup, type AssistantChangeInView, type AssistantChangeRow, type DbExecutor, accessReader, type Database } from '@flux/db';
 import { assistantWaitLine, ConflictError, ForbiddenError, InvalidInputError, undoSentence, type UndoRecord, DomainError, evaluateProject, isUuid, NotFoundError,
@@ -280,6 +280,11 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       return { items: await view(list, await undoers(principal, list)) };
     },
     async forRun(principal: Principal, runId: string): Promise<{ items: AssistantChange[] }> {
+      // A run that made no change has an empty list for its asker, not a 404 (#842: the private answer asks for it every time); anyone else gets the 404.
+      if (isUuid(runId) && !(await rows().forRun(runId)).length) {
+        if ((await rows().runOwner(runId)) !== owner(principal)) throw missing();
+        return { items: [] };
+      }
       const all = await ownRun(principal, runId);
       // The same rule as the conversation's: no waiting change for a guest, found by the project the change is in, as in the Inbox.
       const guestIn = new Map<string, boolean>();
@@ -359,14 +364,6 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       }
       return { changes, undone, changedSince, message: undoSentence(undone, changedSince) };
     },
-    /** Who has an assistant working here, for everyone who can read the conversation: names only (AST-6 "Visible to everyone"). */
-    async activity(principal: Principal, conversationId: string): Promise<AssistantActivity> {
-      owner(principal);
-      if (!isUuid(conversationId)) return { working: [] };
-      const place = await rows().conversationPlace(conversationId);
-      if (!place || !(await evaluateProject(principal, 'project.read', place.projectId, accessReader(db))).allowed) throw missing();
-      return { working: await rows().workingOwners(conversationId) };
-    },
     /**
      * The owner's waiting changes in projects they can still read; the Inbox groups them into one item per run (AG-7). A guest
      * has no AI (AG-2), so nothing of theirs can be approved and nothing waits for them here.
@@ -392,8 +389,6 @@ export function registerAssistantChangeRoutes(app: FastifyInstance, db: Database
   const noStore = { 'cache-control': 'no-store' };
   app.get<{ Params: { conversationId: string } }>(conversationAssistantChangesPath(':conversationId'), async (request, reply) =>
     reply.headers(noStore).send(await changes.forConversation(await who(request), request.params.conversationId)));
-  app.get<{ Params: { conversationId: string } }>(conversationAssistantActivityPath(':conversationId'), async (request, reply) =>
-    reply.headers(noStore).send(await changes.activity(await who(request), request.params.conversationId)));
   app.get<{ Params: { runId: string } }>(assistantRunChangesPath(':runId'), async (request, reply) =>
     reply.headers(noStore).send(await changes.forRun(await who(request), request.params.runId)));
   app.post<{ Params: { runId: string } }>(assistantRunChangesActionPath(':runId', 'apply'), async (request) => changes.applyAll(await who(request), request.params.runId));

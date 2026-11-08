@@ -698,6 +698,8 @@ export const projectMessages = pgTable('project_messages', {
   resultId: uuid('result_id'),
   /** How many published files belong to this message (#154, migration 0045); text or at least one file. */
   attachmentCount: smallint('attachment_count').notNull().default(0),
+  /** 0022 (#842): the agent whose answer its author posted with Show everyone ("Ada · via Assistant"). */
+  via: text('via'),
   /** The assistant's Undo took this message back (migration 0129, #68): the text is the fixed marker and the row keeps its place. */
   removedAt: timestamp('removed_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1463,6 +1465,10 @@ export const dmMessages = pgTable('dm_messages', {
   body: text('body').notNull(),
   /** Null for a root; a reply names a root of the same DM (migration 0103, #536). */
   threadRootId: uuid('thread_root_id'),
+  /** 0022 (#842): the agent whose answer the author posted with Show everyone. */
+  via: text('via'),
+  /** 0022 (#842): `ai_used` is the line "Ada used AI here (Claude)": its body names the company that receives the conversation. */
+  kind: text('kind', { enum: ['text', 'ai_used'] }).notNull().default('text'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   unique().on(table.dmId, table.sequence),
@@ -1604,11 +1610,13 @@ export const notificationEmails = pgTable('notification_emails', {
 // Owner-invoked personal assistant runs (migration 0024, #68, O-008). No key material is stored.
 export const personalRuns = pgTable('personal_runs', {
   /** 0115 (F-029): the workspace AI policy epoch this item was admitted under; no default. */
-  aiEpoch: bigint('ai_epoch', { mode: 'number' }).notNull(),
+  aiEpoch: bigint('ai_epoch', { mode: 'number' }),
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),
-  projectId: uuid('project_id').notNull(),
-  conversationId: uuid('conversation_id').notNull(),
+  /** 0022 (#842): a run's place is a space (`projectId`, with `conversationId` unless it is the space's main conversation), a direct message (`dmId`) or none: the private chat with its agent. */
+  projectId: uuid('project_id'),
+  conversationId: uuid('conversation_id'),
+  dmId: uuid('dm_id'),
   ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
   agentId: uuid('agent_id').notNull(),
   connectionId: uuid('connection_id'),
@@ -1674,12 +1682,33 @@ export const personalRuns = pgTable('personal_runs', {
   backgroundLabel: text('background_label'),
   /** 0109 (F-027 A8): a background run's answer is not shown in its conversation (it is kept in Recent). */
   silent: boolean('silent').notNull().default(false),
+  /** 0022 (#842): the answer is its owner's alone; Show everyone posted it, Dismiss put it away. */
+  shownAt: timestamp('shown_at', { withTimezone: true }),
+  dismissedAt: timestamp('dismissed_at', { withTimezone: true }),
 }, (table) => [
   unique().on(table.ownerUserId, table.clientRunId),
   unique().on(table.workspaceId, table.projectId, table.id),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.agentId], foreignColumns: [agents.workspaceId, agents.id] }).onDelete('cascade'),
 ]);
+
+/** 0022 (#842): what an agent says on its own in its private chat, each line about one run (a report, "Stopped by Maja"). The owner's words and the answers are runs. */
+export const agentChatMessages = pgTable('agent_chat_messages', {
+  id: uuid('id').primaryKey(),
+  workspaceId: uuid('workspace_id').notNull(),
+  agentId: uuid('agent_id').notNull().references(() => assistantSettings.agentId, { onDelete: 'cascade' }),
+  ownerUserId: text('owner_user_id').notNull().references(() => authUsers.id, { onDelete: 'cascade' }),
+  runId: uuid('run_id').notNull().references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
+  key: text('key').notNull(),
+  body: text('body').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [unique().on(table.agentId, table.key)]);
+
+/** 0022 (#842): until when the owner has read one agent's chat. */
+export const agentChatReads = pgTable('agent_chat_reads', {
+  agentId: uuid('agent_id').primaryKey().references(() => assistantSettings.agentId, { onDelete: 'cascade' }),
+  readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 /** 0008 (#856, F-036 AG-5): "When someone assigns a task to me: Give it to [agent]". No row is "Do nothing". */
 export const agentTaskTaking = pgTable('agent_task_taking', {

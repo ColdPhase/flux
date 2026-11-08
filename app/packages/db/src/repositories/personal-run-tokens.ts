@@ -16,8 +16,10 @@ const IN_FLIGHT: ('reading' | 'dispatching')[] = ['reading', 'dispatching'];
 export interface RunTokenRow {
   id: string;
   workspaceId: string;
-  projectId: string;
-  conversationId: string;
+  /** The run's place (#842): a space and its conversation, a direct message, or neither (a private chat). */
+  projectId: string | null;
+  conversationId: string | null;
+  dmId: string | null;
   ownerUserId: string;
   agentId: string;
   status: typeof r.$inferSelect.status;
@@ -33,11 +35,11 @@ export interface RunTokenRow {
   mcpLimit: 'call' | 'run' | null;
   stopRequestedAt: Date | null;
   /** F-029: the workspace AI policy epoch the run was admitted under. */
-  aiEpoch: number;
+  aiEpoch: number | null;
 }
 
 const columns = {
-  id: r.id, workspaceId: r.workspaceId, projectId: r.projectId, conversationId: r.conversationId, ownerUserId: r.ownerUserId,
+  id: r.id, workspaceId: r.workspaceId, projectId: r.projectId, conversationId: r.conversationId, dmId: r.dmId, ownerUserId: r.ownerUserId,
   agentId: r.agentId, status: r.status, engine: r.engine, kind: r.kind, runTokenNonceHash: r.runTokenNonceHash, runTokenJti: r.runTokenJti,
   runTokenExpiresAt: r.runTokenExpiresAt, runTokenClosedAt: r.runTokenClosedAt, runTools: r.runTools, mcpResultBytes: r.mcpResultBytes,
   mcpLimit: r.mcpLimit, stopRequestedAt: r.stopRequestedAt, aiEpoch: r.aiEpoch,

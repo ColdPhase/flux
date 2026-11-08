@@ -7,6 +7,7 @@ import { ComposerAudience, ComposerBox } from '../composer/ComposerBox';
 import { LinkPreviews, MessageText } from '../app/MessageText';
 import { ConnectionLine, OutboxStatus, PendingFiles, PendingSource, SendAnnouncer } from '../composer/Outbox';
 import { ContributionMark, clock, day, when } from '../app/messageParts';
+import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { useProjectShell } from '../project/data';
 import { getTaskDiscussion } from '../composer/api';
@@ -15,6 +16,10 @@ import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import { TaskAgentState } from '../agents/TaskAgentState';
 import { AgentsThreadSection } from '../agents/AgentsThreadSection';
 import { failure, useAssistantChanges } from '../assistant/WaitingChanges';
+import { askError, askState } from '../assistant/format';
+import { PrivateAiLines, firstNames } from '../assistant/PrivateAiLines';
+import { useConversationAssistant } from '../assistant/useConversationAssistant';
+import { useSpaceAi } from '../ai/spaceAi';
 import { undoChange } from '../assistant/api';
 import { RefLink } from '../place/origin';
 import { useCreateWorkFromMessage } from './inline';
@@ -153,8 +158,14 @@ export function useTaskActivity({ item, links, project, members, me, revision }:
     return out.sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   }, [changes, messages, item, links, hasEarlier]);
 
+  // `/ai` in the task's discussion (#842): the person's own agent answers them alone; Show everyone posts the answer in the discussion.
+  const { workspace } = useShellData();
+  const aiOff = useSpaceAi(project.id).blocked || workspace?.role === 'guest';
+  const assistant = useConversationAssistant({ meId: me.id, enabled: !aiOff, place: discussion?.conversationId ? { kind: 'space', projectId: project.id, conversationId: discussion.conversationId } : null,
+    onShown: () => setAttempt((value) => value + 1) });
+
   return {
-    discussion, lines, reads, loading: !discussion && changes === null && failed !== 'all', failed, hasEarlier, loadEarlier, busyEarlier, author,
+    discussion, lines, reads, loading: !discussion && changes === null && failed !== 'all', failed, hasEarlier, loadEarlier, busyEarlier, author, assistant, aiOff,
     retry: () => { setFailed(null); setAttempt((value) => value + 1); },
     reload: () => setAttempt((value) => value + 1),
   };
@@ -206,6 +217,8 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
   const { openDetails } = useShellActions();
   const headingId = useId();
   const { discussion } = state;
+  const people = useProjectShell()?.people ?? null;
+  const othersOf = firstNames((people ?? []).filter((person) => person.kind === 'human' && person.id !== me.id).map((person) => person.name));
   const thread = discussion?.conversationId ? `/projects/${project.id}/conversations/${discussion.conversationId}` : null;
   // An agent's line in this thread is its run's change: it is taken back where it stands, not in the state line above.
   const posts = useAssistantChanges(discussion?.conversationId ?? null, `${state.lines.length}:${state.reads}`);
@@ -225,6 +238,9 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
       {state.failed === 'all' ? <p className="wd-error" role="alert">The activity could not be loaded. <button type="button" className="wd-inline" onClick={state.retry}>Retry</button></p>
         : state.loading ? <p className="wd-muted" aria-busy="true">Loading…</p> : null}
       <TaskAgentState item={item} projectId={project.id} conversationId={discussion?.conversationId ?? null} revision={state.lines.length} onChanged={state.reload} elsewhere={inThread} />
+      {/* The person's own agent at work and what it answered them: theirs alone (#842). */}
+      <PrivateAiLines own assistant={state.assistant} meId={me.id} meName={me.name} others={othersOf} composerId={composerId}
+        lookups={{ projectId: project.id, messages: [], work: new Map(), author: () => '' }} />
       {state.failed === 'changes' ? <p className="wd-error" role="alert">Some of the history could not be loaded. <button type="button" className="wd-inline" onClick={state.retry}>Retry</button></p> : null}
       {composer.pending.length ? <ol className="wd-pending" aria-label={writable ? 'Messages you are sending' : 'Pending messages kept'}>{composer.pending.map((pending) => (
         <li key={pending.id} id={`pending-${pending.id}`} data-client-message-id={pending.id} data-send-state={pending.state} className={`wd-pending__item is-pending${pending.state === 'failed' ? ' is-failed-send' : ''}`}>
@@ -247,6 +263,7 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
                 <div className="wd-act__body">
                   <p className="wd-act__who">
                     {agent ? <AgentIdentity name={name} owner={message.author.kind === 'agent' ? agentAuthorOwner(message.author, owners) : undefined} icon={false} /> : <b title={name}>{firstName(name)}</b>}
+                    {message.via ? <span className="project-convo__via">via {message.via}</span> : null}
                     <time dateTime={message.createdAt} title={when(message.createdAt)}>{stamp(message.createdAt)}</time>
                   </p>
                   <div className={`wd-act__bubble${hasPhotos(message.files) ? ' has-photos' : ''}`}>
@@ -305,9 +322,24 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
   const typingLine = conversationId ? <TypingNotice {...typing} /> : <p className="typing-notice" aria-hidden="true">{'\u00a0'}</p>;
   const audienceLine = <div className="wd-foot__line"><ComposerAudience>{audience}</ComposerAudience>{typingLine}</div>;
 
+  // `/ai …` asks the person's agent in this discussion; the words are not a message (#842).
+  const asking = !state.aiOff && /^\/ai(\s|$)/.test(composer.draft.body);
+  const [askFailure, setAskFailure] = useState('');
+  async function askAgent() {
+    const prompt = composer.draft.body.replace(/^\/ai\s*/, '').trim();
+    const ready = askState(state.assistant.status);
+    if (!conversationId) { setAskFailure('Start the discussion with a first message, then ask your agent with /ai.'); return; }
+    if (!prompt) { setAskFailure('Say what to ask after /ai, for example /ai what is left on this task?'); return; }
+    if (ready.kind !== 'ready') { setAskFailure(ready.note); return; }
+    const active = captureScope();
+    setAskFailure('');
+    try { await state.assistant.ask(prompt); if (active()) composer.setBody(''); } catch (cause) { if (active()) setAskFailure(askError(cause)); }
+  }
+
   async function send(event?: FormEvent) {
     event?.preventDefault();
     if (!writable || !discussion) return;
+    if (asking) { await askAgent(); return; }
     typing.stop();
     // The message joins the task's queue and the field empties at once (#264); it shows in the timeline until stored.
     const outcome = composer.submit();
@@ -328,9 +360,10 @@ export function TaskComposer({ state, composer, item, meId, writable, readOnly, 
       <ConnectionLine />
       <ComposerFiles state={composer} attach="none" />
       <ComposerBox id={id} label={hasRoot ? 'Write to this task' : 'First message about this task'} value={composer.draft.body} maxLength={20000}
-        placeholder={`Write about #${item.number} · @ · /`} onChange={(value) => { composer.setBody(value); typing.input(Boolean(value.trim())); }} onBlur={typing.stop} onKeyDown={onKeyDown}
+        placeholder={`Write about #${item.number} · @ · /`} onChange={(value) => { setAskFailure(''); composer.setBody(value); typing.input(Boolean(value.trim()) && !/^\/ai(\s|$)/.test(value)); }} onBlur={typing.stop} onKeyDown={onKeyDown}
         attach={composer} sendLabel={hasRoot ? 'Send to task' : 'Start the discussion'} sendDisabled={!composer.canSend || !discussion} onSend={() => void send()} />
-      {audienceLine}
+      {asking ? <div className="wd-foot__line"><ComposerAudience>Only you see the answer, until you choose Show everyone</ComposerAudience></div> : audienceLine}
+      {askFailure ? <p className="wd-error" role="alert">{askFailure}</p> : null}
       <SendAnnouncer pending={composer.pending} />
     </form>
   );

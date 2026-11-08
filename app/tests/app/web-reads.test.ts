@@ -32,6 +32,14 @@ const agentSaysAs = async (agentId: string, conversationId: string, body: string
     VALUES ($1, $2, $3, $4, $5, $6, 'test', $7, $8)`, [randomUUID(), place!.workspace_id, place!.project_id, conversationId, agentId, randomUUID(), place!.sequence, body]);
 };
 
+/** A message a person posted with Show everyone: their own account, the agent's words (#842). */
+const shownAs = async (authorId: string, conversationId: string, body: string) => {
+  const [place] = (await pool.query<{ workspace_id: string; project_id: string; sequence: number }>(
+    'UPDATE project_conversations SET next_sequence = next_sequence + 1 WHERE id = $1 RETURNING workspace_id, project_id, next_sequence - 1 AS sequence', [conversationId])).rows;
+  await pool.query(`INSERT INTO project_messages (id, workspace_id, project_id, conversation_id, author_id, via, client_message_id, request_fingerprint, sequence, body)
+    VALUES ($1, $2, $3, $4, $5, 'Assistant', $6, 'test', $7, $8)`, [randomUUID(), place!.workspace_id, place!.project_id, conversationId, authorId, randomUUID(), place!.sequence, body]);
+};
+
 describe('flux_read_web: one public page as text, read-only, with its source kept', () => {
   let scene: AssistantScene;
   before(async () => { scene = await assistantScene('wr'); });
@@ -141,6 +149,17 @@ describe('flux_read_web: one public page as text, read-only, with its source kep
     assert.equal(result((await reading(run, early)).message)?.isError, undefined, 'a message before the run');
     assert.equal(code((await reading(run, at('/read/second'))).message), 'WEB_READ_NOT_GIVEN', 'a message after it');
     assert.equal(code((await reading(run, at('/read/timetable'))).message), 'WEB_READ_NOT_GIVEN', 'a message an agent wrote');
+    await scene.complete(run.runId);
+  });
+
+  test('an answer a person posted with Show everyone is the agent\'s text: an address in it gives nothing to the next run (#842, C-30)', async () => {
+    const shown = at('/read/timetable');
+    await shownAs(scene.owner.id, scene.thread.id, `The agent suggested ${shown}`);
+    expectStatusPost(await scene.owner.browser.request('POST', `/api/v1/conversations/${scene.thread.id}/messages`, { body: { body: `Background: ${at('/read/notes')}`, clientMessageId: randomUUID() } }));
+    const run = await scene.liveRun();
+    assert.equal(code((await reading(run, shown)).message), 'WEB_READ_NOT_GIVEN', 'the address in the shown answer');
+    assert.equal(result((await reading(run, at('/read/notes'))).message)?.isError, undefined, 'while what the same person wrote themselves still gives its address');
+    assert.equal((await hits('/')).filter((hit) => hit.path === '/read/timetable').length, 0, 'nothing went to the shown address');
     await scene.complete(run.runId);
   });
 

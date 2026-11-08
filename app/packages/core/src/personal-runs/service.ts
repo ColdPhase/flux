@@ -4,13 +4,19 @@ import { randomUUID } from 'node:crypto';
 import {
   AGENT_LIMITS,
   ASSISTANT_PLAN_MODELS,
+  AI_PROVIDERS,
   assistantModelName,
   type AddAgentMemoryCommand,
+  type AgentChatMessage,
+  type AgentChatSummary,
   type AgentMemory,
   type AgentMemoryItem,
   type AiConnectionRef,
   type AssistantAnswer,
+  type AssistantEngine,
   type AssistantModelChoice,
+  type AssistantPlace,
+  type ListOwnRunsQuery,
   type AssistantRun,
   type AssistantRunBehind,
   type AssistantModelPick as ModelPick,
@@ -32,7 +38,7 @@ import {
 import type { Principal } from '../principal.js';
 import { isId, page } from '../work/validation.js';
 import type {
-  EnablementRecord, KeySpend, NewRun, PersonalConnection, PersonalConnectionLookup, PersonalRunPorts, PersonalRunUnitOfWork,
+  EnablementRecord, KeySpend, NewRun, RunPlaceFilter, PersonalConnection, PersonalConnectionLookup, PersonalRunPorts, PersonalRunUnitOfWork,
   PersonalRuntimeAvailability, PersonalRuntimeClient, PersonalRuntimeStanding, RunRecord,
 } from './ports.js';
 import {
@@ -41,6 +47,8 @@ import {
 import { announce, updateAndAnnounce } from './progress.js';
 import { givenAddresses, GIVEN_AT_START_MAX } from './web-addresses.js';
 import { endedWithWebSources } from './web-sources.js';
+import { unreadAgentChats } from './agent-chat.js';
+import { isPrivateAnswer, placeOf } from './ports.js';
 import {
   budgetedReservationMicros, centsToMicros, connectionRef, memoryText, normalizeAgentChange, normalizeEnable, normalizeInvoke, retryRequest, runReservationMicros,
   type NormalizedInvoke,
@@ -151,17 +159,21 @@ function enablementView(record: EnablementRecord): PersonalRunEnablement {
   };
 }
 
-/** The answer as the place's audience sees it: no cost, budget, connection or hidden source. */
+/**
+ * The answer as the one who may see it does (#842): the answer to `/ai` and to a chat is its asker's alone, from their agent by name; a
+ * schedule's is the project's, "Jo's assistant". No cost, budget, connection or hidden source in either.
+ */
 export async function answerView(ports: PersonalRunPorts, record: RunRecord): Promise<AssistantAnswer | null> {
   if (record.answerBody === null || !record.committedAt) return null;
   const names = await ports.runs.names([record.ownerUserId]);
   const name = names.get(record.ownerUserId) ?? 'Former member';
   const proposal = await ports.runs.proposalOfRun(record.id);
   const schedule = record.kind === 'scheduled' ? await ports.runs.jobOfRun?.(record.id) ?? null : null;
+  const own = isPrivateAnswer(record);
   return {
     runId: record.id, conversationId: record.conversationId, projectId: record.projectId,
-    audience: { kind: 'project', projectId: record.projectId },
-    assistant: { ownerUserId: record.ownerUserId, label: assistantLabel(name) },
+    audience: own || record.projectId === null ? { kind: 'owner' } : { kind: 'project', projectId: record.projectId },
+    assistant: { ownerUserId: record.ownerUserId, label: own ? (await ports.runs.agentBrief(record.agentId))?.name ?? 'Assistant' : assistantLabel(name) },
     askedBy: { id: record.ownerUserId, name },
     request: { kind: record.kind, prompt: record.prompt }, body: record.answerBody, truncated: record.answerTruncated,
     provenance: { provider: record.provider, model: record.model }, sources: record.answerSources.map((source) => ({ ...source })),
@@ -174,10 +186,23 @@ async function webSourcesOf(ports: PersonalRunPorts, record: RunRecord): Promise
   return line ? { webSources: line } : {};
 }
 
+/**
+ * The `[1]` marks pointed at sources only the asker's card could open: posted as a message they mean nothing. Only a mark of a source the
+ * answer has is taken out (after a space, after punctuation, or at the start of a line), and none in code (`items[0]`, a literal "[1]").
+ */
+export function withoutCitationMarks(body: string, sources: number): string {
+  const valid = (number: string) => Number(number) >= 1 && Number(number) <= sources;
+  const taken = body.split(/(```[\s\S]*?```|`[^`\n]*`)/).map((part, index) => (index % 2 ? part : part
+    .replace(/[ \t]\[(\d{1,3})\]/g, (mark, number: string) => (valid(number) ? '' : mark))
+    .replace(/(^|\n)\[(\d{1,3})\][ \t]?/g, (mark, before: string, number: string) => (valid(number) ? before : mark))
+    .replace(/([.,;:!?…"”’])\[(\d{1,3})\]/g, (mark, before: string, number: string) => (valid(number) ? before : mark)))).join('').trim();
+  return taken || body;
+}
+
 export async function runView(ports: PersonalRunPorts, record: RunRecord): Promise<AssistantRun> {
   return {
     id: record.id, clientRunId: record.clientRunId, workspaceId: record.workspaceId, projectId: record.projectId,
-    conversationId: record.conversationId, kind: record.kind, prompt: record.prompt, silent: record.silent,
+    conversationId: record.conversationId, dmId: record.dmId, agentId: record.agentId, kind: record.kind, prompt: record.prompt, silent: record.silent,
     target: record.targetSketchId && record.targetThoughtId ? { type: 'thought', sketchId: record.targetSketchId, thoughtId: record.targetThoughtId } : null,
     continuesRunId: record.continuesRunId, retryOfRunId: record.retryOfRunId, status: record.status,
     stoppedAtStage: record.stoppedAtStage, stopRequested: record.stopRequestedAt !== null, stopAcknowledged: record.stopAcknowledgedAt !== null,
@@ -191,6 +216,7 @@ export async function runView(ports: PersonalRunPorts, record: RunRecord): Promi
     behind: record.status === 'queued' && !record.resumeAt ? await behindView(ports, record) : null,
     createdAt: iso(record.createdAt), dispatchedAt: record.dispatchedAt ? iso(record.dispatchedAt) : null,
     completedAt: record.completedAt ? iso(record.completedAt) : null,
+    shownAt: record.shownAt ? iso(record.shownAt) : null, dismissedAt: record.dismissedAt ? iso(record.dismissedAt) : null,
   };
 }
 
@@ -407,14 +433,60 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     return { ok: true, fields: { reservedMicros: 0, provider: connection.provider, model: connection.model } };
   }
 
+  /** Who receives a conversation when AI is used on it: "Claude", "ChatGPT", or the key's provider (#842, the line of a DM). */
+  const company = (engine: AssistantEngine, provider: string) => engine === 'runtime' ? (provider === 'openai' ? 'ChatGPT' : 'Claude')
+    : provider === 'anthropic' ? 'Claude' : AI_PROVIDERS[provider as keyof typeof AI_PROVIDERS]?.label ?? 'an AI provider';
+
+  /** The same place, whether the request named it as a conversation id or as a place (#842). */
+  const asPlace = (place: string | AssistantPlace): AssistantPlace => (typeof place === 'string' ? { kind: 'space', projectId: '', conversationId: place } : place);
+
+  /**
+   * Finds the place a request names and checks that its owner may write there now (the answer is theirs to post). Throws the plain
+   * 404 of the place. A space is also asked its AI switch: its epoch is what the run is admitted under; a DM and a chat have none.
+   */
+  async function locate(ports: PersonalRunPorts, principal: Principal, wanted: AssistantPlace) {
+    const lock = { lock: true } as const;
+    if (wanted.kind === 'dm') {
+      if (!isId(wanted.dmId)) throw new NotFoundError('Direct message', 'DM_NOT_FOUND');
+      const { workspaceId } = await ports.access.requireDm(principal, wanted.dmId.toLowerCase(), lock);
+      return { workspaceId, projectId: null, conversationId: null, dmId: wanted.dmId.toLowerCase(), epoch: null, agentId: null };
+    }
+    if (wanted.kind === 'chat') {
+      if (!isId(wanted.agentId)) throw agentNotFound();
+      const own = await ports.runs.enablement(ownerOf(principal), { lock: true, agentId: wanted.agentId.toLowerCase() });
+      if (!own) throw agentNotFound();
+      return { workspaceId: own.workspaceId, projectId: null, conversationId: null, dmId: null, epoch: null, agentId: own.agentId };
+    }
+    let projectId: string; let conversationId: string | null = null; let workspaceId: string | undefined;
+    if (wanted.conversationId !== null) {
+      const place = isId(wanted.conversationId) ? await ports.runs.locateConversation(wanted.conversationId.toLowerCase()) : null;
+      if (!place) throw new NotFoundError('Conversation', 'CONVERSATION_NOT_FOUND');
+      projectId = place.projectId; conversationId = wanted.conversationId.toLowerCase(); workspaceId = place.workspaceId;
+    } else {
+      if (!isId(wanted.projectId)) throw new NotFoundError('Space', 'PROJECT_NOT_FOUND');
+      projectId = wanted.projectId.toLowerCase();
+    }
+    try {
+      // The answer is posted to the place: like a message, it needs project write access.
+      const checked = await ports.access.requireProject(principal, 'write', projectId, lock);
+      workspaceId ??= checked.workspaceId;
+    } catch (error) {
+      if (error instanceof NotFoundError) throw conversationId !== null ? new NotFoundError('Conversation', 'CONVERSATION_NOT_FOUND') : new NotFoundError('Space', 'PROJECT_NOT_FOUND');
+      throw error;
+    }
+    // AG-10: no run, and no replay of an earlier one, while AI is off in this space.
+    const { epoch } = await ports.access.requireSpaceAi(projectId, lock);
+    return { workspaceId, projectId, conversationId, dmId: null, epoch, agentId: null };
+  }
+
   /**
    * The web addresses a run is given when it starts (#953, C-30): written in text a person wrote, never in what an agent wrote. That is the
    * request when the owner or their schedule wrote it, the task when a person made it and no agent has written it since, and the people's
    * messages in the conversation. A task run's prompt (and the prompt of a question between agents, and of a continuation, which holds the
    * agents' question and answer lines) is built by the server from agents' words, so it is not read for addresses. Fixed here, with the run.
    */
-  async function givenAtStart(ports: PersonalRunPorts, run: { kind: string; prompt: string; conversationId: string; workId?: string | null }): Promise<string[]> {
-    const texts = await ports.runs.personTexts(run.conversationId, run.workId ?? null);
+  async function givenAtStart(ports: PersonalRunPorts, run: { kind: string; prompt: string; projectId: string | null; conversationId: string | null; dmId: string | null; workId?: string | null }): Promise<string[]> {
+    const texts = await ports.runs.personTexts({ projectId: run.projectId, conversationId: run.conversationId, dmId: run.dmId }, run.workId ?? null);
     if (run.kind !== 'task' && run.kind !== 'task_answer') texts.unshift(run.prompt);
     return [...givenAddresses(texts)].slice(0, GIVEN_AT_START_MAX);
   }
@@ -423,56 +495,59 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
    * The shared path of invoke, continue and retry. Order matters: identity claims, then the place, then the caller's own
    * enablement, connection, agent and the key's daily budget. Nothing is written unless every check passes; a request
    * that finds the budget used is written paused, to start by itself when the key's next day begins.
+   * `/ai` is asked of the person's first agent (Assistant); a chat names its own agent (#842).
    */
-  async function start(ports: PersonalRunPorts, principal: Principal, conversationId: string, request: NormalizedInvoke, retryOfRunId: string | null) {
+  async function start(ports: PersonalRunPorts, principal: Principal, wanted: AssistantPlace, request: NormalizedInvoke, retryOfRunId: string | null) {
     const owner = ownerOf(principal);
-    const place = isId(conversationId) ? await ports.runs.locateConversation(conversationId.toLowerCase()) : null;
-    if (!place) throw new NotFoundError('Conversation', 'CONVERSATION_NOT_FOUND');
-    try {
-      // The answer is posted to the conversation: like a message, it needs project write access.
-      await ports.access.requireProject(principal, 'write', place.projectId, { lock: true });
-    } catch (error) {
-      if (error instanceof NotFoundError) throw new NotFoundError('Conversation', 'CONVERSATION_NOT_FOUND');
-      throw error;
-    }
-    // AG-10: no run, and no replay of an earlier one, while AI is off in this space.
-    const { epoch: aiEpoch } = await ports.access.requireSpaceAi(place.projectId, { lock: true });
+    const place = await locate(ports, principal, wanted);
     // The owner's row lock serializes this owner's invocations: same-key retries and the budget reservation cannot race.
-    const enablement = await ports.runs.enablement(owner, { lock: true, workspaceId: place.workspaceId });
+    const enablement = await ports.runs.enablement(owner, { lock: true, ...(place.agentId ? { agentId: place.agentId } : { workspaceId: place.workspaceId }) });
     refuseForeignIds(request.claimed, owner, enablement);
     const existing = await ports.runs.runByClientId(owner, request.clientRunId);
     if (existing) {
-      if (existing.requestFingerprint !== request.fingerprint || existing.conversationId !== conversationId.toLowerCase() || existing.retryOfRunId !== retryOfRunId)
+      if (existing.requestFingerprint !== request.fingerprint || existing.projectId !== place.projectId || existing.conversationId !== place.conversationId
+        || existing.dmId !== place.dmId || (place.agentId !== null && existing.agentId !== place.agentId) || existing.retryOfRunId !== retryOfRunId)
         throw new ConflictError('This clientRunId was used for another run', 'IDEMPOTENCY_CONFLICT');
       return { run: existing, created: false };
     }
     if (request.continuesRunId) {
       const earlier = await ports.runs.findRun(request.continuesRunId);
-      if (!earlier || earlier.ownerUserId !== owner || earlier.conversationId !== conversationId.toLowerCase()) throw runNotFound();
+      if (!earlier || earlier.ownerUserId !== owner || earlier.projectId !== place.projectId || earlier.conversationId !== place.conversationId || earlier.dmId !== place.dmId) throw runNotFound();
       if (earlier.answerBody === null) throw new ConflictError('Only a committed answer can be continued', 'ASSISTANT_RUN_NOT_CONTINUABLE');
     }
-    if (request.target && !(await ports.access.canReadSketch(principal, request.target.sketchId))) throw new NotFoundError('Thought', 'THOUGHT_NOT_FOUND');
+    if (request.target && (place.projectId === null || !(await ports.access.canReadSketch(principal, request.target.sketchId)))) throw new NotFoundError('Thought', 'THOUGHT_NOT_FOUND');
     if (!enablement) throw new ConflictError('You have no agent to answer yet. Make one in Settings › AI', 'PERSONAL_RUN_NOT_ENABLED');
     const agentId = enablement.agentId;
+    // A guest has no AI (AG-2): `agent.invoke` is refused to a guest, whatever agent they once had.
     if (!(await ports.access.canInvoke(principal, agentId, { lock: true })))
       throw new ConflictError('Your agent is not available', 'PERSONAL_RUN_NO_AGENT');
     const agent = { kind: 'agent' as const, id: agentId };
-    if (!(await ports.access.canUseProject(agent, 'read', place.projectId, { lock: true })))
+    // The agent reads a space as its owner does there (C-15); a DM and a chat have no space to check.
+    if (place.projectId !== null && !(await ports.access.canUseProject(agent, 'read', place.projectId, { lock: true })))
       throw new ConflictError('Your assistant has no access to this project', 'PERSONAL_RUN_NO_PROJECT_ACCESS');
-    const taskFence = await ports.runs.prepareTaskUse(place.projectId, conversationId.toLowerCase());
+    const taskFence = await ports.runs.prepareTaskUse(place.projectId, place.conversationId);
     // A run a crashed worker left behind must not block the owner forever.
     for (const ended of await ports.runs.endStale(owner, STALE_AFTER_SECONDS)) await announce(ports, ended);
     if (await waitingRequests(ports, owner) >= MAX_WAITING_REQUESTS) throw new ConflictError('Your assistant is already working on many requests', 'PERSONAL_RUN_IN_FLIGHT');
     const admitted = await admit(ports, owner, enablement);
     if (!admitted.ok) throw unavailable(admitted.problem);
     const run = await ports.runs.insertRun({
-      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: conversationId.toLowerCase(),
+      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: place.conversationId, dmId: place.dmId,
       ownerUserId: owner, agentId, connectionId: enablement.connectionId, clientRunId: request.clientRunId,
       requestFingerprint: request.fingerprint, kind: request.kind, prompt: request.prompt,
-      given: await givenAtStart(ports, { kind: request.kind, prompt: request.prompt, conversationId: conversationId.toLowerCase() }),
+      given: await givenAtStart(ports, { kind: request.kind, prompt: request.prompt, projectId: place.projectId, conversationId: place.conversationId, dmId: place.dmId }),
       targetSketchId: request.target?.sketchId ?? null, targetThoughtId: request.target?.thoughtId ?? null,
-      continuesRunId: request.continuesRunId, retryOfRunId, ...admitted.fields, engine: enablement.engine, aiEpoch,
+      continuesRunId: request.continuesRunId, retryOfRunId, ...admitted.fields, engine: enablement.engine, aiEpoch: place.epoch,
     });
+    // "remember that …", typed by the owner to their own agent in its chat, is the one way a memory item is added by a message (AG-1).
+    const remember = place.agentId !== null && retryOfRunId === null && ports.assistants ? /^\s*remember(?:\s+that)?\s+(\S[\s\S]*)$/i.exec(request.prompt) : null;
+    if (remember && ports.assistants && await ports.assistants.memory.count(agentId) < AGENT_LIMITS.memoryItems)
+      await ports.assistants.memory.add(owner, agentId, place.workspaceId, remember[1]!.trim().slice(0, AGENT_LIMITS.memoryItem), 'From your conversation');
+    // AI used in a DM between people shows both of them one line, whoever asked and whatever the answer (AG-4).
+    if (place.dmId !== null) {
+      await ports.runs.postDmAiLine(place.dmId, place.workspaceId, owner, run.id, company(enablement.engine, admitted.fields.provider));
+      await ports.events.record(principal, place.workspaceId, 'dm.changed.v1', place.dmId, { op: 'ai_used' });
+    }
     // A paused request starts by itself at its resume time (the worker's queue tick); any other starts now.
     if (!run.resumeAt) await ports.queue.enqueue(run.id);
     await taskFence.mark();
@@ -524,9 +599,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const taskFence = await ports.runs.prepareTaskUse(place.projectId, spec.conversationId);
     for (const ended of await ports.runs.endStale(owner, STALE_AFTER_SECONDS)) await announce(ports, ended);
     const run = await ports.runs.insertRun({
-      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, ownerUserId: owner, agentId,
+      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, dmId: null, ownerUserId: owner, agentId,
       connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `background:${spec.kind}:${spec.clientRunId}`, kind: spec.kind,
-      prompt: spec.prompt, given: await givenAtStart(ports, { kind: spec.kind, prompt: spec.prompt, conversationId: spec.conversationId }),
+      prompt: spec.prompt, given: await givenAtStart(ports, { kind: spec.kind, prompt: spec.prompt, projectId: place.projectId, conversationId: spec.conversationId, dmId: null }),
       targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine, silent: spec.silent,
       aiEpoch: ai.epoch,
       // A schedule is the owner's own stored request: it waits behind their own requests and says what it is (AST-6 "Queue").
@@ -571,9 +646,9 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const admitted = await admit(ports, owner, enablement);
     if (!admitted.ok) return refused(admitted.problem === 'runtime_sign_in' ? `I can't start: sign in to ${admitted.client === 'codex' ? 'ChatGPT' : 'Claude'} again.` : TASK_PROBLEM_LINE[admitted.problem]);
     const run = await ports.runs.insertRun({
-      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, ownerUserId: owner, agentId: spec.agentId,
+      id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, dmId: null, ownerUserId: owner, agentId: spec.agentId,
       connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `${kind}:${spec.workId}:${spec.clientRunId}`, kind,
-      prompt: spec.prompt, given: await givenAtStart(ports, { kind, prompt: spec.prompt, conversationId: spec.conversationId, workId: spec.workId }),
+      prompt: spec.prompt, given: await givenAtStart(ports, { kind, prompt: spec.prompt, projectId: place.projectId, conversationId: spec.conversationId, dmId: null, workId: spec.workId }),
       targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine,
       aiEpoch: ai.epoch, workId: spec.workId, ...(spec.askedByRunId ? { askedByRunId: spec.askedByRunId } : {}), exchangeTurn: spec.exchangeTurn ?? 0,
     });
@@ -736,11 +811,12 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       },
     },
 
-    async invoke(principal: Principal, conversationId: string, command: InvokeAssistantRunCommand): Promise<{ run: AssistantRun; created: boolean }> {
+    /** A request for `/ai` in a conversation (its id), in a space's main conversation, in a DM, or a message to one's own agent in its chat (#842). */
+    async invoke(principal: Principal, place: string | AssistantPlace, command: InvokeAssistantRunCommand): Promise<{ run: AssistantRun; created: boolean }> {
       ownerOf(principal);
       const request = normalizeInvoke(command);
       return uow.run(async (ports) => {
-        const started = await start(ports, principal, conversationId, request, null);
+        const started = await start(ports, principal, asPlace(place), request, null);
         return { run: await runView(ports, started.run), created: started.created };
       });
     },
@@ -752,7 +828,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
         // A run on a task is tried again from the task (#856): it is bound to that task and its owner assignment.
         if (earlier.kind === 'task') throw new ConflictError('Try again from the task', 'ASSISTANT_RUN_NOT_RETRYABLE');
         if (IN_FLIGHT.has(earlier.status)) throw new ConflictError('The run is still in progress', 'ASSISTANT_RUN_NOT_RETRYABLE');
-        const started = await start(ports, principal, earlier.conversationId, retryRequest(earlier, command?.clientRunId), earlier.id);
+        const started = await start(ports, principal, placeOf(earlier), retryRequest(earlier, command?.clientRunId), earlier.id);
         return { run: await runView(ports, started.run), created: started.created };
       });
     },
@@ -778,12 +854,85 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
 
     get: (principal: Principal, runId: string) => uow.run(async (ports) => runView(ports, await ownRun(ports, principal, runId))),
 
-    async listOwn(principal: Principal, query?: PageQuery): Promise<Page<AssistantRun>> {
+    /** The chats of the caller's own agents: what they have not read in each (#842). */
+    agentChats: (principal: Principal): Promise<AgentChatSummary[]> => uow.run((ports) => unreadAgentChats(ports, ownerOf(principal))),
+
+    /** What the caller's agent said on its own in its chat, oldest first. Another person's agent, or none, is not found. */
+    async agentChatMessages(principal: Principal, agentId: unknown): Promise<AgentChatMessage[]> {
+      const owner = ownerOf(principal);
+      if (!isId(agentId)) throw agentNotFound();
+      return uow.run(async (ports) => {
+        if (!(await ports.runs.enablement(owner, { agentId: agentId.toLowerCase() }))) throw agentNotFound();
+        return ports.runs.agentChatMessages(agentId.toLowerCase(), 100);
+      });
+    },
+
+    /** The caller has read the chat of their agent up to now. */
+    async readAgentChat(principal: Principal, agentId: unknown): Promise<void> {
+      const owner = ownerOf(principal);
+      if (!isId(agentId)) throw agentNotFound();
+      await uow.run(async (ports) => {
+        if (!(await ports.runs.enablement(owner, { agentId: agentId.toLowerCase() }))) throw agentNotFound();
+        await ports.runs.readAgentChat(agentId.toLowerCase());
+      });
+    },
+
+    /** The caller's own runs, newest first; at most one place narrows them (#842). */
+    async listOwn(principal: Principal, query?: ListOwnRunsQuery): Promise<Page<AssistantRun>> {
       const owner = ownerOf(principal);
       const window = page(query);
+      const named = [['conversationId', query?.conversationId], ['spaceId', query?.spaceId], ['dmId', query?.dmId], ['chatAgentId', query?.chatAgentId]]
+        .filter(([, value]) => value !== undefined);
+      if (named.length > 1) throw new InvalidInputError('Name at most one place');
+      const only = named[0];
+      if (only && !isId(only[1])) throw new InvalidInputError(`${only[0]} must be an id`);
+      const place = only ? { [only[0] as string]: (only[1] as string).toLowerCase() } as RunPlaceFilter : undefined;
       return uow.run(async (ports) => {
-        const { items, total } = await ports.runs.listOwnRuns(owner, window);
+        const { items, total } = await ports.runs.listOwnRuns(owner, window, place);
         return { items: await Promise.all(items.map((item) => runView(ports, item))), total, ...window };
+      });
+    },
+
+    /**
+     * Dismiss (#842): the asker puts an answer, or the line of a run that ended, away. The run stays what it was; only the asker
+     * sees it either way. A run still working is stopped, not dismissed.
+     */
+    async dismiss(principal: Principal, runId: string): Promise<AssistantRun> {
+      return uow.run(async (ports) => {
+        const run = await ownRun(ports, principal, runId, true);
+        if (IN_FLIGHT.has(run.status)) throw new ConflictError('The run is still in progress', 'ASSISTANT_RUN_NOT_DISMISSABLE');
+        if (run.shownAt || run.dismissedAt) return runView(ports, run);
+        return runView(ports, await ports.runs.updateRun(run.id, { dismissedAt: new Date() }));
+      });
+    },
+
+    /**
+     * Show everyone, first half (#842, F-036 AG-4): what posting the answer needs, after every check. The answer is the caller's own,
+     * committed, not yet posted or put away, from `/ai` in a conversation or a DM (a chat has nobody to show it to), and the caller can
+     * still write in that place. The adapter posts it as the caller's own message, "Ada · via Assistant", under the run's id so a retry
+     * posts it once, and then calls {@link markShown}.
+     */
+    async planShow(principal: Principal, runId: string): Promise<{ run: AssistantRun; place: AssistantPlace; body: string; via: string }> {
+      return uow.run(async (ports) => {
+        const run = await ownRun(ports, principal, runId);
+        if (!isPrivateAnswer(run) || run.answerBody === null) throw new ConflictError('There is no answer to show', 'ASSISTANT_RUN_NOT_SHOWABLE');
+        const place = placeOf(run);
+        if (place.kind === 'chat') throw new ConflictError('A private chat has nobody to show it to', 'ASSISTANT_RUN_NOT_SHOWABLE');
+        if (run.dismissedAt) throw new ConflictError('This answer was dismissed', 'ASSISTANT_RUN_NOT_SHOWABLE');
+        // The place is checked again, now: the person may have lost it, and AI may have been turned off there.
+        if (place.kind === 'space') await ports.access.requireSpaceAi(place.projectId);
+        if (place.kind === 'space' ? !(await ports.access.canUseProject(principal, 'write', place.projectId)) : !(await ports.access.canUseDm(principal, place.dmId)))
+          throw new NotFoundError(place.kind === 'space' ? 'Conversation' : 'Direct message', place.kind === 'space' ? 'CONVERSATION_NOT_FOUND' : 'DM_NOT_FOUND');
+        return { run: await runView(ports, run), place, body: withoutCitationMarks(run.answerBody, run.answerSources.length), via: (await ports.runs.agentBrief(run.agentId))?.name ?? 'Assistant' };
+      });
+    },
+
+    /** Show everyone, second half: the answer was posted. Idempotent. */
+    async markShown(principal: Principal, runId: string): Promise<AssistantRun> {
+      return uow.run(async (ports) => {
+        const run = await ownRun(ports, principal, runId, true);
+        if (run.shownAt) return runView(ports, run);
+        return runView(ports, await ports.runs.updateRun(run.id, { shownAt: new Date(), dismissedAt: null }));
       });
     },
 

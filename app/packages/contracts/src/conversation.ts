@@ -34,6 +34,11 @@ export interface ConversationMessageFields {
   createdAt: string;
   /** Present only when the assistant's Undo took the message back (#68): `body` is then a fixed marker, and the message keeps its place. */
   removedAt?: string;
+  /**
+   * Present only when the author posted an agent's answer with Show everyone (#842, F-036 AG-4): the agent's name at that time,
+   * shown as "Ada · via Assistant". The person stays the author.
+   */
+  via?: string;
   /** Present only for a saved blocker, a published result or an explicit public handoff. */
   contribution?: MessageContribution;
   /**

@@ -1,4 +1,4 @@
-import type { MessageFile, MessageContribution } from '@flux/contracts';
+import type { AgentChatMessage, AgentChatSummary, AssistantPlace, MessageFile, MessageContribution } from '@flux/contracts';
 import type {
   AiPrice, AiProviderKind, AgentRuntimePayer, AgentMayDo, AssistantEngine, AssistantProposalStatus, AssistantRunCostState, AssistantRunEndReason,
   AssistantRunKind, AssistantRunStatus, AssistantSourceRef, AgentColour, PersonalRunTokenGrant, ResultFinding,
@@ -42,8 +42,10 @@ export interface KeySpend { budgetCents: number; chargedMicros: number; reserved
 export interface RunRecord {
   id: string;
   workspaceId: string;
-  projectId: string;
-  conversationId: string;
+  /** The run's place (#842): a space (`projectId`, with `conversationId` unless it is the space's main conversation), a direct message (`dmId`) or neither: the private chat with its agent. */
+  projectId: string | null;
+  conversationId: string | null;
+  dmId: string | null;
   ownerUserId: string;
   agentId: string;
   connectionId: string | null;
@@ -103,11 +105,22 @@ export interface RunRecord {
   /** 0009 (#841): the run whose question this run answers, and how many questions in a row led here. */
   askedByRunId: string | null;
   exchangeTurn: number;
-  /** 0115 (F-029): the workspace AI policy epoch the run was admitted under; every later step requires it. */
-  aiEpoch: number;
-  /** 0018 (#953): the normalized web addresses the run was given, fixed at its start from text a person wrote. */
+  /** 0115 (F-029): the space's AI policy epoch the run was admitted under; every later step requires it. Null outside a space (a DM, a chat). */
+  aiEpoch: number | null;
+  /** 0019 (#953): the normalized web addresses the run was given, fixed at its start from text a person wrote. */
   given: string[];
+  /** #842: Show everyone posted the answer, or Dismiss put it away. */
+  shownAt: Date | null;
+  dismissedAt: Date | null;
 }
+
+/** Where a run belongs, from its row: a space, a direct message, or the private chat with its agent (#842). */
+export function placeOf(run: Pick<RunRecord, 'projectId' | 'conversationId' | 'dmId' | 'agentId'>): AssistantPlace {
+  return run.projectId !== null ? { kind: 'space', projectId: run.projectId, conversationId: run.conversationId }
+    : run.dmId !== null ? { kind: 'dm', dmId: run.dmId } : { kind: 'chat', agentId: run.agentId };
+}
+/** A run whose answer is its owner's alone until Show everyone: what `/ai` and a chat ask. A schedule's or a task's result is posted. */
+export const isPrivateAnswer = (run: Pick<RunRecord, 'kind'>) => run.kind === 'ask' || run.kind === 'summarize' || run.kind === 'map_thought';
 
 /**
  * How a run may end at a standing check: one of its statuses, or `ai_off` (F-029), which is recorded as `stopped` with
@@ -115,7 +128,7 @@ export interface RunRecord {
  */
 export type RunEndStatus = RunRecord['status'] | 'ai_off';
 
-export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
+export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'dmId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
   | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: AssistantEngine; silent?: boolean; authority?: RunRecord['authority']; backgroundLabel?: string | null; workId?: string | null; askedByRunId?: string | null; exchangeTurn?: number;
     /** The web addresses the run may read from the start (#953): see `givenAtStart`. */
@@ -124,7 +137,8 @@ export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conve
     resumeAt?: Date | null; endReason?: AssistantRunEndReason | null; planLimitResetsAt?: Date | null };
 export type RunChanges = Partial<Pick<RunRecord, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'stopRequestedBy' | 'costState' | 'chargedMicros'
   | 'inputTokens' | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'answerSources' | 'committedAt' | 'dispatchedAt' | 'completedAt'
-  | 'endReason' | 'planLimitResetsAt' | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros'>>;
+  | 'endReason' | 'planLimitResetsAt' | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros'
+  | 'shownAt' | 'dismissedAt'>>;
 
 export interface ProposalRecord {
   id: string;
@@ -153,6 +167,9 @@ export type ProposalChanges = Partial<Pick<ProposalRecord, 'status' | 'decidedBy
 
 /** Rows a run may read. The use cases authorize the run's agent (and owner) before calling these. */
 export interface MessageSource { contribution?: MessageContribution; files?: MessageFile[]; id: string; sequence: number; body: string; authorName: string; author: { kind: 'human' | 'agent'; id: string } }
+/** One place of the owner's runs (#842): exactly one of these. */
+export type RunPlaceFilter = { conversationId: string } | { spaceId: string } | { dmId: string } | { chatAgentId: string };
+
 export interface WorkSource { id: string; version: number; title: string; outcome: string; status: string }
 export interface ThoughtSource { id: string; sketchId: string; version: number; text: string; sketchScope: 'project' | 'private' | 'dm'; sketchProjectId: string | null }
 
@@ -160,9 +177,14 @@ export interface ThoughtSource { id: string; sketchId: string; version: number; 
 export interface PersonalRunRepository {
   /** The pages the run read on the web (#918), each once, in the order they were first read. */
   webReads(runId: string): Promise<{ finalUrl: string; outcome: string }[]>;
-  /** The text a person wrote that a new run may be given (#953): the task's, if a person made it and no agent wrote it, and the people's messages in the conversation. */
-  personTexts(conversationId: string, workId: string | null): Promise<string[]>;
-  prepareTaskUse(projectId: string, conversationId: string, sources?: readonly { type: string; id: string }[]): Promise<{ mark(): Promise<void> }>;
+  /**
+   * The text a person wrote that a new run may be given (#953): the task's, if a person made it and no agent wrote it, and what people wrote in
+   * the place the run is in (#842, C-30): a conversation's, the space's people's conversations for its main conversation, a DM's; a chat has none.
+   * What an agent wrote gives no address, and neither does an answer a person posted with Show everyone (`via`).
+   */
+  personTexts(place: { projectId: string | null; conversationId: string | null; dmId: string | null }, workId: string | null): Promise<string[]>;
+  /** The task graph's lock (after the owner's, #921) for a run in a space; a run in a DM or a chat touches no task graph and holds nothing. */
+  prepareTaskUse(projectId: string | null, conversationId: string | null, sources?: readonly { type: string; id: string }[]): Promise<{ mark(): Promise<void> }>;
   /** The AI setup of one of the owner's agents: the one named, else their first (Assistant). A deleted agent has none. */
   enablement(ownerUserId: string, options?: { lock?: boolean; agentId?: string; workspaceId?: string }): Promise<EnablementRecord | null>;
   agentBrief(agentId: string): Promise<AgentBrief | null>;
@@ -212,13 +234,38 @@ export interface PersonalRunRepository {
   endLostRuntime(running: readonly string[], olderThanSeconds: number, limit: number): Promise<RunRecord[]>;
   /** Holds the owner's lane until the transaction ends, so two claims of one owner never pass the lane check together. */
   lockLane(ownerUserId: string): Promise<void>;
-  /** Only the owner's own runs, newest first. */
-  listOwnRuns(ownerUserId: string, page: PageWindow): Promise<Paged<RunRecord>>;
-  /** Committed answers of a conversation, oldest first. */
+  /** Only the owner's own runs, newest first; `place` narrows them to one place (#842). */
+  listOwnRuns(ownerUserId: string, page: PageWindow, place?: RunPlaceFilter): Promise<Paged<RunRecord>>;
+  /** Committed answers of a conversation that were posted there (a schedule's), oldest first. The answer to `/ai` is its asker's alone. */
   listAnswers(conversationId: string, page: PageWindow): Promise<Paged<RunRecord>>;
   /** Display names of people keyed by id. */
   names(userIds: string[]): Promise<Map<string, string>>;
   messages(conversationId: string, limit: number): Promise<MessageSource[]>;
+  /** The latest `limit` messages written in a space's conversations, oldest first: what its main conversation says (#842). */
+  spaceMessages(projectId: string, limit: number): Promise<MessageSource[]>;
+  /** The latest `limit` messages of a direct message, oldest first (#842). The line "used AI here" is not one. */
+  dmMessages(dmId: string, limit: number): Promise<MessageSource[]>;
+  /** What the owner and this agent said last in their private chat, oldest first: the earlier turns of a chat (#842). */
+  chatTurns(agentId: string, beforeRunId: string, limit: number): Promise<{ prompt: string; answer: string }[]>;
+  /**
+   * The line both people of a DM see when AI is used in it: "Ada used AI here (Claude)" (#842, F-036 AG-4). `company` is the name
+   * of the company that receives the conversation. It takes a place in the DM but is not a message to read: no notification, no
+   * preview, no search hit. Idempotent per run.
+   */
+  postDmAiLine(dmId: string, workspaceId: string, authorId: string, runId: string, company: string): Promise<void>;
+  /**
+   * Posts a line the agent says on its own in its chat, about one of its runs (#842). Once per `key` for the agent: a second call returns the
+   * first line. Null when the agent is gone. Posting is the only way a line gets into a chat.
+   */
+  postAgentChat(line: { agentId: string; runId: string; key: string; body: string }): Promise<{ message: AgentChatMessage; created: boolean } | null>;
+  /** The lines an agent said in its chat, oldest first, the latest `limit`. */
+  agentChatMessages(agentId: string, limit: number): Promise<AgentChatMessage[]>;
+  /** For each of the owner's agents, how much of its chat they have not read, and when it last said something. */
+  agentChatSummaries(ownerUserId: string): Promise<AgentChatSummary[]>;
+  /** The owner has read the chat up to now. */
+  readAgentChat(agentId: string): Promise<void>;
+  /** Whether this DM exists, whoever may read it; callers must authorize before using it. */
+  locateDm(dmId: string): Promise<{ workspaceId: string } | null>;
   openWork(projectId: string, limit: number): Promise<WorkSource[]>;
   thought(sketchId: string, thoughtId: string): Promise<ThoughtSource | null>;
   insertProposal(proposal: NewProposal): Promise<ProposalRecord>;
@@ -247,6 +294,9 @@ export interface PersonalRunAccess {
   requireProject(principal: Principal, action: 'read' | 'write', projectId: string, options?: { lock?: boolean }): Promise<{ workspaceId: string; level: 'contributor' | 'manager' }>;
   /** Whether the principal may `read` or `write` the project now; never throws for invisible ones. */
   canUseProject(principal: Principal, action: 'read' | 'write', projectId: string, options?: { lock?: boolean }): Promise<boolean>;
+  /** Throws NotFoundError unless the principal takes part in the direct message now (#842: `/ai` is written in it, so it needs `dm.write`). */
+  requireDm(principal: Principal, dmId: string, options?: { lock?: boolean }): Promise<{ workspaceId: string }>;
+  canUseDm(principal: Principal, dmId: string, options?: { lock?: boolean }): Promise<boolean>;
   /** `agent.invoke`: only the person who owns the unrevoked agent. Throws the policy's 404/403. */
   requireInvoke(principal: Principal, agentId: string, options?: { lock?: boolean }): Promise<{ workspaceId: string }>;
   canInvoke(principal: Principal, agentId: string, options?: { lock?: boolean }): Promise<boolean>;
@@ -271,6 +321,8 @@ export type PersonalRunEventKind =
   /** An assistant started or stopped working in a conversation: the project's audience, identifiers only (F-027 AST-6). */
   | 'project.assistant_working.v1'
   | 'project.assistant_proposal_created.v1'
+  /** The line "used AI here" joined a direct message: its participants read it again (#842). */
+  | 'dm.changed.v1'
   | 'project.assistant_proposal_decided.v1';
 
 /**

@@ -26,8 +26,8 @@ import { useCreateWorkFromMessage } from '../work/inline';
 export interface PaneProps {
   data: ProjectData;
   variant: 'stream' | 'thread';
-  /** stream: the stream of roots, in place of one conversation's feed. */
-  feed?: ReactNode;
+  /** stream: the stream of roots, in place of one conversation's feed. It is given what ends it: the person's own agent at work and its private answers (#842). */
+  feed?: (end: ReactNode) => ReactNode;
   /**
    * thread: the message the replies answer, at the top of the thread. The pane gives it what was made from
    * the root and the discussed task's row, from its own bounded reads (#155), never a project collection.
@@ -141,9 +141,9 @@ export function OneConversation({ data, Pane }: { data: ProjectData; Pane: Compo
   }, [thread]);
 
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
-  const stream = (
+  const stream = (end: ReactNode) => (
     <ConversationStream project={project} meId={me.user.id} meName={me.user.name} roots={roots} notices={notices} objects={objects} author={author}
-      audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} restore={restore} onOpen={open} onDenied={onDenied} />
+      audience={audience} openId={thread?.id ?? null} reveal={reveal} arrived={arrived} endToken={endToken} restore={restore} onOpen={open} onDenied={onDenied} end={end} />
   );
   // Until the stream has the root (a link to an old one), the thread's newest sequence gives its size.
   const replies = root?.replyCount ?? Math.max(0, (thread?.messages.at(-1)?.sequence ?? 1) - 1);

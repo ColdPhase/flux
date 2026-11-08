@@ -170,11 +170,14 @@ retried; it is reported as "Skipped #4: Jonas changed it while I worked".
 
 - **Private conversations.** Each agent is a private conversation with its owner in Messages,
   with Assistant pinned first. The owner talks to it there, and its reports and schedule results
-  arrive there with an unread dot.
+  arrive there with an unread dot. In that chat the agent reads like its owner and changes nothing
+  ([C-38](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)); "remember that …" adds a memory item.
 - **`/ai` everywhere.** In every conversation the person can write in (a space's conversation,
-  threads and DMs), `/ai` asks their Assistant. Only the asker sees the answer. Show everyone
-  posts it, attributed "Ada · via Assistant". The agent may use the conversation as context, for
-  example to summarise it.
+  threads, a task's thread and DMs), `/ai` asks their Assistant. Only the asker sees the answer, as
+  a card in the conversation with Dismiss and Show everyone. Show everyone posts it as the asker's
+  own message, attributed "Ada · via Assistant". The agent may use the conversation as context, for
+  example to summarise it. A guest has no `/ai`. The places, what each may use and what Show everyone
+  posts are [C-36 to C-40](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override).
 - **What `/ai` may use.** Inside a conversation, `/ai` uses only what that conversation's
   audience can see: the conversation and the places its people can all see. So Show everyone
   never publishes anything private, because the answer was drawn only from what its readers

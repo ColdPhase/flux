@@ -142,7 +142,7 @@ class AssistantRuntime(unittest.TestCase):
         asked: list[dict] = []
         page.route("**/api/v1/personal-assistant", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(stub))
                    if route.request.method == "GET" else route.continue_())
-        page.route(re.compile(r".*/api/v1/assistant-runs\?limit=\d+$"), lambda route: route.fulfill(status=200, content_type="application/json",
+        page.route(re.compile(r".*/api/v1/assistant-runs\?(?:limit=\d+|conversationId=[0-9a-f-]{36}&limit=\d+&offset=\d+)$"), lambda route: route.fulfill(status=200, content_type="application/json",
                    body=json.dumps({"items": [current["run"]], "total": 1, "limit": 10, "offset": 0})))
         page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), lambda route: route.fulfill(status=200, content_type="application/json",
                    body=json.dumps(current["run"])))
@@ -182,7 +182,7 @@ class AssistantRuntime(unittest.TestCase):
                 run = self.run_json(id=str(uuid.uuid4()), status="queued", endReason="no_room", dispatchedAt=None)
                 page.route("**/api/v1/personal-assistant", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(stub))
                            if route.request.method == "GET" else route.continue_())
-                page.route(re.compile(r".*/api/v1/assistant-runs\?limit=\d+$"), lambda route: route.fulfill(status=200, content_type="application/json",
+                page.route(re.compile(r".*/api/v1/assistant-runs\?(?:limit=\d+|conversationId=[0-9a-f-]{36}&limit=\d+&offset=\d+)$"), lambda route: route.fulfill(status=200, content_type="application/json",
                            body=json.dumps({"items": [run], "total": 1, "limit": 10, "offset": 0})))
                 page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(run)))
                 page.goto(f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}")

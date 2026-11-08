@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { prepareReferencedTaskUse } from './task-targets.js';
 import { fileRows } from './files.js';
 import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql, type SQL } from 'drizzle-orm';
@@ -22,13 +23,13 @@ type SourceRef =
   | { type: 'message'; id: string; revision: number }
   | { type: 'work'; id: string; revision: number }
   | { type: 'thought'; id: string; sketchId: string; revision: number };
-type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
+type NewRun = Pick<RunRow, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'dmId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
   | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { workId?: string | null; askedByRunId?: string | null; exchangeTurn?: number; engine?: RunRow['engine']; silent?: boolean; authority?: RunRow['authority']; backgroundLabel?: string | null;
     resumeAt?: Date | null; endReason?: RunRow['endReason']; planLimitResetsAt?: Date | null };
 type RunChanges = Partial<Pick<RunRow, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'stopRequestedBy' | 'costState' | 'chargedMicros' | 'inputTokens'
   | 'outputTokens' | 'answerBody' | 'answerTruncated' | 'committedAt' | 'dispatchedAt' | 'completedAt' | 'endReason' | 'planLimitResetsAt'
-  | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros'> & { answerSources: SourceRef[] }>;
+  | 'stopAcknowledgedAt' | 'answerRedacted' | 'silent' | 'resumeAt' | 'reservedMicros' | 'reservedAt' | 'largestRequestMicros' | 'shownAt' | 'dismissedAt'> & { answerSources: SourceRef[] }>;
 type NewProposal = Pick<ProposalRow, 'id' | 'workspaceId' | 'projectId' | 'runId' | 'ownerUserId' | 'fact' | 'interpretation'
   | 'resultTitle' | 'resultFinding' | 'resultEvidence' | 'finishesWorkId'>;
 type ProposalChanges = Partial<Pick<ProposalRow, 'status' | 'decidedBy' | 'decidedAt' | 'resultId'>>;
@@ -186,10 +187,12 @@ export function personalRunRows(db: DbExecutor) {
     },
 
     webReads: (runId: string) => personalRunWebReadRows(db).forRun(runId),
-    personTexts: (conversationId: string, workId: string | null) => personalRunWebReadRows(db).personTexts(conversationId, workId),
+    personTexts: (place: { projectId: string | null; conversationId: string | null; dmId: string | null }, workId: string | null) => personalRunWebReadRows(db).personTexts(place, workId),
 
-    prepareTaskUse: (projectId: string, conversationId: string, sources: readonly { type: string; id: string }[] = []) =>
-      prepareReferencedTaskUse(db, projectId, [{ type: 'conversation', id: conversationId }, ...sources]),
+    // A run in a direct message or a chat reads no task graph and holds no lock (#842); one in a space holds its graph after the owner's lock (#921).
+    prepareTaskUse: async (projectId: string | null, conversationId: string | null, sources: readonly { type: string; id: string }[] = []) =>
+      projectId === null ? { mark: async () => undefined }
+        : prepareReferencedTaskUse(db, projectId, [...(conversationId ? [{ type: 'conversation', id: conversationId }] : []), ...sources]),
 
     async insertRun(run: NewRun) {
       const [row] = await db.insert(r).values(run).returning();
@@ -249,12 +252,17 @@ export function personalRunRows(db: DbExecutor) {
       return rows.map(toRun);
     },
 
-    listOwnRuns: (ownerUserId: string, window: Window) => pagedRuns(eq(r.ownerUserId, ownerUserId), 'newest', window),
+    /** The owner's runs, newest first; `place` narrows them to one (#842): a conversation, a space's main conversation, a DM or one agent's chat. */
+    listOwnRuns: (ownerUserId: string, window: Window, place?: { conversationId: string } | { spaceId: string } | { dmId: string } | { chatAgentId: string }) =>
+      pagedRuns(and(eq(r.ownerUserId, ownerUserId), !place ? undefined
+        : 'conversationId' in place ? eq(r.conversationId, place.conversationId)
+          : 'spaceId' in place ? and(eq(r.projectId, place.spaceId), isNull(r.conversationId))
+            : 'dmId' in place ? eq(r.dmId, place.dmId) : and(eq(r.agentId, place.chatAgentId), isNull(r.projectId), isNull(r.dmId)))!, 'newest', window),
 
     // A schedule that posts never posts "Done: nothing to change" (AST-7.11); a silent background run is never listed. The report of a
     // run on a task is posted as the agent's message in the task's discussion (#856), so it is not listed a second time here.
     listAnswers: (conversationId: string, window: Window) =>
-      pagedRuns(and(eq(r.conversationId, conversationId), isNotNull(r.committedAt), eq(r.silent, false), sql`${r.kind} <> 'task'`,
+      pagedRuns(and(eq(r.conversationId, conversationId), isNotNull(r.committedAt), eq(r.silent, false), sql`${r.kind} NOT IN ('task', 'ask', 'summarize', 'map_thought')`,
         sql`NOT (${r.kind} = 'scheduled' AND ${r.answerBody} ~* ${NOTHING_TO_CHANGE})`)!, 'committed', window),
 
     async jobOfRun(runId: string) {
@@ -285,6 +293,86 @@ export function personalRunRows(db: DbExecutor) {
         ...(files.get(row.id)?.length ? { files: files.get(row.id) } : {}),
         author: authorId !== null ? { kind: 'human' as const, id: authorId } : { kind: 'agent' as const, id: authorAgentId! },
         authorName: authorId !== null ? humanName ?? 'Former member' : agentName ?? 'Agent' }));
+    },
+
+    /** The latest `limit` messages written in the people's conversations of a space, oldest first: what its main conversation says (#842). */
+    async spaceMessages(projectId: string, limit: number) {
+      const m = schema.projectMessages;
+      const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, contributionKind: m.contributionKind, resultId: m.resultId,
+        authorId: m.authorId, authorAgentId: m.authorAgentId, humanName: schema.authUsers.name, agentName: schema.agents.name })
+        .from(m).innerJoin(schema.projectConversations, eq(schema.projectConversations.id, m.conversationId))
+        .leftJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
+        .leftJoin(schema.agents, and(eq(schema.agents.workspaceId, m.workspaceId), eq(schema.agents.id, m.authorAgentId)))
+        .where(and(eq(m.projectId, projectId), eq(schema.projectConversations.space, 'people'), isNull(m.removedAt))).orderBy(desc(m.createdAt), desc(m.id)).limit(limit);
+      return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, contributionKind, resultId, ...row }, index) => ({ ...row, sequence: index + 1,
+        ...(contributionKind === 'result' ? { contribution: { kind: 'result' as const, resultId: resultId! } }
+          : contributionKind !== 'text' ? { contribution: { kind: contributionKind } } : {}),
+        author: authorId !== null ? { kind: 'human' as const, id: authorId } : { kind: 'agent' as const, id: authorAgentId! },
+        authorName: authorId !== null ? humanName ?? 'Former member' : agentName ?? 'Agent' }));
+    },
+
+    /** The latest `limit` messages of a direct message, oldest first (#842). The line "used AI here" is not one. */
+    async dmMessages(dmId: string, limit: number) {
+      const m = schema.dmMessages;
+      const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, authorId: m.authorId, authorName: schema.authUsers.name })
+        .from(m).innerJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
+        .where(and(eq(m.dmId, dmId), eq(m.kind, 'text'))).orderBy(desc(m.sequence)).limit(limit);
+      return rows.reverse().map(({ authorId, authorName, ...row }) => ({ ...row, author: { kind: 'human' as const, id: authorId }, authorName }));
+    },
+
+    /** The last `limit` exchanges of an agent's private chat before this run: what was asked and what it answered. */
+    async chatTurns(agentId: string, beforeRunId: string, limit: number) {
+      const rows = await db.select({ prompt: r.prompt, answer: r.answerBody }).from(r)
+        .where(and(eq(r.agentId, agentId), isNull(r.projectId), isNull(r.dmId), eq(r.kind, 'ask'), isNotNull(r.committedAt), sql`${r.id} <> ${beforeRunId}`,
+          sql`${r.createdAt} < (SELECT created_at FROM personal_runs WHERE id = ${beforeRunId})`)).orderBy(desc(r.createdAt), desc(r.id)).limit(limit);
+      return rows.reverse().map((row) => ({ prompt: row.prompt, answer: row.answer ?? '' }));
+    },
+
+    /** The line both people of a DM see when AI is used in it. One per run: it takes the run's id as its own. It is no message to read. */
+    async postDmAiLine(dmId: string, workspaceId: string, authorId: string, runId: string, company: string) {
+      const [numbered] = await db.update(schema.dms).set({ nextSequence: sql`${schema.dms.nextSequence} + 1` }).where(eq(schema.dms.id, dmId)).returning({ nextSequence: schema.dms.nextSequence });
+      await db.insert(schema.dmMessages).values({ id: runId, workspaceId, dmId, authorId, clientMessageId: randomUUID(), requestFingerprint: 'ai_used', sequence: numbered!.nextSequence - 1,
+        body: company, kind: 'ai_used' }).onConflictDoNothing();
+    },
+
+    async postAgentChat(line: { agentId: string; runId: string; key: string; body: string }) {
+      const t = schema.agentChatMessages;
+      const [owner] = await db.select({ ownerUserId: e.ownerUserId, workspaceId: e.workspaceId }).from(e).innerJoin(ag, eq(ag.id, e.agentId)).where(and(eq(e.agentId, line.agentId), isNull(ag.revokedAt)));
+      if (!owner) return null;
+      const [made] = await db.insert(t).values({ id: randomUUID(), workspaceId: owner.workspaceId, agentId: line.agentId, ownerUserId: owner.ownerUserId, runId: line.runId, key: line.key, body: line.body })
+        .onConflictDoNothing().returning();
+      const [row] = made ? [made] : await db.select().from(t).where(and(eq(t.agentId, line.agentId), eq(t.key, line.key)));
+      return row ? { message: { id: row.id, agentId: row.agentId, runId: row.runId, body: row.body, createdAt: row.createdAt.toISOString() }, created: !!made } : null;
+    },
+
+    async agentChatMessages(agentId: string, limit: number) {
+      const t = schema.agentChatMessages;
+      const rows = await db.select().from(t).where(eq(t.agentId, agentId)).orderBy(desc(t.createdAt), desc(t.id)).limit(limit);
+      return rows.reverse().map((row) => ({ id: row.id, agentId: row.agentId, runId: row.runId, body: row.body, createdAt: row.createdAt.toISOString() }));
+    },
+
+    /** What came after the owner last opened a chat: the agent's answers (runs that ended in it) and its own lines. */
+    async agentChatSummaries(ownerUserId: string) {
+      const rows = await db.execute(sql`SELECT s.agent_id,
+          (SELECT count(*)::int FROM agent_chat_messages m WHERE m.agent_id = s.agent_id AND m.created_at > COALESCE(r.read_at, '-infinity'))
+          + (SELECT count(*)::int FROM personal_runs p WHERE p.agent_id = s.agent_id AND p.project_id IS NULL AND p.dm_id IS NULL AND p.kind = 'ask'
+              AND p.completed_at IS NOT NULL AND p.completed_at > COALESCE(r.read_at, '-infinity')) AS unread,
+          GREATEST((SELECT max(m.created_at) FROM agent_chat_messages m WHERE m.agent_id = s.agent_id),
+            (SELECT max(p.completed_at) FROM personal_runs p WHERE p.agent_id = s.agent_id AND p.project_id IS NULL AND p.dm_id IS NULL AND p.kind = 'ask')) AS last_at
+        FROM assistant_settings s JOIN agents a ON a.id = s.agent_id AND a.revoked_at IS NULL
+        LEFT JOIN agent_chat_reads r ON r.agent_id = s.agent_id
+        WHERE s.owner_user_id = ${ownerUserId} ORDER BY s.created_at, s.agent_id`);
+      return (rows.rows as { agent_id: string; unread: number; last_at: Date | string | null }[])
+        .map((row) => ({ agentId: row.agent_id, unread: Number(row.unread), lastAt: row.last_at ? new Date(row.last_at).toISOString() : null }));
+    },
+
+    async readAgentChat(agentId: string) {
+      await db.execute(sql`INSERT INTO agent_chat_reads (agent_id, read_at) VALUES (${agentId}, now()) ON CONFLICT (agent_id) DO UPDATE SET read_at = now()`);
+    },
+
+    async locateDm(dmId: string) {
+      const [row] = await db.select({ workspaceId: schema.dms.workspaceId }).from(schema.dms).where(eq(schema.dms.id, dmId));
+      return row ?? null;
     },
 
     /** Unfinished, unparked work of the project, newest first. */

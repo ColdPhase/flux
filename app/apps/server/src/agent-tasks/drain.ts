@@ -80,7 +80,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     // `thread`: a line of the task's thread, deleted by its owner with no condition. The plan keeps no excerpt of the line: once it is
     // deleted nothing of its text should be left (`after` is cleared with it).
     const undo: UndoRecord = { plan: { kind: 'removal', thread: true }, before: null, after: title || null };
-    await rows.insert({ id: randomUUID(), workspaceId: run.workspaceId, projectId: run.projectId, runId: run.id, ownerUserId: run.ownerUserId, agentId: run.agentId,
+    await rows.insert({ id: randomUUID(), workspaceId: run.workspaceId, projectId: run.projectId!, runId: run.id, ownerUserId: run.ownerUserId, agentId: run.agentId,
       clientCommandId, fingerprint: createHash('sha256').update(`agent-task:change:${key}`).digest('hex'), tool: 'flux_task_post', operation: 'conversation.reply',
       objectType: 'message', objectId: message.id, objectTitle: title, state: 'applied', authority: 'owner_request', preparedCommand: { tool: 'flux_task_post', args: {} },
       receipt: { undo, runId: run.id, ownerUserId: run.ownerUserId, agentId: run.agentId }, createdAt: new Date() });
@@ -368,7 +368,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     await say(tx, work, run.agentId, `@${agentLabel(target)}, ${ask.question}`, `asked:${run.id}`, run);
     const { ports, runs } = useCases(tx);
     const started = await runs.startTask(ports, { kind: 'task_answer', ownerUserId: target.ownerId, agentId: target.id, workId: work.id, projectId: work.projectId,
-      conversationId: run.conversationId, prompt: ask.question, clientRunId: uuidFrom(`agent-task:answer:${run.id}`), askedByRunId: run.id,
+      conversationId: run.conversationId!, prompt: ask.question, clientRunId: uuidFrom(`agent-task:answer:${run.id}`), askedByRunId: run.id,
       exchangeTurn: run.exchangeTurn + 1, audience: await agentTaskRows(tx).taskPeople(work.id) });
     if (!started.started) await toThePeople(tx, work, asker, `${agentLabel(target)} can't answer now. This needs a person.`, `asked-refused:${run.id}`);
   }
@@ -400,7 +400,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     await say(tx, work, run.agentId, answer, `answer:${run.id}`, run);
     if (!holds) return;
     const { ports, runs } = useCases(tx);
-    const started = await runs.startTask(ports, { ownerUserId: asker.ownerUserId, agentId: asker.id, workId: work.id, projectId: work.projectId, conversationId: run.conversationId,
+    const started = await runs.startTask(ports, { ownerUserId: asker.ownerUserId, agentId: asker.id, workId: work.id, projectId: work.projectId, conversationId: run.conversationId!,
       prompt: (asked.prompt.slice(0, 2000) + answerLines({ agent: label, question: run.prompt }, answer)).slice(0, 3900), clientRunId: uuidFrom(`agent-task:continue:${run.id}`),
       exchangeTurn: run.exchangeTurn });
     if (!started.started) await toThePeople(tx, work, asker, started.line, `continue-refused:${run.id}`);

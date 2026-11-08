@@ -96,13 +96,7 @@ export interface AssistantRunUndone { changes: AssistantChangeDecision[]; undone
 export interface EditAssistantChangeCommand { expectedVersion: number; title: string }
 
 export const conversationAssistantChangesPath = (conversationId: string) => `/api/v1/conversations/${conversationId}/assistant-changes`;
-/**
- * Who has an assistant working in a conversation right now (F-027 AST-6 "Visible to everyone"): names and nothing else, so everyone who can
- * read the conversation sees "Ada's assistant is working…" with no detail and no Stop. The detail stays with the run's owner.
- */
-export const conversationAssistantActivityPath = (conversationId: string) => `/api/v1/conversations/${conversationId}/assistant-activity`;
-export interface AssistantActivity { working: { ownerId: string; ownerName: string }[] }
-/** Project-audience event, identifiers only: an assistant started or stopped working in a conversation. Readers refetch the activity. */
+/** Project-audience event, identifiers only: an agent started or stopped working on a task or a schedule's firing in a conversation. The run of `/ai` and of a chat is private (#842) and sends none. */
 export const ASSISTANT_WORKING_EVENT = 'project.assistant_working.v1';
 export const assistantRunChangesPath = (runId: string) => `/api/v1/assistant-runs/${runId}/changes`;
 /**

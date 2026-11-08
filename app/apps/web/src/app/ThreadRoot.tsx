@@ -1,7 +1,7 @@
 import type { ConversationMessage, NativeWorkRow } from '@flux/contracts';
 import { DiscussedTask, MessageObjects } from '../work/inline';
 import type { MessageWorkPreview } from '../work/message-associations';
-import { AgentAuthor, AuthorFace, SourceCitation, MessageTime } from './messageParts';
+import { AgentAuthor, AuthorFace, SourceCitation, MessageTime, ViaTag } from './messageParts';
 import { MessageContent, type PhotoActions } from '../composer/Files';
 import { LinkPreviews, MessageText } from './MessageText';
 import { useProjectShell } from '../project/data';
@@ -28,8 +28,9 @@ export function ThreadRoot({ message, projectId, body, author, agentOwner = null
           <div className="thread__root-meta">
             <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={author} mine={mine} />
             <strong>{mine ? `${author} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentOwner} /> : author}</strong>
+            <ViaTag via={message.via} />
           </div>
-        ) : null}
+        ) : mine && message?.via ? <div className="thread__root-meta"><ViaTag via={message.via} /></div> : null}
         <MessageContent body={message?.body || !message ? <WhenNoQuestion projectId={projectId} messageId={message?.id ?? null}><div className={`message-body${message?.removedAt ? ' message-body--removed' : ''}`}><MessageText body={body} people={people} /></div></WhenNoQuestion> : null} files={message?.files} references={message?.references} context={message ? { author: author ?? undefined, at: message.createdAt, caption: message.body, ...photo } : undefined}>
           <LinkPreviews body={body} projectId={projectId} messageId={message?.id ?? null} />
           {message ? <MessageObjects message={message} projectId={projectId} preview={preview} thread={task} threadRow={taskRow} />

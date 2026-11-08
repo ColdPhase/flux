@@ -149,13 +149,15 @@ class AssistantModel(unittest.TestCase):
 
     # ---------------------------------------------------------------- AST-11.7: plain errors, the previous model stays
 
-    def test_09_a_model_the_vendor_does_not_accept_offers_another_one_in_the_same_line(self) -> None:
+    def test_09_a_model_the_vendor_does_not_accept_leads_to_the_agent_s_page_in_the_same_line(self) -> None:
+        # #842: the model is the agent's own (its page), not a chip of the ask bar; the line says so and links there.
         page = self.page()
         self.stub_assistant(page)
-        model = self.stub_model(page, current="opus")
+        self.stub_model(page, current="opus")
         self.stub_thread(page, [])
+        agent = str(uuid.uuid4())
         run = {"id": str(uuid.uuid4()), "clientRunId": str(uuid.uuid4()), "workspaceId": self.ids["workspace"], "projectId": self.ids["project"],
-               "conversationId": self.ids["conversation"], "kind": "ask", "prompt": "Catch me up", "target": None, "continuesRunId": None, "retryOfRunId": None,
+               "conversationId": self.ids["conversation"], "dmId": None, "agentId": agent, "kind": "ask", "prompt": "Catch me up", "target": None, "continuesRunId": None, "retryOfRunId": None,
                "status": "unavailable", "stoppedAtStage": None, "stopRequested": False, "stopAcknowledged": False, "engine": "runtime", "model": "opus",
                "runtimeClient": "claude_code", "endReason": "model_unavailable", "planLimitResetsAt": None,
                "cost": {"state": "unknown", "reservedMicros": 0, "chargedMicros": 0, "inputTokens": None, "outputTokens": None},
@@ -166,11 +168,7 @@ class AssistantModel(unittest.TestCase):
         line = page.locator(".assistant-working")
         expect(line).to_contain_text("Your Claude plan didn’t accept Opus. Nothing was changed.")
         shot(page, "model-unavailable-1440-light")
-        line.get_by_role("button", name="Choose another model").click()
-        menu = page.get_by_role("menu", name="Model")
-        menu.get_by_role("menuitemradio", name=re.compile("Haiku")).click()
-        expect(line.get_by_role("status")).to_contain_text("Model: Haiku")
-        self.assertEqual(model["puts"], [{"connection": "claude_plan", "model": "haiku"}])
+        expect(line.get_by_role("link", name="Choose a model")).to_have_attribute("href", f"/settings/agents/{agent}")
 
     # ---------------------------------------------------------------- the list's own states
 

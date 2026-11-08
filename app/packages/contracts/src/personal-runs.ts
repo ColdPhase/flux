@@ -1,4 +1,4 @@
-import type { Page, VersionPrecondition } from './access.js';
+import type { Page, PageQuery, VersionPrecondition } from './access.js';
 import type { AiProviderKind } from './ai-providers.js';
 import type { AgentRuntimePayer } from './agent-runtime.js';
 import type { ResultFinding } from './work.js';
@@ -18,11 +18,44 @@ export const assistantRunPath = (runId: string) => `${ASSISTANT_RUNS_PATH}/${run
 export const assistantRunStopPath = (runId: string) => `${assistantRunPath(runId)}/stop`;
 export const assistantRunRetryPath = (runId: string) => `${assistantRunPath(runId)}/retry`;
 export const conversationAssistantRunsPath = (conversationId: string) => `/api/v1/conversations/${conversationId}/assistant-runs`;
+/** `/ai` in a space's main conversation (#842): the stream of its roots has no conversation of its own. */
+export const projectAssistantRunsPath = (projectId: string) => `/api/v1/projects/${projectId}/assistant-runs`;
+/** `/ai` in a direct message (#842). */
+export const dmAssistantRunsPath = (dmId: string) => `/api/v1/dms/${dmId}/assistant-runs`;
+/** A message to one of the caller's own agents in its private chat (#842). */
+export const agentAssistantRunsPath = (agentId: string) => `/api/v1/my-agents/${agentId}/assistant-runs`;
+/** Show everyone (#842): the answer is posted as its asker's message, "Ada · via Assistant". */
+export const assistantRunShowPath = (runId: string) => `${assistantRunPath(runId)}/show`;
+/** Dismiss (#842): the asker puts an answer, or the line of a run that ended, away. */
+export const assistantRunDismissPath = (runId: string) => `${assistantRunPath(runId)}/dismiss`;
 export const conversationAssistantAnswersPath = (conversationId: string) => `/api/v1/conversations/${conversationId}/assistant-answers`;
 export const projectAssistantProposalsPath = (projectId: string) => `/api/v1/projects/${projectId}/assistant-proposals`;
 export const assistantProposalPath = (proposalId: string) => `/api/v1/assistant-proposals/${proposalId}`;
 export const assistantProposalAcceptPath = (proposalId: string) => `${assistantProposalPath(proposalId)}/accept`;
 export const assistantProposalDismissPath = (proposalId: string) => `${assistantProposalPath(proposalId)}/dismiss`;
+
+/**
+ * Where a run belongs (#842, F-036 AG-4). `space`: a space's conversation, a thread or a task's thread (`conversationId`), or the
+ * space's main conversation (`null`); its audience is the people who read the space. `dm`: a direct message; its audience is its
+ * participants. `chat`: the private chat with one of the owner's agents; its audience is the owner alone.
+ */
+export type AssistantPlace =
+  | { kind: 'space'; projectId: string; conversationId: string | null }
+  | { kind: 'dm'; dmId: string }
+  | { kind: 'chat'; agentId: string };
+
+/**
+ * The private chats with a person's agents (#842, F-036 AG-4, AG-7). A chat is the owner's messages and the agent's answers (runs, listed by
+ * `GET /assistant-runs?chatAgentId=`) and the agent's own lines: the reports of its work, each about one run (`AgentChatMessage`). Only the
+ * agent's owner reads any of it. What the owner has not read yet is `AgentChatSummary.unread`; opening the chat reads it.
+ */
+export const AGENT_CHATS_PATH = '/api/v1/agent-chats';
+export const agentChatMessagesPath = (agentId: string) => `${AGENT_CHATS_PATH}/${agentId}/messages`;
+export const agentChatReadPath = (agentId: string) => `${AGENT_CHATS_PATH}/${agentId}/read`;
+/** One line an agent said on its own in its chat, about the run it reports. */
+export interface AgentChatMessage { id: string; agentId: string; runId: string; body: string; createdAt: string }
+/** `GET /api/v1/agent-chats`: for each of the caller's agents, what they have not read in its chat (answers and reports) and when it last said something. */
+export interface AgentChatSummary { agentId: string; unread: number; lastAt: string | null }
 
 /**
  * Stream event of a run's progress (O-008 §4 "Progress"): `objectType` `assistant_run`, the run
@@ -235,8 +268,12 @@ export interface AssistantRun {
   id: string;
   clientRunId: string;
   workspaceId: string;
-  projectId: string;
-  conversationId: string;
+  /** The run's place (#842): a space (with its conversation unless it is the main one), a direct message, or neither: a private chat. */
+  projectId: string | null;
+  conversationId: string | null;
+  dmId: string | null;
+  /** The agent that answers. */
+  agentId: string;
   kind: AssistantRunKind;
   prompt: string;
   /** A background run whose answer is not shown in its conversation (a schedule keeps its result in Recent). Absent on older servers. */
@@ -289,6 +326,9 @@ export interface AssistantRun {
   createdAt: string;
   dispatchedAt: string | null;
   completedAt: string | null;
+  /** The answer was posted with Show everyone, or put away with Dismiss (#842); null while it is the asker's alone to see. */
+  shownAt?: string | null;
+  dismissedAt?: string | null;
 }
 
 export type AssistantRunAuthority = 'owner_request' | 'owner_schedule';
@@ -303,10 +343,11 @@ export type AssistantSourceRef =
 /** A committed answer as the conversation's audience sees it. No cost, budget or connection. */
 export interface AssistantAnswer {
   runId: string;
-  conversationId: string;
-  projectId: string;
-  audience: { kind: 'project'; projectId: string };
-  /** "Jo's assistant · asked by Jo". */
+  conversationId: string | null;
+  projectId: string | null;
+  /** A schedule's answer is the project's; the answer to `/ai` and to a chat is its asker's alone (#842). */
+  audience: { kind: 'project'; projectId: string } | { kind: 'owner' };
+  /** The agent's name for the asker's own answer ("Assistant"); "Jo's assistant" for a schedule's. */
   assistant: { ownerUserId: string; label: string };
   askedBy: { id: string; name: string };
   request: { kind: AssistantRunKind; prompt: string };
@@ -323,6 +364,15 @@ export interface AssistantAnswer {
 }
 
 export type AssistantAnswerPage = Page<AssistantAnswer>;
+
+/**
+ * `GET /api/v1/assistant-runs?…` lists only the caller's runs; at most one of these narrows them to one place (#842):
+ * a conversation, a space's main conversation, a direct message or an agent's private chat.
+ */
+export interface ListOwnRunsQuery extends PageQuery { conversationId?: string; spaceId?: string; dmId?: string; chatAgentId?: string }
+
+/** `POST /api/v1/assistant-runs/:runId/show` (#842): the message the answer became. */
+export interface ShowAnswerResult { run: AssistantRun; messageId: string }
 
 export type AssistantProposalStatus = 'proposed' | 'accepted' | 'dismissed';
 

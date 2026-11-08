@@ -4,10 +4,11 @@ import { askError as askErrorText, askState } from '../assistant/format';
 import { noteAssistantUse } from '../assistant/MeetAssistant';
 import type { useConversationAssistant } from '../assistant/useConversationAssistant';
 import type { ComposerDrafts } from './useComposerDrafts';
+import { placeKey } from '../assistant/useConversationAssistant';
 import type { PaneCore } from './paneCore';
 
 /** A request made offline, held under its own id until it can go out (AST-10.15). */
-interface WaitingAsk { conversationId: string; prompt: string; clientRunId: string }
+interface WaitingAsk { place: string; prompt: string; clientRunId: string }
 
 interface Options {
   drafts: ComposerDrafts; assistant: ReturnType<typeof useConversationAssistant>;
@@ -15,10 +16,10 @@ interface Options {
 }
 
 /**
- * Asking the person's own assistant in a thread (#68): the private prompt goes out, a refused one comes back
+ * Asking the person's own assistant in a conversation or a space's main conversation (#68, #842): the private prompt goes out, a refused one comes back
  * with the reason, and one made offline waits as "Sends when you're back" and goes out once on reconnect.
  */
-export function useAssistantAsk({ me, conversation, writable, audience, outside, composerId }: PaneCore, { drafts, assistant, scrollRef, scrollToEnd }: Options) {
+export function useAssistantAsk({ me, place, writable, outside, composerId }: PaneCore, { drafts, assistant, scrollRef, scrollToEnd }: Options) {
   const { helperComposer, setAsking, captureHelperScope } = drafts;
   const [askFailure, setAskFailure] = useState('');
   const [askFailureCode, setAskFailureCode] = useState<string | null>(null);
@@ -30,7 +31,8 @@ export function useAssistantAsk({ me, conversation, writable, audience, outside,
   const sendingRef = useRef(false);
   const changeWaiting = (change: (list: WaitingAsk[]) => WaitingAsk[]) => { waitingRef.current = change(waitingRef.current); setWaitingAsks(waitingRef.current); };
   const holdAsk = (ask: WaitingAsk) => changeWaiting((list) => (list.some((item) => item.clientRunId === ask.clientRunId) ? list : [...list, ask]));
-  const waitingHere = waitingAsks.filter((item) => item.conversationId === conversation?.id);
+  const here = placeKey(place);
+  const waitingHere = waitingAsks.filter((item) => item.place === here);
   const offline = useRef<{ ask: typeof assistant.ask; refused: (ask: WaitingAsk, cause: unknown) => void }>({ ask: assistant.ask, refused: () => undefined });
   // A held request the server refuses on reconnect comes back as the person's own text with the reason, as a refused ask does.
   useEffect(() => {
@@ -46,12 +48,11 @@ export function useAssistantAsk({ me, conversation, writable, audience, outside,
   });
   const heldHere = waitingHere.length > 0;
   useEffect(() => {
-    if (!heldHere || !conversation) return undefined;
-    const here = conversation.id;
+    if (!heldHere) return undefined;
     let stopped = false;
     const flush = () => {
       if (stopped || sendingRef.current || !navigator.onLine) return;
-      const next = waitingRef.current.find((item) => item.conversationId === here);
+      const next = waitingRef.current.find((item) => item.place === here);
       if (!next) return;
       sendingRef.current = true;
       offline.current.ask(next.prompt, { clientRunId: next.clientRunId }).then(() => {
@@ -68,10 +69,9 @@ export function useAssistantAsk({ me, conversation, writable, audience, outside,
     window.addEventListener('online', flush);
     const timer = window.setInterval(flush, 4000);
     return () => { stopped = true; window.removeEventListener('online', flush); window.clearInterval(timer); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [heldHere, conversation?.id]);
+  }, [heldHere, here]);
   async function sendToAssistant() {
-    if (!conversation || !writable || drafts.askBusy || askState(assistant.status, audience, outside).kind !== 'ready') return;
+    if (!writable || drafts.askBusy || askState(assistant.status, outside).kind !== 'ready') return;
     const command = helperComposer.begin();
     if (!command) return;
     const active = captureHelperScope();
@@ -93,9 +93,9 @@ export function useAssistantAsk({ me, conversation, writable, audience, outside,
       backToBox();
     } catch (cause) {
       // Offline: the request waits as "Sends when you're back" and goes out once, under the same id, on reconnect (AST-10.15).
-      if (cause instanceof NetworkError && conversation) {
+      if (cause instanceof NetworkError) {
         helperComposer.finish(command.clientMessageId);
-        holdAsk({ conversationId: conversation.id, prompt: command.body, clientRunId: command.clientMessageId });
+        holdAsk({ place: here, prompt: command.body, clientRunId: command.clientMessageId });
         if (active()) setAsking(false);
         backToBox();
         return;
@@ -112,7 +112,7 @@ export function useAssistantAsk({ me, conversation, writable, audience, outside,
     noteAssistantUse(me.user.id);
     const clientRunId = crypto.randomUUID();
     void assistant.ask(text, { clientRunId }).then(() => requestAnimationFrame(() => { const feed = scrollRef.current; if (feed) feed.scrollTop = feed.scrollHeight; }))
-      .catch((cause) => { if (cause instanceof NetworkError && conversation) holdAsk({ conversationId: conversation.id, prompt: text, clientRunId }); else { fail(cause); setAsking(true); } });
+      .catch((cause) => { if (cause instanceof NetworkError) holdAsk({ place: here, prompt: text, clientRunId }); else { fail(cause); setAsking(true); } });
   }
   function exitAsk() { setAsking(false); setAskFailure(''); document.getElementById(composerId)?.focus(); }
   return { askFailure, setAskFailure, askFailureCode, setAskFailureCode, waitingHere, sendToAssistant, askSuggestion, exitAsk };

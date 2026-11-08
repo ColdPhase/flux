@@ -1,4 +1,4 @@
-"""Browser tests for the personal assistant in a project conversation (#68 AC-8, O-008, #57 design).
+"""Browser tests for the personal assistant in a project conversation (#68 AC-8, O-008, #57 design; since #842 its answer is private, see test_private_ai).
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh. That stack is composed with the
 TEST-ONLY switch `FLUX_TEST_PERSONAL_RUNS=anthropic-mock`: every person has a fixture key
@@ -37,10 +37,6 @@ LEE = {"name": "Lee Park", "email": f"lee.park+{STAMP}@example.test"}
 DM_TOKEN = f"DM-ONLY-{uuid.uuid4()}"
 OPENING = "Camera or ToF sensor for the bedside lamp?"
 KAI_REPLY = "The camera fails below 5 lux in the low-light test; the ToF sensor kept working with swipe + hold."
-PROPOSAL_TEXT = ("Fact: the camera failed below 5 lux {first}.\n<proposal>"
-                 '{{"fact": "The camera fails below 5 lux", "interpretation": "Exposure is too short for gestures in the dark", '
-                 '"title": "Camera fails in low light", "finding": "negative", "evidence": "Low-light test, 20 gestures", "finishes": "{work}"}}'
-                 "</proposal>")
 
 
 def mock(path: str, body: dict | None = None) -> dict:
@@ -135,8 +131,8 @@ class PersonalAssistantJourney(unittest.TestCase):
             const page = !el || el === document.body || el === document.documentElement;
             const within = (selector) => !!el && !!el.closest(selector);
             return { page, label: page ? '' : (el.getAttribute('aria-label') || el.textContent || el.id || el.tagName).trim().slice(0, 40),
-                     in: page ? 'page' : within('[role="dialog"]') ? 'dialog' : within('.assistant-working') ? 'working' : within('.assistant-proposal') ? 'proposal'
-                       : within('.assistant-answer') ? 'answer' : within('#thread-composer') ? 'composer' : 'other' };
+                     in: page ? 'page' : within('[role="dialog"]') ? 'dialog' : within('.assistant-working') ? 'working'
+                       : within('.assistant-private') ? 'answer' : within('#thread-composer') ? 'composer' : 'other' };
         }""")
 
     def reach(self, page: Page, target, *, back: bool = False, presses: int = 60) -> None:
@@ -285,11 +281,10 @@ class PersonalAssistantJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- a run, its working line and the shared answer
 
-    def test_06_owner_sees_the_working_line_and_everyone_reads_the_attributed_answer(self) -> None:
+    def test_06_owner_sees_the_working_line_and_the_private_answer_and_nobody_else_sees_either(self) -> None:
         mock("/__script", {"reset": True, "delay": 2.5, "text": "Fact: the camera fails below 5 lux {second}. Interpretation: the ToF sensor is the better next test {first}."})
         jo = self.conversation("jo")
         kai = self.conversation("kai")
-        lee = self.conversation("lee")
         self.ask(jo, "Summarize where we are")
         working = jo.locator(".assistant-working")
         expect(working).to_contain_text("Only you see this")
@@ -298,37 +293,21 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(self.composer(jo)).to_have_value("")
         expect(working).to_contain_text(re.compile("Your assistant is (getting ready|reading this conversation|thinking)"))
         shot(jo, "assistant-1440-working")
-        # Nobody else learns that a run exists while it works.
+        # Nobody else learns that a run exists while it works (#842).
         expect(kai.locator(".assistant-working")).to_have_count(0)
-        answer = jo.locator(".assistant-answer").last
-        expect(answer).to_be_visible(timeout=20000)
+        card = jo.locator(".assistant-private").last
+        expect(card).to_be_visible(timeout=20000)
         expect(working).to_have_count(0)
-        expect(answer).to_contain_text(f"{JO['name']}'s assistant")
-        expect(answer.locator(".agent-tag")).to_have_text("Agent")
-        expect(answer).to_contain_text("for you · Claude")
-        expect(answer).to_contain_text("“Summarize where we are”")
-        expect(answer).to_contain_text("Anthropic · claude-sonnet-5")
-        expect(answer.get_by_role("button", name="Retry")).to_be_visible()
+        expect(card).to_contain_text("Only you can see this")
+        expect(card).to_contain_text("You asked: /ai Summarize where we are")
+        expect(card).not_to_contain_text("claude-sonnet-5")
+        expect(card.get_by_role("button", name="Show everyone")).to_be_visible()
         shot(jo, "assistant-1440-answer-owner")
-        for peer in (kai, lee):
-            peer_answer = peer.locator(".assistant-answer").last
-            expect(peer_answer).to_contain_text(f"{JO['name']}'s assistant", timeout=15000)
-            expect(peer_answer).to_contain_text(f"for {JO['name'].split()[0]} · Claude")
-            expect(peer_answer.get_by_role("button", name="Retry")).to_have_count(0)
-            expect(peer_answer.get_by_role("button", name="Continue")).to_have_count(0)
-            text = peer_answer.inner_text()
-            for hidden in ("$0.", "cap", "reserved"):
-                self.assertNotIn(hidden, text, f"a peer never sees cost: {hidden}")
-        expect(kai.locator(".assistant-answer").last.get_by_role("button", name="Ask my assistant about this")).to_be_visible()
-        shot(kai, "assistant-1440-answer-peer")
+        expect(kai.locator(".assistant-private")).to_have_count(0)
         # Citations open exactly their source: [1] is Kai's message in this conversation.
-        cite = kai.locator(".assistant-answer").last.locator(".assistant-cite").first
+        cite = card.locator(".assistant-cite").first
         expect(cite).to_have_text("1")
         expect(cite).to_have_attribute("aria-label", re.compile(r"^Source \d+: message #\d+ by Kai Lund$"))
-        cite.click()
-        expect(kai).to_have_url(re.compile(r"#message-[0-9a-f-]{36}$"))
-        target = kai.url.split("#message-")[1]
-        expect(kai.locator(f"#message-{target}")).to_contain_text(KAI_REPLY)
         # What left Flux: one count, one Messages request, the fixture key, no retries, no DM.
         sent = [item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"]
         self.assertEqual(len(sent), 1)
@@ -337,8 +316,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         body = sent[0]["body"]
         self.assertEqual((body["model"], body["max_tokens"], body["output_config"]), ("claude-sonnet-5", 4000, {"effort": "low"}))
         # F-027 A6 (#484) and A3 (#403): the run offers its exact tools (reads and change tools), listed by /mcp to its
-        # run token; the mock answers without calling one, so the run
-        # stays one request. The co-work claim, transfer and request tools, bootstrap and proposal tools are never offered to a run.
+        # run token; the co-work claim, transfer and request tools, bootstrap and proposal tools are never offered to a run.
         tools = sorted(tool["name"] for tool in body.get("tools", []))
         self.assertIn("flux_get_conversation", tools)
         self.assertIn("flux_create_task", tools)
@@ -349,12 +327,13 @@ class PersonalAssistantJourney(unittest.TestCase):
         self.assertNotIn(DM_TOKEN, json.dumps(body))
         run = self.own_runs(jo)[0]
         self.assertEqual((run["status"], run["cost"]["state"]), ("completed", "observed"))
+        card.get_by_role("button", name="Dismiss").click()
+        expect(card).to_have_count(0)
 
     def test_07_stop_posts_nothing_and_a_failed_provider_says_so(self) -> None:
         mock("/__script", {"reset": True, "delay": 8})
         jo = self.conversation("jo")
-        expect(jo.locator(".assistant-answer").first).to_be_visible()  # answers load after the messages
-        before = jo.locator(".assistant-answer").count()
+        before = jo.locator(".assistant-private").count()
         self.ask(jo, "Compare every sensor in detail")
         working = jo.locator(".assistant-working")
         expect(working).to_contain_text("Your assistant is thinking…", timeout=15000)
@@ -373,8 +352,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         self.assertEqual(len([item for item in mock("/__requests")["requests"] if item["path"] == "/v1/messages"]), 1)
         jo.reload()
         expect(self.opening(jo)).to_contain_text(OPENING)
-        expect(jo.locator(".assistant-answer").first).to_be_visible()
-        expect(jo.locator(".assistant-answer")).to_have_count(before)
+        expect(jo.locator(".assistant-private")).to_have_count(before)
 
     def test_07b_working_motion_follows_execution_and_pauses_unseen(self) -> None:
         """#155 AC-3/AC-4: the working mark moves only while the run actually executes, pauses under a modal
@@ -383,7 +361,6 @@ class PersonalAssistantJourney(unittest.TestCase):
         # (the worker holds the stopped call until the provider answers, so the delay stays short).
         mock("/__script", {"reset": True, "delay": 12})
         jo = self.conversation("jo")
-        expect(jo.locator(".assistant-answer").first).to_be_visible()
         self.ask(jo, "Compare the two sensors once more")
         working = jo.locator(".assistant-working")
         try:
@@ -453,7 +430,6 @@ class PersonalAssistantJourney(unittest.TestCase):
         Stop and the attributed answers; turning the moments back on brings the live face back."""
         mock("/__script", {"reset": True, "delay": 12})
         jo = self.conversation("jo")
-        expect(jo.locator(".assistant-answer").first).to_be_visible()
         self.ask(jo, "Compare the two sensors a last time")
         working = jo.locator(".assistant-working")
         try:
@@ -469,8 +445,6 @@ class PersonalAssistantJourney(unittest.TestCase):
             expect(working.get_by_role("button", name="Stop")).to_be_visible()
             expect(working.locator(".kreska")).to_have_count(0)
             self.assertEqual(jo.evaluate("document.documentElement.dataset.kreska"), "off")
-            # Control: an ordinary completed answer keeps its assistant face while the moments are off.
-            expect(jo.locator(".assistant-answer .kreska").first).to_be_visible()
             # The sidebar's working card follows the switch too: words and Stop stay, no face, nothing animates.
             animated = "() => [...document.querySelectorAll('.agentlive *')].filter((el) => getComputedStyle(el).animationName !== 'none').length"
             card = jo.locator(".app__side .agentlive")
@@ -508,34 +482,6 @@ class PersonalAssistantJourney(unittest.TestCase):
 
     # ---------------------------------------------------------------- the proposal: only authority accepts
 
-    def test_08_a_proposal_waits_for_someone_with_authority(self) -> None:
-        mock("/__script", {"reset": True, "text": PROPOSAL_TEXT, "output_tokens": 90})
-        jo = self.conversation("jo")
-        self.ask(jo, "Record the low-light result")
-        card = jo.locator(".assistant-proposal").last
-        expect(card).to_contain_text("Proposal · not saved yet", timeout=20000)
-        expect(card).to_contain_text("Camera fails in low light")
-        expect(card).to_contain_text("finishes Camera in low light")
-        lee = self.conversation("lee")
-        lee_card = lee.locator(".assistant-proposal").last
-        expect(lee_card).to_contain_text(f"{JO['name']}'s assistant drafted this. It waits for someone who can decide it.")
-        expect(lee_card.get_by_role("button", name="Accept")).to_have_count(0)
-        kai = self.conversation("kai")
-        kai_card = kai.locator(".assistant-proposal").last
-        # The proposal itself, before anyone decides it (the shot used to be taken before it rendered).
-        expect(kai_card).to_contain_text("Proposal · not saved yet")
-        kai_card.scroll_into_view_if_needed()
-        shot(kai, "assistant-1440-proposal")
-        kai_card.get_by_role("button", name="Accept").click()
-        expect(kai_card).to_contain_text(f"Recorded by you · drafted by {JO['name']}'s assistant")
-        expect(card).to_contain_text("Recorded by Kai Lund · drafted by your assistant", timeout=15000)
-        work = self.api(kai, "GET", f"/api/v1/work/{self.ids['work']}", status=200)
-        self.assertEqual(work["status"], "done")
-        kai_card.get_by_role("button", name="Open result").click()
-        expect(kai.get_by_role("complementary", name="Details")).to_contain_text("Camera fails in low light")
-
-    # ---------------------------------------------------------------- AC-8: keyboard and focus
-
     def test_08b_ask_stop_retry_and_dismiss_work_by_keyboard_and_focus_never_falls_to_the_page(self) -> None:
         mock("/__script", {"reset": True, "delay": 10})
         jo = self.conversation("jo")
@@ -543,7 +489,7 @@ class PersonalAssistantJourney(unittest.TestCase):
         box.focus()
         jo.keyboard.type("/ai Compare the sensors")
         # Enter sends once the bar knows the assistant is ready; while it says "Checking your assistant…" Enter is refused (#752).
-        expect(jo.locator("#project-ask")).to_contain_text("Answer shown to")
+        expect(jo.locator("#project-ask")).to_contain_text("Only you see the answer")
         jo.keyboard.press("Enter")
         working = jo.locator(".assistant-working")
         expect(working).to_contain_text("Only you see this")
@@ -569,60 +515,11 @@ class PersonalAssistantJourney(unittest.TestCase):
         expect(working).to_have_count(0)
         expect(box).to_be_focused()
 
-    def test_08c_accepting_a_proposal_by_keyboard_keeps_focus_on_it_and_opens_its_result(self) -> None:
-        kai = self.page("kai")
-        work = self.api(kai, "POST", f"/api/v1/projects/{self.ids['project']}/work",
-                        {"title": "Battery life of the lamp", "owner": {"kind": "human", "id": KAI["id"]}}, status=201)
-        type(self).ids["work2"] = work["id"]
-        mock("/__script", {"reset": True, "text": PROPOSAL_TEXT, "output_tokens": 90})
-        jo = self.conversation("jo")
-        self.ask(jo, "Record the battery result")
-        expect(jo.locator(".assistant-proposal").last).to_contain_text("Proposal · not saved yet", timeout=20000)
-        kai = self.conversation("kai")
-        answer = kai.locator(".assistant-answer").filter(has=kai.locator(".assistant-proposal")).last
-        card = answer.locator(".assistant-proposal")
-        expect(card).to_contain_text("finishes Battery life of the lamp")
-        answer.focus()  # where a link from a notification lands
-        self.reach(kai, card.get_by_role("button", name="Accept"))
-        kai.keyboard.press("Enter")
-        expect(card).to_contain_text(f"Recorded by you · drafted by {JO['name']}'s assistant")
-        self.assertIn(self.focus_state(kai)["in"], ("proposal", "answer"), "focus stays on the proposal after Accept")
-        self.assertEqual(self.api(kai, "GET", f"/api/v1/work/{work['id']}", status=200)["status"], "done")
-        # The result opens from the keyboard in the one Details panel, with focus inside it.
-        self.reach(kai, card.get_by_role("button", name="Open result"))
-        kai.keyboard.press("Enter")
-        panel = kai.get_by_role("complementary", name="Details")
-        expect(panel).to_contain_text("Camera fails in low light")
-        self.assertTrue(panel.evaluate("(node) => node.contains(document.activeElement)"), f"focus moved into Details: {self.focus_state(kai)}")
-
-    def test_08d_the_assistant_panel_is_a_modal_dialog_on_desktop_and_phone(self) -> None:
-        for phone in (False, True):
-            with self.subTest(phone=phone):
-                page = self.conversation("jo", phone=phone)
-                who = page.locator(".assistant-answer__who").last
-                who.scroll_into_view_if_needed()
-                who.focus()
-                page.keyboard.press("Enter")
-                dialog = page.get_by_role("dialog", name=f"{JO['name']}'s assistant")
-                expect(dialog).to_be_visible()
-                self.assertTrue(dialog.evaluate("(node) => node.contains(document.activeElement)"), f"focus moved into the dialog: {self.focus_state(page)}")
-                expect(dialog).to_have_attribute("aria-modal", "true")
-                self.trapped(page, dialog)
-                page.keyboard.press("Escape")
-                expect(dialog).to_have_count(0)
-                try:
-                    expect(who).to_be_focused(timeout=3000)  # the person is back where they were
-                except AssertionError:
-                    self.fail(f"focus did not return to the assistant's name: {self.focus_state(page)}")
-                self.no_horizontal_scroll(page)
-
-    # ---------------------------------------------------------------- paused and a used budget: explicit and calm
-
     def test_09_a_used_budget_is_explicit(self) -> None:
         jo = self.conversation("jo")
         self.composer(jo).fill("/ai ")
         bar = jo.locator("#project-ask")
-        expect(bar).to_contain_text("Answer shown to")
+        expect(bar).to_contain_text("Only you see the answer")
         # #854: an API key's one daily budget. Jo's TEST-ONLY fixture key keeps the default $5, which these runs never reach,
         # so the used budget is rendered from a stubbed status (wording only; the wait itself is covered through the real
         # worker by personal-runs-providers.test.ts). No button offers another connection or a higher limit.
@@ -641,34 +538,6 @@ class PersonalAssistantJourney(unittest.TestCase):
         self.composer(kai).fill("Noted, thanks.")
         kai.get_by_role("button", name="Send reply").click()
         expect(kai.locator(".project-convo__message").filter(has_text="Noted, thanks.")).to_be_visible()
-
-    def test_10_phone_reads_the_answer_and_proposal_without_overflow(self) -> None:
-        page = self.conversation("kai", phone=True)
-        answer = page.locator(".assistant-answer").filter(has=page.locator(".assistant-proposal")).last
-        answer.scroll_into_view_if_needed()
-        expect(answer).to_contain_text("Recorded by you")
-        self.no_horizontal_scroll(page)
-        shot(page, "assistant-390-proposal-accepted")
-        jo = self.conversation("jo", phone=True)
-        self.composer(jo).fill("/ai ")
-        expect(jo.locator("#project-ask")).to_be_visible()
-        self.no_horizontal_scroll(jo)
-        shot(jo, "assistant-390-ask")
-
-
-    def test_10b_the_details_sheet_on_the_phone_takes_focus_and_traps_it_until_esc(self) -> None:
-        page = self.conversation("kai", phone=True)
-        opener = page.locator(".assistant-proposal").get_by_role("button", name="Open result").last
-        opener.scroll_into_view_if_needed()
-        opener.focus()
-        page.keyboard.press("Enter")
-        sheet = page.get_by_role("dialog", name="Details")
-        expect(sheet).to_be_visible()
-        expect(sheet).to_contain_text("Camera fails in low light")
-        self.assertTrue(sheet.evaluate("(node) => node.contains(document.activeElement)"), f"focus moved into the sheet: {self.focus_state(page)}")
-        self.trapped(page, sheet)
-        page.keyboard.press("Escape")
-        expect(sheet).to_have_count(0)  # Esc closes the whole panel; the page was opened by address, so there is no opener to return to
 
 
 if __name__ == "__main__":

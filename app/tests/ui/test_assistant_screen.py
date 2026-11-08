@@ -138,7 +138,7 @@ class AssistantScreen(unittest.TestCase):
 
     def stub_thread(self, page: Page, answers: list[dict]) -> None:
         page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-answers\?.*"), lambda route: self.json(route, {"items": answers, "total": len(answers), "limit": 100, "offset": 0}))
-        page.route(re.compile(r".*/api/v1/assistant-runs\?limit=\d+$"), lambda route: self.json(route, {"items": [], "total": 0, "limit": 10, "offset": 0}))
+        page.route(re.compile(r".*/api/v1/assistant-runs\?(?:limit=\d+|conversationId=[0-9a-f-]{36}&limit=\d+&offset=\d+)$"), lambda route: self.json(route, {"items": [], "total": 0, "limit": 10, "offset": 0}))
 
     def thread_url(self) -> str:
         return f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}"

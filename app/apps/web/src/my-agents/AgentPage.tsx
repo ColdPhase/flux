@@ -87,6 +87,7 @@ function AgentSettings({ agent, first }: { agent: MyAgent; first: boolean }) {
           <h2 className="agp__name">{agent.name}</h2>
           <p className="agp__sub">Your agent · {uses} · can do only what you can</p>
         </div>
+        <Link className="ui-btn ui-btn--primary agp__message" to={`/agents/${agent.id}`}>Message {agent.name}</Link>
       </header>
       <span className="nset__saved agp__saved" role="status" aria-live="polite">{saved ? <><Icon name="check" size={14} />{saved}</> : null}</span>
 

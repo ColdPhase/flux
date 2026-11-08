@@ -32,6 +32,7 @@
 .agp__who { flex: 1; min-width: 0; }
 .agp__name { margin: 0; font-size: var(--fs-title); font-weight: 600; color: var(--t1); overflow-wrap: anywhere; }
 .agp__sub { margin: 2px 0 0; font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
+.agp__message { flex: none; }
 .agp__saved { display: block; min-height: 20px; }
 .agp__card { display: flex; flex-direction: column; gap: 6px; padding: 16px 18px 18px; }
 .agp__card > * + * { border-top: 0; }
@@ -62,3 +63,12 @@
 .agc__tag { display: inline-flex; align-items: center; height: 22px; padding: 0 10px; border-radius: var(--r-pill); background: var(--el); border: 1px solid var(--line); font-size: var(--fs-xs); color: var(--t2); }
 .agc__note { display: flex; align-items: center; justify-content: center; gap: 6px; margin: 0 0 8px; font-size: var(--fs-xs); line-height: 1.4; color: var(--t3); }
 .agc__empty { margin: 0; text-align: center; font-size: var(--fs-sm); color: var(--t3); }
+
+/* The chat itself (#842): the owner's turns and the agent's, in the look of a direct message. */
+.agc-pane { min-height: 0; }
+.agc-pane .agc__bar { margin-bottom: 18px; }
+.agc__turn .dm-msg__body { white-space: pre-wrap; }
+.agc__answer > p { margin: 0; }
+.agc__state { color: var(--t2); }
+.agc__actions { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; margin-top: 2px; font-size: var(--fs-xs); color: var(--t3); }
+.agc__time { font-variant-numeric: tabular-nums; }

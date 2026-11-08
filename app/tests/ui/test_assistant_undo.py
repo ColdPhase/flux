@@ -286,7 +286,7 @@ class AssistantUndo(unittest.TestCase):
         behind = self._run(str(uuid.uuid4()), "queued", "turn this into tasks")
         runs = {working["id"]: working, behind["id"]: behind}
         cancelled: list[str] = []
-        page.route(re.compile(r".*/api/v1/assistant-runs\?limit=10$"), lambda route: route.fulfill(
+        page.route(re.compile(r".*/api/v1/assistant-runs\?(?:limit=\d+|conversationId=[0-9a-f-]{36}&limit=\d+&offset=\d+)$"), lambda route: route.fulfill(
             status=200, content_type="application/json", body=json.dumps({"items": [behind, working], "total": 2, "limit": 10, "offset": 0})))
         page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), lambda route: route.fulfill(
             status=200, content_type="application/json", body=json.dumps(runs[route.request.url.rsplit("/", 1)[1]])))
@@ -351,41 +351,6 @@ class AssistantUndo(unittest.TestCase):
         expect(line).to_contain_text("Undone by")
         self.assertIn(("run", "undo"), calls)
 
-    def test_12_everyone_sees_that_ada_s_assistant_is_working_and_nothing_more(self) -> None:
-        ada_id = self.api(self.page(), "GET", "/api/v1/me", status=200)["user"]["id"]
-        for who, expected in (("jonas", True), ("lee", True), (None, False)):
-            page = self.page(who=who)
-            page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-changes$"), lambda route: route.fulfill(
-                status=200, content_type="application/json", body=json.dumps({"items": []})))
-            page.route(re.compile(r".*/api/v1/conversations/[0-9a-f-]{36}/assistant-activity$"), lambda route: route.fulfill(
-                status=200, content_type="application/json", body=json.dumps({"working": [{"ownerId": ada_id, "ownerName": ADA["name"]}]})))
-            self.open_conversation(page)
-            line = page.locator(".assistant-working--others")
-            if expected:
-                expect(line).to_have_text("Ada’s assistant is working…")
-                # No detail and no Stop for anyone else (AST-10.6).
-                expect(page.get_by_role("button", name="Stop")).to_have_count(0)
-                expect(page.locator(".assistant-working__who")).to_have_count(0)
-                expect(line.locator(".kreska")).to_have_count(1)
-                if who == "jonas":
-                    shot(page, "assistant-undo-1440-light-others-working")
-                    # With Settings → Appearance off, the face is gone and the words stay, like the owner's own working line.
-                    settings = page.context.new_page()
-                    settings.goto("/settings")
-                    settings.get_by_role("switch", name="Kreska in loading and empty screens").click()
-                    expect(settings.get_by_role("switch", name="Kreska in loading and empty screens")).to_have_attribute("aria-checked", "false")
-                    try:
-                        page.reload()
-                        expect(line).to_have_text("Ada’s assistant is working…")
-                        expect(line.locator(".kreska")).to_have_count(0)
-                    finally:
-                        settings.get_by_role("switch", name="Kreska in loading and empty screens").click()
-                        settings.close()
-            else:
-                # Ada's own page never shows the line about herself: her working line is the owner's, with Stop.
-                expect(page.locator(".project-convo__message").first).to_be_visible()
-                expect(line).to_have_count(0)
-
     def test_14_a_started_hand_off_says_why_undo_refused_and_opens_the_task(self) -> None:
         page = self.page()
         work = self.api(page, "POST", f"/api/v1/projects/{self.ids['project']}/work", {"title": "Review the sensor plan"}, status=201)
@@ -411,7 +376,7 @@ class AssistantUndo(unittest.TestCase):
         behind = {"runId": summary_id, "authority": "owner_schedule", "label": "Daily check"}
         waiting = {**self._run(str(uuid.uuid4()), "queued", "turn this into tasks"), "behind": behind}
         state = {"run": waiting, "stopped": []}
-        page.route(re.compile(r".*/api/v1/assistant-runs\?limit=10$"), lambda route: route.fulfill(
+        page.route(re.compile(r".*/api/v1/assistant-runs\?(?:limit=\d+|conversationId=[0-9a-f-]{36}&limit=\d+&offset=\d+)$"), lambda route: route.fulfill(
             status=200, content_type="application/json", body=json.dumps({"items": [state["run"]], "total": 1, "limit": 10, "offset": 0})))
         page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), lambda route: route.fulfill(
             status=200, content_type="application/json", body=json.dumps(state["run"])))
@@ -436,7 +401,7 @@ class AssistantUndo(unittest.TestCase):
         page = self.page()
         behind = {"runId": str(uuid.uuid4()), "authority": "owner_schedule", "label": "Blocked-task watch"}
         waiting = {**self._run(str(uuid.uuid4()), "queued", "turn this into tasks"), "behind": behind}
-        page.route(re.compile(r".*/api/v1/assistant-runs\?limit=10$"), lambda route: route.fulfill(
+        page.route(re.compile(r".*/api/v1/assistant-runs\?(?:limit=\d+|conversationId=[0-9a-f-]{36}&limit=\d+&offset=\d+)$"), lambda route: route.fulfill(
             status=200, content_type="application/json", body=json.dumps({"items": [waiting], "total": 1, "limit": 10, "offset": 0})))
         page.route(re.compile(r".*/api/v1/assistant-runs/[0-9a-f-]{36}$"), lambda route: route.fulfill(
             status=200, content_type="application/json", body=json.dumps(waiting)))
@@ -465,7 +430,7 @@ class AssistantUndo(unittest.TestCase):
         run_id = self.ids["run"]
         working = self._run(run_id, "reading", "Tidy the project")
         calls = {"n": 0}
-        page.route(re.compile(r".*/api/v1/assistant-runs\?limit=10$"), lambda route: route.fulfill(
+        page.route(re.compile(r".*/api/v1/assistant-runs\?(?:limit=\d+|conversationId=[0-9a-f-]{36}&limit=\d+&offset=\d+)$"), lambda route: route.fulfill(
             status=200, content_type="application/json", body=json.dumps({"items": [working], "total": 1, "limit": 10, "offset": 0})))
 
         def read(route: Route) -> None:

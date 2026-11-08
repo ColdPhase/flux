@@ -165,12 +165,12 @@ export type AskState =
  * What ask mode says under "Your assistant", from the caller's own status. `outside` is a company owner or admin who can open this
  * space without being in it: their assistant works only where they are (C-15), so nothing else matters until they add themselves.
  */
-export function askState(status: PersonalAssistantStatus | null, audience: string, outside = false): AskState {
+export function askState(status: PersonalAssistantStatus | null, outside = false): AskState {
   if (outside) return { kind: 'blocked', note: 'Your assistant works only in spaces you’re in.', action: 'join', actionLabel: 'Add me' };
   if (!status) return { kind: 'blocked', note: 'Checking your assistant…', action: null };
   const runtime = status.enablement?.engine === 'runtime';
   switch (status.state) {
-    case 'ready': return { kind: 'ready', note: runtime ? `Answer shown to ${audience} · on ${runtimePayerText(status.setup.runtime?.payer, status.setup.runtime?.client)}` : `Answer shown to ${audience} · on your API key` };
+    case 'ready': return { kind: 'ready', note: `Only you see the answer, until you choose Show everyone · on ${runtime ? runtimePayerText(status.setup.runtime?.payer, status.setup.runtime?.client) : 'your API key'}` };
     case 'not_enabled': return { kind: 'blocked', note: 'You haven’t set up your assistant. Nobody else’s can be used for you.', action: 'connect', actionLabel: 'Connect your AI' };
     // #854: the API key's one daily budget; a request asked now waits for the key's next day.
     case 'capped': return { kind: 'ready', note: `Not enough left of your API key’s ${dollars(status.today?.budgetCents ?? 0)} daily budget. A request now starts ${status.today ? resumeWords(status.today.resetsAt) : 'tomorrow'}.` };

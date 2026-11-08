@@ -1,16 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { ASSISTANT_RUN_CHANGED_EVENT, type ConversationMessage, type AssistantActivity, type AssistantAnswer, type AssistantProposal, type AssistantRun, type AssistantRunKind, type PersonalAssistantStatus } from '@flux/contracts';
+import { ASSISTANT_RUN_CHANGED_EVENT, type AssistantAnswer, type AssistantChange, type AssistantProposal, type AssistantRun, type AssistantRunKind, type PersonalAssistantStatus } from '@flux/contracts';
 import { useStreamEvents } from '../api/stream';
-import { reply } from '../conversations/api';
 import {
-  acceptProposal, askAssistant, dismissProposal, getAssistantActivity, getAssistantStatus, getRun, listAnswers, listOwnRuns, listProposals, retryRun, stopRun,
+  acceptProposal, askAssistant, dismissAnswer, dismissProposal, getAssistantStatus, getRun, listAnswers, listPlaceRuns, listProposals, retryRun, showAnswer, stopRun,
+  type AskPlace,
 } from './api';
 import { isWorking } from './format';
-import { aiOffDismissed, dismissAiOff, rememberAskedConversation } from './lastAsked';
+import { rememberAskedConversation } from './lastAsked';
+import { readRunChanges } from './WaitingChanges';
 
-// The assistant inside one project conversation (#68 AC-8). The answers and proposals are the
-// conversation's shared objects; the status and the working run are the signed-in person's own
-// and come only from their own endpoints and their owner-only progress events.
+// The person's own agent asked from one place (#68, #842): a conversation of a space, the space's main conversation, a direct message or the
+// agent's private chat. The answer is the asker's alone; Show everyone posts it as their message and Dismiss puts it away. What a place shows is
+// the asker's own runs there (`/assistant-runs?…`) and, for a conversation of a space, what a schedule posted in it (the project's answers and
+// proposals). The status and the working run come only from the asker's own endpoints and their owner-only progress events.
 
 async function allAnswers(conversationId: string) {
   const first = await listAnswers(conversationId);
@@ -19,183 +21,208 @@ async function allAnswers(conversationId: string) {
   return (await listAnswers(conversationId, first.total - 100)).items;
 }
 
+/** Whether a run is one of `/ai`'s or a chat's: its answer is the asker's alone. */
+const asked = (run: AssistantRun) => run.kind === 'ask' || run.kind === 'summarize' || run.kind === 'map_thought';
+/** Where a run belongs, as `placeKey` says it for a place. */
+const runPlaceKey = (run: AssistantRun) => (run.dmId ? `dm:${run.dmId}` : run.projectId === null ? `chat:${run.agentId}` : `space:${run.projectId}:${run.conversationId ?? ''}`);
+/** Where a run belongs, as the key that tells two places apart. */
+export const placeKey = (place: AskPlace | null) => !place ? '' : place.kind === 'dm' ? `dm:${place.dmId}` : place.kind === 'chat' ? `chat:${place.agentId}` : `space:${place.projectId}:${place.conversationId ?? ''}`;
+
 export interface ConversationAssistant {
   status: PersonalAssistantStatus | null;
+  /** What a schedule posted in this conversation, for everyone who reads it. */
   answers: AssistantAnswer[];
   proposals: Map<string, AssistantProposal>;
   /** The signed-in person's latest run here: in flight, or ended without an answer and not yet dismissed. */
   run: AssistantRun | null;
   /** The next request, waiting for the working one to end (AST-6 queue): "Next: '…'. It starts when this one ends · Cancel". */
   queued: AssistantRun | null;
+  /** Answers only this person can see, oldest first, until they choose Show everyone or Dismiss (#842). In a space one shows once its changes are read, so the card does not grow. */
+  privateAnswers: AssistantRun[];
+  /** What the answer's run changed, read before the answer showed (a space only). */
+  changesOf(runId: string): AssistantChange[];
   cancelQueued(): Promise<void>;
   /** The queued request waits behind a background run of the owner: "Finishing your daily check first… [ Stop it ]". */
   stopBehind(): Promise<void>;
-  /** Other people's assistants working here right now, by name only: "Ada's assistant is working…" (AST-6). */
-  others: AssistantActivity['working'];
-  /** Changes whenever the shared part of the conversation was refreshed: an assistant started or stopped working, an answer arrived. */
+  /** Changes whenever the shared part of the conversation was refreshed: a schedule posted, a run moved, an answer arrived. */
   tick: number;
   ask(prompt: string, options?: { kind?: AssistantRunKind; continuesRunId?: string; clientRunId?: string }): Promise<AssistantRun>;
   stop(): Promise<void>;
   retry(runId: string): Promise<void>;
+  /** Puts the line of a run that ended away. */
   dismissRun(): void;
+  /** Puts an answer away. */
+  dismissPrivate(run: AssistantRun): Promise<void>;
+  /** Posts an answer as the person's own message; resolves with the id of that message. */
+  show(run: AssistantRun): Promise<string>;
   decide(proposal: AssistantProposal, decision: 'accept' | 'dismiss'): Promise<AssistantProposal>;
   refreshStatus(): void;
 }
 
-export function useConversationAssistant({ meId, meName, projectId, conversationId, onPosted, enabled = true }: {
-  meId: string; meName?: string; projectId: string; conversationId: string | null;
-  /** False while the workspace's AI is off (F-029, #614): nothing AI is asked for, and only the committed answers (history) are read. */
+export function useConversationAssistant({ meId, place, onShown, enabled = true }: {
+  meId: string;
+  /** Where the person asks; null while there is no place to ask in (a stream with no space yet). */
+  place: AskPlace | null;
+  /** False while the space's AI is off (F-029, #614): nothing AI is asked for, and only what a schedule posted (history) is read. */
   enabled?: boolean;
-  /** The request as it was posted to the conversation (the stream message of Journey 1 step 6), so the pane can show it at once. */
-  onPosted?: (message: ConversationMessage) => void;
+  /** An answer was posted as the person's own message (Show everyone), so the pane can show it at once. */
+  onShown?: (messageId: string) => void;
 }): ConversationAssistant {
   const [status, setStatus] = useState<PersonalAssistantStatus | null>(null);
   const [answers, setAnswers] = useState<AssistantAnswer[]>([]);
   const [proposals, setProposals] = useState(new Map<string, AssistantProposal>());
-  const [run, setRun] = useState<AssistantRun | null>(null);
-  const runRef = useRef(run);
-  useEffect(() => { runRef.current = run; }, [run]);
-  const [others, setOthers] = useState<AssistantActivity['working']>([]);
+  const [mine, setMine] = useState<AssistantRun[]>([]);
+  /** When the runs were last read: a run that ended without an answer shows its line for an hour. */
+  const [readAt, setReadAt] = useState(0);
   const [tick, setTick] = useState(0);
-  const [queued, setQueued] = useState<AssistantRun | null>(null);
-  const queuedRef = useRef(queued);
-  useEffect(() => { queuedRef.current = queued; }, [queued]);
+  /** What answered runs of a space changed, read once the answer arrived: the card shows complete (#842). */
+  const [changed, setChanged] = useState<Record<string, AssistantChange[]>>({});
+  const key = placeKey(place);
+  const placeRef = useRef(place);
+  useEffect(() => { placeRef.current = place; });
+  /** Runs this tab just started: a read that began before the server took them does not list them, and must not make them vanish. */
+  const started = useRef(new Map<string, { run: AssistantRun; at: number }>());
+  /** Runs this page started or saw working: their line stays until it is put away. One found already ended shows for an hour after it ended. */
+  const [seen, setSeen] = useState<ReadonlySet<string>>(new Set());
+  const see = useCallback((ids: string[]) => { if (ids.length) setSeen((known) => (ids.every((id) => known.has(id)) ? known : new Set([...known, ...ids]))); }, []);
+  const conversationId = place?.kind === 'space' ? place.conversationId : null;
+  const projectId = place?.kind === 'space' ? place.projectId : null;
 
-  /** The newest run of this conversation, when AI being turned off stopped it and the person has not dismissed the line. */
-  const stoppedByAiOff = useCallback((items: AssistantRun[]) => {
-    const latest = items.find((item) => item.conversationId === conversationId && !item.silent);
-    return latest && latest.endReason === 'ai_off' && !aiOffDismissed(meId, latest.id) ? latest : null;
-  }, [conversationId, meId]);
   const refreshStatus = useCallback(() => { if (enabled) getAssistantStatus().then(setStatus).catch(() => { /* the ask bar keeps saying it is checking */ }); }, [enabled]);
-  const refreshActivity = useCallback(async () => {
-    if (!conversationId || !enabled) return;
-    try { setOthers((await getAssistantActivity(conversationId)).working.filter((item) => item.ownerId !== meId)); } catch { /* the line is a courtesy; a missing one is not an error */ }
-  }, [conversationId, meId, enabled]);
-  const refreshShared = useCallback(async () => {
-    if (!conversationId) return;
-    void refreshActivity();
-    setTick((value) => value + 1);
+  /** The asker's own runs here, newest first; an error keeps what is shown. */
+  const refreshRuns = useCallback(async () => {
+    const here = placeRef.current;
+    if (!here) return;
     try {
-      const [items, drafted] = await Promise.all([allAnswers(conversationId), enabled ? listProposals(projectId) : null]);
+      const read = (await listPlaceRuns(here, { limit: 20 })).items.filter((item) => asked(item) && !item.silent);
+      const now = Date.now();
+      see(read.filter(isWorking).map((item) => item.id));
+      for (const [id, { at }] of started.current) if (now - at > 10_000 || read.some((item) => item.id === id)) started.current.delete(id);
+      const items = [...[...started.current.values()].map(({ run }) => run), ...read];
+      if (placeKey(placeRef.current) === placeKey(here)) { setMine(items); setReadAt(now); }
+    } catch { /* the conversation itself reports lost access */ }
+  }, [see]);
+  /** One run of this place, read again: the newest state of a run that moved. */
+  const take = useCallback((run: AssistantRun) => {
+    if (runPlaceKey(run) !== placeKey(placeRef.current) || !asked(run) || run.silent) return;
+    if (isWorking(run)) see([run.id]);
+    const known = started.current.get(run.id);
+    if (known) started.current.set(run.id, { ...known, run });
+    setMine((items) => [run, ...items.filter((item) => item.id !== run.id)].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
+    setReadAt(Date.now());
+  }, [see]);
+  const refreshShared = useCallback(async () => {
+    setTick((value) => value + 1);
+    void refreshRuns();
+    if (!conversationId) return;
+    try {
+      const [items, drafted] = await Promise.all([allAnswers(conversationId), enabled && projectId ? listProposals(projectId) : null]);
       setAnswers(items);
       if (drafted) setProposals(new Map(drafted.items.map((item) => [item.id, item])));
     } catch { /* the conversation itself reports lost access */ }
-  }, [conversationId, projectId, refreshActivity, enabled]);
-
-  /** A run changed: keep it while it works or when it ended without an answer; an answer shows in the feed. */
-  const track = useCallback((next: AssistantRun) => {
-    // A schedule's silent run only borrows a conversation: it is not this conversation's working line.
-    if (next.conversationId !== conversationId || next.silent) return;
-    const current = runRef.current;
-    // A request behind the working one waits in its own line; it takes over the working line when it starts. It also waits when the
-    // lane is held by a background run of the owner, which may belong to no conversation here.
-    if (next.status === 'queued' && (next.behind || current && current.id !== next.id && isWorking(current))) { setQueued(next); return; }
-    if (queuedRef.current?.id === next.id) {
-      setQueued(null);
-      if (!isWorking(next)) { refreshStatus(); return; }
-    }
-    if (isWorking(next)) { setRun(next); return; }
-    setRun((current) => (current && current.id !== next.id && isWorking(current) ? current : next.answer ? null : next));
-    if (next.answer) void refreshShared();
-    refreshStatus();
-  }, [conversationId, refreshShared, refreshStatus]);
+  }, [conversationId, projectId, enabled, refreshRuns]);
 
   useEffect(() => {
-    // F-029 (#614): while the workspace's AI is off only the committed answers (conversation history) are read.
-    if (!enabled) {
-      if (conversationId) allAnswers(conversationId).then(setAnswers).catch(() => undefined);
-      // The one thing still shown while AI is off: the owner's run that this switch stopped (AG-10).
-      listOwnRuns().then((page) => { const stopped = stoppedByAiOff(page.items); if (stopped) setRun(stopped); }).catch(() => undefined);
-      return;
-    }
-    refreshStatus();
+    // F-029 (#614): while the space's AI is off only what a schedule posted (conversation history) and the asker's own answers are read.
+    if (enabled && key) refreshStatus();
+    void refreshRuns();
     if (conversationId) {
-      Promise.all([allAnswers(conversationId), listProposals(projectId)]).then(([items, drafted]) => {
-        setAnswers(items);
-        setProposals(new Map(drafted.items.map((item) => [item.id, item])));
-      }).catch(() => undefined);
-      getAssistantActivity(conversationId).then((activity) => setOthers(activity.working.filter((item) => item.ownerId !== meId))).catch(() => undefined);
+      allAnswers(conversationId).then(setAnswers).catch(() => undefined);
+      if (enabled && projectId) listProposals(projectId).then((drafted) => setProposals(new Map(drafted.items.map((item) => [item.id, item])))).catch(() => undefined);
     }
-    // After a reload the working line comes back: the person's own newest run in this conversation.
-    listOwnRuns().then((page) => {
-      const here = page.items.filter((item) => item.conversationId === conversationId && !item.silent && isWorking(item));
-      const working = here.find((item) => item.status !== 'queued');
-      const waiting = here.find((item) => item.status === 'queued' && (item.behind || working && item.id !== working.id));
-      const active = working ?? here.find((item) => item !== waiting);
-      if (active) setRun(active);
-      else { const stopped = stoppedByAiOff(page.items); if (stopped) setRun(stopped); }
-      if (waiting) setQueued(waiting);
-    }).catch(() => undefined);
-  }, [conversationId, projectId, meId, refreshStatus, enabled, stoppedByAiOff]);
+  }, [key, conversationId, projectId, enabled, refreshStatus, refreshRuns]);
 
+  // The asker's own run moved (their owner-only event), or a schedule posted here: read again.
   useStreamEvents(meId, (event) => {
-    if (event.kind === ASSISTANT_RUN_CHANGED_EVENT) {
-      // Owner-only: another person's run never reaches this stream. While AI is off it still tells the owner their run stopped.
-      getRun(event.objectId).then(track).catch(() => undefined);
-      return;
-    }
+    if (event.kind === ASSISTANT_RUN_CHANGED_EVENT) { getRun(event.objectId).then(take).catch(() => { void refreshRuns(); }); return; }
     if (!enabled) return;
-    if (event.objectType === 'project' && event.objectId === projectId && event.kind.startsWith('project.assistant_')) void refreshShared();
-  }, () => { void refreshShared(); if (enabled && runRef.current) getRun(runRef.current.id).then(track).catch(() => undefined); });
+    if (projectId && event.objectType === 'project' && event.objectId === projectId && event.kind.startsWith('project.assistant_')) void refreshShared();
+  }, () => { void refreshShared(); });
 
   // A fallback while a run works, in case the stream is reconnecting.
-  const working = enabled && !!run && isWorking(run);
+  const working = enabled && mine.some(isWorking);
+  const workingRef = useRef<AssistantRun[]>([]);
+  useEffect(() => { workingRef.current = mine.filter(isWorking); });
   useEffect(() => {
-    if (!working || !run) return;
-    const timer = window.setInterval(() => { getRun(run.id).then(track).catch(() => undefined); }, 4000);
+    if (!working) return;
+    const timer = window.setInterval(() => { for (const run of workingRef.current) getRun(run.id).then(take).catch(() => undefined); }, 4000);
     return () => window.clearInterval(timer);
-  }, [working, run, track]);
+  }, [working, take]);
 
+  const current = mine.filter((item) => !item.shownAt && !item.dismissedAt);
+  // The oldest working run holds the owner's lane; a request behind it, or behind a background run of the owner, waits in its own line (AST-6 queue).
+  const active = current.filter(isWorking).filter((item) => item.status !== 'queued').at(-1) ?? null;
+  const waiting = current.filter((item) => item.status === 'queued').filter((item) => item.behind || (active && item.id !== active.id)).at(-1) ?? null;
+  const first = current.filter(isWorking).filter((item) => item !== waiting).at(-1) ?? null;
+  // Ended without an answer: the line of the latest run stays until it is dismissed. An answer shows as a card instead, and an older run's line never comes back.
+  const newest = mine[0];
+  const ended = newest && !newest.shownAt && !newest.dismissedAt && !isWorking(newest) && !newest.answer
+    && (seen.has(newest.id) || readAt - Date.parse(newest.completedAt ?? newest.createdAt) < 3600_000) ? newest : null;
+  const answered = current.filter((item) => !!item.answer && !isWorking(item));
+  // An answer of a space shows once its changes are read: until then its line stays as it was, so it does not vanish a moment before the card.
+  const awaiting = answered.find((item) => item.projectId !== null && !(item.id in changed));
+  const run = enabled ? active ?? first ?? ended ?? (awaiting ? { ...awaiting, status: 'dispatching' as const, answer: null } : null) : ended?.endReason === 'ai_off' ? ended : null;
+  const toRead = answered.filter((item) => item.projectId !== null && !(item.id in changed)).map((item) => item.id).join(',');
   useEffect(() => {
-    if (!queued || !enabled) return;
-    const timer = window.setInterval(() => { getRun(queued.id).then(track).catch(() => undefined); }, 4000);
-    return () => window.clearInterval(timer);
-  }, [queued, track, enabled]);
+    if (!toRead) return;
+    for (const id of toRead.split(',')) readRunChanges(id).catch(() => [] as AssistantChange[]).then((items) => setChanged((known) => ({ ...known, [id]: items })));
+  }, [toRead]);
+  const privateAnswers = answered.filter((item) => item.projectId === null || item.id in changed).reverse();
 
   return {
     // Masked while AI is off: a run, a suggestion or a status read before the flip is not shown.
     status: enabled ? status : null, answers, proposals: enabled ? proposals : new Map<string, AssistantProposal>(),
-    run: enabled || run?.endReason === 'ai_off' ? run : null, queued: enabled ? queued : null,
-    others: enabled ? others : [], tick, refreshStatus,
+    run, queued: enabled ? waiting : null, privateAnswers, changesOf: (runId: string) => changed[runId] ?? [], tick, refreshStatus,
     async cancelQueued() {
-      if (!queued) return;
-      track(await stopRun(queued.id));
+      if (!waiting) return;
+      await stopRun(waiting.id);
+      await refreshRuns();
     },
     async stopBehind() {
-      if (!queued?.behind) return;
-      await stopRun(queued.behind.runId);
-      const next = await getRun(queued.id);
-      track(next);
+      if (!waiting?.behind) return;
+      await stopRun(waiting.behind.runId);
+      await refreshRuns();
     },
     async ask(prompt, options = {}) {
-      if (!conversationId) throw new Error('No conversation');
-      const started = await askAssistant(conversationId, {
+      if (!place) throw new Error('No place to ask in');
+      const accepted = await askAssistant(place, {
         clientRunId: options.clientRunId ?? crypto.randomUUID(), kind: options.kind ?? 'ask', prompt,
         ...(options.continuesRunId ? { continuesRunId: options.continuesRunId } : {}),
       });
-      track(started);
-      rememberAskedConversation(meId, projectId, conversationId);
-      // J1 step 6: the request appears in the stream as sent, "@Ada's assistant tidy this project's tasks", so everyone sees what was
-      // asked and whose assistant it is. It follows the run (a refused run leaves nothing behind) under the request's own id, so a
-      // replay after a lost answer posts it once. A Continue is part of the earlier request and posts nothing.
-      if (!options.continuesRunId && meName) {
-        const first = meName.trim().split(/\s+/)[0] || meName;
-        const posted = await reply(conversationId, { body: `@${first}'s assistant ${prompt}`, clientMessageId: started.clientRunId }).catch(() => null);
-        if (posted) onPosted?.(posted);
-      }
-      return started;
+      started.current.set(accepted.id, { run: accepted, at: Date.now() });
+      see([accepted.id]);
+      setMine((items) => [accepted, ...items.filter((item) => item.id !== accepted.id)]);
+      if (place.kind === 'space' && place.conversationId) rememberAskedConversation(meId, place.projectId, place.conversationId);
+      return accepted;
     },
     async stop() {
       if (!run) return;
-      track(await stopRun(run.id));
+      await stopRun(run.id);
+      await refreshRuns();
     },
     async retry(runId) {
-      track(await retryRun(runId, crypto.randomUUID()));
+      await retryRun(runId, crypto.randomUUID());
+      await refreshRuns();
     },
-    dismissRun() { if (run?.endReason === 'ai_off') dismissAiOff(meId, run.id); setRun(null); },
+    dismissRun() {
+      const ending = run;
+      if (!ending) return;
+      setMine((items) => items.map((item) => (item.id === ending.id ? { ...item, dismissedAt: new Date().toISOString() } : item)));
+      void dismissAnswer(ending.id).catch(() => { void refreshRuns(); });
+    },
+    async dismissPrivate(answered) {
+      await dismissAnswer(answered.id);
+      setMine((items) => items.map((item) => (item.id === answered.id ? { ...item, dismissedAt: new Date().toISOString() } : item)));
+    },
+    async show(answered) {
+      const result = await showAnswer(answered.id);
+      setMine((items) => items.map((item) => (item.id === answered.id ? result.run : item)));
+      onShown?.(result.messageId);
+      return result.messageId;
+    },
     async decide(proposal, decision) {
       const decided = await (decision === 'accept' ? acceptProposal(proposal) : dismissProposal(proposal));
-      setProposals((current) => new Map(current).set(decided.id, decided));
+      setProposals((items) => new Map(items).set(decided.id, decided));
       return decided;
     },
   };

@@ -470,26 +470,23 @@ class OneConversationJourney(unittest.TestCase):
         expect(page.get_by_label("Write a message", exact=True)).to_have_value("")
 
     def test_05b_an_assistant_prompt_in_the_stream_composer_is_never_posted(self) -> None:
-        # UI116-3: a private helper prompt does not become a public root.
+        # UI116-3, #842: `/ai` in the stream asks the person's own agent in the space's main conversation; the words do not become a public root.
         page = self.page("ada")
         page.goto(self.project_url())
         before = len(self.all_roots(page))
         composer = page.get_by_label("Write a message", exact=True)
         composer.fill("/ai summarize the plan")
-        hint = page.get_by_role("status").filter(has_text="Your assistant answers inside a conversation")
-        expect(hint).to_be_visible()
-        expect(composer).to_have_attribute("aria-describedby", re.compile("ai-hint"))
-        expect(page.get_by_role("button", name="Send message")).to_have_attribute("aria-disabled", "true")
-        composer.press("Enter")
-        page.get_by_role("button", name="Send message").click(force=True)
-        expect(composer).to_have_value("/ai summarize the plan")
-        page.wait_for_timeout(500)
+        expect(page.locator("#project-ask")).to_be_visible()
+        expect(page.locator("#project-ask")).not_to_contain_text("Open one and type /ai there")
+        # Sent, it goes to the agent (or says why it cannot), never to the space.
+        page.get_by_role("button", name="Send to your assistant").click(force=True)
+        page.wait_for_timeout(800)
         self.assertEqual(len(self.all_roots(page)), before, "no root is created from an assistant prompt")
-        # The text stays a private draft; another member sees no new root.
+        # Another member sees no new root and nothing of the question.
         other = self.page("jonas")
+        other.goto(self.project_url())
         self.assertFalse(any(root["message"]["body"].startswith("/ai") for root in self.all_roots(other)))
-        composer.fill("")
-        expect(hint).to_have_count(0)
+        expect(other.locator(".assistant-working, .assistant-private")).to_have_count(0)
 
     def test_05c_a_row_growing_above_the_reader_does_not_move_the_stream(self) -> None:
         # Foundation 10.5: a viewer's "1 reply" row appears on a root above the viewport (0 -> 1 replies)

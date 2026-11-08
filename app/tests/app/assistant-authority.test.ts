@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, beforeEach, describe, test } from 'node:test';
 import {
-  assistantChangeActionPath, assistantChangeLine, assistantRunChangesActionPath, assistantRunChangesPath, conversationAssistantActivityPath,
-  conversationAssistantChangesPath, NEEDS_YOU_PATH, ASSISTANT_WORKING_EVENT, type AssistantActivity, type AssistantChange,
+  assistantChangeActionPath, assistantChangeLine, assistantRunChangesActionPath, assistantRunChangesPath,
+  conversationAssistantChangesPath, NEEDS_YOU_PATH, ASSISTANT_WORKING_EVENT, type AssistantChange,
   type AssistantRun, type AssistantRunUndone, type NeedsYouResponse,
 } from '@flux/contracts';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
@@ -13,7 +13,6 @@ import { agentConnection } from './support/mcp-actions.js';
 import { expectStatus, grant, removeFromSpace, type Person } from './support/people.js';
 import { StreamClient } from './support/stream.js';
 import { assistantScene, changesOf, human, text, type AssistantScene } from './support/assistant-scene.js';
-import { waitFor } from './support/wait.js';
 
 // F-027 A3/A4 (#403, #404), F-036 AG-3 (#855): who may decide a waiting change (only its owner, in their own session; never an agent or a
 // run token) and who may undo what was done; what an Approve repeats and what it may not do (held races against Skip, Stop and the owner
@@ -290,14 +289,12 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     const third = await scene.runs.invoke(owner, scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'A third' });
     assert.equal(third.run.status, 'queued');
     await scene.runs.stop(owner, third.run.id);
-    // Everyone in the place sees only that it is working (names, no detail), and nothing of the runs themselves.
+    // Nobody else learns of the runs: not by name, not at all (#842: `/ai` is private).
     for (const who of [scene.peer, scene.viewer, scene.guest, scene.admin]) {
-      const activity = expectStatus(await who.browser.request('GET', conversationAssistantActivityPath(scene.thread.id)), 200) as AssistantActivity;
-      assert.deepEqual(activity.working, [{ ownerId: scene.owner.id, ownerName: 'aa-ada' }]);
+      assert.equal((await who.browser.request('GET', `/api/v1/conversations/${scene.thread.id}/assistant-activity`)).status, 404, 'there is no line that says someone is asking');
       assert.equal((await who.browser.request('GET', `/api/v1/assistant-runs/${mine.run.id}`)).status, 404);
       assert.equal((await who.browser.request('GET', `/api/v1/assistant-runs/${summary.run.id}`)).status, 404);
     }
-    assert.equal((await scene.stranger.browser.request('GET', conversationAssistantActivityPath(scene.thread.id))).status, 404);
     // "Stop the summary" is Stop of the background run; the request starts next.
     expectStatus(await scene.owner.browser.request('POST', `/api/v1/assistant-runs/${summary.run.id}/stop`), 200);
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now() WHERE id = $1`, [summary.run.id]);
@@ -313,28 +310,16 @@ describe('the assistant\'s waiting changes and Undo: who may, and what may not h
     await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now(), cost_state = 'released', charged_micros = 0 WHERE id = ANY($1)`, [[older.run.id, newer.run.id]]);
   });
 
-  test('AST-6.8: others hear that an assistant started and stopped working, by identifiers only, on the project stream', async () => {
+  test('AST-6.8: the run of `/ai` is private: the others hear nothing on the project stream, not even that it worked', async () => {
     const peerStream = await StreamClient.connect(scene.peer.browser);
-    const strangerStream = await StreamClient.connect(scene.stranger.browser);
     try {
       const started = await scene.runs.invoke(human_(scene.owner), scene.thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Tidy up' });
       assert.equal(await scene.processor.process(started.run.id), 'completed');
-      const events = await waitFor(async () => {
-        const found = peerStream.events.filter((event) => event.kind === ASSISTANT_WORKING_EVENT && event.objectId === scene.place.id);
-        return found.length >= 2 ? found : null;
-      }, 'the working events');
-      assert.ok(events.every((event) => event.objectType === 'project'));
-      const stored = await pool.query(`SELECT e.data, array_agg(a.recipient) AS recipients FROM events e JOIN event_audience a ON a.event_id = e.id
-        WHERE e.kind = $1 AND e.object_id = $2 AND e.id = ANY($3) GROUP BY e.seq, e.data ORDER BY e.seq`, [ASSISTANT_WORKING_EVENT, scene.place.id, events.map((event) => event.id)]);
-      assert.equal(stored.rows.length, 2, 'one when it starts working, one when it stops');
-      for (const item of stored.rows as { data: Record<string, unknown>; recipients: string[] }[]) {
-        assert.deepEqual(Object.keys(item.data), ['conversationId'], 'identifiers only: no prompt, no run id, no status');
-        assert.equal(item.data.conversationId, scene.thread.id);
-        assert.ok(item.recipients.includes(`human:${scene.peer.id}`) && !item.recipients.includes(`human:${scene.stranger.id}`));
-      }
-      assert.ok(!JSON.stringify(stored.rows).includes('Tidy up'));
-      assert.deepEqual(strangerStream.events.filter((event) => event.kind === ASSISTANT_WORKING_EVENT), [], 'someone outside the project hears nothing');
-    } finally { await peerStream.close(); await strangerStream.close(); }
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      assert.deepEqual(peerStream.events.filter((event) => event.kind.startsWith('project.assistant_')), []);
+      const stored = await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind = $1 AND object_id = $2`, [ASSISTANT_WORKING_EVENT, scene.place.id]);
+      assert.equal(stored.rows[0].n, 0, 'no event about the run was written for anyone');
+    } finally { await peerStream.close(); }
   });
 
   test('AST-5.4: switching the assistant off invalidates what it prepared; turning it on again cannot revive it', async () => {

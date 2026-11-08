@@ -1,18 +1,26 @@
 import type { FastifyInstance } from 'fastify';
 import type { PgBoss } from 'pg-boss';
 import {
+  AGENT_CHATS_PATH,
+  agentChatMessagesPath,
+  agentChatReadPath,
   AGENT_LIMITS,
   MY_AGENTS_PATH,
   myAgentMemoryItemPath,
   myAgentMemoryPath,
   myAgentPath,
   ASSISTANT_RUNS_PATH,
+  agentAssistantRunsPath,
   assistantProposalAcceptPath,
   assistantProposalDismissPath,
   assistantProposalPath,
+  assistantRunDismissPath,
   assistantRunPath,
   assistantRunRetryPath,
+  assistantRunShowPath,
   assistantRunStopPath,
+  dmAssistantRunsPath,
+  projectAssistantRunsPath,
   ASSISTANT_MODEL_PATH,
   conversationAssistantAnswersPath,
   conversationAssistantRunsPath,
@@ -24,18 +32,23 @@ import {
   type CreateMyAgentCommand,
   type DecideAssistantProposalCommand,
   type EditAgentMemoryCommand,
+  type AssistantPlace,
   type InvokeAssistantRunCommand,
+  type ListOwnRunsQuery,
   type PageQuery,
+  type ShowAnswerResult,
   type RetryAssistantRunCommand,
   type UpdateMyAgentCommand,
 } from '@flux/contracts';
-import { type PersonalConnectionLookup, type PersonalRuntimeAvailability } from '@flux/core';
+import { conversationUseCases, InvalidInputError, type PersonalConnectionLookup, type PersonalRuntimeAvailability } from '@flux/core';
 import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
 import { commandRunner, expectedVersion, useDomainErrors, versionEtag, type ReplayCheck } from '../http/commands.js';
 import { registerAssistantJobRoutes } from '../assistant/jobs.js';
 import { assistantProposalUseCases, personalRunUseCases, pgBossPersonalRunQueue } from './adapters.js';
 import { makeAgent, removeAgent } from './make-agent.js';
+import { conversationStore } from '../conversation/store.js';
+import { dmUseCases } from '../direct-messages/adapters.js';
 
 interface Options {
   db: Database;
@@ -71,6 +84,8 @@ const invoke = { type: 'object', required: ['clientRunId', 'kind', 'prompt'], ad
   // Accepted only to refuse them: they never select an owner, agent or connection.
   ownerId: { type: 'string' }, connectionId: { type: 'string' }, agentId: { type: 'string' },
 } } as const;
+const runsQuery = { type: 'object', additionalProperties: false, properties: { limit: { type: 'integer' }, offset: { type: 'integer' },
+  conversationId: { type: 'string' }, spaceId: { type: 'string' }, dmId: { type: 'string' }, chatAgentId: { type: 'string' } } } as const;
 const retry = { type: 'object', required: ['clientRunId'], additionalProperties: false, properties: { clientRunId: { type: 'string' } } } as const;
 const decide = { type: 'object', additionalProperties: false, properties: { expectedVersion: version } } as const;
 
@@ -143,28 +158,72 @@ export async function personalRunRoutes(app: FastifyInstance, { db, sessions, bo
     run: async (actor, conn) => { await personalRunUseCases(conn, composition).memory.remove(actor, request.params.agentId, request.params.itemId); return null; }, replay: ownState,
   }));
 
-  app.post<{ Params: { conversationId: string }; Body: InvokeAssistantRunCommand }>(conversationAssistantRunsPath(':conversationId'), { schema: { body: invoke } },
-    async (request, reply) => {
+  // The private chats with the caller's agents (#842, AG-4, AG-7): what they have not read, the lines an agent said on its own, and "read".
+  app.get(AGENT_CHATS_PATH, async (request, reply) => {
+    reply.header('cache-control', 'no-store');
+    return { items: await runs.agentChats(await principal(request)) };
+  });
+  app.get<{ Params: { agentId: string } }>(agentChatMessagesPath(':agentId'), async (request, reply) => {
+    reply.header('cache-control', 'no-store');
+    return { items: await runs.agentChatMessages(await principal(request), request.params.agentId) };
+  });
+  app.post<{ Params: { agentId: string } }>(agentChatReadPath(':agentId'), async (request, reply) => {
+    await runs.readAgentChat(await principal(request), request.params.agentId);
+    return reply.code(204).send();
+  });
+
+  // `/ai` in a conversation, in a space's main conversation and in a direct message, and a message to one's own agent in its chat (#842):
+  // the same request to the same use case; only the place differs. The answer is its asker's alone (see Show everyone below).
+  function invokeRoute(path: string, operation: string, placeOf: (params: Record<string, string>) => AssistantPlace) {
+    app.post<{ Params: Record<string, string>; Body: InvokeAssistantRunCommand }>(path, { schema: { body: invoke } }, async (request, reply) => {
       // 202 for a new run; 200 when the same clientRunId returns the existing one.
       let created = false;
       return command(request, reply, {
-        operation: `POST ${conversationAssistantRunsPath(':conversationId')}`, scope: 'account', status: () => (created ? 202 : 200),
+        operation, scope: 'account', status: () => (created ? 202 : 200),
         run: async (actor, conn) => {
-          const started = await personalRunUseCases(conn, composition).invoke(actor, request.params.conversationId, request.body);
+          const started = await personalRunUseCases(conn, composition).invoke(actor, placeOf(request.params), request.body);
           created = started.created;
           return started.run;
         },
         replay: ownState,
       });
     });
+  }
+  invokeRoute(conversationAssistantRunsPath(':conversationId'), `POST ${conversationAssistantRunsPath(':conversationId')}`,
+    ({ conversationId }) => ({ kind: 'space', projectId: '', conversationId: conversationId! }));
+  invokeRoute(projectAssistantRunsPath(':projectId'), `POST ${projectAssistantRunsPath(':projectId')}`, ({ projectId }) => ({ kind: 'space', projectId: projectId!, conversationId: null }));
+  invokeRoute(dmAssistantRunsPath(':dmId'), `POST ${dmAssistantRunsPath(':dmId')}`, ({ dmId }) => ({ kind: 'dm', dmId: dmId! }));
+  invokeRoute(agentAssistantRunsPath(':agentId'), `POST ${agentAssistantRunsPath(':agentId')}`, ({ agentId }) => ({ kind: 'chat', agentId: agentId! }));
   app.get<{ Params: { conversationId: string }; Querystring: PageQuery }>(conversationAssistantAnswersPath(':conversationId'), { schema: { querystring: page } },
     async (request) => runs.listAnswers(await principal(request), request.params.conversationId, request.query));
-  app.get<{ Querystring: PageQuery }>(ASSISTANT_RUNS_PATH, { schema: { querystring: page } },
-    async (request) => runs.listOwn(await principal(request), request.query));
+  app.get<{ Querystring: ListOwnRunsQuery }>(ASSISTANT_RUNS_PATH, { schema: { querystring: runsQuery } },
+    async (request, reply) => { reply.header('cache-control', 'no-store'); return runs.listOwn(await principal(request), request.query); });
   app.get<{ Params: { runId: string } }>(assistantRunPath(':runId'), async (request) => runs.get(await principal(request), request.params.runId));
   app.post<{ Params: { runId: string } }>(assistantRunStopPath(':runId'), async (request, reply) => command(request, reply, {
     operation: `POST ${assistantRunStopPath(':runId')}`, scope: 'account',
     run: (actor, conn) => personalRunUseCases(conn, composition).stop(actor, request.params.runId), replay: ownState,
+  }));
+  // Dismiss: the asker puts an answer, or the line of a run that ended, away.
+  app.post<{ Params: { runId: string } }>(assistantRunDismissPath(':runId'), async (request, reply) => command(request, reply, {
+    operation: `POST ${assistantRunDismissPath(':runId')}`, scope: 'account',
+    run: (actor, conn) => personalRunUseCases(conn, composition).dismiss(actor, request.params.runId), replay: ownState,
+  }));
+  // Show everyone (F-036 AG-4): the answer becomes its asker's own message in the place they asked in, "Ada · via Assistant". It is posted
+  // under the run's id, so a retry posts it once. Nothing reads another person's run: the run is the caller's own or it is not found.
+  app.post<{ Params: { runId: string } }>(assistantRunShowPath(':runId'), async (request, reply) => command(request, reply, {
+    operation: `POST ${assistantRunShowPath(':runId')}`, scope: 'account',
+    run: async (actor, conn): Promise<ShowAnswerResult> => {
+      const uses = personalRunUseCases(conn, composition);
+      const { run, place, body, via } = await uses.planShow(actor, request.params.runId);
+      const message = { body, clientMessageId: run.id };
+      let messageId: string;
+      if (place.kind === 'dm') messageId = (await dmUseCases(conn).sendVia(actor, place.dmId, message, via)).id;
+      else if (place.kind === 'space' && place.conversationId !== null) messageId = (await conversationUseCases(conversationStore(conn)).sendMessage(actor, place.conversationId, message, via)).id;
+      else if (place.kind === 'space') messageId = (await conversationUseCases(conversationStore(conn)).createConversation(actor, place.projectId, message, via)).messages[0]!.id;
+      else throw new InvalidInputError('A private chat has nobody to show it to');
+      return { run: await uses.markShown(actor, run.id), messageId };
+    },
+    replay: ownState,
   }));
   app.post<{ Params: { runId: string }; Body: RetryAssistantRunCommand }>(assistantRunRetryPath(':runId'), { schema: { body: retry } },
     async (request, reply) => {

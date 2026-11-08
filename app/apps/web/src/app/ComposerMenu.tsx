@@ -34,26 +34,26 @@ export function composerTrigger(value: string, caret: number): ComposerTrigger |
   return slash ? { char: '/', query: slash[1]!, start: 0 } : null;
 }
 
-const ACTIONS: { id: SlashId; hint: string; here: 'any' | 'thread' }[] = [
-  { id: 'task', hint: 'Create a task', here: 'any' },
-  { id: 'decide', hint: 'Propose a decision', here: 'any' },
+const ACTIONS: { id: SlashId; hint: string }[] = [
+  { id: 'task', hint: 'Create a task' },
+  { id: 'decide', hint: 'Propose a decision' },
   // CW-1: the words (in a thread, by default its opening message) become a thought on the project's map, with their source.
-  { id: 'map', hint: 'Add to map', here: 'any' },
-  { id: 'handoff', hint: 'Hand off to an agent', here: 'any' },
-  { id: 'file', hint: 'Attach a file or link', here: 'any' },
+  { id: 'map', hint: 'Add to map' },
+  { id: 'handoff', hint: 'Hand off to an agent' },
+  { id: 'file', hint: 'Attach a file or link' },
   // The two former buttons stay as commands: saved sources to cite, and the person's own assistant.
-  { id: 'source', hint: 'Cite a saved source', here: 'any' },
-  { id: 'ai', hint: 'Ask your assistant', here: 'thread' },
+  { id: 'source', hint: 'Cite a saved source' },
+  { id: 'ai', hint: 'Ask your assistant' },
 ];
 
 /** The options for a trigger: actions by command name, or the people and agents of the project by name. */
-export function composerOptions(trigger: ComposerTrigger, { people, meId, inThread, assistant, aiOff = false }: { people: ProjectPerson[] | null; meId: string; inThread: boolean; assistant?: { mode: 'ask' | 'setup'; last: boolean } | null; aiOff?: boolean }): ComposerOption[] {
+export function composerOptions(trigger: ComposerTrigger, { people, meId, assistant, aiOff = false }: { people: ProjectPerson[] | null; meId: string; assistant?: { mode: 'ask' | 'setup'; last: boolean } | null; aiOff?: boolean }): ComposerOption[] {
   const query = trigger.query.toLowerCase();
   if (trigger.char === '/') {
-    return ACTIONS.filter((action) => (action.here === 'any' || inThread) && !(aiOff && AI_ACTIONS.has(action.id)) && action.id.startsWith(query))
+    return ACTIONS.filter((action) => !(aiOff && AI_ACTIONS.has(action.id)) && action.id.startsWith(query))
       .map((action) => ({ id: `slash-${action.id}`, kind: 'action' as const, label: `/${action.id}`, hint: action.hint, insert: `/${action.id} `, slash: action.id }));
   }
-  const mine: ComposerOption[] = !aiOff && assistant && inThread && ('my assistant'.includes(query) || 'assistant'.startsWith(query))
+  const mine: ComposerOption[] = !aiOff && assistant && ('my assistant'.includes(query) || 'assistant'.startsWith(query))
     ? [{ id: 'mention-my-assistant', kind: 'agent', label: 'My assistant', hint: assistant!.mode === 'ask' ? 'Agent · for you' : 'Set up', insert: '', assistant: assistant!.mode }] : [];
   const others = (people ?? []).filter((person) => !(aiOff && person.kind === 'agent') && person.id !== meId && person.name.toLowerCase().includes(query))
     .sort((a, b) => Number(b.name.toLowerCase().startsWith(query)) - Number(a.name.toLowerCase().startsWith(query)) || a.name.localeCompare(b.name))

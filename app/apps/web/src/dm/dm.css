@@ -174,3 +174,10 @@
 @media (max-width: 680px) { .dm-copy__row { grid-template-columns: minmax(0, 1fr); } }
 /* The bubble column of every message, in a conversation and in its thread, leaves --acts-room beside it for the pill. */
 @media (hover: hover) { .dm-msg .dm-msg__main { max-width: min(600px, calc(100% - var(--acts-room, 114px))); } }
+
+/* "Ada used AI here (Claude)" (#842, F-036 AG-4): one quiet line for both people of a conversation in which `/ai` was used. */
+.dm-notice { list-style: none; display: flex; flex-direction: column; align-items: center; margin: 10px 0; }
+.dm-notice:focus-visible { outline: 2px solid var(--focus, currentColor); outline-offset: 2px; }
+.dm-notice__line { display: inline-flex; align-items: center; gap: 6px; margin: 0; font-size: var(--fs-xs); color: var(--t3); }
+.dm-msg__via { color: var(--t3); font-weight: 400; }
+.dm-msg__meta b + .dm-msg__via::before { content: "· "; }

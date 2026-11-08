@@ -14,7 +14,7 @@ import { createAgentConnectionStore } from '../agent-connection/store.js';
 //
 // Claims: `sub` and `flux_owner_user_id` = the owner, `flux_connection_id` = the assistant connection,
 // no scope (the run's exact tools are stored with its mint and listed by the route, A3), `flux_run_id`,
-// `flux_place` = the run's project and conversation, audience the Flux MCP resource, lifetime no longer
+// `flux_place` = the run's project and conversation (or its direct message; none for a private chat), audience the Flux MCP resource, lifetime no longer
 // than the run's clock.
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -35,9 +35,11 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       const run = await rows.find(runId, { lock: 'update' });
       if (!run || (run.status !== 'reading' && run.status !== 'dispatching') || run.stopRequestedAt || run.runTokenJti || !run.runTokenNonceHash
         || !sameHash(sha256(request.body.nonce), run.runTokenNonceHash)) return null;
-      // AG-10, first: before anything is minted, AI must be on in the run's space at the run's epoch.
-      const ai = await spaceAi(tx, run.projectId, { lock: true });
-      if (ai.state !== 'allowed' || ai.epoch !== run.aiEpoch) return null;
+      // AG-10, first: before anything is minted, AI must be on in the run's space at the run's epoch (a run in a DM or a chat has no space).
+      if (run.projectId !== null) {
+        const ai = await spaceAi(tx, run.projectId, { lock: true });
+        if (ai.state !== 'allowed' || ai.epoch !== run.aiEpoch) return null;
+      }
       const connectionId = await rows.assistantConnectionId(run.ownerUserId, run.agentId);
       if (!connectionId) return null;
       // The live connection and its owner's standing, exactly as the MCP route checks them. A read-only run token needs read
@@ -46,8 +48,10 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
       if (!grant || grant.connection.id !== connectionId || grant.connection.agentId !== run.agentId || grant.connection.computeSource !== 'owner_assistant') return null;
       // The run's exact tools: reads, and the changes unless its "What it may do" is Only read (F-036 AG-3).
       // An answer to another agent's question only reads, whatever the agent may do (TA-3: a question is not an instruction).
-      const readOnly = grant.connection.mayDo === 'read' || run.kind === 'task_answer';
-      const tools = assistantRunTools(readOnly ? 'read' : grant.connection.mayDo);
+      // A private chat reads and answers and changes nothing (#842); a run in a direct message has one tool: reading a web page, since no
+      // tool reads a DM and nothing of the owner's other places may reach an answer its audience reads.
+      const readOnly = grant.connection.mayDo === 'read' || run.kind === 'task_answer' || run.projectId === null;
+      const tools = run.dmId !== null ? ['flux_read_web'] : assistantRunTools(readOnly ? 'read' : grant.connection.mayDo);
       const jti = randomUUID();
       const expiresAt = new Date(Date.now() + RUN_TOKEN_LIMITS.lifetimeSeconds * 1000);
       await rows.recordMint(runId, { jti, expiresAt, tools });
@@ -57,7 +61,7 @@ export function registerPersonalRunTokenRoute(app: FastifyInstance, db: Database
     const { baseURL } = await auth.$context;
     const { token } = await auth.api.signJWT({ body: { payload: {
       sub: minted.run.ownerUserId, flux_owner_user_id: minted.run.ownerUserId, flux_connection_id: minted.connectionId,
-      flux_run_id: minted.run.id, flux_place: { project: minted.run.projectId, conversation: minted.run.conversationId },
+      flux_run_id: minted.run.id, flux_place: { project: minted.run.projectId, conversation: minted.run.conversationId, dm: minted.run.dmId },
       jti: minted.jti, iat: Math.floor(Date.now() / 1000), exp: Math.floor(minted.expiresAt.getTime() / 1000),
       // The MCP resource server requires an `azp` (the party the token was issued to) since Better Auth 1.7.18. A run token has no
       // OAuth client, so it names its issuer's own flow; no client of that id exists, so nothing else accepts it as a client's.

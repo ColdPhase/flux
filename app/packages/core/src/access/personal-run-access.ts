@@ -1,5 +1,5 @@
 import type { PersonalRunAccess } from '../personal-runs/ports.js';
-import { accessName, enforce, evaluateAgent, evaluateProject, evaluateSketch, requireSpaceAi } from './policy.js';
+import { accessName, enforce, evaluateAgent, evaluateDm, evaluateProject, evaluateSketch, requireSpaceAi } from './policy.js';
 import type { AccessReader } from './ports.js';
 
 /**
@@ -17,6 +17,16 @@ export function policyPersonalRunAccess(access: AccessReader): PersonalRunAccess
 
     async canUseProject(principal, action, projectId, options) {
       const evaluation = await evaluateProject(principal, action === 'write' ? 'project.write' : 'project.read', projectId, access, { lock: options?.lock });
+      return evaluation.visible && evaluation.allowed;
+    },
+
+    async requireDm(principal, dmId, options) {
+      const checked = enforce(await evaluateDm(principal, 'dm.write', dmId, access, { lock: options?.lock }), 'dm');
+      return { workspaceId: checked.dm!.workspaceId };
+    },
+
+    async canUseDm(principal, dmId, options) {
+      const evaluation = await evaluateDm(principal, 'dm.write', dmId, access, { lock: options?.lock });
       return evaluation.visible && evaluation.allowed;
     },
 

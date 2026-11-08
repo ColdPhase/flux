@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { after, before, describe, test } from 'node:test';
 import { apiKeySpendToday, createDatabase } from '@flux/db';
 import { createPersonalRunProcessor, type Principal } from '@flux/core';
-import { type AssistantAnswer, type Conversation, type Page, type Project, type Workspace } from '@flux/contracts';
+import { type AssistantAnswer, type AssistantRun, type Conversation, type Page, type Project, type Workspace } from '@flux/contracts';
 import { parsePrivateTargets, providerPersonalCompute } from '../../packages/agent-runtime/src/index.js';
 import { personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { personalRunWorkerUnitOfWork } from '../../apps/worker/src/personal-runs/adapters.js';
@@ -94,11 +94,12 @@ describe('personal runs on any provider through the same path (#179)', () => {
       const sent = (await mock('/__requests')).requests;
       assert.deepEqual(sent.map((item) => item.path), target.paths);
       assert.ok(sent.every((item) => item.key === KEY));
-      const answers = expectStatus(await owner.browser.request('GET', `/api/v1/conversations/${thread.id}/assistant-answers`), 200) as Page<AssistantAnswer>;
-      const answer = answers.items.find((item) => item.runId === asked.run.id)!;
-      assert.deepEqual(answer.provenance, { provider: target.provider, model: target.model });
-      assert.equal(answer.sources.length, 1);
-      assert.equal(JSON.stringify(answers).includes(KEY), false);
+      const run = expectStatus(await owner.browser.request('GET', `/api/v1/assistant-runs/${asked.run.id}`), 200) as AssistantRun;
+      assert.deepEqual(run.answer!.provenance, { provider: target.provider, model: target.model });
+      assert.equal(run.answer!.sources.length, 1);
+      assert.equal(JSON.stringify(run).includes(KEY), false);
+      const shared = expectStatus(await owner.browser.request('GET', `/api/v1/conversations/${thread.id}/assistant-answers`), 200) as Page<AssistantAnswer>;
+      assert.equal(shared.items.some((item) => item.runId === asked.run.id), false, 'the answer is private until Show everyone');
       assert.equal((await runs.status(human(owner))).today!.chargedMicros, charged, 'the key\'s day counts what its runs were charged');
     });
   }
@@ -135,8 +136,9 @@ describe('a personal run is never charged above its reservation (#179 PROV-3, #1
     const asked = await runs.invoke(human(owner), thread.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Where are we?' });
     const outcome = await processor.process(asked.run.id);
     const stored = (await pool.query('SELECT status, reserved_micros, charged_micros, cost_state, input_tokens, output_tokens FROM personal_runs WHERE id=$1', [asked.run.id])).rows[0];
-    const answers = expectStatus(await owner.browser.request('GET', `/api/v1/conversations/${thread.id}/assistant-answers`), 200) as Page<AssistantAnswer>;
-    return { outcome, stored, posted: answers.items.some((item) => item.runId === asked.run.id) };
+    // The answer of `/ai` is the asker's own: the run holds it, and nothing of it is public (#842).
+    const run = expectStatus(await owner.browser.request('GET', `/api/v1/assistant-runs/${asked.run.id}`), 200) as AssistantRun;
+    return { outcome, stored, posted: run.answer !== null };
   }
 
   const compatible = { provider: 'openai_compatible' as const, model: 'llama3.1:8b', baseUrl: `${MOCK}/openai/v1` };
