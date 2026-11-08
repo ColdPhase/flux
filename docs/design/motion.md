@@ -147,6 +147,7 @@ Paths are under `app/apps/web/src/`.
 | 6 | Phone Home shifted 0.50–0.62 when Continue arrived | `app/Home.tsx` puts Continue last, so nothing sits under it and no space is kept for it while it is read (`test_light_motion` `test_25`) |
 | 8 | Literal durations and easings; rows grew and collapsed on `height` | Every duration and easing comes from a token; rows never animate `height` (`ui/rowMotion.ts`); the two-height phone sheet moves with `transform` in both directions (`ui/DetentSheet.tsx`) |
 | 9 | The in-app Reduce motion kept animation delays; two rules checked only the system setting | Both settings zero durations and delays |
+| 3 | A thread's panel left empty: its text was gone on the first frame and it faded as a blank box on a computer, and the phone's sheet went at once with no fade (#901). The thread is the view's own and goes with its route | `OwnedPanelContent` (`app/ownedPanel.tsx`) leaves an inert copy of what it showed in the panel's slot as the view unmounts, so the 120 ms exit of the panel (docked, overlay or the phone's sheet) carries its content. New content in the slot removes the copy at once, and so does the panel's end. `SidePanel` (`ui/SidePanel.tsx`) also keeps what its head says and which kind of sheet it is from the last time it was open, for the length of the exit: on the phone the sheet of a task, decision or thread used to be swapped for the plain sheet the moment the object closed, which removed the leaving one with no fade (`test_light_motion` `test_10k`, computer and phone) |
 
 ## Still open
 
@@ -161,9 +162,6 @@ What #863 does not close, and where it goes:
   Tasks board, cards, a page), not each destination's exact layout. The Tasks board's shape is its control row and four columns, or a list for a
   person who shows Tasks as a list (#902); the Map's and the Wiki's are approximations. Drawing each view's own layout there, or committing the
   view itself once the loaders no longer block, closes it.
-- **A thread's panel leaves with its content (rule 3, #901).** The thread is rendered by its own view into the panel's slot
-  (`app/OneConversation.tsx`), which unmounts with the route; `OwnedPanelContent` (`app/ownedPanel.tsx`) leaves an inert copy of what it showed in the
-  slot as it unmounts, so the panel's 120 ms exit carries its content. New content in the slot removes the copy at once, and so does the panel's end.
 - **A skeleton draws only the layout it knows (rule 6).** A decision's or a result's panel, and a task opened from a link, show a title bar and
   quiet lines, not the rows of the layout they will have, because its heights depend on text that is not read yet.
 - The Wiki text that moves 72 px, and the layout shift of phone Home when the Needs you rows arrive (0.17) (rule 6).
