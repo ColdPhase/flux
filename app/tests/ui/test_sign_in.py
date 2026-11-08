@@ -160,6 +160,40 @@ class SignInPages(_Browser):
         other.get_by_role("button", name="Sign in", exact=True).click()
         expect(other.get_by_text("That email and password don’t match an account.")).to_be_visible()
 
+    def test_04_a_common_password_is_refused_with_the_reason_and_the_account_is_not_made(self) -> None:
+        page = self.page()
+        email = f"weak.password+{int(time.time() * 1000)}@example.test"
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill("Weak Password")
+        page.get_by_label("Email").fill(email)
+        # Twelve characters pass the form's own length rule; the server's list of common passwords refuses this one (#990).
+        page.get_by_label("Password").fill("password1234")
+        page.get_by_role("button", name="Create account").click()
+        expect(page.get_by_text("That password is too easy to guess.")).to_be_visible()
+        expect(page).to_have_url(re.compile(r"/sign-up"))
+        page.get_by_label("Password").fill("a lantern on the harbour wall")
+        page.get_by_role("button", name="Create account").click()
+        expect(page).to_have_url(f"{ORIGIN}/")
+
+    def test_05_five_wrong_passwords_make_the_page_say_how_long_to_wait(self) -> None:
+        page = self.page()
+        email = f"back.off+{int(time.time() * 1000)}@example.test"
+        made = page.request.post(f"{ORIGIN}/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": "Back Off"}, headers={"origin": ORIGIN})
+        self.assertEqual(made.status, 200, made.text())
+        for attempt in range(4):
+            wrong = page.request.post(f"{ORIGIN}/api/auth/sign-in/email", data={"email": email, "password": f"wrong guess {attempt} here"}, headers={"origin": ORIGIN})
+            self.assertEqual(wrong.status, 401)
+        page.goto("/sign-in")
+        for attempt in range(2):
+            page.get_by_label("Email").fill(email)
+            page.get_by_label("Password").fill(PASSWORD if attempt else "the fifth wrong guess here")
+            page.get_by_role("button", name="Sign in", exact=True).click()
+            if attempt == 0:
+                expect(page.get_by_text("That email and password don’t match an account.")).to_be_visible()
+        # The fifth attempt put the account on a 30-second wait: even the right password is refused, with the time and the way out.
+        expect(page.get_by_text(re.compile(r"Too many sign-in attempts for this account\. Try again in \d+ seconds\. If you have forgotten the password, you can reset it\."))).to_be_visible()
+        expect(page).to_have_url(re.compile(r"/sign-in"))
+
     def test_03_the_claim_page_has_nothing_to_claim_without_a_provider_sign_in(self) -> None:
         page = self.page()
         page.goto("/claim")
