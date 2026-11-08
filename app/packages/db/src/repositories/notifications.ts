@@ -332,6 +332,14 @@ export function notificationPlaceRows(db: DbExecutor) {
   };
 }
 
+/** Seconds until a refused send may be tried: the longer of the cooldown and the window, at least one. */
+function retryAfter(row: { lastSentAt: Date; windowStart: Date; sent: number } | undefined, limits: { cooldownSeconds: number; perWindow: number; windowSeconds: number }) {
+  const now = Date.now();
+  const untilCooldown = row ? row.lastSentAt.getTime() + limits.cooldownSeconds * 1000 - now : 0;
+  const untilWindow = row && row.sent >= limits.perWindow ? row.windowStart.getTime() + limits.windowSeconds * 1000 - now : 0;
+  return Math.max(1, Math.ceil(Math.max(untilCooldown, untilWindow) / 1000));
+}
+
 type AddressRow = typeof a.$inferSelect;
 const addressRecord = (row: AddressRow) => ({ id: row.id, userId: row.userId, email: row.email, enabled: row.enabled, verifiedAt: row.verifiedAt, lastSentAt: row.lastSentAt });
 
@@ -377,10 +385,27 @@ export function notificationAddressRows(db: DbExecutor) {
         RETURNING user_id`);
       if (reserved.rows.length) return { allowed: true as const };
       const [row] = await db.select().from(v).where(eq(v.userId, userId));
-      const now = Date.now();
-      const untilCooldown = row ? row.lastSentAt.getTime() + limits.cooldownSeconds * 1000 - now : 0;
-      const untilWindow = row && row.sent >= limits.perWindow ? row.windowStart.getTime() + limits.windowSeconds * 1000 - now : 0;
-      return { allowed: false as const, retryAfterSeconds: Math.max(1, Math.ceil(Math.max(untilCooldown, untilWindow) / 1000)) };
+      return { allowed: false as const, retryAfterSeconds: retryAfter(row, limits) };
+    },
+    /**
+     * The same, for the address a link goes to, whichever account asks (#1056): at most `perWindow` per `windowSeconds`, counted under
+     * the hash of the address. Rows idle for a day are removed as new ones come.
+     */
+    async reserveAddressSend(addressHash: string, limits: { perWindow: number; windowSeconds: number }) {
+      const v = schema.notificationAddressSends;
+      const window = sql`make_interval(secs => ${limits.windowSeconds})`;
+      await db.delete(v).where(sql`${v.lastSentAt} < now() - interval '1 day'`);
+      const reserved = await db.execute(sql`
+        INSERT INTO ${v} (address_hash, window_start, sent, last_sent_at) VALUES (${addressHash}, now(), 1, now())
+        ON CONFLICT (address_hash) DO UPDATE SET
+          window_start = CASE WHEN ${v}.window_start <= now() - ${window} THEN now() ELSE ${v}.window_start END,
+          sent = CASE WHEN ${v}.window_start <= now() - ${window} THEN 1 ELSE ${v}.sent + 1 END,
+          last_sent_at = now()
+        WHERE ${v}.window_start <= now() - ${window} OR ${v}.sent < ${limits.perWindow}
+        RETURNING address_hash`);
+      if (reserved.rows.length) return { allowed: true as const };
+      const [row] = await db.select().from(v).where(eq(v.addressHash, addressHash));
+      return { allowed: false as const, retryAfterSeconds: retryAfter(row, { cooldownSeconds: 0, ...limits }) };
     },
     async issueToken(addressId: string, tokenHash: string, expiresAt: Date) {
       await db.delete(t).where(eq(t.addressId, addressId));

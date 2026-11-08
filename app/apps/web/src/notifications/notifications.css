@@ -38,8 +38,16 @@
 .nset__times label { display: grid; gap: 4px; font-size: var(--fs-xs); font-weight: 600; color: var(--t3); }
 .nset__zone .ui-select { max-width: 260px; }
 
-/* The addresses: each extra one is a row with its switch (or Send again) and Remove, then a row with the field to add one. */
-.nset__extra .ui-btn, .nset .sset-row > .ui-btn { flex: none; }
+/* The addresses, as the final design draws them: a tick on the left, the address with a line under it, then Send again and Remove at the
+   right edge; the row of the field to add one follows. */
+.sset-card .nset__addr { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto auto; column-gap: 12px; }
+.nset__tick { grid-column: 1; display: grid; place-items: center; }
+.nset__tick input { width: 18px; height: 18px; margin: 0; cursor: pointer; }
+.nset__tick input:disabled { cursor: not-allowed; }
+.nset__addr > .sset-row__b { grid-column: 2; }
+.nset__send { grid-column: 3; }
+.nset__remove { grid-column: 4; }
+.nset__addr .ui-btn { flex: none; }
 .nset__add { flex-wrap: wrap; gap: 8px; }
 .nset__add input { flex: 1; min-width: 0; }
 .nset__row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -72,6 +80,9 @@
 
 @media (pointer: coarse) {
   .nset__row input, .nset__add input, .nset__row .ui-select, .nset__times input, .nset__times .ui-select { min-height: 44px; }
+  /* The tick is a 44 px target; the row's own padding gives way to it. */
+  .sset-card .nset__addr { grid-template-columns: 44px minmax(0, 1fr) auto auto; padding-left: 4px; }
+  .nset__tick { height: 44px; margin-block: -8px; }
 }
 @media (max-width: 640px) {
   /* The top bar already names the page: keep the first screen for items. */
@@ -84,4 +95,10 @@
   .nset > .inbox__head .nset__saved:empty { display: none; }
   .nset__panel { padding: 6px 16px 14px; }
   .nset__row input, .nset__add input { min-width: 0; }
+  /* A phone: Remove stays at the right edge of the first line, Send again goes under the text, so a long address keeps its width. */
+  .sset-card .nset__addr { grid-template-columns: 44px minmax(0, 1fr) auto; column-gap: 8px; padding-left: 4px; row-gap: 0; }
+  .nset__addr > .sset-row__b { grid-row: 1; }
+  .nset__tick { grid-row: 1; }
+  .nset__remove { grid-column: 3; grid-row: 1; }
+  .nset__send { grid-column: 2; grid-row: 2; justify-self: start; margin: 0 0 2px -12px; }
 }

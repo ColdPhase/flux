@@ -105,17 +105,21 @@ grants, and switching it off never changes the account. Each row has its own `en
 sign-in address, which is not a row, has `account_enabled` in the preferences. `POST /api/v1/notification-addresses`
 adds one and emails a single-use link (SHA-256 of the token stored, 24 hours, earlier links of that address
 invalidated); `POST …/:id/resend`; `PATCH …/:id` with `{ enabled }`; `DELETE …/:id` removes it and changes nothing else
-(`emailMe` and the other addresses stay as they were). Verification sends are bounded per person across add and resend,
-for all of a person's addresses — at least 60 s apart and at most 5 per rolling hour — by one conditional upsert on
-`notification_verification_sends` (concurrent requests cannot both pass); otherwise `429 VERIFICATION_RECENTLY_SENT`
-with `Retry-After`. `POST …/verify` takes the token, signed in as the account that added the address (anyone else, a
+(`emailMe` and the other addresses stay as they were). Verification sends are bounded two ways, each by one conditional
+upsert (concurrent requests cannot both pass): per person across add and resend, for all of their addresses (at least 60 s
+apart and at most 5 per rolling hour, `notification_verification_sends`), and per address, whichever account asks (at most 3
+per rolling hour, `notification_address_sends`, kept under a SHA-256 of the lower-cased address so no readable address is
+stored; #1056). Otherwise `429 VERIFICATION_RECENTLY_SENT` with `Retry-After`. An address is compared in Unicode normal form C and
+without regard to letter case, so a composed and a decomposed letter are one address. An address id that is not a UUID
+answers `404`, like an id that is not the person's. `POST …/verify` takes the token, signed in as the account that added the address (anyone else, a
 used or an expired token get the same `400 VERIFICATION_INVALID`) and answers the settings with `confirmed`, the
 address. The sign-in address, an address already in the list (any letter case) or a sixth extra address answers `409`
-(`ADDRESS_IS_ACCOUNT`, `ADDRESS_EXISTS`, `TOO_MANY_ADDRESSES`). The page lists the sign-in address first with its
-switch, then each extra address in the order added: confirmed ones with their switch and Remove, unconfirmed ones as
-"Waiting for you to open the link" with Send again and Remove, then a field to add another, with the line "We send a
-confirmation link to a new address before any notification goes there."; no copy is queued for an address before
-it is confirmed.
+(`ADDRESS_IS_ACCOUNT`, `ADDRESS_EXISTS`, `TOO_MANY_ADDRESSES`). The page lists the addresses as the final design draws
+them: a tick on the left, the address with a line under it ("Your sign-in address", "Confirmed", or "Waiting for you to
+confirm it from that inbox") and, at the right edge, Send again (unconfirmed ones) and Remove (not for the sign-in
+address). On a phone Remove keeps the right edge of the first line and Send again goes under the text, so a long
+address keeps its width. A field to add another follows, with the line "We send a confirmation link to a new address
+before any notification goes there."; no copy is queued for an address before it is confirmed.
 
 ## Email
 

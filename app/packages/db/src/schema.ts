@@ -1552,6 +1552,17 @@ export const notificationVerificationSends = pgTable('notification_verification_
   lastSentAt: timestamp('last_sent_at', { withTimezone: true }).notNull(),
 });
 
+/**
+ * Confirmation-link sends to one address, whichever account asks (0038, #1056). The key is a SHA-256 of the lower-cased address,
+ * so a stranger's address can be limited without being stored.
+ */
+export const notificationAddressSends = pgTable('notification_address_sends', {
+  addressHash: text('address_hash').primaryKey(),
+  windowStart: timestamp('window_start', { withTimezone: true }).notNull(),
+  sent: integer('sent').notNull(),
+  lastSentAt: timestamp('last_sent_at', { withTimezone: true }).notNull(),
+}, (table) => [index('notification_address_sends_last_idx').on(table.lastSentAt)]);
+
 export const notificationPreferences = pgTable('notification_preferences', {
   userId: text('user_id').primaryKey().references(() => authUsers.id, { onDelete: 'cascade' }),
   level: text('level').$type<'needsYou' | 'everything' | 'nothing'>().notNull().default('needsYou'),
