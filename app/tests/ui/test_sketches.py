@@ -52,7 +52,7 @@ class SketchJourney(unittest.TestCase):
         cls.pw.stop()
 
     def context(self, *, phone: bool = False, **extra) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+        options: dict = {"base_url": ORIGIN, "color_scheme": "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "block"}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
@@ -462,14 +462,14 @@ class SketchJourney(unittest.TestCase):
     def test_10_the_stream_follows_an_account_switch_in_the_same_tab(self) -> None:
         # A second person with a sketch of their own, prepared in a separate context.
         other_email = f"noor+{int(time.time() * 1000)}@example.test"
-        prep_context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP)
+        prep_context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, service_workers="block")
         self.addCleanup(prep_context.close)
         prep = self.page(prep_context)
         self.api(prep, "POST", "/api/auth/sign-up/email", {"name": "Noor Vale", "email": other_email, "password": PASSWORD})
         ws = self.api(prep, "POST", "/api/v1/workspaces", {"name": "Noor"})
         sketch = self.api(prep, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": "Noor’s map", "scope": "private"})
 
-        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP)
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, service_workers="block")
         self.addCleanup(context.close)
         page = self.page(context)
         sockets: list[dict] = []
@@ -547,7 +547,7 @@ class SketchJourney(unittest.TestCase):
 
     def fit_fixture(self, *, viewport: dict, ratios: tuple[float, float], touch: bool = False) -> Page:
         """A persisted project sketch whose last thought reaches the old Fit corner."""
-        context = self.browser.new_context(base_url=ORIGIN, viewport=viewport, has_touch=touch,
+        context = self.browser.new_context(base_url=ORIGIN, viewport=viewport, has_touch=touch, service_workers="block",
                                            is_mobile=touch and viewport["width"] <= 640,
                                            color_scheme="dark" if viewport["height"] < 800 else "light")
         self.addCleanup(context.close)
