@@ -1,6 +1,7 @@
-"""Blocked tasks wait for a person (#550): the Details picker, the Create window, the Inbox item of the person
-waited on, and the one short line in the project conversation. Computer and phone. Ada owns the task and Kai is the
-person she waits for. Screenshots (waiting-for-*.png) go to FLUX_UI_SCREENSHOTS."""
+"""Blocked tasks wait for one thing (#550, #868): a person, a decision or another task. The Details picker, the Create
+window, the Inbox item of the person waited on (with its Done), the one short line in the project conversation and the
+tasks going back to Doing by themselves when what they waited for is resolved. Computer and phone. Ada owns the task
+and Kai is the person she waits for. Screenshots (waiting-for-*.png) go to FLUX_UI_SCREENSHOTS."""
 from __future__ import annotations
 
 import re
@@ -113,6 +114,7 @@ class WaitingFor(unittest.TestCase):
                 item = page.get_by_role("listitem").filter(has=page.get_by_role("button", name=heading))
                 expect(item.first).to_be_visible()
                 expect(item.first.get_by_role("button", name="Unblock")).to_have_count(0)
+                expect(item.first.get_by_role("button", name="Done", exact=True)).to_be_visible()
                 shot(page, f"waiting-for-inbox-{'phone' if phone else 'computer'}")
                 item.first.get_by_role("button", name="Open task").click()
                 expect(page.locator(f".wd[data-detail-id='{task['id']}']")).to_be_visible()
@@ -171,6 +173,98 @@ class WaitingFor(unittest.TestCase):
         expect(row).to_contain_text("waiting for Kai Nowak · Needs the gateway in its new place first.")
         expect(row).not_to_contain_text("waiting for Needs")
         expect(page.locator(".ws-task").filter(has_text="Seal the probe cables").first).not_to_contain_text("waiting for Needs")
+
+    def decision(self, title: str):
+        return api(self.ada_ctx, "POST", self.root + "/decisions", {"title": title, "rationale": "So the far beds can be reached."}, 201)
+
+    def notice(self, page, number: int, words: str):
+        """The one line of the conversation for a task (folds opened, as a run of lines folds into one)."""
+        page.goto(f"/projects/{self.project}")
+        expect(page.locator(".convo-notice, .convo-fold").first).to_be_visible()
+        closed = page.locator(".convo-fold__b[aria-expanded='false']")
+        while closed.count(): closed.first.click()
+        line = page.get_by_role("button", name=re.compile(rf"^Open task #{number} ")).filter(has_text=words)
+        expect(line).to_have_count(1); return line
+
+    def test_07_the_person_waited_on_says_done_in_the_inbox_and_the_task_goes_back_to_doing(self):
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                tag = "phone" if phone else "computer"; title = f"Pick the bracket finish {tag}"
+                task = self.block(self.task(title), blocker="Which finish?", waitingFor={"kind": "human", "id": self.kai})
+                page = self.page("kai", phone); page.goto("/inbox")
+                item = page.get_by_role("listitem").filter(has=page.get_by_role("button", name=re.compile(rf"is waiting for you: #{task['number']} ")))
+                expect(item.first).to_be_visible()
+                item.first.get_by_role("button", name="Done", exact=True).click()
+                expect(page.get_by_role("button", name=re.compile(rf"is waiting for you: #{task['number']} "))).to_have_count(0)
+                expect(page.locator(".ui-toast")).to_contain_text(f"#{task['number']} can continue")
+                stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
+                self.assertEqual((stored["status"], stored["waitingFor"], stored["blocker"]), ("in_progress", None, None))
+                self.notice(self.page("ada", phone), task["number"], f"#{task['number']} can continue: Kai Nowak is done")
+
+    def test_08_the_panel_waits_for_a_decision_or_a_task_and_the_card_says_what(self):
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                tag = "phone" if phone else "computer"
+                decision = self.decision(f"Use LoRa for the far beds {tag}")
+                other = self.task(f"Order the gateway {tag}")
+                task = self.block(self.task(f"Mount the far sensor {tag}"), blocker="Needs a go-ahead")
+                page = self.page("ada", phone); panel = self.panel(page, task)
+                card = panel.get_by_role("region", name="Blocker")
+                card.get_by_role("button", name="Edit").click()
+                picker = card.get_by_role("button", name="Waiting for", exact=True)
+                with page.expect_response(lambda r: r.request.method == "PATCH" and r.url.endswith(f"/api/v1/work/{task['id']}")) as saved:
+                    picker.click()
+                    page.get_by_role("menuitemradio", name=f"Use LoRa for the far beds {tag}").click()
+                self.assertEqual(saved.value.status, 200)
+                stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
+                self.assertEqual((stored["waitingOn"]["kind"], stored["waitingOn"]["id"], stored["waitingFor"]), ("decision", decision["id"], None))
+                expect(picker).to_contain_text(f"the decision Use LoRa for the far beds {tag}")
+                with page.expect_response(lambda r: r.request.method == "PATCH" and r.url.endswith(f"/api/v1/work/{task['id']}")) as again:
+                    picker.click()
+                    page.get_by_role("menuitemradio", name=re.compile(rf"#{other['number']} Order the gateway {tag}")).click()
+                self.assertEqual(again.value.status, 200)
+                stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
+                self.assertEqual((stored["waitingOn"]["kind"], stored["waitingOn"]["id"], stored["waitingOn"]["number"]), ("task", other["id"], other["number"]))
+                card.get_by_role("button", name="Cancel").click()
+                expect(card).to_contain_text(f"Waiting for #{other['number']} Order the gateway {tag}")
+                shot(page, f"waiting-for-task-details-{tag}")
+                # The board's card and the list's row say it in one line, as drawn.
+                page.goto(f"/projects/{self.project}/tasks")
+                if not phone: page.get_by_role("radio", name="Board", exact=True).click()
+                expect(page.locator(f".tb-card[data-card-id='{task['id']}'] .tb-card__blocker")).to_have_text(f"Waiting for #{other['number']}")
+                page.get_by_role("radio", name="List", exact=True).click()
+                expect(page.locator(".ws-task").filter(has_text=f"Mount the far sensor {tag}").first).to_contain_text(f"waiting for #{other['number']}")
+
+    def test_09_an_accepted_decision_sends_the_task_back_to_doing_and_the_stream_says_so(self):
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                tag = "phone" if phone else "computer"
+                decision = self.decision(f"Mount the sensor on the post {tag}")
+                task = self.block(self.task(f"Drill the post {tag}"), blocker="Waits for the decision", waitingOn={"kind": "decision", "id": decision["id"]})
+                self.assertEqual(task["waitingOn"]["title"], f"Mount the sensor on the post {tag}")
+                # Kai, a contributor, accepts it: the task goes back to Doing in the same step.
+                api(self.kai_ctx, "POST", f"/api/v1/decisions/{decision['id']}/accept", {"expectedVersion": decision["version"]})
+                stored = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}")
+                self.assertEqual((stored["status"], stored["waitingOn"], stored["blocker"]), ("in_progress", None, None))
+                page = self.page("ada", phone)
+                self.notice(page, task["number"], f"#{task['number']} can continue: the decision was accepted")
+                shot(page, f"waiting-for-resumed-{tag}")
+                activity = api(self.ada_ctx, "GET", f"/api/v1/work/{task['id']}/activity")["items"][0]
+                self.assertEqual((activity["automation"], activity["status"]["to"]), ("wait_resolved", "in_progress"))
+
+    def test_10_a_done_task_sends_the_task_that_waited_for_it_back_to_doing(self):
+        for phone in (False, True):
+            with self.subTest(phone=phone):
+                tag = "phone" if phone else "computer"
+                first = self.task(f"Run the power cable {tag}")
+                second = self.block(self.task(f"Fit the gateway {tag}"), blocker="Needs power", waitingOn={"kind": "task", "id": first["id"]})
+                page = self.page("ada", phone); panel = self.panel(page, first)
+                panel.get_by_role("button", name="Status", exact=True).click()
+                page.get_by_role("menuitemradio", name=re.compile(r"^Done")).click()
+                expect(page.locator(".ui-toast")).to_be_visible()
+                stored = api(self.ada_ctx, "GET", f"/api/v1/work/{second['id']}")
+                self.assertEqual((stored["status"], stored["waitingOn"]), ("in_progress", None))
+                self.notice(self.page("ada", phone), second["number"], f"#{second['number']} can continue: #{first['number']} is done")
 
 
 if __name__ == "__main__":

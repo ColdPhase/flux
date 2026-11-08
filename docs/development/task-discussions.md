@@ -220,8 +220,10 @@ effects, atomicity, hooks and lock order apply; the file corrections remain for 
   that result's id). A result with no linked task creates no thread. An explicit public handoff is
   `POST /api/v1/work/:workId/discussion` with `kind: "handoff"` through the same primitive as text; blocker and
   result kinds cannot be requested directly, the generic conversation entry takes no kind, and heartbeats,
-  acknowledgments and private logs never contribute.
-- **Wire.** A message of an explicit effect carries `contribution`: `{ kind: 'blocker' | 'handoff' }` or
+  acknowledgments and private logs never contribute. The one line at Done, "what came of it" (#868, migration
+  0035), is the third such effect: `PATCH { status: 'done', cameOfIt }` with a nonempty line contributes it, marker
+  `came_of_it`, by the same command identity as a blocker (an Undo's `restore` writes nothing).
+- **Wire.** A message of an explicit effect carries `contribution`: `{ kind: 'blocker' | 'handoff' | 'came_of_it' }` or
   `{ kind: 'result', resultId }`. Ordinary text omits it, so human JSON is unchanged; genuine agent authors keep the
   tagged `author` variant. Conversation, task-discussion root/window, the browser and `getDiscussionRoot` agree.
 - **Storage (migration 0040).** `project_messages.contribution_kind` (default `text`, so historical rows are

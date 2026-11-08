@@ -169,8 +169,10 @@ class TasksBoardJourney(unittest.TestCase):
             "diffuser": self.api(ada, "POST", base, {"title": DIFFUSER, "owner": {"kind": "agent", "id": agent["id"]}}, status=201),
             "mount": self.api(ada, "POST", base, {"title": MOUNT, "owner": human(ADA), "dueOn": "2031-05-01"}, status=201),
             "protocol": self.api(kai, "POST", base, {"title": PROTOCOL, "status": "done", "owner": human(KAI)}, status=201),
-            "camera": self.api(ada, "POST", base, {"title": CAMERA, "status": "not_pursued"}, status=201),
+            "camera": self.api(ada, "POST", base, {"title": CAMERA, "status": "done"}, status=201),
         }
+        # A dropped task is Done with a "dropped" note (#868): it is finished first, then dropped.
+        self.api(ada, "PATCH", f"/api/v1/work/{made['camera']['id']}", {"dropped": True, "expectedVersion": made["camera"]["version"]}, status=200)
         made["firmware"] = self.api(kai, "POST", base, {"title": FIRMWARE, "owner": human(KAI), "dependencyIds": [made["order"]["id"]]}, status=201)
         self.api(kai, "POST", f"/api/v1/projects/{pid}/decisions", {"title": PROPOSAL, "rationale": "It works in the dark and stores no images."}, status=201)
         rule = self.api(ada, "POST", f"/api/v1/projects/{pid}/decisions", {"title": RULE, "rationale": "Nothing about a bedroom leaves the lamp."}, status=201)
@@ -561,7 +563,7 @@ class TasksBoardJourney(unittest.TestCase):
         order = rows.filter(has_text=ORDER)
         order.locator(".ws-task__glyph").tap()
         toast = page.locator(".ui-toast")
-        forward = {"open": "in_progress", "in_progress": "done", "done": "open", "blocked": "in_progress", "not_pursued": "open"}[before["status"]]
+        forward = {"open": "in_progress", "in_progress": "done", "done": "open", "blocked": "in_progress"}[before["status"]]
         expect(toast).to_contain_text(f"#{self.numbers['order']} " + {"in_progress": "moved to Doing", "done": "done", "open": "moved to To do"}[forward])
         self.assertEqual(self.task(page, "order")["status"], forward)
         toast.get_by_role("button", name="Undo").tap()

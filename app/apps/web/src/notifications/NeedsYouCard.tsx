@@ -14,6 +14,8 @@ export interface CardHandlers {
   open(item: NeedsYouItem): void;
   discuss(item: NeedsYouItem): void;
   unblock(item: NeedsYouItem): void;
+  /** The person a task waits for says they are done (#868): the task goes back to Doing by itself. */
+  waitingDone(item: NeedsYouItem): void;
   /** Approve all: everything one agent run waits for (F-036 AG-7), in the owner's own session. */
   applyChanges(item: NeedsYouItem): void;
   /** Answers an agent's question with one of its ready-made answers (S14); Undo holds it back for a moment. */
@@ -170,7 +172,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, onSelect
       ) : item.kind === 'blocked' ? (
         <>
           <Button variant="secondary" onClick={() => handlers.open(item)}>Open task</Button>
-          {item.blocked?.waitedBy ? null : <Button variant="quiet" onClick={() => handlers.unblock(item)}>Unblock</Button>}
+          {item.blocked?.waitedBy ? <Button variant="primary" onClick={() => handlers.waitingDone(item)}>Done</Button> : <Button variant="quiet" onClick={() => handlers.unblock(item)}>Unblock</Button>}
         </>
       ) : answers ? (
         <>{answers}</>
@@ -230,6 +232,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, onSelect
               </dl>
             ) : null}
             {full && item.blocked?.waitingFor ? <p className="nyc__reason">Waiting for #{item.blocked.waitingFor.number} {item.blocked.waitingFor.title}</p> : null}
+            {full && item.blocked?.waitingDecision ? <p className="nyc__reason">Waiting for the decision {item.blocked.waitingDecision.title}</p> : null}
             {full && !touch && decision && item.decision?.basedOn.length ? <p className="nyc__based"><span>Based on</span> {item.decision.basedOn.join(' · ')}</p> : null}
             {full && decision && item.decision?.supersedes ? <p className="nyc__based">This replaces the decision <b>{item.decision.supersedes}</b>.</p> : null}
             {full && decision ? (

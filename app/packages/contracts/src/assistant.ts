@@ -82,7 +82,7 @@ export interface AssistantChange {
   owner: { id: string; name: string };
   /** Where the run is: its message (header, Undo) shows once it is no longer working. */
   runState: 'working' | 'done' | 'stopped' | 'failed';
-  /** What an applied change did, in past words for the message's change line: "updated the Wiki page Calibration", "moved #4 to In progress". */
+  /** What an applied change did, in past words for the message's change line: "updated the Wiki page Calibration", "moved #4 to Doing". */
   done: string;
   /** Before and after of what the change did, in words ("Probes", "Calibrate the probes"); null when there is nothing to show. */
   before: string | null;
@@ -154,6 +154,7 @@ const WORK_FIELD_PHRASES: Record<string, { phrase: string; verb: string }> = {
   waitingFor: { phrase: 'set waiting-for of', verb: 'Set waiting-for' },
   /** The tool's own name for it: a saved call keeps the tool's arguments. */
   waitingForUserId: { phrase: 'set waiting-for of', verb: 'Set waiting-for' },
+  waitingOn: { phrase: 'set waiting-for of', verb: 'Set waiting-for' },
 };
 
 /** The object's own verb (UX review P2-5): a finished task is "close", a renamed one "rename". */
@@ -184,11 +185,11 @@ export function assistantPastPhrase(phrase: string): string {
   return `${PAST[phrase.slice(0, space)] ?? phrase.slice(0, space)} ${phrase.slice(space + 1)}`;
 }
 
-const STATUS_WORDS: Record<string, string> = { open: 'Open', in_progress: 'In progress', blocked: 'Blocked', done: 'Done', not_pursued: 'Not pursued' };
+const STATUS_WORDS: Record<string, string> = { open: 'To do', in_progress: 'Doing', blocked: 'Blocked', done: 'Done' };
 const DONE_NOUNS: Record<string, string> = { work: 'task', doc: 'the Wiki page', map: 'the map', thought: 'the thought', link: 'a link', message: 'a message',
   result: 'the result', decision: 'the decision' };
 /**
- * What one applied change did, in past words (F-036 AG-3 change line): "updated the Wiki page Calibration", "moved #4 to In progress",
+ * What one applied change did, in past words (F-036 AG-3 change line): "updated the Wiki page Calibration", "moved #4 to Doing",
  * "added task #7 Order sensors". `status` is a task change's new status, when it changed one.
  */
 export function assistantDoneWords(change: { operation: string; objectType: AssistantObjectType; objectTitle: string; status?: string | null; phrase: string }): string {

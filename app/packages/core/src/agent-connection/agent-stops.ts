@@ -13,7 +13,7 @@ export interface HeldTask {
   id: string;
   number: number;
   title: string;
-  status: 'open' | 'in_progress' | 'blocked' | 'done' | 'not_pursued';
+  status: 'open' | 'in_progress' | 'blocked' | 'done';
   version: number;
   ownerAgentId: string | null;
   parked: boolean;
@@ -106,7 +106,7 @@ export function agentStopUseCases(uow: AgentStopUnitOfWork) {
       const allowed = agent.ownerUserId === principal.id || (task.createdByKind === 'human' && task.createdById === principal.id)
         || await ports.isManager(principal, projectId);
       if (!allowed) throw new ForbiddenError('Only a project manager, the agent\'s owner or the task\'s creator can stop it', 'STOP_NOT_ALLOWED');
-      if (task.ownerAgentId !== agentId || task.parked || task.status === 'done' || task.status === 'not_pursued')
+      if (task.ownerAgentId !== agentId || task.parked || task.status === 'done')
         throw new ConflictError('That agent is not working on this task now', 'AGENT_NOT_WORKING');
       await ports.releaseTask(principal, task);
       const unitsStopped = await ports.rows.stopUnits(workspaceId, projectId, taskId, agentId);

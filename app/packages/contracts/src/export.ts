@@ -312,7 +312,7 @@ const baseExportSchema = {
       required: ['id', 'sequence', 'author', 'body', 'source', 'createdAt'],
       properties: { id, sequence: count, author: ref('actor'), body: text, source: nullable(object({ materialId: id, version: count })), createdAt: time,
         files: list(object({ id, name: text, size: { type: 'integer', minimum: 1 } })),
-        contribution: { oneOf: [object({ kind: { enum: ['blocker', 'handoff'] } }), object({ kind: { const: 'result' }, resultId: id })] } },
+        contribution: { oneOf: [object({ kind: { enum: ['blocker', 'handoff', 'came_of_it'] } }), object({ kind: { const: 'result' }, resultId: id })] } },
     },
     conversation: object({ id, createdBy: ref('actor'), createdAt: time, messages: list(ref('message')) }),
     materialVersion: object({ version: count, title: text, body: text, url: nullable(text), author: ref('actor'), createdAt: time }),
@@ -332,7 +332,7 @@ const baseExportSchema = {
       lifecycle: { oneOf: [object({ state: { const: 'active' } }), object({ state: { const: 'creation_reverted' }, noticeId: id, revertedAt: time, revertedBy: ref('actor') })] },
       creationHistory: object({ origin: nullable({ enum: ['native_agent', 'ai_proposal', 'human'] }), baselineVersion: nullable(count), baseline: {}, proposalId: nullable(id), firstPersistedUseAt: nullable(time),
         notices: list(object({ id, kind: { enum: ['task.created', 'task.creation_reverted'] }, createdBy: ref('actor'), sources: list(ref('objectRef')), createdAt: time })) }),
-      id, number: count, title: text, outcome: text, status: { enum: ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] }, blocker: nullable(text),
+      id, number: count, title: text, outcome: text, status: { enum: ['open', 'in_progress', 'blocked', 'done'] }, blocker: nullable(text), dropped: { type: 'boolean' }, cameOfIt: nullable(text),
       owner: nullable(ref('actor')), parked: nullable(object({ decisionId: id, at: time })), createdBy: ref('actor'), version: count, createdAt: time, updatedAt: time,
     }),
     decision: object({

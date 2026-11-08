@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type 
 import type { WorkRowProjection, WorkStatus } from '@flux/contracts';
 import { AgentIdentity, Icon, Kreska, Morph, StatusGlyph, initials } from '../ui';
 import type { AgentOwners } from '../agents/owners';
-import { STATUS_LABEL, blockedParts, isFinished, taskNumber } from './format';
+import { STATUS_LABEL, blockedParts, isFinished, statusPhrase, taskNumber } from './format';
 import { STATE_KEYS, nextStatus, type StateTarget } from './taskState';
 
 // A task row as drawn (F-026 S-P-Tasks): the state glyph (one tap changes the state), the title, "#number" and
@@ -22,7 +22,7 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
       : owner.id === meId ? 'you' : owner.name;
   const rest = [
     item.status === 'blocked' && item.waitingFor ? `waiting for ${item.waitingFor.name}` : null,
-    item.status === 'blocked' ? (({ person, reason, thing }) => reason && thing && !person ? `waiting for ${reason}` : reason)(blockedParts(item)) : null,
+    item.status === 'blocked' ? (({ person, on, reason, thing }) => on ? `waiting for ${on}` : reason && thing && !person ? `waiting for ${reason}` : reason)(blockedParts(item)) : null,
     waiting ? `waits for ${waiting} ${waiting === 1 ? 'task' : 'tasks'}` : null,
     // The rule a task follows is in its panel or sheet, not on the row (#763 LD-2).
     item.relations.sourceMessages > 0 ? 'from a message' : null,
@@ -33,7 +33,7 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
     <>
       <span className="ui-task-number">{taskNumber(item)}</span>
       {' · '}{who}
-      {item.parked ? null : <Morph value={item.status} changeKey={item.id} className="ws-task__word">{` · ${STATUS_LABEL[item.status]}`}</Morph>}
+      {item.parked ? null : <Morph value={item.status} changeKey={item.id} className="ws-task__word">{` · ${statusPhrase(item)}`}</Morph>}
       {rest.map((part) => ` · ${part}`).join('')}
     </>
   );

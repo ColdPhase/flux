@@ -18,7 +18,7 @@ export interface HeldTaskRow {
   workspaceId: string;
   number: number;
   title: string;
-  status: 'open' | 'in_progress' | 'blocked' | 'done' | 'not_pursued';
+  status: 'open' | 'in_progress' | 'blocked' | 'done';
   version: number;
   ownerAgentId: string | null;
   parked: boolean;

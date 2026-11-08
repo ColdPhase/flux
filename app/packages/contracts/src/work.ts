@@ -18,8 +18,8 @@ export const taskActivityPath = (workId: string) => `/api/v1/work/${workId}/acti
 
 /**
  * A direct public contribution to a task thread. `handoff` marks an explicit public instruction to the next
- * person or agent; it carries no authority by itself. Blocker and result contributions are never sent this way:
- * they come from saving a blocker or publishing a result.
+ * person or agent; it carries no authority by itself. Blocker, "what came of it" and result contributions are never sent
+ * this way: they come from saving a blocker, finishing a task with a line, or publishing a result.
  */
 export interface TaskContributionCommand extends SendMessageCommand {
   kind?: 'text' | 'handoff';
@@ -36,6 +36,8 @@ export interface TaskDiscussion {
   messages: import('./conversation.js').ConversationMessage[];
   messagePage: import('./conversation.js').Conversation['messagePage'];
 }
+/** The person a blocked task waits for says they are done (#868): the task goes back to Doing by itself. */
+export const taskWaitingDonePath = (workId: string) => `/api/v1/work/${workId}/waiting-done`;
 export const taskCreationUndoPath = (workId: string) => `/api/v1/work/${workId}/creation-undo`;
 export interface UndoTaskCreationCommand { clientCommandId: string; expectedVersion: number }
 /** `own_creation` (#763 B1): a person's own unchanged, unused task, which the toast after creating it offers to undo. */
@@ -54,7 +56,8 @@ export const projectLinksPath = (projectId: string) => `/api/v1/projects/${proje
 /** Work owned by the caller across every project of the workspace they can currently read. */
 export const workspaceAssignedWorkPath = (workspaceId: string) => `/api/v1/workspaces/${workspaceId}/work/assigned`;
 
-export const WORK_STATUSES = ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] as const;
+/** A task has four states (#868). A task that was dropped is `done` with `dropped` set and, when someone said so, a `cameOfIt` line. */
+export const WORK_STATUSES = ['open', 'in_progress', 'blocked', 'done'] as const;
 export type WorkStatus = (typeof WORK_STATUSES)[number];
 export type DecisionStatus = 'proposed' | 'accepted' | 'superseded';
 export type ResultFinding = 'positive' | 'negative';
@@ -68,7 +71,7 @@ export type LinkOwnerType = WorkObjectType | 'doc';
  * character plan intent key.
  */
 export const WORK_LIMITS = { title: 200, outcome: 4000, blocker: 2000, rationale: 20_000, evidence: 20_000, links: 50,
-  criteria: 20, criterion: 1000, dependencies: 50, intentKey: 120 } as const;
+  criteria: 20, criterion: 1000, dependencies: 50, intentKey: 120, cameOfIt: 500 } as const;
 
 /** A page of a task's activity (#488): `limit` 1-`max`, `default` when omitted. */
 export const TASK_ACTIVITY_PAGE = { default: 30, max: 50 } as const;
@@ -160,6 +163,17 @@ export interface TaskPrerequisite {
   met: boolean;
 }
 
+/**
+ * What a blocked task waits for besides a person (#868): one decision or one other task of the same space. When the decision is accepted
+ * or the task is done, the task goes back to Doing by itself.
+ */
+export type WaitingOn =
+  | { kind: 'decision'; id: string; title: string }
+  | { kind: 'task'; id: string; number: number; title: string };
+
+/** What a task waits for, as a phrase after "waiting for": "the decision Use LoRa for the far beds" or "#7" (#868). */
+export const waitingPhrase = (on: WaitingOn): string => on.kind === 'decision' ? `the decision ${on.title}` : `#${on.number}`;
+
 export interface WorkItem extends ProjectObject {
   lifecycle?: TaskLifecycle;
   creationUndo?: TaskCreationUndoEligibility;
@@ -183,6 +197,12 @@ export interface WorkItem extends ProjectObject {
   blocker: string | null;
   /** Only while blocked: the one person it waits for (#550), a member of the project; null for no one. */
   waitingFor: NamedPrincipal | null;
+  /** Only while blocked: the one decision or task it waits for (#868); never together with `waitingFor`. */
+  waitingOn: WaitingOn | null;
+  /** Only while done: the task was dropped, not finished (#868: "Not pursued" is Done with a "dropped" note). */
+  dropped: boolean;
+  /** Only while done: the one optional line, "what came of it" (#868); it was also written in the task's discussion. */
+  cameOfIt: string | null;
   /**
    * The calendar day it is due (#488): `YYYY-MM-DD`, with no time zone and no time, so it is the same day for everyone;
    * null for none. Years 1970-9999.
@@ -231,6 +251,8 @@ export interface CreateWorkCommand {
   blocker?: string;
   /** Who a blocked task waits for (#550): a person with access to the project. Applies to blocked work only. */
   waitingFor?: PrincipalRef | null;
+  /** A decision or a task of this space a blocked task waits for (#868); not together with `waitingFor`. */
+  waitingOn?: { kind: 'decision' | 'task'; id: string } | null;
   /** The calendar day it is due (#488), `YYYY-MM-DD`; omitted or null for none. */
   dueOn?: string | null;
   /** Messages, sketch thoughts or material versions the work comes from. They are linked, never moved or copied. */
@@ -257,9 +279,10 @@ export interface TaskCreationNotice {
   workspaceId: string;
   projectId: string;
   workId: string;
-  kind: 'task.created' | 'task.creation_reverted' | 'task.blocked' | 'task.unblocked';
+  kind: 'task.created' | 'task.creation_reverted' | 'task.blocked' | 'task.unblocked' | 'task.resumed';
   /** For a blocked line (#550): who the task waits for and the reason, as the line said them. */
   waitingFor?: NamedPrincipal | null;
+  /** For a blocked line, the reason; for a resumed line (#868), what was resolved: "the decision was accepted". */
   reason?: string | null;
   /** Current lifecycle; original notice identity and actor remain unchanged. */
   lifecycle?: TaskLifecycle;
@@ -317,6 +340,15 @@ export interface UpdateWorkCommand extends VersionPrecondition {
   blocker?: string | null;
   /** Who a blocked task waits for (#550); `null` clears it. It also clears when the task leaves Blocked. */
   waitingFor?: PrincipalRef | null;
+  /**
+   * A decision still proposed, or a task not yet done, of this space that a blocked task waits for (#868); `null` clears it. A task waits
+   * for one thing: naming one clears the other. It also clears when the task leaves Blocked.
+   */
+  waitingOn?: { kind: 'decision' | 'task'; id: string } | null;
+  /** `true` with Done: the task was dropped, not finished (#868). It clears when the task leaves Done. */
+  dropped?: boolean;
+  /** One optional line at Done, "what came of it" (#868); a nonempty line is also written in the task's discussion. `null` clears it. */
+  cameOfIt?: string | null;
   /** The calendar day it is due (#488), `YYYY-MM-DD`; `null` clears it. Changing only the due date is an ordinary versioned change. */
   dueOn?: string | null;
   /**
@@ -348,9 +380,12 @@ export interface TaskActivityEntry {
    * so a reader never mistakes it for the author's own action. `agent_deleted`: the owner deleted the agent that held the task
    * and it came back to them (#1003).
    */
-  automation?: 'github_rule' | 'agent_rule' | 'agent_deleted';
-  /** `kind: 'status'`. `blocker` and `waitingFor` are what a move into Blocked said; null for any other `to`. */
-  status?: { from: WorkStatus; to: WorkStatus; blocker: string | null; waitingFor: NamedPrincipal | null };
+  automation?: 'github_rule' | 'agent_rule' | 'agent_deleted' | 'wait_resolved';
+  /**
+   * `kind: 'status'`. `blocker`, `waitingFor` and `waitingOn` (a decision's or task's name, as the line said it) are what a move into Blocked said;
+   * null for any other `to`. `dropped` is for a move into Done.
+   */
+  status?: { from: WorkStatus; to: WorkStatus; blocker: string | null; waitingFor: NamedPrincipal | null; waitingOn?: string | null; dropped?: boolean };
   /** `kind: 'owner'`. Null is nobody. */
   owner?: { from: NamedPrincipal | null; to: NamedPrincipal | null };
   /** `kind: 'due'`. Calendar dates, `YYYY-MM-DD`, or null for none. */

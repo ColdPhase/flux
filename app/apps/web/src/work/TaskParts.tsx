@@ -33,11 +33,11 @@ export function useStateKeys(enabled: boolean, choose: (status: WorkStatus) => v
  * The task's state: one row whose value opens the four states with their keys, on a computer and on a phone alike (#868).
  * Choosing changes it at once; the panel offers Undo. A dropped task shows as Done with its note.
  */
-export function StatusControl({ status, disabled, onChoose }: { status: WorkStatus; disabled?: boolean; onChoose: (status: WorkStatus) => void }) {
+export function StatusControl({ status, dropped, disabled, onChoose }: { status: WorkStatus; dropped?: boolean; disabled?: boolean; onChoose: (status: WorkStatus) => void }) {
   const options = TASK_STATES.map((value, index) => ({ value, label: STATUS_LABEL[value], key: String(index + 1), icon: <StatusGlyph status={value} size={16} /> }));
   return (
-    <PropertyMenu label="Status" value={status === 'not_pursued' ? 'done' : status} options={options} disabled={disabled} onChoose={(value) => onChoose(value as WorkStatus)}>
-      <StatusGlyph status={status} size={16} /><Morph value={status}>{statusPhrase(status)}</Morph>
+    <PropertyMenu label="Status" value={status} options={options} disabled={disabled} onChoose={(value) => onChoose(value as WorkStatus)}>
+      <StatusGlyph status={status} size={16} /><Morph value={status}>{statusPhrase({ status, dropped })}</Morph>
     </PropertyMenu>
   );
 }

@@ -35,7 +35,7 @@ export function nativeWorkViewKeySource(projectId: string, actor: PrincipalRef, 
   if (selection.purpose === 'tasks') {
     const group = selection.group;
     if (group === 'all' || ['in_progress', 'blocked', 'open', 'parked', 'finished'].includes(group)) {
-      const predicate = group === 'all' ? sql`true` : group === 'parked' ? sql`${unfinished} AND ${parked}` : group === 'finished' ? sql`${w.status} IN ('done', 'not_pursued')` : sql`${w.status} = ${group} AND NOT ${parked}`;
+      const predicate = group === 'all' ? sql`true` : group === 'parked' ? sql`${unfinished} AND ${parked}` : group === 'finished' ? sql`${w.status} = 'done'` : sql`${w.status} = ${group} AND NOT ${parked}`;
       // "Mine" is the person's own tasks and those owned by their own agents (#865): an agent works for its owner.
       const owner = !selection.mine ? sql`true` : actor.kind === 'human'
         ? sql`(${w.ownerUserId} = ${actor.id} OR ${w.ownerAgentId} IN (SELECT ${schema.agents.id} FROM ${schema.agents} WHERE ${schema.agents.ownerUserId} = ${actor.id}))`

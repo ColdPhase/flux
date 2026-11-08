@@ -17,7 +17,7 @@ principals with current read access to the project; there is no second audience.
 
 | Object | Fields | Rules |
 | --- | --- | --- |
-| Work item | title, outcome (may be empty), owner (person or #29 agent, or nobody), status `open` · `in_progress` · `blocked` · `done` · `not_pursued`, optional blocker (only while blocked), optional `dueOn` ([below](#due-date-and-activity-488)), `parked`, version | The owner must currently be able to read the project (`OWNER_WITHOUT_ACCESS`). Leaving `blocked` clears the blocker. Small tasks need only a title; no report is required. Explicitly saving a nonempty blocker also contributes it to the task conversation ([below](#contributions-to-the-task-conversation-154)). |
+| Work item | title, outcome (may be empty), owner (person or #29 agent, or nobody), status `open` · `in_progress` · `blocked` · `done` ([four states](#statuses-waiting-and-what-came-of-it-868)), optional blocker, one thing it waits for and `dropped` and `cameOfIt` (only while blocked or done), optional `dueOn` ([below](#due-date-and-activity-488)), `parked`, version | The owner must currently be able to read the project (`OWNER_WITHOUT_ACCESS`). Leaving `blocked` clears the blocker. Small tasks need only a title; no report is required. Explicitly saving a nonempty blocker also contributes it to the task conversation ([below](#contributions-to-the-task-conversation-154)). |
 | Decision | title, rationale, status `proposed` · `accepted` · `superseded`, proposed by, decided by (a person), `supersedes` / `supersededBy`, version | People and agents with write access propose. Only a person with write access accepts (`DECISION_NEEDS_PERSON`); see [acceptance authority](#acceptance-authority-o-009-250). Only an accepted decision can be superseded (`SUPERSEDES_NOT_CURRENT`); accepting the replacement marks the earlier one `superseded` and keeps its title and rationale. The screens call a superseded decision "replaced". |
 | Result | title, finding `positive` · `negative`, evidence | Immutable once recorded, so later thinking never rewrites it. `finishes: { id, expectedVersion }` names one of its linked work items, which becomes `done`: a negative result can finish an experiment. A stale version is `409 VERSION_CONFLICT` with the current work; `not_pursued` work is `409 WORK_NOT_FINISHABLE`. Nothing is stored when finishing is refused. A result linked to work (`work`) also contributes to each task's conversation ([below](#contributions-to-the-task-conversation-154)). |
 | Link | role, from (work/decision/result, or a [doc](docs-wiki.md)), to (message, thought, material version, work, decision, result, doc, project sketch), titles of both ends | Roles: `source` (created from / based on), `affects`, `still_applies` (no longer written, #871), `about`, `related`, and `mentions` (the current text of a doc refers to it, #112). Every target must exist in the same project (`LINK_TARGET_NOT_FOUND`). Identical links are stored once. |
@@ -54,6 +54,7 @@ In Details, a person without write access sees **Who decides** in place of the A
 | --- | --- |
 | `GET/POST /api/v1/projects/:projectId/work` | List (page `limit`/`offset`) or create. |
 | `GET/PATCH /api/v1/work/:workId` | `PATCH` needs `If-Match: "<version>"` (or `expectedVersion`): 428 without, 409 `VERSION_CONFLICT` with the current object when stale. Optional `clientCommandId` (UUID, #154): see below. |
+| `POST /api/v1/work/:workId/waiting-done` | The person a blocked task waits for says they are done ([below](#statuses-waiting-and-what-came-of-it-868)). Needs `If-Match`; reading the space is enough. |
 | `GET /api/v1/work/:workId/activity` | The task's history of status, owner, due date and title changes, newest first: `?limit=` 1-50 (30 when omitted) and `?before=` (the `nextBefore` of the page before). Read by exactly those who can read the task ([below](#due-date-and-activity-488)). |
 | `GET/POST /api/v1/projects/:projectId/decisions`, `GET /api/v1/decisions/:id` | Propose with `sources`, `affects`, `supersedes`. |
 | `POST /api/v1/decisions/:id/accept` | Needs `If-Match`; no body (`{ expectedVersion? }` is the same as the header). |
@@ -86,6 +87,38 @@ operation and UUID. An exact retry rechecks current project write access, the pr
 returns the original outcome; a changed intent is `409 IDEMPOTENCY_CONFLICT`. Without it nothing deduplicates a
 repeated result, and the `If-Match` version fences a stale identical blocker save. Browsers always send one.
 The receipt is separate from the 24-hour `Idempotency-Key` response cache and from the #152 connection-command ledger.
+
+## Statuses, waiting and what came of it (#868)
+
+**Four states.** `open` (To do), `in_progress` (Doing), `blocked` and `done`. "Not pursued" is `done` with `dropped: true`; there is
+no fifth state, and no existing data to convert (migration 0035, F-038). `dropped` and the one-line `cameOfIt` live only while the
+task is done: a command that sets them on another state is `400`, and leaving Done clears both (what was written in the discussion
+stays). `cameOfIt` is one line of at most 500 characters (line breaks become spaces); a nonempty line is also one authored
+contribution to the task's discussion, `contribution.kind` `came_of_it`, written like a saved blocker (the same command identity,
+never twice for a retry, and not at all for an Undo's `restore`). It is sealed in an encrypted space like the blocker.
+
+**One thing to wait for.** A blocked task waits for one person (`waitingFor`, #550), one decision (`waitingOn: { kind: 'decision', id }`,
+still proposed) or one other task of the space (`waitingOn: { kind: 'task', id }`, not done), never two (`400`); naming one clears the
+other, and leaving Blocked clears all. Refused with `422`: `WAITING_ON_NOT_FOUND` (another space), `WAITING_ON_RESOLVED` (the decision is
+decided or the task done), `WAITING_ON_ITSELF`, `WAITING_ON_CYCLE` (that task waits for this one, however far round). The reads show
+`waitingOn: { kind, id, title, number? }`. The blocked line of the stream reads "waiting for #7" or "waiting for the decision …".
+Prerequisites (#152) are a separate plan fact and stay as they were.
+
+**Resuming by itself.** When what a blocked task waits for is resolved, the task goes to Doing in the same transaction (To do
+when a prerequisite is still open, since Doing needs every one done):
+
+| It waits for | Resolved when | The line says |
+| --- | --- | --- |
+| a decision | the decision is accepted (`POST /decisions/:id/accept`) | the decision was accepted |
+| a task | that task becomes done, by `PATCH`, by a result that finishes it, or dropped | #7 is done / #7 was dropped |
+| a person | they say they are done: `POST /work/:id/waiting-done` (the Inbox item's Done, or the panel's) | Jonas is done |
+
+Each resumed task keeps an activity entry marked `automation: 'wait_resolved'`, a `task.resumed` line in the stream ("#4 can
+continue: the decision was accepted", `reason` is the phrase), and tells its owner once: a person gets a notification of that
+sentence (`project.work_updated.v1` with `resumedFor`, `reason` and `taskId`), an agent that holds it picks it up again as when it was
+given the task (an `assigned` row in `agent_task_events`, #856). The tasks are found under the project graph lock and locked with the
+rest of the command's fence, then read again: one that moved on meanwhile is left alone. A task that a pull request's rule moves to
+Done (#74) does not resume waiting tasks yet.
 
 ## Due date and activity (#488)
 

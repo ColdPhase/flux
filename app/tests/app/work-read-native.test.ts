@@ -110,10 +110,10 @@ describe('bounded native work reads through HTTP and current native fences', () 
     for (const [item, status] of [[parkDone, 'done'], [parkStopped, 'not_pursued']] as const) {
       const current = expectStatus(await owner.browser.request('GET', `/api/v1/work/${item.id}`), 200) as WorkItem;
       assert.ok(current.parked);
-      await assert.rejects(pool.query('UPDATE project_work_items SET status=$1 WHERE id=$2', [status, item.id]),
+      await assert.rejects(pool.query('UPDATE project_work_items SET status=$1, dropped=$2 WHERE id=$3', ['done', dropped, item.id]),
         (error: unknown) => (error as { code?: string }).code === '23514', 'illegal parked-finished native storage remains rejected');
       const finished = expectStatus(await owner.browser.request('PATCH', `/api/v1/work/${item.id}`,
-        { body: { status }, headers: { 'if-match': `"${current.version}"` } }), 200) as WorkItem;
+        { body: { status: 'done', ...(dropped ? { dropped } : {}) }, headers: { 'if-match': `"${current.version}"` } }), 200) as WorkItem;
       assert.equal(finished.parked, null, 'actual native finish clears parking');
     }
     const updated = await get<ProjectWorkSummary>(`${path}/work-summary`);

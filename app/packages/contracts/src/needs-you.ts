@@ -54,8 +54,12 @@ export interface NeedsYouBlocked {
   /** Why it is blocked, in the owner's words; null when none was recorded. */
   blocker: string | null;
   since: string;
-  /** What it waits for: the first unfinished prerequisite, when it has any. */
+  /** What it waits for: the task it waits for (#868), else the first unfinished prerequisite, when it has any. */
   waitingFor: NeedsYouTaskRef | null;
+  /** The decision it waits for (#868), so the item says "Waiting for the decision …". */
+  waitingDecision?: { id: string; title: string } | null;
+  /** What the task waits for by name, so an Undo of Unblock can put it back (#868). */
+  waitingOn?: { kind: 'decision' | 'task'; id: string } | null;
   /** Set when this item is for the person a blocked task waits for (#550): who is waiting, "Ada is waiting for you". */
   waitedBy?: string | null;
   /** The person a blocked task waits for, so an Undo of Unblock can put them back. */

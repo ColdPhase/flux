@@ -139,8 +139,9 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
     case 'project.work_updated.v1': {
       const assignee = typeof event.data.assignedTo === 'string' ? event.data.assignedTo : null;
       const waiting = typeof event.data.waitingFor === 'string' ? event.data.waitingFor : null;
+      const resumedFor = typeof event.data.resumedFor === 'string' ? event.data.resumedFor : null;
       const workId = id(event.data.workId);
-      if (!workId || (!assignee && !waiting)) return [];
+      if (!workId || (!assignee && !waiting && !resumedFor)) return [];
       const work = await facts.work(workId);
       if (!work || work.projectId !== event.objectId) return [];
       const result: Candidate[] = [];
@@ -159,6 +160,17 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
         title: `${who} is waiting for you: #${work.number} ${excerpt(work.title, 80)}`,
         body: work.blocker ? excerpt(work.blocker) : `Blocked in ${work.projectName}`, url: `/projects/${work.projectId}/tasks?open=work:${work.id}`, who,
       });
+      // What a blocked task waited for is resolved (#868): its owner is told once, "#4 can continue: the decision was accepted".
+      if (resumedFor && reachable(resumedFor) && work.ownerUserId === resumedFor && work.status !== 'blocked') {
+        const finishedId = event.data.reason === 'work' ? id(event.data.taskId) : null;
+        const finished = finishedId ? await facts.work(finishedId) : null;
+        const because = event.data.reason === 'decision' ? 'the decision was accepted'
+          : event.data.reason === 'work' ? (finished ? `#${finished.number} ${finished.dropped ? 'was dropped' : 'is done'}` : 'the task it waited for is done') : `${who} is done`;
+        result.push({
+          userId: resumedFor, reason: 'assigned', source: { type: 'project', id: work.projectId },
+          title: `#${work.number} can continue: ${because}`, body: excerpt(work.title, 80), url: `/projects/${work.projectId}/tasks?open=work:${work.id}`, who,
+        });
+      }
       return result;
     }
     case 'project.decision_proposed.v1':

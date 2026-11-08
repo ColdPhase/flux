@@ -213,10 +213,10 @@ test('root negative controls: assignment, task fence, taken role, payload, grant
   await refuse(execute.root('take-a', { assignmentConnectionId: marekClaude.connection.id }), 'COWORK_ASSIGNMENT_REFUSED');
   // Exact task version; closed tasks.
   await refuse(execute.root('take-a', { expectedTaskVersion: a.version + 1 }), 'COWORK_VERSION_CONFLICT');
-  for (const status of ['done', 'not_pursued'] as const) {
-    const closed = await w.task(`Closed ${status}`);
+  for (const dropped of [false, true]) {
+    const closed = await w.task(`Closed ${dropped ? 'dropped' : 'done'}`);
     const edited = expectStatus(await w.hubert.browser.request('PATCH', `/api/v1/work/${closed.id}`,
-      { body: { status }, headers: { 'if-match': `"${closed.version}"` } }), 200) as WorkItem;
+      { body: { status: 'done', ...(dropped ? { dropped } : {}) }, headers: { 'if-match': `"${closed.version}"` } }), 200) as WorkItem;
     const onClosed = await creator(w, codex, edited, 'execute');
     await refuse(onClosed.root('take-closed'), 'COWORK_TASK_CLOSED', onClosed.run);
   }

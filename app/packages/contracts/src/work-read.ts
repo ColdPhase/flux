@@ -1,5 +1,5 @@
 import type { ProjectAccess } from './access.js';
-import type { Decision, NamedPrincipal, ObjectLink, ResultFinding, TaskLifecycle, WorkItem, WorkObjectType, WorkResult, WorkStatus } from './work.js';
+import type { Decision, NamedPrincipal, ObjectLink, ResultFinding, TaskLifecycle, WaitingOn, WorkItem, WorkObjectType, WorkResult, WorkStatus } from './work.js';
 
 /** Bounded native reads (#155/#151/#136). These projections are NOT full WorkItem DTOs. */
 export const projectWorkSummaryPath = (projectId: string) => `/api/v1/projects/${projectId}/work-summary`;
@@ -80,6 +80,12 @@ export interface WorkRowProjection extends NativeRowBase {
   blocker: string | null;
   /** The one person a blocked task waits for (#550). */
   waitingFor: NamedPrincipal | null;
+  /** The one decision or task a blocked task waits for (#868), never together with `waitingFor`. */
+  waitingOn: WaitingOn | null;
+  /** A Done task that was dropped (#868): "Done · dropped". */
+  dropped: boolean;
+  /** A Done task's one line, "what came of it" (#868); null for none. */
+  cameOfIt: string | null;
   /** The calendar day it is due (#488), `YYYY-MM-DD`; null for none. */
   dueOn: string | null;
   parked: WorkItem['parked'];

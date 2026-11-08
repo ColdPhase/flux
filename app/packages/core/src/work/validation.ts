@@ -31,6 +31,23 @@ export function text(value: unknown, label: string, maximum: number): string {
   return value.trim();
 }
 
+/** The one optional line at Done (#868): one line, at most `WORK_LIMITS.cameOfIt` characters; empty or null is none. */
+export function cameOfIt(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== 'string') throw new InvalidInputError('cameOfIt must be text or null');
+  const line = value.replace(/\s*\n\s*/g, ' ').trim();
+  if (line.length > WORK_LIMITS.cameOfIt) throw new InvalidInputError(`cameOfIt must be at most ${WORK_LIMITS.cameOfIt} characters`);
+  return line || null;
+}
+
+/** A decision or a task a blocked task waits for (#868); null clears it. */
+export function waitingOn(value: unknown): { kind: 'decision' | 'task'; id: string } | null {
+  if (value === null) return null;
+  const given = value as { kind?: unknown; id?: unknown } | undefined;
+  if (!given || typeof given !== 'object' || (given.kind !== 'decision' && given.kind !== 'task')) throw new InvalidInputError('waitingOn must be a decision or a task: { kind, id }');
+  return { kind: given.kind, id: id(given.id, 'waitingOn.id') };
+}
+
 export function status(value: unknown): WorkStatus {
   if (typeof value !== 'string' || !(WORK_STATUSES as readonly string[]).includes(value))
     throw new InvalidInputError(`status must be one of ${WORK_STATUSES.join(', ')}`);

@@ -88,7 +88,7 @@ export type GithubRuleOutcome =
   /** `task`: the native status or blocker changes; otherwise only Ready to close or the rule's block changes. */
   | { kind: 'apply'; effect: GithubRuleEffect; task: boolean };
 
-const FINISHED: ReadonlySet<WorkStatus> = new Set(['done', 'not_pursued']);
+const FINISHED: ReadonlySet<WorkStatus> = new Set(['done']);
 export const GITHUB_CHECK_NAME_LIMIT = 200;
 
 /** Ready to close for tasks with written criteria (Flux never checks them off), Complete for the others. */

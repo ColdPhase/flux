@@ -100,8 +100,9 @@ interface CardProps {
 function Card({ item, agentOwner, meId, writable, hintId, saving, dragged, lifted, onPointerDown, onClickCapture, onKeyDown, onKeyUp, onBlur, onOpen }: CardProps) {
   const blocked = item.status === 'blocked';
   const owner = item.owner;
-  const note = saving ? 'Saving…' : item.status === 'not_pursued' ? DROPPED : null;
-  const classes = ['tb-card', blocked && 'tb-card--blocked', item.status === 'not_pursued' && 'tb-card--set-aside',
+  const dropped = item.status === 'done' && item.dropped;
+  const note = saving ? 'Saving…' : dropped ? DROPPED : null;
+  const classes = ['tb-card', blocked && 'tb-card--blocked', dropped && 'tb-card--set-aside',
     dragged && 'is-dragging', lifted && 'is-lifted', saving && 'is-saving'].filter(Boolean).join(' ');
   return (
     <li className={classes} data-card-id={item.id} aria-busy={saving || undefined}

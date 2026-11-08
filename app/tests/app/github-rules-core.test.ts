@@ -97,8 +97,8 @@ describe('GitHub task rule evaluation (#74 G-1a)', () => {
     assert.deepEqual([refailed.code, refailed.blocker, refailed.blockedBy], ['check_failed', 'Check “firmware / test” failed on PR #42', 'check']);
   });
 
-  test('parked, done and not-pursued work, inactive rules and unreadable links are left alone', () => {
-    for (const state of [task({ parked: true }), task({ status: 'done', version: 4 }), task({ status: 'not_pursued', version: 4 })])
+  test('parked and done work, inactive rules and unreadable links are left alone', () => {
+    for (const state of [task({ parked: true }), task({ status: 'done', version: 4 })])
       assert.deepEqual(evaluateGithubRule(rule(), state, [merged(42)]), { kind: 'none', repin: false });
     for (const state of ['suspended', 'off'] as const) assert.deepEqual(evaluateGithubRule(rule({ state }), task(), [pull(42)]), { kind: 'none', repin: false });
     assert.deepEqual(evaluateGithubRule(rule(), task(), []), { kind: 'none', repin: false }, 'related-only links are not inputs');

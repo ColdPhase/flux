@@ -35,7 +35,7 @@ import { policyWorkAccess } from '../work/access.js';
 
 const human = (id: string): Principal => ({ kind: 'human', id });
 const agent = (id: string): Principal => ({ kind: 'agent', id });
-const FINISHED = new Set(['done', 'not_pursued']);
+const FINISHED = new Set(['done']);
 const IN_FLIGHT = ['queued', 'reading', 'dispatching'];
 /** The person's own line when "Give it to" could not give them the task because the agent they named has no access to this space. */
 const notTakenWords = (agentName: string) => `My agent ${agentName} can't work in this space, so it hasn't taken this task. It's still with me.`;

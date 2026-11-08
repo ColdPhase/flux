@@ -346,7 +346,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
     await run.call('flux_update_task', { workId: renamed.id, expectedVersion: renamed.version, changes: { title: 'Calibrate the probes at two depths' } });
     await run.call('flux_update_task', { workId: retitled.id, expectedVersion: retitled.version, changes: { title: 'Lamp driver, rev B' } });
     await complete(run.runId);
-    // A person moves the renamed task to In progress; another edits the other title.
+    // A person moves the renamed task to Doing; another edits the other title.
     const current = (await pool.query(`SELECT version FROM project_work_items WHERE id = $1`, [renamed.id])).rows[0].version as number;
     await patchWork(peer, renamed.id, current, { status: 'in_progress' });
     const other = (await pool.query(`SELECT version FROM project_work_items WHERE id = $1`, [retitled.id])).rows[0].version as number;

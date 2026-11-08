@@ -213,7 +213,7 @@ export function notificationFactRows(db: DbExecutor) {
     async work(workId: string) {
       const w = schema.projectWorkItems;
       const [read] = await openRows(db, 'project_work_items', await db.select({ id: w.id, workspaceId: w.workspaceId, projectId: w.projectId, title: w.title, number: w.number, ownerUserId: w.ownerUserId,
-        waitingForUserId: w.waitingForUserId, status: w.status, blocker: w.blocker }).from(w).where(and(eq(w.id, workId), isNull(w.creationRevertedAt))));
+        waitingForUserId: w.waitingForUserId, status: w.status, blocker: w.blocker, dropped: w.dropped }).from(w).where(and(eq(w.id, workId), isNull(w.creationRevertedAt))));
       if (!read) return null;
       const { workspaceId: _workspace, ...row } = read; void _workspace;
       return { ...row, projectName: await projectName(row.projectId) };

@@ -1,7 +1,7 @@
 import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useRevalidator } from 'react-router';
-import type { ObjectLink, Project, ProjectPerson, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
+import { waitingPhrase, type ObjectLink, type Project, type ProjectPerson, type WorkspaceMember, type WorkStatus, type WorkDetailObject, type WorkDetailProjection } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useStreamEvents } from '../api/stream';
 import { AgentIdentity, Avatar, Button, Icon, Input, Kreska, Morph, PanelGlyph, PanelMeta, StatusGlyph, useToast, usePop, Select, Option } from '../ui';
@@ -16,7 +16,7 @@ import { useNeedsYouActions } from '../notifications/useNeedsYouActions';
 import { NotNowButton, NotNowMenu, WaitingLine } from '../notifications/NeedsYouCard';
 import '../notifications/needs-you.css';
 import { useDiscussDecision } from './discuss';
-import { acceptDecision, createResult, proposeDecision, undoTaskCreation, updateWork } from './api';
+import { acceptDecision, proposeDecision, resolveWaiting, undoTaskCreation, updateWork } from './api';
 import { ownTaskAgents } from '../agents/taskAgents';
 import { STATUS_LABEL, decisionLine, firstClause, firstLine, isFinished, linked, resultLine, shortDate, statusPhrase, taskNumber } from './format';
 import { docsLinking } from '../docs/AddToDoc';
@@ -65,7 +65,10 @@ async function loadContext(projectId: string, signal: AbortSignal): Promise<Cont
 function readable(error: unknown) {
   if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') return 'Someone changed this a moment ago. The latest version is shown; try again if it still applies.';
   if (error instanceof ApiError && error.code === 'TASK_PREREQUISITES_UNMET') return 'It can start or finish only when every task it waits for is done and not parked.';
-  if (error instanceof ApiError && error.code === 'WORK_NOT_FINISHABLE') return 'That work was parked or set aside meanwhile, so this result cannot finish it. The latest state is shown.';
+  if (error instanceof ApiError && error.code === 'WAITING_ON_RESOLVED') return 'That is already decided or done, so there is nothing to wait for.';
+  if (error instanceof ApiError && error.code === 'WAITING_ON_CYCLE') return 'That task is waiting for this one.';
+  if (error instanceof ApiError && error.code === 'WAITING_ON_ITSELF') return 'A task cannot wait for itself.';
+  if (error instanceof ApiError && error.code === 'NOT_WAITING_FOR_YOU') return 'This task no longer waits for you. The latest state is shown.';
   if (error instanceof ApiError && error.code === 'SUPERSEDED_DECISION_CHANGED') return 'The decision this would replace has already changed. Check it first.';
   if (error instanceof ApiError && error.status === 404) return 'This is no longer available to you.';
   if (error instanceof ApiError && error.status === 403) return 'You can read this space but not change it.';
@@ -122,7 +125,6 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
     ? <p className="wd-error" role="alert">Space context could not be loaded. Your draft is kept. <button type="button" className="wd-inline" onClick={reload}>Refresh context</button></p>
     : !context ? <p className="wd-muted" role="status">Loading space context…</p> : null;
   if (view.kind === 'propose-decision') return <ProposeDecision key={key} view={view} context={context} contextStatus={contextStatus} revision={tick} isCurrent={commands.isCurrent} />;
-  if (view.kind === 'attach-result') return <AttachResult key={key} view={view} context={context} contextStatus={contextStatus} reload={reload} revision={tick} isCurrent={commands.isCurrent} />;
   if (!projectId || unavailable) return <div className="details"><p className="details__eyebrow">Details</p><h3 className="details__title">Not available</h3><p className="details__lead" role="alert">{contextRead.phase === 'unavailable' ? readable(contextRead.error) : own.read.phase === 'unavailable' ? readable(own.read.error) : 'Open this object in its space.'}</p><Button variant="secondary" onClick={reload}>Refresh details</Button></div>;
   // A task's panel appears in its final layout (#899, motion rule 2): its relationships decide which rows and sections it has,
   // so their first read finishes before it is shown. Once shown, a refresh or another page keeps the panel (and its drafts).
@@ -397,14 +399,19 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   async function setState(next: WorkStatus) {
     if (!writable || busy || next === item.status) return;
     // Undo restores what this change replaced: leaving "blocked" clears its reason, so the reason goes back too.
-    const before = { status: item.status, blocker: item.status === 'blocked' ? item.blocker : null, waitingFor: item.status === 'blocked' ? item.waitingFor : null };
+    const before = { status: item.status, blocker: item.status === 'blocked' ? item.blocker : null, waitingFor: item.status === 'blocked' ? item.waitingFor : null,
+      waitingOn: item.status === 'blocked' ? item.waitingOn : null, dropped: item.status === 'done' && item.dropped, cameOfIt: item.status === 'done' ? item.cameOfIt : null };
     if (await change({ status: next })) {
       // The one wink (F-026 §3) on a task closed: the words carry it without the face.
       const mascot = next === 'done' ? 'wink' as const : undefined;
       // A put-back blocker is not said again in the task's conversation (restore).
-      const restore = before.status === 'blocked' && (before.blocker || before.waitingFor)
-        ? { status: before.status, ...(before.blocker ? { blocker: before.blocker } : {}), ...(before.waitingFor ? { waitingFor: { kind: 'human' as const, id: before.waitingFor.id } } : {}), restore: true as const }
-        : { status: before.status };
+      // Leaving Done clears "dropped" and its line the same way, and they go back too (#868).
+      const restore = before.status === 'blocked' && (before.blocker || before.waitingFor || before.waitingOn)
+        ? { status: before.status, ...(before.blocker ? { blocker: before.blocker } : {}), ...(before.waitingFor ? { waitingFor: { kind: 'human' as const, id: before.waitingFor.id } } : {}),
+          ...(before.waitingOn ? { waitingOn: { kind: before.waitingOn.kind, id: before.waitingOn.id } } : {}), restore: true as const }
+        : before.status === 'done' && (before.dropped || before.cameOfIt)
+          ? { status: before.status, ...(before.dropped ? { dropped: true } : {}), ...(before.cameOfIt ? { cameOfIt: before.cameOfIt } : {}), restore: true as const }
+          : { status: before.status };
       // Closing says it in the words of the wink (#N done); the other states keep their status label, in the board's words.
       // Z takes it back from the panel too, as on the board (#763 C2).
       toast({ message: stateWords(item, next), timeout: 8000, mascot, action: { label: 'Undo', key: 'Z', onClick: () => { void change(restore, latest.current); } } });
@@ -433,7 +440,33 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       ? <AgentIdentity name={(agents.find((agent) => agent.value === shownOwner)?.label ?? item.owner?.name ?? '').replace(/ \(agent\)$/, '')} owner={owners.get(shownOwner.slice('agent:'.length))} icon={16} />
       : <><Avatar name={people.find((person) => person.value === shownOwner)?.name ?? item.owner?.name ?? ''} size="sm" tone={shownOwner === `human:${me.user.id}` ? 'me' : 'neutral'} /><span>{people.find((person) => person.value === shownOwner)?.label ?? item.owner?.name}</span></>)
     : <><Icon name="person" size={16} /><span className="wd-muted">{ownerDraft === '' ? 'Nobody yet' : 'Assign'}</span></>;
-  const waitingOptions = [{ value: '', label: 'No one in particular' }, ...waitingPeople.map((person) => ({ value: person.id, label: person.label }))];
+  // What it can wait for (#868): a person, a decision still to make or another task, one thing. The last two are read only while the blocker is edited.
+  const choosingWait = editingBlocker && writable;
+  const decisionChoices = useWorkChoices(me.user.id, context.project.id, choosingWait ? { purpose: 'choices', choice: 'doc_refs', kind: 'decision' } : null, choosingWait);
+  const taskChoices = useWorkChoices(me.user.id, context.project.id, choosingWait ? { purpose: 'choices', choice: 'result_work' } : null, choosingWait);
+  const waitingValue = item.waitingFor ? `human:${item.waitingFor.id}` : item.waitingOn ? `${item.waitingOn.kind}:${item.waitingOn.id}` : '';
+  const waitOptions = [
+    ...(decisionChoices.page?.items ?? []).flatMap((row) => row.kind === 'decision' && row.status === 'proposed' ? [{ value: `decision:${row.id}`, label: row.title, group: 'Decisions to make' }] : []),
+    ...(taskChoices.page?.items ?? []).flatMap((row) => row.kind === 'work' && row.id !== item.id ? [{ value: `task:${row.id}`, label: `${taskNumber(row)} ${row.title}`, group: 'Tasks' }] : []),
+  ];
+  if (item.waitingOn && !waitOptions.some((option) => option.value === waitingValue))
+    waitOptions.push({ value: waitingValue, label: item.waitingOn.kind === 'task' ? `${taskNumber(item.waitingOn)} ${item.waitingOn.title}` : item.waitingOn.title, group: item.waitingOn.kind === 'task' ? 'Tasks' : 'Decisions to make' });
+  const waitingOptions = [{ value: '', label: 'No one in particular' }, ...waitingPeople.map((person) => ({ value: `human:${person.id}`, label: person.label, group: 'People' })), ...waitOptions];
+  const waitingName = item.waitingFor?.name ?? (item.waitingOn ? waitingPhrase(item.waitingOn) : 'No one in particular');
+  function chooseWait(value: string) {
+    const [kind, ...rest] = value.split(':');
+    const id = rest.join(':');
+    void change(!value ? { waitingFor: null, waitingOn: null } : kind === 'human' ? { waitingFor: { kind: 'human', id } } : { waitingOn: { kind: kind as 'decision' | 'task', id } });
+  }
+  // The person a blocked task waits for says they are done, and it goes back to Doing by itself (#868). Reading the space is enough.
+  const waitedOnMe = item.status === 'blocked' && item.waitingFor?.id === me.user.id;
+  async function waitingDone() {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { await resolveWaiting(item); if (isCurrent()) reload(); }
+    catch (cause) { if (isCurrent()) { setError(readable(cause)); if (cause instanceof ApiError && cause.status === 409) reload(); } }
+    finally { setBusy(false); }
+  }
   const finished = isFinished(item);
   const { toggle: thoughtToggle, links: thoughts } = useThoughtLinks({ item, project: context.project, links: relations.links, reload });
   const composer = useComposerDraft(me.user.id, context.project.id, `task:${item.id}`);
@@ -455,8 +488,12 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         <dl className="wd-rows">
           <div className="wd-row">
             <dt>Status</dt>
-            <dd>{writable ? <StatusControl status={item.status} disabled={busy} onChoose={(status) => void setState(status)} /> : <span className="wd-value"><StatusGlyph status={item.status} size={16} /><span>{reverted ? 'Creation undone · read-only history' : statusPhrase(item.status)}</span></span>}</dd>
+            <dd>{writable ? <StatusControl status={item.status} dropped={item.dropped} disabled={busy} onChoose={(status) => void setState(status)} /> : <span className="wd-value"><StatusGlyph status={item.status} size={16} /><span>{reverted ? 'Creation undone · read-only history' : statusPhrase(item)}</span></span>}</dd>
           </div>
+          {finished && !reverted && (writable || item.cameOfIt) ? <div className="wd-row">
+            <dt>What came of it</dt>
+            <dd><CameOfIt line={item.cameOfIt} dropped={item.dropped} editable={writable} disabled={busy} onSaveLine={(line) => change({ cameOfIt: line })} onDropped={(dropped) => void change({ dropped })} /></dd>
+          </div> : null}
           <div className="wd-row">
             <dt>Owner</dt>
             <dd>{writable
@@ -484,11 +521,14 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
             <div className="wd-blocker__head">
               <span className="ui-pill ui-pill--inv">Blocked</span>
               <p className="wd-blocker__text">
-                {item.waitingFor ? <>Waiting for <b>{item.waitingFor.name}</b>{item.blocker ? ` · ${item.blocker}` : ''}</> : item.blocker || 'Waiting for something; no reason written.'}
+                {item.waitingFor ? <>Waiting for <b>{item.waitingFor.name}</b>{item.blocker ? ` · ${item.blocker}` : ''}</>
+                  : item.waitingOn ? <>Waiting for <button type="button" className="wd-inline" onClick={() => openDetails({ kind: item.waitingOn!.kind === 'decision' ? 'decision' : 'work', id: item.waitingOn!.id, projectId: item.projectId }, { back: 'push' })}><b>{item.waitingOn.kind === 'task' ? `${taskNumber(item.waitingOn)} ${item.waitingOn.title}` : waitingPhrase(item.waitingOn)}</b></button>{item.blocker ? ` · ${item.blocker}` : ''}</>
+                    : item.blocker || 'Waiting for something; no reason written.'}
               </p>
-              {writable && !editingBlocker ? <div className="wd-blocker__acts">
-                <Button ref={editButton} variant="quiet" size="sm" disabled={busy} onClick={() => { blockerBase.current ??= item.version; setEditingBlocker(true); }}>Edit</Button>
-                <Button variant="quiet" size="sm" className="wd-blocker__resolve" disabled={busy} onClick={() => void setState('in_progress')}>Resolve</Button>
+              {(writable || waitedOnMe) && !editingBlocker ? <div className="wd-blocker__acts">
+                {writable ? <Button ref={editButton} variant="quiet" size="sm" disabled={busy} onClick={() => { blockerBase.current ??= item.version; setEditingBlocker(true); }}>Edit</Button> : null}
+                {waitedOnMe ? <Button variant="secondary" size="sm" className="wd-blocker__resolve" disabled={busy} onClick={() => void waitingDone()}>Done</Button>
+                  : <Button variant="quiet" size="sm" className="wd-blocker__resolve" disabled={busy} onClick={() => void setState('in_progress')}>Resolve</Button>}
               </div> : null}
             </div>
             {writable && editingBlocker ? (
@@ -497,9 +537,8 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
                 {commands.state.blocker !== undefined && item.blocker !== blocker ? <p className="wd-muted">Now: {item.blocker || 'No blocker written.'}</p> : null}
                 <div className="wd-waiting">
                   <span id="wd-waiting-label">Waiting for</span>
-                  <PropertyMenu label="Waiting for" value={item.waitingFor?.id ?? ''} options={waitingOptions} disabled={busy}
-                    onChoose={(value) => void change({ waitingFor: value ? { kind: 'human', id: value } : null })}>
-                    <span>{item.waitingFor?.name ?? 'No one in particular'}</span>
+                  <PropertyMenu label="Waiting for" value={waitingValue} options={waitingOptions} disabled={busy} onChoose={chooseWait}>
+                    <span>{waitingName}</span>
                   </PropertyMenu>
                 </div>
                 <div className="wd-blocker__form-acts">
@@ -514,7 +553,6 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
         {writable ? (
           <div className="wd-acts" role="group" aria-label="Task actions">
-            <Button variant="secondary" size="sm" icon="plus" aria-label="Attach a result" onClick={() => openDetails({ kind: 'attach-result', projectId: item.projectId, workId: item.id }, { back: 'push' })}>Result</Button>
             <LinkThoughtButton links={thoughts} toggle={thoughtToggle} />
           </div>
         ) : null}
@@ -559,6 +597,45 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <div className="wd__foot" data-version={item.version}>
         <TaskComposer state={activity} composer={composer} item={item} meId={me.user.id} writable={writable} readOnly={!!reverted} id={composerId} />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The one optional line at Done, "what came of it" (#868), edited where it is read, and whether the task was dropped, not finished.
+ * Enter or leaving the field saves, Esc puts the old line back, and the line is also written in the task's discussion once.
+ */
+function CameOfIt({ line, dropped, editable, disabled, onSaveLine, onDropped }: { line: string | null; dropped: boolean; editable: boolean; disabled?: boolean; onSaveLine: (line: string | null) => Promise<boolean>; onDropped: (dropped: boolean) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const field = useRef<HTMLInputElement>(null);
+  const opener = useRef<HTMLButtonElement>(null);
+  const tried = useRef<string | null>(null);
+  useLayoutEffect(() => { if (editing) field.current?.focus({ preventScroll: true }); }, [editing]);
+  const leave = () => { setEditing(false); tried.current = null; requestAnimationFrame(() => opener.current?.focus({ preventScroll: true })); };
+  async function save(fromBlur: boolean) {
+    const next = draft.trim();
+    if (next === (line ?? '')) { leave(); return; }
+    // Leaving the field after a failed attempt does not send the same line again by itself.
+    if (fromBlur && tried.current === next) return;
+    tried.current = next;
+    if (await onSaveLine(next || null)) leave();
+  }
+  if (!editable) return <span className="wd-value">{line}</span>;
+  return (
+    <div className="wd-came">
+      {editing ? (
+        <input ref={field} type="text" className="wd-came__field" aria-label="What came of it" maxLength={500} value={draft} placeholder="One line, optional" disabled={disabled}
+          onChange={(event) => setDraft(event.target.value.replace(/\n/g, ' '))} onBlur={() => void save(true)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' && !event.nativeEvent.isComposing) { event.preventDefault(); void save(false); }
+            else if (event.key === 'Escape' && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); leave(); }
+          }} />
+      ) : (
+        <button ref={opener} type="button" className="wd-state wd-came__text" disabled={disabled} aria-label={line ? `What came of it: ${line}. Edit` : 'What came of it, add a line'}
+          onClick={() => { setDraft(line ?? ''); setEditing(true); }}><span className={line ? undefined : 'wd-muted'}>{line ?? 'Add a line'}</span></button>
+      )}
+      <label className="wd-came__dropped"><input type="checkbox" checked={dropped} disabled={disabled} onChange={(event) => onDropped(event.target.checked)} /><span>Dropped, not finished</span></label>
     </div>
   );
 }
@@ -888,87 +965,6 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
       {supersedes && (!chosen || chosen.status !== 'accepted') ? <p className="wd-muted">The selected decision must be accepted before this one can replace it.</p> : null}
       {error ? <p className="wd-error" role="alert">{error} <button type="button" className="wd-inline" onClick={(event) => void submit(event)}>Retry</button></p> : null}
       <SubmitSection help={view.source ? 'A person with write access accepts it. The message stays where it is and links here.' : 'A person with write access accepts it.'}><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Propose decision</Button></SubmitSection>
-    </form>
-  );
-}
-
-function AttachResult({ view, context, contextStatus, reload, revision, isCurrent }: { view: WorkFormView; context: Context | null; contextStatus: ReactNode; reload: () => void; revision: number; isCurrent: () => boolean }) {
-  const { openDetails } = useShellActions();
-  const revalidator = useRevalidator();
-  const { me } = useShellData();
-  const candidates = useWorkChoices(me.user.id, view.projectId, { purpose: 'choices', choice: 'result_work', ...(view.workId ? { selected: view.workId } : {}) }, !!context, revision);
-  const open = candidates.page?.items.filter((item) => item.kind === 'work') ?? [];
-  const [title, setTitle] = useState(view.source ? firstLine(view.source.text) : '');
-  const [finding, setFinding] = useState<'positive' | 'negative' | ''>('');
-  const [evidence, setEvidence] = useState('');
-  const [workId, setWorkId] = useState(view.workId ?? '');
-  const [finishes, setFinishes] = useState(false);
-  const [finishVersion, setFinishVersion] = useState<number | null>(null);
-  const [attempt, setAttempt] = useState(() => crypto.randomUUID());
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState('');
-  const evidenceId = useId();
-  const findingId = useId();
-  const workSelectId = useId();
-  const edit = <T,>(set: (value: T) => void) => (value: T) => { set(value); setAttempt(crypto.randomUUID()); setError(''); };
-  const selected = useNativeOwn(me.user.id, view.projectId, 'work', workId || undefined, !!context, revision);
-  const chosen = selected.value?.object.kind === 'work' ? selected.value.object : null;
-  const finishable = !!chosen && !chosen.parked && chosen.status !== 'not_pursued';
-  const canSubmit = !!context && !!candidates.page && (!workId || !!chosen) && (!finishes || finishVersion !== null);
-
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (!title.trim() || !finding || busy || !canSubmit) { if (!finding) setError('Choose whether the finding is positive or negative.'); return; }
-    setBusy(true); setError('');
-    try {
-      const result = await createResult(view.projectId, {
-        title: title.trim(), finding, evidence,
-        ...(view.source ? { sources: [{ type: 'message', id: view.source.messageId }] } : {}),
-        ...(workId ? { work: [workId], ...(finishes && finishVersion !== null ? { finishes: { id: workId, expectedVersion: finishVersion } } : {}) } : {}),
-      }, attempt);
-      if (!isCurrent()) return;
-      revalidator.revalidate();
-      openDetails({ kind: 'result', id: result.id, projectId: view.projectId }, { back: 'keep' });
-    } catch (cause) {
-      if (!isCurrent()) return;
-      setError(readable(cause));
-      // The work changed meanwhile: show its current state so the author decides again.
-      if (cause instanceof ApiError && cause.status === 409) { setFinishVersion(null); setAttempt(crypto.randomUUID()); reload(); }
-    } finally { if (isCurrent()) setBusy(false); }
-  }
-
-  return (
-    <form className="details wd" onSubmit={(event) => void submit(event)}>
-      <h3 className="details__title">Record a result</h3>
-      {contextStatus}
-      {context ? <SourcePreview view={view} /> : null}
-      <fieldset className="wd-form" disabled={busy}>
-        <label htmlFor={findingId}>Finding</label>
-        <textarea id={findingId} value={title} onChange={(event) => edit(setTitle)(event.target.value)} required maxLength={200} rows={3} />
-        <div className="wd-seg" role="radiogroup" aria-label="Positive or negative">
-          {(['positive', 'negative'] as const).map((value) => (
-            <label key={value} className="wd-seg__b"><input type="radio" name="finding" value={value} checked={finding === value} onChange={() => edit(setFinding)(value)} />{value === 'positive' ? 'Positive' : 'Negative'}</label>
-          ))}
-        </div>
-        <label htmlFor={evidenceId}>Evidence</label>
-        <textarea id={evidenceId} value={evidence} onChange={(event) => edit(setEvidence)(event.target.value)} maxLength={20000} rows={3} placeholder="Numbers, observations or where to find them" />
-        <>
-          <label htmlFor={workSelectId}>For work</label>
-          <Select id={workSelectId} value={workId} disabled={!candidates.page} onChange={(next) => { edit(setWorkId)(next); setFinishes(false); setFinishVersion(null); }}>
-            <Option value="">Not linked to work</Option>
-            {workId && !open.some((item) => item.id === workId) ? <Option value={workId}>{chosen?.title ?? 'Selected work (not loaded)'}</Option> : null}
-            {open.map((item) => <Option key={item.id} value={item.id}>{item.title}</Option>)}
-          </Select>
-          {chosen && finishable && finishes && finishVersion === null ? <Button variant="quiet" onClick={() => { setFinishVersion(chosen.version); setAttempt(crypto.randomUUID()); setError(''); }}>Finish current version</Button> : null}
-          {chosen && !finishable && finishes ? <Button variant="quiet" onClick={() => edit(setFinishes)(false)}>Attach without finishing</Button> : null}
-          {chosen && !finishable ? <p className="wd-muted">“{chosen.title}” cannot be finished by this result in its current state. Parked work must first return to the plan.</p> : null}
-          {chosen && finishable ? <label className="wd-check"><input type="checkbox" checked={finishes} onChange={(event) => { setFinishVersion(event.target.checked ? chosen.version : null); edit(setFinishes)(event.target.checked); }} />This finishes “{chosen.title}”</label> : null}
-        </>
-      </fieldset>
-      <ChoicePages choices={candidates} label="Result work choices" />
-      {selected.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Selected work could not be loaded. Your selection is kept. <button type="button" className="wd-inline" onClick={reload}>Refresh selected work</button></p> : null}
-      {error ? <p className="wd-error" role="alert">{error}</p> : null}
-      <SubmitSection help="A negative result is a real outcome: it can finish an experiment."><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Attach result</Button></SubmitSection>
     </form>
   );
 }

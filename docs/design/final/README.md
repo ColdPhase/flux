@@ -515,7 +515,12 @@ the composer. The right-hand phone above shows the sheet.
 - **The task panel**: "#4 · Rain barrel monitor", the title, then Status, Owner (people, then
   Your agents), Due and "In this task" (the people and their agents), then subtasks ("1 of 2
   done"), the one discussion and "Write about this task…". At Done, an optional "What came of it"
-  row.
+  row: one line, edited where it is read ("Add a line"), with a "Dropped, not finished" check; a
+  dropped task reads "Done · dropped" in its panel, in the List and on its Board card, and the line is
+  also written once in the task's discussion. A blocked task's "Waiting for" menu offers people, the
+  decisions still to make and the other tasks of the space (one thing); the person waited for has a
+  Done button in the Inbox and in the panel, and the stream says "#4 can continue: the decision was
+  accepted" when it resumes.
 
 ### Wiki
 

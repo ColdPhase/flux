@@ -681,7 +681,7 @@ export const projectMessages = pgTable('project_messages', {
   /** The page this message cited was deleted (#941): the citation is cleared and the message says so. */
   sourceDeleted: boolean('source_deleted').notNull().default(false),
   /** Plain text unless an explicit native effect (#154, migration 0040) says otherwise. */
-  contributionKind: text('contribution_kind', { enum: ['text', 'blocker', 'result', 'handoff'] }).notNull().default('text'),
+  contributionKind: text('contribution_kind', { enum: ['text', 'blocker', 'result', 'handoff', 'came_of_it'] }).notNull().default('text'),
   resultId: uuid('result_id'),
   /** How many published files belong to this message (#154, migration 0045); text or at least one file. */
   attachmentCount: smallint('attachment_count').notNull().default(0),
@@ -709,7 +709,7 @@ export const projectMessages = pgTable('project_messages', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.resultId], foreignColumns: [projectResults.workspaceId, projectResults.projectId, projectResults.id] }),
   check('project_message_source_deleted', sql`NOT ${table.sourceDeleted} OR (${table.sourceMaterialId} IS NULL AND ${table.sourceMaterialVersion} IS NULL)`),
-  check('project_message_contribution_kind', sql`${table.contributionKind} IN ('text', 'blocker', 'result', 'handoff')`),
+  check('project_message_contribution_kind', sql`${table.contributionKind} IN ('text', 'blocker', 'result', 'handoff', 'came_of_it')`),
   check('project_message_result_reference', sql`(${table.contributionKind} = 'result') = (${table.resultId} IS NOT NULL)`),
   check('project_message_attachment_count', sql`${table.attachmentCount} BETWEEN 0 AND 10`),
   check('project_message_body_or_attachments', sql`length(btrim(${table.body})) <= 100000 AND (length(btrim(${table.body})) >= 1 OR ${table.attachmentCount} > 0)`),
@@ -1047,10 +1047,18 @@ export const projectWorkItems = pgTable('project_work_items', {
   number: integer('number').notNull().default(0),
   title: text('title').notNull(),
   outcome: text('outcome').notNull().default(''),
-  status: text('status', { enum: ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] }).notNull().default('open'),
+  status: text('status', { enum: ['open', 'in_progress', 'blocked', 'done'] }).notNull().default('open'),
   blocker: text('blocker'),
-  /** Who a blocked task waits for (#550, migration 0102); null unless blocked. */
+  /** Who a blocked task waits for (#550, migration 0102); null unless blocked. At most one of the three "waiting for" columns is set (#868, migration 0035). */
   waitingForUserId: text('waiting_for_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
+  /** A decision a blocked task waits for (#868): it goes back to Doing when the decision is accepted. */
+  waitingForDecisionId: uuid('waiting_for_decision_id').references((): AnyPgColumn => projectDecisions.id, { onDelete: 'set null' }),
+  /** Another task a blocked task waits for (#868): it goes back to Doing when that task is done. */
+  waitingForWorkId: uuid('waiting_for_work_id').references((): AnyPgColumn => projectWorkItems.id, { onDelete: 'set null' }),
+  /** Done · dropped (#868): the task was dropped, not finished. Only while done. */
+  dropped: boolean('dropped').notNull().default(false),
+  /** The one optional line at Done, "what came of it" (#868). Sealed in an encrypted space. Only while done. */
+  cameOfIt: text('came_of_it'),
   /** The calendar day it is due (#488, migration 0108): `YYYY-MM-DD`, no time zone, no time; null for none. */
   dueOn: date('due_on', { mode: 'string' }),
   ownerUserId: text('owner_user_id'),
@@ -1143,7 +1151,7 @@ export const projectTaskUpdates = pgTable('project_task_updates', {
   workspaceId: uuid('workspace_id').notNull(),
   projectId: uuid('project_id').notNull(),
   workId: uuid('work_id').notNull(),
-  kind: text('kind', { enum: ['task.blocked', 'task.unblocked'] }).notNull(),
+  kind: text('kind', { enum: ['task.blocked', 'task.unblocked', 'task.resumed'] }).notNull(),
   createdByKind: text('created_by_kind', { enum: ['human', 'agent'] }).notNull(),
   createdById: text('created_by_id').notNull(),
   waitingForUserId: text('waiting_for_user_id').references(() => authUsers.id, { onDelete: 'set null' }),
@@ -1999,7 +2007,7 @@ export const githubProcessing = pgTable('github_processing', {
   errorCode: text('error_code'),
 }, (t) => [primaryKey({ columns: [t.deliveryId, t.bindingId] }), index('github_processing_due_idx').on(t.state, t.nextAttemptAt)]);
 // "Let linked PRs move this task" (#74 G-1a, migration 0052): one rule per task, its automatic changes and the project default.
-const WORK_STATUS = ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] as const;
+const WORK_STATUS = ['open', 'in_progress', 'blocked', 'done'] as const;
 export const githubTaskRules = pgTable('github_task_rules', {
   taskId: uuid('task_id').primaryKey(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
   mode: text('mode', { enum: ['complete', 'ready'] }).notNull(),

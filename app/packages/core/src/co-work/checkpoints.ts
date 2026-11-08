@@ -93,7 +93,7 @@ export async function requireCoWorkClaimEligibility(reader: CoWorkClaimEligibili
   if (action.observation || action.operation === 'release') return;
   const task = await reader.task(unit.taskId);
   if (!task || task.id !== unit.taskId || task.projectId !== unit.projectId) throw new NotFoundError('Work unit', 'COWORK_UNIT_NOT_FOUND');
-  if (task.status === 'done' || task.status === 'not_pursued') throw new ConflictError('The task is closed', 'COWORK_TASK_CLOSED');
+  if (task.status === 'done') throw new ConflictError('The task is closed', 'COWORK_TASK_CLOSED');
   if (unit.role === 'execute') await reader.requirePrerequisitesMet(unit.taskId);
 }
 

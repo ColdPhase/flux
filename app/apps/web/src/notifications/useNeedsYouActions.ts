@@ -4,7 +4,7 @@ import type { NeedsYouItem, ResolveNeedsYouCommand } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { useShellActions } from '../app/shellContext';
 import { useToast } from '../ui';
-import { updateWork } from '../work/api';
+import { resolveWaiting, updateWork } from '../work/api';
 import { useDiscussDecision } from '../work/discuss';
 import { applyRunChanges } from '../assistant/api';
 import { announceAcceptedInboxItem, announceInboxChange } from './api';
@@ -144,6 +144,21 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
       void navigate(item.project ? `/projects/${item.project.id}` : item.url);
     },
 
+    waitingDone(item: NeedsYouItem) {
+      const current = latest.current;
+      const blocked = item.blocked;
+      if (!blocked) return;
+      // The task goes back to Doing by itself and its owner is told once (#868); there is nothing to undo.
+      const done = resolveWaiting({ id: blocked.workId, version: blocked.version });
+      const intent = current.hide(item.key, done);
+      done.then(announceInboxChange, (error: unknown) => {
+        if (!intent.isCurrent()) return;
+        current.show(item);
+        toast({ message: apiMessage(error, 'That did not work. Open the task to look again.'), tone: 'danger' });
+      });
+      toast({ message: `#${blocked.number} can continue` });
+    },
+
     unblock(item: NeedsYouItem) {
       const current = latest.current;
       const blocked = item.blocked;
@@ -158,7 +173,7 @@ export function useNeedsYouActions(queue: Queue): CardHandlers {
         toast({ message: apiMessage(error, 'The task could not be unblocked. Open it to look again.'), tone: 'danger' });
       });
       toast({ message: 'Blocker cleared', action: { label: 'Undo', key: 'Z', onClick: () => {
-        const restored = changed.then((work) => updateWork(work, { status: 'blocked', ...(blocked.blocker ? { blocker: blocked.blocker } : {}), ...(blocked.waitingForUserId ? { waitingFor: { kind: 'human' as const, id: blocked.waitingForUserId } } : {}), restore: true }, crypto.randomUUID())).then(announceInboxChange);
+        const restored = changed.then((work) => updateWork(work, { status: 'blocked', ...(blocked.blocker ? { blocker: blocked.blocker } : {}), ...(blocked.waitingForUserId ? { waitingFor: { kind: 'human' as const, id: blocked.waitingForUserId } } : {}), ...(blocked.waitingOn ? { waitingOn: blocked.waitingOn } : {}), restore: true }, crypto.randomUUID())).then(announceInboxChange);
         const undoIntent = current.show(item, restored);
         restored.catch(() => {
           if (!undoIntent.isCurrent()) return;

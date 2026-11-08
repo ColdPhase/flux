@@ -43,7 +43,7 @@ const p = schema.assistantProposals;
 /** The same words as `nothingToChange` in core (a posting schedule never posts them). */
 const NOTHING_TO_CHANGE = '^\\W*done\\W*\\s*nothing to change\\W*$';
 const IN_FLIGHT: ('queued' | 'reading' | 'dispatching')[] = ['queued', 'reading', 'dispatching'];
-const FINISHED_WORK: ('done' | 'not_pursued')[] = ['done', 'not_pursued'];
+const FINISHED_WORK: 'done'[] = ['done'];
 
 /**
  * A queued run left behind: not one paused until a limit resets (#854), not one waiting for room on the server (#860), and

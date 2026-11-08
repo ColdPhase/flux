@@ -385,7 +385,7 @@ function TaskForm({ ids, request, prefilled, phone, carried, projectId, onProjec
         placeholder="Add details or what “done” means…" onChange={(event) => setOutcome(event.target.value)} />
       <div className="create__props">
         <PickChip label="Status" icon={<StatusGlyph status={status} size={14} />} shown={STATUS_LABEL[status]} value={status} onChange={(value) => setStatus(value as WorkStatus)}>
-          {WORK_STATUSES.filter((s) => s !== 'not_pursued').map((s) => <Option key={s} value={s}>{STATUS_LABEL[s]}</Option>)}
+          {WORK_STATUSES.map((s) => <Option key={s} value={s}>{STATUS_LABEL[s]}</Option>)}
         </PickChip>
         <PickChip label="Owner" icon={<Icon name="person" size={14} />} shown={ownerLabel} value={owner} onChange={setOwner}>
           <Option value="">No owner</Option>

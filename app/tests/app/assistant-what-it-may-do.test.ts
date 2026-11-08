@@ -243,7 +243,7 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     assert.equal(before.body, 'Measured at night');
 
     const made = (await scene.listConversation(scene.owner)).filter((change) => change.runId === live.runId);
-    assert.equal(assistantChangeLine(made), `Updated the Wiki page Calibration (2 changes) · moved #${job.number} to In progress`);
+    assert.equal(assistantChangeLine(made), `Updated the Wiki page Calibration (2 changes) · moved #${job.number} to Doing`);
     // Anyone who may edit can undo; someone outside the space sees nothing and the server refuses.
     assert.equal((await scene.stranger.browser.request('POST', assistantRunChangesActionPath(live.runId, 'undo'), { body: {} })).status, 404);
 

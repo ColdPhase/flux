@@ -109,7 +109,7 @@ export function assistantSettingsRows(tx: Transaction, authority: AssistantAutho
       await tx.update(a).set({ revokedAt: now, updatedAt: now }).where(eq(a.id, agentId));
       await tx.delete(m).where(eq(m.agentId, agentId));
       const w = schema.projectWorkItems;
-      await tx.update(w).set({ ownerAgentId: null, ownerUserId, version: sql`${w.version} + 1`, updatedAt: now }).where(and(eq(w.ownerAgentId, agentId), sql`${w.status} not in ('done', 'not_pursued')`));
+      await tx.update(w).set({ ownerAgentId: null, ownerUserId, version: sql`${w.version} + 1`, updatedAt: now }).where(and(eq(w.ownerAgentId, agentId), sql`${w.status} <> 'done'`));
     },
     memory: {
       async list(agentId: string): Promise<AgentMemoryItem[]> {

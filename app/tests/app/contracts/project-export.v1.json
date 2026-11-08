@@ -414,7 +414,8 @@
                   "kind": {
                     "enum": [
                       "blocker",
-                      "handoff"
+                      "handoff",
+                      "came_of_it"
                     ]
                   }
                 },
@@ -982,8 +983,7 @@
               "open",
               "in_progress",
               "blocked",
-              "done",
-              "not_pursued"
+              "done"
             ]
           },
           "title": {
@@ -996,13 +996,28 @@
           "version": {
             "minimum": 1,
             "type": "integer"
+          },
+          "cameOfIt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dropped": {
+            "type": "boolean"
           }
         },
         "required": [
           "blocker",
+          "cameOfIt",
           "createdAt",
           "createdBy",
           "creationHistory",
+          "dropped",
           "id",
           "lifecycle",
           "number",

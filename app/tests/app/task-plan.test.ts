@@ -178,8 +178,8 @@ test('starting or finishing a task needs every prerequisite done and unparked; a
   await f.fails(f.owner, { title: 'Started too early', status: 'in_progress', dependencyIds: [prerequisite.id] }, 409, 'TASK_PREREQUISITES_UNMET');
   assert.deepEqual(await f.counts(), { ...before, work: before.work, notices: before.notices, updated: before.updated + 1 });
 
-  // Every non-done state keeps it unmet: in progress, blocked and not pursued.
-  for (const status of ['in_progress', 'blocked', 'not_pursued'] as const) {
+  // Every non-done state keeps it unmet: in progress and blocked (a dropped task is Done, so it is met).
+  for (const status of ['in_progress', 'blocked'] as const) {
     const current = await f.read(prerequisite.id);
     await f.patch(f.owner, current, { status, ...(status === 'blocked' ? { blocker: 'x' } : {}) });
     await f.patchFails(f.owner, await f.read(task.id), { status: 'in_progress' }, 409, 'TASK_PREREQUISITES_UNMET');

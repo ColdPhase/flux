@@ -125,7 +125,7 @@ export function requireCoWorkUnitCreation(context: CoWorkContext, facts: CoWorkU
   if (!task || task.id !== target.taskId) throw new NotFoundError('Project object', 'OBJECT_NOT_FOUND');
   if (task.version !== input.expectedTaskVersion)
     throw new ConflictError('The task changed; recover its current version', 'COWORK_VERSION_CONFLICT');
-  if (task.status === 'done' || task.status === 'not_pursued')
+  if (task.status === 'done')
     throw new ConflictError('The task is closed', 'COWORK_TASK_CLOSED');
   if (!input.parent && input.assignmentConnectionId !== context.connectionId)
     throw new ConflictError('Only its own assignee opens a new run', 'COWORK_ASSIGNMENT_REFUSED');
@@ -176,7 +176,7 @@ export function requireOwnerAssistantHandoff(context: CoWorkContext, facts: CoWo
   if (!task || task.id !== target.taskId) throw new NotFoundError('Project object', 'OBJECT_NOT_FOUND');
   if (task.version !== input.expectedTaskVersion)
     throw new ConflictError('The task changed; recover its current version', 'COWORK_VERSION_CONFLICT');
-  if (task.status === 'done' || task.status === 'not_pursued')
+  if (task.status === 'done')
     throw new ConflictError('The task is closed', 'COWORK_TASK_CLOSED');
   if (!assignee || assignee.id !== input.assignmentConnectionId || assignee.id === context.connectionId
     || assignee.ownerUserId !== context.ownerId || assignee.computeSource === 'owner_assistant')

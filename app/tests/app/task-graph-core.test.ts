@@ -136,12 +136,12 @@ test('cycles: self, direct, indirect and long chains are refused; the walk stops
 
 test('a task may start only when every direct prerequisite exists, is done and is not parked', async () => {
   const w = id(); const task = id();
-  const [done, open, blocked, progress, dropped, parked, missing] = Array.from({ length: 7 }, id);
+  const [done, open, blocked, progress, parked, missing] = Array.from({ length: 6 }, id);
   const states = { [done!]: { status: 'done' as const }, [open!]: { status: 'open' as const }, [blocked!]: { status: 'blocked' as const },
-    [progress!]: { status: 'in_progress' as const }, [dropped!]: { status: 'not_pursued' as const }, [parked!]: { status: 'done' as const, parked: true } };
+    [progress!]: { status: 'in_progress' as const }, [parked!]: { status: 'done' as const, parked: true } };
   await assertPrerequisitesMet(graph({ [task]: [] }).reader, w, task);
   await assertPrerequisitesMet(graph({ [task]: [done!] }, states).reader, w, task);
-  for (const [name, prerequisite] of Object.entries({ open, blocked, progress, dropped, parked, missing })) {
+  for (const [name, prerequisite] of Object.entries({ open, blocked, progress, parked, missing })) {
     await assert.rejects(assertPrerequisitesMet(graph({ [task]: [done!, prerequisite!] }, states).reader, w, task), (error: unknown) =>
       error instanceof DomainError && error.code === 'TASK_PREREQUISITES_UNMET' && error.status === 409
       && JSON.stringify(error.details).includes(prerequisite!), name);

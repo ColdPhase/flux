@@ -99,7 +99,7 @@ export function githubRows(db: DbExecutor,options:{taskFence?:()=>import('./task
      */
     async hold(taskId: string, agentId: string): Promise<'held' | 'none'> {
       const [task] = await db.select({ owner: w.ownerAgentId, status: w.status, parkedAt: w.parkedAt }).from(w).where(eq(w.id, taskId));
-      return !task || task.owner !== agentId || task.parkedAt || task.status === 'done' || task.status === 'not_pursued' ? 'none' : 'held';
+      return !task || task.owner !== agentId || task.parkedAt || task.status === 'done' ? 'none' : 'held';
     },
     async links(taskId: string) { return (await db.select().from(l).where(eq(l.taskId, taskId)).orderBy(asc(l.id))).map(linkView); },
     async linkedPulls(bindingId: string) { return (await db.select().from(l).where(eq(l.bindingId, bindingId)).orderBy(asc(l.id))).map(linkView); },

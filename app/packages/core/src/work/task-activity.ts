@@ -54,7 +54,7 @@ export async function readTaskActivity(ports: WorkPorts, task: { id: string; pro
   const entries = items.map((record): TaskActivityEntry => {
     const base = { id: record.id, kind: record.kind, at: record.at.toISOString(), actor: named(record.by), ...(record.automation ? { automation: record.automation } : {}) };
     switch (record.kind) {
-      case 'status': return { ...base, status: { from: record.from, to: record.to, blocker: record.blocker, waitingFor: namedOrNull(waiting(record)) } };
+      case 'status': return { ...base, status: { from: record.from, to: record.to, blocker: record.blocker, waitingFor: namedOrNull(waiting(record)), waitingOn: record.waitingOn, dropped: record.dropped } };
       case 'owner': return { ...base, owner: { from: namedOrNull(record.from), to: namedOrNull(record.to) } };
       case 'due': return { ...base, due: { from: record.from, to: record.to } };
       case 'title': return { ...base, title: { from: record.from, to: record.to } };

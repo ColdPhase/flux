@@ -23,7 +23,7 @@ const MENTION_DAYS = 14;
 const MAX_ITEMS = 300;
 const MAX_DECISIONS = 200;
 const MAX_ACCEPTERS = 6;
-const OVER = new Set(['done', 'not_pursued']);
+const OVER = new Set(['done']);
 
 const iso = (date: Date) => date.toISOString();
 const excerpt = (text: string, max = 200) => {
@@ -120,8 +120,10 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     const plans = blocked.length ? await ports.work.taskPlans(blocked.map((task) => task.id)) : new Map();
     const askers = await ports.work.names(blocked.flatMap((task) => (task.waitingFor?.id === userId ? [task.owner ?? task.createdBy] : [])));
     for (const task of blocked) {
-      const waiting = plans.get(task.id)?.prerequisites.find((item: { status: string; parked: boolean; id: string }) => !OVER.has(item.status));
+      const waiting = task.waitingOn?.kind === 'task' ? { id: task.waitingOn.id }
+        : plans.get(task.id)?.prerequisites.find((item: { status: string; parked: boolean; id: string }) => !OVER.has(item.status));
       const waitingTask = waiting ? await work(waiting.id) : null;
+      const waitingDecision = task.waitingOn?.kind === 'decision' ? await ports.work.findDecision(task.waitingOn.id) : null;
       // The person waited on hears it as "Ada is waiting for you"; the owner (or an agent owner's person) keeps the plain item.
       const waitedOn = task.waitingFor?.id === userId && !(task.owner?.kind === 'human' && task.owner.id === userId);
       const asker = waitedOn ? askers.get(`${(task.owner ?? task.createdBy).kind}:${(task.owner ?? task.createdBy).id}`) ?? 'Someone' : null;
@@ -134,6 +136,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
         from: null, at: iso(task.updatedAt), url: `/projects/${task.projectId}/tasks?open=work:${task.id}`,
         decision: null, reason: null,
         blocked: { workId: task.id, number: task.number, version: task.version, blocker: task.blocker, since: iso(task.updatedAt), waitingForUserId: task.waitingFor?.id ?? null, waitingFor: waitingTask ? ref(waitingTask) : null,
+          waitingDecision: waitingDecision ? { id: waitingDecision.id, title: waitingDecision.title } : null, waitingOn: task.waitingOn,
           ...(waitedOn ? { waitedBy: asker } : {}) },
         snoozeTask: waitingTask ? ref(waitingTask) : null,
       });

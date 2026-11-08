@@ -34,6 +34,9 @@ export function toWorkRecord(row: WorkRow) {
     id: row.id, workspaceId: row.workspaceId, projectId: row.projectId, number: row.number, title: row.title, outcome: row.outcome,
     status: row.status, blocker: row.blocker,
     waitingFor: row.waitingForUserId ? { kind: 'human' as const, id: row.waitingForUserId } : null,
+    waitingOn: row.waitingForDecisionId ? { kind: 'decision' as const, id: row.waitingForDecisionId }
+      : row.waitingForWorkId ? { kind: 'task' as const, id: row.waitingForWorkId } : null,
+    dropped: row.dropped, cameOfIt: row.cameOfIt,
     dueOn: row.dueOn,
     creationOrigin: row.creationOrigin, creationBaselineVersion: row.creationBaselineVersion, firstPersistedUseAt: row.firstPersistedUseAt,
     creationRevertedAt: row.creationRevertedAt, creationReversionNoticeId: row.creationReversionNoticeId,
@@ -85,13 +88,14 @@ type ActivityRow = typeof schema.projectTaskActivity.$inferSelect;
 const sameActor = (a: Actor | null, b: Actor | null) => a?.kind === b?.kind && a?.id === b?.id;
 
 /** One entry for each of status, owner, due date and title that differs between the task before and after a change (#488). */
-async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWorkRecord> | null, after: ReturnType<typeof toWorkRecord>, by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_deleted') {
+async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWorkRecord> | null, after: ReturnType<typeof toWorkRecord>, by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_deleted' | 'wait_resolved') {
   if (!before) return;
   const entries: { kind: ActivityRow['kind']; detail: Record<string, unknown> }[] = [];
   if (before.status !== after.status) {
     // What a move into Blocked said: the reason and the person waited for; nothing for any other state.
     const blocked = after.status === 'blocked';
-    entries.push({ kind: 'status', detail: { from: before.status, to: after.status, blocker: blocked ? after.blocker : null, waitingForUserId: blocked ? after.waitingFor?.id ?? null : null } });
+    entries.push({ kind: 'status', detail: { from: before.status, to: after.status, blocker: blocked ? after.blocker : null, waitingForUserId: blocked ? after.waitingFor?.id ?? null : null,
+      waitingOn: blocked ? await waitingLabel(db, after.waitingOn) : null, dropped: after.status === 'done' && after.dropped } });
   }
   if (!sameActor(before.owner, after.owner)) entries.push({ kind: 'owner', detail: { from: before.owner, to: after.owner } });
   if (before.dueOn !== after.dueOn) entries.push({ kind: 'due', detail: { from: before.dueOn, to: after.dueOn } });
@@ -107,11 +111,22 @@ async function recordTaskActivity(db: DbExecutor, before: ReturnType<typeof toWo
   }
 }
 
+/** What a blocked task waits for besides a person, as the activity line says it: "the decision Use LoRa" or "#7" (#868). */
+async function waitingLabel(db: DbExecutor, on: { kind: 'decision' | 'task'; id: string } | null): Promise<string | null> {
+  if (!on) return null;
+  if (on.kind === 'task') {
+    const [task] = await db.select({ number: w.number }).from(w).where(eq(w.id, on.id));
+    return task ? `#${task.number}` : null;
+  }
+  const decision = await opened(db, 'project_decisions', (await db.select().from(d).where(eq(d.id, on.id)))[0]);
+  return decision ? `the decision ${decision.title}` : null;
+}
+
 function toActivityRecord(row: ActivityRow, position: string) {
-  const detail = row.detail as { from: unknown; to: unknown; blocker?: string | null; waitingForUserId?: string | null; automation?: 'github_rule' | 'agent_rule' | 'agent_deleted' };
+  const detail = row.detail as { from: unknown; to: unknown; blocker?: string | null; waitingForUserId?: string | null; waitingOn?: string | null; dropped?: boolean; automation?: 'github_rule' | 'agent_rule' | 'agent_deleted' | 'wait_resolved' };
   const common = { id: row.id, workId: row.workId, at: row.createdAt, position, by: { kind: row.actorKind, id: row.actorId } as Actor, automation: detail.automation ?? null };
   switch (row.kind) {
-    case 'status': return { ...common, kind: 'status' as const, from: detail.from as WorkRow['status'], to: detail.to as WorkRow['status'], blocker: detail.blocker ?? null, waitingForUserId: detail.waitingForUserId ?? null };
+    case 'status': return { ...common, kind: 'status' as const, from: detail.from as WorkRow['status'], to: detail.to as WorkRow['status'], blocker: detail.blocker ?? null, waitingForUserId: detail.waitingForUserId ?? null, waitingOn: detail.waitingOn ?? null, dropped: detail.dropped === true };
     case 'owner': return { ...common, kind: 'owner' as const, from: detail.from as Actor | null, to: detail.to as Actor | null };
     case 'due': return { ...common, kind: 'due' as const, from: detail.from as string | null, to: detail.to as string | null };
     case 'title': return { ...common, kind: 'title' as const, from: detail.from as string, to: detail.to as string };
@@ -265,6 +280,24 @@ export function workRows(db: DbExecutor) {
       return paged(db, w, where, window, toWorkRecord);
     },
 
+    /** The blocked tasks that wait for this decision or task (#868), ascending by id; the caller holds the project's graph lock. */
+    async waiters(target: { kind: 'decision' | 'task'; id: string }) {
+      const rows = await db.select({ id: w.id }).from(w)
+        .where(and(eq(w.status, 'blocked'), eq(target.kind === 'decision' ? w.waitingForDecisionId : w.waitingForWorkId, target.id))).orderBy(asc(w.id));
+      return rows.map((row) => row.id);
+    },
+    /** What a task or a row names it waits for, by `kind:id`: a decision's title, a task's number and title (#868). */
+    async waitingTargets(refs: readonly { kind: 'decision' | 'task'; id: string }[]) {
+      const found = new Map<string, { kind: 'decision'; id: string; title: string } | { kind: 'task'; id: string; number: number; title: string }>();
+      const tasks = [...new Set(refs.filter((ref) => ref.kind === 'task').map((ref) => ref.id))];
+      const decisions = [...new Set(refs.filter((ref) => ref.kind === 'decision').map((ref) => ref.id))];
+      for (const row of await openedWorks(db, tasks.length ? await db.select().from(w).where(inArray(w.id, tasks)) : []))
+        found.set(`task:${row.id}`, { kind: 'task', id: row.id, number: row.number, title: row.title });
+      for (const row of await openRows(db, 'project_decisions', decisions.length ? await db.select().from(d).where(inArray(d.id, decisions)) : []))
+        found.set(`decision:${row.id}`, { kind: 'decision', id: row.id, title: row.title });
+      return found;
+    },
+
     /** Unfinished, unparked work of `owner` in projects matching `visibleProjects` (a condition over `projects`). */
     async listAssigned(workspaceId: string, owner: Actor, visibleProjects: SQL, window: Window) {
       // F-030 (AC-6): a locked encrypted workspace answers 423 even when nothing is assigned.
@@ -275,7 +308,7 @@ export function workRows(db: DbExecutor) {
         owner.kind === 'human'
           ? or(eq(w.ownerUserId, owner.id), sql`${w.ownerAgentId} IN (SELECT ${schema.agents.id} FROM ${schema.agents} WHERE ${schema.agents.ownerUserId} = ${owner.id})`)
           : eq(w.ownerAgentId, owner.id),
-        isNull(w.creationRevertedAt), notInArray(w.status, ['done', 'not_pursued']), isNull(w.parkedAt),
+        isNull(w.creationRevertedAt), notInArray(w.status, ['done']), isNull(w.parkedAt),
         sql`${w.projectId} IN (SELECT ${schema.projects.id} FROM ${schema.projects} WHERE ${visibleProjects})`,
       )!;
       return paged(db, w, where, window, toWorkRecord);
@@ -292,10 +325,11 @@ export function workRows(db: DbExecutor) {
       const rows = await openedWorks(db, await db.select().from(w).where(inArray(w.id, unique)));
       return new Map(rows.map((row) => [row.id, toWorkRecord(row)]));
     },
-    async insertWork(work: { id: string; workspaceId: string; projectId: string; title: string; outcome: string; status: WorkRow['status']; blocker: string | null; waitingFor?: Actor | null; dueOn?: string | null; owner: Actor | null; createdBy: Actor; criteria?: string[]; clientCommandId?: string; requestFingerprint?: string }) {
+    async insertWork(work: { id: string; workspaceId: string; projectId: string; title: string; outcome: string; status: WorkRow['status']; blocker: string | null; waitingFor?: Actor | null; waitingOn?: { kind: 'decision' | 'task'; id: string } | null; dueOn?: string | null; owner: Actor | null; createdBy: Actor; criteria?: string[]; clientCommandId?: string; requestFingerprint?: string }) {
       const [row] = await db.insert(w).values(await sealFor(db, 'project_work_items', work.workspaceId, {
         id: work.id, workspaceId: work.workspaceId, projectId: work.projectId, title: work.title, outcome: work.outcome,
-        status: work.status, blocker: work.blocker, waitingForUserId: work.waitingFor?.id ?? null, dueOn: work.dueOn ?? null, ...ownerColumns(work.owner), createdByKind: work.createdBy.kind, createdById: work.createdBy.id,
+        status: work.status, blocker: work.blocker, waitingForUserId: work.waitingFor?.id ?? null,
+        waitingForDecisionId: work.waitingOn?.kind === 'decision' ? work.waitingOn.id : null, waitingForWorkId: work.waitingOn?.kind === 'task' ? work.waitingOn.id : null, dueOn: work.dueOn ?? null, ...ownerColumns(work.owner), createdByKind: work.createdBy.kind, createdById: work.createdBy.id,
         criteria: work.criteria ?? [], clientCommandId: work.clientCommandId ?? null, requestFingerprint: work.requestFingerprint ?? null,
         textByAgent: work.createdBy.kind === 'agent',
       })).returning();
@@ -336,7 +370,7 @@ export function workRows(db: DbExecutor) {
         projectId: work.projectId, workId: work.id, kind: 'task.created', createdByKind: work.createdBy.kind,
         createdById: work.createdBy.id, sources, createdAt: work.createdAt });
     },
-    async insertTaskUpdate(work: ReturnType<typeof toWorkRecord>, update: { kind: 'task.blocked' | 'task.unblocked'; by: Actor; waitingFor: Actor | null; reason: string | null }) {
+    async insertTaskUpdate(work: ReturnType<typeof toWorkRecord>, update: { kind: 'task.blocked' | 'task.unblocked' | 'task.resumed'; by: Actor; waitingFor: Actor | null; reason: string | null }) {
       const id = randomUUID();
       await db.insert(schema.projectTaskUpdates).values({ id, workspaceId: work.workspaceId, projectId: work.projectId,
         workId: work.id, kind: update.kind, createdByKind: update.by.kind, createdById: update.by.id,
@@ -356,7 +390,7 @@ export function workRows(db: DbExecutor) {
             FROM project_task_updates u WHERE u.project_id = ${projectId}
         ) e JOIN project_work_items w ON w.id = e.work_id AND w.project_id = e.project_id AND w.workspace_id = e.workspace_id
         ORDER BY e.created_at DESC, e.id DESC LIMIT ${window.limit} OFFSET ${window.offset}`);
-      const rows = result.rows as { id: string; workspace_id: string; project_id: string; work_id: string; kind: 'task.created' | 'task.creation_reverted' | 'task.blocked' | 'task.unblocked';
+      const rows = result.rows as { id: string; workspace_id: string; project_id: string; work_id: string; kind: 'task.created' | 'task.creation_reverted' | 'task.blocked' | 'task.unblocked' | 'task.resumed';
         created_by_kind: 'human' | 'agent'; created_by_id: string; sources: import('@flux/contracts').ObjectRef[]; waiting_for_user_id: string | null; reason: string | null;
         created_at: Date | string; work_title: string; work_number: number; is_update: boolean }[];
       const seals = await sealsOf(db, rows.map((row) => row.workspace_id), { write: false });
@@ -369,6 +403,7 @@ export function workRows(db: DbExecutor) {
         workspaceId: row.workspace_id, projectId: row.project_id, workId: row.work_id, workTitle: row.work_title, workNumber: row.work_number, kind: row.kind,
         createdBy: { kind: row.created_by_kind, id: row.created_by_id }, sources: row.sources,
         ...(row.kind === 'task.blocked' ? { waitingFor: row.waiting_for_user_id ? { kind: 'human' as const, id: row.waiting_for_user_id } : null, reason: row.reason } : {}),
+        ...(row.kind === 'task.resumed' ? { reason: row.reason } : {}),
         createdAt: new Date(row.created_at) })) };
     },
     /**
@@ -415,8 +450,8 @@ export function workRows(db: DbExecutor) {
           : { ...base, kind: row.kind, decisionId: row.object_id, status: row.status! };
       }) };
     },
-    async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; waitingFor?: Actor | null; dueOn?: string | null; owner?: Actor | null; parked?: { decisionId: string; at: Date } | null; criteria?: string[] },
-      by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_deleted') {
+    async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; waitingFor?: Actor | null; waitingOn?: { kind: 'decision' | 'task'; id: string } | null; dropped?: boolean; cameOfIt?: string | null; dueOn?: string | null; owner?: Actor | null; parked?: { decisionId: string; at: Date } | null; criteria?: string[] },
+      by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_deleted' | 'wait_resolved') {
       // Every path that changes a task ends here, so this is the one place its activity (#488) is kept: the row as it was,
       // then the change, then one entry per field that really differs, all in the caller's transaction. The caller holds the row.
       const [stored] = await db.select().from(w).where(eq(w.id, id)).for('update');
@@ -427,13 +462,21 @@ export function workRows(db: DbExecutor) {
         ...(changes.outcome !== undefined ? { outcome: changes.outcome } : {}),
         ...(changes.criteria !== undefined ? { criteria: changes.criteria } : {}),
         ...(changes.blocker !== undefined ? { blocker: changes.blocker } : {}),
+        ...(changes.cameOfIt !== undefined ? { cameOfIt: changes.cameOfIt } : {}),
       }, seal, { id });
       const [row] = await db.update(w).set({
         ...text,
         ...(changes.status !== undefined ? { status: changes.status } : {}),
-        // Whoever moves a task out of Blocked, a person or a GitHub rule, also ends the wait.
-        ...(changes.waitingFor !== undefined ? { waitingForUserId: changes.waitingFor?.id ?? null }
-          : changes.status !== undefined && changes.status !== 'blocked' ? { waitingForUserId: null } : {}),
+        // Whoever moves a task out of Blocked, a person or a GitHub rule, also ends the wait. A wait is one thing (#868): the use case
+        // gives both the person and the decision or task, and the database refuses two.
+        ...(changes.status !== undefined && changes.status !== 'blocked' ? { waitingForUserId: null, waitingForDecisionId: null, waitingForWorkId: null }
+          : {
+            ...(changes.waitingFor !== undefined ? { waitingForUserId: changes.waitingFor?.id ?? null } : {}),
+            ...(changes.waitingOn !== undefined ? { waitingForDecisionId: changes.waitingOn?.kind === 'decision' ? changes.waitingOn.id : null,
+              waitingForWorkId: changes.waitingOn?.kind === 'task' ? changes.waitingOn.id : null } : {}),
+          }),
+        // A task that is not Done was not dropped and has nothing come of it.
+        ...(changes.status !== undefined && changes.status !== 'done' ? { dropped: false, cameOfIt: null } : changes.dropped !== undefined ? { dropped: changes.dropped } : {}),
         ...(changes.dueOn !== undefined ? { dueOn: changes.dueOn } : {}),
         // The text is no longer only a person's once an agent wrote it (#953: a task's addresses are given to a run only from a person's text).
         ...(by.kind === 'agent' && (changes.title !== undefined || changes.outcome !== undefined || changes.criteria !== undefined) ? { textByAgent: true } : {}),
@@ -449,6 +492,8 @@ export function workRows(db: DbExecutor) {
         if (was?.kind === 'agent' && via !== 'agent_rule' && via !== 'agent_deleted') await agentTaskRows(db).noteReleased(id, was.id, by);
         if (next.owner) await agentTaskRows(db).noteAssigned(id, next.owner, by, via);
       }
+      // What a blocked task waited for is resolved (#868): an agent that holds it picks it up again, as when it was given the task.
+      if (previous && via === 'wait_resolved' && previous.status === 'blocked' && next.owner?.kind === 'agent') await agentTaskRows(db).noteAssigned(id, next.owner, by, via);
       return next;
     },
     /** A task's activity (#488), newest first, by (time, id) so a page boundary never repeats or skips an entry. */

@@ -9,7 +9,7 @@ export interface ObjectView {
 }
 /** A form in the Details panel that starts from a message or a work item, keeping the source in place. */
 export interface WorkFormView {
-  kind: 'propose-decision' | 'attach-result';
+  kind: 'propose-decision';
   projectId: string;
   source?: { messageId: string; text: string };
   /** A title typed in the composer (`/decide …`), when there is no message to start from. */

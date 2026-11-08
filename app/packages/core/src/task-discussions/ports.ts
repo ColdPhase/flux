@@ -20,7 +20,7 @@ export interface DiscussionConversation {
   createdAt: Date;
 }
 /** `text` is ordinary; the others are explicit native effects (#154) and `result` names its canonical result. */
-export type ContributionKind = 'text' | 'blocker' | 'result' | 'handoff';
+export type ContributionKind = 'text' | 'blocker' | 'result' | 'handoff' | 'came_of_it';
 export interface DiscussionMessage {
   id: string;
   conversationId: string;

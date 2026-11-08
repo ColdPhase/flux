@@ -77,8 +77,10 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
           const { restore, changedSince } = restorableFields(plan.fields, current);
           if (changedSince.length) throw new Since();
           // `restore` puts back what was there: it posts no blocker again and tells nobody they are waited for again (#550).
-          const { waitingFor, ...rest } = restore;
+          const { waitingFor, waitingOn, ...rest } = restore;
+          const [waitKind, waitId] = typeof waitingOn === 'string' ? waitingOn.split(':') : [];
           await work.updateWork(owner, id!, { ...rest, ...(waitingFor === undefined ? {} : { waitingFor: waitingFor ? { kind: 'human' as const, id: String(waitingFor) } : null }),
+            ...(waitingOn === undefined ? {} : { waitingOn: waitKind && waitId ? { kind: waitKind as 'decision' | 'task', id: waitId } : null }),
             restore: true } as UpdateWorkCommand, current.version);
           break;
         }

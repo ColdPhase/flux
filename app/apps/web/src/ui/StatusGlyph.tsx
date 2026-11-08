@@ -19,7 +19,6 @@ export function StatusGlyph({ status, size = 16, className, changeKey }: { statu
       return <svg {...common}><rect x="2" y="2" width="12" height="12" rx="3.5" fill="currentColor" /><rect x="6" y="6" width="4" height="4" rx="1" className="ui-glyph__knock" /></svg>;
     // A dropped task is Done with a "dropped" note (#868): the same glyph.
     case 'done':
-    case 'not_pursued':
       return <svg {...common}><circle cx="8" cy="8" r="7" fill="currentColor" /><path d="m5 8.2 2 2 4-4.2" fill="none" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" className="ui-glyph__knock-line" /></svg>;
     case 'replaced':
       return <svg {...common}><circle cx="8" cy="8" r="6" fill="none" stroke="currentColor" strokeWidth="1.5" /><path d="M4 12 12 4" stroke="currentColor" strokeWidth="1.5" /></svg>;
@@ -29,5 +28,5 @@ export function StatusGlyph({ status, size = 16, className, changeKey }: { statu
 }
 
 export const TASK_STATE_WORD: Record<WorkStatus, string> = {
-  open: 'To do', in_progress: 'Doing', blocked: 'Blocked', done: 'Done', not_pursued: 'Done',
+  open: 'To do', in_progress: 'Doing', blocked: 'Blocked', done: 'Done',
 };

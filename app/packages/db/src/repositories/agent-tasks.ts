@@ -48,7 +48,7 @@ export function agentTaskRows(db: DbExecutor) {
     async heldBy(agentId: string, ownerUserId: string) {
       const w = schema.projectWorkItems;
       return db.select({ id: w.id, version: w.version }).from(w).innerJoin(a, eq(a.id, w.ownerAgentId))
-        .where(and(eq(w.ownerAgentId, agentId), eq(a.ownerUserId, ownerUserId), sql`${w.status} not in ('done', 'not_pursued')`))
+        .where(and(eq(w.ownerAgentId, agentId), eq(a.ownerUserId, ownerUserId), sql`${w.status} <> 'done'`))
         .orderBy(asc(w.createdAt), asc(w.id));
     },
 

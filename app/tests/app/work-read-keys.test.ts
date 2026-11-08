@@ -35,7 +35,8 @@ describe('bounded native PostgreSQL work key selection', () => {
       supersedesId: i === 1 ? decisions[2] : null, supersededById: i === 2 ? decisions[1] : null, supersededAt: i === 2 ? new Date(at) : null, version: i ? i + 1 : 1 })));
     await db.insert(schema.projectWorkItems).values(ids.map((id, i) => ({
       id, workspaceId, projectId, title: i === 0 ? '100%_literal' : i === 1 ? '100xxliteral' : `Work ${i}`, outcome: 'Own complete fields must not enter keys',
-      status: (['open', 'open', 'in_progress', 'blocked', 'open', 'done', 'not_pursued', 'in_progress'] as const)[i]!,
+      status: (['open', 'open', 'in_progress', 'blocked', 'open', 'done', 'done', 'in_progress'] as const)[i]!,
+      dropped: i === 6,
       blocker: i === 3 ? 'Awaiting material' : null,
       ownerUserId: i % 2 === 0 ? owner.id : other.id, createdByKind: 'human' as const, createdById: owner.id,
       parkedAt: i === 4 || i === 7 ? new Date(at) : null, parkedByDecisionId: i === 4 || i === 7 ? decisions[1] : null, createdAt: new Date(at),
