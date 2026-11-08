@@ -76,7 +76,10 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
   the new generation in the same answer (it proved the mailbox or the password). The browser that pressed "Sign out all other devices" keeps
   the cookie it had, given again at the new generation (same device); a browser that has only a session gets none, because a session does not
   prove the password and a cookie would give it a wait of its own to guess in (review of #1044). Older generations' keys leave the cookie when
-  it is given again. A plain password change that keeps the other devices leaves the cookie as it was.
+  it is given again. The sign-out raises the generation only if it is still the value it checked (and its session is still there), and gives a
+  cookie only when that raise matched; a reset raises it again once its sessions are gone and writes the cookie for that raise. So a request that
+  raced a reset cannot leave a cookie that counts after it ([#1067](https://github.com/ColdPhase/flux/issues/1067)). A plain password change that keeps
+  the other devices leaves the cookie as it was.
 - **#991, errors.** Every error that is not a domain refusal, a 401 or a Fastify 4xx answers `500` with a class code and logs only the
   redacted error. The encrypted-space rule of F-030 now holds for every space, so there is one path to keep correct, not two.
 - **#992, headers.** `nosniff`, `Referrer-Policy: same-origin`, `no-store` for `/api/` answers that set no rule of their own, and HSTS

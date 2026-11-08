@@ -206,7 +206,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
   /** The address (and browser) whose back-off a request already counted in `before`, found again in `after` (the same request context). */
   const counted = new WeakMap<object, { email: string; device?: string }>();
   /** The address whose password a reset is about to change, and the device of this browser if it knew the account, so the browser that finishes the reset is remembered. */
-  const resetting = new WeakMap<object, { email: string; device?: string }>();
+  const resetting = new WeakMap<object, { userId: string; email: string; device?: string }>();
   // The answer says neither when the wait ends nor how long it is: with the exact second, a stranger could time one guess for each end (#990).
   const throttledSignIn = (what: 'sign-in' | 'change') => new APIError('TOO_MANY_REQUESTS', {
     message: what === 'sign-in' ? 'Too many sign-in attempts for this account. Try again in a few minutes'
@@ -218,8 +218,9 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
   const { cookie: deviceCookie } = devices;
   type CookieContext = { getCookie(name: string): string | null | undefined; setCookie(name: string, value: string, options: Record<string, unknown>): unknown };
   const knownDevice = (ctx: CookieContext, email: string) => devices.known(ctx.getCookie(deviceCookie.name), email);
-  const rememberDevice = async (ctx: CookieContext, email: string) => {
-    ctx.setCookie(deviceCookie.name, await devices.remember(ctx.getCookie(deviceCookie.name), email), deviceCookie.options);
+  /** `generation` is the one this request's own raise made, when it made one (#1067). */
+  const rememberDevice = async (ctx: CookieContext, email: string, generation?: number) => {
+    ctx.setCookie(deviceCookie.name, await devices.remember(ctx.getCookie(deviceCookie.name), email, generation), deviceCookie.options);
   };
   return betterAuth({
     appName: 'Flux',
@@ -318,12 +319,12 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           throw new APIError('FORBIDDEN', { message: 'Password sign-in and recovery are closed on this Flux server. Sign in with single sign-on', code: 'SSO_ONLY' });
         }
         // Whose password a reset changes (a token that does not name an account changes nothing).
-        let resetUser: { name?: unknown; email?: unknown } | null = null;
+        let resetUser: { id?: unknown; name?: unknown; email?: unknown } | null = null;
         if (ctx.path === '/reset-password') {
           const token = ctx.body?.token ?? ctx.query?.token;
           const reset = typeof token === 'string' ? await ctx.context.internalAdapter.findVerificationValue(`reset-password:${token}`) : null;
           resetUser = reset ? await ctx.context.internalAdapter.findUserById(reset.value) : null;
-          if (typeof resetUser?.email === 'string') resetting.set(ctx.context, { email: resetUser.email, device: (await knownDevice(ctx, resetUser.email))?.id });
+          if (typeof resetUser?.email === 'string') resetting.set(ctx.context, { userId: String(resetUser.id), email: resetUser.email, device: (await knownDevice(ctx, resetUser.email))?.id });
         }
         // A password the person chooses (sign-up, reset, change) must not be a common or easy-to-guess one, nor built from their own name or
         // address (#990). The length rule is Better Auth's (`minPasswordLength`), so a password outside it falls through to its own error.
@@ -400,15 +401,18 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         const resetFor = resetting.get(ctx.context);
         if (resetFor && !(ctx.context.returned instanceof APIError)) {
           await throttle.clear(resetFor.email, resetFor.device);
-          await rememberDevice(ctx, resetFor.email);
+          // Raised again now that the reset has ended every session: a "Sign out all other devices" that was running with one of them can
+          // no longer raise it, and the cookie below is for the generation this raise made (#1067).
+          const generation = await devices.endAll(resetFor.userId);
+          if (generation !== null) await rememberDevice(ctx, resetFor.email, generation);
         }
         // "Sign out my other devices" with a password change ends the person's other browsers, and so their local AI clients (#989)
         // and every copy of the device cookie but this browser's own (#1031).
         let disconnected = 0;
         if (ctx.path === '/change-password' && ctx.body?.revokeOtherSessions === true && signedIn) {
           disconnected = await connectionStore.disconnectClients(signedIn.id);
-          await devices.endAll(signedIn.id);
-          await rememberDevice(ctx, signedIn.email);
+          const generation = await devices.endAll(signedIn.id);
+          if (generation !== null) await rememberDevice(ctx, signedIn.email, generation);
         }
         if (!log) return;
         // The security event of the route (#997). A reset is recorded where its person is known (`onPasswordReset`).
