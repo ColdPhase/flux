@@ -23,6 +23,16 @@ describe('personal run output rules', () => {
     assert.equal(both.body, 'Work [1] then talk [2] and work again [1].');
   });
 
+  test('a proposal block is found by position: an unclosed one stays text, and many openings stay fast (#1064, CodeQL)', () => {
+    const unclosed = parseOutput('Answer [S1] <proposal>{"fact": "f"', sources, true);
+    assert.deepEqual([unclosed.proposal, unclosed.body], [null, 'Answer [1] <proposal>{"fact": "f"']);
+    const first = parseOutput('A <proposal>x</proposal> B <proposal>y</proposal>', sources, false);
+    assert.equal(first.body, 'A  B <proposal>y</proposal>', 'only the first block is taken out, as before');
+    const started = Date.now();
+    parseOutput('<proposal>a'.repeat(50_000), sources, true);
+    assert.ok(Date.now() - started < 2_000, 'no slow pattern over the model\'s text');
+  });
+
   test('a proposal may finish only a supplied work item and is dropped when malformed', () => {
     const block = (value: unknown) => `Answer [S2]\n<proposal>${JSON.stringify(value)}</proposal>`;
     const valid = { fact: 'f', interpretation: 'i', title: 'Result', finding: 'negative', evidence: 'e', finishes: 'S2' };

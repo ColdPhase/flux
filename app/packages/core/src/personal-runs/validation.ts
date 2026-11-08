@@ -193,7 +193,17 @@ export interface ParsedProposal {
   finishesWorkId: string | null;
 }
 
-const PROPOSAL = /<proposal>([\s\S]*?)<\/proposal>/;
+/**
+ * The first `<proposal>…</proposal>` block of a model's text, found by position rather than by a pattern: the text is a model's, and a
+ * lazy pattern over it can be made slow (CodeQL js/polynomial-redos). The same block as `/<proposal>([\s\S]*?)<\/proposal>/` finds.
+ */
+function proposalBlock(text: string): { start: number; end: number; json: string } | null {
+  const open = '<proposal>';
+  const start = text.indexOf(open);
+  if (start < 0) return null;
+  const close = text.indexOf('</proposal>', start + open.length);
+  return close < 0 ? null : { start, end: close + '</proposal>'.length, json: text.slice(start + open.length, close) };
+}
 
 function bounded(value: unknown, maximum: number): string | null {
   if (typeof value !== 'string') return null;
@@ -208,8 +218,8 @@ function bounded(value: unknown, maximum: number): string | null {
  */
 export function parseOutput(text: string, sources: readonly Pick<SuppliedSource, 'label' | 'ref'>[], allowProposal: boolean) {
   const byLabel = new Map(sources.map((source) => [source.label, source]));
-  const match = PROPOSAL.exec(text);
-  const raw = (match ? text.replace(match[0], '') : text).trim().slice(0, 100_000);
+  const match = proposalBlock(text);
+  const raw = (match ? text.slice(0, match.start) + text.slice(match.end) : text).trim().slice(0, 100_000);
   // A committed answer cites its sources as `[1]`, `[2]`, … in the order of `sources`, so any
   // reader can open exactly the cited object. Labels of sources that were not supplied are
   // removed: they point at nothing the audience could open.
@@ -225,7 +235,7 @@ export function parseOutput(text: string, sources: readonly Pick<SuppliedSource,
   let proposal: ParsedProposal | null = null;
   if (match && allowProposal) {
     try {
-      const raw = JSON.parse(match[1]!) as Record<string, unknown>;
+      const raw = JSON.parse(match.json) as Record<string, unknown>;
       const fact = bounded(raw.fact, 2000);
       const interpretation = bounded(raw.interpretation, 2000);
       const title = bounded(raw.title, WORK_LIMITS.title);
