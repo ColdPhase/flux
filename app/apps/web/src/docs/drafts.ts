@@ -43,7 +43,31 @@ export function keep(key: string, value: Kept | null, lifetime = generation) {
   memory.set(key, value);
   let refused = false;
   try { if (value) sessionStorage.setItem(key, JSON.stringify(value)); else sessionStorage.removeItem(key); } catch { refused = true; }
+  // Saved or set aside: no copy is left on this device either.
+  if (!value) keepLeft(key, null, lifetime);
   setReloadRetention('wiki', key, key.split(':')[2]!, refused, true);
+}
+
+/**
+ * The unsaved text of a tab that closed, kept on this device (#967): the tab's own copy goes with the tab, and the saves
+ * sent as it closed may all be refused, so the next visit to the page restores this one. Sign-out removes it.
+ */
+const leftKey = (key: string) => key.replace(/^flux:doc-edit:/, 'flux:doc-left:');
+export function keepLeft(key: string, value: Kept | null, lifetime = generation) {
+  if (lifetime !== generation) return;
+  try { if (value) localStorage.setItem(leftKey(key), JSON.stringify(value)); else localStorage.removeItem(leftKey(key)); }
+  catch { /* The tab's own copy and the saves sent as it closes remain. */ }
+}
+/** Takes the copy a closed tab left: from now on this tab keeps it. */
+export function takeLeft(key: string): Kept | null {
+  if (retiredStorage) return null;
+  try {
+    const raw = localStorage.getItem(leftKey(key));
+    if (!raw) return null;
+    localStorage.removeItem(leftKey(key));
+    const value = JSON.parse(raw) as Partial<Kept> | null;
+    return value && typeof value.body === 'string' && typeof value.title === 'string' && Number.isSafeInteger(value.base) ? value as Kept : null;
+  } catch { return null; }
 }
 
 /** Confirmed device sign-out, not error recovery, retires these private editor copies. */
@@ -56,4 +80,6 @@ export function forgetDocumentDrafts() {
   try {
     for (const key of Object.keys(sessionStorage)) if (key.startsWith('flux:doc-edit:') || key.startsWith('flux:wiki-live:')) sessionStorage.removeItem(key);
   } catch { /* Retirement has still discarded this visit's private overrides. */ }
+  try { for (const key of Object.keys(localStorage)) if (key.startsWith('flux:doc-left:')) localStorage.removeItem(key); }
+  catch { /* A copy left on this device stays unread: this visit no longer reads stored copies. */ }
 }

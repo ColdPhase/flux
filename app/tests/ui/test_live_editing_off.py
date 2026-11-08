@@ -162,6 +162,91 @@ class LiveEditingOffJourney(unittest.TestCase):
         self.assertIn("First part. Second part, then the tab closed.", doc["body"])
         self.assertEqual(doc["version"], before + 2, "one version for each text, never two of the same")
 
+    def test_02d_a_tab_closed_while_its_save_is_held_never_loses_the_newer_text(self) -> None:
+        # #967: the running save is held before it reaches the server and the tab closes with newer text. The held save
+        # and the two saves sent as the tab closes reach the server in any order; when every one of them is refused, the
+        # copy the tab left on this device brings the text back on the next visit. FLUX_OFF_HELD_ROUNDS sets the rounds.
+        project = self.doc_url.split("/")[2]
+        reader, _ = self.page()
+        outcomes = []
+        for round_ in range(int(os.environ.get("FLUX_OFF_HELD_ROUNDS", "6"))):
+            with self.subTest(round=round_):
+                doc = self.api(reader, "POST", f"/api/v1/projects/{project}/docs", {"title": f"Held save {round_}", "body": "Start text."})
+                url = f"/projects/{project}/docs/{doc['id']}"
+                page, _ = self.page()
+                page.goto(url)
+                text = page.locator('.cm-content[aria-label="Page text"]')
+                expect(text).to_have_attribute("contenteditable", "true")
+                held: list = []
+                page.route(lambda link: link.split("?", 1)[0].endswith(f"/api/v1/docs/{doc['id']}"), lambda route: held.append(route), times=1)
+                text.focus()
+                page.keyboard.press("Control+End")
+                page.keyboard.insert_text(f" First part {round_}.")
+                deadline = time.monotonic() + 10
+                while not held and time.monotonic() < deadline:
+                    page.wait_for_timeout(100)
+                self.assertTrue(held, "the version saved by itself started and is held")
+                page.keyboard.insert_text(f" Second part {round_}.")
+                context = page.context
+                page.close(run_before_unload=True)
+                time.sleep(1.5)
+                wanted = f"Start text. First part {round_}. Second part {round_}."
+                at_close = wanted in self.api(reader, "GET", f"/api/v1/docs/{doc['id']}", status=200)["body"]
+                again = context.new_page()
+                again.goto(url)
+                expect(again.locator('[data-live-status="ordinary"]')).to_be_visible()
+                expect(again.locator('.cm-content[aria-label="Page text"]')).to_contain_text(wanted)
+                conflict = again.get_by_role("alert").filter(has_text="while you were writing")
+                if not at_close and conflict.count():
+                    # The tab's own earlier save made the version the closing saves did not expect.
+                    expect(conflict).to_contain_text("Your earlier save became version")
+                    conflict.get_by_role("button", name="Keep my text").click()
+                deadline = time.monotonic() + 15
+                while True:
+                    saved_body = self.api(again, "GET", f"/api/v1/docs/{doc['id']}", status=200)["body"]
+                    if wanted in saved_body or time.monotonic() > deadline:
+                        break
+                    time.sleep(0.25)
+                self.assertIn(wanted, saved_body)
+                again.wait_for_function("() => !Object.keys(localStorage).some((key) => key.startsWith('flux:doc-left:'))", timeout=5000)
+                outcomes.append("saved as the tab closed" if at_close else "restored on the next visit")
+                again.close()
+        print(f"HELD_SAVE_OUTCOMES {outcomes}", flush=True)
+
+    def test_02e_a_save_sent_on_leaving_says_which_version_it_replaced(self) -> None:
+        # #967 P3: the running save is held and someone saves meanwhile, so the save sent as the page is left lands on that
+        # version; the new version says so. The page is left through the app (the same leave as a closing tab, without a
+        # closing browser target that may drop the request).
+        project = self.doc_url.split("/")[2]
+        page, _ = self.page()
+        doc = self.api(page, "POST", f"/api/v1/projects/{project}/docs", {"title": "Replaced as it closed", "body": "Start text."})
+        page.goto(f"/projects/{project}/docs/{doc['id']}")
+        text = page.locator('.cm-content[aria-label="Page text"]')
+        expect(text).to_have_attribute("contenteditable", "true")
+        held: list = []
+        page.route(lambda link: link.split("?", 1)[0].endswith(f"/api/v1/docs/{doc['id']}"), lambda route: held.append(route), times=1)
+        text.focus()
+        page.keyboard.press("Control+End")
+        page.keyboard.insert_text(" First part.")
+        deadline = time.monotonic() + 10
+        while not held and time.monotonic() < deadline:
+            page.wait_for_timeout(100)
+        self.assertTrue(held, "the version saved by itself started and is held")
+        other, _ = self.page()
+        response = other.request.fetch(f"{ORIGIN}/api/v1/docs/{doc['id']}", method="PATCH", data=json.dumps({"body": "Start text. Saved meanwhile."}),
+                                       headers={"origin": ORIGIN, "content-type": "application/json", "if-match": f'"{doc["version"]}"', "idempotency-key": str(uuid.uuid4())})
+        self.assertEqual(response.status, 200, response.text())
+        page.keyboard.insert_text(" Second part.")
+        page.get_by_role("navigation", name="Space views").get_by_role("link", name="Conversation").click()
+        deadline = time.monotonic() + 10
+        while True:
+            current = self.api(other, "GET", f"/api/v1/docs/{doc['id']}", status=200)
+            if "Second part." in current["body"] or time.monotonic() > deadline:
+                break
+            time.sleep(0.25)
+        self.assertEqual((current["version"], current["body"]), (doc["version"] + 2, "Start text. First part. Second part."))
+        self.assertEqual(current["reason"], f"Saved as the page was left, in place of version {doc['version'] + 1}")
+
     def test_03_map_is_ordinary_with_immediate_undo(self) -> None:
         page, live = self.page()
         page.goto(self.map_url)

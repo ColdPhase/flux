@@ -2,7 +2,7 @@ import * as Y from 'yjs';
 import type { Doc } from '@flux/contracts';
 import { ApiError } from '../api/client.js';
 import { updateDoc } from '../docs/api.js';
-import { documentDraftGeneration, draftKey, keep, readKept } from '../docs/drafts.js';
+import { documentDraftGeneration, draftKey, keep, keepLeft, readKept, takeLeft, type Kept } from '../docs/drafts.js';
 import { AUTOSAVE } from './wiki.js';
 
 const LOADED = Symbol('text from the server');
@@ -14,7 +14,8 @@ const CONFLICT = 'This page changed while you were writing. Choose “Keep my te
  * The page's text where live editing is off (FLUX_LIVE_EDITING=off, #239): the same editor on a Y.Text of this tab
  * only, saved as the next version once typing rests, at most once per `AUTOSAVE.spacingMs` like the shared page, and at
  * once when the page is left (#869). A save sends If-Match with the version the text started from; when someone saved
- * in between, the text is kept and the person chooses (`conflict`). Unsaved text survives a reload of this tab.
+ * in between, the text is kept and the person chooses (`conflict`). Unsaved text survives a reload of this tab, and a
+ * tab that closes with unsaved text leaves a copy on this device that the next visit restores (#967).
  */
 export class LocalWiki {
   readonly document = new Y.Doc();
@@ -31,7 +32,7 @@ export class LocalWiki {
   problem: string | null = null;
   /** The version someone saved while this text was written, until the person chooses. */
   conflict: Doc | null = null;
-  /** Unsaved text from an earlier visit of this tab came back. */
+  /** Unsaved text from earlier (this tab, or a tab that closed) came back. */
   restored = false;
   private lastSaveAt = 0;
   private timer: number | null = null;
@@ -43,12 +44,15 @@ export class LocalWiki {
   private readonly lifetime = documentDraftGeneration();
   private leaving = () => { void this.leave(); };
 
-  constructor(private readonly doc: Doc, userId: string) {
+  constructor(private readonly doc: Doc, private readonly userId: string) {
     this.key = draftKey(userId, doc.id, doc.projectId);
     this.base = doc.version;
     this.title = doc.title;
     this.savedAt = Date.parse(doc.createdAt);
-    const kept = readKept(this.key);
+    // This tab's own copy is the newest; otherwise a closed tab's copy comes back, and this tab keeps it from now on.
+    const left = takeLeft(this.key);
+    const kept = readKept(this.key) ?? left;
+    if (kept && kept === left) keep(this.key, left, this.lifetime);
     this.document.transact(() => this.text.insert(0, kept?.body ?? doc.body), LOADED);
     if (kept && kept.body !== doc.body) {
       this.restored = true;
@@ -70,7 +74,7 @@ export class LocalWiki {
     if (origin === LOADED || this.stopped) return;
     this.dirty = true;
     this.attempt = crypto.randomUUID();
-    keep(this.key, { title: this.title, body: this.text.toString(), state: this.doc.state, reason: '', base: this.base, attempt: this.attempt }, this.lifetime);
+    keep(this.key, this.copy(), this.lifetime);
     this.schedule();
     this.changed();
   };
@@ -116,18 +120,28 @@ export class LocalWiki {
     return this.running;
   }
 
+  private copy(): Kept {
+    return { title: this.title, body: this.text.toString(), state: this.doc.state, reason: '', base: this.base, attempt: this.attempt };
+  }
+
   /**
    * Leaving the page saves what rests unsaved at once; the request outlives the page. A closing tab never starts a save
    * that waits behind a running one (#946 review), so the text goes at once as well: on the version it started from and
    * on the version the running save makes if it reaches the server first. The server refuses a stale version and makes
-   * none of an unchanged text, so one version holds the text and never two. While the page still runs, the save after
-   * the running one follows as well.
+   * none of an unchanged text, so the two never make two versions. In the order where every one of them is refused, the
+   * copy kept on this device brings the text back on the next visit (#967); a save that holds it removes the copy.
    */
   leave() {
-    if (!this.dirty || this.conflict) return this.running ?? Promise.resolve();
+    if (!this.dirty) return this.running ?? Promise.resolve();
+    keepLeft(this.key, this.copy(), this.lifetime);
+    if (this.conflict) return this.running ?? Promise.resolve();
     if (this.running) {
       const body = this.text.toString();
-      for (const base of [this.base, this.base + 1]) void updateDoc(this.doc.id, base, { body }, crypto.randomUUID(), true).then((saved) => this.adopt(saved, body), () => undefined);
+      // On the version the running save makes, which may be another person's: the version says what it replaced (#967).
+      const after = this.base + 1;
+      for (const [base, reason] of [[this.base, undefined], [after, `Saved as the page was left, in place of version ${after}`]] as const) {
+        void updateDoc(this.doc.id, base, { body, ...(reason ? { reason } : {}) }, crypto.randomUUID(), true).then((saved) => this.adopt(saved, body), () => undefined);
+      }
     }
     return this.save({}, true);
   }
@@ -139,11 +153,14 @@ export class LocalWiki {
     if (this.text.toString() === body) { this.dirty = false; keep(this.key, null, this.lifetime); }
   }
 
-  /** The person keeps their text and saves it on top of the newer version. */
+  /** The person keeps their text and saves it on top of the newer version; the version says whose it replaced. */
   keepMine() {
-    if (!this.conflict) return;
-    this.base = this.conflict.version; this.title = this.conflict.title; this.conflict = null; this.attempt = crypto.randomUUID();
-    void this.save();
+    const theirs = this.conflict;
+    if (!theirs) return;
+    this.base = theirs.version; this.title = theirs.title; this.conflict = null; this.attempt = crypto.randomUUID();
+    const reason = theirs.author.id === this.userId ? undefined : `In place of ${theirs.author.name}’s version ${theirs.version}`;
+    // A refusal shows in the page's notice; nothing more to report here.
+    void this.save(reason ? { reason } : {}).catch(() => undefined);
   }
   /** The person takes the newer version and drops their unsaved change. */
   takeTheirs() {

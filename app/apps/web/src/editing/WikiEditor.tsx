@@ -520,13 +520,16 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
 
   const notices = <>
     {problem ? <p className="doc-notice" role="alert">{problem}</p> : null}
-    {local?.restored && !conflict ? <p className="doc-notice" role="status">Your unsaved text from earlier in this tab is back.</p> : null}
+    {local?.restored && !conflict ? <p className="doc-notice" role="status">Your unsaved text from earlier is back.</p> : null}
     {conflict ? (
       <div className="doc-notice doc-conflict" role="alert">
-        <p><b>{conflict.author.name}</b> saved this page while you were writing. Your text is still here.</p>
-        <p>“Keep my text” saves your text as the next version, in place of theirs. <Link to={`${docUrl(project.id, doc.id)}/history?from=${local?.base ?? conflict.version - 1}&to=${conflict.version}`}>See their change</Link></p>
+        {/* The person's own earlier save (a tab that closed while it ran, #967) is not "theirs". */}
+        {conflict.author.id === userId
+          ? <p>Your earlier save became version {conflict.version} while you were writing. Your newer text is still here.</p>
+          : <p><b>{conflict.author.name}</b> saved this page while you were writing. Your text is still here.</p>}
+        <p>“Keep my text” saves your text as the next version, in place of {conflict.author.id === userId ? 'that one' : 'theirs'}. <Link to={`${docUrl(project.id, doc.id)}/history?from=${local?.base ?? conflict.version - 1}&to=${conflict.version}`}>{conflict.author.id === userId ? 'See that change' : 'See their change'}</Link></p>
         <Button variant="secondary" onClick={() => local?.keepMine()}>Keep my text</Button>
-        <Button variant="quiet" onClick={() => local?.takeTheirs()}>Use their version</Button>
+        <Button variant="quiet" onClick={() => local?.takeTheirs()}>{conflict.author.id === userId ? 'Use that version' : 'Use their version'}</Button>
       </div>
     ) : null}
     {privateText ? (
