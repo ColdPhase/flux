@@ -79,7 +79,7 @@ describe('four task states, dropped, what came of it, and what a blocked task wa
       assert.equal((await cameOfItMessages(task)).length, 1);
     });
 
-    test('a dropped task is Done · dropped; reading, activity and the work summary say so', async () => {
+    test('a dropped task is Done · dropped; reading, activity and the finished count say so', async () => {
       const task = await create({ title: 'Radar module', owner: human(ada) });
       const dropped = await patch(task, { status: 'done', dropped: true });
       assert.deepEqual([dropped.status, dropped.dropped, dropped.cameOfIt], ['done', true, null]);
@@ -90,8 +90,9 @@ describe('four task states, dropped, what came of it, and what a blocked task wa
       const row = rows.items.find((item) => item.id === task.id);
       assert.ok(row && row.kind === 'work');
       assert.deepEqual([row.status, row.dropped], ['done', true], 'the row says Done · dropped');
-      const summary = expectStatus(await send(ada, 'GET', `/api/v1/projects/${place.id}/work-summary`), 200) as { state: { history: { completed: number; dropped: number } } };
-      assert.ok(summary.state.history.dropped >= 1);
+      // A dropped task counts as finished: the summary has no fifth state.
+      const summary = expectStatus(await send(ada, 'GET', `/api/v1/projects/${place.id}/work-summary`), 200) as { all: { finished: number } };
+      assert.ok(summary.all.finished >= 1);
     });
 
     test('the line is one line of at most 500 characters; dropped and the line are for Done only', async () => {

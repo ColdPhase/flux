@@ -1,4 +1,4 @@
--- #868 (F-038, C-50): a task has four states, and a blocked task waits for one thing.
+-- #868 (F-038, C-51): a task has four states, and a blocked task waits for one thing.
 -- #1039: a task has no parked state any more (nothing parks a task since #871), and no decision links work as "still applies".
 -- "Not pursued" is Done with a "dropped" note. Blocked waits for a person, a decision or another task and goes back to Doing
 -- by itself when that is resolved. "What came of it" is the one optional line at Done. Flux has no installations or data yet
