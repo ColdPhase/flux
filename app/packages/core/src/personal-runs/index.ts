@@ -2,6 +2,7 @@ export * from './ports.js';
 export * from './service.js';
 export * from './processor.js';
 export { postToAgentChat, unreadAgentChats } from './agent-chat.js';
+export { reportTaskRun } from './task-report.js';
 export * from './proposals.js';
 export { recoverLostRuntimeRuns, recoverPersonalRuns } from './recovery.js';
 export {

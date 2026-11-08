@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate, useSearchParams } from 'react-router';
-import { DM_LIMITS, type WorkspaceMember } from '@flux/contracts';
+import { DM_LIMITS, type MyAgent, type WorkspaceMember } from '@flux/contracts';
 import { ApiError } from '../api/client';
 import { openDm } from '../api/direct-messages';
 import { listWorkspaceMembers } from '../project/api';
 import { useShellData } from '../app/data';
+import { useAgentUnread } from '../my-agents/AgentChatDots';
 import { Avatar, Button, EmptyState, Icon, Kreska } from '../ui';
 import { audienceOf } from './names';
 import './dm.css';
@@ -15,14 +16,7 @@ export function DmRows() {
   return (
     <ul className="dm-index" aria-label="Conversations">
       {/* Your agents come first, Assistant at the top (F-036 AG-4). */}
-      {agents.map((agent, index) => (
-        <li key={agent.id}>
-          <Link to={`/agents/${agent.id}`} className="dm-index__item" data-agent={agent.id}>
-            <Kreska size={36} hue={agent.colour} />
-            <span className="dm-index__text"><b>{agent.name}</b><span>{index === 0 ? 'Your agent · answers /ai' : 'Your agent'}</span></span>
-          </Link>
-        </li>
-      ))}
+      {agents.map((agent, index) => <AgentRow key={agent.id} agent={agent} first={index === 0} />)}
       {directMessages.map((dm) => (
         <li key={dm.id}>
           <Link to={`/dm/${dm.id}`} className="dm-index__item">
@@ -33,6 +27,20 @@ export function DmRows() {
         </li>
       ))}
     </ul>
+  );
+}
+
+/** One of your agents in the list; the dot says its chat has an answer or a report you have not read (#919). */
+function AgentRow({ agent, first }: { agent: MyAgent; first: boolean }) {
+  const unread = useAgentUnread(agent.id);
+  return (
+    <li>
+      <Link to={`/agents/${agent.id}`} className="dm-index__item" data-agent={agent.id}>
+        <Kreska size={36} hue={agent.colour} />
+        <span className="dm-index__text"><b>{agent.name}</b><span>{first ? 'Your agent · answers /ai' : 'Your agent'}</span></span>
+        {unread ? <span className="dm-index__dot"><span className="ui-vh">New messages</span></span> : null}
+      </Link>
+    </li>
   );
 }
 

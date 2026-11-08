@@ -5,6 +5,7 @@ import { ApiError, NetworkError } from '../api/client';
 import { useShellData } from '../app/data';
 import { MessageDay, clock, day } from '../app/messageParts';
 import { AnswerBody } from '../assistant/ConversationParts';
+import { undoRunChanges } from '../assistant/api';
 import { askError, askState, canRetry, endedText, isWorking, workingText } from '../assistant/format';
 import { MessageBubble } from '../composer/Attachments';
 import { ComposerBox } from '../composer/ComposerBox';
@@ -72,17 +73,51 @@ function Turn({ run, agent, chat, first, newDay }: { run: AssistantRun; agent: M
   );
 }
 
-/** One line the agent said on its own: the report of a run (#842, AG-7). */
-function Line({ line, agent, newDay }: { line: AgentChatMessage; agent: MyAgent; newDay: boolean }) {
+/**
+ * One report of the agent's work (#842, #919; mockup AgentReports): its own words and the task chip, then the muted change line under them,
+ * "Done: #4 … · 3 changes · Undo". Undo reverses the changes of the run this line reports, the same call as the change line of a task's
+ * discussion (#856); once nothing stands the line is struck through and says "Undone by you".
+ */
+function Line({ line, agent, newDay, onChanged }: { line: AgentChatMessage; agent: MyAgent; newDay: boolean; onChanged: () => void }) {
+  const [undoing, setUndoing] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [note, setNote] = useState('');
+  const undo = async () => {
+    setUndoing(true); setFailed(false); setNote('');
+    try {
+      const result = await undoRunChanges(line.runId);
+      // What changed since is not taken back: say which, as a task's change line does.
+      if (result.changedSince.length) setNote(result.message);
+      onChanged();
+    } catch { setFailed(true); } finally { setUndoing(false); }
+  };
+  const total = line.changes + line.undone;
+  const count = total ? ` · ${total} ${total === 1 ? 'change' : 'changes'}` : '';
+  const undone = total > 0 && line.changes === 0;
   return (
     <li className="dm-msg agc__turn" data-line-id={line.id} data-run-id={line.runId} data-chat-agent="">
       {newDay ? <MessageDay as="p" label={day(line.createdAt)} /> : null}
       <div className="dm-msg__row">
         <span className="dm-msg__face"><Kreska size={26} hue={agent.colour} /></span>
         <div className="dm-msg__main">
-          <p className="dm-msg__meta"><b>{agent.name}</b></p>
-          <MessageBubble><div className="dm-msg__body agc__answer"><p>{line.body}</p></div></MessageBubble>
-          <div className="agc__actions"><time className="agc__time" dateTime={line.createdAt}>{clock(line.createdAt)}</time></div>
+          <p className="dm-msg__meta"><b>{agent.name}</b><time className="agc__time" dateTime={line.createdAt}> · {clock(line.createdAt)}</time></p>
+          {line.words || line.task ? (
+            <MessageBubble><div className="dm-msg__body agc__answer">
+              {line.words ? <p>{line.words}</p> : null}
+              {line.task ? (
+                <Link className="agc__chip" to={`/projects/${line.task.projectId}/tasks?open=work:${line.task.id}`}>
+                  <Icon name="tasks" size={13} />#{line.task.number} {line.task.title} · {line.task.projectName}
+                </Link>
+              ) : null}
+            </div></MessageBubble>
+          ) : null}
+          <div className="agc__line">
+            <Icon name="check" size={13} />
+            <span>{undone ? <><s>{line.body}{count}</s> · <b>Undone by you</b></> : <>{line.body}{count}</>}</span>
+            {line.changes > 0 ? <Button variant="quiet" size="sm" busy={undoing} onClick={() => void undo()}>Undo</Button> : null}
+          </div>
+          {note ? <p className="agc__line-note" role="status">{note}</p> : null}
+          {failed ? <p className="agc__line-note" role="alert">Could not undo. Try again.</p> : null}
         </div>
       </div>
     </li>
@@ -136,7 +171,7 @@ function AgentChatPane({ agent }: { agent: MyAgent }) {
                   const previous = entries[index - 1];
                   const newDay = !previous || day(previous.at) !== day(entry.at);
                   return entry.run ? <Turn key={entry.run.id} run={entry.run} agent={agent} chat={chat} first newDay={newDay} />
-                    : <Line key={entry.line!.id} line={entry.line!} agent={agent} newDay={newDay} />;
+                    : <Line key={entry.line!.id} line={entry.line!} agent={agent} newDay={newDay} onChanged={chat.refresh} />;
                 })}
               </ol>
             ) : <p className="agc__empty">Nothing here yet. Say what you want {agent.name} to do, or ask it something.</p>}

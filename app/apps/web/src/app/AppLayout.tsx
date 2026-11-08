@@ -37,6 +37,7 @@ import { remember, remembered } from './remembered';
 import { ProjectAgentStop } from './WorkingAgent';
 import { HeaderFaces, MoreMenu, type MoreItem } from './HeaderParts';
 import { beginNotificationSession, retireNotificationSession } from '../notifications/session';
+import { AgentChatDotsProvider } from '../my-agents/AgentChatDots';
 import { PhoneAvatar, PhoneBack, PhoneCreate, PhoneDock, PhoneHomeLead, PhoneTitleMenu, phoneHidesDock, phoneOffersCreate, phonePlaces, type PhoneMenuItem } from './PhoneChrome';
 
 const lastConversationPath = (userId: string, projectId: string) => remembered('conversation', userId, projectId) ?? `/projects/${projectId}`;
@@ -122,7 +123,7 @@ function isTyping(target: EventTarget | null) {
 export function AppLayout() {
   const { me } = useShellData();
   const { projectId } = useParams();
-  return <WorkReadProvider accountId={me.user.id} projectId={projectId ?? null}><AppLayoutContent /></WorkReadProvider>;
+  return <WorkReadProvider accountId={me.user.id} projectId={projectId ?? null}><AgentChatDotsProvider identity={me.user.id}><AppLayoutContent /></AgentChatDotsProvider></WorkReadProvider>;
 }
 
 function AppLayoutContent() {

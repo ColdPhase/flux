@@ -99,6 +99,27 @@ export function personalRunRows(db: DbExecutor) {
     return { items: rows.map(toRun), total: counted?.total ?? 0 };
   }
 
+  /**
+   * What the run's Undo takes back (#919): the changes it made that have an undo plan, not the agent's own line in a task's thread (that is
+   * deleted at the line, TA-3). `standing` still can be undone; `undone` already were.
+   */
+  async function undoableChanges(runIds: string[]) {
+    const c = schema.assistantChanges;
+    const counts = new Map<string, { standing: number; undone: number }>();
+    if (!runIds.length) return counts;
+    const rows = await db.select({ runId: c.runId, state: c.state, count: sql<number>`count(*)::int` }).from(c)
+      .where(and(inArray(c.runId, runIds), inArray(c.state, ['applied', 'applied_after_wait', 'undone']), sql`jsonb_typeof(${c.receipt} -> 'undo') = 'object'`,
+        sql`NOT (${c.receipt} #>> '{undo,plan,kind}' = 'removal' AND ${c.receipt} #>> '{undo,plan,thread}' = 'true')`))
+      .groupBy(c.runId, c.state);
+    for (const row of rows) {
+      if (!row.runId) continue;
+      const entry = counts.get(row.runId) ?? { standing: 0, undone: 0 };
+      if (row.state === 'undone') entry.undone += row.count; else entry.standing += row.count;
+      counts.set(row.runId, entry);
+    }
+    return counts;
+  }
+
   return {
     enablement,
     lockOwner,
@@ -132,6 +153,14 @@ export function personalRunRows(db: DbExecutor) {
       const [row] = await db.select({ count: sql<number>`count(*)::int` }).from(r).where(and(eq(r.ownerUserId, ownerUserId),
         or(inArray(r.status, ['reading', 'dispatching']), and(eq(r.status, 'queued'), eq(r.authority, 'owner_request')))));
       return row?.count ?? 0;
+    },
+
+
+    async workLabel(workId: string) {
+      const w = schema.projectWorkItems;
+      const [row] = await db.select({ number: w.number, title: w.title, projectId: w.projectId, projectName: schema.projects.name }).from(w)
+        .innerJoin(schema.projects, eq(schema.projects.id, w.projectId)).where(eq(w.id, workId));
+      return row ? { number: row.number, title: row.title, projectId: row.projectId, projectName: row.projectName } : null;
     },
 
     async changeCount(runId: string) {
@@ -342,13 +371,17 @@ export function personalRunRows(db: DbExecutor) {
       const [made] = await db.insert(t).values({ id: randomUUID(), workspaceId: owner.workspaceId, agentId: line.agentId, ownerUserId: owner.ownerUserId, runId: line.runId, key: line.key, body: line.body })
         .onConflictDoNothing().returning();
       const [row] = made ? [made] : await db.select().from(t).where(and(eq(t.agentId, line.agentId), eq(t.key, line.key)));
-      return row ? { message: { id: row.id, agentId: row.agentId, runId: row.runId, body: row.body, createdAt: row.createdAt.toISOString() }, created: !!made } : null;
+      const counts = row ? (await undoableChanges([row.runId])).get(row.runId) : undefined;
+      return row ? { message: { id: row.id, agentId: row.agentId, runId: row.runId, body: row.body, createdAt: row.createdAt.toISOString(), changes: counts?.standing ?? 0, undone: counts?.undone ?? 0, words: null, task: null }, created: !!made } : null;
     },
 
     async agentChatMessages(agentId: string, limit: number) {
       const t = schema.agentChatMessages;
       const rows = await db.select().from(t).where(eq(t.agentId, agentId)).orderBy(desc(t.createdAt), desc(t.id)).limit(limit);
-      return rows.reverse().map((row) => ({ id: row.id, agentId: row.agentId, runId: row.runId, body: row.body, createdAt: row.createdAt.toISOString() }));
+      const counts = await undoableChanges([...new Set(rows.map((row) => row.runId))]);
+      // The agent's words and the task chip are the use case's to add: they need the reader's access.
+      return rows.reverse().map((row) => ({ id: row.id, agentId: row.agentId, runId: row.runId, body: row.body, createdAt: row.createdAt.toISOString(),
+        changes: counts.get(row.runId)?.standing ?? 0, undone: counts.get(row.runId)?.undone ?? 0, words: null, task: null }));
     },
 
     /** What came after the owner last opened a chat: the agent's answers (runs that ended in it) and its own lines. */
