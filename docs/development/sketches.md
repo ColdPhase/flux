@@ -76,6 +76,7 @@ concurrent revocation is either seen or waits.
 | `PATCH /api/v1/sketches/:id/thoughts/:thoughtId` | Changes text, position, size or shape. Needs `If-Match`: `428` when missing, `409 VERSION_CONFLICT` with the current thought when stale. |
 | `DELETE /api/v1/sketches/:id/thoughts/:thoughtId` | Removes the thought and its links. Needs `If-Match`. |
 | `PATCH /api/v1/sketches/:id/positions` | Moves several thoughts all or nothing. `{ moves: [{ id, x, y, expectedVersion }] }`. Any stale move answers `409` with `conflicts`, and nothing moves. |
+| `POST /api/v1/sketches/:id/move-to-map` | Moves thoughts to another map the caller can change (#948: My map's "Move to a space map", and the Undo that brings them back). `{ toSketchId, thoughts: [{ id, expectedVersion }], at? }`. The caller needs `sketch.write` on both maps (`404` for a map they cannot see, `403` for one they cannot change). Each thought appears on the target as a new thought (a map keeps every id it has held) with the same text, shape and size, and the original goes, in one change: a stale version answers `409 VERSION_CONFLICT` with `conflicts` and nothing moves. The group keeps its shape and lands at `at` (its top left), else under everything on the target, else where it was. A connection between two moved thoughts is made again on the target; one to a thought that stays goes with the original and comes back in `severed`. A thought with an image answers `422 IMAGE_THOUGHT_STAYS` (My map has none). The answer is `{ fromSketchId, toSketchId, moved: [{ from, thought }], links, severed, origin }`. Both maps get their own `sketch.changed.v1` (`thought_removed` and `thought_added`). |
 | `POST /api/v1/sketches/:id/links` | Takes `{ id?, fromId, toId, label? }`. Answers `409 LINK_EXISTS` for a pair that is already linked (in either direction) and `422 SELF_LINK` for a thought linked to itself. |
 | `DELETE /api/v1/sketches/:id/links/:linkId` | Removes one link. |
 
@@ -86,9 +87,9 @@ the person's move on the current version.
 
 ## Events
 
-Each committed change records exactly one event: `sketch.created.v1` or
+Each committed change records exactly one event per map it changes: `sketch.created.v1` or
 `sketch.changed.v1`, with `data.op` and the affected thought and link ids, and never
-text. The event carries `object_id` = the sketch. Its audience is decided with
+text (a move to another map changes two maps, so it records two). The event carries `object_id` = the sketch. Its audience is decided with
 `sketch.read` in the writing transaction, and delivery re-checks it. Nobody but its
 author receives the events of a private sketch. The stream's `objectType` is `sketch`.
 

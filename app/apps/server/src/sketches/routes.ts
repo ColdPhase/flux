@@ -7,6 +7,7 @@ import {
   type CreatedThought,
   type CreateThoughtCommand,
   type MoveThoughtsCommand,
+  type MoveToMapCommand,
   type SketchListQuery,
   type UpdateSketchCommand,
   type UpdateLinkLabelCommand,
@@ -240,6 +241,23 @@ export async function sketchRoutes(app: FastifyInstance, { db, sessions, storage
   }, async (request, reply) => command(request, reply, {
     operation: `PATCH ${SKETCH}/positions`, scope: sketchScope(request.params.sketchId),
     run: (actor, conn, session) => native(conn,actor,request,session,reply).moveThoughts(actor, request.params.sketchId, request.body),
+    replay: readSketch(request.params.sketchId),
+  }));
+
+  app.post<{ Params: { sketchId: string }; Body: MoveToMapCommand }>(`${SKETCH}/move-to-map`, {
+    schema: {
+      body: {
+        type: 'object', required: ['toSketchId', 'thoughts'], additionalProperties: false,
+        properties: {
+          toSketchId: id,
+          thoughts: { type: 'array', minItems: 1, maxItems: 200, items: { type: 'object', required: ['id', 'expectedVersion'], additionalProperties: false, properties: { id, expectedVersion: version } } },
+          at: { type: 'object', required: ['x', 'y'], additionalProperties: false, properties: { x: number, y: number } },
+        },
+      },
+    },
+  }, async (request, reply) => command(request, reply, {
+    operation: `POST ${SKETCH}/move-to-map`, scope: sketchScope(request.params.sketchId),
+    run: (actor, conn, session) => native(conn,actor,request,session,reply).moveToMap(actor, request.params.sketchId, request.body),
     replay: readSketch(request.params.sketchId),
   }));
 

@@ -14,6 +14,8 @@ export const sketchThoughtsPath = (sketchId: string) => `${sketchPath(sketchId)}
 export const sketchThoughtPath = (sketchId: string, thoughtId: string) => `${sketchThoughtsPath(sketchId)}/${thoughtId}`;
 /** PATCH: move several thoughts in one all-or-nothing change. */
 export const sketchPositionsPath = (sketchId: string) => `${sketchPath(sketchId)}/positions`;
+/** POST: move thoughts from this map to another map the caller can change (My map to a space's map, and back for Undo). */
+export const sketchMoveToMapPath = (sketchId: string) => `${sketchPath(sketchId)}/move-to-map`;
 export const sketchLinksPath = (sketchId: string) => `${sketchPath(sketchId)}/links`;
 export const sketchLinkPath = (sketchId: string, linkId: string) => `${sketchLinksPath(sketchId)}/${linkId}`;
 
@@ -195,6 +197,36 @@ export interface MoveThoughtsCommand {
 export interface MovedThoughts {
   thoughts: Thought[];
 }
+/**
+ * Moves thoughts from the map in the path to another map (#948: "Move to a space map" on My map, and the Undo that brings them back).
+ * The caller must be able to change both maps. A moved thought is a new thought on the target map with the same text, shape and
+ * size (its id changes, because a map keeps the ids it has ever held); the original is removed in the same all-or-nothing change.
+ * A connection between two moved thoughts moves with them; a connection to a thought that stays is left behind (it goes with the
+ * original and is returned in `severed`, so Undo can restore it). Each thought names the version the caller saw: if one is stale
+ * nothing moves and the answer is 409 {@link PositionsConflict}.
+ */
+export interface MoveToMapCommand {
+  toSketchId: string;
+  thoughts: { id: string; expectedVersion: number }[];
+  /**
+   * Where the top left of the moved group lands on the target map, in plane coordinates; the thoughts keep their places relative
+   * to each other. Without it the group goes under everything already on the target map, at its left edge.
+   */
+  at?: { x: number; y: number };
+}
+export interface MovedToMap {
+  fromSketchId: string;
+  toSketchId: string;
+  /** Each moved thought as it now stands on the target map, with the id it had on the map it left. */
+  moved: { from: string; thought: Thought }[];
+  /** Connections between moved thoughts, as they now stand on the target map. */
+  links: ThoughtLink[];
+  /** Connections to thoughts that stayed behind: gone with the originals. */
+  severed: ThoughtLink[];
+  /** Where the top left of the group was on the map it left. */
+  origin: { x: number; y: number };
+}
+
 export interface PositionsConflict {
   error: string;
   code: 'VERSION_CONFLICT';

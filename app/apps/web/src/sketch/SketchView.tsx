@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router';
 import { DEFAULT_THOUGHT_SIZE, imageTypeOf, SKETCH_LIMITS, THOUGHT_SHAPES, type SketchDetail } from '@flux/contracts';
-import { Button, EmptyState, Icon, MEDIA, Spinner, useMediaQuery } from '../ui';
+import { Button, EmptyState, Icon, MEDIA, Spinner, useMediaQuery, useToast } from '../ui';
 import { getProject } from '../api/sketches';
 import { ApiError, NetworkError } from '../api/client';
 import { stageFile } from '../composer/api';
@@ -21,6 +21,7 @@ import { ConnectionLabels, type ConnectionTarget } from './ConnectionLabels';
 import { planReparent } from './outline';
 import { useOutline } from './useOutline';
 import { useThoughtDraft, type DraftLine, type ThoughtDraft } from './createdDraft';
+import { useMoveToSpaceMap } from './MoveToSpaceMap';
 import { DraftCapture, draftReady } from './DraftCapture';
 import { clipboardFile, IMAGE_CAPTION, IMAGE_THOUGHT_SIZE, imageRefusal, linkOf, pastedImageName, pastedText } from './paste';
 import { useThoughtTasks } from './ThoughtTasks';
@@ -657,6 +658,21 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     navigate(`/projects/${citePlace}`);
   };
 
+  // #948: on My map a selected thought goes to a space's map, or its address is copied (it opens My map with the thought selected).
+  const toast = useToast();
+  const moveTo = useMoveToSpaceMap({
+    sketch, selection, versionOf: (id) => (doc.confirmedThoughts ?? sketch?.thoughts)?.find((thought) => thought.id === id)?.version,
+    onMoved: (text) => { setConnectFrom(null); say(text, false); focusThought('.sk-node:not([aria-pressed="true"]), .sk-li-t, .sk-canvas'); },
+    onBack: (text) => say(text, false),
+  });
+  const copyLink = sketch?.scope === 'private' && selection.length === 1 ? () => {
+    const link = `${window.location.origin}/map/${sketch.id}#thought-${selection[0]}`;
+    const done = () => { say('Link copied'); toast({ message: 'Link copied', timeout: 2000 }); };
+    const failed = () => toast({ message: 'Could not copy the link', tone: 'danger' });
+    if (!navigator.clipboard) { failed(); return; }
+    navigator.clipboard.writeText(link).then(done, failed);
+  } : null;
+
   const undo = () => {
     if (editingState) { say('Finish or cancel your current edit first'); return; }
     setEditing(null);
@@ -836,7 +852,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
           </div>
           <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
             onLabel={(linkId) => setConnectionTarget({ linkId })} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
-            bar={{ canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onCite: citePlace ? citeSelected : null, onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
+            bar={{ canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onCite: citePlace ? citeSelected : null, onMove: moveTo.start, onCopyLink: copyLink, onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
             draftEditor={shownDraft ? draftForm : null} draft={shownDraft && !shownDraft.lines && !sketch.thoughts.some((thought) => thought.id === shownDraft.id)
               ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId, label: shownDraft.attempt ? 'Save not confirmed' : shownDraft.unknown ? 'Saved state unknown' : 'Draft · not saved' }
@@ -851,6 +867,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
           <p className={`sk-help${helpOpen ? ' is-open' : ''}`} id={helpId}>{helpText}</p>
           {connectionTarget ? <ConnectionLabels sketch={sketch} target={connectionTarget} editable={canWrite && !phone}
             onSave={doc.saveLinkLabel} onDraftChange={setConnectionDraft} onClose={closeConnections} /> : null}
+          {moveTo.dialog}
         </div>
       </div>
     );
@@ -861,7 +878,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     : 'Arrows move between thoughts; Left and Right fold and unfold a branch. Alt with Up or Down moves a thought among its neighbours in your list only.';
   const list = <SketchList {...shared} arrange={!phone} helpId={helpId} personalOutline={personalOutline} onNavigate={navigateThought}
     onReparent={reparent} onConnectFrom={connectFromDot} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
-    onCite={citePlace ? citeSelected : null} onSay={(text) => say(text)} />;
+    onCite={citePlace ? citeSelected : null} onMove={moveTo.start} onCopyLink={canWrite ? copyLink : null} onSay={(text) => say(text)} />;
   const connections = connectionTarget ? <ConnectionLabels sketch={sketch} target={connectionTarget} editable={canWrite && !phone}
     onSave={doc.saveLinkLabel} onDraftChange={setConnectionDraft} onClose={closeConnections} /> : null;
 
@@ -885,6 +902,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
             {dock ? <div className="sk-dock__row">{dock}</div> : null}
           </div>
           {connections}
+          {moveTo.dialog}
         </div>
       </div>
     );
@@ -935,6 +953,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
         {list}
         <p className="sk-help" id={helpId}>{helpText}</p>
         {connections}
+        {moveTo.dialog}
       </div>
     </div>
   );

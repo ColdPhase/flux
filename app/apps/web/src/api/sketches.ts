@@ -1,6 +1,7 @@
 import {
   sketchLinkPath,
   sketchLinksPath,
+  sketchMoveToMapPath,
   sketchPath,
   sketchPositionsPath,
   sketchThoughtPath,
@@ -12,6 +13,8 @@ import {
   type CreateThoughtCommand,
   type MovedThoughts,
   type MoveThoughtsCommand,
+  type MoveToMapCommand,
+  type MovedToMap,
   type Project,
   type Sketch,
   type SketchDetail,
@@ -51,6 +54,10 @@ export async function openMyMap(workspaceId: string, signal?: AbortSignal): Prom
   }
 }
 
+/** The maps of a space, empty ones too (a space's map nobody has put anything on yet is still where a thought can go), newest change first. */
+export const listSpaceMaps = (workspaceId: string, projectId: string, signal?: AbortSignal) =>
+  request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=50&offset=0&projectId=${encodeURIComponent(projectId)}`, { signal });
+
 export const getSketch = (sketchId: string, signal?: AbortSignal) => request<SketchDetail>(sketchPath(sketchId), { signal });
 export const renameSketch = (sketchId: string, title: string, version: number, idempotencyKey: string) =>
   request<Sketch>(sketchPath(sketchId), { method: 'PATCH', body: { title }, headers: { ...ifMatch(version), ...key(idempotencyKey) } });
@@ -63,6 +70,9 @@ export const removeThought = (sketchId: string, thoughtId: string, version: numb
   request<null>(sketchThoughtPath(sketchId, thoughtId), { method: 'DELETE', headers: { ...ifMatch(version), ...key(idempotencyKey) } });
 export const moveThoughts = (sketchId: string, command: MoveThoughtsCommand, idempotencyKey: string) =>
   request<MovedThoughts>(sketchPositionsPath(sketchId), { method: 'PATCH', body: command, headers: key(idempotencyKey) });
+/** Moves thoughts to another map the caller can change (#948): My map's "Move to a space map", and its Undo, which is the same move back. */
+export const moveThoughtsToMap = (sketchId: string, command: MoveToMapCommand, idempotencyKey: string) =>
+  request<MovedToMap>(sketchMoveToMapPath(sketchId), { method: 'POST', body: command, headers: key(idempotencyKey) });
 export const addLink = (sketchId: string, command: CreateLinkCommand, idempotencyKey: string) =>
   request<ThoughtLink>(sketchLinksPath(sketchId), { method: 'POST', body: command, headers: key(idempotencyKey) });
 export const removeLink = (sketchId: string, linkId: string, idempotencyKey: string) =>

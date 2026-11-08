@@ -7,6 +7,8 @@ import {
   type CreatedThought,
   type CreateThoughtCommand,
   type MovedThoughts,
+  type MovedToMap,
+  type MoveToMapCommand,
   type MoveThoughtsCommand,
   type Sketch,
   type SketchDetail,
@@ -44,6 +46,9 @@ export class LinkLabelConflictError extends ConflictError {
     this.details = { currentLabel: current.label, current };
   }
 }
+
+/** How far under the lowest thought of the target map a moved group lands, on the plane (a thought is at most 800 high but is usually drawn higher than its stored height). */
+const MOVE_GAP = 96;
 
 const iso = (date: Date) => date.toISOString();
 
@@ -296,6 +301,76 @@ export function createSketchUseCases(uow: SketchUnitOfWork) {
         const thoughts = await presentThoughts(ports, sketch, updated);
         await changed(ports, principal, sketch, { op: 'thoughts_moved', thoughtIds: parsed.map((move) => move.id), linkIds: [] });
         return { thoughts };
+      });
+    },
+
+    /**
+     * Moves thoughts to another map the caller can change (#948). One all-or-nothing change over two maps: the thoughts appear on the
+     * target as new thoughts with the same text, shape and size (a map keeps every id it has held, so the id changes), the originals
+     * and their connections go, and connections between two moved thoughts are made again on the target. Both maps are locked in id
+     * order so two moves in opposite directions never wait on each other, and the caller needs `sketch.write` on both.
+     */
+    async moveToMap(principal: Principal, fromSketchId: string, command: MoveToMapCommand): Promise<MovedToMap> {
+      const fromId = valid.id(fromSketchId, 'sketchId');
+      const toId = valid.id(command?.toSketchId, 'toSketchId');
+      if (fromId === toId) throw new InvalidInputError('Choose another map to move the thoughts to', 'SAME_MAP');
+      const listed = command?.thoughts;
+      if (!Array.isArray(listed) || !listed.length || listed.length > SKETCH_LIMITS.moves) throw new InvalidInputError(`thoughts must list 1–${SKETCH_LIMITS.moves} thoughts`);
+      const parsed = listed.map((item, index) => ({ id: valid.id(item?.id, `thoughts[${index}].id`), expectedVersion: item?.expectedVersion }));
+      if (new Set(parsed.map((item) => item.id)).size !== parsed.length) throw new InvalidInputError('Each thought may appear once in thoughts');
+      const at = command.at === undefined ? null : { x: valid.coordinate(command.at?.x, 'at.x'), y: valid.coordinate(command.at?.y, 'at.y') };
+      return uow.run(async (ports) => {
+        const maps = new Map<string, Awaited<ReturnType<typeof authorized>>>();
+        for (const id of [fromId, toId].sort()) maps.set(id, await authorized(ports, principal, 'sketch.write', id));
+        const source = maps.get(fromId)!.sketch;
+        const target = maps.get(toId)!.sketch;
+        const locked = new Map((await ports.sketches.lockThoughts(source.id, parsed.map((item) => item.id))).map((row) => [row.id, row]));
+        if (locked.size !== parsed.length) throw new NotFoundError('Thought', 'THOUGHT_NOT_FOUND');
+        const stale = parsed.filter((item) => locked.get(item.id)!.version !== valid.expectedVersion(item.expectedVersion));
+        if (stale.length) {
+          const views = await presentThoughts(ports, source, stale.map((item) => locked.get(item.id)!));
+          throw new PositionsConflictError(views.map((view) => ({ id: view.id, currentVersion: view.version, current: view })));
+        }
+        const records = parsed.map((item) => locked.get(item.id)!);
+        // An image belongs to its space's files (#252): it stays where it is. My map has none, so nothing offers this move for one.
+        if (source.scope === 'project' && source.projectId && (await ports.files.ofThoughts(source.projectId, records.map((row) => row.id))).size)
+          throw new RuleViolationError('A thought with an image stays on its map', 'IMAGE_THOUGHT_STAYS');
+        const related = new Map<string, LinkRecord>();
+        for (const row of records) for (const link of await ports.sketches.relatedLinks(source.id, { thoughtId: row.id })) related.set(link.id, link);
+        const moving = new Set(records.map((row) => row.id));
+        const carried = [...related.values()].filter((link) => moving.has(link.fromId) && moving.has(link.toId));
+        const severed = [...related.values()].filter((link) => !moving.has(link.fromId) || !moving.has(link.toId));
+        // The group keeps its shape. It lands at `at`, else under everything on the target map (at its left edge), else where it was.
+        const left = Math.min(...records.map((row) => row.x));
+        const top = Math.min(...records.map((row) => row.y));
+        const extent = at ? null : await ports.sketches.extent(target.id);
+        const spot = at ?? (extent ? { x: extent.left, y: extent.bottom + MOVE_GAP } : { x: left, y: top });
+        const clamp = (value: number) => Math.max(-SKETCH_LIMITS.coordinate, Math.min(SKETCH_LIMITS.coordinate, Math.round(value)));
+        const idMap = new Map(records.map((row) => [row.id, randomUUID()]));
+        const newLinkIds = new Map(carried.map((link) => [link.id, randomUUID()]));
+        await ports.live.before(principal, source, { thoughtIds: [...moving], linkIds: [...related.keys()] });
+        await ports.live.before(principal, target, { thoughtIds: [...idMap.values()], linkIds: [...newLinkIds.values()] });
+        const artifacts = await ports.artifacts?.prepare(target, [...idMap.values()]);
+        const inserted: ThoughtRecord[] = [];
+        for (const row of records) {
+          const thought = await ports.sketches.insertThought({ id: idMap.get(row.id)!, workspaceId: target.workspaceId, sketchId: target.id, text: row.text,
+            x: clamp(spot.x + row.x - left), y: clamp(spot.y + row.y - top), width: row.width, height: row.height, shape: row.shape, source: null, createdBy: principal });
+          await artifacts?.thought(null, thought);
+          inserted.push(thought);
+        }
+        const links: LinkRecord[] = [];
+        for (const link of carried) links.push(await ports.sketches.insertLink({ id: newLinkIds.get(link.id)!, workspaceId: target.workspaceId, sketchId: target.id,
+          fromId: idMap.get(link.fromId)!, toId: idMap.get(link.toId)!, label: link.label, createdBy: principal }));
+        for (const row of records) await ports.sketches.deleteThought(source.id, row.id);
+        const views = await presentThoughts(ports, target, inserted);
+        // The event names (`thought_removed`, `thought_added`) are the ones an encrypted space already accepts in its event data.
+        await changed(ports, principal, source, { op: 'thought_removed', thoughtIds: [...moving], linkIds: [...related.keys()] });
+        await changed(ports, principal, target, { op: 'thought_added', thoughtIds: inserted.map((row) => row.id), linkIds: links.map((link) => link.id) });
+        return {
+          fromSketchId: source.id, toSketchId: target.id,
+          moved: records.map((row, index) => ({ from: row.id, thought: views[index]! })),
+          links: links.map(presentThoughtLink), severed: severed.map(presentThoughtLink), origin: { x: left, y: top },
+        };
       });
     },
 
