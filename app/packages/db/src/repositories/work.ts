@@ -297,6 +297,7 @@ export function workRows(db: DbExecutor) {
         id: work.id, workspaceId: work.workspaceId, projectId: work.projectId, title: work.title, outcome: work.outcome,
         status: work.status, blocker: work.blocker, waitingForUserId: work.waitingFor?.id ?? null, dueOn: work.dueOn ?? null, ...ownerColumns(work.owner), createdByKind: work.createdBy.kind, createdById: work.createdBy.id,
         criteria: work.criteria ?? [], clientCommandId: work.clientCommandId ?? null, requestFingerprint: work.requestFingerprint ?? null,
+        textByAgent: work.createdBy.kind === 'agent',
       })).returning();
       // A task made for an agent, or for a person who gave their assistant a standing instruction, is the server's to act on (#856).
       if (work.owner) await agentTaskRows(db).noteAssigned(work.id, work.owner, work.createdBy);
@@ -434,6 +435,8 @@ export function workRows(db: DbExecutor) {
         ...(changes.waitingFor !== undefined ? { waitingForUserId: changes.waitingFor?.id ?? null }
           : changes.status !== undefined && changes.status !== 'blocked' ? { waitingForUserId: null } : {}),
         ...(changes.dueOn !== undefined ? { dueOn: changes.dueOn } : {}),
+        // The text is no longer only a person's once an agent wrote it (#953: a task's addresses are given to a run only from a person's text).
+        ...(by.kind === 'agent' && (changes.title !== undefined || changes.outcome !== undefined || changes.criteria !== undefined) ? { textByAgent: true } : {}),
         ...ownerColumns(changes.owner),
         ...(changes.parked !== undefined ? { parkedByDecisionId: changes.parked?.decisionId ?? null, parkedAt: changes.parked?.at ?? null } : {}),
         version: sql`${w.version} + 1`, updatedAt: new Date(),

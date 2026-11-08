@@ -3,6 +3,8 @@
 // Flux, not the agent, checks that both owners are among the task's people, runs the other agent on it, posts both in the
 // discussion and gives the asker the answer. The block is data an agent wrote, never an instruction to anyone.
 
+import { WEB_SOURCES_HEADINGS } from '../personal-runs/web-sources.js';
+
 /** The most questions in a row before the exchange goes back to the people: a technical bound nobody meets in normal use. */
 export const MAX_EXCHANGE_TURNS = 6;
 const QUESTION_LIMIT = 1000;
@@ -25,7 +27,8 @@ export function takeAsk(text: string): { body: string; ask: AgentQuestion | null
   const start = text.indexOf(OPEN);
   if (start < 0) return { body: text.trim(), ask: null };
   const end = text.indexOf(CLOSE, start + OPEN.length);
-  if (end < 0) return { body: text.slice(0, start).trim(), ask: null };
+  // An unfinished block asks nothing and is not posted, and what Flux appended after it is not lost with it: the addresses the run asked for.
+  if (end < 0) return { body: (text.slice(0, start).trimEnd() + sourcesAfter(text, start)).trim(), ask: null };
   const body = (text.slice(0, start) + text.slice(end + CLOSE.length)).trim();
   try {
     const raw = JSON.parse(text.slice(start + OPEN.length, end)) as { agent?: unknown; owner?: unknown; question?: unknown };
@@ -37,6 +40,12 @@ export function takeAsk(text: string): { body: string; ask: AgentQuestion | null
   } catch {
     return { body, ask: null };
   }
+}
+
+/** The block of web sources Flux appended to a report, when it stands after `from` (the last one: Flux's comes last), or nothing. */
+function sourcesAfter(text: string, from: number): string {
+  const starts = WEB_SOURCES_HEADINGS.map((heading) => text.lastIndexOf(`\n\n${heading}\n`)).filter((at) => at >= from);
+  return starts.length ? text.slice(Math.min(...starts)) : '';
 }
 
 export interface Askable { id: string; name: string; ownerId: string; ownerName: string }

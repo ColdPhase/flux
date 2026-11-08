@@ -88,7 +88,15 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, boun
   run?: { projectId: string }) {
   const entries = new Map<string, Omit<AgentToolCapability, 'available'>>();
   const handles = new Map<string, { disable(): void }>();
+  /** Declared tools this server does not offer to this caller: not registered, not listed, and the manifest still adds up. */
+  const omitted = new Set<string>();
   return {
+    /** A declared tool that this caller does not get (#953: the web read, for a client with no run or while reading the web is off). */
+    omit(name: string) {
+      if (entries.has(name) || !AGENT_TOOLS.some((item) => item.kind === 'tool' && item.name === name)) throw new Error('Only a declared tool that is not registered can be omitted');
+      dispatch.declare('tool', name); // accounted for, so the dispatch's own list check adds up; nothing is registered under it
+      omitted.add(name);
+    },
     forAccess(access: AgentToolAccess, effect?: { operation: AgentOperation; classes: readonly AgentPeerRequestClass[] }): AgentToolRegistrar {
       return { registerTool<I extends z.ZodType>(name: string, config: ToolConfiguration<I>, callback: ToolCallback<I>) {
         if (entries.has(name)) throw new Error('A Flux tool cannot be registered twice');
@@ -135,7 +143,7 @@ export function agentToolRegistry(server: McpServer, dispatch: McpDispatch, boun
     },
     verifyManifest() {
       const declared = AGENT_TOOLS.filter((entry) => entry.kind === 'tool').map((entry) => entry.name).sort();
-      if (JSON.stringify([...entries.keys()].sort()) !== JSON.stringify(declared))
+      if (JSON.stringify([...entries.keys(), ...omitted].sort()) !== JSON.stringify(declared))
         throw new Error('The Flux tool list must match every actual registration');
     },
   };

@@ -2584,30 +2584,6 @@
       }
     },
     {
-      "name": "flux_read_web",
-      "title": "Read a web page",
-      "operation": null,
-      "classes": [],
-      "annotations": {
-        "readOnlyHint": true,
-        "openWorldHint": true
-      },
-      "inputSchema": {
-        "type": "object",
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "properties": {
-          "url": {
-            "type": "string",
-            "maxLength": 2048
-          }
-        },
-        "required": [
-          "url"
-        ],
-        "additionalProperties": false
-      }
-    },
-    {
       "name": "flux_record_result",
       "title": "Record a project result",
       "operation": "result.record",
