@@ -113,11 +113,11 @@ class DetailPanelFinal(unittest.TestCase):
         page = self.page()
         panel = self.open_task(page, task)
         status = panel.get_by_role("button", name="Status", exact=True)
-        expect(status).to_contain_text("Open")
+        expect(status).to_contain_text("To do")
         # The menu lists the five states with their keys.
         status.click()
         menu = page.get_by_role("menu", name="Status")
-        expect(menu.get_by_role("menuitemradio")).to_have_count(5)
+        expect(menu.get_by_role("menuitemradio")).to_have_count(4)  # To do, Doing, Blocked, Done (#868)
         expect(menu.get_by_role("menuitemradio", name="Blocked")).to_contain_text("3")
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
@@ -125,21 +125,21 @@ class DetailPanelFinal(unittest.TestCase):
         # A digit key changes the state at once, and Undo takes it back.
         panel.locator(".ui-panel__body").focus()
         page.keyboard.press("2")
-        expect(status).to_contain_text("In progress")
+        expect(status).to_contain_text("Doing")
         self.assertEqual(self.stored(task)["status"], "in_progress")
         undo = page.get_by_role("status").get_by_role("button", name="Undo")
         expect(undo).to_be_visible()
         undo.click()
-        expect(status).to_contain_text("Open")
+        expect(status).to_contain_text("To do")
         self.assertEqual(self.stored(task)["status"], "open")
         # Z takes a change back from the panel too, as on the board, and the toast says it in the board's words (#763 C2).
         panel.locator(".ui-panel__body").focus()
         page.keyboard.press("2")
-        expect(status).to_contain_text("In progress")
-        toast = page.locator(".ui-toast").filter(has_text=f"#{task['number']} is now in progress")
+        expect(status).to_contain_text("Doing")
+        toast = page.locator(".ui-toast").filter(has_text=f"#{task['number']} moved to Doing")
         expect(toast.get_by_role("button", name="Undo")).to_have_attribute("aria-keyshortcuts", "Z")
         page.keyboard.press("z")
-        expect(status).to_contain_text("Open")
+        expect(status).to_contain_text("To do")
         self.assertEqual(self.stored(task)["status"], "open")
         # From the keyboard alone: open the menu with the arrow, choose with a digit.
         status.focus()
@@ -190,7 +190,7 @@ class DetailPanelFinal(unittest.TestCase):
         page = self.page()
         panel = self.open_task(page, task)
         panel.get_by_role("button", name="Resolve").click()
-        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("In progress")
+        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Doing")
         stored = self.stored(task)
         self.assertEqual((stored["status"], stored["blocker"]), ("in_progress", None))
         page.get_by_role("status").get_by_role("button", name="Undo").click()
@@ -344,11 +344,11 @@ class DetailPanelFinal(unittest.TestCase):
         expect(sheet).to_have_attribute("data-height", "half")
         status = sheet.get_by_role("button", name="Status", exact=True)
         status.tap()
-        page.get_by_role("menu", name="Status").get_by_role("menuitemradio", name="In progress").tap()
-        expect(status).to_contain_text("In progress")
+        page.get_by_role("menu", name="Status").get_by_role("menuitemradio", name="Doing").tap()
+        expect(status).to_contain_text("Doing")
         self.assertEqual(self.stored(task)["status"], "in_progress")
         page.get_by_role("status").get_by_role("button", name="Undo").tap()
-        expect(status).to_contain_text("Open")
+        expect(status).to_contain_text("To do")
         self.assertEqual(self.stored(task)["status"], "open")
         sheet.get_by_role("button", name="Close details").tap()
         expect(sheet).to_have_count(0)
@@ -358,7 +358,7 @@ class DetailPanelFinal(unittest.TestCase):
         task = self.new_task("Share one sheet", owner=True)
         cases = {
             "details": (f"/projects/{self.project}/tasks?open=work:{task['id']}", "#details", "half"),
-            "thread": (f"/projects/{self.project}/conversations/{self.thread['id']}", "#details", "full"),
+            "thread": (f"/projects/{self.project}/conversations/{self.thread['id']}", "#details", "half"),  # every sheet opens at half (#868)
         }
         for name, (url, selector, opens) in cases.items():
             with self.subTest(sheet=name):
@@ -414,14 +414,17 @@ class DetailPanelFinal(unittest.TestCase):
         page.goto(f"/projects/{self.project}/conversations/{self.thread['id']}")
         thread = page.get_by_role("dialog", name="Replies")
         expect(thread).to_be_visible()
-        expect(thread).to_have_attribute("data-height", "full")
+        # A thread opens at half like every sheet (guide §4: full is dragged up; #868: no large blank area above a short thread).
+        expect(thread).to_have_attribute("data-height", "half")
         page.wait_for_function(SETTLED)  # the sheet has finished sliding in
         handle = thread.locator(".ui-grabber").bounding_box()
         self.assertGreaterEqual(handle["height"], 44, "the thread grabber is a real 44px target")
         self.assertGreaterEqual(handle["width"], 44)
+        shot(page, "detail-panel-final-thread-phone-half")
+        thread.locator(".ui-grabber").tap()
+        expect(thread).to_have_attribute("data-height", "full")
         thread.locator(".ui-grabber").tap()
         expect(thread).to_have_attribute("data-height", "half")
-        shot(page, "detail-panel-final-thread-phone-half")
         thread.locator(".ui-grabber").tap()
         expect(thread).to_have_attribute("data-height", "full")
         shot(page, "detail-panel-final-thread-phone")

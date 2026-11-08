@@ -449,6 +449,9 @@ class AdaptiveBase(unittest.TestCase):
         """Every field of the task in Details can be read above its composer: scrolled into the panel's own scroller each row
         lies wholly above the composer and nothing covers it. With opens_clear the rows are also where they are on opening
         (the common phones' half sheet shows them all without scrolling, as main did)."""
+        # The task panel appears once its relationships are read (#899): its rows and composer, not its skeleton.
+        expect(details.locator(".wd-rows")).to_be_visible()
+        expect(details.locator(".wd__foot")).to_be_visible()
         self.settle(page)
         for scroll in ([False, True] if opens_clear else [True]):
             rows = details.evaluate(TASK_FIELDS, scroll)
@@ -582,43 +585,33 @@ class AdaptiveMatrix(AdaptiveBase):
         show_map_as(page, "Map")
         expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
 
-        # Tasks: the phone shows the drawn Mine | All list; wider views retain the responsive board.
+        # Tasks: every width has the one control row and the board (#868); a narrow board scrolls its four columns sideways.
         self.tab(page, "Tasks")
+        bar = page.locator(".tb-bar")
+        expect(bar).to_be_visible()
+        expect(page.get_by_role("group", name="Whose tasks")).to_have_count(0)
+        for name in ("Board", "List"):
+            self.primary(page, page.get_by_role("radiogroup", name="Show tasks as").get_by_role("radio", name=name, exact=True), f"the {name} switch")
+        self.primary(page, bar.get_by_role("button", name="Mine", exact=True), "Mine")
         if width <= 640:
-            expect(page.locator(".tb-board")).to_have_count(0)
-            expect(page.locator(".tb-bar")).to_be_hidden()
             expect(page.get_by_role("button", name="New Task", exact=True)).to_have_count(0)
             self.primary(page, page.get_by_role("button", name="Create", exact=True), "Create")
-            for button in page.get_by_role("group", name="Whose tasks").get_by_role("button").all():
-                self.primary(page, button, "Mine or All")
-            row = page.locator(".ws-task").filter(has_text=fx.OPEN_TASK)
-            card = row.locator(".ws-item")
-            self.primary(page, row.locator(".ws-task__glyph"), "a task's state glyph")
-            self.primary(page, card, "a task row")
         else:
-            expect(page.locator(".tb-board")).to_be_visible()
             self.primary(page, page.get_by_role("button", name="New Task", exact=True), "New Task")
-            for name in ("Board", "List"):
-                self.primary(page, page.get_by_role("radiogroup", name="Show tasks as").get_by_role("radio", name=name, exact=True), f"the {name} switch")
-            overview = page.get_by_role("navigation", name="Task status")
-            board_width = page.locator(".tb").bounding_box()["width"]
-            if board_width < 700:
-                expect(overview).to_be_visible()
-                expect(overview).to_contain_text("1 blocked")
-                for button in overview.get_by_role("button").all():
-                    self.primary(page, button, "a status overview button")
-                overview.get_by_role("button", name=re.compile("^In progress")).click()
-            else:
-                expect(overview).to_be_hidden()
-                for column in ("Open", "In progress", "Done"):
-                    region = page.get_by_role("region", name=re.compile(f"^{column}"))
-                    expect(region).to_be_visible()
-                    box = region.bounding_box()
-                    pane = page.locator(".app__pane").bounding_box()
-                    self.assertGreaterEqual(box["x"], pane["x"] - 1, f"the {column} column starts inside the pane at {size}")
-                    self.assertLessEqual(box["x"] + box["width"], pane["x"] + pane["width"] + 1, f"the whole {column} column is in view at {size}")
-            card = self.card(page, fx.OPEN_TASK)
-            self.primary(page, card, "a task card")
+        if page.get_by_role("radio", name="Board", exact=True).get_attribute("aria-checked") != "true":
+            page.get_by_role("radio", name="Board", exact=True).click()
+        expect(page.locator(".tb-board")).to_be_visible()
+        expect(page.get_by_role("navigation", name="Task status")).to_have_count(0)
+        if page.locator(".tb").bounding_box()["width"] >= 700:
+            for column in ("To do", "Doing", "Blocked", "Done"):
+                region = page.get_by_role("region", name=re.compile(f"^{column}"))
+                expect(region).to_be_visible()
+                box = region.bounding_box()
+                pane = page.locator(".app__pane").bounding_box()
+                self.assertGreaterEqual(box["x"], pane["x"] - 1, f"the {column} column starts inside the pane at {size}")
+                self.assertLessEqual(box["x"] + box["width"], pane["x"] + pane["width"] + 1, f"the whole {column} column is in view at {size}")
+        card = self.card(page, fx.OPEN_TASK)
+        self.primary(page, card, "a task card")
         self.no_sideways_scroll(page, "Tasks")
         self.shot(page, f"adapt-{size}{tag}-tasks")
         if "a task card" in KNOWN_GAPS.get(f"{width}×{height}", {}):
@@ -713,13 +706,13 @@ class AdaptiveMatrix(AdaptiveBase):
                 self.no_problems()
 
     def test_03_wider_boards_show_more_cards_per_row(self) -> None:
-        """ADAPT-2: the Open column's three cards take three rows at 1440 px and one at 3840 px."""
+        """ADAPT-2: the To do column's three cards take three rows at 1440 px and one at 3840 px."""
         rows = {}
         for width, height in [(1440, 900), (3840, 2160)]:
             page = self.page(width, height)
             page.goto(f"/projects/{self.ids['project']}/tasks")
             expect(page.locator(".tb-board")).to_be_visible()
-            column = page.get_by_role("region", name=re.compile("^Open"))
+            column = page.get_by_role("region", name=re.compile("^To do"))
             expect(column.locator(".tb-card")).to_have_count(3)
             rows[width] = len({round(card.bounding_box()["y"]) for card in column.locator(".tb-card").all()})
         self.assertEqual(rows[1440], 3, rows)

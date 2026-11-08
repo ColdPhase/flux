@@ -289,9 +289,9 @@ class MapTaskCountJourney(unittest.TestCase):
         links = chooser.get_by_role("link")
         expect(links).to_have_count(3)
         expected = [
-            ("order", ORDER, "In progress", "Owner Nia Okafor"),
+            ("order", ORDER, "Doing", "Owner Nia Okafor"),
             ("calibrate", CALIBRATE, "Blocked", "Owner Ada Lind"),
-            ("protocol", PROTOCOL, "Open", "No owner yet"),
+            ("protocol", PROTOCOL, "To do", "No owner yet"),
         ]
         for index, (key, title, status, owner) in enumerate(expected):
             link = links.nth(index)
@@ -532,7 +532,7 @@ class MapTaskCountJourney(unittest.TestCase):
         expect(self.badge(page, "quiet")).to_have_accessible_name(tasks_label(1, QUIET))
         expect(self.badge(page, "dark")).to_have_accessible_name(tasks_label(4, DARK_ROOM))
         self.badge(page, "quiet").click()
-        expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text(f"{task_number(created)} · Open")
+        expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text(f"{task_number(created)} · To do")
         expect(self.chooser(page, QUIET).get_by_role("link")).to_contain_text("No owner yet · added by Nia Okafor")
         page.keyboard.press("Escape")
         # A task made with the thought as its source is counted at once (#867: the Map has no Create task of its own).

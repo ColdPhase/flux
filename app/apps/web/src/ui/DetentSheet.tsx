@@ -28,7 +28,7 @@ export function SheetGrabber({ full, onToggle }: { full: boolean; onToggle: () =
  */
 export function DetentSheet({ onClose, startFull = false, onHeight, className, children, ...rest }: {
   onClose: () => void;
-  /** It opens at full height (a thread); the height then stays while the content changes. */
+  /** It opens at full height; a thread opens at half like every sheet (guide §4: full is dragged up, #868). The height then stays while the content changes. */
   startFull?: boolean;
   /** Told the height whenever it is chosen, so a screen that is left can open at it again (#592). */
   onHeight?: (full: boolean) => void;

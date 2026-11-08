@@ -454,7 +454,7 @@ class SearchJourney(unittest.TestCase):
                     expect(details.locator("[data-detail-relations-phase]")).to_have_attribute("data-detail-relations-phase", "ready")
                     expect(details.get_by_role("navigation", name="Object relationship pages")).to_have_count(0)
                     status = details.get_by_role("button", name="Status", exact=True)
-                    expect(status).to_contain_text("Open")
+                    expect(status).to_contain_text("To do")
                     expect(details.get_by_role("button", name="Owner", exact=True)).to_contain_text("Assign")
                     for name in ("Status", "Owner"):
                         field_box = details.get_by_role("button", name=name, exact=True).bounding_box()

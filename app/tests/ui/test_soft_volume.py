@@ -26,7 +26,7 @@ DARK = {"--side": "#0b0b0b", "--bg": "#111111", "--el": "#1c1c1c", "--sub": "#24
 TOKENS = """names => Object.fromEntries(names.map(n => { const i = document.createElement('i'); i.style.color = `var(${n})`;
   document.body.append(i); const c = getComputedStyle(i).color; i.remove(); return [n, c]; }))"""
 RGB = lambda value: f"rgb({int(value[1:3], 16)}, {int(value[3:5], 16)}, {int(value[5:7], 16)})"
-STATES = {"open": "Open", "in_progress": "In progress", "blocked": "Blocked", "done": "Done", "not_pursued": "Not pursued"}
+STATES = {"open": "To do", "in_progress": "Doing", "blocked": "Blocked", "done": "Done", "not_pursued": "Done"}
 TITLES = {"open": "Calibrate the topsoil probe", "in_progress": "Check the calibration batch",
           "blocked": "Await the battery shipment", "done": "Measure ambient light",
           "not_pursued": "Order the spare enclosure"}
@@ -203,10 +203,8 @@ class SoftVolume(unittest.TestCase):
                     self.assert_mono(draft_label)
                     page.evaluate("document.fonts.ready")
                     shot(page, f"338-{self.engine}-files-{'390' if phone else '1440'}-{scheme}")
-                    page.goto(f"/projects/{self.ids['project']}/tasks")
-                    if not phone:  # the phone is always the list
-                        page.get_by_role("radio", name="List", exact=True).click()
-                    counter = (page.locator(".ws-task .ui-task-number") if phone else page.locator(".ws-view__n")).first
+                    page.goto(f"/projects/{self.ids['project']}/tasks?view=list")
+                    counter = page.locator(".ws-task .ui-task-number").first
                     expect(counter).to_be_visible()
                     self.assert_mono(counter)
                     page.wait_for_function("() => ['Geist', 'Geist Mono'].every(name => [...document.fonts].some(f => f.family.replace(/\"/g, '') === name && f.status === 'loaded'))")
@@ -246,9 +244,7 @@ class SoftVolume(unittest.TestCase):
             for phone in (False, True):
                 with self.subTest(scheme=scheme, phone=phone):
                     page = self.page(scheme=scheme, phone=phone)
-                    page.goto(f"/projects/{self.ids['project']}/tasks")
-                    if not phone:  # the phone is always the list
-                        page.get_by_role("radio", name="List", exact=True).click()
+                    page.goto(f"/projects/{self.ids['project']}/tasks?view=list")
                     for status, word in STATES.items():
                         task = page.locator(f"li[data-work-id='{self.ids[status]}']")
                         row = task.locator(".ui-glyph--" + status)
@@ -261,7 +257,7 @@ class SoftVolume(unittest.TestCase):
                     shot(page, f"338-{self.engine}-task-glyphs-{'390' if phone else '1440'}-{scheme}")
                     parked = page.locator(f"li[data-work-id='{self.ids['parked']}']")
                     parked.scroll_into_view_if_needed()
-                    expect(parked.locator(".ws-item__s")).to_contain_text("Parked · was open")
+                    expect(parked.locator(".ws-item__s")).to_contain_text("Parked · was To do")
                     value = page.evaluate(MEASURE, {"selector": ".ui-glyph--open.ui-glyph--parked"})
                     self.assertGreaterEqual(value["ratio"], 3, (scheme, phone, value))
                     shot(page, f"338-{self.engine}-task-parked-{'390' if phone else '1440'}-{scheme}")

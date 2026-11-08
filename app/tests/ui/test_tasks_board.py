@@ -167,7 +167,7 @@ class TasksBoardJourney(unittest.TestCase):
             "calibrate": self.api(ada, "POST", base, {"title": CALIBRATE, "status": "in_progress", "owner": human(ADA), "sources": [{"type": "thought", "id": thought["thought"]["id"]}]}, status=201),
             "solder": self.api(ada, "POST", base, {"title": SOLDER, "status": "blocked", "blocker": BLOCKER, "owner": human(ADA)}, status=201),
             "diffuser": self.api(ada, "POST", base, {"title": DIFFUSER, "owner": {"kind": "agent", "id": agent["id"]}}, status=201),
-            "mount": self.api(ada, "POST", base, {"title": MOUNT, "owner": human(ADA)}, status=201),
+            "mount": self.api(ada, "POST", base, {"title": MOUNT, "owner": human(ADA), "dueOn": "2031-05-01"}, status=201),
             "protocol": self.api(kai, "POST", base, {"title": PROTOCOL, "status": "done", "owner": human(KAI)}, status=201),
             "camera": self.api(ada, "POST", base, {"title": CAMERA, "status": "not_pursued"}, status=201),
         }
@@ -190,23 +190,24 @@ class TasksBoardJourney(unittest.TestCase):
         page = self.board("ada")
         expect(page.get_by_role("radio", name="Board", exact=True)).to_be_checked()
         self.assertNotIn("view=", page.url, "Board is the default and needs no URL parameter")
-        open_, doing, done = (self.column(page, name) for name in ("Open", "In progress", "Done"))
-        for column, titles in ((open_, (ORDER, DIFFUSER, MOUNT, FIRMWARE)), (doing, (SOLDER, CALIBRATE)), (done, (PROTOCOL, CAMERA))):
+        # Four columns, the four states (#868).
+        open_, doing, blocked_column, done = (self.column(page, name) for name in ("To do", "Doing", "Blocked", "Done"))
+        for column, titles in ((open_, (ORDER, DIFFUSER, MOUNT, FIRMWARE)), (doing, (CALIBRATE,)), (blocked_column, (SOLDER,)), (done, (PROTOCOL, CAMERA))):
             expect(column.locator(".tb-card")).to_have_count(len(titles))
             for title in titles:
                 expect(self.card(column, title)).to_be_visible()
         expect(open_.locator(".tb-col__n")).to_have_text(re.compile(r"^4"))
-        for column, status in ((open_, "open"), (doing, "in_progress"), (done, "done")):
+        for column, status in ((open_, "open"), (doing, "in_progress"), (blocked_column, "blocked"), (done, "done")):
             expect(column.locator(".tb-col__head .ui-glyph--" + status)).to_have_count(1)  # glyph plus word, not a coloured dot
-        # Done has no add button, yet its header rule and first card line up with the other columns.
-        rules = [column.locator(".tb-col__head").evaluate("(el) => Math.round(el.getBoundingClientRect().bottom)") for column in (open_, doing, done)]
+        # No column has a "+" (#868), and the header rules line up.
+        expect(page.locator(".tb-col__head button")).to_have_count(0)
+        rules = [column.locator(".tb-col__head").evaluate("(el) => Math.round(el.getBoundingClientRect().bottom)") for column in (open_, doing, blocked_column, done)]
         self.assertEqual(len(set(rules)), 1, f"column headers end at one height: {rules}")
-        # Blocked work leads its column, says so in words and names what it waits for.
-        expect(doing.locator(".tb-col__head")).to_contain_text("1 blocked")
-        expect(doing.locator(".tb-card").first).to_contain_text(SOLDER)
-        blocked = self.card(doing, SOLDER)
-        expect(blocked.locator(".ui-pill--inv")).to_have_text("Blocked")  # an inverted pill, never colour alone (F-026)
-        expect(blocked).to_contain_text(f"Waiting for {BLOCKER}")
+        # A blocked card says what it waits for in one line (#868).
+        expect(self.card(blocked_column, SOLDER).locator(".tb-card__blocker")).to_have_text(f"Waiting for {BLOCKER}")
+        # Cards have no ⋯ and no "came from" link (#868, guide §8).
+        expect(page.locator(".tb-card [aria-haspopup]")).to_have_count(0)
+        expect(page.locator(".tb-card a")).to_have_count(0)
         # The ID, the title, where it came from, the owner and the agent that owns a task.
         order = self.card(open_, ORDER)
         # A task is named by its number in the project, "#12" (#276); the id stays in the tooltip.
@@ -216,21 +217,19 @@ class TasksBoardJourney(unittest.TestCase):
         self.assertIn("monospace", number.evaluate("node => getComputedStyle(node).fontFamily"))
         self.assertGreaterEqual(number.evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 12)
         expect(order.locator(".tb-card__id")).to_have_attribute("title", f"Task #1 · {self.ids['order']}")
-        expect(self.card(doing, SOLDER).locator(".tb-card__id")).to_have_text(f"Task #{self.numbers['solder']}")
+        expect(self.card(blocked_column, SOLDER).locator(".tb-card__id")).to_have_text(f"Task #{self.numbers['solder']}")
         expect(order.get_by_role("button", name=ORDER, exact=True)).to_be_visible()
-        source = order.get_by_role("link", name=re.compile("^From a message: If we agree on the ToF route"))
-        expect(source).to_have_attribute("href", f"/projects/{self.ids['project']}/conversations/{self.ids['conversation']}#message-{self.ids['message']}")
         expect(order.locator(".tb-card__owner")).to_contain_text("Kai Berg")
-        expect(self.card(doing, CALIBRATE).get_by_role("link", name=f"From a thought: {THOUGHT}")).to_have_attribute(
-            "href", f"/projects/{self.ids['project']}/map/{self.ids['sketch']}#thought-{self.ids['thought']}")
         expect(self.card(doing, CALIBRATE).locator(".tb-card__name")).to_have_text("You")
         expect(self.card(doing, CALIBRATE).locator(".tb-av")).to_have_css("width", "20px")
         owner = self.card(open_, DIFFUSER).locator(".tb-card__owner")
         expect(owner.locator(".tb-card__name")).to_have_text("Codex")
         expect(owner.locator(":scope > .kreska")).to_have_count(1)  # an agent is Kreska, never initials (#339)
         expect(owner.locator(".agent-tag")).to_have_text("Agent")
-        expect(self.card(open_, FIRMWARE)).to_contain_text("Waits for 1")
-        expect(self.card(done, CAMERA).locator(".tb-card__state")).to_have_text("Not pursued")
+        # A due day shows on its card (#868).
+        expect(self.card(open_, MOUNT).locator(".tb-card__due")).to_have_text(re.compile(r"^Due "))
+        # A dropped task is Done with a "dropped" note (#868).
+        expect(self.card(done, CAMERA).locator(".tb-card__state")).to_have_text("dropped")
         # There is no Decisions view (#342) and the board does not point at the Inbox either (#865): what waits for
         # the person is listed in the Inbox alone.
         expect(page.get_by_role("button", name="Decisions & results")).to_have_count(0)
@@ -254,7 +253,7 @@ class TasksBoardJourney(unittest.TestCase):
         # A card opens its existing details.
         order.get_by_role("button", name=ORDER, exact=True).click()
         expect(page.locator("#details").get_by_role("heading", name=ORDER)).to_be_visible()
-        expect(page.locator("#details").get_by_role("button", name="Status", exact=True)).to_contain_text("Open")
+        expect(page.locator("#details").get_by_role("button", name="Status", exact=True)).to_contain_text("To do")
         page.keyboard.press("Escape")
 
         # Mine and the search narrow the board; the URL keeps Mine.
@@ -290,7 +289,7 @@ class TasksBoardJourney(unittest.TestCase):
         page = self.board("ada")
         patches: list[str] = []
         page.on("request", lambda request: patches.append(request.url) if request.method == "PATCH" else None)
-        open_, doing, done = (self.column(page, name) for name in ("Open", "In progress", "Done"))
+        open_, doing, done = (self.column(page, name) for name in ("To do", "Doing", "Done"))
         head = doing.locator(".tb-col__head")
         neutral = head.evaluate("(el) => [getComputedStyle(el).backgroundColor, getComputedStyle(el.querySelector('h2')).color, getComputedStyle(el.querySelector('.tb-col__n')).color]")
         order = self.card(open_, ORDER)
@@ -343,8 +342,8 @@ class TasksBoardJourney(unittest.TestCase):
 
     def test_04_a_drop_on_the_header_or_an_empty_column_persists(self) -> None:
         page = self.board("ada")
-        doing = self.column(page, "In progress")
-        self.lift(page, self.card(self.column(page, "Open"), ORDER))
+        doing = self.column(page, "Doing")
+        self.lift(page, self.card(self.column(page, "To do"), ORDER))
         self.hover(page, doing.locator(".tb-col__head"), dy=10)
         # Each header's place in the board's own scroll area: a banner above the columns would push them down.
         heads_before = page.locator(".tb-col__head").evaluate_all("els => els.map(el => { const s = el.closest('.pane-scroll'); return el.getBoundingClientRect().top - s.getBoundingClientRect().top + s.scrollTop; })")
@@ -358,19 +357,19 @@ class TasksBoardJourney(unittest.TestCase):
         self.assertEqual(response.request.all_headers().get("if-match"), '"1"', "the move names the version it saw")
         expect(self.card(doing, ORDER)).to_be_visible()
         # A drop is confirmed like a key: the bottom toast with Undo (Z), and nothing above the board moves (#763 C3).
-        toast = page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ is now in progress"))
+        toast = page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ moved to Doing"))
         expect(toast.get_by_role("button", name="Undo")).to_be_visible()
         expect(page.locator(".tb-note--ok")).to_have_count(0)
         heads_after = page.locator(".tb-col__head").evaluate_all("els => els.map(el => { const s = el.closest('.pane-scroll'); return el.getBoundingClientRect().top - s.getBoundingClientRect().top + s.scrollTop; })")
         self.assertEqual(heads_after, heads_before, "the drop's confirmation shifts no column")
         self.assertEqual(self.task(page, "order")["status"], "in_progress")
         page.reload()
-        expect(self.card(self.column(page, "In progress"), ORDER)).to_be_visible()
-        expect(self.card(self.column(page, "Open"), ORDER)).to_have_count(0)
+        expect(self.card(self.column(page, "Doing"), ORDER)).to_be_visible()
+        expect(self.card(self.column(page, "To do"), ORDER)).to_have_count(0)
 
         # Empty columns still have a usable target.
         study = self.board("ada", "study")
-        target = self.column(study, "In progress").locator(".tb-col__cards")
+        target = self.column(study, "Doing").locator(".tb-col__cards")
         expect(target).to_contain_text("Nothing here yet.")
         box = target.bounding_box()
         assert box
@@ -379,21 +378,21 @@ class TasksBoardJourney(unittest.TestCase):
         self.hover(study, target)
         expect(target).to_have_class(re.compile("is-over"))
         study.mouse.up()
-        expect(self.card(self.column(study, "In progress"), SAMPLE)).to_be_visible()
+        expect(self.card(self.column(study, "Doing"), SAMPLE)).to_be_visible()
         # The card moves at once; the stored state is read once the move is confirmed.
-        expect(study.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ is now in progress"))).to_be_visible()
+        expect(study.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ moved to Doing"))).to_be_visible()
         self.assertEqual(self.task(study, "sample")["status"], "in_progress")
         # Undo takes the drop back (#763 C3).
-        study.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ is now in progress")).get_by_role("button", name="Undo").click()
-        expect(study.locator(".ui-toast").filter(has_text="back to open")).to_be_visible()
-        expect(self.card(self.column(study, "Open"), SAMPLE)).to_be_visible()
+        study.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ moved to Doing")).get_by_role("button", name="Undo").click()
+        expect(study.locator(".ui-toast").filter(has_text="back to To do")).to_be_visible()
+        expect(self.card(self.column(study, "To do"), SAMPLE)).to_be_visible()
         self.assertEqual(self.task(study, "sample")["status"], "open")
 
     # ---------------------------------------------------------------- keyboard
 
     def test_05_keyboard_picks_up_chooses_and_drops(self) -> None:
         page = self.board("ada")
-        open_, doing, done = (self.column(page, name) for name in ("Open", "In progress", "Done"))
+        open_, doing, done = (self.column(page, name) for name in ("To do", "Doing", "Done"))
         spoken = page.locator(".tb-wrap > p[aria-live]")
         mount = self.card(open_, MOUNT)
         button = mount.get_by_role("button", name=MOUNT, exact=True)
@@ -401,16 +400,19 @@ class TasksBoardJourney(unittest.TestCase):
         button.focus()
         page.keyboard.press("Space")
         expect(mount).to_have_class(re.compile("is-lifted"))
-        expect(spoken).to_contain_text(f"Picked up “{MOUNT}” in Open.")
+        expect(spoken).to_contain_text(f"Picked up “{MOUNT}” in To do.")
         page.keyboard.press("ArrowRight")
         expect(doing.locator(".tb-col__cards")).to_have_class(re.compile("is-over"))
         page.keyboard.press("ArrowRight")
+        expect(self.column(page, "Blocked").locator(".tb-col__cards")).to_have_class(re.compile("is-over"))
+        page.keyboard.press("ArrowRight")
         expect(done.locator(".tb-col__cards")).to_have_class(re.compile("is-over"))
+        page.keyboard.press("ArrowLeft")
         expect(page.locator(".is-over")).to_have_count(1)
         page.keyboard.press("ArrowLeft")
         expect(doing.locator(".tb-col__cards")).to_have_class(re.compile("is-over"))
         # The destination and the keys are on screen too, not only announced (visual review of #194).
-        expect(page.locator(".tb-note--moving")).to_contain_text(f"Moving “{MOUNT}” to In progress")
+        expect(page.locator(".tb-note--moving")).to_contain_text(f"Moving “{MOUNT}” to Doing")
         expect(page.locator(".tb-note--moving")).to_contain_text("Enter or Space drops it")
         shot(page, "tasks-board-1440-keyboard")
         # Escape cancels without a change.
@@ -428,51 +430,17 @@ class TasksBoardJourney(unittest.TestCase):
         expect(moved).to_be_visible()
         expect(moved.get_by_role("button", name=MOUNT, exact=True)).to_be_focused()
         expect(page.locator("#details").get_by_role("heading", name=MOUNT)).to_have_count(0)
-        expect(page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ is now in progress"))).to_be_visible()
+        expect(page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ moved to Doing"))).to_be_visible()
         self.assertEqual(self.task(page, "mount")["status"], "in_progress")
         # Enter still opens the card.
         page.keyboard.press("Enter")
         expect(page.locator("#details").get_by_role("heading", name=MOUNT)).to_be_visible()
 
-    # ---------------------------------------------------------------- "Move to…" menu
-
-    def test_06_move_to_menu_by_pointer_and_keyboard(self) -> None:
-        page = self.board("ada")
-        doing, done = self.column(page, "In progress"), self.column(page, "Done")
-        # Keyboard: the menu opens on the first other column, and Escape returns to its button.
-        mount = self.card(doing, MOUNT)
-        trigger = mount.get_by_role("button", name="Move to…")
-        trigger.focus()
-        page.keyboard.press("Enter")
-        menu = page.get_by_role("menu", name=f"Move “{MOUNT}”")
-        expect(menu).to_be_visible()
-        expect(menu.get_by_role("menuitemradio", name="In progress")).to_have_attribute("aria-checked", "true")
-        expect(menu.get_by_role("menuitemradio", name="Open")).to_be_focused()
-        page.keyboard.press("ArrowDown")
-        expect(menu.get_by_role("menuitemradio", name="In progress")).to_be_focused()
-        page.keyboard.press("Escape")
-        expect(menu).to_have_count(0)
-        expect(trigger).to_be_focused()
-        self.assertEqual(self.task(page, "mount")["status"], "in_progress")
-        # Pointer: choose Done.
-        calibrate = self.card(doing, CALIBRATE)
-        calibrate.get_by_role("button", name="Move to…").click()
-        menu = page.get_by_role("menu", name=f"Move “{CALIBRATE}”")
-        expect(menu.get_by_role("menuitem", name="Open details")).to_be_visible()
-        shot(page, "tasks-board-1440-menu")
-        menu.get_by_role("menuitemradio", name="Done").click()
-        expect(menu).to_have_count(0)
-        expect(self.card(done, CALIBRATE)).to_be_visible()
-        expect(page.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ done"))).to_be_visible()
-        self.assertEqual(self.task(page, "calibrate")["status"], "done")
-        page.reload()
-        expect(self.card(self.column(page, "Done"), CALIBRATE)).to_be_visible()
-
     # ---------------------------------------------------------------- refused moves
 
     def test_07_a_refused_move_restores_the_stored_state(self) -> None:
         page = self.board("ada")
-        open_, doing = self.column(page, "Open"), self.column(page, "In progress")
+        open_, doing = self.column(page, "To do"), self.column(page, "Doing")
         expect(self.card(open_, DIFFUSER)).to_be_visible()
         # Kai changes the task meanwhile; Ada's board still shows the earlier version.
         kai = self.page("kai")
@@ -480,9 +448,13 @@ class TasksBoardJourney(unittest.TestCase):
         self.api(kai, "PATCH", f"/api/v1/work/{self.ids['diffuser']}", {"status": "in_progress", "clientCommandId": str(uuid.uuid4())}, status=200,
                  headers={"if-match": f'"{before["version"]}"'})
         expect(self.card(open_, DIFFUSER)).to_be_visible()
-        self.card(open_, DIFFUSER).get_by_role("button", name="Move to…").click()
+        # Cards have no ⋯ (#868): the keyboard moves it (Space, arrows to Done, Space).
+        self.card(open_, DIFFUSER).get_by_role("button", name=DIFFUSER, exact=True).focus()
+        page.keyboard.press("Space")
+        for _ in range(3):
+            page.keyboard.press("ArrowRight")
         with page.expect_response(lambda response: response.request.method == "PATCH" and response.url.endswith(f"/api/v1/work/{self.ids['diffuser']}")) as refused:
-            page.get_by_role("menu").get_by_role("menuitemradio", name="Done").click()
+            page.keyboard.press("Space")
         self.assertEqual(refused.value.status, 409)
         alert = page.get_by_role("alert").filter(has_text=DIFFUSER)
         expect(alert).to_contain_text("was changed by someone else a moment ago, so it was not moved")
@@ -510,27 +482,29 @@ class TasksBoardJourney(unittest.TestCase):
         page = self.board("ada")
         # Neither the board nor the List points at the Inbox (#865).
         expect(page.get_by_role("link", name=re.compile("needs you in the Inbox"))).to_have_count(0)
+        controls = ".tb-bar [role=radio], .tb-bar button, .tb-bar input"
+        bar = [(el.get_attribute("aria-label") or el.inner_text() or el.get_attribute("placeholder")) for el in page.locator(controls).all()]
         page.get_by_role("radio", name="List", exact=True).click()
-        views = page.get_by_role("navigation", name="Task views")
-        expect(views.get_by_role("button", name="All", exact=True)).to_have_attribute("aria-pressed", "true")
+        # The List has the board's one control row and no row of its own (#868).
+        expect(page.get_by_role("navigation", name="Task views")).to_have_count(0)
+        self.assertEqual([(el.get_attribute("aria-label") or el.inner_text() or el.get_attribute("placeholder")) for el in page.locator(controls).all()], bar)
         expect(page.get_by_role("region", name=re.compile("^Blocked"))).to_contain_text(SOLDER)
         expect(page.get_by_role("region", name=re.compile("^Needs you"))).to_have_count(0)
         expect(page.get_by_text(PROPOSAL)).to_have_count(0)
-        expect(page.get_by_role("region", name=re.compile("^Done"))).to_contain_text(CALIBRATE)
+        expect(page.get_by_role("region", name=re.compile("^Doing"))).to_contain_text(CALIBRATE)
         self.assertEqual(page.evaluate(f"localStorage.getItem('flux.tasks.mode.{ADA['id']}')"), "list")
         self.assertNotIn("view=", page.url)
         page.reload()
         expect(page.get_by_role("radio", name="List", exact=True)).to_be_checked()
-        expect(page.get_by_role("navigation", name="Task views")).to_be_visible()
         # The List adds a task through the same Create window as the board.
         add_task(page, PETG)
         expect(page.locator("#details").get_by_role("heading", name=PETG)).to_be_visible()
         page.keyboard.press("Escape")
-        expect(page.get_by_role("region", name=re.compile("^Open"))).to_contain_text(PETG)
+        expect(page.get_by_role("region", name=re.compile("^To do"))).to_contain_text(PETG)
         shot(page, "tasks-board-1440-list")
         # Back to the board, which is remembered too.
         page.get_by_role("radio", name="Board", exact=True).click()
-        expect(self.card(self.column(page, "Open"), PETG)).to_be_visible()
+        expect(self.card(self.column(page, "To do"), PETG)).to_be_visible()
         page.reload()
         expect(page.get_by_role("radio", name="Board", exact=True)).to_be_checked()
         self.assertEqual(page.evaluate(f"localStorage.getItem('flux.tasks.mode.{ADA['id']}')"), "board")
@@ -545,36 +519,39 @@ class TasksBoardJourney(unittest.TestCase):
             expect(page.get_by_role("radio", name="Board", exact=True)).to_be_checked()
         page.goto(f"/projects/{self.ids['project']}/tasks?view=list")
         expect(page.get_by_role("region", name=re.compile("^(Needs you|Decisions|Results)"))).to_have_count(0)
-        expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^(Needs you|Decisions|Results)"))).to_have_count(0)
-        # A link to one List view opens the List.
+        # A link to one state opens the List on it, saying so in one line with its way back.
         page.goto(f"/projects/{self.ids['project']}/tasks?status=blocked")
-        expect(page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked"))).to_have_attribute("aria-pressed", "true")
+        expect(page.locator(".ws-only")).to_contain_text("Only Blocked")
         expect(page.get_by_role("region", name=re.compile("^Blocked"))).to_contain_text(SOLDER)
+        page.locator(".ws-only").get_by_role("button", name="Show all tasks").click()
+        expect(page.locator(".ws-only")).to_have_count(0)
         # Another person's choice is their own.
         kai = self.board("kai")
         expect(kai.get_by_role("radio", name="Board", exact=True)).to_be_checked()
 
     # ---------------------------------------------------------------- phone
 
-    def test_09_phone_shows_the_drawn_list_and_changes_state_with_one_tap(self) -> None:
+    def test_09_phone_has_the_same_control_row_and_changes_state_with_one_tap(self) -> None:
         page = self.page("kai", phone=True, dark=True)
-        page.goto(f"/projects/{self.ids['project']}/tasks")
-        # The phone Tasks screen is a list with its own Mine | All row and no toolbar (F-026 S-P-Tasks).
+        page.goto(f"/projects/{self.ids['project']}/tasks?view=list")
+        # The phone has the computer's one control row, Board | List, Mine and Search, without "+ Task" (#868): the floating
+        # Create is the phone's one "+". Mine is in the same place in both views.
         rows = page.locator(".ws-task")
         expect(rows.first).to_be_visible()
-        expect(page.locator(".tb-bar")).to_be_hidden()
-        expect(page.locator(".tb-board")).to_have_count(0)
-        mine = page.get_by_role("group", name="Whose tasks")
-        expect(mine.get_by_role("button", name="All", exact=True)).to_have_attribute("aria-pressed", "true")
+        bar = page.locator(".tb-bar")
+        expect(bar).to_be_visible()
+        self.assertLessEqual(bar.bounding_box()["height"], 60, "one row on the phone")
+        expect(bar.get_by_role("radio", name="Board", exact=True)).to_be_visible()
+        expect(page.get_by_role("group", name="Whose tasks")).to_have_count(0)
+        expect(page.get_by_role("button", name="New Task", exact=True)).to_have_count(0)
+        mine = bar.get_by_role("button", name="Mine", exact=True)
+        in_list = mine.bounding_box()
         solder = rows.filter(has_text=SOLDER)
         expect(solder.locator(".ui-pill--inv")).to_have_text("Blocked")
         expect(solder.locator(".ui-task-number")).to_have_text(f"#{self.numbers['solder']}")
         self.assertGreaterEqual(solder.locator(".ui-task-number").evaluate("node => parseFloat(getComputedStyle(node).fontSize)"), 12.5, "F-026 phone metadata remains readable")
         self.no_sideways_scroll(page, PHONE["width"], "phone")
-        # F-026 phone Tasks has no page toolbar, only Mine | All and task rows.
-        expect(page.get_by_role("button", name="New Task", exact=True)).to_have_count(0)
-        expect(page.get_by_role("button", name="New task in In progress")).to_have_count(0)
-        for control in (*mine.get_by_role("button").all(), rows.filter(has_text=ORDER).locator(".ws-task__glyph"), rows.filter(has_text=ORDER).locator(".ws-item")):
+        for control in (mine, rows.filter(has_text=ORDER).locator(".ws-task__glyph"), rows.filter(has_text=ORDER).locator(".ws-item")):
             box = control.bounding_box()
             assert box
             self.assertGreaterEqual(box["height"], 44, "touch target")
@@ -585,51 +562,42 @@ class TasksBoardJourney(unittest.TestCase):
         order.locator(".ws-task__glyph").tap()
         toast = page.locator(".ui-toast")
         forward = {"open": "in_progress", "in_progress": "done", "done": "open", "blocked": "in_progress", "not_pursued": "open"}[before["status"]]
-        expect(toast).to_contain_text(f"#{self.numbers['order']} {forward.replace('_', ' ')}")
+        expect(toast).to_contain_text(f"#{self.numbers['order']} " + {"in_progress": "moved to Doing", "done": "done", "open": "moved to To do"}[forward])
         self.assertEqual(self.task(page, "order")["status"], forward)
         toast.get_by_role("button", name="Undo").tap()
         expect(toast).to_have_count(0)
         restored = self.task(page, "order")
         self.assertEqual(restored["status"], before["status"])
         self.assertGreater(restored["version"], before["version"] + 1, "Undo is a new version, not a rewrite")
-        mine.get_by_role("button", name="Mine", exact=True).tap()
+        mine.tap()
         expect(rows.filter(has_text=CALIBRATE)).to_have_count(0)  # Ada's task; Kai's own stay
         expect(rows.filter(has_text=ORDER)).to_have_count(1)
         self.assertIn("show=mine", page.url)
+        # The board on the phone: its four columns run on sideways, and Mine has not moved.
+        bar.get_by_role("radio", name="Board", exact=True).tap()
+        expect(page.locator(".tb-board")).to_be_visible()
+        self.assertEqual(round(mine.bounding_box()["x"]), round(in_list["x"]), "Mine sits in the same place in both views")
+        self.assertEqual(page.locator(".tb-col").count(), 4)
+        self.no_sideways_scroll(page, PHONE["width"], "phone board")
+        shot(page, "tasks-phone-390-board-dark")
 
     # ---------------------------------------------------------------- tablet and laptop
 
     def test_10_tablet_and_laptop_use_their_width(self) -> None:
         page = self.board("ada", viewport=TABLET, touch=True)
-        # Spokój layout per screen: the tablet's sidebar is the rail, so the board has room for its columns side by side
-        # and needs no status overview.
-        expect(page.get_by_role("navigation", name="Task status")).to_have_count(0)
-        doing = self.column(page, "In progress")
-        expect(doing.locator(".tb-card")).to_have_count(4)
-        for name in ("In progress", "Open", "Done"):
+        # The tablet's sidebar is the rail, so the board has room for its four columns side by side.
+        for name in ("To do", "Doing", "Blocked", "Done"):
             expect(self.column(page, name)).to_be_visible()
         self.no_sideways_scroll(page, TABLET["width"], "tablet")
         shot(page, "tasks-board-820-light")
-        # On a narrow board an overview names every status and one column shows at a time; "Move to…" works by touch.
+        # A narrow board keeps its four columns side by side and scrolls them sideways; no row of status tabs (#868).
         narrow = self.board("kai", viewport={"width": 660, "height": 900}, touch=True)
-        overview = narrow.get_by_role("navigation", name="Task status")
-        expect(overview).to_be_visible()
-        expect(overview.get_by_role("button", name=re.compile("^In progress"))).to_have_attribute("aria-pressed", "true")
-        expect(overview.get_by_role("button", name=re.compile("^In progress"))).to_contain_text("1 blocked")
-        expect(self.column(narrow, "Open")).to_have_count(0)
-        overview.get_by_role("button", name=re.compile("^Open")).tap()
-        open_ = self.column(narrow, "Open")
-        expect(open_).to_be_visible()
-        self.card(open_, PETG).get_by_role("button", name="Move to…").tap()
-        narrow.get_by_role("menu").get_by_role("menuitemradio", name="Done").tap()
-        expect(self.card(open_, PETG)).to_have_count(0)
-        expect(self.card(self.column(narrow, "Done"), PETG).locator(".tb-card__open")).to_be_focused()
-        expect(narrow.locator(".ui-toast").filter(has_text=re.compile(r"#\d+ done"))).to_be_visible()
-        self.assertEqual(next(item for item in self.api(narrow, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["items"] if item["title"] == PETG)["status"], "done")
-        self.no_sideways_scroll(narrow, 660, "narrow board after a move")
+        expect(narrow.get_by_role("navigation", name="Task status")).to_have_count(0)
+        board = narrow.locator(".tb-board")
+        self.assertGreater(board.evaluate("e => e.scrollWidth - e.clientWidth"), 0, "the columns run on sideways inside the board")
+        self.no_sideways_scroll(narrow, 660, "narrow board")
         laptop = self.board("ada", viewport={"width": 1024, "height": 768})
-        expect(laptop.get_by_role("navigation", name="Task status")).to_be_hidden()
-        for name in ("Open", "In progress", "Done"):
+        for name in ("To do", "Doing", "Blocked", "Done"):
             expect(self.column(laptop, name)).to_be_visible()
         self.no_sideways_scroll(laptop, 1024, "laptop")
         shot(laptop, "tasks-board-1024-light")
@@ -646,12 +614,10 @@ class TasksBoardJourney(unittest.TestCase):
                 page.goto(f"/projects/{self.ids['project']}/tasks")
                 expect(page.locator("html")).to_have_attribute("data-theme", theme.lower())
                 expect(page.locator(".tb-card").first).to_be_visible()
-                # Since #155 a card's source line comes from its own bounded read, after the cards.
-                expect(page.locator(".tb-card__from").first).to_be_visible()
                 page.wait_for_timeout(250)
                 for selector, minimum, spec in (
-                    (".tb-card__id", 4.5, {}), (".tb-card__title", 4.5, {}), (".tb-card__from", 4.5, {}), (".tb-card__name", 4.5, {}),
-                    (".tb-card .ui-pill--inv", 4.5, {}), (".tb-card__blocker", 4.5, {}), (".tb-col__n", 4.5, {}), (".tb-col__b", 4.5, {}),
+                    (".tb-card__id", 4.5, {}), (".tb-card__title", 4.5, {}), (".tb-card__due", 4.5, {}), (".tb-card__name", 4.5, {}),
+                    (".tb-card__state", 4.5, {}), (".tb-card__blocker", 4.5, {}), (".tb-col__n", 4.5, {}),
                     (".tb-col__h", 4.5, {}), ('.tb-mode__b[aria-checked="true"]', 4.5, {}), ('.tb-mode__b[aria-checked="false"]', 4.5, {}),
                     (".tb-mine", 4.5, {}), (".tb-search input", 4.5, {"pseudo": "::placeholder"}),
                     (".tb-col__head .ui-glyph--in_progress", 3, {}), (".tb-search", 3, {"property": "color"}),
@@ -661,10 +627,10 @@ class TasksBoardJourney(unittest.TestCase):
                     measured.append(value)
                     self.assertGreaterEqual(value["ratio"], minimum, value)
                 shot(page, f"tasks-board-1440-{theme.lower()}")
-        self.assertEqual(len(measured), 2 * 15)
+        self.assertEqual(len(measured), 2 * 14)
 
     def test_13_delayed_native_columns_say_which_tasks_are_loading(self) -> None:
-        for phone in (False, True):  # True: a narrow board with its status overview
+        for phone in (False, True):  # True: a narrow board whose columns scroll sideways
             with self.subTest(phone=phone):
                 # The request hold must reach the actual API; a controlling service worker can
                 # bypass page.route. PWA behavior is covered separately.
@@ -682,12 +648,11 @@ class TasksBoardJourney(unittest.TestCase):
                 page.route(f"**/api/v1/projects/{self.ids['project']}/work-view?**", hold)
                 self.addCleanup(lambda page=page: page.unroute_all(behavior="ignoreErrors"))
                 page.goto(f"/projects/{self.ids['project']}/tasks?view=board")
-                for column in ("Open", "In progress", "Done"):
-                    if phone:
-                        page.locator(".tb-ov").filter(has_text=column).click()
+                for column in ("To do", "Doing", "Blocked", "Done"):
                     label = self.column(page, column).locator(".tb-col__empty")
-                    expect(label).to_have_text(f"Loading {column.lower()} tasks…")
-                    expect(label).to_be_visible()
+                    expect(label).to_have_text(f"Loading {column} tasks…")
+                    if not phone:
+                        expect(label).to_be_visible()
                     self.assertEqual(label.evaluate("e => e.tagName"), "P")
                     expect(label).to_have_attribute("class", "tb-col__empty")
                 page.wait_for_function("window.loadingTaskReadsHeld >= 4")

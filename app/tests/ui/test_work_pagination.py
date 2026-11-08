@@ -121,17 +121,7 @@ class WorkPaginationJourney(unittest.TestCase):
                 pane = page.locator(".pane-scroll").filter(has=page.locator(".ws-tasks"))
                 pane.evaluate("el => { el.scrollTop = 460; el.dispatchEvent(new Event('scroll')); }")
                 anchor = pane.locator("[data-work-id]").evaluate_all("els => { const pane=els[0].closest('.pane-scroll');const top=pane.getBoundingClientRect().top;const visibleTop=Math.max(top,pane.querySelector('.ws-task-controls').getBoundingClientRect().bottom);const row=els.find(el=>el.getBoundingClientRect().bottom>visibleTop);return [row.dataset.workId,row.getBoundingClientRect().top-top]; }")
-                if not phone:  # the phone has no group views, only Mine | All (F-026 S-P-Tasks)
-                    views = page.get_by_role("navigation", name="Task views")
-                    views.get_by_role("button", name=re.compile("^Blocked")).click()
-                    self.ready(page)
-                    self.assertEqual(len(self.rows(page)), 6)
-                    views.get_by_role("button", name="All", exact=True).click()
-                    self.ready(page)
-                    self.assertEqual(parse_qs(urlsplit(page.url).query)["cursor"][0], cursor)
-                    self.assertEqual(self.rows(page), second)
-                    restored = pane.locator(f"[data-work-id='{anchor[0]}']").evaluate("el=>el.getBoundingClientRect().top-el.closest('.pane-scroll').getBoundingClientRect().top")
-                    self.assertLess(abs(restored - anchor[1]), 3)
+                # The List has no row of state views to switch away and back (#868); a reload keeps the page.
                 page.reload(); self.ready(page)
                 self.assertEqual(self.rows(page), second)
                 expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("51–100 of 123")
@@ -187,10 +177,11 @@ class WorkPaginationJourney(unittest.TestCase):
 
     def test_03_late_read_and_required_failure_never_become_empty_work(self):
         page = self.page()
-        page.goto(f"/projects/{self.project}/tasks?view=list"); self.ready(page)
+        # A List of one state (as the board's "more in the List" opens it), whose late read must not replace all tasks (#868).
+        page.goto(f"/projects/{self.project}/tasks?status=blocked"); self.ready(page)
         held = []
         def hold_all(route):
-            if parse_qs(urlsplit(route.request.url).query).get("group") == ["all"]:
+            if parse_qs(urlsplit(route.request.url).query).get("group") == ["blocked"]:
                 response = route.fetch(); self.assertEqual(response.status, 200); held.append((route, response))
                 page.evaluate("window.__workReadHeld = true")
             else: route.continue_()
@@ -198,11 +189,11 @@ class WorkPaginationJourney(unittest.TestCase):
         page.get_by_role("navigation", name="Work pages").get_by_role("button", name="Refresh", exact=True).click()
         expect(page.get_by_role("navigation", name="Work pages")).to_have_attribute("aria-busy", "true")
         page.wait_for_function("window.__workReadHeld === true")
-        page.get_by_role("navigation", name="Task views").get_by_role("button", name=re.compile("^Blocked")).click()
-        self.ready(page); self.assertEqual(len(self.rows(page)), 6)
+        page.locator(".ws-only").get_by_role("button", name="Show all tasks").click()
+        self.ready(page); total = len(self.rows(page)); self.assertGreater(total, 6)
         route, response = held.pop(); route.fulfill(response=response)
-        expect(page.get_by_role("navigation", name="Work pages")).to_contain_text("1–6 of 6")
-        self.assertEqual(len(self.rows(page)), 6)
+        page.wait_for_timeout(300)
+        self.assertEqual(len(self.rows(page)), total, "the late read of one state does not replace all tasks")
         page.unroute("**/work-view**", hold_all)
         field = open_from_tasks(page); field.fill("Private text survives a failed read")
         page.keyboard.press("Escape")
@@ -215,7 +206,7 @@ class WorkPaginationJourney(unittest.TestCase):
         self.assertEqual(self.rows(page), [])
         page.unroute("**/work-view**")
         page.get_by_role("button", name="Refresh work", exact=True).click()
-        self.ready(page); self.assertEqual(len(self.rows(page)), 6)
+        self.ready(page); self.assertEqual(len(self.rows(page)), total)
 
     def test_04_cookie_account_change_fences_held_page_and_private_draft(self):
         page = self.page()
@@ -255,11 +246,10 @@ class WorkPaginationJourney(unittest.TestCase):
         task = api(owner, "POST", f"/api/v1/projects/{project}/work", {"title": "Check the wall socket before installation"}, 201)
         for phone in (False, True):
             page = self.page(phone=phone)
-            # The project's state is in Details on the computer (#340) and on the phone (#341, no state row).
-            page.goto(f"/projects/{project}/tasks?view=list") if not phone else page.goto(f"/projects/{project}")
-            if not phone: self.ready(page)
-            open_details(page, tap=phone)
-            page.locator("#details").get_by_role("button", name=re.compile(r"Open.*Check the wall socket before installation")).click()
+            # Details no longer lists the space's tasks (#865, #972): the List holds the one open task, and opens it.
+            page.goto(f"/projects/{project}/tasks?view=list")
+            expect(page.locator(".ws-task")).to_have_count(1)
+            page.locator(".ws-task").filter(has_text=task["title"]).locator(".ws-item").click()
             expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
 
     def test_06_keyboard_rows_remain_exposed_below_the_scrolled_controls(self):

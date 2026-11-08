@@ -157,7 +157,7 @@ export function useProse(el: HTMLElement | null, html: string, projectId: string
 }
 
 const DECISION_WORD = { accepted: 'Decision accepted', proposed: 'Decision proposed', superseded: 'Decision replaced' } as const;
-const DECISION_GLYPH = { accepted: 'done', proposed: 'open', superseded: 'not_pursued' } as const;
+const DECISION_GLYPH = { accepted: 'done', proposed: 'open', superseded: 'replaced' } as const;
 
 export function RefMark({ mark, owners }: { mark: Mark; owners: AgentOwners }) {
   if (mark.kind === 'page') return <Icon name="doc" size={16} />;

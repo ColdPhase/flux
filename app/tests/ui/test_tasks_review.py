@@ -151,7 +151,8 @@ class TasksReviewJourney(unittest.TestCase):
 
     def test_03_a_phone_keeps_its_own_continuation_through_next_reload_and_back(self) -> None:
         page = self.page("ada", phone=True)
-        page.goto(f"/projects/{self.ids['many']}/tasks")
+        # The phone shows the board or the List like the computer (#868); the List pages through every task.
+        page.goto(f"/projects/{self.ids['many']}/tasks?view=list")
         range_ = page.get_by_role("navigation", name="Work pages").locator(".ws-pages__range")
         expect(range_).to_contain_text("1–50 of")
         page.get_by_role("navigation", name="Work pages").get_by_role("button", name="Next").click()
@@ -235,7 +236,7 @@ class TasksReviewJourney(unittest.TestCase):
             expect(meta, f"{label}: {title} names the owner").to_contain_text("for Ada Kowalska")
             expect(meta, f"{label}: {title} names the agent").to_contain_text("Alex")
             word = meta.locator('.ws-task__word')
-            expect(word).to_contain_text({'agent_open': 'Open', 'agent_doing': 'In progress', 'agent_blocked': 'Blocked'}[key])
+            expect(word).to_contain_text({'agent_open': 'To do', 'agent_doing': 'Doing', 'agent_blocked': 'Blocked'}[key])
             # Presence in textContent did not catch the phone's two-line clipping.
             for part in (word, meta.locator('.agent-for'), meta.locator('.agent-tag')):
                 self.assertTrue(part.evaluate("""el => {
@@ -254,7 +255,7 @@ class TasksReviewJourney(unittest.TestCase):
         desktop.get_by_role("radio", name="List", exact=True).click()
         self.check_identity(desktop, "desktop")
         phone = self.page("ada", phone=True)
-        phone.goto(f"/projects/{self.ids['project']}/tasks")
+        phone.goto(f"/projects/{self.ids['project']}/tasks?view=list")
         self.check_identity(phone, "phone")
         # Reassigning to the person of the same name removes the tag: it was the agent's, not the name's.
         current = self.task(desktop, "agent_blocked")
@@ -281,7 +282,7 @@ class TasksReviewJourney(unittest.TestCase):
         page = self.page("ada")
         before = self.open_private_task(page)
         page.context.set_offline(True)
-        self.row(page, PRIVATE).get_by_role("button", name="Open. Set to In progress").click()
+        self.row(page, PRIVATE).get_by_role("button", name="To do. Set to Doing").click()
         expect(page.locator(".ui-toast--danger")).to_contain_text("Flux could not be reached")
         expect(page.locator(".ui-toast--danger")).to_contain_text(PRIVATE)
         page.context.set_offline(False)
@@ -304,23 +305,23 @@ class TasksReviewJourney(unittest.TestCase):
                     else:
                         route.continue_()
                 page.route("**/api/v1/me", blip)
-                self.row(page, PRIVATE).get_by_role("button", name="Open. Set to In progress").click()
-                expect(page.locator(".ui-toast")).to_contain_text("in progress")
+                self.row(page, PRIVATE).get_by_role("button", name="To do. Set to Doing").click()
+                expect(page.locator(".ui-toast")).to_contain_text("moved to Doing")
                 self.assertEqual(len(probes), 1, "the identity read really failed")
                 expect(self.row(page, PRIVATE).locator(".ui-glyph--in_progress")).to_have_count(1)
                 self.assertEqual(self.task(page, "private")["version"], before["version"] + 1)
                 page.unroute("**/api/v1/me", blip)
                 page.locator(".ui-toast").get_by_role("button", name="Undo", exact=True).click()
-                expect(page.locator(".ui-toast").filter(has_text="back to open")).to_be_visible()
+                expect(page.locator(".ui-toast").filter(has_text="back to To do")).to_be_visible()
                 expect(self.row(page, PRIVATE).locator(".ui-glyph--open")).to_have_count(1)
                 self.assertEqual(self.task(page, "private")["version"], before["version"] + 2)
 
     def test_09_offline_undo_reports_its_real_error_and_keeps_the_confirmed_state(self) -> None:
         page = self.page("ada")
         self.open_private_task(page)
-        self.row(page, PRIVATE).get_by_role("button", name="Open. Set to In progress").click()
+        self.row(page, PRIVATE).get_by_role("button", name="To do. Set to Doing").click()
         toast = page.locator(".ui-toast")
-        expect(toast).to_contain_text("in progress")
+        expect(toast).to_contain_text("moved to Doing")
         changed = self.task(page, "private")
         page.context.set_offline(True)
         toast.get_by_role("button", name="Undo", exact=True).click()

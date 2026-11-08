@@ -2,7 +2,7 @@
 
 Run once with FLUX_UI_BROWSER=chromium and once with webkit. Each test measures the running application:
 - the task row's state glyph is not clipped by its row on a computer (1440);
-- the Tasks board's "Move to…" stays inside its card on a tablet (820, touch);
+- the Tasks board's cards hold their owner inside them on a tablet (820, touch; no ⋯ since #868);
 - the project views stay inside the header at 1024 px;
 - the header's Together, with nothing open to work on together, explains why on a click instead of looking disabled;
 - icon buttons in the sidebar and the composer take the 32 px control token, with one icon size in the composer;
@@ -99,17 +99,17 @@ class VisualCleanup763(unittest.TestCase):
         self.assertEqual(glyph.evaluate("(el) => getComputedStyle(el.closest('li.ws-task')).overflow"), "visible")
         shot(page, "763-cleanup-task-glyph")
 
-    def test_02_board_menu_stays_in_its_card_on_a_tablet(self) -> None:
+    def test_02_board_cards_hold_their_title_and_owner_on_a_tablet(self) -> None:
+        # Cards have no ⋯ since #868: each card opens its task, and its title and owner stay inside it on a tablet.
         page = self.page(TABLET, touch=True)
         page.goto(f"/projects/{self.project}/tasks?view=board")
         cards = page.locator("li.tb-card")
         expect(cards.first).to_be_visible()
+        expect(page.locator("li.tb-card [aria-haspopup]")).to_have_count(0)
         for index in range(cards.count()):
             card = cards.nth(index)
-            menu = card.get_by_role("button", name="Move to…")
-            box, outer = menu.bounding_box(), card.bounding_box()
-            self.assertGreaterEqual(box["height"], 44, "a 44 px touch target")
-            self.assertLessEqual(box["x"] + box["width"], outer["x"] + outer["width"] + 0.5, "Move to… ends inside its card")
+            outer, owner = card.bounding_box(), card.locator(".tb-card__owner").bounding_box()
+            self.assertLessEqual(owner["x"] + owner["width"], outer["x"] + outer["width"] + 0.5, "the owner ends inside its card")
         shot(page, "763-cleanup-board-820")
 
     def test_03_views_fit_the_header_at_1024(self) -> None:

@@ -409,7 +409,7 @@ class MessageAlignment(unittest.TestCase):
       return {kind: card.dataset.workKind, title: title.textContent, shown, state: state.innerText, stateFits: state.scrollWidth <= state.clientWidth + 1,
         label: getComputedStyle(card, '::before').display, titleBox: box(title), stateBox: box(state), cardBox: box(card)};
     }"""
-    STATE_WORD = {"work": "In progress", "decision": "accepted", "result": "Negative result"}
+    STATE_WORD = {"work": "Doing", "decision": "accepted", "result": "Negative result"}
 
     def assert_cards(self, page, scope, titles, narrow, where, name):
         """Three cards (a task, a decision, a result) in `scope`: the title keeps its start, the state is whole and at the right

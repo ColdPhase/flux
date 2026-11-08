@@ -158,14 +158,13 @@ What #863 does not close, and where it goes:
   state (`app/PendingView.tsx`), not the view itself, and the old view is not usable meanwhile. Making the loaders non-blocking (the view commits at once and fills in, with the last
   answer shown while it is read again) is the client data layer, live push and instant actions of the next wave
   ([#862](https://github.com/ColdPhase/flux/issues/862)). Until then rule 2's "the new screen in place at once" is met by the loading state.
-- **Loading states that are not yet in the final layout (rule 2).** `app/PendingView.tsx` draws one of four shapes by destination (a feed, a
-  list, cards, an index beside a page), not the destination's own layout: the Tasks view's loading state is a list from the top of the content, where
-  the view is three board columns below its toolbar; the Map's and the Wiki's are approximations. Drawing each view's own layout there, or
-  committing the view itself once the loaders no longer block, closes it.
-- **A thread's panel leaves without its content (rule 3).** On a computer its content is removed with the thread's route, so the panel fades out as an
-  empty box over the 120 ms; on a phone the sheet is gone at once, with no exit. A task's panel keeps its content through the exit on both. The thread
-  is rendered by its own view into the panel's slot (`app/OneConversation.tsx`, `app/ownedPanel.tsx`), which unmounts with the route; keeping it through
-  the exit is a change to that ownership, not made here.
+- **Loading states that are not yet in the final layout (rule 2).** `app/PendingView.tsx` draws a shape by destination (a feed, a list, the
+  Tasks board, cards, a page), not each destination's exact layout. The Tasks board's shape is its control row and four columns, or a list for a
+  person who shows Tasks as a list (#902); the Map's and the Wiki's are approximations. Drawing each view's own layout there, or committing the
+  view itself once the loaders no longer block, closes it.
+- **A thread's panel leaves with its content (rule 3, #901).** The thread is rendered by its own view into the panel's slot
+  (`app/OneConversation.tsx`), which unmounts with the route; `OwnedPanelContent` (`app/ownedPanel.tsx`) leaves an inert copy of what it showed in the
+  slot as it unmounts, so the panel's 120 ms exit carries its content. New content in the slot removes the copy at once, and so does the panel's end.
 - **A skeleton draws only the layout it knows (rule 6).** A decision's or a result's panel, and a task opened from a link, show a title bar and
   quiet lines, not the rows of the layout they will have, because its heights depend on text that is not read yet.
 - The Wiki text that moves 72 px, and the layout shift of phone Home when the Needs you rows arrive (0.17) (rule 6).

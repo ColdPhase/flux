@@ -1,14 +1,13 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import type { WorkStatus } from '@flux/contracts';
-import { WORK_STATUSES } from '@flux/contracts';
 import { Morph, StatusGlyph } from '../ui';
-import { STATUS_LABEL, dueLabel } from './format';
+import { STATUS_LABEL, TASK_STATES, dueLabel, statusPhrase } from './format';
 import { PropertyMenu } from './PropertyMenu';
 
 // The parts of the task panel that are edited where they are read (F-026 S9, S10): the state with
 // keys 1-5, and the title. Neither has a Save button; both save when the person is done.
 
-/** The digits `1`-`5` pick a state while the panel is open and nothing is being typed. */
+/** The digits `1`-`4` pick a state while the panel is open and nothing is being typed. */
 export function useStateKeys(enabled: boolean, choose: (status: WorkStatus) => void) {
   const latest = useRef(choose);
   useEffect(() => { latest.current = choose; });
@@ -16,7 +15,7 @@ export function useStateKeys(enabled: boolean, choose: (status: WorkStatus) => v
     if (!enabled) return;
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.isComposing) return;
-      const status = WORK_STATUSES[Number(event.key) - 1];
+      const status = TASK_STATES[Number(event.key) - 1];
       if (!status || event.key.length !== 1) return;
       const target = event.target as HTMLElement | null;
       if (target?.closest('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable="true"], [role="dialog"]:not(#details)')) return;
@@ -31,14 +30,14 @@ export function useStateKeys(enabled: boolean, choose: (status: WorkStatus) => v
 }
 
 /**
- * The task's state: one row whose value opens the five states with their keys, on a computer and on a phone alike.
- * Choosing changes it at once; the panel offers Undo.
+ * The task's state: one row whose value opens the four states with their keys, on a computer and on a phone alike (#868).
+ * Choosing changes it at once; the panel offers Undo. A dropped task shows as Done with its note.
  */
 export function StatusControl({ status, disabled, onChoose }: { status: WorkStatus; disabled?: boolean; onChoose: (status: WorkStatus) => void }) {
-  const options = WORK_STATUSES.map((value, index) => ({ value, label: STATUS_LABEL[value], key: String(index + 1), icon: <StatusGlyph status={value} size={16} /> }));
+  const options = TASK_STATES.map((value, index) => ({ value, label: STATUS_LABEL[value], key: String(index + 1), icon: <StatusGlyph status={value} size={16} /> }));
   return (
-    <PropertyMenu label="Status" value={status} options={options} disabled={disabled} onChoose={(value) => onChoose(value as WorkStatus)}>
-      <StatusGlyph status={status} size={16} /><Morph value={status}>{STATUS_LABEL[status]}</Morph>
+    <PropertyMenu label="Status" value={status === 'not_pursued' ? 'done' : status} options={options} disabled={disabled} onChoose={(value) => onChoose(value as WorkStatus)}>
+      <StatusGlyph status={status} size={16} /><Morph value={status}>{statusPhrase(status)}</Morph>
     </PropertyMenu>
   );
 }

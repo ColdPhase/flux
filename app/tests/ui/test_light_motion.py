@@ -1029,8 +1029,12 @@ class LightMotionJourney(unittest.TestCase):
         held: list = []
         page.route(re.compile(rf"/api/v1/work/{task['id']}$"), lambda route: held.append(route) if route.request.method == "PATCH" else route.fallback())
         clear(page)
-        card.get_by_role("button", name="Move to…").click()
-        page.get_by_role("menu").get_by_role("menuitemradio", name="Done").click()
+        # Cards have no ⋯ (#868): the keyboard carries it to Done (Space, arrows, Space).
+        card.get_by_role("button", name=task["title"], exact=True).focus()
+        page.keyboard.press("Space")
+        for _ in range(3):
+            page.keyboard.press("ArrowRight")
+        page.keyboard.press("Space")
         expect(page.get_by_role("region", name="Done", exact=True).locator(".tb-card", has_text=task["title"])).to_be_visible()
         page.wait_for_timeout(500)
         settled(page)
