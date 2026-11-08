@@ -60,7 +60,7 @@ function failure(cause: unknown): string {
   if (cause instanceof NetworkError) return 'Flux can’t be reached right now. Nothing changed; try again in a moment.';
   if (cause instanceof ApiError) {
     if (cause.code === 'VERSION_CONFLICT') return 'Someone changed this task a moment ago. Close this and try again from its latest state.';
-    if (cause.code === 'OWNER_WITHOUT_ACCESS') return 'That agent’s owner isn’t in this space, so the agent can’t work here and the task wasn’t handed off.';
+    if (cause.code === 'OWNER_WITHOUT_ACCESS') return 'Your agents work only in spaces you’re in, so the task wasn’t handed off.';
     if (cause.status === 403) return 'You can read this project but not change its tasks.';
     if (cause.status === 404) return 'This task is no longer available to you.';
   }

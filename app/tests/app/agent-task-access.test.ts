@@ -67,7 +67,12 @@ describe('agents of a company admin who is not in the space (C-15, #955)', () =>
     const outside = await asked('Which reading is full?', '{"agent": "Fieldbot", "question": "Which reading means full?"}');
     await waitFor(async () => (await readTask(outside.id)).owner?.kind === 'human', 'the task to go back to Lee');
     const lines = (await thread(outside.id)).map((message) => message.body);
-    assert.ok(lines.includes('I can\'t ask Fieldbot: they are not in this task. This needs a person.'), lines.join(' | '));
+    // Mira is in the task (she wrote in it); what is true is that her agent can't work in this space, and the line says that.
+    assert.ok(lines.includes(`I can't ask Fieldbot (${miraName}'s agent): ${miraName} is in this task but not in this space, so their agent can't work here. This needs a person.`), lines.join(' | '));
+    // An agent nobody has is still "not in this task".
+    const nobody = await asked('Which reading is full, Ghost?', '{"agent": "Ghost", "question": "Which reading means full?"}');
+    await waitFor(async () => (await readTask(nobody.id)).owner?.kind === 'human', 'the task to go back to Lee');
+    assert.ok((await thread(nobody.id)).map((message) => message.body).includes('I can\'t ask Ghost: they are not in this task. This needs a person.'));
     assert.equal((await pool.query(`SELECT count(*)::int AS n FROM personal_runs WHERE work_id = $1 AND kind = 'task_answer'`, [outside.id])).rows[0].n, 0, 'nobody\'s answer run was made, to be refused');
     // Control: once Mira is in the space her agent is in the task, and is asked.
     await grant(mira, closed.id, mira, 'manager');
@@ -86,11 +91,22 @@ describe('agents of a company admin who is not in the space (C-15, #955)', () =>
         const rows = (await pool.query('SELECT handled_at FROM agent_task_events WHERE work_id = $1', [refused.id])).rows as { handled_at: Date | null }[];
         return rows.length > 0 && rows.every((row) => row.handled_at) ? rows : null;
       }, 'the event to be handled');
-      const lines = (await expectStatus(await lee.browser.request('GET', taskDiscussionPath(refused.id)), 200) as TaskDiscussion);
-      const said = [lines.root, ...lines.messages].filter(Boolean).map((message) => [message!.authorId === mira.id ? 'Mira' : 'other', message!.body]);
-      assert.deepEqual([...new Map(said.map((line) => [line[1], line])).values()], [['Mira', 'My assistant can\'t work in this space, so it hasn\'t taken this task. It\'s still with me.']]);
+      // Her own words, naming the agent she chose, and exactly once.
+      const hers = async () => (await thread(refused.id)).filter((message) => message.authorId === mira.id).map((message) => message.body);
+      const line = 'My agent Fieldbot can\'t work in this space, so it hasn\'t taken this task. It\'s still with me.';
+      assert.deepEqual(await hers(), [line]);
       const now = expectStatus(await lee.browser.request('GET', workItemPath(refused.id)), 200) as WorkItem;
       assert.deepEqual([now.owner?.kind, now.owner?.id], ['human', mira.id], 'the task stays with her');
+      // Giving it to her again, and again, is the same refusal and the same line: not one more each time.
+      for (const to of [lee, mira]) {
+        const current = await readTask(refused.id);
+        expectStatus(await lee.browser.request('PATCH', workItemPath(refused.id), { body: { owner: { kind: 'human', id: to.id } }, headers: { 'if-match': `"${current.version}"` } }), 200);
+      }
+      await waitFor(async () => {
+        const rows = (await pool.query(`SELECT handled_at FROM agent_task_events WHERE work_id = $1 AND kind = 'assigned' AND owner_user_id = $2`, [refused.id, mira.id])).rows as { handled_at: Date | null }[];
+        return rows.length === 2 && rows.every((row) => row.handled_at) ? rows : null;
+      }, 'the second assignment to be handled');
+      assert.deepEqual(await hers(), [line], 'still one line');
       // Control: in a space she is in, the same setting gives the task to her agent (which cannot start in this composition and says so).
       const taken = expectStatus(await lee.browser.request('POST', `/api/v1/projects/${closed.id}/work`, { body: { title: 'For Mira in her space', owner: { kind: 'human', id: mira.id } } }), 201) as WorkItem;
       await waitFor(async () => {
