@@ -138,7 +138,7 @@ class HomeFinal(unittest.TestCase):
         cont = page.get_by_role("region", name="Continue where you left off")
         card = cont.get_by_role("link")
         expect(card).to_contain_text("Order six capacitive probes from the shortlist")
-        expect(card).to_contain_text("In progress · #1 · Community garden sensors")
+        expect(card).to_contain_text("Doing · #1 · Community garden sensors")
         # Every row ends in an arrow.
         for row in rows.all() + [card]:
             expect(row.locator(".home__row-go")).to_be_visible()

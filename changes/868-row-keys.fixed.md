@@ -1,0 +1,1 @@
+- A task row's state button on the phone list names the four keys it answers to (1 to 4), not five ([#868](https://github.com/ColdPhase/flux/issues/868)).

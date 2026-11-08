@@ -3,7 +3,7 @@
 A home-indicator iPhone in standalone mode has a bottom safe area of about 34 px. The Create control on a project's
 views hangs above the dock, which sits above that inset, so the toast must take its offset from where the control
 really is, not from a constant. Each journey raises a real toast (a task's state change on the Tasks view, which has
-the Create control alone; "Accept" on Home, which has the Create control above the capsule of places) and measures
+the Create control alone; "Accept" on the Inbox, which has the Create control above the capsule of places) and measures
 the toast against the footer's rendered edge: at least 8 px clear, no overlap, every control hit-tested and
 inside the window, light and dark.
 
@@ -174,6 +174,11 @@ class ToastSafeArea(unittest.TestCase):
             self.assertTrue(control["hit"] and control["within"], f"{label}: {control}")
         return observed
 
+    def list_view(self, page: Page) -> None:
+        """The phone opens Tasks as the Board or the List, as last chosen (#868); a row's state glyph is the List's."""
+        page.get_by_role("radiogroup", name="Show tasks as").get_by_role("radio", name="List").click()
+        expect(page.locator(".ws-task").first).to_be_visible()
+
     # ---------------------------------------------------------------- the journeys
 
     def test_01_tasks_view_toast_clears_the_create_control_with_and_without_a_safe_area(self) -> None:
@@ -184,9 +189,10 @@ class ToastSafeArea(unittest.TestCase):
                     self.new_task(title)
                     page = self.phone(dark=dark, inset=inset)
                     page.goto(f"/projects/{self.project_id}/tasks")
+                    self.list_view(page)
                     row = page.locator(".ws-task").filter(has_text=title)
-                    row.get_by_role("button", name="Open. Set to In progress").tap()
-                    expect(page.locator(".ui-toast")).to_contain_text("in progress")
+                    row.get_by_role("button", name="To do. Set to Doing").tap()
+                    expect(page.locator(".ui-toast")).to_contain_text("moved to Doing")
                     self.assert_clear(page, inset, {"create"}, f"tasks dark={dark} inset={inset}")
                     page.locator(".ui-toast__close").first.tap()
                     expect(page.locator(".ui-toast")).to_have_count(0)
@@ -196,7 +202,8 @@ class ToastSafeArea(unittest.TestCase):
             for inset in INSETS:
                 with self.subTest(dark=dark, inset=inset):
                     page = self.phone(dark=dark, inset=inset)
-                    page.goto("/")
+                    # Home lists what waits without its actions (#865); Accept is on the Inbox's card.
+                    page.goto("/inbox")
                     card = page.locator(".nyc").filter(has=page.get_by_role("button", name=re.compile("^Accept"))).first
                     card.get_by_role("button", name=re.compile("^Accept")).tap()
                     toast = page.locator(".ui-toast").filter(has_text="Accepted")
@@ -213,8 +220,9 @@ class ToastSafeArea(unittest.TestCase):
         self.new_task(title)
         page = self.phone(dark=False)
         page.goto(f"/projects/{self.project_id}/tasks")
-        page.locator(".ws-task").filter(has_text=title).get_by_role("button", name="Open. Set to In progress").tap()
-        expect(page.locator(".ui-toast")).to_contain_text("in progress")
+        self.list_view(page)
+        page.locator(".ws-task").filter(has_text=title).get_by_role("button", name="To do. Set to Doing").tap()
+        expect(page.locator(".ui-toast")).to_contain_text("moved to Doing")
         self.assert_clear(page, 0, {"create"}, "tasks before the inset")
         # A phone turning or a keyboard closing changes the inset together with a window resize.
         self.set_inset(page, INSET)
