@@ -35,7 +35,8 @@ export function text(value: unknown, label: string, maximum: number): string {
 export function cameOfIt(value: unknown): string | null {
   if (value === null) return null;
   if (typeof value !== 'string') throw new InvalidInputError('cameOfIt must be text or null');
-  const line = value.replace(/\s*\n\s*/g, ' ').trim();
+  // Split on line breaks and trim each part: no pattern that backtracks over runs of spaces.
+  const line = value.split(/\r?\n/).map((part) => part.trim()).filter(Boolean).join(' ');
   if (line.length > WORK_LIMITS.cameOfIt) throw new InvalidInputError(`cameOfIt must be at most ${WORK_LIMITS.cameOfIt} characters`);
   return line || null;
 }
