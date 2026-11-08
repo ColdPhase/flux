@@ -1,8 +1,9 @@
 import { useLayoutEffect, useRef, useState } from 'react';
-import { Link, useLoaderData, useSearchParams, type LoaderFunctionArgs } from 'react-router';
+import { Link, useLoaderData, useRevalidator, useSearchParams, type LoaderFunctionArgs } from 'react-router';
 import { AI_PROVIDERS, aiConnectionLabel, API_KEY_DAILY_BUDGET_CENTS, type BackgroundComputeConnection } from '@flux/contracts';
 import { keyUsageLine } from '../ai/connections';
 import { ApiError } from '../api/client';
+import { refreshAssistantModel } from '../assistant/model';
 import { Button } from '../ui';
 import { listBackgroundConnections, revokeBackgroundConnection, updateBackgroundConnection } from './api';
 import { AddKeyForm, BUDGET_PROBLEM, budgetCents, keyFailure, money, type AddKeyFormHandle } from './AddKeyForm';
@@ -24,6 +25,7 @@ export function AiConnectionsSettings() {
 
 function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComputeConnection[] } }) {
   const [params] = useSearchParams();
+  const revalidator = useRevalidator();
   const [connections, setConnections] = useState(initial.connections);
   // Connect AI's "API key" choice opens the form at once (#854).
   const [editing, setEditing] = useState(params.get('new') === '1');
@@ -139,6 +141,8 @@ function AiConnectionsPage({ initial }: { initial: { connections: BackgroundComp
       </div>
       <AddKeyForm ref={formRef} {...(connections.length ? { onCancel: cancelAdding } : {})} onAdded={(added) => {
         void listBackgroundConnections().catch(() => [added, ...connections]).then(setConnections);
+        // The first key gives a person their Assistant on the server: the shell's agents and the models are read again, so Back to AI is not stale (#959).
+        void revalidator.revalidate(); void refreshAssistantModel();
         setEditing(false);
         announce(`Key saved with a daily budget of ${money(added.dailyBudgetCents)}.`);
       }} />

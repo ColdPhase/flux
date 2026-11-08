@@ -240,12 +240,34 @@ class MyAgentsJourney(unittest.TestCase):
         expect(gus.get_by_text("Guests don’t have AI.")).to_be_visible()
         expect(gus.get_by_role("region", name="Connect AI", exact=True)).to_have_count(0)
         expect(gus.get_by_role("region", name="Your agents", exact=True)).to_have_count(0)
+        # Every other AI address leads a guest to that one line, not to a page of controls (#959).
+        for address in ("/settings/ai-connections", "/settings/ai-connections?new=1", "/settings/agents/connect", "/settings/agents/claude-code",
+                        "/settings/agents/codex", "/settings/assistant", "/settings/assistant/claude-code", f"/settings/agents/{self.ids['assistant']}"):
+            gus.goto(address)
+            expect(gus.get_by_text("Guests don’t have AI.")).to_be_visible()
+            self.assertEqual(re.sub(r"^https?://[^/]+", "", gus.url), "/settings/agents", address)
+        expect(gus.get_by_role("button", name=re.compile("Add a key|Connect AI|Sign in"))).to_have_count(0)
         self.api(gus, "POST", "/api/v1/my-agents", {"workspaceId": self.ids["workspace"], "name": "Sneaky"}, status=403)
         self.assertEqual(self.api(gus, "GET", "/api/v1/my-agents")["items"], [])
         phone = self.page("gus", phone=True)
         phone.goto("/settings")
         expect(phone.get_by_role("link", name="Company")).to_be_visible()
         expect(phone.get_by_role("link", name=re.compile("^AI\\b"))).to_have_count(0)
+
+    def test_10_a_first_key_saved_on_the_keys_page_shows_the_assistant_on_back_to_ai(self) -> None:
+        # Ben has connected nothing. The server makes his Assistant when the key is saved; Back to AI must not show the earlier list (#959).
+        ben = self.page("ben")
+        ben.goto("/settings/ai-connections?new=1")
+        choose(ben.get_by_label("Provider", exact=True), label="Anthropic")
+        ben.get_by_label("Model", exact=True).fill("claude-sonnet-5")
+        ben.get_by_label("Name", exact=True).fill("Ben's Anthropic key")
+        ben.get_by_label("API key", exact=True).fill(f"sk-ant-api03-{'agents-ui-ben-' * 3}AG03")
+        ben.get_by_label("Daily budget (USD)", exact=True).last.fill("5")
+        ben.get_by_role("button", name="Connect", exact=True).click()
+        expect(ben.locator(".background-settings__connection")).to_have_count(1)
+        ben.get_by_role("link", name="Back to AI").click()
+        expect(ben.get_by_role("list", name="Your agents").get_by_role("link", name=re.compile("^Assistant"))).to_be_visible()
+        expect(ben.get_by_text("You have no agents. Make one with New agent.")).to_have_count(0)
 
 
 if __name__ == "__main__":

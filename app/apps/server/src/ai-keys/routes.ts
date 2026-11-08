@@ -66,7 +66,8 @@ export async function aiKeyRoutes(app: FastifyInstance, { db, sessions, backgrou
       provider: { type: 'string', enum: [...AI_PROVIDER_KINDS] },
       baseUrl: { type: 'string', minLength: 1, maxLength: AI_BASE_URL_MAX_LENGTH } } } },
   }, async (request) => {
-    await sessions.requirePrincipal(request);
+    // A guest has no AI (AG-2): not even a look-up of a provider's models (#995).
+    await requireNotGuest(db, (await sessions.requirePrincipal(request)).principal.id);
     const { provider, baseUrl } = request.body;
     if (provider === 'openai_compatible') {
       const problem = baseUrlSyntaxProblem(baseUrl);

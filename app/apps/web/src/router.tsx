@@ -10,6 +10,7 @@ import { projectConversationLoader, shouldRevalidateProjectConversation } from '
 import { Booting, RouteCodeLoadError, RouteErrorPage } from './app/errors';
 import { NotFoundView } from './app/views';
 import { Home } from './app/Home';
+import { AiNotForGuests } from './ai/AiNotForGuests';
 import { LockedBoundary, LockedSpacePage } from './encryption/LockedSpace';
 import { projectShellLoader } from './project/data';
 import { docViewsPage, mapPage, tasksPage, wikiPage } from './app/viewChunks';
@@ -178,18 +179,21 @@ export const router = createBrowserRouter([
               { path: 'notifications', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).NotificationSettings })) },
               { path: 'notifications/verify', ...secondary(async () => ({ Component: (await import('./notifications/NotificationSettings')).VerifyAddress })) },
               { path: 'agents', ...secondary(async () => ({ Component: (await settingsPage()).SettingsAgents })) },
-              // F-022 T4: the console and terminal load only when this route opens.
-              { path: 'agents/claude-code', ...secondary(async () => ({ Component: (await import('./agent-runtime/ClaudeCodeSignIn')).ClaudeCodeSignIn })) },
               { path: 'assistant/claude-code', element: <Navigate to="/settings/agents/claude-code" replace /> },
-              // #763 AG-2: managing your agent connections is a Settings page; `/connect-agent` without a client's sign-in leads here.
-              { path: 'agents/connect', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConnectionSettings, loader: page.agentConnectionLoader }; }) },
-              { path: 'agents/codex', ...secondary(async () => ({ Component: (await import('./agent-runtime/CodexSignIn')).CodexSignIn })) },
-              // One of your agents (F-036 AG-1, #857).
-              { path: 'agents/:agentId', ...secondary(async () => ({ Component: (await import('./my-agents/AgentPage')).AgentPage })) },
               { path: 'shortcuts', ...secondary(async () => ({ Component: (await settingsPage()).KeyboardShortcuts })) },
-              // Assistant's schedules, until they move into its conversation (#858).
-              { path: 'assistant', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantSettings })) },
-              { path: 'ai-connections', ...secondary(async () => { const page = await import('./ai/AiKeysSettings'); return { Component: page.AiConnectionsSettings, loader: page.aiConnectionsLoader }; }) },
+              // A guest has no AI (AG-2, #959): every address below leads them to the one line at Settings › AI.
+              { Component: AiNotForGuests, children: [
+                // F-022 T4: the console and terminal load only when this route opens.
+                { path: 'agents/claude-code', ...secondary(async () => ({ Component: (await import('./agent-runtime/ClaudeCodeSignIn')).ClaudeCodeSignIn })) },
+                // #763 AG-2: managing your agent connections is a Settings page; `/connect-agent` without a client's sign-in leads here.
+                { path: 'agents/connect', ...secondary(async () => { const page = await import('./agent-connection/pages'); return { Component: page.AgentConnectionSettings, loader: page.agentConnectionLoader }; }) },
+                { path: 'agents/codex', ...secondary(async () => ({ Component: (await import('./agent-runtime/CodexSignIn')).CodexSignIn })) },
+                // One of your agents (F-036 AG-1, #857).
+                { path: 'agents/:agentId', ...secondary(async () => ({ Component: (await import('./my-agents/AgentPage')).AgentPage })) },
+                // Assistant's schedules, until they move into its conversation (#858).
+                { path: 'assistant', ...secondary(async () => ({ Component: (await import('./assistant/AssistantSettings')).AssistantSettings })) },
+                { path: 'ai-connections', ...secondary(async () => { const page = await import('./ai/AiKeysSettings'); return { Component: page.AiConnectionsSettings, loader: page.aiConnectionsLoader }; }) },
+              ] },
             ],
           },
           // The header names it as such (#763 NV-1): it is no place of the sidebar.

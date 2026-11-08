@@ -57,9 +57,11 @@ export function firstAgentMaker(db: Database, composition: PersonalRunCompositio
         const scoped = tx as unknown as Database;
         await lockAssistantOwner(scoped, ownerUserId);
         if (await personalRunUseCases(scoped, composition).hadAnAgent(actor)) return;
-        // The person's own workspace, the oldest where they are not a guest: the company on a Flux with one company.
-        const home = (await accessPorts.workspaces(scoped).forMember(ownerUserId)).find((place) => place.role !== 'guest');
-        if (!home) return;
+        // The workspace the app shows as the person's own (the company, else the oldest they are in), and the same rule for a guest of it as
+        // the page's: a guest has no AI, whatever other workspace they are in (#959).
+        const places = await accessPorts.workspaces(scoped).forMember(ownerUserId);
+        const home = places.find((place) => place.workspace.company) ?? places[0];
+        if (!home || home.role === 'guest') return;
         await makeAgent(scoped, composition, actor, { workspaceId: home.workspace.id });
       });
     } catch (error) {

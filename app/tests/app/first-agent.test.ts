@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { before, describe, test } from 'node:test';
 import type { MyAgent, Workspace } from '@flux/contracts';
+import { pool } from './support/db.js';
 import { addMember, expectStatus, person, workspace, type Person } from './support/people.js';
 
 // The first agent (F-036 AG-1, #857): connecting AI the first time gives a person Assistant, made once on the server when the
@@ -18,7 +19,7 @@ const keyBody = (name: string, suffix: string) => ({ name, provider: 'anthropic'
 const mine = async (who: Person) => (expectStatus(await who.browser.request('GET', '/api/v1/my-agents'), 200) as { items: MyAgent[] }).items;
 
 describe('the first agent comes with the first connection (#857)', { skip: !live && 'needs FLUX_TEST_PERSONAL_RUNS=anthropic-mock' }, () => {
-  let owner: Person; let member: Person; let guest: Person; let alone: Person; let racer: Person; let ws: Workspace;
+  let owner: Person; let member: Person; let guest: Person; let alone: Person; let racer: Person; let dual: Person; let ws: Workspace;
 
   before(async () => {
     owner = await person('first-agent-owner');
@@ -26,6 +27,7 @@ describe('the first agent comes with the first connection (#857)', { skip: !live
     guest = await person('first-agent-guest');
     alone = await person('first-agent-alone');
     racer = await person('first-agent-racer');
+    dual = await person('first-agent-dual');
     ws = await workspace(owner, 'First agent club');
     await addMember(owner, ws.id, member, 'member');
     await addMember(owner, ws.id, guest, 'guest');
@@ -69,6 +71,25 @@ describe('the first agent comes with the first connection (#857)', { skip: !live
     expectStatus(await guest.browser.request('POST', '/api/v1/my-agents', { body: { workspaceId: ws.id } }), 403);
     expectStatus(await alone.browser.request('POST', path, { body: keyBody('Lone key', 'FA06') }), 201);
     assert.deepEqual(await mine(alone), [], 'nowhere to make it');
+  });
+
+  test('a guest of the company is refused every step that connects AI and is given nothing, though another workspace has them as a member; as a member they are given their Assistant in the company (#959, #995)', async () => {
+    // The page reads the company (else the first workspace) for its "a guest has no AI" line; the server must not make an agent elsewhere.
+    const company = (await pool.query<{ id: string }>('SELECT id FROM workspaces WHERE company')).rows[0];
+    assert.ok(company, 'the stack has its company');
+    await workspace(dual, 'Dual club');
+    await pool.query(`INSERT INTO workspace_members (workspace_id, user_id, role, created_by) VALUES ($1, $2, 'guest', $2)`, [company.id, dual.id]);
+    const refusal = (response: { status: number; json?: unknown; text: string }) => [response.status, (JSON.parse(response.text) as { code?: string }).code];
+    assert.deepEqual(refusal(await dual.browser.request('POST', path, { body: keyBody('Dual key', 'FA07') })), [403, 'GUEST_NO_AI'], 'a key is not saved');
+    assert.deepEqual(refusal(await dual.browser.request('POST', '/api/v1/ai-model-lists', { body: { provider: 'anthropic' } })), [403, 'GUEST_NO_AI'], 'and a provider\'s models are not looked up (#995)');
+    assert.deepEqual(await mine(dual), [], 'a guest has no agents, wherever else they are a member');
+    // The same person as a member of the company may look the models up, and is given their Assistant there, in the company.
+    await pool.query(`UPDATE workspace_members SET role = 'member' WHERE workspace_id = $1 AND user_id = $2`, [company.id, dual.id]);
+    expectStatus(await dual.browser.request('POST', '/api/v1/ai-model-lists', { body: { provider: 'anthropic' } }), 200);
+    expectStatus(await dual.browser.request('POST', path, { body: keyBody('Dual second key', 'FA08') }), 201);
+    const made = await mine(dual);
+    assert.deepEqual(made.map((agent) => agent.name), ['Assistant']);
+    assert.equal(made[0]!.workspaceId, company.id, 'made in the company');
   });
 
   test('two connections made at once give one Assistant, not two', async () => {
