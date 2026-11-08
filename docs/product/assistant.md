@@ -262,7 +262,7 @@ Server agents act only inside Flux, with their owner's rights:
 | --- | --- |
 | Tasks | Create tasks for the owner or the owner's agents (tasks for others wait); change status; write in the task discussion |
 | Conversations | Read; write only in task discussions and the private conversation. A conversation with other people (a space's or a DM) only through the owner's Show everyone |
-| Wiki | Create and edit pages, with Undo (Undo of a page the agent started deletes it, while only that agent has written it and nothing uses it). Deleting any other page waits for the owner's OK |
+| Wiki | Create and edit pages, with Undo. Undo of a page the agent started deletes it, while only that agent has written it and nothing uses it (no link to it, no message that cited it, no call on it, no one typing in it). Deleting a page always waits for the owner's OK |
 | Map | Add thoughts and link them to tasks |
 | Decisions | Propose; never accept |
 | Search | Everything the owner can see, in spaces with AI on |

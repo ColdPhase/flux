@@ -21,7 +21,7 @@ import { agentSettings } from './support/agent-settings.js';
 import { db, pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
 import { mcp, toolValue } from './support/mcp.js';
-import { agentConnection } from './support/mcp-actions.js';
+import { agentConnection, approveWaiting, waits } from './support/mcp-actions.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
@@ -780,6 +780,59 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
       assert.equal((await stateOf(row!.id)).state, 'applied', name);
       assert.equal((await pool.query(`SELECT count(*)::int AS n FROM events WHERE kind = 'project.doc_deleted.v1' AND data->>'docId' = $1`, [kept.docId])).rows[0].n, 0, `${name}: nothing was deleted`);
     }
+  });
+
+  /** One page the assistant started in a finished run, and its change row. */
+  async function agentPage(title: string) {
+    const run = await liveRun();
+    const made = value(await run.call('flux_create_doc', { doc: { title, body: 'Measured twice' } }));
+    await complete(run.runId);
+    const [change] = await changesOf(run.runId);
+    return { docId: made.docId!, changeId: change!.id };
+  }
+
+  test('#1021 page: another agent\'s version keeps the page, whatever its reason says; so do a citing message, a suggestion, a plan item, a task made from it and a call held on it', async () => {
+    // Another person's own agent edits the page with a reason that starts like the owner's Undo ("Undo: "): the reason decides nothing.
+    const edited = await agentPage('Edited by Jonas\'s agent');
+    const jonasAgent = (expectStatus(await peer.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, { body: { name: 'Jonas Codex', owner: 'self' } }), 201) as { id: string }).id;
+    const local = await agentConnection(pool, peer.browser, jonasAgent, [place.id]);
+    const saved = await local.tool('flux_update_doc', { projectId: place.id, clientCommandId: randomUUID(), docId: edited.docId, expectedVersion: 1,
+      changes: { body: 'Jonas\'s agent rewrote this with two new paragraphs.', reason: 'Undo: put the intro back the way Jonas wrote it' } });
+    if (waits(saved)) await approveWaiting(pool, peer.browser, local.connectionId, 'doc.update');
+    const versions = (await pool.query(`SELECT author_id, author_agent_id, reason FROM project_material_versions WHERE material_id = $1 ORDER BY version`, [edited.docId])).rows as
+      { author_id: string | null; author_agent_id: string | null; reason: string }[];
+    assert.deepEqual(versions.map((version) => [version.author_id, version.author_agent_id === agentId, version.reason.startsWith('Undo: ')]), [[null, true, false], [null, false, true]]);
+    assert.equal((await undoOne(edited.changeId)).message, 'Changed since. Open it');
+    assert.equal(await pageRows(edited.docId), 1, 'a version by another agent keeps the page');
+
+    const cited = await agentPage('Cited by a message');
+    expectStatus(await peer.browser.request('POST', `/api/v1/conversations/${thread.id}/messages`,
+      { body: { body: 'See the page.', clientMessageId: randomUUID(), source: { materialId: cited.docId, version: 1 } } }), 201);
+    const suggested = await agentPage('Suggested from');
+    await pool.query(`INSERT INTO agent_proposals (id, workspace_id, project_id, agent_id, owner_user_id, compute_source, source_material_id, source_material_version,
+      client_command_id, request_fingerprint, fact, interpretation, suggested_action)
+      VALUES ($1, $2, $3, $4, $5, 'user_operated_external_client', $6, 1, $7, $8, 'A fact', 'A reading', 'An action')`,
+    [randomUUID(), ws.id, place.id, agentId, owner.id, suggested.docId, randomUUID(), 'a'.repeat(64)]);
+    const planned = await agentPage('Planned from');
+    const planTask = (await task(peer, 'Measure the bracket')).id;
+    await pool.query(`INSERT INTO project_task_plan_intents (workspace_id, project_id, material_id, material_version, intent_key, task_id, creation_fingerprint, task_version)
+      VALUES ($1, $2, $3, 1, 'measure', $4, $5, 1)`, [ws.id, place.id, planned.docId, planTask, 'b'.repeat(64)]);
+    const sourced = await agentPage('Task made from');
+    expectStatus(await peer.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body: { title: 'Read it', sources: [{ type: 'material', id: sourced.docId, version: 1 }] } }), 201);
+    const called = await agentPage('Call held here');
+    const room = randomUUID();
+    await pool.query(`INSERT INTO live_sessions (id, workspace_id, project_id, doc_id, created_by, client_session_id, room_id, state)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'available')`, [room, ws.id, place.id, called.docId, peer.id, randomUUID(), `live_${randomUUID()}`]);
+    for (const [name, page] of [['a message that cited it', cited], ['an agent suggestion', suggested], ['a task plan item', planned], ['a task made from it', sourced], ['a call held on it', called]] as const) {
+      assert.equal((await undoOne(page.changeId)).message, 'Used since. Open it', name);
+      assert.equal(await pageRows(page.docId), 1, `${name}: the page stays`);
+      assert.equal((await stateOf(page.changeId)).state, 'applied', name);
+    }
+    // The call ended (or was never started): nothing is held, and the page is the assistant's own again.
+    await pool.query(`UPDATE live_sessions SET state = 'ended', ended_at = now(), updated_at = now() WHERE id = $1`, [room]);
+    assert.equal((await undoOne(called.changeId)).message, null);
+    assert.equal(await pageRows(called.docId), 0);
+    assert.equal((await pool.query(`SELECT state, doc_id FROM live_sessions WHERE id = $1`, [room])).rows[0].doc_id, called.docId, 'the ended call keeps the page\'s id as history');
   });
 
   test('#1021 page: Undo of a page follows the AI switch of its space, like the other removals', async () => {

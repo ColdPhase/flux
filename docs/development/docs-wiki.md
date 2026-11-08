@@ -163,7 +163,7 @@ agent principal (`DOC_NEEDS_PERSON`); only the owner's approval runs the delete 
 
 **Undo of a page an agent started** (AG-8, #1021) is this delete. The change log keeps a removal plan for `doc.create`; the owner's Undo
 deletes the page, as the owner, if every version was written by that agent (or is the owner's own Undo of its edit), nothing names the page (a
-link to it, a message that cited it, a suggestion or a task plan item made from it) and nobody has unsaved text in its shared copy. The delete
+link to it, a message that cited it, a suggestion or a task plan item made from it), no call is held on it and nobody has unsaved text in its shared copy. The delete
 carries the version the check read, so an edit that lands meanwhile is a version conflict and the page stays. Otherwise the Undo changes nothing
 and says "Changed since. Open it" or "Used since. Open it". The space's AI switch applies (as for any removal Undo).
 

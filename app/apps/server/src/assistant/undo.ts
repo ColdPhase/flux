@@ -58,6 +58,7 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
         fingerprint: sha(`undo:${row.id}`), retainUntil: (release) => releases.add(release) });
       const { plan } = record;
       let removal: Removal | null = null;
+      let restoredVersion: number | null = null;
       const id = row.objectId;
       // "Ada undid their assistant's change", or "Jonas undid Ada's assistant's change" when someone else takes it back.
       const reason = `Undo: ${byName} undid ${by.id === row.ownerUserId ? 'their' : `${ownerName}'s`} assistant's change`;
@@ -96,7 +97,8 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
           const fields = Object.fromEntries(plan.fields.map((key) => [key, { before: before[key], after: after[key] }]));
           const { restore, changedSince } = restorableFields(fields, current);
           if (changedSince.length) throw new Since();
-          await docs.updateDoc(owner, id!, restore, current.version, reason);
+          // The version this Undo writes is kept in the receipt: the Undo of the page's creation counts it as the assistant's own (#1021).
+          restoredVersion = (await docs.updateDoc(owner, id!, restore, current.version, reason)).version;
           break;
         }
         case 'map.thought.create': {
@@ -189,7 +191,7 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
       const scrubbed = removal?.ok ? { preparedCommand: null,
         ...(row.operation.startsWith('conversation.') ? { objectTitle: '', receipt: { ...(locked.receipt ?? {}), undo: { ...record, after: null } } } : {}) } : {};
       await rows.update(row.id, { state: 'undone', decidedBy: owner.id, decidedAt, ...scrubbed,
-        receipt: { ...((scrubbed as { receipt?: Record<string, unknown> }).receipt ?? locked.receipt ?? {}), undone: { by: owner.id, at: decidedAt.toISOString(), ...(removal?.ok ? { removed: removal.snapshot } : {}) } } as never });
+        receipt: { ...((scrubbed as { receipt?: Record<string, unknown> }).receipt ?? locked.receipt ?? {}), undone: { by: owner.id, at: decidedAt.toISOString(), ...(removal?.ok ? { removed: removal.snapshot } : {}), ...(restoredVersion ? { version: restoredVersion } : {}) } } as never });
       await session.flushEvents();
     });
     return { done: true, message: null };
