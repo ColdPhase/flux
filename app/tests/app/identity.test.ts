@@ -100,7 +100,7 @@ describe('human identity', () => {
 
     const revoked = await laptop.request('POST', '/api/v1/sessions/revoke-others');
     assert.equal(revoked.status, 200);
-    assert.deepEqual(revoked.json, { revoked: 1 });
+    assert.deepEqual(revoked.json, { revoked: 1, disconnected: 0 });
     assert.equal((await tablet.request('GET', '/api/v1/me')).status, 401);
     assert.equal((await laptop.request('GET', '/api/v1/me')).status, 200, 'current session survives revoke-others');
   });

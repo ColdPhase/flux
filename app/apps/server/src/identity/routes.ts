@@ -30,9 +30,15 @@ export interface SessionStore {
   deleteOthers(userId: string, keepSessionId: string): Promise<number>;
 }
 
+/** Disconnects every local AI client of a person (#989): the connections, their runtime sessions and every OAuth token. Returns how many connections. */
+export interface ClientDisconnector {
+  disconnectClients(userId: string): Promise<number>;
+}
+
 export interface IdentityRouteOptions {
   sessions: SessionResolver;
   store: SessionStore;
+  clients: ClientDisconnector;
   passwordReset: IdentityCapabilities['passwordReset'];
   signup: IdentityCapabilities['signup'];
   /** With a provider in SSO-only mode, the sign-in page offers no password form (#315). */
@@ -46,7 +52,7 @@ export interface IdentityRouteOptions {
 }
 
 /** Flux's own identity routes: capabilities, the current principal and session management. */
-export function registerIdentityRoutes(app: FastifyInstance, { sessions, store, passwordReset, signup, ssoOnly, linkable, sso, company }: IdentityRouteOptions) {
+export function registerIdentityRoutes(app: FastifyInstance, { sessions, store, clients, passwordReset, signup, ssoOnly, linkable, sso, company }: IdentityRouteOptions) {
   app.get(IDENTITY_CAPABILITIES_PATH, async (): Promise<IdentityCapabilities> => ({ company: await company(), passwordReset, signup, ssoOnly, linkable, sso: await sso() }));
 
   app.get(ME_PATH, async (request, reply): Promise<MeResponse> => {
@@ -81,6 +87,9 @@ export function registerIdentityRoutes(app: FastifyInstance, { sessions, store, 
 
   app.post(REVOKE_OTHER_SESSIONS_PATH, async (request) => {
     const context = await sessions.requirePrincipal(request);
-    return { revoked: await store.deleteOthers(context.principal.id, context.sessionId) };
+    const revoked = await store.deleteOthers(context.principal.id, context.sessionId);
+    // "Sign out everywhere" also ends what a local AI client holds: someone who had this account's session could have connected one (#989).
+    // The person connects their own again with one click on the consent page.
+    return { revoked, disconnected: await clients.disconnectClients(context.principal.id) };
   });
 }

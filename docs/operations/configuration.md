@@ -200,7 +200,7 @@ Lifetime of a password reset link. Links are single use and stored hashed. Examp
 
 **Type** `true`, `false` · **Default** `true` · **Used by** api (release, source)
 
-In-memory rate limits: Better Auth's on sign-in, sign-up and reset, and the API-wide floor under every other route (1,200 requests a minute per session, 600 per address without one, 600 new sessions a minute per address; no total per address). Only the test scripts turn them off. Example: `true`.
+Rate limits: Better Auth's on sign-in, sign-up and reset (per client address, an IPv6 address as its /64, kept in PostgreSQL so every API process shares it), and the API-wide floor under every other route (in memory: 1,200 requests a minute per session, 600 per address without one, 600 new sessions a minute per address; no total per address). The account's own back-off after repeated wrong passwords is separate and always on; a browser that has signed in to the account is remembered by a signed cookie and is not held by other people's guesses. Only the test scripts turn the limits off. Example: `true`.
 
 ## Single sign-on (OpenID Connect)
 

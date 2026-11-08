@@ -160,6 +160,45 @@ class SignInPages(_Browser):
         other.get_by_role("button", name="Sign in", exact=True).click()
         expect(other.get_by_text("That email and password don’t match an account.")).to_be_visible()
 
+    def test_04_a_common_password_is_refused_with_the_reason_and_the_account_is_not_made(self) -> None:
+        page = self.page()
+        email = f"weak.password+{int(time.time() * 1000)}@example.test"
+        page.goto("/sign-up")
+        page.get_by_label("Name").fill("Weak Password")
+        page.get_by_label("Email").fill(email)
+        # Twelve characters pass the form's own length rule; the server's list of common passwords refuses this one (#990).
+        page.get_by_label("Password").fill("password1234")
+        page.get_by_role("button", name="Create account").click()
+        expect(page.get_by_text("That password is too easy to guess.")).to_be_visible()
+        expect(page).to_have_url(re.compile(r"/sign-up"))
+        page.get_by_label("Password").fill("a lantern on the harbour wall")
+        page.get_by_role("button", name="Create account").click()
+        expect(page).to_have_url(f"{ORIGIN}/")
+
+    def test_05_five_wrong_passwords_make_the_page_ask_to_wait_and_the_owner_who_signed_in_before_is_not_locked_out(self) -> None:
+        page = self.page()
+        # The account is made by one browser context (which is then remembered by the account) and guessed at from another, which is not,
+        # and this page has no session and shows the form.
+        owner = self.page()
+        stranger = self.page()
+        email = f"back.off+{int(time.time() * 1000)}@example.test"
+        made = owner.request.post(f"{ORIGIN}/api/auth/sign-up/email", data={"email": email, "password": PASSWORD, "name": "Back Off"}, headers={"origin": ORIGIN})
+        self.assertEqual(made.status, 200, made.text())
+        for attempt in range(5):
+            wrong = stranger.request.post(f"{ORIGIN}/api/auth/sign-in/email", data={"email": email, "password": f"wrong guess {attempt} here"}, headers={"origin": ORIGIN})
+            self.assertEqual(wrong.status, 401)
+        page.goto("/sign-in")
+        page.get_by_label("Email").fill(email)
+        page.get_by_label("Password").fill(PASSWORD)
+        page.get_by_role("button", name="Sign in", exact=True).click()
+        # The fifth attempt put the account on a wait: even the right password is refused from a browser nobody knows, with the way out.
+        # The page asks to wait a few minutes and does not count the seconds down.
+        expect(page.get_by_text("Too many sign-in attempts for this account. Try again in a few minutes. If you have forgotten the password, you can reset it.")).to_be_visible()
+        expect(page).to_have_url(re.compile(r"/sign-in"))
+        # The browser that made the account is remembered: the stranger's guesses do not keep the owner out.
+        known = owner.request.post(f"{ORIGIN}/api/auth/sign-in/email", data={"email": email, "password": PASSWORD}, headers={"origin": ORIGIN})
+        self.assertEqual(known.status, 200, known.text())
+
     def test_03_the_claim_page_has_nothing_to_claim_without_a_provider_sign_in(self) -> None:
         page = self.page()
         page.goto("/claim")

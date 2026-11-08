@@ -23,8 +23,8 @@ assets, actors and boundaries it refers to are in the [threat model](threat-mode
 
 | Issue | Severity | Requirement | Summary |
 | --- | --- | --- | --- |
-| [#989](https://github.com/ColdPhase/flux/issues/989) | **P2** | 3.3.3, 3.5.1 | A password reset or "sign out everywhere" leaves local MCP clients connected with the owner's rights (probed) |
-| [#990](https://github.com/ColdPhase/flux/issues/990) | **P2** | 2.1.1, 2.1.7, 2.2.1 | 8-character and common passwords accepted; sign-in throttled only per IP and process (probed) |
+| [#989](https://github.com/ColdPhase/flux/issues/989) | **P2** | 3.3.3, 3.5.1 | A password reset or "sign out everywhere" leaves local MCP clients connected with the owner's rights (probed). **Fixed:** both disconnect the person's clients ([how](#fixes-after-the-audit)) |
+| [#990](https://github.com/ColdPhase/flux/issues/990) | **P2** | 2.1.1, 2.1.7, 2.2.1 | 8-character and common passwords accepted; sign-in throttled only per IP and process (probed). **Fixed:** 12 characters, a common-password list and a per-account back-off in PostgreSQL ([how](#fixes-after-the-audit)) |
 | [#991](https://github.com/ColdPhase/flux/issues/991) | P3 | 7.4.1 | Unexpected errors answer their internal message outside encrypted spaces (probed) |
 | [#992](https://github.com/ColdPhase/flux/issues/992) | P3 | 8.2.1, 14.4.4 to 14.4.6 | No `nosniff`, Referrer-Policy, `no-store` on API JSON, or HSTS guidance (probed) |
 | [#993](https://github.com/ColdPhase/flux/issues/993) | P3 | 3.3.2, 3.7.1 | Sign-up reveals registered addresses; 7-day sliding sessions with no absolute limit (probed) |
@@ -38,6 +38,38 @@ These issues were already open and are referenced, not filed again:
 - [#840](https://github.com/ColdPhase/flux/issues/840) (image signing, 10.3.1, 14.2)
 
 No P1 was found.
+
+## Fixes after the audit
+
+What was decided when the two P2 findings were fixed (2026-11-08). Each stays here so a later review can see why.
+
+- **#989, a recovery ends the clients.** A password reset, a password change that signs out the other devices, and "Sign out all other devices"
+  disconnect every local client of the person: each connection is revoked exactly as the Disconnect button does it, its runtime
+  sessions end, and every OAuth refresh token and access token of the person is revoked. The alternative, keeping the connections so
+  that a fresh sign-in finds them with no page (C-20), was refused: it would let a client made from a stolen session be re-allowed
+  silently when the owner next opens a link of that client. With the connection revoked, the next sign-in of a client asks on the consent
+  page (C-19) and gets the same agent back (C-20), so what was assigned to it stays. The owner's own assistant is not a client and is not
+  touched. Better Auth's `/revoke-sessions` and `/revoke-other-sessions` are disabled (Flux ends sessions through `/api/v1/sessions`).
+  Ending one single session does not disconnect clients: Flux does not record which session authorized a client.
+- **#990, passwords.** At least 12 characters (V2.1.1) and at most 128, as before. A password on the common-password list of
+  `@zxcvbn-ts/language-common` (49,233 entries, V2.1.7 asks for 3,000) or estimated under 10^8 guesses is refused, with the person's
+  own name and address counted as known words. The list ships with the server: no password or hash leaves the process, unlike a call to a
+  breached-password service. No composition rules (V2.1.9).
+- **#990, guessing.** Better Auth's per-address limiter now uses its `database` storage, so `api` and `api2` count together, and an IPv6
+  address counts as its /64 (the pinned Better Auth does this by default). Each account also backs off by itself: the first five attempts
+  cost nothing, then the account refuses sign-in for 30 seconds, then 1, 2, 4 and 8 minutes, and at most 15 minutes from the tenth on,
+  whatever the client address. A success, a password reset or an hour without an attempt starts the count again. Every attempt is counted
+  before the password is checked, so parallel guesses cannot all pass a stale count. The same count covers the current password asked by
+  change-password and change-email, so a session left open cannot be used to guess it. An address nobody holds is counted and slowed the
+  same way. The refusal says "a few minutes" and sends no `Retry-After`, so the end of a wait cannot be timed.
+  **A stranger cannot lock the owner out** (review finding B1 on #1011, OWASP device cookies): a browser that has signed in to the account,
+  created it or finished its password reset keeps a signed `flux.device` cookie (HttpOnly, SameSite=Lax, 400 days, up to eight accounts
+  as keyed hashes; `Secure` over HTTPS). That browser counts in a wait of its own (this account on this browser), so guesses from anywhere
+  else never refuse it, and its own wrong guesses slow only itself. A guess without a valid cookie for that account (none, altered, or
+  won on another account) counts in the account's wait. The cookie is not a credential: with it the password is still needed, and it
+  is guessed at in the same five-then-wait bucket. What remains: a stranger who knows an address can keep a browser that has never
+  signed in to it (a new device, cleared cookies) waiting for up to 15 minutes at a time. The reset mail is the way back, the browser
+  that finishes the reset is remembered, and a reset clears the account's wait. MFA stays the identity provider's job (see 2.2.x).
 
 ## V1 Architecture, design and threat modelling
 
@@ -53,7 +85,7 @@ No P1 was found.
 | 1.2.1 | Low-privilege OS accounts per component | Pass | Image runs as `node` (`docker/Dockerfile` `USER node`); keyring with `cap_drop: ALL`, read-only, `no-new-privileges` (`docs/operations/hardening.md`); runtime CLIs under per-person uids with no capabilities |
 | 1.2.2 | Communication between components authenticated | Pass | Keyring bearer, constant-time compare (`apps/keyring/src/server.ts:49-50`); runtime manager and slot secrets (`docker/compose.source.yaml:315-361`); database password |
 | 1.2.3 | One vetted authentication mechanism | Pass | Better Auth 1.7.18 for sessions, OAuth and OIDC (`identity/auth.ts:184-391`) |
-| 1.2.4 | All authentication pathways equally strong | Partial | The OAuth consent mints a lasting client from any live session without re-authentication. Password recovery does not end client grants ([#989](https://github.com/ColdPhase/flux/issues/989)) |
+| 1.2.4 | All authentication pathways equally strong | Partial | The OAuth consent mints a lasting client from any live session without re-authentication. Password recovery now ends client grants ([#989](https://github.com/ColdPhase/flux/issues/989), fixed) |
 | 1.4.1 | Access control enforced at trusted points | Pass | Server-side `evaluateProject` and `evaluateWorkspace` in every use case; the MCP route re-checks before output (`agent-connection/mcp-route.ts:108-128`) |
 | 1.4.4 | Single access-control mechanism | Pass | `packages/core/src/access/policy.ts`; `docs/development/access-policy.md` |
 | 1.4.5 | Feature/attribute-based access control | Pass | Actions per resource (`project.read`, `project.manage`, …), roles, the space AI switch (`requireSpaceAi`), encrypted-space lock gate |
@@ -86,19 +118,19 @@ No P1 was found.
 
 | ID | Requirement | Result | Evidence |
 | --- | --- | --- | --- |
-| 2.1.1 | Passwords at least 12 characters | **Fail** | No `minPasswordLength` in `identity/auth.ts:355-377`, so Better Auth's default of 8 applies. **Probe:** sign-up with `password` answered 200 ([#990](https://github.com/ColdPhase/flux/issues/990)) |
+| 2.1.1 | Passwords at least 12 characters | Pass (fixed) | Audit finding: no `minPasswordLength`, so Better Auth's default of 8 applied, and sign-up with `password` answered 200. Now `minPasswordLength: PASSWORD_MIN_LENGTH` (12) in `identity/auth.ts`; `tests/app/sign-in-hardening.test.ts` ([#990](https://github.com/ColdPhase/flux/issues/990)) |
 | 2.1.2 | Passwords of 64+ characters allowed | Pass | Better Auth default maximum 128 |
 | 2.1.3 | No truncation | Pass | scrypt over the whole input (Better Auth) |
 | 2.1.4 | Any printable Unicode allowed | Pass | No character rules (inspection) |
 | 2.1.5 | Users can change their password | Pass | Settings › Account, `/api/auth/change-password` |
 | 2.1.6 | Change needs the current password | Pass | Better Auth `change-password` requires `currentPassword`. Changing the address requires it too (`identity/auth.ts:274-285`) |
-| 2.1.7 | Breached passwords refused | **Fail** | No check; `password` accepted (**probe**, [#990](https://github.com/ColdPhase/flux/issues/990)). zxcvbn-ts is used only for unlock passwords (`apps/server/src/encryption/adapters.ts:45`) |
+| 2.1.7 | Breached passwords refused | Pass (fixed) | Audit finding: no check; `password` was accepted. Now `identity/password-policy.ts` refuses the 49,233 passwords of `@zxcvbn-ts/language-common` and anything it estimates under 10^8 guesses, including the person's own name and address; no call leaves the server ([#990](https://github.com/ColdPhase/flux/issues/990)) |
 | 2.1.8 | Strength meter | Partial | Only for encrypted-space unlock passwords |
 | 2.1.9 | No composition rules | Pass | None |
 | 2.1.10 | No forced rotation | Pass | None |
 | 2.1.11 | Paste and password managers allowed | Pass | Plain `type=password` inputs (inspection) |
 | 2.1.12 | Show the masked password | Not verified | UI not checked in this audit |
-| 2.2.1 | Anti-automation | **Partial** | 3 tries per 10 s per IP and per process (`identity/auth.ts:381`). **Probe:** `401 401 401 429 429 429 429 429`, then 200 after 11 s. No per-account throttle ([#990](https://github.com/ColdPhase/flux/issues/990)) |
+| 2.2.1 | Anti-automation | Pass (fixed) | Audit finding: 3 tries per 10 s per IP and per process, no per-account throttle (**probe:** `401 401 401 429 429 429 429 429`, then 200 after 11 s). Now the per-address limiter is stored in PostgreSQL (`rateLimit.storage: 'database'`, shared by `api` and `api2`) and each account backs off after five attempts, 30 s up to 15 min, in `auth_sign_in_throttle`; a browser that has signed in to the account has a device cookie and counts in a wait of its own, so a stranger cannot lock the owner out ([#990](https://github.com/ColdPhase/flux/issues/990)) |
 | 2.2.2 | Weak authenticators only secondary | Pass | E-mail is only for verification and recovery |
 | 2.2.3 | Notification after credential changes | Fail | No e-mail on a password or address change (inspection of `identity/auth.ts`). Folded into [#997](https://github.com/ColdPhase/flux/issues/997)'s event list; an e-mail is optional |
 | 2.2.x MFA (L2 by NIST AAL2) | Multi-factor authentication | **Partial** | No MFA in password mode. With SSO the IdP's MFA applies, and the hardening guide recommends SSO for internet-facing teams. Recorded in [#990](https://github.com/ColdPhase/flux/issues/990) |
@@ -111,7 +143,7 @@ No P1 was found.
 | 2.5.3 | Recovery does not reveal the password | Pass | Reset sets a new password |
 | 2.5.4 | No shared or default accounts | Pass | None. Demo passwords are only for `./flux demo` and are refused on servers (hardening item 8) |
 | 2.5.5 | Notify when an authentication factor changes | Fail | As 2.2.3 |
-| 2.5.6 | Secure recovery mechanism | **Partial** | Hashed (`storeIdentifier: 'hashed'`, `identity/auth.ts:215`), single-use, `FLUX_PASSWORD_RESET_TTL_SECONDS` (1 h default); redirect allow-listed (**probe:** `INVALID_REDIRECT_URL` for an outside URL); same answer for unknown addresses (**probe**). But client grants survive the reset (**probe**, [#989](https://github.com/ColdPhase/flux/issues/989)) |
+| 2.5.6 | Secure recovery mechanism | Pass (fixed) | Hashed (`storeIdentifier: 'hashed'`, `identity/auth.ts:215`), single-use, `FLUX_PASSWORD_RESET_TTL_SECONDS` (1 h default); redirect allow-listed (**probe:** `INVALID_REDIRECT_URL` for an outside URL); same answer for unknown addresses (**probe**). Audit finding, now fixed: client grants survived the reset (**probe**, [#989](https://github.com/ColdPhase/flux/issues/989)); a reset now disconnects them |
 | 2.6 / 2.7 / 2.8 / 2.9 | Look-up secrets, out-of-band, OTP, cryptographic authenticators | N/A | Not offered for sign-in. The encrypted-space recovery code is a key-wrapping secret, not an authenticator (F-030) |
 | 2.10.1 | No unchanging intra-service secrets | Pass | `./flux up` generates the keyring token, runtime secrets and `FLUX_AUTH_SECRET` per install |
 | 2.10.2 | No default service credentials | Pass | `POSTGRES_PASSWORD` is required (`docker/compose.source.yaml:62`, `:?Set POSTGRES_PASSWORD`) |
@@ -129,17 +161,17 @@ No P1 was found.
 | 3.2.4 | Approved algorithms | Pass | HMAC-SHA-256 signed cookie |
 | 3.3.1 | Logout invalidates the session | Pass | **Probe:** a copy of the cookie answered 401 after `/api/auth/sign-out` |
 | 3.3.2 | Periodic re-authentication (L2: 12 h or 30 min idle) | **Fail** | 7-day sessions that slide on use, with no absolute limit (`identity/auth.ts:212`; **probe:** `Max-Age=604800`). Operator cannot change it ([#993](https://github.com/ColdPhase/flux/issues/993)). With SSO, `FLUX_OIDC_CONFIRMATION_MAX_AGE` bounds provider sessions |
-| 3.3.3 | Terminate other sessions after a password change | **Fail** | Browser sessions: yes (`revokeSessionsOnPasswordReset`, `identity/auth.ts:358`; the change form offers `revokeOtherSessions`, `apps/web/src/api/auth.ts:92`). MCP client grants: no. **Probe:** after a reset the old refresh token minted a new access token and `/mcp` answered 200 ([#989](https://github.com/ColdPhase/flux/issues/989)) |
+| 3.3.3 | Terminate other sessions after a password change | Pass (fixed) | Browser sessions: yes (`revokeSessionsOnPasswordReset`, `identity/auth.ts:358`; the change form offers `revokeOtherSessions`, `apps/web/src/api/auth.ts:92`). MCP client grants: audit finding, now fixed. **Probe:** after a reset the old refresh token minted a new access token and `/mcp` answered 200. Now a reset, a password change that signs out other devices and "Sign out all other devices" disconnect the person's clients ([#989](https://github.com/ColdPhase/flux/issues/989); `tests/app/oauth-sign-out.test.ts`) |
 | 3.3.4 | Users can see and end their sessions | Pass | Settings › Account lists sessions by id; Better Auth `/list-sessions` disabled because it returns raw tokens (`identity/auth.ts:380`). Clients are listed in Settings › AI with Disconnect |
 | 3.4.1 | `Secure` attribute | Pass | `useSecureCookies` when `FLUX_PUBLIC_ORIGIN` is https (`identity/auth.ts:385`) |
 | 3.4.2 | `HttpOnly` | Pass | `identity/auth.ts:386`; probe |
 | 3.4.3 | `SameSite` | Pass | `lax`; probe |
 | 3.4.4 | `__Host-` prefix | Partial | `__Secure-` on https (Better Auth). `__Host-` would also pin the host |
 | 3.4.5 | Cookie path scoped | Pass | `path=/` on a dedicated origin |
-| 3.5.1 | Users can revoke OAuth grants | **Partial** | Disconnect in Settings › AI revokes; admin and claim paths revoke too (`identity/admin.ts:22-28`). Password recovery does not ([#989](https://github.com/ColdPhase/flux/issues/989)) |
+| 3.5.1 | Users can revoke OAuth grants | Pass (fixed) | Disconnect in Settings › AI revokes; admin and claim paths revoke too (`identity/admin.ts:22-28`). Password recovery and signing out other devices now do ([#989](https://github.com/ColdPhase/flux/issues/989)) |
 | 3.5.2 | Session tokens rather than static API secrets | Pass | Short-lived JWT access tokens with rotating refresh tokens (`app/patches/oauth-provider-1.7.18-flux-refresh.patch`) |
 | 3.5.3 | Stateless tokens signed and checked | Pass | EdDSA JWT, audience `/mcp`, issuer checked, then a live grant check on each request (`agent-connection/mcp-route.ts:35-120`). Run tokens: single mint per nonce, bound to one run and place (`apps/server/src/personal-runs/run-tokens.ts:25-69`) |
-| 3.7.1 | Re-authentication before sensitive actions | **Partial** | The address change asks for the password. Connecting a client (consent Allow), creating an encrypted space and changing AI keys do not ([#989](https://github.com/ColdPhase/flux/issues/989), [#993](https://github.com/ColdPhase/flux/issues/993)) |
+| 3.7.1 | Re-authentication before sensitive actions | **Partial** | The address change asks for the password. Connecting a client (consent Allow), creating an encrypted space and changing AI keys do not; a stolen session's client no longer survives the owner's recovery ([#989](https://github.com/ColdPhase/flux/issues/989), [#993](https://github.com/ColdPhase/flux/issues/993)) |
 
 ## V4 Access control
 
@@ -327,14 +359,14 @@ summarised in the issues they support:
 
 | Probe | Result |
 | --- | --- |
-| Sign-up with `password` | 200, session set; the account became company owner (#990) |
-| 8 wrong sign-ins, then the right one after 11 s | `401×3`, `429×5`, then 200 (#990) |
+| Sign-up with `password` | 200, session set; the account became company owner (#990, fixed: 400 `PASSWORD_TOO_SHORT`) |
+| 8 wrong sign-ins, then the right one after 11 s | `401×3`, `429×5`, then 200 (#990, fixed: the account waits 30 s after the fifth, whatever the address) |
 | Sign-up with an existing address / reset for an unknown address | 422 `USER_ALREADY_EXISTS…` / 200 generic (#993) |
 | Reset with `redirectTo=https://evil.example/steal` | 403 `INVALID_REDIRECT_URL` |
 | Cross-origin, origin-less and `same-site` POST with the cookie | 403 `ORIGIN_REJECTED` ×3 |
 | Cookie copy after sign-out | 401 |
 | `/api/auth/update-user` with `emailVerified:true` | Ignored (`emailVerified` stayed false) |
-| OAuth client consent, code exchange and `/mcp tools/list`; password reset; refresh after reset | 200; reset 200 and browser 401; **refresh 200 and `/mcp` 200** (#989) |
+| OAuth client consent, code exchange and `/mcp tools/list`; password reset; refresh after reset | 200; reset 200 and browser 401; **refresh 200 and `/mcp` 200** (#989, fixed: refresh `invalid_grant`, `/mcp` 403) |
 | `x-flux-test-fail: 500` on a space creation | The error message with the request body in the response and twice in the log (#991) |
 | Headers on `/`, `/api/v1/workspaces`, a 404 | Only `x-frame-options` and `frame-ancestors`; no `Cache-Control` on API JSON (#992) |
 | Link cards for `127.0.0.1.nip.io`, `169.254.169.254` and `example.com` | No card, no card, card |

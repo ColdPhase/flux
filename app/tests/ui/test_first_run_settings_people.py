@@ -169,7 +169,7 @@ class FirstRunSettingsPeople(unittest.TestCase):
         page.get_by_label("Password").fill("short")
         page.get_by_role("button", name="Create account").click()
         expect(page.locator(".ui-field__error")).to_have_count(1)
-        expect(page.get_by_text(re.compile("^At least 8 characters"))).to_have_count(0)
+        expect(page.get_by_text(re.compile("^At least 12 characters"))).to_have_count(0)
         page.goto("/sign-in")
         expect(page.get_by_label("Email")).to_be_focused()
         page.keyboard.press("Tab")

@@ -179,6 +179,29 @@ export const authLogoutTokens = pgTable('auth_logout_tokens', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
 }, (table) => [primaryKey({ columns: [table.providerId, table.jti] }), index('auth_logout_tokens_expires_idx').on(table.expiresAt)]);
 
+/**
+ * Better Auth's per-address request limiter, kept in the database so every API process counts the same attempts (migration 0022, #990).
+ * One row per `address|path`; `last_request` is milliseconds since the epoch, as Better Auth writes it.
+ */
+export const authRateLimits = pgTable('auth_rate_limits', {
+  id: text('id').primaryKey(),
+  key: text('key').notNull().unique(),
+  count: integer('count').notNull(),
+  lastRequest: bigint('last_request', { mode: 'number' }).notNull(),
+}, (table) => [index('auth_rate_limits_last_request_idx').on(table.lastRequest)]);
+
+/**
+ * Wrong passwords per account (migration 0022, #990): the account's own back-off, which a change of address cannot get around. The key is a
+ * hash of the lower-cased sign-in address, so a probe of an address nobody holds leaves no readable address here; an unknown address is counted
+ * and slowed exactly like a real one. Every API process reads and writes the same row.
+ */
+export const authSignInThrottle = pgTable('auth_sign_in_throttle', {
+  accountHash: text('account_hash').primaryKey(),
+  failures: integer('failures').notNull(),
+  lastFailureAt: timestamp('last_failure_at', { withTimezone: true }).notNull(),
+  lockedUntil: timestamp('locked_until', { withTimezone: true }),
+}, (table) => [index('auth_sign_in_throttle_last_failure_idx').on(table.lastFailureAt)]);
+
 // Better Auth MCP/OAuth provider models (migration 0009).
 export const jwks = pgTable("jwks", {
   id: text("id").primaryKey(),

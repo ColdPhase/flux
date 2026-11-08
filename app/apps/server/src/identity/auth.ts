@@ -7,6 +7,7 @@ import { cimd } from '@better-auth/cimd';
 import { fetchClientMetadataResource } from '@better-auth/cimd/node';
 import { mcp } from '@better-auth/mcp';
 import { accessPorts, schema, type Database } from '@flux/db';
+import { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@flux/contracts';
 import { agentOauthUseCases, companyDisplayName, DomainError, joinCompany } from '@flux/core';
 import { and, eq, isNotNull, sql } from 'drizzle-orm';
 import { createAgentConnectionStore } from '../agent-connection/store.js';
@@ -22,6 +23,9 @@ import { offlineStepProblem } from './offline-step.js';
 import { createConfirmation, type Confirmation } from './confirmation.js';
 import { signInAgainMessage, type IdpStanding } from './standing.js';
 import { SESSION_COOKIE_PREFIX } from './session-cookie.js';
+import { PASSWORD_TOO_WEAK_MESSAGE, passwordProblem } from './password-policy.js';
+import { createSignInThrottle } from './sign-in-throttle.js';
+import { DEVICE_COOKIE_MAX_AGE_SECONDS, deviceCookieName, knows, readDevice, withAccount, writeDevice } from './device-cookie.js';
 
 /** Set by the Fastify bridge from the socket or trusted-proxy address; client copies are dropped. */
 export const CLIENT_IP_HEADER = 'x-flux-client-ip';
@@ -135,7 +139,9 @@ export async function ensureOauthResource(db: Database, publicOrigin: string): P
 }
 
 export function createAuth({ db, config, mailer, onMailError, oauthRequests, signIns = createSignIns(), installProvider = true, standing = null, log, confirmation = createConfirmation(db, config.oidc, undefined, config.ssoOnly), claims = createEmailClaims(db), links = createLinkIntents(db) }: AuthDependencies) {
-  const connections = agentOauthUseCases(createAgentConnectionStore(db));
+  const connectionStore = createAgentConnectionStore(db);
+  const connections = agentOauthUseCases(connectionStore);
+  const throttle = createSignInThrottle(db, config.secret);
   const signIn = createOneClickSignIn(db);
   const resource = mcpResourceIdentifier(config.publicOrigin);
   const unavailable = () => new APIError('BAD_REQUEST', { error: 'invalid_grant', error_description: 'Agent connection is unavailable' });
@@ -181,6 +187,29 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
   };
   const verifiedSignUp = config.signup === 'verified';
   const ssoOnly = config.ssoOnly;
+  /** The address (and browser) whose back-off a request already counted in `before`, found again in `after` (the same request context). */
+  const counted = new WeakMap<object, { email: string; device?: string }>();
+  /** The address whose password a reset is about to change, so the browser that finishes the reset is remembered. */
+  const resetting = new WeakMap<object, string>();
+  // The answer says neither when the wait ends nor how long it is: with the exact second, a stranger could time one guess for each end (#990).
+  const throttledSignIn = (what: 'sign-in' | 'change') => new APIError('TOO_MANY_REQUESTS', {
+    message: what === 'sign-in' ? 'Too many sign-in attempts for this account. Try again in a few minutes'
+      : 'Too many attempts to change this account. Try again in a few minutes',
+    code: 'SIGN_IN_THROTTLED' });
+  // A browser that signed in to an account, or finished its password reset, is remembered (a signed cookie that names the account): its
+  // wrong guesses count in a wait of their own, so a stranger's guesses at the address never keep the person out (OWASP device cookies).
+  const secureCookies = config.publicOrigin.startsWith('https:');
+  const deviceName = deviceCookieName(secureCookies);
+  type CookieContext = { getCookie(name: string): string | null | undefined; setCookie(name: string, value: string, options: Record<string, unknown>): unknown };
+  const knownDevice = (ctx: CookieContext, email: string) => {
+    const device = readDevice(config.secret, ctx.getCookie(deviceName));
+    return knows(device, throttle.accountKey(email)) ? device : null;
+  };
+  const rememberDevice = (ctx: CookieContext, email: string) => {
+    const current = readDevice(config.secret, ctx.getCookie(deviceName));
+    ctx.setCookie(deviceName, writeDevice(config.secret, withAccount(current, throttle.accountKey(email))),
+      { maxAge: DEVICE_COOKIE_MAX_AGE_SECONDS, httpOnly: true, sameSite: 'lax', secure: secureCookies, path: '/' });
+  };
   return betterAuth({
     appName: 'Flux',
     baseURL: config.publicOrigin,
@@ -202,6 +231,7 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         oauthAccessToken: schema.oauthAccessToken,
         oauthConsent: schema.oauthConsent,
         oauthClientAssertion: schema.oauthClientAssertion,
+        authRateLimits: schema.authRateLimits,
       },
     }),
     // Settings → Account (#763 SG-1): a person changes their own address. An unverified address (no outgoing mail) changes
@@ -273,6 +303,36 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         if (ssoOnly && PASSWORD_ROUTES.includes(ctx.path)) {
           throw new APIError('FORBIDDEN', { message: 'Password sign-in and recovery are closed on this Flux server. Sign in with single sign-on', code: 'SSO_ONLY' });
         }
+        // Whose password a reset changes (a token that does not name an account changes nothing).
+        let resetUser: { name?: unknown; email?: unknown } | null = null;
+        if (ctx.path === '/reset-password') {
+          const token = ctx.body?.token ?? ctx.query?.token;
+          const reset = typeof token === 'string' ? await ctx.context.internalAdapter.findVerificationValue(`reset-password:${token}`) : null;
+          resetUser = reset ? await ctx.context.internalAdapter.findUserById(reset.value) : null;
+          if (typeof resetUser?.email === 'string') resetting.set(ctx.context, resetUser.email);
+        }
+        // A password the person chooses (sign-up, reset, change) must not be a common or easy-to-guess one, nor built from their own name or
+        // address (#990). The length rule is Better Auth's (`minPasswordLength`), so a password outside it falls through to its own error.
+        if (ctx.path === '/sign-up/email' || ctx.path === '/reset-password' || ctx.path === '/change-password') {
+          const chosen = ctx.path === '/sign-up/email' ? ctx.body?.password : ctx.body?.newPassword;
+          if (typeof chosen === 'string' && chosen.length >= PASSWORD_MIN_LENGTH && chosen.length <= PASSWORD_MAX_LENGTH) {
+            let person: { name?: unknown; email?: unknown } | null | undefined = ctx.body;
+            if (ctx.path === '/change-password') person = (await getSessionFromCtx(ctx))?.user;
+            if (ctx.path === '/reset-password') person = resetUser;
+            const personal = [person?.name, person?.email].filter((value): value is string => typeof value === 'string');
+            if (passwordProblem(chosen, personal)) throw new APIError('BAD_REQUEST', { message: PASSWORD_TOO_WEAK_MESSAGE, code: 'PASSWORD_TOO_WEAK' });
+          }
+        }
+        // Changing the password or the address asks for the current password, so a session left open could be used to guess it: the same
+        // back-off counts those attempts for the account (#990). A success clears it, as a sign-in does.
+        if (ctx.path === '/change-password' || ctx.path === '/change-email') {
+          const holder = (await getSessionFromCtx(ctx))?.user.email;
+          if (holder) {
+            const device = knownDevice(ctx, holder);
+            if (await throttle.attempt(holder, device?.id) > 0) throw throttledSignIn('change');
+            counted.set(ctx.context, { email: holder, device: device?.id });
+          }
+        }
         if (ctx.path === '/change-email') {
           if (ssoOnly || config.oidc) throw new APIError('FORBIDDEN', { message: 'Your email address comes from single sign-on on this Flux server', code: 'SSO_ONLY' });
           // A change of address proves the person knows the password, like a change of password does, so a session left
@@ -289,6 +349,11 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
           const email = typeof ctx.body?.email === 'string' ? ctx.body.email.trim().toLowerCase() : '';
           const password = typeof ctx.body?.password === 'string' ? ctx.body.password : '';
           if (!email || !password) return;
+          // The account's own back-off, shared by every API process and not escaped by changing the client address (#990). A browser that
+          // has signed in to this account before counts in a wait of its own.
+          const device = knownDevice(ctx, email);
+          if (await throttle.attempt(email, device?.id) > 0) throw throttledSignIn('sign-in');
+          counted.set(ctx.context, { email, device: device?.id });
           const [pending] = await db.select({ id: schema.authUsers.id, hash: schema.authAccounts.password }).from(schema.authUsers)
             .innerJoin(schema.authAccounts, and(eq(schema.authAccounts.userId, schema.authUsers.id), eq(schema.authAccounts.providerId, 'credential'), isNotNull(schema.authAccounts.password)))
             .where(and(eq(sql`lower(${schema.authUsers.email})`, email), eq(schema.authUsers.verificationRequired, true), eq(schema.authUsers.emailVerified, false)));
@@ -303,6 +368,20 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         const signedIn = ctx.context.newSession?.user;
         // A pre-F-024 account is unverified; once mail is set it gets the link the next time it signs in with its password (#313).
         if (ctx.path === '/sign-in/email' && signedIn && !signedIn.emailVerified && mailer) await sendVerification(signedIn.email);
+        // The person knew the password (a sign-in, or a change of password or address that went through): the count starts again, and the
+        // browser is remembered. A browser that had the cookie clears only its own count, never a stranger's wait on the account.
+        const countedFor = counted.get(ctx.context);
+        const succeeded = ctx.path === '/sign-in/email' ? !!signedIn : !(ctx.context.returned instanceof APIError);
+        if (countedFor && succeeded) await throttle.clear(countedFor.email, countedFor.device);
+        if (signedIn && (ctx.path === '/sign-in/email' || ctx.path === '/sign-up/email')) rememberDevice(ctx, signedIn.email);
+        // A reset is the way back for the owner of the mailbox: the browser that finished it is remembered too.
+        const resetFor = resetting.get(ctx.context);
+        if (resetFor && !(ctx.context.returned instanceof APIError)) {
+          await throttle.clear(resetFor, knownDevice(ctx, resetFor)?.id);
+          rememberDevice(ctx, resetFor);
+        }
+        // "Sign out my other devices" with a password change ends the person's other browsers, and so their local AI clients (#989).
+        if (ctx.path === '/change-password' && ctx.body?.revokeOtherSessions === true && signedIn) await connectionStore.disconnectClients(signedIn.id);
       }),
     },
     emailVerification: {
@@ -357,7 +436,14 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
     emailAndPassword: {
       enabled: true,
       autoSignIn: !verifiedSignUp,
+      minPasswordLength: PASSWORD_MIN_LENGTH,
+      maxPasswordLength: PASSWORD_MAX_LENGTH,
       revokeSessionsOnPasswordReset: true,
+      // A reset is the recovery from a stolen password or session, so it also ends what a local AI client holds and clears the account's back-off (#989, #990).
+      onPasswordReset: async ({ user }) => {
+        await connectionStore.disconnectClients(user.id);
+        await throttle.clear(user.email);
+      },
       resetPasswordTokenExpiresIn: config.passwordResetTtlSeconds,
       sendResetPassword: mailer
         ? async ({ user, url }) => {
@@ -378,9 +464,11 @@ export function createAuth({ db, config, mailer, onMailError, oauthRequests, sig
         }
         : undefined,
     },
-    // Better Auth's list endpoint returns raw session tokens; Flux lists sessions by id instead.
-    disabledPaths: ['/list-sessions', '/send-verification-email'],
-    rateLimit: { enabled: config.rateLimit, storage: 'memory' },
+    // Better Auth's list endpoint returns raw session tokens; Flux lists sessions by id instead. Its two "revoke all" endpoints are off for the same
+    // reason: Flux ends sessions through its own routes (`/api/v1/sessions`), which also disconnect the person's local AI clients (#989).
+    disabledPaths: ['/list-sessions', '/send-verification-email', '/revoke-sessions', '/revoke-other-sessions'],
+    // Per client address (an IPv6 address counts as its /64), in PostgreSQL so every API process shares the count (#990). The account's own back-off is `throttle`.
+    rateLimit: { enabled: config.rateLimit, storage: 'database', modelName: 'authRateLimits' },
     telemetry: { enabled: false },
     advanced: {
       cookiePrefix: SESSION_COOKIE_PREFIX,

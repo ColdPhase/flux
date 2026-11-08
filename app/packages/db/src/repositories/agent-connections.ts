@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { AgentConnection, ExternalClientDesignation } from '@flux/contracts';
 // Structural adapter output avoids the current core/db build cycle; core owns the port.
 type AgentOauthGrant = { referenceId: string; clientId: string | null; connection: AgentConnection };
@@ -41,6 +41,13 @@ export async function oauthClientName(db: DbExecutor, clientId: string): Promise
   const [client] = await db.select({ name: schema.oauthClient.name }).from(schema.oauthClient).where(and(
     eq(schema.oauthClient.clientId, clientId), or(eq(schema.oauthClient.disabled, false), isNull(schema.oauthClient.disabled))));
   return client ? client.name ?? '' : null;
+}
+
+/** What a disconnected client had waiting for its owner can never be approved: no dead item stays in the Inbox. */
+async function closeWaitingChanges(tx: Transaction, connectionIds: string[]) {
+  await tx.update(schema.assistantChanges)
+    .set({ state: 'refused', waitReason: null, refusal: 'Disconnected before you decided', version: sql`${schema.assistantChanges.version} + 1`, updatedAt: new Date() })
+    .where(and(inArray(schema.assistantChanges.connectionId, connectionIds), isNull(schema.assistantChanges.runId), eq(schema.assistantChanges.state, 'waiting')));
 }
 
 /** SQL and locking. A connection is live while it is not revoked, its agent stands and its owner's account stands. */
@@ -110,10 +117,34 @@ export function agentConnectionRepository(db: Database) {
           .where(and(eq(schema.agentConnections.id, connectionId), eq(schema.agentConnections.ownerUserId, ownerUserId),
             isNull(schema.agentConnections.revokedAt))).returning({ id: schema.agentConnections.id });
         if (!revoked.length) return false;
-        await tx.update(schema.assistantChanges)
-          .set({ state: 'refused', waitReason: null, refusal: 'Disconnected before you decided', version: sql`${schema.assistantChanges.version} + 1`, updatedAt: new Date() })
-          .where(and(eq(schema.assistantChanges.connectionId, connectionId), isNull(schema.assistantChanges.runId), eq(schema.assistantChanges.state, 'waiting')));
+        await closeWaitingChanges(tx, [connectionId]);
         return true;
+      });
+    },
+
+    /**
+     * Disconnects every client of this person at once, for a password reset and for signing out everywhere (#989). Each live connection
+     * is disconnected as the Disconnect button does it (the next sign-in of that client asks again on the consent page and gets the same
+     * agent back, C-19/C-20), its runtime sessions end, and every OAuth refresh and access token of the person is revoked, so a refresh
+     * token cannot mint a new access token and an access token that is still valid is refused at the next call. The owner's own assistant is
+     * not a client and is left alone. Returns how many connections were disconnected.
+     */
+    disconnectClients(ownerUserId: string): Promise<number> {
+      return db.transaction(async (tx) => {
+        const now = new Date();
+        const revoked = await tx.update(schema.agentConnections).set({ revokedAt: now, updatedAt: now })
+          .where(and(eq(schema.agentConnections.ownerUserId, ownerUserId), isNull(schema.agentConnections.revokedAt),
+            ne(schema.agentConnections.computeSource, 'owner_assistant'))).returning({ id: schema.agentConnections.id });
+        const ids = revoked.map((row) => row.id);
+        if (ids.length) {
+          await closeWaitingChanges(tx, ids);
+          await tx.update(schema.agentRuntimeSessions).set({ revokedAt: now })
+            .where(and(inArray(schema.agentRuntimeSessions.connectionId, ids), isNull(schema.agentRuntimeSessions.revokedAt)));
+        }
+        await tx.update(schema.oauthRefreshToken).set({ revoked: now })
+          .where(and(eq(schema.oauthRefreshToken.userId, ownerUserId), isNull(schema.oauthRefreshToken.revoked)));
+        await tx.delete(schema.oauthAccessToken).where(eq(schema.oauthAccessToken.userId, ownerUserId));
+        return ids.length;
       });
     },
 

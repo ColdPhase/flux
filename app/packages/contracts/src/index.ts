@@ -65,6 +65,12 @@ export const identityLinkPath = (providerId: string) => `/api/v1/identity/links/
 export const ME_PROBE_HEADER = 'x-flux-session-probe';
 export const SESSIONS_PATH = '/api/v1/sessions';
 export const REVOKE_OTHER_SESSIONS_PATH = '/api/v1/sessions/revoke-others';
+/**
+ * The password rule of a password account (#990, ASVS 4.0.3 V2.1.1/V2.1.2): at least 12 and at most 128 characters. The server
+ * also refuses a password on the common-password list or one that is easy to guess (`PASSWORD_TOO_WEAK`); the form repeats only the length.
+ */
+export const PASSWORD_MIN_LENGTH = 12;
+export const PASSWORD_MAX_LENGTH = 128;
 
 export interface IdentityCapabilities {
   /** The company's name for the sign-in page (F-037), or null before setup and while it has the name setup gave it. */

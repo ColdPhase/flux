@@ -79,9 +79,8 @@ export function resetPassword(token: string, newPassword: string) {
   return request<unknown>(AUTH_RESET_PASSWORD_PATH, { method: 'POST', body: { token, newPassword } });
 }
 
-/** Minimum length enforced by the identity service (Better Auth default). */
-export const PASSWORD_MIN_LENGTH = 8;
-export const PASSWORD_MAX_LENGTH = 128;
+/** The identity service's length rule (#990), shared with the server through the contracts. */
+export { PASSWORD_MAX_LENGTH, PASSWORD_MIN_LENGTH } from '@flux/contracts';
 
 /** Settings → Account (#763 SG-1): the name people see. */
 export function updateName(name: string) {
@@ -107,5 +106,6 @@ export function endSession(id: string) {
 }
 
 export function endOtherSessions() {
-  return request<{ revoked: number }>(REVOKE_OTHER_SESSIONS_PATH, { method: 'POST' });
+  // `disconnected` counts the person's local AI clients that were disconnected with the other devices (#989).
+  return request<{ revoked: number; disconnected: number }>(REVOKE_OTHER_SESSIONS_PATH, { method: 'POST' });
 }
