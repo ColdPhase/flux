@@ -101,7 +101,8 @@ describe('service worker delivery', () => {
       }
     }
     walk(directory);
-    const onlineOnly = /^\/assets\/SignInConsole-[^/]+\.(?:js|css)$/;
+    // The build leaves these out of the precache (ONLINE_ONLY in apps/web/build/service-worker-plugin.ts): the sign-in console's terminal and the call library.
+    const onlineOnly = /^\/assets\/(?:SignInConsole|media)-[^/]+\.(?:js|css)$/;
     const expected = actual.filter((url) => !onlineOnly.test(url)).sort();
     assert.ok(actual.some((url) => /^\/assets\/SignInConsole-[^/]+\.js$/.test(url)), 'the online-only terminal is actually built');
     assert.deepEqual(precache, expected, 'the exact final build inventory has no phantom or omitted cached asset');

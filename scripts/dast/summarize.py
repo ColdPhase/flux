@@ -5,7 +5,8 @@
 
 Exit 0: nothing at Medium or higher that is not a recorded false positive. Exit 10: findings left to triage. Exit 2: a report is
 missing, empty or not ZAP's (a scan that did not run is never "clean"). A rule's `IGNORE` line carries its reason in the fourth
-column: "Tracked in #N: ..." for a real finding accepted until that issue lands, anything else for a false positive.
+column: "Tracked in #N: ..." for a real finding accepted until that issue lands, "Accepted risk: ..." for one kept on purpose, anything
+else for a false positive. A rule's third column that starts with `~` is a regex on the alert's name, so it excuses one alert of a rule that has several.
 `OUTOFSCOPE` drops one rule's alerts on the urls its regex matches (the regex in the third column, a reason in a fourth).
 """
 import argparse
@@ -32,7 +33,8 @@ def load_rules(path):
                 reason = parts[3].strip() if len(parts) > 3 else ""
                 if action == "IGNORE" and not reason:
                     sys.exit(f"dast: {path}:{number}: an IGNOREd rule needs its reason in the fourth column")
-                ignored[rule] = (action, third, reason)
+                # A third column that starts with `~` is a regex on the alert's name: the rule then excuses only the alerts of that rule it matches.
+                ignored.setdefault(rule, []).append((action, third, reason, re.compile(third[1:]) if third.startswith("~") else None))
             else:
                 sys.exit(f"dast: {path}:{number}: unknown action {action}")
     return ignored, scoped
@@ -57,7 +59,7 @@ def main():
     parser.add_argument("reports", nargs="+")
     args = parser.parse_args()
     ignored, scoped = load_rules(args.rules)
-    open_findings, recorded, tracked, lower = [], [], [], []
+    open_findings, recorded, tracked, accepted, lower = [], [], [], [], []
     total_instances = 0
     for report in args.reports:
         name = report.rsplit("/", 1)[-1].removesuffix(".json")
@@ -69,10 +71,12 @@ def main():
             total_instances += len(instances)
             row = {"report": name, "rule": rule, "name": alert.get("name", alert.get("alert", "?")), "risk": RISK.get(risk, risk), "level": int(risk),
                    "count": len(instances), "urls": sorted({f"{item.get('method', '')} {item.get('uri', '')}".strip() for item in instances})[:4]}
-            action = ignored.get(rule)
+            action = next((entry for entry in ignored.get(rule, []) if entry[3] is None or entry[3].search(row["name"])), None)
             if action and action[0] == "IGNORE":
-                # A reason that starts "Tracked in #N" is a real finding accepted until that issue lands; any other is a false positive.
-                (tracked if action[2].startswith("Tracked in #") else recorded).append({**row, "reason": action[2]})
+                # A reason that starts "Tracked in #N" is a real finding accepted until that issue lands, "Accepted risk" one that is understood
+                # and kept on purpose; any other is a false positive.
+                kind = tracked if action[2].startswith("Tracked in #") else accepted if action[2].startswith("Accepted risk") else recorded
+                kind.append({**row, "reason": action[2]})
             elif row["level"] >= 2:
                 open_findings.append(row)
             else:
@@ -83,6 +87,8 @@ def main():
     lines += (["| Report | Rule | Risk | Alert | Instances | Example |", "| --- | --- | --- | --- | --- | --- |"] + table(open_findings)) if open_findings else ["None."]
     lines += ["", f"## Real findings accepted until their issue lands ({len(tracked)})", ""]
     lines += (["| Report | Rule | Risk | Alert | Instances | Example | Reason |", "| --- | --- | --- | --- | --- | --- | --- |"] + table(tracked, "reason")) if tracked else ["None."]
+    lines += ["", f"## Accepted risks, kept on purpose ({len(accepted)})", ""]
+    lines += (["| Report | Rule | Risk | Alert | Instances | Example | Reason |", "| --- | --- | --- | --- | --- | --- | --- |"] + table(accepted, "reason")) if accepted else ["None."]
     lines += ["", f"## Recorded false positives ({len(recorded)})", ""]
     lines += (["| Report | Rule | Risk | Alert | Instances | Example | Reason |", "| --- | --- | --- | --- | --- | --- | --- |"] + table(recorded, "reason")) if recorded else ["None."]
     lines += ["", f"## Low and informational ({len(lower)})", ""]
@@ -90,7 +96,7 @@ def main():
     with open(f"{args.out}/summary.md", "w", encoding="utf-8") as handle:
         handle.write("\n".join(lines) + "\n")
     print("\n".join(lines[:3]))
-    print(f"dast: {len(open_findings)} to triage, {len(tracked)} tracked, {len(recorded)} recorded false positives, {len(lower)} low or informational; see {args.out}/summary.md")
+    print(f"dast: {len(open_findings)} to triage, {len(tracked)} tracked, {len(accepted)} accepted risks, {len(recorded)} recorded false positives, {len(lower)} low or informational; see {args.out}/summary.md")
     sys.exit(10 if open_findings else 0)
 
 

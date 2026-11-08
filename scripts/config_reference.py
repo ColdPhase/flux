@@ -355,6 +355,7 @@ INTERNAL: dict[str, str] = {
     "FLUX_LIVE_SOURCE_SHA": "Live-editing codec test tooling only.",
     "FLUX_CONTRACT_TMP": "Runtime contract test only.",
     "FLUX_TEST_FAILURE_INJECTION": "Test deployments only, together with `FLUX_FIXTURE_TOKEN`. Never in production.",
+    "FLUX_TEST_CSP_EVAL": "Test deployments only: `false` makes the enforced Content-Security-Policy the one that ships (no `eval`, which Playwright's `waitForFunction` needs).",
     "FLUX_TEST_PERSONAL_RUNS": "Test deployments only.",
     "FLUX_TEST_ANTHROPIC_URL": "Test deployments only.",
     "FLUX_TEST_LINK_PREVIEW_HOSTS": "Test deployments only; refused without `FLUX_TEST_FAILURE_INJECTION`.",

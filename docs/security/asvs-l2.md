@@ -32,7 +32,6 @@ assets, actors and boundaries it refers to are in the [threat model](threat-mode
 | [#997](https://github.com/ColdPhase/flux/issues/997) | P3 | 7.1.3, 7.2.1, 7.2.2 | No security event log for failed sign-ins, refusals and consent decisions (probed). **Fixed:** one `channel: security` line per event ([events](../operations/monitoring.md#security-events)) |
 
 These issues were already open and are referenced, not filed again:
-- [#979](https://github.com/ColdPhase/flux/issues/979) (CSP, 14.4.3)
 - [#953](https://github.com/ColdPhase/flux/issues/953) and PR #983 (web-read exfiltration, 12.6.1)
 - [#959](https://github.com/ColdPhase/flux/issues/959) and [#978](https://github.com/ColdPhase/flux/issues/978) (guests and non-members connecting AI or clients, 4.1.3)
 - [#840](https://github.com/ColdPhase/flux/issues/840) (image signing, 10.3.1, 14.2)
@@ -224,7 +223,7 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
 | 5.2.7 | SVG sanitised | Pass | Uploaded SVGs are never rendered inline: files are downloads with `CSP: sandbox` |
 | 5.2.8 | Markdown and expression languages sanitised | Pass | As 5.2.1 |
 | 5.3.1 | Context-aware output encoding | Pass | React; JSON responses |
-| 5.3.3 | XSS escaping | Pass | As above. A script CSP as defence in depth is [#979](https://github.com/ColdPhase/flux/issues/979) |
+| 5.3.3 | XSS escaping | Pass | As above, and a script Content-Security-Policy as defence in depth (14.4.3) |
 | 5.3.4 | Parameterised queries | Pass | Drizzle and `sql` tagged templates (e.g. `apps/server/src/app.ts:183`) |
 | 5.3.6 | JSON injection | Pass | `JSON.stringify` only |
 | 5.3.8 | OS command injection | Pass | The API runs no shell. The runtime supervisor starts CLIs with argument arrays and passes no secret on a command line (`docs/operations/agent-runtime.md`) |
@@ -361,7 +360,7 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
 | 14.3.3 | No version-revealing headers | Pass | **Probe:** no `Server` or `X-Powered-By` header |
 | 14.4.1 | Content-Type with charset | Pass | `application/json; charset=utf-8`, `text/html; charset=utf-8` (**probe**) |
 | 14.4.2 | API responses with safe Content-Disposition | Pass | Downloads and exports set `attachment` |
-| 14.4.3 | Content-Security-Policy | **Fail** | Only `frame-ancestors 'none'` (`http/framing.ts:3-19`): [#979](https://github.com/ColdPhase/flux/issues/979) |
+| 14.4.3 | Content-Security-Policy | Pass | The pages and the service worker carry a policy with `default-src 'self'`, no `'unsafe-inline'` or `'unsafe-eval'` for scripts (the inline ones are hashed), `object-src 'none'`, `base-uri 'self'`, `form-action 'self'` and `frame-ancestors 'none'` (`http/content-security-policy.ts`, [#979](https://github.com/ColdPhase/flux/issues/979)). `style-src` keeps `'unsafe-inline'` (React style attributes); API responses keep `frame-ancestors 'none'` only |
 | 14.4.4 | `X-Content-Type-Options: nosniff` | Pass (fixed) | On every response (`http/security-headers.ts`; [#992](https://github.com/ColdPhase/flux/issues/992)) |
 | 14.4.5 | HSTS | Pass (fixed) | The API sends `max-age=31536000` for an https public origin; the proxy guide says to pass it on ([#992](https://github.com/ColdPhase/flux/issues/992)) |
 | 14.4.6 | Referrer-Policy | Pass (fixed) | `same-origin` on every response ([#992](https://github.com/ColdPhase/flux/issues/992)) |

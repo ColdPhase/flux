@@ -31,7 +31,8 @@
   <svg class="face" viewBox="0 0 24 24" width="72" height="72" aria-hidden="true"><path d="M8.6 2.6H15.4C19 2.6 21.4 5 21.4 8.6V15.4C21.4 19 19 21.4 15.4 21.4H8.6C5 21.4 2.6 19 2.6 15.4V8.6C2.6 5 5 2.6 8.6 2.6Z" fill="none" stroke="currentColor" stroke-width="1.15"/><path d="M8 12.8Q9.3 13.8 10.6 12.8M13.4 12.8Q14.7 13.8 16 12.8" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M7.3 9 10.5 8.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M17.2 4.6H19.4L17.2 6.8H19.4M20.4 1.4H22L20.4 3H22" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/></svg>
   <h1 id="flux-offline-title">You are offline</h1>
   <p>Flux cannot reach its server right now. Nothing you already sent is lost; open Flux again when your connection is back.</p>
-  <button type="button" onclick="location.reload()">Try again</button>
+  <button type="button" id="flux-offline-retry">Try again</button>
 </main>
+<script>document.getElementById("flux-offline-retry").addEventListener("click", function () { location.reload(); });</script>
 </body>
 </html>

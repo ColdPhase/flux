@@ -284,3 +284,11 @@ any client-supplied `X-Forwarded-For`.
 Flux limits how fast the API is called (1,200 requests a minute per session once the server has accepted it, 600 a minute per address
 without one and 1,200 a minute per address for a session cookie or bearer it has not accepted yet; an IPv6 address counts as its /64). The address is the client's only when `FLUX_TRUSTED_PROXIES` names your proxy; without it every request comes from the
 proxy, so everyone shares the per-address budgets and a busy company can meet the limit. Set it as described above.
+
+## Headers
+
+Flux sends its own `Content-Security-Policy` on the app's pages and its service worker. The policy lists the SHA-256 of the
+page's inline scripts and the page's own origin for sockets (`FLUX_PUBLIC_ORIGIN`), so a proxy must pass it through unchanged: do not
+add, replace or strip `Content-Security-Policy`, `X-Frame-Options` or `Content-Security-Policy-Report-Only` for Flux's
+host. A second policy added at the proxy is combined with Flux's by the browser (every policy must allow a request) and
+can only break the app. Serve Flux on the origin `FLUX_PUBLIC_ORIGIN` names: the policy is written for it.

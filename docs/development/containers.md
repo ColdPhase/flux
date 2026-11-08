@@ -420,6 +420,17 @@ build. Set `FLUX_UI_SCREENSHOT_DIR` to an absolute path (for example
 `FLUX_UI_MAILPIT_PORT` to avoid clashes with a concurrent run. It is kept separate from
 `check_application.sh` so the PR check stays fast.
 
+The pages of that stack send two Content-Security-Policy headers (#979): the enforced one is the policy that ships plus
+`'unsafe-eval'`, because Playwright's `waitForFunction`, which the tests use everywhere, evaluates its predicate with `eval` in the
+page; the other is `Content-Security-Policy-Report-Only` with the policy that ships exactly and a `report-uri` to
+`/api/v1/test/csp-reports` (a test deployment only; an install sends one enforced header and no `report-uri`). Every browser in every
+test, in either engine, reports there what the shipped policy would refuse, and `check_ui.sh` and `check_live_ui.sh` read the list when
+the tests end and fail with it (`scripts/csp_gate.sh`; `Content-Security-Policy violations seen by the browsers during this run`), so a
+new script, style, connection, image or frame the policy does not allow is found by the module that needs it, and an `eval` from a script
+of the app too (one with no source file is the test driver's own and is left out). `test_csp` shows what the policy refuses, on pages
+named `csp-control-*` that the list leaves out. Tests inject scripts with `page.evaluate`, never `page.add_script_tag(content=...)`: that
+is an inline script, which the policy refuses.
+
 `./scripts/visual_audit.sh [output-dir]` is the visual consistency audit (#763), outside both suites. On the
 `./flux demo` data plus more multi-user content, it visits every screen and state at 360, 390, 430, 820, 1440 and
 1920 px, light and dark, in Chromium and WebKit, and measures every control. It flags rows of controls with different

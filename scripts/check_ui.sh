@@ -71,6 +71,7 @@ export FLUX_LINK_PREVIEWS=on
 export FLUX_TEST_LINK_PREVIEW_HOSTS=public.test=link-mock:8098
 if [ -n "${FLUX_UI_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_UI_SCREENSHOT_DIR"; fi
 . scripts/test_images.sh
+. scripts/csp_gate.sh
 compose="docker compose -p $project -f docker/compose.source.yaml --profile ui"
 
 cleanup() {
@@ -93,8 +94,14 @@ $compose --profile setup run --rm files-init
 # F-037: the first account on a server sets up its company and owns its Everyone space. One made here, before any test,
 # keeps every test's own people out of that role.
 $compose run --rm -w /work/tests/ui ui-test python3 company_setup.py
+status=0
 if [ "$#" -gt 0 ]; then
-  $compose run --rm -e FLUX_UI_BROWSER -e FLUX_UI_RATE_LIMIT -w /work/tests/ui ui-test python3 -m unittest -v "$@"
+  $compose run --rm -e FLUX_UI_BROWSER -e FLUX_UI_RATE_LIMIT -w /work/tests/ui ui-test python3 -m unittest -v "$@" || status=$?
 else
-  $compose run --rm -e FLUX_UI_BROWSER -e FLUX_UI_RATE_LIMIT ui-test
+  $compose run --rm -e FLUX_UI_BROWSER -e FLUX_UI_RATE_LIMIT ui-test || status=$?
 fi
+# Content-Security-Policy (#979): the stack's pages report what the browser refused, in every test and every engine (scripts/csp_gate.sh).
+# Anything on that list is a script, style, connection, image or frame Flux needs and the policy does not allow, or something that should
+# not have run: the run fails with the list.
+csp_violations || { [ "$status" -ne 0 ] || status=3; }
+exit "$status"

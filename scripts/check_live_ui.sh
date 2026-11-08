@@ -31,6 +31,7 @@ export FLUX_LIVEKIT_ICE_UDP_PORT="${FLUX_LIVE_UI_ICE_UDP_PORT:-18785}"
 export FLUX_LIVEKIT_TURN_UDP_PORT="${FLUX_LIVE_UI_TURN_UDP_PORT:-18786}"
 if [ -n "${FLUX_UI_SCREENSHOT_DIR:-}" ]; then mkdir -p "$FLUX_UI_SCREENSHOT_DIR"; fi
 
+. scripts/csp_gate.sh
 compose="docker compose -p $project -f docker/compose.source.yaml -f docker/compose.live.yaml -f docker/compose.live.test.yaml --profile ui"
 cleanup() {
   status=$?
@@ -50,4 +51,8 @@ $compose --profile setup run --rm files-init
 $compose up -d --wait api worker livekit mailpit
 # F-037: a setup account owns the company, so no test's own people take that role by being first.
 $compose run --rm --no-deps -w /work/tests/ui ui-test python3 company_setup.py
-$compose run --rm -e FLUX_UI_LIVE=1 ui-test python3 -m unittest discover -s tests/ui -p "${FLUX_LIVE_UI_PATTERN:-test_live_sessions.py}" -v
+status=0
+$compose run --rm -e FLUX_UI_LIVE=1 ui-test python3 -m unittest discover -s tests/ui -p "${FLUX_LIVE_UI_PATTERN:-test_live_sessions.py}" -v || status=$?
+# Content-Security-Policy (#979): the calls' signalling, media and sockets are judged under the policy too (scripts/csp_gate.sh).
+csp_violations || { [ "$status" -ne 0 ] || status=3; }
+exit "$status"
