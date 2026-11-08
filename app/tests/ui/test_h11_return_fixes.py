@@ -39,7 +39,7 @@ TASK = "Design the reminder email"
 DUE = "4 Nov 2026"
 OPEN_RULE = "Drop shift swapping"
 DECIDED = "Launch on 21 November"
-PHONE_MENU = ["Reply in thread", "Create task", "Add to map", "Copy link"]
+PHONE_MENU = ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text"]
 
 
 class ReturnFixes(unittest.TestCase):

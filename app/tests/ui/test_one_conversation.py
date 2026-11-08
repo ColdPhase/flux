@@ -311,7 +311,7 @@ class OneConversationJourney(unittest.TestCase):
         more.click()
         expect(more).to_have_attribute("aria-expanded", "true")
         menu = page.get_by_role("menu", name="Message actions")
-        self.assertEqual([text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()], ["Add to map", "Copy link"])
+        self.assertEqual([text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()], ["Add to map", "Copy link", "Copy text"])
         page.keyboard.press("Escape")
         expect(r1, "the opened root stays in view").to_be_in_viewport()
         composer = thread.get_by_label("Reply", exact=True)

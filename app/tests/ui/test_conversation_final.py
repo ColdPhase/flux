@@ -350,7 +350,7 @@ class ConversationFinal(unittest.TestCase):
         names = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
         # One level (#867): the toolbar has Reply in thread and Create task, so the menu lists Add to map and Copy link, and nothing else
         # on a message that is not the person's own (Edit and Delete follow on their own messages).
-        self.assertEqual(names, ["Add to map", "Copy link"])
+        self.assertEqual(names, ["Add to map", "Copy link", "Copy text"])
         page.keyboard.press("ArrowDown")
         page.keyboard.press("Escape")
         expect(menu).to_have_count(0)
@@ -405,7 +405,7 @@ class ConversationFinal(unittest.TestCase):
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu).to_be_visible()
         names = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
-        self.assertEqual(names, ["Reply in thread", "Create task", "Add to map", "Copy link"])
+        self.assertEqual(names, ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text"])
         self.assertNotIn("Done", names, "a message has no Done: the Inbox is the one queue")
         for box in menu.get_by_role("menuitem").evaluate_all("items => items.map(el => el.getBoundingClientRect().height)"):
             self.assertGreaterEqual(box, 44)
@@ -421,7 +421,7 @@ class ConversationFinal(unittest.TestCase):
         page.keyboard.press("Enter")
         expect(menu).to_be_visible()
         names = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
-        self.assertEqual(names, ["Reply in thread", "Create task", "Add to map", "Copy link"])
+        self.assertEqual(names, ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text"])
         page.keyboard.press("Escape")
         # A scroll gesture is not a long press: nothing opens.
         swipe_down = bubble.bounding_box()
@@ -446,7 +446,7 @@ class ConversationFinal(unittest.TestCase):
         menu = page.get_by_role("menu", name="Message actions")
         expect(menu).to_be_visible()
         names = [text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()]
-        self.assertEqual(names, ["Reply in thread", "Create task", "Add to map", "Copy link"])
+        self.assertEqual(names, ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text"])
         self.assertNotIn("Done", names)
         self.assertNotIn("Not now", names)
         self.assertTrue(self.waiting(page, self.ids["mention"]), "nothing was resolved")

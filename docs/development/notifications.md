@@ -56,6 +56,13 @@ the same session converge on one invitation row and record no second event, so t
 inbox row and one push. Migration `0021_live_invitation_notifications.sql` (`FLUX_SCHEMA_VERSION`
 21) adds the reason to the `notifications.reason` check.
 
+## Edited and deleted messages (#1006)
+
+A notice keeps the words it was sent with: an **edit** neither rewrites the notices already stored nor sends new ones (nobody newly
+mentioned is told), and an email or push already sent cannot be recalled. A **delete** removes the notices about that message
+(`url` = its address), and, for the opening message of a conversation, the `reply` notices of that conversation, whose titles quote
+it. Generation skips a message that was deleted before it ran.
+
 ## Preferences
 
 `GET/PATCH /api/v1/notification-preferences`; `PUT …/mutes` with `{ type, id, muted }`.

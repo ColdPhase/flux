@@ -2,12 +2,14 @@ import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type 
 import { createPortal } from 'react-dom';
 import type { ConversationMessage } from '@flux/contracts';
 import { Icon, useMediaQuery, usePop, useToast, type IconName } from '../ui';
+import { plainWords } from './messageWords';
 import './message-actions.css';
 
 // Actions on one message (F-026 S6, #867). On a computer they appear on hover and focus: Reply in thread, Create task and ⋯. On a phone
 // they are two gestures, a long press (the message menu) and a swipe right (Reply in thread), plus the same menu for keyboards and
 // screen readers (founder direction 2026-10-16 on #343). A message has no done or snooze state, so nothing swipes left.
-// The ⋯ menu is one level, in the same order everywhere: Add to map, Copy link, then (on your own messages) Edit and Delete.
+// The ⋯ menu is one level, in the same order everywhere: Add to map, Copy link, Copy text, then (on your own messages) Edit and Delete.
+// Copy text is on every message that has words and was not deleted (founder direction 2026-11-08).
 // The phone's list starts with the two actions the computer shows beside the message.
 
 /**
@@ -29,6 +31,11 @@ export interface DmActionOptions {
   onReply?: () => void;
   /** Puts the words on My map. */
   onAddToMap?: () => void;
+  /** Edit and Delete, only on a message the signed-in person wrote and that is not deleted (#1006). */
+  onEdit?: () => void;
+  onDelete?: () => void;
+  /** The author deleted it: only Reply in thread (a root) and Copy link remain. */
+  removed?: boolean;
 }
 
 export interface MessageActionOptions {
@@ -42,10 +49,18 @@ export interface MessageActionOptions {
   onReply?: () => void;
   /** Opens the project map with this message ready to become a thought. */
   onAddToMap?: () => void;
+  /** Edit and Delete, only on a message the signed-in person wrote and that is not deleted (#1006). */
+  onEdit?: () => void;
+  onDelete?: () => void;
+  /** The author deleted it: only Reply in thread and Copy link remain. */
+  removed?: boolean;
 }
 
 /** `secondary` items sit below a line, apart from the rest (Edit and Delete, on a person's own messages). */
 interface MenuItem { id: string; label: string; icon: IconName; run: () => void; disabled?: boolean; secondary?: boolean }
+
+/** The words Copy text puts on the clipboard: the message's body as plain text. */
+const wordsOf = (options: MessageActionOptions | DmActionOptions) => plainWords(options.kind === 'dm' ? options.body : options.message.body);
 
 /** A message's own address: a project's message opens in its thread, a private one in its conversation. */
 const linkOf = (options: MessageActionOptions | DmActionOptions) => `${window.location.origin}${options.kind === 'dm'
@@ -55,24 +70,30 @@ const linkOf = (options: MessageActionOptions | DmActionOptions) => `${window.lo
 
 /**
  * The menu's items, in the one order: Reply in thread and Create task (only where the message has no toolbar beside it, that is on a
- * phone), then Add to map and Copy link. The same list on every device and for every kind of message.
+ * phone), then Add to map, Copy link and Copy text. The same list on every device and for every kind of message.
  */
 function useMenuItems(options: MessageActionOptions | DmActionOptions | null, touch: boolean): MenuItem[] {
   const toast = useToast();
   if (!options) return [];
-  const copy = () => {
-    const done = () => toast({ message: 'Link copied', timeout: 2000 });
-    const failed = () => toast({ message: 'Could not copy the link', tone: 'danger' });
+  const copyToClipboard = (what: 'link' | 'text', value: string) => {
+    const done = () => toast({ message: what === 'link' ? 'Link copied' : 'Text copied', timeout: 2000 });
+    const failed = () => toast({ message: `Could not copy the ${what}`, tone: 'danger' });
     if (!navigator.clipboard) { failed(); return; }
-    navigator.clipboard.writeText(linkOf(options)).then(done, failed);
+    navigator.clipboard.writeText(value).then(done, failed);
   };
-  const { writable, onCreateWork, onReply, onAddToMap } = options;
+  const words = wordsOf(options);
+  const { writable, onCreateWork, onReply, onAddToMap, onEdit, onDelete, removed } = options;
   return [
     ...(touch && writable && onReply ? [{ id: 'reply', label: 'Reply in thread', icon: 'reply' as const, run: onReply }] : []),
-    ...(touch && writable ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: onCreateWork }] : []),
+    ...(touch && writable && !removed ? [{ id: 'task', label: 'Create task', icon: 'plus-circle' as const, run: onCreateWork }] : []),
     // A private message goes on My map, which does not depend on the conversation taking new messages (a 1:1 whose other person left).
-    ...((writable || options.kind === 'dm') && onAddToMap ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
-    { id: 'link', label: 'Copy link', icon: 'link' as const, run: copy },
+    ...((writable || options.kind === 'dm') && onAddToMap && !removed ? [{ id: 'map', label: 'Add to map', icon: 'map' as const, run: onAddToMap }] : []),
+    { id: 'link', label: 'Copy link', icon: 'link' as const, run: () => copyToClipboard('link', linkOf(options)) },
+    // Every message a person can read, not only their own; a deleted one has no words, and a message of files alone has none to copy.
+    ...(words && !removed ? [{ id: 'text', label: 'Copy text', icon: 'copy' as const, run: () => copyToClipboard('text', words) }] : []),
+    // Below a line, after Copy link, on the person's own messages only (#1006).
+    ...(onEdit && !removed ? [{ id: 'edit', label: 'Edit', icon: 'edit' as const, run: onEdit, secondary: true }] : []),
+    ...(onDelete && !removed ? [{ id: 'delete', label: 'Delete', icon: 'trash' as const, run: onDelete, secondary: true }] : []),
   ];
 }
 
@@ -169,7 +190,7 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
   const [open, setOpen] = useState(false);
   const more = useRef<HTMLButtonElement>(null);
   const group = useRef<HTMLDivElement>(null);
-  const { writable, onCreateWork, onReply } = options;
+  const { writable, onCreateWork, onReply, removed } = options;
   // Guide §4: R replies in the thread and T makes a task while focus is inside this message (not in a field).
   useEffect(() => {
     const row = group.current?.parentElement;
@@ -179,16 +200,16 @@ export function MessageActions(options: MessageActionOptions | DmActionOptions) 
       if ((event.target as Element | null)?.closest?.('input, textarea, select, [role="combobox"], [role="listbox"], [contenteditable], [role="menu"]')) return;
       const key = event.key.toLowerCase();
       if (key === 'r' && writable && onReply) { event.preventDefault(); onReply(); }
-      else if (key === 't' && writable) { event.preventDefault(); onCreateWork(); }
+      else if (key === 't' && writable && !removed) { event.preventDefault(); onCreateWork(); }
     };
     row.addEventListener('keydown', onKey);
     return () => row.removeEventListener('keydown', onKey);
-  }, [touch, writable, onReply, onCreateWork]);
+  }, [touch, writable, onReply, onCreateWork, removed]);
   if (touch) return null;
   return (
     <div ref={group} className="msg-acts ui-reveal" role="group" aria-label={options.kind === 'dm' ? 'Actions on this message' : 'Message actions'}>
       {writable && onReply ? <button type="button" className="msg-acts__b" aria-label="Reply in thread" data-tip="Reply in thread (R)" aria-keyshortcuts="R" onClick={onReply}><Icon name="reply" size={16} /></button> : null}
-      {writable ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task (T)" aria-keyshortcuts="T" onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
+      {writable && !removed ? <button type="button" className="msg-acts__b" aria-label="Create task" data-tip="Create task (T)" aria-keyshortcuts="T" onClick={onCreateWork}><Icon name="plus-circle" size={16} /></button> : null}
       <button ref={more} type="button" className="msg-acts__b" aria-label="More actions" data-tip="More actions" aria-haspopup="menu" aria-expanded={open} onClick={(event) => { if (open) setOpen(false); else { setAnchor(event.currentTarget); setOpen(true); } }}><Icon name="more" size={16} /></button>
       {anchor ? <MessageMenuHost open={open} items={items} anchor={anchor} press={false} label="Message actions"
         onClose={(restore) => { setOpen(false); if (restore) more.current?.focus(); }} /> : null}

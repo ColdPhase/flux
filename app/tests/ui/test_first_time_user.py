@@ -155,7 +155,7 @@ class FirstTimeUser(unittest.TestCase):
         long_press(message.locator(".message-bubble > .message-body"))
         expect(menu).to_be_visible()
         # One level, the same on every device (#867): Reply in thread and Create task lead the phone's list, then Add to map and Copy link.
-        self.assertEqual([text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()], ["Reply in thread", "Create task", "Add to map", "Copy link"])
+        self.assertEqual([text.strip() for text in menu.get_by_role("menuitem").all_inner_texts()], ["Reply in thread", "Create task", "Add to map", "Copy link", "Copy text"])
         shot(page, "ftu-phone-message-menu")
         menu.get_by_role("menuitem", name="Create task").click()
         expect(page.get_by_role("dialog", name="New task").get_by_label("Title", exact=True)).to_have_value(re.compile("Should sign-up ask for a phone number"))

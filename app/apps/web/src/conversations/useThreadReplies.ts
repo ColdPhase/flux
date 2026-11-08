@@ -7,10 +7,11 @@ import { listMaterials } from '../materials/api';
 import { getConversation, olderMessages } from './api';
 import { readableError } from './errors';
 import { mergeMessages } from './feed';
+import { onMessageChanged } from './messageChanges';
 import type { PaneCore } from './paneCore';
 
 /** Project events that change what a conversation pane shows; the assistant's Undo (#68) can take a message back. */
-const LIVE_KINDS = new Set(['project.conversation_created.v1', 'project.message_sent.v1', 'project.assistant_change_undone.v1']);
+const LIVE_KINDS = new Set(['project.conversation_created.v1', 'project.message_sent.v1', 'project.message_edited.v1', 'project.message_removed.v1', 'project.assistant_change_undone.v1']);
 
 interface Options {
   /** Replies this person sent and the server confirmed: shown at once until a read includes them (#264). */
@@ -29,8 +30,9 @@ export function useThreadReplies({ me, project, conversation, revalidateRef }: P
   const [stored, setMessages] = useState<Conversation['messages']>(conversation?.messages ?? []);
   const messagesRef = useRef(stored);
   useEffect(() => { messagesRef.current = stored; }, [stored]);
-  // A reply confirmed here is shown at once, in place of its queued message, until a read includes it (#264).
-  const messages = useMemo(() => conversation ? mergeMessages(stored, sent.filter((item) => item.message.conversationId === conversation.id).map((item) => item.message)) : stored,
+  // A reply confirmed here is shown at once, in place of its queued message, until a read includes it (#264); then the stored copy
+  // wins, so a reply its author edited or deleted since shows the new words (#1006), not the ones it was sent with.
+  const messages = useMemo(() => conversation ? mergeMessages(sent.filter((item) => item.message.conversationId === conversation.id).map((item) => item.message), stored) : stored,
     [conversation, stored, sent]);
   const [olderCursor, setOlderCursor] = useState(conversation?.messagePage.nextBeforeSequence ?? null);
   const [olderBusy, setOlderBusy] = useState(false);
@@ -74,6 +76,8 @@ export function useThreadReplies({ me, project, conversation, revalidateRef }: P
   }, [conversationId, hideIfDenied, project.id, mergeMaterials, revalidateRef]);
   const refreshLatest = useRef(refresh);
   useEffect(() => { refreshLatest.current = refresh; }, [refresh]);
+  // The author edited or deleted a message of this thread (#1006): it is replaced at once, without reading the thread again.
+  useEffect(() => onMessageChanged((message) => { if (message.conversationId === conversationId) setMessages((current) => mergeMessages(current, [message])); }), [conversationId]);
   // Flux answers again (not merely a Retry or the browser's `online` event): read what arrived meanwhile.
   useEffect(() => onFluxAnswered(() => { void refresh(); }), [refresh]);
   // A message or a new conversation in this project (#733) reads at once, not at the 15 s poll: the event carries the

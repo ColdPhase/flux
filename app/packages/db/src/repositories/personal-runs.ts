@@ -311,14 +311,14 @@ export function personalRunRows(db: DbExecutor) {
       return new Map(rows.map((row) => [row.id, row.name]));
     },
 
-    /** The latest `limit` messages of one project conversation, oldest first. */
+    /** The latest `limit` messages of one project conversation, oldest first. A message its author deleted (#1006) is not one a model reads. */
     async messages(conversationId: string, limit: number) {
       const m = schema.projectMessages;
       const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, contributionKind: m.contributionKind, resultId: m.resultId,
         authorId: m.authorId, authorAgentId: m.authorAgentId, humanName: schema.authUsers.name, agentName: schema.agents.name })
         .from(m).leftJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
         .leftJoin(schema.agents, and(eq(schema.agents.workspaceId, m.workspaceId), eq(schema.agents.id, m.authorAgentId)))
-        .where(eq(m.conversationId, conversationId)).orderBy(desc(m.sequence)).limit(limit);
+        .where(and(eq(m.conversationId, conversationId), isNull(m.removedAt))).orderBy(desc(m.sequence)).limit(limit);
       const files = await fileRows(db).messageFiles(rows.map((row) => row.id));
       return rows.reverse().map(({ authorId, authorAgentId, humanName, agentName, contributionKind, resultId, ...row }) => ({ ...row,
         ...(contributionKind === 'result' ? { contribution: { kind: 'result' as const, resultId: resultId! } }
@@ -345,14 +345,14 @@ export function personalRunRows(db: DbExecutor) {
     },
 
     /**
-     * The latest `limit` messages of a direct message, oldest first (#842). The line "used AI here" is not one. With `threadRootId` (#1016)
-     * only that thread: its root and its replies.
+     * The latest `limit` messages of a direct message, oldest first (#842). The line "used AI here" is not one, nor is a message its author
+     * deleted (#1006). With `threadRootId` (#1016) only that thread: its root and its replies.
      */
     async dmMessages(dmId: string, limit: number, threadRootId: string | null = null) {
       const m = schema.dmMessages;
       const rows = await db.select({ id: m.id, sequence: m.sequence, body: m.body, authorId: m.authorId, authorName: schema.authUsers.name })
         .from(m).innerJoin(schema.authUsers, eq(schema.authUsers.id, m.authorId))
-        .where(and(eq(m.dmId, dmId), eq(m.kind, 'text'), threadRootId === null ? undefined : or(eq(m.id, threadRootId), eq(m.threadRootId, threadRootId))))
+        .where(and(eq(m.dmId, dmId), eq(m.kind, 'text'), isNull(m.removedAt), threadRootId === null ? undefined : or(eq(m.id, threadRootId), eq(m.threadRootId, threadRootId))))
         .orderBy(desc(m.sequence)).limit(limit);
       return rows.reverse().map(({ authorId, authorName, ...row }) => ({ ...row, author: { kind: 'human' as const, id: authorId }, authorName }));
     },

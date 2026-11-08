@@ -5,6 +5,8 @@ import { LinkPreviews, MessageText } from '../app/MessageText';
 import { AgentAuthor, AuthorFace, ContributionMark, MessageTime, SourceCitation, SourceTag, ViaTag, pendingMessageRow } from '../app/messageParts';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
 import { MessageActions, useTouchActions } from '../work/messageActions';
+import { useOwnMessage } from '../work/ownMessage';
+import { projectMessageEdits } from './messageChanges';
 import type { MessageWorkPreview } from '../work/message-associations';
 import { useAddToMap } from '../project/addToMap';
 import { agentAuthorOwner, type AgentOwners } from '../agents/owners';
@@ -31,10 +33,16 @@ export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
   const stored = 'pending' in props ? null : props;
   const message = stored?.message;
   const mapDraft = useAddToMap(stored?.project ?? null);
+  // Edit and Delete are the author's, on a message that is still there (#1006).
+  const own = useOwnMessage(stored && message && stored.writable && message.authorId === stored.meId && !message.removedAt ? {
+    body: message.body, hasFiles: !!message.files?.length, focusId: `message-${message.id}`,
+    ...projectMessageEdits(message),
+  } : null);
   const actions = stored && message ? {
     projectId: stored.project.id, message, writable: stored.writable, onCreateWork: () => void stored.makeWork.create(message),
     onReply: () => document.getElementById('thread-composer')?.focus(),
     onAddToMap: () => mapDraft({ messageId: message.id, body: message.body }),
+    onEdit: own.onEdit, onDelete: own.onDelete, removed: !!message.removedAt,
   } : null;
   const touch = useTouchActions(actions);
   if (!stored || !message || !actions) {
@@ -48,14 +56,14 @@ export function ThreadReply(props: ThreadReplyProps | QueuedReplyProps) {
       {!mine && !stored.continued ? <AuthorFace kind={message.authorId === null ? 'agent' : 'human'} name={name} mine={mine} /> : null}
       {!mine && !stored.continued ? <div className="project-convo__message-meta"><strong>{mine ? `${name} · you` : message.authorId === null ? <AgentAuthor message={message} owner={agentAuthorOwner(message.author, owners)} /> : <RefLink className="project-convo__person" to={`/dm/new?workspace=${project.workspaceId}&with=${message.authorId}`} title={`Message ${name} directly`}>{name}</RefLink>}</strong><ViaTag via={message.via} /></div> : null}
       {mine && message.via ? <div className="project-convo__message-meta"><ViaTag via={message.via} /></div> : null}
-      <MessageContent body={message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
+      <MessageContent body={own.slot ?? (message.body ? <WhenNoQuestion projectId={project.id} messageId={message.id}><div className={`message-body${message.removedAt ? ' message-body--removed' : ''}`}><MessageText body={message.body} people={people} /></div></WhenNoQuestion> : null)} files={message.files} references={message.references} context={{ author: name, at: message.createdAt, caption: message.body, place: project.name, onReply: writable ? actions.onReply : undefined, onCreateTask: writable ? actions.onCreateWork : undefined }}>
         <LinkPreviews body={message.body} projectId={project.id} messageId={message.id} />
         <MessageObjects message={message} projectId={project.id} preview={preview} />
         {message.source ? <SourceCitation materialId={message.source.materialId} version={message.source.version} onDenied={onDenied} /> : null}
       </MessageContent>
       <QuestionCard projectId={project.id} messageId={message.id} meId={meId} writable={writable} />
       {message.contribution ? <ContributionMark contribution={message.contribution} onOpenResult={onOpenResult} /> : null}
-      {stored.groupLast !== false ? <MessageTime at={message.createdAt} seenBy={stored.seenBy} /> : null}
+      {stored.groupLast !== false ? <MessageTime at={message.createdAt} seenBy={stored.seenBy} edited={message.editedAt} /> : null}
       <MessageActions {...actions} />
       {touch.node}
     </li>

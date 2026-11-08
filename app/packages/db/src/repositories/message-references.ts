@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import type { MessageReference } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { openField, openRows, sealOf } from '../sealing.js';
@@ -75,7 +75,7 @@ export function messageReferenceRows(db: DbExecutor) {
       const m = schema.projectMessages;
       const [project] = await db.select({ id: m.id, workspaceId: m.workspaceId, projectId: m.projectId, conversationId: m.conversationId, projectName: schema.projects.name,
         body: m.body, attachmentCount: m.attachmentCount, createdAt: m.createdAt, userId: m.authorId, agentId: m.authorAgentId })
-        .from(m).innerJoin(schema.projects, eq(schema.projects.id, m.projectId)).where(and(eq(m.id, id), eq(m.workspaceId, workspaceId)));
+        .from(m).innerJoin(schema.projects, eq(schema.projects.id, m.projectId)).where(and(eq(m.id, id), eq(m.workspaceId, workspaceId), isNull(m.removedAt)));
       if (project) {
         const { userId, agentId, ...fields } = project;
         const [opened] = await openRows(db, 'project_messages', [{ id: fields.id, workspaceId: fields.workspaceId, body: fields.body }]);
@@ -83,7 +83,7 @@ export function messageReferenceRows(db: DbExecutor) {
         return { kind: 'project', ...fields, body: opened!.body, projectName: openField('projects', 'name', [fields.projectId], fields.projectName, seal)!, author: actorOf(userId, agentId)! };
       }
       const d = schema.dmMessages;
-      const [dm] = await db.select({ id: d.id, workspaceId: d.workspaceId, dmId: d.dmId, body: d.body, createdAt: d.createdAt, userId: d.authorId }).from(d).where(and(eq(d.id, id), eq(d.workspaceId, workspaceId)));
+      const [dm] = await db.select({ id: d.id, workspaceId: d.workspaceId, dmId: d.dmId, body: d.body, createdAt: d.createdAt, userId: d.authorId }).from(d).where(and(eq(d.id, id), eq(d.workspaceId, workspaceId), isNull(d.removedAt)));
       if (!dm) return null;
       const { userId, ...fields } = dm;
       const [opened] = await openRows(db, 'dm_messages', [{ id: fields.id, workspaceId: fields.workspaceId, body: fields.body }]);

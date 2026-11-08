@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import {
   DMS_PATH,
+  type EditMessageCommand,
   type ConversationWindowQuery,
   type CreateDmCommand,
   type DmMessage,
@@ -104,6 +105,20 @@ export async function dmRoutes(app: FastifyInstance, { db, sessions }: DmRouteOp
     run: async (actor, conn) => (await cited(conn, actor, request.params.dmId, [await dmUseCases(conn).send(actor, request.params.dmId, request.body)]))[0]!,
     replay: readDm(request.params.dmId),
   }));
+
+  // An author's Edit and Delete of their own message, a root or a reply (#1006). No Idempotency-Key: an edit that repeats the words and a
+  // delete of a deleted message answer the current message again, and nothing stores the words in a replayable answer.
+  const MESSAGE = `${DM}/messages/:messageId`;
+  app.patch<{ Params: { dmId: string; messageId: string }; Body: EditMessageCommand }>(MESSAGE, {
+    schema: { body: { type: 'object', required: ['body'], additionalProperties: false, properties: { body: { type: 'string', minLength: 1, maxLength: 100_000 } } } },
+  }, async (request) => {
+    const who = await principal(request);
+    return (await cited(db, who, request.params.dmId, [await dms.editMessage(who, request.params.dmId, request.params.messageId, request.body)]))[0]!;
+  });
+  app.delete<{ Params: { dmId: string; messageId: string } }>(MESSAGE, async (request) => {
+    const who = await principal(request);
+    return (await cited(db, who, request.params.dmId, [await dms.removeMessage(who, request.params.dmId, request.params.messageId)]))[0]!;
+  });
 
   // Private replies (#536): the thread of one root. Every route answers 404 for anyone but a current participant.
   const THREAD = `${DM}/threads/:rootId`;

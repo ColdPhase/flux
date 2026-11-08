@@ -1,4 +1,4 @@
-import { accessPorts, dmRows, schema, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
+import { accessPorts, dmRows, messageChangeRows, schema, toDmMessageRecord, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
 import { eq, and } from 'drizzle-orm';
 import {
   createDmUseCases,
@@ -22,8 +22,16 @@ import { messageReferences } from '../conversation/references.js';
 
 export function dmRepository(db: DbExecutor): DmRepository {
   const rows = dmRows(db);
+  const changes = messageChangeRows(db);
   return {
     ...rows,
+    /** An author's Edit or Delete (#1006): the row locked, the words sealed on the way in, everything that carried them removed. */
+    async lockMessage(dmId, messageId) {
+      const row = await changes.lockDm(dmId, messageId);
+      return row ? toDmMessageRecord(row) : null;
+    },
+    async editMessage(message, body) { await changes.editDm(message, body); },
+    async removeMessage(message) { await changes.removeDm(message); },
     /** The policy's own list condition (`visibleFilter`) is applied before the limit and in the total. */
     async listVisible(principal, workspaceId, page) {
       return rows.list(workspaceId, await visibleFilter(principal, workspaceId, 'dm', db), page);

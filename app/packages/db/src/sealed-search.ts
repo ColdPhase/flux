@@ -467,13 +467,13 @@ async function contentOf(db: DbExecutor, kind: string, rows: Placeholder[]): Pro
     case 'message':
       // A task agent thread has no people-facing surface (#400): its messages are not findable.
       for (const r of await rowsOf(db, 'project_messages', sql`SELECT m.id, m.workspace_id, m.body FROM project_messages m
-        JOIN project_conversations c ON c.id = m.conversation_id WHERE m.id = ANY(${uuids(ids)}) AND c.space <> 'agents'`)) {
+        JOIN project_conversations c ON c.id = m.conversation_id WHERE m.id = ANY(${uuids(ids)}) AND c.space <> 'agents' AND m.removed_at IS NULL`)) {
         const body = str(r.body);
         found.set(String(r.id), { title: body.trim() === '' ? 'Attached files' : '', body });
       }
       break;
     case 'dm_message':
-      for (const r of await rowsOf(db, 'dm_messages', sql`SELECT id, workspace_id, body FROM dm_messages WHERE id = ANY(${uuids(ids)})`)) found.set(String(r.id), { title: '', body: str(r.body) });
+      for (const r of await rowsOf(db, 'dm_messages', sql`SELECT id, workspace_id, body FROM dm_messages WHERE id = ANY(${uuids(ids)}) AND removed_at IS NULL`)) found.set(String(r.id), { title: '', body: str(r.body) });
       break;
     case 'material': case 'doc': {
       const versions = rows.map((row) => row.version ?? 0);

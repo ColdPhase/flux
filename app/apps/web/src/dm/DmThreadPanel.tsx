@@ -14,6 +14,7 @@ import { SendAnnouncer } from '../composer/Outbox';
 import { Button, Icon, MEDIA, PanelMeta, sendsOnEnter, useMediaQuery } from '../ui';
 import '../app/one-conversation.css';
 import { DmBubble } from './DmBubble';
+import { onMessageChanged } from '../conversations/messageChanges';
 import { groupRows } from './rows';
 import { ownRuns, useObservation, useReceipts } from '../app/receipts';
 import { pageBackTo } from '../app/seekMessage';
@@ -61,9 +62,17 @@ export function DmThreadPanel({ dmId, rootId, meId, meName, nameOf, audience, ot
   const { workspace } = useShellData();
   const [askFailure, setAskFailure] = useState('');
   const asking = workspace?.role !== 'guest' && /^\/ai(\s|$)/.test(draft);
-  const shown = useMemo(() => merge(replies, composer.sent.map((item) => item.message as DmMessage)), [replies, composer.sent]);
+  // A reply confirmed here shows at once until a read includes it; then the stored copy wins, so an edit or a delete shows (#1006).
+  const shown = useMemo(() => merge(composer.sent.map((item) => item.message as DmMessage), replies), [replies, composer.sent]);
   const outbox = outboxView(shown, composer.pending, composer.sent, meId);
 
+  // The author edited or deleted the root or a reply of this thread (#1006): it is replaced at once.
+  useEffect(() => onMessageChanged((message) => {
+    const changed = message as DmMessage;
+    if (changed.conversationId !== dmId) return;
+    if (changed.id === rootId) setThread((current) => (current ? { ...current, root: changed } : current));
+    else if (changed.threadRootId === rootId) setReplies((current) => merge(current, [changed]));
+  }), [dmId, rootId]);
   const learn = useCallback((list: DmPerson[]) => setPeople((current) => { const next = new Map(current); for (const p of list) next.set(p.id, p); return next; }), []);
   const label = (id: string) => (people.get(id)?.name ?? nameOf(id));
   const load = useCallback(async () => {

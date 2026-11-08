@@ -199,12 +199,49 @@ version citation, lost-response retry without a duplicate, phone draft retention
 and denial after revocation. Backend database rows and restart are covered by
 `./scripts/check_application.sh`.
 
+## Edit and delete your own message (#1006)
+
+`PATCH /api/v1/conversations/:conversationId/messages/:messageId` with `{ body }` changes the words of a message in place;
+`DELETE` on the same address deletes it. Both answer the message as it now stands. They take no `Idempotency-Key`: the same words
+again, and a delete of a deleted message, answer the current message and change nothing, so a retry is safe and no replayable answer
+keeps the words. Migration `0029` adds `project_messages.edited_at`.
+
+- **Who.** The author, a person, with write access to the message's space **now**: the space's access rows are held while the check
+  runs, so a person removed or demoted meanwhile changes nothing (`404` outside the space). Someone else's message is
+  `403 MESSAGE_NOT_YOURS` for anyone who can read it: another member, the company's owner or admin, and the owner of an agent for the
+  agent's line (that line has the owner's own Delete, #960/#970). The message is looked up inside the conversation named in the
+  address, so the access check made for one conversation cannot be used for another's message (`404`). A task's agents thread and a
+  saved blocker, a published result or a public hand-off (`contribution_kind` other than `text`) are refused
+  (`404` / `409 MESSAGE_NOT_CHANGEABLE`): the work's own record is taken back through its own commands.
+- **Edit.** There is no time window. The words are trimmed and are 1–100000 characters (a message with files may be emptied). The
+  earlier words are not kept. The message keeps its id, place and sequence and carries `editedAt`. Search follows in the same
+  transaction (the `search_index` trigger). A notice already sent keeps the words it was sent with, and an edit sends none and notifies
+  nobody newly mentioned; to take words back completely, delete the message. A deleted message cannot be edited (`409 MESSAGE_REMOVED`).
+- **Delete.** The row stays as a marker: `body` is `Message removed` (sealed like any text in an encrypted space), `removedAt` is set,
+  `editedAt` is not shown. The same transaction removes everything that carried the words: the citations the message made
+  (`message_references`), its files (`project_files` rows and, through `file_garbage`, the stored bytes at the next cleanup), the notices
+  about it and, when it opens a conversation, that conversation's reply notices that quote it in their title, and (the migration's
+  trigger) its row in `search_documents`, so the sealed search index drops it too. A removed message cannot become a task's source, get a link card
+  or be copied to a task. The return view
+  and notification generation skip it. A task, a decision or a map thought made from it keeps its own words; the export shows the marker.
+- **Events.** `project.message_edited.v1` and `project.message_removed.v1`, object the project, `data` `{ conversationId, messageId }`
+  (ids only, which is all an encrypted space allows); a change that changes nothing records nothing. An open stream or thread reads the
+  conversation again; the author's own page replaces the message at once.
+- **Web.** Edit and Delete are in the ⋯ menu after Copy link and Copy text, below a line, on the author's messages only, on a computer's hover menu and
+  on a phone's long-press list alike. Copy text (founder direction 2026-11-08) is on every message a person can read: it copies the plain words
+  (`work/messageWords.ts`: a mention stays `@name`, a Wiki page is its title, a quote loses its `>` marks) and is not offered on a deleted message. Edit puts the words in a field where they were (Enter saves on a keyboard, Esc cancels); Delete
+  asks once in place ("Delete this message? ... This cannot be undone."). A deleted message keeps Reply in thread (a root) and Copy link.
+
+Tests: `app/tests/app/message-edit-delete.test.ts` (API, including the attacks above, a file, and an encrypted space) and
+`app/tests/ui/test_message_edit_delete.py` (Chromium).
+
 ## Authorized project refresh events (#36 + #47)
 
 A committed conversation start, reply, material publication or material revision
 records exactly one project-scoped event in the same PostgreSQL transaction:
 `project.conversation_created.v1`, `project.message_sent.v1`,
-`project.material_created.v1` or `project.material_updated.v1` respectively.
+`project.material_created.v1` or `project.material_updated.v1` respectively. An author's Edit or Delete of their own message records
+`project.message_edited.v1` or `project.message_removed.v1` the same way (see above).
 The event's `object_id` is the project id. Its `data` holds identifiers only: `{
 conversationId, messageId }` for conversation and message events and `{ materialId, version }`
 for material events (added for the [return view](return-view.md), #106). The stream frame

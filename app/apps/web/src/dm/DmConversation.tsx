@@ -24,6 +24,7 @@ import { pageBackTo } from '../app/seekMessage';
 import { taskHref } from '../sketch/ThoughtTasks';
 import { OwnedPanelContent, useOwnedPanel } from '../app/ownedPanel';
 import { DmBubble } from './DmBubble';
+import { onMessageChanged } from '../conversations/messageChanges';
 import { DmTaskCopy } from './DmTaskCopy';
 import { DmThreadPanel } from './DmThreadPanel';
 import { groupRows } from './rows';
@@ -104,8 +105,13 @@ function DmContent({ initial }: { initial: Dm }) {
   const attachFeed = useCallback((element: HTMLDivElement | null) => { feedRef.current = element; setFeedNode(element); }, []);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesRef = useRef(messages);
-  // A message confirmed here shows at once, in its queued place, until the DM's own read includes it.
-  const shown = useMemo(() => merge(messages, composer.sent.map((item) => item.message as DmMessage)), [messages, composer.sent]);
+  // The author edited or deleted a root here (#1006): it is replaced at once; a reply is the thread panel's.
+  useEffect(() => onMessageChanged((message) => {
+    if (message.conversationId === initial.id && !(message as DmMessage).threadRootId) setMessages((current) => merge(current, [message as DmMessage]));
+  }), [initial.id]);
+  // A message confirmed here shows at once, in its queued place, until the DM's own read includes it; then the stored copy wins,
+  // so a message its author edited or deleted since shows the new words (#1006), not the ones it was sent with.
+  const shown = useMemo(() => merge(composer.sent.map((item) => item.message as DmMessage), messages), [messages, composer.sent]);
   const outbox = outboxView(shown, composer.pending, composer.sent, me.user.id);
   const refreshing = useRef(false);
   useEffect(() => { messagesRef.current = messages; }, [messages]);

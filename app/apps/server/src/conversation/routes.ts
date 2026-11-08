@@ -1,5 +1,5 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
-import type { ConversationRootQuery, ConversationWindowQuery, CreateMaterialCommand, PageQuery, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
+import type { ConversationRootQuery, ConversationWindowQuery, CreateMaterialCommand, EditMessageCommand, PageQuery, SendMessageCommand, UpdateMaterialCommand } from '@flux/contracts';
 import { conversationUseCases, DomainError, InvalidInputError, type FileStorage } from '@flux/core';
 import type { Database } from '@flux/db';
 import type { SessionResolver } from '../identity/index.js';
@@ -62,6 +62,14 @@ export async function conversationRoutes(app: FastifyInstance, { db, sessions, s
   app.post<{ Params: { conversationId: string }; Body: SendMessageCommand }>('/api/v1/conversations/:conversationId/messages',
     { preValidation: plainText, schema: { body: send } }, async (request, reply) => reply.code(201).send(
       await store.sendMessage(await principal(request), request.params.conversationId, request.body)));
+
+  // The author changes or deletes their own message (#1006). No Idempotency-Key: saving the same words and deleting a deleted message
+  // answer the current message again, so a retry is safe, and no replayable answer keeps the words.
+  const edit = { type: 'object', required: ['body'], additionalProperties: false, properties: { body: { type: 'string', maxLength: 100_000 } } } as const;
+  app.patch<{ Params: { conversationId: string; messageId: string }; Body: EditMessageCommand }>('/api/v1/conversations/:conversationId/messages/:messageId',
+    { schema: { body: edit } }, async (request) => store.editMessage(await principal(request), request.params.conversationId, request.params.messageId, request.body));
+  app.delete<{ Params: { conversationId: string; messageId: string } }>('/api/v1/conversations/:conversationId/messages/:messageId',
+    async (request) => store.removeMessage(await principal(request), request.params.conversationId, request.params.messageId));
 
   // Viewing receipts (#534). The viewer is the session's person; the body never names one.
   const messageId = { type: 'string', minLength: 1, maxLength: 64 } as const;

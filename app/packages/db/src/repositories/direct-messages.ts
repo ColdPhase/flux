@@ -35,8 +35,9 @@ export interface NewDmMessageRow {
   via?: string | null;
 }
 
-function toMessage(row: MessageRow, replyCount = 0) {
-  return { id: row.id, dmId: row.dmId, authorId: row.authorId, body: row.body, sequence: row.sequence, requestFingerprint: row.requestFingerprint, createdAt: row.createdAt, threadRootId: row.threadRootId, replyCount, via: row.via, kind: row.kind };
+export function toDmMessageRecord(row: MessageRow, replyCount = 0) {
+  return { id: row.id, dmId: row.dmId, authorId: row.authorId, body: row.body, sequence: row.sequence, requestFingerprint: row.requestFingerprint, createdAt: row.createdAt, threadRootId: row.threadRootId, replyCount, via: row.via, kind: row.kind,
+    editedAt: row.editedAt, removedAt: row.removedAt };
 }
 
 export function dmRows(db: DbExecutor) {
@@ -120,19 +121,19 @@ export function dmRows(db: DbExecutor) {
         .orderBy(desc(m.sequence)).limit(window.limit + 1));
       const page = rows.slice(0, window.limit).reverse();
       const counts = await replyCounts(page.map((row) => row.id));
-      return { messages: page.map((row) => toMessage(row, counts.get(row.id) ?? 0)), hasMoreBefore: rows.length > window.limit };
+      return { messages: page.map((row) => toDmMessageRecord(row, counts.get(row.id) ?? 0)), hasMoreBefore: rows.length > window.limit };
     },
     /** One message of this DM, root or reply, whose reply count is included. Null for any other id. */
     async message(dmId: string, messageId: string) {
       const [row] = await open(await db.select().from(m).where(and(eq(m.dmId, dmId), eq(m.id, messageId))));
-      return row ? toMessage(row, row.threadRootId ? 0 : (await replyCounts([row.id])).get(row.id) ?? 0) : null;
+      return row ? toDmMessageRecord(row, row.threadRootId ? 0 : (await replyCounts([row.id])).get(row.id) ?? 0) : null;
     },
     /** The newest `limit` replies of one root below `beforeSequence`, ascending. */
     async threadWindow(dmId: string, rootId: string, window: { limit: number; beforeSequence: number | null }) {
       const rows = await open(await db.select().from(m)
         .where(and(eq(m.dmId, dmId), eq(m.threadRootId, rootId), window.beforeSequence === null ? undefined : lt(m.sequence, window.beforeSequence)))
         .orderBy(desc(m.sequence)).limit(window.limit + 1));
-      return { messages: rows.slice(0, window.limit).reverse().map((row) => toMessage(row)), hasMoreBefore: rows.length > window.limit };
+      return { messages: rows.slice(0, window.limit).reverse().map((row) => toDmMessageRecord(row)), hasMoreBefore: rows.length > window.limit };
     },
     async lockClientMessage(dmId: string, authorId: string, clientMessageId: string) {
       // Hash collisions only serialize unrelated sends; the unique constraint stays the final guard.
@@ -140,14 +141,14 @@ export function dmRows(db: DbExecutor) {
     },
     async findMessage(dmId: string, authorId: string, clientMessageId: string) {
       const [row] = await open(await db.select().from(m).where(and(eq(m.dmId, dmId), eq(m.authorId, authorId), eq(m.clientMessageId, clientMessageId))));
-      return row ? toMessage(row) : null;
+      return row ? toDmMessageRecord(row) : null;
     },
     async appendMessage(message: NewDmMessageRow) {
       const [updated] = await db.update(d).set({ nextSequence: sql`${d.nextSequence} + 1`, lastMessageAt: sql`now()` })
         .where(eq(d.id, message.dmId)).returning({ nextSequence: d.nextSequence });
       const [row] = await db.insert(m).values(await sealFor(db, 'dm_messages', message.workspaceId,
         { ...message, threadRootId: message.threadRootId ?? null, via: message.via ?? null, sequence: updated!.nextSequence - 1 })).returning();
-      return toMessage({ ...row!, body: message.body, requestFingerprint: message.requestFingerprint });
+      return toDmMessageRecord({ ...row!, body: message.body, requestFingerprint: message.requestFingerprint });
     },
     /** Messages of this DM among `ids`, with the facts a receipt run is checked against. Foreign ids are absent. */
     async messageFacts(dmId: string, ids: string[]) {

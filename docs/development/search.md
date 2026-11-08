@@ -34,6 +34,8 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
   committed edit is searchable at once; a deleted object, including cascades from a deleted
   project, DM or sketch, disappears with it. Moving a thought on the map does not reindex it. The
   migration indexes what already exists.
+- **A deleted message is not findable (#1006).** The two message triggers drop the row when `removed_at` is set (`0029`), so the
+  marker is not indexed and the sealed in-memory index drops the document too; an edit rewrites the row with the new words.
 - **Rows hold content, not permissions.** Who may read a row is decided at query time from its
   `audience_key`, so a revoked grant, a left DM or a membership removal applies on
   the next search without touching the index. A sketch's scope is
