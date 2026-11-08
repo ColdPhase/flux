@@ -155,6 +155,8 @@ describe('the API request limit', () => {
       '/%68ealth', '/health#x', '/h%65alth?x=1',
       '/%2ewell-known/oauth-protected-resource', '/%2Ewell-known/oauth-protected-resource', '/.well-known/oauth-protected-resource#x',
       '/%6dcp', '/%6Dcp', '/mcp#x', '/m%63p?x=1',
+      // A target that is not origin-form: absolute-form is read by its path, and the router skips a first character that is not `/`.
+      'http://example.test/api/v1/me', 'HTTP://example.test/%61pi/v1/me?x=1', 'https://example.test:8443/health', 'http://example.test/%6dcp', '*api/v1/me', '*%61pi/v1/me', '*mcp', '*%6dcp',
     ];
     for (const url of counted) {
       clock.at += 60_000;
@@ -173,7 +175,8 @@ describe('the API request limit', () => {
     const { app, clock } = await server({ anonymousPerMinute: 2 });
     await listen(app);
     // Nothing answers these (404), the router reads each as an /api/ path (or /mcp): a flood of them is counted like `/api/nope`.
-    const unmatched = ['/api/v1/nope', '/%61pi/v1/nope', '/api/v1/%2e%2e/v1/me', '/api/v1/./me', '/api/v1/me/', '/api/v1/me%2F', '/api/v1/%2Fme', '/api/v1/%3Fme', '/%6dcp/x', '/api/v1/me%25', '/api/v1/me%2561'];
+    const unmatched = ['/api/v1/nope', '/%61pi/v1/nope', '/api/v1/%2e%2e/v1/me', '/api/v1/./me', '/api/v1/me/', '/api/v1/me%2F', '/api/v1/%2Fme', '/api/v1/%3Fme', '/%6dcp/x', '/api/v1/me%25', '/api/v1/me%2561',
+      'http://example.test/api/v1/nope', 'HTTP://example.test/%61pi/v1/nope', '*api/v1/nope', '*%61pi/v1/nope'];
     for (const url of unmatched) {
       clock.at += 60_000;
       assert.deepEqual(await statuses(3, () => wire(app, url)), [404, 404, 429], url);

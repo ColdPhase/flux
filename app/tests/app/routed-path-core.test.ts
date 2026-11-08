@@ -3,7 +3,7 @@ import { request as httpRequest } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { describe, test } from 'node:test';
 import Fastify from 'fastify';
-import { decodedPath, isRouted, routedPaths, upgradePath } from '../../apps/server/src/http/routed-path.js';
+import { decodedPath, isRouted, originFormTarget, routedPaths, upgradePath } from '../../apps/server/src/http/routed-path.js';
 
 // What decides which part of the API a request belongs to (#1047). The router percent-decodes the path before it matches a route, so a check
 // made on the raw URL never saw `/%61pi/v1/me`, `/%6dcp` or `/health#x`. No database or process: Fastify on a loopback socket, because
@@ -39,6 +39,24 @@ describe('the path as the router reads it', () => {
     assert.equal(decodedPath('//api/v1/me'), '//api/v1/me');
     assert.equal(decodedPath('/api/v1/me/'), '/api/v1/me/');
     assert.equal(decodedPath('/API/v1/me'), '/API/v1/me');
+  });
+
+  test('a target that is not origin-form is read the way the router reads it: absolute-form by its path, a first character that is not / skipped', () => {
+    assert.equal(originFormTarget('/api/v1/me?x'), '/api/v1/me?x');
+    assert.equal(originFormTarget('http://host/api/v1/me?x=1'), '/api/v1/me?x=1');
+    assert.equal(originFormTarget('HTTPS://Host:8443/%61pi/v1/me'), '/%61pi/v1/me');
+    assert.equal(originFormTarget('http://host'), '/');
+    assert.equal(originFormTarget('http://host?x=1'), '/?x=1');
+    for (const unchanged of ['ftp://host/api', '*api/v1/me', 'api/v1/me', '*', 'http://', 'http:///api', 'http://host#/api', 'http://[/api', 'http://a%zz/api', 'http://a:99999/api']) {
+      assert.equal(originFormTarget(unchanged), unchanged, unchanged);
+    }
+    assert.equal(decodedPath('http://host/api/v1/me'), '/api/v1/me');
+    assert.equal(decodedPath('HTTP://host/%61pi/v1/m%65?x'), '/api/v1/me');
+    assert.equal(decodedPath('*api/v1/me'), '/api/v1/me');
+    assert.equal(decodedPath('*%61pi/v1/me'), '/api/v1/me');
+    assert.equal(decodedPath('api/v1/me'), '/pi/v1/me');
+    assert.equal(decodedPath(''), '/');
+    assert.equal(upgradePath('*media/rtc'), '/*media/rtc', 'a gate reads a target as a URL, and the dispatcher refuses it before');
   });
 
   test('a path that does not decode is a 400 before any route, so it stays as written', () => {
@@ -85,8 +103,8 @@ describe('the router and this decoding agree', () => {
     for (const route of routes) app.get(route, async () => ({ ok: true }));
     await app.listen({ host: '127.0.0.1', port: 0 });
     const { port } = app.server.address() as AddressInfo;
-    const wire = (path: string) => new Promise<void>((resolve, reject) => {
-      const outgoing = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', agent: false }, (response) => { response.resume(); response.on('end', () => resolve()); });
+    const wire = (path: string) => new Promise<number>((resolve, reject) => {
+      const outgoing = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', agent: false }, (response) => { response.resume(); response.on('end', () => resolve(response.statusCode ?? 0)); });
       outgoing.on('error', reject);
       outgoing.end();
     });
@@ -100,15 +118,19 @@ describe('the router and this decoding agree', () => {
         '/health', '/%68ealth', '/health#x', '/health?x', '/h%65alth/',
         '/.well-known/oauth-protected-resource', '/%2ewell-known/oauth-protected-resource', '/%2Ewell-known/oauth-protected-resource', '/.well-known/oauth-protected-resource#x',
         '/caf%C3%A9', '/caf%c3%a9', '/caf%C3',
+        // Targets that are not origin-form: absolute-form is read by its path, a first character that is not `/` is skipped, and what does not parse is a 400.
+        'http://x/api/v1/me', 'HTTP://x/%61pi/v1/me?y', 'https://x:8443/mcp', 'http://x', 'http://x?y', 'http://x/health#z', 'http://x/.well-known/oauth-protected-resource',
+        'http://[/api/v1/me', 'http://a%zz/api/v1/me', 'http://a:99999/api/v1/me', 'http://x#/api/v1/me', 'ftp://x/api/v1/me',
+        '*api/v1/me', '*%61pi/v1/me', '*mcp', '*%6dcp/', 'xhealth', 'api/v1/me',
       ];
       for (const url of urls) {
         seen.length = 0;
-        await wire(url);
+        const status = await wire(url);
         const decoded = decodedPath(url);
         const answered = seen[0]?.route;
         const expected = routes.includes(decoded) ? decoded : undefined;
-        // A path that does not decode is a 400 before any hook: nothing is seen at all.
-        if (seen.length === 0) { assert.ok(decoded === url.split(/[?#]/, 1)[0], `${url} is refused as written`); continue; }
+        // A target the router cannot read is a 400 before any hook: nothing is seen at all, and nothing here may throw on it.
+        if (seen.length === 0) { assert.equal(status, 400, `${url} is refused`); continue; }
         assert.equal(answered, expected, `${url}: the router ${answered ? `ran ${answered}` : 'matched no route'}, the decoded path ${decoded} says ${expected ?? 'no route'}`);
       }
     } finally { await app.close(); }

@@ -185,10 +185,10 @@ test('an encoded path runs the same route and has the same budget: /%61pi, /%6dc
     /** The next client address, as a proxy in front would report it. */
     const nextClient = () => { clients += 1; return `10.82.${clients >> 8}.${clients & 255}`; };
     /** One GET with the path as written; `from` is the client address the proxy reports. */
-    const wire = (path: string, from: string, headers: Record<string, string> = {}) => new Promise<{ statusCode: number }>((resolve, reject) => {
+    const wire = (path: string, from: string, headers: Record<string, string> = {}) => new Promise<{ statusCode: number; type: string }>((resolve, reject) => {
       const outgoing = httpRequest({ host: '127.0.0.1', port, path, method: 'GET', agent, headers: { 'x-forwarded-for': from, ...headers } }, (response) => {
         response.resume();
-        response.on('end', () => resolve({ statusCode: response.statusCode ?? 0 }));
+        response.on('end', () => resolve({ statusCode: response.statusCode ?? 0, type: String(response.headers['content-type'] ?? '') }));
       });
       outgoing.on('error', reject);
       outgoing.end();
@@ -204,9 +204,11 @@ test('an encoded path runs the same route and has the same budget: /%61pi, /%6dc
     // The route's answer with the plain spelling is what every spelling of it must give, and then the same 429.
     const routes: [plain: string, spellings: string[]][] = [
       ['/api/v1/auth/capabilities', ['/%61pi/v1/auth/capabilities', '/%61%70%69/v1/auth/capabilities', '/api/v1/auth/capabi%6Cities', '/api/v1/auth/capabi%6cities',
-        '/%61pi/v1/auth/capabilities?x=1', '/api/v1/auth/capabilities#fragment', '/api/v1/auth/capabilities?x=1#y']],
+        '/%61pi/v1/auth/capabilities?x=1', '/api/v1/auth/capabilities#fragment', '/api/v1/auth/capabilities?x=1#y',
+        // Not origin-form: absolute-form is the request it names, and the router skips a first character that is not `/` (`*api/…`).
+        'http://example.test/api/v1/auth/capabilities', 'HTTP://example.test/%61pi/v1/auth/capabilities?x=1', '*api/v1/auth/capabilities', '*%61pi/v1/auth/capabilities']],
       ['/api/v1/health', ['/api/v1/%68ealth']],
-      ['/mcp', ['/%6dcp', '/%6Dcp', '/mcp#x', '/m%63p?x=1']],
+      ['/mcp', ['/%6dcp', '/%6Dcp', '/mcp#x', '/m%63p?x=1', 'http://example.test/%6dcp', '*mcp', '*%6dcp']],
     ];
     for (const [plain, spellings] of routes) {
       const status = await answer(plain);
@@ -222,10 +224,16 @@ test('an encoded path runs the same route and has the same budget: /%61pi, /%6dc
     // No API route answers these, and the router reads each as an /api/ path, /health or /mcp: counted as `/api/nope` is, whatever answers (the
     // web app's file handler refuses a dot segment with a 403).
     for (const path of ['/api/v1/nope', '/%61pi/v1/nope', '/api/v1/%2e%2e/v1/auth/capabilities', '/api/v1/./auth/capabilities', '/api/v1/auth/capabilities/',
-      '/api/v1/auth%2Fcapabilities', '/%68ealth', '/health', '/%6dcp/x']) {
+      '/api/v1/auth%2Fcapabilities', '/%68ealth', '/health', '/%6dcp/x', 'http://example.test/api/v1/nope', '*api/v1/nope', '*%61pi/v1/nope']) {
       const status = await answer(path);
       assert.ok(status === 403 || status === 404, `${path} runs no API route (${status})`);
       await spends(path, status);
+    }
+    // An API 404 is JSON however the target is written, never the app shell.
+    for (const path of ['/api/v1/nope', '/%61pi/v1/nope', 'http://example.test/api/v1/nope', 'HTTP://example.test/%61pi/v1/nope', '*api/v1/nope', '*%61pi/v1/nope']) {
+      const answered = await wire(path, nextClient(), { accept: 'text/html' });
+      assert.equal(answered.statusCode, 404, path);
+      assert.match(answered.type, /^application\/json/, `${path}: an API 404 is JSON`);
     }
     // Made-up bearers on /mcp are the address's count for credentials not accepted yet (1,200); on a misread /%6dcp they would each be an
     // anonymous request with no credential (600) or nothing at all.

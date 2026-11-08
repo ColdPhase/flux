@@ -162,7 +162,8 @@ export function liveSignalGate(options: SignalGateOptions): SignalGate {
 
   const pathOf = (url: string | undefined) => {
     // The path the router reads: `/%6dedia/rtc` is `/media/rtc` to Fastify, so it is to the gate (#1047).
-    const parsed = new URL(url ?? '/', 'http://gate.invalid');
+    let parsed: URL;
+    try { parsed = new URL(url ?? '/', 'http://gate.invalid'); } catch { return null; }
     const path = upgradePath(url);
     if (path === null || !path.startsWith(`${MEDIA_GATE_PATH}/`)) return null;
     return { path: path.slice(MEDIA_GATE_PATH.length), query: parsed.search.slice(1), params: parsed.searchParams };
@@ -196,7 +197,8 @@ export function liveSignalGate(options: SignalGateOptions): SignalGate {
         app.get(`${MEDIA_GATE_PATH}${path}`, async (request, reply) => {
           const origin = request.headers.origin;
           if (origin !== undefined && origin !== options.publicOrigin) return reply.code(403).type('text/plain').send('Forbidden');
-          const target = pathOf(request.url)!;
+          const target = pathOf(request.url);
+          if (!target) return reply.code(400).type('text/plain').send('Bad Request');
           const decision = await decide(request.headers, target.params);
           // 401 is final for the LiveKit client; it does not fall back to the v0 path or retry.
           if (!decision.admitted) return reply.code(401).type('text/plain').send('Media admission denied');
