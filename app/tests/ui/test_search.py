@@ -57,7 +57,7 @@ class SearchJourney(unittest.TestCase):
         cls.pw.stop()
 
     def context(self, who: str | None, *, phone: bool = False, dark: bool = False) -> BrowserContext:
-        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw"}
+        options: dict = {"base_url": ORIGIN, "color_scheme": "dark" if dark else "light", "locale": "en-GB", "timezone_id": "Europe/Warsaw", "service_workers": "block"}
         if phone:
             options.update(viewport=PHONE, device_scale_factor=3, is_mobile=True, has_touch=True)
         else:
