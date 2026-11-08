@@ -167,6 +167,10 @@ span.photo-grid__open { cursor: default; }
    It is the message's own reference, so it sits inside the message's one bubble (a tint, not a second card). */
 .wiki-card { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; margin-top: 6px; padding: 8px 12px; border-radius: var(--r); background: var(--el); box-shadow: inset 0 0 0 1px var(--line); color: var(--t1); text-decoration: none; transition: var(--tr); }
 .wiki-card:hover { background: var(--hov); }
+/* A cited page that was deleted (#941): the card stays so the message still reads as it was written, and it opens nothing. */
+.wiki-card--gone { cursor: default; color: var(--t3); }
+.wiki-card--gone:hover { background: var(--el); }
+.wiki-card--gone::after { content: none; }
 .wiki-card__glyph { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: var(--r-sm); background: var(--sub); color: var(--t2); }
 .wiki-card__text { display: flex; flex-direction: column; min-width: 0; }
 .wiki-card strong { font-size: var(--fs-base); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

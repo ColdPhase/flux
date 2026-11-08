@@ -20,7 +20,8 @@ test('standing doc grants start and edit a project doc as the agent at the read 
   const capabilities = f.bootstrap.capabilities as { name: string; operation: string | null; classes: string[]; available: boolean }[];
   assert.deepEqual(capabilities.filter((item) => item.operation?.startsWith('doc.')).map(({ name, operation, classes, available }) => ({ name, operation, classes, available })),
     [{ name: 'flux_create_doc', operation: 'doc.create', classes: ['execute', 'plan'], available: true },
-      { name: 'flux_update_doc', operation: 'doc.update', classes: ['execute', 'plan'], available: true }]);
+      { name: 'flux_update_doc', operation: 'doc.update', classes: ['execute', 'plan'], available: true },
+      { name: 'flux_delete_doc', operation: 'doc.delete', classes: ['execute', 'plan'], available: true }]);
   const first = randomUUID();
   const started = { ...base(f, 'plan', first), sources: [f.source],
     doc: { title: 'Battery notes', body: 'Measured **four hours** against [the plan](flux:doc/00000000-0000-4000-8000-000000000000).' } };

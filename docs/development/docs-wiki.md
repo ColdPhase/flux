@@ -37,6 +37,7 @@ version table.
 | `POST /api/v1/projects/:projectId/docs/preview` | `{ body }` → `{ html, mentions }`, rendered exactly as a saved version (project read access). |
 | `GET/PATCH /api/v1/docs/:docId` | `PATCH { title?, body?, cause? }` (`cause`: `restore`, `keep_mine` or `page_left`) needs `If-Match: "<version>"` (or `expectedVersion`): 428 without, `409 VERSION_CONFLICT` with the latest doc (`current`) when stale. A save that changes nothing returns the doc without a new version. |
 | `GET /api/v1/docs/:docId/versions`, `GET /api/v1/docs/:docId/versions/:version` | Newest first, each `{ version, title, reason, author, createdAt }`; one version adds `body`, `html` and `mentions`. |
+| `DELETE /api/v1/docs/:docId` | Deletes the page for everyone with access (#941, [below](#deleting-a-page-941)). Needs `If-Match: "<version>"` like an edit: 428 without, `409 VERSION_CONFLICT` with the latest doc when stale. `204`. A page that is gone, or that the caller cannot see, is `404 DOC_NOT_FOUND`; so a retry after the answer was lost is 404. |
 | `POST /api/v1/docs/:docId/sections` | "Add to docs": `{ from: { type: 'result' \| 'decision', id } }`, with `If-Match`. |
 | `GET /api/v1/workspaces/:workspaceId/docs` | Docs in every project of the workspace that the policy's `visibleFilter` lets the caller read, applied before the page and the total. The web app has no workspace-wide Wiki page any more (#865: the Wiki lives inside a space); the read stays for API clients. |
 
@@ -134,14 +135,39 @@ holds that line, nothing changes and no version is made.
   or data anywhere, so no page holds a section copied by the earlier "Add to docs" and there is no
   conversion job, migration or schema change. The card needs only the decision's existing fields.
 
+## Deleting a page (#941)
+
+⋯ › **Delete page** (desktop and phone) asks for an OK in the space's own dialog ("Delete <title>?": it says the page goes for
+everyone, with its earlier versions, and that a message that cited it keeps its text). Deleting always waits for an OK (Prostota
+principle 6). Anyone who may write in the space may delete a page; an earlier version is read-only and has no Delete.
+`DELETE /api/v1/docs/:docId` takes the version the person saw (`If-Match`), so a page edited meanwhile is not deleted unseen. It runs in
+one transaction with the page's row and its shared text locked, and removes the page by these rules. A write that waited for the page's lock while a delete committed finds the page gone: `404 DOC_NOT_FOUND`, never a 500 (a second Delete at the same moment reads the same, and the dialog treats a 404 as already deleted):
+
+| What named the page | Rule |
+| --- | --- |
+| Its versions, shared working copy, receipts and archives | Deleted with the row (`ON DELETE CASCADE`). Nothing of the page can be read: its address, versions, shared text and `GET /api/v1/materials/:id/versions/:n` are 404. |
+| Its links, from and to it (mentions, sources, backlinks) | Deleted, including a task's, decision's or result's source that named one of its versions; the creation notice of a task made from it drops that entry (so a project export holds no id of a deleted page). A page that names it still reads the name as missing. The tasks it mentioned stay, and keep the evidence that the page used them. |
+| Its search rows | Deleted by the version trigger that wrote them. |
+| A message that cited one of its versions | Keeps its text. `project_messages.source_material_*` are cleared and `source_deleted` is set (the database refuses a row that is both); the API sends `source: null` and `sourceDeleted: true`, and the message shows a **Page deleted** card with nothing to open. |
+| An agent suggestion about it (`agent_proposals`) | Cleared (deleted): it can no longer be acted on. |
+| A task plan item made from it (`project_task_plan_intents`) | Cleared (deleted); the task made from it stays. |
+| A live room on it (`live_sessions.doc_id`) | An open room becomes `ending`, which the live lifecycle finishes at the media server; an ended session keeps the page's id as history, so the column has no foreign key. The trigger `live_sessions_doc_in_space` (migration 0030) keeps what the key held: a new session, or a changed `doc_id`, must name a page of the session's own space (`foreign_key_violation` otherwise). Ending a room is a state change and does not fire it. |
+| The people with it open | The shared-text connections are told on commit (`pg_notify`), find the page gone, and receive `revoked`; unsaved shared text goes with the page. The space's `project.doc_deleted.v1` event also reaches them, and the Wiki reads its list of pages again. An open page that learns it (the event, or the room closing) asks the server whether the space still answers and the page does not; if so it shows **This page was deleted** with a way back to the Wiki, and no editor. Text the person typed during the visit stays in the tab, in a read-only box with Copy my text. If the space does not answer either, it says access ended instead. |
+
+It records one event, `project.doc_deleted.v1` with `{ docId, version }` (ids only). **Agents** propose it with `flux_delete_doc`
+(operation `doc.delete`, postcondition `doc_removed`): the call always waits for the owner's OK in both modes that change anything (F-036
+AG-3), shows as "Delete / Keep" in the owner's change log, and has no Undo, since nothing can be put back. A person-facing route refuses an
+agent principal (`DOC_NEEDS_PERSON`); only the owner's approval runs the delete for the agent. The assistant's Undo of a page it started
+still leaves the page (there is no Draft to move it to, #942): to take it away, a person deletes it.
+
 ## Events
 
 A committed create, edit or section records exactly one project event in its transaction:
 `project.doc_created.v1` or `project.doc_updated.v1`, `object_id` the project and
 `data: { docId, version }` (identifiers only). The stream reaches current project readers; the
 return view (#106) shows "Ari started a doc: …" or "Doc updated: …" with the versions made and
-the latest reason, and links to the history from the version before them. Idempotent replays and
-refused changes record none.
+the latest reason, and links to the history from the version before them. A deleted page records
+`project.doc_deleted.v1` (see above). Idempotent replays and refused changes record none.
 
 ## Web
 
@@ -172,7 +198,7 @@ draws it since #869: two columns only, the sidebar and the page.
 - **The row above the title**: "Saved · just now" (or "Saving…"), "Jonas is here too" and the faces
   of the people writing, **Contents** (≡: the headings, levels 1–3; choosing one scrolls to it,
   smoothly unless motion is reduced; "No headings yet" without any) and **⋯** (History, Copy link,
-  Export, Import a Markdown file, Rename page). The title is the **page switcher**: "Find a page",
+  Export, Import a Markdown file, Rename page, Delete page). The title is the **page switcher**: "Find a page",
   the space's pages by name with the open one checked, and "+ New page", which names the page in
   place and opens it with the caret in its text. `/projects/:id/docs` opens the page last open in
   this tab, else the latest change; a space without pages offers New page and the import.
@@ -212,7 +238,9 @@ title row in one place with one page or many, tables, the phone), `test_wiki_pan
 writing and automatic versions, New page, Import with its refusals, History, Restore, Rename,
 exports compared byte for byte, Copy link, phone 390 and 320, tablet 820, contrast),
 `test_docs.py` (a page with a reference, two people at once, history and diff, add from a result,
-the phone, hostile text), `test_doc_references.py` (the link picker), `test_wiki_decision_cards.py`
+the phone, hostile text), `test_wiki_panes.py` also covers Delete page (`test_12` and `test_13`, the computer and the phone; `test_14`, a page deleted while it is open),
+`app/tests/app/docs-delete.test.ts` (#941: the version it needs, everything the delete
+removes, a citing message, suggestions and plan items, a live room, the event, access, a write that waits for a delete, an encrypted space), `live-doc-anchor.test.ts` (a live room stays in its page's space), `test_doc_references.py` (the link picker), `test_wiki_decision_cards.py`
 and `test_live_editing.py` (two people, sockets and automatic versions).
 
 ## Not yet

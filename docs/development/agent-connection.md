@@ -428,6 +428,7 @@ The same executor runs the canonical doc (#112) and conversation (#36, #154) com
 | --- | --- | --- | --- |
 | `flux_create_doc` | `doc.create` | none | One project doc: title, Markdown text, reason |
 | `flux_update_doc` | `doc.update` | the doc | The next version at the version last read (like `If-Match`): title, the complete text, reason |
+| `flux_delete_doc` | `doc.delete` | the doc | Deletes one page for everyone at the version last read; always waits for the owner's OK (#941) |
 | `flux_start_conversation` | `conversation.create` | none | One new project conversation with its first message, optionally citing one material or doc version |
 | `flux_reply_in_conversation` | `conversation.reply` | the conversation | One reply in an existing project conversation, including a task's discussion thread |
 | `flux_post_agent_thread` | `conversation.reply` | the task's agents' thread | One work message about a task in its agents' thread (#400, below) |
@@ -547,7 +548,7 @@ map writes with the standing-grant operation each needs. Since 1.3.0 (2026-10-06
 #153) the execute/checkpoint module takes a task with `flux_create_unit`, then
 claims, renews, releases and completes the unit; the block/transfer module
 transfers it. Versions 1.5.0 to 1.13.0 also named the request tools and the inbox;
-1.14.0 (#973) removes them and renames that module `hand_off`.
+1.14.0 (#973) removes them and renames that module `hand_off`. 1.15.0 (#941) names `flux_delete_doc`.
 
 Every authenticated MCP connection delivers it in three ways:
 

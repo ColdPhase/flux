@@ -84,7 +84,7 @@ const POSTCONDITIONS: Record<AgentExecutionCommand['operation'], readonly AgentP
   'map.create': ['map'], 'map.rename': ['map'], 'map.thought.create': ['thought', 'map_checkpoint'],
   'map.thought.update': ['thought', 'map_checkpoint'], 'map.thought.delete': ['map_checkpoint'],
   'map.positions.update': ['thought', 'map_checkpoint'], 'map.link.create': ['map_checkpoint'], 'map.link.delete': ['map_checkpoint'],
-  'doc.create': ['doc'], 'doc.update': ['doc'], 'conversation.create': ['message'], 'conversation.reply': ['message'],
+  'doc.create': ['doc'], 'doc.update': ['doc'], 'doc.delete': ['doc_removed'], 'conversation.create': ['message'], 'conversation.reply': ['message'],
   'cowork.claim': ['cowork.claim_state'], 'cowork.renew': ['cowork.claim_state'], 'cowork.release': ['cowork.claim_state'],
   'cowork.unit.create': ['cowork.unit_state'],
   'cowork.unit.complete': ['cowork.unit_state'], 'cowork.unit.transfer': ['cowork.unit_state'], 'cowork.unit.decline': ['cowork.unit_state'],
@@ -125,7 +125,7 @@ export function validateAgentPostconditions(operation: AgentExecutionCommand['op
         || !['pending', 'claimed', 'paused', 'completed', 'stopped'].includes(condition.state)) postconditionInvalid();
     } else {
       if (!isUuid(condition.id)) postconditionInvalid();
-      if (condition.kind === 'result' || condition.kind === 'message') fields = ['kind', 'id'];
+      if (condition.kind === 'result' || condition.kind === 'message' || condition.kind === 'doc_removed') fields = ['kind', 'id'];
       else if (condition.kind === 'map_checkpoint') {
         fields = ['kind', 'id', 'updatedAt'];
         if (!iso(condition.updatedAt)) postconditionInvalid();

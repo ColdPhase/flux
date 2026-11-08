@@ -5,9 +5,10 @@ import * as schema from '../schema.js';
 import { docRows } from './docs.js';
 import { openRow, openRows, sealFor, sealOf } from '../sealing.js';
 import type { DbExecutor } from './push.js';
+import { EDITING_CHANNEL } from './editing-channel.js';
 
 export class EditingPresenceCapacityError extends Error { readonly code = 'EDITING_PRESENCE_CAPACITY'; }
-export const EDITING_CHANNEL = 'flux_editing';
+export { EDITING_CHANNEL };
 const h = schema.docLiveHeads; const r = schema.docLiveReplicas; const i = schema.liveEditingIntents; const u = schema.docLiveUpdates;
 type SavedDoc = NonNullable<Awaited<ReturnType<ReturnType<typeof docRows>['find']>>>;
 interface State extends Record<string, unknown> { workspace: string; room: string; generation: string; body: string; sequence: number }

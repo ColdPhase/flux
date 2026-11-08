@@ -679,6 +679,8 @@ export const projectMessages = pgTable('project_messages', {
   body: text('body').notNull(),
   sourceMaterialId: uuid('source_material_id'),
   sourceMaterialVersion: integer('source_material_version'),
+  /** The page this message cited was deleted (#941): the citation is cleared and the message says so. */
+  sourceDeleted: boolean('source_deleted').notNull().default(false),
   /** Plain text unless an explicit native effect (#154, migration 0040) says otherwise. */
   contributionKind: text('contribution_kind', { enum: ['text', 'blocker', 'result', 'handoff'] }).notNull().default('text'),
   resultId: uuid('result_id'),
@@ -702,6 +704,7 @@ export const projectMessages = pgTable('project_messages', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sourceMaterialId, table.sourceMaterialVersion], foreignColumns: [projectMaterialVersions.workspaceId, projectMaterialVersions.projectId, projectMaterialVersions.materialId, projectMaterialVersions.version] }),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.resultId], foreignColumns: [projectResults.workspaceId, projectResults.projectId, projectResults.id] }),
+  check('project_message_source_deleted', sql`NOT ${table.sourceDeleted} OR (${table.sourceMaterialId} IS NULL AND ${table.sourceMaterialVersion} IS NULL)`),
   check('project_message_contribution_kind', sql`${table.contributionKind} IN ('text', 'blocker', 'result', 'handoff')`),
   check('project_message_result_reference', sql`(${table.contributionKind} = 'result') = (${table.resultId} IS NOT NULL)`),
   check('project_message_attachment_count', sql`${table.attachmentCount} BETWEEN 0 AND 10`),
@@ -1348,7 +1351,8 @@ export const liveSessions = pgTable('live_sessions', {
   foreignKey({ columns: [table.workspaceId, table.projectId, table.conversationId], foreignColumns: [projectConversations.workspaceId, projectConversations.projectId, projectConversations.id] }),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.workId], foreignColumns: [projectWorkItems.workspaceId, projectWorkItems.projectId, projectWorkItems.id] }),
   foreignKey({ columns: [table.workspaceId, table.projectId, table.sketchId], foreignColumns: [sketches.workspaceId, sketches.projectId, sketches.id] }),
-  foreignKey({ columns: [table.workspaceId, table.projectId, table.docId], foreignColumns: [projectMaterials.workspaceId, projectMaterials.projectId, projectMaterials.id] }),
+  // No foreign key on the page (#941): a deleted page ends its room, and the ended session keeps the id as history. The trigger
+  // live_sessions_doc_in_space (migration 0030) keeps what the key held: a session's page is a page of its own space.
   index('live_sessions_project_idx').on(table.projectId, table.createdAt.desc(), table.id.desc()),
   index('live_sessions_lifecycle_idx').on(table.state, table.updatedAt, table.id),
 ]);

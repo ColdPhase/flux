@@ -59,4 +59,17 @@ export function registerAgentDocActions(tools: AgentToolRegistry, db: Database, 
       return { value: { docId: updated.id, version: updated.version },
         postconditions: [{ kind: 'doc', id: updated.id, version: updated.version }] };
     })));
+
+  register('doc.delete').registerTool('flux_delete_doc', {
+    title: 'Delete a project wiki doc',
+    description: 'Ask to delete one project doc (wiki page) for everyone with access, at the version you last read, like If-Match. Deleting always '
+      + 'waits for your owner\'s OK: the page stays until they approve, and then nothing of it remains. A message that cited it says the page was '
+      + 'deleted. A doc changed since is VERSION_CONFLICT and nothing is deleted: read it again with flux_get_doc.',
+    inputSchema: z.strictObject({ ...execution, docId: id.describe('A doc of this project, from flux_list_docs.'), expectedVersion: version }),
+    annotations: { ...annotations, destructiveHint: true },
+  }, ({ docId, expectedVersion, ...input }) => run(() => execute(input, 'doc.delete', docId, { expectedVersion } as unknown as AgentJsonValue,
+    async ({ docs, agent }) => {
+      await docs.deleteDoc(agent, docId, expectedVersion);
+      return { value: { docId, deleted: true }, postconditions: [{ kind: 'doc_removed', id: docId }] };
+    })));
 }

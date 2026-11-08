@@ -81,7 +81,7 @@ const isVersionConflict = (error: unknown) => error instanceof DomainError && er
 
 const OBJECT: Record<string, AssistantObjectType> = {
   'work.create': 'work', 'work.update': 'work', 'result.record': 'result', 'decision.propose': 'decision', 'doc.create': 'doc',
-  'doc.update': 'doc', 'map.create': 'map', 'map.rename': 'map', 'map.thought.create': 'thought', 'map.thought.update': 'thought',
+  'doc.update': 'doc', 'doc.delete': 'doc', 'map.create': 'map', 'map.rename': 'map', 'map.thought.create': 'thought', 'map.thought.update': 'thought',
   'map.thought.delete': 'thought', 'map.positions.update': 'thought', 'map.link.create': 'link', 'map.link.delete': 'link',
   'conversation.create': 'message', 'conversation.reply': 'message', 'cowork.unit.create': 'work', 'cowork.unit.transfer': 'work', 'work.creation.revert': 'work',
 };
@@ -237,6 +237,12 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
       return { ...base, undo: names.length ? { plan: { kind: 'doc', fields: names }, ...words } : null, title: doc.title, mine, maker: otherPerson(doc),
         beforeVersion: typeof payload.expectedVersion === 'number' ? payload.expectedVersion : doc.version };
     }
+    case 'doc.delete': {
+      // Deleting a page always waits for the owner's OK (F-036 AG-3, #941), and there is nothing to put back: no Undo.
+      const doc = objectId ? await rows.doc(objectId) : null;
+      return { ...base, undo: null, title: doc?.title ?? '', mine: ours(doc ?? null), maker: otherPerson(doc ?? null), removal: true,
+        beforeVersion: typeof payload.expectedVersion === 'number' ? payload.expectedVersion : doc?.version ?? null };
+    }
     case 'map.rename': {
       const map = objectId ? await rows.map(objectId) : null;
       const fields = map && typeof payload.title === 'string' ? { title: { before: map.title, after: payload.title } } : null;
@@ -317,7 +323,7 @@ async function describe(tx: Transaction, operation: string, objectId: string | n
 }
 
 /** What makes or changes a person's things. Coordination (claims, releases, units) touches none, so the waiting rule does not read it. */
-const CHANGES_THINGS: ReadonlySet<string> = new Set(['work.create', 'work.update', 'result.record', 'doc.update', 'map.rename', 'map.thought.create',
+const CHANGES_THINGS: ReadonlySet<string> = new Set(['work.create', 'work.update', 'result.record', 'doc.update', 'doc.delete', 'map.rename', 'map.thought.create',
   'map.thought.update', 'map.thought.delete', 'map.positions.update', 'map.link.create', 'map.link.delete']);
 
 /** Whether this change always waits for the owner's OK (F-036 AG-3): a deletion, or something of another person's. Read inside the change's transaction. */

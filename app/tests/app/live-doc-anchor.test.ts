@@ -99,15 +99,34 @@ test('wiki doc is a project-bound live anchor; non-doc, foreign and hidden ancho
     await assert.rejects(store.createOrGet(ownerPrincipal, place.id, { type: 'doc', id: foreignDoc.id },
       randomUUID(), media.ensureRoom), (error: unknown) => error instanceof DomainError &&
         error.code === 'LIVE_CONTEXT_NOT_FOUND');
-    await assert.rejects(pool.query(`INSERT INTO live_sessions
+    // The database keeps the rule on its own: a session names a page of its own space (a trigger, since a deleted page must be
+    // free to go while its ended session keeps the id as history, #941). A page of another space, a material that is no page
+    // and an id that is nothing are all refused, on a new session and on a changed `doc_id`.
+    const insertSession = (docId: string) => pool.query(`INSERT INTO live_sessions
       (id, workspace_id, project_id, doc_id, created_by, client_session_id, room_id)
       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [randomUUID(), ws.id, place.id, foreignDoc.id, owner.id, randomUUID(), `live_${randomUUID()}`]),
-    /foreign key/);
+    [randomUUID(), ws.id, place.id, docId, owner.id, randomUUID(), `live_${randomUUID()}`]);
+    const outsideTheSpace = (error: unknown) => (error as { code?: string }).code === '23503'
+      && /page must be a page of its own space/.test((error as Error).message);
+    for (const wrong of [foreignDoc.id, material.materialId, randomUUID()]) await assert.rejects(insertSession(wrong), outsideTheSpace);
+    await assert.rejects(pool.query('UPDATE live_sessions SET doc_id = $2 WHERE id = $1', [session.id, foreignDoc.id]), outsideTheSpace);
+    assert.equal((await pool.query('SELECT doc_id FROM live_sessions WHERE id = $1', [session.id])).rows[0].doc_id, doc.id, 'a refused change changes nothing');
     await liveRevocationCoordinator(db, pool, media).withProjectChange(place.id, () => removeFromSpaceCore(ownerPrincipal, place.id, { kind: 'human', id: viewer.id }, db));
     assert.equal((await app.inject({ method: 'GET', url: `/api/v1/live-sessions/${session.id}`,
       headers: { 'x-test-user': viewer.id } })).statusCode, 404);
     assert.equal((await app.inject({ method: 'POST', url: `/api/v1/live-sessions/${session.id}/join`,
       headers: { 'x-test-user': viewer.id } })).statusCode, 404);
+
+    // A deleted page is free to go (#941): its room ends and the ended session keeps the page's id as history. Ending the room
+    // is a state change and does not meet the rule above; a new room on the page that is gone does.
+    const latest = expectStatus(await owner.browser.request('GET', `/api/v1/docs/${doc.id}`), 200) as Doc;
+    expectStatus(await owner.browser.request('DELETE', `/api/v1/docs/${doc.id}`, { headers: { 'if-match': `"${latest.version}"` } }), 204);
+    const ending = (await pool.query('SELECT state, doc_id FROM live_sessions WHERE id = $1', [session.id])).rows[0];
+    assert.deepEqual([ending.state, ending.doc_id], ['ending', doc.id]);
+    await pool.query("UPDATE live_sessions SET state = 'ended', ended_at = now(), updated_at = now() WHERE id = $1", [session.id]);
+    const ended = (await pool.query('SELECT state, doc_id FROM live_sessions WHERE id = $1', [session.id])).rows[0];
+    assert.deepEqual([ended.state, ended.doc_id], ['ended', doc.id], 'the ended session keeps the id of the page that is gone');
+    await assert.rejects(insertSession(doc.id), outsideTheSpace);
+    assert.equal((await start(owner.id, doc.id)).statusCode, 404, 'no new room on a deleted page');
   } finally { await app.close(); }
 });

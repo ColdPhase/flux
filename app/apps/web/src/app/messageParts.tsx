@@ -112,6 +112,14 @@ export function SourceCitation({ materialId, version, onDenied }: { materialId: 
   </RefLink>;
 }
 
+/** The page a message cited was deleted (#941): the message keeps its text and says so, with nothing to open. */
+export function DeletedSourceCitation() {
+  return <span className="wiki-card wiki-card--gone" data-ref="wiki" data-deleted="true">
+    <span className="wiki-card__glyph" aria-hidden="true"><Icon name="doc" size={14} /></span>
+    <span className="wiki-card__text"><strong>Page deleted</strong><small>Wiki page</small></span>
+  </span>;
+}
+
 export { AuthorFace } from '../ui';
 
 /** An agent author's name line: its name, the "Agent" tag and "for <owner>" when the reader may know it. */

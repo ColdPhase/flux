@@ -14,6 +14,7 @@ import { ago } from '../docs/format';
 import type { PageMode } from '../docs/DocViews';
 import { Faces, PageFrame, hereToo, scrollPage, useNow, useReferenceClicks } from '../docs/WikiParts';
 import { RefMark, readReferences } from '../docs/WikiRead';
+import { PageGone, usePageGone } from '../docs/page-gone';
 import { COLLABORATION_INK, shapeOfSlot, type PeerShape } from './color';
 import { RefHosts, headingsOf, livePreview, setRefData, workRefs } from './livePreview';
 import { LocalWiki } from './local-wiki';
@@ -349,6 +350,9 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
 
   // Bind the source: the view takes its text (unchanged when the read text is already it) and edits it from now on.
   const text = source?.text;
+  // Someone deleted the page while it was open (#941): the room closes, what this person typed stays in this tab.
+  const { gone, checking } = usePageGone(project.id, doc.id, userId, shared?.accessEnded === true || local?.missing === true);
+  useEffect(() => { if (gone) shared?.pageDeleted(); }, [gone, shared]);
   useEffect(() => {
     if (!view) return;
     const refocus = view.hasFocus;
@@ -512,7 +516,8 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
     catch { return null; }
   }, [userId, doc.id]);
   const privateText = shared ? shared.privateBody ?? legacy : null;
-  const problem = error ?? shared?.problem ?? local?.problem ?? null;
+  // While the page is asked whether it was deleted, the wording for lost access is not said yet.
+  const problem = error ?? (checking ? null : shared?.problem ?? local?.problem) ?? null;
   const conflict = local?.conflict ?? null;
 
   const notices = <>
@@ -548,6 +553,10 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
     ) : null}
   </>;
 
+  if (gone) {
+    const typed = shared ? shared.inputRevision > 0 || shared.privatePending.length > 0 : !!local?.dirty;
+    return <PageGone projectId={project.id} projectName={project.name} title={title} mine={typed ? text?.toString() || null : null} />;
+  }
   return (
     <PageFrame docId={doc.id} title={title} headings={headings} onHeading={go} rename={rename} notices={notices} onBodyClick={onClick}
       meta={<>{state}<span role="status">{people.length ? ` · ${hereToo(people)}` : ''}</span></>}

@@ -284,6 +284,8 @@ function AppLayoutContent() {
     if (event.kind === SPACE_AI_POLICY_CHANGED_EVENT || event.kind === 'project.renamed.v1' || event.kind === 'project.deleted.v1') { revalidator.revalidate(); return; }
     // An encrypted workspace was unlocked or locked (F-030, #655): its places turn into the locked panel, or back, without a reload.
     if (isEncryptionEvent(event.kind)) { revalidator.revalidate(); return; }
+    // A page was deleted (#941): the Wiki's list of pages reads again; an open page asks for itself.
+    if (event.kind === 'project.doc_deleted.v1') { revalidator.revalidate(); return; }
     // Access was given or taken (#763 FT-8): Home, Projects and the sidebar list the person's projects again at once.
     if (event.kind === 'project.grant_set.v1' || event.kind === 'project.grant_revoked.v1') { revalidator.revalidate(); return; }
     // Someone saw a message (#534): only the open conversation shows it, and it asks for itself.

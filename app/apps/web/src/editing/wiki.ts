@@ -29,6 +29,7 @@ const GAP_MS = 3000;
  */
 const CARET_RENEWAL_MS = 2500;
 const ACTIVE_MS = 30_000;
+const DELETED = 'This page was deleted. Your text is kept privately.';
 
 /**
  * The Y.Doc is an editor instance. A socket reconnect renews it; a reload creates another.
@@ -57,6 +58,8 @@ export class SharedWiki {
   savedAt: number | null = null;
   /** A native write (an agent, Add to docs) started a new generation while nothing was pending: open a fresh room. */
   stale = false;
+  /** The server answered that this page is not available to this person any more: access ended, or the page was deleted (#941). */
+  accessEnded = false;
   /** The title of the latest saved version, once the room has said it: a rename by anyone shows without a read. */
   savedTitle: string | null = null;
   /** The last confirmed sequence that holds this editor's own text. */
@@ -125,7 +128,7 @@ export class SharedWiki {
       this.renewing = true;
       void this.enroll(this.head).catch((error: unknown) => {
         if (this.stopped) return;
-        if (error instanceof ApiError && (error.status === 403 || error.status === 404)) this.retire('Write access ended. Pending text is kept privately.');
+        if (error instanceof ApiError && (error.status === 403 || error.status === 404)) this.retireAccess('Write access ended. Pending text is kept privately.');
         else this.disconnected();
       }).finally(() => { this.renewing = false; });
     }, 10_000);
@@ -268,7 +271,7 @@ export class SharedWiki {
         this.connect();
       } catch (error) {
         if (this.stopped) return;
-        if (error instanceof ApiError && (error.status === 403 || error.status === 404)) this.retire('Access ended. Your pending text is kept privately.');
+        if (error instanceof ApiError && (error.status === 403 || error.status === 404)) this.retireAccess('Access ended. Your pending text is kept privately.');
         else this.disconnected();
       }
     }, reconnectDelay(600));
@@ -279,6 +282,13 @@ export class SharedWiki {
   private renew() {
     this.stale = true; this.peers.clear(); this.writers = [];
     this.connection?.close(); this.changed();
+  }
+  /** The room is closed because the server no longer lets this person in; the page asks whether it was deleted (#941). */
+  private retireAccess(message: string) { this.accessEnded = true; this.retire(message); }
+  /** The page was deleted while it was open (#941): nothing more is shared, and text typed here stays in this tab for the person. */
+  pageDeleted() {
+    if (this.stopped || this.status === 'private' && this.problem === DELETED) return;
+    this.retire(DELETED);
   }
   private retire(message: string) {
     this.seal();
@@ -404,7 +414,7 @@ export class SharedWiki {
       case 'saved':
         this.head.savedVersion = message.savedVersion; this.head.savedSequence = message.savedSequence; this.savedTitle = message.title; break;
       case 'resync': this.disconnected(); return;
-      case 'revoked': this.retire('Access ended. Your pending text is kept privately.'); return;
+      case 'revoked': this.retireAccess('Access ended. Your pending text is kept privately.'); return;
       case 'error':
         if (message.outcome === 'refused' && !message.retryable && message.commandId) { this.retire(`A change was refused (${message.code}). Your text is kept privately for comparison.`); return; }
         this.problem = `Sharing is not confirmed (${message.code}). The exact pending change is kept for retry.`;

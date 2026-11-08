@@ -35,6 +35,9 @@ export const listVersions = (id: string, signal?: AbortSignal) => everything<Doc
 export const getVersion = (id: string, version: number, signal?: AbortSignal) => request<DocVersion>(docVersionPath(id, version), { signal });
 export const previewDoc = (projectId: string, body: string, signal?: AbortSignal) =>
   request<DocPreview>(projectDocPreviewPath(projectId), { method: 'POST', body: { body }, signal });
+/** Deletes the page for everyone (#941); `version` is the one the person saw. A page that is already gone is a 404. */
+export const deleteDoc = (id: string, version: number, idempotencyKey: string) =>
+  request<null>(docPath(id), { method: 'DELETE', headers: { ...key(idempotencyKey), ...ifMatch(version) } });
 export const createDoc = (projectId: string, command: CreateDocCommand, idempotencyKey: string) =>
   request<Doc>(projectDocsPath(projectId), { method: 'POST', body: command, headers: key(idempotencyKey) });
 /** `keepalive`: the page is being left, and the version is saved anyway. */

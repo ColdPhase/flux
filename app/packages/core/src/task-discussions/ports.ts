@@ -27,6 +27,8 @@ export interface DiscussionMessage {
   author: ActorRef;
   body: string;
   source: MaterialSource | null;
+  /** The page it cited was deleted (#941). */
+  sourceDeleted?: boolean;
   sequence: number;
   projectId: string;
   clientMessageId: string;

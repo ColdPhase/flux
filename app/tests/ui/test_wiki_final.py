@@ -27,7 +27,7 @@ PASSWORD = "wiki as drawn keeps its shape"
 BODY = ("Six capacitive probes send readings over LoRa to one gateway in the shed.\n\n## Parts\n\n"
         "| Part | Qty |\n| --- | ---: |\n| Probe | 6 |\n\n## Range\n\nThe far bed sits 180 m away.\n\n## Power\n\nBatteries last a season.\n")
 PAGES = ("Overview", "Hardware", "Sensor placement", "Volunteer guide")
-ACTIONS = ["History", "Copy link", "Export", "Import a Markdown file", "Rename page"]
+ACTIONS = ["History", "Copy link", "Export", "Import a Markdown file", "Rename page", "Delete page"]
 
 
 def api_of(page):

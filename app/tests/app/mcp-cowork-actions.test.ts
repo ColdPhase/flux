@@ -74,7 +74,7 @@ test('the co-work tools are registered as changes, listed with their operation a
   for (const { name } of COWORK_TOOLS) assert.ok(COWORK_PLAYBOOK.modules.some((module) => module.tools.includes(name)), `${name} is declared`);
   const catalog = capabilities.map((item) => item.name);
   assert.deepEqual(coworkPlaybookTools().filter((name) => !catalog.includes(name)), []);
-  assert.equal(COWORK_PLAYBOOK.version, '1.14.0');
+  assert.equal(COWORK_PLAYBOOK.version, '1.15.0');
   assert.ok(!(codex.bootstrap.gaps as string[]).includes('coordination_unavailable'), 'unit creation, claims and completion exist');
 
   // An agent set to Only read is told its change tools are not available now, and a call to one is refused before any effect.

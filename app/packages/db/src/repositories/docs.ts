@@ -5,6 +5,7 @@ import { TaskUseRefusal, type TaskUseFence } from './task-use.js';
 import { prepareReferencedTaskUse, referencedTaskIds } from './task-targets.js';
 import { prepareCanonicalArtifactTaskUse } from './artifact-task-associations.js';
 import { artifactResetRows } from './artifact-resets.js';
+import { EDITING_CHANNEL } from './editing-channel.js';
 import type { DbExecutor } from './push.js';
 import { openAliased, openRows, sealOf, sealRow } from '../sealing.js';
 
@@ -151,6 +152,32 @@ export function docRows(db: DbExecutor) {
     },
 
     assertTaskUse,
+
+    /**
+     * Takes a page away for everyone (#941), in the caller's transaction with the doc row locked. What named the page goes first,
+     * each by its own rule: an agent's suggestion about it and the task plan items made from it are cleared (the tasks stay);
+     * a message that cited a version keeps its text and says the page is deleted; a live room on it ends, which the live
+     * lifecycle finishes at the media server; every link from and to it goes, including a task's source that named one of its versions (the creation notice drops that entry). The page's versions, its shared text and their
+     * search rows go with the row. The tasks the page mentioned keep their evidence of use, as when a save drops a mention.
+     */
+    async remove(scope: { workspaceId: string; projectId: string }, docId: string): Promise<void> {
+      const fence = await prepareReferencedTaskUse(db, scope.projectId, await previousMentions(docId));
+      await db.execute(sql`DELETE FROM agent_proposals WHERE project_id = ${scope.projectId} AND source_material_id = ${docId}`);
+      await db.execute(sql`DELETE FROM project_task_plan_intents WHERE project_id = ${scope.projectId} AND material_id = ${docId}`);
+      await db.execute(sql`UPDATE project_messages SET source_material_id = NULL, source_material_version = NULL, source_deleted = true
+        WHERE project_id = ${scope.projectId} AND source_material_id = ${docId}`);
+      await db.execute(sql`UPDATE live_sessions SET state = 'ending', updated_at = now() WHERE doc_id = ${docId} AND state IN ('available', 'rotating')`);
+      // A task, decision or result that took a version of the page as a source names it as a 'material' (a doc is both); those links go too.
+      await db.execute(sql`DELETE FROM project_object_links WHERE (from_type IN ('doc', 'material') AND from_id = ${docId}) OR (to_type IN ('doc', 'material') AND to_id = ${docId})`);
+      // The creation notice of a task made from a version of the page lists it among its sources: that entry goes with the page.
+      await db.execute(sql`UPDATE project_task_notices SET sources = COALESCE((SELECT jsonb_agg(item) FROM jsonb_array_elements(sources) AS item
+          WHERE NOT (item->>'id' = ${docId} AND item->>'type' IN ('doc', 'material'))), '[]'::jsonb)
+        WHERE project_id = ${scope.projectId} AND EXISTS (SELECT 1 FROM jsonb_array_elements(sources) AS item WHERE item->>'id' = ${docId} AND item->>'type' IN ('doc', 'material'))`);
+      await db.delete(m).where(and(eq(m.id, docId), eq(m.kind, 'doc')));
+      // The shared text's connections hear of it on commit and find the page gone (their access ends: "revoked").
+      await db.execute(sql`SELECT pg_notify(${EDITING_CHANNEL}, ${docId})`);
+      await fence.mark();
+    },
 
     async replaceMentions(scope: { workspaceId: string; projectId: string }, docId: string, targets: Ref[], by: Actor, retained?: Pick<TaskUseFence, 'ids' | 'mark'>) {
       // The doc row is already retained by the caller. Removed targets are part of the fence, so a later removal

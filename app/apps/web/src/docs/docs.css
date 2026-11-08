@@ -100,6 +100,9 @@
 /* A space without pages. */
 .wiki-empty { padding-top: 64px; }
 .wiki-empty__t { margin: 0 0 8px; font-size: var(--fs-xl); font-weight: 600; }
+.wiki-gone__mine { margin-top: 16px; max-width: 640px; }
+.wiki-gone__mine p { margin: 0 0 8px; font-size: var(--fs-sm); color: var(--t2); }
+.wiki-gone__mine textarea { display: block; width: 100%; margin-bottom: 8px; padding: 8px 10px; border: 1px solid var(--line2); border-radius: var(--r); background: var(--sub); color: var(--t1); font: inherit; font-size: var(--fs-sm); resize: vertical; }
 .wiki-empty__acts { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 12px; margin-top: 20px; }
 .wiki-empty__new { position: static; width: 340px; max-width: 100%; max-height: none; box-shadow: var(--sh-card); }
 

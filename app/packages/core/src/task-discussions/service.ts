@@ -15,7 +15,7 @@ const wire = (row: DiscussionMessage, names: Map<string, string>, owners: Readon
     ...(row.author.kind === 'human' ? { authorId: row.author.id } : { authorId: null,
       author: { kind: 'agent' as const, id: row.author.id, name: names.get(`agent:${row.author.id}`) ?? 'Agent',
         ...(owners.has(row.author.id) ? { projectOwner: owners.get(row.author.id)! } : {}) } }),
-    body: row.body, source: row.source, sequence: row.sequence, createdAt: row.createdAt.toISOString(),
+    body: row.body, source: row.source, ...(row.sourceDeleted ? { sourceDeleted: true as const } : {}), sequence: row.sequence, createdAt: row.createdAt.toISOString(),
     ...(row.via ? { via: row.via } : {}), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}) };
 };
 

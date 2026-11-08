@@ -258,7 +258,10 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
 
     getDoc: (principal: Principal, docId: string) => uow.run(async (ports) => {
       const { id } = await authorized(ports, principal, docId, 'read');
-      return present(ports, (await ports.docs.find(id))!);
+      // A delete can commit between locating the page and reading it (#941): it is gone, as for a caller who came a moment later.
+      const found = await ports.docs.find(id);
+      if (!found) throw notFound();
+      return present(ports, found);
     }),
 
     /** Every version, newest first; each is an immutable statement with its author, time and reason. */
@@ -348,7 +351,8 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       if (title === undefined && body === undefined) throw new InvalidInputError('Nothing to change');
       return uow.run(async (ports) => {
         const { id, projectId, workspaceId } = await authorized(ports, principal, docId, 'write');
-        const current = (await ports.docs.find(id, { lock: true }))!;
+        const current = await ports.docs.find(id, { lock: true });
+        if (!current) throw notFound();
         await fenceLegacy(ports, current);
         if (current.doc.currentVersion !== version) throw new VersionConflictError(current.doc.currentVersion, await present(ports, current));
         const next = { title: title ?? current.current.title, body: body ?? current.current.body };
@@ -363,6 +367,27 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
     },
 
     /**
+     * Deletes a page for everyone with access (#941). It needs the version the caller saw, like an edit: a page that was
+     * edited meanwhile is 409 VERSION_CONFLICT with the latest doc, so nobody deletes text they have not seen. Nothing of the
+     * page remains to read; a message that cited it says "page deleted". The event carries ids only.
+     */
+    async deleteDoc(principal: Principal, docId: string, expected: number | undefined): Promise<{ docId: string; projectId: string; version: number }> {
+      authorOf(principal, agentAuthors);
+      const version = valid.expectedVersion(expected);
+      return uow.run(async (ports) => {
+        const { id, projectId, workspaceId } = await authorized(ports, principal, docId, 'write');
+        const current = await ports.docs.find(id, { lock: true });
+        if (!current) throw notFound();
+        // The shared text's row is locked after the page's, as every writer does; whatever is typed there unsaved goes with the page.
+        await ports.live.lock(id);
+        if (current.doc.currentVersion !== version) throw new VersionConflictError(current.doc.currentVersion, await present(ports, current));
+        await ports.docs.remove({ workspaceId, projectId }, id);
+        await ports.events.record(principal, workspaceId, 'project.doc_deleted.v1', projectId, { docId: id, version });
+        return { docId: id, projectId, version };
+      });
+    },
+
+    /**
      * "Add to docs": writes the section of a result or decision into the doc, or rewrites the
      * section that already cites it, as a new version that says what changed. The earlier
      * statement stays in the earlier version, and the doc links to its source.
@@ -373,7 +398,8 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       const from = text.sectionSource(command?.from);
       return uow.run(async (ports) => {
         const { id, projectId, workspaceId } = await authorized(ports, principal, docId, 'write');
-        const current = (await ports.docs.find(id, { lock: true }))!;
+        const current = await ports.docs.find(id, { lock: true });
+        if (!current) throw notFound();
         await fenceLegacy(ports, current);
         if (current.doc.currentVersion !== version) throw new VersionConflictError(current.doc.currentVersion, await present(ports, current));
         const composed = await composeSection(ports, projectId, from);
@@ -408,7 +434,8 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       const cause = text.cause(command.cause, ['restore', 'keep_mine', 'page_left']);
       return uow.run(async (ports) => {
         const { id, projectId, workspaceId } = await authorized(ports, principal, docId, 'write');
-        const current = (await ports.docs.find(id, { lock: true }))!;
+        const current = await ports.docs.find(id, { lock: true });
+        if (!current) throw notFound();
         // A rolled-back live refusal carries no protected postimage beyond its held fence.
         if (current.doc.currentVersion !== version) throw new ConflictError('The saved version changed. Read the current shared head before saving.', 'VERSION_CONFLICT');
         const head = await ports.live.lock(id);

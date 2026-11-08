@@ -31,6 +31,8 @@ export interface ConversationMessageFields {
   conversationId: string;
   body: string;
   source: MaterialSource | null;
+  /** Present only when the page this message cited was deleted (#941): `source` is then null and the message says "Page deleted". */
+  sourceDeleted?: true;
   /** Monotonic per conversation, including concurrent sends. */
   sequence: number;
   createdAt: string;
