@@ -392,11 +392,10 @@ class PhoneFinal(unittest.TestCase):
         page.get_by_role("list", name="Your places").get_by_role("link", name=re.compile(r"^My map")).click()
         expect(page).to_have_url(re.compile(rf"{ORIGIN}/map/[0-9a-f-]{{36}}$"))
         expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
-        # Details, the one quiet button of Home that is not a place, opens the panel.
+        # Details is only for an encrypted space's people and keys (test_encrypted_workspaces); a company's people are in Settings.
         page.goto("/")
-        page.locator(".home__details").get_by_role("button", name="Details", exact=True).click()
-        expect(page.get_by_role("dialog", name="Details")).to_be_visible()
-        page.keyboard.press("Escape")
+        expect(page.get_by_role("list", name="Your places")).to_be_visible()
+        expect(page.locator(".home__details")).to_have_count(0)
         page.goto("/inbox")
         expect(page.get_by_role("link", name="Settings and account")).to_be_visible()
 

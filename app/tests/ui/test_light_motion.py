@@ -1472,10 +1472,16 @@ class LightMotionJourney(unittest.TestCase):
         self.assertIn("translateY", entered[0]["from"].get("transform", ""))
         self.assertEqual(set(entered[0]["props"]), {"opacity", "transform"})
 
-    SHIFT = """() => { const el = document.querySelector('.home__need, .home__first'); return el ? el.getBoundingClientRect().top : null; }"""
+    # The first section of Home, then Details (in the date line, only with an encrypted space; see test_encrypted_workspaces) when it is there.
+    SHIFT = """() => {
+      const top = (selector) => { const el = document.querySelector(selector); return el ? el.getBoundingClientRect().top : null; };
+      const first = top('.home__need, .home__first');
+      return first === null ? null : [first, top('.home__top'), top('.home__details')];
+    }"""
 
     def home_tops(self, context, wait_for_card: bool) -> tuple[float, float, int]:
-        """Where the first section of Home is while the two reads that decide the Continue row are held, and after they answer.
+        """How far the first section of Home and its date line (Details sits there) move while the two reads that decide the Continue row
+        are held and after they answer: the first section's top before, its top after and the slot kept for the card.
 
         The reads are held in a list and let go by the test, never delayed with a sleep: a sleep inside a sync route handler blocks Playwright's
         dispatcher, so what the test reads lands after the reads have answered (it failed 2 runs in 8 that way)."""
@@ -1503,7 +1509,14 @@ class LightMotionJourney(unittest.TestCase):
         if wait_for_card:
             expect(page.locator(".home__continue")).to_be_visible()
         page.wait_for_timeout(1200)
-        return before, page.evaluate(self.SHIFT), slot
+        after = page.evaluate(self.SHIFT)
+        # The date line (and Details in it) is above everything that arrives, so it never moves; the section's own top is returned for the caller.
+        self.assertIsNotNone(before[1], "the date line is there")
+        self.assertLess(abs(before[1] - after[1]), 1.5, f"the date line did not move: {before[1]} to {after[1]}")
+        self.assertEqual(before[2] is None, after[2] is None, "Details neither arrives nor leaves")
+        if before[2] is not None:
+            self.assertLess(abs(before[2] - after[2]), 1.5, f"Details did not move: {before[2]} to {after[2]}")
+        return before[0], after[0], slot
 
     def test_25_home_keeps_no_space_for_continue_and_nothing_above_it_moves_when_it_arrives(self):
         """Phone Home: Continue is the last section, so nothing above it jumps when it arrives and no gap is kept for it (#863 rule 6, #865)."""

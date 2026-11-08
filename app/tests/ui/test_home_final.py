@@ -148,8 +148,8 @@ class HomeFinal(unittest.TestCase):
         for gone in (".home__projects", ".home__more", ".home__keys", ".home__meet"):
             expect(page.locator(gone)).to_have_count(0)
         expect(page.locator("#content").get_by_text("All my tasks")).to_have_count(0)
-        # The company's people and an encrypted space's keys stay one quiet button away: Details.
-        expect(page.locator(".home__details").get_by_role("button", name="Details", exact=True)).to_have_count(1)
+        # Details is only for an encrypted space's people and keys (test_encrypted_workspaces); a company's people are in Settings.
+        expect(page.locator(".home__details")).to_have_count(0)
         expect(page.locator("#content").get_by_role("link", name="Wiki", exact=True)).to_have_count(0)
         # The computer's sidebar carries My tasks and My map; Home's rows for them are the phone's.
         expect(page.locator(".home__places")).to_have_count(0)

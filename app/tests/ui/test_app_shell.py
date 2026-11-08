@@ -747,6 +747,9 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), "rgb(11, 11, 11)", "the dark outer background")
         self.assertEqual(page.locator(".app__main").evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(17, 17, 17)", "the dark panel")
         shot(page, "desktop-1440-dark")
+        # Home has no Details for an unencrypted company (#865); My map has.
+        page.goto("/map")
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         open_details(page)
         expect(page.get_by_role("complementary", name="Details")).to_be_visible()
         shot(page, "desktop-1440-details-dark")
@@ -909,7 +912,8 @@ class AppShellJourney(unittest.TestCase):
         self.assertIsNone(page.evaluate("document.documentElement.dataset.theme ?? null"))
 
         calm = self.page(reduced_motion="reduce")
-        calm.goto("/")
+        calm.goto("/map")
+        expect(calm.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         self.assertEqual(calm.evaluate("parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dur-in'))"), 0)
         open_details(calm)
         panel = calm.get_by_role("complementary", name="Details")

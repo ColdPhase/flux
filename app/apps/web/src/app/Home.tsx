@@ -163,8 +163,9 @@ function WaitingItem({ row }: { row: WaitingRow }) {
   const { item } = row;
   const run = item.assistantChanges ?? null;
   const project = item.project?.name ?? null;
+  // A run's changes are always the viewer's own agent's; any other agent in the space can ask, so a question or a suggestion says only "Agent", as the Inbox does.
   const meta = (run ? [run.agentName, 'Your agent', project]
-    : [KIND_WORD[item.kind], item.from?.name ?? null, item.from?.kind === 'agent' ? 'Your agent' : null, project]).filter(Boolean).join(' · ');
+    : [KIND_WORD[item.kind], item.from?.name ?? null, item.from?.kind === 'agent' ? 'Agent' : null, project]).filter(Boolean).join(' · ');
   return <HomeRow to="/inbox" state={{ select: item.key }} face={<Face item={item} />} title={item.title} meta={meta} metaFirst />;
 }
 
@@ -179,6 +180,7 @@ export function Home() {
   const firstName = me.user.name.trim().split(/\s+/)[0] || me.user.name;
   const rows = waitingRows(queue.items ?? []);
   const workspaceIds = useMemo(() => workspaces.map((space) => space.id), [workspaces]);
+  const sealedSpaces = [...workspaces, ...lockedWorkspaces].some((space) => space.encryption);
   const reads = useContinue(me.user.id, workspaceIds);
   // A person with no space yet gets one first step, not an empty queue and links to empty pages (#763 FT-1, S21).
   // A space waiting to be unlocked is not a first run (F-030, #655).
@@ -187,7 +189,12 @@ export function Home() {
 
   return (
     <div className="pane-scroll"><div className="pane-in home">
-      <p className="home__date">{dateFormat.format(now)}</p>
+      {/* Details sits in the date line, above everything that arrives later, so it never moves (motion rule 6). Only a person with an encrypted
+          space needs it: the company's people are in Settings, an encrypted space's people and keys only here (until #964). */}
+      <div className="home__top">
+        <p className="home__date">{dateFormat.format(now)}</p>
+        {sealedSpaces ? <p className="home__details"><button type="button" onClick={() => openDetails()}>Details</button></p> : null}
+      </div>
       <h2 className="home__hello">{greeting(now.getHours())}, {firstName}</h2>
 
       {/* Without a sidebar (phone) Home carries the working agents with Stop; nothing shows while none works (S13). */}
@@ -238,8 +245,6 @@ export function Home() {
       ) : null}
 
       <ContinueSection reads={reads} />
-      {/* The company's people and an encrypted space's people and keys are in Details; this is the way to them (not drawn, so one quiet button). */}
-      {workspaces.length || lockedWorkspaces.length ? <p className="home__details"><button type="button" onClick={() => openDetails()}>Details</button></p> : null}
     </div></div>
   );
 }

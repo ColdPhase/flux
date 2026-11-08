@@ -2,7 +2,7 @@
 
 Runs with the other tests/ui modules through scripts/check_ui.sh against the running Compose
 application. Four people and two workspaces: Ada owns Riverside Makers, Lee owns Harbour Studio.
-From Home's Details, Ada adds Kai, Lee and Mia to Riverside Makers by email (the form is driven by
+In Settings › Company, Ada adds Kai, Lee and Mia to Riverside Makers by email (the form is driven by
 the keyboard), meets the "no account yet" and "already here" messages, and changes Lee's role.
 Members and guests see the people read-only. A new project opens its "People", where Ada
 gives Kai access, changes and removes it; on a workspace-visible project reached from the header's
@@ -27,7 +27,7 @@ from app_select import choose, expect_value
 from app_select import labels as app_labels
 
 from create_window import create_other
-from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, open_details, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, box, shot, start_forwarder
 
 PASSWORD = "people before projects"
 STAMP = int(time.time() * 1000)
@@ -116,11 +116,8 @@ class PeopleJourney(unittest.TestCase):
         return {member["userId"]: member["role"] for member in members}
 
     def open_people(self, page: Page, workspace: str) -> None:
-        """Settings › Company, the company's one place for its people (F-037), as a person finds it from Home → Details."""
-        page.goto("/")
-        expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        open_details(page)
-        page.get_by_role("region", name="People").get_by_role("link", name=re.compile(f"^{workspace}")).click()
+        """Settings › Company, the company's one place for its people (F-037); Home has no Details for an unencrypted company (#865)."""
+        page.goto("/settings/company")
         expect(page).to_have_url(re.compile(r"/settings/company$"))
         expect(page.get_by_text(f"Everyone in {workspace} works in this one Flux.")).to_be_visible()
 

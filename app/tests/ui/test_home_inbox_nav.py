@@ -3,7 +3,7 @@
 Ada owns a project in which her own agent ("Claude Code") works on a task and asks her questions over a real MCP bearer
 (the same OAuth/PKCE client as test_scenarios). Each test names its finding:
 
-- IN-1/IN-2: an agent's question is a row on Home (Kreska, "Your agent", no actions) and a card in the Inbox with the Agent tag,
+- IN-1/IN-2: an agent's question is a row on Home (Kreska, the Agent tag, no actions; "Your agent" only for a run's changes) and a card in the Inbox with the Agent tag,
   its task and the ready answers; an answer applies with Undo, reaches the question itself, and the item leaves Home, the Inbox
   and the Agents view together; a question answered elsewhere leaves the Inbox too.
 - NV-1: My tasks, New project and a missing page name themselves, and nothing marks Home current there.
@@ -106,10 +106,11 @@ class HomeInboxNav(unittest.TestCase):
     def no_sideways_scroll(self, page: Page) -> None:
         self.assertLessEqual(page.evaluate("document.documentElement.scrollWidth - document.documentElement.clientWidth"), 0, "no horizontal page scroll")
 
-    def ask(self, question: str, options: list[str] | None = None) -> dict:
-        assert self.agent
-        return self.agent.tool("flux_ask_question", {
-            "projectId": self.ids["project"], "runtimeSessionId": self.agent.runtime,
+    def ask(self, question: str, options: list[str] | None = None, agent: McpAgent | None = None) -> dict:
+        agent = agent or self.agent
+        assert agent
+        return agent.tool("flux_ask_question", {
+            "projectId": self.ids["project"], "runtimeSessionId": agent.runtime,
             "clientCommandId": str(uuid.uuid4()), "sources": [], "conversationId": self.ids["thread"], "question": question,
             "options": options or ["Per bed", "One value"], "askUserId": self.ids["ada"]})
 
@@ -166,7 +167,7 @@ class HomeInboxNav(unittest.TestCase):
         expect(row).to_be_visible()
         expect(row.locator(".nyc__face .kreska")).to_be_visible()
         expect(row).to_contain_text("Question")
-        expect(row).to_contain_text("Your agent")
+        expect(row.locator(".home__row-k")).to_contain_text(re.compile(r"Question · .+ · Agent · Community garden sensors"))
         # Home only lists (#865): the ready answers are in the Inbox, and the row opens it on this item.
         expect(row.get_by_role("button")).to_have_count(0)
         shot(page, "home-question-1440")
@@ -200,6 +201,24 @@ class HomeInboxNav(unittest.TestCase):
         expect(page.locator(f'.nyc[data-key="{key}"]')).to_have_count(0)
         page.goto("/")
         expect(page.locator(f'.nyc[data-key="{key}"]')).to_have_count(0)
+
+    def test_01b_another_persons_agent_asking_is_an_agent_not_your_agent(self) -> None:
+        """Any agent that can read the space can ask a person; only a run's changes are always the viewer's own agent (#971 review)."""
+        jonas_agent = McpAgent(self, "jonas", self.ids["project"])
+        self.addCleanup(jonas_agent.close)
+        asked = self.ask("Should the gate latch face the lane?", agent=jonas_agent)
+        key = f"question:{asked['questionId']}"
+        self.wait_for_item(key)
+        item = next(item for item in self.needs_you() if item["key"] == key)
+        self.assertEqual((item.get("from") or {}).get("kind"), "agent")
+        page = self.page()
+        page.goto("/")
+        row = page.get_by_role("list", name="Top of your Inbox").locator(".home__row", has_text="Should the gate latch face the lane?")
+        expect(row).to_be_visible()
+        expect(row.locator(".home__row-k")).to_have_text(re.compile(r"^Question · .+ · Agent · Community garden sensors$"))
+        expect(row).not_to_contain_text("Your agent")
+        # Answered, so the later tests find only their own questions.
+        self.api("ada", "POST", f"/api/v1/agent-questions/{asked['questionId']}/answer", {"optionIndex": 0}, status=200)
 
     def test_02_question_answered_elsewhere_leaves_needs_you(self) -> None:
         asked = self.ask("Probe depth at 5 cm, or 10 cm?")

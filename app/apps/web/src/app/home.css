@@ -1,5 +1,6 @@
 /* Home (#342, F-026 §7, #865): a date and a greeting, what waits for you (the top of the Inbox), where to continue. */
 .pane-in.home { max-width: 848px; padding-top: 40px; }
+.home__top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .home__date { margin: 0; font-size: var(--fs-md); color: var(--t3); }
 .home__hello { margin: 2px 0 28px; font-size: var(--fs-page); line-height: 1.15; letter-spacing: -.03em; font-weight: 600; }
 .home__sech { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 0 20px 10px; }
@@ -22,8 +23,8 @@
 .home__row-k { font-size: var(--fs-sm); line-height: 1.35; color: var(--t3); overflow-wrap: anywhere; }
 .home__row-go { color: var(--t3); }
 .home__row-t .home__n { display: inline; min-width: 0; height: auto; margin-left: 6px; padding: 0; font-size: inherit; font-weight: 400; }
-/* Details: the one quiet button left of the old footer, the way to the company's people and an encrypted space's keys. */
-.home__details { margin: 28px 4px 0; }
+/* Details: one quiet button at the end of the date line, only for a person with an encrypted space: the way to its people and keys. */
+.home__details { margin: 0; }
 .home__details button { display: inline-flex; align-items: center; min-height: 28px; padding: 0; color: var(--t2); font-size: var(--fs-sm); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; background: none; border: 0; cursor: pointer; }
 .home__details button:hover { color: var(--t1); }
 /* The phone's two places, under the waiting items (no sidebar there). */

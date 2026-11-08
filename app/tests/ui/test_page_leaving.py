@@ -26,7 +26,7 @@ import unittest
 
 from playwright.sync_api import Browser, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, open_details, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, UPSTREAM, start_forwarder
 
 UI_BROWSER = os.environ.get("FLUX_UI_BROWSER", "chromium")
 if UI_BROWSER not in ("chromium", "webkit"):
@@ -166,10 +166,8 @@ class PageLeaving(unittest.TestCase):
         page.route(re.compile(rf"/api/v1/workspaces/{self.workspace}/members$"), members)
         page.goto("/")
         expect(page.get_by_role("heading", level=1, name="Home")).to_be_visible()
-        open_details(page)
-        # The company's people have one place, Settings › Company (F-037, #874): Details links there instead of opening a panel.
-        page.get_by_role("region", name="People").get_by_role("link", name=re.compile("^Quiet Harbour")).click()
-        expect(page).to_have_url(f"{ORIGIN}/settings/company")
+        # The company's people have one place, Settings › Company (F-037, #874); Home has no Details for an unencrypted company (#865).
+        page.goto("/settings/company")
         alert = page.get_by_role("alert").filter(has_text="The people here couldn’t be loaded. Try again.")
         expect(alert).to_be_visible()
         self.assertEqual(failures["left"], 0, "the read really failed")
