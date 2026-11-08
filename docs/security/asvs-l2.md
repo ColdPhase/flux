@@ -254,7 +254,7 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
 
 | ID | Requirement | Result | Evidence |
 | --- | --- | --- | --- |
-| 7.1.1 | No credentials or tokens in logs | Pass | Query strings dropped (`apps/server/src/http/log-serializers.ts:7-15`), password fields redacted (`:33`), bodies never logged. Provider tokens never reach `auth_accounts` (`identity/auth.ts:88-95`) |
+| 7.1.1 | No credentials or tokens in logs | Pass | Query strings dropped and a link token in the path logged as `<token>` (`apps/server/src/http/log-serializers.ts`, #1030), password fields redacted (`:33`), bodies never logged. Provider tokens never reach `auth_accounts` (`identity/auth.ts:88-95`) |
 | 7.1.2 | No other sensitive data in logs | Pass (fixed) | Audit finding: an unexpected error's message was logged and answered (**probe**, the injected body appeared twice in `docker logs`). Now every space logs the redacted error (class, code, SQLSTATE, constraint), tested by `scripts/check_encryption.sh` ([#991](https://github.com/ColdPhase/flux/issues/991)). Security events never hold a secret, address or content (`tests/app/security-log.test.ts`) |
 | 7.1.3 | Security events logged | Pass (fixed) | Audit finding: only access lines. Now `security-log.ts` writes sign-ins, resets, changes, session and client revocations, consent decisions, refusals and space locks ([#997](https://github.com/ColdPhase/flux/issues/997)); the events are in [monitoring](../operations/monitoring.md#security-events) |
 | 7.1.4 | Enough detail to investigate | Partial | Request ids (caller's `X-Request-ID` accepted when safe, `log-serializers.ts:21-32`); see 7.1.3 |
@@ -280,7 +280,7 @@ What was decided when the two P2 findings were fixed (2026-11-08). Each stays he
 | 8.2.1 | Anti-caching headers | Pass (fixed) | As 8.1.1 ([#992](https://github.com/ColdPhase/flux/issues/992)) |
 | 8.2.2 | No sensitive data in browser storage | Partial | `localStorage` holds UI preferences and the last asked conversation id; unsaved Wiki text is kept in session or local storage until sent (`apps/web/src/docs/drafts.ts:31-58`) |
 | 8.2.3 | Client data cleared at sign-out | Pass | Drafts retired on confirmed sign-out (`apps/web/src/docs/drafts.ts:73-78`, `composer/draft.ts:107`) |
-| 8.3.1 | Sensitive data in bodies, not URLs | Pass | Search text is in the query string but never logged (`log-serializers.ts:7-15`). Tokens are never in URLs, except the one-time reset and invite links |
+| 8.3.1 | Sensitive data in bodies, not URLs | Pass | Search text is in the query string but never logged (`log-serializers.ts:7-15`). Tokens are never in URLs, except the one-time reset and invite links; the reset link's token sits in the path (`GET /api/auth/reset-password/<token>`) and is logged as `<token>` ([#1030](https://github.com/ColdPhase/flux/issues/1030)), the invite token is in the fragment and never sent |
 | 8.3.2 | Users can export or delete their data | Pass | Space export (`apps/server/src/export/routes.ts`); account and space deletion (`docs/operations/export.md`, `administration.md`) |
 | 8.3.3 | Clear language about data use | Pass | AI use line in DMs (C-2); "Ada · via Assistant"; provider named in Connect AI |
 | 8.3.4 | Sensitive data identified | Pass | As 1.8.1 |

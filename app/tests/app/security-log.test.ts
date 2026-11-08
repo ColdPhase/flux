@@ -193,6 +193,25 @@ describe('the real routes, with their log read back', () => {
     } finally { await app.instance.close(); }
   });
 
+  test('opening the reset link writes the request without its token (#1030)', async () => {
+    const app = await server();
+    const email = `link-${randomUUID()}@example.test`;
+    try {
+      assert.equal((await post(app.instance, '/api/auth/sign-up/email', { email, password: STRONG, name: 'Link Person' })).statusCode, 200);
+      assert.equal((await post(app.instance, '/api/auth/request-password-reset', { email, redirectTo: `${ORIGIN}/reset-password` })).statusCode, 200);
+      const link = app.sent.at(-1)!.text.match(/https?:\/\/\S+\/reset-password\/\S+/)![0];
+      const token = new URL(link).pathname.split('/').pop()!;
+      assert.ok(token.length >= 16, 'the mail carries a real token');
+      const opened = await app.instance.inject({ method: 'GET', url: `${new URL(link).pathname}${new URL(link).search}`, headers: { origin: ORIGIN } });
+      assert.equal(opened.statusCode, 302, 'the link redirects to the form');
+
+      const urls = app.lines.filter((line) => line.req).map((line) => (line.req as { url: string }).url);
+      assert.ok(urls.includes('/api/auth/reset-password/<token>'), `the log names the route: ${JSON.stringify(urls)}`);
+      assert.equal(urls.some((url) => url.includes(token)), false);
+      assert.equal(JSON.stringify(app.lines).includes(token), false, 'no line of the log holds the token, whatever its field');
+    } finally { await app.instance.close(); }
+  });
+
   test('the address limiter says which route it limited and nothing of the request', async () => {
     const app = await server({ rateLimit: true });
     try {

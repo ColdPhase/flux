@@ -103,7 +103,8 @@ dc logs --since 1h worker  # with the helper above, without following
 ```
 
 The API writes one JSON line per event (Fastify and pino): `level` is 30 for information, 40 for
-warnings, 50 for errors. Request lines carry the method, the path **without its query string**, the
+warnings, 50 for errors. Request lines carry the method, the path **without its query string** and with the
+token of a reset link (`/api/auth/reset-password/<token>`) shown as `<token>`, the
 status and the client address; passwords and recovery codes in request bodies are redacted. The
 keyring logs only that it is ready, idle or refuses to start, and its requests without bodies.
 The encryption checks scan every container log for content of encrypted spaces and find none.

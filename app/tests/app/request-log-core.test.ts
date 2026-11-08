@@ -20,3 +20,17 @@ test('the logged request keeps its path and drops its query string', () => {
   assert.equal(logged.url, '/api/v1/search');
   assert.ok(!JSON.stringify(logged).includes('private'));
 });
+
+test('the token of a link that sits in the path is logged as <token> (#1030)', () => {
+  const logged = (url?: string) => requestLogSerializer({ method: 'GET', url, host: 'flux.test', ip: '10.0.0.1', socket: { remotePort: 1234 } } as never).url;
+  assert.equal(logged('/api/auth/reset-password/ZkDOYS3I83T9ydUR7p2yDljZ?callbackURL=%2Freset-password'), '/api/auth/reset-password/<token>');
+  assert.equal(logged('/api/auth/reset-password/ZkDOYS3I83T9ydUR7p2yDljZ'), '/api/auth/reset-password/<token>');
+  // Path tricks that reach the same route are covered, and the query string stays out as before.
+  assert.equal(logged('//api/auth/./reset-password/ZkDOYS3I83T9ydUR7p2yDljZ/?x=1'), '//api/auth/./reset-password/<token>/');
+  assert.equal(logged('/API/AUTH/Reset-Password/ZkDOYS3I83T9ydUR7p2yDljZ'), '/API/AUTH/Reset-Password/<token>');
+  // Other paths are not touched: the reset form's own page and the routes that take the token in the body.
+  assert.equal(logged('/reset-password?token=abc'), '/reset-password');
+  assert.equal(logged('/api/auth/reset-password'), '/api/auth/reset-password');
+  assert.equal(logged('/api/v1/search?q=reset-password/abc'), '/api/v1/search');
+  assert.equal(logged(undefined), '');
+});
