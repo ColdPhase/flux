@@ -365,7 +365,7 @@ class SpokojLayout(unittest.TestCase):
                         together = header.get_by_role("button", name="Together", exact=True)
                         expect(together).not_to_have_attribute("aria-disabled", "true")
                         together.click()
-                        expect(page.get_by_role("dialog", name="Together")).to_contain_text("Open a conversation, task, sketch or page")
+                        expect(page.get_by_role("dialog", name="Together")).to_contain_text("Open a conversation, task, map or page")
                         page.keyboard.press("Escape")
                         expect(page.get_by_role("dialog", name="Together")).to_have_count(0)
                     if first is None:

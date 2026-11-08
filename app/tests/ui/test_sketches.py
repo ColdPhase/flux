@@ -517,7 +517,7 @@ class SketchJourney(unittest.TestCase):
 
     def test_10b_two_tabs_opening_my_map_at_once_make_one_map(self) -> None:
         """#866 review: both tabs found no map and each made one, so they showed different maps. Both ask with one key now."""
-        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP)
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, service_workers="block")
         self.addCleanup(context.close)
         first = self.page(context)
         self.api(first, "POST", "/api/auth/sign-up/email", {"name": "Twin Tabs", "email": f"twin+{int(time.time() * 1000)}@example.test", "password": PASSWORD})
