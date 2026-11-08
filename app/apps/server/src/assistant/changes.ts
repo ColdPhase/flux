@@ -173,9 +173,10 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     return row;
   }
   /**
-   * The owner's own change is theirs to take back only while they can still write where it was made: an owner who was removed from the
+   * The owner's own removal is theirs to take back only while they can still write where it was made: an owner who was removed from the
    * space, or made a reader, has no say in it any more (#961). Undo of a removal (a line in a task's thread, a map, a result) writes
-   * without asking the domain for rights, so the check is made here.
+   * without asking the domain for rights, so the check is made here. Any other change asks the domain, which answers a refused Undo in
+   * its own words ("Changed since. Open it"), so it is not turned into a "not found" here.
    */
   async function ownerMayStillUndo(principal: Principal, projectId: string) {
     const access = await evaluateProject(principal, 'project.write', projectId, accessReader(db));
@@ -194,10 +195,11 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     const list = await rows().forRun(runId);
     if (!list.length) throw missing();
     if (list[0]!.ownerUserId === userId) {
-      // The owner's own group, minus what was made where they can no longer write.
+      // The owner's own group, minus the removals made where they can no longer write (#961). Every other change stays: its Undo asks the
+      // domain for their rights now and, when they have none, is reported with the rest as "changed since".
       const stillWritable = new Map<string, boolean>();
-      for (const row of list) if (!stillWritable.has(row.projectId)) stillWritable.set(row.projectId, (await evaluateProject(principal, 'project.write', row.projectId, accessReader(db))).allowed);
-      return list.filter((row) => stillWritable.get(row.projectId));
+      for (const row of list) if (REMOVAL_OPERATIONS.has(row.operation) && !stillWritable.has(row.projectId)) stillWritable.set(row.projectId, (await evaluateProject(principal, 'project.write', row.projectId, accessReader(db))).allowed);
+      return list.filter((row) => !REMOVAL_OPERATIONS.has(row.operation) || stillWritable.get(row.projectId));
     }
     // Someone else's group: only what was done, and only where the caller may edit (a local client's group can span several projects).
     const done = list.filter(isDone);
@@ -334,7 +336,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     /** Take back one applied change: a new version restoring what the agent changed, if still untouched (AG-3 "Undo"). */
     async undo(principal: Principal, changeId: string): Promise<AssistantChangeDecision> {
       const row = await editable(principal, changeId);
-      if (row.ownerUserId === owner(principal)) await ownerMayStillUndo(principal, row.projectId);
+      if (row.ownerUserId === owner(principal) && REMOVAL_OPERATIONS.has(row.operation)) await ownerMayStillUndo(principal, row.projectId);
       const message = await undoOne(principal, row);
       return { change: await viewOne((await rows().find(row.id))!, principal), message };
     },

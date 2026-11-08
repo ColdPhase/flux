@@ -320,6 +320,36 @@ describe('hand-offs from the owner\'s assistant to the owner\'s own agents (F-02
     assert.equal((await units(task.id))[0]!.state, 'stopped');
   });
 
+  test('AST-6.2/#961: removed from the space, the owner can no longer undo a removal (a map the assistant made), while a hand-off is refused in its own words', async () => {
+    const task = await scene.task(scene.owner, 'Rights change, two kinds of change');
+    const live = await scene.liveRun();
+    await handoff(live, task, 'k');
+    const map = JSON.parse(text((await live.call('flux_create_map', { title: 'Rights map' })).message)) as { mapId?: string };
+    assert.ok(map.mapId, 'the assistant made a map');
+    await scene.complete(live.runId);
+    const rows = await changesOf(live.runId);
+    const mapRow = rows.find((row) => row.operation === 'map.create')!;
+    const handoffRow = rows.find((row) => row.operation !== 'map.create')!;
+    const undo = (id: string) => scene.owner.browser.request('POST', assistantChangeActionPath(id, 'undo'), { body: {} });
+    await removeFromSpace(scene.lead, scene.place.id, scene.owner);
+    try {
+      // A removal writes without asking the domain for rights, so the server asks: Ada has no say in it any more.
+      assert.equal((await undo(mapRow.id)).status, 404, 'the map is not hers to remove now');
+      // A hand-off asks the domain, which says what it always said.
+      const single = expectStatus(await undo(handoffRow.id), 200) as { change: AssistantChange; message: string | null };
+      assert.deepEqual([single.change.state, single.message], ['applied', 'Changed since. Open it']);
+      // As a whole message: the hand-off is reported with the rest, the map is left alone.
+      const whole = expectStatus(await scene.owner.browser.request('POST', assistantRunChangesActionPath(live.runId, 'undo'), { body: {} }), 200) as AssistantRunUndone;
+      assert.deepEqual([whole.undone, whole.changedSince], [0, [`#${task.number}`]]);
+      assert.deepEqual((await changesOf(live.runId)).map((row) => row.state), ['applied', 'applied']);
+    } finally {
+      await grant(scene.lead, scene.place.id, scene.owner, 'manager');
+    }
+    // With her rights back, one Undo takes back both.
+    const back = expectStatus(await scene.owner.browser.request('POST', assistantRunChangesActionPath(live.runId, 'undo'), { body: {} }), 200) as AssistantRunUndone;
+    assert.deepEqual([back.undone, back.changedSince], [2, []]);
+  });
+
   test('AST-6.2 held: a claim and an Undo serialize on the unit; whichever wins, the other sees its result whole and the recipient\'s authority is never reset', async () => {
     const wins = await scene.task(scene.owner, 'Claim wins');
     const loses = await scene.task(scene.owner, 'Undo wins');
