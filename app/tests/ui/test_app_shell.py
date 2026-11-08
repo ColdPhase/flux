@@ -171,7 +171,8 @@ def view_tab(page: Page, name: str, tap: bool = False) -> None:
 
 def open_details(page: Page, tap: bool = False) -> None:
     """Details: More, then Details, in the computer's one-row header (#340); Home has its own quiet
-    Details button (#342); on the phone a project's title menu ends with "Details and people" (#341)."""
+    Details button in the date line only for a person with an encrypted space (#865); on the phone a project's title menu
+    ends with "Details and people" (#341)."""
     home = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
     if page.viewport_size["width"] <= 640:
         page.locator("#content .home button:text-is('Details'), header .phead__menu").first.wait_for()
@@ -183,7 +184,7 @@ def open_details(page: Page, tap: bool = False) -> None:
         return
     close_modal_thread(page, tap)
     header = page.locator("header.top")
-    # Home has no header row (#342): its Details are one quiet button under what needs you.
+    # Home has no header row (#342): its Details, only with an encrypted space, are one quiet button in the date line.
     page.locator("#content .home button:text-is('Details'), header.top:not(.top--bare) button[aria-label='More']").first.wait_for()
     if home.count():
         home.click()
@@ -787,9 +788,14 @@ class AppShellJourney(unittest.TestCase):
         for size in page.locator(".ui-bottomnav__label").evaluate_all("els => els.map(e => parseFloat(getComputedStyle(e).fontSize))"):
             self.assertGreaterEqual(size, 12.5, "places bar label at least 12.5px")
 
-        # Home's quiet Details button opens a full-screen sheet; the title menus of projects are in test_phone_final.
-        details = page.locator("#content .home").get_by_role("button", name="Details", exact=True)
-        details.click()
+        # Details opens a full-screen sheet from a space's title menu (Home has the button only with an encrypted space, #865); Jo's space
+        # is the one test_04aa made, and the title menus of projects are in test_phone_final.
+        spaces = [item for workspace in page.request.get(f"{ORIGIN}/api/v1/workspaces").json()
+                  for item in page.request.get(f"{ORIGIN}/api/v1/workspaces/{workspace['id']}/projects?limit=100").json()["items"]]
+        self.assertTrue(spaces, "test_04aa made a space")
+        page.goto(f"/projects/{spaces[0]['id']}")
+        expect(page.locator(".project-convo")).to_be_visible()
+        open_details(page)
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet).to_be_visible()
         page.wait_for_timeout(400)
@@ -806,7 +812,7 @@ class AppShellJourney(unittest.TestCase):
         self.assertTrue(ring["visible"] and ring["style"] == "solid" and ring["width"] >= 2 and ring["offset"] < 0, ring)
         page.keyboard.press("Escape")
         expect(page.get_by_role("dialog")).to_have_count(0)
-        details.click()
+        open_details(page)
         page.get_by_role("dialog", name="Details").get_by_role("button", name="Close details").click()
         expect(page.get_by_role("dialog")).to_have_count(0)
 
