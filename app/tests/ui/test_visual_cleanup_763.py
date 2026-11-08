@@ -114,7 +114,7 @@ class VisualCleanup763(unittest.TestCase):
 
     def test_03_views_fit_the_header_at_1024(self) -> None:
         page = self.page(LAPTOP)
-        for view in ("", "/tasks", "/map", "/wiki", "/agents"):
+        for view in ("", "/tasks", "/map", "/wiki"):
             with self.subTest(view=view or "conversation"):
                 page.goto(f"/projects/{self.project}{view}")
                 header = page.locator("header.top")

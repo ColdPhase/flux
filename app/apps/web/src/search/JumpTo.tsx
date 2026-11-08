@@ -32,7 +32,7 @@ type Option = { id: string; section: string } & (
 interface PlaceName { label: string; side?: string; icon: IconName }
 const PROJECT_VIEW: Record<string, { side: string; icon: IconName }> = {
   conversation: { side: 'Conversation', icon: 'chat' }, tasks: { side: 'Tasks', icon: 'tasks' }, map: { side: 'Map', icon: 'map' },
-  docs: { side: 'Wiki', icon: 'doc' }, agents: { side: 'Agents', icon: 'spark' },
+  docs: { side: 'Wiki', icon: 'doc' },
 };
 const OWN_PLACE: Record<string, PlaceName> = {
   home: { label: 'Home', icon: 'home' }, 'home:tasks': { label: 'Home', side: 'Tasks', icon: 'tasks' }, 'home:docs': { label: 'Home', side: 'Wiki', icon: 'doc' },
@@ -108,7 +108,7 @@ function SearchBody({ onClose, userId, phone, assistantReady }: { onClose: () =>
     if (kind === 'dm') { const dm = directMessages.find((item) => item.id === id); return dm ? { label: dm.title, side: 'Message', icon: 'person' } : null; }
     const project = kind === 'project' ? projects.find((item) => item.id === id) : undefined;
     const shownView = view ? PROJECT_VIEW[view] : undefined;
-    if (!project || !shownView || (view === 'agents' && project.ai === 'blocked')) return null;
+    if (!project || !shownView) return null;
     // A Wiki page is named by its own title; the doc it folds its versions into is the place.
     return { label: view === 'docs' && place.title && /\/docs\/[^/]+$/.test(place.path) ? place.title : project.name, side: shownView.side, icon: shownView.icon };
   };

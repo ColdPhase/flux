@@ -182,7 +182,7 @@ class InstantSendJourney(unittest.TestCase):
     def pending(self, scope, body: str):
         return scope.locator("[data-client-message-id]").filter(has_text=body)
 
-    def assert_held_send_is_instant(self, page: Page, scope, field, button, body: str, held: list[Route], width: int, stored_selector: str, announcer: bool = True) -> None:
+    def assert_held_send_is_instant(self, page: Page, scope, field, button, body: str, held: list[Route], width: int, stored_selector: str, announcer: bool = True, same_item: bool = True) -> None:
         """Send while the request is held, then release it: one queued message, then one stored one, in the same item."""
         field.fill(body)
         self.double_tap(page, button, width)
@@ -198,7 +198,8 @@ class InstantSendJourney(unittest.TestCase):
             expect(page.locator("[data-send-announcer]").filter(has_text="Sending…")).to_have_count(1)
         else:
             expect(scope.locator("ol[aria-live='polite']")).to_have_count(1)
-        expect(bubble).to_be_in_viewport()
+        if same_item:  # a task's Details keeps what is being sent above its timeline, which a phone sheet scrolls past
+            expect(bubble).to_be_in_viewport()
         page.wait_for_timeout(400)
         self.assertEqual(len(held), 1, "a double tap sends one request")
         bubble.evaluate("el => { el.dataset.probe = 'kept'; }")
@@ -209,6 +210,8 @@ class InstantSendJourney(unittest.TestCase):
         stored = scope.locator(stored_selector).filter(has_text=body)
         expect(stored).to_have_count(1)
         expect(self.pending(scope, body)).to_have_count(0)
+        if not same_item:  # a task's Details lists what is being sent above its timeline, so the stored message is a new item there
+            return
         # The stored message is the queued one's list item: not removed and added again, and not moved.
         expect(scope.locator("[data-probe='kept']")).to_have_count(1)
         expect(scope.locator("[data-probe='kept']")).to_contain_text(body)
@@ -262,17 +265,17 @@ class InstantSendJourney(unittest.TestCase):
                 dm = self.api(page, "GET", f"/api/v1/dms/{self.ids['dm']}")
                 self.assertEqual(sum(message["body"] == body for message in dm["messages"]), 1, "one stored direct message")
 
-    def test_04_the_task_thread_in_agents_shows_at_once(self) -> None:
+    def test_04_the_task_thread_in_details_shows_at_once(self) -> None:
         for width in WIDTHS:
             with self.subTest(width=width):
                 page = self.page("ada", width)
-                page.goto(f"/projects/{self.ids['project']}/agents?task={self.ids['task']}")
-                thread = page.get_by_role("region", name=f"Thread of {TASK}")
+                page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{self.ids['task']}")
+                thread = page.locator("section.wd-activity")
                 expect(thread.get_by_text("Starting the night measurements.")).to_be_visible()
                 held = self.hold(page, "**/api/v1/work/*/discussion")
                 body = f"Agents note at {width}: the sensor reads 4 lux at nine."
                 self.assert_held_send_is_instant(page, thread, page.get_by_label("Write to this task"), page.get_by_role("button", name="Send to task"),
-                                                 body, held, width, ".agents-msg:not(.is-pending)", announcer=False)
+                                                 body, held, width, ".wd-act__item--message", same_item=False)
                 discussion = self.api(page, "GET", f"/api/v1/work/{self.ids['task']}/discussion")
                 self.assertEqual(sum(message["body"] == body for message in discussion["messages"]), 1, "one stored task message")
 

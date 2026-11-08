@@ -5,8 +5,8 @@ application, on the shared realistic fixture in adaptive_fixture.py: two owners,
 conversation with a thread, a deep map, active and blocked tasks, wiki prose and three agent
 connections (Hubert two, Marek one).
 
-The same journey (Conversation → its thread → Map → List → Tasks → a task in Details → Wiki →
-Agents → back) runs at every fixture width from 320 to 5120 CSS px. At each one: no sideways page
+The same journey (Conversation → its thread → Map → List → Tasks → a task in Details → Wiki → back to
+the Conversation) runs at every fixture width from 320 to 5120 CSS px. At each one: no sideways page
 scroll, every primary action reachable and unclipped, prose within the readable measure, 44 px
 primary targets on coarse pointers, and on wide screens the extra working context the contract
 names (docked Details and thread, more cards per board row, all connections on one row).
@@ -51,13 +51,12 @@ COARSE_UP_TO = 1024
 COMMON_PHONES = {(390, 844), (412, 915), (430, 932)}
 # Whole-view captures for visual review: phones, the tablet (820), laptop, the 2560 workspace, 1920, ultrawide and 4K.
 SHOTS_AT = {320, 390, 768, 820, 1440, 1920, 2560, 3440, 3840}
-TABS = ["Conversation", "Map", "Tasks", "Wiki", "Agents"]
+TABS = ["Conversation", "Map", "Tasks", "Wiki"]
 # The phone menu lists Tasks before Map (#341).
-PHONE_TABS = ["Conversation", "Tasks", "Map", "Wiki", "Agents"]
+PHONE_TABS = ["Conversation", "Tasks", "Map", "Wiki"]
 # ADAPT-2 caps that stop the wide screens from giving more room (measured by test_07). Each is open until its
 # owner's PR lands; the test fails once a cap is gone, so the entry is removed rather than passing silently.
 WIDE_CAPS = {
-    "the Agents column": "the Agents column stays at 854 px (app/apps/web/src/agents/agents.css; PRs #376 and #417 own it)",
 }
 # The readable measure (proposed 2026-10-05, docs/design/adaptive-layout-rules.md): at most 90
 # characters, spaces included, on any rendered line of prose.
@@ -653,15 +652,6 @@ class AdaptiveMatrix(AdaptiveBase):
         self.no_sideways_scroll(page, "Wiki")
         self.shot(page, f"adapt-{size}{tag}-wiki")
 
-        # Agents: Hubert's two connections and Marek's one, each its own row of one list, and one primary button.
-        self.tab(page, "Agents")
-        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
-        connections = page.get_by_role("list", name="Agents in this project").get_by_role("listitem")
-        expect(connections).to_have_count(3)
-        self.primary(page, page.get_by_role("button", name="Hand off a task"), "Hand off a task")
-        self.no_sideways_scroll(page, "Agents")
-        self.shot(page, f"adapt-{size}{tag}-agents")
-
         # And back: the Conversation tab returns to the same stream and composer.
         self.tab(page, "Conversation")
         expect(page.get_by_label("Write a message", exact=True)).to_be_visible()
@@ -800,10 +790,6 @@ class AdaptiveMatrix(AdaptiveBase):
         expect(page.locator(".tb-board")).to_be_visible()
         self.at_rest(page)
         geometry["Tasks"] = page.evaluate(GEOMETRY)
-        self.tab(page, "Agents")
-        expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
-        self.at_rest(page)
-        geometry["Agents"] = page.evaluate(GEOMETRY)
         self.no_sideways_scroll(page, f"the views at {width}x{height} @{dpr}")
         return geometry
 
@@ -830,11 +816,7 @@ class AdaptiveMatrix(AdaptiveBase):
             plane = page.locator(".sk-canvas").bounding_box()["width"]
             pane = page.locator(".sk-page--map").bounding_box()["width"]
             self.assertAlmostEqual(plane, pane, delta=1, msg=f"the map fills the available pane at {width} CSS px")
-            self.tab(page, "Agents")
-            expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
-            self.at_rest(page)
-            column = page.locator(".agents").first.bounding_box()["width"]
-            measured[width] = {"the map plane": round(plane), "the Agents column": round(column)}
+            measured[width] = {"the map plane": round(plane)}
         print("\n  wide surfaces, CSS px at 1920 / 2560 / 3840: " + "; ".join(f"{name} {measured[1920][name]} / {measured[2560][name]} / {measured[3840][name]}" for name in measured[1920]), end="")
         for smaller, larger in ((1920, 2560), (2560, 3840)):
             self.assertGreater(measured[larger]["the map plane"], measured[smaller]["the map plane"], f"the map gains room at {larger} CSS px: {measured}")
@@ -901,7 +883,7 @@ class AdaptiveMatrix(AdaptiveBase):
         message's private reply thread (its root and one reply) and the Agents view's task thread (two messages): the newest
         message sits against its field."""
         world = self.short_world()
-        gaps = {"thread": {}, "direct message": {}, "direct message thread": {}, "Agents task thread": {}}
+        gaps = {"thread": {}, "direct message": {}, "direct message thread": {}}
         for width, height in [(390, 844), (820, 1180), (1440, 900), (2560, 1440), (3440, 1440)]:
             with self.subTest(width=width, height=height):
                 size = f"{width}×{height}"
@@ -927,14 +909,6 @@ class AdaptiveMatrix(AdaptiveBase):
                 last = panel.locator(".thread__list > li").last.bounding_box()
                 field = panel.locator("#dm-thread-composer").bounding_box()
                 gaps["direct message thread"][size] = round(field["y"] - (last["y"] + last["height"]))
-                agents = self.page(width, height, state=world["state"])
-                agents.goto(f"/projects/{world['task_project']}/agents?task={world['task']}")
-                thread = agents.get_by_role("region", name="Thread of Mount the lamp sensor")
-                expect(thread.locator(".agents-msg")).to_have_count(2)
-                self.at_rest(agents)
-                last = thread.locator(".agents-msg").last.bounding_box()
-                field = thread.get_by_label("Write to this task").bounding_box()
-                gaps["Agents task thread"][size] = round(field["y"] - (last["y"] + last["height"]))
                 # Every surface is measured before any is judged, so one failure still reports the others.
                 for what, values in gaps.items():
                     self.assertLessEqual(values[size], MAX_STREAM_GAP, f"the newest message of the {what} and its field stay together at {size}: {gaps}")
@@ -1275,8 +1249,6 @@ class AdaptiveReflow(AdaptiveBase):
             return [("Create", page.get_by_role("button", name="Create", exact=True))] if phone else [("New Task", page.get_by_role("button", name="New Task", exact=True))]
         if view == "Wiki":
             return [("Page actions", page.get_by_role("button", name="Page actions", exact=True))]
-        if view == "Agents":
-            return [("Hand off a task", page.get_by_role("button", name="Hand off a task"))]
         return []
 
     def within_window(self, locator: Locator, what: str, where: str) -> None:
@@ -1297,8 +1269,6 @@ class AdaptiveReflow(AdaptiveBase):
                 expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
             elif view == "Wiki":
                 expect(page.get_by_role("heading", level=2, name=fx.WIKI_PAGE)).to_be_visible()
-            elif view == "Agents":
-                expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
             elif view == "Tasks":
                 expect(page.locator(".tb-board, .ws-task").first).to_be_visible()
             self.at_rest(page)
@@ -1364,8 +1334,6 @@ class AdaptiveReflow(AdaptiveBase):
                             self.tab(page, view)
                         if view == "Map":
                             expect(page.locator(".sk-node")).to_have_count(len(fx.THOUGHTS))
-                        elif view == "Agents":
-                            expect(page.get_by_role("heading", level=1, name="Agents")).to_be_visible()
                         self.at_rest(page)
                         hits = page.evaluate(UNSAFE_HITS, insets)
                         self.check(not hits, f"{view} at {where}: no control can be hit inside an inset: {hits}")

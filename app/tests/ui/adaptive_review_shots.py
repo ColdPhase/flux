@@ -61,7 +61,7 @@ class AdaptiveReviewShots(unittest.TestCase):
             ("map", f"/projects/{p}/map/{self.ids['sketch']}", ".sk-node"),
             ("tasks", f"/projects/{p}/tasks", ".tb-board, .ws-task"),
             ("wiki", f"/projects/{p}/docs/{self.ids['doc']}", "h2"),
-            ("agents-thread", f"/projects/{p}/agents?task={self.task}", ".agents-msg"),
+            ("tasks-details", f"/projects/{p}/tasks?open=work:{self.task}", ".agents-msg"),
             ("dm-thread", f"/dm/{self.dm}?thread={self.dm_root}", "[data-dm-thread] .thread__list > li"),
         ]
 

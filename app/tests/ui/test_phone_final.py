@@ -52,8 +52,6 @@ class PhoneFinal(unittest.TestCase):
         cls.call(page, "POST", f"/api/v1/workspaces/{cls.workspace['id']}/members", {"email": cls.kai_email, "role": "member"}, 201)
         cls.project = cls.call(page, "POST", f"/api/v1/workspaces/{cls.workspace['id']}/projects",
             {"name": "Community garden sensors", "visibility": "restricted"}, 201)
-        # The Agents view stays an added view until #873 retires it (a new space starts with Conversation, Tasks, Map and Wiki).
-        cls.call(page, "POST", f"/api/v1/projects/{cls.project['id']}/views", {"view": "agents"})
         cls.second_project = cls.call(page, "POST", f"/api/v1/workspaces/{cls.workspace['id']}/projects",
             {"name": "Riverside seed library", "visibility": "restricted"}, 201)
         for title, status in (("Order six capacitive probes", "in_progress"), ("Ask the school for two ESP32 kits", "open")):
@@ -293,7 +291,7 @@ class PhoneFinal(unittest.TestCase):
                 menu = page.get_by_role("dialog", name=re.compile("Community garden sensors"))
                 expect(menu).to_be_visible()
                 labels = [text.strip().split("\n")[0] for text in menu.locator(".phone-menu__item").all_inner_texts()]
-                self.assertEqual(labels, ["Conversation", "Tasks", "Map", "Wiki", "Agents", "Details and people"])
+                self.assertEqual(labels, ["Conversation", "Tasks", "Map", "Wiki", "Details and people"])
                 expect(menu.get_by_text("Decisions")).to_have_count(0)
                 expect(menu.locator('[aria-current="page"]')).to_have_count(1)
                 expect(menu.locator('[aria-current="page"]')).to_contain_text("Tasks")

@@ -433,35 +433,6 @@ class AiConnectionSettings(unittest.TestCase):
         key = next(item for item in json.loads(page.request.get(f"{ORIGIN}/api/v1/background-compute-connections").text()) if item["name"] == "From the window")
         self.assertEqual(page.request.delete(f"{ORIGIN}/api/v1/background-compute-connections/{key['id']}", headers={"origin": ORIGIN}).status, 204)
 
-    def test_11_a_codex_host_action_speaks_to_the_person(self) -> None:
-        """#635/#160, #763 AG-3: the Codex Start/Resume host action gives its commands in plain words, without the release
-        verification notes (those stay in docs/development/evidence/160-workflow/README.md). The connection is created through the API."""
-        page = self.page()
-        headers = {"origin": ORIGIN, "content-type": "application/json"}
-
-        def post(path: str, body: dict) -> dict:
-            response = page.request.post(f"{ORIGIN}{path}", data=body, headers=headers)
-            self.assertEqual(response.status, 201, response.text())
-            return response.json()
-
-        ws = post("/api/v1/workspaces", {"name": "Codex label studio"})
-        project = post(f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Codex label", "visibility": "workspace"})
-        agent = post(f"/api/v1/workspaces/{ws['id']}/agents", {"name": "Ada's Codex", "owner": "self"})
-        post("/api/v1/integration/agent-connections", {"agentId": agent["id"], "name": "Ada Codex laptop", "clientDesignation": "codex"})
-        # The Start/Resume commands sit on the project's Agents view, with the connection's row (the settings page lists clients, nothing more).
-        page.goto(f"/projects/{project['id']}/agents")
-        page.locator(f"[data-agent='{agent['id']}'] .agents-row__btn").click()
-        host = page.locator(".cowork-host-actions")
-        expect(host).to_have_count(1)
-        expect(host.locator("summary")).to_have_text("Start / Resume in Codex")
-        host.locator("summary").click()
-        expect(host).to_contain_text("./flux cowork start --client codex")
-        expect(host).to_contain_text("in the folder where Flux was installed")
-        # #763 AG-3: words for the person, not release QA notes.
-        for internal in ("Verified with a real", "Flux checkout", "built Docker image", "0.160.1"):
-            expect(host).not_to_contain_text(internal)
-        shot(page, "ai-connection-1440-codex-host-verified")
-
 
 if __name__ == "__main__":
     unittest.main()

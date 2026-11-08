@@ -155,7 +155,7 @@ class TaskEntries(unittest.TestCase):
         self.assertEqual(self.task_total(), before + 1, "the retry does not create a second task")
 
     def check_views(self, who: str, work_id: str, title: str, first_word: str, root_id: str, conversation_id: str, on_map: str | None) -> None:
-        """Conversation, Tasks, Agents (and Map when the task has a thought) show the same root, author and one task each."""
+        """Conversation, Tasks, the task's Details (and Map when the task has a thought) show the same root, author and one task each."""
         creator = PEOPLE[who][0]
         root_author = PEOPLE[OTHER[who]][0]
         pid = self.ids["project"]
@@ -180,12 +180,11 @@ class TaskEntries(unittest.TestCase):
         expect(activity.locator("li[data-message-id]").filter(has_text=first_word)).to_contain_text(root_author.split()[0])
         expect(activity.get_by_role("link", name="Open in Conversation")).to_have_attribute("href", thread)
 
-        page.goto(f"/projects/{pid}/agents?task={work_id}")
-        thread_region = page.get_by_role("region", name=re.compile(rf"^Thread of {re.escape(title)}"))
-        expect(thread_region).to_have_count(1)
-        expect(thread_region.locator(".agents-msg", has_text=first_word)).to_contain_text(root_author)
-        expect(thread_region).to_contain_text(first_word)
-        expect(page.get_by_role("link", name="Open in Conversation")).to_have_attribute("href", thread)
+        # The task's link (a notification's, a search result's) opens the same Details on its own.
+        page.goto(f"/projects/{pid}/tasks?open=work:{work_id}")
+        activity = page.locator("#details").get_by_role("region", name="Activity")
+        expect(activity.locator("li[data-message-id]").filter(has_text=first_word)).to_contain_text(root_author.split()[0])
+        expect(activity.get_by_role("link", name="Open in Conversation")).to_have_attribute("href", thread)
 
         if on_map:
             page.goto(f"/projects/{pid}/map/{self.ids['sketch']}")
@@ -267,16 +266,17 @@ class TaskEntries(unittest.TestCase):
             on_map = "map"
         work = self.task_by_title(title)
         self.assertEqual(work["title"], title)
-        # The creator's draft for the task is the same text in Details and in the Agents composer, before the root exists.
+        # The creator's draft for the task is kept: after a reload the Details composer has the same text, before the root exists.
         page = self.page(who)
         page.goto(f"/projects/{self.ids['project']}/tasks?view=board")
         page.locator(".tb-card").filter(has_text=title).get_by_role("button", name=title, exact=True).click()
         box = page.locator("#details").get_by_label("First message about this task")
         draft = f"Shared draft for {title}"
         box.fill(draft)
-        page.goto(f"/projects/{self.ids['project']}/agents?task={work['id']}")
-        expect(page.get_by_label("Write to this task")).to_have_value(draft)
-        page.get_by_label("Write to this task").fill("")
+        page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{work['id']}")
+        composer = page.locator("#details").get_by_label(re.compile("^(Write to this task|First message about this task)$"))
+        expect(composer).to_have_value(draft)
+        composer.fill("")
         first_word = f"First word from {other} about {entry}"
         root_id, conversation_id = self.discussion_root(other, work["id"], first_word)
         self.check_views(who, work["id"], title, first_word, root_id, conversation_id, on_map)

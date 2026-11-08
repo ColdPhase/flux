@@ -121,8 +121,6 @@ def seed(browser) -> dict:
     ws = api(hubert, "POST", "/api/v1/workspaces", {"name": WORKSPACE})["id"]
     api(hubert, "POST", f"/api/v1/workspaces/{ws}/members", {"email": MAREK["email"], "role": "member"})
     project = api(hubert, "POST", f"/api/v1/workspaces/{ws}/projects", {"name": PROJECT, "visibility": "restricted"})["id"]
-    # The Agents view stays an added view until #873 retires it (a new space starts with Conversation, Tasks, Map and Wiki).
-    api(hubert, "POST", f"/api/v1/projects/{project}/views", {"view": "agents"})
     api(hubert, "POST", f"/api/v1/projects/{project}/grants", {"principal": {"kind": "human", "id": ids["marek"]}, "role": "contributor"})
     ids.update(workspace=ws, project=project)
 

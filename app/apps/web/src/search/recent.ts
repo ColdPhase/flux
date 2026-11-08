@@ -39,7 +39,6 @@ export function placeOfPath(pathname: string): RecentPlace | null {
   if (rest === '' || /^\/conversations\/[^/]+$/.test(rest)) return { key: `project:${id}:conversation`, path };
   if (rest === '/tasks') return { key: `project:${id}:tasks`, path };
   if (/^\/map(\/[^/]+)?$/.test(rest)) return { key: `project:${id}:map`, path };
-  if (rest === '/agents') return { key: `project:${id}:agents`, path };
   const doc = /^\/docs(?:\/([^/]+)(\/versions\/\d+)?)?$/.exec(rest);
   if (doc && doc[1] !== 'new') return { key: `project:${id}:docs`, path: doc[1] ? `${base}/docs/${doc[1]}` : `${base}/docs` };
   return null;

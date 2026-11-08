@@ -151,7 +151,7 @@ export interface WorkspaceMember {
 }
 
 /** The views a project shows only once it needs them (#351, F-026 S21). Conversation and Tasks are always there. */
-export const PROJECT_VIEWS = ['map', 'docs', 'agents'] as const;
+export const PROJECT_VIEWS = ['map', 'docs'] as const;
 export type ProjectViewId = (typeof PROJECT_VIEWS)[number];
 /** F-037: every new space starts the same way, with Conversation, Tasks, Map and Wiki; there are no templates. */
 export const NEW_SPACE_VIEWS: readonly ProjectViewId[] = ['map', 'docs'];

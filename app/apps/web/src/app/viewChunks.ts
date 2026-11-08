@@ -1,6 +1,6 @@
 /**
  * The code of a project's other views (#863 rule 2, 6). The router keeps the old route until the new one's code and reads are here,
- * so the code of Tasks, the Map, the Wiki and Agents is fetched while the browser is idle inside a project (or on the first press):
+ * so the code of Tasks, the Map and the Wiki is fetched while the browser is idle inside a project (or on the first press):
  * a switch then waits only for its reads. Each module is imported here once, by the routes and by the preload alike, so a switch
  * shares the download instead of asking for it a second time. A failed download is forgotten, so the next ask tries again.
  */
@@ -13,8 +13,7 @@ export const tasksPage = once(() => import('../work/ProjectTasks'));
 export const mapPage = once(() => import('../project/ProjectViews'));
 export const wikiPage = once(() => import('../docs/Wiki'));
 export const docViewsPage = once(() => import('../docs/DocViews'));
-export const agentsPage = once(() => import('../agents/ProjectAgents'));
 
 export function preloadProjectViews(): Promise<unknown> {
-  return Promise.all([tasksPage(), mapPage(), wikiPage(), docViewsPage(), agentsPage()]);
+  return Promise.all([tasksPage(), mapPage(), wikiPage(), docViewsPage()]);
 }

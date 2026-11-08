@@ -16,7 +16,6 @@ test('a project view is one place whichever page of it was open', () => {
   assert.equal(key(`/projects/${P}/tasks`), `project:${P}:tasks`);
   assert.equal(key(`/projects/${P}/map`), `project:${P}:map`);
   assert.equal(key(`/projects/${P}/map/sketch-1`), `project:${P}:map`);
-  assert.equal(key(`/projects/${P}/agents`), `project:${P}:agents`);
 });
 
 test('a doc version folds into its doc, and the Wiki is one place', () => {

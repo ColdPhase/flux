@@ -38,14 +38,13 @@ export async function projectShellLoader({ params, request: req }: LoaderFunctio
 
 /**
  * The optional views a project shows (#351, F-026 S21): those added on purpose (a template, More), plus
- * any it already uses: a Map with sketches, a Wiki with docs, Agents with an agent in the project. So an
+ * any it already uses: a Map with sketches, a Wiki with docs. So an
  * existing project never loses a view it uses, and a new one shows them the first time they are needed.
  */
 export function shownViews(shell: ProjectShell, current?: ProjectViewId | null): Set<ProjectViewId> {
   const shown = new Set<ProjectViewId>(shell.project.views);
   if (shell.sketches?.total) shown.add('map');
   if (shell.docs?.length) shown.add('docs');
-  if (shell.people?.some((person) => person.kind === 'agent')) shown.add('agents');
   if (current) shown.add(current);
   return shown;
 }

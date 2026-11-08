@@ -50,28 +50,14 @@ describe('new spaces and their views over HTTP', () => {
     assert.equal((expectStatus(await reader.browser.request('GET', `/api/v1/projects/${own.id}`), 200) as Project).access, 'manager');
   });
 
-  test('a writer adds a view once, a reader cannot, and an unknown view is refused', async () => {
+  test('a space starts with its Map and Wiki, adding one again changes nothing, and Agents or any other view is refused', async () => {
     const created = expectStatus(await create(owner, { name: 'Plan' }), 201) as Project;
     await grant(owner, created.id, writer, 'contributor');
-    await grant(owner, created.id, reader, 'contributor');
-    const first = expectStatus(await add(writer, created.id, 'agents'), 200) as Project;
-    assert.deepEqual(first.views, ['map', 'docs', 'agents']);
-    assert.equal(first.version, created.version + 1);
-    const again = expectStatus(await add(writer, created.id, 'map'), 200) as Project;
-    assert.equal(again.version, first.version, 'adding a view it has changes nothing');
+    assert.deepEqual(created.views, ['map', 'docs']);
+    const again = expectStatus(await add(writer, created.id, 'docs'), 200) as Project;
+    assert.equal(again.version, created.version, 'adding a view it has changes nothing');
     expectStatus(await add(owner, created.id, 'tasks'), 400);
-  });
-
-  test('concurrent additions on one space all succeed and the new view is kept once (no lock-upgrade deadlock)', async () => {
-    for (let round = 0; round < 12; round += 1) {
-      const created = expectStatus(await create(owner, { name: `Race ${round}` }), 201) as Project;
-      await grant(owner, created.id, writer, 'contributor');
-      const results = await Promise.all([add(owner, created.id, 'agents'), add(writer, created.id, 'docs'), add(writer, created.id, 'agents'), add(owner, created.id, 'map')]);
-      for (const result of results) expectStatus(result, 200);
-      const read = expectStatus(await owner.browser.request('GET', `/api/v1/projects/${created.id}`), 200) as Project;
-      assert.deepEqual([...read.views].sort(), ['agents', 'docs', 'map']);
-      assert.equal(read.version, created.version + 1, 'one version for the one view actually added');
-    }
+    expectStatus(await add(owner, created.id, 'agents'), 400); // There is no Agents view (F-026).
   });
 
   test('the views column is required and starts empty for new rows', async () => {

@@ -188,7 +188,7 @@ function OwnAgentCard({ item, compact, onChanged }: { item: OwnWorkingAgent; com
       : holdsLine(item.task.number, item.online ? item.task.title : item.signedIn ? 'offline' : 'not signed in yet');
   const label = `${item.agent.name} · ${taskLabel}`;
   const expression: KreskaExpression = item.paused && !item.working ? 'asleep' : item.working ? 'working' : item.online ? 'idle' : 'asleep';
-  const destination = `/projects/${item.task.projectId}/agents`;
+  const destination = `/projects/${item.task.projectId}/tasks?open=work:${item.task.id}`;
   const hue = agentHue(item.agent.id);
   return (
     <div className={`agentlive agentlive--agent${compact ? ' agentlive--compact' : ''}`} role="status" aria-label={label} data-agent={item.agent.id} data-ai-surface="working-agent">

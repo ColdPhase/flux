@@ -79,7 +79,7 @@ function Card({ workId, projectId, taskNumber, card, verdict, onChange, onReload
   const original = card.originalMessage;
   const inThread = original?.space === 'agents' && original.taskId === workId;
   const elsewhere = original && !inThread
-    ? original.space === 'agents' ? `/projects/${projectId}/agents?thread=${original.taskId}#message-${original.messageId}`
+    ? original.space === 'agents' ? `/projects/${projectId}/tasks?open=work:${original.taskId}#message-${original.messageId}`
       : `/projects/${projectId}/conversations/${original.conversationId}#message-${original.messageId}` : null;
 
   const cancel = async () => {

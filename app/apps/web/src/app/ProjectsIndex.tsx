@@ -20,7 +20,7 @@ export function ProjectsIndex() {
     <div className="pane-scroll">
       <div className="pane-in set">
         <div className="proj-index__head">
-          <p className="proj-index__lead">Each space has one conversation, a map, tasks, a wiki and its agents.</p>
+          <p className="proj-index__lead">Each space has one conversation, tasks, a map and a wiki.</p>
           <Button variant="secondary" onClick={() => openCreate({ kind: 'project' })}><Icon name="plus" />New space</Button>
         </div>
         {projects.length || lockedWorkspaces.length ? (

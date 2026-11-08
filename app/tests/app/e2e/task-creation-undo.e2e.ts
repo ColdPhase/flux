@@ -12,7 +12,6 @@ import { pool } from '../support/db.js';
 import { agentConnection } from '../support/mcp-actions.js';
 import { toolValue } from '../support/mcp.js';
 import { addMember, expectStatus, grant, password, person, project, workspace, type Person } from '../support/people.js';
-import { chooseOption, optionValues, selectedValue } from '../support/app-select.js';
 
 // Real OAuth/native creation, two real human accounts and real HTTP/SQL in either engine.
 // Holds interpose on genuine responses; they do not fabricate objects or events.
@@ -576,31 +575,15 @@ async function settleVisualTransitions(page: Page) {
   });
 }
 
-test('Agents, Map and live work never offer a task whose creation was undone, while its link still opens as history', { timeout: 120_000 }, async () => {
+test('Map and live work never offer a task whose creation was undone, while its link still opens as history', { timeout: 120_000 }, async () => {
   const f = await fixture(); const item = await f.create();
-  const kept = expectStatus(await f.author.browser.request('POST', `/api/v1/projects/${f.place.id}/work`,
-    { body: { title: 'Keep the second sensor in the plan' } }), 201) as WorkItem;
   const sketch = expectStatus(await f.author.browser.request('POST', `/api/v1/workspaces/${f.ws.id}/sketches`,
     { body: { title: 'Sensor map', scope: 'project', projectId: f.place.id } }), 201) as { id: string };
   await f.undo(item);
   const context = await signedIn(f.author);
   await withContexts([context], async () => {
     const page = await context.newPage(); watchErrors(page);
-    // Agents: an undone ?task= falls back to the current open task, never the undone thread. `?task=` opens a task's
-    // thread there (#582; the panel's thread section is named "Thread of <title>"), `?thread=` its agents' thread.
-    await page.goto(`/projects/${f.place.id}/agents?task=${item.id}`);
-    const keptThread = page.getByRole('region', { name: `Thread of ${kept.title}`, exact: true });
-    await keptThread.waitFor();
-    assert.equal(await page.getByRole('region', { name: `Thread of ${item.title}`, exact: true }).count(), 0);
-    // The current task picker is in Hand Off; the undone task is absent, while the open task remains selectable.
-    await page.getByRole('button', { name: 'Hand off a task', exact: true }).click();
-    const taskChoice = page.getByLabel('Task', { exact: true }); await taskChoice.waitFor();
-    await chooseOption(taskChoice, kept.id);
-    assert.equal(await selectedValue(taskChoice), kept.id);
-    const offered = await optionValues(taskChoice);
-    assert.equal(offered.includes(item.id), false);
-    assert.equal(offered.includes(kept.id), true);
-    await page.getByRole('button', { name: 'Close', exact: true }).click();
+    // A space has no Agents view (#857): what it held of a task is in the task's Details, which an undone task opens read-only.
     // Map: the map surface has no live or task action on it; the Details link still opens read-only history.
     await page.goto(`/projects/${f.place.id}/map/${sketch.id}?open=work:${item.id}`); await reverted(page, item);
     // Live: the work anchor of an undone task is refused by the server, so no session can start on it.
