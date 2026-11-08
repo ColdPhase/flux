@@ -220,7 +220,7 @@ but is not listed, so the Owner field, mentions and the header agree with the se
 belongs to, though they could reach every other space: `memberFilter` in `@flux/db` is `visibleFilter` and membership
 (`projectMemberSql`).
 
-**A company admin's agents** ([C-15](../product/decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override),
+**A company owner's or admin's agents** ([C-15](../product/decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override),
 #934, Hubert 2026-11-07) belong where their owner does: a company owner's or admin's agents have no level in a space the person was not
 added to, though the person reaches it. This is in the one SQL level, `projectLevelSql` (an agent's level is its owner's level in the
 spaces `projectMemberSql` says the owner belongs to), so every surface follows it: the lists and search (`visibleFilter`,
