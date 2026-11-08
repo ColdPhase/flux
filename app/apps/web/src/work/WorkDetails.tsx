@@ -108,10 +108,10 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   const [tick, setTick] = useState(0);
   const revalidator = useRevalidator();
   const reload = useCallback(() => { setTick((value) => value + 1); revalidator.revalidate(); }, [revalidator]);
-  // A change to this project's work by anyone (for example an Undo of a task's creation, #238) re-reads the open
-  // object, so no other tab or account keeps acting on what it showed before. Private drafts are kept.
+  // A change to this project's work by anyone (for example an Undo of a task's creation, #238, or the owner deleting an agent's line in
+  // the thread, #961) re-reads the open object, so no other tab or account keeps acting on what it showed before. Private drafts are kept.
   useStreamEvents(accountId, (event) => {
-    if (event.objectType === 'project' && event.objectId === projectId && /^project\.(work|decision|result|link)_/.test(event.kind)) setTick((value) => value + 1);
+    if (event.objectType === 'project' && event.objectId === projectId && /^project\.((work|decision|result|link)_|assistant_change_undone\.)/.test(event.kind)) setTick((value) => value + 1);
   }, () => setTick((value) => value + 1));
   const load = useCallback((signal: AbortSignal) => loadContext(projectId, signal), [projectId]);
   const contextRead = useWorkRead(projectId ? { accountId, projectId, selector: 'detail-context' } : null, load, tick, revalidator.state === 'idle');

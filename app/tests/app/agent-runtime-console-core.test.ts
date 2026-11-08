@@ -171,7 +171,8 @@ describe('what a sign-in leaves behind is cleaned up (#910)', () => {
         assert.deepEqual(await readdir(scratch), [], 'gone before the result reached the owner');
       } else {
         login.link.destroy();
-        await until('the scratch to be emptied', async () => (await readdir(scratch)).length === 0, 5_000);
+        // The cleanup may remove the whole directory between two looks: that is emptied too.
+        await until('the scratch to be emptied', async () => (await readdir(scratch).catch((error: NodeJS.ErrnoException) => { if (error.code === 'ENOENT') return []; throw error; })).length === 0, 5_000);
       }
     }));
   }

@@ -97,10 +97,13 @@ owner, or "with" the person who took it. An agent waited for is named as the thr
   task can still read the space, so it uses only what all of them can see. Its answer is posted as the other agent's message and
   the asking agent continues with it as a new run. Each step is bounded (`MAX_EXCHANGE_TURNS`); an exchange that cannot
   go on (no such agent in the task, a refusal, no answer, the bound) is said in one line and the task goes back to its owner.
-- **The owner can always delete a line their agent put in the thread (#923, #938, TA-3).** The report, the question and the
-  answer of a run are also that run's change (`conversation.reply`, `assistant_changes`, tool `flux_task_post`), so the agent's
-  owner sees Delete under the line (asked once) and everyone then reads "Removed by Jonas" over a marker, "[Removed by its owner]",
-  that keeps the line's place. Nothing stops it: not a person's later reply, not a citation (`plan.thread` makes `removeMessage`
+- **The owner can always delete a line their agent put in the thread (#923, #938, #961, TA-3).** The report, the question and the
+  answer of a run are also that run's change (`conversation.reply`, `assistant_changes`, tool `flux_task_post`), and so is any
+  reply of the owner's assistant or local client in a task's thread (the server marks it `plan.thread` when it records it), so
+  the agent's owner sees Delete under the line (asked once) and everyone then reads "Removed by Jonas" next to a marker, "[Removed]",
+  that keeps the line's place and does not say who a second time. The change keeps no excerpt of the line once it is gone, and
+  an owner who left the space or can only read it any more cannot delete (a 404 or a 403); the other open task panels re-read
+  when the delete is made. Nothing stops it: not a person's later reply, not a citation (`plan.thread` makes `removeMessage`
   skip the "used since" checks that every other removal has). It is the owner's alone, and, like every removal of what an agent
   made, it waits while AI is off in the space (C-17). A run's own Undo leaves these lines to their Delete, and the state line
   does not list them. Status lines ("Got it", "Stopped by Maja", refusals) are not changes.

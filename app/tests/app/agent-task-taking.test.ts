@@ -281,21 +281,32 @@ describe('people\'s agents take tasks (#856, #904)', () => {
   });
 
   test('#938: a give-up that fails every time is tried a bounded number of times, and the event is left with its count', async () => {
-    const { task } = await heldByAgent(lee, agents.lee!, 'Cannot be given back');
+    const { task, run } = await heldByAgent(lee, agents.lee!, 'Cannot be given back');
+    // The run ends first, and what its end does is done before the faults go in. A run left queued is failed by the worker some time
+    // later (this composition has no provider), and its report ("I couldn't finish this.") would be a line in the thread that this
+    // test counts; a run that has ended cannot do that. The task is then held by the agent again, as the faults need it.
+    await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now() WHERE id = $1`, [run.id]);
+    await settled(task.id);
+    await pool.query('UPDATE project_work_items SET owner_user_id = NULL, owner_agent_id = $2, version = version + 1 WHERE id = $1', [task.id, agents.lee]);
+    const linesBefore = await agentLines(task.id);
     const after = task.id.replace(/-/g, '');
-    await withFault(`atk_doing_${after}`, 'project_work_items', `OLD.id = '${task.id}' AND NEW.status = 'in_progress'`, `RAISE EXCEPTION 'injected fault';`, () =>
-      withFault(`atk_back_${after}`, 'project_work_items', `OLD.id = '${task.id}' AND OLD.owner_agent_id IS NOT NULL AND NEW.owner_agent_id IS NULL`, `RAISE EXCEPTION 'injected fault';`, async () => {
-        const { rows: [event] } = await pool.query(`INSERT INTO agent_task_events (kind, work_id, run_id) SELECT 'started', $1, id FROM personal_runs WHERE work_id = $1 RETURNING id`, [task.id]);
-        const left = await waitFor(async () => { const row = await eventNow(task.id, 'started'); return row.attempts >= AGENT_TASK_EVENT_ATTEMPTS + AGENT_TASK_GIVE_UP_ATTEMPTS ? row : null; }, 'the tries to run out', 60_000);
-        assert.deepEqual([left.attempts, left.handled_at], [AGENT_TASK_EVENT_ATTEMPTS + AGENT_TASK_GIVE_UP_ATTEMPTS, null], 'five tries, five give-ups, and the count is exact');
-        // It is not claimed again, whoever asks: the count stays, and nothing was done to the task.
-        for (let i = 0; i < 4; i++) { await eventNow(task.id, 'started'); await new Promise((resolve) => setTimeout(resolve, 300)); }
-        const still = (await pool.query(`SELECT attempts, handled_at FROM agent_task_events WHERE id = $1`, [event.id])).rows[0] as { attempts: number; handled_at: Date | null };
-        assert.deepEqual([still.attempts, still.handled_at], [left.attempts, null]);
-        assert.equal((await readTask(task.id)).owner?.kind, 'agent', 'the task was never given back: the hand-back failed each time');
-        assert.deepEqual(await agentLines(task.id), [], 'and no line was posted, because each give-up rolled back whole');
-      }));
-    await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now() WHERE work_id = $1`, [task.id]);
+    try {
+      await withFault(`atk_doing_${after}`, 'project_work_items', `OLD.id = '${task.id}' AND NEW.status = 'in_progress'`, `RAISE EXCEPTION 'injected fault';`, () =>
+        withFault(`atk_back_${after}`, 'project_work_items', `OLD.id = '${task.id}' AND OLD.owner_agent_id IS NOT NULL AND NEW.owner_agent_id IS NULL`, `RAISE EXCEPTION 'injected fault';`, async () => {
+          const { rows: [event] } = await pool.query(`INSERT INTO agent_task_events (kind, work_id, run_id) VALUES ('started', $1, $2) RETURNING id`, [task.id, run.id]);
+          const left = await waitFor(async () => { const row = await eventNow(task.id, 'started'); return row.attempts >= AGENT_TASK_EVENT_ATTEMPTS + AGENT_TASK_GIVE_UP_ATTEMPTS ? row : null; }, 'the tries to run out', 60_000);
+          assert.deepEqual([left.attempts, left.handled_at], [AGENT_TASK_EVENT_ATTEMPTS + AGENT_TASK_GIVE_UP_ATTEMPTS, null], 'five tries, five give-ups, and the count is exact');
+          // It is not claimed again, whoever asks: the count stays, and nothing was done to the task.
+          for (let i = 0; i < 4; i++) { await eventNow(task.id, 'started'); await new Promise((resolve) => setTimeout(resolve, 300)); }
+          const still = (await pool.query(`SELECT attempts, handled_at FROM agent_task_events WHERE id = $1`, [event.id])).rows[0] as { attempts: number; handled_at: Date | null };
+          assert.deepEqual([still.attempts, still.handled_at], [left.attempts, null]);
+          assert.equal((await readTask(task.id)).owner?.kind, 'agent', 'the task was never given back: the hand-back failed each time');
+          assert.deepEqual(await agentLines(task.id), linesBefore, 'and no line was posted, because each give-up rolled back whole');
+        }));
+    } finally {
+      // The event is left unhandled with its count by design; a later run on this stack (B1 counts such events) must not meet it.
+      await pool.query('UPDATE agent_task_events SET handled_at = now() WHERE work_id = $1 AND handled_at IS NULL', [task.id]);
+    }
   });
 });
 

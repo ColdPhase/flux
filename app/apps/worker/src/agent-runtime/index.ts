@@ -1,5 +1,5 @@
 import { reconcileAgentRuntime, recoverLostRuntimeRuns, type AgentRuntimeConfig } from '@flux/core';
-import { agentRuntimeStore, withRuntimeReconcileLock, type Database } from '@flux/db';
+import { agentRuntimeStore, SessionLockLostError, withRuntimeReconcileLock, type Database } from '@flux/db';
 import { createRuntimeManagerClient, runtimeManagerPort } from '@flux/runtime-protocol';
 import { personalRunWorkerUnitOfWork } from '../personal-runs/adapters.js';
 
@@ -28,6 +28,9 @@ export function startAgentRuntimeReconciler({ config, db, pool, env }: { config:
         if (report.released.length || report.orphans || report.signInAgain.length || report.outOfPool.length || report.idle) log({ event: 'reconciled', ...report });
       } catch (error) {
         log({ event: 'reconcile_failed', message: (error as Error).message.slice(0, 200) });
+        // The lock was lost and the next holder may be reconciling. This one stops at its next checkpoint; neither the next tick nor
+        // `stop()` goes on before it has (#961).
+        if (error instanceof SessionLockLostError) await error.abandoned;
       } finally {
         running = null;
       }

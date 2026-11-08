@@ -170,6 +170,17 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     if (row.ownerUserId !== userId) await mayEdit(principal, row);
     return row;
   }
+  /**
+   * The owner's own change is theirs to take back only while they can still write where it was made: an owner who was removed from the
+   * space, or made a reader, has no say in it any more (#961). Undo of a removal (a line in a task's thread, a map, a result) writes
+   * without asking the domain for rights, so the check is made here.
+   */
+  async function ownerMayStillUndo(principal: Principal, projectId: string) {
+    const access = await evaluateProject(principal, 'project.write', projectId, accessReader(db));
+    if (access.allowed) return;
+    if (!access.visible) throw missing();
+    throw new ForbiddenError('You can read this, but only people who can edit it can undo it', 'ASSISTANT_CHANGE_NOT_EDITABLE');
+  }
   async function mayEdit(principal: Principal, row: AssistantChangeRow) {
     if (!isDone(row) || !(await evaluateProject(principal, 'project.read', row.projectId, accessReader(db))).allowed) throw missing();
     if (!(await evaluateProject(principal, 'project.write', row.projectId, accessReader(db))).allowed)
@@ -180,7 +191,12 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     if (!isUuid(runId)) throw missing();
     const list = await rows().forRun(runId);
     if (!list.length) throw missing();
-    if (list[0]!.ownerUserId === userId) return list;
+    if (list[0]!.ownerUserId === userId) {
+      // The owner's own group, minus what was made where they can no longer write.
+      const stillWritable = new Map<string, boolean>();
+      for (const row of list) if (!stillWritable.has(row.projectId)) stillWritable.set(row.projectId, (await evaluateProject(principal, 'project.write', row.projectId, accessReader(db))).allowed);
+      return list.filter((row) => stillWritable.get(row.projectId));
+    }
     // Someone else's group: only what was done, and only where the caller may edit (a local client's group can span several projects).
     const done = list.filter(isDone);
     await mayEdit(principal, done[0] ?? list[0]!);
@@ -312,6 +328,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
     /** Take back one applied change: a new version restoring what the agent changed, if still untouched (AG-3 "Undo"). */
     async undo(principal: Principal, changeId: string): Promise<AssistantChangeDecision> {
       const row = await editable(principal, changeId);
+      if (row.ownerUserId === owner(principal)) await ownerMayStillUndo(principal, row.projectId);
       const message = await undoOne(principal, row);
       return { change: await viewOne((await rows().find(row.id))!, principal), message };
     },

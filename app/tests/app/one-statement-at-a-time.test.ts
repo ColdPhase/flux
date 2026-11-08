@@ -43,6 +43,23 @@ test('a failed statement does not stop the ones behind it, and reaches only its 
   assert.deepEqual(warnings, []);
 });
 
+test('a statement that times out fails the ones waiting behind it at once, not one timeout after another (#961)', async () => {
+  const quick = createDatabase(connectionString, undefined, { onError: () => undefined, queryTimeoutMs: 300 });
+  const client = await quick.pool.connect();
+  try {
+    const started = Date.now();
+    // The first hangs for three seconds on the server. Behind it, each would wait its own 300 ms in turn: 600, 900, 1200.
+    const results = await Promise.allSettled([client.query('SELECT pg_sleep(3)'), client.query('SELECT 1'), client.query('SELECT 2'), client.query('SELECT 3')]);
+    const took = Date.now() - started;
+    assert.deepEqual(results.map((result) => result.status), ['rejected', 'rejected', 'rejected', 'rejected']);
+    for (const result of results) assert.equal(((result as PromiseRejectedResult).reason as Error).message, 'Query read timeout');
+    assert.ok(took < 700, `all four failed together, after about one timeout (${took} ms)`);
+  } finally {
+    client.release(true);
+    await quick.pool.end();
+  }
+});
+
 test('control: asking pg directly, past the wrapper, makes it warn, so the checks above could have failed', async () => {
   const client = await database.pool.connect();
   try {
