@@ -41,8 +41,6 @@ export interface SketchListProps {
   onReparent(id: string, parentId: string | null, how: 'indent' | 'outdent'): void;
   onConnectFrom(id: string): void;
   onConnections(id: string): void;
-  /** Create task from the selected thoughts; absent outside a project. */
-  onTask: (() => void) | null;
   /** Cite the selected thought in its place's conversation (#469); absent where a sketch has none. */
   onCite: (() => void) | null;
   onSay(text: string): void;
@@ -248,7 +246,6 @@ export function SketchList({ sketch, meId, selection, connectFrom, editing, canW
             {canWrite ? <>
               <button type="button" onClick={() => on.onEdit(thought.id)}><Icon name="edit" size={12} />Edit</button>
               <button type="button" aria-label="Add a child thought" onClick={() => on.onAdd(thought.id)}><Icon name="plus" size={12} />Child</button>
-              {on.onTask ? <button type="button" aria-label="Create task from selected thoughts" onClick={on.onTask}><Icon name="tasks" size={12} />Create task</button> : null}
             </> : null}
             <button type="button" className="sk-outline-more" aria-label="More actions" aria-expanded={more} onClick={() => setMoreId(more ? null : thought.id)}><Icon name="more" size={14} /></button>
           </span> : null}

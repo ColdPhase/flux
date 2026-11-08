@@ -16,11 +16,9 @@ import type { Editing } from './SketchView';
 
 /** What the floating bar above a selected thought needs from the view (the rarer actions sit behind its "…"). */
 export interface SelectionTools {
-  project: boolean;
   canUndo: boolean;
   helpOpen: boolean;
   onShape(): void;
-  onTask(): void;
   /** Cite the selected thought in its place's conversation (#469); absent where a sketch has none. */
   onCite: (() => void) | null;
   onUndo(): void;
@@ -936,7 +934,6 @@ export function SketchMap(props: SketchMapProps) {
           <button type="button" className={`sk-plus${coarse ? ' sk-plus--labelled' : ''}`} aria-label={`Add a thought connected to ${label}`} onClick={() => props.onAdd(lastThought.id)}>
             <Icon name="plus" size={14} />{coarse ? <span aria-hidden="true">Add</span> : null}
           </button>
-          {compact && props.bar.project ? <button type="button" className="sk-edit-btn sk-edit-btn--icon" aria-label="Create task from selected thoughts" aria-disabled={false} onClick={props.bar.onTask}><Icon name="tasks" size={16} /></button> : null}
           <button type="button" className="sk-edit-btn sk-edit-btn--icon" aria-label="Remove from map" onClick={() => props.onRemove(selection)}><Icon name="trash" size={16} /></button>
           {compact ? null : (
             <>
@@ -1121,7 +1118,6 @@ export function SketchMap(props: SketchMapProps) {
             {selection.length === 1 ? <button type="button" className="sk-options__action" onClick={() => phoneAction(() => props.onEdit(lastThought.id))}><Icon name="edit" size={18} />Edit thought</button> : null}
             {sourceMessage ? <Link className="sk-options__action" to={sourceMessage} onClick={() => setPhoneMenuOpen(false)}><Icon name="chat" size={18} />Open message</Link> : null}
             {openLink ? <a className="sk-options__action" href={openLink.href} target="_blank" rel="noopener noreferrer"><Icon name="link" size={18} />Open link {openLink.host}</a> : null}
-            {props.bar.project ? <button type="button" className="sk-options__action" aria-label="Create task from selected thoughts" aria-disabled={false} onClick={() => phoneAction(props.bar.onTask)}><Icon name="tasks" size={18} />Create task</button> : null}
             {props.bar.onCite ? <button type="button" className="sk-options__action" aria-label="Cite the selected thought in the conversation" onClick={() => phoneAction(props.bar.onCite!)}><Icon name="cite" size={18} />Cite in conversation</button> : null}
             <button type="button" className="sk-options__action" aria-label="Remove from map" onClick={() => phoneAction(() => props.onRemove(selection))}><Icon name="trash" size={18} />Remove thought</button>
           </> : <>

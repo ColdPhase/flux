@@ -645,20 +645,14 @@ class ScenarioJourney:
             for text in (LOW_LIGHT, PRIVACY):
                 self.thought(page, thoughts[text]).click(modifiers=["Shift"])
             expect(page.locator(".sk-node[aria-pressed='true']")).to_have_count(3)
-        create = page.get_by_role("button", name="Create task from selected thoughts", exact=True)
-        # #509 (from #345): Create task opens the Create window with the selected thoughts as its sources.
-        self.tap(create)
-        expect(linked_labels(page)).to_have_count(1 if self.phone else 3)
-        with page.expect_response(lambda r: r.request.method == "POST" and urllib.parse.urlsplit(r.url).path == f"/api/v1/projects/{lamp}/work") as saved:
-            self.tap(submit_button(page))
-        self.assertEqual(saved.value.status, 201)
-        experiment = saved.value.json()
+        # #867: the Map has no Create task: the experiment is a task that has the three thoughts as its sources.
+        expect(page.get_by_role("button", name="Create task from selected thoughts", exact=True)).to_have_count(0)
+        experiment = self.api("ada", "POST", f"/api/v1/projects/{lamp}/work", {"title": f"Explore: {CAMERA}, {LOW_LIGHT}, {PRIVACY}",
+                                                                              "sources": [{"type": "thought", "id": thoughts[text]} for text in (CAMERA, LOW_LIGHT, PRIVACY)]}, status=201)
         s["experiment"] = experiment["id"]
+        page.goto(f"/projects/{lamp}/map/{s['map']}?open=work:{experiment['id']}")
         expect(page.locator(f".wd[data-detail-kind='work'][data-detail-id='{experiment['id']}']")).to_be_visible()
-        self.assertTrue(page.url.split("?")[0].endswith(f"/map/{s['map']}"), "creating work keeps the map open")
-        if self.phone:
-            for text in (LOW_LIGHT, PRIVACY):
-                self.api("ada", "POST", f"/api/v1/projects/{lamp}/links", {"from": {"type": "work", "id": experiment["id"]}, "to": {"type": "thought", "id": thoughts[text]}}, status=201)
+        self.assertTrue(page.url.split("?")[0].endswith(f"/map/{s['map']}"), "the task opens beside the map")
         stored = self.api("ada", "GET", f"/api/v1/work/{experiment['id']}", status=200)
         linked = {link["to"]["id"] for link in stored["links"] if link["to"]["type"] == "thought"}
         self.assertEqual(linked, {thoughts[CAMERA], thoughts[LOW_LIGHT], thoughts[PRIVACY]}, "one experiment investigates three thoughts")

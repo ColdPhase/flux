@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { Link, Navigate, useLocation, useNavigate, useParams } from 'react-router';
-import { DEFAULT_THOUGHT_SIZE, imageTypeOf, SKETCH_LIMITS, THOUGHT_SHAPES, WORK_LIMITS, type SketchDetail } from '@flux/contracts';
+import { DEFAULT_THOUGHT_SIZE, imageTypeOf, SKETCH_LIMITS, THOUGHT_SHAPES, type SketchDetail } from '@flux/contracts';
 import { Button, EmptyState, Icon, MEDIA, Spinner, useMediaQuery } from '../ui';
 import { getProject } from '../api/sketches';
 import { ApiError, NetworkError } from '../api/client';
@@ -10,7 +10,6 @@ import { useShellData } from '../app/data';
 import { useShellActions } from '../app/shellContext';
 import { setReloadRetention } from '../app/reload-retention';
 import { holdCite, thoughtCite } from '../app/citeBus';
-import { firstLine } from '../work/format';
 import { DraftSaveNotSentError, useSketchDoc, type Op } from './doc';
 import { useLiveSketchDoc, type LiveSketchDoc } from './live-doc';
 import { useEditingCapability } from '../editing/capability';
@@ -167,7 +166,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
 
   // UI116-4: each thought of a project sketch shows how many of the project's tasks link to it,
   // from bounded reads of the sketch's own thoughts (#170), never the project's work collection.
-  // They refresh when the project's work or links change, on focus and after Create task; a
+  // They refresh when the project's work or links change, on focus and after a task is made; a
   // private or DM sketch has no linkable thoughts.
   const taskProjectId = sketch?.scope === 'project' ? sketch.projectId ?? null : null;
   const [taskRevision, setTaskRevision] = useState(0);
@@ -646,21 +645,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     say(`Shape: ${next === 'card' ? 'card' : next === 'pill' ? 'pill' : 'circle'}`, true);
   };
 
-  // #101, #509 (moved from #345): the selected thoughts of a project sketch become one task through the one Create window,
-  // with the thoughts as its linked sources; the person completes it there. The map keeps its thoughts.
-  const { openDetails, openCreate } = useShellActions();
-  const makeWork = () => {
-    const thoughts = selection.flatMap((id) => { const t = find(id); return t ? [t] : []; });
-    if (!thoughts.length || !sketch?.projectId) { say('Select thoughts first, then Create task'); return; }
-    const title = thoughts.length === 1 ? thoughts[0]!.text : `Explore: ${thoughts.map((t) => t.text).join(', ')}`;
-    openCreate({
-      kind: 'task',
-      projectId: sketch.projectId,
-      title: title.slice(0, WORK_LIMITS.title),
-      sources: thoughts.map((t) => ({ ref: { type: 'thought' as const, id: t.id }, label: firstLine(t.text, 80) })),
-      onCreated: () => { setTaskRevision((value) => value + 1); say(`Created a task from ${thoughts.length === 1 ? quote(thoughts[0]!.text) : `${thoughts.length} thoughts`}; the thoughts stay on the map`); },
-    });
-  };
+  const { openDetails } = useShellActions();
 
   // #469: the one selected thought is cited in the conversation of this map's space.
   // Nothing is sent from here: the citation waits in that conversation's composer, where the person adds their words.
@@ -812,7 +797,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
   }
   // #509 AC-5 / #510 AC-5: one toolbar at the bottom, the same element in the Map and the List, so
   // switching moves nothing (Spokój rule 7). The pointer tools only act on the canvas; in the List
-  // they are dimmed, not removed, so + Thought, Create task and Undo keep their places.
+  // they are dimmed, not removed, so + Thought and Undo keep their places.
   const dock = canWrite && !phone ? (
     <div className="sk-tools" role="toolbar" aria-label="Map tools">
       <button type="button" className="sk-tool" aria-label="Select" aria-pressed={mapMode && !connectFrom && !hand} aria-disabled={!mapMode} data-tip="Select"
@@ -826,7 +811,6 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
       <span className="sk-div" aria-hidden="true" />
       <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={16} />Thought</button>
       {coarse ? <button type="button" className="ui-btn ui-btn--quiet sk-select-several" aria-label="Select several" title="Select several" aria-pressed={selectSeveral} onClick={() => { setSelectSeveral(!selectSeveral); say(selectSeveral ? 'Tapping selects one thought' : 'Tap thoughts to add them to the selection'); }}><Icon name="check" size={16} /><span className="sk-bl">Select several</span></button> : null}
-      {sketch.scope === 'project' ? <button type="button" className="ui-btn ui-btn--quiet sk-task-btn" aria-disabled={!selection.length} onClick={() => makeWork()} aria-label="Create task from selected thoughts"><Icon name="tasks" size={16} />Create task</button> : null}
       {citePlace ? <button type="button" className="ui-btn ui-btn--quiet sk-cite-btn" aria-disabled={selection.length !== 1} onClick={citeSelected} aria-label="Cite the selected thought in the conversation"><Icon name="cite" size={16} />Cite</button> : null}
       <span className="sk-div" aria-hidden="true" />
       <button type="button" className="sk-tool" aria-label="Undo" data-tip="Undo" aria-disabled={!doc.canUndo} onClick={undo}><Icon name="undo" size={16} /></button>
@@ -852,7 +836,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
           </div>
           <SketchMap {...shared} coarse={coarse} compact={phone} helpId={helpId} heights={heights} dockHeight={dockHeight} onDockHeight={setDockHeight} dock={dock} hint={hint} viewModes={viewModes} hand={hand}
             onLabel={(linkId) => setConnectionTarget({ linkId })} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
-            bar={{ project: sketch.scope === 'project', canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onTask: () => makeWork(), onCite: citePlace ? citeSelected : null, onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
+            bar={{ canUndo: doc.canUndo, helpOpen, onShape: cycleShape, onCite: citePlace ? citeSelected : null, onUndo: undo, onHelp: () => setHelpOpen(!helpOpen) }}
             onConnect={connectTo} onAddAt={(parentId, x, y) => add(parentId, '', false, { x, y })} onConnectFrom={connectFromDot} onAddThought={() => add(selection[selection.length - 1] ?? null)}
             draftEditor={shownDraft ? draftForm : null} draft={shownDraft && !shownDraft.lines && !sketch.thoughts.some((thought) => thought.id === shownDraft.id)
               ? { x: shownDraft.x, y: shownDraft.y, parentId: shownDraft.parentId, label: shownDraft.attempt ? 'Save not confirmed' : shownDraft.unknown ? 'Saved state unknown' : 'Draft · not saved' }
@@ -877,7 +861,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     : 'Arrows move between thoughts; Left and Right fold and unfold a branch. Alt with Up or Down moves a thought among its neighbours in your list only.';
   const list = <SketchList {...shared} arrange={!phone} helpId={helpId} personalOutline={personalOutline} onNavigate={navigateThought}
     onReparent={reparent} onConnectFrom={connectFromDot} onConnections={(thoughtId) => setConnectionTarget({ thoughtId })}
-    onTask={sketch.scope === 'project' ? () => makeWork() : null} onCite={citePlace ? citeSelected : null} onSay={(text) => say(text)} />;
+    onCite={citePlace ? citeSelected : null} onSay={(text) => say(text)} />;
   const connections = connectionTarget ? <ConnectionLabels sketch={sketch} target={connectionTarget} editable={canWrite && !phone}
     onSave={doc.saveLinkLabel} onDraftChange={setConnectionDraft} onClose={closeConnections} /> : null;
 
@@ -914,7 +898,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
 
         {canWrite ? (
           <div className={`sk-bar${doc.problem ? ' sk-bar--problem' : ''}`}>
-            {/* #510 AC-4: Edit, + Child and Create task are the selected row's own actions on the phone too. */}
+            {/* #510 AC-4: Edit and + Child are the selected row's own actions on the phone too. */}
             <div className="sk-tools" role="toolbar" aria-label="Map tools">
             <button type="button" className="ui-btn ui-btn--quiet sk-add" onClick={() => add(selection[selection.length - 1] ?? null)}><Icon name="plus" size={14} />Thought</button>
             <button type="button" className="ui-btn ui-btn--quiet" aria-disabled={!selection.length} onClick={() => remove(selection)} aria-label="Remove from map"><Icon name="trash" size={14} /><span className="sk-bl">Remove</span></button>

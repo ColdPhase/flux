@@ -310,7 +310,7 @@ class MapCanvasJourney(unittest.TestCase):
         self.scene(page, extra=(('Far right and low', 900, 420), ('Far left and high', -400, -200)))
         tools = page.get_by_role('toolbar', name='Map tools')
         names = [b.get_attribute('aria-label') or b.inner_text().strip() for b in tools.get_by_role('button').all()]
-        self.assertEqual(names, ['Select', 'Move around', 'Thought', 'Create task from selected thoughts', 'Cite the selected thought in the conversation', 'Undo'])
+        self.assertEqual(names, ['Select', 'Move around', 'Thought', 'Cite the selected thought in the conversation', 'Undo'])
         pane = page.locator('.sk-page').bounding_box()
         bar = tools.bounding_box()
         self.assertAlmostEqual(bar['x'] + bar['width'] / 2, pane['x'] + pane['width'] / 2, delta=12, msg='the toolbar is centred')
@@ -346,7 +346,6 @@ class MapCanvasJourney(unittest.TestCase):
                     'Map': page.get_by_role('radio', name='Map', exact=True),
                     'List': page.get_by_role('radio', name='List', exact=True),
                     'Thought': page.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Thought', exact=True),
-                    'Create task': page.get_by_role('button', name='Create task from selected thoughts', exact=True),
                     'Undo': page.get_by_role('toolbar', name='Map tools').get_by_role('button', name='Undo', exact=True),
                 }
                 on_map = {name: control.bounding_box() for name, control in controls.items()}
