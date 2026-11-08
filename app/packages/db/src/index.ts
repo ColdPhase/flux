@@ -15,6 +15,7 @@ export * from './repositories/agent-tasks.js';
 export * from './repositories/personal-run-web-reads.js';
 export * from './session-lock.js';
 export { oneStatementAtATime } from './one-statement-at-a-time.js';
+export { afterDeadlock, isDeadlock } from './deadlock.js';
 export * from './repositories/space-ai.js';
 export * from './repositories/access.js';
 export { workspaceRepository } from './repositories/workspaces.js';

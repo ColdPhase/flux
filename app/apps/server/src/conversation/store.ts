@@ -203,6 +203,14 @@ async function existingMessage(projectId: string, author: Actor, clientMessageId
   return row;
 }
 
+/**
+ * Whether a stored message is what a send with this `clientMessageId` and these words already made. A deleted message has no digest of its
+ * words any more (its fingerprint is random, #1006), so a retry of the send that stored it could never match: the deleted message answers the
+ * retry as it is, the marker, which the outbox drops quietly. A "conflict" would put the deleted words back in the author's composer (#1052).
+ * The message still tells which conversation and which place it is in, so the callers keep those checks.
+ */
+const retriesSend = (stored: { requestFingerprint: string; removedAt: Date | null }, fingerprint: string) => stored.removedAt !== null || stored.requestFingerprint === fingerprint;
+
 async function lockIdempotency(tx: Tx, projectId: string, author: Actor, clientId: string) {
   // Serializes same-key first sends before a thread is created. The uniqueness constraint
   // remains the final guard; hash collisions only serialize unrelated sends. Same namespace
@@ -215,7 +223,7 @@ async function sendInTransaction(tx: Tx, principal: Principal, conversation: Con
   const names = author.kind === 'agent' ? await workRows(tx).names([author]) : new Map<string, string>();
   const existing = await existingMessage(conversation.projectId, author, input.clientMessageId, tx);
   if (existing) {
-    if (existing.requestFingerprint !== input.fingerprint || existing.conversationId !== conversation.id)
+    if (!retriesSend(existing, input.fingerprint) || existing.conversationId !== conversation.id)
       throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
     const cards = await messageReferences(tx).cards(principal, { kind: 'project', workspaceId: conversation.workspaceId }, [existing.id]);
     return { message: message({ ...existing, files: (await fileRows(tx).messageFiles([existing.id])).get(existing.id), references: cards.get(existing.id) }, names), inserted: false };
@@ -437,7 +445,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         const names = author.kind === 'agent' ? await workRows(tx).names([author]) : new Map<string, string>();
         const existing = await existingMessage(projectId, author, input.clientMessageId, tx);
         if (existing) {
-          if (existing.requestFingerprint !== input.fingerprint || existing.sequence !== 1)
+          if (!retriesSend(existing, input.fingerprint) || existing.sequence !== 1)
             throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
           const row = await locateConversation(principal, existing.conversationId, tx);
           return { id: row.id, projectId: row.projectId, workspaceId: row.workspaceId,

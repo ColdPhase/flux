@@ -39,6 +39,8 @@ export interface DiscussionMessage {
   files?: MessageFile[];
   /** The agent whose answer the author posted with Show everyone (#842). */
   via?: string | null;
+  /** When the author deleted it (#1006): the words are the marker and the request fingerprint no longer digests what was sent. */
+  removedAt?: Date | null;
 }
 export interface NewDiscussionMessage {
   /** Validated immutable attachment metadata, never supplied directly by an entry point. */

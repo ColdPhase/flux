@@ -21,7 +21,7 @@ import {
   SpaceAiSweepIncomplete,
   type SpaceAiSweepQueue,
 } from '@flux/core';
-import { accessPorts, accessReader } from '@flux/db';
+import { accessPorts, accessReader, afterDeadlock } from '@flux/db';
 import { bodyId, requires } from '../http/commands.js';
 import { nameSchema, pageQuery } from '../http/schemas.js';
 import type { AccessContext } from './context.js';
@@ -66,7 +66,9 @@ export function projectRoutes(app: FastifyInstance, { db, principal, command, ru
   app.delete<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId`, async (request, reply) => {
     const actor = await principal(request);
     await assertAuthorized(actor, 'project.manage', projectScope(request.params.projectId), accessReader(db));
-    await projectChange(request.params.projectId, (conn) => deleteProject(actor, request.params.projectId, conn, accessPorts));
+    // The cascade locks the space's messages in the database's own order, while a notice batch holds a message `FOR SHARE` in event order:
+    // if PostgreSQL cancels this delete to break a deadlock between them, nothing was kept and the delete runs once more (#1052).
+    await afterDeadlock(() => projectChange(request.params.projectId, (conn) => deleteProject(actor, request.params.projectId, conn, accessPorts)));
     return reply.code(204).send();
   });
   app.post<{ Params: { projectId: string } }>(`${PROJECTS_PATH}/:projectId/leave`, async (request, reply) => {

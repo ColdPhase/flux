@@ -16,7 +16,7 @@ const wire = (row: DiscussionMessage, names: Map<string, string>, owners: Readon
       author: { kind: 'agent' as const, id: row.author.id, name: names.get(`agent:${row.author.id}`) ?? 'Agent',
         ...(owners.has(row.author.id) ? { projectOwner: owners.get(row.author.id)! } : {}) } }),
     body: row.body, source: row.source, ...(row.sourceDeleted ? { sourceDeleted: true as const } : {}), sequence: row.sequence, createdAt: row.createdAt.toISOString(),
-    ...(row.via ? { via: row.via } : {}), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}) };
+    ...(row.via ? { via: row.via } : {}), ...(row.removedAt ? { removedAt: row.removedAt.toISOString() } : {}), ...(contribution ? { contribution } : {}), ...(row.files?.length ? { files: row.files } : {}) };
 };
 
 /**
@@ -69,7 +69,11 @@ async function appendToTask(ports: TaskDiscussionPorts, project: { workspaceId: 
   const binding = await ports.discussion.findBinding(workId);
   const existing = await ports.discussion.existingMessage(project.projectId, author, input.clientMessageId);
   if (existing) {
-    if (existing.requestFingerprint !== input.fingerprint || existing.conversationId !== binding?.conversationId)
+    // A deleted message has no digest of its words any more (its fingerprint is random, #1006), so the retry of the contribution that stored it
+    // could never match; it finds the marker instead, and the outbox ends the send rather than put the deleted words back in the composer (#1052).
+    // Only ordinary text can be deleted, so a retry of another kind is still a reused identity.
+    const sameSend = existing.removedAt ? existing.kind === (input.kind ?? 'text') : existing.requestFingerprint === input.fingerprint;
+    if (!sameSend || existing.conversationId !== binding?.conversationId)
       throw new ConflictError('This clientMessageId was used for another contribution', 'IDEMPOTENCY_CONFLICT');
     return { message: existing, replayed: true };
   }

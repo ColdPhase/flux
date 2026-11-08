@@ -243,6 +243,66 @@ describe('an author edits and deletes their own message (#1006)', () => {
       assert.equal(await noticeExists(made), false, 'the notice made from the words is removed with them');
       assert.equal(await notificationFactRows(db).projectMessage(messageId), null, 'and a message that is removed tells no one anything');
     });
+
+    test('a send retried after its message was deleted finds the marker: a reply and the start of a conversation; a real conflict is still a 409 (#1052)', async () => {
+      const gone = word('retrygone'); const again = word('retryagain');
+      const startId = randomUUID(); const replyId = randomUUID();
+      const post = (who: Person, path: string, body: string, clientMessageId: string) => who.browser.request('POST', path, { body: { body, clientMessageId } });
+      const first = expectStatus(await post(ben, `/api/v1/projects/${lamp.id}/conversations`, `${gone} opening`, startId), 201) as Conversation;
+      const answered = expectStatus(await post(ben, `/api/v1/conversations/${first.id}/messages`, `${gone} reply`, replyId), 201) as ConversationMessage;
+      // Control: while the message is there, the same id with other words is a conflict and the same words find it.
+      assert.equal(codeOf(await post(ben, `/api/v1/conversations/${first.id}/messages`, again, replyId)), 'IDEMPOTENCY_CONFLICT');
+      assert.equal((expectStatus(await post(ben, `/api/v1/conversations/${first.id}/messages`, `${gone} reply`, replyId), 201) as ConversationMessage).body, `${gone} reply`);
+
+      expectStatus(await remove(ben, first.id, answered.id), 200);
+      expectStatus(await remove(ben, first.id, first.messages[0]!.id), 200);
+      const conversations = (await pool.query('SELECT count(*)::int AS n FROM project_conversations WHERE project_id = $1', [lamp.id])).rows[0].n as number;
+      // The answer to the send was lost, the person deleted the message, and the retry arrives: it finds the marker, not a conflict.
+      const retriedReply = expectStatus(await post(ben, `/api/v1/conversations/${first.id}/messages`, `${gone} reply`, replyId), 201) as ConversationMessage;
+      assert.deepEqual([retriedReply.id, retriedReply.body, retriedReply.sequence, Boolean(retriedReply.removedAt)], [answered.id, REMOVED_BY_AUTHOR_BODY, answered.sequence, true]);
+      const retriedStart = expectStatus(await post(ben, `/api/v1/projects/${lamp.id}/conversations`, `${gone} opening`, startId), 201) as Conversation;
+      assert.equal(retriedStart.id, first.id, 'the same conversation, not a new one');
+      assert.deepEqual(retriedStart.messages.map((item) => [item.id, item.body, Boolean(item.removedAt)]), [[first.messages[0]!.id, REMOVED_BY_AUTHOR_BODY, true]]);
+      assert.equal(retriedStart.firstMessageBody, REMOVED_BY_AUTHOR_BODY);
+      assert.deepEqual((await read(ben, first.id)).map((item) => item.id), [first.messages[0]!.id, answered.id], 'nothing was stored by the retries');
+      assert.equal((await pool.query('SELECT count(*)::int AS n FROM project_conversations WHERE project_id = $1', [lamp.id])).rows[0].n, conversations, 'no conversation was made');
+      assert.ok(!(await databaseText()).includes(gone), 'and the words did not come back');
+
+      // What stays a conflict: the deleted message's id used for another place. A reply is not the start of a conversation, and the start is not a reply
+      // in another conversation.
+      const other = await start(ben, lamp.id, word('elsewhere'));
+      assert.equal(codeOf(await post(ben, `/api/v1/projects/${lamp.id}/conversations`, `${gone} reply`, replyId)), 'IDEMPOTENCY_CONFLICT', 'a reply\'s id does not start a conversation');
+      assert.equal(codeOf(await post(ben, `/api/v1/conversations/${other.id}/messages`, `${gone} reply`, replyId)), 'IDEMPOTENCY_CONFLICT', 'nor does it post to another conversation');
+      assert.equal(codeOf(await post(ben, `/api/v1/conversations/${other.id}/messages`, `${gone} opening`, startId)), 'IDEMPOTENCY_CONFLICT');
+      // Someone else's send with the same id is theirs alone: it is stored as their own message.
+      assert.equal((expectStatus(await post(cy, `/api/v1/conversations/${first.id}/messages`, 'cy has the same id', replyId), 201) as ConversationMessage).body, 'cy has the same id');
+    });
+
+    test('a contribution to a task retried after its message was deleted finds the marker too (#1052)', async () => {
+      const gone = word('taskretrygone');
+      const task = expectStatus(await ada.browser.request('POST', `/api/v1/projects/${lamp.id}/work`, { body: { title: word('Retry task'), clientCommandId: randomUUID() } }), 201) as { id: string };
+      const path = `/api/v1/work/${task.id}/discussion`;
+      const clientMessageId = randomUUID();
+      const post = (body: string, extra: Record<string, unknown> = {}, id = clientMessageId) => ben.browser.request('POST', path, { body: { body, clientMessageId: id, ...extra } });
+      const sent = expectStatus(await post(gone), 201) as ConversationMessage;
+      assert.equal(codeOf(await post(word('other words'))), 'IDEMPOTENCY_CONFLICT', 'control: other words under the same id are a conflict while the message is there');
+      expectStatus(await remove(ben, sent.conversationId, sent.id), 200);
+      const retried = expectStatus(await post(gone), 201) as ConversationMessage;
+      assert.deepEqual([retried.id, retried.body, Boolean(retried.removedAt)], [sent.id, REMOVED_BY_AUTHOR_BODY, true]);
+      assert.deepEqual((await read(ben, sent.conversationId)).map((item) => [item.id, item.body]), [[sent.id, REMOVED_BY_AUTHOR_BODY]], 'nothing was stored by the retry');
+      assert.ok(!(await databaseText()).includes(gone), 'and the words did not come back');
+      assert.equal(codeOf(await post(gone, { kind: 'handoff' })), 'IDEMPOTENCY_CONFLICT', 'a hand-off is not the text that was deleted');
+    });
+
+    test('a send retried after its message was edited still finds it, with the new words (#1052)', async () => {
+      const before = word('retrybefore'); const after = word('retryafter');
+      const replyId = randomUUID();
+      const thread = await start(ben, lamp.id, word('retryedit'));
+      const sent = expectStatus(await ben.browser.request('POST', `/api/v1/conversations/${thread.id}/messages`, { body: { body: before, clientMessageId: replyId } }), 201) as ConversationMessage;
+      expectStatus(await edit(ben, thread.id, sent.id, after), 200);
+      const retried = expectStatus(await ben.browser.request('POST', `/api/v1/conversations/${thread.id}/messages`, { body: { body: before, clientMessageId: replyId } }), 201) as ConversationMessage;
+      assert.deepEqual([retried.id, retried.body, Boolean(retried.editedAt)], [sent.id, after, true]);
+    });
   });
 
   describe('only the author', () => {
@@ -393,6 +453,49 @@ describe('an author edits and deletes their own message (#1006)', () => {
       assert.equal(await stored(third), 0, 'nor the deleted ones');
       assert.notEqual(await fingerprint(two.id), sentFingerprint, 'the digest of the sent words is gone');
       assert.match(await fingerprint(two.id), /^[a-f0-9]{64}$/);
+    });
+
+    test('a send retried after its message was deleted finds the marker: a root and a reply, with and without an Idempotency-Key; a real conflict is still a 409 (#1052)', async () => {
+      const gone = word('dmretrygone'); const replyWords = word('dmretryreply');
+      const rootId = randomUUID(); const replyId = randomUUID();
+      const post = (who: Person, path: string, body: string, clientMessageId: string, headers: Record<string, string> = {}) =>
+        who.browser.request('POST', `/api/v1/dms/${dm.id}${path}`, { body: { body, clientMessageId }, headers });
+      const key = randomUUID();
+      const root = expectStatus(await post(ben, '/messages', gone, rootId, { 'idempotency-key': key }), 201) as DmMessage;
+      const answered = expectStatus(await post(ben, `/threads/${root.id}/replies`, replyWords, replyId), 201) as DmMessage;
+      // Control: while the message is there, the same id with other words is a conflict and the same words find it.
+      assert.equal(codeOf(await post(ben, '/messages', word('other'), rootId)), 'IDEMPOTENCY_CONFLICT');
+      assert.equal(((await post(ben, '/messages', gone, rootId)).json as DmMessage).id, root.id);
+
+      expectStatus(await dmRemove(ben, answered.id), 200);
+      expectStatus(await dmRemove(ben, root.id), 200);
+      // The answer to the send was lost, the person deleted the message, and the retry arrives: it finds the marker, not a conflict.
+      for (const retried of [
+        expectStatus(await post(ben, '/messages', gone, rootId), 201) as DmMessage,
+        expectStatus(await post(ben, '/messages', gone, rootId, { 'idempotency-key': key }), 201) as DmMessage,
+      ]) assert.deepEqual([retried.id, retried.body, retried.sequence, Boolean(retried.removedAt)], [root.id, REMOVED_BY_AUTHOR_BODY, root.sequence, true]);
+      const retriedReply = expectStatus(await post(ben, `/threads/${root.id}/replies`, replyWords, replyId), 201) as DmMessage;
+      assert.deepEqual([retriedReply.id, retriedReply.body, retriedReply.threadRootId, Boolean(retriedReply.removedAt)], [answered.id, REMOVED_BY_AUTHOR_BODY, root.id, true]);
+      assert.deepEqual([(await thread(cy, root.id)).root.id, (await thread(cy, root.id)).replies.map((item) => item.id)], [root.id, [answered.id]], 'nothing was stored by the retries');
+      assert.ok(!(await databaseText()).includes(gone), 'and the words did not come back');
+      assert.ok(!(await databaseText()).includes(replyWords));
+
+      // What stays a conflict: the deleted message's id used for another place. A root is not a reply, and a reply of one root is not a reply of another.
+      const second = await send(ben, word('dmsecondroot'));
+      assert.equal(codeOf(await post(ben, `/threads/${second.id}/replies`, gone, rootId)), 'IDEMPOTENCY_CONFLICT', 'a root\'s id does not make a reply');
+      assert.equal(codeOf(await post(ben, '/messages', replyWords, replyId)), 'IDEMPOTENCY_CONFLICT', 'a reply\'s id does not make a root');
+      assert.equal(codeOf(await post(ben, `/threads/${second.id}/replies`, replyWords, replyId)), 'IDEMPOTENCY_CONFLICT', 'nor a reply of another root');
+      // Someone else's send with the same id is theirs alone.
+      assert.equal(((expectStatus(await post(cy, '/messages', 'cy has the same id', rootId), 201)) as DmMessage).body, 'cy has the same id');
+    });
+
+    test('a send retried after its message was edited still finds it, with the new words (#1052)', async () => {
+      const before = word('dmretrybefore'); const after = word('dmretryafter');
+      const id = randomUUID();
+      const sent = expectStatus(await ben.browser.request('POST', `/api/v1/dms/${dm.id}/messages`, { body: { body: before, clientMessageId: id } }), 201) as DmMessage;
+      expectStatus(await dmEdit(ben, sent.id, after), 200);
+      const retried = expectStatus(await ben.browser.request('POST', `/api/v1/dms/${dm.id}/messages`, { body: { body: before, clientMessageId: id } }), 201) as DmMessage;
+      assert.deepEqual([retried.id, retried.body, Boolean(retried.editedAt)], [sent.id, after, true]);
     });
 
     test('a deleted direct message is not given to a model', async () => {

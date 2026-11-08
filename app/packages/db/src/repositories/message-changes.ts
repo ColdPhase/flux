@@ -37,13 +37,20 @@ async function forgetNotices(db: DbExecutor, source: { type: 'project' | 'dm'; i
     await db.execute(sql`DELETE FROM notifications WHERE source_type = ${source.type} AND source_id = ${source.id} AND reason = 'reply' AND url LIKE ${`${alsoRepliesTo}#%`}`);
 }
 
-/** The author's stored answers to keyed direct-message sends hold the message as sent; a retry only repeats a send, which finds the message. */
+/**
+ * The author's stored answers to keyed direct-message sends hold the message as sent. A retry then runs the send again, which finds the
+ * stored message: an edited one with its new words, a deleted one as the marker.
+ */
 async function forgetSendAnswers(db: DbExecutor, message: { workspaceId: string; authorId: string }) {
   await db.execute(sql`DELETE FROM idempotency_keys WHERE workspace_id = ${message.workspaceId} AND principal = ${`human:${message.authorId}`}
     AND operation IN ('POST /api/v1/dms/:dmId/messages', 'POST /api/v1/dms/:dmId/threads/:rootId/replies')`);
 }
 
-/** A fingerprint that no words produce: the row keeps the column filled, but no longer a digest of what was written. */
+/**
+ * A fingerprint that no words produce: the row keeps the column filled, but no longer a digest of what was written. A retry of the send
+ * that stored a deleted message therefore cannot match it by its words; the three send paths find a deleted message by its `clientMessageId`
+ * alone and answer the marker (#1052), so the outbox drops the send and the deleted words do not come back to the composer.
+ */
 const unlinkedFingerprint = () => randomBytes(32).toString('hex');
 
 export function messageChangeRows(db: DbExecutor) {
@@ -98,7 +105,7 @@ export function messageChangeRows(db: DbExecutor) {
     async removeDm(message: { id: string; workspaceId: string; dmId: string; authorId: string }): Promise<Date> {
       await db.delete(r).where(eq(r.dmMessageId, message.id));
       // A send retried under an Idempotency-Key stored the message in its answer for replay; the message id is the retry identity too,
-      // so dropping the author's stored answers for sends only costs a repeat of the same send (which finds the message).
+      // so dropping the author's stored answers for sends only costs a repeat of the same send (which finds the marker, #1052).
       await forgetSendAnswers(db, message);
       const sealed = await sealFor(db, 'dm_messages', message.workspaceId, { body: REMOVED_BY_AUTHOR_BODY, requestFingerprint: unlinkedFingerprint() }, { id: message.id });
       const [updated] = await db.update(dm).set({ body: sealed.body, requestFingerprint: sealed.requestFingerprint, removedAt: sql`now()`, via: null }).where(eq(dm.id, message.id)).returning({ removedAt: dm.removedAt });

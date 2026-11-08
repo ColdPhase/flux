@@ -224,6 +224,18 @@ keeps the words. Migration `0029` adds `project_messages.edited_at`.
   trigger) its row in `search_documents`, so the sealed search index drops it too. A removed message cannot become a task's source, get a link card
   or be copied to a task. The return view
   and notification generation skip it. A task, a decision or a map thought made from it keeps its own words; the export shows the marker.
+- **A send retried after its message was deleted (#1052).** A delete replaces `request_fingerprint` with a random value, so the words
+  cannot be recovered from it. A retry of the send that stored the message (same author and `clientMessageId`) then finds the deleted
+  message and answers `201` with the marker, in a reply (`store.ts` `sendInTransaction`), in the start of a conversation
+  (`createConversation`) and in a contribution to a task (`task-discussions/service.ts` `appendToTask`, which also checks that it was
+  text): the web outbox ends the send and the deleted words do not return to the composer. What stays `409
+  IDEMPOTENCY_CONFLICT`: the same id for another place (another conversation, a reply used to start one) and, for a message that is
+  not deleted, other words. An edited message still finds its retry (the fingerprint is kept), with the new words.
+- **Locks.** Notice generation reads each message of its batch `FOR SHARE` (so a delete waits and then removes the notices written from
+  the words), and a space's delete cascades over that space's messages in the database's own order. Two messages of one space in a running
+  batch can therefore, in theory, make the generator and the space's delete wait for each other; PostgreSQL then cancels one (`40P01`),
+  probably the delete, which keeps nothing. `DELETE /api/v1/projects/:projectId` runs once more after such a cancel (`afterDeadlock`
+  in `@flux/db`, #1052); a second deadlock is the caller's failure.
 - **Events.** `project.message_edited.v1` and `project.message_removed.v1`, object the project, `data` `{ conversationId, messageId }`
   (ids only, which is all an encrypted space allows); a change that changes nothing records nothing. An open stream or thread reads the
   conversation again; the author's own page replaces the message at once.

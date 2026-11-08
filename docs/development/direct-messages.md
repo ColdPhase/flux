@@ -141,6 +141,11 @@ is the message as it now stands. Migration `0029` adds `dm_messages.edited_at` a
   and removes the message's citations, its notices (`/dm/<id>#message-<id>`), its search row (trigger) and the author's stored
   `Idempotency-Key` answers for message sends, which held the words. A root with replies keeps them and its reply count. A removed
   message cannot be copied to a task or edited again. The list's last-message line shows the marker.
+- **A send retried after its message was deleted (#1052).** The delete replaces the request fingerprint with a random value, so a
+  retry (same author and `clientMessageId`, with or without an `Idempotency-Key`) finds the deleted message and answers `201` with the
+  marker instead of `409 IDEMPOTENCY_CONFLICT`; the web outbox then ends the send and the deleted words do not return to the composer.
+  The `409` stays for the same id used as another kind of message (a root, a reply, or a reply to another root) and, for a message
+  that is not deleted, for other words.
 - **Events.** `dm.message_edited.v1` and `dm.message_removed.v1`, object the DM, `data` `{ messageId }` plus `rootId` for a reply.
   The participants' open conversation reads again, as for any `dm.*` event.
 

@@ -209,7 +209,11 @@ export function createDmUseCases(uow: DmUnitOfWork) {
       await ports.dms.lockClientMessage(dm.id, authorId, input.clientMessageId);
       const existing = await ports.dms.findMessage(dm.id, authorId, input.clientMessageId);
       if (existing) {
-        if (existing.requestFingerprint !== fingerprint) throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
+        // A deleted message has no digest of its words any more (its fingerprint is random, #1006), so a retry of the send that stored it could
+        // never match. The deleted message answers it as it is, the marker, and the outbox drops the send quietly; a "conflict" would put the
+        // deleted words back in the author's composer (#1052). Whether it was a root or a reply to this root is the one thing left to compare.
+        const sameSend = existing.removedAt ? existing.threadRootId === rootId : existing.requestFingerprint === fingerprint;
+        if (!sameSend) throw new ConflictError('This clientMessageId was used for another message', 'IDEMPOTENCY_CONFLICT');
         return toMessage(existing);
       }
       if (rootId) {
