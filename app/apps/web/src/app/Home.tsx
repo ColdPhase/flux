@@ -6,7 +6,7 @@ import { Face, KIND_WORD } from '../notifications/NeedsYouCard';
 import { useNeedsYou } from '../notifications/needsYou';
 import { getReturnSummary, saveReturnPoint } from '../returns/api';
 import { WaitingSpaces } from '../encryption/LockedSpace';
-import { SourceLink } from '../returns/SinceYouLeft';
+import { SourceLink } from '../returns/SourceLink';
 import { listAssignedWork } from '../work/api';
 import { STATUS_LABEL, dueLabel } from '../work/format';
 import { useShellData } from './data';

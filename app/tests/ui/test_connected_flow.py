@@ -8,11 +8,10 @@ works". Lena joins afterwards as a contributor. On a computer (1440 x 900) and a
 
 * CW-1: the phone's long press puts a message on the map under "More…", source kept; `/map` does it from the composer.
 * CW-2: the thought's "Open message" opens the message in its thread; the message shows an "On the map" chip.
-* CW-3: a newcomer's "What matters" shows the week before she joined, under "Before you joined".
 * CW-4: the Wiki editor shows a reference's kind, never `flux:decision/<id>`.
 * CW-5: a toast never lies over a sheet's buttons on the phone.
 * CW-6: a result lists its task's done-when criteria, each unchecked.
-* CW-7 / CW-15: one word per object; Project details lists every current decision.
+* CW-7: one word per object; a decision opens with its kind and state.
 * CW-9: "Add to a Wiki page" puts a card under the heading the person picks.
 * CW-14 / CW-16: a Wiki thought link selects the thought; a decision card names the message it came from.
 """
@@ -140,25 +139,6 @@ class ConnectedFlow(unittest.TestCase):
         while len(self.thoughts(page)) == before and time.time() < deadline:
             time.sleep(0.2)
 
-    # ---------------------------------------------------------------- CW-3: What matters for a newcomer
-
-    def test_01_a_newcomer_sees_what_happened_before_she_joined(self) -> None:
-        page = self.page()
-        page.goto(f"/projects/{self.ids['project']}")
-        page.locator("header.top").get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="What matters").click()
-        panel = page.locator("#details")
-        expect(panel.get_by_role("heading", name="What matters")).to_be_visible()
-        before = panel.get_by_role("region", name="Before you joined")
-        expect(before).to_be_visible()
-        expect(before).to_contain_text(TASK)
-        expect(panel).not_to_contain_text("Nothing new")
-        shot(page, "cw3-what-matters-newcomer")
-        panel.get_by_role("button", name="Change").click()
-        panel.get_by_role("radio", name="Last 7 days").click()
-        expect(panel.get_by_role("region", name="Before you joined")).to_contain_text(TASK)
-        expect(panel).not_to_contain_text("Nothing new in this period")
-
     # ---------------------------------------------------------------- CW-2: the thought and its message
 
     def test_02_a_thought_opens_its_message_and_the_message_names_its_thought(self) -> None:
@@ -253,20 +233,18 @@ class ConnectedFlow(unittest.TestCase):
                 expect(criteria).to_contain_text("Not checked off")
                 shot(page, f"cw6-result-criteria-{'phone' if phone else 'desktop'}")
 
-    # ---------------------------------------------------------------- CW-15, CW-7: Project details
+    # ---------------------------------------------------------------- CW-7: one word per object
 
-    def test_07_project_details_lists_every_current_decision(self) -> None:
+    def test_07_a_decision_opens_with_its_kind_and_state(self) -> None:
         page = self.page()
         page.goto(f"/projects/{self.ids['project']}/tasks?open=decision:{self.ids['d_sms']}")
         panel = page.locator("#details")
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
         expect(panel).not_to_contain_text("Current rule")
+        # The space's own details have no "Now": what is current lives in the Tasks and the Inbox (#865).
         page.goto(f"/projects/{self.ids['project']}")
         open_details(page)
-        now = page.locator("#details").get_by_role("region", name="Now", exact=True)
-        expect(now.locator(".ov-rule")).to_have_count(2)
-        expect(now).to_contain_text(D_SMS)
-        expect(now).to_contain_text(D_SAT)
+        expect(page.locator("#details").get_by_role("region", name="Now", exact=True)).to_have_count(0)
 
     # ---------------------------------------------------------------- CW-9, CW-5: a card under a heading, a toast clear of the sheet
 

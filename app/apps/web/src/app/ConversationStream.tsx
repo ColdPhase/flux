@@ -1,8 +1,7 @@
 import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { FORMER_MEMBER } from '../docs/format';
-import { useNavigate } from 'react-router';
 import type { Conversation, ConversationMessage, ConversationRoot, ConversationRootWindow, NativeWorkRow, ObjectNotice, Page, Project, ReturnSummary, TaskCreationNotice } from '@flux/contracts';
-import { AgentIdentity, Avatar, Button, EmptyState, Icon, IconButton, Kreska, Opening, StatusGlyph, useArrivals } from '../ui';
+import { AgentIdentity, Avatar, Button, EmptyState, Icon, Kreska, Opening, StatusGlyph, useArrivals } from '../ui';
 import { newBelowText } from '../ui/motion-rules';
 import { useSpareHeight } from '../ui/spareHeight';
 import { MessageObjects, useCreateWorkFromMessage } from '../work/inline';
@@ -25,7 +24,7 @@ import { getReturnSummary, saveReturnPoint } from '../returns/api';
 import { useProjectShell } from '../project/data';
 import { useAddToMap } from '../project/addToMap';
 import { cite as citeMessage, messageCite } from './citeBus';
-import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sinceLine, sourcePhrase } from './conversationEvents';
+import { foldEntries, foldSummary, firstUnread, noticeSource, rootAuthor, sourcePhrase } from './conversationEvents';
 import { ObjectNoticeItem } from './ObjectNotices';
 import { followsProposal, objectTarget } from './objectNotices';
 import './conversation-final.css';
@@ -217,7 +216,7 @@ export function useConversationRoots(projectId: string, window: ConversationRoot
     return () => { cancelled = true; };
   }, [projectId, window]);
 
-  // A link to a root older than the loaded window (search, inbox, "Since you left"): read back to it.
+  // A link to a root older than the loaded window (search, the Inbox, a notice): read back to it.
   useEffect(() => {
     // A root in the refreshed newest window (not merged yet) is newer, never older: nothing to read back.
     const loaded = (root: ConversationRoot) => root.conversationId === seek;
@@ -321,12 +320,11 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   const rootKey = (root: ConversationRoot) => { const key = outbox.keyOf(root.message.id); return key === root.message.id ? root.conversationId : key; };
   const domId = (root: ConversationRoot) => { const key = outbox.keyOf(root.message.id); return key === root.message.id ? `message-${root.message.id}` : key; };
   const entries = streamEntries(roots, notices, stream.hasOlder, objects);
-  const { summary: since, settled: sinceSettled } = useSinceYouLeft(project.id);
+  const { summary: since, settled: sinceSettled } = useUnreadStart(project.id);
   const unread = since?.point.savedAt && since.items.length ? firstUnread(since, roots) : null;
   const display = foldEntries<Extract<StreamEntry, { kind: 'root' | 'object' }>, Extract<StreamEntry, { kind: 'notice' }>>(entries);
   const authorOf = useMemo(() => rootAuthor(roots, author), [roots, author]);
   const rootMessageIds = useMemo(() => new Set(roots.map((root) => root.message.id)), [roots]);
-  const navigate = useNavigate();
   const feedRef = useRef<HTMLDivElement>(null);
   const [feedNode, setFeedNode] = useState<HTMLDivElement | null>(null);
   const attachFeed = useCallback((node: HTMLDivElement | null) => { feedRef.current = node; setFeedNode(node); }, []);
@@ -502,35 +500,6 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
     setNewBelow({ messages: 0, tasks: 0 });
   };
 
-  // "Since you left" (S7): the first unread item comes into view, or opens in its thread when it is a reply.
-  // Returns whether it reached the item, so the line is only dismissed when the reader got there.
-  const jump = (target: NonNullable<ReturnType<typeof firstUnread>>): boolean => {
-    const feed = feedRef.current;
-    if (!feed) return false;
-    if ('objectId' in target) {
-      // A decision or a result: its notice in the stream, or its own panel when the notice is older than the window.
-      const card = feed.querySelector<HTMLElement>(`.convo-object[data-object-id="${CSS.escape(target.objectId)}"]`);
-      if (!card) { openDetails({ kind: target.objectKind, id: target.objectId }); return true; }
-      requestAnimationFrame(() => { stickRef.current = false; card.scrollIntoView({ block: 'start' }); card.querySelector<HTMLElement>('.convo-object__card')?.focus({ preventScroll: true }); });
-      return true;
-    }
-    if ('workId' in target) {
-      const notice = feed.querySelector<HTMLElement>(`.convo-notice[data-work-id="${CSS.escape(target.workId)}"]`);
-      // Its announcement is older than the loaded window: the task itself is the target.
-      if (!notice) { openDetails({ kind: 'work', id: target.workId }); return true; }
-      notice.closest('.convo-fold')?.querySelector<HTMLButtonElement>('.convo-fold__b[aria-expanded="false"]')?.click();
-      requestAnimationFrame(() => { stickRef.current = false; notice.scrollIntoView({ block: 'start' }); notice.querySelector<HTMLElement>('.convo-notice__task')?.focus({ preventScroll: true }); });
-      return true;
-    }
-    if (target.conversationId) { navigate(`/projects/${project.id}/conversations/${target.conversationId}#message-${target.messageId}`); return true; }
-    const message = document.getElementById(`message-${target.messageId}`);
-    if (!message) return false;
-    stickRef.current = false;
-    message.scrollIntoView({ block: 'start' });
-    message.focus({ preventScroll: true });
-    return true;
-  };
-
   // The thread docks beside the stream and leaves again: the root whose replies the person opened stays
   // at the same place (otherwise the first root in view, or the end when they were reading the end).
   useEffect(() => {
@@ -652,7 +621,6 @@ export function ConversationStream({ project, meId, meName, roots: stream, notic
   return (<>
     <div className="convo-stream">
     {revealed ? null : <Opening name={project.name} />}
-    <SinceLine summary={since} roots={roots} onJump={jump} onRecap={() => openDetails({ kind: 'recap', projectId: project.id })} />
     <div className={`project-convo__feed is-stream${revealed ? '' : ' is-opening'}`} ref={attachFeed} aria-busy={revealed ? undefined : true}
       data-associations-observed-at={messageWork.page?.observedAt} data-associations-phase={messageWork.state.phase}
       data-references-observed-at={referenceWork.observation?.observedAt} data-references-phase={referenceWork.state.phase}>
@@ -813,11 +781,11 @@ function NoticeFold({ fold, summary, children }: { fold: { key: string; notices:
 }
 
 /**
- * "Since you left" (S7, #763 A3): what changed in the project after the person last left its conversation. The summary
- * is read when they arrive; when they leave it for another view or place the project's return point is saved at what
- * they have seen, so the next arrival starts from there. Saving is forward-only on the server.
+ * Where the unread part of the stream begins (S7, #763 A3): what changed in the project after the person last left its
+ * conversation. The summary is read when they arrive; when they leave it for another view or place the project's return point
+ * is saved at what they have seen, so the next arrival starts from there. Saving is forward-only on the server.
  */
-function useSinceYouLeft(projectId: string) {
+function useUnreadStart(projectId: string) {
   const [read, setRead] = useState<{ projectId: string; summary: ReturnSummary | null } | null>(null);
   useEffect(() => {
     const controller = new AbortController();
@@ -835,38 +803,6 @@ function useSinceYouLeft(projectId: string) {
   }, [projectId]);
   // Settled once read (or refused), so the opening reveal can wait for the unread divider and nothing shifts.
   return read?.projectId === projectId ? { summary: read.summary, settled: true } : { summary: null, settled: false };
-}
-
-/** "Since you left: …" with a jump to the first unread item (S7). It floats over the stream and takes no room. */
-function SinceLine({ summary, roots, onJump, onRecap }: { summary: ReturnSummary | null; roots: ConversationRoot[]; onJump: (target: NonNullable<ReturnType<typeof firstUnread>>) => boolean; onRecap: () => void }) {
-  const [dismissed, setDismissed] = useState(false);
-  const target = summary ? firstUnread(summary, roots) : null;
-  const targetId = target && 'messageId' in target && !target.conversationId ? target.messageId : null;
-  // Jump is offered only while the first unread message is out of view (#763 WF-4): it never points at what is on screen.
-  const [seen, setSeen] = useState<{ id: string; in: boolean } | null>(null);
-  const inView = !!targetId && seen?.id === targetId && seen.in;
-  useEffect(() => {
-    const element = targetId ? document.getElementById(`message-${targetId}`) : null;
-    if (!element || !targetId || typeof IntersectionObserver === 'undefined') return undefined;
-    const observer = new IntersectionObserver(([entry]) => setSeen({ id: targetId, in: !!entry?.isIntersecting }), { threshold: 0.6 });
-    observer.observe(element);
-    return () => observer.disconnect();
-  }, [targetId, roots]);
-  if (!summary || dismissed || !summary.point.savedAt || !summary.items.length) return null;
-  const line = sinceLine(summary);
-  return (
-    <div className="convo-since" role="region" aria-label="Since you left">
-      <Kreska size={22} />
-      {/* The line opens "What matters", the space's recap of what changed and what is next (#763 H11-2); on a phone it
-          is also where the counts the cut line hides can be read in full (H11-6). Jump stays the second action. */}
-      <button type="button" className="convo-since__t" title={`Since you left: ${line}`} aria-label={`Since you left: ${line}. Open What matters`} onClick={onRecap}>
-        <b>Since you left:</b> {line}
-      </button>
-      <button type="button" className="convo-since__recap" onClick={onRecap}>What matters</button>
-      {target && !inView ? <button type="button" className="convo-since__jump" aria-label="Jump to the first unread" onClick={() => { if (onJump(target)) setDismissed(true); }}>Jump <Icon name="chevron-down" size={14} /></button> : null}
-      <IconButton icon="x" size={14} label="Dismiss" className="convo-since__x" onClick={() => setDismissed(true)} />
-    </div>
-  );
 }
 
 /** A quiet divider where the unread part of the stream begins (#763 A3). */

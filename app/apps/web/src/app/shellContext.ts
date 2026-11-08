@@ -47,9 +47,6 @@ export interface PeopleView { kind: 'people'; workspaceId: string }
 
 /** "Make it a project…" for a DM sketch (#96): the exact audience and content before anything is shared. */
 
-/** "What matters" (#133): the private recap of one project. */
-export interface RecapView { kind: 'recap'; projectId: string }
-
 /**
  * A thought's linked tasks (#170) in the one panel, in place of the phone's own sheet: each task replaces this content
  * with its own details, and "back" returns here.
@@ -66,7 +63,7 @@ export interface OwnedView { kind: 'owned' }
 export const isOwned = (view: DetailsView): view is OwnedView => typeof view === 'object' && view.kind === 'owned';
 
 /** What the Details panel shows: the current place, a project object or form, or how to connect a personal AI (#57). */
-export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | RecapView | PeopleView | ThoughtTasksView | OwnedView;
+export type DetailsView = 'place' | 'connect-ai' | ObjectView | WorkFormView | AddToDocView | OverviewView | PeopleView | ThoughtTasksView | OwnedView;
 
 /**
  * A panel a route's own view owns (F-026 S4, #488): a conversation thread, a direct-message thread, an agent or a task's

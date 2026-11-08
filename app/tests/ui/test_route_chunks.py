@@ -609,16 +609,16 @@ class RouteChunksJourney(unittest.TestCase):
                 page.goto(f"/projects/{self.project_id}")
                 expect(page.get_by_role("heading", name="Chunk boundaries", exact=True)).to_be_visible()
                 open_details(page)
-                # The first project Details show the open task as one line (#512): glyph, title, number.
-                row = page.locator("#details .ov-line", has_text=title)
-                expect(row).to_be_visible()
-                # A first-open native row must keep its glyph, readable text and number in separate
+                # The first project Details list the views as rows (#512, #865): icon, name, count.
+                row = page.locator("#details .ov-row", has_text=re.compile("^Tasks"))
+                expect(row.locator(".ov-row__n")).to_contain_text("open")
+                # A first-open native row must keep its icon, readable text and count in separate
                 # columns inside the phone panel. Missing lazy surface CSS must not collapse them.
                 geometry = row.evaluate("""el => {
                     const box = el.getBoundingClientRect();
-                    const glyph = el.querySelector('.ov-line__g').getBoundingClientRect();
-                    const body = el.querySelector('.ov-line__t').getBoundingClientRect();
-                    const number = el.querySelector('.ov-line__n').getBoundingClientRect();
+                    const glyph = el.querySelector('.ov-row__ic').getBoundingClientRect();
+                    const body = el.querySelector('.ov-row__b').getBoundingClientRect();
+                    const number = el.querySelector('.ov-row__n').getBoundingClientRect();
                     return { height: box.height, left: box.left, right: box.right,
                         iconRight: glyph.right, textLeft: body.left, textRight: body.right, actionLeft: number.left };
                 }""")

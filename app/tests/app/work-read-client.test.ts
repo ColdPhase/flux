@@ -7,7 +7,6 @@ import {
   workAssociationReadUrl, workRelationReadUrl, workViewReadUrl, getWorkReferenceRows, workReferenceReadUrl,
 } from '../../apps/web/src/work/read-api.js';
 import { ProjectWorkFacetStore, readScopeKey, readStateForScope, ScopedReadStore, type ReadScope } from '../../apps/web/src/work/read-state.js';
-import { summaryStateParts } from '../../apps/web/src/work/state-summary.js';
 
 const scope: ReadScope = { accountId: 'account-a', projectId: 'project-a', selector: '/view?group=all&limit=50' };
 function held<T>() {
@@ -100,15 +99,6 @@ test('same-scope passive refresh retains one observation until atomic replacemen
   assert.equal(store.getSnapshot().phase, 'loading');
   assert.equal('value' in store.getSnapshot(), false);
   next.resolve(page(1)); await nextRead;
-});
-
-test('summary state preserves distinct identical owner labels', () => {
-  const observed = summary(105);
-  observed.state.active = { count: 12, first: { kind: 'work', id: 'native-work', title: 'Measure low-light noise' }, ownerTotal: 5,
-    owners: [{ kind: 'human', id: 'one', name: 'Ada' }, { kind: 'human', id: 'two', name: 'Ada' }, { kind: 'agent', id: 'three', name: 'Ada' }] };
-  const part = summaryStateParts(observed).find((value) => value.key === 'work');
-  assert.equal(part?.text, '12 tasks in progress (Ada, Ada, Ada, 2 others)');
-  assert.deepEqual(part?.open, { kind: 'work', id: 'native-work' });
 });
 
 test('render-time scope gating hides the old account before effect cancellation runs', async () => {
@@ -280,24 +270,4 @@ test('six client adapters make one cookie-bearing GET each and preserve failures
   await assert.rejects(getWorkReferenceRows('project', 'work:object'), (error: unknown) => error instanceof ApiError && error.status === 503);
   assert.equal(calls.length, 8);
   fetchMock.mock.restore();
-});
-
-
-test('bounded state opens actual open/history refs without labelling history as active or hiding superseded decisions', () => {
-  const observed = summary(2);
-  assert.equal(summaryStateParts(observed)[0]?.text, '2 open tasks');
-  assert.deepEqual(summaryStateParts(observed)[0]?.open, { kind: 'work', id: 'first-open' });
-  observed.all.open = 0; observed.state.open = { count: 0, first: null };
-  observed.state.history = { completed: 1, notPursued: 1, parked: 2,
-    firstWork: { kind: 'work', id: 'retained', title: 'Retained native work' }, decisionCount: 0, firstDecision: null };
-  const history = summaryStateParts(observed);
-  assert.equal(history.length, 1); assert.equal(history[0]?.key, 'history');
-  assert.equal(history[0]?.text, '1 completed task · 1 not pursued · 2 parked');
-  assert.deepEqual(history[0]?.open, { kind: 'work', id: 'retained' });
-  observed.state.history = { completed: 0, notPursued: 0, parked: 0, firstWork: null,
-    decisionCount: 1, firstDecision: { kind: 'decision', id: 'superseded', title: 'Earlier rule' } };
-  assert.equal(summaryStateParts(observed)[0]?.text, '1 earlier decision');
-  assert.deepEqual(summaryStateParts(observed)[0]?.open, { kind: 'decision', id: 'superseded' });
-  observed.state.proposal = { kind: 'decision', id: 'proposal', title: 'Needs review' };
-  assert.equal(summaryStateParts(observed)[0]?.tone, 'need', 'current needs-you wins over retained history');
 });

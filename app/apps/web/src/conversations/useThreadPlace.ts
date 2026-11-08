@@ -43,7 +43,7 @@ export function useThreadPlace({ me, project, conversation }: PaneCore, { thread
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [conversation?.id, seek]);
   useEffect(() => {
-    // A source link from "Since you left" or search opens on that whole message. Otherwise an open thread starts at
+    // A source link from a notice or search opens on that whole message. Otherwise an open thread starts at
     // its root, whole (#436): its feed (the only one this ref holds) is scrolled to the top, so a long thread shows
     // its oldest replies first and the reader scrolls down. It runs again when the thread is first shown: a hidden
     // message cannot take focus. A return to this entry keeps the place the reader left (useMessageWork).

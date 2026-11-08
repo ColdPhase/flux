@@ -369,13 +369,15 @@ class ProjectSurfaceJourney(unittest.TestCase):
         }""")
 
     def test_05b_project_details_are_one_look_at_the_project(self) -> None:
-        """#512: the project's own Details, in the one panel shell: its head, Now, In this project, People, Connected."""
+        """#512: the project's own Details, in the one panel shell: its head, In this project, People, Connected (no "Now" or
+        "What matters", #865)."""
         page = self.page("ada")
         page.goto(f"/projects/{self.ids['project']}")
         open_details(page)
         panel = self.details(page)
         expect(panel.get_by_role("heading", name="Gesture lamp", exact=True)).to_be_visible()
-        expect(panel.get_by_role("region", name="Now", exact=True)).to_be_visible()
+        expect(panel.get_by_role("region", name="Now", exact=True)).to_have_count(0)
+        expect(panel.get_by_role("button", name="What matters")).to_have_count(0)
 
         # AC-2: the space's tile and name, then who is in it; the company is never named (F-037).
         head = panel.locator(".ov-head")
@@ -383,21 +385,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
         expect(head).to_contain_text("Jonas")
         expect(head).not_to_contain_text("Riverside Makers")
 
-        # AC-3: open and blocked tasks are one line each with their glyph and #number; the rule is one card with its date.
-        now = panel.get_by_role("region", name="Now", exact=True)
-        progress = now.get_by_role("button", name=re.compile("^In progress: Test the camera in low light"))
-        expect(progress).to_contain_text("#1")
-        expect(progress.locator(".ui-glyph--in_progress")).to_have_count(1)
-        waiting = now.get_by_role("button", name=re.compile("^Open: Order two VL53L5CX boards"))
-        expect(waiting).to_contain_text("#2")
-        self.assertLess(progress.bounding_box()["height"], 48, "a task is one line")
-        rule = now.get_by_role("button", name=re.compile("^Decision"))
-        expect(rule).to_contain_text("Use a ToF sensor, not the camera, for gestures")
-        expect(rule).to_contain_text(re.compile(r"accepted (\d+ \w+|\w+ \d+)"))
+        # AC-3 (#865): the space's current tasks and decision are not repeated here; Tasks and the Inbox hold them.
         text = panel.inner_text()
         for title in ("Test the camera in low light", "Order two VL53L5CX boards", "Use a ToF sensor, not the camera, for gestures"):
-            self.assertEqual(text.count(title), 1, f"{title!r} appears once in Details")
-        self.assertNotIn("Decision: ", text)
+            self.assertNotIn(title, text, f"{title!r} is not in the space's Details")
         self.assertNotIn("Task in progress", text)
 
         # AC-4: Map, Wiki and Tasks are three rows with counts that open the views.
@@ -422,7 +413,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
 
         # AC-1: the same shell as a task: the card, the head's height and the close button's place do not change.
         details_shell = self.panel_shell(panel)
-        progress.click()
+        first = self.api(page, "GET", f"/api/v1/projects/{self.ids['project']}/work?limit=100", status=200)["items"]
+        started = next(item for item in first if item["title"] == "Test the camera in low light")
+        page.goto(f"/projects/{self.ids['project']}/tasks?open=work:{started['id']}")
         expect(panel.get_by_role("heading", name="Test the camera in low light")).to_be_visible()
         task_shell = self.panel_shell(panel)
         for key, value in details_shell.items():
@@ -451,7 +444,7 @@ class ProjectSurfaceJourney(unittest.TestCase):
             open_details(phone, tap=True)
             sheet = phone.get_by_role("dialog", name="Details")
             expect(sheet.locator(".ov-head").get_by_role("heading", name="Gesture lamp", exact=True)).to_be_visible()
-            expect(sheet.get_by_role("region", name="Now", exact=True).get_by_role("button", name=re.compile("^In progress: Test the camera"))).to_be_visible()
+            expect(sheet.get_by_role("region", name="Now", exact=True)).to_have_count(0)
             expect(sheet.get_by_role("region", name="In this space", exact=True).get_by_role("link")).to_have_count(3)
             self.assertLessEqual(phone.evaluate("document.documentElement.scrollWidth"), PHONE["width"])
             shot(phone, f"project-details-one-look-phone-390-{scheme}")
@@ -499,12 +492,10 @@ class ProjectSurfaceJourney(unittest.TestCase):
         shot(page, "project-conversation-phone-390")
         open_details(page, tap=True)
         sheet = page.get_by_role("dialog", name="Details")
-        # The project's Details list its decisions under what matters now (no message was opened in Details first, #763 B3).
-        expect(sheet.get_by_role("button", name=re.compile("Keep a manual off switch")).first).to_be_visible()
+        # The project's Details do not list its decisions under a "Now" (#865); the people and settings are one row.
+        expect(sheet.get_by_role("button", name=re.compile("Keep a manual off switch"))).to_have_count(0)
         expect(sheet.get_by_role("region", name="Space settings", exact=True).get_by_role("link", name="People and settings")).to_be_visible()
         shot(page, "project-details-phone-390")
-        sheet.get_by_role("button", name=re.compile("Use a ToF sensor")).first.tap()
-        expect(sheet.get_by_role("heading", name="Use a ToF sensor, not the camera, for gestures")).to_be_visible()
         sheet.get_by_role("button", name="Close details").tap()
         view_tab(page, "Map", tap=True)
         # A project whose only listed sketch has content opens it directly (empty sketches are not listed, #508); the index is /map.

@@ -1,21 +1,18 @@
 import { Fragment, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
-import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, WorkReadRef, WorkRowProjection, WorkStatus, ResultRowProjection } from '@flux/contracts';
-import { AgentIdentity, Icon, StatusGlyph, TASK_STATE_WORD, type IconName } from '../ui';
+import type { DecisionRowProjection, NamedPrincipal, NativeWorkRow, WorkRowProjection, ResultRowProjection } from '@flux/contracts';
+import { AgentIdentity, Icon, type IconName } from '../ui';
 import { useShellData } from '../app/data';
 import { useShellActions, type DetailsView, type OverviewView } from '../app/shellContext';
 import { STATUS_LABEL, decisionLine } from '../work/format';
-import { summaryStateParts, type StatePart } from '../work/state-summary';
 import { useProjectWorkSummary } from '../work/WorkReadContext';
 import { useOverviewWork } from '../work/useOverviewWork';
-import { getWorkReferenceRows } from '../work/read-api';
-import { useWorkRead } from '../work/useWorkRead';
 import { WorkPagination } from '../work/WorkPagination';
 import { audienceLine, useProjectShell } from './data';
 import { docUrl } from '../docs/api';
 import { useWorkspaceEncryption } from '../encryption/state';
 import { useOpenConversation } from './OverviewContext';
-import { agentDisplayName, shortDate } from '../docs/format';
+import { agentDisplayName } from '../docs/format';
 import { agentAuthorOwner, useAgentOwners } from '../agents/owners';
 import './overview.css';
 import { RefLink } from '../place/origin';
@@ -41,40 +38,8 @@ function dotted(parts: ReactNode[]): ReactNode {
   return parts.filter(Boolean).map((part, index) => <Fragment key={index}>{index ? ' · ' : null}{part}</Fragment>);
 }
 
-/** What a state line says beyond its kind and title: the title, and the kind's own words, are not said twice (#512, AC-3). */
-function stateSub(part: StatePart): string | undefined {
-  if (part.key === 'rule') return undefined;
-  if (part.key === 'result') return part.text.startsWith('Negative') ? 'Negative result' : undefined;
-  if (part.key === 'work' && part.text.startsWith('Task in progress: ')) return /\(([^)]*)\)$/.exec(part.text)?.[1];
-  return part.text;
-}
-
 /** A single page of objects has no pager (#512, AC-6); while the page is unread the pager keeps its own loading state. */
 const multiPage = (page: { previousCursor: string | null; nextCursor: string | null } | null) => !page || !!page.previousCursor || !!page.nextCursor;
-
-/** One row: its kind, title and sub-line, a count at the right, and where it goes. */
-function RowItems({ rows }: { rows: Row[] }) {
-  const { openDetails } = useShellActions();
-  return (
-    <ul className="ov-rows">
-      {rows.map((row) => {
-        const body = <>
-          <Icon name={row.icon} size={16} className="ov-row__ic" />
-          <span className="ov-row__b">
-            {row.kind ? <span className="ov-row__k">{row.kind}</span> : null}
-            <span className="ov-row__t">{row.title}</span>
-            {row.sub ? <span className={`ov-row__s${row.need ? ' ws-need' : ''}`}>{row.sub}</span> : null}
-          </span>
-          {row.end ? <span className="ov-row__n">{row.end}</span> : null}
-          <Icon name="chevron-right" size={16} className="ov-row__go" />
-        </>;
-        return <li key={row.key}>{row.to
-          ? <RefLink className="ov-row" to={row.to}>{body}</RefLink>
-          : <button type="button" className="ov-row" data-work-kind={row.native?.kind} data-work-id={row.native?.id} onClick={() => openDetails(row.open)}>{body}</button>}</li>;
-      })}
-    </ul>
-  );
-}
 
 function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; empty?: ReactNode; controls?: ReactNode }) {
   const { openDetails } = useShellActions();
@@ -120,58 +85,6 @@ function Rows({ label, rows, empty, controls }: { label: string; rows: Row[]; em
   );
 }
 
-/** The task rows and the rule of the project's "Now" (#512, AC-3): each object once, in one line or one small card. */
-interface NowTask { key: string; id: string; status: WorkStatus; title: string }
-
-function NowSection({ projectId, tasks, rules, lines, others }: { projectId: string; tasks: NowTask[]; rules: WorkReadRef[]; lines: Row[]; others: Row[] }) {
-  const { me } = useShellData();
-  const { openDetails } = useShellActions();
-  // The task's number and the rule's date are read for exactly these objects; the rows show at once.
-  const refs = [...tasks.map((task) => `work:${task.id}`), ...rules.map((rule) => `decision:${rule.id}`)].sort().join(',');
-  const scope = refs ? { accountId: me.user.id, projectId, selector: `now:${refs}` } : null;
-  const load = useCallback((signal: AbortSignal) => getWorkReferenceRows(projectId, refs, signal), [projectId, refs]);
-  const read = useWorkRead(scope, load);
-  const items = read.phase === 'ready' || read.phase === 'refreshing' ? read.value.items : [];
-  const numberOf = (id: string) => { const row = items.find((item) => item.kind === 'work' && item.id === id); return row?.kind === 'work' ? `#${row.number}` : ''; };
-  const acceptedOf = (id: string) => items.find((item): item is DecisionRowProjection => item.kind === 'decision' && item.id === id)?.decidedAt ?? null;
-  if (!tasks.length && !rules.length && !lines.length && !others.length) return null;
-  return (
-    <section className="details__sec ov-sec" aria-labelledby="ov-now">
-      <h4 id="ov-now">Now</h4>
-      {tasks.length || lines.length ? (
-        <ul className="ov-rows ov-lines">
-          {tasks.map((task) => (
-            <li key={task.key}>
-              <button type="button" className="ov-line" onClick={() => openDetails({ kind: 'work', id: task.id })}>
-                <StatusGlyph status={task.status} size={16} className="ov-line__g" />
-                <span className="ov-line__t" title={task.title}><span className="ui-vh">{TASK_STATE_WORD[task.status]}: </span>{task.title}</span>
-                <span className="ov-line__n">{numberOf(task.id)}</span>
-              </button>
-            </li>
-          ))}
-          {lines.map((row) => (
-            <li key={row.key}>
-              <button type="button" className="ov-line" onClick={() => openDetails(row.open)}>
-                <Icon name={row.icon} size={16} className="ov-line__g" />
-                <span className="ov-line__t" title={row.title}><span className="ui-vh">{row.kind}: </span>{row.title}</span>
-                <span className={`ov-line__n${row.need ? ' ws-need' : ''}`}>{row.end}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {others.length ? <RowItems rows={others} /> : null}
-      {/* Every current decision (CW-15), each one small card. */}
-      {rules.map((rule) => { const accepted = acceptedOf(rule.id); return (
-        <button key={rule.id} type="button" className="ov-rule" onClick={() => openDetails({ kind: 'decision', id: rule.id })}>
-          <span className="ov-rule__k"><Icon name="rule" size={13} />Decision{accepted ? <> · accepted {shortDate(accepted)}</> : null}</span>
-          <span className="ov-rule__t">{rule.title}</span>
-        </button>
-      ); })}
-    </section>
-  );
-}
-
 /**
  * Details for a project (#117, direction C "overview"): what the open conversation — or one of
  * its messages — is connected to, each one step away: the current state, linked work, decisions
@@ -182,7 +95,7 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   const shell = useProjectShell();
   const open = useOpenConversation();
   const { me, workspace } = useShellData();
-  const { openDetails, closePanel } = useShellActions();
+  const { closePanel } = useShellActions();
   const read = useOverviewWork(me.user.id, shell?.project.id ?? null, open?.conversation?.id ?? null, messageId);
   const current = useProjectWorkSummary();
   const owners = useAgentOwners(shell?.project);
@@ -213,21 +126,13 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   // One native row window for every matching role, including Related-only objects.
   // Conversation scope covers all native messages, independently of its source-count window.
   const rows = read.page?.items ?? [];
-  const stateParts = messageMode || !current.summary ? [] : summaryStateParts(current.summary);
-  const aggregateKeys = new Set(['work', 'blocked', 'open', 'history']);
-  const totalsByTarget = new Map(stateParts.filter((part) => aggregateKeys.has(part.key)).map((part) => [`${part.open.kind}:${part.open.id}`, part]));
-  const withProjectTotal = (row: Row): Row => {
-    const part = totalsByTarget.get(row.key);
-    return part ? { ...row, sub: dotted([row.sub, `In this space: ${part.text}`]) } : row;
-  };
   const work = rows.filter((item): item is WorkRowProjection => item.kind === 'work');
   const decisions = rows.filter((item): item is DecisionRowProjection => item.kind === 'decision');
   const results = rows.filter((item): item is ResultRowProjection => item.kind === 'result');
   const workRow = (item: WorkRowProjection): Row => ({ key: `work:${item.id}`, native: item, icon: 'tasks', kind: 'Task', title: item.title, sub: dotted([STATUS_LABEL[item.status], item.owner ? byline(item.owner) : null, item.parked ? 'parked' : null]), open: { kind: 'work', id: item.id } });
   const decisionRow = (item: DecisionRowProjection): Row => ({ key: `decision:${item.id}`, native: item, icon: 'rule', kind: item.status === 'accepted' ? 'Accepted decision' : item.status === 'proposed' ? 'Proposed decision' : 'Replaced decision', title: item.title, sub: decisionLine(item).split(' · ').slice(1).join(' · ') || undefined, need: item.status === 'proposed', open: { kind: 'decision', id: item.id } });
   const resultRow = (item: ResultRowProjection): Row => ({ key: `result:${item.id}`, native: item, icon: 'result', kind: 'Result', title: item.title, sub: dotted([`${item.finding === 'negative' ? 'Negative' : 'Positive'} result`, byline(item.createdBy)]), open: { kind: 'result', id: item.id } });
-  const linked = [...decisions.filter((item) => item.status === 'proposed').map(decisionRow), ...decisions.filter((item) => item.status !== 'proposed').map(decisionRow), ...work.map(workRow), ...results.map(resultRow)].map(withProjectTotal);
-  const linkedIds = new Set(linked.map((row) => row.key));
+  const linked = [...decisions.filter((item) => item.status === 'proposed').map(decisionRow), ...decisions.filter((item) => item.status !== 'proposed').map(decisionRow), ...work.map(workRow), ...results.map(resultRow)];
   const byRef = new Map(rows.map((row) => [`${row.kind}:${row.id}`, row]));
   const relationItems = read.links?.items ?? [];
 
@@ -268,23 +173,6 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
   const noLinkedContext = read.objects.phase === 'idle' || read.page && (read.page.total === 0
     || read.page.total === rows.length && read.links?.total === 0);
 
-  // The project's current state, without repeating what is already linked here.
-  const state = stateParts.filter((part) => !linkedIds.has(`${part.open.kind}:${part.open.id}`)).map((part): Row => ({
-    key: part.key, icon: part.icon ?? (part.key === 'work' ? 'tasks' : 'rule'), kind: part.key === 'rule' ? 'Decision' : part.key === 'result' ? 'Latest result' : part.key === 'proposal' ? 'Proposed decision' : part.key === 'blocked' ? 'Blocked' : part.key === 'open' ? 'Open task' : part.key === 'history' ? (part.open.kind === 'work' ? 'Earlier work' : 'Earlier decision') : 'In progress',
-    title: part.title, need: part.tone === 'need', sub: stateSub(part), open: part.open,
-  }));
-  // "Now" in the project's own Details (#512, AC-3): its blocked, in-progress and open tasks, the rule once, and what needs a look.
-  const summaryState = projectMode ? current.summary?.state ?? null : null;
-  const nowTasks: NowTask[] = [];
-  if (summaryState?.blocked.first) nowTasks.push({ key: 'blocked', id: summaryState.blocked.first.id, status: 'blocked', title: summaryState.blocked.first.title });
-  if (summaryState?.active.first) nowTasks.push({ key: 'active', id: summaryState.active.first.id, status: 'in_progress', title: summaryState.active.first.title });
-  if (summaryState?.open.first) nowTasks.push({ key: 'open', id: summaryState.open.first.id, status: 'open', title: summaryState.open.first.title });
-  // A proposed decision and the latest result are one line each; with nothing else going on, the earlier work is a short row.
-  const nowLines: Row[] = projectMode ? stateParts.filter((part) => part.key === 'proposal' || part.key === 'result').map((part): Row => ({
-    key: part.key, icon: part.key === 'result' ? 'result' : 'rule', kind: part.key === 'result' ? 'Latest result' : 'Proposed decision', title: part.title,
-    end: part.key === 'result' ? (part.text.startsWith('Negative') ? 'Negative result' : 'Result') : part.tone === 'need' ? 'Needs you' : 'Proposed', need: part.tone === 'need', open: part.open,
-  })) : [];
-  const nowOthers: Row[] = projectMode ? state.filter((row) => row.key === 'history') : [];
   const count = (n: number | undefined, one: string, many: string) => (n ? `${n} ${n === 1 ? one : many}` : undefined);
   const inProject: Row[] = projectMode ? [
     { key: 'in-map', icon: 'map', kind: '', title: 'Map', end: count(sketches?.total, 'map', 'maps'), to: `${base}/map` },
@@ -316,15 +204,6 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
         {message ? <p className="details__lead ov-quote">{message.body.length > 280 ? `${message.body.slice(0, 279)}…` : message.body}</p> : null}
         <p className="ov-audience"><Icon name={project.visibility === 'workspace' ? 'people' : 'lock'} size={13} />{audienceLine(people, me.user.id, project.visibility === 'workspace')}</p>
       </>}
-      {/* "What matters" on every device, not only the phone (#763 H11-2). */}
-      {!messageMode ? <section className="details__sec ov-sec" aria-label="Space summary">
-        <button type="button" className="ov-row" onClick={() => openDetails({ kind: 'recap', projectId: project.id })}>
-          <Icon name="leaf" size={16} className="ov-row__ic" />
-          <span className="ov-row__b"><span className="ov-row__t">What matters</span></span>
-          <Icon name="chevron-right" size={16} className="ov-row__go" />
-        </button>
-      </section> : null}
-
       <Rows label={messageMode ? 'Made from this message' : 'Linked in this conversation'} rows={linked}
         controls={read.objects.phase !== 'idle' ? <>
           {read.objects.phase === 'unavailable' ? <p className="wd-error" role="alert">Linked objects could not be loaded. <button type="button" className="ui-link" onClick={read.refreshObjects}>Refresh linked objects</button></p> : null}
@@ -332,10 +211,6 @@ export function ProjectOverview({ messageId, selection, onBack }: { messageId?: 
           {multiPage(read.page) ? <WorkPagination page={read.page} busy={read.objectBusy} label="Overview object pages" onCursor={read.moveObjects} onRefresh={read.refreshObjects} /> : null}
         </> : undefined}
         empty={read.page?.total === 0 ? 'Nothing linked yet. Any message can become a task, a decision or a result.' : read.page && !rows.length ? 'No linked objects on this page. Return to the previous page or refresh.' : undefined} />
-      {projectMode
-        ? <NowSection projectId={project.id} tasks={nowTasks} rules={summaryState?.rules ?? (summaryState?.rule ? [summaryState.rule] : [])} lines={nowLines} others={nowOthers} />
-        : state.length ? <Rows label={conversation ? 'Elsewhere in this space' : 'Now in this space'} rows={state} /> : null}
-      {!messageMode && !current.summary ? <p className="ov-empty" role="status">{current.phase === 'unavailable' ? 'Current work unavailable.' : 'Loading current work…'}</p> : null}
       {rows.length ? <div className="ov-relations">
         <p className="ov-note">Sources, thoughts and Wiki pages linked to the {rows.length} shown {rows.length === 1 ? 'object' : 'objects'}.</p>
         {read.relations.phase === 'unavailable' ? <p className="wd-error" role="alert">Object links could not be loaded. <button type="button" className="ui-link" onClick={read.refreshRelations}>Refresh object links</button></p> : null}

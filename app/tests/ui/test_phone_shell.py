@@ -201,8 +201,8 @@ class PhoneShellJourney(unittest.TestCase):
         expect(page.locator(".state-row, .views")).to_have_count(0)
         self.open_views(page).get_by_role("button", name="Details and people").click()
         sheet = page.get_by_role("dialog", name="Details")
-        expect(sheet.get_by_role("region", name="Now", exact=True)).to_be_visible()
-        expect(sheet.locator(".ov-line__t", has_text="Order six capacitive probes")).to_be_visible()
+        expect(sheet.get_by_role("region", name="Now", exact=True)).to_have_count(0)
+        expect(sheet.locator(".ov-head").get_by_role("heading", level=3)).to_be_visible()
         page.keyboard.press("Escape")
         # The other views start right under the header.
         self.open_views(page).get_by_role("link", name="Map").click()

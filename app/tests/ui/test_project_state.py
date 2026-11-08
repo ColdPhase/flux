@@ -1,7 +1,7 @@
-"""Persisted native state agrees across Details, the phone's state row and Tasks (#136).
+"""A space's header and access stay truthful (#136, #865).
 
-On the computer the project's current state is in Details ("Now"): its header is one
-row without a state line (F-026 §4, #340). The phone keeps its state row until its own header (#341).
+The header is one row without a state line (F-026 §4, #340), and the space's own Details have no "Now" (#865): what is
+current lives in Tasks and what waits for the person in the Inbox. A long title keeps one row; a removed member sees nothing.
 
 Actual authenticated browser/API data; viewport captures are emulation, not device acceptance.
 """
@@ -89,91 +89,11 @@ class ProjectStateJourney(unittest.TestCase):
             {"principal": {"kind": "human", "id": self.accounts["Jonas Reader"]["id"]}, "role": "contributor"}, 201)
         return owner, project
 
-    def now_in_project(self, page):
-        """The computer's current state: Details, then "Now"."""
-        open_details(page)
-        return page.locator("#details").get_by_role("region", name="Now", exact=True)
-
     def faces(self, page):
         return page.locator("header.top").get_by_role("button", name=re.compile("who can see this space$"))
 
     def work(self, page, project, title, status="open"):
         return self.call(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": title, "status": status}, 201)
-
-    def test_01_open_task_is_visible_in_details_and_tasks_and_opens_the_actual_object(self):
-        page, project = self.scene()
-        page.goto(f"/projects/{project['id']}")
-        expect(page.locator("header.top").get_by_label("Current state")).to_have_count(0)
-        expect(self.now_in_project(page)).to_have_count(0)
-        page.get_by_role("button", name="Close details", exact=True).click()
-        task = self.work(page, project, "Prepare the ToF sensor experiment for the library")
-        page.reload()
-        now = self.now_in_project(page)
-        row = now.get_by_role("button", name=re.compile("^Open: " + re.escape(task["title"])))
-        expect(row).to_be_visible()
-        shot(page, "136-state-single-open-desktop")
-        row.click()
-        expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
-        page.get_by_role("button", name="Close details", exact=True).click()
-        page.locator('[data-tab="tasks"]').click()
-        page.get_by_role("radio", name="List", exact=True).click()
-        expect(page.locator(".ws-item").filter(has_text=task["title"])).to_be_visible()
-        self.assertEqual(self.call(page, "GET", f"/api/v1/projects/{project['id']}/work")["total"], 1)
-
-    def test_02_closed_native_work_is_history_and_a_persisted_status_update_replaces_the_open_summary(self):
-        page, project = self.scene()
-        task = self.work(page, project, "Measure low-light gesture reliability")
-        page.goto(f"/projects/{project['id']}")
-        expect(self.now_in_project(page).get_by_role("button", name=re.compile("^Open: "))).to_be_visible()
-        task = self.call(page, "PATCH", f"/api/v1/work/{task['id']}", {"status": "blocked", "blocker": "Waiting for the sensor delivery"},
-            headers={"if-match": f'"{task["version"]}"'})
-        page.reload()
-        now = self.now_in_project(page)
-        expect(now.get_by_role("button", name=re.compile("^Blocked.*" + re.escape(task["title"])))).to_be_visible()
-        expect(now.get_by_role("button", name=re.compile("^Open: "))).to_have_count(0)
-        self.call(page, "PATCH", f"/api/v1/work/{task['id']}", {"status": "done", "blocker": None},
-            headers={"if-match": f'"{task["version"]}"'})
-        page.reload()
-        history = self.now_in_project(page).get_by_role("button", name=re.compile("^Earlier work"))
-        expect(history).to_contain_text(task["title"])
-        expect(history).to_contain_text("1 completed task")
-        expect(history).not_to_contain_text("No decisions or work yet")
-        self.assertIsNone(history.get_attribute("title"))
-        history.click()
-        expect(page.locator("#details").get_by_role("heading", name=task["title"], exact=True)).to_be_visible()
-        self.work(page, project, "Camera-only direction was not pursued", "not_pursued")
-        page.get_by_role("button", name="Close details", exact=True).click()
-        page.reload()
-        for width, height in ((1440, 900), (1568, 751), (1280, 800)):
-            with self.subTest(width=width, height=height):
-                page.set_viewport_size({"width": width, "height": height})
-                page.reload()
-                history = self.now_in_project(page).get_by_role("button", name=re.compile("^Earlier work"))
-                expect(history).to_have_count(1)
-                expect(history).to_contain_text("1 completed task · 1 not pursued")
-                # #340 moves this information into the drawn Details row. The old header-only
-                # no-fill hover/strict one-line rules are replaced by readable, unclipped
-                # Details metadata; the real counts, task identity and navigation remain.
-                meta = history.locator(".ov-row__s")
-                self.assert_text_is_unclipped(meta)
-                history.hover()
-                self.assertIsNone(history.get_attribute("title"))
-                geometry = history.evaluate("""e => { const r=e.getBoundingClientRect(), i=e.querySelector('.ov-row__ic').getBoundingClientRect(), t=e.querySelector('.ov-row__b').getBoundingClientRect();
-                    return {top:i.top-r.top,bottom:r.bottom-i.bottom,gap:t.left-i.right}; }""")
-                self.assertGreaterEqual(geometry["top"], 0, geometry)
-                self.assertGreaterEqual(geometry["bottom"], 0, geometry)
-                self.assertGreaterEqual(geometry["gap"], 8, geometry)
-                history.press("Tab")
-                page.keyboard.press("Shift+Tab")
-                self.assertTrue(history.evaluate("e => e.matches(':focus-visible')"))
-                # Focus is keyboard-driven; the shared outline colour transitions for120ms.
-                # Retain the visible-colour guard after its real transition, within600ms.
-                expect(history).to_have_css("outline-color", history.evaluate("e => getComputedStyle(e).color"), timeout=600)
-                ring = history.evaluate("""e => {const s=getComputedStyle(e);return {style:s.outlineStyle,width:parseFloat(s.outlineWidth),color:s.outlineColor};}""")
-                self.assertNotIn(ring["style"], ("none", "hidden"), ring)
-                self.assertGreater(ring["width"], 0, ring)
-                self.assertNotIn(ring["color"], ("transparent", "rgba(0, 0, 0, 0)"), ring)
-        shot(page, "136-state-retained-history-desktop")
 
     def test_03_a_member_who_is_removed_from_the_space_sees_nothing_of_it(self):
         owner, project = self.scene()
@@ -223,56 +143,3 @@ class ProjectStateJourney(unittest.TestCase):
                     expect(header.get_by_role("button", name="More", exact=True)).to_be_visible()
                     if width in (744, 820, 1280):
                         shot(page, f"136-state-long-title-{len(name)}-{width}")
-
-    def test_05b_long_saved_rule_and_negative_result_keep_readable_metadata_in_details(self):
-        owner, project = self.scene()
-        token = "CALIBRATIONTRACEID" * 8
-        rule_title, result_title = "Library calibration policy " + token, "Optical field result " + token
-        rule = self.call(owner, "POST", f"/api/v1/projects/{project['id']}/decisions",
-            {"title": rule_title, "rationale": "Retain the measured native state"}, 201)
-        self.call(owner, "POST", f"/api/v1/decisions/{rule['id']}/accept", {"expectedVersion": rule["version"]})
-        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/results",
-            {"title": result_title, "finding": "negative", "evidence": "Controlled field observation", "work": [], "sources": []}, 201)
-        for who, width, height, dark in (("Ada State", 1280, 800, False), ("Jonas Reader", 390, 844, True)):
-            with self.subTest(who=who, width=width):
-                page = self.page(who, width, height, dark)
-                page.goto(f"/projects/{project['id']}")
-                now = self.now_in_project(page)
-                rule_row = now.get_by_role("button").filter(has_text=rule_title)
-                result_row = now.get_by_role("button").filter(has_text=result_title)
-                expect(result_row).to_contain_text("Negative result")
-                for row in (rule_row, result_row):
-                    row.scroll_into_view_if_needed()
-                # The rule is a small card whose long title wraps and stays readable; the result is one line
-                # (#512): its title ends in an ellipsis with the whole title on it, and the row stays in the panel.
-                self.assert_text_is_unclipped(rule_row.locator(".ov-rule__t"))
-                expect(result_row.locator(".ov-line__t")).to_have_attribute("title", result_title)
-                row_box, panel_box = result_row.bounding_box(), page.locator("#details").bounding_box()
-                self.assertLessEqual(row_box["x"] + row_box["width"], panel_box["x"] + panel_box["width"] + 1)
-                self.assertGreaterEqual(row_box["x"], panel_box["x"] - 1)
-                shot(page, f"136-state-long-metadata-{width}")
-
-    def test_07_phone_keeps_blocked_count_visible_beside_other_current_work(self):
-        owner, project = self.scene()
-        blocked = self.work(owner, project, "Wait for the calibration sensor", "blocked")
-        self.work(owner, project, "Collect observations from the library team", "in_progress")
-        self.call(owner, "POST", f"/api/v1/projects/{project['id']}/decisions",
-            {"title": "Keep manual fallback until the experiment is accepted", "rationale": "Avoid excluding anyone while testing"}, 201)
-        for who in ("Ada State", "Jonas Reader"):
-            for width, scale, dark in ((320, 1, False), (390, 1.25, True), (320, 2, False)):
-                with self.subTest(who=who, width=width, scale=scale):
-                    page = self.page(who, width, 844, dark)
-                    page.goto(f"/projects/{project['id']}")
-                    if scale != 1:
-                        sizes = {"xs": 12, "sm": 13, "md": 14, "base": 15, "lg": 17, "xl": 20, "2xl": 24}
-                        page.add_style_tag(content=":root { " + "; ".join(f"--fs-{key}:{size * scale}px" for key, size in sizes.items()) + "; }")
-                    # #341: the phone has no state row; the state is one tap away, in Details from the title's menu.
-                    expect(page.locator(".ws-state-row")).to_have_count(0)
-                    self.assertLessEqual(page.locator("body").evaluate("el => el.scrollWidth"), width)
-                    shot(page, f"136-state-blocked-{width}-text-{int(scale * 100)}-{'writer' if who == 'Ada State' else 'reader'}")
-                    open_details(page, tap=True)
-                    panel = page.get_by_role("dialog", name="Details")
-                    expect(panel.get_by_role("region", name="Now", exact=True)).to_contain_text("Blocked")
-                    panel.get_by_role("button", name=re.compile("Blocked.*Wait for the calibration sensor")).click()
-                    expect(panel.get_by_role("heading", name=blocked["title"], exact=True)).to_be_visible()
-                    self.assertEqual(self.call(page, "GET", f"/api/v1/work/{blocked['id']}")["status"], "blocked")

@@ -194,24 +194,6 @@ def open_details(page: Page, tap: bool = False) -> None:
     page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Space details|Message info)$")).click()
 
 
-def open_what_matters(page: Page, tap: bool = False) -> None:
-    """"What matters" (#133): on the computer it is a row in More (#763 A2: "N needs you" opens the Inbox now);
-    on the phone Details opens the project overview, then its What matters row (#341)."""
-    if page.viewport_size["width"] <= 640:
-        open_details(page, tap=tap)
-        overview = page.locator("#details")
-        row = overview.get_by_role("button", name="What matters", exact=True)
-        expect(row).to_be_visible()
-        row.tap() if tap else row.click()
-        return
-    close_modal_thread(page, tap)
-    header = page.locator("header.top")
-    header.locator("button[aria-label='More']").wait_for()
-    more = header.get_by_role("button", name="More", exact=True)
-    more.click()
-    page.get_by_role("menu", name="More").get_by_role("menuitem", name="What matters").click()
-
-
 def shot(page: Page, name: str) -> None:
     if not SHOTS:
         return

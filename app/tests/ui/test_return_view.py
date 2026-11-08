@@ -1,12 +1,10 @@
-"""Browser tests for the return view (issue #106, AC-6) and the private recap "What matters" (#133).
+"""Browser tests for the return point behind Home's "Continue where you left off" (issue #106, #865).
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose
 application. Two people share one project. Nia looks at Home and the project, Ari changes things
-while she is away, and Nia comes back: Home shows the personal return view with one next step;
-in the project, "What matters" opens a private panel with the scope, the period, the next step
-and the changes, "Summarize" quotes whole messages, sources open and return to the same snapshot,
-and only "I have the context" moves the project's return point. Phone, failure, empty and race
-cases are covered. Return points and summaries are read back from the API.
+while she is away, and Nia comes back: Home continues with the one next step, following it moves
+Home's return point, and a conversation shows no "Since you left" line. Account switching and revoked
+access never show another person's items. Return points are read back from the API.
 """
 
 from __future__ import annotations
@@ -19,7 +17,7 @@ import uuid
 
 from playwright.sync_api import Browser, BrowserContext, Page, expect, sync_playwright
 
-from test_app_shell import DESKTOP, ORIGIN, PHONE, SHOTS, UPSTREAM, open_details, open_what_matters, shot, start_forwarder
+from test_app_shell import DESKTOP, ORIGIN, PHONE, UPSTREAM, shot, start_forwarder
 
 PASSWORD = "coming back is calm"
 STAMP = int(time.time() * 1000)
@@ -27,11 +25,6 @@ ARI = {"name": "Ari Nowak", "email": f"ari.nowak+{STAMP}@example.test"}
 NIA = {"name": "Nia Berg", "email": f"nia.berg+{STAMP}@example.test"}
 OPENING = "Camera or sensor for the bedside lamp?"
 QUESTION = "Nia, can you check the camera at 5 lux before Friday?"
-
-
-def element_shot(name: str) -> dict:
-    """Arguments for an element screenshot into the evidence folder, when one is configured."""
-    return {"path": str(SHOTS / f"{name}.png")} if SHOTS else {}
 
 
 class ReturnViewJourney(unittest.TestCase):
@@ -100,17 +93,6 @@ class ReturnViewJourney(unittest.TestCase):
     def point(self, page: Page) -> str | None:
         return self.summary(page, "project")["point"]["savedAt"]
 
-    def open_recap(self, page: Page, *, tap: bool = False):
-        open_what_matters(page, tap=tap)
-        panel = page.locator("#details")
-        expect(panel.get_by_role("heading", name="What matters")).to_be_visible()
-        expect(panel.get_by_role("radiogroup", name="Whose changes")).to_be_visible()
-        return panel
-
-    def have_context(self, page: Page, panel) -> None:
-        panel.get_by_role("button", name="I have the context").click()
-        expect(panel.get_by_role("heading", name="What matters")).to_have_count(0)
-
     def say(self, page: Page, body: str) -> str:
         return self.api(page, "POST", f"/api/v1/conversations/{self.conversation_id}/messages", {"body": body, "clientMessageId": str(uuid.uuid4())}, status=201)["id"]
 
@@ -149,16 +131,17 @@ class ReturnViewJourney(unittest.TestCase):
         page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
         # One project conversation (UI116-1): the conversation's root opens with its thread beside the stream.
         expect(page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies")).locator(".thread__root")).to_contain_text(OPENING)
-        # Opening a project no longer moves its point (#133); nothing competes with the conversation.
+        # Nothing competes with the conversation: there is no "Since you left" line (#865).
         expect(page.get_by_role("region", name="Since you left")).to_have_count(0)
         page.wait_for_timeout(500)
         self.assertIsNone(self.point(page), "viewing alone saves nothing")
-        panel = self.open_recap(page)
-        # Never viewed: the project starts from Home's point, which Nia just saw.
-        expect(panel).to_contain_text(re.compile(r"Since \d+ \w+, \d\d:\d\d"))
-        expect(panel).to_contain_text("Nothing new since your last visit.")
-        self.have_context(page, panel)
-        self.assertIsNotNone(self.point(page), "I have the context saves the point")
+        # Leaving the conversation for another place is what the person has seen: the point is saved then.
+        page.get_by_role("navigation", name="Places").get_by_role("link", name="Home").click()
+        for _ in range(40):
+            if self.point(page):
+                break
+            page.wait_for_timeout(150)
+        self.assertIsNotNone(self.point(page), "leaving the conversation saves the point")
 
     # ---------------------------------------------------------------- Ari works while Nia is away
 
@@ -191,7 +174,7 @@ class ReturnViewJourney(unittest.TestCase):
         expect(card).to_be_visible()
         expect(card).to_contain_text("Answer Ari's question")
         expect(card).to_contain_text(f"“{QUESTION}” Ari asked you in “Camera or sensor for the bedside lamp?”.")
-        # Home no longer lists the changes: the list lives in "What matters" and in the conversation's line.
+        # Home does not list the changes (#865): only what waits for her and where to continue.
         expect(page.get_by_role("region", name=re.compile("^Since you left"))).to_have_count(0)
         expect(page.get_by_role("button", name="I have the context")).to_have_count(0)
         # Eight updates plus the task thread that the result opened (#154), three of them needing her.
@@ -211,249 +194,12 @@ class ReturnViewJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Nia$"))).to_be_visible()
         expect(page.get_by_role("region", name="Continue where you left off").get_by_role("link")).to_have_count(0)
 
-    def test_05_what_matters_shows_the_next_step_changes_and_a_digest(self) -> None:
-        page = self.page("nia")
-        page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
-        # On the computer What matters is a quiet row in the header's More (#763 A2: "N needs you" counts the Inbox's
-        # queue and opens the Inbox, so it never disagrees with it).
-        shot(page, "recap-project-desktop-1440-closed")
-        header = page.locator("header.top")
-        header.get_by_role("button", name="More", exact=True).click()
-        page.get_by_role("menu", name="More").get_by_role("menuitem", name="What matters").click()
-        panel = page.locator("#details")
-        expect(panel.get_by_role("heading", name="What matters")).to_be_visible()
-        expect(panel.get_by_role("radio", name="Whole space")).to_have_attribute("aria-checked", "true")
-        expect(panel).to_contain_text(re.compile(r"Since \w+ \d+, \d\d:\d\d|Since \d+ \w+, \d\d:\d\d"))
-        expect(panel.locator(".since__next")).to_contain_text("Answer Ari's question")
-        needs = panel.locator("section[aria-labelledby=wm-needs] .since__item")
-        expect(needs).to_have_count(2)
-        changes = panel.locator("section[aria-labelledby=wm-changes] .since__item")
-        expect(changes).to_have_count(6)
-        expect(changes.filter(has_text="Ari started “Camera misses 62% of gestures at 5 lux”")).to_have_count(1)
-        expect(panel.get_by_role("link", name=re.compile("Ari recorded a result: Camera misses 62% of gestures"))).to_contain_text("It did not work out, about “Mount the PIR sensor in the lamp base”")
-        expect(panel.get_by_role("link", name=re.compile("New material: Low-light test plan"))).to_have_attribute("href", re.compile(r"^/materials/.+/versions/1$"))
-        # The conversation stays readable beside the panel: What matters takes the thread's one panel, the stream stays.
-        expect(page.locator(".project-convo__message").filter(has_text="Camera or sensor for the bedside lamp?")).to_be_visible()
-        # Summarize is sized to its label; the completion action keeps its full width.
-        summarize = panel.get_by_role("button", name="Summarize")
-        s_box = summarize.bounding_box()
-        done_box = panel.get_by_role("button", name="I have the context").bounding_box()
-        assert s_box and done_box
-        self.assertLessEqual(s_box["height"], 36)
-        self.assertGreaterEqual(s_box["height"], 32)
-        self.assertLess(s_box["width"], done_box["width"] / 2)
-        self.assertGreaterEqual(done_box["height"], 36)
-        shot(page, "recap-project-desktop-1440-open")
-        # AC-1: two local treatments of Summarize in the same panel. The soft one (shipped) and a
-        # compact accent button, rendered side by side as evidence; the class change is test-only.
-        panel.locator("section[aria-labelledby=wm-changes] .wm-sec__head").screenshot(**element_shot("recap-summarize-soft-1440"))
-        summarize.evaluate("(button) => button.classList.replace('ui-btn--secondary', 'ui-btn--primary')")
-        panel.locator("section[aria-labelledby=wm-changes] .wm-sec__head").screenshot(**element_shot("recap-summarize-accent-1440"))
-        shot(page, "recap-project-desktop-1440-summarize-accent")
-        summarize.evaluate("(button) => button.classList.replace('ui-btn--primary', 'ui-btn--secondary')")
-        summarize.click()
-        digest = panel.locator("section[aria-labelledby=wm-digest]")
-        expect(digest).to_contain_text("No AI")
-        quote = digest.get_by_role("link", name=re.compile(re.escape(QUESTION)))
-        expect(quote).to_have_attribute("href", re.compile(f"#message-{self.ids['question']}$"))
-        expect(digest).to_contain_text("I ordered a PIR sensor too")
-        # The result, and the opening of the task thread it created (#154), both quote the finding.
-        expect(digest.get_by_role("link", name=re.compile("Camera misses 62% of gestures")).first).to_be_visible()
-        # The quotes themselves, scrolled into view and clear of the footer.
-        quote.scroll_into_view_if_needed()
-        q_box, f_box = quote.bounding_box(), panel.get_by_role("button", name="I have the context").bounding_box()
-        assert q_box and f_box
-        self.assertLessEqual(q_box["y"] + q_box["height"], f_box["y"], "a quote scrolls clear of the footer")
-        shot(page, "recap-project-desktop-1440-digest")
-
-        # Relevant to me: the material and the sketch are not Nia's, the question and her task are.
-        panel.get_by_role("radio", name="Relevant to me").click()
-        expect(panel.get_by_role("link", name=re.compile("New material: Low-light test plan"))).to_have_count(0)
-        expect(panel.locator(".since__next")).to_contain_text("Answer Ari's question")
-        expect(panel.get_by_role("link", name=re.compile("added a task for you: Mount the PIR sensor"))).to_be_visible()
-        panel.locator(".wm__scroll").evaluate("(el) => { el.scrollTop = 0; }")
-        shot(page, "recap-project-desktop-1440-relevant-to-me")
-        panel.get_by_role("radio", name="Whole space").click()
-        expect(panel.get_by_role("link", name=re.compile("New material: Low-light test plan"))).to_be_visible()
-
-        # A decision opens in Details; "What matters" comes back with the same snapshot and digest.
-        panel.get_by_role("link", name=re.compile("Decision changed")).click()
-        expect(panel.get_by_role("heading", name="Exclude gestures in the dark; use the PIR sensor at night")).to_be_visible()
-        self.open_recap(page)
-        expect(panel.locator("section[aria-labelledby=wm-digest]")).to_contain_text("I ordered a PIR sensor too")
-
-        # The question is a reply: it opens on the whole message in the thread, which takes the one panel.
-        panel.locator(".since__next").get_by_role("link", name="Answer Ari's question").click()
-        expect(page).to_have_url(re.compile(f"#message-{self.ids['question']}$"))
-        message = panel.locator(f"#message-{self.ids['question']}")
-        expect(message).to_have_class(re.compile("is-arrived"))
-        expect(message).to_be_in_viewport()
-        # Reading, choosing a scope and opening sources never moved the point.
-        before = self.summary(page, "project")
-        self.assertEqual(len([item for item in before["items"] if item["needsYou"]]), 3)
-        self.have_context(page, self.open_recap(page))
-        self.assertEqual(self.summary(page, "project")["items"], [], "the point moved to what was shown")
-
-    def test_06_closing_without_context_keeps_the_point_and_newer_changes_wait(self) -> None:
-        page = self.page("nia")
-        ari = self.page("ari")
-        self.say(ari, "Nia, which PIR model did you pick?")
-        page.goto(f"/projects/{self.project_id}")
-        panel = self.open_recap(page)
-        expect(panel.locator(".since__next")).to_contain_text("Answer Ari's question")
-        page.keyboard.press("Escape")
-        expect(panel.get_by_role("heading", name="What matters")).to_have_count(0)
-        page.reload()
-        panel = self.open_recap(page)
-        expect(panel.locator(".since__next")).to_contain_text("which PIR model did you pick")
-        # A change while reading is announced and does not reshuffle the list.
-        self.say(ari, "Also: the lens arrived.")
-        expect(panel.get_by_role("status").filter(has_text="Newer changes arrived")).to_be_visible(timeout=40000)
-        expect(panel).not_to_contain_text("the lens arrived")
-        panel.get_by_role("button", name="Show them").click()
-        expect(panel).to_contain_text("the lens arrived")
-        self.have_context(page, panel)
-        page.reload()
-        panel = self.open_recap(page)
-        expect(panel).to_contain_text("Nothing new since your last visit.")
-        shot(page, "recap-project-desktop-1440-empty")
-        panel.get_by_role("button", name="Look at the last 7 days").click()
-        expect(panel).to_contain_text("Last 7 days")
-        expect(panel.locator(".since__item").first).to_be_visible()
-        # Looking back never moves the point.
-        page.keyboard.press("Escape")
-        self.assertEqual(self.summary(page, "project")["items"], [])
-
-    def test_06b_a_late_answer_for_the_old_scope_is_dropped_and_failures_are_honest(self) -> None:
-        ari = self.page("ari")
-        self.say(ari, "Nia, is the clip printed?")
-        # A conversation Nia is not part of: in the whole project, not in "relevant to me".
-        self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/conversations", {"body": "Which shade of grey for the base?", "clientMessageId": str(uuid.uuid4())}, status=201)
-        page = self.page("nia")
-        # Load the project first ("Since you left" reads the project's summary as the stream opens, #763 A3).
-        with page.expect_response(re.compile(r"/api/v1/return\?place=project")):
-            page.goto(f"/projects/{self.project_id}")
-        held: list = []
-        pattern = re.compile(r"/api/v1/return\?.*scope=all.*from=last-visit")
-        page.route(pattern, lambda route: held.append(route) if not held else route.continue_())
-        open_what_matters(page)
-        panel = page.locator("#details")
-        for _ in range(40):
-            if held:
-                break
-            page.wait_for_timeout(50)
-        self.assertTrue(held, "the whole-project request is in flight")
-        expect(panel.get_by_role("status").filter(has_text="Loading")).to_be_visible()
-        shot(page, "recap-project-desktop-1440-loading")
-        panel.get_by_role("radio", name="Relevant to me").click()
-        expect(panel.locator(".since__next")).to_contain_text("is the clip printed")
-        held[0].continue_()
-        page.wait_for_timeout(800)
-        # The whole-project answer arrived last and was dropped: the list is still "relevant to me".
-        expect(panel.get_by_role("radio", name="Relevant to me")).to_have_attribute("aria-checked", "true")
-        expect(panel.get_by_role("link", name=re.compile("Which shade of grey"))).to_have_count(0)
-        expect(panel.locator(".wm__body.is-loading")).to_have_count(0)
-        panel.get_by_role("radio", name="Whole space").click()
-        expect(panel.get_by_role("link", name=re.compile("Which shade of grey"))).to_be_visible()
-        page.keyboard.press("Escape")
-
-        # A failed load says so and retries.
-        broken = self.page("nia")
-        broken.goto(f"/projects/{self.project_id}")
-        failing = re.compile(r"/api/v1/return\?.*scope=")
-        broken.route(failing, lambda route: route.fulfill(status=503, body="{}", content_type="application/json"))
-        open_what_matters(broken)
-        bpanel = broken.locator("#details")
-        expect(bpanel.get_by_role("alert")).to_contain_text("Could not load what matters.")
-        shot(broken, "recap-project-desktop-1440-failure")
-        broken.unroute(failing)
-        bpanel.get_by_role("button", name="Try again").click()
-        expect(bpanel.locator(".since__next")).to_contain_text("is the clip printed")
-
-        # A project with no messages: a truthful empty state; a result without messages still shows.
-        quiet = self.api(ari, "POST", f"/api/v1/workspaces/{self.workspace_id}/projects", {"name": "Quiet shelf", "visibility": "restricted"}, status=201)
-        self.api(ari, "POST", f"/api/v1/projects/{quiet['id']}/grants", {"principal": {"kind": "human", "id": NIA["id"]}, "role": "contributor"}, status=201)
-        broken.goto(f"/projects/{quiet['id']}")
-        qpanel = self.open_recap(broken)
-        # A new project starts from Nia's Home point; nothing happened in it since.
-        expect(qpanel).to_contain_text("Nothing new since your last visit.")
-        broken.keyboard.press("Escape")
-        self.api(ari, "POST", f"/api/v1/projects/{quiet['id']}/results", {"title": "Shelf holds 4 kg", "finding": "positive", "evidence": "sandbags"}, status=201)
-        broken.reload()
-        qpanel = self.open_recap(broken)
-        expect(qpanel.get_by_role("link", name=re.compile("Ari recorded a result: Shelf holds 4 kg"))).to_be_visible()
-        qpanel.get_by_role("button", name="Summarize").click()
-        expect(qpanel.locator("section[aria-labelledby=wm-digest]")).to_contain_text("Shelf holds 4 kg")
-
-    def test_06c_a_late_newer_check_for_the_old_scope_announces_nothing(self) -> None:
-        """The background check for newer changes belongs to its scope: a late answer after a switch is dropped."""
-        ari = self.page("ari")
-        page = self.page("nia")
-        page.goto(f"/projects/{self.project_id}")
-        panel = self.open_recap(page)
-        expect(panel.get_by_role("radio", name="Whole space")).to_have_attribute("aria-checked", "true")
-        # A whole-project change Nia is not part of, then hold the next background check (no `until`).
-        other = self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/conversations", {"body": "Which screws for the base plate?", "clientMessageId": str(uuid.uuid4())}, status=201)
-        self.api(ari, "POST", f"/api/v1/conversations/{other['id']}/messages", {"body": "M3, 8 mm.", "clientMessageId": str(uuid.uuid4())}, status=201)
-        held: list = []
-        poll = re.compile(r"/api/v1/return\?(?!.*until=).*scope=all")
-        page.route(poll, lambda route: held.append(route) if not held else route.continue_())
-        for _ in range(90):
-            if held:
-                break
-            page.wait_for_timeout(500)
-        self.assertTrue(held, "the background check ran and is held")
-        panel.get_by_role("radio", name="Relevant to me").click()
-        expect(panel.get_by_role("radio", name="Relevant to me")).to_have_attribute("aria-checked", "true")
-        expect(panel.locator(".wm__body.is-loading")).to_have_count(0)
-        held[0].continue_()
-        page.wait_for_timeout(1500)
-        expect(panel.get_by_role("status").filter(has_text="Newer changes arrived")).to_have_count(0)
-        page.unroute(poll)
-
-    def context_at(self, who: str, viewport: dict, phone: bool, scheme: str = "light") -> Page:
-        options: dict = {"base_url": ORIGIN, "color_scheme": scheme, "locale": "en-GB", "timezone_id": "Europe/Warsaw",
-                         "viewport": viewport, "device_scale_factor": 3 if phone else 1, "storage_state": self.states[who]}
-        if phone:
-            options.update(is_mobile=True, has_touch=True)
-        context = self.browser.new_context(service_workers="block", **options)
-        self.addCleanup(context.close)
-        page = context.new_page()
-        errors: list[str] = []
-        page.on("pageerror", lambda error: errors.append(str(error)))
-        self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
-        return page
-
-    def restore(self, page: Page, *places: dict) -> None:
-        for place in places:
-            self.api(page, "POST", "/api/v1/return-points/restore", {"place": place}, status=200)
-
-    def test_07b_context_taken_in_a_project_is_not_asked_again_on_home(self) -> None:
-        """HOME-1 (#190): Home uses the latest point below it, so the project's acknowledgement clears its items there."""
-        ari = self.page("ari")
-        line = f"Late note {STAMP}: the clip printed fine."
-        self.say(ari, line)
-        page = self.page("nia")
-        page.goto("/")
-        expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Nia$"))).to_be_visible()
-        mentions = lambda: any("the clip printed fine" in item["text"] + (item.get("detail") or "") for item in self.summary(page, "home")["items"])  # noqa: E731
-        self.assertTrue(mentions(), "Home's return view has the note")
-        page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
-        self.have_context(page, self.open_recap(page))
-        page.goto("/")
-        expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Nia$"))).to_be_visible()
-        page.wait_for_timeout(500)
-        expect(page.get_by_text("the clip printed fine")).to_have_count(0)
-        self.assertFalse(mentions())
-
     def test_08_matched_viewports_navigation_audience_and_composer(self) -> None:
-        """Same state at 1440x900, 1280x800 and 390x844 (100% zoom): Home, the project line above a real feed, then live navigation."""
+        """Same state at 1440x900, 1280x800, 768x1024 and 390x844 (100% zoom): Home, the conversation with nothing over it, then navigation."""
         ari = self.page("ari")
         self.say(ari, "The PIR mount fits, but the cable needs 2 cm more slack. Nia, can you print the clip with the longer channel?")
         self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/decisions", {"title": "Route the cable through the lamp stem", "rationale": "Keeps the base flat"}, status=201)
         self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/work", {"title": "Print a new cable clip", "owner": {"kind": "human", "id": NIA["id"]}}, status=201)
-        project = {"type": "project", "id": self.project_id}
-        conversation = {"type": "conversation", "id": self.conversation_id}
         for label, viewport, phone in (("desktop-1440", {"width": 1440, "height": 900}, False),
                                        ("desktop-1280", {"width": 1280, "height": 800}, False),
                                        ("tablet-768", {"width": 768, "height": 1024}, True),
@@ -466,31 +212,11 @@ class ReturnViewJourney(unittest.TestCase):
             # Visiting saved nothing (HOME-1), so the next viewport shows the same state.
             self.assertTrue(self.summary(page, "home")["items"], "visiting Home saved nothing")
             page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
-            # The conversation comes first; "What matters" is one compact entry in the header.
+            # The conversation comes first, with nothing floating over it.
             expect(page.locator(".project-convo__message", has_text="The PIR mount fits, but the cable needs 2 cm more slack.")).to_be_visible()
+            expect(page.get_by_role("region", name="Since you left")).to_have_count(0)
             self.no_horizontal_scroll(page)
-            shot(page, f"matched-project-{label}-closed")
-            panel = self.open_recap(page, tap=phone)
-            # Useful content is in the first screen of the panel and the footer action is reachable.
-            next_step = panel.locator(".since__next")
-            expect(next_step).to_be_in_viewport()
-            done = panel.get_by_role("button", name="I have the context")
-            expect(done).to_be_in_viewport()
-            step_box, done_box = next_step.bounding_box(), done.bounding_box()
-            assert step_box and done_box
-            self.assertLess(step_box["y"] + step_box["height"], done_box["y"], "the next step is above the footer")
-            last = panel.locator(".since__item").last
-            last.scroll_into_view_if_needed()
-            last_box = last.bounding_box()
-            assert last_box
-            self.assertLessEqual(last_box["y"] + last_box["height"], done_box["y"] + 1, "every item can scroll clear of the footer")
-            self.no_horizontal_scroll(page)
-            shot(page, f"matched-project-{label}-panel")
-            if phone:
-                panel.get_by_role("button", name="Close what matters").tap()
-            else:
-                page.keyboard.press("Escape")
-            self.assertEqual(len(self.summary(page, "project")["items"]) > 0, True, "closing kept the point")
+            shot(page, f"matched-project-{label}")
 
         # Navigation from Home: the whole card opens the project on the whole message the next step names.
         page = self.page("nia")
@@ -521,6 +247,19 @@ class ReturnViewJourney(unittest.TestCase):
         shot(phone, "matched-project-phone-390-composer")
         phone.get_by_role("button", name="Send reply").tap()
         expect(phone.locator(".project-convo__message", has_text="Thanks, I will print the clip tonight.")).to_be_visible()
+
+    def context_at(self, who: str, viewport: dict, phone: bool, scheme: str = "light") -> Page:
+        options: dict = {"base_url": ORIGIN, "color_scheme": scheme, "locale": "en-GB", "timezone_id": "Europe/Warsaw",
+                         "viewport": viewport, "device_scale_factor": 3 if phone else 1, "storage_state": self.states[who]}
+        if phone:
+            options.update(is_mobile=True, has_touch=True)
+        context = self.browser.new_context(service_workers="block", **options)
+        self.addCleanup(context.close)
+        page = context.new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        self.addCleanup(lambda: self.assertEqual(errors, [], "no uncaught page errors"))
+        return page
 
     def sign_in(self, page: Page, person: dict) -> None:
         page.goto("/sign-in")
@@ -603,98 +342,3 @@ class ReturnViewJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Nia$"))).to_be_visible()
         page.wait_for_timeout(600)
         self.assertNotIn("confirm the lens order", page.content())
-
-    def test_07_phone_layout(self) -> None:
-        ari = self.page("ari")
-        self.say(ari, "Nia, can you send me a photo of the PIR mount when it is in?")
-        self.api(ari, "POST", f"/api/v1/projects/{self.project_id}/results", {"title": "PIR sees a hand at 1.2 m in the dark", "finding": "positive", "evidence": "10 of 10 in a dark room"}, status=201)
-        page = self.page("nia", phone=True)
-        page.goto("/")
-        card = page.get_by_role("region", name="Continue where you left off").get_by_role("link")
-        expect(card).to_contain_text("Answer Ari's question")
-        self.no_horizontal_scroll(page)
-        shot(page, "return-home-phone-390")
-        arrow = card.bounding_box()
-        assert arrow
-        self.assertGreaterEqual(arrow["height"], 43.5, "the whole row is a touch target")
-        page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
-        # #341: "What matters" is a 44px row in the project overview, which the phone's Details opens.
-        open_details(page, tap=True)
-        entry = page.locator("#details").get_by_role("button", name="What matters", exact=True)
-        expect(entry).to_be_visible()
-        box = entry.bounding_box()
-        assert box is not None
-        self.assertGreaterEqual(min(box["width"], box["height"]), 43.5, "touch target")
-        page.keyboard.press("Escape")
-        self.no_horizontal_scroll(page)
-        shot(page, "recap-project-phone-390-closed")
-        panel = self.open_recap(page, tap=True)
-        sheet = page.get_by_role("dialog", name="What matters")
-        expect(sheet).to_be_visible()
-        # The first screen has the scope, the period and the next step; no repeated setup copy.
-        expect(panel.locator(".since__next")).to_be_in_viewport()
-        expect(panel.get_by_role("button", name="I have the context")).to_be_in_viewport()
-        for control in (panel.get_by_role("radio", name="Whole space"), panel.get_by_role("radio", name="Relevant to me"),
-                        panel.get_by_role("button", name="Summarize"), panel.get_by_role("button", name="I have the context")):
-            control_box = control.bounding_box()
-            assert control_box is not None
-            self.assertGreaterEqual(control_box["height"], 43.5)
-        self.no_horizontal_scroll(page)
-        shot(page, "recap-project-phone-390-open")
-        panel.get_by_role("button", name="Summarize").tap()
-        digest = panel.locator("section[aria-labelledby=wm-digest]")
-        expect(digest).to_contain_text("photo of the PIR mount")
-        # The quotes themselves, scrolled into view, with their opening cue and clear of the footer.
-        quote = digest.locator(".wm-quote").first
-        quote.scroll_into_view_if_needed()
-        expect(quote.locator(".wm-quote__go")).to_be_visible()
-        q_box, f_box = quote.bounding_box(), panel.get_by_role("button", name="I have the context").bounding_box()
-        assert q_box and f_box
-        self.assertLessEqual(q_box["y"] + q_box["height"], f_box["y"], "a quote scrolls clear of the footer on a phone")
-        shot(page, "recap-project-phone-390-digest")
-        # A source closes the sheet on the phone and opens the whole message; reopening returns to
-        # the same snapshot with the digest still open.
-        panel.locator(".since__next").get_by_role("link", name="Answer Ari's question").tap()
-        expect(page.locator(".is-arrived")).to_contain_text("photo of the PIR mount")
-        panel = self.open_recap(page, tap=True)
-        expect(panel.locator("section[aria-labelledby=wm-digest]")).to_contain_text("photo of the PIR mount")
-        expect(panel.get_by_role("link", name=re.compile("Ari recorded a result: PIR sees a hand"))).to_be_visible()
-        # Enlarged text keeps the footer reachable and the page without sideways scroll.
-        page.evaluate("document.documentElement.style.fontSize = '125%'")
-        expect(panel.get_by_role("button", name="I have the context")).to_be_in_viewport()
-        self.no_horizontal_scroll(page)
-        big_quote = panel.locator("section[aria-labelledby=wm-digest] .wm-quote").first
-        big_quote.scroll_into_view_if_needed()
-        q_box, f_box = big_quote.bounding_box(), panel.get_by_role("button", name="I have the context").bounding_box()
-        assert q_box and f_box
-        self.assertLessEqual(q_box["y"] + q_box["height"], f_box["y"], "a quote scrolls clear of the footer with enlarged text")
-        shot(page, "recap-project-phone-390-text-125")
-        page.evaluate("document.documentElement.style.fontSize = ''")
-        panel.get_by_role("button", name="I have the context").tap()
-        expect(sheet).to_have_count(0)
-
-    def test_09b_dark_renders_of_the_panel(self) -> None:
-        """What matters in the dark theme at 1440x900 and 390x844, with the digest open."""
-        ari = self.page("ari")
-        # A plain update next to the question, so "Changes" (and its Summarize) exists whatever point the earlier tests
-        # left: leaving the conversation in test_08 saves the project point unless a reload cuts that save short (#249).
-        self.say(ari, "I measured the dark room again this morning.")
-        self.say(ari, "Nia, can you share the dark-room numbers before Friday?")
-        for label, viewport, phone in (("desktop-1440", {"width": 1440, "height": 900}, False),
-                                       ("phone-390", {"width": 390, "height": 844}, True)):
-            page = self.context_at("nia", viewport, phone, scheme="dark")
-            page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
-            panel = self.open_recap(page, tap=phone)
-            expect(panel.locator(".since__next")).to_contain_text("Answer Ari's question")
-            summarize = panel.get_by_role("button", name="Summarize")
-            if phone:
-                summarize.tap()
-            else:
-                summarize.click()
-            expect(panel.locator("section[aria-labelledby=wm-digest]")).to_contain_text("dark-room numbers")
-            self.no_horizontal_scroll(page)
-            shot(page, f"recap-project-{label}-dark")
-
-
-if __name__ == "__main__":
-    unittest.main()

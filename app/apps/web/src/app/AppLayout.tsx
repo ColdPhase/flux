@@ -86,7 +86,7 @@ const panelScrollNow = () => document.querySelector<HTMLElement>('#details .ui-p
  * What is kept of a panel view (#592): ids only. A message's text, a thought's text or the fields of a form (Propose a decision,
  * Attach a result, Add to docs, Make it a project) are never written to storage; a view that is not kept shows as a closed panel.
  */
-const KEPT_VIEWS = new Set(['work', 'decision', 'result', 'overview', 'recap', 'people', 'owned']);
+const KEPT_VIEWS = new Set(['work', 'decision', 'result', 'overview', 'people', 'owned']);
 const persistable = (view: DetailsView): DetailsView | null => {
   if (view === 'place' || view === 'connect-ai') return view;
   if (typeof view !== 'object' || !KEPT_VIEWS.has(view.kind)) return null;
@@ -552,7 +552,6 @@ function AppLayoutContent() {
   const audience = project ? audienceLine(project.people, me.user.id, audienceOpen) : 'People with space access';
   // The audience line leads to the space's settings, where its people are and its admins change them (F-037, #874).
   const openAudience = () => { if (projectId) void navigate(`/projects/${projectId}/settings`); };
-  const recapOpen = detailsOpen && typeof detailsView === 'object' && detailsView.kind === 'recap';
   // A task, decision or result opens in the one detail panel with its kind as a chip (F-026 S4).
   const ownedShown = isOwned(detailsView) && owned ? owned : null;
   const objectChip = ownedShown ? ownedShown.chip : typeof detailsView === 'object' ? KIND_LABEL[detailsView.kind] : undefined;
@@ -674,7 +673,6 @@ function AppLayoutContent() {
     ...(activeProject ? [{ label: 'Together', node: <LiveEntry variant="more" /> }] : []),
     ...(activeProject && projectId ? [{ label: 'Settings', run: () => void navigate(`/projects/${projectId}/settings`) }] : []),
     ...('noDetails' in place ? [] : [{ label: activeProject ? 'Space details' : activeDm ? 'Message info' : 'Details', run: () => shell.openDetails('place') }]),
-    ...(activeProject && projectId ? [{ label: 'What matters', run: () => shell.openDetails({ kind: 'recap', projectId }) }] : []),
     ...addViewItems,
     { label: focus.uncertain ? 'Check notification pause' : 'Focus', keys: 'F', checked: focusing, run: () => void focus.toggle() },
     tablet ? { label: 'Show the sidebar', keys: '[', run: () => setNavOpen(true) } : { label: railed || focusing ? 'Show the sidebar' : 'Hide the sidebar', keys: '[', run: toggleSidebar },
@@ -840,11 +838,11 @@ function AppLayoutContent() {
               <DeferredLiveStage />
             </ViewFade>
           </main>
-          <SidePanel over={panelOver} open={detailsOpen || !!threadOpening} onClose={opening ? cancelThread : closePanel} title={opening ? 'Replies' : recapOpen ? 'What matters' : ownedShown ? ownedShown.label : 'Details'} closeLabel={opening ? 'Cancel opening the thread' : ownedShown?.closeLabel} chip={opening ? 'Thread' : objectChip} id="details" back={opening ? undefined : back} startFull={opening ? typeof threadSheet === 'boolean' ? threadSheet : sheetStart ?? true : sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
+          <SidePanel over={panelOver} open={detailsOpen || !!threadOpening} onClose={opening ? cancelThread : closePanel} title={opening ? 'Replies' : ownedShown ? ownedShown.label : 'Details'} closeLabel={opening ? 'Cancel opening the thread' : ownedShown?.closeLabel} chip={opening ? 'Thread' : objectChip} id="details" back={opening ? undefined : back} startFull={opening ? typeof threadSheet === 'boolean' ? threadSheet : sheetStart ?? true : sheetStart ?? ownedShown?.startFull} onHeight={(full) => keepPlace('sheet', full)}
             contentKey={opening ? `owned:thread:${opening}` : ownedShown ? `owned:${ownedShown.key}` : typeof detailsView === 'object' ? JSON.stringify(detailsView) : detailsView}
             context={opening ? undefined : phone && (detailsView === 'place' || typeof detailsView === 'object' && detailsView.kind === 'overview') ? <OverviewContext message={typeof detailsView === 'object' && detailsView.kind === 'overview' && !!detailsView.messageId} /> : undefined}>
             {opening ? <ThreadOpening /> : null}
-            {opening && !detailsOpen ? null : isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} onClose={() => toggleDetails(false)} />}
+            {opening && !detailsOpen ? null : isOwned(detailsView) ? <div className="ui-panel__slot" ref={setPanelSlot} /> : <DeferredDetails view={detailsView} placeTitle={place.title} dm={activeDm ? { id: activeDm.id, kind: activeDm.kind, title: activeDm.title, me: me.user.name, people: activeDm.people, audience: activeDm.audience } : null} onBack={() => setDetailsView('place')} />}
           </SidePanel>
         </div>
         {/* A locked space's place keeps the tab bar on the phone (LK-2), and offers no "+" there. */}

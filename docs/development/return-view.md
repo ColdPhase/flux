@@ -6,6 +6,17 @@ slim "N updates since …" line that expands into a short list in human language
 guilt here: no streaks, no forced clearing, no rail badges. At most one next step is shown,
 always with its reason.
 
+## Amended by #865 (v0.2, 2026-11)
+
+The Inbox is the one place that lists what needs the person ([#865](https://github.com/ColdPhase/flux/issues/865), answer 2 of
+#861). The web app therefore has **no "Since you left" line over a conversation, no "What matters" recap and no header
+"N needs you"**; the sections below describe them as they were built. What stays is the return point itself: Home's
+"Continue where you left off" row (the summary's `nextStep`, or the task in progress), the conversation's quiet "Unread"
+divider above the first unread item (the stream still reads the project summary when it opens and saves the point when
+the person leaves it), and the new-activity dot on a space in the sidebar. The summary's `scope`, `from`, `until`, `digest`
+and `history` parameters were used only by the recap; the web client no longer sends them and they are left for a
+follow-up that removes them from the API.
+
 ## Return points
 
 `return_points` (migration `0009_return_points.sql`, introduced at schema version 9) keeps one row per
@@ -138,10 +149,8 @@ What matters is a row in the header's More.
 - `app/packages/db/src/repositories/returns.ts`: rows only, no access decisions.
 - `app/apps/server/src/returns/`: the policy adapter (`authorizeEvent`, `evaluateProject`,
   `authorize`, `visibleFilter`) and the routes. No architecture allowlist entries were added.
-- `app/apps/web/src/returns/`: `SinceYouLeftHome` (on Home, grouped by place, with "Last caught up …"
-  and "I have the context"; afterwards one status line says "You're caught up. New changes will
-  show here." and focus moves to the Home heading, #190 A1.3) and `WhatMatters` (a project's recap, #133). A source link to a message opens on that whole
-  message (`#message-<id>`). Only the current request's authorized answer is ever shown: the
+- `app/apps/web/src/returns/`: `api.ts` (the summary, the point and where a source opens) and `SourceLink` (Home's
+  "Continue where you left off" row). A source link to a message opens on that whole message (`#message-<id>`). Only the current request's authorized answer is ever shown: the
   client keeps no return-view state between mounts, accounts or visits, so a revoked item or
   another account's item never appears, even before a fresh answer arrives (tested in Playwright
   with the API held back across a same-tab sign-out and sign-in).
@@ -155,15 +164,7 @@ items, ids, names or counts). It also covers work a pivot parked after the reade
 "Parked: …" item on the project and Home, none for a task in a project the reader cannot read, a
 revoked reader or a plain (non-pivot) acceptance. `app/tests/app/return-recap.test.ts` covers #133's scope, period, `until` snapshot, digest, privacy
 (per person, no shared event, outsider and revoked 404) and refused parameters.
-`app/tests/ui/test_return_view.py` (Playwright) covers Home's return view (a reload keeps the list,
-only "I have the context" clears it, a project's acknowledgement removes its items from Home, the
-first visit's starting point), and in projects the What
-matters panel: the compact entry and count, scope and digest, sources (a decision in Details and
-back to the same snapshot, a message at the whole message), "I have the context" as the only
-point change, newer changes announced, empty and 7-day states, a late answer for the old scope
-dropped, a failed load with Try again, a project without messages, matched viewports with the
-footer reachable, tablet and dark renders, and the phone sheet (44 px targets, source then
-restore, 125 % text, focus return). Playwright does not show a real software keyboard, so real
-iOS and Android keyboards remain unverified. Screenshots:
-[`docs/design/return-view/`](../design/return-view/). `matched-*` are the same state at
-1440×900, 1280×800 and 390×844 at 100% zoom; `return-*` are the journey states.
+`app/tests/ui/test_return_view.py` (Playwright) covers Home's "Continue where you left off" (a reload keeps the
+row, following it moves Home's point, the first visit's starting point), leaving a conversation saving the project's point,
+matched viewports, and that another account's or a revoked person's items never show. The recap panel's browser tests
+left with it (#865). Screenshots: [`docs/design/return-view/`](../design/return-view/) (earlier renders of the recap).

@@ -1,7 +1,7 @@
 """The computer's one-row project header and focus mode (#340, final design F-026 §4).
 
-One row holds the project name, the five views as a segmented control, "N needs you", the people
-and agents, and More. Focus (F) keeps the name, the view and the way out, folds the sidebar to its
+One row holds the project name, the five views as a segmented control, the people and agents,
+and More. What needs the person is only in the Inbox: the header carries no "N needs you" (#865). Focus (F) keeps the name, the view and the way out, folds the sidebar to its
 rail, and pauses push and email on the server until its time; F again resumes.
 
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose app.
@@ -118,7 +118,7 @@ class ProjectHeader(unittest.TestCase):
             # People and agents as faces, which open the space's settings.
             faces = header.get_by_role("button", name=re.compile("who can see this space$"))
             expect(faces.locator(".ui-avatar")).to_have_count(1)
-            # Nothing needs Ada in a new project, so no chip claims it.
+            # What needs Ada is in the Inbox alone: no chip in the header claims it (#865).
             expect(header.get_by_role("button", name=re.compile("needs you$"))).to_have_count(0)
             shot(page, f"340-header-1440-{scheme}")
         page.get_by_role("link", name="Tasks", exact=True).click()
@@ -136,9 +136,9 @@ class ProjectHeader(unittest.TestCase):
         menu = page.get_by_role("menu", name="More")
         # "Who can see this" is in More only where the header has no room for the faces (a narrow main column).
         items = menu.locator("[role^=menuitem]:visible")
-        self.assertEqual([text.strip() for text in items.locator("span").all_inner_texts()], ["Settings", "Space details", "What matters", "Focus", "Hide the sidebar"])
+        self.assertEqual([text.strip() for text in items.locator("span").all_inner_texts()], ["Settings", "Space details", "Focus", "Hide the sidebar"])
         # Each key shows next to its action (S18) and is announced as its shortcut.
-        self.assertEqual([items.nth(index).get_attribute("aria-keyshortcuts") for index in range(items.count())], [None, None, None, "F", "["])
+        self.assertEqual([items.nth(index).get_attribute("aria-keyshortcuts") for index in range(items.count())], [None, None, "F", "["])
         self.assertEqual(items.locator("kbd").all_inner_texts(), ["F", "["])
         expect(menu.get_by_role("menuitemcheckbox", name="Focus")).to_have_attribute("aria-checked", "false")
         expect(menu.get_by_role("menuitem", name="Settings")).to_be_focused()

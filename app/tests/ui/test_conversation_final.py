@@ -1,7 +1,7 @@
 """Browser tests for the conversation as drawn in the final design (F-026 S5-S8, P5, #343).
 
 Other authors share one left edge and your own messages one right edge (#481); task notices say where the task came from and fold when several arrive in a
-row; "Since you left" jumps to the first unread item; the composer offers "@" and "/" instead of Ask and
+row; a quiet "Unread" divider marks the first unread item and nothing floats over the stream (#865); the composer offers "@" and "/" instead of Ask and
 Cite buttons; a computer shows hover actions, a phone swipe right and long press. Runs at 1440x900 and
 390x844 with touch, in light and dark, and with the keyboard. Ada manages the project and Jonas writes.
 Screenshots (conversation-final-*.png) go to FLUX_UI_SCREENSHOTS.
@@ -228,22 +228,21 @@ class ConversationFinal(unittest.TestCase):
         expect(phone.locator(".convo-fold__b")).to_be_visible()
         self.assertGreaterEqual(phone.locator(".convo-fold__b").evaluate("el => el.getBoundingClientRect().height"), 44)
 
-    def test_04_since_you_left_jumps_to_the_first_unread_item(self) -> None:
+    def test_04_the_unread_divider_marks_the_first_unread_item_with_no_line_over_the_stream(self) -> None:
         for phone in (False, True):
             page = self.page("jonas", phone=phone)
             page.goto(f"/projects/{self.ids['project']}")
             expect(page.locator(f"#message-{self.ids['order']}")).to_be_visible()
-            line = page.get_by_role("region", name="Since you left")
-            expect(line).to_contain_text("Since you left:")
-            expect(line).to_contain_text("messages")
+            # "Since you left" and its jump are gone (#865); the divider is the one mark of what is new.
+            expect(page.get_by_role("region", name="Since you left")).to_have_count(0)
+            expect(page.get_by_role("button", name="Jump to the first unread")).to_have_count(0)
+            divider = page.get_by_role("separator", name="Unread")
+            expect(divider).to_have_count(1)
             target = self.message(page, self.ids["first_unread"])
+            self.assertTrue(divider.evaluate("(el, id) => el.nextElementSibling?.id === `message-${id}`", self.ids["first_unread"]), "the divider is right above the first unread item")
             self.assertFalse(target.evaluate("el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }"), "the first unread item starts out of view")
             if not phone:
-                shot(page, "conversation-final-since-desktop")
-            line.get_by_role("button", name="Jump to the first unread").click()
-            expect(target).to_be_focused()
-            self.assertTrue(target.evaluate("el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.top < innerHeight / 2; }"), "it is brought into view")
-            expect(line).to_have_count(0)
+                shot(page, "conversation-final-unread-desktop")
 
     def test_05_the_composer_has_at_and_slash_and_no_ask_or_cite_buttons(self) -> None:
         page = self.open("ada")
@@ -630,17 +629,6 @@ class ConversationFinal(unittest.TestCase):
         expect(menu).to_have_count(0)
         touch(first, "pointerup", x, y + 30)
 
-    def test_14_jump_reaches_a_task_whose_announcement_is_outside_the_loaded_window(self) -> None:
-        page = self.page("jonas")
-        page.goto(f"/projects/{self.ids['old_project']}")
-        expect(page.locator(".project-convo__message").last).to_be_visible()
-        expect(page.locator(f'.convo-notice[data-work-id="{self.ids["old_task"]}"]')).to_have_count(0)
-        line = page.get_by_role("region", name="Since you left")
-        expect(line).to_contain_text("task update")
-        line.get_by_role("button", name="Jump to the first unread").click()
-        expect(page.locator("#details").get_by_role("heading", name="Reorder the weather shield")).to_be_visible()
-        expect(line).to_have_count(0)
-
     def test_15_a_completed_command_consumes_its_original_thread_draft_after_leaving(self) -> None:
         for command in ("task", "handoff"):
             page = self.open("ada")
@@ -714,9 +702,7 @@ class ConversationFinal(unittest.TestCase):
         page.go_back()
         target = self.message(page, posted["messages"][0]["id"])
         expect(target).to_be_visible()
-        line = page.get_by_role("region", name="Since you left")
-        expect(line).to_contain_text("1 message")
-        expect(line).not_to_contain_text("task update")
+        expect(page.get_by_role("region", name="Since you left")).to_have_count(0)
         divider = page.get_by_role("separator", name="Unread")
         expect(divider).to_have_count(1)
         self.assertTrue(divider.evaluate("(el, id) => el.nextElementSibling?.id === `message-${id}`", posted["messages"][0]["id"]), "the divider is right above the first unread message")

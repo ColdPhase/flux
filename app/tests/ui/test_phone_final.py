@@ -300,15 +300,12 @@ class PhoneFinal(unittest.TestCase):
                     self.assertGreaterEqual(float(item.evaluate("el => getComputedStyle(el).fontSize").removesuffix("px")), 15)
                 self.assert_no_sideways_scroll(page, size["width"])
                 shot(page, f"341-viewsmenu-{size['width']}-{'dark' if dark else 'light'}")
-                expect(menu.get_by_role("button", name="What matters")).to_have_count(0)
                 menu.get_by_role("link", name=re.compile("^Map")).click()
                 expect(page).to_have_url(re.compile(r"/map$"))
                 page.get_by_role("heading", level=1).get_by_role("button").click()
                 page.get_by_role("button", name="Details and people").click()
                 expect(page.get_by_role("dialog", name="Details")).to_be_visible()
-                details = page.get_by_role("dialog", name="Details")
-                details.get_by_role("button", name="What matters").click()
-                expect(page.get_by_role("dialog", name="What matters")).to_be_visible()
+                expect(page.get_by_role("dialog", name="Details").get_by_role("button", name="What matters")).to_have_count(0)
                 page.keyboard.press("Escape")
 
     def test_06_the_menu_works_from_the_keyboard(self):
