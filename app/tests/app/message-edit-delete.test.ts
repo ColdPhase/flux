@@ -405,6 +405,21 @@ describe('an author edits and deletes their own message (#1006)', () => {
       assert.deepEqual(await bodies(), [kept], 'the deleted one, and its marker, are not read');
     });
 
+    test('a thread read for a model (/ai in a thread) skips the deleted reply and the deleted root', async () => {
+      const rootWords = word('threadroot'); const goneWords = word('threadgone'); const keptWords = word('threadkept');
+      const root = await send(ben, rootWords);
+      const answer = async (who: Person, body: string) => expectStatus(await who.browser.request('POST', `/api/v1/dms/${dm.id}/threads/${root.id}/replies`,
+        { body: { body, clientMessageId: randomUUID() } }), 201) as DmMessage;
+      const gone = await answer(ben, goneWords);
+      await answer(cy, keptWords);
+      const bodies = async () => (await personalRunRows(db).dmMessages(dm.id, 50, root.id)).map((m) => m.body);
+      assert.deepEqual(await bodies(), [rootWords, goneWords, keptWords], 'control: the model reads the root and both replies');
+      expectStatus(await dmRemove(ben, gone.id), 200);
+      assert.deepEqual(await bodies(), [rootWords, keptWords], 'the deleted reply is not read');
+      expectStatus(await dmRemove(ben, root.id), 200);
+      assert.deepEqual(await bodies(), [keptWords], 'nor is the deleted root: its replies stay');
+    });
+
     test('a delete that arrives while the notices of the message are being made waits for them and then removes them', async () => {
       const root = await send(ben, word('dmracing'));
       const made = randomUUID();
