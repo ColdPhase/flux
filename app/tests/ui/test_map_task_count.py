@@ -210,23 +210,11 @@ class MapTaskCountJourney(unittest.TestCase):
         }""", arg=selector)
 
     def appearance(self, page: Page, theme: str) -> None:
-        page.locator(".app").wait_for(state="visible")
-        if not page.locator(".me__btn").is_visible():
-            # The phone drawer's account row opens Settings, with the same choices (#266 PF-5).
-            page.get_by_role("button", name="Open navigation").click()
-            page.locator(".me__btn").click()
-            pop = page.locator(".sset-in")
-            expect(pop.get_by_role("radiogroup", name="Theme")).to_be_visible()
-        else:
-            page.locator(".me__btn").click()
-            pop = page.get_by_role("dialog", name="Account", exact=True)
-        pop.get_by_role("radio", name=theme, exact=True).click()
-        expect(pop.get_by_role("radio", name=theme, exact=True)).to_have_attribute("aria-checked", "true")
-        page.keyboard.press("Escape")
-        if page.get_by_role("button", name="Close navigation").is_visible():
-            page.get_by_role("button", name="Close navigation").click()
-        if not page.url.endswith("/settings"):
-            expect(pop).to_have_count(0)
+        """Settings > Appearance is where the theme is chosen (the account menu only holds Settings and Sign out)."""
+        page.goto("/settings/appearance")
+        choice = page.get_by_role("radiogroup", name="Theme").get_by_role("radio", name=theme, exact=True)
+        choice.click()
+        expect(choice).to_have_attribute("aria-checked", "true")
 
     def expected_counts(self, page: Page) -> dict[str, int]:
         """Tasks per thought from the API's own links, many-to-many."""
@@ -518,8 +506,8 @@ class MapTaskCountJourney(unittest.TestCase):
 
         for theme in ("Light", "Dark"):
             page = self.page()
-            self.open(page)
             self.appearance(page, theme)
+            self.open(page)
             # The count sits over its thought's own surface.
             node = f'.sk-node[data-id="{self.thoughts["dark"]}"]'
             measure(page, theme, f"{node} + .sk-work-slot .sk-work", backgroundSelector=node)

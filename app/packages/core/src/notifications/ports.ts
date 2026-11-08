@@ -153,9 +153,10 @@ export interface GeneratorPorts {
   deliverableSubscriptions(userId: string): Promise<string[]>;
   /** Whether an email about the same source was queued for this person since `since`. */
   emailedRecently(userId: string, source: SourceLookup, since: Date): Promise<boolean>;
+  /** Queues the copy for one address kind; false when it already exists, or when the person has no confirmed extra address (the `extra` kind). */
   insertEmail(row: { id: string; notificationId: string; userId: string; addressKind: EmailAddressKind }): Promise<boolean>;
-  enqueuePush(job: PushSendJob, startAfter: Date | null): Promise<string | null>;
-  enqueueEmail(job: EmailJob, startAfter: Date | null): Promise<string | null>;
+  enqueuePush(job: PushSendJob): Promise<string | null>;
+  enqueueEmail(job: EmailJob): Promise<string | null>;
   /** Counts a failed generation of the event (outside its savepoint) and returns the attempts so far. */
   recordFailure(eventId: string, error: string): Promise<number>;
   /** Marks the event as given up on, for operators to inspect. */

@@ -268,12 +268,12 @@ class FirstRunSettingsPeople(unittest.TestCase):
             shot(page, f"763-agents-ai-server-off-{'390' if viewport == PHONE else '1440'}-{UI_BROWSER}")
         page = self.page("maria")
         stub(page)
-        # The account menu holds Settings only (the company's people are in Settings › Company), never features that may be off.
+        # The account menu holds the name, Settings and Sign out (C-34); the company's people are in Settings › Company, never features that may be off.
         page.goto("/")
         page.locator(".me__btn").click()
         menu = page.get_by_role("dialog", name="Account")
         expect(menu.get_by_role("link", name="Your assistant")).to_have_count(0)
-        expect(menu.get_by_role("link", name="All settings")).to_be_visible()
+        expect(menu.get_by_role("link", name="Settings", exact=True)).to_be_visible()
         expect(menu.get_by_role("link", name="People")).to_have_count(0)
         self.assertEqual(menu.get_by_role("link").evaluate_all("links => links.map((l) => getComputedStyle(l).textDecorationLine)"), ["none"])
 
@@ -282,19 +282,18 @@ class FirstRunSettingsPeople(unittest.TestCase):
     def test_08_notifications_offer_only_the_channels_this_server_has(self) -> None:
         page = self.page("maria")
         page.goto("/settings/notifications")
-        # This stack has no VAPID keys: no Push column and no device push card, one line instead.
+        # This stack has no VAPID keys: no row for this device, one line instead; email is set up, so Email me too stays.
         expect(page.get_by_text("Push isn’t set up on this Flux server. Your inbox always works.")).to_be_visible()
-        expect(page.get_by_role("columnheader", name="Push")).to_have_count(0)
-        expect(page.get_by_role("columnheader", name="Email")).to_have_count(1)
-        expect(page.get_by_text("Push on this device")).to_have_count(0)
-        # This device has no row here (no push, no install offer), so it shows no empty heading (#763 SG-8).
-        expect(page.get_by_role("heading", name="This device")).to_have_count(0)
-        # While quiet hours are off, the line names this browser's zone, the one turning them on will use.
-        quiet = page.get_by_role("switch", name="Quiet hours")
+        expect(page.get_by_text("On this device")).to_have_count(0)
+        expect(page.get_by_role("switch", name="Email me too")).to_be_visible()
+        expect(page.get_by_text("Email addresses", exact=True)).to_be_visible()
+        # While quiet hours are off, the switch inside Change names this browser's zone, the one turning them on will use.
+        page.get_by_role("button", name="Change quiet hours").click()
+        quiet = page.get_by_role("switch", name="Use quiet hours")
         expect(quiet).to_have_attribute("aria-checked", "false")
         expect(page.locator(".sset-row").filter(has=quiet)).to_contain_text("Europe/Warsaw")
         expect(page.locator(".sset-row").filter(has=quiet)).not_to_contain_text("UTC")
-        # Without email too: no Email column, no "Where email goes", one line for both.
+        # Without email too: no Email me too, no addresses, one line for both.
         stubbed = self.page("maria", viewport=PHONE)
         real = self.api(stubbed, "GET", "/api/v1/notification-preferences", status=200)
         real["email"]["available"] = False
@@ -302,9 +301,9 @@ class FirstRunSettingsPeople(unittest.TestCase):
                       if route.request.method == "GET" else route.continue_())
         stubbed.goto("/settings/notifications")
         expect(stubbed.get_by_text("Push and email aren’t set up on this Flux server, so everything waits in your Inbox.")).to_be_visible()
-        expect(stubbed.get_by_role("columnheader", name="Email")).to_have_count(0)
-        expect(stubbed.get_by_role("heading", name="Where email goes")).to_have_count(0)
-        expect(stubbed.get_by_role("columnheader", name="Inbox")).to_have_count(1)
+        expect(stubbed.get_by_role("switch", name="Email me too")).to_have_count(0)
+        expect(stubbed.get_by_text("Email addresses", exact=True)).to_have_count(0)
+        expect(stubbed.get_by_role("radiogroup", name="Tell me about")).to_be_visible()
         shot(stubbed, f"763-notifications-no-channels-390-{UI_BROWSER}")
 
     # ---------------------------------------------------------------- touch targets (SG-4)
@@ -316,8 +315,10 @@ class FirstRunSettingsPeople(unittest.TestCase):
         for link in nav.get_by_role("link").all():
             box = link.bounding_box()
             self.assertGreaterEqual(box["height"], 44 - 0.001, f"{link.inner_text()}: {box}")
-        for name in ("Quiet hours",):
+        for name in ("Email me too",):
             assert_touch_target(self, page, page.get_by_role("switch", name=name))
+        for name in ("Change quiet hours", "Change muted places"):
+            assert_touch_target(self, page, page.get_by_role("button", name=name))
         page.goto("/settings/appearance")
         assert_touch_target(self, page, page.get_by_role("switch", name="Kreska in loading and empty screens"))
 

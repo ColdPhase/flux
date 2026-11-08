@@ -179,25 +179,25 @@ test('mail goes to the chosen mailboxes of a single sign-on person', async () =>
   await api(aliceContext, 'POST', `/api/v1/workspaces/${state.workspace}/members`, { email: 'bob@acme.test', role: 'admin' });
   state.extra = `alice.private-${randomUUID()}@gmail.test`;
   await verifyExtra(aliceContext, state.extra);
-  await api(aliceContext, 'PATCH', '/api/v1/notification-preferences', { emailDestination: 'both' });
+  await api(aliceContext, 'PATCH', '/api/v1/notification-preferences', { emailMe: true });
   const before = { account: (await mailsTo('alice@acme.test')).length, extra: (await mailsTo(state.extra)).length };
   const room = await api<{ id: string }>(bobContext, 'POST', `/api/v1/workspaces/${state.workspace}/projects`, { name: 'Lamp sensors', visibility: 'workspace' });
   await api(bobContext, 'POST', `/api/v1/projects/${room.id}/conversations`, { body: '@Alice Nowak the sensor arrived', clientMessageId: randomUUID() });
-  await waitFor(async () => (await mailsTo('alice@acme.test')).length === before.account + 1 && (await mailsTo(state.extra!)).length === before.extra + 1, 'one email per chosen mailbox');
+  await waitFor(async () => (await mailsTo('alice@acme.test')).length === before.account + 1 && (await mailsTo(state.extra!)).length === before.extra + 1, 'one email per confirmed mailbox');
 });
 
-test('each single sign-on person gets exactly the mailboxes they chose: account only, extra only, in-app only', async () => {
-  // Alice had BOTH above. Bob gets his own verified private address; each phase checks all four mailboxes.
+test('each single sign-on person gets exactly the mailboxes Email me too covers: every confirmed address, or none', async () => {
+  // Alice has a confirmed extra address above. Bob gets his own verified private address; each phase checks all four mailboxes.
   state.bobId = (await me(bobContext)).body!.user.id;
   state.bobExtra = `bob.private-${randomUUID()}@gmail.test`;
   await verifyExtra(bobContext, state.bobExtra);
   const mailboxes = { aliceAccount: 'alice@acme.test', aliceExtra: state.extra!, bobAccount: 'bob@acme.test', bobExtra: state.bobExtra };
   const counts = async () => Object.fromEntries(await Promise.all(Object.entries(mailboxes)
     .map(async ([key, address]) => [key, (await mailsTo(address)).length] as const))) as Record<keyof typeof mailboxes, number>;
-  const phases = [['account', 'extra'], ['extra', 'both'], ['none', 'account']] as const;
+  const phases = [[true, false], [false, true], [false, false]] as const;
   for (const [aliceChoice, bobChoice] of phases) {
-    await api(aliceContext, 'PATCH', '/api/v1/notification-preferences', { emailDestination: aliceChoice });
-    await api(bobContext, 'PATCH', '/api/v1/notification-preferences', { emailDestination: bobChoice });
+    await api(aliceContext, 'PATCH', '/api/v1/notification-preferences', { emailMe: aliceChoice });
+    await api(bobContext, 'PATCH', '/api/v1/notification-preferences', { emailMe: bobChoice });
     const before = await counts();
     // A new project per phase: the calm window allows one email per person and place.
     const room = await api<{ id: string }>(bobContext, 'POST', `/api/v1/workspaces/${state.workspace}/projects`, { name: `Bench ${aliceChoice}-${bobChoice}`, visibility: 'workspace' });
@@ -206,10 +206,10 @@ test('each single sign-on person gets exactly the mailboxes they chose: account 
     // The in-app record arrives whatever the email choice, "none" included.
     await inboxItem(aliceContext, (item) => item.url?.endsWith(toAlice.messages[0]!.id) === true, `Alice's in-app record (${aliceChoice})`);
     await inboxItem(bobContext, (item) => item.url?.endsWith(toBob.messages[0]!.id) === true, `Bob's in-app record (${bobChoice})`);
-    const gets = (choice: string, kind: 'account' | 'extra') => (choice === kind || choice === 'both' ? 1 : 0);
+    const gets = (on: boolean) => (on ? 1 : 0);
     const want = {
-      aliceAccount: before.aliceAccount + gets(aliceChoice, 'account'), aliceExtra: before.aliceExtra + gets(aliceChoice, 'extra'),
-      bobAccount: before.bobAccount + gets(bobChoice, 'account'), bobExtra: before.bobExtra + gets(bobChoice, 'extra'),
+      aliceAccount: before.aliceAccount + gets(aliceChoice), aliceExtra: before.aliceExtra + gets(aliceChoice),
+      bobAccount: before.bobAccount + gets(bobChoice), bobExtra: before.bobExtra + gets(bobChoice),
     };
     await waitFor(async () => JSON.stringify(await counts()) === JSON.stringify(want), `mail for ${aliceChoice}/${bobChoice}`).catch(async () => {
       assert.deepEqual(await counts(), want, `mailboxes for ${aliceChoice}/${bobChoice}`);
@@ -244,18 +244,18 @@ test('another single sign-on person cannot claim or receive at someone else\'s v
   assert.deepEqual({ email: alicePrefs.email.extra?.email, verified: alicePrefs.email.extra?.verified }, { email: state.extra, verified: true }, 'Alice keeps her verified address');
   const rows = (await pool.query('SELECT user_id, verified_at IS NOT NULL AS verified FROM notification_addresses WHERE lower(email) = lower($1) ORDER BY user_id', [state.extra])).rows;
   assert.deepEqual(rows.sort((a, b) => Number(b.verified) - Number(a.verified)), [{ user_id: state.aliceId, verified: true }, { user_id: state.bobId, verified: false }]);
-  // Bob chooses that address for his email: his notifications still never reach it.
-  await api(bobContext, 'PATCH', '/api/v1/notification-preferences', { emailDestination: 'extra' });
+  // Bob names that address as his own: it stays unconfirmed for him, so his notifications never reach it.
+  await api(bobContext, 'PATCH', '/api/v1/notification-preferences', { emailMe: true });
   const before = { aliceExtra: (await mailsTo(state.extra!)).length, bobAccount: (await mailsTo('bob@acme.test')).length };
   const room = await api<{ id: string }>(bobContext, 'POST', `/api/v1/workspaces/${state.workspace}/projects`, { name: 'Probe drawer', visibility: 'workspace' });
   const toBob = await api<{ messages: { id: string }[] }>(aliceContext, 'POST', `/api/v1/projects/${room.id}/conversations`, { body: '@Bob Lis the drawer key is with me', clientMessageId: randomUUID() });
   const notice = await inboxItem(bobContext, (item) => item.url?.endsWith(toBob.messages[0]!.id) === true, 'Bob\'s notification');
   await waitFor(async () => (await pool.query("SELECT 1 FROM notification_emails WHERE notification_id = $1 AND status IN ('queued', 'sending')", [notice.id])).rowCount === 0, 'Bob\'s email to settle');
   await new Promise((resolve) => setTimeout(resolve, 1500));
-  assert.deepEqual({ aliceExtra: (await mailsTo(state.extra!)).length, bobAccount: (await mailsTo('bob@acme.test')).length }, before, 'nothing of Bob\'s reaches Alice\'s mailbox');
+  assert.deepEqual({ aliceExtra: (await mailsTo(state.extra!)).length, bobAccount: (await mailsTo('bob@acme.test')).length },
+    { aliceExtra: before.aliceExtra, bobAccount: before.bobAccount + 1 }, 'Bob\'s email reaches only his sign-in address, never Alice\'s mailbox');
   // Bob withdraws the address; Alice's stays verified.
   await api(bobContext, 'DELETE', '/api/v1/notification-address');
-  await api(bobContext, 'PATCH', '/api/v1/notification-preferences', { emailDestination: 'account' });
   assert.equal((await pool.query('SELECT verified_at IS NOT NULL AS verified FROM notification_addresses WHERE user_id = $1', [state.aliceId])).rows[0].verified, true);
 });
 
@@ -270,8 +270,8 @@ test('a single sign-on session can be revoked or signed out, and an email link o
   for (const path of ['/api/v1/me', '/api/v1/inbox', '/api/v1/notification-preferences', '/api/v1/workspaces']) assert.equal(await status(second, path), 401, `revoked: ${path}`);
   assert.equal((await me(aliceContext)).status, 200, 'the other session is unaffected');
 
-  // A notification in Bob's own workspace, emailed to Alice's private address.
-  await api(aliceContext, 'PATCH', '/api/v1/notification-preferences', { emailDestination: 'extra' });
+  // A notification in Bob's own workspace, emailed to Alice's private address as well as her sign-in address.
+  await api(aliceContext, 'PATCH', '/api/v1/notification-preferences', { emailMe: true });
   const bench = (await api<{ id: string }>(bobContext, 'POST', '/api/v1/workspaces', { name: 'Bob bench' })).id;
   await api(bobContext, 'POST', `/api/v1/workspaces/${bench}/members`, { email: 'alice@acme.test', role: 'member' });
   const room = await api<{ id: string }>(bobContext, 'POST', `/api/v1/workspaces/${bench}/projects`, { name: 'Oscilloscope', visibility: 'workspace' });
@@ -331,10 +331,10 @@ test('a single sign-on session can be revoked or signed out, and an email link o
   const alice = await me(aliceContext);
   assert.equal(alice.body!.user.id, state.aliceId);
   assert.deepEqual((await api<{ id: string }[]>(aliceContext, 'GET', '/api/v1/workspaces')).map((entry) => entry.id).sort(), [state.company!, state.workspace!].sort());
-  const preferences = await api<{ email: { destination: string; extra: { email: string; verified: boolean } | null } }>(aliceContext, 'GET', '/api/v1/notification-preferences');
+  const preferences = await api<{ email: { extra: { email: string; verified: boolean } | null } }>(aliceContext, 'GET', '/api/v1/notification-preferences');
   assert.deepEqual({ email: preferences.email.extra?.email, verified: preferences.email.extra?.verified }, { email: state.extra, verified: true });
-  // Back to both mailboxes for the email-change check that follows.
-  await api(aliceContext, 'PATCH', '/api/v1/notification-preferences', { emailDestination: 'both' });
+  // Both mailboxes for the email-change check that follows.
+  await api(aliceContext, 'PATCH', '/api/v1/notification-preferences', { emailMe: true });
 });
 
 test('the same subject keeps the same person, grants and verified address when the provider changes the email', async () => {

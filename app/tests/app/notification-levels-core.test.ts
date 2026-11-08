@@ -8,7 +8,6 @@ import {
   applyPreferenceChange,
   channelsOf,
   generateNotifications,
-  levelOf,
   preferenceRepository,
   type GeneratorPorts,
   type StoredPreferences,
@@ -16,48 +15,51 @@ import {
 
 // Notification levels (#350, F-026 S22) with in-memory ports.
 
-const fresh = (): StoredPreferences => ({ ...DEFAULT_PREFERENCES, channels: {} });
+const fresh = (): StoredPreferences => ({ ...DEFAULT_PREFERENCES });
 
 describe('notification levels', () => {
-  test('the default is Only "Needs you": push for the needs-you reasons, not replies, and the inbox for all', () => {
+  test('the default is Only what needs me with email too: push and email for the needs-you reasons, not replies, and the inbox for all', () => {
     const channels = channelsOf(fresh());
-    assert.equal(levelOf(channels), 'needsYou');
     for (const reason of NOTIFICATION_REASONS) {
+      const needsYou = (NEEDS_YOU_REASONS as readonly string[]).includes(reason);
       assert.equal(channels[reason].inApp, true, `${reason} reaches the inbox`);
-      assert.equal(channels[reason].push, (NEEDS_YOU_REASONS as readonly string[]).includes(reason), `${reason} push`);
+      assert.equal(channels[reason].push, needsYou, `${reason} push`);
+      assert.equal(channels[reason].email, needsYou && reason !== 'invitation', `${reason} email follows push, a live call invitation excepted`);
     }
     assert.equal(channels.reply.push, false);
   });
 
-  test('Everything, Nothing and back: the inbox is never turned off and email returns to its defaults', () => {
+  test('Everything, Nothing and back: the inbox is never turned off', () => {
     const everything = applyPreferenceChange(fresh(), { level: 'everything' });
-    assert.equal(levelOf(channelsOf(everything)), 'everything');
-    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].push));
+    assert.equal(everything.level, 'everything');
+    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].push && channelsOf(everything)[reason].email === (reason !== 'invitation')));
 
     const nothing = applyPreferenceChange(everything, { level: 'nothing' });
     const off = channelsOf(nothing);
-    assert.equal(levelOf(off), 'nothing');
     assert.ok(NOTIFICATION_REASONS.every((reason) => off[reason].inApp && !off[reason].push && !off[reason].email), 'Nothing keeps the inbox only');
 
-    const back = channelsOf(applyPreferenceChange(nothing, { level: 'needsYou' }));
-    assert.equal(levelOf(back), 'needsYou');
-    assert.deepEqual(back, channelsOf(fresh()), 'Needs you after Nothing is the default again');
+    const back = applyPreferenceChange(nothing, { level: 'needsYou' });
+    assert.deepEqual(back, fresh(), 'Only what needs me after Nothing is the default again');
   });
 
-  test('a single per-reason change reads as custom; channels apply after the level', () => {
-    const custom = applyPreferenceChange(fresh(), { channels: { reply: { push: true }, dm: { push: false } } });
-    assert.equal(levelOf(channelsOf(custom)), 'custom');
-    const both = applyPreferenceChange(fresh(), { level: 'everything', channels: { reply: { push: false } } });
-    assert.equal(channelsOf(both).reply.push, false);
+  test('Email me too covers the same events as the level and nothing else', () => {
+    const noEmail = applyPreferenceChange(fresh(), { emailMe: false });
+    assert.equal(noEmail.emailMe, false);
+    assert.ok(NOTIFICATION_REASONS.every((reason) => !channelsOf(noEmail)[reason].email), 'no reason emails');
+    assert.deepEqual(NOTIFICATION_REASONS.map((reason) => channelsOf(noEmail)[reason].push), NOTIFICATION_REASONS.map((reason) => channelsOf(fresh())[reason].push), 'push is unchanged');
+    const everything = applyPreferenceChange(fresh(), { level: 'everything', emailMe: true });
+    assert.ok(NOTIFICATION_REASONS.every((reason) => channelsOf(everything)[reason].email === (reason !== 'invitation')), 'Everything emails every reason but a live call invitation');
+    assert.equal(channelsOf(everything).invitation.push, true, 'the invitation still rings on push, and is in the Inbox');
   });
 
-  test('unknown levels are refused', () => {
+  test('unknown levels and non-boolean switches are refused', () => {
     assert.throws(() => applyPreferenceChange(fresh(), { level: 'loud' as never }), (error: unknown) => error instanceof InvalidInputError && error.code === 'INVALID_LEVEL');
+    assert.throws(() => applyPreferenceChange(fresh(), { emailMe: 'yes' as never }), (error: unknown) => error instanceof InvalidInputError && error.code === 'INVALID_EMAIL_ME');
   });
 });
 
 describe('quiet hours', () => {
-  function generator(preferences: StoredPreferences) {
+  function generator(preferences: StoredPreferences, extraConfirmed = false) {
     const workspaceId = randomUUID();
     const counts = { notifications: 0, pushes: 0, emails: 0 };
     const ports: GeneratorPorts = {
@@ -74,7 +76,8 @@ describe('quiet hours', () => {
       insertNotification: async () => { counts.notifications++; return true; },
       deliverableSubscriptions: async () => ['phone'],
       emailedRecently: async () => false,
-      insertEmail: async () => true,
+      // A copy for the extra address exists only when the person has confirmed one (the repository refuses it otherwise).
+      insertEmail: async ({ addressKind }) => addressKind === 'account' || extraConfirmed,
       enqueuePush: async () => { counts.pushes++; return null; },
       enqueueEmail: async () => { counts.emails++; return null; },
       recordFailure: async () => 1,
@@ -87,9 +90,29 @@ describe('quiet hours', () => {
   const quiet = { ...fresh(), quietEnabled: true, quietStart: 1, quietEnd: 0, timeZone: 'UTC' };
   const now = () => new Date('2026-10-08T12:00:00Z');
 
-  test('a push held by quiet hours is queued for their end; the inbox keeps it and email still waits for the end', async () => {
+  test('inside quiet hours the inbox keeps the notification and no push or email is queued, now or later (C-31)', async () => {
     const { counts, uow } = generator(quiet);
     await generateNotifications(uow, { emailAvailable: true, now });
-    assert.deepEqual(counts, { notifications: 1, pushes: 1, emails: 1 });
+    assert.deepEqual(counts, { notifications: 1, pushes: 0, emails: 0 });
+  });
+
+  test('outside quiet hours, and with them off, the same notification sends push and email at once', async () => {
+    for (const preferences of [{ ...fresh(), quietEnabled: true, quietStart: 22 * 60, quietEnd: 7 * 60 }, fresh()]) {
+      const { counts, uow } = generator(preferences);
+      await generateNotifications(uow, { emailAvailable: true, now });
+      assert.deepEqual(counts, { notifications: 1, pushes: 1, emails: 1 });
+    }
+  });
+
+  test('Email me too goes to every confirmed address: one copy for the sign-in address, one more for a confirmed extra address', async () => {
+    const { counts, uow } = generator(fresh(), true);
+    await generateNotifications(uow, { emailAvailable: true, now });
+    assert.deepEqual(counts, { notifications: 1, pushes: 1, emails: 2 });
+  });
+
+  test('Email me too off keeps push and the inbox but queues no email', async () => {
+    const { counts, uow } = generator({ ...fresh(), emailMe: false });
+    await generateNotifications(uow, { emailAvailable: true, now });
+    assert.deepEqual(counts, { notifications: 1, pushes: 1, emails: 0 });
   });
 });

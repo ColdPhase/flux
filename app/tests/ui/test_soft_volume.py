@@ -236,10 +236,9 @@ class SoftVolume(unittest.TestCase):
         calm = self.page(reduced=True)
         calm.goto("/")
         self.assertEqual(calm.evaluate("getComputedStyle(document.documentElement).getPropertyValue('--press').trim()"), "1")
-        # The segmented control (the account menu's theme choice) is a pill track.
-        page.goto("/")
-        page.locator(".me__btn").click()
-        self.assertEqual(page.get_by_role("dialog", name="Account").locator(".seg").evaluate("e => getComputedStyle(e).borderTopLeftRadius"), "999px")
+        # The segmented control (Settings > Appearance, the text size choice) is a pill track.
+        page.goto("/settings/appearance")
+        self.assertEqual(page.locator(".seg").first.evaluate("e => getComputedStyle(e).borderTopLeftRadius"), "999px")
 
     def test_05_every_task_state_has_its_glyph_and_word_in_both_themes(self) -> None:
         self.ensure_account()

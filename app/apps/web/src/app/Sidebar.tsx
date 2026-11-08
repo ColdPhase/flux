@@ -18,7 +18,6 @@ export interface SidebarProps {
   /** The person's agents, the first (Assistant) pinned at the top of Messages. */
   agents?: MyAgent[];
   user: { name: string; email: string };
-  session: { expiresAt: string };
   /** In the drawer: a close button and closing after navigation. */
   onClose?: () => void;
   /** How many Inbox items are unread; 0 shows no count. */
@@ -45,7 +44,7 @@ function LockTile({ size = 20 }: { size?: number }) {
  * the account and Settings. Collapsed, it is the 64px rail of icons. A space has one conversation (UI116-1): its roots
  * and threads live in its Conversation view, not in this list. A space never reveals another's contents.
  */
-export function Sidebar({ projects, directMessages, agents = [], user, session, onClose, titleId, inboxUnread = 0, collapsed = false, onToggleCollapsed }: SidebarProps) {
+export function Sidebar({ projects, directMessages, agents = [], user, onClose, titleId, inboxUnread = 0, collapsed = false, onToggleCollapsed }: SidebarProps) {
   const { openSearch, openCreate } = useShellActions();
   // Encrypted spaces that wait to be unlocked (F-030, #655): one row each, in place of their projects.
   const locked = useLockedWorkspaces();
@@ -155,7 +154,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, session, 
         </div>
         </div>
         <WorkingAgent compact />
-        <UserMenu compact name={user.name} email={user.email} sessionExpiresAt={session.expiresAt} />
+        <UserMenu compact name={user.name} email={user.email} />
       </div>
     );
   }
@@ -266,7 +265,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, session, 
         </nav>
       </div>
       <WorkingAgent />
-      <UserMenu name={user.name} email={user.email} sessionExpiresAt={session.expiresAt} asLink={!!onClose} onNavigate={onClose} />
+      <UserMenu name={user.name} email={user.email} asLink={!!onClose} onNavigate={onClose} />
     </div>
   );
 }

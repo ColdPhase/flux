@@ -7,15 +7,13 @@ import {
   applyPreferenceChange,
   buildNotificationEmail,
   deliverNotificationEmail,
-  deliverableAt,
   localMinutes,
   loadNotificationMailConfig,
-  withoutAddress,
   type NotificationMailer,
   type PushSendJob,
 } from '@flux/core';
 import type { InboxItem, InboxResponse, NotificationPreferences, NotificationReason } from '@flux/contracts';
-import { emailUnitOfWork, handleEmailJob, smtpNotificationMailer } from '../../apps/worker/src/notifications/index.js';
+import { emailUnitOfWork, smtpNotificationMailer } from '../../apps/worker/src/notifications/index.js';
 import { PgBoss } from 'pg-boss';
 import { createVapidAuthorizer, deliverPush } from '../../apps/worker/src/push/index.js';
 import { loadPushSenderConfig } from '@flux/core';
@@ -119,7 +117,7 @@ async function generatorCaughtUp() {
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/** Quiet hours that cover the current UTC minute, so push and email wait while the inbox fills. */
+/** Quiet hours that cover the current minute in a zone, so push and email are not sent (C-31) while the inbox fills. */
 function quietNow(timeZone = 'UTC') {
   const start = (localMinutes(new Date(), timeZone) + 1440 - 30) % 1440;
   const end = (start + 120) % 1440;
@@ -127,33 +125,25 @@ function quietNow(timeZone = 'UTC') {
   return { enabled: true, start: clock(start), end: clock(end), timeZone };
 }
 
-describe('preference rules', () => {
-  test('quiet hours hold push and email until they end, in the person\'s own time zone', () => {
-    const base = { ...DEFAULT_PREFERENCES, quietEnabled: true, quietStart: 22 * 60, quietEnd: 7 * 60, timeZone: 'Europe/Warsaw' };
-    // 23:30 in Warsaw (CEST, UTC+2) is 21:30 UTC: inside, released at 07:00 local = 05:00 UTC.
-    const late = new Date('2026-09-28T21:30:00Z');
-    assert.equal(deliverableAt(base, late).toISOString(), '2026-09-29T05:00:00.000Z');
-    // 12:00 local is outside.
-    const noon = new Date('2026-09-28T10:00:00Z');
-    assert.equal(deliverableAt(base, noon).getTime(), noon.getTime());
-    // A same-day window and the exact end minute.
-    const day = { ...base, quietStart: 9 * 60, quietEnd: 17 * 60, timeZone: 'UTC' };
-    assert.equal(deliverableAt(day, new Date('2026-09-28T16:59:30Z')).toISOString(), '2026-09-28T17:00:00.000Z');
-    assert.equal(deliverableAt(day, new Date('2026-09-28T17:00:00Z')).toISOString(), '2026-09-28T17:00:00.000Z');
-    assert.equal(deliverableAt({ ...day, quietEnabled: false }, new Date('2026-09-28T12:00:00Z')).toISOString(), '2026-09-28T12:00:00.000Z');
-  });
+/**
+ * Quiet hours send nothing, so a test that must run a delivery itself (without the worker racing it) queues the email row
+ * of a stored notification here, with the job held far in the future, as the generator would have outside quiet hours.
+ */
+async function queueEmailRow(userId: string, notificationId: string, addressKind: 'account' | 'extra' = 'account') {
+  const id = randomUUID();
+  await pool.query('INSERT INTO notification_emails (id, notification_id, user_id, address_kind) VALUES ($1, $2, $3, $4)', [id, notificationId, userId, addressKind]);
+  await queue.send(NOTIFICATION_EMAIL_JOB, { emailId: id }, { singletonKey: id, startAfter: new Date(Date.now() + 3_600_000) });
+  return id;
+}
 
-  test('changes are validated and one unsubscribe keeps the other address of "both"', () => {
-    assert.throws(() => applyPreferenceChange(DEFAULT_PREFERENCES, { channels: { everything: { email: true } } } as never), /Unknown notification reason/);
+describe('preference rules', () => {
+  test('changes are validated and applied: the level, Email me too and quiet hours', () => {
     assert.throws(() => applyPreferenceChange(DEFAULT_PREFERENCES, { quietHours: { start: '25:00' } }), /time/);
     assert.throws(() => applyPreferenceChange(DEFAULT_PREFERENCES, { quietHours: { timeZone: 'Mars/Olympus' } }), /time zone/);
-    assert.throws(() => applyPreferenceChange(DEFAULT_PREFERENCES, { emailDestination: 'everyone' as never }), /emailDestination/);
-    const next = applyPreferenceChange(DEFAULT_PREFERENCES, { channels: { reply: { email: true } }, emailDestination: 'both', quietHours: { enabled: true, start: '21:30', end: '06:45', timeZone: 'Asia/Tokyo' } });
-    assert.deepEqual(next.channels.reply, { email: true });
-    assert.equal(next.quietStart, 21 * 60 + 30);
-    assert.equal(withoutAddress('both', 'account'), 'extra');
-    assert.equal(withoutAddress('extra', 'extra'), 'none');
-    assert.equal(withoutAddress('account', 'extra'), 'account');
+    assert.throws(() => applyPreferenceChange(DEFAULT_PREFERENCES, { level: 'loud' as never }), /level/);
+    assert.throws(() => applyPreferenceChange(DEFAULT_PREFERENCES, { emailMe: 'sometimes' as never }), /emailMe/);
+    const next = applyPreferenceChange(DEFAULT_PREFERENCES, { level: 'everything', emailMe: false, quietHours: { enabled: true, start: '21:30', end: '06:45', timeZone: 'Asia/Tokyo' } });
+    assert.deepEqual([next.level, next.emailMe, next.quietStart, next.quietEnd, next.timeZone], ['everything', false, 21 * 60 + 30, 6 * 60 + 45, 'Asia/Tokyo']);
   });
 
   test('the email is generic: a fixed subject, an in-app link and one-click unsubscribe', () => {
@@ -267,18 +257,24 @@ describe('notifications from committed events', () => {
     await waitForItem(cy, (item) => item.url?.endsWith(again.messages[0]!.id) === true, 'Cyra\'s mention after unmuting');
   });
 
-  test('a reason turned off for the inbox stays out of it; turned off everywhere, nothing is stored', async () => {
-    await prefs(cy, { channels: { reply: { inApp: false, push: false, email: false } } });
+  test('Nothing still fills the inbox but sends no push; Only what needs me pushes a question, not a plain reply', async () => {
+    const { subscription } = await subscribe(cy.browser);
+    await prefs(cy, { level: 'nothing' });
     const thread = await conversation(cy, projectId, 'Cyra opens a thread about fonts');
-    const answered = await reply(ada, thread.id, 'Serif for the headings');
-    await generatorCaughtUp();
-    assert.equal((await inbox(cy)).items.filter((item) => item.url?.endsWith(answered.id)).length, 0);
-    assert.equal((await notificationRows(cy.id)).filter((row) => row.reason === 'reply').length, 0);
-    await prefs(cy, { channels: { reply: { inApp: false, push: true } } });
-    const second = await reply(ada, thread.id, 'And sans for the tables');
-    await waitFor(async () => (await pool.query('SELECT in_inbox FROM notifications WHERE user_id = $1 AND url LIKE $2', [cy.id, `%${second.id}`])).rows[0], 'the push-only row');
-    assert.equal((await inbox(cy)).items.filter((item) => item.url?.endsWith(second.id)).length, 0, 'push only: not listed in the inbox');
-    await prefs(cy, { channels: { reply: { inApp: true, push: true } } });
+    const plain = await reply(ada, thread.id, 'Serif for the headings');
+    const asked = await reply(ada, thread.id, '@Cyra Lind which serif for the tables?');
+    await waitForItem(cy, (item) => item.url?.endsWith(plain.id) === true, 'the reply in the inbox');
+    await waitForItem(cy, (item) => item.url?.endsWith(asked.id) === true, 'the question in the inbox');
+    await sleep(1500);
+    assert.equal((await recordedPushes(subscription.mockId)).length, 0, 'Nothing: no push, not even for a question');
+
+    await prefs(cy, { level: 'needsYou' });
+    await reply(ada, thread.id, '@Cyra Lind and which sans for the schedule?');
+    await waitFor(async () => (await recordedPushes(subscription.mockId)).length === 1, 'the push for the question');
+    const quiet = await reply(ada, thread.id, 'No rush on any of this');
+    await waitForItem(cy, (item) => item.url?.endsWith(quiet.id) === true, 'the plain reply in the inbox');
+    await sleep(1500);
+    assert.equal((await recordedPushes(subscription.mockId)).length, 1, 'a plain reply is in the inbox only');
   });
 
   test('an event that fails is retried after 2 s, then 4 s, and the message behind it waits for exactly that (#862)', async (t) => {
@@ -350,9 +346,9 @@ describe('email and push delivery', () => {
       method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click',
     });
     assert.equal(oneClick.status, 200, await oneClick.clone().text());
-    assert.deepEqual(await oneClick.json(), { result: 'stopped', stopped: 'account', destination: 'none' });
+    assert.deepEqual(await oneClick.json(), { result: 'stopped', stopped: 'account', emailMe: false });
     const settings = expectStatus(await reader.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
-    assert.equal(settings.email.destination, 'none');
+    assert.equal(settings.emailMe, false, 'the sign-in address stops with Email me too');
     // Unsubscribing changes nothing about sign-in.
     assert.equal((await signIn(reader.email, password)).response.status, 200);
 
@@ -362,23 +358,24 @@ describe('email and push delivery', () => {
     await generatorCaughtUp();
     await sleep(1500);
     assert.equal((await mailsTo(reader.email)).length, count, 'no email after unsubscribing');
-    await prefs(reader, { emailDestination: 'account' });
+    await prefs(reader, { emailMe: true });
   });
 
   test('access is rechecked before email and push: someone removed meanwhile receives nothing', async () => {
     const leaver = await person('Lena Vos');
     await addMember(owner, workspaceId, leaver, 'member');
+    // Quiet hours store the notification and queue nothing (C-31); the test queues the email itself, then ends them.
     await prefs(leaver, { quietHours: quietNow() });
     const { subscription, id: subscriptionId } = await subscribe(leaver.browser);
     const thread = await conversation(owner, projectId, '@Lena Vos the donor spreadsheet with phone numbers');
     const item = await waitForItem(leaver, (entry) => entry.url?.endsWith(thread.messages[0]!.id) === true, 'Lena\'s mention');
-    const [email] = await waitFor(async () => { const rows = await emailRows(leaver.id); return rows.length ? rows : null; }, 'the queued email');
-    assert.equal(email!.status, 'queued', 'quiet hours hold the email');
-    const held = await pool.query(`SELECT start_after FROM pgboss.job WHERE name = $1 AND data->>'emailId' = $2`, [NOTIFICATION_EMAIL_JOB, email!.id]);
-    assert.ok(new Date(held.rows[0].start_after).getTime() > Date.now() + 60_000, 'the email job waits for the end of quiet hours');
+    await generatorCaughtUp();
+    assert.equal((await emailRows(leaver.id)).length, 0, 'quiet hours queue no email');
+    await prefs(leaver, { quietHours: { enabled: false } });
+    const emailId = await queueEmailRow(leaver.id, item.id);
 
     await removeMember(owner, workspaceId, leaver);
-    const outcome = await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp }, { emailId: email!.id });
+    const outcome = await deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp }, { emailId });
     assert.deepEqual(outcome, { outcome: 'skipped', reason: 'recipient can no longer read the source' });
     const push = await deliverPush({ db, vapid, config: loadPushSenderConfig() }, { notificationId: item.id, subscriptionId, userId: leaver.id } satisfies PushSendJob);
     assert.equal(push.outcome, 'skipped');
@@ -413,18 +410,18 @@ describe('email and push delivery', () => {
     assert.equal(mailAt.size, names.length, 'every mailbox got its e-mail within 20 s');
   });
 
-  test('push follows the same preferences: turned off for a reason, the device gets nothing', async () => {
+  test('push follows the same preferences: at Nothing the device gets nothing', async () => {
     const { subscription } = await subscribe(reader.browser);
     const dmId = await dm(owner, workspaceId, reader);
     const first = await dmMessage(owner, dmId, 'Seedlings are ready');
     await waitFor(async () => (await recordedPushes(subscription.mockId)).length === 1, 'the first push');
     await waitForItem(reader, (entry) => entry.url?.endsWith(first.id) === true, 'the first DM');
-    await prefs(reader, { channels: { dm: { push: false } } });
+    await prefs(reader, { level: 'nothing' });
     const second = await dmMessage(owner, dmId, 'Pick them up by Sunday');
     await waitForItem(reader, (entry) => entry.url?.endsWith(second.id) === true, 'the second DM');
     await sleep(1500);
     assert.equal((await recordedPushes(subscription.mockId)).length, 1);
-    await prefs(reader, { channels: { dm: { push: true } } });
+    await prefs(reader, { level: 'needsYou' });
   });
 
   test('retries never send an email twice', async () => {
@@ -432,31 +429,31 @@ describe('email and push delivery', () => {
     await addMember(owner, workspaceId, quiet, 'member');
     await prefs(quiet, { quietHours: quietNow() });
     const thread = await conversation(owner, projectId, '@Quinn Hale please water the trays');
-    await waitForItem(quiet, (entry) => entry.url?.endsWith(thread.messages[0]!.id) === true, 'Quinn\'s mention');
-    const [email] = await waitFor(async () => { const rows = await emailRows(quiet.id); return rows.length ? rows : null; }, 'the queued email');
-    // Quiet hours held the job; end them so the in-process deliveries below may send.
+    const stored = await waitForItem(quiet, (entry) => entry.url?.endsWith(thread.messages[0]!.id) === true, 'Quinn\'s mention');
+    // Quiet hours queued nothing; end them and queue the email here, so the in-process deliveries below are the only ones.
     await prefs(quiet, { quietHours: { enabled: false } });
+    const email = { id: await queueEmailRow(quiet.id, stored.id) };
     const options = { available: true, origin, uow: emailUnitOfWork(db, queue) };
 
     // SMTP refuses: the row goes back to queued and the job is retried.
     const failing: NotificationMailer = { send: async () => ({ kind: 'failed', message: '421 try later' }) };
-    await assert.rejects(deliverNotificationEmail({ ...options, mailer: failing }, { emailId: email!.id }), /SMTP did not accept/);
+    await assert.rejects(deliverNotificationEmail({ ...options, mailer: failing }, { emailId: email.id }), /SMTP did not accept/);
     assert.equal((await emailRows(quiet.id))[0]!.status, 'queued');
     // Two deliveries race (a retry overlapping a slow first attempt): one email.
-    const results = await Promise.all([1, 2].map(() => deliverNotificationEmail({ ...options, mailer: smtp }, { emailId: email!.id })));
+    const results = await Promise.all([1, 2].map(() => deliverNotificationEmail({ ...options, mailer: smtp }, { emailId: email.id })));
     assert.deepEqual(results.map((result) => result.outcome).sort(), ['sent', 'skipped']);
     assert.equal((await emailRows(quiet.id))[0]!.status, 'sent');
-    const again = await deliverNotificationEmail({ ...options, mailer: smtp }, { emailId: email!.id });
+    const again = await deliverNotificationEmail({ ...options, mailer: smtp }, { emailId: email.id });
     assert.deepEqual(again, { outcome: 'skipped', reason: 'already sent' });
     // A send that may have reached SMTP before a crash (left "sending") is not repeated.
-    await pool.query("UPDATE notification_emails SET status = 'sending' WHERE id = $1", [email!.id]);
-    assert.deepEqual(await deliverNotificationEmail({ ...options, mailer: smtp }, { emailId: email!.id }), { outcome: 'skipped', reason: 'already sending' });
+    await pool.query("UPDATE notification_emails SET status = 'sending' WHERE id = $1", [email.id]);
+    assert.deepEqual(await deliverNotificationEmail({ ...options, mailer: smtp }, { emailId: email.id }), { outcome: 'skipped', reason: 'already sending' });
     await waitForMails(quiet.email, 1, 'the one email');
     await sleep(500);
     assert.equal((await mailsTo(quiet.email)).length, 1);
   });
 
-  test('an extra address is verified by a single-use link, receives email as chosen and can never sign in', async () => {
+  test('an extra address is verified by a single-use link, receives email once confirmed and can never sign in', async () => {
     const extra = `raf.home-${randomUUID()}@example.test`;
     const added = expectStatus(await reader.browser.request('POST', '/api/v1/notification-address', { body: { email: extra } }), 200) as NotificationPreferences;
     assert.deepEqual({ ...added.email.extra, sentAt: null }, { email: extra, verified: false, verifiedAt: null, sentAt: null });
@@ -482,16 +479,18 @@ describe('email and push delivery', () => {
     await pool.query('UPDATE notification_address_tokens SET expires_at = now() - interval \'1 minute\' WHERE address_id = (SELECT id FROM notification_addresses WHERE user_id = $1)', [other.id]);
     expectStatus(await other.browser.request('POST', '/api/v1/notification-address/verify', { body: { token: otherToken } }), 400);
 
-    // Extra address only: the mention goes there and not to the sign-in address.
-    await prefs(reader, { emailDestination: 'extra' });
+    // Email me too (on again after the unsubscribe above) reaches every confirmed address: the sign-in address and this one.
+    await prefs(reader, { emailMe: true });
     const accountBefore = (await mailsTo(reader.email)).length;
     const room = (await project(owner, workspaceId, 'Compost rota', 'workspace')).id;
     const thread = await conversation(owner, room, '@Raf Okoye the rota for October');
     await waitForItem(reader, (entry) => entry.url?.endsWith(thread.messages[0]!.id) === true, 'the mention');
     const [delivered] = await waitForMails(extra, 2, 'the email to the extra address');
     assert.equal((await mailText(delivered!.ID)).Subject, 'New activity in Flux');
+    await waitForMails(reader.email, accountBefore + 1, 'the email to the sign-in address');
     await sleep(1000);
-    assert.equal((await mailsTo(reader.email)).length, accountBefore);
+    assert.equal((await mailsTo(reader.email)).length, accountBefore + 1, 'one email per address');
+    assert.equal((await mailsTo(extra)).length, 2, 'the verification link and one notification');
 
     // The delivery address is never a login identity: no sign-in, no password reset mail.
     const login = await signIn(extra, password);
@@ -503,11 +502,10 @@ describe('email and push delivery', () => {
     assert.equal((await mailsTo(extra)).length, extraMails);
     assert.equal((await signIn(reader.email, password)).response.status, 200, 'the sign-in address still works');
 
-    // Removing the extra address never starts email to the sign-in address by itself.
+    // Removing the extra address changes nothing else: Email me too stays as it was.
     const removed = expectStatus(await reader.browser.request('DELETE', '/api/v1/notification-address'), 200) as NotificationPreferences;
     assert.equal(removed.email.extra, null);
-    assert.equal(removed.email.destination, 'none');
-    await prefs(reader, { emailDestination: 'account' });
+    assert.equal(removed.emailMe, true);
   });
 
   test('read-all quiets the inbox without deleting anything', async () => {
@@ -522,7 +520,7 @@ describe('email and push delivery', () => {
 });
 
 describe('recipient matrix and operator TLS (#113)', () => {
-  test('two SSO-style people get exactly the mailboxes they chose: sign-in only, extra only, both, in-app only', async () => {
+  test('two SSO-style people get exactly the mailboxes Email me too covers: every confirmed address, or none', async () => {
     const lead = await person('Olek Brand');
     const iga = await named('Iga Nowak', `iga.${randomUUID().slice(0, 8)}@nebula.homes`);
     const jon = await named('Jon Petit', `jon.${randomUUID().slice(0, 8)}@nebula.homes`);
@@ -540,18 +538,18 @@ describe('recipient matrix and operator TLS (#113)', () => {
       mailsTo(someone.email).then((mails) => [`${someone.id}:account`, mails.length] as const),
       mailsTo(extras.get(someone)!).then((mails) => [`${someone.id}:extra`, mails.length - 1] as const),
     ]))) as Record<string, number>;
-    const phases: [string, string][] = [['account', 'extra'], ['extra', 'both'], ['both', 'none'], ['none', 'account']];
+    const phases: [boolean, boolean][] = [[true, false], [false, true], [true, true], [false, false]];
     for (const [igaChoice, jonChoice] of phases) {
-      await prefs(iga, { emailDestination: igaChoice });
-      await prefs(jon, { emailDestination: jonChoice });
+      await prefs(iga, { emailMe: igaChoice });
+      await prefs(jon, { emailMe: jonChoice });
       const before = await counts();
       // A new project per phase: the calm window allows one email per person and place.
       const room = (await project(lead, space, `Unit ${igaChoice}-${jonChoice}`, 'workspace')).id;
       const thread = await conversation(lead, room, '@Iga Nowak and @Jon Petit, the lift inspection report is in');
       for (const someone of [iga, jon]) await waitForItem(someone, (item) => item.url?.endsWith(thread.messages[0]!.id) === true, 'the in-app record');
-      const expected = (someone: Person, choice: string) => ({
-        [`${someone.id}:account`]: before[`${someone.id}:account`]! + (choice === 'account' || choice === 'both' ? 1 : 0),
-        [`${someone.id}:extra`]: before[`${someone.id}:extra`]! + (choice === 'extra' || choice === 'both' ? 1 : 0),
+      const expected = (someone: Person, choice: boolean) => ({
+        [`${someone.id}:account`]: before[`${someone.id}:account`]! + (choice ? 1 : 0),
+        [`${someone.id}:extra`]: before[`${someone.id}:extra`]! + (choice ? 1 : 0),
       });
       const want = { ...expected(iga, igaChoice), ...expected(jon, jonChoice) };
       await waitFor(async () => JSON.stringify(await counts()) === JSON.stringify(want), `mail for ${igaChoice}/${jonChoice}`).catch(async () => {
@@ -578,7 +576,6 @@ describe('recipient matrix and operator TLS (#113)', () => {
     await addMember(lead, space, someone, 'member');
     const extra = `kim.private-${randomUUID()}@gmail.test`;
     await verifyExtra(someone, extra);
-    await prefs(someone, { emailDestination: 'both' });
     // The identity provider later reports the same verified address as the sign-in email.
     await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [extra.toUpperCase(), someone.id]);
     const before = (await mailsTo(extra)).length;
@@ -594,20 +591,25 @@ describe('recipient matrix and operator TLS (#113)', () => {
     assert.equal((await mailsTo(extra)).length, before + 1, 'exactly one message reaches the shared mailbox');
   });
 
-  /** One notification with both copies queued and held by quiet hours (real generator rows and pg-boss jobs). */
+  /**
+   * One stored notification with both copies queued and held back (real notification and email rows, pg-boss jobs held for an
+   * hour). Quiet hours store the notification and queue nothing (C-31), so the test queues the copies itself, then ends them.
+   */
   async function heldCopies(lead: Person, space: string, someone: Person, displayName: string, name: string) {
     await prefs(someone, { quietHours: quietNow() });
     const room = (await project(lead, space, name, 'workspace')).id;
     const thread = await conversation(lead, room, `@${displayName} the ${name.toLowerCase()} numbers are in`);
     const notificationId = (await waitForItem(someone, (item) => item.url?.endsWith(thread.messages[0]!.id) === true, 'the in-app record')).id;
-    const rows = await waitFor(async () => {
-      const found = (await emailRows(someone.id)).filter((row) => row.notification_id === notificationId);
-      return found.length === 2 ? found : null;
-    }, 'both copies queued');
+    await generatorCaughtUp();
+    assert.equal((await emailRows(someone.id)).filter((row) => row.notification_id === notificationId).length, 0, 'quiet hours queue no email');
+    await prefs(someone, { quietHours: { enabled: false } });
+    await queueEmailRow(someone.id, notificationId, 'account');
+    await queueEmailRow(someone.id, notificationId, 'extra');
+    const rows = (await emailRows(someone.id)).filter((row) => row.notification_id === notificationId);
     assert.deepEqual(rows.map((row) => [row.address_kind, row.status, row.address]).sort(), [['account', 'queued', null], ['extra', 'queued', null]]);
     const jobs = await pool.query(`SELECT data->>'emailId' AS id, start_after FROM pgboss.job WHERE name = $1 AND data->>'emailId' = ANY($2)`, [NOTIFICATION_EMAIL_JOB, rows.map((row) => row.id)]);
     assert.equal(jobs.rows.length, 2, 'both copies were actually enqueued');
-    for (const job of jobs.rows) assert.ok(new Date(job.start_after).getTime() > Date.now() + 60_000, 'and are held by quiet hours');
+    for (const job of jobs.rows) assert.ok(new Date(job.start_after).getTime() > Date.now() + 60_000, 'and are held back');
     const byKind = Object.fromEntries(rows.map((row) => [row.address_kind, row])) as Record<'account' | 'extra', (typeof rows)[number]>;
     return { notificationId, account: byKind.account, extra: byKind.extra };
   }
@@ -641,7 +643,6 @@ describe('recipient matrix and operator TLS (#113)', () => {
     await addMember(lead, space, someone, 'member');
     const extra = `nils.private-${randomUUID()}@gmail.test`;
     await verifyExtra(someone, extra);
-    await prefs(someone, { emailDestination: 'both' });
     const copies = await heldCopies(lead, space, someone, 'Nils Wren', 'Meter');
     // After both copies were queued, the identity provider reports the private address as the
     // sign-in email: the two copies now go to one mailbox.
@@ -680,7 +681,6 @@ describe('recipient matrix and operator TLS (#113)', () => {
     await addMember(lead, space, someone, 'member');
     const extra = `otto.private-${randomUUID()}@gmail.test`;
     await verifyExtra(someone, extra);
-    await prefs(someone, { emailDestination: 'both' });
     const options = { available: true, origin, uow: emailUnitOfWork(db, queue) };
 
     // 1. The account copy is at the SMTP server when the extra copy is claimed; the server then refuses.
@@ -736,7 +736,6 @@ describe('recipient matrix and operator TLS (#113)', () => {
     await addMember(lead, space, someone, 'member');
     const extra = `${displayName.split(' ')[0]!.toLowerCase()}.private-${randomUUID()}@gmail.test`;
     await verifyExtra(someone, extra);
-    await prefs(someone, { emailDestination: 'both' });
     const copies = await heldCopies(lead, space, someone, displayName, name);
     await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [extra.toUpperCase(), someone.id]);
     await prefs(someone, { quietHours: { enabled: false } });
@@ -861,11 +860,11 @@ describe('recipient matrix and operator TLS (#113)', () => {
     await prefs(target, { quietHours: quietNow() });
     const room = (await project(lead, space, 'Boiler', 'workspace')).id;
     const thread = await conversation(lead, room, '@Sam Ruiz boiler service is booked');
-    await waitForItem(target, (item) => item.url?.endsWith(thread.messages[0]!.id) === true, 'the in-app record');
-    const [email] = await waitFor(async () => { const rows = await emailRows(target.id); return rows.length ? rows : null; }, 'the queued email');
+    const stored = await waitForItem(target, (item) => item.url?.endsWith(thread.messages[0]!.id) === true, 'the in-app record');
     await prefs(target, { quietHours: { enabled: false } });
+    const email = { id: await queueEmailRow(target.id, stored.id) };
     const failing: NotificationMailer = { send: async () => ({ kind: 'failed', message: 'connect ECONNREFUSED' }) };
-    await assert.rejects(deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: failing }, { emailId: email!.id }));
+    await assert.rejects(deliverNotificationEmail({ available: true, origin, uow: emailUnitOfWork(db, queue), mailer: failing }, { emailId: email.id }));
     const view = expectStatus(await target.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
     assert.equal(view.email.available, true);
     assert.ok(view.email.lastFailureAt, 'the person can see that email delivery failed');
@@ -896,14 +895,10 @@ function unsubscribeUrl(headers: Record<string, string[]>) {
 async function oneClick(url: URL) {
   const response = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: 'List-Unsubscribe=One-Click' });
   assert.equal(response.status, 200);
-  return await response.json() as { result: string; stopped: string; destination: string };
+  return await response.json() as { result: string; stopped: string; emailMe: boolean };
 }
 
 describe('review fixes: exact unsubscribe, bounded verification, quiet hours at delivery', () => {
-  const boss = new PgBoss({ connectionString, migrate: false });
-  before(() => boss.start());
-  after(() => boss.stop());
-
   test('two concurrent partial preference changes both persist (row-locked merge)', async () => {
     const someone = await person('Zed Arlo');
     await prefs(someone, { quietHours: { enabled: true, timeZone: 'Europe/Warsaw' } });
@@ -938,7 +933,6 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     const first = `vic.a-${randomUUID()}@example.test`;
     const second = `vic.b-${randomUUID()}@example.test`;
     await verifyExtra(reader, first);
-    await prefs(reader, { emailDestination: 'extra' });
     const mention = async (name: string) => {
       const room = (await project(lead, space, name, 'workspace')).id;
       const thread = await conversation(lead, room, `@Vic Lamb ${name} is ready`);
@@ -951,24 +945,55 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     // Replace A with a verified B; B is the extra address now.
     await skipCooldown(reader);
     await verifyExtra(reader, second);
-    assert.deepEqual(await oneClick(staleLink), { result: 'stale', stopped: 'extra', destination: 'extra' });
+    assert.deepEqual(await oneClick(staleLink), { result: 'stale', stopped: 'extra', emailMe: true });
     const settings = expectStatus(await reader.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
-    assert.equal(settings.email.destination, 'extra');
+    assert.equal(settings.emailMe, true);
+    assert.equal(settings.email.extra?.email, second, 'B is still the extra address');
     await mention('Rota B');
     const [toSecond] = await waitForMails(second, 2, 'B still receives email');
     assert.equal((await mailText(toSecond!.ID)).Subject, 'New activity in Flux');
 
     // A sign-in address that changed since the email: its old link changes nothing either.
-    await prefs(reader, { emailDestination: 'account' });
     await mention('Rota C');
     const [toAccount] = await waitForMails(reader.email, 1, 'the email to the sign-in address');
     const accountLink = unsubscribeUrl((await mailText(toAccount!.ID)).headers);
     const renamed = `vic.new-${randomUUID()}@example.test`;
     await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [renamed, reader.id]);
-    assert.deepEqual(await oneClick(accountLink), { result: 'stale', stopped: 'account', destination: 'account' });
+    assert.deepEqual(await oneClick(accountLink), { result: 'stale', stopped: 'account', emailMe: true });
     await pool.query('UPDATE auth_users SET email = $1 WHERE id = $2', [reader.email, reader.id]);
     // The current link still works.
-    assert.deepEqual(await oneClick(accountLink), { result: 'stopped', stopped: 'account', destination: 'none' });
+    assert.deepEqual(await oneClick(accountLink), { result: 'stopped', stopped: 'account', emailMe: false });
+  });
+
+  test('the unsubscribe link of an extra address removes that address and nothing else; replaying it changes nothing, and each footer says what its link does', async () => {
+    const lead = await person('Wilf Crane');
+    const reader = await person('Xan Pike');
+    const space = (await workspace(lead, 'Extra link lane')).id;
+    await addMember(lead, space, reader, 'member');
+    const extra = `xan.extra-${randomUUID()}@example.test`;
+    await verifyExtra(reader, extra);
+    const mention = async (name: string) => {
+      const room = (await project(lead, space, name, 'workspace')).id;
+      const thread = await conversation(lead, room, `@Xan Pike ${name} is ready`);
+      await waitForItem(reader, (item) => item.url?.endsWith(thread.messages[0]!.id) === true, name);
+    };
+    await mention('Rota X');
+    const [toExtra] = await waitForMails(extra, 2, 'the email to the extra address');
+    const [toAccount] = await waitForMails(reader.email, 1, 'the email to the sign-in address');
+    // The footer names what the link does: the sign-in address's link stops all notification email, an extra address's only that address.
+    assert.match((await mailText(toAccount!.ID)).Text, /Stop all notification email:/);
+    assert.match((await mailText(toExtra!.ID)).Text, /Stop notification email to this address:/);
+    const link = unsubscribeUrl((await mailText(toExtra!.ID)).headers);
+    assert.deepEqual(await oneClick(link), { result: 'stopped', stopped: 'extra', emailMe: true });
+    const settings = expectStatus(await reader.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
+    assert.equal(settings.email.extra, null, 'the extra address is removed');
+    assert.equal(settings.emailMe, true, 'Email me too is untouched: the sign-in address still gets mail');
+    assert.deepEqual(await oneClick(link), { result: 'stale', stopped: 'extra', emailMe: true }, 'a replay changes nothing');
+    const before = (await mailsTo(reader.email)).length;
+    await mention('Rota Y');
+    await waitForMails(reader.email, before + 1, 'the next email to the sign-in address');
+    await sleep(800);
+    assert.equal((await mailsTo(extra)).length, 2, 'the removed address got nothing more (its confirmation and one notification)');
   });
 
   test('verification sends are bounded across add, replace and resend, also when requests race', async () => {
@@ -998,7 +1023,7 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     assert.equal((await mailsTo(target)).length, 5, 'five verification emails, no more');
   });
 
-  test('quiet hours switched on after a job was queued hold its email and push until they end', async () => {
+  test('quiet hours switched on after a job was queued drop its email and push, and nothing catches up when they end (C-31)', async () => {
     const lead = await person('Xia Holt');
     const reader = await person('Yan Frost');
     const space = (await workspace(lead, 'Quiet lane')).id;
@@ -1013,30 +1038,24 @@ describe('review fixes: exact unsubscribe, bounded verification, quiet hours at 
     await pool.query(`INSERT INTO notification_emails (id, notification_id, user_id, address_kind) VALUES ($1, $2, $3, 'account')`, [emailId, notificationId, reader.id]);
 
     // Then the person turns quiet hours on, covering now, in their own (DST-observing) zone.
-    const window = quietNow('Europe/Warsaw');
-    await prefs(reader, { quietHours: window });
+    await prefs(reader, { quietHours: quietNow('Europe/Warsaw') });
     const options = { available: true, origin, uow: emailUnitOfWork(db, queue), mailer: smtp };
-    const deferred = await handleEmailJob(boss, options, { emailId });
-    assert.equal(deferred.outcome, 'deferred');
-    const until = (deferred as { until: Date }).until;
-    assert.ok(until.getTime() > Date.now() + 60_000);
-    const endMinutes = Number(window.end.slice(0, 2)) * 60 + Number(window.end.slice(3));
-    assert.equal(localMinutes(until, 'Europe/Warsaw'), endMinutes, 'released at the chosen local end time in Warsaw');
-    const requeued = await pool.query(`SELECT start_after FROM pgboss.job WHERE name = $1 AND data->>'emailId' = $2`, [NOTIFICATION_EMAIL_JOB, emailId]);
-    assert.equal(requeued.rowCount, 1, 'the email job is queued again for the end of quiet hours');
-    assert.equal(new Date(requeued.rows[0].start_after).getTime(), until.getTime());
+    assert.deepEqual(await deliverNotificationEmail(options, { emailId }), { outcome: 'skipped', reason: 'quiet hours' });
     const push = await deliverPush({ db, vapid, config: loadPushSenderConfig() }, { notificationId, subscriptionId, userId: reader.id });
-    assert.equal(push.outcome, 'deferred');
-    assert.equal((await emailRows(reader.id))[0]!.status, 'queued');
+    assert.deepEqual(push, { outcome: 'skipped', reason: 'quiet hours' });
+    const [skipped] = await emailRows(reader.id);
+    assert.deepEqual([skipped!.status, skipped!.skip_reason], ['skipped', 'quiet hours']);
+    const requeued = await pool.query(`SELECT 1 FROM pgboss.job WHERE name = $1 AND data->>'emailId' = $2`, [NOTIFICATION_EMAIL_JOB, emailId]);
+    assert.equal(requeued.rowCount, 0, 'no job is queued for the end of quiet hours');
     assert.equal((await mailsTo(reader.email)).length, 0);
     assert.equal((await recordedPushes(subscription.mockId)).length, 0);
 
-    // When quiet hours end (here: turned off), the same row and subscription send once.
+    // When quiet hours end, the dropped email stays dropped: there is no catch-up.
     await prefs(reader, { quietHours: { enabled: false } });
-    assert.deepEqual(await deliverNotificationEmail(options, { emailId }), { outcome: 'sent', addressKind: 'account' });
-    assert.equal((await deliverPush({ db, vapid, config: loadPushSenderConfig() }, { notificationId, subscriptionId, userId: reader.id })).outcome, 'sent');
-    await waitForMails(reader.email, 1, 'the released email');
-    assert.equal((await recordedPushes(subscription.mockId)).length, 1);
+    assert.deepEqual(await deliverNotificationEmail(options, { emailId }), { outcome: 'skipped', reason: 'already skipped' });
+    await sleep(500);
+    assert.equal((await mailsTo(reader.email)).length, 0);
+    assert.equal((await inbox(reader)).items.length, 1, 'the inbox kept the notification');
   });
 });
 
@@ -1052,15 +1071,20 @@ describe('levels (#350, S22)', () => {
     await addMember(ana, workspaceId, teo, 'member');
   });
 
-  test('a new person is at Only "Needs you"; Nothing keeps the inbox and stops push and email', async () => {
+  test('a new person is at Only what needs me with Email me too; Nothing keeps the inbox and stops push and email', async () => {
     const start = expectStatus(await teo.browser.request('GET', '/api/v1/notification-preferences'), 200) as NotificationPreferences;
     assert.equal(start.level, 'needsYou');
-    assert.equal(start.channels.reply.push, false);
+    assert.equal(start.emailMe, true);
+    assert.equal('channels' in start, false, 'there are no per-reason rows to show');
     const nothing = await prefs(teo, { level: 'nothing' });
     assert.equal(nothing.level, 'nothing');
-    assert.ok(Object.values(nothing.channels).every((choice) => choice.inApp && !choice.push && !choice.email));
+    assert.equal(nothing.emailMe, true, 'the switch is kept for when something is sent again');
     const bad = await teo.browser.request('PATCH', '/api/v1/notification-preferences', { body: { level: 'loud' } });
     assert.equal(bad.status, 400);
+    const badSwitch = await teo.browser.request('PATCH', '/api/v1/notification-preferences', { body: { emailMe: 'yes' } });
+    assert.equal(badSwitch.status, 400);
     assert.equal((await prefs(teo, { level: 'needsYou' })).level, 'needsYou');
+    assert.equal((await prefs(teo, { emailMe: false })).emailMe, false);
+    assert.equal((await prefs(teo, { emailMe: true })).level, 'needsYou', 'changing the switch leaves the level');
   });
 });

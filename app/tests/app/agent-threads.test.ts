@@ -189,7 +189,7 @@ test('format-1 export adds agentThreads while preserving people history and mana
 
 test('agent-thread posts change no Since-you-left, Inbox unread or push, and create no notification even when addressed', async () => {
   const f = await scene(); const recipient = await subscribe(f.viewer.browser);
-  expectStatus(await f.viewer.browser.request('PATCH', '/api/v1/notification-preferences', { body: { channels: { reply: { inApp: true, push: true, email: false }, mention: { inApp: true, push: true, email: false } } } }), 200);
+  expectStatus(await f.viewer.browser.request('PATCH', '/api/v1/notification-preferences', { body: { level: 'everything', emailMe: false } }), 200);
   const returned = async (place: string) => expectStatus(await f.viewer.browser.request('GET', '/api/v1/return?' + place), 200) as ReturnSummary;
   for (const [place, actual] of [['place=home', { type: 'home' }], [`place=project&id=${f.place.id}`, { type: 'project', id: f.place.id }]] as const) {
     const seen = await returned(place); expectStatus(await f.viewer.browser.request('PUT', '/api/v1/return-points', { body: { place: actual, mark: seen.mark } }), 200);

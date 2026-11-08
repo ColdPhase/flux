@@ -5,7 +5,8 @@ This page is the contract for foundation area 8.9 as built in
 [#113](https://github.com/ColdPhase/flux/issues/113) and follows Hubert's founder direction on
 [#44](https://github.com/ColdPhase/flux/issues/44) (email delivery, 2026-09-27). It builds on
 the #41 inbox and Web Push ([mobile PWA](../product/mobile-pwa.md#lock-screen-privacy)).
-Migration `0015_notifications.sql`, `FLUX_SCHEMA_VERSION` 15.
+Migration `0015_notifications.sql`, `FLUX_SCHEMA_VERSION` 15. Migration `0023_notifications_level.sql` (#872) keeps
+the level and `email_me` and drops the per-reason `channels` and `email_destination`.
 
 ## What notifies, and why
 
@@ -39,7 +40,7 @@ dead-lettered (`dead_at` set, logged) and passed, so one poisoned event cannot b
 For each candidate the generator requires, in this order:
 
 1. the person was in the event's recorded audience (`event_audience`, decided at write time);
-2. the place (project or DM) is not muted and at least one channel is on for the reason;
+2. the place (project or DM) is not muted and the person's level lets the reason through (not `nothing`);
 3. the access policy lets them read the source **now** (`policySourceReader`, which now
    includes `dm.read`); someone removed in between gets nothing.
 
@@ -63,33 +64,30 @@ defaults if missing), the given fields are merged and written in one transaction
 edits of different fields never overwrite each other; for the same field the later request wins.
 The settings page sends its saves one after another, numbered, and shows only the newest answer.
 
-- **Level** (#350, F-026 S22): `needsYou` (default), `everything` or `nothing`, a preset over
-  the channels below. `PATCH { level }` sets every reason's inbox on and push on for the
-  needs-you reasons (`mention`, `question`, `dm`, `assigned`, `review`, `invitation`), for all
-  reasons, or for none; `nothing` also turns email off, and leaving `nothing` restores the email
-  defaults. `GET` reports the level the channels match by push (`nothing`: no push and no
-  email), or `custom`.
-- **Channels per reason** (`inApp`, `push`, `email`). Defaults (Only "Needs you"): inbox on for
-  every reason, push on for every reason except `reply`; email on for `mention`, `question` and
-  `dm` only (an `invitation` is quiet: inbox and push, no email, never a ringing call). With the inbox off but push or email
-  on, the row is kept (`in_inbox = false`) to back those channels and the tap-time recheck, but
-  the inbox list leaves it out. All off: nothing is stored.
+- **Level** (#350, F-026 S22; #872): `needsYou` (default, "Only what needs me"), `everything` or `nothing`.
+  The inbox always fills, for every reason (the Inbox "always shows everything that waits for you"). Push goes
+  to the needs-you reasons (`mention`, `question`, `dm`, `assigned`, `review`, `invitation`) at `needsYou`, to every
+  reason (adding `reply`) at `everything`, and to none at `nothing`. Email follows push except for `invitation`: a live call
+  invitation is Inbox and push only, because the call can be over before a mail is read (live-sessions.md). Nothing else is stored per reason: the per-kind
+  matrix and the per-reason inbox switches went with C-33.
+- **Email me too** (`emailMe`, default on, C-32 and C-35): the same events as the level, by email, to every
+  enabled, confirmed address (today the sign-in address and a confirmed extra address; one switch per address
+  comes with several notification emails). It is a switch beside the level, not a second level: at `nothing`
+  it sends nothing. `GET` reports `level`, `emailMe`, `email` (`accountAddress`, `extra`, `available`,
+  `lastFailureAt`), `quietHours` and `muted`.
 - **Mute a place** (a project or DM the person can read): nothing from it notifies, on any
-  channel.
-- **Quiet hours** (`start`/`end` as `HH:MM`, may cross midnight, IANA `timeZone`): push and
-  email jobs get `startAfter` at the first real instant whose wall-clock time in the person's
-  zone is past the window (daylight-saving aware: an end inside a spring-forward gap resolves to
-  the first valid instant after it, a repeated end at fall-back to its first occurrence), and each
-  send re-evaluates the person's *current* quiet hours: a job queued before they were turned on
-  is deferred (queued again with `startAfter` at the window's end, the email row stays
-  `queued`). The inbox is never held back.
+  channel. The page keeps it behind a "Muted places" row with Change.
+- **Quiet hours** (`start`/`end` as `HH:MM`, may cross midnight, IANA `timeZone`; C-31): while they last Flux
+  sends no push and no email, and **nothing is sent when they end**. The inbox keeps everything. The window is the
+  person's wall clock in their zone (`inQuietHours`, daylight-saving aware). It is checked when the notification is
+  generated (no push or email job is queued) and again when a job runs (a job queued before quiet hours began is
+  skipped with `quiet hours`; the email row ends `skipped`). Nothing is deferred or queued again, so there is no
+  burst when the window ends.
 - **Focus mode** (#340, F-026 S19) **went in v0.2** (F-038, #872): there is no pause, no `F` key and no `paused_until`
-  column (dropped by migration 0019). Quiet hours are the only way to hold push and email.
-- **Where email goes**: `account` (the sign-in/SSO address, default), `extra` (the verified
-  extra address), `both`, or `none` (in-app only).
+  column (dropped by migration 0019). Quiet hours are the only way to stop push and email for a while.
 
-Push delivery (#41) rechecks the same preferences before each send (`stillWanted`): push turned
-off for the reason or a muted place skips it. The payload and its lock-screen rule are unchanged.
+Push delivery (#41) rechecks the same preferences before each send (`stillWanted`): a level that no longer
+pushes the reason, a muted place or quiet hours skip it. The payload and its lock-screen rule are unchanged.
 
 ## Delivery addresses
 
@@ -102,8 +100,11 @@ least 60 s apart and at most 5 per rolling hour — by one conditional upsert on
 `notification_verification_sends` (concurrent requests cannot both pass); otherwise `429
 VERIFICATION_RECENTLY_SENT` with `Retry-After`; `POST …/verify` with the token, signed in as the
 account that added it (anyone else, a used or an expired token get the same `400
-VERIFICATION_INVALID`); `DELETE` removes it and moves `extra`→`none`, `both`→`account`, never
-starting mail to the sign-in address by itself. The sign-in address cannot be added as extra.
+VERIFICATION_INVALID`); `DELETE` removes it and changes nothing else (`emailMe` stays as it was). The
+sign-in address cannot be added as extra. The page lists the sign-in address first, then the extra address as
+"Confirmed" or waiting ("Send again", Remove), then a field to add another, with the line "We send a
+confirmation link to a new address before any notification goes there."; the first email goes only after
+confirmation.
 
 ## Email
 
@@ -120,7 +121,7 @@ starting mail to the sign-in address by itself. The sign-in address cannot be ad
   keep working (`app/tests/app/email-unavailable.check.ts`).
 - **Outbox and no duplicates.** `notification_emails` holds one row per (notification, address
   kind), each sent by a `notification.email.v1` job carrying only the row id. The worker locks the
-  row, rechecks source access, the reason's email channel, mute, destination and the address
+  row, rechecks source access, the level and Email me too for the reason, mute, quiet hours and the address
   (the current sign-in address, or the verified extra one), marks it `sending` with a fresh
   unsubscribe token and commits — only then talks to SMTP. A row that is not `queued` is never
   sent again, so a retry, a concurrent job or a crash after SMTP accepted cannot send it twice
@@ -141,11 +142,14 @@ starting mail to the sign-in address by itself. The sign-in address cannot be ad
   since. `Message-ID` is `<notification-<row id>@host>`.
 - **Unsubscribe.** `List-Unsubscribe: <…/api/v1/notifications/unsubscribe?token=…>` and
   `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058). The token is bound to the exact
-  address the email went to. The POST needs no session and removes that address kind from the
-  destination (`both`→ the other one, else `none`) only while that address is still the current
-  one; a link for a replaced extra address or a changed sign-in address answers `result:
-  "stale"`, changes nothing, and the page says "This link no longer applies". The body
-  links to `/unsubscribe?token=…`, a page with one button.
+  address the email went to. The POST needs no session. For the sign-in address it turns **Email me too**
+  off (`stopped: "account"`, answered with the current `emailMe`); for the extra address it removes that
+  address (`stopped: "extra"`), only while that address is still the current one. A link for a replaced
+  extra address or a changed sign-in address answers `result: "stale"`, changes nothing, and the page says
+  "This link no longer applies". The body links to `/unsubscribe?token=…`, a page with one button. The words
+  say what the link does: an email to the sign-in address offers "Stop all notification email" and the page
+  before the click says that it turns off Email me too for every address; an email to an extra address offers
+  "Stop notification email to this address".
 
 ## Inbox UI
 
@@ -153,23 +157,30 @@ The sidebar's **Inbox**, between Home and My tasks, shows how many items are unr
 the 64 px rail shows the same number). `/inbox` lists "New" and "Earlier" items,
 each with its reason, title, excerpt and time; opening one marks it read and opens the source;
 "Mark all read" only quiets the dot. `/settings/notifications` (Settings → Notifications, #350)
-holds the level (Only "Needs you", Everything, Nothing) and quiet hours (the focus pause went with F-038, #872; the plain morning summary is gone, F-038, #858), then
-the channel table, push on this device, email destination and extra address, and muted places. `/inbox/:id` (email link) and
+holds "Tell me about" (Only what needs me, Everything, Nothing), then "Where" (Email me too, On this device and
+Quiet hours as one row each), the email addresses, and muted places behind a link row (#872; the focus pause went
+with F-038, the plain morning summary is gone, F-038, #858). Installing Flux is the last row, when the browser
+offers it. The account menu has no notifications row any more: the name, Settings and Sign out (C-34). `/inbox/:id` (email link) and
 `/settings/notifications/verify` are routes of the signed-in app.
 
 ## Tests
 
 - `app/tests/app/notifications.test.ts`: generation per reason, once per (person, event) after a
-  cursor rewind, mute, inbox-off and all-off, generic email content through Mailpit with
+  cursor rewind, mute, Nothing keeping the inbox, generic email content through Mailpit with
   one-click unsubscribe, access recheck before email and push, push preferences, duplicate and
   concurrent sends, extra address verification and expiry, extra address never signing in or
-  receiving a reset, the two-SSO-user destination matrix (#113), STARTTLS and smtps paths.
+  receiving a reset, the two-SSO-user Email me too matrix (#113), quiet hours dropping what a queued job held,
+  STARTTLS and smtps paths. `notification-levels-core.test.ts` and `notifications-core.test.ts`: the level and
+  Email me too rules, and quiet hours across daylight-saving changes.
 - `app/tests/app/live-invitation-notifications.test.ts`: one invitation item with the exact link,
   repeated invites, the inviter, and invitations that lost access, were answered or whose
-  session ended before generation (the cursor is held while they change); `invitation.inApp`.
+  session ended before generation (the cursor is held while they change).
 - `app/tests/app/email-unavailable.check.ts` after restarting API and worker without SMTP.
-- `app/tests/ui/test_notifications.py`: inbox from the rail, opening sources, mark read, preferences,
-  muting, verifying an address through Mailpit, phone layout, dark mode and the unsubscribe page.
+- `app/tests/ui/test_notifications.py`: inbox from the rail, opening sources, mark read, the level, Email me too,
+  quiet hours, muting, verifying an address through Mailpit, phone layout, dark mode and the unsubscribe page, a
+  failed add keeping its error and address, the first-load error and its Retry, queued saves acknowledging only
+  the newest, a failed mute keeping the choice. `test_focus_lifecycle.py`: a queued save is never sent as the next
+  account.
 
 Not verified here: real Android/iPhone/iPad push display (MOB-4/MOB-7 in #20) and delivery
 through a production mail provider (SPF/DKIM/DMARC are the operator's; see the operator notes

@@ -25,7 +25,6 @@ export interface NotificationRoutesOptions {
   publicOrigin: string;
 }
 
-const channel = { type: 'object', additionalProperties: false, properties: { inApp: { type: 'boolean' }, push: { type: 'boolean' }, email: { type: 'boolean' } } } as const;
 
 /**
  * Notification settings of the signed-in person (issue #116) and one-click unsubscribe. Every
@@ -60,8 +59,7 @@ export async function notificationRoutes(app: FastifyInstance, { db, sessions, s
       body: {
         type: 'object', additionalProperties: false,
         properties: {
-          channels: { type: 'object', additionalProperties: channel },
-          emailDestination: { type: 'string' },
+          emailMe: { type: 'boolean' },
           quietHours: {
             type: 'object', additionalProperties: false,
             properties: { enabled: { type: 'boolean' }, start: { type: 'string', maxLength: 5 }, end: { type: 'string', maxLength: 5 }, timeZone: { type: 'string', maxLength: 64 } },
@@ -93,7 +91,7 @@ export async function notificationRoutes(app: FastifyInstance, { db, sessions, s
     schema: { body: { type: 'object', required: ['token'], additionalProperties: false, properties: { token: { type: 'string', maxLength: 128 } } } },
   }, async (request) => settings.verify(await account(request), request.body));
 
-  // No session: the token is the authority, and it can only turn email off for its address.
+  // No session: the token is the authority, and it can only stop notification email: all of it (the sign-in address's link) or an extra address's.
   app.post<{ Querystring: { token?: string }; Body: { token?: string } | undefined }>(NOTIFICATION_UNSUBSCRIBE_PATH, async (request) => {
     const token = request.query.token ?? (request.body && typeof request.body === 'object' ? request.body.token : undefined);
     return unsubscribe(settingsPorts(db, mailer, publicOrigin), token);

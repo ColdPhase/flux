@@ -143,6 +143,7 @@ test('turn on, mute and turn off notifications on this device; the server stores
 
     // Mute the direct message in Settings: the next message creates no push and no delivery attempt.
     await page.goto(`${origin}/settings/notifications`);
+    await page.getByRole('button', { name: 'Change muted places' }).click();
     await chooseOption(page.getByLabel('Place to mute'), `dm:${dm.id}`);
     await page.getByRole('button', { name: 'Mute', exact: true }).click();
     await page.getByRole('button', { name: 'Unmute' }).waitFor({ timeout: 20_000 });

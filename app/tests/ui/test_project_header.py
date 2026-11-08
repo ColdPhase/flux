@@ -88,12 +88,6 @@ class ProjectHeader(unittest.TestCase):
     def header(self, page: Page):
         return page.locator("header.top")
 
-    def tearDown(self) -> None:
-        # Never leave a pause behind for the next test.
-        if self.state:
-            page = self.page()
-            self.api(page, "PATCH", "/api/v1/notification-preferences", {"pause": {"until": None}}, status=200)
-
     def test_01_one_row_name_views_people_and_more(self) -> None:
         self.ensure_project()
         for scheme in ("light", "dark"):

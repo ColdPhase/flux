@@ -116,10 +116,10 @@ class InstallAndLaunch(unittest.TestCase):
         return page
 
     def appearance(self, page: Page) -> None:
-        """Where the install row lives: Settings → Notifications → This device (#763 SG-8; Appearance before)."""
+        """Where the install row lives: Settings → Notifications (install row last) (#763 SG-8; Appearance before)."""
         page.goto("/settings/notifications")
         expect(page.get_by_role("heading", name="Notifications").first).to_be_visible()
-        expect(page.get_by_role("radiogroup", name="Notify me about")).to_be_visible()
+        expect(page.get_by_role("radiogroup", name="Tell me about")).to_be_visible()
 
     # ------------------------------------------------------------ install offers
 

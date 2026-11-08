@@ -1,6 +1,6 @@
-// Notification preferences, delivery addresses and email unsubscribe (issue #116, foundation 8.9).
+// Notification preferences, delivery addresses and email unsubscribe (issue #116, foundation 8.9; #872).
 // The inbox itself is in ./push.ts (#41). Every notification has a reason a person can act on;
-// people choose per reason where it reaches them, mute places and set quiet hours.
+// people choose one level, whether email comes too, mute places and set quiet hours.
 
 /**
  * Why a notification exists. `review` covers a proposed decision or a recorded result that is
@@ -19,7 +19,7 @@ export const NEEDS_YOU_REASONS = ['mention', 'question', 'dm', 'assigned', 'revi
 
 /**
  * What may interrupt you with push and email (F-026 S22). The inbox keeps every reason in each
- * level. `custom` is reported when the per-reason channels match none of the three.
+ * level. The level is all a person stores of "which kinds" (C-33): there is no per-reason choice.
  */
 export const NOTIFICATION_LEVELS = ['needsYou', 'everything', 'nothing'] as const;
 export type NotificationLevel = typeof NOTIFICATION_LEVELS[number];
@@ -27,13 +27,6 @@ export type NotificationLevel = typeof NOTIFICATION_LEVELS[number];
 export const NOTIFICATION_CHANNELS = ['inApp', 'push', 'email'] as const;
 export type NotificationChannel = typeof NOTIFICATION_CHANNELS[number];
 export type ChannelChoice = Record<NotificationChannel, boolean>;
-
-/**
- * Where email goes: the sign-in (SSO) address, the verified extra address, both, or nowhere
- * (in-app and push only). A delivery address is never a sign-in identity.
- */
-export const EMAIL_DESTINATIONS = ['account', 'extra', 'both', 'none'] as const;
-export type EmailDestination = typeof EMAIL_DESTINATIONS[number];
 
 export const NOTIFICATION_PREFERENCES_PATH = '/api/v1/notification-preferences';
 export const NOTIFICATION_MUTES_PATH = `${NOTIFICATION_PREFERENCES_PATH}/mutes`;
@@ -72,9 +65,11 @@ export interface NotificationAddress {
 }
 
 export interface NotificationPreferences {
-  channels: Record<NotificationReason, ChannelChoice>;
+  /** What may interrupt you with push (and email, when `emailMe`). */
+  level: NotificationLevel;
+  /** "Email me too" (C-32): the same events as the level, by email to the sign-in address and a confirmed extra address. */
+  emailMe: boolean;
   email: {
-    destination: EmailDestination;
     /** The sign-in address; changing email delivery never changes it. */
     accountAddress: string;
     extra: NotificationAddress | null;
@@ -84,18 +79,14 @@ export interface NotificationPreferences {
     lastFailureAt: string | null;
   };
   quietHours: QuietHours;
-  /** Which of the three levels the channels match, or `custom`. */
-  level: NotificationLevel | 'custom';
   muted: MutedPlace[];
 }
 
 /** `PATCH /api/v1/notification-preferences`: every field is optional and merged. */
 export interface UpdateNotificationPreferencesCommand {
-  channels?: Partial<Record<NotificationReason, Partial<ChannelChoice>>>;
-  emailDestination?: EmailDestination;
-  quietHours?: Partial<QuietHours>;
-  /** Applies the level's push and email choice to every reason, before `channels`. */
   level?: NotificationLevel;
+  emailMe?: boolean;
+  quietHours?: Partial<QuietHours>;
 }
 
 /** `PUT /api/v1/notification-preferences/mutes`: mute or unmute a place you can read. */
@@ -115,12 +106,15 @@ export interface VerifyNotificationAddressCommand {
   token: string;
 }
 
-/** Which address stopped receiving email; the choice can be changed back in settings. */
+/**
+ * Which address stopped receiving email. The sign-in address stops with "Email me too" (`emailMe` is then false); an extra
+ * address is removed. Either can be turned on or added again in settings.
+ */
 export interface UnsubscribeResponse {
   /** `stale`: the link belongs to an address that is no longer yours (replaced or changed); nothing changed. */
   result: 'stopped' | 'stale';
   stopped: 'account' | 'extra';
-  destination: EmailDestination;
+  emailMe: boolean;
 }
 
 /** Fixed subject of every notification email: it never names a project, person or message. */

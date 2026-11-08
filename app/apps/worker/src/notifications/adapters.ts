@@ -14,7 +14,7 @@ import {
   NOTIFICATION_EMAIL_JOB,
   PUSH_SEND_JOB,
   channelOn,
-  deliverableAt,
+  inQuietHours,
   policySourceReader,
   preferenceRepository,
   type EmailDeliveryUnitOfWork,
@@ -32,7 +32,6 @@ function generatorPorts(tx: Transaction, boss: PgBoss): GeneratorPorts {
   const rows = notificationGeneratorRows(tx);
   // Jobs are sent in the generator's transaction, so they commit with their notification rows.
   const queueDb = fromDrizzle(tx as Parameters<typeof fromDrizzle>[0], sql);
-  const later = (startAfter: Date | null) => (startAfter ? { startAfter } : {});
   return {
     lockCursor: () => rows.lockCursor(),
     advanceCursor: (seq) => rows.advanceCursor(seq),
@@ -44,8 +43,8 @@ function generatorPorts(tx: Transaction, boss: PgBoss): GeneratorPorts {
     deliverableSubscriptions: (userId) => pushSubscriptionRepository(tx).deliverableIdsForUser(userId),
     emailedRecently: (userId, source, since) => rows.emailedRecently(userId, source, since),
     insertEmail: (row) => rows.insertEmail(row),
-    enqueuePush: (job, startAfter) => boss.send(PUSH_SEND_JOB, job, { db: queueDb, singletonKey: `${job.notificationId}:${job.subscriptionId}`, ...later(startAfter) }),
-    enqueueEmail: (job, startAfter) => boss.send(NOTIFICATION_EMAIL_JOB, job, { db: queueDb, singletonKey: job.emailId, ...later(startAfter) }),
+    enqueuePush: (job) => boss.send(PUSH_SEND_JOB, job, { db: queueDb, singletonKey: `${job.notificationId}:${job.subscriptionId}` }),
+    enqueueEmail: (job) => boss.send(NOTIFICATION_EMAIL_JOB, job, { db: queueDb, singletonKey: job.emailId }),
     recordFailure: (eventId, error) => rows.recordFailure(eventId, error),
     deadLetter: (eventId) => rows.deadLetter(eventId),
     recordWait: (event) => rows.recordWait(event),
@@ -109,12 +108,8 @@ export function pushPreferenceCheck(db: Database) {
   };
 }
 
-/** Push rechecks the person's current quiet hours before sending (#116). */
+/** Push rechecks the person's current quiet hours before sending (#116): inside them nothing is sent, and nothing later (C-31). */
 export function pushQuietCheck(db: Database, now = () => new Date()) {
   const preferences = preferenceRepository(notificationPreferenceRows(db));
-  return async (userId: string) => {
-    const at = now();
-    const until = deliverableAt(await preferences.get(userId), at);
-    return until.getTime() > at.getTime() ? until : null;
-  };
+  return async (userId: string) => inQuietHours(await preferences.get(userId), now());
 }

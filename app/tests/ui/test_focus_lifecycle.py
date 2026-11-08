@@ -2,19 +2,20 @@
 
 A notification save queued by one account is never sent as the next account to sign in to the same tab (#872).
 
-These identity/ring probes block service workers only to isolate the account boundary.
+These identity probes block service workers only to isolate the account boundary.
 The original project/header and dedicated PWA lanes retain enabled service workers.
+
+The history-row focus ring probe and test_project_aggregate went in #1002: both read the Details "Now" rows (blocked, open, in progress,
+Earlier work) that #972 removed with the old Home paths; nothing shows those counts any more.
 """
 from __future__ import annotations
 import json
 import os
 import re
-import time
 import unittest
 from uuid import uuid4
-from urllib.parse import urlsplit
 from playwright.sync_api import expect, sync_playwright
-from test_app_shell import ORIGIN, UPSTREAM, open_details, start_forwarder
+from test_app_shell import ORIGIN, UPSTREAM, start_forwarder
 
 ENGINE = os.environ.get('FLUX_UI_BROWSER', 'chromium')
 if ENGINE not in ('chromium', 'webkit'):
@@ -132,8 +133,8 @@ class CompositionProbe(unittest.TestCase):
             page.get_by_role('radio',name=re.compile(r'^Everything(?:\s|$)')).check()
             self.wait_held(page,held)
             self.assertEqual(held['body'],{'level':'everything'})
-            page.get_by_role('radio',name='Nothing',exact=True).check()
-            expect(page.get_by_role('radio',name='Nothing',exact=True)).to_be_checked()
+            page.get_by_role('radio',name=re.compile(r'^Nothing(?:\s|$)')).check()
+            expect(page.get_by_role('radio',name=re.compile(r'^Nothing(?:\s|$)'))).to_be_checked()
             page.wait_for_timeout(100)
             self.assertEqual(len(requests),1,'second A save is really queued behind the held response')
             self.signin_swap(page,B,epoch)
@@ -166,7 +167,7 @@ class CompositionProbe(unittest.TestCase):
         self.settings(page,A)
         epoch=self.instrument(page);held,requests=self.hold_patch(page)
         try:
-            page.get_by_role('radio',name='Nothing',exact=True).check()
+            page.get_by_role('radio',name=re.compile(r'^Nothing(?:\s|$)')).check()
             self.wait_held(page,held)
             self.assertEqual(held['body'],{'level':'nothing'})
             page.get_by_role('radio',name=re.compile(r'^Everything(?:\s|$)')).check()
@@ -184,41 +185,6 @@ class CompositionProbe(unittest.TestCase):
         finally:
             if 'route' in held and not held.get('released'):
                 held['route'].fulfill(response=held['response'])
-
-    def test_03_actual_history_keyboard_ring_settles_within_bounded_transition(self):
-        page,A=self.actor('Ring')
-        root=f"/api/v1/projects/{A['project']}"
-        self.api(page,'POST',root+'/work',{'title':'Peer retained completed work','status':'done'},201)
-        self.api(page,'POST',root+'/work',{'title':'Peer retained unpursued work','status':'not_pursued'},201)
-        summary=self.api(page,'GET',root+'/work-summary')
-        target=summary['state']['history']['firstWork']
-        self.assertIsNotNone(target,'actual canonical history target exists')
-        self.assertEqual(summary['state']['history']['completed'],1)
-        self.assertEqual(summary['state']['history']['notPursued'],1)
-        page.goto(f"/projects/{A['project']}");open_details(page)
-        row=page.locator('#details').get_by_role('button',name=re.compile(r'^Earlier work'))
-        expect(row).to_contain_text(target['title']);expect(row).to_contain_text('1 completed task · 1 not pursued')
-        row.hover();row.press('Tab');page.keyboard.press('Shift+Tab')
-        started=time.monotonic();samples=[]
-        while True:
-            sample=row.evaluate("""e=>{const s=getComputedStyle(e);return {visible:e.matches(':focus-visible'),style:s.outlineStyle,width:parseFloat(s.outlineWidth),color:s.outlineColor,property:s.transitionProperty,duration:s.transitionDuration}}""")
-            sample['elapsedMs']=round((time.monotonic()-started)*1000,1);samples.append(sample)
-            self.assertTrue(sample['visible'],'keyboard focus must remain on the history row during settling')
-            durations=[float(v.strip()[:-2]) if v.strip().endswith('ms') else float(v.strip()[:-1])*1000 for v in sample['duration'].split(',')]
-            settled_ms=max(200,max(durations,default=0)+50)
-            if sample['elapsedMs']>=settled_ms and sample['style'] not in ('none','hidden') and sample['width']>0 and sample['color'] not in ('transparent','rgba(0, 0, 0, 0)'):
-                break
-            if time.monotonic()-started>=0.6:break
-            page.wait_for_timeout(25)
-        print('PEER_FOCUS_RING_OBSERVED '+json.dumps({'engine':ENGINE,'target':target,'samples':samples}),flush=True)
-        final=samples[-1]
-        self.assertNotIn(final['style'],('none','hidden'));self.assertGreater(final['width'],0)
-        self.assertNotIn(final['color'],('transparent','rgba(0, 0, 0, 0)'),'visible computed outline within600ms; guard retained')
-        with page.expect_response(lambda r:r.request.method=='GET' and urlsplit(r.url).path==f"/api/v1/projects/{A['project']}/work-objects/work/{target['id']}" and r.status==200) as opened:
-            row.click()
-        self.assertEqual(opened.value.json()['object']['kind'],'work')
-        self.assertEqual(opened.value.json()['object']['id'],target['id'],'the row opened the actual canonical native ID')
-        expect(page.locator('#details').get_by_role('heading',name=target['title'],exact=True)).to_be_visible()
 
 if __name__=='__main__':
     unittest.main(verbosity=2)

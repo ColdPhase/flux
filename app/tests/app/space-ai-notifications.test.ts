@@ -53,9 +53,8 @@ interface Expectation {
 
 /** The notification of one writer, queued for push and e-mail before the flip, then the flip and the re-enable. */
 async function assertGated(label: string, recipient: Person, projectId: string, notificationId: string, expectation: Expectation = {}) {
-  // Every reason on every channel, so the controls show what is delivered while AI is on.
-  const everything = { mention: 1, question: 1, reply: 1, dm: 1, assigned: 1, review: 1, invitation: 1 };
-  expectStatus(await recipient.browser.request('PATCH', '/api/v1/notification-preferences', { body: { channels: Object.fromEntries(Object.keys(everything).map((reason) => [reason, { inApp: true, push: true, email: true }])) } }), 200);
+  // Everything, by push and email, so the controls show what is delivered while AI is on.
+  expectStatus(await recipient.browser.request('PATCH', '/api/v1/notification-preferences', { body: { level: 'everything', emailMe: true } }), 200);
   assert.equal(await aiOrigin(notificationId), true, `${label}: the writer persisted ai_origin`);
   const subscriptionId = await subscription(recipient);
   const emailId = randomUUID();
@@ -115,7 +114,7 @@ async function generate(event: Omit<GeneratorEvent, 'seq' | 'workspaceId'>, reci
     [generated.id, ws.id, generated.kind, generated.objectId, generated.actorId, JSON.stringify(generated.data)]);
   const ports: GeneratorPorts = {
     lockCursor: async () => 0, advanceCursor: async () => undefined, eventsAfter: async () => [generated], facts: all,
-    preferences: preferenceRepository({ find: async () => ({ ...DEFAULT_PREFERENCES, channels: {} }), save: async () => undefined, isMuted: async () => false, mutes: async () => [], setMuted: async () => undefined }),
+    preferences: preferenceRepository({ find: async () => ({ ...DEFAULT_PREFERENCES }), save: async () => undefined, isMuted: async () => false, mutes: async () => [], setMuted: async () => undefined }),
     authorizer: { canRead: async () => ({ visible: true, allowed: true, workspaceId: ws.id }) },
     insertNotification: async (notification) => { written.push(notification.id); return rows.insertNotification(notification); },
     deliverableSubscriptions: async () => [], emailedRecently: async () => false, insertEmail: async () => true,

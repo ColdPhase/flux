@@ -3,7 +3,7 @@ import { NOTIFICATION_EMAIL_SUBJECT, NOTIFICATION_UNSUBSCRIBE_PATH } from '@flux
 import { readsSource } from '../push/notifications.js';
 import type { EmailDeliveryUnitOfWork, EmailJob, NotificationMailer, OutgoingMail } from './ports.js';
 import { NOTIFICATION_EMAIL_QUEUE } from './generate.js';
-import { channelOn, deliverableAt, emailKinds } from './preferences.js';
+import { channelOn, inQuietHours } from './preferences.js';
 
 // Notification email (issue #116, founder direction on #44). Email is a channel above the same
 // permissioned inbox as push: every message is the same generic notice with an authorized link,
@@ -19,8 +19,8 @@ export function unsubscribeLinks(origin: string, token: string) {
 }
 
 /** The whole email: a fixed subject and body, an in-app link that rechecks access, and unsubscribe. */
-export function buildNotificationEmail(input: { origin: string; to: string; emailId: string; notificationId: string; token: string; company?: string | null }): OutgoingMail {
-  const { origin, to, emailId, notificationId, token, company } = input;
+export function buildNotificationEmail(input: { origin: string; to: string; emailId: string; notificationId: string; token: string; company?: string | null; addressKind?: 'account' | 'extra' }): OutgoingMail {
+  const { origin, to, emailId, notificationId, token, company, addressKind = 'account' } = input;
   const links = unsubscribeLinks(origin, token);
   const host = new URL(origin).hostname || 'flux.invalid';
   const text = [
@@ -32,7 +32,8 @@ export function buildNotificationEmail(input: { origin: string; to: string; emai
     'Flux never puts messages or space details in email. Choose what reaches you by email:',
     `${origin}/settings/notifications`,
     '',
-    'Stop these emails to this address:',
+    // The link of the sign-in address turns "Email me too" off, which stops notification email to every address; an extra address's link removes that address.
+    addressKind === 'extra' ? 'Stop notification email to this address:' : 'Stop all notification email:',
     links.page,
     '',
   ].join('\n');
@@ -57,8 +58,6 @@ export const PERMANENT_FAILURE_SKIP = 'delivery failed permanently';
 
 export type EmailOutcome =
   | { outcome: 'sent'; addressKind: 'account' | 'extra' }
-  /** Quiet hours started after the job was queued: send it again at `until`. */
-  | { outcome: 'deferred'; until: Date }
   | { outcome: 'skipped'; reason: string }
   /** The last attempt failed; `promoted` is the same-mailbox copy queued in its place, if any (#329). */
   | { outcome: 'failed'; reason: string; promoted: string | null }
@@ -104,26 +103,22 @@ export async function deliverNotificationEmail(options: EmailDeliveryOptions, jo
     const preferences = await ports.preferences.get(row.userId);
     if (notification.reason && !channelOn(preferences, notification.reason, 'email')) return skip('email turned off for this reason');
     if (await ports.preferences.isMuted(row.userId, notification.source)) return skip('place muted');
-    if (!emailKinds(preferences.emailDestination).includes(row.addressKind)) return skip('address no longer chosen');
     const address = row.addressKind === 'account' ? await ports.accountAddress(row.userId) : await ports.verifiedExtraAddress(row.userId);
     if (!address) return skip('no verified address');
     // One message per actual mailbox: the account and the extra address can be the same one,
     // including after an identity email change between queueing and sending (#113).
     if (await ports.mailboxClaimed(notification.id, row.id, address)) return skip(SAME_MAILBOX_SKIP);
-    // Quiet hours are the person's current choice, not the one at enqueue time.
-    const now = options.now?.() ?? new Date();
-    const until = deliverableAt(preferences, now);
-    if (until.getTime() > now.getTime()) return { defer: until } as const;
+    // Quiet hours are the person's current choice, not the one at enqueue time: inside them nothing is sent, and nothing later (C-31).
+    if (inQuietHours(preferences, options.now?.() ?? new Date())) return skip('quiet hours');
     const token = newToken();
     await ports.markSending(row.id, address, hashToken(token));
     return { row, address, token } as const;
   });
   if ('skip' in claim) return { outcome: 'skipped', reason: claim.skip! };
-  if ('defer' in claim) return { outcome: 'deferred', until: claim.defer! };
 
   const { row, address, token } = claim;
   const company = await options.company?.() ?? null;
-  const mail = buildNotificationEmail({ origin: options.origin, to: address, emailId: row.id, notificationId: row.notification.id, token, company });
+  const mail = buildNotificationEmail({ origin: options.origin, to: address, emailId: row.id, notificationId: row.notification.id, token, company, addressKind: row.addressKind });
   const admission = await options.uow.admitSend(row.notification.id, () => options.mailer.send(mail));
   if (admission.status === 'unknown') {
     // SMTP may already have accepted it. A skipped row would free its mailbox for another copy.
