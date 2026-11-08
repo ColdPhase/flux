@@ -86,6 +86,8 @@ services:
       FLUX_LIVE_EDITING: ${FLUX_LIVE_EDITING:-on}
       # Link cards (#469): off unless `on`; see docker/.env.example.
       FLUX_LINK_PREVIEWS: ${FLUX_LINK_PREVIEWS:-off}
+      # Agents reading web pages (#918): off unless `on`.
+      FLUX_WEB_READS: ${FLUX_WEB_READS:-off}
       # Owner AI connections (F-020): the assistant on the owner's own API key and background suggestions are off
       # unless `on`; both also need the background key file (FLUX_BACKGROUND_KEY_HOST_FILE, see docs/operations/configuration.md).
       # Private targets an OpenAI-compatible endpoint may reach; empty allows public HTTPS endpoints only.

@@ -11,6 +11,7 @@ export * from './repositories/runtime-auth-operations.js';
 export * from './repositories/agent-proposals.js';
 export * from './repositories/agent-connections.js';
 export * from './repositories/agent-tasks.js';
+export * from './repositories/personal-run-web-reads.js';
 export * from './repositories/space-ai.js';
 export * from './repositories/access.js';
 export { workspaceRepository } from './repositories/workspaces.js';

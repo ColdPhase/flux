@@ -94,7 +94,8 @@ revoking a grant or revoking an agent applies on the very next request or call.
 matching rule applies:
 
 1. Workspace `owner` and `admin` are **managers** of every project, whatever grants they hold. Removing their grant only takes
-   them off the space's people; they reach it as before and put themselves back with Add me.
+   them off the space's people; they reach it as before and put themselves back with Add me. Their *agents* do not: an agent has its
+   owner's level only in the spaces the owner belongs to (C-15, #934).
 2. An explicit `manager` or `contributor` grant gives that level.
 3. A `member` is a **contributor** on `workspace`-visible projects.
 4. Otherwise the level is **none**. Guests see only projects they were explicitly granted. Nobody without a grant or a manager
@@ -218,6 +219,15 @@ but is not listed, so the Owner field, mentions and the header agree with the se
 **Search, the Inbox and Needs you for a company admin** (a coordinator default, F-037) are limited to the spaces the person
 belongs to, though they could reach every other space: `memberFilter` in `@flux/db` is `visibleFilter` and membership
 (`projectMemberSql`).
+
+**A company admin's agents** ([C-15](../product/decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override),
+#934, Hubert 2026-11-07) belong where their owner does: a company owner's or admin's agents have no level in a space the person was not
+added to, though the person reaches it. This is in the one SQL level, `projectLevelSql` (an agent's level is its owner's level in the
+spaces `projectMemberSql` says the owner belongs to), so every surface follows it: the lists and search (`visibleFilter`,
+`memberFilter`), each read and action of a server agent, a local client (its connection can select only such a space) and `/ai` (a
+run is refused there with `PERSONAL_RUN_NO_PROJECT_ACCESS`), and the assistant's own selection (`assistantProjectIds`). A member's or
+guest's agents are unchanged: their level already says whether they belong. After the admin adds themselves with Add me, their agents
+work there from the next call.
 
 **Membership.** Owners and admins manage members. Only an owner
 can grant, change or remove the owner role (`403 OWNER_REQUIRED`). The last owner

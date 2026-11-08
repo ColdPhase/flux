@@ -1879,6 +1879,16 @@ export const agentTaskEvents = pgTable('agent_task_events', {
   handledAt: timestamp('handled_at', { withTimezone: true }),
 });
 
+/** The pages a run read on the web (#918, migration 0013): the run's answer ends with them. The page's text is never kept. */
+export const personalRunWebReads = pgTable('personal_run_web_reads', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  runId: uuid('run_id').notNull().references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
+  url: text('url').notNull(),
+  finalUrl: text('final_url').notNull(),
+  title: text('title'),
+  readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [index('personal_run_web_reads_run_idx').on(table.runId, table.readAt)]);
+
 export const assistantProposals = pgTable('assistant_proposals', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull(),

@@ -115,6 +115,7 @@ the variable.
 | [`FLUX_VAPID_PUBLIC_KEY`](#flux_vapid_public_key) | Web Push | empty |
 | [`FLUX_VAPID_SUBJECT`](#flux_vapid_subject) | Web Push | empty |
 | [`FLUX_WAIT_TIMEOUT`](#flux_wait_timeout) | Source checkout, launcher and checks | `300` |
+| [`FLUX_WEB_READS`](#flux_web_reads) | AI providers | `off` |
 | [`FLUX_WORKER_MEMORY`](#flux_worker_memory) | Memory limits | `512m` |
 | [`POSTGRES_DB`](#postgres_db) | Database | `flux` |
 | [`POSTGRES_PASSWORD`](#postgres_password) | Database | **required** |
@@ -391,6 +392,12 @@ Host port of TURN/TLS. Keep 443 for a public deployment.
 ## AI providers
 
 Owners connect their own AI provider in **Settings → AI**. These switches decide what the instance allows. Both Compose files pass the switches to `api` and `worker`; the assistant and background suggestions also need the key file `FLUX_BACKGROUND_KEY_HOST_FILE`, which the release `compose.yaml` does not mount (see below).
+
+### `FLUX_WEB_READS`
+
+**Type** `on`, `off` · **Default** `off` · **Used by** api (release, source)
+
+`on` lets the server read a public web page for an agent that asks for it (the `flux_read_web` tool, read-only, GET only), with the guard of link cards: public `http(s)` addresses on default ports, three redirects at most, bounded in time and size. The agent's answer lists the pages it read. A read tells the site this server's address, and the open web can try to instruct an agent: rights, waits and Undo are the defence. Other values stop the API. Example: `on`.
 
 ### `FLUX_BACKGROUND_KEY_HOST_FILE`
 

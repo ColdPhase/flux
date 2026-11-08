@@ -102,6 +102,11 @@ own.
 AI is on (AG-10). A DM between people is not in a space; AG-4 governs AI there. Every read and
 change is checked at the moment it happens; when the owner loses access, the agent loses it on
 its next call. There are no agent project grants, no access requests and no manager approvals.
+An agent sees what its owner sees in the sidebar: a company owner or admin reaches every space
+themselves, but their agents (server agents, local clients and `/ai`) read, search and act only in
+the spaces the person was added to ([C-15](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override),
+Hubert, 2026-11-07). After the person adds themselves to another space with Add me, their agents
+work there too.
 
 **What it may do.** One row on each agent's page:
 
@@ -246,7 +251,7 @@ Server agents act only inside Flux, with their owner's rights:
 | Decisions | Propose; never accept |
 | Search | Everything the owner can see, in spaces with AI on |
 | GitHub | Read the connected repository (issues, pull requests, checks); never write |
-| Web | Read-only search and page reading, always citing the sources; never send or fill in anything |
+| Web | Read-only page reading (`flux_read_web`), always citing the sources; never send or fill in anything. Web search is not built yet |
 | Not allowed | Code, email, other apps |
 
 Code changes come only from the owner's own Claude Code or Codex on their computer
@@ -256,7 +261,10 @@ Code changes come only from the owner's own Claude Code or Codex on their comput
 other people's messages. The defence is in the rules, not in the model's obedience: only the
 owner instructs (AG-2), rights and waits and the never-list hold (AG-3), every change has Undo,
 and nothing can be sent to the web. A test shows that web content cannot bypass an approval
-(#856). The runtime's egress allows web reads ([network](ai-modes.md#rt-4--network)).
+(#918). The server reads the page, not the agent's process, so the runtime's egress stays closed to the web
+([network](ai-modes.md#rt-4--network)); the run's answer lists the pages it read, in Flux's own words. It is off until the operator
+turns it on (`FLUX_WEB_READS`). Another person's task title that becomes a run's request is the same kind of input: data, never an
+instruction.
 
 ## AG-9 — Schedules
 

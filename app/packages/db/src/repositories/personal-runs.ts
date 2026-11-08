@@ -4,6 +4,7 @@ import { and, asc, desc, eq, inArray, isNotNull, isNull, notInArray, or, sql, ty
 import type { AgentMayDo } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
+import { personalRunWebReadRows } from './personal-run-web-reads.js';
 import { apiKeySpendToday } from './api-key-spend.js';
 import { lockAssistantOwner } from './assistant-lock.js';
 
@@ -186,6 +187,8 @@ export function personalRunRows(db: DbExecutor) {
         WHERE next.end_reason IS DISTINCT FROM 'no_room' OR ${room} ORDER BY created_at, id LIMIT ${limit}`);
       return (rows.rows as { id: string }[]).map((row) => row.id);
     },
+
+    webReads: (runId: string) => personalRunWebReadRows(db).forRun(runId),
 
     prepareTaskUse: (projectId: string, conversationId: string, sources: readonly { type: string; id: string }[] = []) =>
       prepareReferencedTaskUse(db, projectId, [{ type: 'conversation', id: conversationId }, ...sources]),

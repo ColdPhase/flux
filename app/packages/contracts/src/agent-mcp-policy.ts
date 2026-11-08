@@ -41,6 +41,8 @@ export const AGENT_MCP_ENTRIES: readonly AgentMcpEntry[] = [
   // Actual source-kind dependencies are added before any query/count/projection.
   read('flux_search_project', 'project.identity.read'), read('flux_project_orientation', 'project.identity.read'),
   read('flux_changes_since', 'project.identity.read'),
+  // #918, AG-8: one public web page as plain text, read by the server (GET only, public addresses only); never sent anywhere, never an instruction.
+  read('flux_read_web', 'project.identity.read'),
   read('flux_bootstrap', 'project.identity.read', 'connection.runtime.read', 'cowork.playbook.read'),
   read('flux_acknowledge_playbook', 'cowork.playbook.read', 'connection.runtime.read'),
   read('flux_coordination_inbox', 'project.identity.read', 'connection.runtime.read'),

@@ -95,7 +95,7 @@ never need to re-read conversations to find it. Reading it is not an acknowledge
       id: 'orient_plan', title: 'Orient and plan',
       tools: ['flux_project_orientation', 'flux_list_materials', 'flux_read_material', 'flux_list_docs', 'flux_get_doc',
         'flux_list_decisions', 'flux_get_decision', 'flux_list_work', 'flux_get_work', 'flux_list_results', 'flux_get_result',
-        'flux_list_conversations', 'flux_get_conversation', 'flux_get_agent_thread', 'flux_list_maps', 'flux_get_map', 'flux_search_project',
+        'flux_list_conversations', 'flux_get_conversation', 'flux_get_agent_thread', 'flux_list_maps', 'flux_get_map', 'flux_search_project', 'flux_read_web',
         'flux_create_proposal', 'flux_create_task', 'flux_undo_task_creation', 'flux_propose_decision'],
       providers: [],
       text: `On first entry, list the project's sources with flux_project_orientation for each kind (doc, material, work, decision, \

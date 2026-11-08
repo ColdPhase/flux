@@ -306,7 +306,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
   });
 
   test('AST-8.2 through /mcp: a provider that keeps calling tools stops at a safety bound, every call made through the route', async (t) => {
-    // With every switch on the run lists 19 read tools. Their definitions travel with every request, so they
+    // With every switch on the run lists 20 read tools. Their definitions travel with every request, so they
     // are kept short (#484): measured below, bounded here, and over a hundred turns fit the tool-run input bound.
     compute.respond = async () => ({ kind: 'completed', text: 'again', stopReason: 'tool_use', usage: { inputTokens: 500, outputTokens: 20 },
       toolCalls: [{ id: `c${compute.dispatched.length}`, name: 'flux_list_contexts', input: {} }] });
@@ -315,7 +315,7 @@ describe('the run token and the worker as an MCP client of /mcp (F-027 A2, A6; #
     const fullTools = compute.dispatched[0]?.tools ?? [];
     const fullBytes = JSON.stringify(fullTools).length;
     t.diagnostic(`all switches on: ${fullOutcome} after ${compute.dispatched.length} requests; ${fullBytes} bytes of tool definitions, ${fullTools.length} tools`);
-    assert.equal(fullTools.length, 19 + ASSISTANT_RUN_EFFECT_TOOLS.length, '19 read tools and every change tool (A3)');
+    assert.equal(fullTools.length, 20 + ASSISTANT_RUN_EFFECT_TOOLS.length, '20 read tools (flux_read_web, #918) and every change tool (A3)');
     assert.ok(fullBytes <= TOOL_DEFINITION_BYTES, `the run's tool definitions take ${fullBytes} bytes; keep them under ${TOOL_DEFINITION_BYTES} (they are input of every request)`);
     assert.ok(!JSON.stringify(fullTools).includes('"$schema"') && !JSON.stringify(fullTools).includes('"pattern"'), 'no draft URL or uuid regular expression on the wire');
     assert.ok(fullTools.every((tool) => tool.name !== 'flux_get_conversation' || JSON.stringify(tool.inputSchema).includes('"beforeSequence"')), 'the parameters themselves are kept');

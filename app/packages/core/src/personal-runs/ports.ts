@@ -154,6 +154,8 @@ export interface ThoughtSource { id: string; sketchId: string; version: number; 
 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link PersonalRunAccess}). */
 export interface PersonalRunRepository {
+  /** The pages the run read on the web (#918), each once, in the order they were first read. */
+  webReads(runId: string): Promise<{ finalUrl: string; title: string | null }[]>;
   prepareTaskUse(projectId: string, conversationId: string, sources?: readonly { type: string; id: string }[]): Promise<{ mark(): Promise<void> }>;
   /** The AI setup of one of the owner's agents: the one named, else their first (Assistant). A deleted agent has none. */
   enablement(ownerUserId: string, options?: { lock?: boolean; agentId?: string; workspaceId?: string }): Promise<EnablementRecord | null>;

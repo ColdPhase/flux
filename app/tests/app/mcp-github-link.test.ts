@@ -9,7 +9,7 @@ import { createGithubUseCases } from '../../apps/server/src/github/adapters.js';
 import { db, pool } from './support/db.js';
 import { agentConnection, toolFailure } from './support/mcp-actions.js';
 import { mcp, toolValue } from './support/mcp.js';
-import { expectStatus, person, project, workspace, addMember, type Person } from './support/people.js';
+import { expectStatus, grant, person, project, removeFromSpace, workspace, addMember, type Person } from './support/people.js';
 
 // #160 AC-3: an agent links the pull request it produced to the task it holds (`flux_link_pull_request`). Real sessions, OAuth
 // bearers and MCP over HTTP, against a second in-process API on the same database whose GitHub App provider is a fixture; so no
@@ -60,6 +60,8 @@ async function scene() {
   const ws = await workspace(hubert, 'MCP PR link');
   await addMember(hubert, ws.id, marek, 'admin');
   const p = await project(hubert, ws.id, 'Printer firmware', 'restricted');
+  // An admin's agents work only in the spaces the admin was added to (C-15, #934).
+  await grant(hubert, p.id, marek, 'contributor');
   const elsewhere = await project(hubert, ws.id, 'Another project', 'restricted');
   const principal: Principal = { kind: 'human', id: hubert.id };
   const bound = await github.bind(principal, p.id, { installationId: INSTALL, repositoryId: REPO });
@@ -203,7 +205,8 @@ describe('flux_link_pull_request (#160 AC-3)', () => {
     const marekGrant = await theirs.connected.grant('work.update', 'execute', 10, marekItem.id);
     assert.equal(toolValue(await s.link(theirs, marekGrant.id, marekItem.id, url(REPO, 92))).number, 92);
     expectStatus(await s.hubert.browser.request('PATCH', `/api/v1/workspaces/${s.ws.id}/members/${s.marek.id}`, { body: { role: 'member' } }), 200);
-    // Demoted to a member who was never added to the space, Marek has lost it.
+    await removeFromSpace(s.hubert, s.p.id, s.marek);
+    // Demoted to a member and taken out of the space, Marek has lost it.
     // The MCP admission already refuses the whole connection of an owner who lost the project (HTTP 403, before any tool); the use
     // case behind the tool refuses on its own too, as a second fence, with no GitHub call and nothing stored.
     const refused = await mcp(theirs.connected.accessToken, 2000, 'tools/call', { name: 'flux_link_pull_request', arguments: { projectId: s.p.id,

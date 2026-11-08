@@ -9,8 +9,9 @@ import { addMember, expectStatus, grant, person, project, removeMember, workspac
 
 /**
  * A self-owned agent with exactly its owner's rights (F-036 AG-3), and a viewer who reads the project lists (#339 AC-2). The
- * owner is a workspace admin, so it manages the project and can set up standing grants; ending its membership is the way its
- * access ends, because a workspace owner or admin keeps project management whatever project grant it has.
+ * owner is a workspace admin who was added to the project (C-15, #934: an admin's agents work only in the spaces the admin was added
+ * to), so it manages the project and can set up standing grants; ending its membership is the way its access ends, because a
+ * workspace owner or admin keeps project management whatever project grant it has (and leaving the company ends the grant too).
  */
 async function scene() {
   const [manager, owner, reader] = await Promise.all(['List manager', 'List owner', 'List reader'].map(person));
@@ -19,6 +20,7 @@ async function scene() {
   await addMember(manager, ws.id, reader, 'guest');
   const place = await project(manager, ws.id, 'Scoped lists', 'restricted');
   await grant(manager, place.id, reader, 'contributor');
+  await grant(manager, place.id, owner, 'contributor');
   const agent = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`, {
     body: { name: 'List writer', owner: 'self' },
   }), 201) as { id: string };
@@ -51,6 +53,8 @@ test('a doc an agent last changed names its owner in the project list while that
   assert.equal(hidden.name, 'List writer');
 
   await addMember(f.manager, f.ws.id, f.owner, 'admin');
+  // Leaving ended the grant: the admin is back in the company, and in the space once they are added again (Add me).
+  await grant(f.manager, f.place.id, f.owner, 'contributor');
   assert.deepEqual((await listed()).updatedBy.projectOwner, { kind: 'human', id: f.owner.id }, 'restored access restores the scoped owner');
 });
 
@@ -76,5 +80,6 @@ test('a project sketch an agent created names its creator with the scoped owner,
   assert.equal(hidden.name, 'List writer');
 
   await addMember(f.manager, f.ws.id, f.owner, 'admin');
+  await grant(f.manager, f.place.id, f.owner, 'contributor');
   assert.deepEqual((await listed()).projectOwner, { kind: 'human', id: f.owner.id }, 'restored access restores the scoped owner');
 });

@@ -49,6 +49,8 @@ test('real OAuth native posts share one lazy thread and fifth slot across two ow
   const peer = await register(uniqueEmail('thread-peer'), 'correct horse battery staple');
   const me = expect(await peer.browser.request('GET', '/api/v1/me'), 200).user as { id: string; email: string };
   expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/members`, { body: { email: me.email, role: 'admin' } }), 201);
+  // An admin's agents work only in the spaces the admin was added to (C-15, #934).
+  expect(await f.owner.request('POST', `/api/v1/projects/${f.projectId}/grants`, { body: { principal: { kind: 'human', id: me.id }, role: 'contributor' } }), 201);
   const agent = expect(await peer.browser.request('POST', `/api/v1/workspaces/${f.workspaceId}/agents`, { body: { name: 'Independent measurement', owner: 'self' } }), 201);
   const second = await agentConnection(pool, peer.browser, String(agent.id), [f.projectId]);
   const peerGrant = await second.grant('conversation.reply', 'execute', 20);
