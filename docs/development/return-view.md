@@ -1,6 +1,6 @@
 # Return view: "Since you left" (issue #106)
 
-Foundation 8.8, pillar F5, the #44 "Return and pivot" contract and the
+Foundation 8.8, pillar F5, the #44 "Return and pivot" contract (the pivot's parking of tasks went in #871) and the
 [final design](../design/final/README.md#5-behaviour) rule S7 ("Since you left"): one
 slim "N updates since …" line that expands into a short list in human language. There is no
 guilt here: no streaks, no forced clearing, no rail badges. At most one next step is shown,
@@ -75,19 +75,15 @@ period also means "since you left"; `24h` and `7d` are unchanged.
    `{ conversationId, messageId }` and `{ materialId, version }`; see
    [conversations](conversations.md#authorized-project-refresh-events-36--47). Messages recorded
    earlier have no ids, so they cannot link to a source and are left out.
-   **Work a pivot parked (#290, #44 scenario 3).** Accepting a pivot parks work under
-   `project.decision_accepted.v1` alone; the work gets no event of its own and the payload stays
-   `{ decisionId }`. The summary therefore also joins each accepted decision to the work it parks
-   **now** in the decision's own project (`parked_by_decision_id`) and groups that work with the
-   acceptance. A person whose point is after the task's last own event still sees
-   "Parked: …" with the rule that set it aside. A later change of the same task stays one item.
-   Work that was brought back or finished since is not called parked.
+   **A decision that replaces another moves no task (#871).** Accepting it marks the earlier decision replaced and
+   nothing else: no task is parked or set aside, so the summary joins no work to an acceptance. (Until #871, a pivot
+   parked work and the summary told it as "Parked: …"; that path is gone.)
 
 | Kind | Text (examples) | Needs you |
 | --- | --- | --- |
-| decision | "Current rule changed: …" with "Previously: …"; "New rule: …"; "Proposed rule: …"; "Rule replaced: …". A rule made and replaced in the same absence is told once, by its replacement. | A proposal by someone else in a project you can write. |
+| decision | "Decision changed: …" with "Previously: …"; "New decision: …"; "Proposed decision: …"; "Decision replaced: …". A decision made and replaced in the same absence is told once, by its replacement. | A proposal by someone else in a project you can write. |
 | result | "Ari recorded a result: …", "It did not work out, about “…”". | It is about work you own or created. |
-| work | "Ari added a task for you: …", "Ari gave you a task: …" (handed to you in the period, #763 H11-5; a work item carries the task's `dueOn`), "Blocked: …", "Parked: …" with "Set aside when the rule changed to “…”" (also for work a pivot parked while you were away, from the acceptance), "Done: …", "In progress: …". | Unfinished, unparked work you own. |
+| work | "Ari added a task for you: …", "Ari gave you a task: …" (handed to you in the period, #763 H11-5; a work item carries the task's `dueOn`), "Blocked: …", "Done: …", "Dropped: …", "In progress: …". | Unfinished work you own. |
 | question | "Ari asked you: “…”" when a message addresses you (`@Name`, or starts with "Name," / "Name:"), or asks a question in a conversation you started or posted in. | Until you post in that conversation after it. |
 | message | "Ari and Kai replied in “…”", grouped per conversation, opening on the first new message. A task thread opened by a saved blocker, a published result or a public handoff (#154) is an ordinary conversation here: its opening is announced beside the result or blocked-work item it came from. | Never. |
 | material | "New material: …", "Updated material: …, now version N". | Never. |
@@ -160,9 +156,8 @@ What matters is a row in the header's More.
 `app/tests/app/returns.test.ts` covers the API with two people and an outsider: the return point,
 the grouping and sources, the next step and how it changes when the question is answered,
 forward-only saving and restore, revoked access, and a restricted project leaking nothing (no
-items, ids, names or counts). It also covers work a pivot parked after the reader's point (#290): one
-"Parked: …" item on the project and Home, none for a task in a project the reader cannot read, a
-revoked reader or a plain (non-pivot) acceptance. `app/tests/app/return-recap.test.ts` covers #133's scope, period, `until` snapshot, digest, privacy
+items, ids, names or counts). It also covers a replacing decision (#871): the reader is told "Decision changed: …" and no task is
+told as set aside, nothing of a space the reader cannot read, nothing after access is revoked, and a plain acceptance is only a "New decision: …". `app/tests/app/return-recap.test.ts` covers #133's scope, period, `until` snapshot, digest, privacy
 (per person, no shared event, outsider and revoked 404) and refused parameters.
 `app/tests/ui/test_return_view.py` (Playwright) covers Home's "Continue where you left off" (a reload keeps the
 row, following it moves Home's point, the first visit's starting point), leaving a conversation saving the project's point,

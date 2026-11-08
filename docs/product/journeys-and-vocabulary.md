@@ -162,9 +162,10 @@ objects and UI routes are **specified**, not implemented or device-verified.
 3. **Return after pivot.** After a break, a participant sees the current
    direction, sourced important changes, last result, still-relevant work and
    one direct next action. Exploring sensor variant B is distinguishable from
-   choosing B. A deliberate pivot retains the old decision and result, parks
-   obsolete work without labeling it complete, and can be understood on phone
-   and tablet with AI unavailable. A return note is optional; no inbox-clearing
+   choosing B. A deliberate change of direction retains the old decision, marked
+   replaced, and the result. Flux moves no task: people decide about the tasks
+   themselves (founder direction, 2026-11-03, #871). It can be understood on
+   phone and tablet with AI unavailable. A return note is optional; no inbox-clearing
    ritual, streak or guilt metric is required.
 
 Project and DM participation are independent. Conversation, map thought, task,

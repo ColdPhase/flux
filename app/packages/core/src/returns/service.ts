@@ -284,17 +284,6 @@ export function createReturnUseCases(ports: ReturnPorts) {
         default: break;
       }
     }
-    // A pivot parks work under its acceptance event alone, with no event of the work's own (#290).
-    // The work it parks now, in the decision's own project, joins that event, so a person away
-    // since the task's last change still learns it was set aside. With any change of the task
-    // itself it stays one item.
-    const accepted = events.filter((event) => event.kind === 'project.decision_accepted.v1' && str(event.data.decisionId) && projectOf(event));
-    if (accepted.length) {
-      const parked = await returns.parkedWork([...new Set(accepted.map((event) => projectOf(event)!))], [...new Set(accepted.map((event) => str(event.data.decisionId)!))]);
-      for (const event of accepted) {
-        for (const row of parked) if (row.decisionId === str(event.data.decisionId) && row.projectId === projectOf(event)) add(`work:${row.id}`, 'work', event);
-      }
-    }
     const ids = (prefix: string) => [...groups.keys()].filter((item) => item.startsWith(`${prefix}:`)).map((item) => item.slice(prefix.length + 1));
     const [work, decisions, results, resultWork, messages, materials, sketches, docs] = await Promise.all([
       returns.work(ids('work')), returns.decisions(ids('decision')), returns.results(ids('result')), returns.resultWork(ids('result')),
@@ -303,7 +292,6 @@ export function createReturnUseCases(ports: ReturnPorts) {
     const extraWork = [...resultWork.values()].flat().filter((id) => !work.has(id));
     for (const [id, item] of await returns.work(extraWork)) work.set(id, item);
     const extraDecisions = [...decisions.values()].map((item) => item.supersedesId ?? item.supersededById)
-      .concat([...work.values()].map((item) => item.parkedByDecisionId))
       .filter((id): id is string => !!id && !decisions.has(id));
     const related = await returns.decisions(extraDecisions);
     const decisionTitle = (id: string | null) => (id ? decisions.get(id)?.title ?? related.get(id)?.title ?? null : null);
@@ -365,15 +353,11 @@ export function createReturnUseCases(ports: ReturnPorts) {
         const finished = item.status === 'done' || item.status === 'not_pursued';
         const source: ReturnSource = { type: 'work', id: item.id, projectId: item.projectId };
         let text: string; let detail: string | null = null;
-        if (item.parkedByDecisionId) {
-          text = `Parked: ${item.title}`;
-          const rule = decisionTitle(item.parkedByDecisionId);
-          detail = rule ? `Set aside when the rule changed to ${quote(rule)}` : 'Set aside by a change of rule';
-        } else if (item.status === 'blocked') {
+        if (item.status === 'blocked') {
           text = `Blocked: ${item.title}`;
           detail = item.blocker?.trim() ? item.blocker.trim() : 'No reason was recorded.';
         } else if (item.status === 'done') { text = `Done: ${item.title}`; }
-        else if (item.status === 'not_pursued') { text = `Not pursued: ${item.title}`; }
+        else if (item.status === 'not_pursued') { text = `Dropped: ${item.title}`; }
         else if (newForYou && !madeForYou) { text = `${giver} gave you a task: ${item.title}`; }
         else if (created) {
           text = mine ? `${actor} added a task for you: ${item.title}` : `New task: ${item.title}`;
@@ -384,8 +368,8 @@ export function createReturnUseCases(ports: ReturnPorts) {
           const owner = mine ? 'You' : nameOf(item.ownerKey);
           detail = owner ? `${owner} ${owner === 'You' ? 'are' : 'is'} on it` : null;
         } else { text = `Changed: ${item.title}`; }
-        const needsYou = mine && !finished && !item.parkedByDecisionId;
-        // A task that became yours while you were away comes before rules waiting for a person (#763 H11-5): it is
+        const needsYou = mine && !finished;
+        // A task that became yours while you were away comes before decisions waiting for a person (#763 H11-5): it is
         // the work you now hold. Questions to you and results about your work come first.
         const step = !needsYou ? undefined : item.status === 'blocked'
           ? { priority: newForYou ? 3.5 : 5, text: `See what blocks ${quote(item.title)}`, reason: `It is yours. ${detail}`, ...due }
@@ -398,17 +382,17 @@ export function createReturnUseCases(ports: ReturnPorts) {
       if (group.kind === 'decision') {
         const item = decisions.get(objectId);
         if (!item || !inProject(item.projectId)) continue;
-        // A rule made and replaced while you were away is told once, by its replacement.
+        // A decision made and replaced while you were away is told once, by its replacement.
         if (item.status === 'superseded' && item.supersededById && groups.has(`decision:${item.supersededById}`)) continue;
         const source: ReturnSource = { type: 'decision', id: item.id, projectId: item.projectId };
         const reason = item.rationale.trim() ? null : 'No reason was recorded.';
         let text: string; let detail: string | null; let needsYou = false;
         if (item.status === 'proposed') {
-          text = `Proposed rule: ${item.title}`;
+          text = `Proposed decision: ${item.title}`;
           detail = [`${nameOf(item.proposedByKey)} proposed it`, reason].filter(Boolean).join(' · ');
           needsYou = item.proposedByKey !== me && await writable(item.projectId);
         } else if (item.status === 'superseded') {
-          text = `Rule replaced: ${item.title}`;
+          text = `Decision replaced: ${item.title}`;
           const next = decisionTitle(item.supersededById);
           detail = next ? `Now: ${next}` : reason;
         } else if (item.supersedesId) {
@@ -419,7 +403,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
           text = `New decision: ${item.title}`;
           detail = reason;
         }
-        const step = needsYou ? { priority: 4, text: 'Decide on the proposed rule',
+        const step = needsYou ? { priority: 4, text: 'Decide on the proposed decision',
           reason: `${nameOf(item.proposedByKey)} proposed ${quote(item.title)}. You can accept it.` } : undefined;
         items.push({ ...base, kind: 'decision', text, detail, needsYou, source, step, relevant: needsYou || item.proposedByKey === me });
         continue;
@@ -553,7 +537,7 @@ export function createReturnUseCases(ports: ReturnPorts) {
 
   /**
    * One next step from real state, with its reason: a question addressed to you first, then a
-   * result about your work, a rule waiting for a person, and work that is yours. Nothing else is
+   * result about your work, a decision waiting for a person, and work that is yours. Nothing else is
    * urgent, and no next step is fine.
    */
   function nextStep(items: Built[]): ReturnNextStep | null {

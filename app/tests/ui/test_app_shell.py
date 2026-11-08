@@ -171,7 +171,7 @@ def view_tab(page: Page, name: str, tap: bool = False) -> None:
 
 def open_details(page: Page, tap: bool = False) -> None:
     """Details: More, then Details, in the computer's one-row header (#340); on the phone a project's title menu ends with
-    "Details and people" (#341). Home has no Details (#964)."""
+    "Space details" (#341, #871). Only a space and a direct message have Details."""
     if page.viewport_size["width"] <= 640:
         page.locator("header .phead__menu").first.wait_for()
         row = phone_menu(page, tap).locator(".phone-menu__details")
@@ -514,28 +514,18 @@ class AppShellJourney(unittest.TestCase):
         expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
         shot(page, "desktop-1440-map-light")
 
-        # Details is in More (#340); the header has no separate Details button on the computer.
+        # Only a space and a direct message have Details (#871): My map has none, and the header has no Details button.
         more = page.locator("header.top").get_by_role("button", name="More", exact=True)
         expect(page.locator("header.top").get_by_role("button", name="Details", exact=True)).to_have_count(0)
-        open_details(page)
-        panel = page.get_by_role("complementary", name="Details")
-        expect(panel).to_be_visible()
-        expect(panel.get_by_role("heading", name="Nothing selected")).to_be_visible()
-        expect(panel.get_by_text(EMAIL)).to_have_count(0)
-        # Docked: the work area stays usable beside the panel.
-        self.assertGreater(box(page, panel)["x"], 1000)
-        self.assertTrue(panel.evaluate("el => el.contains(document.activeElement)"), "focus moves into the panel")
-        shot(page, "desktop-1440-details-light")
+        more.click()
+        menu = page.get_by_role("menu", name="More")
+        expect(menu.get_by_role("menuitem", name=re.compile("details|info", re.I))).to_have_count(0)
         page.keyboard.press("Escape")
-        expect(panel).to_have_count(0)
+        expect(menu).to_have_count(0)
         expect(more).to_be_focused()
         # "]" is not a key of the final design (§4 keyboard); it opens nothing.
         page.keyboard.press("]")
-        expect(page.get_by_role("complementary", name="Details")).to_have_count(0)
-        open_details(page)
-        expect(page.get_by_role("complementary", name="Details")).to_be_visible()
-        page.get_by_role("button", name="Close details").click()
-        expect(page.get_by_role("complementary", name="Details")).to_have_count(0)
+        expect(page.get_by_role("complementary", name=re.compile("details|info", re.I))).to_have_count(0)
 
         # Direct messages is its own place: the sidebar lists conversations, there are no views.
         sidebar.locator("#side-dms").get_by_role("link", name="Messages", exact=True).click()
@@ -644,6 +634,13 @@ class AppShellJourney(unittest.TestCase):
         page.goto("/nowhere")
         expect(page.get_by_role("heading", name="This page doesn’t exist")).to_be_visible()
 
+    def first_space(self, page: Page) -> str:
+        """The id of the first space of the account (test_04aa made one)."""
+        spaces = [item for workspace in page.request.get(f"{ORIGIN}/api/v1/workspaces").json()
+                  for item in page.request.get(f"{ORIGIN}/api/v1/workspaces/{workspace['id']}/projects?limit=100").json()["items"]]
+        self.assertTrue(spaces, "test_04aa made a space")
+        return spaces[0]["id"]
+
     def test_05_desktop_dark_and_tablet(self) -> None:
         page = self.page(dark=True)
         page.goto("/")
@@ -651,9 +648,9 @@ class AppShellJourney(unittest.TestCase):
         self.assertEqual(page.evaluate("getComputedStyle(document.body).backgroundColor"), "rgb(11, 11, 11)", "the dark outer background")
         self.assertEqual(page.locator(".app__main").evaluate("el => getComputedStyle(el).backgroundColor"), "rgb(17, 17, 17)", "the dark panel")
         shot(page, "desktop-1440-dark")
-        # Home has no Details for an unencrypted company (#865); My map has.
-        page.goto("/map")
-        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
+        # Home and My map have no Details (#871); a space has its own.
+        page.goto(f"/projects/{self.first_space(page)}")
+        expect(page.locator(".project-convo")).to_be_visible()
         open_details(page)
         expect(page.get_by_role("complementary", name="Details")).to_be_visible()
         shot(page, "desktop-1440-details-dark")
@@ -804,8 +801,8 @@ class AppShellJourney(unittest.TestCase):
         self.assertIsNone(page.evaluate("document.documentElement.dataset.theme ?? null"))
 
         calm = self.page(reduced_motion="reduce")
-        calm.goto("/map")
-        expect(calm.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
+        calm.goto(f"/projects/{self.first_space(calm)}")
+        expect(calm.locator(".project-convo")).to_be_visible()
         self.assertEqual(calm.evaluate("parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--dur-in'))"), 0)
         open_details(calm)
         panel = calm.get_by_role("complementary", name="Details")

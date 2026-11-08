@@ -3,7 +3,7 @@ import type { ProjectPerson } from '@flux/contracts';
 import { Avatar, IconButton, Kreska, usePop } from '../ui';
 
 /**
- * The people and agents of a project as faces, one button to "Who can see this" (F-026 §4 header).
+ * The people and agents of a project as faces, one button to the space's people (F-026 §4 header).
  * People are grey circles with initials; agents are Kreska, monochrome outside the Agents view.
  */
 export function HeaderFaces({ people, audience, onOpen }: { people: ProjectPerson[]; audience: string; onOpen: () => void }) {

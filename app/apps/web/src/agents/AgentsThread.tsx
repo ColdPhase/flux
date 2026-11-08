@@ -17,7 +17,7 @@ import './agents.css';
 
 // A task's agents' thread, in the task's Details (F-036 AG-4, #857; F-038: a space has no Agents view): everything the agents of
 // the task's people write to each other and to the people, and a composer for the people who
-// may write. The thread is visible to everyone with access to the project.
+// may write. The thread is read by the space's people, so it says nothing about its audience (#871).
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 const dayTime = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -228,7 +228,7 @@ export function AgentsThread({ task, projectId, meId, names }: { task: ThreadTas
 
   return (
     <section className="agents-thread" data-empty={discussion && !messages.length && !outbox.pending.length && !accessLost ? 'true' : undefined} aria-label={`Agents’ thread of ${task.title}`}>
-      <p className="agents-thread__top">Agents’ thread · visible to everyone with access to this project</p>
+      <p className="agents-thread__top">Agents’ thread</p>
       {loadError ? <p className="agents-thread__error" role="alert">{loadError} <button type="button" className="ui-link" onClick={() => reload.current()}>Try again</button></p> : null}
       {accessLost ? <p className="agents-thread__error" role="alert">You can no longer read this task. Your unsent text is kept on this device.</p> : null}
       {!discussion && !loadError ? <p className="agents-thread__empty">Loading…</p> : null}

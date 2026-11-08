@@ -82,8 +82,8 @@ describe('return view: since you left', () => {
     await say(ari, thread.id, 'I also ordered a PIR sensor.');
     const rule = json<Decision>(await post(ari, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Use the camera', rationale: 'It sees gestures' }), 201);
     json(await post(ari, `/api/v1/decisions/${rule.id}/accept`, {}, { 'if-match': '"1"' }), 200);
-    const pivot = json<Decision>(await post(ari, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Use a PIR sensor', supersedes: rule.id }), 201);
-    json(await post(ari, `/api/v1/decisions/${pivot.id}/accept`, {}, { 'if-match': '"1"' }), 200);
+    const replacement = json<Decision>(await post(ari, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Use a PIR sensor', supersedes: rule.id }), 201);
+    json(await post(ari, `/api/v1/decisions/${replacement.id}/accept`, {}, { 'if-match': '"1"' }), 200);
     const task = json<WorkItem>(await post(ari, `/api/v1/projects/${lamp.id}/work`, { title: 'Mount the PIR sensor', owner: { kind: 'human', id: nia.id } }), 201);
     const blocked = json<WorkItem>(await post(ari, `/api/v1/projects/${lamp.id}/work`, { title: 'Order the lens' }), 201);
     json(await patch(ari, `/api/v1/work/${blocked.id}`, { status: 'blocked' }, { 'if-match': '"1"' }), 200);
@@ -99,7 +99,7 @@ describe('return view: since you left', () => {
     assert.ok(list.includes('Ari asked you: “Nia, can you check the camera at 5 lux before Friday?”'), list.join('\n'));
     assert.ok(list.includes('Ari replied in “Camera or sensor for the lamp?”'), 'other messages are grouped per conversation');
     const changed = back.items.find((item) => item.text === 'Decision changed: Use a PIR sensor')!;
-    assert.equal(changed.detail, 'Previously: Use the camera · No reason was recorded.', 'the previous rule, and a missing reason is said');
+    assert.equal(changed.detail, 'Previously: Use the camera · No reason was recorded.', 'the previous decision, and a missing reason is said');
     assert.ok(list.includes('Ari added a task for you: Mount the PIR sensor'));
     const lens = back.items.find((item) => item.text === 'Blocked: Order the lens')!;
     assert.equal(lens.detail, 'No reason was recorded.');
@@ -117,7 +117,7 @@ describe('return view: since you left', () => {
     // Every item links to its source.
     const sources = new Map(back.items.map((item) => [item.text, item.source]));
     assert.deepEqual(sources.get('Ari asked you: “Nia, can you check the camera at 5 lux before Friday?”'), { type: 'message', projectId: lamp.id, conversationId: thread.id, messageId: reply.id });
-    assert.deepEqual(changed.source, { type: 'decision', id: pivot.id, projectId: lamp.id });
+    assert.deepEqual(changed.source, { type: 'decision', id: replacement.id, projectId: lamp.id });
     assert.deepEqual(recorded.source, { type: 'result', id: result.id, projectId: lamp.id });
     assert.deepEqual(sources.get('New material: Low-light test plan'), { type: 'material', projectId: lamp.id, materialId: material.materialId, version: 1 });
     assert.deepEqual(sources.get('Ari started a sketch: Sensing options'), { type: 'sketch', sketchId: sketch.id, projectId: lamp.id });
@@ -145,14 +145,14 @@ describe('return view: since you left', () => {
     assert.deepEqual(later.nextStep && [later.nextStep.text, later.nextStep.reason],
       ['Review the result Ari attached', 'It reports on “Mount the PIR sensor”, which is yours.']);
 
-    // A proposed rule needs a person who can write; the proposer and viewers are not asked.
+    // A proposed decision needs a person who can write; the proposer and viewers are not asked.
     const proposal = json<Decision>(await post(ari, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Dim the lamp at night', rationale: 'Less glare' }), 201);
     const withProposal = await summary(nia, { type: 'project', id: lamp.id });
     const proposed = withProposal.items.find((item) => item.source.type === 'decision' && item.source.id === proposal.id)!;
-    assert.deepEqual([proposed.text, proposed.detail, proposed.needsYou], ['Proposed rule: Dim the lamp at night', 'Ari proposed it', true]);
+    assert.deepEqual([proposed.text, proposed.detail, proposed.needsYou], ['Proposed decision: Dim the lamp at night', 'Ari proposed it', true]);
   });
 
-  test('the next step for a proposed rule tells the person who can accept it (#189)', async () => {
+  test('the next step for a proposed decision tells the person who can accept it (#189)', async () => {
     const shade = await createProject(ari, ws.id, 'Night shade', 'restricted');
     await grant(ari, shade.id, nia, 'contributor');
     const place = { type: 'project' as const, id: shade.id };
@@ -160,7 +160,7 @@ describe('return view: since you left', () => {
     const proposal = json<Decision>(await post(ari, `/api/v1/projects/${shade.id}/decisions`, { title: 'Warm light after 22:00', rationale: 'Sleep' }), 201);
     const back = await summary(nia, place);
     assert.deepEqual(back.nextStep && [back.nextStep.text, back.nextStep.reason, back.nextStep.item],
-      ['Decide on the proposed rule', 'Ari proposed “Warm light after 22:00”. You can accept it.', `decision:${proposal.id}`]);
+      ['Decide on the proposed decision', 'Ari proposed “Warm light after 22:00”. You can accept it.', `decision:${proposal.id}`]);
     assert.equal((await summary(ari, place)).nextStep, null, 'the proposer is not asked');
     // Decided and seen, so it does not stay on Nia's Home for the tests that follow.
     json(await post(nia, `/api/v1/decisions/${proposal.id}/accept`, {}, { 'if-match': '"1"' }), 200);
@@ -267,28 +267,26 @@ describe('return view: hidden rows never hint at anything', () => {
   });
 });
 
-describe('return view: work a pivot parked (#290, #44 scenario 3)', () => {
-  // Accepting a pivot parks work under `project.decision_accepted.v1` alone, with no event of the
-  // work's own. A person whose return point is after the task's last work event still learns that
-  // the pivot set it aside, told once, only for tasks in places they can read now.
-  test('a returning person sees "Parked: …" with the rule that set it aside; hidden tasks and plain acceptances add none', async () => {
+describe('return view: a replacing decision moves no task (#871)', () => {
+  // Accepting a decision that replaces another only marks the old one replaced. A returning person is told of the new decision
+  // and of nothing about tasks: no task is parked or called set aside, and a space they cannot read adds no hint.
+  test('a returning person sees "Decision changed: …" and no task set aside; hidden spaces and revoked readers see nothing', async () => {
     const [ari, nia, kai, olek] = await Promise.all(['Ari', 'Nia', 'Kai', 'Olek'].map(person));
     const ws = await workspace(ari, 'Lamp workshop');
     for (const someone of [nia, kai, olek]) await addMember(ari, ws.id, someone, 'member');
     const lamp = await createProject(ari, ws.id, 'Gesture lamp', 'restricted');
     await grant(ari, lamp.id, nia, 'contributor');
     await grant(ari, lamp.id, kai, 'contributor');
-    // A project Nia cannot read, with a pivot of its own.
+    // A space Nia cannot read, with a replacement of its own.
     const backRoom = await createProject(ari, ws.id, 'Back room', 'restricted');
-    const accept = async (projectId: string, title: string, extra: Record<string, unknown> = {}, command: Record<string, unknown> = {}) => {
+    const accept = async (projectId: string, title: string, extra: Record<string, unknown> = {}) => {
       const proposal = json<Decision>(await post(ari, `/api/v1/projects/${projectId}/decisions`, { title, ...extra }), 201);
-      json(await post(ari, `/api/v1/decisions/${proposal.id}/accept`, command, { 'if-match': `"${proposal.version}"` }), 200);
+      json(await post(ari, `/api/v1/decisions/${proposal.id}/accept`, {}, { 'if-match': `"${proposal.version}"` }), 200);
       return proposal;
     };
     const tof = 'Switch to a ToF distance sensor';
     const rule = await accept(lamp.id, 'Use the camera for gestures');
     const mount = json<WorkItem>(await post(ari, `/api/v1/projects/${lamp.id}/work`, { title: 'Mount the camera in the lamp head', owner: { kind: 'human', id: nia.id } }), 201);
-    const order = json<WorkItem>(await post(ari, `/api/v1/projects/${lamp.id}/work`, { title: 'Order a VL53L1X breakout board' }), 201);
     const hiddenRule = await accept(backRoom.id, 'Prototype behind the curtain');
     const hidden = json<WorkItem>(await post(ari, `/api/v1/projects/${backRoom.id}/work`, { title: 'Wire the hidden prototype' }), 201);
 
@@ -297,47 +295,32 @@ describe('return view: work a pivot parked (#290, #44 scenario 3)', () => {
     for (const someone of [nia, kai, olek]) await view(someone, { type: 'home' });
     await view(nia, lampPlace);
 
-    await accept(lamp.id, tof, { supersedes: rule.id }, { park: [mount.id], stillApplies: [order.id] });
-    await accept(backRoom.id, 'Move the prototype to the bench', { supersedes: hiddenRule.id }, { park: [hidden.id] });
-    const parkedText = `Parked: ${mount.title}`;
-    const setAside = `Set aside when the rule changed to “${tof}”`;
-    const parkedOf = (back: ReturnSummary) => back.items.filter((item) => item.text.startsWith('Parked: '));
+    await accept(lamp.id, tof, { supersedes: rule.id });
+    await accept(backRoom.id, 'Move the prototype to the bench', { supersedes: hiddenRule.id });
 
     for (const back of [await summary(nia, lampPlace), await summary(nia, { type: 'home' }), await summary(kai, { type: 'home' })]) {
-      assert.deepEqual(parkedOf(back).map((item) => [item.text, item.detail, item.kind, item.needsYou, item.actor]),
-        [[parkedText, setAside, 'work', false, 'Ari']], texts(back.items).join('\n'));
-      assert.deepEqual(parkedOf(back)[0]!.source, { type: 'work', id: mount.id, projectId: lamp.id });
-      assert.deepEqual(parkedOf(back)[0]!.project, { id: lamp.id, name: 'Gesture lamp' });
-      assert.ok(texts(back.items).includes(`Decision changed: ${tof}`), 'the pivot itself is told too');
-      assert.equal(texts(back.items).some((text) => text.includes(order.title)), false, 'work that still applies is not called parked');
+      const changed = back.items.find((item) => item.text === `Decision changed: ${tof}`);
+      assert.ok(changed, texts(back.items).join('\n'));
+      assert.equal(changed.detail, 'Previously: Use the camera for gestures · No reason was recorded.');
+      assert.equal(texts(back.items).some((text) => text.startsWith('Parked') || text.includes(mount.title)), false, 'no task is told as set aside');
       for (const secret of ['Wire the hidden prototype', hidden.id, 'Back room']) assert.equal(JSON.stringify(back).includes(secret), false, `no hint of ${secret}`);
     }
-    // Nia's own recap (#133 scope "mine") keeps it: the task is hers.
-    const mine = json<ReturnSummary>(await nia.browser.request('GET', `/api/v1/return?place=project&id=${lamp.id}&scope=mine`), 200);
-    assert.deepEqual(texts(parkedOf(mine)), [parkedText]);
-    // A workspace member who cannot read the project learns nothing of it.
+    // A workspace member who cannot read the space learns nothing of it.
     const outsider = await summary(olek, { type: 'home' });
-    assert.deepEqual(parkedOf(outsider), []);
+    assert.deepEqual(outsider.items, []);
     for (const secret of [mount.title, 'Wire the hidden prototype', lamp.id]) assert.equal(JSON.stringify(outsider).includes(secret), false, `no hint of ${secret}`);
-    // Revoked after the pivot: the parked item goes with every other trace of the project.
+    // Revoked after the replacement: it goes with every other trace of the space.
     await removeFromSpace(ari, lamp.id, kai);
     const revoked = await summary(kai, { type: 'home' });
     assert.deepEqual(revoked.items, []);
     assert.equal(JSON.stringify(revoked).includes(mount.title), false);
 
-    // The task's own later change and the pivot are one item, not two.
-    const parked = json<WorkItem>(await nia.browser.request('GET', `/api/v1/work/${mount.id}`), 200);
-    json(await patch(ari, `/api/v1/work/${mount.id}`, { outcome: 'Kept for a daylight version' }, { 'if-match': `"${parked.version}"` }), 200);
-    const both = await summary(nia, lampPlace);
-    assert.deepEqual(both.items.filter((item) => item.source.type === 'work' && item.source.id === mount.id).map((item) => [item.text, item.detail]),
-      [[parkedText, setAside]]);
-
-    // Seen; a later acceptance that is not a pivot parks nothing and does not repeat it.
+    // Seen; a later acceptance that replaces nothing is only a new decision and does not repeat it.
     await view(nia, lampPlace);
     await view(nia, { type: 'home' });
     await accept(lamp.id, 'Dim the lamp at night');
     for (const back of [await summary(nia, lampPlace), await summary(nia, { type: 'home' })])
-      assert.deepEqual(texts(back.items), ['New decision: Dim the lamp at night'], 'a plain acceptance is only a new rule');
+      assert.deepEqual(texts(back.items), ['New decision: Dim the lamp at night'], 'a plain acceptance is only a new decision');
   });
 });
 

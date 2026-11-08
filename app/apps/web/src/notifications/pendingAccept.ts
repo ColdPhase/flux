@@ -88,7 +88,7 @@ function start(id: string, run: Waiting['run'], settle: (outcome: AcceptOutcome)
 
 /** Starts the delayed accept of one decision; `undo()` cancels it while it still waits. */
 export function startAccept(decision: { id: string; version: number }, settle: (outcome: AcceptOutcome) => void, delay = ACCEPT_UNDO_MS) {
-  return start(`decision:${decision.id}`, (key, keepalive) => acceptDecision(decision, {}, key, keepalive), settle, delay);
+  return start(`decision:${decision.id}`, (key, keepalive) => acceptDecision(decision, key, keepalive), settle, delay);
 }
 
 /**

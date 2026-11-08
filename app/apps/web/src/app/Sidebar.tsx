@@ -142,7 +142,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
           {agents.map((agent) => <RailAgent key={agent.id} agent={agent} />)}
           {directMessages.map((dm) => (
             <NavLink key={dm.id} to={`/dm/${dm.id}`} end={false} className="side__rail-dm"
-              aria-label={dm.hasNew ? `${dm.title}, new messages` : dm.title} title={`${dm.title} · ${dm.audience}`}>
+              aria-label={dm.hasNew ? `${dm.title}, new messages` : dm.title} title={dm.title}>
               <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="lg" />
               {dm.hasNew ? <span className="side__dot" aria-hidden="true" /> : null}
             </NavLink>
@@ -244,7 +244,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, onClose, 
               {agents.map((agent, index) => <ListAgent key={agent.id} agent={agent} pinned={index === 0} onNavigate={navigate} />)}
               {directMessages.map((dm) => (
                 <li key={dm.id}>
-                  <NavLink to={`/dm/${dm.id}`} end={false} className="side__item side__dm" onClick={navigate} title={`${dm.title} · ${dm.audience}`}>
+                  <NavLink to={`/dm/${dm.id}`} end={false} className="side__item side__dm" onClick={navigate} title={dm.title}>
                     <Avatar name={dm.kind === 'group' ? dm.title : dm.people[0] ?? dm.title} size="sm" /><span className="side__label">{dm.title}</span>
                     {dm.hasNew ? <span className="side__dot"><span className="ui-vh">, new messages</span></span> : null}
                   </NavLink>

@@ -420,9 +420,9 @@ function DmContent({ initial }: { initial: Dm }) {
           {composer.draft.cites.map((cite) => <CiteTile key={`${cite.kind}:${cite.id}`} cite={cite} disabled={composer.sending} onRemove={() => composer.removeCite(cite.kind, cite.id)} />)}
           <ComposerBox id="dm-composer" label={`Message ${title}`} fieldRef={textareaRef} value={draft} onChange={(value) => change(value)} onBlur={typing.stop} onKeyDown={onKey}
             disabled={recipientGone} boxDisabled={recipientGone} placeholder={recipientGone ? 'Nobody else is in this conversation' : `Message ${others.length === 1 ? others[0]!.name.split(/\s+/)[0] : title}…`}
-            fieldProps={{ 'aria-describedby': audienceId }} sendLabel={asking ? 'Ask your agent' : 'Send message'} sendDisabled={!canSend} onSend={() => void send()} />
+            fieldProps={{ 'aria-describedby': asking ? audienceId : undefined }} sendLabel={asking ? 'Ask your agent' : 'Send message'} sendDisabled={!canSend} onSend={() => void send()} />
           {asking ? <p className="composer__audience" data-asking="true"><Icon name="lock" size={13} /><span id={audienceId}>Only you see the answer · {firstNames(others.map((person) => person.name)).join(', ') || 'The others'} {others.length === 1 ? 'sees' : 'see'} only a line that AI was used here</span></p>
-            : <p className="composer__audience"><Icon name="lock" size={13} /><span id={audienceId}>{audience}<span aria-hidden="true"> · </span><span className="composer__where">direct message</span></span></p>}
+            : null}
           <TypingNotice {...typing} />
           <SendAnnouncer pending={composer.pending} />
           {askFailure ? <p className="dm__error" role="alert"><Icon name="alert" size={13} />{askFailure}</p> : null}
@@ -435,7 +435,7 @@ function DmContent({ initial }: { initial: Dm }) {
     {threadOpen && slot ? (
       <OwnedPanelContent slot={slot} className="thread" id="thread">
       <DmThreadPanel key={threadId} dmId={dm.id} rootId={threadId!} meId={me.user.id} meName={me.user.name} nameOf={nameOf}
-        audience={audience} others={firstNames(others.map((person) => person.name))} writable={!recipientGone} refreshTick={refreshTick} receiptTick={receiptTick} focusComposer={replyFocus} canObserve
+        others={firstNames(others.map((person) => person.name))} writable={!recipientGone} refreshTick={refreshTick} receiptTick={receiptTick} focusComposer={replyFocus} canObserve
         onDenied={threadDenied} onCreateTask={startCopy} onCount={threadCount} />
       </OwnedPanelContent>) : null}
     {copy ? <DmTaskCopy dmId={dm.id} message={copy.message} excerpt={copy.excerpt} participants={dm.participants} onClose={() => stopCopy()}

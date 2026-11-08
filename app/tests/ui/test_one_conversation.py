@@ -425,7 +425,7 @@ class OneConversationJourney(unittest.TestCase):
         composer = page.get_by_label("Write a message", exact=True)
         body = "Shall we keep a PIR sensor as the backup for the ToF board?"
         composer.fill(body)
-        expect(page.locator(".composer__audience")).to_contain_text("Ada, Lee and you")
+        expect(page.locator(".composer__audience")).to_have_count(0)  # the space's audience is the default (#871)
         # The draft stays with the project across views.
         tabs = page.get_by_role("navigation", name="Space views")
         tabs.get_by_role("link", name=re.compile("^Tasks")).click()
@@ -526,7 +526,7 @@ class OneConversationJourney(unittest.TestCase):
         owner.goto(f"/projects/{project['id']}")
         stream = self.stream(owner)
         expect(stream.get_by_role("heading", name="Where do we start?")).to_be_visible()
-        expect(stream).to_contain_text("Everyone in Workspace conversation sees it.")
+        expect(stream).not_to_contain_text("Everyone in Workspace conversation sees it.")  # the default audience is not said (#871)
         expect(stream).not_to_contain_text("Only you see it for now")
         self.assertEqual(self.api(owner, "GET", path, status=200)["roots"], [])
         people = self.api(owner, "GET", f"/api/v1/projects/{project['id']}/people", status=200)

@@ -127,7 +127,7 @@ class ProjectHeader(unittest.TestCase):
         more = self.header(page).get_by_role("button", name="More", exact=True)
         more.click()
         menu = page.get_by_role("menu", name="More")
-        # "Who can see this" is in More only where the header has no room for the faces (a narrow main column).
+        # "People" is in More only where the header has no room for the faces (a narrow main column).
         items = menu.locator("[role^=menuitem]:visible")
         self.assertEqual([text.strip() for text in items.locator("span").all_inner_texts()], ["Settings", "Space details", "Hide the sidebar"])
         # Each key shows next to its action (S18) and is announced as its shortcut.

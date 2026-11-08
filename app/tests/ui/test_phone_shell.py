@@ -199,7 +199,7 @@ class PhoneShellJourney(unittest.TestCase):
             size = self.box(button)
             self.assertGreaterEqual(min(size["width"], size["height"]), 44, name)
         expect(page.locator(".state-row, .views")).to_have_count(0)
-        self.open_views(page).get_by_role("button", name="Details and people").click()
+        self.open_views(page).get_by_role("button", name="Space details").click()
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet.get_by_role("region", name="Now", exact=True)).to_have_count(0)
         expect(sheet.locator(".ov-head").get_by_role("heading", level=3)).to_be_visible()
@@ -282,7 +282,7 @@ class PhoneShellJourney(unittest.TestCase):
         page.goto(f"/projects/{self.project['id']}")
         # The phone has no navigation drawer any more: places are the capsule and the title.
         expect(page.get_by_role("button", name="Open navigation")).to_have_count(0)
-        self.open_views(page).get_by_role("button", name="Details and people").click()
+        self.open_views(page).get_by_role("button", name="Space details").click()
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet).to_be_visible()
         self.settle(page)

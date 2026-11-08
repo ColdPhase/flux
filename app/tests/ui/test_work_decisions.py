@@ -3,7 +3,7 @@
 Runs with the other tests/ui journeys through scripts/check_ui.sh against the running Compose
 application. Two people sign up in their own browser contexts and share one project. From
 messages they create work in one action, propose and accept a decision, attach a negative result
-that finishes the experiment and pivot with parking; one of them works on a phone. Every step is
+that finishes the experiment and a decision that replaces another and moves no task; one of them works on a phone. Every step is
 checked against the API, so the test proves persisted behaviour rather than local state.
 """
 
@@ -144,7 +144,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         panel = self.details(page)
         expect(panel.get_by_role("heading", name=IDEA)).to_be_visible()
         expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("To do")
-        expect(panel).to_contain_text("Everyone in Gesture lamp")
+        # The space's audience is the default, so the panel does not say it (#871).
+        expect(panel).not_to_contain_text("Everyone in")
+        expect(panel).not_to_contain_text("Who can see this")
         expect(panel.get_by_role("link", name=re.compile("^Message: Test the camera"))).to_be_visible()
         # The source stays in place, and the work shows up under it.
         expect(message.locator(":scope > .message-bubble > .message-body").first).to_have_text(IDEA)
@@ -156,7 +158,6 @@ class WorkDecisionsJourney(unittest.TestCase):
         # One change, one toast, and Undo puts the state back at once (S9).
         expect(page.locator(".ui-toast").filter(has_text=re.compile(r"moved to Doing")).get_by_role("button", name="Undo")).to_be_visible()
         # Details names the task by its number in the project (#276), in the head beside the Task chip.
-        expect(panel.locator(".wd__foot")).to_contain_text("Everyone in Gesture lamp")
         expect(page.locator(".ui-panel__meta")).to_have_text("#1")
         expect(message.locator(".ws-chip .ui-task-number")).to_have_text("#1")
         self.assertTrue(message.locator(".ws-chip").evaluate("node => node.querySelector('.ui-task-number').compareDocumentPosition(node.querySelector('.ws-chip__t')) & Node.DOCUMENT_POSITION_FOLLOWING"), "the number leads the title in a task reference")
@@ -231,9 +232,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         expect(self.details(page)).to_contain_text("The camera cannot track gestures")
         page.keyboard.press("Escape")
 
-    # ---------------------------------------------------------------- pivot parks work
+    # ---------------------------------------------------------------- a replacing decision moves no task (#871)
 
-    def test_05_pivot_keeps_history_and_parks_obsolete_work(self) -> None:
+    def test_05_replacing_a_decision_keeps_history_and_moves_no_task(self) -> None:
         page = self.page("owner")
         page.goto(f"/projects/{self.project_id}/tasks")
         page.get_by_role("radio", name="List", exact=True).click()
@@ -246,31 +247,34 @@ class WorkDecisionsJourney(unittest.TestCase):
         page.goto(f"/projects/{self.project_id}?open=propose-decision")  # the full form; a message has no Propose a decision (#867)
         panel.get_by_role("textbox", name="Decision", exact=True).fill(PIVOT)
         panel.get_by_label("Why").fill("The camera failed in low light; a ToF sensor works in the dark and stores no images")
-        choose(panel.get_by_label("Replaces"), label="Use a camera for gesture control")
+        choose(panel.get_by_label("Replaces an earlier decision?"), label="Use a camera for gesture control")
         panel.get_by_role("button", name="Propose decision").click()
-        expect(panel.get_by_role("heading", name="What happens to current work?")).to_be_visible()
-        panel.get_by_role("radiogroup", name="Mount the camera in the lamp head").get_by_label("Park").check()
-        panel.get_by_role("radiogroup", name="Design the diffuser").get_by_label("Still applies").check()
-        shot(page, "decision-desktop-1440-pivot")
-        panel.get_by_role("button", name="Accept and pivot").click()
+        # The panel says what it replaces in one plain sentence, and there is nothing to decide about tasks.
+        expect(panel.get_by_text("This replaces the decision Use a camera for gesture control")).to_be_visible()
+        expect(panel.get_by_role("heading", name="What happens to current work?")).to_have_count(0)
+        expect(panel.get_by_label("Park")).to_have_count(0)
+        expect(panel.get_by_role("button", name="Accept and pivot")).to_have_count(0)
+        shot(page, "decision-desktop-1440-replaces")
+        panel.get_by_role("button", name="Accept", exact=True).click()
         expect(panel.locator(".wd-eyebrow")).to_contain_text("Decision · accepted")
-        expect(panel.get_by_role("region", name="At this pivot")).to_contain_text("parked")
+        expect(panel.get_by_role("region", name="At this pivot")).to_have_count(0)
 
         stored = self.work(page)
         by_title = {item["title"]: item for item in stored["work"]}
-        self.assertEqual(by_title["Mount the camera in the lamp head"]["status"], "open", "parked work keeps its status")
-        self.assertIsNotNone(by_title["Mount the camera in the lamp head"]["parked"])
-        self.assertIsNone(by_title["Design the diffuser"]["parked"])
+        for title in ("Mount the camera in the lamp head", "Design the diffuser"):
+            self.assertEqual(by_title[title]["status"], "open", f"{title} is left to people")
+            self.assertIsNone(by_title[title]["parked"])
         rules = {item["title"]: item for item in stored["decisions"]}
         self.assertEqual(rules["Use a camera for gesture control"]["status"], "superseded")
         self.assertEqual(rules["Use a camera for gesture control"]["rationale"], "It recognises the richest set of gestures")
 
         page.get_by_role("navigation", name="Space views").get_by_role("link", name="Tasks").click()
-        expect(page.get_by_role("region", name=re.compile("^Parked by a pivot"))).to_contain_text("Mount the camera in the lamp head")
-        # The earlier rule and its reason stay in the decision's own details (S1: no archive).
+        expect(page.get_by_role("region", name=re.compile("^Parked"))).to_have_count(0)
+        expect(page.get_by_text("parked by a pivot")).to_have_count(0)
+        # The earlier decision and its reason stay in the decision's own details (S1: no archive).
         page.goto(f"/projects/{self.project_id}/tasks?open=decision:{rules['Use a camera for gesture control']['id']}")
         expect(self.details(page)).to_contain_text("Decision · replaced")
-        expect(self.details(page).get_by_role("heading", name="Replaced by")).to_be_visible()
+        expect(self.details(page).get_by_text("This was replaced by the decision Switch to a ToF distance sensor")).to_be_visible()
         page.keyboard.press("Escape")
         shot(page, "tasks-desktop-1440")
 
@@ -290,7 +294,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         submit_button(page).tap()
         sheet = page.get_by_role("dialog", name="Details")
         expect(sheet.get_by_role("heading", name=FINDING_TASK)).to_be_visible()
-        expect(sheet).to_contain_text("Everyone in Gesture lamp")
+        expect(sheet).not_to_contain_text("Everyone in")
         shot(page, "work-phone-390-details")
         # The task took the thread's place in the one sheet; the way back leads to the reply it was made from.
         sheet.get_by_role("button", name="Thread", exact=True).tap()
@@ -401,9 +405,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         desk.get_by_role("button", name="Mine", exact=True).click()
         self.assertIn("show=mine", desk.url)
         expect(region).not_to_contain_text(theirs)
-        desk.goto(f"/projects/{self.project_id}/tasks?status=parked&show=mine")
-        expect(desk.locator(".ws-only")).to_contain_text("Only Parked")
-        expect(desk.locator(".ws-none")).to_contain_text("Nothing of yours in Parked right now.")
+        desk.goto(f"/projects/{self.project_id}/tasks?status=finished&show=mine")
+        expect(desk.locator(".ws-only")).to_contain_text("Only Done")
+        expect(desk.locator(".ws-none")).to_contain_text("Nothing of yours in Done right now.")
         desk.get_by_role("button", name="Show everyone’s").click()
         expect(desk.get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "false")
 

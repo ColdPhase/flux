@@ -52,7 +52,6 @@ export interface WorkReadUnitOfWork { run<T>(read: (ports: WorkReadPorts) => Pro
 export interface WorkReadRequirements {
   sources?: WorkAssociationSelection;
   objects?: readonly WorkReadObject[];
-  parkedDecisionId?: string;
   /** The selected found/marker partition must remain unchanged before release. */
   references?: { objects: readonly WorkReadObject[]; available: readonly WorkReadObject[] };
   /** The selected thoughts that are this project's thoughts must remain exactly these. */

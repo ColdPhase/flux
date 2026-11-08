@@ -88,7 +88,7 @@ class DetailPanelFinal(unittest.TestCase):
                 # Rows of label and value; the blocker is a card; Activity and a composer follow. Empty Results are not shown.
                 rows = panel.locator(".wd-rows .wd-row")
                 expect(rows).to_have_count(4)
-                for label in ("Status", "Owner", "Came from", "Due"):
+                for label in ("Status", "Owner", "From", "Due"):
                     expect(panel.locator(".wd-row dt", has_text=label)).to_be_visible()
                 card = panel.get_by_role("region", name="Blocker")
                 expect(card).to_be_visible()
@@ -198,26 +198,6 @@ class DetailPanelFinal(unittest.TestCase):
         expect(panel.get_by_role("region", name="Blocker")).to_contain_text("Waiting for the bracket from the supplier")
         stored = self.stored(task)
         self.assertEqual((stored["status"], stored["blocker"]), ("blocked", "Waiting for the bracket from the supplier"))
-
-    def test_03e_finishing_parked_work_offers_no_undo_it_cannot_keep(self):
-        """Negative control: Undo would restore the status but not 'parked' (the PATCH contract only unparks), so no Undo is offered."""
-        task = self.new_task("Compare the replacement enclosure", owner=True)
-        previous = api(self.ctx, "POST", self.root + "/decisions", {"title": "Use the original enclosure"}, 201)
-        api(self.ctx, "POST", f"/api/v1/decisions/{previous['id']}/accept", {"expectedVersion": 1}, 200)
-        pivot = api(self.ctx, "POST", self.root + "/decisions", {"title": "Keep the measured enclosure", "supersedes": previous["id"], "affects": [task["id"]]}, 201)
-        api(self.ctx, "POST", f"/api/v1/decisions/{pivot['id']}/accept", {"expectedVersion": 1, "park": [task["id"]]}, 200)
-        self.assertIsNotNone(self.stored(task)["parked"])
-        page = self.page()
-        panel = self.open_task(page, task)
-        expect(panel.locator(".wd-where")).to_have_text("Parked, not done")
-        panel.locator(".ui-panel__body").focus()
-        page.keyboard.press("4")
-        toasts = page.locator(".ui-toasts")
-        expect(toasts).to_contain_text("no longer parked")
-        expect(panel.get_by_role("button", name="Status", exact=True)).to_contain_text("Done")
-        self.assertEqual(self.stored(task)["status"], "done")
-        self.assertIsNone(self.stored(task)["parked"])
-        expect(toasts.get_by_role("button", name="Undo")).to_have_count(0)
 
     def test_03c_a_failed_title_save_keeps_the_draft_until_it_is_saved(self):
         task = self.new_task("Name the gateway")

@@ -115,7 +115,7 @@ export function WorkspacePeople({ workspaceId, onBack, page = false }: { workspa
   const listRef = useRef<HTMLUListElement>(null);
   useRowMotion(listRef, '.people__item[data-row-key]', (el) => el.dataset.rowKey, `${workspaceId}|${roster ? 'ready' : 'loading'}`);
   // In Settings → People (#763 PE-1) the page is its own place: no way back to a panel and no panel keys.
-  const back = page ? null : <button type="button" className="details__back" aria-label="Back to Details" onClick={onBack}><Icon name="chevron-left" size={14} />Details</button>;
+  const back = page ? null : <button type="button" className="details__back" aria-label="Back" onClick={onBack}><Icon name="chevron-left" size={14} />Back</button>;
   if (!roster) {
     return (
       <div className={`details people${page ? ' people--page' : ''}`}>

@@ -147,9 +147,8 @@ export function createBoundedWorkReads(unit: WorkReadUnitOfWork, finalFence: Wor
           rowFacts([selected], projectId, workspaceId);
         }
         return { ...page, summary, selected, ...(slice.searchUnavailable ? { searchUnavailable: true as const } : {}) };
-      }, input.selection.purpose !== 'choices' ? undefined : input.selection.choice === 'parked_work'
-        ? { parkedDecisionId: input.selection.decisionId } : input.selection.choice === 'result_work' && input.selection.selected
-          ? { objects: [{ kind: 'work', id: input.selection.selected }] } : undefined);
+      }, input.selection.purpose !== 'choices' ? undefined : input.selection.choice === 'result_work' && input.selection.selected
+        ? { objects: [{ kind: 'work', id: input.selection.selected }] } : undefined);
       return { ...response.value, summary: { ...response.value.summary, access: response.access } };
     },
 

@@ -28,19 +28,19 @@ export function isFinished(item: Pick<WorkItem, 'status'>) {
 
 /**
  * A reference card's state as parts that read as the one line (`decisionLine`, `resultLine`, or a work item's
- * status, owner and parking). A part marked `extra` only adds a name or a clause; the narrow one-row card hides it (#665) and keeps
+ * status and owner). A part marked `extra` only adds a name or a clause; the narrow one-row card hides it (#665) and keeps
  * the state itself: "In progress", "accepted Oct 23", "Negative result".
  */
 export type StatePiece = { text: string; extra?: boolean };
 export const stateText = (pieces: StatePiece[]) => pieces.map((piece) => piece.text).join('');
 
-export function workPieces(item: Pick<WorkItem, 'status' | 'owner' | 'parked' | 'lifecycle'>): StatePiece[] {
+export function workPieces(item: Pick<WorkItem, 'status' | 'owner' | 'lifecycle'>): StatePiece[] {
   if (item.lifecycle?.state === 'creation_reverted') return [{ text: 'creation undone' }];
-  return [{ text: STATUS_LABEL[item.status] }, ...(item.owner?.name ? [{ text: ` · ${item.owner.name}`, extra: true }] : []), ...(item.parked ? [{ text: ' · parked' }] : [])];
+  return [{ text: STATUS_LABEL[item.status] }, ...(item.owner?.name ? [{ text: ` · ${item.owner.name}`, extra: true }] : [])];
 }
 
 export function decisionPieces(decision: Pick<Decision, 'status' | 'supersedes' | 'decidedAt' | 'supersededAt'>): StatePiece[] {
-  if (decision.status === 'proposed') return decision.supersedes ? [{ text: 'Proposed decision' }, { text: ' · would replace an accepted decision', extra: true }] : [{ text: 'Proposed decision' }];
+  if (decision.status === 'proposed') return decision.supersedes ? [{ text: 'Proposed decision' }, { text: ' · replaces an earlier decision', extra: true }] : [{ text: 'Proposed decision' }];
   if (decision.status === 'accepted') return [{ text: 'Decision · ', extra: true }, { text: `accepted ${shortDate(decision.decidedAt!)}` }];
   return [{ text: 'Decision · ', extra: true }, { text: `replaced ${shortDate(decision.supersededAt!)}` }];
 }

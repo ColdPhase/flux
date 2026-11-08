@@ -7,18 +7,15 @@ import { AddToDoc } from '../docs/AddToDoc';
 import { ProjectOverview } from '../project/ProjectOverview';
 import { useProjectShell } from '../project/data';
 import { WorkspacePeople } from '../people/WorkspacePeople';
-import { useShellData } from './data';
 import type { DetailsView, OwnedView } from './shellContext';
 import { ThoughtTasksPanel } from '../sketch/ThoughtTasks';
 
 /**
- * Details for the current place. With nothing selected it says so briefly; the context of a
- * selected message, task, decision or result joins it with conversations (#36). Account and
- * session details live in the account menu.
+ * Details for the current place: a space's overview or a direct message's people. The context of a selected message, task,
+ * decision or result joins it with conversations (#36). Account and session details live in the account menu.
  */
-export function Details({ view, placeTitle, dm = null, onBack }: {
+export function Details({ view, dm = null, onBack }: {
   view: Exclude<DetailsView, OwnedView>;
-  placeTitle: string;
   /** The open direct message (#107): its other people and audience line. */
   dm?: { id: string; kind: 'pair' | 'group'; title: string; me: string; people: string[]; audience: string } | null;
   onBack: () => void;
@@ -54,66 +51,15 @@ export function Details({ view, placeTitle, dm = null, onBack }: {
       </div>
     );
   }
-  // My map (#508, #866) is private to you.
-  const home = placeTitle === 'My map';
-  return (
-    <div className="details">
-      <p className="details__eyebrow">{placeTitle}</p>
-      <h3 className="details__title">Nothing selected</h3>
-      <p className="details__lead">Select a thought, task or result to see where it came from, what it connects to and who can see it.</p>
-
-      <section className="details__sec" aria-labelledby="details-audience">
-        <h4 id="details-audience">Who can see {placeTitle}</h4>
-        {home
-          ? <p>Only you. What you put here stays private until you choose to share it.</p>
-          : <p>Only the people in each conversation.</p>}
-      </section>
-
-      <PeopleEntries />
-    </div>
-  );
-}
-
-const ROLE_LINE = {
-  owner: 'You’re an owner · add and manage people',
-  admin: 'You’re an admin · add and manage people',
-  member: 'You’re a member · see who’s here',
-  guest: 'You’re a guest · you see only the spaces you’re added to',
-} as const;
-
-/**
- * The company's people (F-037), one step away from a place's Details: they live in Settings › Company. An encrypted space keeps its people
- * and keys in its own settings (C-24), not here.
- */
-function PeopleEntries() {
-  const { workspace } = useShellData();
-  return (
-    <section className="details__sec ov-sec" aria-labelledby="details-people">
-      <h4 id="details-people">People</h4>
-      {workspace ? null : <p className="ov-empty">You’re not in a company on this Flux yet. Ask an admin for an invite link.</p>}
-      <ul className="ov-rows">
-        {workspace ? (
-          <li>
-            <Link className="ov-row" to="/settings/company">
-              <Icon name="people" size={16} className="ov-row__ic" />
-              <span className="ov-row__b">
-                <span className="ov-row__t">{workspace.name}</span>
-                {workspace.role ? <span className="ov-row__s">{ROLE_LINE[workspace.role]}</span> : null}
-              </span>
-              <Icon name="chevron-right" size={16} className="ov-row__go" />
-            </Link>
-          </li>
-        ) : null}
-      </ul>
-    </section>
-  );
+  // Only a space and a direct message have a panel of their own; every other place has no Details (#871).
+  return null;
 }
 
 /** Personal connection setup (#57, #68, F-020): your own MCP client and your own in-app assistant, on any provider. */
 function ConnectAi({ onBack }: { onBack: () => void }) {
   return (
     <div className="details">
-      <button type="button" className="details__back" aria-label="Back to Details" onClick={onBack}><Icon name="chevron-left" size={14} />Details</button>
+      <button type="button" className="details__back" aria-label="Back" onClick={onBack}><Icon name="chevron-left" size={14} />Back</button>
       <p className="details__eyebrow">Optional</p>
       <h3 className="details__title">Connect your AI</h3>
       <p className="details__lead">Flux works fully without AI. Your own MCP client can connect to selected spaces, read context and suggest proposals for human review.</p>

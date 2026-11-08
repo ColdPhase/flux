@@ -735,7 +735,8 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
             ) : (
               <button type="button" className="sk-title" disabled={!canWrite} aria-label={canWrite ? `Rename map ${sketch.title}` : undefined} onClick={() => setRenaming(true)}>{sketch.title}</button>
             )}
-            <span className="sk-aud" title="Who can see this map"><Icon name={sketch.scope === 'project' ? 'people' : 'lock'} size={12} />{audience(sketch, me.user.id, projectName)}</span>
+            {/* Said only when it differs from the default: a map made in a space is read by the space; a private one is "Only you" (#871). */}
+            {sketch.scope === 'project' ? null : <span className="sk-aud" title="Who can see this map"><Icon name="lock" size={12} />{audience(sketch, me.user.id, projectName)}</span>}
           </p>
           {!phone || !mapMode || (!sketch.thoughts.length && !canWrite) ? viewModes : null}
         </div>

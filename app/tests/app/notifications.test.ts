@@ -214,7 +214,7 @@ describe('notifications from committed events', () => {
     const result = expectStatus(await cy.browser.request('POST', `/api/v1/projects/${projectId}/results`, { body: { title: 'Recycled stock shows the grid lines', finding: 'positive', work: [work.id] } }), 201) as { id: string };
     const review = await waitForItem(ben, (item) => item.url?.endsWith(`decision:${decision.id}`) === true, 'Ben\'s decision review');
     assert.equal(review.reason, 'review');
-    assert.equal(review.title, 'Decision to review: Print on recycled paper');
+    assert.equal(review.title, 'Decision proposed: Print on recycled paper');
     const resultItem = await waitForItem(ben, (item) => item.url?.endsWith(`result:${result.id}`) === true, 'Ben\'s result review');
     assert.equal(resultItem.reason, 'review');
     await generatorCaughtUp();

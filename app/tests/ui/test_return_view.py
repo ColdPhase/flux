@@ -224,8 +224,8 @@ class ReturnViewJourney(unittest.TestCase):
         page.get_by_role("region", name="Continue where you left off").get_by_role("link").click()
         expect(page).to_have_url(re.compile(f"/projects/{self.project_id}/conversations/{self.conversation_id}#message-"))
         expect(page.locator(".is-arrived")).to_be_in_viewport()
-        # Audience preview before writing: the thread's composer names who will read the reply.
-        expect(page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies")).locator(".composer__audience")).to_have_text(re.compile("Ari and you · only you two · saved to Gesture lamp"))
+        # The thread's audience is the space's, the default, so its composer does not say who will read the reply (#871).
+        expect(page.get_by_role("complementary", name="Replies").or_(page.get_by_role("dialog", name="Replies")).locator(".composer__audience")).to_have_count(0)
         # Following the card was continuing: back on Home it has moved on, now and after a reload.
         page.get_by_role("link", name="Home").first.click()
         expect(page.get_by_role("heading", level=2, name=re.compile("^Good (morning|afternoon|evening), Nia$"))).to_be_visible()
@@ -242,7 +242,7 @@ class ReturnViewJourney(unittest.TestCase):
         composer.tap()
         composer.fill("Thanks, I will print the clip tonight.")
         expect(composer).to_be_in_viewport()
-        expect(phone.get_by_role("complementary", name="Replies").or_(phone.get_by_role("dialog", name="Replies")).locator(".composer__audience")).to_be_in_viewport()
+        expect(phone.get_by_role("button", name="Send reply")).to_be_in_viewport()
         self.no_horizontal_scroll(phone)
         shot(phone, "matched-project-phone-390-composer")
         phone.get_by_role("button", name="Send reply").tap()

@@ -214,7 +214,7 @@ HORIZONTAL = r"""(el) => {
           box: [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)], window: innerWidth};
 }"""
 
-# Every field row of the task in Details (Status, Owner, Came from, Due, ...), brought into view in the panel's own
+# Every field row of the task in Details (Status, Owner, From, Due, ...), brought into view in the panel's own
 # scroller: whether it lies fully above the composer, and is the element hit at its centre (nothing covers it).
 # With scroll=false nothing is scrolled: it is where the rows are when the panel opens, and "opens" says the row's own line
 # (its first 24 px) is above the composer.

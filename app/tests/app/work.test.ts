@@ -10,7 +10,7 @@ import { addMember, expectStatus, grant, person, project as createProject, works
 import { StreamClient } from './support/stream.js';
 
 // Work items, decisions and results linked to conversations (issue #101): access for two
-// people and outsiders, supersede history, pivot parking, If-Match conflicts, idempotent
+// people and outsiders, supersede history (no task is moved by a decision), If-Match conflicts, idempotent
 // retries, events for the stream, and the agent rule (propose, never accept).
 
 const KINDS = ['project.work_created.v1', 'project.work_updated.v1', 'project.decision_proposed.v1', 'project.decision_accepted.v1', 'project.result_recorded.v1', 'project.link_created.v1'];
@@ -155,7 +155,7 @@ describe('work, decisions and results in a project', () => {
     assert.equal(again.headers.get('etag'), '"2"');
   });
 
-  test('only people accept decisions; superseding keeps history and a pivot parks obsolete work', async () => {
+  test('only people accept decisions; superseding keeps history and moves no task', async () => {
     const camera = json<WorkItem>(await post(partner, `/api/v1/projects/${lamp.id}/work`, { title: 'Camera gesture prototype', status: 'in_progress' }), 201);
     const enclosure = json<WorkItem>(await post(partner, `/api/v1/projects/${lamp.id}/work`, { title: 'Lamp enclosure' }), 201);
     const message = conversation.messages[0]!;
@@ -177,24 +177,23 @@ describe('work, decisions and results in a project', () => {
     const agentWork = workUseCases(db);
     const proposal = await agentWork.proposeDecision(helper, lamp.id, { title: 'Try a ToF sensor', rationale: 'Works in the dark', supersedes: first.id });
     assert.deepEqual([proposal.proposedBy.kind, proposal.proposedBy.name], ['agent', 'Lab helper']);
-    await rejects(agentWork.acceptDecision(helper, proposal.id, {}, 1), 'DECISION_NEEDS_PERSON');
-    await rejects(agentWork.acceptDecision({ kind: 'agent', id: randomUUID() }, proposal.id, {}, 1), 'DECISION_NOT_FOUND');
+    await rejects(agentWork.acceptDecision(helper, proposal.id, 1), 'DECISION_NEEDS_PERSON');
+    await rejects(agentWork.acceptDecision({ kind: 'agent', id: randomUUID() }, proposal.id, 1), 'DECISION_NOT_FOUND');
 
-    // The pivot: a person accepts the agent's proposal, keeps the enclosure, parks the camera work.
-    const pivot = json<Decision>(await post(owner, `/api/v1/decisions/${proposal.id}/accept`,
-      { stillApplies: [enclosure.id], park: [camera.id] }, { 'if-match': `"${proposal.version}"` }), 200);
-    assert.deepEqual([pivot.status, pivot.supersedes, pivot.decidedBy?.name], ['accepted', first.id, 'work-owner']);
-    assert.deepEqual(pivot.links.filter((link) => link.role === 'still_applies').map((link) => link.to), [{ type: 'work', id: enclosure.id }]);
+    // A person accepts the agent's proposal, which replaces the first decision. That only marks the first one replaced (#871):
+    // no task is moved, parked or linked, even by a client that still names tasks to keep or park.
+    const cameraBefore = json<WorkItem>(await get(partner, `/api/v1/work/${camera.id}`), 200);
+    const enclosureBefore = json<WorkItem>(await get(partner, `/api/v1/work/${enclosure.id}`), 200);
+    const replacement = json<Decision>(await post(owner, `/api/v1/decisions/${proposal.id}/accept`,
+      { park: [camera.id], stillApplies: [enclosure.id] }, { 'if-match': `"${proposal.version}"` }), 200);
+    assert.deepEqual([replacement.status, replacement.supersedes, replacement.decidedBy?.name], ['accepted', first.id, 'work-owner']);
+    assert.deepEqual(replacement.links.filter((link) => link.role === 'still_applies'), []);
     const history = json<Decision>(await get(partner, `/api/v1/decisions/${first.id}`), 200);
     assert.deepEqual([history.status, history.supersededBy, history.rationale, history.decidedBy?.id], ['superseded', proposal.id, 'Richest gesture set', owner.id]);
-    const parked = json<WorkItem>(await get(partner, `/api/v1/work/${camera.id}`), 200);
-    assert.equal(parked.status, 'in_progress', 'parked work is not called done');
-    assert.equal(parked.parked?.decisionId, proposal.id);
-    const kept = json<WorkItem>(await get(partner, `/api/v1/work/${enclosure.id}`), 200);
-    assert.equal(kept.parked, null);
-    assert.ok(kept.links.some((link) => link.role === 'still_applies' && link.from.id === proposal.id));
-    const unparked = json<WorkItem>(await patch(partner, `/api/v1/work/${camera.id}`, { parked: false }, { 'if-match': `"${parked.version}"` }), 200);
-    assert.equal(unparked.parked, null);
+    const cameraAfter = json<WorkItem>(await get(partner, `/api/v1/work/${camera.id}`), 200);
+    const enclosureAfter = json<WorkItem>(await get(partner, `/api/v1/work/${enclosure.id}`), 200);
+    assert.deepEqual([cameraAfter.version, cameraAfter.status, cameraAfter.parked], [cameraBefore.version, 'in_progress', null], 'the task the old decision affected is left to people');
+    assert.deepEqual([enclosureAfter.version, enclosureAfter.parked, enclosureAfter.links.some((link) => link.role === 'still_applies')], [enclosureBefore.version, null, false]);
 
     // Two people accept competing replacements of the same rule at once: exactly one wins.
     const a = json<Decision>(await post(owner, `/api/v1/projects/${lamp.id}/decisions`, { title: 'PIR only', supersedes: proposal.id }), 201);
@@ -261,22 +260,12 @@ describe('work, decisions and results in a project', () => {
     assert.deepEqual([droppedFinish.status, code(droppedFinish)], [409, 'WORK_NOT_FINISHABLE']);
     assert.equal(json<WorkItem>(await get(owner, `/api/v1/work/${dropped.id}`), 200).status, 'not_pursued');
 
-    // Parked by a pivot: it must be brought back first, so it is never both done and parked.
-    const shelved = json<WorkItem>(await post(owner, `/api/v1/projects/${lamp.id}/work`, { title: 'Camera housing' }), 201);
-    const rule = json<Page<Decision>>(await get(owner, `/api/v1/projects/${lamp.id}/decisions?limit=100`), 200).items.find((item) => item.status === 'accepted')!;
-    const pivot = json<Decision>(await post(owner, `/api/v1/projects/${lamp.id}/decisions`, { title: 'Sensor only', supersedes: rule.id }), 201);
-    json(await post(owner, `/api/v1/decisions/${pivot.id}/accept`, { park: [shelved.id] }, { 'if-match': '"1"' }), 200);
-    const parked = json<WorkItem>(await get(partner, `/api/v1/work/${shelved.id}`), 200);
-    assert.ok(parked.parked);
-    const parkedFinish = await finish(parked, parked.version);
-    assert.deepEqual([parkedFinish.status, code(parkedFinish)], [409, 'WORK_NOT_FINISHABLE']);
-    const back = json<WorkItem>(await patch(partner, `/api/v1/work/${shelved.id}`, { parked: false }, { 'if-match': `"${parked.version}"` }), 200);
-    json(await finish(back, back.version, 'Housing not needed'), 201);
-    const done = json<WorkItem>(await get(owner, `/api/v1/work/${shelved.id}`), 200);
+    // Work a decision change left alone finishes like any other.
+    const housing = json<WorkItem>(await post(owner, `/api/v1/projects/${lamp.id}/work`, { title: 'Camera housing' }), 201);
+    json(await finish(housing, housing.version, 'Housing not needed'), 201);
+    const done = json<WorkItem>(await get(owner, `/api/v1/work/${housing.id}`), 200);
     assert.deepEqual([done.status, done.parked], ['done', null]);
     assert.equal(await results(), before + 1);
-    const both = await pool.query("SELECT count(*)::int AS n FROM project_work_items WHERE status = 'done' AND parked_at IS NOT NULL");
-    assert.equal(both.rows[0].n, 0, 'no work is both done and parked');
   });
 
   test('events reach only project readers; assigned work uses the visibility filter and access loss hides everything', async () => {

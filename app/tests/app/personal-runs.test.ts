@@ -684,7 +684,7 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
       // Neither the assistant's agent identity nor a person outside the space decides the proposal or the decision.
       const assistant: Principal = { kind: 'agent', id: agents.hubert! };
       await assert.rejects(proposals.accept(assistant, proposalId, {}, drafted.version));
-      await assert.rejects(workUseCases(db).acceptDecision(assistant, pending.id, {}, pending.version), { code: 'DECISION_NEEDS_PERSON' });
+      await assert.rejects(workUseCases(db).acceptDecision(assistant, pending.id, pending.version), { code: 'DECISION_NEEDS_PERSON' });
       assert.equal((await outsider.browser.request('POST', `/api/v1/assistant-proposals/${proposalId}/accept`, { body: { expectedVersion: drafted.version } })).status, 404);
       assert.equal((await outsider.browser.request('POST', `/api/v1/decisions/${pending.id}/accept`, { body: { expectedVersion: pending.version } })).status, 404);
       assert.equal((await proposals.get(human(kai), proposalId)).status, 'proposed');

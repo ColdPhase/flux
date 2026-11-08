@@ -7,9 +7,8 @@ import { sealedSearchRows } from '../sealed-search.js';
 /** Structural counterpart of core's normalized selector; DB never imports the core layer. */
 export type NativeWorkViewSelector =
   | { purpose: 'tasks'; group: 'all' | WorkGroup; mine: boolean; workOnly?: boolean }
-  | { purpose: 'choices'; choice: 'accepted_decisions' | 'pivot_work'; q: string }
+  | { purpose: 'choices'; choice: 'accepted_decisions' | 'open_work'; q: string }
   | { purpose: 'choices'; choice: 'result_work'; q: string; selected?: string }
-  | { purpose: 'choices'; choice: 'parked_work'; q: string; decisionId: string }
   | { purpose: 'choices'; choice: 'doc_refs'; q: string; kind: WorkObjectType };
 export type NativeWorkReadKey = { kind: WorkObjectType; id: string; rank: number; createdAt: string };
 export interface NativeWorkKeyPage { items: NativeWorkReadKey[]; total: number; before: number; hasBefore: boolean; hasAfter: boolean; searchUnavailable?: true }
@@ -59,7 +58,7 @@ export function nativeWorkViewKeySource(projectId: string, actor: PrincipalRef, 
   } else if (selection.choice === 'doc_refs' && selection.kind === 'result') {
     parts.push(sql`SELECT 'result'::text AS kind, ${r.id} AS id, ${r.createdAt} AS created_at, 0 AS rank FROM ${r} WHERE ${r.projectId} = ${projectId}::uuid AND (${literalTitle(sql`${r.title}`, selection.q, sql`${r.id}`, matching)})`);
   } else {
-    const predicate = selection.choice === 'doc_refs' ? sql`true` : selection.choice === 'pivot_work' ? sql`${unfinished} AND NOT ${parked}` : selection.choice === 'parked_work' ? sql`${unfinished} AND ${parked} AND ${w.parkedByDecisionId} = ${selection.decisionId}::uuid` : unfinished;
+    const predicate = selection.choice === 'doc_refs' ? sql`true` : selection.choice === 'open_work' ? sql`${unfinished} AND NOT ${parked}` : unfinished;
     parts.push(sql`SELECT 'work'::text AS kind, ${w.id} AS id, ${w.createdAt} AS created_at, 0 AS rank FROM ${w} WHERE ${w.projectId} = ${projectId}::uuid AND ${active} AND (${predicate}) AND (${literalTitle(sql`${w.title}`, selection.q, sql`${w.id}`, matching)})`);
   }
   return sql.join(parts, sql` UNION ALL `);

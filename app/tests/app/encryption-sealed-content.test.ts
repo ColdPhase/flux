@@ -197,12 +197,12 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
       const other = await post(ada, `/api/v1/workspaces/${ws}/projects`, { name: `Other ${side}`, visibility: 'workspace' }, 201);
       const twin = await post(ada, `/api/v1/projects/${String(other.id)}/work`, { title: c.taskRename }, 201);
       const needle = c.taskRename.slice(8, 30).toUpperCase(); // a case-folded substring from the middle
-      const chooser = await ben.browser.request('GET', `/api/v1/projects/${id.project}/work-view?purpose=choices&choice=pivot_work&q=${encodeURIComponent(needle)}`);
+      const chooser = await ben.browser.request('GET', `/api/v1/projects/${id.project}/work-view?purpose=choices&choice=open_work&q=${encodeURIComponent(needle)}`);
       expectStatus(chooser, 200, `${side}: chooser`);
       const items = (chooser.json as { items: { id: string; title: string }[] }).items;
       assert.deepEqual(items.map((item) => [item.id, item.title]), [[id.task, c.taskRename]], `${side}: the chooser finds the task by a substring of its sealed title, not the other project's twin`);
       assert.notEqual(String(twin.id), id.task);
-      const none = await ben.browser.request('GET', `/api/v1/projects/${id.project}/work-view?purpose=choices&choice=pivot_work&q=${encodeURIComponent('no such words %_')}`);
+      const none = await ben.browser.request('GET', `/api/v1/projects/${id.project}/work-view?purpose=choices&choice=open_work&q=${encodeURIComponent('no such words %_')}`);
       assert.deepEqual((none.json as { items: unknown[] }).items, [], `${side}: % and _ stay literal`);
       const since = await ben.browser.request('GET', `/api/v1/return?place=project&id=${id.project}&from=24h&scope=all`);
       expectStatus(since, 200, `${side}: Since-you-left`);
@@ -258,7 +258,7 @@ describe('F-030 S2a-1: sealed content in the repositories', () => {
   test('a sealed chooser search uses the in-memory index: it finds every match with no cap or marker, as B does (S2b)', async () => {
     for (const [side, ws] of [['A', A], ['B', B]] as const) {
       const project = await post(ada, `/api/v1/workspaces/${ws}/projects`, { name: `Many ${side}`, visibility: 'workspace' }, 201);
-      const search = async (q = 'needle') => (await ada.browser.request('GET', `/api/v1/projects/${String(project.id)}/work-view?purpose=choices&choice=pivot_work&q=${q}`)).json as
+      const search = async (q = 'needle') => (await ada.browser.request('GET', `/api/v1/projects/${String(project.id)}/work-view?purpose=choices&choice=open_work&q=${q}`)).json as
         { searchUnavailable?: boolean; total: number; items: { title: string }[] };
       await post(ada, `/api/v1/projects/${String(project.id)}/work`, { title: 'needle 0' }, 201);
       for (let index = 1; index <= 9; index += 1) await post(ada, `/api/v1/projects/${String(project.id)}/work`, { title: `needle ${index}` }, 201);

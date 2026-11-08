@@ -559,7 +559,7 @@ function DecisionForm({ ids, phone, carried, projectId, onProject, onClose, requ
           onChange={(event) => { setWhy(event.target.value); setError(''); }} />
         <TooLong text={title} limit={WORK_LIMITS.title} />
         {error ? <p className="create__error" role="alert">{error}</p> : null}
-        {/* Replacing a current rule (a pivot) and its choices live in the full form in Details, with the same text and source. */}
+        {/* Replacing an accepted decision lives in the full form in Details, with the same text and source. */}
         <button type="button" className="create__more" onClick={() => {
           onClose();
           openDetails({ kind: 'propose-decision', projectId: project.id, ...(title ? { title } : {}), ...(source ? { source: { messageId: source.ref.id, text: source.label } } : {}) });

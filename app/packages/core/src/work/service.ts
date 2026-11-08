@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
   WORK_LIMITS,
-  type AcceptDecisionCommand,
   type CreateObjectLinkCommand,
   type CreateResultCommand,
   type CreateWorkCommand,
@@ -40,9 +39,9 @@ import { readTaskActivity } from './task-activity.js';
 // the decision, the change and the stream event commit together.
 //
 // Rules: agents act through their #29 project grants and may create work and results and
-// propose decisions; only a person accepts a decision. Accepting a decision that supersedes an
-// earlier one is a pivot: the earlier decision is kept as superseded, work that still applies
-// is linked to the new decision and obsolete work is parked, keeping its status.
+// propose decisions; only a person accepts a decision. Accepting a decision that replaces an
+// earlier one only marks the earlier one superseded (kept, with its reason). Flux never moves or
+// parks work because a decision changed: people decide about the tasks themselves (#871).
 //
 // Task plans (#152): a task carries criteria, direct same-project prerequisites and an optional
 // immutable plan intent. Writers that touch the graph or an intent take their locks in one order:
@@ -485,15 +484,11 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       if (command.waitingFor !== undefined) changes.waitingFor = waitingForOf(command.waitingFor);
       if (command.dueOn !== undefined) changes.dueOn = valid.dueOn(command.dueOn);
       if (command.restore !== undefined && command.restore !== true) throw new InvalidInputError('restore can only be true');
-      if (command.parked !== undefined) {
-        if (command.parked !== false) throw new InvalidInputError('parked can only be set to false; a pivot parks work');
-        changes.parked = null;
-      }
       if (command.criteria !== undefined) changes.criteria = valid.criteria(command.criteria);
       const dependencyIds = command.dependencyIds === undefined ? undefined : valid.dependencyIds(command.dependencyIds);
       if (!Object.keys(changes).length && dependencyIds === undefined) throw new InvalidInputError('Nothing to change');
-      // Status, blocker and parking are what a GitHub rule moves; changing any of them, also to the same value, overrides it.
-      const overrides = command.status !== undefined || command.blocker !== undefined || command.parked !== undefined;
+      // Status and blocker are what a GitHub rule moves; changing either, also to the same value, overrides it.
+      const overrides = command.status !== undefined || command.blocker !== undefined;
       const ruleRevision = command.expectedGithubRuleRevision;
       if (ruleRevision !== undefined && (!Number.isSafeInteger(ruleRevision) || ruleRevision < 0)) throw new InvalidInputError('expectedGithubRuleRevision must be a non-negative integer');
       // The exact text the person explicitly saved; undefined/cleared/empty contribute nothing.
@@ -607,16 +602,12 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
     },
 
     /**
-     * A person with write access accepts a proposal. If it supersedes an accepted decision this is
-     * a pivot: the earlier decision is marked superseded (kept, with its rationale), `stillApplies`
-     * work is linked to the new decision and `park` work is parked without changing its status.
+     * A person with write access accepts a proposal. If it replaces an accepted decision, the earlier one is
+     * marked superseded (kept, with its rationale). Nothing else changes: no task is moved or parked (#871).
      */
-    async acceptDecision(principal: Principal, decisionId: string, command: AcceptDecisionCommand = {}, expected: number | undefined): Promise<Decision> {
+    async acceptDecision(principal: Principal, decisionId: string, expected: number | undefined): Promise<Decision> {
       const by = actor(principal);
       const version = valid.expectedVersion(expected);
-      const stillApplies = valid.ids(command?.stillApplies, 'stillApplies');
-      const park = valid.ids(command?.park, 'park');
-      if (stillApplies.some((id) => park.includes(id))) throw new InvalidInputError('Work cannot both still apply and be parked');
       return uow.run(async (ports) => {
         const { id, projectId, workspaceId } = await authorized(ports, principal, 'decision', decisionId, 'write');
         if (by.kind !== 'human') throw new ForbiddenError('Only a person can accept a decision; agents can propose', 'DECISION_NEEDS_PERSON');
@@ -624,8 +615,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const located = await ports.work.findDecision(id);
         if (!located) throw notFound('decision');
         await lockProjectGraphs(ports.work, [projectId]);
-        const useFence = await ports.work.lockPreparedTaskUse(sortedIds([...stillApplies, ...park,
-          ...await ports.work.taskUseTargets([{ type: 'decision', id },...(located.supersedesId?[{type:'decision' as const,id:located.supersedesId}]:[])])], 'taskIds'));
+        const useFence = await ports.work.lockPreparedTaskUse(sortedIds(
+          await ports.work.taskUseTargets([{ type: 'decision', id },...(located.supersedesId?[{type:'decision' as const,id:located.supersedesId}]:[])]), 'taskIds'));
         const decisionRows = new Map<string, DecisionRecord>();
         for (const decisionId of [...new Set([id, ...(located.supersedesId ? [located.supersedesId] : [])])].sort()) {
           const retained = await ports.work.findDecision(decisionId, { lock: true });
@@ -635,29 +626,16 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (!current) throw notFound('decision');
         if (current.version !== version) throw new VersionConflictError(current.version, await presentDecision(ports, current));
         if (current.status !== 'proposed') throw new ConflictError('This decision is no longer a proposal', 'DECISION_NOT_PROPOSED');
-        if ((stillApplies.length || park.length) && !current.supersedesId)
-          throw new RuleViolationError('Only a decision that supersedes an earlier one is a pivot', 'PIVOT_NEEDS_EARLIER_DECISION');
-        const parked: WorkRecord[] = [];
-        for (const workId of [...stillApplies, ...park].sort()) {
-          const work = await ports.work.findWork(workId);
-          if (!work || work.projectId !== projectId) throw new RuleViolationError('The work is not part of this space', 'LINK_TARGET_NOT_FOUND');
-          if (park.includes(workId)) {
-            if (FINISHED.has(work.status)) throw new RuleViolationError('Finished work keeps its result and is not parked', 'WORK_ALREADY_FINISHED');
-            parked.push(work);
-          }
-        }
         const now = new Date();
         if (current.supersedesId) {
           const earlier = decisionRows.get(current.supersedesId);
           if (!earlier || earlier.status !== 'accepted')
-            throw new ConflictError('The decision this one replaces has changed; review it again', 'SUPERSEDED_DECISION_CHANGED');
+            throw new ConflictError('The decision this one replaces has changed; check it again', 'SUPERSEDED_DECISION_CHANGED');
           const superseded=await ports.work.updateDecision(earlier.id, { status: 'superseded', supersededById: id, supersededAt: now });
           await ports.work.resetArtifact?.({workspaceId,projectId},{kind:'decision',id:superseded.id,revision:`${superseded.version}:${superseded.status}`},useFence);
         }
         const record = await ports.work.updateDecision(id, { status: 'accepted', decidedBy: by.id, decidedAt: now });
-        for (const work of parked) await ports.work.updateWork(work.id, { parked: { decisionId: id, at: now } }, by);
         const scope = { workspaceId, projectId };
-        await ports.work.insertLinks(linkRows(scope, { type: 'decision', id }, 'still_applies', workRefs(stillApplies), by));
         await ports.work.resetArtifact?.(scope,{kind:'decision',id:record.id,revision:`${record.version}:${record.status}`},useFence);
         await useFence.mark();
         const view = await presentDecision(ports, record);

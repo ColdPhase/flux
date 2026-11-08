@@ -71,7 +71,7 @@ declined in the last 24 hours ("4 done today").
 
 The Tasks tab lists tasks only: its views take `kinds=work` (`GET …/work-view?purpose=tasks&kinds=work`), which
 leaves decisions and results out of the "All" selection and its total. API readers without `kinds` still get
-the whole mixed view. A decision's history stays in its own details ("Would replace", "Replaced", "Replaced
-by", "Earlier reason"); a result shows in its task's details. Old links to the Decisions view
+the whole mixed view. A decision's history stays in its own details, as plain sentences that appear only when they apply ("This replaces the decision …",
+"This was replaced by the decision …", "Earlier reason", "Shown on the Wiki page …"); a result shows in its task's details. Old links to the Decisions view
 (`/projects/:id/tasks?status=needs|rules`) open the Inbox's Decisions filter (`/inbox?show=decisions`); a
 decision's own link (`?open=decision:<id>`) opens the decision.

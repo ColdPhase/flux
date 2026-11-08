@@ -459,7 +459,9 @@ class ProjectSurfaceJourney(unittest.TestCase):
         sketch_id = page.url.rsplit("/", 1)[-1]
         stored = self.api(page, "GET", f"/api/v1/sketches/{sketch_id}", status=200)
         self.assertEqual((stored["scope"], stored["projectId"]), ("project", self.ids["project"]))
-        expect(page.get_by_text("Everyone in Gesture lamp")).to_be_visible()
+        # A map made in a space is read by the space, the default, so the map says nothing about its audience (#871).
+        expect(page.locator(".sk-aud")).to_have_count(0)
+        expect(page.get_by_text("Everyone in Gesture lamp")).to_have_count(0)
         page.get_by_role("link", name="Maps", exact=True).click()
         expect(page).to_have_url(re.compile(rf"/projects/{self.ids['project']}/map$"))
         expect(page.get_by_role("list", name="Maps in Gesture lamp").get_by_role("link")).to_have_count(1)  # the new sketch is empty, so it is not listed (#508 AC-3)

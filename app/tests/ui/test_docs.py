@@ -332,7 +332,7 @@ class DocsJourney(unittest.TestCase):
         result = next(item for item in results if item["title"].startswith(FINDING))
         page.goto(f"/projects/{self.project_id}/tasks?open=result:{result['id']}")
         panel = page.locator("#details")
-        expect(panel).to_contain_text("Not in the Wiki yet.")
+        expect(panel).not_to_contain_text("Shown on the Wiki page")  # a result on no page says nothing about the Wiki (#871)
         panel.get_by_role("button", name="Add to a Wiki page").click()
         expect_value(panel.get_by_label("Wiki page", exact=True), self.doc_id)
         shot(page, "docs-add-from-result-desktop-1440")

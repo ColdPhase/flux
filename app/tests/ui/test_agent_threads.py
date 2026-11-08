@@ -117,7 +117,8 @@ class AgentThreadJourney(unittest.TestCase):
         row.click()
         thread = page.get_by_role("region", name=THREAD)
         expect(thread).to_be_visible()
-        expect(thread.get_by_text("Agents’ thread · visible to everyone with access to this project")).to_be_visible()
+        expect(thread.get_by_text("Agents’ thread", exact=True)).to_be_visible()
+        expect(thread).not_to_contain_text("visible to everyone")
         expect(thread.get_by_text("No one has written to the agents about this task yet")).to_be_visible()
         # Opening a thread is a read: nothing was created (the thread reports no conversation).
         self.assertIsNone(self.api(page, "GET", f"/api/v1/work/{self.ids['task']}/agent-thread", status=200)["conversation"])

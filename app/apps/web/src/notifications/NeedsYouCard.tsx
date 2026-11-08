@@ -112,7 +112,7 @@ export function WaitingLine({ item }: { item: NeedsYouItem }) {
 
 /**
  * One thing that needs the person (#342, F-026 S1, P4), a card of the Inbox. Home lists the top of the Inbox as plain rows
- * that lead here (#865), so no action is offered twice. A decision is one card on every device: "Proposed decision",
+ * that lead here (#865), so no action is offered twice. A decision is one card on every device: "Decision",
  * "Needs you", the reason, what it rests on, then Accept / Not now / Discuss. The tray after the card
  * holds Not now and Done for a swipe left on a phone; on a computer they are quiet buttons.
  */
@@ -137,7 +137,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, onSelect
   const run = item.assistantChanges ?? null;
   const label = run ? `${run.agentName}, your agent: ${item.title}` : `${KIND_WORD[item.kind]}: ${item.title}`;
   const meta = (run ? ['Your agent', project]
-    : decision ? [short ? 'Decision' : 'Proposed decision', project] : item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'Waiting on you' : 'Your task', project, ago(item.at)] : [KIND_WORD[item.kind], project]).filter(Boolean).join(' · ');
+    : decision ? ['Decision', project] : item.kind === 'blocked' ? [item.blocked?.waitedBy ? 'Waiting on you' : 'Your task', project, ago(item.at)] : [KIND_WORD[item.kind], project]).filter(Boolean).join(' · ');
   const who = run?.agentName ?? item.from?.name ?? null;
   const asked = item.agentQuestion ?? null;
   // An agent's question names the task it is about, as drawn ("Claude Code · Agent · on #8").
@@ -231,7 +231,7 @@ export function NeedsYouCard({ item, selected = false, compact = false, onSelect
             ) : null}
             {full && item.blocked?.waitingFor ? <p className="nyc__reason">Waiting for #{item.blocked.waitingFor.number} {item.blocked.waitingFor.title}</p> : null}
             {full && !touch && decision && item.decision?.basedOn.length ? <p className="nyc__based"><span>Based on</span> {item.decision.basedOn.join(' · ')}</p> : null}
-            {full && decision && item.decision?.supersedes ? <p className="nyc__based"><span>Would replace</span> {item.decision.supersedes}</p> : null}
+            {full && decision && item.decision?.supersedes ? <p className="nyc__based">This replaces the decision <b>{item.decision.supersedes}</b>.</p> : null}
             {full && decision ? (
               <div className="nyc__foot">{actions}<WaitingLine item={item} /></div>
             ) : full ? actions : null}

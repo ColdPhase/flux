@@ -713,7 +713,7 @@ class LightMotionJourney(unittest.TestCase):
             held.pop().continue_()
 
     def test_10h_a_thread_opened_over_a_task_hides_the_task_while_the_thread_is_read(self):
-        """With a task open, "Came from" opens the thread over it. The thread's rows are the panel while its reads are out: the task, which stays mounted for "‹ Task #2",
+        """With a task open, "From" opens the thread over it. The thread's rows are the panel while its reads are out: the task, which stays mounted for "‹ Task #2",
         is not on screen (it used to share the panel with the rows, two columns of 210 px with its text stacked letter by letter) (#863 rule 2)."""
         for where, phone in (("computer", False), ("phone", True)):
             with self.subTest(where=where):

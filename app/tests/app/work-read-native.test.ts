@@ -19,6 +19,9 @@ const { db, pool } = createDatabase(process.env.DATABASE_URL);
 after(() => pool.end());
 const sessions = createSessionResolver(createAuth({ db, config: loadIdentityConfig(), mailer: null, oauthRequests: createOauthRequests() }));
 const post = async <T>(who: Person, path: string, body: unknown, headers?: Record<string, string>) => expectStatus(await who.browser.request('POST', path, { body, headers }), 201) as T;
+// Nothing in Flux parks a task any more (#871); rows that still hold the legacy state are made by hand to keep their reads covered.
+const parkByHand = (ids: string[], decisionId: string) =>
+  pool.query('UPDATE project_work_items SET parked_at = now(), parked_by_decision_id = $2 WHERE id = ANY($1::uuid[])', [ids, decisionId]);
 const code = (status: number, expected: string) => (error: unknown) => error instanceof DomainError && error.status === status && error.code === expected;
 
 describe('bounded native work reads through HTTP and current native fences', () => {
@@ -58,7 +61,8 @@ describe('bounded native work reads through HTTP and current native fences', () 
     const proposal = await post<Decision>(other, `${base()}/decisions`, { title: 'Earlier native rule', rationale: 'Own full rationale', affects: [main.id], sources: [message] });
     oldRule = expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${proposal.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200) as Decision;
     const pivot = await post<Decision>(other, `${base()}/decisions`, { title: 'Current native rule', supersedes: oldRule.id });
-    rule = expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${pivot.id}/accept`, { body: { park: [parked.id] }, headers: { 'if-match': '"1"' } }), 200) as Decision;
+    rule = expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${pivot.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200) as Decision;
+    await parkByHand([parked.id], rule.id);
     result = await post<WorkResult>(other, `${base()}/results`, { title: 'Native result', finding: 'negative', evidence: 'Own full evidence', work: [main.id], sources: [message] });
   });
 
@@ -102,7 +106,8 @@ describe('bounded native work reads through HTTP and current native fences', () 
     expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${original.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200);
     const proposal = await post<Decision>(owner, `${path}/decisions`, { title: 'Actual parking rule', supersedes: original.id });
     const accepted = expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${proposal.id}/accept`,
-      { body: { park: [parkDone.id, parkStopped.id] }, headers: { 'if-match': '"1"' } }), 200) as Decision;
+      { body: {}, headers: { 'if-match': '"1"' } }), 200) as Decision;
+    await parkByHand([parkDone.id, parkStopped.id], accepted.id);
     // Native command records, then tied timestamps to exercise the documented id tie-break.
     await pool.query("UPDATE project_work_items SET created_at='2026-10-01T00:00:00Z' WHERE project_id=$1", [isolated.id]);
     const observation = await get<ProjectWorkSummary>(`${path}/work-summary`);
@@ -141,7 +146,8 @@ describe('bounded native work reads through HTTP and current native fences', () 
     const earlier = await post<Decision>(owner, `${path}/decisions`, { title: 'Initial plan direction' });
     expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${earlier.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200);
     const pivot = await post<Decision>(owner, `${path}/decisions`, { title: 'Changed plan direction', supersedes: earlier.id });
-    expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${pivot.id}/accept`, { body: { park: [parked.id] }, headers: { 'if-match': '"1"' } }), 200);
+    expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${pivot.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200);
+    await parkByHand([parked.id], pivot.id);
     const plan = await post<Material>(owner, `${path}/materials`, { title: 'Exact plan source', body: 'The bounded task plan', clientMutationId: randomUUID() });
     const planIntent = { materialId: plan.materialId, version: 1, intentKey: 'bounded-task-read' };
     const planned = await create('Planned task with mixed prerequisites', { criteria: ['First native criterion', 'Second native criterion'],
@@ -213,8 +219,6 @@ describe('bounded native work reads through HTTP and current native fences', () 
     const choice = await get<ProjectWorkView>(`${base()}/work-view?purpose=choices&choice=result_work&selected=${finished.id}&limit=1`);
     assert.equal(choice.total, 6); assert.equal(choice.items.length, 1); assert.equal(choice.selected?.id, finished.id);
     assert.equal(choice.items.some(({ id }) => id === finished.id), false);
-    const parkedChoice = await get<ProjectWorkView>(`${base()}/work-view?purpose=choices&choice=parked_work&decisionId=${rule.id}`);
-    assert.deepEqual(parkedChoice.items.map(({ id }) => id), [parked.id]);
   });
 
   test('association windows span all native object kinds and zero-link sources; edges use one global bound', async () => {
@@ -259,7 +263,6 @@ describe('bounded native work reads through HTTP and current native fences', () 
     }
     expectStatus(await owner.browser.request('GET', `${base()}/work-associations?messageIds=${randomUUID()}`), 404);
     expectStatus(await owner.browser.request('GET', `${base()}/work-associations?conversationId=${randomUUID()}`), 404);
-    expectStatus(await owner.browser.request('GET', `${base()}/work-view?purpose=choices&choice=parked_work&decisionId=${foreignDecision.id}`), 404);
     for (const suffix of ['work-summary', 'work-view', `work-objects/work/${main.id}`, `work-relations?objects=work:${main.id}`, `work-associations?conversationId=${conversation.id}`]) {
       expectStatus(await outsider.browser.request('GET', `${base()}/${suffix}`), 404);
       expectStatus(await new Browser().request('GET', `${base()}/${suffix}`), 401);
@@ -350,17 +353,13 @@ describe('bounded native work reads through HTTP and current native fences', () 
   });
 
   test('every required zero-link selector is checked after its observation, ahead of source drift', async () => {
-    for (const route of ['detail', 'relations', 'selected', 'parked'] as const) {
+    for (const route of ['detail', 'relations', 'selected'] as const) {
       const isolated = await project(owner, workspaceId, `Current selector ${route}`, 'restricted');
       const work = await post<WorkItem>(owner, `/api/v1/projects/${isolated.id}/work`, { title: 'Zero-link native object' });
-      const proposed = await post<Decision>(owner, `/api/v1/projects/${isolated.id}/decisions`, { title: 'Zero-link native rule' });
-      expectStatus(await owner.browser.request('POST', `/api/v1/decisions/${proposed.id}/accept`, { body: {}, headers: { 'if-match': '"1"' } }), 200);
-      const held = await readsAfter(owner.browser, () => route === 'parked'
-        ? pool.query('DELETE FROM project_decisions WHERE project_id = $1 AND id = $2', [isolated.id, proposed.id])
-        : pool.query('DELETE FROM project_work_items WHERE project_id = $1 AND id = $2', [isolated.id, work.id]));
+      const held = await readsAfter(owner.browser, () => pool.query('DELETE FROM project_work_items WHERE project_id = $1 AND id = $2', [isolated.id, work.id]));
       const read = route === 'detail' ? held.reads.detail(held.actor, isolated.id, 'work', work.id)
         : route === 'relations' ? held.reads.relations(held.actor, isolated.id, new URLSearchParams(`objects=work:${work.id}`))
-          : held.reads.view(held.actor, isolated.id, new URLSearchParams(route === 'selected' ? `purpose=choices&choice=result_work&selected=${work.id}` : `purpose=choices&choice=parked_work&decisionId=${proposed.id}`));
+          : held.reads.view(held.actor, isolated.id, new URLSearchParams(`purpose=choices&choice=result_work&selected=${work.id}`));
       await assert.rejects(read, { status: 404 });
     }
   });

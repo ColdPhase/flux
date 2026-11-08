@@ -882,7 +882,7 @@ class EncryptedWorkspaces(Base):
                 expect(plain.get_by_text(B_ROOT).first).to_be_visible()
                 self.assertGreater(self.composer_markers(plain), 0, "the plain space keeps AI")
                 open_details(plain)
-                expect(plain.get_by_text("Everyone in", exact=False).first).to_be_visible()
+                expect(plain.get_by_role("link", name=re.compile("People and settings"))).to_be_visible()
                 expect(plain.locator("[data-encrypted-line]")).to_have_count(0)
 
     def test_31_settings_says_ai_is_off_there_for_good_and_jump_to_lists_the_waiting_space(self) -> None:

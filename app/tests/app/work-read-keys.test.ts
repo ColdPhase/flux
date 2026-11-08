@@ -84,15 +84,14 @@ describe('bounded native PostgreSQL work key selection', () => {
     assert.deepEqual(new Set(parked.items.map((key) => key.id)), new Set([ids[4], ids[7]]));
   });
 
-  test('choice predicates retain parked result choices, full native kinds and literal wildcard search', async () => {
-    const choose = (choice: 'pivot_work' | 'result_work', q = ''): NativeWorkViewSelector => ({ purpose: 'choices', choice, q });
-    assert.equal((await read(choose('pivot_work'), 100)).total, 114);
+  test('choice predicates retain open work, result choices, full native kinds and literal wildcard search', async () => {
+    const choose = (choice: 'open_work' | 'result_work', q = ''): NativeWorkViewSelector => ({ purpose: 'choices', choice, q });
+    assert.equal((await read(choose('open_work'), 100)).total, 114);
     assert.equal((await read(choose('result_work'), 100)).total, 116);
     const literal = await read(choose('result_work', '100%_'));
     assert.deepEqual(literal.items.map((key) => key.id), [ids[0]]);
     assert.equal((await read({ purpose: 'choices', choice: 'accepted_decisions', q: '' })).total, 1);
     assert.equal((await read({ purpose: 'choices', choice: 'doc_refs', kind: 'decision', q: '' })).total, 3);
-    assert.equal((await read({ purpose: 'choices', choice: 'parked_work', decisionId: decisions[1]!, q: '' })).total, 2);
   });
 
   test('a surviving boundary alone yields no false strict escape; an older/newer scope retains its actual opposite', async () => {

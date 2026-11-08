@@ -81,10 +81,6 @@ export function nativeWorkReadRepository(db: DbExecutor): WorkReadRepository {
     sourceVisibilityFingerprint: visibility.fingerprint,
     summary: summary.summary, observedAt: summary.observedAt,
     async view(projectId, principal, selection, limit, cursor) {
-      if (selection.purpose === 'choices' && selection.choice === 'parked_work') {
-        const decision = await objects.decision(projectId, selection.decisionId);
-        if (!decision || decision.status === 'proposed') throw new NotFoundError('Decision', 'DECISION_NOT_FOUND');
-      }
       if (selection.purpose === 'choices' && selection.choice === 'result_work' && selection.selected) await requireObjects(projectId, [{ kind: 'work', id: selection.selected }]);
       return hydrate(projectId, await keys.view(projectId, principal, selection, limit, cursor));
     },
@@ -142,10 +138,6 @@ export function nativeWorkReadFinalFence(db: Database, sessions: SessionResolver
     const sources = required?.sources;
     if (sources) await nativeWorkReadRepository(db).requireSources(projectId, sources);
     if (required?.objects && !await nativeWorkAssociationRows(db).objectsExist(projectId, required.objects)) throw new NotFoundError('Work object', 'WORK_OBJECT_NOT_FOUND');
-    if (required?.parkedDecisionId) {
-      const decision = await nativeWorkObjectRows(db).decision(projectId, required.parkedDecisionId);
-      if (!decision || decision.status === 'proposed') throw new NotFoundError('Decision', 'DECISION_NOT_FOUND');
-    }
     if (required?.references) {
       const { objects, available } = required.references;
       const current = await nativeWorkReferenceRows(db).available(projectId, objects);

@@ -174,7 +174,7 @@ export async function candidatesFor(event: GeneratorEvent, facts: NotificationFa
       const kind = decision ? 'decision' : 'result';
       return [...recipients].map(([userId, why]) => ({
         userId, reason: 'review' as const, source: { type: 'project' as const, id: item.projectId },
-        title: `${decision ? 'Decision' : 'Result'} to review: ${excerpt(item.title, 90)}`,
+        title: `${decision ? 'Decision proposed' : 'Result to review'}: ${excerpt(item.title, 90)}`,
         body: `${why} · ${by} ${decision ? 'proposed it' : 'recorded it'} in ${item.projectName}`,
         url: `/projects/${item.projectId}/tasks?open=${kind}:${item.id}`,
         // An agent produced the item, whoever the event's actor is on its behalf.

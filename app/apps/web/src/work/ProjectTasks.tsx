@@ -42,11 +42,11 @@ function Group({ id, title, count, children }: { id: string; title: string; coun
  * the Inbox, not here (F-026 S1), and a result shows in its task's details (#342); the old `needs`, `rules`
  * and `results` views are not groups any more and their links lead to the Inbox or to All.
  */
-const GROUPS = ['in_progress', 'blocked', 'open', 'parked', 'finished'] as const;
+const GROUPS = ['in_progress', 'blocked', 'open', 'finished'] as const;
 type GroupId = typeof GROUPS[number];
 const GROUP_LABEL: Record<GroupId, string> = {
   // "Done", the board's word for the same tasks (#763 C5); the URL keeps `finished`.
-  in_progress: STATUS_LABEL.in_progress, blocked: STATUS_LABEL.blocked, open: STATUS_LABEL.open, parked: 'Parked', finished: STATUS_LABEL.done,
+  in_progress: STATUS_LABEL.in_progress, blocked: STATUS_LABEL.blocked, open: STATUS_LABEL.open, finished: STATUS_LABEL.done,
 };
 const isGroup = (value: string | null): value is GroupId => GROUPS.includes(value as GroupId);
 
@@ -252,16 +252,12 @@ export function ProjectTasks() {
   // A stored state change shows at once; the List's own read catches up with that version.
   const work = (data?.items.filter((item): item is WorkRowProjection => item.kind === 'work') ?? [])
     .map((item) => { const stored = saved[item.id]; return stored && stored.version > item.version ? { ...item, status: stored.status, blocker: stored.blocker, version: stored.version } : item; });
-  const by = (state: WorkRowProjection['status']) => work.filter((item) => item.status === state && !item.parked);
-  const parked = work.filter((item) => item.parked && !isFinished(item));
+  const by = (state: WorkRowProjection['status']) => work.filter((item) => item.status === state);
   const finished = work.filter(isFinished);
   const groupCount = (id: GroupId, visible: number) => visible ? counts?.[id] ?? 0 : 0;
   // A task opened from its row brings its title: the panel's loading state shows it in its own place (#863 rule 6).
   const openObject = (kind: WorkObjectType, id: string, title?: string) => () => { saveReading(); openDetails({ kind, id, ...(title ? { title } : {}) }); };
   const workRow = (item: WorkRowProjection, muted = false) => <TaskRow key={item.id} item={item} meId={me.user.id} owners={owners} writable muted={muted} onOpen={openObject('work', item.id, item.title)} onChange={changeState} />;
-  const summaryCounts = data ? mine ? data.summary.mine : data.summary.all : null;
-  // What the board leaves to another place, one step away: work a pivot set aside. What waits for the person is only in the Inbox (#865).
-  const parkedCount = summaryCounts?.parked ?? 0;
   const nothing = data !== null && cursor === null && !Object.values(data.summary.all).some(Boolean);
   const emptyContinuation = data !== null && cursor !== null && !data.items.length;
 
@@ -273,7 +269,6 @@ export function ProjectTasks() {
       <div className="pane-scroll" ref={scroller} data-own-place="">
       {!listing ? (
         <div className="tb" data-work-observed-at={data?.summary.observedAt}>
-          {parkedCount ? <nav className="tb-also" aria-label="Also elsewhere"><button type="button" className="tb-also__b" onClick={() => setView({ mode: 'list', status: 'parked' })}>{parkedCount} parked by a pivot</button></nav> : null}
           <TaskBoard project={project} openRead={read} meId={me.user.id} mine={mine} query={boardSearch.trim().toLowerCase()} writable
             revision={boardRevision}
             openWork={(id, title) => { saveReading(); openDetails({ kind: 'work', id, title }); }} refresh={refreshBoard}
@@ -298,7 +293,6 @@ export function ProjectTasks() {
         <Group id="progress" title={GROUP_LABEL.in_progress} count={groupCount('in_progress', by('in_progress').length)}>{by('in_progress').map((item) => workRow(item))}</Group>
         <Group id="blocked" title={GROUP_LABEL.blocked} count={groupCount('blocked', by('blocked').length)}>{by('blocked').map((item) => workRow(item))}</Group>
         <Group id="open" title={GROUP_LABEL.open} count={groupCount('open', by('open').length)}>{by('open').map((item) => workRow(item))}</Group>
-        <Group id="parked" title="Parked by a pivot" count={groupCount('parked', parked.length)}>{parked.map((item) => workRow(item, true))}</Group>
         <Group id="finished" title={GROUP_LABEL.finished} count={groupCount('finished', finished.length)}>{finished.map((item) => workRow(item, true))}</Group>
       </div>
       )}

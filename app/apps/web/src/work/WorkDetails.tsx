@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { Fragment, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useSpaceAi } from '../ai/spaceAi';
 import { useRevalidator } from 'react-router';
 import type { ObjectLink, Project, ProjectPerson, WorkspaceMember, WorkStatus, WorkDetailObject, WorkDetailProjection } from '@flux/contracts';
@@ -66,7 +66,7 @@ function readable(error: unknown) {
   if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') return 'Someone changed this a moment ago. The latest version is shown; try again if it still applies.';
   if (error instanceof ApiError && error.code === 'TASK_PREREQUISITES_UNMET') return 'It can start or finish only when every task it waits for is done and not parked.';
   if (error instanceof ApiError && error.code === 'WORK_NOT_FINISHABLE') return 'That work was parked or set aside meanwhile, so this result cannot finish it. The latest state is shown.';
-  if (error instanceof ApiError && error.code === 'SUPERSEDED_DECISION_CHANGED') return 'The decision this would replace has already changed. Review the accepted decision first.';
+  if (error instanceof ApiError && error.code === 'SUPERSEDED_DECISION_CHANGED') return 'The decision this would replace has already changed. Check it first.';
   if (error instanceof ApiError && error.status === 404) return 'This is no longer available to you.';
   if (error instanceof ApiError && error.status === 403) return 'You can read this space but not change it.';
   return error instanceof Error ? error.message : 'Could not save. Try again.';
@@ -75,7 +75,6 @@ function readable(error: unknown) {
 type OwnWork = Extract<WorkDetailObject, { kind: 'work' }>;
 type OwnDecision = Extract<WorkDetailObject, { kind: 'decision' }>;
 type OwnResult = Extract<WorkDetailObject, { kind: 'result' }>;
-type Choice = 'keep' | 'park' | 'leave';
 interface PanelDraft { busy: boolean; error: string; attempt: string; blocker?: string }
 interface PanelCommands {
   state: PanelDraft;
@@ -118,9 +117,6 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   const detail = context ? own.value : null;
   const relations = useDetailRelations(accountId, projectId, detail);
   const [shownWith, setShownWith] = useState<string | null>(null);
-  const [picks, setPicks] = useState<{ owner: typeof owner; values: Record<string, Choice> }>({ owner, values: {} });
-  const choices = picks.owner === owner ? picks.values : {};
-  const setChoices = (update: (current: Record<string, Choice>) => Record<string, Choice>) => { if (activeOwner.current === owner) setPicks((current) => ({ owner, values: update(current.owner === owner ? current.values : {}) })); };
   const unavailable = contextRead.phase === 'unavailable' || own.read.phase === 'unavailable';
   const contextStatus = contextRead.phase === 'unavailable'
     ? <p className="wd-error" role="alert">Space context could not be loaded. Your draft is kept. <button type="button" className="wd-inline" onClick={reload}>Refresh context</button></p>
@@ -136,7 +132,7 @@ export function WorkDetails({ view }: { view: ObjectView | WorkFormView }) {
   const currentContext = { ...context, project: { ...context.project, access: detail.access } };
   const object = detail.object;
   if (object.kind === 'work') return <WorkPanel key={key} item={object} context={currentContext} detail={detail} relations={relations} reload={reload} commands={commands} />;
-  if (object.kind === 'decision') return <DecisionPanel key={key} decision={object} context={currentContext} detail={detail} relations={relations} reload={reload} choices={choices} setChoices={setChoices} revision={tick} commands={commands} />;
+  if (object.kind === 'decision') return <DecisionPanel key={key} decision={object} context={currentContext} detail={detail} relations={relations} reload={reload} revision={tick} commands={commands} />;
   return <ResultPanel key={key} result={object} context={currentContext} relations={relations} />;
 }
 
@@ -182,14 +178,6 @@ function SubmitSection({ help, children }: { help: ReactNode; children: ReactNod
   );
 }
 
-function Audience({ project }: { project: Project }) {
-  return (
-    <section className="details__sec" aria-labelledby="wd-audience">
-      <h4 id="wd-audience">Who can see this</h4>
-      <p className="wd-audience"><Icon name="lock" size={13} />Everyone with access to {project.name}</p>
-    </section>
-  );
-}
 
 /** Buttons and links to the other ends of an object's links. */
 function Linked({ items, empty }: { items: { key: string; label: ReactNode; open: () => void; hint?: string }[]; empty?: string }) {
@@ -285,21 +273,25 @@ function TextWithDocs({ text, docs, projectId }: { text: string; docs: Map<strin
   return <>{parts}</>;
 }
 
+/** "Shown on the Wiki page Sensor network." A sentence only when the object is on a page; the action to add it stays (#871). */
 function InDocs({ object, kind, project, relations, notYet, named }: { object: { id: string; title: string }; relations: DetailRelations; kind?: 'result' | 'decision'; project: Project; notYet?: string; named?: Map<string, string> }) {
   const { openDetails } = useShellActions();
   const linkedDocs = docsLinking(relations.links, object.id);
   // A page the result's own text names (it wrote it) is listed too, as "named here" (#763 FT-6).
   const docs = [...linkedDocs, ...[...(named ?? new Map<string, string>())].filter(([id]) => !linkedDocs.some((doc) => doc.id === id))
     .map(([id, title]) => ({ id, title, role: 'named' as const }))];
+  const pages = docs.map((doc, index) => (
+    <Fragment key={doc.id}>{index === 0 ? '' : index === docs.length - 1 ? ' and ' : ', '}<RefLink className="wd-inline" to={`/projects/${project.id}/docs/${doc.id}`}>{doc.title}</RefLink></Fragment>
+  ));
+  const addable = !!kind && !notYet;
+  if (!docs.length && !kind) return null;
   return (
-    <section className="details__sec" aria-labelledby={`wd-docs-${object.id}`}>
-      <h4 id={`wd-docs-${object.id}`}>In the Wiki</h4>
-      {docs.length ? (
-        <ul className="wd-links">{docs.map((doc) => <li key={doc.id}><RefLink className="wd-link" to={`/projects/${project.id}/docs/${doc.id}`}><span>{doc.title}</span>{doc.role === 'source' ? <small>added</small> : doc.role === 'named' ? <small>named in this result</small> : <small>mentioned</small>}<Icon name="chevron-right" size={14} /></RefLink></li>)}</ul>
-      ) : <p className="wd-muted">{emptyLinks(relations, 'Not in the Wiki yet.')}</p>}
+    <div className="details__sec wd-docs">
+      {docs.length ? <p className="wd-sentence">Shown on the Wiki {docs.length === 1 ? 'page' : 'pages'} {pages}.</p> : null}
+      {!docs.length && !relations.complete ? <p className="wd-muted">{emptyLinks(relations, '')}</p> : null}
       {kind && notYet ? <div className="wd-actions wd-actions--hint"><Button variant="secondary" icon="doc" disabled aria-describedby={`wd-docs-hint-${object.id}`}>Add to a Wiki page</Button><small className="wd-muted" id={`wd-docs-hint-${object.id}`}>{notYet}</small></div> : null}
-      {kind && !notYet ? <div className="wd-actions"><Button variant="secondary" icon="doc" onClick={() => openDetails({ kind: 'add-to-doc', projectId: project.id, from: { type: kind, id: object.id, title: object.title }, inDocs: docs.filter((doc) => doc.role === 'source').map((doc) => doc.id), inDocsComplete: relations.complete })}>Add to a Wiki page</Button></div> : null}
-    </section>
+      {addable ? <div className="wd-actions"><Button variant="secondary" icon="doc" onClick={() => openDetails({ kind: 'add-to-doc', projectId: project.id, from: { type: kind, id: object.id, title: object.title }, inDocs: docs.filter((doc) => doc.role === 'source').map((doc) => doc.id), inDocsComplete: relations.complete })}>Add to a Wiki page</Button></div> : null}
+    </div>
   );
 }
 
@@ -331,7 +323,6 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const decisions = linked(relations.links, item.id, 'decision');
   const results = linked(relations.links, item.id, 'result');
   const docs = docsLinking(relations.links, item.id);
-  const parkedBy = item.parked ? detail.context.find((decision) => decision.id === item.parked!.decisionId) : null;
   // An open task is the most specific place to work together, and a fragment others can open.
   const liveAnchor = { projectId: item.projectId, context: { type: 'work' as const, id: item.id }, label: item.title };
   useRegisterLiveHere(reverted ? null : liveAnchor, reverted ? null : { ref: { type: 'work', id: item.id, version: item.version }, label: item.title, what: 'task' });
@@ -408,13 +399,8 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
     // Undo restores what this change replaced: leaving "blocked" clears its reason, so the reason goes back too.
     const before = { status: item.status, blocker: item.status === 'blocked' ? item.blocker : null, waitingFor: item.status === 'blocked' ? item.waitingFor : null };
     if (await change({ status: next })) {
-      // Finishing parked work also unparks it, and the contract cannot park it again, so Undo would leave it unparked: no Undo for that change.
       // The one wink (F-026 §3) on a task closed: the words carry it without the face.
       const mascot = next === 'done' ? 'wink' as const : undefined;
-      if (item.parked && (next === 'done' || next === 'not_pursued')) {
-        toast({ message: `${taskNumber(item)} moved to ${STATUS_LABEL[next]} and is no longer parked`, timeout: 8000, mascot });
-        return;
-      }
       // A put-back blocker is not said again in the task's conversation (restore).
       const restore = before.status === 'blocked' && (before.blocker || before.waitingFor)
         ? { status: before.status, ...(before.blocker ? { blocker: before.blocker } : {}), ...(before.waitingFor ? { waitingFor: { kind: 'human' as const, id: before.waitingFor.id } } : {}), restore: true as const }
@@ -453,7 +439,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
   const composer = useComposerDraft(me.user.id, context.project.id, `task:${item.id}`);
   const activity = useTaskActivity({ item, links: relations.links, project: context.project, members: context.members, me: { id: me.user.id, name: me.user.name }, revision: detail.observedAt });
   const composerId = useId();
-  // Empty sections are hidden (#868): a task without a source has no "Came from" row. While the relationships have more pages
+  // Empty sections are hidden (#868): a task without a source has no "From" row. While the relationships have more pages
   // than the one shown, the row stays, so paging never adds or takes rows away.
   const cameFrom = relations.links.some((link) => link.from.type === 'work' && link.from.id === item.id && link.role === 'source') || !!item.planIntent || !relations.complete;
 
@@ -462,7 +448,6 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
       <PanelMeta>{taskNumber(item)}</PanelMeta>
       <PanelGlyph><StatusGlyph status={item.status} size={14} /></PanelGlyph>
       <div className="wd__scroll">
-        {item.parked ? <p className="wd-where">Parked, not done</p> : null}
         <TitleField title={item.title} editable={writable} onEdit={() => { titleBase.current = item.version; }}
           onDraftChange={() => { fieldEdits.current.title++; }} onSave={(title) => saveField('title', title)} />
         {item.outcome ? <p className="details__lead">{item.outcome}</p> : null}
@@ -484,7 +469,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
           </div>
           <TaskPeople workId={item.id} revision={`${detail.observedAt}:${activity.lines.length}`} />
           {cameFrom ? <div className="wd-row">
-            <dt>Came from</dt>
+            <dt>From</dt>
             <dd className="wd-from"><CameFrom item={item} links={relations.links} project={context.project} empty={emptyLinks(relations, '')} /></dd>
           </div> : null}
           {writable || item.dueOn ? <div className="wd-row">
@@ -539,14 +524,6 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
 
         {item.creationUndo?.reason === 'eligible' && writable ? <UndoCreation key={`${me.user.id}:${item.id}:${item.version}`} item={item} userId={me.user.id} reload={reload} isCurrent={isCurrent} /> : null}
 
-        {item.parked ? (
-          <section className="details__sec" aria-labelledby="wd-parked">
-            <h4 id="wd-parked">Parked by a pivot</h4>
-            <p>Set aside on {shortDate(item.parked.at)} when {parkedBy ? <button type="button" className="wd-inline" onClick={() => openDetails({ kind: 'decision', id: parkedBy.id, projectId: context.project.id }, { back: 'push' })}>“{parkedBy.title}”</button> : 'a new decision'} was accepted. It keeps its status and can come back.</p>
-            {writable ? <div className="wd-actions"><Button variant="secondary" busy={busy} onClick={() => void change({ parked: false })}>Bring back into the plan</Button></div> : null}
-          </section>
-        ) : null}
-
         {item.criteria.length ? (
           <section className="details__sec" aria-labelledby={`wd-criteria-${item.id}`}>
             <h4 id={`wd-criteria-${item.id}`}>Done when</h4>
@@ -580,8 +557,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         <ActivityTimeline state={activity} composer={composer} item={item} project={context.project} me={{ id: me.user.id, name: me.user.name }} writable={writable} composerId={composerId} />
       </div>
       <div className="wd__foot" data-version={item.version}>
-        <TaskComposer state={activity} composer={composer} item={item} meId={me.user.id} writable={writable} readOnly={!!reverted} id={composerId}
-          audience={`Everyone in ${context.project.name}`} />
+        <TaskComposer state={activity} composer={composer} item={item} meId={me.user.id} writable={writable} readOnly={!!reverted} id={composerId} />
       </div>
     </div>
   );
@@ -688,24 +664,19 @@ function Subtasks({ item, openDetails }: { item: OwnWork; openDetails: ReturnTyp
   );
 }
 
-function DecisionPanel({ decision, context, detail, relations, reload, choices, setChoices, revision, commands }: { decision: OwnDecision; context: Context; detail: WorkDetailProjection; relations: DetailRelations; reload: () => void; choices: Record<string, Choice>; setChoices: (update: (current: Record<string, Choice>) => Record<string, Choice>) => void; revision: number; commands: PanelCommands }) {
+function DecisionPanel({ decision, context, detail, relations, reload, revision, commands }: { decision: OwnDecision; context: Context; detail: WorkDetailProjection; relations: DetailRelations; reload: () => void; revision: number; commands: PanelCommands }) {
   const { openDetails } = useShellActions();
   const owners = useAgentOwners(context.project);
   const earlier = decision.supersedes ? detail.context.find((item) => item.id === decision.supersedes) : null;
   const later = decision.supersededBy ? detail.context.find((item) => item.id === decision.supersededBy) : null;
   const affected = linked(relations.links, decision.id, 'work', ['affects']);
-  const stillApplies = linked(relations.links, decision.id, 'work', ['still_applies']);
   const { me } = useShellData();
   const earlierRead = useNativeOwn(me.user.id, context.project.id, 'decision', earlier?.id, true, revision);
-  const earlierObject = earlierRead.value?.object;
-  const pivotChoices = useWorkChoices(me.user.id, context.project.id, decision.status === 'proposed' && decision.supersedes ? { purpose: 'choices', choice: 'pivot_work' } : null, true, revision);
-  const parkedChoices = useWorkChoices(me.user.id, context.project.id, decision.status !== 'proposed' ? { purpose: 'choices', choice: 'parked_work', decisionId: decision.id } : null, true, revision);
-  const candidates = pivotChoices.page?.items.filter((row) => row.kind === 'work') ?? [];
-  const parked = parkedChoices.page?.items.filter((row) => row.kind === 'work') ?? [];
+  const earlierObject = earlierRead.value?.object.kind === 'decision' ? earlierRead.value.object : null;
+  const laterRead = useNativeOwn(me.user.id, context.project.id, 'decision', later?.id, true, revision);
+  const laterObject = laterRead.value?.object.kind === 'decision' ? laterRead.value.object : null;
   const { busy, error, attempt } = commands.state;
   const { setBusy, setError, setAttempt, isCurrent } = commands;
-  const pivot = decision.status === 'proposed' && !!decision.supersedes;
-  const selectedCount = (choice: Choice) => Object.values(choices).filter((value) => value === choice).length;
   // The panel is the Inbox's decision card first (F-026 P4, S11; #763 D1): Needs you, the reason, what it rests on,
   // Accept / Not now / Discuss and who else can accept. Not now and the waiting line are the Inbox item's, when it has one.
   const queue = useNeedsYou(me.user.id);
@@ -717,17 +688,13 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
   const notNowPop = usePop(notNowOpen);
   const discuss = useDiscussDecision();
   const sources = relations.links.filter((link) => link.from.id === decision.id && link.role === 'source');
-  const pivotRows = [...stillApplies.map((entry) => ({ key: entry.link.id, label: entry.title, hint: 'still applies', open: () => openDetails({ kind: 'work', id: entry.id, projectId: context.project.id }) })),
-    ...parked.map((item) => ({ key: item.id, label: item.title, hint: 'parked', open: () => openDetails({ kind: 'work', id: item.id, projectId: context.project.id }) }))];
 
   async function accept(event?: FormEvent) {
     event?.preventDefault();
-    if (busy || (pivot && !pivotChoices.page)) return;
-    if (selectedCount('keep') > 50 || selectedCount('park') > 50) { setError('A pivot can keep up to 50 work items and park up to 50.'); return; }
+    if (busy) return;
     setBusy(true); setError('');
-    const pick = (choice: Choice) => Object.entries(choices).filter(([, value]) => value === choice).map(([id]) => id);
     try {
-      await acceptDecision(decision, pivot ? { stillApplies: pick('keep'), park: pick('park') } : {}, attempt);
+      await acceptDecision(decision, attempt);
       // The Inbox and Home read their queue again, so the decision leaves them too.
       announceInboxChange();
       if (isCurrent()) reload();
@@ -737,6 +704,8 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
       if (cause instanceof ApiError && cause.status === 409) { setAttempt(crypto.randomUUID()); reload(); }
     } finally { setBusy(false); }
   }
+  // Plain sentences, drawn only when they apply (#871): the decision this one replaces, and the one that replaced it.
+  const dayOf = (object: typeof earlierObject) => object ? ` (${shortDate(object.decidedAt ?? object.createdAt)})` : '';
 
   return (
     <div className="details wd" data-detail-kind="decision" data-detail-id={decision.id}>
@@ -753,10 +722,9 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
       ) : null}
       {decision.status === 'proposed' ? (
         <section className="wd-decide" aria-label="Your answer">
-          {pivot ? <p className="wd-muted">Accepting makes this the current rule in place of “{earlier?.title ?? 'the earlier rule'}”, which stays in the history. Choose below what happens to current work.</p> : null}
           <div className="nyc__foot wd-decide__foot">
             <div className="nyc__actions">
-              <Button variant="primary" busy={busy} disabled={pivot && !pivotChoices.page} onClick={() => void accept()}>{pivot ? 'Accept and pivot' : 'Accept'}</Button>
+              <Button variant="primary" busy={busy} onClick={() => void accept()}>Accept</Button>
               {need ? <NotNowButton buttonRef={notNow} open={notNowOpen} onToggle={() => setNotNowOpen(!notNowOpen)} /> : null}
               <Button variant="quiet" onClick={() => void discuss(context.project.id, decision.id, relations.complete ? relations.links : undefined)}>Discuss</Button>
             </div>
@@ -773,18 +741,16 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
       </dl>
 
       {earlier ? (
-        <section className="details__sec" aria-labelledby="wd-replaces">
-          <h4 id="wd-replaces">{decision.status === 'proposed' ? 'Would replace' : 'Replaced'}</h4>
-          <button type="button" className="wd-link" onClick={() => openDetails({ kind: 'decision', id: earlier.id, projectId: context.project.id })}><span className={earlierObject?.kind === 'decision' && earlierObject.status === 'superseded' ? 'wd-was' : ''}>{earlier.title}</span><Icon name="chevron-right" size={14} /></button>
-          {earlierObject?.kind === 'decision' && earlierObject.rationale ? <p className="wd-quote">Earlier reason: {earlierObject.rationale}</p> : null}
-          {earlierRead.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Earlier reason could not be loaded. <button type="button" className="wd-inline" onClick={reload}>Refresh details</button></p> : null}
-        </section>
+        <div className="details__sec wd-replaces">
+          <p className="wd-sentence">This replaces the decision <button type="button" className="wd-inline" onClick={() => openDetails({ kind: 'decision', id: earlier.id, projectId: context.project.id })}>{earlier.title}</button>{dayOf(earlierObject)}.</p>
+          {earlierObject?.rationale ? <p className="wd-quote">Earlier reason: {earlierObject.rationale}</p> : null}
+          {earlierRead.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Earlier reason could not be loaded. <button type="button" className="wd-inline" onClick={reload}>Try again</button></p> : null}
+        </div>
       ) : null}
       {later ? (
-        <section className="details__sec" aria-labelledby="wd-replaced-by">
-          <h4 id="wd-replaced-by">Replaced by</h4>
-          <button type="button" className="wd-link" onClick={() => openDetails({ kind: 'decision', id: later.id, projectId: context.project.id })}><span>{later.title}</span><Icon name="chevron-right" size={14} /></button>
-        </section>
+        <div className="details__sec wd-replaces">
+          <p className="wd-sentence">This was replaced by the decision <button type="button" className="wd-inline" onClick={() => openDetails({ kind: 'decision', id: later.id, projectId: context.project.id })}>{later.title}</button>{dayOf(laterObject)}.</p>
+        </div>
       ) : null}
 
       <RelationPages relations={relations} />
@@ -794,40 +760,10 @@ function DecisionPanel({ decision, context, detail, relations, reload, choices, 
           <Linked items={affected.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'work', id: entry.id, projectId: context.project.id }) }))} />
         </section>
       ) : null}
-      {/* Only after a pivot: what still applies and what was parked (#763 D2). */}
-      {pivotRows.length || (decision.status !== 'proposed' && !!parkedChoices.page && choicesPaged(parkedChoices)) ? (
-        <section className="details__sec" aria-labelledby="wd-pivot">
-          <h4 id="wd-pivot">At this pivot</h4>
-          {decision.status !== 'proposed' ? <ChoicePages choices={parkedChoices} label="Parked work pages" quiet /> : null}
-          <Linked items={pivotRows} />
-        </section>
-      ) : null}
-
-      {pivot ? (
-        <form className="details__sec wd-accept" aria-labelledby="wd-pivot-work" onSubmit={(event) => void accept(event)}>
-          <h4 id="wd-pivot-work">What happens to current work?</h4>
-          <ChoicePages choices={pivotChoices} label="Pivot work pages" quiet />
-          {candidates.length ? (
-            <fieldset className="wd-pivot" disabled={busy} aria-labelledby="wd-pivot-work">
-              {candidates.map((item) => (
-                <div className="wd-pivot__row" key={item.id} role="radiogroup" aria-label={item.title}>
-                  <span className="wd-pivot__t">{item.title}<small>{STATUS_LABEL[item.status]}{item.owner ? ` · ${item.owner.name}` : ''}</small></span>
-                  {(['keep', 'park', 'leave'] as const).map((choice) => (
-                    <label key={choice} className="wd-pivot__c"><input type="radio" name={`pivot-${item.id}`} value={choice} disabled={choice !== 'leave' && choices[item.id] !== choice && selectedCount(choice) >= 50} checked={(choices[item.id] ?? 'leave') === choice}
-                      onChange={() => { setChoices((current) => { const next = { ...current }; if (choice === 'leave') delete next[item.id]; else next[item.id] = choice; return next; }); setAttempt(crypto.randomUUID()); }} />{choice === 'keep' ? 'Still applies' : choice === 'park' ? 'Park' : 'Unchanged'}</label>
-                  ))}
-                </div>
-              ))}
-            </fieldset>
-          ) : <p className="wd-muted">No open work to choose for.</p>}
-          <p className="wd-muted">{selectedCount('keep')} still apply · {selectedCount('park')} parked · selections stay across pages (up to 50 each).</p>
-        </form>
-      ) : null}
 
       <OtherRelationships object={decision} relations={relations} project={context.project} />
       <InDocs object={decision} kind="decision" project={context.project} relations={relations} notYet={decision.status === 'proposed' ? 'Accept it first to add it to the Wiki.' : undefined} />
-      <Audience project={context.project} />
-      <IdsLine>Version {decision.version}{decision.supersedes ? ' · replaces an earlier decision' : ''}</IdsLine>
+      <IdsLine>Version {decision.version}</IdsLine>
     </div>
   );
 }
@@ -862,7 +798,6 @@ function ResultPanel({ result, context, relations }: { result: OwnResult; contex
       ) : null}
       <OtherRelationships object={result} relations={relations} project={context.project} />
       <InDocs object={result} kind="result" project={context.project} relations={relations} named={named} />
-      <Audience project={context.project} />
     </div>
   );
 }
@@ -943,19 +878,18 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
         <label htmlFor={rationaleId}>Why</label>
         <textarea id={rationaleId} value={rationale} onChange={(event) => edit(setRationale)(event.target.value)} maxLength={20000} rows={4} placeholder="What makes this the right call" />
         <>
-          <label htmlFor={replacesId}>Replaces</label>
+          <label htmlFor={replacesId}>Replaces an earlier decision?</label>
           <Select id={replacesId} value={supersedes} disabled={!candidates.page} onChange={(next) => edit(setSupersedes)(next)}>
-            <Option value="">Nothing, this is a new decision</Option>
+            <Option value="">No, this is a new decision</Option>
             {supersedes && !current.some((item) => item.id === supersedes) ? <Option value={supersedes}>{chosen?.title ?? 'Selected decision (not loaded)'}</Option> : null}
             {current.map((item) => <Option key={item.id} value={item.id}>{item.title}</Option>)}
           </Select>
         </>
       </fieldset>
       <ChoicePages choices={candidates} label="Choices it can replace" quiet />
-      {supersedes && (!chosen || chosen.status !== 'accepted') ? <p className="wd-muted">The selected rule must be currently available and accepted before this proposal can replace it.</p> : null}
+      {supersedes && (!chosen || chosen.status !== 'accepted') ? <p className="wd-muted">The selected decision must be accepted before this one can replace it.</p> : null}
       {error ? <p className="wd-error" role="alert">{error} <button type="button" className="wd-inline" onClick={(event) => void submit(event)}>Retry</button></p> : null}
       <SubmitSection help={view.source ? 'A person with write access accepts it. The message stays where it is and links here.' : 'A person with write access accepts it.'}><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Propose decision</Button></SubmitSection>
-      {context ? <Audience project={context.project} /> : null}
     </form>
   );
 }
@@ -1037,7 +971,6 @@ function AttachResult({ view, context, contextStatus, reload, revision, isCurren
       {selected.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Selected work could not be loaded. Your selection is kept. <button type="button" className="wd-inline" onClick={reload}>Refresh selected work</button></p> : null}
       {error ? <p className="wd-error" role="alert">{error}</p> : null}
       <SubmitSection help="A negative result is a real outcome: it can finish an experiment."><Button type="submit" variant="primary" busy={busy} disabled={!canSubmit}>Attach result</Button></SubmitSection>
-      {context ? <Audience project={context.project} /> : null}
     </form>
   );
 }

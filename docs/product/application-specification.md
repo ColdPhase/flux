@@ -57,8 +57,8 @@ Use the working terms *workspace, project, material, conversation, decision, wor
    not the task, and removing it does not delete the task or thread.
 3. After a break and an explicit pivot, a participant sees the current direction,
    important sourced changes, last result, still-useful work and one next action.
-   Exploring variant B differs from choosing B. Obsolete work is parked rather
-   than marked complete; prior decisions, results and rationale remain. The
+   Exploring variant B differs from choosing B. A replaced decision stays,
+   marked replaced, and Flux moves no task because of it (#871); prior decisions, results and rationale remain. The
    journey works on phone/tablet without AI, a return note or inbox cleanup.
 
 For every linked view, show the live source or an explicit source revision/stale

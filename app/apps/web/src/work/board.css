@@ -40,9 +40,6 @@
 
 /* ---------- What the board leaves to the List ---------- */
 .tb { min-height: 100%; display: flex; flex-direction: column; container: tasks / inline-size; }
-.tb-also { display: flex; flex-wrap: wrap; align-items: center; gap: 0 14px; padding: 12px var(--space-page) 0; font-size: var(--fs-sm); color: var(--t3); }
-.tb-also__b { min-height: 28px; color: var(--t2); text-decoration: underline; text-decoration-color: var(--line2); text-underline-offset: 3px; transition: var(--tr); }
-.tb-also__b:hover { color: var(--t1); text-decoration-color: currentColor; }
 
 /* ---------- Board ---------- */
 .tb-wrap { flex: 1; min-height: 0; display: flex; flex-direction: column; }
@@ -138,7 +135,6 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
 /* ---------- Phone (#868): the same control row as the computer, without "+ Task" (the floating Create is the phone's one "+") ---------- */
 .tb-search__l { display: none; }
 @media (max-width: 640px) {
-  .tb-also { padding-top: 8px; }
   .tb-add.ui-btn { display: none; }
   .tb-bar { flex-wrap: nowrap; padding-top: 10px; }
   .tb-search { flex: 1 1 0; margin-left: 2px; }
@@ -148,7 +144,7 @@ html.tb-is-dragging, html.tb-is-dragging * { cursor: grabbing !important; user-s
   .tb-mode__b { min-height: 44px; min-width: 44px; }
   .tb-mine { min-height: 44px; }
   .tb-search input { font-size: var(--fs-input-touch); }
-  .tb-also__b, .tb-note__x { min-height: 44px; }
+  .tb-note__x { min-height: 44px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
