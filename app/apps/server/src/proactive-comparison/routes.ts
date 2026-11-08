@@ -7,6 +7,7 @@ import { backgroundConnectionRepository, comparisonProposalView, proactiveOutbox
 import { backgroundConnectionUseCases, baseUrlSyntaxProblem, ConflictError, DomainError, enforce, evaluateProject, InvalidInputError,
   isUuid, normalizeBaseUrl, NotFoundError, proactiveRuleUseCases, VersionConflictError, visibleProposal } from '@flux/core';
 import type { SessionResolver } from '../identity/index.js';
+import { requireNotGuest } from '../access/guest-no-ai.js';
 import { taskUseDomainError } from '../work/task-use-errors.js';
 import { nativeWorkInTransaction } from '../work/adapters.js';
 import { comparisonOutcomeAccess, comparisonOutcomeReads, comparisonOutcomes } from './outcome-adapter.js';
@@ -71,8 +72,11 @@ export async function proactiveComparisonRoutes(app: FastifyInstance, { db, sess
         dailyBudgetCents: dailyBudget,
         timeZone: { type: 'string', minLength: 1, maxLength: 64 },
       } } },
-  }, async (request, reply) => reply.code(201).send(await connections.connect(
-    (await sessions.requirePrincipal(request)).principal, request.body)));
+  }, async (request, reply) => {
+    const { principal } = await sessions.requirePrincipal(request);
+    await requireNotGuest(db, principal.id);
+    return reply.code(201).send(await connections.connect(principal, request.body));
+  });
   // PROV-1: all of the owner's own connections; never another person's.
   app.get('/api/v1/background-compute-connections', async (request) => connections.list(
     (await sessions.requirePrincipal(request)).principal));

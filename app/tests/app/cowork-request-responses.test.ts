@@ -20,7 +20,7 @@ import { createConnection } from './support/mcp-actions.js';
 const { db, pool } = createDatabase(process.env.DATABASE_URL!);
 after(() => pool.end());
 const LIMITS: CoWorkRequestLimits = { maximumRequests: 128, maximumDepth: 8, maximumReviewRounds: 16 };
-const REQUESTS: CoWorkRequestPolicy = { limits: LIMITS, reviewSeparation: 'distinct_connection' };
+const REQUESTS: CoWorkRequestPolicy = { limits: LIMITS };
 const CLAIMS: CoWorkClaimPolicy = { maximumConnectionUnits: 1, leaseSeconds: 120,
   prepareTaskLocks: (tx, context, units) => coWorkTaskGraphLocks(tx, context.workspaceId, units),
   async requireEligible() {}, async requireCheckpointSources() {} };

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
-import { DomainError, normalizeCoWorkUnitTransition, requireCoWorkUnitTransition, validateCoWorkUnitTransitionPolicy,
+import { DomainError, normalizeCoWorkUnitTransition, requireCoWorkUnitTransition,
   type CoWorkContext, type CoWorkTransitionUnit, type CoWorkUnitTransitionFacts, type CoWorkUnitTransitionInput } from '@flux/core';
 
 // Pure #153 completion/transfer rules over in-memory facts; the SQL composition is covered by cowork-unit-transitions.
@@ -21,7 +21,6 @@ function scene(role: CoWorkTransitionUnit['role'] = 'execute') {
   const transfer: CoWorkUnitTransitionInput = { operation: 'transfer', ...fence, assignmentConnectionId: assignee.id };
   return { context, unit, assignee, facts, fence, complete, transfer };
 }
-const policy = { reviewSeparation: 'distinct_connection' as const };
 
 test('payloads are exact: a native outcome or an assignee plus the holder fence; GitHub outcomes stay unavailable', () => {
   const leaseId = randomUUID().toUpperCase(), result = randomUUID().toUpperCase(), assignee = randomUUID().toUpperCase();
@@ -42,17 +41,16 @@ test('payloads are exact: a native outcome or an assignee plus the holder fence;
   for (const payload of [{ ...fence }, { ...fence, assignmentConnectionId: 'someone' }, { ...fence, assignmentConnectionId: assignee, state: 'pending' },
     { ...fence, assignmentConnectionId: assignee, outcome: { type: 'result', id: result } }])
     assert.throws(() => normalizeCoWorkUnitTransition('transfer', payload), code('INVALID_INPUT'), JSON.stringify(payload));
-  assert.throws(() => validateCoWorkUnitTransitionPolicy({ reviewSeparation: 'anyone' as 'distinct_owner' }), /policy is required/);
 });
 
 test('only the current holder under its live claim completes or transfers, and nothing addressed to the unit may be open', () => {
   for (const which of ['complete', 'transfer'] as const) {
     const s = scene();
     const input = s[which];
-    assert.equal(requireCoWorkUnitTransition(s.context, s.facts, input, policy), s.unit);
+    assert.equal(requireCoWorkUnitTransition(s.context, s.facts, input), s.unit);
     const refuse = (facts: Partial<CoWorkUnitTransitionFacts>, expected: string, change: Partial<CoWorkContext> = {}, inputChange: object = {}) =>
       assert.throws(() => requireCoWorkUnitTransition({ ...s.context, ...change }, { ...s.facts, ...facts },
-        { ...input, ...inputChange } as CoWorkUnitTransitionInput, policy), code(expected), `${which}: ${expected}`);
+        { ...input, ...inputChange } as CoWorkUnitTransitionInput), code(expected), `${which}: ${expected}`);
     refuse({ unit: null }, 'COWORK_UNIT_NOT_FOUND');
     refuse({ unit: { ...s.unit, assignmentConnectionId: randomUUID() } }, 'COWORK_UNIT_NOT_FOUND');
     refuse({ unit: { ...s.unit, projectId: randomUUID() } }, 'COWORK_UNIT_NOT_FOUND');
@@ -71,9 +69,9 @@ test('only the current holder under its live claim completes or transfers, and n
 
 test('a transfer goes to another eligible connection and keeps author and reviewer apart within the run', () => {
   const s = scene();
-  const refuse = (facts: Partial<CoWorkUnitTransitionFacts>, expected: string, inputChange: object = {}, separation = policy) =>
-    assert.throws(() => requireCoWorkUnitTransition(s.context, { ...s.facts, ...facts }, { ...s.transfer, ...inputChange } as CoWorkUnitTransitionInput,
-      separation), code(expected), expected);
+  const refuse = (facts: Partial<CoWorkUnitTransitionFacts>, expected: string, inputChange: object = {}) =>
+    assert.throws(() => requireCoWorkUnitTransition(s.context, { ...s.facts, ...facts }, { ...s.transfer, ...inputChange } as CoWorkUnitTransitionInput),
+      code(expected), expected);
   refuse({}, 'COWORK_ASSIGNMENT_REFUSED', { assignmentConnectionId: s.context.connectionId });
   refuse({ assignee: null }, 'COWORK_ASSIGNEE_UNAVAILABLE');
   refuse({ assignee: { id: randomUUID(), ownerUserId: 'owner-b' } }, 'COWORK_ASSIGNEE_UNAVAILABLE');
@@ -82,19 +80,13 @@ test('a transfer goes to another eligible connection and keeps author and review
   refuse({ runUnits: [...s.facts.runUnits, reviewer] }, 'COWORK_REVIEW_SEPARATION');
   const r = scene('review');
   const author = { id: randomUUID(), role: 'execute' as const, assignmentConnectionId: r.assignee.id, ownerUserId: 'owner-b' };
-  assert.throws(() => requireCoWorkUnitTransition(r.context, { ...r.facts, runUnits: [...r.facts.runUnits, author] }, r.transfer, policy),
+  assert.throws(() => requireCoWorkUnitTransition(r.context, { ...r.facts, runUnits: [...r.facts.runUnits, author] }, r.transfer),
     code('COWORK_REVIEW_SEPARATION'));
-  // distinct_owner: the run's author's owner, or an unknown (deleted) owner, cannot receive the review unit.
+  // Another connection of the author's own owner, or one of an unknown (deleted) owner, may receive the review unit: there is no rule on owners.
   const sameOwner = { ...author, assignmentConnectionId: randomUUID(), ownerUserId: 'owner-b' };
-  const strict = { reviewSeparation: 'distinct_owner' as const };
-  assert.equal(requireCoWorkUnitTransition(r.context, { ...r.facts, runUnits: [...r.facts.runUnits, sameOwner] }, r.transfer, policy), r.unit);
-  assert.throws(() => requireCoWorkUnitTransition(r.context, { ...r.facts, runUnits: [...r.facts.runUnits, sameOwner] }, r.transfer, strict),
-    code('COWORK_REVIEW_SEPARATION'));
-  assert.throws(() => requireCoWorkUnitTransition(r.context, { ...r.facts, runUnits: [...r.facts.runUnits, { ...sameOwner, ownerUserId: null }] },
-    r.transfer, strict), code('COWORK_REVIEW_SEPARATION'));
-  assert.equal(requireCoWorkUnitTransition(r.context, { ...r.facts, runUnits: [...r.facts.runUnits, { ...sameOwner, ownerUserId: 'owner-c' }] },
-    r.transfer, strict), r.unit);
+  assert.equal(requireCoWorkUnitTransition(r.context, { ...r.facts, runUnits: [...r.facts.runUnits, sameOwner] }, r.transfer), r.unit);
+  assert.equal(requireCoWorkUnitTransition(r.context, { ...r.facts, runUnits: [...r.facts.runUnits, { ...sameOwner, ownerUserId: null }] }, r.transfer), r.unit);
   // A plan unit has no opposite role.
   const p = scene('plan');
-  assert.equal(requireCoWorkUnitTransition(p.context, { ...p.facts, runUnits: [...p.facts.runUnits, reviewer, author] }, p.transfer, strict), p.unit);
+  assert.equal(requireCoWorkUnitTransition(p.context, { ...p.facts, runUnits: [...p.facts.runUnits, reviewer, author] }, p.transfer), p.unit);
 });

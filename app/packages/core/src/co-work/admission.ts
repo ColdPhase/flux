@@ -7,8 +7,6 @@ import { normalizeCoWorkRequest } from './requests.js';
 /** The sender's live claim fence for a `cowork.request`; it authorizes queued intent only. */
 export interface CoWorkSenderFence { generation: number; leaseId: string }
 export interface CoWorkAdmissionInput { fence: CoWorkSenderFence; request: CoWorkEnqueueCommand }
-/** Server-owned project policy; never read from a payload or peer message. */
-export type CoWorkReviewSeparation = 'distinct_connection' | 'distinct_owner';
 export interface CoWorkAdmissionUnit {
   id: string;
   projectId: string;
@@ -50,8 +48,7 @@ function github(refs: readonly CoWorkSourceRef[]): boolean { return refs.some((r
  * The recipient unit shares the sender's canonical lineage, so no unrelated budget can be opened or borrowed.
  * Selecting a recipient grants it nothing: no claim, grant or execution authority.
  */
-export function requireCoWorkAdmission(context: CoWorkContext, facts: CoWorkAdmissionFacts, input: CoWorkAdmissionInput,
-  separation: CoWorkReviewSeparation): void {
+export function requireCoWorkAdmission(context: CoWorkContext, facts: CoWorkAdmissionFacts, input: CoWorkAdmissionInput): void {
   const { sender, recipient, recipientConnection, now } = facts;
   if (sender.assignmentConnectionId !== context.connectionId || sender.projectId !== context.projectId)
     throw new NotFoundError('Work unit', 'COWORK_UNIT_NOT_FOUND');
@@ -72,7 +69,4 @@ export function requireCoWorkAdmission(context: CoWorkContext, facts: CoWorkAdmi
   const { target, sourceRefs, criteriaRefs } = input.request;
   if (github([target, ...sourceRefs, ...criteriaRefs]))
     throw new NotFoundError('Request source', 'COWORK_SOURCE_UNAVAILABLE');
-  if (separation !== 'distinct_connection' && separation !== 'distinct_owner') throw new Error('Invalid review separation policy');
-  if (input.request.kind === 'review' && separation === 'distinct_owner' && recipientConnection.ownerUserId === context.ownerId)
-    throw new ConflictError('Project policy requires a reviewer of another owner', 'COWORK_REVIEW_SEPARATION');
 }

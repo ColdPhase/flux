@@ -4,7 +4,7 @@ export type { CoWorkContext, CoWorkRole, CoWorkLease, CoWorkUnit, ClaimFence, Cl
   CoWorkClaimPostcondition, LockedClaimScope, CoWorkClaimUnitOfWork } from './claims.js';
 export { normalizeCoWorkSource, normalizeCoWorkRequest, validateCoWorkRequestLimits, coWorkRequestFingerprint } from './requests.js';
 export { normalizeCoWorkAdmission, requireCoWorkAdmission } from './admission.js';
-export type { CoWorkSenderFence, CoWorkAdmissionInput, CoWorkReviewSeparation, CoWorkAdmissionUnit, CoWorkAdmissionFacts } from './admission.js';
+export type { CoWorkSenderFence, CoWorkAdmissionInput, CoWorkAdmissionUnit, CoWorkAdmissionFacts } from './admission.js';
 export { COWORK_DECLINE_REASONS, COWORK_DEFER_BOUNDARIES, COWORK_DEFER_REASONS, requireCoWorkDefer, normalizeCoWorkRequestClaim, normalizeCoWorkResponse, normalizeCoWorkResponseRef,
   requireCoWorkRequestClaim, requireCoWorkResponse } from './responses.js';
 export type { CoWorkDeclineReason, CoWorkDeferInput, CoWorkRequestClaimInput, CoWorkResponseInput, CoWorkRecipientUnit, CoWorkLockedRequest,
@@ -13,13 +13,13 @@ export { assistantHandoffRunId, coWorkRootRunId, normalizeCoWorkUnitCreate, requ
   validateCoWorkUnitPolicy } from './units.js';
 export type { CoWorkUnitParentFence, CoWorkUnitCreateInput, CoWorkUnitPolicy, CoWorkCreationUnit, CoWorkUnitCreationFacts,
   CoWorkUnitDecision } from './units.js';
-export { normalizeCoWorkUnitTransition, requireCoWorkUnitTransition, validateCoWorkUnitTransitionPolicy } from './transitions.js';
-export type { CoWorkHolderFence, CoWorkUnitTransitionInput, CoWorkUnitTransitionPolicy, CoWorkTransitionUnit,
+export { normalizeCoWorkUnitTransition, requireCoWorkUnitTransition } from './transitions.js';
+export type { CoWorkHolderFence, CoWorkUnitTransitionInput, CoWorkTransitionUnit,
   CoWorkUnitTransitionFacts } from './transitions.js';
 export { COWORK_CHECKPOINT_LIMITS, COWORK_CHECKPOINT_SCHEMA, coWorkCheckpointProgress, normalizeCoWorkCheckpointDraft,
   parseCoWorkCheckpointProgress, requireCoWorkCheckpointSources, requireCoWorkClaimEligibility } from './checkpoints.js';
 export type { CoWorkCheckpointDraft, CoWorkCheckpointSource, CoWorkCheckpointProgress, CoWorkClaimEligibilityReader,
   CoWorkCheckpointSourceReader } from './checkpoints.js';
-export { COWORK_OPEN_REQUEST_STATES, canCancelCoWorkRequest, mayCancelCoWorkRequest, normalizeCoWorkCancel, normalizeCoWorkReviewRule,
+export { COWORK_OPEN_REQUEST_STATES, canCancelCoWorkRequest, mayCancelCoWorkRequest, normalizeCoWorkCancel,
   requireCoWorkCancel } from './cards.js';
 export type { CoWorkCancelActor, CoWorkCancelFacts } from './cards.js';

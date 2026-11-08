@@ -18,12 +18,12 @@ import { createConnection } from './support/mcp-actions.js';
 // trusted fixtures; no unit is inserted directly. Not a public tool or client evidence.
 const { db, pool } = createDatabase(process.env.DATABASE_URL!);
 after(() => pool.end());
-const UNITS: CoWorkUnitPolicy = { maximumRunUnits: 4, reviewSeparation: 'distinct_connection' };
+const UNITS: CoWorkUnitPolicy = { maximumRunUnits: 4 };
 const CLAIMS: CoWorkClaimPolicy = { maximumConnectionUnits: 1, leaseSeconds: 120,
   prepareTaskLocks: (tx, context, units) => coWorkTaskGraphLocks(tx, context.workspaceId, units),
   async requireEligible() {}, async requireCheckpointSources() {} };
 const LIMITS: CoWorkRequestLimits = { maximumRequests: 128, maximumDepth: 8, maximumReviewRounds: 16 };
-const REQUESTS: CoWorkRequestPolicy = { limits: LIMITS, reviewSeparation: 'distinct_connection' };
+const REQUESTS: CoWorkRequestPolicy = { limits: LIMITS };
 type Role = 'execute' | 'review' | 'plan';
 
 async function world() {
@@ -318,8 +318,7 @@ test('child negative controls: parent fence, assignee, separation and the run ca
   const executeChild = await creator(w, f.codex, f.a, 'execute');
   await refuse(executeChild.cmd({ unitKey: 'e', expectedTaskVersion: f.a.version, assignmentConnectionId: marek, parent: f.fence }),
     'COWORK_REVIEW_SEPARATION');
-  // A stricter project policy also refuses another connection of the author's owner; the default allows it.
-  await refuse(f.child('claude-review', claude.connection.id), 'COWORK_REVIEW_SEPARATION', { ...UNITS, reviewSeparation: 'distinct_owner' });
+  // Another connection of the author's own owner may review (there is no project rule to say otherwise, C-9).
   assert.equal((await f.review.run(f.child('claude-review', claude.connection.id))).status, 'created');
   // Intent key: the same key for another assignee is a conflict.
   await refuse(f.child('claude-review', marek), 'COWORK_UNIT_CONFLICT');

@@ -153,15 +153,3 @@ export interface CoWorkHandoffPacket {
   verdict: { verdict: CoWorkReviewVerdictValue; current: boolean; createdAt: string } | null;
 }
 export const taskCoordinationPacketPath = (workId: string, requestId: string) => `/api/v1/work/${workId}/coordination/requests/${requestId}/packet`;
-
-/** How separate a reviewer must be from the author: another connection (the default) or another owner. */
-export type CoWorkReviewRule = 'distinct_connection' | 'distinct_owner';
-export interface CoWorkReviewPolicy {
-  projectId: string;
-  reviewSeparation: CoWorkReviewRule;
-  /** Null until a manager chose explicitly; the default then applies. */
-  updatedAt: string | null;
-  updatedBy: { id: string; name: string } | null;
-}
-export interface SetCoWorkReviewPolicyCommand { reviewSeparation: CoWorkReviewRule }
-export const projectReviewPolicyPath = (projectId: string) => `/api/v1/projects/${projectId}/review-policy`;

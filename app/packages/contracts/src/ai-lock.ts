@@ -134,8 +134,6 @@ export const AI_HTTP_ROUTES: Readonly<Record<string, AiRouteRule>> = {
   'GET /api/v1/work/:workId/coordination': gated('params', 'workId', 'work'),
   'GET /api/v1/work/:workId/coordination/requests/:requestId/packet': gated('params', 'workId', 'work'),
   'POST /api/v1/work/:workId/coordination/requests/:requestId/cancel': exempt(REDUCES),
-  'GET /api/v1/projects/:projectId/review-policy': gated('params', 'projectId', 'project'),
-  'PUT /api/v1/projects/:projectId/review-policy': gated('params', 'projectId', 'project'),
   'GET /api/v1/work/:workId/agent-thread': exempt('Existing agent-thread messages stay readable as history'),
   'POST /api/v1/work/:workId/agent-thread': gated('params', 'workId', 'work'),
 };

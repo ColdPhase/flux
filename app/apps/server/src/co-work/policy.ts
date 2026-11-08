@@ -1,5 +1,5 @@
 import type { AgentJsonValue } from '@flux/contracts';
-import { agentPauseRows, coworkReviewPolicyRows, coworkReviewRows, coworkUnitRows, type CoWorkReviewVerdict, type Transaction } from '@flux/db';
+import { agentPauseRows, coworkReviewRows, coworkUnitRows, type CoWorkReviewVerdict } from '@flux/db';
 import { InvalidInputError, normalizeCoWorkSource, NotFoundError, requireCoWorkCheckpointSources, requireCoWorkClaimEligibility, type CoWorkUnitPolicy } from '@flux/core';
 import { requireTaskPrerequisitesMet } from '../work/task-graph.js';
 import type { CoWorkClaimPolicy } from './claims.js';
@@ -9,22 +9,11 @@ import type { CoWorkResponsePolicy } from './responses.js';
 
 /**
  * Server-owned co-work policy for the MCP path (#153, docs/development/cowork-coordination.md "MCP exposure").
- * Tool input, client metadata and project content never set these values. `distinct_connection` is the contract
- * default (explicit same-owner review by another connection); a project manager can require `distinct_owner` for
- * their project (migration 0111, `coworkPolicies` below). Nothing an agent sends changes either.
+ * Tool input, client metadata and project content never set these values. There is no project setting for review: the Review rule
+ * and its project table are gone (C-9), and the one fixed rule that remains is that an author's own connection is never the reviewer
+ * of its work in the same run.
  */
-export const COWORK_UNIT_POLICY: CoWorkUnitPolicy = Object.freeze({ maximumRunUnits: 16, reviewSeparation: 'distinct_connection' });
-
-/**
- * The unit and request policies of one project: the server defaults with that project's explicit review rule. It is
- * read inside the command's own transaction before the command's locks, so a command applies the rule that was
- * committed when it began; a manager's change takes effect for the commands that start after it commits.
- */
-export async function coworkPolicies(tx: Transaction, projectId: string) {
-  const reviewSeparation = await coworkReviewPolicyRows(tx).current(projectId);
-  return { unit: Object.freeze({ ...COWORK_UNIT_POLICY, reviewSeparation }) as CoWorkUnitPolicy,
-    request: Object.freeze({ limits: COWORK_REQUEST_POLICY.limits, reviewSeparation }) as CoWorkRequestPolicy };
-}
+export const COWORK_UNIT_POLICY: CoWorkUnitPolicy = Object.freeze({ maximumRunUnits: 16 });
 
 /**
  * Server-owned unit claim policy and its production providers (#153, "Unit claims over MCP", 2026-10-06). One live unit
@@ -50,11 +39,10 @@ export const COWORK_CLAIM_POLICY: CoWorkClaimPolicy = Object.freeze({
 
 /**
  * Server-owned request policy for the MCP path (#153 AC-2/AC-3): a lineage holds at most 32 requests, four levels of
- * delegation and four review rounds, so delegation and review cannot loop. Separation follows COWORK_UNIT_POLICY.
+ * delegation and four review rounds, so delegation and review cannot loop.
  */
 export const COWORK_REQUEST_POLICY: CoWorkRequestPolicy = Object.freeze({
   limits: Object.freeze({ maximumRequests: 32, maximumDepth: 4, maximumReviewRounds: 4 }),
-  reviewSeparation: COWORK_UNIT_POLICY.reviewSeparation,
 });
 
 const VERDICTS: readonly CoWorkReviewVerdict[] = ['passed', 'changes_requested'];

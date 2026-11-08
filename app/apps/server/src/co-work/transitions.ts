@@ -1,13 +1,11 @@
 import type { AgentExecutionCommand, AgentJsonValue, AgentPeerRequestClass, AgentPostcondition, CoWorkSourceRef } from '@flux/contracts';
 import { coworkAdmissionRows, coworkUnitTransitionRows, referencedTaskIds, type Transaction } from '@flux/db';
 import { agentOutcomeFingerprint, ConflictError, InvalidInputError, normalizeAgentExecution, normalizeCoWorkUnitTransition,
-  NotFoundError, requireCoWorkUnitTransition, validateCoWorkUnitTransitionPolicy, type CoWorkContext,
-  type CoWorkUnitTransitionPolicy } from '@flux/core';
+  NotFoundError, requireCoWorkUnitTransition, type CoWorkContext } from '@flux/core';
 import { agentExecutionInTransaction } from '../agent-connection/execution.js';
 import type { FluxMcpClaims } from '../agent-connection/context.js';
 import { coWorkNamedTaskGraphLocks, coWorkTaskReference } from './graph.js';
 
-export type { CoWorkUnitTransitionPolicy } from '@flux/core';
 /** Content-free result of a completion, transfer or decline; the outcome itself lives in its native record. */
 export interface CoWorkUnitTransition {
   unitId: string;
@@ -42,14 +40,12 @@ function outcomeUnavailable() { return new NotFoundError('Unit outcome', 'COWORK
  * escape the caller's transaction so a refusal leaves no unit change, slot row or receipt. Not a public tool.
  */
 export async function coWorkUnitTransitionInTransaction(tx: Transaction, claims: FluxMcpClaims,
-  raw: AgentExecutionCommand, policy: CoWorkUnitTransitionPolicy): Promise<CoWorkUnitTransition> {
+  raw: AgentExecutionCommand): Promise<CoWorkUnitTransition> {
   const command = normalizeAgentExecution(raw);
   const operation = OPERATIONS[command.operation as keyof typeof OPERATIONS];
   if (!operation || !command.objectId) throw new InvalidInputError('An exact co-work unit transition and unit are required');
   const unitId = command.objectId;
   const input = normalizeCoWorkUnitTransition(operation, command.payload);
-  policy = Object.freeze({ reviewSeparation: policy?.reviewSeparation });
-  validateCoWorkUnitTransitionPolicy(policy);
   const rows = coworkUnitTransitionRows(tx);
   let locked = false;
   const execution = agentExecutionInTransaction(tx, claims, {
@@ -93,7 +89,7 @@ export async function coWorkUnitTransitionInTransaction(tx: Transaction, claims:
     return original;
   }
 
-  requireCoWorkUnitTransition(context, facts, input, policy);
+  requireCoWorkUnitTransition(context, facts, input);
   if (input.operation === 'complete' && !await readable(input.outcome)) throw outcomeUnavailable();
   // #238: completion, transfer and decline are persisted unit uses, under the task pass the lock above retains.
   let saved;
