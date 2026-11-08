@@ -145,7 +145,7 @@ VARIABLES: dict[str, Var] = {
     "FLUX_PASSWORD_RESET_TTL_SECONDS": Var("identity", "integer, 60–86400 s",
         "Lifetime of a password reset link. Links are single use and stored hashed.", "3600"),
     "FLUX_AUTH_RATE_LIMIT": Var("identity", "`true` · `false`",
-        "In-memory rate limit on sign-in, sign-up and reset. Only the test scripts turn it off.", "true"),
+        "In-memory rate limits: Better Auth's on sign-in, sign-up and reset, and the API-wide floor under every other route (1,200 requests a minute per session, 600 per address without one, 600 new sessions a minute per address; no total per address). Only the test scripts turn them off.", "true"),
     # --- sso
     "FLUX_OIDC_ISSUER": Var("sso", "https URL",
         "Issuer of the OpenID Connect provider. Set it with `FLUX_OIDC_CLIENT_ID`, or neither. Must be `https` "

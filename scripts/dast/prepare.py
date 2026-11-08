@@ -1,0 +1,198 @@
+#!/usr/bin/env python3
+"""Prepares an authenticated ZAP scan of the running stack (#838): two signed-in people, the API described as OpenAPI, real ids.
+
+    prepare.py --api http://127.0.0.1:18599 --origin http://api:8080 --server http://api:8080 --fixture-token T --out DIR
+               --person ada=ada@demo.flux.test:PASSWORD --person jonas=jonas@demo.flux.test:PASSWORD
+
+Writes into DIR: `cookie-<name>` (the session cookie, one `name=value` line, for ZAP's replacer rule), `openapi.json` (every route
+the test deployment lists, with its body and query schemas, and the ids of the seeded data as examples) and `routes.json`.
+Standard library only. The route listing exists only in a test deployment (`GET /api/v1/test/routes` with the fixture bearer).
+"""
+import argparse
+import http.cookiejar
+import json
+import re
+import sys
+import urllib.error
+import urllib.request
+
+# Never scanned: ending the scan's own session, the test deployment's own routes, and the long-lived streams.
+SKIP = (
+    re.compile(r"^/api/v1/test/"),
+    re.compile(r"^/api/v1/stream"),
+    re.compile(r"^/api/v1/editing"),
+    re.compile(r"^/api/v1/sessions(/|$)"),
+)
+# Better Auth's own routes are one catch-all in the listing: the ones worth scanning, described by hand.
+AUTH_ROUTES = (
+    ("POST", "/api/auth/sign-in/email", {"type": "object", "required": ["email", "password"], "properties": {"email": {"type": "string"}, "password": {"type": "string"}}}),
+    ("POST", "/api/auth/sign-up/email", {"type": "object", "required": ["email", "password", "name"], "properties": {"email": {"type": "string"}, "password": {"type": "string"}, "name": {"type": "string"}}}),
+    ("GET", "/api/auth/get-session", None),
+    ("POST", "/api/auth/request-password-reset", {"type": "object", "required": ["email"], "properties": {"email": {"type": "string"}}}),
+)
+# Which list answers an id parameter's name (workspace and project first), and where in the answer the id is.
+LISTS = {
+    "workspaceId": "/api/v1/workspaces", "workspace": "/api/v1/workspaces",
+    "projectId": "/api/v1/workspaces/{workspaceId}/projects",
+    "workId": "/api/v1/projects/{projectId}/work", "taskId": "/api/v1/projects/{projectId}/work",
+    "docId": "/api/v1/projects/{projectId}/docs", "decisionId": "/api/v1/projects/{projectId}/decisions",
+    "resultId": "/api/v1/projects/{projectId}/results", "conversationId": "/api/v1/projects/{projectId}/conversations",
+    "materialId": "/api/v1/projects/{projectId}/materials", "sketchId": "/api/v1/workspaces/{workspaceId}/sketches",
+    "dmId": "/api/v1/workspaces/{workspaceId}/dms", "draftId": "/api/v1/workspaces/{workspaceId}/drafts",
+    "agentId": "/api/v1/workspaces/{workspaceId}/agents",
+}
+UUID = "00000000-0000-4000-8000-000000000000"
+
+
+class Person:
+    """A signed-in session: the cookie jar of a real sign-in through the public API."""
+
+    def __init__(self, api, origin, name, email, password):
+        self.api, self.origin, self.name = api.rstrip("/"), origin, name
+        self.jar = http.cookiejar.CookieJar()
+        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
+        status, _ = self.call("POST", "/api/auth/sign-in/email", {"email": email, "password": password})
+        if status != 200:
+            sys.exit(f"dast: {email} could not sign in (answered {status})")
+
+    def call(self, method, path, body=None, headers=None):
+        data = None if body is None else json.dumps(body).encode()
+        request = urllib.request.Request(self.api + path, data=data, method=method,
+                                         headers={"origin": self.origin, **({"content-type": "application/json"} if body is not None else {}), **(headers or {})})
+        try:
+            with self.opener.open(request, timeout=30) as response:
+                text = response.read().decode("utf-8", "replace")
+                return response.status, (json.loads(text) if text.strip().startswith(("{", "[")) else text)
+        except urllib.error.HTTPError as error:
+            return error.code, error.read().decode("utf-8", "replace")
+
+    def cookie(self):
+        """`name=value;name=value` with no spaces, for a ZAP option string."""
+        pairs = [f"{cookie.name}={cookie.value}" for cookie in self.jar]
+        if not pairs:
+            sys.exit(f"dast: {self.name} has no session cookie after signing in")
+        return ";".join(pairs)
+
+
+def first_id(answer):
+    items = answer.get("items") if isinstance(answer, dict) else answer
+    if isinstance(items, list):
+        for item in items:
+            if isinstance(item, dict) and isinstance(item.get("id"), str):
+                return item["id"]
+    return None
+
+
+def seeded_ids(person, names):
+    """Real ids of the demo data for the parameters the routes use; the rest keep a well-formed id that exists nowhere."""
+    found = {}
+    for name in ("workspaceId", "projectId"):
+        found[name] = first_id(person.call("GET", LISTS[name].format(**found))[1]) if name in names or name == "workspaceId" else None
+    found["workspace"] = found["workspaceId"]
+    for name, path in LISTS.items():
+        if name in found or name not in names:
+            continue
+        try:
+            found[name] = first_id(person.call("GET", path.format(**found))[1])
+        except KeyError:
+            found[name] = None
+    return {name: value for name, value in found.items() if value}
+
+
+def schema_of(raw):
+    """A route's JSON schema as OpenAPI 3.0: a type list with null becomes `nullable`, unknown keywords are dropped."""
+    if not isinstance(raw, dict):
+        return {}
+    out = {}
+    kind = raw.get("type")
+    if isinstance(kind, list):
+        kinds = [item for item in kind if item != "null"]
+        kind = kinds[0] if kinds else "string"
+        if "null" in raw["type"]:
+            out["nullable"] = True
+    if isinstance(kind, str):
+        out["type"] = kind
+    for key in ("enum", "format", "pattern", "minimum", "maximum", "minLength", "maxLength", "minItems", "maxItems", "required", "default"):
+        if key in raw and not (key == "format" and raw[key] not in ("uuid", "date", "date-time", "email", "uri", "int32", "int64", "float", "double", "byte", "binary", "password")):
+            out[key] = raw[key]
+    if isinstance(raw.get("properties"), dict):
+        out["type"] = "object"
+        out["properties"] = {name: schema_of(value) for name, value in raw["properties"].items()}
+        if raw.get("additionalProperties") is False:
+            out["additionalProperties"] = False
+    if "items" in raw:
+        out["type"] = "array"
+        out["items"] = schema_of(raw["items"])
+    for key in ("anyOf", "oneOf"):
+        if isinstance(raw.get(key), list) and raw[key]:
+            pick = next((item for item in raw[key] if isinstance(item, dict) and item.get("type") != "null"), raw[key][0])
+            out.update(schema_of(pick))
+            if any(isinstance(item, dict) and item.get("type") == "null" for item in raw[key]):
+                out["nullable"] = True
+    if out.get("type") == "object" and "properties" not in out:
+        out["additionalProperties"] = True
+    return out or {"type": "string"}
+
+
+def openapi(routes, server, ids):
+    """An OpenAPI 3.0 document of the listed routes. `ids` give the path parameters their real values as examples."""
+    paths = {}
+    wanted = [(route["method"], route["url"], route.get("body"), route.get("query")) for route in routes
+              if route["url"].startswith("/api/") and not any(skip.match(route["url"]) for skip in SKIP)]
+    wanted += [(method, url, body, None) for method, url, body in AUTH_ROUTES]
+    for method, url, body, query in wanted:
+        if method in ("HEAD", "OPTIONS"):
+            continue
+        parameters = []
+        for name in re.findall(r":(\w+)", url):
+            parameters.append({"name": name, "in": "path", "required": True, "schema": {"type": "string"}, "example": ids.get(name, UUID)})
+        path = re.sub(r":(\w+)", r"{\1}", url)
+        if isinstance(query, dict):
+            required = set(query.get("required") or [])
+            for name, value in (query.get("properties") or {}).items():
+                parameters.append({"name": name, "in": "query", "required": name in required, "schema": schema_of(value)})
+        operation = {"operationId": f"{method.lower()}_{re.sub(r'[^A-Za-z0-9]+', '_', path).strip('_')}", "parameters": parameters,
+                     "responses": {"default": {"description": "Whatever the API answers"}}}
+        if isinstance(body, dict) and method in ("POST", "PUT", "PATCH", "DELETE"):
+            operation["requestBody"] = {"required": bool(body.get("required")), "content": {"application/json": {"schema": schema_of(body)}}}
+        paths.setdefault(path, {})[method.lower()] = operation
+    return {"openapi": "3.0.3", "info": {"title": "Flux API (from the test deployment's route listing)", "version": "dast"},
+            "servers": [{"url": server}], "paths": paths}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--api", required=True, help="where this script reaches the API (the published loopback port)")
+    parser.add_argument("--origin", required=True, help="the API's public origin (the Origin header every state-changing call needs)")
+    parser.add_argument("--server", required=True, help="where ZAP reaches the API (the OpenAPI server URL)")
+    parser.add_argument("--fixture-token", required=True)
+    parser.add_argument("--out", required=True)
+    parser.add_argument("--person", action="append", required=True, metavar="NAME=EMAIL:PASSWORD")
+    args = parser.parse_args()
+    people = []
+    for spec in args.person:
+        name, _, rest = spec.partition("=")
+        email, _, password = rest.partition(":")
+        people.append(Person(args.api, args.origin, name, email, password))
+    first = people[0]
+    status, listing = first.call("GET", "/api/v1/test/routes", headers={"authorization": f"Bearer {args.fixture_token}"})
+    routes = listing.get("routes") if isinstance(listing, dict) else None
+    if status != 200 or not routes:
+        sys.exit(f"dast: the route listing is unavailable (answered {status}); the stack must be a test deployment")
+    names = {name for route in routes for name in re.findall(r":(\w+)", route["url"])}
+    ids = seeded_ids(first, names)
+    for person in people:
+        with open(f"{args.out}/cookie-{person.name}", "w", encoding="utf-8") as handle:
+            handle.write(person.cookie())
+    ids["userId"] = (people[1] if len(people) > 1 else first).call("GET", "/api/v1/me")[1].get("user", {}).get("id", UUID)
+    document = openapi(routes, args.server, ids)
+    with open(f"{args.out}/openapi.json", "w", encoding="utf-8") as handle:
+        json.dump(document, handle, indent=1)
+    with open(f"{args.out}/routes.json", "w", encoding="utf-8") as handle:
+        json.dump({"routes": len(routes), "operations": sum(len(item) for item in document["paths"].values()), "ids": sorted(ids)}, handle)
+    print(f"dast: {len(routes)} routes listed, {sum(len(item) for item in document['paths'].values())} operations described, "
+          f"{len(ids)} seeded ids found, {len(people)} people signed in")
+
+
+if __name__ == "__main__":
+    main()

@@ -239,7 +239,7 @@ next request. The API reads these variables (see `docker/.env.example`):
 | `FLUX_SMTP_URL`, `FLUX_MAIL_FROM` | SMTP transport URL (e.g. `smtp://user:pass@mail.example.org:587`) and sender for password reset mail and notification email (#116). Set them on the API and the worker. TLS: `smtps://…:465` or `smtp://…:587?requireTLS=true`; certificates are verified (`NODE_EXTRA_CA_CERTS` for a private CA). If unset, password reset answers `503 PASSWORD_RESET_UNAVAILABLE`, `/api/v1/auth/capabilities` reports `unavailable`, and notification settings show email delivery unavailable while the inbox and push keep working ([notifications](notifications.md#email)). |
 | `FLUX_PASSWORD_RESET_TTL_SECONDS` | Reset token lifetime, 60–86400, default 3600. Tokens are single use and stored hashed. |
 | `FLUX_OIDC_ISSUER`, `FLUX_OIDC_CLIENT_ID`, `FLUX_OIDC_CLIENT_SECRET_HOST_FILE`, `FLUX_OIDC_LABEL` | Optional single sign-on with one OpenID Connect provider ([operations guide](../operations/single-sign-on.md), #113). Set issuer and client id together; the client secret is a host file mounted at `/run/secrets/flux_oidc_client_secret` (`FLUX_OIDC_CLIENT_SECRET_FILE` inside the container). The issuer must be `https`. The label names the sign-in button. Unset keeps email/password sign-in only. |
-| `FLUX_AUTH_RATE_LIMIT` | `true` (default) enables Better Auth's in-memory login rate limit. Only the test script turns it off. |
+| `FLUX_AUTH_RATE_LIMIT` | `true` (default) enables Better Auth's in-memory login rate limit and the API-wide request limit (`apps/server/src/http/rate-limit.ts`: 1,200 requests a minute per session, 600 per address without one, 600 new sessions a minute per address). Only the test scripts turn it off. |
 | `FLUX_STREAM_HEARTBEAT_MS` | WebSocket stream ping, session revalidation and polling interval in milliseconds (default `25000`, minimum `100`). The test script uses `1000`. See [access policy](access-policy.md#websocket-stream). |
 
 For development, the `dev` Compose profile adds a local mail catcher
@@ -435,6 +435,9 @@ others. `tests/test_ui_service_workers.py` reads the UI test sources on the host
 (`python3 -m unittest discover -s tests -p 'test_*.py'`) and names every context that does not block
 workers in a module that routes. To reproduce a load-sensitive UI failure, limit one container's CPU
 (`docker update --cpus`) and run the module alone; do not start a load generator on the host (#271).
+
+The UI stack runs with the limits off; `FLUX_UI_RATE_LIMIT=true ./scripts/check_ui.sh test_api_limit` runs the one module that needs them on
+(two people at one address use the app: nothing is refused, #838), and the other modules skip nothing and use the default.
 
 `check_ui.sh` also sets the TEST-ONLY personal-run switch (#68): `FLUX_TEST_PERSONAL_RUNS=anthropic-mock`
 with `FLUX_TEST_FAILURE_INJECTION=true` gives every person a fixture key connection, and the

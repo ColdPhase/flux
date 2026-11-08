@@ -81,6 +81,7 @@ import { registerEditing } from './editing/composition.js';
 import { disabledEditingUpgrade } from './editing/disabled-upgrade.js';
 import { useJsonCompression } from './http/compress.js';
 import { useFramingProtection } from './http/framing.js';
+import { useApiRateLimit } from './http/rate-limit.js';
 
 /**
  * S3 SWITCH (F-030, #655): encrypted-space creation is a production route, for the company's owners and admins (F-037).
@@ -139,6 +140,8 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   useJsonCompression(app);
   // Every response refuses framing, the OAuth consent page included (#287).
   useFramingProtection(app);
+  // The floor under every route's own limits (#838); off with FLUX_AUTH_RATE_LIMIT=false, as the sign-in limit is.
+  useApiRateLimit(app, { enabled: identityConfig.rateLimit });
   const { pool, db } = registerDatabase(app, connectionString);
   let gateSessions: Awaited<ReturnType<typeof startIdentity>> | null = null;
   registerLockGate(app, { db, keys: encryptionKeys,

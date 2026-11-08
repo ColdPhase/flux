@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { STREAM_CLOSE_UNAUTHENTICATED, STREAM_PATH, type StreamEvent, type StreamMessage } from '@flux/contracts';
+import { reconnectDelay } from './busy.js';
 import { onPageLive, pageLeaving } from './pageLeaving.js';
 
 /**
@@ -102,7 +103,8 @@ export function resetStream() {
 
 function schedule(delay: number) {
   clearTimer();
-  timer = window.setTimeout(() => { timer = null; connect(); }, delay);
+  // While the API says it is busy (429, #838), a socket does not add to it.
+  timer = window.setTimeout(() => { timer = null; connect(); }, reconnectDelay(delay));
 }
 
 function connect() {

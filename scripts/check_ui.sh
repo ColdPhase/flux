@@ -43,8 +43,11 @@ export FLUX_PUBLIC_ORIGIN="http://127.0.0.1:${FLUX_PORT}"
 export FLUX_AUTH_SECRET="auth-ui-$$-$(date +%s)-$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
 export FLUX_SMTP_URL="smtp://mailpit:1025"
 export FLUX_MAIL_FROM="Flux <flux@example.test>"
-# The journey signs in several times from one address; rate limiting is covered by the API suite.
-export FLUX_AUTH_RATE_LIMIT=false
+# The journey signs in several times from one address; rate limiting is covered by the API suite, so the limits are off. The one module
+# that needs them on (test_api_limit: two people at one address use the app with the API-wide limit on, #838) is run with
+# FLUX_UI_RATE_LIMIT=true ./scripts/check_ui.sh test_api_limit; other modules do not sign in repeatedly from one address then.
+export FLUX_UI_RATE_LIMIT="${FLUX_UI_RATE_LIMIT:-false}"
+export FLUX_AUTH_RATE_LIMIT="$FLUX_UI_RATE_LIMIT"
 # F-030 (#655): the keyring of encrypted workspaces, one random token per run (without it every encrypted workspace stays locked).
 export FLUX_KEYRING_TOKEN="$(head -c 32 /dev/urandom | base64 | tr '+/' '-_' | tr -d '=\n')"
 # TEST ONLY (#68): personal runs use fixture key connections and the real Anthropic adapter
@@ -91,7 +94,7 @@ $compose --profile setup run --rm files-init
 # keeps every test's own people out of that role.
 $compose run --rm -w /work/tests/ui ui-test python3 company_setup.py
 if [ "$#" -gt 0 ]; then
-  $compose run --rm -e FLUX_UI_BROWSER -w /work/tests/ui ui-test python3 -m unittest -v "$@"
+  $compose run --rm -e FLUX_UI_BROWSER -e FLUX_UI_RATE_LIMIT -w /work/tests/ui ui-test python3 -m unittest -v "$@"
 else
-  $compose run --rm -e FLUX_UI_BROWSER ui-test
+  $compose run --rm -e FLUX_UI_BROWSER -e FLUX_UI_RATE_LIMIT ui-test
 fi

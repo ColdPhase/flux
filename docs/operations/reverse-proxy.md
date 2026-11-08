@@ -272,3 +272,7 @@ out long-lived connections sooner than a few minutes, accepts request bodies of 
 does not rewrite paths, `Host`, cookies or `Authorization`. A CDN or second proxy in front changes
 which address Flux sees: trust only the hop that connects to Flux, and make sure that hop replaces
 any client-supplied `X-Forwarded-For`.
+
+Flux limits how fast the API is called (1,200 requests a minute per session, 600 a minute and 600 new sessions a minute per address
+without one). The address is the client's only when `FLUX_TRUSTED_PROXIES` names your proxy; without it every request comes from the
+proxy, so everyone shares the per-address budgets and a busy company can meet the limit. Set it as described above.

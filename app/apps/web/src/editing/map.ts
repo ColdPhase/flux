@@ -1,5 +1,6 @@
 import { liveMapPath, liveMapGesturePath, type LiveMapBootstrap, type LiveMapDelta, type LiveMapLease, type LiveMapPosition, type NamedPrincipal, type SketchDetail, type Thought } from '@flux/contracts';
 import { ApiError, request } from '../api/client';
+import { reconnectDelay } from '../api/busy';
 import { EditingConnection, type ReceivedEditing } from './wire';
 import { MapPresenceStore } from './map-presence';
 
@@ -84,7 +85,7 @@ export class SharedMap {
     if (this.stopped || this.status === 'private' || this.status === 'unavailable') return;
     this.status = 'connecting'; this.previews.clear(); this.retiredPreviews.clear(); this.presenceStore.clear(); this.cancel(true); this.changed();
     this.connection?.close();
-    if (this.reconnectTimer === null) this.reconnectTimer = window.setTimeout(() => { this.reconnectTimer = null; void this.start(); }, 600);
+    if (this.reconnectTimer === null) this.reconnectTimer = window.setTimeout(() => { this.reconnectTimer = null; void this.start(); }, reconnectDelay(600));
   };
   private retire(problem: string) {
     this.status = 'private'; this.problem = problem; this.cancel(true); this.connection?.close(); this.previews.clear(); this.retiredPreviews.clear(); this.presenceStore.clear(); this.changed();

@@ -41,13 +41,37 @@ release notes:
 sha256sum -c SHA256SUMS      # macOS: shasum -a 256 -c SHA256SUMS
 ```
 
-Optional, with the [GitHub CLI](https://cli.github.com/): verify the build provenance that was
-attested for the exact image named by the `image` field of `release.json`:
+### Verify the images before you pull them
+
+Both images are **signed** by the release workflow and carry a **build provenance attestation**. Check
+both before the first pull, for the exact digests that `release.json` names (the `image` and
+`runtime_image` fields), with [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) **v3 or later** (the release workflow signs with
+cosign v3, whose signature format an older `cosign verify` may not find) and the
+[GitHub CLI](https://cli.github.com/):
 
 ```sh
-gh attestation verify oci://ghcr.io/coldphase/flux@sha256:<digest from release.json> --repo ColdPhase/flux
-gh attestation verify oci://ghcr.io/coldphase/flux-agent-runtime@sha256:<runtime digest from release.json> --repo ColdPhase/flux
+IMAGE=$(jq -r .image release.json)               # ghcr.io/coldphase/flux@sha256:...
+RUNTIME=$(jq -r .runtime_image release.json)     # ghcr.io/coldphase/flux-agent-runtime@sha256:...
+
+# 1. The signature. It is keyless (Sigstore, GitHub's OIDC identity): no key to fetch or trust. This asks for a
+#    signature made by this repository's release workflow on main, and fails for anything else.
+for image in "$IMAGE" "$RUNTIME"; do
+  cosign verify "$image" \
+    --certificate-identity-regexp '^https://github\.com/ColdPhase/flux/\.github/workflows/final-release\.yml@refs/heads/main$' \
+    --certificate-oidc-issuer https://token.actions.githubusercontent.com
+done
+
+# 2. The build provenance (SLSA): the image was built by that workflow from the source commit in release.json.
+for image in "$IMAGE" "$RUNTIME"; do
+  gh attestation verify "oci://$image" --repo ColdPhase/flux
+done
 ```
+
+A signature means this workflow built that exact digest from an independently accepted commit and the
+digest passed its image scan and packaged install; it is checked again before a draft becomes a release
+(`scripts/release/verify_signatures.sh`). It does not mean the software is free of bugs. If `cosign verify` or
+`gh attestation verify` fails, do not pull: ask in the project's issues. Verifying by digest also protects
+you from a tag that moves, which is why `compose.yaml` pins digests.
 
 ## Clean installation
 

@@ -47,6 +47,10 @@ export function RouteErrorPage() {
   } else if (error instanceof NetworkError) {
     title = 'Flux can’t be reached';
     body = 'Your device couldn’t connect to the Flux server. Check your connection; this page will work again once the server answers.';
+  } else if (error instanceof ApiError && error.status === 429) {
+    // The floor of rate limits (#838): reads already waited and asked again; this is what is left after that. Calm, no raw detail.
+    title = 'Flux is busy right now';
+    body = 'Too many requests came from this connection in a short time. Wait a moment and try again; nothing you wrote is lost.';
   } else if (error instanceof ApiError && error.status === 404) {
     title = 'This place isn’t available';
     body = 'It may have been moved, or you no longer have access to it.';

@@ -1,3 +1,4 @@
+import { BUSY_RETRIES, busyWaitMs, waitOutBusy } from './busy.js';
 import { pageIsLive, pageLeaving } from './pageLeaving.js';
 
 /** Same-origin JSON requests. Session cookies are HttpOnly; the browser sends them itself. */
@@ -57,24 +58,35 @@ export async function send(path: string, init: ApiRequestInit & { accept?: strin
   // navigation can begin in the task between, and a read asked for just before it, with the gate checked first, started
   // after `beforeunload` (#758, #759: working-agents, needs-you and the other shell reads of a page that is left).
   if (init.batchRead && (!init.method || init.method === 'GET')) await nextTask();
-  // A page being left starts no request (#471): the browser has stopped its loads, and WebKit reports a
-  // fetch that starts now as an uncaught page error. It starts when the page is live again, never sooner
-  // than a click or key press proves the person is still here; an unloaded page never starts it.
-  if (pageLeaving() && !init.keepalive) await pageIsLive(init.signal);
-  try {
-    return await fetch(path, {
-      method: init.method ?? 'GET',
-      credentials: 'same-origin',
-      headers: { ...(init.accept ? { accept: init.accept } : {}), ...(init.body === undefined ? {} : { 'content-type': 'application/json' }), ...init.headers },
-      body: init.body === undefined ? undefined : JSON.stringify(init.body),
-      signal: init.signal,
-      keepalive: init.keepalive,
-      cache: init.cache,
-    });
-  } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw error;
-    throw new NetworkError();
+  const attempt = async (): Promise<Response> => {
+    // A page being left starts no request (#471): the browser has stopped its loads, and WebKit reports a
+    // fetch that starts now as an uncaught page error. It starts when the page is live again, never sooner
+    // than a click or key press proves the person is still here; an unloaded page never starts it.
+    if (pageLeaving() && !init.keepalive) await pageIsLive(init.signal);
+    try {
+      return await fetch(path, {
+        method: init.method ?? 'GET',
+        credentials: 'same-origin',
+        headers: { ...(init.accept ? { accept: init.accept } : {}), ...(init.body === undefined ? {} : { 'content-type': 'application/json' }), ...init.headers },
+        body: init.body === undefined ? undefined : JSON.stringify(init.body),
+        signal: init.signal,
+        keepalive: init.keepalive,
+        cache: init.cache,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') throw error;
+      throw new NetworkError();
+    }
+  };
+  let response = await attempt();
+  // The API is busy (429 with Retry-After, the floor of rate limits): a read is asked again after the wait, with the page saying so
+  // (#838). Only a read: a write could have been done, and the person decides whether to send it again.
+  const read = (!init.method || init.method === 'GET' || init.method === 'HEAD') && init.body === undefined && !init.keepalive;
+  for (let tries = 0; response.status === 429 && read && tries < BUSY_RETRIES; tries += 1) {
+    await waitOutBusy(busyWaitMs(response), init.signal);
+    response = await attempt();
   }
+  return response;
 }
 
 /** The `ApiError` of a failed response, read from its JSON error body when it has one. */

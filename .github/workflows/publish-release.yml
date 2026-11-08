@@ -54,6 +54,9 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
       - name: Verify exact draft and peer artifact record
         id: check
         env:
@@ -105,6 +108,9 @@ jobs:
             docker buildx imagetools inspect --raw "ghcr.io/coldphase/flux@$IMAGE_DIGEST" |
               jq -e --arg p "${platform#*/}" '[.manifests[].platform | select(.os == "linux" and .architecture == $p)] | length >= 1'
           done
+          # Both reviewed digests carry the release workflow's keyless signature (#840): nothing unsigned becomes a release.
+          bash "$GITHUB_WORKSPACE/scripts/release/verify_signatures.sh" \
+            "ghcr.io/coldphase/flux@$IMAGE_DIGEST" "ghcr.io/coldphase/flux-agent-runtime@$runtime_digest"
           checksums_sha=$(sha256sum SHA256SUMS | cut -d ' ' -f1)
           gh api --paginate --slurp \
             "repos/$GITHUB_REPOSITORY/issues/$REVIEW_ISSUE/comments?per_page=100" \

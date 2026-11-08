@@ -9,6 +9,7 @@ import { routeView } from '../ui/motion-rules';
 import { useShellData } from './data';
 import { registerServiceWorker, syncPushSubscription } from '../pwa';
 import { DeferredDetails, DeferredJumpTo, DeferredLiveStage } from './DeferredSurfaces';
+import { BusyNotice } from './BusyNotice';
 import { RouteProgress } from './RouteProgress';
 import { PendingView, ThreadOpening, useQuietViewKeys, useSwitching } from './PendingView';
 import './pending-view.css';
@@ -818,6 +819,7 @@ function AppLayoutContent() {
         <div className="app__body">
           {/* A thread's own panel is its loading state, with its own cancel: a row across the top would lie over the panel's head. */}
           {threadOpening ? null : <RouteProgress />}
+          <BusyNotice />
           {/* The one main landmark, the skip link's target (#763 AX-1): a view's own header is then not a second banner. */}
           <main className={`app__pane${switching ? ' is-switching' : ''}`} id="content" ref={paneRef} tabIndex={-1}>
             <ViewFade id={switching ?? routeView(location.pathname)} host={paneRef} skip=".deferred-surface--stage, .lv-stage">
