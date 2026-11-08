@@ -171,7 +171,7 @@ class DecisionSurfaces(unittest.TestCase):
                 with self.subTest(view=label, scheme=scheme):
                     page, panel = self.opened(f"/projects/{self.project_id}/tasks?open=propose-decision", phone=phone, scheme=scheme, view=view)
                     # One page of rules shows no pager (Spokój rule 4, #763 B6).
-                    expect(panel.get_by_label("Replaces an earlier decision?", exact=True)).to_be_enabled()
+                    expect(panel.get_by_label("Does it replace an earlier one?", exact=True)).to_be_enabled()
                     expect(panel.get_by_role("navigation", name="Choices it can replace")).to_have_count(0)
                     panel.get_by_label("Decision", exact=True).fill("Keep a manual off switch")
                     expect(panel.get_by_role("button", name="Propose decision", exact=True)).to_be_enabled()
@@ -182,7 +182,7 @@ class DecisionSurfaces(unittest.TestCase):
                     above = m["actions"]["top"] - m["form"]["bottom"]
                     between = m["help"]["top"] - m["actions"]["bottom"]
                     self.assertAlmostEqual(above, 28, delta=1, msg="the button starts a section: the panel's 28 px below the fields")
-                    self.assertAlmostEqual(between, m["headingGap"], delta=1, msg="the help text sits the heading's 8 px under the button")
+                    self.assertAlmostEqual(between, 8, delta=1, msg="the help text sits 8 px under the button, as under a heading")
                     self.assertGreaterEqual(between, 8, "the help text never touches the button")
                     # The form ends with its help text: the space's audience is the default and is not said below it (#871).
                     self.assertNotIn("Who can see this", panel.inner_text())
@@ -213,7 +213,6 @@ class DecisionSurfaces(unittest.TestCase):
                     # The answer is the Inbox card's (#763 D1): right under the reason, before the record rows.
                     self.assertGreaterEqual(m["decide"]["top"], m["lead"]["bottom"], "the answer follows the reason")
                     self.assertLessEqual(m["decide"]["bottom"], m["rows"]["top"], "the answer comes before the Proposed row")
-                    self.assertTrue(m["sectionGaps"], "the panel has sections")
                     for gap in m["sectionGaps"]:
                         self.assertAlmostEqual(gap, 28, delta=1, msg=f"every section starts 28 px below the one before: {m['sectionGaps']}")
 

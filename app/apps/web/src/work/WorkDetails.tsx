@@ -673,8 +673,6 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
   const { me } = useShellData();
   const earlierRead = useNativeOwn(me.user.id, context.project.id, 'decision', earlier?.id, true, revision);
   const earlierObject = earlierRead.value?.object.kind === 'decision' ? earlierRead.value.object : null;
-  const laterRead = useNativeOwn(me.user.id, context.project.id, 'decision', later?.id, true, revision);
-  const laterObject = laterRead.value?.object.kind === 'decision' ? laterRead.value.object : null;
   const { busy, error, attempt } = commands.state;
   const { setBusy, setError, setAttempt, isCurrent } = commands;
   // The panel is the Inbox's decision card first (F-026 P4, S11; #763 D1): Needs you, the reason, what it rests on,
@@ -705,7 +703,7 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
     } finally { setBusy(false); }
   }
   // Plain sentences, drawn only when they apply (#871): the decision this one replaces, and the one that replaced it.
-  const dayOf = (object: typeof earlierObject) => object ? ` (${shortDate(object.decidedAt ?? object.createdAt)})` : '';
+  const earlierDay = earlierObject ? ` (${shortDate(earlierObject.decidedAt ?? earlierObject.createdAt)})` : '';
 
   return (
     <div className="details wd" data-detail-kind="decision" data-detail-id={decision.id}>
@@ -742,14 +740,14 @@ function DecisionPanel({ decision, context, detail, relations, reload, revision,
 
       {earlier ? (
         <div className="details__sec wd-replaces">
-          <p className="wd-sentence">This replaces the decision <button type="button" className="wd-inline" onClick={() => openDetails({ kind: 'decision', id: earlier.id, projectId: context.project.id })}>{earlier.title}</button>{dayOf(earlierObject)}.</p>
+          <p className="wd-sentence">This replaces the decision <button type="button" className="wd-inline" onClick={() => openDetails({ kind: 'decision', id: earlier.id, projectId: context.project.id })}>{earlier.title}</button>{earlierDay}.</p>
           {earlierObject?.rationale ? <p className="wd-quote">Earlier reason: {earlierObject.rationale}</p> : null}
           {earlierRead.read.phase === 'unavailable' ? <p className="wd-error" role="alert">Earlier reason could not be loaded. <button type="button" className="wd-inline" onClick={reload}>Try again</button></p> : null}
         </div>
       ) : null}
       {later ? (
         <div className="details__sec wd-replaces">
-          <p className="wd-sentence">This was replaced by the decision <button type="button" className="wd-inline" onClick={() => openDetails({ kind: 'decision', id: later.id, projectId: context.project.id })}>{later.title}</button>{dayOf(laterObject)}.</p>
+          <p className="wd-sentence">This was replaced by the decision <button type="button" className="wd-inline" onClick={() => openDetails({ kind: 'decision', id: later.id, projectId: context.project.id })}>{later.title}</button>.</p>
         </div>
       ) : null}
 
@@ -878,7 +876,7 @@ function ProposeDecision({ view, context, contextStatus, revision, isCurrent }: 
         <label htmlFor={rationaleId}>Why</label>
         <textarea id={rationaleId} value={rationale} onChange={(event) => edit(setRationale)(event.target.value)} maxLength={20000} rows={4} placeholder="What makes this the right call" />
         <>
-          <label htmlFor={replacesId}>Replaces an earlier decision?</label>
+          <label htmlFor={replacesId}>Does it replace an earlier one?</label>
           <Select id={replacesId} value={supersedes} disabled={!candidates.page} onChange={(next) => edit(setSupersedes)(next)}>
             <Option value="">No, this is a new decision</Option>
             {supersedes && !current.some((item) => item.id === supersedes) ? <Option value={supersedes}>{chosen?.title ?? 'Selected decision (not loaded)'}</Option> : null}

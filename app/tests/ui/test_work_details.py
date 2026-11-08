@@ -156,7 +156,7 @@ class NativeDetailsJourney(unittest.TestCase):
         panel=page.locator("#details .wd");self.choices_ready(panel,"Choices it can replace")
         panel.get_by_label("Decision",exact=True).fill("Keep a manual off switch after measuring both shields")
         why=panel.get_by_label("Why",exact=True);why.fill("Retain the complete earlier measurements before changing the cable")
-        nav=panel.get_by_role("navigation",name="Choices it can replace");select=panel.get_by_label("Replaces an earlier decision?",exact=True);seen={value for value in values(select) if value}
+        nav=panel.get_by_role("navigation",name="Choices it can replace");select=panel.get_by_label("Does it replace an earlier one?",exact=True);seen={value for value in values(select) if value}
         nav.get_by_role("button",name="Next",exact=True).click();self.choices_ready(panel,"Choices it can replace")
         seen.update(value for value in values(select) if value);self.assertEqual(seen,{item["id"] for item in self.rules})
         chosen=self.rules[0];choose(select, chosen["id"]);expect(panel.get_by_role("button",name="Propose decision",exact=True)).to_be_enabled()

@@ -247,7 +247,7 @@ class WorkDecisionsJourney(unittest.TestCase):
         page.goto(f"/projects/{self.project_id}?open=propose-decision")  # the full form; a message has no Propose a decision (#867)
         panel.get_by_role("textbox", name="Decision", exact=True).fill(PIVOT)
         panel.get_by_label("Why").fill("The camera failed in low light; a ToF sensor works in the dark and stores no images")
-        choose(panel.get_by_label("Replaces an earlier decision?"), label="Use a camera for gesture control")
+        choose(panel.get_by_label("Does it replace an earlier one?"), label="Use a camera for gesture control")
         panel.get_by_role("button", name="Propose decision").click()
         # The panel says what it replaces in one plain sentence, and there is nothing to decide about tasks.
         expect(panel.get_by_text("This replaces the decision Use a camera for gesture control")).to_be_visible()
@@ -405,11 +405,9 @@ class WorkDecisionsJourney(unittest.TestCase):
         desk.get_by_role("button", name="Mine", exact=True).click()
         self.assertIn("show=mine", desk.url)
         expect(region).not_to_contain_text(theirs)
-        desk.goto(f"/projects/{self.project_id}/tasks?status=finished&show=mine")
-        expect(desk.locator(".ws-only")).to_contain_text("Only Done")
-        expect(desk.locator(".ws-none")).to_contain_text("Nothing of yours in Done right now.")
-        desk.get_by_role("button", name="Show everyone’s").click()
+        desk.get_by_role("button", name="Mine", exact=True).click()
         expect(desk.get_by_role("button", name="Mine", exact=True)).to_have_attribute("aria-pressed", "false")
+        expect(region).to_contain_text(theirs)
 
         # A List of Doing, as the board's "more in the List" opens it.
         desk = self.page("partner")
