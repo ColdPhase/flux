@@ -39,7 +39,8 @@ export interface SecurityLogger {
 }
 
 const SAFE_REASON = /^[A-Za-z0-9_.:-]{1,64}$/;
-const SAFE_ROUTE = /^([A-Z]{3,7} )?\/[A-Za-z0-9_.:/@*-]{0,200}$/;
+// `<token>` is what the request log writes for a link token in a path (`loggedPath`, #1030); nothing else with angle brackets is a route.
+const SAFE_ROUTE = /^([A-Z]{3,7} )?\/(?:[A-Za-z0-9_.:/@*-]|<token>){0,200}$/;
 const WARNING: ReadonlySet<SecurityOutcome> = new Set(['failure', 'denied', 'refused', 'limited', 'sampled']);
 
 export function securityEvent(log: SecurityLogger, event: SecurityEvent): void {

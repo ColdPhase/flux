@@ -12,6 +12,7 @@ import {
 } from '@flux/contracts';
 import type { SessionResolver } from './session.js';
 import { securityEvent } from '../security-log.js';
+import type { Devices } from './devices.js';
 
 export interface StoredSession {
   id: string;
@@ -38,6 +39,8 @@ export interface ClientDisconnector {
 
 export interface IdentityRouteOptions {
   sessions: SessionResolver;
+  /** The browsers an account remembers: "Sign out all other devices" ends every other copy of the cookie (#1031). */
+  devices: Devices;
   store: SessionStore;
   clients: ClientDisconnector;
   passwordReset: IdentityCapabilities['passwordReset'];
@@ -53,7 +56,7 @@ export interface IdentityRouteOptions {
 }
 
 /** Flux's own identity routes: capabilities, the current principal and session management. */
-export function registerIdentityRoutes(app: FastifyInstance, { sessions, store, clients, passwordReset, signup, ssoOnly, linkable, sso, company }: IdentityRouteOptions) {
+export function registerIdentityRoutes(app: FastifyInstance, { sessions, devices, store, clients, passwordReset, signup, ssoOnly, linkable, sso, company }: IdentityRouteOptions) {
   app.get(IDENTITY_CAPABILITIES_PATH, async (): Promise<IdentityCapabilities> => ({ company: await company(), passwordReset, signup, ssoOnly, linkable, sso: await sso() }));
 
   app.get(ME_PATH, async (request, reply): Promise<MeResponse> => {
@@ -87,9 +90,16 @@ export function registerIdentityRoutes(app: FastifyInstance, { sessions, store, 
     return reply.code(204).send();
   });
 
-  app.post(REVOKE_OTHER_SESSIONS_PATH, async (request) => {
+  app.post(REVOKE_OTHER_SESSIONS_PATH, async (request, reply) => {
     const context = await sessions.requirePrincipal(request);
     const revoked = await store.deleteOthers(context.principal.id, context.sessionId);
+    // Copies of the device cookie taken before now stop counting as this person's browser (#1031). A browser that already had a cookie for
+    // this account keeps it, given again at the new generation (same device, so its own wait stays its own). One that has only a session
+    // is given none: a session does not prove the password, and a cookie would give it a wait of its own to guess in (#990).
+    const cookie = cookieValue(request.headers.cookie, devices.cookie.name);
+    const known = await devices.known(cookie, context.user.email);
+    await devices.endAll(context.principal.id);
+    if (known) reply.header('set-cookie', serializeDeviceCookie(devices, await devices.remember(cookie, context.user.email)));
     // "Sign out everywhere" also ends what a local AI client holds: someone who had this account's session could have connected one (#989).
     // The person connects their own again with one click on the consent page.
     const disconnected = await clients.disconnectClients(context.principal.id);
@@ -97,4 +107,13 @@ export function registerIdentityRoutes(app: FastifyInstance, { sessions, store, 
     if (disconnected > 0) securityEvent(request.log, { event: 'client_disconnected', outcome: 'success', reason: 'sign_out_everywhere', userId: context.principal.id, count: disconnected, ip: request.ip });
     return { revoked, disconnected };
   });
+}
+
+const cookieValue = (header: string | undefined, name: string) =>
+  header?.split(';').map((part) => part.trim().split(/=(.*)/s)).find(([key]) => key === name)?.[1];
+
+/** The `Set-Cookie` line of the device cookie, as Better Auth writes the same cookie on a sign-in. */
+function serializeDeviceCookie({ cookie }: Devices, value: string) {
+  const { maxAge, secure } = cookie.options;
+  return `${cookie.name}=${value}; Max-Age=${maxAge}; Path=/; HttpOnly; SameSite=Lax${secure ? '; Secure' : ''}`;
 }

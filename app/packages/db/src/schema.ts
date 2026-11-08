@@ -46,6 +46,8 @@ export const authUsers = pgTable('auth_users', {
   emailVerified: boolean('email_verified').notNull().default(false),
   /** Set on a password sign-up while sign-up is `verified` (migration 0091, #313): no password sign-in until the address is verified. */
   verificationRequired: boolean('verification_required').notNull().default(false),
+  /** Raised by a password reset and by "Sign out all other devices" (migration 0036, #1031): device cookies of an older generation stop counting. */
+  deviceGeneration: integer('device_generation').notNull().default(0),
   image: text('image'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1998,16 +2000,6 @@ export const githubProcessing = pgTable('github_processing', {
   attempts: integer('attempts').notNull().default(0), nextAttemptAt: timestamp('next_attempt_at', { withTimezone: true }).notNull().defaultNow(),
   errorCode: text('error_code'),
 }, (t) => [primaryKey({ columns: [t.deliveryId, t.bindingId] }), index('github_processing_due_idx').on(t.state, t.nextAttemptAt)]);
-export const githubBridgeOutbox = pgTable('github_bridge_outbox', {
-  id: uuid('id').primaryKey(), deliveryId: text('delivery_id').notNull(), bindingId: uuid('binding_id').notNull(),
-  linkId: uuid('link_id').notNull().references(() => githubTaskLinks.id, { onDelete: 'cascade' }),
-  taskId: uuid('task_id').notNull(), workspaceId: uuid('workspace_id').notNull(), projectId: uuid('project_id').notNull(),
-  headSha: text('head_sha').notNull(), event: text('event').notNull(), providerObjectId: text('provider_object_id'), correlationKey: text('correlation_key').notNull(),
-  state: text('state', { enum: ['pending_audience_adapter', 'delivered', 'no_recipient', 'no_access'] }).notNull().default('pending_audience_adapter'),
-  /** 0132 (#479): the connection the #153 bridge delivered this event to; set exactly when `delivered`. */
-  recipientConnectionId: uuid('recipient_connection_id'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-}, (t) => [unique().on(t.deliveryId, t.bindingId, t.linkId), unique().on(t.bindingId, t.linkId, t.correlationKey)]);
 // "Let linked PRs move this task" (#74 G-1a, migration 0052): one rule per task, its automatic changes and the project default.
 const WORK_STATUS = ['open', 'in_progress', 'blocked', 'done', 'not_pursued'] as const;
 export const githubTaskRules = pgTable('github_task_rules', {

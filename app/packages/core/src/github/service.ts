@@ -243,7 +243,7 @@ export function githubUseCases(uow: GithubUnitOfWork) {
         // Verified source/binding/processing locks precede ONE complete linked/rule/prerequisite pass.
         // Every later fact save and rule application reuses it; nothing extends it after domain locks.
         if(refreshed.size)await ports.tasks.lockForRules(binding.workspaceId,binding.projectId,[...refreshed]);
-        for(const{link,facts}of refreshes){await ports.rows.saveFacts(link.id,facts);await ports.rows.bridge(delivery,binding,link,facts);}
+        for(const{link,facts}of refreshes){await ports.rows.saveFacts(link.id,facts);}
         await applyGithubRules(ports, { delivery, binding, taskIds: [...refreshed], authority });
         await ports.rows.complete(deliveryId, bindingId);
         return 'completed';

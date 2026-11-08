@@ -234,13 +234,17 @@ describe('people\'s agents take tasks (#856, #904)', () => {
 
   test('P2: a released event that gives up still stops the run, though the task is back with its owner, and says nothing false', async () => {
     const { task, run } = await heldByAgent(lee, agents.lee!, 'Taken back, and the stop fails');
+    // The fault below lets the stop through once an unhandled release of this task has had five tries, and the release does nothing at all
+    // when its run has left flight meanwhile (`released` stops only runs that are going). Either would hand the release over after fewer
+    // than five tries, so the run must be going now, and a failure says what the run and the event looked like (#975).
+    assert.equal((await runRow(run.id)).status, 'queued', 'the run is going when the task is taken back');
     // The run cannot be stopped until the event has had its five tries (a fault in the database for this one run).
     await withFault(`atk_stop_${run.id.replace(/-/g, '')}`, 'personal_runs', `OLD.id = '${run.id}' AND NEW.status = 'stopped'`,
       `IF coalesce((SELECT max(attempts) FROM agent_task_events WHERE work_id = '${task.id}' AND kind = 'released' AND handled_at IS NULL), 99) < 5 THEN RAISE EXCEPTION 'injected fault'; END IF;`, async () => {
         const current = await readTask(task.id);
         expectStatus(await lee.browser.request('PATCH', workItemPath(task.id), { body: { owner: { kind: 'human', id: lee.id } }, headers: { 'if-match': `"${current.version}"` } }), 200);
         const given = await waitFor(async () => { const row = await eventNow(task.id, 'released'); return row.handled_at ? row : null; }, 'the release to be given up', 60_000);
-        assert.equal(given.attempts, 5);
+        assert.equal(given.attempts, 5, `five tries, then the give-up (the run is ${JSON.stringify(await runRow(run.id))}, the event ${JSON.stringify(given)})`);
       });
     const stopped = await waitFor(async () => { const row = await runRow(run.id); return row.status === 'stopped' ? row : null; }, 'the run to stop');
     assert.equal(stopped.stop_requested_by, lee.id, 'stopped as the person who took the task back');

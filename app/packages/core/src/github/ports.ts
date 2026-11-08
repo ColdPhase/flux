@@ -42,8 +42,6 @@ export interface GithubRepositoryPort {
   complete(deliveryId: string, bindingId: string, errorCode?: string): Promise<void>;
   reconciliationCandidates(appId: string, window: string, limit: number, prefix?: 'gap' | 'poll'): Promise<GithubBindingRecord[]>;
   pendingReconciliation(bindingId: string): Promise<string | null>;
-  /** Internal metadata only; cannot deliver to a client until #153's audience adapter exists. */
-  bridge(delivery: GithubDelivery, binding: GithubBindingRecord, link: GithubLinkRecord, facts: GithubPullFacts): Promise<void>;
   rule(taskId: string, lock?: boolean): Promise<GithubRuleRecord | null>;
   /** For presentation: each rule with whether a required link's binding is no longer active. */
   taskRules(taskIds: readonly string[]): Promise<Map<string, GithubRuleReading>>;

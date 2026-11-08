@@ -1,13 +1,26 @@
 import type { FastifyRequest } from 'fastify';
 
 /**
+ * Link tokens that sit in the URL path (#1030): Better Auth's reset link, `GET /api/auth/reset-password/<token>`, works once for an
+ * hour. Every other link Flux mails or shows (email verification, a notification address, unsubscribe, an invite) carries its token
+ * in the query or the fragment, which are not logged. Matched anywhere in the path so `//` and `./` variants are covered too.
+ */
+const TOKEN_IN_PATH = /(\/reset-password\/)[^/]+/gi;
+
+/** The request path without its query string, and without the token of a link that holds one in the path. */
+export function loggedPath(url: string | undefined) {
+  return (url ?? '').split('?')[0]!.replace(TOKEN_IN_PATH, '$1<token>');
+}
+
+/**
  * The API's request log line (F-030, #655): Fastify's default fields without the query string, so a search text or
- * any other query value is never written to the Docker log on disk. Request bodies are never logged.
+ * any other query value is never written to the Docker log on disk, and with a link token in the path as `<token>`
+ * (#1030). Request bodies are never logged.
  */
 export function requestLogSerializer(request: FastifyRequest) {
   return {
     method: request.method,
-    url: (request.url ?? '').split('?')[0],
+    url: loggedPath(request.url),
     host: request.host,
     remoteAddress: request.ip,
     remotePort: request.socket?.remotePort,

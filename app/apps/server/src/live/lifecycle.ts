@@ -1,4 +1,5 @@
 import { and, asc, eq, gt, inArray, lt, lte, or } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import type { Pool } from 'pg';
 import { holdingSessionLock, schema, type Database } from '@flux/db';
 import type { LiveMedia } from '@flux/core';
@@ -19,20 +20,23 @@ export function liveLifecycle(db: Database, pool: Pool,
   let sweepAfter: { updatedAt: Date; id: string } | null = null;
 
   // This is the same workspace advisory key and lock order as access revocation.
-  async function locked<T>(workspaceId: string, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
-    // A lock whose connection dies is gone, and the next holder may be working: `work` stops at its next step (#916).
+  async function locked<T>(workspaceId: string, work: (signal: AbortSignal, held: Database) => Promise<T>): Promise<T> {
+    // A lock whose connection dies is gone, and the next holder may be working: `work` stops at its next step (#916). `held` is a handle
+    // on the lock's own connection: a write that must not commit after the lock is lost goes through it (#961, #975).
     return holdingSessionLock(pool, { acquire: { text: 'SELECT pg_advisory_lock(62061, hashtext($1))', values: [workspaceId] },
-      release: { text: 'SELECT pg_advisory_unlock(62061, hashtext($1))', values: [workspaceId] } }, work);
+      release: { text: 'SELECT pg_advisory_unlock(62061, hashtext($1))', values: [workspaceId] } },
+    (signal, connection) => work(signal, drizzle({ client: connection, schema })));
   }
 
-  async function finishEndingLocked(sessionId: string): Promise<LiveReconcileResult> {
+  /** Ends a session whose room is being removed. The caller holds the workspace lock; the write that ends it goes through `held`, the lock's own connection. */
+  async function finishEndingLocked(sessionId: string, held: Database): Promise<LiveReconcileResult> {
     const [row] = await db.select().from(sessions).where(eq(sessions.id, sessionId));
     if (!row || row.state === 'ended') return 'ended';
     if (row.state !== 'ending') return 'stale';
     // DeleteRoom confirms the old room is absent. Keep the durable ending fence
     // if the SFU cannot confirm; recovery will retry after a crash or outage.
     await media.deleteRoom(row.roomId);
-    await db.transaction(async (tx) => {
+    await held.transaction(async (tx) => {
       await tx.select({ id: schema.projects.id }).from(schema.projects)
         .where(eq(schema.projects.id, row.projectId)).for('no key update');
       const [current] = await tx.select().from(sessions)
@@ -49,7 +53,7 @@ export function liveLifecycle(db: Database, pool: Pool,
     const [located] = await db.select({ workspaceId: sessions.workspaceId }).from(sessions)
       .where(eq(sessions.id, sessionId));
     if (!located) return 'stale';
-    return locked(located.workspaceId, async (signal) => {
+    return locked(located.workspaceId, async (signal, held) => {
       const result = await db.transaction(async (tx): Promise<LiveReconcileResult> => {
         const [current] = await tx.select().from(sessions).where(eq(sessions.id, sessionId));
         if (!current || current.workspaceId !== located.workspaceId ||
@@ -92,7 +96,7 @@ export function liveLifecycle(db: Database, pool: Pool,
       });
       // Deleting the room is the step the lock protects; if its connection was lost meanwhile, the next holder decides (#916).
       signal.throwIfAborted();
-      if (result === 'ending') return finishEndingLocked(sessionId);
+      if (result === 'ending') return finishEndingLocked(sessionId, held);
       return result;
     });
   }
@@ -140,14 +144,15 @@ export function liveLifecycle(db: Database, pool: Pool,
     if (failed) throw failed.reason;
   }
 
-  /** Caller must already hold pg_advisory_lock(62061, hashtext(workspaceId)).
+  /** Caller must already hold pg_advisory_lock(62061, hashtext(workspaceId)), and passes `held`, the handle on that lock's own connection,
+   * so the write that ends a session cannot commit after the lock is lost (#961, #975).
    * Revocation uses this before changing access, so an old ending room cannot
    * retain a usable token after the access mutation commits. */
-  async function recoverWorkspaceUnderLock(workspaceId: string): Promise<void> {
+  async function recoverWorkspaceUnderLock(workspaceId: string, held: Database): Promise<void> {
     const rows = await db.select({ id: sessions.id }).from(sessions)
       .where(and(eq(sessions.workspaceId, workspaceId), eq(sessions.state, 'ending')))
       .orderBy(asc(sessions.updatedAt), asc(sessions.id));
-    for (const row of rows) await finishEndingLocked(row.id);
+    for (const row of rows) await finishEndingLocked(row.id, held);
   }
 
   return { reconcile, sweep, recoverPending, recoverWorkspaceUnderLock };

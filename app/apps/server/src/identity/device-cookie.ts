@@ -37,10 +37,14 @@ export function writeDevice(secret: string, device: Device): string {
   return `${device.id}.${accounts}.${sign(secret, device.id, accounts)}`;
 }
 
-/** The device with this account added (a new device when it had none); the newest accounts stay when there are many. */
-export function withAccount(device: Device | null, accountKey: string): Device {
+/**
+ * The device with this account added (a new device when it had none); the newest accounts stay when there are many. `replaces` are keys the
+ * account had before (older device generations, `devices.ts`): they leave the list, so they do not take the slots of other accounts.
+ */
+export function withAccount(device: Device | null, accountKey: string, replaces: readonly string[] = []): Device {
   const key = accountKey.slice(0, KEY_LENGTH);
-  return { id: device?.id ?? randomBytes(16).toString('base64url'), accounts: [key, ...(device?.accounts ?? []).filter((item) => item !== key)].slice(0, MAX_ACCOUNTS) };
+  const gone = new Set([key, ...replaces.map((old) => old.slice(0, KEY_LENGTH))]);
+  return { id: device?.id ?? randomBytes(16).toString('base64url'), accounts: [key, ...(device?.accounts ?? []).filter((item) => !gone.has(item))].slice(0, MAX_ACCOUNTS) };
 }
 
 export const knows = (device: Device | null, accountKey: string): device is Device => !!device && device.accounts.includes(accountKey.slice(0, KEY_LENGTH));

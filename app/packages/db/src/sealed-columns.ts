@@ -43,7 +43,7 @@ const system = [
   'event_data_tokens', 'event_data_keys', 'agent_task_events',
 ] as const;
 const refused = [
-  'github_bindings', 'github_bridge_outbox', 'github_deliveries', 'github_processing', 'github_rule_defaults', 'github_task_links',
+  'github_bindings', 'github_deliveries', 'github_processing', 'github_rule_defaults', 'github_task_links',
   'github_task_rule_changes', 'github_task_rules',
 ] as const;
 const content = [
