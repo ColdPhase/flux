@@ -17,7 +17,8 @@ import { runTokenIssuer } from '../../apps/worker/src/personal-runs/run-tokens.j
 import { agentSettings } from './support/agent-settings.js';
 import { db, pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
-import { mcp } from './support/mcp.js';
+import { mcp, toolValue } from './support/mcp.js';
+import { agentConnection } from './support/mcp-actions.js';
 import { addMember, expectStatus, grant, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeCompute, FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { ensureSpaceAiAllowed, setSpaceAi } from './support/space-ai.js';
@@ -471,7 +472,8 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
 
   // ------------------------------------------------------------------------------------------------------------------
   // #68 closeout (founder direction 2026-10-29): the Undo of what no person can remove. The assistant takes back its own map,
-  // recorded result, proposed decision and posted message in the same run Undo, only while nobody has used it.
+  // recorded result and proposed decision in the same run Undo, only while nobody has used it. A run posts no message (#1063); a posted
+  // message an agent takes back is a local client's (LC-2), through the same change path and the same Undo, one change at a time (C-18).
 
   const value = (response: { message: Message }) => JSON.parse(text(response.message)) as Record<string, string>;
   const undoOne = async (changeId: string, who: Person = owner) =>
@@ -483,26 +485,41 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
   const taskFrom = async (who: Person, body: Record<string, unknown>) =>
     expectStatus(await who.browser.request('POST', `/api/v1/projects/${place.id}/work`, { body }), 201) as { id: string; version: number };
 
-  test('#68 message: Undo takes the assistant\'s reply back to a tombstone, attributed, with an ids-only event; it keeps its place', async () => {
-    const run = await liveRun();
-    const posted = value(await run.call('flux_reply_in_conversation', { conversationId: thread.id, message: { body: 'Here is the summary of the sensor work' } }));
-    await complete(run.runId);
-    const [change] = await changesOf(run.runId);
-    assert.equal(change!.state, 'applied');
-    const listed = await listRun(run.runId);
-    assert.equal(listed[0]!.undoable, true, 'the run message offers Undo for a posted message');
-    const peerView = (expectStatus(await peer.browser.request('GET', conversationAssistantChangesPath(thread.id)), 200) as { items: AssistantChange[] }).items.find((item) => item.id === change!.id);
+  /** Ada's Claude Code on her laptop: a local client of her own agent in this space, made once. */
+  let laptop: Awaited<ReturnType<typeof agentConnection>> | null = null;
+  const client = async () => {
+    if (!laptop) laptop = await agentConnection(pool, owner.browser, (expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/agents`,
+      { body: { name: 'Ada laptop', owner: 'self' } }), 201) as { id: string }).id, [place.id]);
+    return laptop;
+  };
+  /** A message the local client posts, with the one change that records it. */
+  const post = async (tool: 'flux_reply_in_conversation' | 'flux_start_conversation', args: Record<string, unknown>) => {
+    const by = await client();
+    const made = toolValue(await by.tool(tool, { projectId: place.id, clientCommandId: randomUUID(), sources: [], ...args }));
+    const messageId = String(made.messageId); const conversationId = String(made.conversationId);
+    const [change] = (await pool.query(`SELECT id, state, agent_id FROM assistant_changes WHERE connection_id = $1 AND object_id = $2`, [by.connectionId, messageId])).rows as
+      { id: string; state: string; agent_id: string }[];
+    assert.ok(change, `${tool} is one change of the client`);
+    return { messageId, conversationId, change: change! };
+  };
+
+  test('#68 message: Undo takes a local client\'s reply back to a tombstone, attributed, with an ids-only event; it keeps its place', async () => {
+    const posted = await post('flux_reply_in_conversation', { conversationId: thread.id, message: { body: 'Here is the summary of the sensor work' } });
+    const change = posted.change;
+    assert.equal(change.state, 'applied');
+    const listed = (expectStatus(await owner.browser.request('GET', conversationAssistantChangesPath(thread.id)), 200) as { items: AssistantChange[] }).items.find((item) => item.id === change.id);
+    assert.equal(listed?.undoable, true, 'the message offers its owner Undo');
+    const peerView = (expectStatus(await peer.browser.request('GET', conversationAssistantChangesPath(thread.id)), 200) as { items: AssistantChange[] }).items.find((item) => item.id === change.id);
     assert.equal(peerView?.undoable, false, 'someone else who may edit sees it done, with no Undo of their own');
-    const undone = await undoRun(run.runId);
-    assert.equal(undone.undone, 1, undone.message);
+    assert.equal((await undoOne(change.id)).message, null);
     const row = (await pool.query(`SELECT body, removed_at, sequence, author_agent_id FROM project_messages WHERE id = $1`, [posted.messageId])).rows[0];
     assert.equal(row.body, '[Removed with Undo]');
     assert.ok(row.removed_at, 'the row stays, marked');
-    assert.equal(row.author_agent_id, agentId, 'still the assistant\'s message');
+    assert.equal(row.author_agent_id, change.agent_id, 'still the agent\'s message');
     const seen = expectStatus(await peer.browser.request('GET', `/api/v1/conversations/${thread.id}`), 200) as Conversation;
     const shown = seen.messages.find((message) => message.id === posted.messageId)!;
     assert.deepEqual([shown.body, typeof shown.removedAt], ['[Removed with Undo]', 'string'], 'readers get the marker and the time');
-    const after = await stateOf(change!.id);
+    const after = await stateOf(change.id);
     assert.deepEqual([after.state, after.decided_by], ['undone', owner.id], 'attributed to the person who undid it');
     const removed = (after.receipt.undone as { removed: Record<string, unknown> }).removed;
     assert.deepEqual(Object.keys(removed).sort(), ['bodyHash', 'bodyLength', 'conversationId', 'sequence'], 'the audit keeps a hash and a length, never the text');
@@ -514,33 +531,24 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
   });
 
   test('#68 message: refused once anyone replied since or cited it, with the reason, and nothing changes', async () => {
-    const run = await liveRun();
-    const first = value(await run.call('flux_reply_in_conversation', { conversationId: thread.id, message: { body: 'First point about the probes' } }));
-    await complete(run.runId);
-    const [change] = await changesOf(run.runId);
+    const first = await post('flux_reply_in_conversation', { conversationId: thread.id, message: { body: 'First point about the probes' } });
     await reply(peer, thread.id, 'Thanks, that helps');
-    assert.equal((await undoOne(change!.id)).message, 'Replies since. Open it');
-    assert.equal((await stateOf(change!.id)).state, 'applied');
+    assert.equal((await undoOne(first.change.id)).message, 'Replies since. Open it');
+    assert.equal((await stateOf(first.change.id)).state, 'applied');
     assert.equal((await pool.query(`SELECT removed_at FROM project_messages WHERE id = $1`, [first.messageId])).rows[0].removed_at, null);
     // Cited: a task started from it, with no later message in the thread (a conversation of its own).
-    const solo = await liveRun();
-    const started = value(await solo.call('flux_start_conversation', { message: { body: 'A new question about the lamp driver' } }));
-    await complete(solo.runId);
-    const [begun] = await changesOf(solo.runId);
+    const started = await post('flux_start_conversation', { message: { body: 'A new question about the lamp driver' } });
     await taskFrom(peer, { title: 'Follow the lamp driver question', sources: [{ type: 'message', id: started.messageId }] });
-    assert.equal((await undoOne(begun!.id)).message, 'Used since. Open it');
-    assert.equal((await stateOf(begun!.id)).state, 'applied');
+    assert.equal((await undoOne(started.change.id)).message, 'Used since. Open it');
+    assert.equal((await stateOf(started.change.id)).state, 'applied');
   });
 
-  test('#68 message: the run\'s Undo takes back both of its replies, the later one first', async () => {
-    const run = await liveRun();
-    const a = value(await run.call('flux_start_conversation', { message: { body: 'Opening question from the run' } }));
-    const b = value(await run.call('flux_reply_in_conversation', { conversationId: a.conversationId, message: { body: 'My own follow-up' } }));
-    await complete(run.runId);
-    const [first] = await changesOf(run.runId);
-    assert.equal((await undoOne(first!.id)).message, 'Replies since. Open it', 'its own later reply counts until that is taken back first');
-    const undone = await undoRun(run.runId);
-    assert.equal(undone.undone, 2, undone.message);
+  test('#68 message: each of a client\'s messages is its own Undo, and its own later reply is taken back first (C-18)', async () => {
+    const a = await post('flux_start_conversation', { message: { body: 'Opening question from the laptop' } });
+    const b = await post('flux_reply_in_conversation', { conversationId: a.conversationId, message: { body: 'My own follow-up' } });
+    assert.equal((await undoOne(a.change.id)).message, 'Replies since. Open it', 'its own later reply counts until that is taken back first');
+    assert.equal((await undoOne(b.change.id)).message, null);
+    assert.equal((await undoOne(a.change.id)).message, null);
     const rows = (await pool.query(`SELECT id, removed_at FROM project_messages WHERE id = ANY($1)`, [[a.messageId, b.messageId]])).rows as { removed_at: Date | null }[];
     assert.ok(rows.every((message) => message.removed_at));
   });
@@ -670,7 +678,7 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
 
   test('#68 a stranger cannot take these back, and the change keeps its removal plan', async () => {
     const run = await liveRun();
-    value(await run.call('flux_start_conversation', { message: { body: 'A question only the owner may take back' } }));
+    value(await run.call('flux_create_map', { title: 'A map only the owner may take back' }));
     await complete(run.runId);
     const [change] = await changesOf(run.runId);
     expectStatus(await stranger.browser.request('POST', assistantChangeActionPath(change!.id, 'undo'), { body: {} }), 404);
@@ -683,17 +691,17 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
   test('#68 only the assistant\'s owner takes these four back, not every editor of the project', async () => {
     const run = await liveRun();
     const made = value(await run.call('flux_create_map', { title: 'Owner only map' }));
-    const said = value(await run.call('flux_start_conversation', { message: { body: 'Owner only question' } }));
+    const proposed = value(await run.call('flux_propose_decision', { decision: { title: 'Owner only decision', rationale: 'x' } }));
     await complete(run.runId);
-    const [mapChange, messageChange] = await changesOf(run.runId);
+    const [mapChange, decisionChange] = await changesOf(run.runId);
     // Jonas may edit the project; Ada's assistant made these.
     const theirs = (expectStatus(await peer.browser.request('GET', conversationAssistantChangesPath(thread.id)), 200) as { items: AssistantChange[] }).items.filter((item) => item.runId === run.runId);
     assert.deepEqual(theirs.map((item) => item.undoable), [false, false], 'no Undo is offered to an editor who is not the owner');
     assert.equal((await undoOne(mapChange!.id, peer)).message, 'Only ac-ada can take back what their agent made');
     const all = expectStatus(await peer.browser.request('POST', assistantRunChangesActionPath(run.runId, 'undo'), { body: {} }), 200) as AssistantRunUndone;
     assert.equal(all.undone, 0, 'the run Undo of an editor leaves them alone');
-    assert.deepEqual([await count('sketches', made.mapId), (await pool.query(`SELECT removed_at FROM project_messages WHERE id = $1`, [said.messageId])).rows[0].removed_at], [1, null]);
-    assert.equal((await stateOf(messageChange!.id)).state, 'applied');
+    assert.deepEqual([await count('sketches', made.mapId), await count('project_decisions', proposed.decisionId)], [1, 1]);
+    assert.equal((await stateOf(decisionChange!.id)).state, 'applied');
     assert.equal((await undoRun(run.runId)).undone, 2, 'the owner takes both back');
   });
 
@@ -761,12 +769,9 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
         const links = Number((await pool.query(`SELECT count(*) FROM project_object_links WHERE to_id = $1`, [made.mapId])).rows[0].count);
         assert.ok(!(gone && links > 0), `map removed but cited: undo ${undone.status}, citation ${cited.status}`);
       }],
-      ['message sourced by a task', async (offset, swap) => {
-        const run = await liveRun();
-        const made = value(await run.call('flux_start_conversation', { message: { body: `Race question ${offset}` } }));
-        await complete(run.runId);
-        const [change] = await changesOf(run.runId);
-        const [undone, cited] = await race(undoRequest(change!.id), () => peer.browser.request('POST', `/api/v1/projects/${place.id}/work`,
+      ['a local client\'s message sourced by a task', async (offset, swap) => {
+        const made = await post('flux_start_conversation', { message: { body: `Race question ${offset}` } });
+        const [undone, cited] = await race(undoRequest(made.change.id), () => peer.browser.request('POST', `/api/v1/projects/${place.id}/work`,
           { body: { title: `Sourced from ${offset}`, sources: [{ type: 'message', id: made.messageId }] } }), offset, swap);
         noServerError('message source', undone.status, cited.status);
         const removed = (await pool.query(`SELECT removed_at FROM project_messages WHERE id = $1`, [made.messageId])).rows[0].removed_at !== null;

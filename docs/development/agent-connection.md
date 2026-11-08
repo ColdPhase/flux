@@ -429,8 +429,8 @@ The same executor runs the canonical doc (#112) and conversation (#36, #154) com
 | `flux_create_doc` | `doc.create` | none | One project doc: title, Markdown text, reason |
 | `flux_update_doc` | `doc.update` | the doc | The next version at the version last read (like `If-Match`): title, the complete text, reason |
 | `flux_delete_doc` | `doc.delete` | the doc | Deletes one page for everyone at the version last read; always waits for the owner's OK (#941) |
-| `flux_start_conversation` | `conversation.create` | none | One new project conversation with its first message, optionally citing one material or doc version |
-| `flux_reply_in_conversation` | `conversation.reply` | the conversation | One reply in an existing project conversation, including a task's discussion thread |
+| `flux_start_conversation` | `conversation.create` | none | One new project conversation with its first message, optionally citing one material or doc version. A local client's tool only: no run has it (#1063) |
+| `flux_reply_in_conversation` | `conversation.reply` | the conversation | One reply in an existing project conversation, including a task's discussion thread. A local client's tool only: no run has it (#1063) |
 | `flux_post_agent_thread` | `conversation.reply` | the task's agents' thread | One work message about a task in its agents' thread (#400, below) |
 | `flux_ask_question` | `conversation.reply` | the conversation | A question to one person with two to four ready answers, as the agent's message plus a card (#347, below) |
 

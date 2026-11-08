@@ -6,7 +6,7 @@ export { reportTaskRun } from './task-report.js';
 export * from './proposals.js';
 export { recoverLostRuntimeRuns, recoverPersonalRuns } from './recovery.js';
 export {
-  connectionCallsTools, costMicros, parseOutput, privateSystemPrompt, requestInput, runChargeMicros, runReservationMicros, SYSTEM_PROMPT, budgetedReservationMicros, TOOL_SYSTEM_PROMPT, taskSystemPrompt,
+  connectionCallsTools, costMicros, NO_POSTING_LINE, parseOutput, privateSystemPrompt, requestInput, runChargeMicros, runReservationMicros, SYSTEM_PROMPT, budgetedReservationMicros, TOOL_SYSTEM_PROMPT, taskSystemPrompt,
   type AnswerPlace, type SuppliedSource,
 } from './validation.js';
 export { emptyAccount, nextRequestFits, reconcileRequest, requestParts, runToolLoop, type Gate, type LoopEnd, type LoopLimit, type LoopOptions, type LoopResult, type RunAccount } from './tool-loop.js';
