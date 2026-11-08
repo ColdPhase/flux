@@ -5,6 +5,7 @@ import { pool } from './support/db.js';
 import { apiUrl } from './support/http.js';
 import { expect } from './support/mcp.js';
 import { actionScene } from './support/mcp-actions.js';
+import { createFluxMcpHandler, MCP_MAX_REQUEST_BODY_BYTES } from '../../apps/server/src/agent-connection/mcp-protocol.js';
 
 // Real OAuth and the running HTTP endpoint. No patched identity or transport stub.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- decoded public JSON-RPC responses
@@ -107,7 +108,7 @@ test('two-era HTTP admission keeps exact revisions, notification semantics, mode
     assert.equal((await send({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: legacy } })).status, 400);
     assert.equal((await send(JSON.stringify({ padding: 'x'.repeat(5 * 1024 * 1024) }))).status, 413);
   });
-  await t.test('a request over 1 MiB is refused unread, and a tool call with more than 10,000 elements is refused before validation (#877)', async () => {
+  await t.test('on the route Fastify refuses a body over 1 MiB first (its own limit), and a tool call with more than 10,000 elements is refused before validation (#877)', async () => {
     assert.equal((await send(JSON.stringify({ padding: 'x'.repeat(1024 * 1024 + 1) }))).status, 413);
     const call = (padding: number[]) => ({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'flux_create_task', arguments: { padding } } });
     const refused = await send(call(new Array<number>(10_001).fill(0)), { 'mcp-protocol-version': legacy });
@@ -142,4 +143,17 @@ test('two-era HTTP admission keeps exact revisions, notification semantics, mode
     assert.equal((await send({ jsonrpc: '2.0', method: 'notifications/initialized' })).status, 403);
     assert.equal((await send(null, { 'mcp-protocol-version': legacy }, 'GET')).status, 403);
   });
+});
+
+// On the real route Fastify's body limit (1 MiB by default) answers before the MCP handler reads anything, so the 413 above is Fastify's. The
+// handler's own bound (`maxRequestBodySize`, the SDK's default being 4 MiB) is what an internal caller or a route with a larger body limit
+// would meet, so it is tested where it acts: on the handler (#877, #916).
+test('the MCP handler itself refuses a body over 1 MiB before parsing it, and reads one just under', async () => {
+  // Neither request reaches a server: the first is refused unread, the second is answered by Flux's own admission.
+  const handler = createFluxMcpHandler(() => { throw new Error('no MCP server is built for these requests'); });
+  const post = (body: string) => handler.fetch(new Request('http://flux.test/mcp', { method: 'POST', body,
+    headers: { 'content-type': 'application/json', accept: 'application/json, text/event-stream' } }));
+  assert.equal((await post(JSON.stringify({ padding: 'x'.repeat(MCP_MAX_REQUEST_BODY_BYTES + 1) }))).status, 413);
+  const under = await post(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '1999-01-01', padding: 'x'.repeat(MCP_MAX_REQUEST_BODY_BYTES - 1000) } }));
+  assert.equal(under.status, 400, 'a body under the bound is read, and refused for its protocol version');
 });

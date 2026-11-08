@@ -162,7 +162,7 @@ export async function undoChange(db: Database, row: AssistantChangeRow, by: Prin
           const taken: Removal = row.operation === 'map.create' ? await removals.removeMap({ mapId: id, agentId: row.agentId, title: plan.title ?? '' })
             : row.operation === 'decision.propose' ? await removals.removeDecision({ decisionId: id, agentId: row.agentId, version: plan.version ?? null })
             : row.operation === 'result.record' ? await removals.removeResult({ resultId: id, agentId: row.agentId })
-            : await removals.removeMessage({ messageId: id, agentId: row.agentId, agentsMayFollow: plan.thread === true });
+            : await removals.removeMessage({ messageId: id, agentId: row.agentId, byOwner: plan.thread === true });
           if (!taken.ok) throw new Since(taken.why === 'foreign' ? NOT_UNDOABLE : taken.reason);
           // A result that finished a task: the task goes back to how it was, if it is still as the result left it.
           if (row.operation === 'result.record' && plan.finishes) {

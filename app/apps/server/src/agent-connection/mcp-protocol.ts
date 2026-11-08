@@ -4,8 +4,10 @@ import { createMcpHandler, isJsonContentType, isLegacyRequest,
 /**
  * What one MCP request may carry (#877, GHSA-46jr-4wx8-v453). The SDK's own default is 4 MiB, and a body of that size made of tiny
  * array elements can exhaust memory while it is validated. The largest text a tool takes is 100,000 characters (up to 400 KB), so
- * 1 MiB leaves room, and the longest array a tool declares holds 50 elements, so 10,000 elements and members together is far above
- * any real call. A request over the first is answered 413 before it is parsed; one over the second is refused before validation.
+ * 1 MiB leaves room, and the longest array a tool declares holds 200 elements (`SKETCH_LIMITS.moves`; most hold 50), so 10,000
+ * elements and members together is far above any real call. A request over the first is answered 413 before it is parsed; one over
+ * the second is refused before validation. On the real route Fastify's own body limit (also 1 MiB) answers first; this one is the
+ * handler's, for whatever calls it with a larger body (`mcp-protocol.test.ts` tests both).
  */
 export const MCP_MAX_REQUEST_BODY_BYTES = 1024 * 1024;
 export const MCP_MAX_TOOL_INPUT_ELEMENTS = 10_000;

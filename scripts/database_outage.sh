@@ -1,12 +1,18 @@
 # Sourced by scripts/check_database_outage.sh and scripts/check_application.sh after `$compose` is set (and FLUX_PORT exported).
 # A short database outage must not stop the API or the worker (#889): a stopped PostgreSQL ends every connection with a 57P01
 # `error` event, and an event with no listener is an uncaught exception that ends the process. The check stops the database,
-# starts it again, and requires that the API answers its health check again and that no service restarted or exited.
+# starts it again, and requires that the API answers its health check again, that no service restarted or exited and that the
+# worker runs a job after the outage (the per-minute assistant tick of pg-boss): a worker that survived but lost its queue
+# connection would pass the first two and stop every job.
 # The services it watches are the ones of `$compose` that hold a database pool; `restart: unless-stopped` would hide a crash
 # behind a quick restart, so it compares the start time and restart count of each container before and after.
 
 outage_state() {
   docker inspect -f '{{ .State.StartedAt }} {{ .RestartCount }} {{ .State.Running }}' "$1"
+}
+
+outage_sql() {
+  $compose exec -T db sh -c 'psql -X -At -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "$1"' outage-sql "$1"
 }
 
 check_database_outage() {
@@ -29,6 +35,8 @@ check_database_outage() {
   echo "database outage: starting the database" >&2
   $compose start db
   $compose up -d --wait db
+  # The database's own clock marks the end of the outage, so the job below is one that ran after it.
+  outage_ended=$(outage_sql 'SELECT clock_timestamp()') || { echo "database outage: the database did not answer a query after it returned" >&2; return 1; }
   deadline=$(( $(date +%s) + 90 ))
   until wget -q -O /dev/null -T 3 "http://127.0.0.1:${FLUX_PORT}/api/v1/health" 2>/dev/null || curl -fsS -o /dev/null -m 3 "http://127.0.0.1:${FLUX_PORT}/api/v1/health" 2>/dev/null; do
     if [ "$(date +%s)" -ge "$deadline" ]; then echo "database outage: the API did not answer its health check within 90 s of the database returning" >&2; return 1; fi
@@ -49,5 +57,15 @@ check_database_outage() {
     echo "database outage: a service logged an unhandled error" >&2
     return 1
   fi
-  echo "database outage: api and worker kept running, and the API is healthy again" >&2
+  # The tick is scheduled every minute: one that starts after the outage and completes shows that the worker's queue works again.
+  job_deadline=$(( $(date +%s) + 150 ))
+  until [ "$(outage_sql "SELECT count(*) FROM pgboss.job WHERE name = 'assistant.background.tick.v1' AND state = 'completed' AND started_on > '$outage_ended'" 2>/dev/null || true)" -ge 1 ] 2>/dev/null; do
+    if [ "$(date +%s)" -ge "$job_deadline" ]; then
+      echo "database outage: the worker ran no job within 150 s of the database returning" >&2
+      $compose logs --no-color --tail 40 worker >&2 || true
+      return 1
+    fi
+    sleep 3
+  done
+  echo "database outage: api and worker kept running, the API is healthy again and the worker ran a job after the outage" >&2
 }

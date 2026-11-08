@@ -6,6 +6,7 @@ import { assistantChangeActionPath, assistantRunChangesActionPath, conversationA
 import { agentLabel, answerLines, askableLines, MAX_EXCHANGE_TURNS, resolveAsked, takeAsk, taskAgentState, type Askable, type Principal, type TaskAgentFacts } from '@flux/core';
 import { personalRunPorts, personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
+import { eventNow, withFault } from './support/db-faults.js';
 import { assistantScene, text, result, type AssistantScene } from './support/assistant-scene.js';
 import { addMember, expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeConnections, FakeQueue } from './support/personal-runs.js';
@@ -236,7 +237,7 @@ describe('the exchange through the real drain (#841, N1 to N3)', () => {
     await waitFor(async () => (await thread(held.task.id)).includes('0.82 V means full.'), 'the resumed answer to be posted');
   });
 
-  test('#923: the owner of an agent takes back a line it put in the thread; a person\'s answer to it, or someone else, cannot', async () => {
+  test('#923, #938 (TA-3): the owner of an agent can always delete a line it put in the thread, whoever answered it; no one else can', async () => {
     const held = await asked('Undo the answer', '{"agent": "Fieldbot", "question": "Which?"}');
     await waitFor(async () => (await readTask(held.task.id)).owner?.kind === 'human', 'the first exchange to end');
     await pool.query('UPDATE project_work_items SET owner_user_id = NULL, owner_agent_id = $2, version = version + 1 WHERE id = $1', [held.task.id, agents.jonas]);
@@ -259,19 +260,43 @@ describe('the exchange through the real drain (#841, N1 to N3)', () => {
     // The run's own Undo leaves a line in a thread to its Undo.
     expectStatus(await maja.browser.request('POST', assistantRunChangesActionPath(answer.run.id, 'undo'), { body: {} }), 200) as AssistantRunUndone;
     assert.ok((await thread(held.task.id)).includes('The 0.82 V reading means full.'), 'the run\'s Undo did not take the line');
-    // A person answered Jonas's report: it is used, and the Undo says so.
     const report = (await changes(jonas)).find((change) => change.operation === 'conversation.reply' && change.runId === held.run.id);
-    assert.ok(report?.undoable, 'Jonas\'s own report is his to take back');
-    // The answer was followed only by agents' lines: Maja takes it back, and the thread says who.
+    assert.ok(report?.undoable, 'Jonas\'s own report is his to delete');
+    // A person answers both lines. The owner's right does not wait for their silence (TA-3): the lines go to a marker that keeps their
+    // place, and everyone reads who removed them.
+    expectStatus(await ada.browser.request('POST', taskDiscussionPath(held.task.id), { body: { body: 'Thanks, I read the report and the answer', clientMessageId: randomUUID() } }), 201);
     const undone = expectStatus(await maja.browser.request('POST', assistantChangeActionPath(post.id, 'undo'), { body: {} }), 200) as AssistantChangeDecision;
-    assert.equal(undone.message, null);
+    assert.equal(undone.message, null, 'deleted although a person replied after it');
     const after = (await changes(ada)).find((change) => change.id === post.id)!;
-    assert.deepEqual([after.state, after.line], ['undone', `Undone by ${names.maja}`], 'everyone who reads the task sees who took it back');
+    assert.deepEqual([after.state, after.line], ['undone', `Removed by ${names.maja}`], 'everyone who reads the task sees who removed it');
     assert.ok(!(await thread(held.task.id)).includes('The 0.82 V reading means full.'), 'the line is gone from the thread');
-    assert.ok((await thread(held.task.id)).includes('[Removed with Undo]'), 'a tombstone keeps its place');
-    expectStatus(await ada.browser.request('POST', taskDiscussionPath(held.task.id), { body: { body: 'Thanks, I read the report', clientMessageId: randomUUID() } }), 201);
-    const blocked = expectStatus(await jonas.browser.request('POST', assistantChangeActionPath(report!.id, 'undo'), { body: {} }), 200) as AssistantChangeDecision;
-    assert.equal(blocked.message, 'Replies since. Open it');
-    assert.equal(blocked.change.state, 'applied', 'nothing was removed');
+    const deleted = expectStatus(await jonas.browser.request('POST', assistantChangeActionPath(report!.id, 'undo'), { body: {} }), 200) as AssistantChangeDecision;
+    assert.equal(deleted.message, null);
+    assert.equal(deleted.change.line, `Removed by ${names.jonas}`);
+    const lines = await thread(held.task.id);
+    assert.equal(lines.filter((line) => line === '[Removed by its owner]').length, 2, 'two markers keep their places');
+    assert.ok(lines.includes('Thanks, I read the report and the answer'), 'and the person\'s own line stays');
+    // Once deleted it is gone: a second try changes nothing.
+    assert.equal((expectStatus(await jonas.browser.request('POST', assistantChangeActionPath(report!.id, 'undo'), { body: {} }), 200) as AssistantChangeDecision).change.state, 'undone');
+  });
+
+  test('#938: an answer that cannot be handled gives up in the asker\'s name: the thread says so and the task goes back to its owner', async () => {
+    const held = await asked('Answer that cannot be posted', '{"agent": "Fieldbot", "question": "Which?"}');
+    await waitFor(async () => (await readTask(held.task.id)).owner?.kind === 'human', 'the first exchange to end');
+    await pool.query('UPDATE project_work_items SET owner_user_id = NULL, owner_agent_id = $2, version = version + 1 WHERE id = $1', [held.task.id, agents.jonas]);
+    const talk = expectStatus(await ada.browser.request('GET', taskDiscussionPath(held.task.id)), 200) as TaskDiscussion;
+    const answer = await db.transaction((tx) => runs.startTask(personalRunPorts(tx, queue.factory), { kind: 'task_answer', ownerUserId: maja.id, agentId: agents.maja!, workId: held.task.id,
+      projectId: space.id, conversationId: talk.conversationId!, prompt: 'Which?', clientRunId: randomUUID(), askedByRunId: held.run.id, exchangeTurn: 1, audience: [ada.id, jonas.id, maja.id] }));
+    assert.ok(answer.started, JSON.stringify(answer));
+    // The answer cannot be posted (a fault in the database for this text), so its `finished` event fails every time. The asker (Jonas's
+    // Planner) still holds the task and waits for it: giving up must not leave it with no run and no line.
+    await withFault(pool, { name: `atq_answer_${answer.run.id.replace(/-/g, '')}`, table: 'project_messages', on: 'INSERT', when: `NEW.body = 'The faulty answer'`, body: `RAISE EXCEPTION 'injected fault';` }, async () => {
+      await pool.query(`UPDATE personal_runs SET status = 'completed', completed_at = now(), committed_at = now(), answer_body = 'The faulty answer', cost_state = 'released', charged_micros = 0 WHERE id = $1`, [answer.run.id]);
+      await waitFor(async () => (await eventNow(pool, { runId: answer.run.id, kind: 'finished' })).handled_at, 'the answer\'s end to be given up', 60_000);
+    });
+    const lines = await thread(held.task.id);
+    assert.ok(lines.includes('I couldn\'t get an answer. It\'s back with you.'), lines.join(' | '));
+    assert.ok(!lines.includes('The faulty answer'));
+    assert.equal((await readTask(held.task.id)).owner?.kind, 'human', 'the asker no longer waits with the task');
   });
 });

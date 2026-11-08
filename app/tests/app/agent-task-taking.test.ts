@@ -6,7 +6,8 @@ import { taskActivityPath, taskAgentPath, taskAgentRetryPath, taskAgentStopPath,
 import { taskAgentState, taskRunClientId, type Principal, type TaskAgentFacts } from '@flux/core';
 import { createAgentTaskDrain } from '../../apps/server/src/agent-tasks/drain.js';
 import { personalRunPorts, personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
-import { agentTaskRows } from '@flux/db';
+import { AGENT_TASK_EVENT_ATTEMPTS, AGENT_TASK_GIVE_UP_ATTEMPTS, agentTaskRows } from '@flux/db';
+import { eventNow as eventNowOf, withFault as faultOf } from './support/db-faults.js';
 import { db, pool } from './support/db.js';
 import { addMember, expectStatus, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeConnections, FakeQueue } from './support/personal-runs.js';
@@ -200,21 +201,8 @@ describe('people\'s agents take tasks (#856, #904)', () => {
     assert.equal((await agentState(ada, task.id)).text, `Stopped: AI was turned off in this space · the task is back with ${kaiName}`, 'everyone who reads the task sees the same line');
   });
 
-  /** Faults in the database for one task or run only: `sql` is the body of a trigger function; it must `RETURN NEW` unless it raises. */
-  async function withFault(name: string, table: string, when: string, body: string, run: () => Promise<void>) {
-    await pool.query(`CREATE FUNCTION ${name}() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN ${body} RETURN NEW; END $$`);
-    await pool.query(`CREATE TRIGGER ${name} BEFORE UPDATE ON ${table} FOR EACH ROW WHEN (${when}) EXECUTE FUNCTION ${name}()`);
-    try { await run(); } finally {
-      await pool.query(`DROP TRIGGER IF EXISTS ${name} ON ${table}`);
-      await pool.query(`DROP FUNCTION IF EXISTS ${name}()`);
-    }
-  }
-  /** The tries of an event are brought forward (they wait 1, 4, 9 and 16 seconds); each try is one a drain makes. */
-  const eventNow = async (workId: string, kind: string) => {
-    await pool.query(`UPDATE agent_task_events SET next_try_at = now() WHERE work_id = $1 AND kind = $2 AND handled_at IS NULL`, [workId, kind]);
-    await pool.query(`SELECT pg_notify('flux_agent_tasks', '')`);
-    return (await pool.query(`SELECT attempts, handled_at FROM agent_task_events WHERE work_id = $1 AND kind = $2`, [workId, kind])).rows[0] as { attempts: number; handled_at: Date | null };
-  };
+  const eventNow = (workId: string, kind: string) => eventNowOf(pool, { workId, kind });
+  const withFault = (name: string, table: string, when: string, body: string, run: () => Promise<void>) => faultOf(pool, { name, table, when, body }, run);
   const agentLines = async (workId: string) => {
     const talk = expectStatus(await ada.browser.request('GET', taskDiscussionPath(workId)), 200) as TaskDiscussion;
     return [talk.root, ...talk.messages].filter((message) => message && message.authorId === null).map((message) => message!.body);
@@ -276,6 +264,38 @@ describe('people\'s agents take tasks (#856, #904)', () => {
     const open = (await pool.query(`INSERT INTO agent_task_events (kind, work_id, run_id, next_try_at) VALUES ('started', $1, $2, now() + interval '1 hour') RETURNING id`, [task.id, run.id])).rows[0];
     assert.deepEqual(await agentTaskRows(db).failed(open.id), { attempts: 1, waitSeconds: 1 });
     await pool.query(`DELETE FROM agent_task_events WHERE id = $1`, [open.id]);
+  });
+
+  test('#938: a release stops only the runs that were going when the task was taken away, not a later assignment\'s', async () => {
+    const earlier = await heldByAgent(lee, agents.lee!, 'Taken back long ago');
+    const later = await heldByAgent(lee, agents.lee!, 'Taken back just now');
+    // A retried release of an old take-back (its event is an hour old) meets a run made since: that run is a later assignment's.
+    await pool.query(`INSERT INTO agent_task_events (kind, work_id, owner_agent_id, by_kind, by_id, created_at) VALUES ('released', $1, $2, 'human', $3, now() - interval '1 hour')`, [earlier.task.id, agents.lee, lee.id]);
+    await waitFor(async () => (await pool.query(`SELECT 1 FROM agent_task_events WHERE work_id = $1 AND kind = 'released' AND handled_at IS NOT NULL`, [earlier.task.id])).rowCount === 1, 'the old release to be handled');
+    assert.equal((await runRow(earlier.run.id)).status, 'queued', 'the later run was not stopped by it');
+    // A release made after the run began stops it, as before.
+    await pool.query(`INSERT INTO agent_task_events (kind, work_id, owner_agent_id, by_kind, by_id, created_at) VALUES ('released', $1, $2, 'human', $3, now() + interval '1 minute')`, [later.task.id, agents.lee, lee.id]);
+    const stopped = await waitFor(async () => { const row = await runRow(later.run.id); return row.status === 'stopped' ? row : null; }, 'the run to stop');
+    assert.equal(stopped.stop_requested_by, lee.id);
+    await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now() WHERE id = $1`, [earlier.run.id]);
+  });
+
+  test('#938: a give-up that fails every time is tried a bounded number of times, and the event is left with its count', async () => {
+    const { task } = await heldByAgent(lee, agents.lee!, 'Cannot be given back');
+    const after = task.id.replace(/-/g, '');
+    await withFault(`atk_doing_${after}`, 'project_work_items', `OLD.id = '${task.id}' AND NEW.status = 'in_progress'`, `RAISE EXCEPTION 'injected fault';`, () =>
+      withFault(`atk_back_${after}`, 'project_work_items', `OLD.id = '${task.id}' AND OLD.owner_agent_id IS NOT NULL AND NEW.owner_agent_id IS NULL`, `RAISE EXCEPTION 'injected fault';`, async () => {
+        const { rows: [event] } = await pool.query(`INSERT INTO agent_task_events (kind, work_id, run_id) SELECT 'started', $1, id FROM personal_runs WHERE work_id = $1 RETURNING id`, [task.id]);
+        const left = await waitFor(async () => { const row = await eventNow(task.id, 'started'); return row.attempts >= AGENT_TASK_EVENT_ATTEMPTS + AGENT_TASK_GIVE_UP_ATTEMPTS ? row : null; }, 'the tries to run out', 60_000);
+        assert.deepEqual([left.attempts, left.handled_at], [AGENT_TASK_EVENT_ATTEMPTS + AGENT_TASK_GIVE_UP_ATTEMPTS, null], 'five tries, five give-ups, and the count is exact');
+        // It is not claimed again, whoever asks: the count stays, and nothing was done to the task.
+        for (let i = 0; i < 4; i++) { await eventNow(task.id, 'started'); await new Promise((resolve) => setTimeout(resolve, 300)); }
+        const still = (await pool.query(`SELECT attempts, handled_at FROM agent_task_events WHERE id = $1`, [event.id])).rows[0] as { attempts: number; handled_at: Date | null };
+        assert.deepEqual([still.attempts, still.handled_at], [left.attempts, null]);
+        assert.equal((await readTask(task.id)).owner?.kind, 'agent', 'the task was never given back: the hand-back failed each time');
+        assert.deepEqual(await agentLines(task.id), [], 'and no line was posted, because each give-up rolled back whole');
+      }));
+    await pool.query(`UPDATE personal_runs SET status = 'stopped', completed_at = now() WHERE work_id = $1`, [task.id]);
   });
 });
 

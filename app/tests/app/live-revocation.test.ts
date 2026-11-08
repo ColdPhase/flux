@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import Fastify from 'fastify';
 import { eq } from 'drizzle-orm';
-import { accessPorts, schema } from '@flux/db';
+import { accessPorts, schema, SessionLockLostError } from '@flux/db';
 import { DomainError, ServiceUnavailableError, grantProject, liveUseCases, removeMember as removeWorkspaceMember, type LiveMedia } from '@flux/core';
 import type { Conversation } from '@flux/contracts';
 import { liveAccess } from '../../apps/server/src/live/access.js';
@@ -347,4 +347,40 @@ test('SFU delete failure leaves a durable admission fence; recovery rotates with
   assert.notEqual(next?.roomId, f.session.roomId);
   assert.equal(f.transport.rooms.has(f.session.roomId), false);
   assert.equal(await f.store.withAdmission(f.principal, f.session.id, async () => 'authorized'), 'authorized');
+});
+
+test('#916: a lock holder whose connection dies stops at its next step: the change does not go on as if it held the workspace lock', async () => {
+  const f = await fixture('live-lock-lost');
+  const lockPid = async () => (await pool.query<{ pid: number }>(`SELECT pid FROM pg_locks WHERE locktype = 'advisory' AND classid = 62061
+    AND objid::bigint = (hashtext($1)::bigint & 4294967295) AND granted`, [f.ws.id])).rows[0]?.pid;
+  let ensured = 0;
+  const ensure = f.transport.media.ensureRoom;
+  f.transport.media.ensureRoom = async (roomId) => { ensured += 1; return ensure(roomId); };
+  let mutationRan = false;
+  let rivalTook = false;
+  // The caller is told at once, without waiting for the mutation, which goes on in the background: follow it to its end.
+  let watcher: Promise<void> = Promise.resolve();
+  await assert.rejects(f.coordinator.withProjectChange(f.place.id, async () => {
+    mutationRan = true;
+    watcher = (async () => {
+      // The holder's connection is killed under it (a restart or failover does the same). The server drops the lock; a rival process can take it.
+      const pid = await lockPid();
+      assert.ok(pid, 'the change holds the workspace lock');
+      await pool.query('SELECT pg_terminate_backend($1)', [pid]);
+      for (let i = 0; i < 50 && !rivalTook; i++) {
+        const { rows } = await pool.query<{ ok: boolean }>('SELECT pg_try_advisory_lock(62061, hashtext($1)) AS ok', [f.ws.id]);
+        if (rows[0]!.ok) { rivalTook = true; await pool.query('SELECT pg_advisory_unlock(62061, hashtext($1))', [f.ws.id]); } else await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    })();
+    await watcher;
+  }), (error: unknown) => error instanceof SessionLockLostError);
+  await watcher;
+  assert.equal(mutationRan, true);
+  assert.equal(rivalTook, true, 'a rival could take the lock');
+  assert.equal(ensured, 0, 'and the change did not go on to make the replacement room');
+  // Nothing was half done in silence: the fence is durable, and a retry or the startup recovery finishes it.
+  assert.equal((await f.store.find(f.session.id))?.state, 'rotating');
+  await f.coordinator.recoverPending();
+  assert.equal((await f.store.find(f.session.id))?.state, 'available');
 });
