@@ -118,6 +118,28 @@ test('only the owner reads the settings and sets "What it may do"; each choice i
   assert.deepEqual((await settings(f.owner, f.ws.id)).body, kept);
 });
 
+test('deleting an agent hands the tasks it holds back to its owner with a history row, and the finished ones stay (#936)', async () => {
+  const f = await setup('delete-holds');
+  // Held by the agent as the rows say it, without the drain meeting an assignment that this composition (no provider) would hand back at once.
+  const post = async (title: string) => {
+    const made = expectStatus(await f.owner.browser.request('POST', `/api/v1/projects/${f.managed.id}/work`, { body: { title } }), 201) as { id: string; version: number };
+    await pool.query('UPDATE project_work_items SET owner_user_id = NULL, owner_agent_id = $2, version = version + 1 WHERE id = $1', [made.id, f.agent.id]);
+    return made;
+  };
+  const held = await post('Held by the agent');
+  const finished = await post('Finished with the agent');
+  await pool.query("UPDATE project_work_items SET status = 'done' WHERE id = $1", [finished.id]);
+  const history = async (id: string) => (await pool.query("SELECT detail FROM project_task_activity WHERE work_id = $1 AND kind = 'owner' ORDER BY created_at, id", [id])).rows as { detail: { from: unknown; to: { kind: string; id: string } | null } }[];
+  const before = (await history(held.id)).length;
+  expectStatus(await f.owner.browser.request('DELETE', myAgentPath(f.agent.id)), 204);
+  const task = (await pool.query('SELECT owner_user_id, owner_agent_id, version FROM project_work_items WHERE id = $1', [held.id])).rows[0];
+  assert.deepEqual([task.owner_user_id, task.owner_agent_id], [f.owner.id, null], 'the task is its owner\'s again');
+  const entries = await history(held.id);
+  assert.equal(entries.length, before + 1, 'the hand-back is a row in the task\'s history');
+  assert.deepEqual(entries.at(-1)!.detail.to, { kind: 'human', id: f.owner.id });
+  assert.equal((await pool.query('SELECT owner_agent_id FROM project_work_items WHERE id = $1', [finished.id])).rows[0].owner_agent_id, f.agent.id, 'a finished task keeps its record');
+});
+
 test('agent principals cannot enter a person\'s agents, even if they copy an owner id', async () => {
   const f = await setup('agent-principal');
   await assert.rejects(f.runs.listAgents({ kind: 'agent', id: f.owner.id }), /signed-in person/i);

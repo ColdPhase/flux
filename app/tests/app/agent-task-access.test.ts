@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import { taskDiscussionPath, workItemPath, TASK_TAKING_PATH, type Project, type TaskDiscussion, type WorkItem, type Workspace } from '@flux/contracts';
+import { taskDiscussionPath, taskPeoplePath, workItemPath, TASK_TAKING_PATH, type Project, type TaskDiscussion, type TaskPeople, type WorkItem, type Workspace } from '@flux/contracts';
 import type { Principal } from '@flux/core';
 import { personalRunPorts, personalRunUseCases } from '../../apps/server/src/personal-runs/adapters.js';
 import { db, pool } from './support/db.js';
-import { addMember, expectStatus, grant, person, project as createProject, workspace as createWorkspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, project as createProject, removeFromSpace, workspace as createWorkspace, type Person } from './support/people.js';
 import { FakeConnections, FakeQueue } from './support/personal-runs.js';
 import { waitFor } from './support/wait.js';
 
@@ -81,6 +81,28 @@ describe('agents of a company admin who is not in the space (C-15, #955)', () =>
     await waitFor(async () => (await readTask(inside.id)).owner?.kind === 'human', 'the task to go back to Lee');
     const asking = (await thread(inside.id)).map((message) => message.body);
     assert.ok(asking.includes(`@Fieldbot (${miraName}'s agent), Which reading means full?`), asking.join(' | '));
+  });
+
+  test('"In this task" lists the people who can read the space and, of their agents, those that can work there (#924)', async () => {
+    const late = await person('aac-late');
+    await addMember(ari, ws.id, late, 'member');
+    // A space of its own, where Mira (an admin) has not been added.
+    const third = await createProject(lee, ws.id, 'Third closed tides', 'restricted');
+    await grant(lee, third.id, late, 'contributor');
+    const task = expectStatus(await lee.browser.request('POST', `/api/v1/projects/${third.id}/work`, { body: { title: 'Who is in this task' } }), 201) as WorkItem;
+    for (const writer of [mira, late]) expectStatus(await writer.browser.request('POST', taskDiscussionPath(task.id), { body: { body: 'Me too', clientMessageId: randomUUID() } }), 201);
+    const listed = async () => Object.fromEntries((expectStatus(await lee.browser.request('GET', taskPeoplePath(task.id)), 200) as TaskPeople).people
+      .map((entry) => [entry.id, entry.agents.map((agent) => agent.name)]));
+    // Mira reaches the space as an admin but was never added: she is in the task, her agent cannot work here and is not offered.
+    assert.deepEqual(await listed(), { [lee.id]: ['Planner'], [mira.id]: [], [late.id]: [] });
+    // Added to the space, her agent is offered too.
+    await grant(lee, third.id, mira, 'manager');
+    assert.deepEqual((await listed())[mira.id], ['Fieldbot']);
+    // Someone who lost the space is no longer in the task, though what they wrote stays.
+    await removeFromSpace(lee, third.id, late);
+    assert.deepEqual(Object.keys(await listed()).sort(), [lee.id, mira.id].sort());
+    const talk = expectStatus(await lee.browser.request('GET', taskDiscussionPath(task.id)), 200) as TaskDiscussion;
+    assert.ok(talk.messages.some((message) => message.authorId === late.id), 'what they wrote stays');
   });
 
   test('"Give it to": a task given to an admin who is not in the space stays with her, and the thread says why', async () => {

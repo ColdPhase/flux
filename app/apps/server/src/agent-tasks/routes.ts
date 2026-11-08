@@ -80,14 +80,20 @@ export async function agentTaskRoutes(app: FastifyInstance, { db, sessions, boss
     return reply.header('cache-control', 'no-store').send(state);
   });
 
-  // Who is in the task and their agents (TA-1): the people of the task, as everyone who can read it sees them.
+  // Who is in the task and their agents (TA-1): the people of the task, as everyone who can read it sees them. Someone who can no longer
+  // read the space (removed, left, or a guest who was not added) is not in it now, nor are their agents (#924).
   app.get<{ Params: { workId: string } }>(taskPeoplePath(':workId'), async (request, reply) => {
     const principal = await who(request);
     const body = await db.transaction(async (tx): Promise<TaskPeople> => {
       const { work, rows } = await read(tx, principal, request.params.workId);
+      const access = policyWorkAccess(tx);
       const people: TaskPeople['people'] = [];
       for (const id of await rows.taskPeople(work.id)) {
-        people.push({ id, name: (await rows.personName(id)) ?? 'Former member', agents: (await rows.ownServerAgents(id)).map(({ id: agentId, name }) => ({ id: agentId, name })) });
+        if (!(await access.canRead({ kind: 'human', id }, work.projectId))) continue;
+        const agents: TaskPeople['people'][number]['agents'] = [];
+        for (const agent of await rows.ownServerAgents(id))
+          if (await access.canRead({ kind: 'agent', id: agent.id }, work.projectId)) agents.push({ id: agent.id, name: agent.name });
+        people.push({ id, name: (await rows.personName(id)) ?? 'Former member', agents });
       }
       return { people: people.sort((a, b) => a.name.localeCompare(b.name)) };
     });

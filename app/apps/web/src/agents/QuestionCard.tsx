@@ -21,7 +21,7 @@ function failure(cause: unknown): string {
   if (cause instanceof ApiError) {
     if (cause.code === 'QUESTION_ANSWERED') return 'This was answered a moment ago.';
     if (cause.code === 'QUESTION_NOT_FOR_YOU') return 'This question was asked of someone else.';
-    if (cause.status === 403) return 'You can read this project but not write in it, so you can’t answer.';
+    if (cause.status === 403) return 'You no longer have access to this space, so you can’t answer.';
   }
   return 'That didn’t send. Nothing changed; try again.';
 }
@@ -101,7 +101,7 @@ function Card({ question, meId, writable }: { question: AgentQuestion; meId: str
           ) : null}
         </>
       ) : (
-        <p className="qcard__waiting">{mine ? 'You can read this project but not write in it.' : 'Waiting for the person asked to answer.'}</p>
+        <p className="qcard__waiting">{mine ? 'You can’t answer this from here.' : 'Waiting for the person asked to answer.'}</p>
       )}
       {error ? <p className="qcard__error" role="alert">{error}</p> : null}
     </section>

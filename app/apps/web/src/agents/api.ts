@@ -1,7 +1,7 @@
-import { agentQuestionAnswerPath, ownWorkingAgentsPath, projectAgentQuestionsPath, projectAgentPausesPath, projectAgentStopsPath, projectAgentsPath,
+import { agentQuestionAnswerPath, ownWorkingAgentsPath, projectAgentQuestionsPath, projectAgentStopsPath, projectAgentsPath,
   taskCoordinationCancelPath, taskCoordinationPacketPath, taskCoordinationPath, type TaskCoordination, type TaskCoordinationRequest,
   type AgentQuestion, type AgentQuestions, type AgentStop, type AgentStops, type AnswerAgentQuestionCommand, type OwnWorkingAgents,
-  type ProjectAgents, type StopAgentCommand, type AgentPause, type PauseAgentCommand } from '@flux/contracts';
+  type ProjectAgents, type StopAgentCommand } from '@flux/contracts';
 import { request, send } from '../api/client';
 
 /** The Agents view of a project (UI116-2, #136): current connections. */
@@ -16,10 +16,6 @@ export const getAgentStops = (projectId: string, signal?: AbortSignal) => reques
  */
 export const stopAgent = (projectId: string, command: StopAgentCommand, idempotencyKey: string) =>
   request<AgentStop>(projectAgentStopsPath(projectId), { method: 'POST', body: command, headers: { 'idempotency-key': idempotencyKey } });
-
-/** Pause (`paused: true`) or resume an agent's work on a task it holds (#160 AC-5); a resume answers 204. */
-export const pauseAgent = (projectId: string, command: PauseAgentCommand, idempotencyKey: string) =>
-  request<AgentPause | null>(projectAgentPausesPath(projectId), { method: 'POST', body: command, headers: { 'idempotency-key': idempotencyKey } });
 
 /** The person's own agents working on a task now, across their projects (the sidebar card). */
 export const getOwnWorkingAgents = (signal?: AbortSignal) => request<OwnWorkingAgents>(ownWorkingAgentsPath, { signal });

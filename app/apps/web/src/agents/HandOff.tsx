@@ -61,7 +61,7 @@ function failure(cause: unknown): string {
   if (cause instanceof ApiError) {
     if (cause.code === 'VERSION_CONFLICT') return 'Someone changed this task a moment ago. Close this and try again from its latest state.';
     if (cause.code === 'OWNER_WITHOUT_ACCESS') return 'Your agents work only in spaces you’re in, so the task wasn’t handed off.';
-    if (cause.status === 403) return 'You can read this project but not change its tasks.';
+    if (cause.status === 403) return 'You no longer have access to this space, so the task wasn’t handed off.';
     if (cause.status === 404) return 'This task is no longer available to you.';
   }
   return 'That didn’t work. Nothing changed; try again.';

@@ -187,19 +187,20 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
   }
 
   /**
-   * The agents of the task's other people that an agent may ask (TA-3): both owners are among the task's people. Only an agent that
+   * The agents of the task's people that an agent may ask (TA-3): both owners are among the task's people, and the asker's own owner
+   * is one of them, so their other agents are asked too; an agent never asks itself. Only an agent that
    * can read the space is offered (`found`): the agent of a company owner or admin who wrote in the task without being added to the
    * space has no level there (C-15), and its answer run would be refused (#955). Those agents are kept apart (`outside`), so a question
    * to one is answered with the true reason and not "they are not in this task": their owner is.
    */
-  async function askable(tx: Transaction, work: { id: string; projectId: string }, askerOwner: string): Promise<{ found: Askable[]; outside: Askable[] }> {
+  async function askable(tx: Transaction, work: { id: string; projectId: string }, askerAgentId: string): Promise<{ found: Askable[]; outside: Askable[] }> {
     const rows = agentTaskRows(tx);
     const access = policyWorkAccess(tx);
     const found: Askable[] = [];
     const outside: Askable[] = [];
-    for (const person of (await rows.taskPeople(work.id)).filter((id) => id !== askerOwner)) {
+    for (const person of await rows.taskPeople(work.id)) {
       const ownerName = (await rows.personName(person)) ?? 'Former member';
-      for (const other of await rows.ownServerAgents(person))
+      for (const other of (await rows.ownServerAgents(person)).filter((candidate) => candidate.id !== askerAgentId))
         (await access.canRead({ kind: 'agent', id: other.id }, work.projectId) ? found : outside).push({ id: other.id, name: other.name, ownerId: person, ownerName });
     }
     // Always in the same order, so a line that names two agents reads the same each time.
@@ -251,7 +252,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
         const place = await taskDiscussionUseCases(inner as unknown as Database).getDiscussionRoot(human(ownerId), work.id).catch(() => null);
         const started: TaskStart = place
           ? await runs.startTask(ports, { ownerUserId: ownerId, agentId: holder.id, workId: work.id, projectId: work.projectId, conversationId: place.conversationId,
-            prompt: (taskRunPrompt(work) + askableLines((await askable(inner, work, ownerId)).found.map((other) => ({ name: other.name, owner: other.ownerName })))).slice(0, 3900),
+            prompt: (taskRunPrompt(work) + askableLines((await askable(inner, work, holder.id)).found.map((other) => ({ name: other.name, owner: other.ownerName })))).slice(0, 3900),
             clientRunId: taskRunClientId(event.id) })
           : { started: false, line: 'I can\'t start: this task has no discussion yet.' };
         if (!started.started) throw new Refused(started.line);
@@ -345,7 +346,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
   async function asking(tx: Transaction, work: WorkRecord, run: RunRow, ask: AgentQuestion) {
     const asker = { id: run.agentId, ownerUserId: run.ownerUserId };
     if (run.exchangeTurn >= MAX_EXCHANGE_TURNS) return toThePeople(tx, work, asker, 'We have gone back and forth for long enough. This needs a person.', `asked-out:${run.id}`);
-    const people = await askable(tx, work, run.ownerUserId);
+    const people = await askable(tx, work, run.agentId);
     const resolved = resolveAsked(ask, people.found);
     if ('none' in resolved) {
       // An agent whose owner is in the task but cannot use the space (not added to it, made a guest, or no longer in the company)
@@ -386,7 +387,9 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       if (holds) await toThePeople(tx, work, asker, `${label} didn't answer. This needs a person.`, `unanswered:${run.id}`);
       return;
     }
-    const answer = run.answerBody ?? '(No answer text.)';
+    // An answer asks nothing: a block it ends with is taken out of what people read and of what the asker is given, so it is not shown
+    // as markup and does not start another question (#924).
+    const answer = takeAsk(run.answerBody ?? '').body || '(No answer text.)';
     await say(tx, work, run.agentId, answer, `answer:${run.id}`, run);
     if (!holds) return;
     const { ports, runs } = useCases(tx);

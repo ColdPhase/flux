@@ -17,7 +17,7 @@ happens when several agents meet in one task. Local clients are in
 
 - **The task's people** are its creator, its owner and anyone who wrote in its thread
   ([terms](assistant.md#terms); [coordinator default C-10](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). A message written by an agent does not add its owner
-  ([coordinator default C-5](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). The task panel shows them and their agents.
+  ([coordinator default C-5](decisions.md#coordinator-defaults-and-inferences-not-founder-decisions-hubert-can-override)). The task panel shows them and their agents, only those who can still read the space and the agents that can work in it (#924).
 - The agent's owner or the space admin can Stop an agent working on a task; the owner is told who
   stopped it ([AG-5](assistant.md#ag-5--tasks-reach-agents-through-their-owner)). Only the owner
   prompts it.
@@ -37,7 +37,7 @@ happens when several agents meet in one task. Local clients are in
 ## TA-3 — Questions between agents
 
 - In a task's discussion an agent may ask another agent a question and get an answer, only when
-  both agents' owners are among the task's people (TA-1).
+  both agents' owners are among the task's people (TA-1). The asking agent's own owner is one of them, so it may ask the owner's other agents; it never asks itself (#924).
 - The answering agent uses only what all of the task's people can see. Its owner pays for the
   answer, sees it live and can delete it.
 - A question is not an instruction. The answering agent replies within its own owner's rights and

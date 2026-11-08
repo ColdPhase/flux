@@ -44,6 +44,14 @@ export function agentTaskRows(db: DbExecutor) {
       return row ?? null;
     },
 
+    /** The unfinished tasks an agent of this person holds, to hand back when the agent is deleted. */
+    async heldBy(agentId: string, ownerUserId: string) {
+      const w = schema.projectWorkItems;
+      return db.select({ id: w.id, version: w.version }).from(w).innerJoin(a, eq(a.id, w.ownerAgentId))
+        .where(and(eq(w.ownerAgentId, agentId), eq(a.ownerUserId, ownerUserId), sql`${w.status} not in ('done', 'not_pursued')`))
+        .orderBy(asc(w.createdAt), asc(w.id));
+    },
+
     /** Whether the agent is one of this person's own server agents (the Owner field offers these and no others). */
     async isOwnServerAgent(ownerUserId: string, agentId: string) {
       const [row] = await db.select({ id: a.id }).from(as).innerJoin(a, eq(a.id, as.agentId))

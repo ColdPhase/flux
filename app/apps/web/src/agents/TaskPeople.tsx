@@ -4,8 +4,9 @@ import { Avatar, Kreska } from '../ui';
 import { getTaskPeople } from './taskAgents';
 import './task-agent.css';
 
-// Who is in a task: its people and their agents (#841, F-036 TA-1; mockup AiTask "In this task"). Shown when an agent is among them;
-// a task of people alone has nothing more to say here.
+// Who is in a task: its people and their agents (#841, F-036 TA-1; mockup AiTask "In this task"). Shown when any of its people has an
+// agent; a task of people with none has nothing more to say here. It is read again whenever the panel is and whenever the thread under
+// it changes, so someone who writes in the thread appears in it.
 export function TaskPeople({ workId, revision }: { workId: string; revision: unknown }) {
   const [people, setPeople] = useState<People['people'] | null>(null);
   useEffect(() => {

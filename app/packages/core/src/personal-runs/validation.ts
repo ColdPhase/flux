@@ -1,12 +1,10 @@
 import { createHash } from 'node:crypto';
 import {
-  AGENT_COLOURS,
   AGENT_LIMITS,
   aiModelCallsTools,
   PERSONAL_RUN_LIMITS,
   personalRunMaxInputTokens,
   WORK_LIMITS,
-  type AgentColour,
   type AiConnectionRef,
   type AiPrice,
   type AssistantRunKind,
@@ -46,33 +44,27 @@ function agentText(value: unknown, field: string, max: number, required: boolean
   if (typeof value !== 'string' || (required && !value.trim()) || value.length > max) throw new InvalidInputError(`${field} must be ${required ? 'at least 1 and ' : ''}at most ${max} characters`);
   return value;
 }
-const colourOf = (value: unknown): AgentColour | undefined => {
-  if (value === undefined) return undefined;
-  if (typeof value !== 'string' || !(AGENT_COLOURS as readonly string[]).includes(value)) throw new InvalidInputError(`colour must be one of ${AGENT_COLOURS.join(', ')}`);
-  return value as AgentColour;
-};
 
-/** Setting up an agent names its identity and, optionally, a model of one of the caller's connections, its instructions and a colour (#857). */
+/** Setting up an agent names its identity and, optionally, a model of one of the caller's connections and its instructions (#857). Its colour is given, not chosen. */
 export function normalizeEnable(command: CreateMyAgentCommand) {
   if (!command || typeof command !== 'object') throw new InvalidInputError('An agent is required');
   return {
     agentId: id(command.agentId, 'agentId'), connection: command.connection === undefined ? undefined : connectionRef(command.connection),
     model: command.model === undefined ? undefined : modelRef(command.model),
-    instructions: agentText(command.instructions, 'instructions', AGENT_LIMITS.instructions, false) ?? '', colour: colourOf(command.colour) ?? null,
+    instructions: agentText(command.instructions, 'instructions', AGENT_LIMITS.instructions, false) ?? '',
   };
 }
 
 /** A change to an agent: only the fields given. A model comes with its connection. */
 export function normalizeAgentChange(command: UpdateMyAgentCommand) {
-  if (!command || typeof command !== 'object') throw new InvalidInputError('Change the name, instructions, colour or model');
+  if (!command || typeof command !== 'object') throw new InvalidInputError('Change the name, instructions or model');
   const name = agentText(command.name, 'name', 80, true)?.trim();
   if (name !== undefined && !NAME.test(name)) throw new InvalidInputError('name must be 1–80 characters');
   const instructions = agentText(command.instructions, 'instructions', AGENT_LIMITS.instructions, false);
-  const colour = colourOf(command.colour);
   if ((command.connection === undefined) !== (command.model === undefined)) throw new InvalidInputError('A model is chosen with its connection');
   const model = command.connection === undefined ? undefined : { connection: connectionRef(command.connection), model: modelRef(command.model) };
-  if (name === undefined && instructions === undefined && colour === undefined && !model) throw new InvalidInputError('Change the name, instructions, colour or model');
-  return { name, instructions, colour, model };
+  if (name === undefined && instructions === undefined && !model) throw new InvalidInputError('Change the name, instructions or model');
+  return { name, instructions, model };
 }
 
 /** One remembered item: plain text, 1–500 characters. */

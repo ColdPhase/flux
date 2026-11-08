@@ -179,7 +179,7 @@ test('one MCP bearer takes a task, claims, renews and completes its unit with an
   assert.equal((toolValue(await claimTool(codex, other.unitId, 1)) as Claim).state, 'claimed');
 });
 
-test('a replay returns the stored claim; a changed payload conflicts; renewal makes the claim receipt stale; a revoked grant refuses', async () => {
+test('a replay returns the stored claim; a changed payload conflicts; renewal makes the claim receipt stale', async () => {
   const f = await scene();
   const codex = await f.connect(f.hubert, 'Hubert Codex');
   const root = await codex.take(await f.task('Native outcome A'));
