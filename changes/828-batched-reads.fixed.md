@@ -1,0 +1,1 @@
+- The task notices of a conversation and the assignment lines of the Inbox read the tasks they point at together, not one by one: a page of 100 took 113 and 218 database statements, and now takes a handful, however long the page is ([#828](https://github.com/ColdPhase/flux/issues/828)).

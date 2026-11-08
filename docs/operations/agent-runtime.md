@@ -207,13 +207,44 @@ logins. A workspace role gives no access to anyone's place.
 - `./flux runtime status` lists the runtime, its state, how many agents it runs at once and each person's e-mail, and what the
   supervisor reports (boot id, how many people `/data` holds).
 - `./flux runtime release <email>` releases that person's place: the worker stops what they have running, signs their CLIs
-  out, ends their processes, removes what they left in the shared `/tmp` (directories with no rights too) and deletes their
-  directory. While anything of theirs stays in `/tmp`, the directory stays too, the release is not reported as deleted and
-  their user id goes to nobody else; it is asked again. They see in Settings that the operator released it.
+  out, ends their processes, removes what they left anywhere in the shared `/tmp` and deletes their directory. The cleanup runs
+  as that person, so it never reaches more than their user id reaches: also a directory of theirs inside a directory of someone
+  else's that anyone may write to, directories with no rights, and trees deeper than `PATH_MAX` that `rm` cannot enter. It finds
+  only what it can list. In a directory of someone else's that it may enter but not read (mode `0733`, or one opened to everyone
+  and closed to `0700` by its owner), a file of theirs is not found, and the release can still report that it deleted everything;
+  that file stays in `/tmp` until the runtime restarts. While anything of theirs stays, the directory stays too, the release is not
+  reported as deleted and their user id goes to nobody else. The worker asks again every ten seconds, and does not sign them out a
+  second time: the sign-out of the first try stands. If it stays open, see [A release that stays open](#a-release-that-stays-open).
+  They see in Settings that the operator released it.
 - **Idle policy** (off by default): `FLUX_AGENT_RUNTIME_IDLE_DAYS=<1–365>` releases a place that had no run for that many days.
   Settings shows the person the date beforehand.
 
 Flux has no in-app instance administrator role yet, so these operator steps are launcher commands.
+
+### A release that stays open
+
+Signs: the person is still listed by `./flux runtime status` after their release, and the worker's log repeats
+`{"event":"release_pending",…,"code":"not_deleted"}` every ten seconds (`docker compose … logs worker`). Nothing else is wrong: the
+person's place is the only one affected, and no other person gets their user id while it stays. There are two usual causes.
+
+1. **A leftover of someone else's holds theirs in place.** A directory of one person in the shared `/tmp` that holds a directory of
+   another person's, which only that other person can open, cannot be removed by the first person's cleanup. The other person's own
+   cleanup (their release) finds it wherever it is and removes it; then the open release finishes at its next try. If that other
+   person stays, restart the runtime: `docker compose … restart runtime-1` (`/tmp` is memory and starts empty; the agents running
+   there stop). Find the owner of a directory with `docker compose … exec runtime-1 ls -ln /tmp`: the number is a user id, and
+   `ls -ln /data` shows which place has it.
+2. **A tree too large or too odd for the cleanup**, in `/tmp` or in the person's `/data/<id>`. Remove it with the same walk
+   the supervisor uses, as root, which also takes trees deeper than `PATH_MAX`, follows no link (not even one that another person swaps in while it runs) and creates nothing:
+
+   ```sh
+   docker compose … exec runtime-1 node /opt/flux-runtime/apps/runtime/dist/supervisor/tree.js remove /data/<id>
+   docker compose … exec runtime-1 node /opt/flux-runtime/apps/runtime/dist/supervisor/tree.js remove /tmp/<entry>
+   ```
+
+   Do not use `rm -rf` for this: BusyBox `rm` cannot take a tree deeper than `PATH_MAX`. The open release finishes at its next
+   try once nothing of the person is left.
+
+If neither fits, `./flux runtime purge` removes every place and the runtime's volumes.
 
 A release reports the sign-out as confirmed when every client either signed out (`ok`) or never had a
 login in that binding. Two independent records decide the second case:

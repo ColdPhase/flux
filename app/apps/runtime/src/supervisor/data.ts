@@ -4,12 +4,14 @@ import { join } from 'node:path';
 import { BINDING_ID, MAX_REPORTED_BINDINGS, type RuntimeClient } from '@flux/runtime-protocol';
 import { runFixed, type Person } from './process.js';
 import { CLIENT_DIRS, CREDENTIAL_FILES } from './templates.js';
+import { removeTreeScript, sweepOwned } from './tree.js';
 
 // The runtime's `/data` (F-022 "A binding directory"; #860). One directory per person, named by a UUID, mode 0700 and owned by
 // that person's own user id, never a symlink. Credential files are checked by `stat` only and never opened; they are only ever
 // deleted. A person's CLI can leave anything in their directory, also a link to someone else's, so everything below it is written
 // and deleted as that person (asThem), who has no rights outside their own files. Root touches only `/data/<id>` itself, after
-// endProcesses proved no process of theirs is left, and `rm` follows no link.
+// endProcesses proved no process of theirs is left (nobody else can enter it), and removes it with the walk of tree.ts, which follows no link.
+// A tree too deep for any tool that works with whole paths goes through tree.ts (#915).
 
 /** The user ids given to people: one each, one for every binding directory `/data` can report. */
 export const PERSON_IDS = { first: 20_000, last: 59_999 } as const;
@@ -83,15 +85,23 @@ export async function ownerOf(dataDir: string, bindingId: string, separate: bool
   return stat && stat.uid >= PERSON_IDS.first && stat.uid <= PERSON_IDS.last ? { uid: stat.uid, gid: stat.gid } : null;
 }
 
-/** Removes `/data/<id>` without following any link inside it (a link at the top is removed itself). */
+/**
+ * Removes `/data/<id>` without following any link inside it. A directory is taken down only by the walk of tree.ts, which goes by
+ * `chdir` and short names and checks (device and inode) every directory it stands in. Not by `rm -r` or Node's `fs.rm`: both go by
+ * path, so a link that another person swaps in for an entry after they looked is followed, and root deletes what is behind it. That
+ * happens while the owner's directories are open to everyone and a second person is running (review of #952). `rm` or `lstat` is used
+ * only for the top-level entry when it is not a directory (a link or a file at `/data/<id>` is removed itself). It creates nothing in `/data`.
+ */
 export async function removeBinding(dataDir: string, bindingId: string): Promise<boolean> {
   if (!BINDING_ID.test(bindingId)) return false;
-  try {
-    await rm(join(dataDir, bindingId), { recursive: true, force: true, maxRetries: 2 });
-    return true;
-  } catch {
-    return false;
+  const path = join(dataDir, bindingId);
+  const stat = await lstat(path).catch(() => null);
+  if (!stat) return true;
+  if (!stat.isDirectory()) {
+    try { await rm(path, { force: true }); } catch { return false; }
+    return (await lstat(path).catch(() => null)) === null;
   }
+  return removeTreeScript(null, path);
 }
 
 /** A fixed shell line as the person, with their directory as `$1`: it can reach only what is theirs, whatever a link there says. */
@@ -107,9 +117,19 @@ async function asThem(person: Person, script: string, dir: string): Promise<bool
  */
 const REMOVE = '[ -L "$p" ] || chmod -R u+rwx -- "$p" 2>/dev/null; rm -rf -- "$p"';
 
+/**
+ * Removes `path` (a person's own entry) as the person. `rm` first, which is quick; a tree it cannot enter, because it is deeper than
+ * PATH_MAX, is then taken down by tree.ts. True only when nothing is left at `path`.
+ */
+async function removeAsThem(person: Person, path: string): Promise<boolean> {
+  const gone = () => lstat(path).then(() => false, (error: NodeJS.ErrnoException) => error.code === 'ENOENT');
+  if (await asThem(person, `p="$1"; ${REMOVE}`, path) && await gone()) return true;
+  return (await removeTreeScript(person, path)) && await gone();
+}
+
 /** Empties the person's scratch directory after a run: nothing a CLI left there stays. True only when it is a fresh, empty directory again. */
 export async function clearScratch(bindingDir: string, person: Person): Promise<boolean> {
-  return asThem(person, `p="$1/tmp"; ${REMOVE} && mkdir -m 0700 -- "$p"`, bindingDir);
+  return await removeAsThem(person, join(bindingDir, 'tmp')) && asThem(person, 'mkdir -m 0700 -- "$1/tmp"', bindingDir);
 }
 
 /** Deletes one CLI's transcripts from its home. `names` are fixed names, never input. */
@@ -118,22 +138,16 @@ export async function clearClientPaths(bindingDir: string, client: RuntimeClient
 }
 
 /**
- * Removes what a person left at the top of the shared `/tmp`, once no process of theirs is left: a user id can go to someone else later.
- * True only when all of it is gone (and when `/tmp` could be read), so a release does not call itself finished while a file of theirs
- * stays for the next person with that user id (#910).
+ * Removes what a person left anywhere in the shared `/tmp`, once no process of theirs is left: a user id can go to someone else later,
+ * and that person could open whatever it still owns. Run as the person (tree.ts), so it never reaches more than their user id reaches:
+ * also a directory of theirs inside a directory of someone else's that anyone may write to, and trees deeper than PATH_MAX. It finds
+ * only what it can list: in a directory of someone else's that it may enter but not read (mode 0733, or one opened to everyone and
+ * closed again to 0700 by its owner), a file of theirs is not found, and the release can still report that it deleted everything. True only when none of it is left (and when `/tmp` could be read), so a release does not call itself
+ * finished while a file of theirs stays (#910, #915). It stays unfinished when the person's directory sits in someone else's directory
+ * that they cannot enter; that other person's own cleanup, or a restart of the runtime (`/tmp` is memory), ends it.
  */
 export async function clearLeftovers(tmpDir: string, person: Person): Promise<boolean> {
-  if (!person) return true;
-  const entries = await readdir(tmpDir).catch(() => null);
-  if (!entries) return false;
-  let clean = true;
-  for (const entry of entries) {
-    const path = join(tmpDir, entry);
-    const stat = await lstat(path).catch(() => null);
-    if (stat?.uid !== person.uid) continue;
-    if (!await asThem(person, `p="$1"; ${REMOVE}`, path) || await lstat(path).then(() => true, () => false)) clean = false;
-  }
-  return clean;
+  return !person || sweepOwned(tmpDir, person);
 }
 
 /** Deletes one CLI's files from the binding directory and leaves its home empty (sign-out). */

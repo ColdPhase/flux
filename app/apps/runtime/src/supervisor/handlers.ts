@@ -108,6 +108,14 @@ async function signOut(config: SupervisorConfig, client: RuntimeClient, dir: str
   return quiet ? outcome : 'failed';
 }
 
+/**
+ * The sign-outs of a release that could not finish (something of the person's stays), by binding. The worker asks again every ten
+ * seconds, and the vendor's session is already ended: a second logout would find no login and could read as a failed one, turning a good
+ * sign-out into "not confirmed" (#915). The retry reports the sign-outs of the first attempt and finishes only the deleting. Kept in
+ * memory: after a restart the retry signs out again, which is the only honest thing left to do.
+ */
+const unfinishedReleases = new Map<string, Record<RuntimeClient, StepOutcome>>();
+
 /** Runs one request already parsed against the closed set. */
 export async function handle(config: SupervisorConfig, request: SupervisorRequest, send: Send): Promise<Outcome> {
   switch (request.kind) {
@@ -160,7 +168,10 @@ export async function handle(config: SupervisorConfig, request: SupervisorReques
     case 'release': {
       const logout: Record<RuntimeClient, StepOutcome> = { claude_code: 'skipped', codex: 'skipped' };
       const open = await openBinding(config.dataDir, request.bindingId, config.separate);
-      if (open.ok) {
+      const earlier = unfinishedReleases.get(request.bindingId);
+      if (earlier) {
+        for (const client of RUNTIME_CLIENTS) { logout[client] = earlier[client]; send({ t: 'step', step: 'logout', outcome: logout[client], client }); }
+      } else if (open.ok) {
         for (const client of RUNTIME_CLIENTS) {
           logout[client] = await signOut(config, client, open.dir, open.person);
           send({ t: 'step', step: 'logout', outcome: logout[client], client });
@@ -175,6 +186,7 @@ export async function handle(config: SupervisorConfig, request: SupervisorReques
       send({ t: 'step', step: 'delete', outcome: removed ? 'ok' : 'failed' });
       const deleted = removed && !(await dataEntries(config.dataDir)).bindings.includes(request.bindingId);
       send({ t: 'step', step: 'verify', outcome: deleted ? 'ok' : 'failed' });
+      if (deleted) unfinishedReleases.delete(request.bindingId); else unfinishedReleases.set(request.bindingId, logout);
       return { result: { kind: 'release', bindingId: request.bindingId, logout, deleted } };
     }
   }

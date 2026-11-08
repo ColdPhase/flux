@@ -72,7 +72,7 @@ import { registerHealth } from './health/routes.js';
 import { composeEncryption, encryptionUnitOfWork, installSeals, processKeysFromEnv } from './encryption/adapters.js';
 import { encryptionRoutes } from './encryption/routes.js';
 import { registerLockGate } from './encryption/lock-gate.js';
-import { requestLogSerializer, SECRET_LOG_PATHS } from './http/log-serializers.js';
+import { createRequestIdGenerator, requestLogSerializer, SECRET_LOG_PATHS } from './http/log-serializers.js';
 import { dropStaleUnlocks, requireCompanyAdmin } from '@flux/core';
 import { useDomainErrors } from './http/errors.js';
 import { registerUpgradeDispatcher } from './http/upgrades.js';
@@ -109,7 +109,7 @@ export async function buildApp(config: ServerConfig, migrationsDir = 'packages/d
   const { connectionString, identity: identityConfig, push: pushConfig, filesDir, env } = config;
   const { exposeWork } = fixtureFlags(config.fixture);
   // F-030: the request serializer drops query strings (a search text is content); bodies are never logged.
-  const app = Fastify({ logger: { serializers: { req: requestLogSerializer }, redact: SECRET_LOG_PATHS }, trustProxy: identityConfig.trustedProxies.length ? identityConfig.trustedProxies : false });
+  const app = Fastify({ logger: { serializers: { req: requestLogSerializer }, redact: SECRET_LOG_PATHS }, genReqId: createRequestIdGenerator(), trustProxy: identityConfig.trustedProxies.length ? identityConfig.trustedProxies : false });
   // Domain errors and missing sessions are mapped once, here; route plugins inherit it (#85).
   useDomainErrors(app);
   // F-030 (#655): this process's keys of encrypted workspaces, refreshed by the keyring heartbeat; and the lock gate,

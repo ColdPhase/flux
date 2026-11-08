@@ -287,7 +287,8 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
       list(principal, projectId, query, (ports, project, window) => ports.work.listResults(project, window), presentResults),
     listTaskNotices: (principal: Principal, projectId: string, query?: PageQuery): Promise<Page<TaskCreationNotice>> =>
       list(principal, projectId, query, (ports, project, window) => ports.work.listTaskNotices(project, window), async (ports, items) => {
-        const records = await Promise.all(items.map((item) => ports.work.findWork(item.workId)));
+        const found = await ports.work.findWorks(items.map((item) => item.workId));
+        const records = items.map((item) => found.get(item.workId) ?? null);
         const names = await ports.work.names([...items.map((item) => item.createdBy), ...items.flatMap((item) => item.waitingFor ? [item.waitingFor] : []), ...records.flatMap((record) => record?.creationRevertedBy ? [record.creationRevertedBy] : [])]);
         return items.map((item, index) => {
           const record = records[index];

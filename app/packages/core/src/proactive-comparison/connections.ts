@@ -19,10 +19,13 @@ export interface BackgroundConnectionPort {
   list(ownerUserId: string): Promise<BackgroundComputeConnection[]>;
   /** The one background comparisons use, or null. */
   current(ownerUserId: string): Promise<BackgroundComputeConnection | null>;
-  update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number; usedForBackground?: true }): Promise<BackgroundComputeConnection | null>;
+  /**
+   * `guard` runs inside the change, after the owner's assistant lock and the key's row lock are held, with the model the assistant uses
+   * on this key (null when it is on another connection or has none stored); it throws to refuse (#909, #915).
+   */
+  update(ownerUserId: string, connectionId: string, change: { name?: string; dailyBudgetCents?: number; usedForBackground?: true },
+    guard?: (assistantModel: string | null) => void): Promise<BackgroundComputeConnection | null>;
   revoke(ownerUserId: string, connectionId: string): Promise<boolean>;
-  /** The model the owner's assistant uses on this key, or null when it is on another connection or has none stored (#909). */
-  assistantModelOn(ownerUserId: string, connectionId: string): Promise<string | null>;
 }
 /** What a connection save needs beyond storage (F-020): the endpoint policy of owner-set URLs. */
 export interface BackgroundConnectionProviders {
@@ -128,21 +131,25 @@ export function backgroundConnectionUseCases(port: BackgroundConnectionPort, sea
         throw new InvalidInputError(budgetProblem, 'AI_BUDGET_INVALID');
       if (change.usedForBackground !== undefined && change.usedForBackground !== true)
         throw new InvalidInputError('Choose another connection for background comparisons by marking it');
+      let guard: ((assistantModel: string | null) => void) | undefined;
       if (change.dailyBudgetCents !== undefined) {
+        const cents = change.dailyBudgetCents;
         const key = (await port.list(ownerUserId)).find((item) => item.id === connectionId);
         if (key) {
-          assertBudgetFitsRequest(key.price, change.dailyBudgetCents);
+          assertBudgetFitsRequest(key.price, cents);
           // The assistant may run on another model of this key (F-027 AST-11): one request on that must fit too, or it would
-          // stay paused on a budget too small for it (#909). A model with no table price cannot be reserved at all.
-          const model = await port.assistantModelOn(ownerUserId, key.id);
-          const price = model && model !== key.model ? assistantApiPrice(key.provider, model) : null;
-          if (model && price) assertBudgetFitsRequest(price, change.dailyBudgetCents, model);
+          // stay paused on a budget too small for it (#909). A model with no table price cannot be reserved at all. The model is
+          // read again inside the change, under the lock a model change also takes first (#915).
+          guard = (model) => {
+            const price = model && model !== key.model ? assistantApiPrice(key.provider, model) : null;
+            if (model && price) assertBudgetFitsRequest(price, cents, model);
+          };
         }
       }
       const updated = typeof connectionId === 'string' && UUID.test(connectionId)
         ? await port.update(ownerUserId, connectionId, { ...(change.name !== undefined ? { name: change.name } : {}),
           ...(change.dailyBudgetCents !== undefined ? { dailyBudgetCents: change.dailyBudgetCents } : {}),
-          ...(change.usedForBackground ? { usedForBackground: true as const } : {}) })
+          ...(change.usedForBackground ? { usedForBackground: true as const } : {}) }, guard)
         : null;
       if (!updated) throw new NotFoundError('Background connection', 'BACKGROUND_CONNECTION_NOT_FOUND');
       return updated;
