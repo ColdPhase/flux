@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { and, eq, ne, sql } from 'drizzle-orm';
 import type { Pool } from 'pg';
-import { schema, type Database } from '@flux/db';
+import { holdingSessionLock, schema, type Database } from '@flux/db';
 import { NotFoundError, ServiceUnavailableError, type LiveMedia } from '@flux/core';
 import type { LiveLifecycle } from './lifecycle.js';
 
@@ -41,15 +41,10 @@ export async function withNoMediaAccessChange<T>(db: Database, scope: Scope,
  */
 export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveMedia,
   lifecycle?: Pick<LiveLifecycle, 'recoverWorkspaceUnderLock'>) {
-  async function locked<T>(workspaceId: string, work: () => Promise<T>): Promise<T> {
-    const client = await pool.connect();
-    try {
-      await client.query('SELECT pg_advisory_lock(62061, hashtext($1))', [workspaceId]);
-      return await work();
-    } finally {
-      try { await client.query('SELECT pg_advisory_unlock(62061, hashtext($1))', [workspaceId]); }
-      finally { client.release(); }
-    }
+  async function locked<T>(workspaceId: string, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    // A lock whose connection dies is gone, and the next holder may be working: `work` stops at its next step (#916).
+    return holdingSessionLock(pool, { acquire: { text: 'SELECT pg_advisory_lock(62061, hashtext($1))', values: [workspaceId] },
+      release: { text: 'SELECT pg_advisory_unlock(62061, hashtext($1))', values: [workspaceId] } }, work);
   }
 
   async function fence(scope: Scope): Promise<void> {
@@ -109,9 +104,11 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
       projectId: schema.liveSessions.projectId }).from(schema.liveSessions)
       .where(eq(schema.liveSessions.id, sessionId));
     if (!located) throw new NotFoundError('Live session', 'LIVE_SESSION_NOT_FOUND');
-    await locked(located.workspaceId, async () => {
+    await locked(located.workspaceId, async (signal) => {
       await lifecycle?.recoverWorkspaceUnderLock(located.workspaceId);
+      signal.throwIfAborted();
       await recoverUnderLock(located.workspaceId);
+      signal.throwIfAborted();
       const missing = await db.transaction(async (tx) => {
         // Admission takes these guards in the same order. The SFU check stays
         // under the project guard, so a concurrent grant mutation cannot pass
@@ -135,28 +132,35 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
           .where(eq(schema.liveSessions.id, sessionId));
         return true;
       });
+      signal.throwIfAborted();
       if (missing) await retireAndFinish({ workspaceId: located.workspaceId, projectId: located.projectId });
     });
   }
 
   async function change<T>(scope: Scope, mutation: () => Promise<T>): Promise<T> {
-    return locked(scope.workspaceId, async () => {
+    return locked(scope.workspaceId, async (signal) => {
       await lifecycle?.recoverWorkspaceUnderLock(scope.workspaceId);
+      signal.throwIfAborted();
       await recoverUnderLock(scope.workspaceId);
+      // From here every step is one the lock protects: if its connection is lost, the next holder may be doing them (#916).
+      signal.throwIfAborted();
       await fence(scope);
       // On failure the fence stays durable. A retry or startup reconciliation can
       // finish it; the access mutation has not yet run, so no cutoff is claimed.
       const rows = await db.select({ roomId: schema.liveSessions.roomId }).from(schema.liveSessions)
         .where(and(sessionFilter(scope), eq(schema.liveSessions.state, 'rotating')));
-      for (const row of rows) await media.deleteRoom(row.roomId);
+      for (const row of rows) { signal.throwIfAborted(); await media.deleteRoom(row.roomId); }
+      signal.throwIfAborted();
       let result: T;
       try { result = await mutation(); }
       catch (error) {
         // The mutation rolled back or failed validation. Restore admission only
         // with a fresh generation; never recreate a retired room ID.
+        signal.throwIfAborted();
         await retireAndFinish(scope);
         throw error;
       }
+      signal.throwIfAborted();
       await retireAndFinish(scope);
       return result;
     });
@@ -176,8 +180,9 @@ export function liveRevocationCoordinator(db: Database, pool: Pool, media: LiveM
     async recoverPending(): Promise<void> {
       const pending = await db.select({ workspaceId: schema.liveAccessFences.workspaceId })
         .from(schema.liveAccessFences).groupBy(schema.liveAccessFences.workspaceId);
-      for (const row of pending) await locked(row.workspaceId, async () => {
+      for (const row of pending) await locked(row.workspaceId, async (signal) => {
         await lifecycle?.recoverWorkspaceUnderLock(row.workspaceId);
+        signal.throwIfAborted();
         await recoverUnderLock(row.workspaceId);
       });
     },

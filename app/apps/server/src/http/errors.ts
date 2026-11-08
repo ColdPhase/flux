@@ -1,4 +1,4 @@
-import type { FastifyError, FastifyInstance } from 'fastify';
+import type { FastifyError, FastifyInstance, FastifyReply } from 'fastify';
 import type { ApiError } from '@flux/contracts';
 import { ConflictError, DomainError, redactedError } from '@flux/core';
 import { sealedWorkScope, touchedSealedWorkspace } from '@flux/db';
@@ -43,10 +43,15 @@ export function databaseConflict(error: unknown): unknown {
  * Maps DomainError to its status and ApiError body, and an unauthenticated request to 401. F-030 Error paths: every
  * request runs in `sealedWorkScope`; an unexpected error of a request that touched an encrypted workspace's seal is logged
  * and answered only as `redactedError` (class, code, SQLSTATE, constraint), never its message, detail or stack.
+ *
+ * `answered` lets a route group say that a request's response is already out (a terminal HTTP response written by the route's own
+ * code): the handler then only releases the reply and sends nothing. It is an option, not a second `setErrorHandler`, because a
+ * second handler in the same scope makes Fastify log FSTWRN004 on every start (#916).
  */
-export function useDomainErrors(app: FastifyInstance) {
+export function useDomainErrors(app: FastifyInstance, options: { answered?: (error: FastifyError | DomainError, reply: FastifyReply) => boolean } = {}) {
   app.addHook('onRequest', (_request, _reply, done) => { sealedWorkScope.run({ sealed: false }, done); });
   app.setErrorHandler((error: FastifyError | DomainError, request, reply) => {
+    if (options.answered?.(error, reply)) return reply.hijack();
     // A storage task-use refusal (#238) is a known outcome; translate it without parsing a message.
     error = taskUseDomainError(error) as typeof error;
     error = databaseConflict(error) as typeof error;

@@ -3,7 +3,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import Fastify from 'fastify';
 import { createDatabase } from '@flux/db';
-import { loadIdentityConfig, registerIdentity } from '../../apps/server/src/identity/index.js';
+import { loadIdentityConfig, registerIdentity, startIdentity } from '../../apps/server/src/identity/index.js';
 import { createAuth } from '../../apps/server/src/identity/auth.js';
 import { createOauthRequests } from '../../apps/server/src/identity/oauth-flow.js';
 import { connectionString, pool } from './support/db.js';
@@ -87,4 +87,46 @@ test('an unrelated real resource primary-key conflict seeds nothing and does not
     await auth.$context;
     assert.equal(attempts,1);assert.equal(Number((await pool.query('SELECT count(*)::int n FROM oauth_resource WHERE identifier=$1',[resource])).rows[0].n),0);
   }finally{database.pool.query=query;await database.pool.end();}
+});
+
+// `startIdentity` is what the real server calls, and it seeds the MCP resource itself before Better Auth does (#316, #916). That is what
+// keeps a database that cannot take the row from starting a server without OAuth: Better Auth 1.7.18 alone logs a failed seed and
+// retries it on the first resource access, as the test above shows. Without `ensureOauthResource` the server would start and fail later.
+test('startIdentity stops the server when the OAuth resource cannot be seeded, where Better Auth alone carries on', {timeout:15_000}, async()=>{
+  const database=createDatabase(connectionString);const query=database.pool.query;const occupied=randomUUID();
+  const origin=`https://start-failfast-${randomUUID()}.example.test`;const resource=`${origin}/mcp`;
+  const config=loadIdentityConfig({FLUX_PUBLIC_ORIGIN:origin,FLUX_AUTH_SECRET:randomBytes(32).toString('hex'),FLUX_AUTH_RATE_LIMIT:'false'});
+  await pool.query('INSERT INTO oauth_resource(id,identifier,name) VALUES($1,$2,$3)',[occupied,`https://occupied-${randomUUID()}.example.test/mcp`,'Unrelated primary key fixture']);
+  const collide=(text:string,parameters:unknown[])=>/^insert into "oauth_resource"/i.test(text)&&parameters.includes(resource);
+  let collisions=0;let failing=true;
+  database.pool.query=function(...args:unknown[]){
+    const statement=args[0];const text=typeof statement==='string'?statement:statement&&typeof statement==='object'&&'text'in statement?statement.text:null;
+    const parameters=args[1];
+    if(failing&&typeof text==='string'&&Array.isArray(parameters)&&collide(text,parameters)){
+      // PostgreSQL really rejects it: the id is taken by another resource.
+      const replacement=[...parameters];replacement[0]=occupied;collisions++;
+      return Reflect.apply(query,database.pool,[statement,replacement,...args.slice(2)]);
+    }
+    return Reflect.apply(query,database.pool,args);
+  } as typeof database.pool.query;
+  const servers=[Fastify(),Fastify(),Fastify()];
+  try{
+    await assert.rejects(startIdentity(servers[0]!,{db:database.db,config,mailer:null}),(error:unknown)=>postgresError(error)?.code==='23505','the real startup stops on the failed seed');
+    assert.ok(collisions>=1,'the seed was really attempted');
+    assert.equal(Number((await pool.query('SELECT count(*)::int n FROM oauth_resource WHERE identifier=$1',[resource])).rows[0].n),0);
+    // The same failure inside Better Auth's own seed does not stop it: this is what removing `ensureOauthResource` would leave.
+    const before=collisions;
+    const auth=createAuth({db:database.db,config,mailer:null,oauthRequests:createOauthRequests()});await auth.$context;
+    assert.ok(collisions>before,'Better Auth tried the seed too');
+    assert.equal(Number((await pool.query('SELECT count(*)::int n FROM oauth_resource WHERE identifier=$1',[resource])).rows[0].n),0,'and carried on without a resource');
+    // Positive control: with the database able to take the row, startIdentity seeds it once and the server serves its discovery document.
+    failing=false;
+    await startIdentity(servers[1]!,{db:database.db,config,mailer:null});await servers[1]!.ready();
+    assert.equal(Number((await pool.query('SELECT count(*)::int n FROM oauth_resource WHERE identifier=$1',[resource])).rows[0].n),1);
+    assert.equal((await servers[1]!.inject({method:'GET',url:'/.well-known/oauth-protected-resource/mcp'})).statusCode,200);
+    await startIdentity(servers[2]!,{db:database.db,config,mailer:null});await servers[2]!.ready();
+    assert.equal(Number((await pool.query('SELECT count(*)::int n FROM oauth_resource WHERE identifier=$1',[resource])).rows[0].n),1,'a second start leaves the one row');
+  }finally{
+    database.pool.query=query;await Promise.allSettled(servers.map(server=>server.close()));await database.pool.end();
+  }
 });

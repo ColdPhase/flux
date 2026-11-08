@@ -1,6 +1,6 @@
 import { and, asc, eq, gt, inArray, lt, lte, or } from 'drizzle-orm';
 import type { Pool } from 'pg';
-import { schema, type Database } from '@flux/db';
+import { holdingSessionLock, schema, type Database } from '@flux/db';
 import type { LiveMedia } from '@flux/core';
 
 const NEVER_JOINED_GRACE_MS = 300_000;
@@ -19,15 +19,10 @@ export function liveLifecycle(db: Database, pool: Pool,
   let sweepAfter: { updatedAt: Date; id: string } | null = null;
 
   // This is the same workspace advisory key and lock order as access revocation.
-  async function locked<T>(workspaceId: string, work: () => Promise<T>): Promise<T> {
-    const client = await pool.connect();
-    try {
-      await client.query('SELECT pg_advisory_lock(62061, hashtext($1))', [workspaceId]);
-      return await work();
-    } finally {
-      try { await client.query('SELECT pg_advisory_unlock(62061, hashtext($1))', [workspaceId]); }
-      finally { client.release(); }
-    }
+  async function locked<T>(workspaceId: string, work: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    // A lock whose connection dies is gone, and the next holder may be working: `work` stops at its next step (#916).
+    return holdingSessionLock(pool, { acquire: { text: 'SELECT pg_advisory_lock(62061, hashtext($1))', values: [workspaceId] },
+      release: { text: 'SELECT pg_advisory_unlock(62061, hashtext($1))', values: [workspaceId] } }, work);
   }
 
   async function finishEndingLocked(sessionId: string): Promise<LiveReconcileResult> {
@@ -54,7 +49,7 @@ export function liveLifecycle(db: Database, pool: Pool,
     const [located] = await db.select({ workspaceId: sessions.workspaceId }).from(sessions)
       .where(eq(sessions.id, sessionId));
     if (!located) return 'stale';
-    return locked(located.workspaceId, async () => {
+    return locked(located.workspaceId, async (signal) => {
       const result = await db.transaction(async (tx): Promise<LiveReconcileResult> => {
         const [current] = await tx.select().from(sessions).where(eq(sessions.id, sessionId));
         if (!current || current.workspaceId !== located.workspaceId ||
@@ -95,6 +90,8 @@ export function liveLifecycle(db: Database, pool: Pool,
           .where(eq(sessions.id, sessionId));
         return 'ending';
       });
+      // Deleting the room is the step the lock protects; if its connection was lost meanwhile, the next holder decides (#916).
+      signal.throwIfAborted();
       if (result === 'ending') return finishEndingLocked(sessionId);
       return result;
     });

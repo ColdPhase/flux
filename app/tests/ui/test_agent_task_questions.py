@@ -165,31 +165,42 @@ class AgentTaskQuestions(unittest.TestCase):
         expect(panel.locator(".wd-act__item--message").filter(has_text=ANSWER)).to_be_visible()
         expect(panel.locator("[data-task-people]")).to_contain_text("their agents")
 
-    def test_02b_the_owner_of_an_agent_takes_back_what_it_said_in_the_thread(self) -> None:
-        """#923: each owner has Undo under their own agent's lines only; Jonas takes back the answer and everyone reads who did."""
+    def test_02b_the_owner_of_an_agent_deletes_what_it_said_in_the_thread(self) -> None:
+        """#923, #938 (TA-3): each owner can delete their own agent's lines only, whoever answered them; everyone reads who did."""
         task = self.ids["exchange"]
         url = f"/projects/{self.ids['project']}/tasks?open=work:{task}"
+        # A person answered both lines before anyone deletes: the owner's right does not wait for their silence.
+        self.api(self.page("ada"), "POST", f"/api/v1/work/{task}/discussion", {"body": "Thanks, I read both", "clientMessageId": str(uuid.uuid4())}, status=201)
         jonas_page, ada_page = self.page("jonas"), self.page("ada")
         jonas_page.goto(url)
         ada_page.goto(url)
         lines = lambda page, text: page.get_by_role("complementary", name="Details").locator(".wd-act__item--message").filter(has_text=text)
-        expect(lines(jonas_page, ANSWER).get_by_role("button", name="Undo")).to_have_count(1)
-        expect(lines(jonas_page, FIRST).get_by_role("button", name="Undo")).to_have_count(0)
-        expect(lines(ada_page, FIRST).get_by_role("button", name="Undo")).to_have_count(1)
+        delete = lambda page, text: lines(page, text).get_by_role("button", name="Delete this line")
+        expect(delete(jonas_page, ANSWER)).to_have_count(1)
+        expect(delete(jonas_page, FIRST)).to_have_count(0)
+        expect(delete(ada_page, FIRST)).to_have_count(1)
         expect(lines(ada_page, ANSWER)).to_be_visible()
-        expect(lines(ada_page, ANSWER).get_by_role("button", name="Undo")).to_have_count(0)
-        # The state line above (whose own "Undo" reopens the task) no longer lists the lines: they are taken back where they stand.
+        expect(delete(ada_page, ANSWER)).to_have_count(0)
+        # The state line above (whose own "Undo" reopens the task) does not list the lines: they are deleted where they stand.
         expect(ada_page.get_by_role("complementary", name="Details").locator(".wd-agent .assistant-message")).to_have_count(0)
         message = lines(jonas_page, ANSWER).get_attribute("data-message-id")
-        lines(jonas_page, ANSWER).get_by_role("button", name="Undo").click()
+        delete(jonas_page, ANSWER).click()
+        # Asked once: it cannot be taken back.
+        confirm = lines(jonas_page, ANSWER).get_by_role("group", name="Delete this line?")
+        expect(confirm).to_be_visible()
+        confirm.get_by_role("button", name="Keep").click()
+        expect(delete(jonas_page, ANSWER)).to_have_count(1)
+        delete(jonas_page, ANSWER).click()
+        confirm.get_by_role("button", name="Delete", exact=True).click()
         taken = jonas_page.get_by_role("complementary", name="Details").locator(f"[data-message-id='{message}']")
-        expect(taken).to_contain_text("Removed with Undo")
-        expect(taken).to_contain_text(f"Undone by {JONAS['name']}")
+        expect(taken).to_contain_text("Removed by its owner")
+        expect(taken).to_contain_text(f"Removed by {JONAS['name']}")
         ada_page.goto(url)
         again = ada_page.get_by_role("complementary", name="Details").locator(f"[data-message-id='{message}']")
-        expect(again).to_contain_text(f"Undone by {JONAS['name']}")
-        expect(again.get_by_role("button", name="Undo")).to_have_count(0)
+        expect(again).to_contain_text(f"Removed by {JONAS['name']}")
+        expect(again.get_by_role("button", name="Delete this line")).to_have_count(0)
         self.assertNotIn(ANSWER, [body for _, body in self.thread(ada_page, task)])
+        self.assertIn("Thanks, I read both", [body for _, body in self.thread(ada_page, task)], "the person's own line stays")
 
     def test_03_a_question_to_an_agent_that_is_not_in_the_task_goes_back_to_the_people(self) -> None:
         mock("/__script", {"reset": True, "text": FIRST + "\n" + ASK.replace("Fieldbot", "Ghost")})

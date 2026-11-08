@@ -42,8 +42,8 @@ export interface Identity extends SessionResolver {
 }
 
 /**
- * Starts identity before the server accepts requests. The OAuth resource row is ensured first so
- * that concurrent API processes do not race on Better Auth's seed insert (#316).
+ * Starts identity before the server accepts requests. The OAuth resource row is ensured first, and a failure to do so stops the
+ * server here (fail-fast, #916) instead of leaving Better Auth to log it and retry later; see `ensureOauthResource`.
  */
 export async function startIdentity(app: FastifyInstance, options: IdentityOptions): Promise<Identity> {
   await ensureOauthResource(options.db, options.config.publicOrigin);

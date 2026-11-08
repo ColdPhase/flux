@@ -20,7 +20,7 @@ export function startAgentRuntimeReconciler({ config, db, pool, env }: { config:
     if (running) return;
     running = (async () => {
       try {
-        const report = await withRuntimeReconcileLock(pool, () => reconcileAgentRuntime({ config, store, manager, log,
+        const report = await withRuntimeReconcileLock(pool, (signal) => reconcileAgentRuntime({ config, store, manager, log, signal,
           endLostRuns: (active) => recoverLostRuntimeRuns(personalRunWorkerUnitOfWork(db), active) }));
         if (!report) return;
         if (report.error) { if (report.error !== lastError) log({ event: 'manager_unavailable', code: report.error }); lastError = report.error; return; }

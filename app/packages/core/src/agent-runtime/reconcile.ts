@@ -27,8 +27,10 @@ export interface ReconcileReport {
 
 const STALE_RESERVATION_MS = 2 * 60_000;
 
-export async function reconcileAgentRuntime({ config, store, manager, endLostRuns, now = () => new Date(), log = () => undefined }: {
+export async function reconcileAgentRuntime({ config, store, manager, endLostRuns, signal, now = () => new Date(), log = () => undefined }: {
   config: AgentRuntimeConfig; store: AgentRuntimeStore; manager: RuntimeManagerPort;
+  /** Aborts when the lock that makes this the only reconciler is lost (#916): the next step is then not taken. */
+  signal?: AbortSignal;
   /** Ends the working runs of the runtime that are not among `running`. */
   endLostRuns?: (running: string[]) => Promise<number>;
   now?: () => Date; log?: (event: Record<string, unknown>) => void;
@@ -56,6 +58,7 @@ export async function reconcileAgentRuntime({ config, store, manager, endLostRun
     return Boolean(sighted?.reachable && !sighted.bindings.includes(bindingId));
   };
   for (const sighting of sightings.value) {
+    signal?.throwIfAborted();
     const entry = known.get(sighting.slot);
     known.delete(sighting.slot);
     const row: RuntimeSlotRow = entry?.slot ?? { slot: sighting.slot, state: 'unknown', bootId: null, outOfPoolReason: null, capacity: null };
@@ -66,6 +69,7 @@ export async function reconcileAgentRuntime({ config, store, manager, endLostRun
     }
     for (const binding of bindings) {
       if (binding.state !== 'releasing') continue;
+      signal?.throwIfAborted();
       const released = await manager.release(sighting.slot, binding.id);
       if (!released.ok || !released.value.deleted) { log({ event: 'release_pending', slot: sighting.slot, code: released.ok ? 'not_deleted' : released.code }); continue; }
       // A client the runtime found no CLI and no files for counts as "never had a login" only when the durable

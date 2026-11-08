@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import type { AgentRuntimeBindingState, AgentRuntimeClient, AgentRuntimeConnectionState, AgentRuntimeReleaseReason, AgentRuntimeSignInMethod } from '@flux/contracts';
 import type { Pool } from 'pg';
+import { holdingSessionLock } from '../session-lock.js';
 import type * as schema from '../schema.js';
 import {
   currentRuntimeAuthOperation, markLoginConfirmedGone, markLoginPossible, runtimeAuthAdmissionLock, runtimeAuthOperations, settleRuntimeAuthOperation, RuntimeAuthSupersededError,
@@ -380,15 +381,10 @@ export function agentRuntimeOperations(db: Handle) {
 
 /**
  * Runs `work` only while this process holds a session advisory lock, so two workers never reconcile the
- * runtime at once. The lock's connection stays idle (no transaction) while `work` calls runtime-manager.
+ * runtime at once. The lock's connection stays idle (no transaction) while `work` calls runtime-manager; if it dies, the
+ * lock goes with it, `work`'s `signal` aborts and the call rejects (`holdingSessionLock`, #916).
  */
-export async function withRuntimeReconcileLock<T>(pool: Pick<Pool, 'connect'>, work: () => Promise<T>): Promise<T | null> {
-  const client = await pool.connect();
-  try {
-    const locked = await client.query<{ ok: boolean }>("SELECT pg_try_advisory_lock(hashtext('agent-runtime-reconcile')) AS ok");
-    if (!locked.rows[0]?.ok) return null;
-    try { return await work(); } finally { await client.query("SELECT pg_advisory_unlock(hashtext('agent-runtime-reconcile'))").catch(() => undefined); }
-  } finally {
-    client.release();
-  }
+export function withRuntimeReconcileLock<T>(pool: Pick<Pool, 'connect'>, work: (signal: AbortSignal) => Promise<T>): Promise<T | null> {
+  return holdingSessionLock(pool, { try: true, acquire: { text: "SELECT pg_try_advisory_lock(hashtext('agent-runtime-reconcile')) AS ok" },
+    release: { text: "SELECT pg_advisory_unlock(hashtext('agent-runtime-reconcile'))" } }, work);
 }

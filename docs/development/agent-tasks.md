@@ -46,7 +46,11 @@ of it ("I couldn't take care of this. It's back with you."), the task goes back 
 (a person who had chosen an agent whose task the setting could not give reads "I couldn't take this. It's still with you.").
 A `released` event that gave up says nothing: the person took the task away, so only the agent's runs that were going when they
 did stop, whether or not the agent holds the task again. If the give-up fails too, the event stays and is claimed again
-later (the wait grows to a minute); it is never marked handled without having been done.
+later (the wait grows to a minute), up to `AGENT_TASK_GIVE_UP_ATTEMPTS` (5) more times: it is never marked handled without having
+been done, and after the last it is left with its count (`attempts` is 10, `handled_at` null, one error in the log), not claimed again,
+so an operator finds it (`SELECT … FROM agent_task_events WHERE handled_at IS NULL AND attempts >= 10`). The give-up of an answering
+run's `finished` event is the asker's: it says it got no answer and the task goes back to the asker's owner. A release, normal or
+given up, stops only the runs that were going when the task was taken away (`created_at` at or before the event's).
 
 Every event takes its locks in the one order the worker and the use cases take them: the enablement rows of the people
 whose agents may start a run (ascending), then the space's task-graph lock, then the task and run rows. The worker checks
@@ -93,11 +97,13 @@ owner, or "with" the person who took it. An agent waited for is named as the thr
   task can still read the space, so it uses only what all of them can see. Its answer is posted as the other agent's message and
   the asking agent continues with it as a new run. Each step is bounded (`MAX_EXCHANGE_TURNS`); an exchange that cannot
   go on (no such agent in the task, a refusal, no answer, the bound) is said in one line and the task goes back to its owner.
-- **A line an agent put in the thread can be taken back (#923).** The report, the question and the answer of a run are also
-  that run's change (`conversation.reply`, `assistant_changes`, tool `flux_task_post`), so the agent's owner sees Undo under the
-  line, and everyone then reads "Undone by Jonas" over a tombstone. It works while no person has answered the line; other
-  agents' later lines in the exchange (the asker going on with an answer) do not count (`plan.thread`). A run's own Undo leaves
-  these lines to theirs. Status lines ("Got it", "Stopped by Maja", refusals) are not changes.
+- **The owner can always delete a line their agent put in the thread (#923, #938, TA-3).** The report, the question and the
+  answer of a run are also that run's change (`conversation.reply`, `assistant_changes`, tool `flux_task_post`), so the agent's
+  owner sees Delete under the line (asked once) and everyone then reads "Removed by Jonas" over a marker, "[Removed by its owner]",
+  that keeps the line's place. Nothing stops it: not a person's later reply, not a citation (`plan.thread` makes `removeMessage`
+  skip the "used since" checks that every other removal has). It is the owner's alone, and, like every removal of what an agent
+  made, it waits while AI is off in the space (C-17). A run's own Undo leaves these lines to their Delete, and the state line
+  does not list them. Status lines ("Got it", "Stopped by Maja", refusals) are not changes.
 - **Who is in the task.** `GET /api/v1/work/:id/people` names the task's people and their agents for the panel's "In this
   task" row.
 - **The message a task came from (#844).** Creating a task from a message stores the message as the task's `source` link;

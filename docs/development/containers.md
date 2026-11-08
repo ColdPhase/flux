@@ -135,8 +135,30 @@ listener stops a Node process. `createDatabase` therefore gives every pool a lis
 out, so a short outage logs, drops the dead connections and recovers on the next query instead of
 restarting the API or the worker ([#889](https://github.com/ColdPhase/flux/issues/889)).
 `./scripts/check_database_outage.sh` stops and starts the database under a running API and worker
-and fails if either restarted or the API does not answer its health check again; the full
-`check_application.sh` ends with the same check.
+and fails if either restarted, the API does not answer its health check again, or the worker runs no
+job after the database returns (a pg-boss assistant tick that starts after the outage and completes
+within 150 s); the full `check_application.sh` ends with the same check.
+
+Three jobs hold a PostgreSQL *session* advisory lock for the length of their work: the agent runtime
+reconciler, a live-session lifecycle transition and a live access revocation. A session lock ends with its
+connection, and a holder that does not know it would go on to change state another process now also
+holds the lock for. `holdingSessionLock` (`packages/db/src/session-lock.ts`) takes the lock on a
+dedicated connection and gives `work` an `AbortSignal` that fires when that connection errors or ends
+(`SessionLockLostError`); `work` throws at its next checkpoint (`signal.throwIfAborted()`), before a step
+that changes state, and a connection that failed is destroyed instead of returned to the pool
+([#916](https://github.com/ColdPhase/flux/issues/916)). `tests/app/session-lock.test.ts` terminates the
+lock's backend while `work` runs and checks the abort, the destroyed connection and that another
+process can take the lock.
+
+A pool connection runs one statement at a time, in the order they were asked for
+(`oneStatementAtATime`, `packages/db/src/one-statement-at-a-time.ts`). `Promise.all` over a
+transaction's `tx` issues several statements on its one connection; `pg` 8.23 queues them and warns that
+this "is deprecated and will be removed in pg@9.0". Flux does the waiting itself, so `pg` is never asked
+while it is busy, the order is the one it always was and pg 9 changes nothing
+([#916](https://github.com/ColdPhase/flux/issues/916)). Statements with a callback and cursors keep `pg`'s
+own path. Likewise, a route group that needs its own error handler passes `answered` to
+`useDomainErrors` instead of setting a second handler in the same scope, which Fastify logs as FSTWRN004
+on every start; `tests/app/fastify-warnings.test.ts` builds the whole API and fails on any Fastify warning.
 
 The connection timeout bounds the whole wait for a client: queued behind the pool's
 10 busy clients (the `pg` default size) or opening a new connection.

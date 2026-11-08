@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { AGENT_TASK_EVENT_ATTEMPTS, agentTaskRows, assistantChangeRows, assistantRemovalRows, personalRunRows, workRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
+import { AGENT_TASK_EVENT_ATTEMPTS, AGENT_TASK_GIVE_UP_ATTEMPTS, agentTaskRows, assistantChangeRows, assistantRemovalRows, personalRunRows, workRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
 import { agentLabel, answerLines, askableLines, createPersonalRunUseCases, DomainError, MAX_EXCHANGE_TURNS, noPersonalConnections, resolveAsked, stopRunBy, TAKEN_WORDS, takeAsk, taskRunClientId,
   taskRunPrompt, uuidFrom, type AgentQuestion, type Askable, type Principal, type TaskStart, type UndoRecord, type WorkRecord } from '@flux/core';
 import { personalRunPorts, type PersonalRunComposition, type PersonalRunQueueFactory } from '../personal-runs/adapters.js';
@@ -47,7 +47,7 @@ export interface AgentTaskDrain {
 class Refused extends Error { constructor(readonly line: string) { super(line); } }
 
 export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactory, composition: Omit<PersonalRunComposition, 'queue'>,
-  log: { warn(object: unknown, message: string): void } = { warn: () => undefined }): AgentTaskDrain {
+  log: { warn(object: unknown, message: string): void; error?(object: unknown, message: string): void } = { warn: () => undefined }): AgentTaskDrain {
 
   /** A step a rule may refuse is logged and left; any other failure is not swallowed: it rolls the event back, to be tried again. */
   async function attempt<T>(what: string, step: () => Promise<T>): Promise<T | null> {
@@ -145,13 +145,26 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     const holder = agentId ? await rows.agent(agentId) : null;
     if (!holder?.ownerUserId) return;
     const ports = personalRunPorts(tx, queue);
-    const stopRuns = async (by: string, before?: Date) => {
+    const stopRuns = async (ofAgent: string, by: string, before?: Date) => {
       for (const going of await rows.runsOfWork(work.id, 8))
-        if (going.agentId === holder.id && IN_FLIGHT.includes(going.status) && (!before || going.createdAt <= before)) await stopRunBy(ports, going.id, by);
+        if (going.agentId === ofAgent && IN_FLIGHT.includes(going.status) && (!before || going.createdAt <= before)) await stopRunBy(ports, going.id, by);
     };
+    if (run?.kind === 'task_answer') {
+      // The answering agent's run ended and its answer could not be handled: the agent that asked still holds the task and waits for it,
+      // with no run and no line. It says so and the task goes back to its owner.
+      const asked = run.askedByRunId ? await personalRunRows(tx).findRun(run.askedByRunId) : null;
+      const asker = asked ? await rows.agent(asked.agentId) : null;
+      if (!asker?.ownerUserId || FINISHED.has(work.status)) return;
+      const current = (await workRows(tx).findWork(work.id, { lock: true }))!;
+      if (current.owner?.kind !== 'agent' || current.owner.id !== asker.id) return;
+      await say(tx, current, asker.id, 'I couldn\'t get an answer. It\'s back with you.', `gave-up:${event.id}`);
+      await giveBack(tx, current, asker.ownerUserId, asker.ownerUserId);
+      await stopRuns(asker.id, asker.ownerUserId);
+      return;
+    }
     if (event.kind === 'released') {
       // Only the runs that were going when the task was taken away: a run started since is a later assignment's.
-      await stopRuns(event.byKind === 'human' && event.byId ? event.byId : holder.ownerUserId, event.createdAt);
+      await stopRuns(holder.id, event.byKind === 'human' && event.byId ? event.byId : holder.ownerUserId, event.createdAt);
       return;
     }
     if (FINISHED.has(work.status)) return;
@@ -161,7 +174,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       await say(tx, current, holder.id, 'I couldn\'t take care of this. It\'s back with you.', `gave-up:${event.id}`);
       await giveBack(tx, current, holder.ownerUserId, holder.ownerUserId);
       // A rule's hand-back writes no `released` event, so the run is stopped here.
-      await stopRuns(holder.ownerUserId);
+      await stopRuns(holder.id, holder.ownerUserId);
     } else if (event.kind === 'assigned' && event.ownerUserId && current.owner?.kind === 'human' && current.owner.id === holder.ownerUserId) {
       // The person chose this agent and the setting could not give it: the task is as it was, and they are told.
       await say(tx, current, holder.id, 'I couldn\'t take this. It\'s still with you.', `gave-up:${event.id}`);
@@ -246,8 +259,10 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
   async function released(tx: Transaction, event: Event) {
     if (!event.ownerAgentId) return;
     const ports = personalRunPorts(tx, queue);
+    // Only the runs that were going when the task was taken away: a retried release must not stop a later assignment's run.
     for (const run of await agentTaskRows(tx).runsOfWork(event.workId, 8))
-      if (run.agentId === event.ownerAgentId && IN_FLIGHT.includes(run.status)) await stopRunBy(ports, run.id, event.byKind === 'human' && event.byId ? event.byId : run.ownerUserId);
+      if (run.agentId === event.ownerAgentId && IN_FLIGHT.includes(run.status) && run.createdAt <= event.createdAt)
+        await stopRunBy(ports, run.id, event.byKind === 'human' && event.byId ? event.byId : run.ownerUserId);
   }
 
   async function finished(tx: Transaction, event: Event) {
@@ -385,11 +400,14 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     } catch (error) {
       const event = claimed.event;
       if (error instanceof Relock) return true;
-      log.warn({ error, event: event?.id }, 'An agent task event failed and will be tried again');
-      if (!event) return false;
+      if (!event) { log.warn({ error }, 'An agent task event failed'); return false; }
       // Counted only while nobody has handled it: another replica may have taken it just after this try failed and done it.
-      const counted = await agentTaskRows(db).failed(event.id).then(() => true, () => false);
+      const counted = await agentTaskRows(db).failed(event.id).then((result) => ({ attempts: result?.attempts ?? null }), () => null);
+      log.warn({ error, event: event.id, kind: event.kind, workId: event.workId, attempts: counted?.attempts ?? null }, 'An agent task event failed and will be tried again');
       if (!counted) { retryIn = 5; return false; }
+      // Even the give-up failed every time: the event is left as it is, with its count, and says so here once.
+      if (counted.attempts !== null && counted.attempts >= AGENT_TASK_EVENT_ATTEMPTS + AGENT_TASK_GIVE_UP_ATTEMPTS)
+        (log.error ?? log.warn).call(log, { event: event.id, kind: event.kind, workId: event.workId, attempts: counted.attempts }, 'An agent task event could not be given up and is left unhandled');
       return true;
     }
   }

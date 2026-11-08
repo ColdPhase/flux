@@ -27,7 +27,6 @@ For a release installation use `docker compose --env-file .env -f compose.yaml` 
 | `migrate` exits 1 after about 5 s with `Error: Query read timeout`, `api` and `worker` never start (v0.1.0, a fresh database on a slow host) | v0.1.0 gave the migrator the 2 s request timeout, and its first migration takes longer on a slow disk or CPU ([#846](https://github.com/ColdPhase/flux/issues/846)). Fixed in the next release. On v0.1.0, apply the baseline by hand: [Install, the first migration on a slow host](#the-first-migration-on-a-slow-host-v010). |
 | A service (`api`, `worker`, `keyring` or `db`) restarts with exit code 137, or `docker inspect` shows `OOMKilled` | It hit its memory limit. Raise `FLUX_API_MEMORY` (or `FLUX_WORKER_MEMORY`, `FLUX_KEYRING_MEMORY`; `FLUX_DB_MEMORY` when `db` is the one killed) and run `./flux up`. |
 | `/api/v1/health` answers `503` | Its warning in `dc logs api` says which check failed: migrations, the queue schema, or writing to the files volume (disk full or permissions). |
-| `FastifyWarning: … FSTWRN004` when the API starts | Harmless. Several route groups set their own error handler on purpose, and Fastify notes each override. |
 
 ## Signing in and browsers
 

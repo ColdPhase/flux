@@ -164,22 +164,30 @@ function Face({ actor, mine }: { actor: { kind: 'agent' | 'human'; name: string 
 }
 
 /**
- * What an agent's line in the thread is, as its run's change (#923, AG-3): its owner can take it back with Undo while no person has
- * answered it, and everyone then reads "Undone by Jonas" (the line itself is replaced by a tombstone).
+ * What an agent's line in the thread is, as its run's change (#923, #938, TA-3): its owner can always delete it, whoever answered it
+ * since, and everyone then reads "Removed by Jonas" over a marker that keeps the line's place. Asked once, because it cannot be taken back.
  */
 function PostedLine({ change, onChanged }: { change: AssistantChange; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [asking, setAsking] = useState(false);
   const [note, setNote] = useState('');
-  if (change.state === 'undone') return <p className="assistant-message__line" role="status">Undone by {change.decidedBy?.name ?? 'you'}</p>;
+  if (change.state === 'undone') return <p className="assistant-message__line" role="status">Removed by {change.decidedBy?.name ?? 'its owner'}</p>;
   if (!change.undoable) return null;
-  const undo = async () => {
+  const remove = async () => {
     setBusy(true); setNote('');
-    try { setNote((await undoChange(change)).message ?? ''); } catch (error) { setNote(failure(error)); } finally { setBusy(false); onChanged(); }
+    try { setNote((await undoChange(change)).message ?? ''); setAsking(false); } catch (error) { setNote(failure(error)); } finally { setBusy(false); onChanged(); }
   };
-  return (
-    <p className="assistant-message__line" role="status" aria-live="polite">
-      <Button variant="link" busy={busy} onClick={() => void undo()}>Undo</Button>
-      {note ? <><span aria-hidden="true"> · </span><span>{note}</span></> : null}
+  return asking ? (
+    <p className="assistant-message__line" role="group" aria-label="Delete this line?">
+      <span>Delete this line for everyone?</span><span aria-hidden="true"> · </span>
+      <Button variant="link" busy={busy} onClick={() => void remove()}>Delete</Button><span aria-hidden="true"> · </span>
+      <Button variant="link" disabled={busy} onClick={() => setAsking(false)}>Keep</Button>
+      {note ? <><span aria-hidden="true"> · </span><span role="status">{note}</span></> : null}
+    </p>
+  ) : (
+    <p className="assistant-message__line">
+      <Button variant="link" aria-label="Delete this line" onClick={() => { setNote(''); setAsking(true); }}>Delete</Button>
+      {note ? <><span aria-hidden="true"> · </span><span role="status">{note}</span></> : null}
     </p>
   );
 }
@@ -203,7 +211,8 @@ export function ActivityTimeline({ state, composer, item, project, me, writable,
     for (const runChanges of posts.byRun.values()) for (const change of runChanges) if (change.objectType === 'message' && change.operation === 'conversation.reply' && change.objectId) byMessage.set(change.objectId, change);
     return byMessage;
   }, [posts.byRun]);
-  const inThread = useCallback((change: AssistantChange) => !!change.objectId && change.objectType === 'message' && state.lines.some((line) => line.kind === 'message' && line.message.id === change.objectId), [state.lines]);
+  // A line an agent put in this thread is deleted where it stands, whichever page of the activity it is on, and not from the state line.
+  const inThread = useCallback((change: AssistantChange) => change.objectType === 'message' && change.operation === 'conversation.reply', []);
   return (
     <section className="details__sec wd-activity" aria-labelledby={headingId}>
       <div className="wd-sechead">
