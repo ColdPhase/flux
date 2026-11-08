@@ -37,7 +37,6 @@ export interface WorkRecord {
   /** The calendar day it is due (#488), `YYYY-MM-DD`; null for none. */
   dueOn: string | null;
   owner: ActorRef | null;
-  parked: { decisionId: string; at: Date } | null;
   /** Distinct trimmed statements; `[]` for tasks that never had any (#152). */
   criteria: string[];
   createdBy: ActorRef;
@@ -94,7 +93,7 @@ export interface ObjectLinkRecord {
 }
 
 /** A task to insert; its number is given by the database (#276). */
-export type NewWork = Omit<WorkRecord, 'number' | 'version' | 'createdAt' | 'updatedAt' | 'parked' | 'criteria' | 'dropped' | 'cameOfIt'> & {
+export type NewWork = Omit<WorkRecord, 'number' | 'version' | 'createdAt' | 'updatedAt' | 'criteria' | 'dropped' | 'cameOfIt'> & {
   criteria?: string[];
   clientCommandId?: string;
   requestFingerprint?: string;
@@ -139,7 +138,7 @@ export interface NativeCommandReceipt {
   /** Contribution messages this command made on canonical task threads. */
   messageIds: string[];
 }
-export type WorkChanges = Partial<Pick<WorkRecord, 'title' | 'outcome' | 'status' | 'blocker' | 'waitingFor' | 'waitingOn' | 'dropped' | 'cameOfIt' | 'dueOn' | 'owner' | 'parked' | 'criteria'>>;
+export type WorkChanges = Partial<Pick<WorkRecord, 'title' | 'outcome' | 'status' | 'blocker' | 'waitingFor' | 'waitingOn' | 'dropped' | 'cameOfIt' | 'dueOn' | 'owner' | 'criteria'>>;
 
 /** What one change of a task's status, owner, due date or title kept (#488); the repository records it with the change. */
 export type TaskActivityDetail =
@@ -177,7 +176,7 @@ export interface NewObjectLink {
 /** What a task presents of its plan: its direct prerequisites with their current state and its intent. */
 export interface TaskPlanRecord {
   /** Ascending by id. */
-  prerequisites: { id: string; title: string; status: WorkStatus; parked: boolean }[];
+  prerequisites: { id: string; title: string; status: WorkStatus }[];
   planIntent: TaskPlanIntent | null;
 }
 
@@ -211,7 +210,7 @@ export interface WorkRepository extends TaskGraphReader {
   locate(type: 'work' | 'decision' | 'result', id: string): Promise<{ projectId: string } | null>;
   listWork(projectId: string, page: PageWindow): Promise<Paged<WorkRecord>>;
   /**
-   * Unfinished, unparked work owned by `owner` in the projects of `workspaceId` that pass the
+   * Unfinished work owned by `owner` in the projects of `workspaceId` that pass the
    * policy's list filter (`visibleFilter`) for `principal`, applied before the page and the total.
    */
   listAssignedVisible(principal: Principal, workspaceId: string, owner: ActorRef, page: PageWindow): Promise<Paged<WorkRecord>>;
@@ -233,7 +232,7 @@ export interface WorkRepository extends TaskGraphReader {
   /** What tasks wait for besides a person, by `kind:id` (#868): a decision's title, a task's number and title. A missing one is absent. */
   waitingTargets(refs: readonly { kind: 'decision' | 'task'; id: string }[]): Promise<Map<string, WaitingOn>>;
   /**
-   * Blocked, unfinished, unparked work in visible projects that concerns `userId`: they own it, it waits for
+   * Blocked, unfinished work in visible projects that concerns `userId`: they own it, it waits for
    * them, or an agent they own holds it (#550).
    */
   listBlockedFor(principal: Principal, workspaceId: string, userId: string, page: PageWindow): Promise<Paged<WorkRecord>>;

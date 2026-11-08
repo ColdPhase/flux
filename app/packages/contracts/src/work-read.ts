@@ -11,7 +11,7 @@ export const projectWorkThoughtTasksPath = (projectId: string) => `/api/v1/proje
 export const projectWorkDetailPath = (projectId: string, kind: WorkObjectType, id: string) =>
   `/api/v1/projects/${projectId}/work-objects/${kind}/${id}`;
 
-export const WORK_GROUPS = ['needs', 'in_progress', 'blocked', 'open', 'parked', 'finished', 'rules', 'results'] as const;
+export const WORK_GROUPS = ['needs', 'in_progress', 'blocked', 'open', 'finished', 'rules', 'results'] as const;
 export type WorkGroup = typeof WORK_GROUPS[number];
 export type WorkCounts = Record<WorkGroup, number>;
 export const WORK_READ_LIMITS = { defaultPage: 50, page: 100, sourceIds: 100, relationObjects: 100, edges: 100, thoughtIds: 100, query: 200, cursor: 512 } as const;
@@ -88,8 +88,6 @@ export interface WorkRowProjection extends NativeRowBase {
   cameOfIt: string | null;
   /** The calendar day it is due (#488), `YYYY-MM-DD`; null for none. */
   dueOn: string | null;
-  parked: WorkItem['parked'];
-  parkedBy: WorkReadRef | null;
   rule: WorkReadRef | null;
   /** #238: a task whose creation was undone appears only as history (direct reads and existing references). */
   lifecycle?: TaskLifecycle;
@@ -144,7 +142,7 @@ export interface WorkThoughtTasks {
   access: ProjectAccess;
   /** Thoughts with at least one linked task, ordered by thought id. */
   counts: { thoughtId: string; tasks: number }[];
-  /** At most 100 (thought, task) pairs: thought id, then unparked, status order, created time, id. */
+  /** At most 100 (thought, task) pairs: thought id, then status order, created time, id. */
   links: { thoughtId: string; workId: string }[];
   linkTotal: number;
   /** The distinct tasks of `links`. */
@@ -160,7 +158,7 @@ export interface ProjectWorkSummary {
   all: WorkCounts;
   mine: WorkCounts;
   workTotal: number;
-  /** Unparked open/in-progress/blocked work; the Tasks tab count. */
+  /** Open, in-progress and blocked work; the Tasks tab count. */
   unfinishedTotal: number;
 }
 
@@ -226,7 +224,7 @@ export interface WorkDetailProjection {
   access: ProjectAccess;
   object: WorkDetailObject;
   relations: WorkRelationCounts;
-  /** At most 3 actual native parked-by/earlier/later decision references. */
+  /** At most 3 actual native earlier/later decision references. */
   context: WorkReadRef[];
 }
 

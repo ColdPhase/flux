@@ -182,8 +182,7 @@ export function assistantRemovalRows(db: DbExecutor) {
       if (decision.status !== 'proposed') return used(REMOVAL_REASONS.decided);
       if (input.version !== null && decision.version !== input.version) return used(REMOVAL_REASONS.changed);
       if (await cited(decision.id, 'other')) return used(REMOVAL_REASONS.cited);
-      if (await yes(db, sql`SELECT (EXISTS (SELECT 1 FROM project_work_items WHERE parked_by_decision_id = ${decision.id})
-        OR EXISTS (SELECT 1 FROM project_decisions o WHERE o.id <> ${decision.id} AND (o.supersedes_id = ${decision.id} OR o.superseded_by_id = ${decision.id}))) AS found`))
+      if (await yes(db, sql`SELECT EXISTS (SELECT 1 FROM project_decisions o WHERE o.id <> ${decision.id} AND (o.supersedes_id = ${decision.id} OR o.superseded_by_id = ${decision.id})) AS found`))
         return used(REMOVAL_REASONS.cited);
       try {
         await db.execute(sql`DELETE FROM project_object_links WHERE from_id = ${decision.id}`);

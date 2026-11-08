@@ -3,7 +3,7 @@ import type { PrincipalRef, ProjectWorkSummary, WorkCounts } from '@flux/contrac
 import type { DbExecutor } from './push.js';
 import { nativeWorkViewKeySource } from './work-read-keys.js';
 
-const groupByRank = ['needs', 'in_progress', 'blocked', 'open', 'parked', 'finished', 'rules', 'rules', 'results'] as const;
+const groupByRank = ['needs', 'in_progress', 'blocked', 'open', 'finished', 'rules', 'rules', 'results'] as const;
 
 export function nativeWorkSummaryRows(db: DbExecutor) {
   const observedAt = async () => {
@@ -14,7 +14,7 @@ export function nativeWorkSummaryRows(db: DbExecutor) {
   async function counts(projectId: string, caller: PrincipalRef, mine: boolean): Promise<WorkCounts> {
     const selected = nativeWorkViewKeySource(projectId, caller, { purpose: 'tasks', group: 'all', mine });
     const result = await db.execute<{ rank: number; total: number }>(sql`WITH selected AS (${selected}) SELECT rank, count(*)::int AS total FROM selected GROUP BY rank`);
-    const counts: WorkCounts = { needs: 0, in_progress: 0, blocked: 0, open: 0, parked: 0, finished: 0, rules: 0, results: 0 };
+    const counts: WorkCounts = { needs: 0, in_progress: 0, blocked: 0, open: 0, finished: 0, rules: 0, results: 0 };
     for (const row of result.rows) {
       const group = groupByRank[row.rank];
       if (!group || !Number.isSafeInteger(row.total) || row.total < 0) throw new Error('Invalid native work group count');
@@ -28,7 +28,7 @@ export function nativeWorkSummaryRows(db: DbExecutor) {
       const actor = { ...caller };
       const at = await observedAt();
       const all = await counts(projectId, actor, false), mine = await counts(projectId, actor, true);
-      return { projectId, observedAt: at, all, mine, workTotal: all.in_progress + all.blocked + all.open + all.parked + all.finished,
+      return { projectId, observedAt: at, all, mine, workTotal: all.in_progress + all.blocked + all.open + all.finished,
         unfinishedTotal: all.in_progress + all.blocked + all.open };
     },
   };

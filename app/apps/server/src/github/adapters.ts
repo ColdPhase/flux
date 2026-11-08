@@ -16,7 +16,7 @@ function githubTasks(tx: Transaction, events: TransactionEventSession, retained:
   const state = async (record: WorkRecord): Promise<GithubTaskState> => {
     const prerequisites = await work.prerequisiteStates(record.workspaceId, record.id);
     return { id: record.id, workspaceId: record.workspaceId, projectId: record.projectId, status: record.status, blocker: record.blocker,
-      parked: !!record.parked, criteria: record.criteria, version: record.version, prerequisitesMet: !!prerequisites && !unmetPrerequisites(prerequisites.prerequisites).length };
+      criteria: record.criteria, version: record.version, prerequisitesMet: !!prerequisites && !unmetPrerequisites(prerequisites.prerequisites).length };
   };
   return {
     async find(taskId, lock = false) { const record = await work.findWork(taskId, { lock }); return record ? state(record) : null; },

@@ -17,16 +17,16 @@ principals with current read access to the project; there is no second audience.
 
 | Object | Fields | Rules |
 | --- | --- | --- |
-| Work item | title, outcome (may be empty), owner (person or #29 agent, or nobody), status `open` · `in_progress` · `blocked` · `done` ([four states](#statuses-waiting-and-what-came-of-it-868)), optional blocker, one thing it waits for and `dropped` and `cameOfIt` (only while blocked or done), optional `dueOn` ([below](#due-date-and-activity-488)), `parked`, version | The owner must currently be able to read the project (`OWNER_WITHOUT_ACCESS`). Leaving `blocked` clears the blocker. Small tasks need only a title; no report is required. Explicitly saving a nonempty blocker also contributes it to the task conversation ([below](#contributions-to-the-task-conversation-154)). |
+| Work item | title, outcome (may be empty), owner (person or #29 agent, or nobody), status `open` · `in_progress` · `blocked` · `done` ([four states](#statuses-waiting-and-what-came-of-it-868)), optional blocker, one thing it waits for and `dropped` and `cameOfIt` (only while blocked or done), optional `dueOn` ([below](#due-date-and-activity-488)), version | The owner must currently be able to read the project (`OWNER_WITHOUT_ACCESS`). Leaving `blocked` clears the blocker. Small tasks need only a title; no report is required. Explicitly saving a nonempty blocker also contributes it to the task conversation ([below](#contributions-to-the-task-conversation-154)). |
 | Decision | title, rationale, status `proposed` · `accepted` · `superseded`, proposed by, decided by (a person), `supersedes` / `supersededBy`, version | People and agents with write access propose. Only a person with write access accepts (`DECISION_NEEDS_PERSON`); see [acceptance authority](#acceptance-authority-o-009-250). Only an accepted decision can be superseded (`SUPERSEDES_NOT_CURRENT`); accepting the replacement marks the earlier one `superseded` and keeps its title and rationale. The screens call a superseded decision "replaced". |
-| Result | title, finding `positive` · `negative`, evidence | Immutable once recorded, so later thinking never rewrites it. `finishes: { id, expectedVersion }` names one of its linked work items, which becomes `done`: a negative result can finish an experiment. A stale version is `409 VERSION_CONFLICT` with the current work; `not_pursued` work is `409 WORK_NOT_FINISHABLE`. Nothing is stored when finishing is refused. A result linked to work (`work`) also contributes to each task's conversation ([below](#contributions-to-the-task-conversation-154)). |
-| Link | role, from (work/decision/result, or a [doc](docs-wiki.md)), to (message, thought, material version, work, decision, result, doc, project sketch), titles of both ends | Roles: `source` (created from / based on), `affects`, `still_applies` (no longer written, #871), `about`, `related`, and `mentions` (the current text of a doc refers to it, #112). Every target must exist in the same project (`LINK_TARGET_NOT_FOUND`). Identical links are stored once. |
+| Result | title, finding `positive` · `negative`, evidence | Immutable once recorded, so later thinking never rewrites it. `finishes: { id, expectedVersion }` names one of its linked work items, which becomes `done`: a negative result can finish an experiment. A stale version is `409 VERSION_CONFLICT` with the current work; Nothing is stored when finishing is refused. A result linked to work (`work`) also contributes to each task's conversation ([below](#contributions-to-the-task-conversation-154)). |
+| Link | role, from (work/decision/result, or a [doc](docs-wiki.md)), to (message, thought, material version, work, decision, result, doc, project sketch), titles of both ends | Roles: `source` (created from / based on), `affects`, `about`, `related`, and `mentions` (the current text of a doc refers to it, #112). Every target must exist in the same project (`LINK_TARGET_NOT_FOUND`). Identical links are stored once. |
 
 **No pivot (founder direction, Hubert, 2026-11-03; #871).** Accepting a decision that replaces an earlier one
 only marks the earlier one `superseded`. Flux does not move, park or re-link any task because a decision changed; people
 decide about the tasks themselves. The accept request has no `stillApplies` and no `park`: a client that still sends them is
-ignored by the schema and changes nothing, and `PATCH { parked: false }` is gone with the only thing that set it. The
-`parked` columns of a task are no longer written by any path; dropping them is tracked as a follow-up. Two people accepting
+ignored by the schema and changes nothing. A task has no parked state at all (#1039, migration 0035 drops the columns, the
+`still_applies` link role and everything that read them). Two people accepting
 competing replacements of the same decision at once: one wins, the other gets `409 SUPERSEDED_DECISION_CHANGED`.
 
 ## Acceptance authority (O-009, #250)
@@ -60,7 +60,7 @@ In Details, a person without write access sees **Who decides** in place of the A
 | `POST /api/v1/decisions/:id/accept` | Needs `If-Match`; no body (`{ expectedVersion? }` is the same as the header). |
 | `GET/POST /api/v1/projects/:projectId/results`, `GET /api/v1/results/:id` | `POST` takes an optional `clientCommandId` (UUID, #154): see below. |
 | `POST /api/v1/projects/:projectId/links` | A `related` link between any two objects of the project. |
-| `GET /api/v1/workspaces/:workspaceId/work/assigned` | The caller's unfinished, unparked work in every project the policy's `visibleFilter` lets them read. |
+| `GET /api/v1/workspaces/:workspaceId/work/assigned` | The caller's unfinished work in every project the policy's `visibleFilter` lets them read. |
 
 Every POST/PATCH accepts `Idempotency-Key` (the shared runner in `app/apps/server/src/http/commands.ts`,
 also introduced by #100); a replay re-checks current project read access. Responses with a version

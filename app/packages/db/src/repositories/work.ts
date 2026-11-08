@@ -42,7 +42,6 @@ export function toWorkRecord(row: WorkRow) {
     creationRevertedAt: row.creationRevertedAt, creationReversionNoticeId: row.creationReversionNoticeId,
     creationRevertedBy: row.creationRevertedByKind && row.creationRevertedById ? { kind: row.creationRevertedByKind, id: row.creationRevertedById } : null,
     owner: row.ownerUserId ? { kind: 'human' as const, id: row.ownerUserId } : row.ownerAgentId ? { kind: 'agent' as const, id: row.ownerAgentId } : null,
-    parked: row.parkedByDecisionId && row.parkedAt ? { decisionId: row.parkedByDecisionId, at: row.parkedAt } : null,
     criteria: row.criteria,
     createdBy: { kind: row.createdByKind, id: row.createdById }, version: row.version, createdAt: row.createdAt, updatedAt: row.updatedAt,
   };
@@ -159,7 +158,7 @@ async function sealedWork(db: DbExecutor, id: string): Promise<WorkRow | null> {
 /** The creation baseline as `jsonb_build_object` builds it (keys and values; timestamps as PostgreSQL's ISO text). */
 function baselineOf(row: WorkRow) {
   return { title: row.title, outcome: row.outcome, status: row.status, blocker: row.blocker, criteria: row.criteria, ownerUserId: row.ownerUserId,
-    ownerAgentId: row.ownerAgentId, parkedByDecisionId: row.parkedByDecisionId, parkedAt: row.parkedAt ? row.parkedAt.toISOString() : null };
+    ownerAgentId: row.ownerAgentId };
 }
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, v: unknown) => (v && typeof v === 'object' && !Array.isArray(v)
   ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : 1))) : v));
@@ -200,8 +199,7 @@ export function workRows(db: DbExecutor) {
       if (sealedRow) return baselineMatches(sealedRow);
       const [row] = await db.select({ matches: sql<boolean>`${w.creationBaseline} = jsonb_build_object(
         'title', ${w.title}, 'outcome', ${w.outcome}, 'status', ${w.status}, 'blocker', ${w.blocker},
-        'criteria', ${w.criteria}, 'ownerUserId', ${w.ownerUserId}, 'ownerAgentId', ${w.ownerAgentId},
-        'parkedByDecisionId', ${w.parkedByDecisionId}, 'parkedAt', ${w.parkedAt})` }).from(w).where(eq(w.id, workId));
+        'criteria', ${w.criteria}, 'ownerUserId', ${w.ownerUserId}, 'ownerAgentId', ${w.ownerAgentId})` }).from(w).where(eq(w.id, workId));
       return row?.matches === true;
     },
     async recordCreationBaseline(work: ReturnType<typeof toWorkRecord>) {
@@ -218,8 +216,7 @@ export function workRows(db: DbExecutor) {
       await db.update(w).set({ creationOrigin: origin,
         creationBaselineVersion: work.version, creationBaseline: sql`jsonb_build_object(
           'title', ${w.title}, 'outcome', ${w.outcome}, 'status', ${w.status}, 'blocker', ${w.blocker},
-          'criteria', ${w.criteria}, 'ownerUserId', ${w.ownerUserId}, 'ownerAgentId', ${w.ownerAgentId},
-          'parkedByDecisionId', ${w.parkedByDecisionId}, 'parkedAt', ${w.parkedAt})` }).where(and(eq(w.id, work.id), isNull(w.creationBaselineVersion)));
+          'criteria', ${w.criteria}, 'ownerUserId', ${w.ownerUserId}, 'ownerAgentId', ${w.ownerAgentId})` }).where(and(eq(w.id, work.id), isNull(w.creationBaselineVersion)));
     },
     /** #238: the facts a reader's Undo eligibility is decided from, in one read; no lock and no use mark. */
     async creationUndoFacts(workId: string) {
@@ -227,8 +224,7 @@ export function workRows(db: DbExecutor) {
       const [row] = await db.select({ work: w,
         baselineMatches: sql<boolean>`COALESCE(${w.creationBaseline} = jsonb_build_object(
           'title', ${w.title}, 'outcome', ${w.outcome}, 'status', ${w.status}, 'blocker', ${w.blocker},
-          'criteria', ${w.criteria}, 'ownerUserId', ${w.ownerUserId}, 'ownerAgentId', ${w.ownerAgentId},
-          'parkedByDecisionId', ${w.parkedByDecisionId}, 'parkedAt', ${w.parkedAt}), false)`,
+          'criteria', ${w.criteria}, 'ownerUserId', ${w.ownerUserId}, 'ownerAgentId', ${w.ownerAgentId}), false)`,
         prerequisites: sql<number>`(SELECT count(*)::int FROM ${dependencies} WHERE ${dependencies.taskId} = ${w.id})`,
         creatorAgentOwnerUserId: sql<string | null>`(SELECT ${schema.agents.ownerUserId} FROM ${schema.agents}
           WHERE ${w.createdByKind} = 'agent' AND ${schema.agents.id}::text = ${w.createdById})` }).from(w).where(eq(w.id, workId));
@@ -272,7 +268,7 @@ export function workRows(db: DbExecutor) {
     /** Blocked work that concerns `userId` (#550): theirs, waiting for them, or held by an agent they own. */
     async listBlockedFor(workspaceId: string, userId: string, visibleProjects: SQL, window: Window) {
       const where = and(
-        eq(w.workspaceId, workspaceId), eq(w.status, 'blocked'), isNull(w.creationRevertedAt), isNull(w.parkedAt),
+        eq(w.workspaceId, workspaceId), eq(w.status, 'blocked'), isNull(w.creationRevertedAt),
         or(eq(w.ownerUserId, userId), eq(w.waitingForUserId, userId),
           sql`${w.ownerAgentId} IN (SELECT ${schema.agents.id} FROM ${schema.agents} WHERE ${schema.agents.ownerUserId} = ${userId})`),
         sql`${w.projectId} IN (SELECT ${schema.projects.id} FROM ${schema.projects} WHERE ${visibleProjects})`,
@@ -298,7 +294,7 @@ export function workRows(db: DbExecutor) {
       return found;
     },
 
-    /** Unfinished, unparked work of `owner` in projects matching `visibleProjects` (a condition over `projects`). */
+    /** Unfinished work of `owner` in projects matching `visibleProjects` (a condition over `projects`). */
     async listAssigned(workspaceId: string, owner: Actor, visibleProjects: SQL, window: Window) {
       // F-030 (AC-6): a locked encrypted workspace answers 423 even when nothing is assigned.
       await sealOf(db, workspaceId, { write: false });
@@ -308,7 +304,7 @@ export function workRows(db: DbExecutor) {
         owner.kind === 'human'
           ? or(eq(w.ownerUserId, owner.id), sql`${w.ownerAgentId} IN (SELECT ${schema.agents.id} FROM ${schema.agents} WHERE ${schema.agents.ownerUserId} = ${owner.id})`)
           : eq(w.ownerAgentId, owner.id),
-        isNull(w.creationRevertedAt), notInArray(w.status, ['done']), isNull(w.parkedAt),
+        isNull(w.creationRevertedAt), notInArray(w.status, ['done']),
         sql`${w.projectId} IN (SELECT ${schema.projects.id} FROM ${schema.projects} WHERE ${visibleProjects})`,
       )!;
       return paged(db, w, where, window, toWorkRecord);
@@ -450,7 +446,7 @@ export function workRows(db: DbExecutor) {
           : { ...base, kind: row.kind, decisionId: row.object_id, status: row.status! };
       }) };
     },
-    async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; waitingFor?: Actor | null; waitingOn?: { kind: 'decision' | 'task'; id: string } | null; dropped?: boolean; cameOfIt?: string | null; dueOn?: string | null; owner?: Actor | null; parked?: { decisionId: string; at: Date } | null; criteria?: string[] },
+    async updateWork(id: string, changes: { title?: string; outcome?: string; status?: WorkRow['status']; blocker?: string | null; waitingFor?: Actor | null; waitingOn?: { kind: 'decision' | 'task'; id: string } | null; dropped?: boolean; cameOfIt?: string | null; dueOn?: string | null; owner?: Actor | null; criteria?: string[] },
       by: Actor, via?: 'github_rule' | 'agent_rule' | 'agent_deleted' | 'wait_resolved') {
       // Every path that changes a task ends here, so this is the one place its activity (#488) is kept: the row as it was,
       // then the change, then one entry per field that really differs, all in the caller's transaction. The caller holds the row.
@@ -481,7 +477,6 @@ export function workRows(db: DbExecutor) {
         // The text is no longer only a person's once an agent wrote it (#953: a task's addresses are given to a run only from a person's text).
         ...(by.kind === 'agent' && (changes.title !== undefined || changes.outcome !== undefined || changes.criteria !== undefined) ? { textByAgent: true } : {}),
         ...ownerColumns(changes.owner),
-        ...(changes.parked !== undefined ? { parkedByDecisionId: changes.parked?.decisionId ?? null, parkedAt: changes.parked?.at ?? null } : {}),
         version: sql`${w.version} + 1`, updatedAt: new Date(),
       }).where(eq(w.id, id)).returning();
       const next = toWorkRecord(openRow('project_work_items', row!, seal));

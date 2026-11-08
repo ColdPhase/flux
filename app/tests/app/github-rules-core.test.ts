@@ -15,7 +15,7 @@ const rule = (over: Partial<GithubRuleRecord> = {}): GithubRuleRecord => ({
   blockedBy: null, readyToClose: false, revision: 1, updatedAt: new Date('2026-10-05T10:00:00Z'), ...over,
 });
 const task = (over: Partial<GithubRuleTask> = {}): GithubRuleTask =>
-  ({ status: 'open', blocker: null, parked: false, version: 1, criteria: [], prerequisitesMet: true, ...over });
+  ({ status: 'open', blocker: null, version: 1, criteria: [], prerequisitesMet: true, ...over });
 const pull = (number: number, over: Partial<GithubRulePull> = {}): GithubRulePull => ({
   linkId: `link-${number}`, number, available: true, state: 'open', merged: false, headSha: SHA,
   checks: [{ name: 'ci', state: 'success' }], truncated: false, ...over,
@@ -97,8 +97,8 @@ describe('GitHub task rule evaluation (#74 G-1a)', () => {
     assert.deepEqual([refailed.code, refailed.blocker, refailed.blockedBy], ['check_failed', 'Check “firmware / test” failed on PR #42', 'check']);
   });
 
-  test('parked and done work, inactive rules and unreadable links are left alone', () => {
-    for (const state of [task({ parked: true }), task({ status: 'done', version: 4 })])
+  test('done work, inactive rules and unreadable links are left alone', () => {
+    for (const state of [task({ status: 'done', version: 4 })])
       assert.deepEqual(evaluateGithubRule(rule(), state, [merged(42)]), { kind: 'none', repin: false });
     for (const state of ['suspended', 'off'] as const) assert.deepEqual(evaluateGithubRule(rule({ state }), task(), [pull(42)]), { kind: 'none', repin: false });
     assert.deepEqual(evaluateGithubRule(rule(), task(), []), { kind: 'none', repin: false }, 'related-only links are not inputs');

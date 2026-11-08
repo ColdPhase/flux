@@ -121,7 +121,7 @@ export function createNeedsYou(ports: NeedsYouPorts, now: () => Date = () => new
     const askers = await ports.work.names(blocked.flatMap((task) => (task.waitingFor?.id === userId ? [task.owner ?? task.createdBy] : [])));
     for (const task of blocked) {
       const waiting = task.waitingOn?.kind === 'task' ? { id: task.waitingOn.id }
-        : plans.get(task.id)?.prerequisites.find((item: { status: string; parked: boolean; id: string }) => !OVER.has(item.status));
+        : plans.get(task.id)?.prerequisites.find((item: { status: string; id: string }) => !OVER.has(item.status));
       const waitingTask = waiting ? await work(waiting.id) : null;
       const waitingDecision = task.waitingOn?.kind === 'decision' ? await ports.work.findDecision(task.waitingOn.id) : null;
       // The person waited on hears it as "Ada is waiting for you"; the owner (or an agent owner's person) keeps the plain item.

@@ -941,7 +941,7 @@ class ScenarioJourney:
         earlier = self.api("jonas", "GET", f"/api/v1/decisions/{s['d1']}", status=200)
         self.assertEqual((earlier["status"], earlier["decidedBy"]["id"], earlier["rationale"]), ("superseded", self.ids["ada"], WHY1), "the old rule keeps its history")
         camera = self.api("jonas", "GET", f"/api/v1/work/{s['camera_task']}", status=200)
-        self.assertIsNone(camera["parked"], "Flux moves no task when a decision is replaced (#871)")
+        self.assertNotIn("parked", camera, "a task has no parked state (#1039), and Flux moves no task when a decision is replaced (#871)")
         self.assertNotEqual(camera["status"], "done")
         self.assertFalse(any(link["role"] == "still_applies" for link in accepted["links"]))
         self.assertEqual(self.api("jonas", "GET", f"/api/v1/results/{s['result']}", status=200)["finding"], "negative", "the result survives the replacement")
@@ -1147,7 +1147,7 @@ class ScenarioJourney:
         self.assertEqual(sorted(t["text"] for t in exported["sketches"][0]["thoughts"]), sorted([CAMERA, SENSOR, PRIVACY, LOW_LIGHT, VARIANT_B]))
         work = {w["title"]: w for w in exported["work"]}
         self.assertEqual(work[self.s["experiment_title"]]["status"], "done")
-        self.assertIsNone(work[CAMERA_TASK]["parked"], "a replaced decision parks nothing")
+        self.assertNotIn("parked", work[CAMERA_TASK], "a task has no parked state (#1039)")
         decisions = {d["title"]: d for d in exported["decisions"]}
         self.assertEqual((decisions[D1]["status"], decisions[D2]["status"], decisions[D3]["status"]), ("superseded", "accepted", "proposed"))
         self.assertEqual((decisions[D2]["proposedBy"]["kind"], decisions[D2]["decidedBy"]["id"]), ("agent", self.ids["jonas"]))

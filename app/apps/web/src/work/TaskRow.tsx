@@ -33,7 +33,7 @@ function meta(item: WorkRowProjection, meId: string, owners: AgentOwners) {
     <>
       <span className="ui-task-number">{taskNumber(item)}</span>
       {' · '}{who}
-      {item.parked ? null : <Morph value={item.status} changeKey={item.id} className="ws-task__word">{` · ${statusPhrase(item)}`}</Morph>}
+      <Morph value={item.status} changeKey={item.id} className="ws-task__word">{` · ${statusPhrase(item)}`}</Morph>
       {rest.map((part) => ` · ${part}`).join('')}
     </>
   );
@@ -126,7 +126,7 @@ export function TaskRow({ item, meId, owners, writable, muted, onOpen, onChange 
         {writable ? (
           <button type="button" className="ws-task__glyph" aria-label={label} title={`${label} (keys 1 to 4)`} aria-keyshortcuts="1 2 3 4"
             onClick={() => onChange(item, nextStatus(item.status))}>
-            <StatusGlyph status={item.status} changeKey={item.id} className={item.parked ? 'ui-glyph--parked' : undefined} />
+            <StatusGlyph status={item.status} changeKey={item.id} />
           </button>
         ) : <span className="ws-task__glyph ws-task__glyph--still" role="img" aria-label={word}><StatusGlyph status={item.status} changeKey={item.id} /></span>}
         <button type="button" className={`ws-item${muted ? ' ws-item--muted' : ''}`} onClick={click}>

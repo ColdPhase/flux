@@ -330,7 +330,7 @@ with the agent's authority behind it. `role` is `required_output` (default) or `
 - **Grant.** It is a change to the task, so it needs a live `work.update` standing grant for that task or the whole project, in the
   execute or plan class: the grant of `flux_update_task`. No operation, migration or GitHub permission is added. The owner's
   "Change tasks" switch covers both tools; a connection made before this tool lists it after its owner saves the permissions.
-- **Hold.** The agent must hold the task now: it is the task's owner, and the task is open (not done, not pursued, not parked).
+- **Hold.** The agent must hold the task now: it is the task's owner, and the task is not done.
   Otherwise `TASK_NOT_HELD` (nobody, another agent, or closed); nothing is written or debited.
 - **Repository.** The URL names a repository an active binding of this task's project already connects (case-insensitive owner
   and name); otherwise `GITHUB_REPOSITORY_NOT_BOUND`, and GitHub is not asked. A person connects repositories; an agent cannot.

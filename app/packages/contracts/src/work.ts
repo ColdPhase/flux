@@ -89,11 +89,11 @@ export type ObjectRef =
 
 /**
  * `source`: created from, or based on, a message or material version (the source stays in place).
- * `affects`: a decision concerns this work. `still_applies`: kept for rows written before #871; nothing writes it now.
+ * `affects`: a decision concerns this work.
  * `about`: a result reports on this work or decision. `related`: any other connection.
  * `mentions`: the current text of a doc refers to it (#112); rewritten with each doc version.
  */
-export type LinkRole = 'source' | 'affects' | 'still_applies' | 'about' | 'related' | 'mentions' | 'part_of';
+export type LinkRole = 'source' | 'affects' | 'about' | 'related' | 'mentions' | 'part_of';
 
 /** One task that is part of another (#841): its state in words, and who has it. */
 export interface TaskSubtask {
@@ -154,12 +154,11 @@ export interface TaskPlanIntent {
   intentKey: string;
 }
 
-/** The current state of a direct prerequisite. It is met only while it is `done` and not parked. */
+/** The current state of a direct prerequisite. It is met only while it is `done`. */
 export interface TaskPrerequisite {
   id: string;
   title: string;
   status: WorkStatus;
-  parked: boolean;
   met: boolean;
 }
 
@@ -209,8 +208,6 @@ export interface WorkItem extends ProjectObject {
    */
   dueOn: string | null;
   owner: NamedPrincipal | null;
-  /** Set when a pivot parked the work. Parking keeps the status: parked work is not done. */
-  parked: { decisionId: string; at: string } | null;
   createdBy: NamedPrincipal;
   /** "Let linked PRs move this task" (#74 G-1a); null when nobody turned it on. */
   githubRule: GithubTaskRule | null;
@@ -261,7 +258,7 @@ export interface CreateWorkCommand {
   related?: ObjectRef[];
   /** At most 20 distinct trimmed statements of 1-1,000 characters. */
   criteria?: string[];
-  /** At most 50 distinct tasks of the same project that must be done (and unparked) first. */
+  /** At most 50 distinct tasks of the same project that must be done first. */
   dependencyIds?: string[];
   /** #841: the task of this project this one is a subtask of. It is part of it; the parent does not wait for it. */
   parentId?: string;
@@ -359,7 +356,7 @@ export interface UpdateWorkCommand extends VersionPrecondition {
   /** Replaces the whole list. */
   criteria?: string[];
   /**
-   * Replaces the whole set. A task that is in progress or done keeps every prerequisite done and unparked;
+   * Replaces the whole set. A task that is in progress or done keeps every prerequisite done;
    * cycles, itself and tasks of other projects are rejected. A plan intent can never be changed here.
    */
   dependencyIds?: string[];
@@ -435,8 +432,7 @@ export interface CreateResultCommand {
   decisions?: string[];
   /**
    * A work item of `work` this result finishes (its status becomes done), e.g. a negative
-   * experiment, with the version the author saw. A stale version is 409 VERSION_CONFLICT; work
-   * that is not pursued or parked is 409 WORK_NOT_FINISHABLE (un-park it first).
+   * experiment, with the version the author saw. A stale version is 409 VERSION_CONFLICT.
    */
   finishes?: { id: string; expectedVersion: number };
 }

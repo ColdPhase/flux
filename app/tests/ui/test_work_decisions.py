@@ -263,7 +263,6 @@ class WorkDecisionsJourney(unittest.TestCase):
         by_title = {item["title"]: item for item in stored["work"]}
         for title in ("Mount the camera in the lamp head", "Design the diffuser"):
             self.assertEqual(by_title[title]["status"], "open", f"{title} is left to people")
-            self.assertIsNone(by_title[title]["parked"])
         rules = {item["title"]: item for item in stored["decisions"]}
         self.assertEqual(rules["Use a camera for gesture control"]["status"], "superseded")
         self.assertEqual(rules["Use a camera for gesture control"]["rationale"], "It recognises the richest set of gestures")

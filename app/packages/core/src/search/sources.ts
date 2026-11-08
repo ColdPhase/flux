@@ -18,7 +18,6 @@ export interface SearchSource {
 
 const WORK_STATUS: Record<string, string> = {
   open: 'Task', in_progress: 'Task · in progress', blocked: 'Task · blocked', done: 'Task · done',
-  parked: 'Task · parked',
 };
 const DECISION_STATUS: Record<string, string> = { accepted: 'Decision · accepted', proposed: 'Decision · proposed', superseded: 'Decision · replaced' };
 

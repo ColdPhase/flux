@@ -16,7 +16,6 @@ export interface HeldTask {
   status: 'open' | 'in_progress' | 'blocked' | 'done';
   version: number;
   ownerAgentId: string | null;
-  parked: boolean;
   createdByKind: 'human' | 'agent';
   createdById: string;
 }
@@ -47,7 +46,7 @@ export interface AgentStopPorts {
     insert(row: { workspaceId: string; projectId: string; taskId: string; agentId: string; stoppedBy: string; unitsStopped: number }): Promise<string>;
     get(id: string): Promise<StoppedAgent | null>;
     list(scope: { projectId: string }, limit: number): Promise<StoppedAgent[]>;
-    /** In-progress, unparked tasks held by agents this person owns, most recently changed first. */
+    /** In-progress tasks held by agents this person owns, most recently changed first. */
     ownedWorking(userId: string, limit: number): Promise<OwnWorkingAgents['items'][number][]>;
   };
   events: { record(principal: Principal, workspaceId: string, kind: string, projectId: string, data: Record<string, unknown>): Promise<void> };
@@ -106,7 +105,7 @@ export function agentStopUseCases(uow: AgentStopUnitOfWork) {
       const allowed = agent.ownerUserId === principal.id || (task.createdByKind === 'human' && task.createdById === principal.id)
         || await ports.isManager(principal, projectId);
       if (!allowed) throw new ForbiddenError('Only a project manager, the agent\'s owner or the task\'s creator can stop it', 'STOP_NOT_ALLOWED');
-      if (task.ownerAgentId !== agentId || task.parked || task.status === 'done')
+      if (task.ownerAgentId !== agentId || task.status === 'done')
         throw new ConflictError('That agent is not working on this task now', 'AGENT_NOT_WORKING');
       await ports.releaseTask(principal, task);
       const unitsStopped = await ports.rows.stopUnits(workspaceId, projectId, taskId, agentId);

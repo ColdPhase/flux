@@ -64,7 +64,7 @@ async function loadContext(projectId: string, signal: AbortSignal): Promise<Cont
 
 function readable(error: unknown) {
   if (error instanceof ApiError && error.code === 'VERSION_CONFLICT') return 'Someone changed this a moment ago. The latest version is shown; try again if it still applies.';
-  if (error instanceof ApiError && error.code === 'TASK_PREREQUISITES_UNMET') return 'It can start or finish only when every task it waits for is done and not parked.';
+  if (error instanceof ApiError && error.code === 'TASK_PREREQUISITES_UNMET') return 'It can start or finish only when every task it waits for is done.';
   if (error instanceof ApiError && error.code === 'WAITING_ON_RESOLVED') return 'That is already decided or done, so there is nothing to wait for.';
   if (error instanceof ApiError && error.code === 'WAITING_ON_CYCLE') return 'That task is waiting for this one.';
   if (error instanceof ApiError && error.code === 'WAITING_ON_ITSELF') return 'A task cannot wait for itself.';
@@ -223,7 +223,7 @@ function OtherRelationships({ object, relations, project }: { object: WorkDetail
     if (object.kind === 'work' && ['decision', 'result'].includes(other.type)) return [];
     // Thoughts a task is linked to are listed in its own "Linked thoughts" section.
     if (object.kind === 'work' && other.type === 'thought') return [];
-    if (object.kind === 'decision' && other.type === 'work' && ['affects', 'still_applies'].includes(link.role)) return [];
+    if (object.kind === 'decision' && other.type === 'work' && ['affects'].includes(link.role)) return [];
     if (object.kind === 'result' && ['work', 'decision'].includes(other.type) && link.role === 'about') return [];
     const body = <><span>{OBJECT_WORD[other.type] ?? other.type}: {title}</span><small>{link.role.replaceAll('_', ' ')}</small><Icon name="chevron-right" size={14} /></>;
     if (other.type === 'work' || other.type === 'decision' || other.type === 'result') {
@@ -586,7 +586,7 @@ function WorkPanel({ item, context, detail, relations, reload, commands }: { ite
         {decisions.length ? (
           <section className="details__sec" aria-labelledby="wd-decisions">
             <h4 id="wd-decisions">Decisions</h4>
-            <Linked items={decisions.map((entry) => ({ key: entry.link.id, label: entry.title, hint: entry.link.role === 'still_applies' ? 'still applies' : undefined, open: () => openDetails({ kind: 'decision', id: entry.id, projectId: context.project.id }, { back: 'push' }) }))} />
+            <Linked items={decisions.map((entry) => ({ key: entry.link.id, label: entry.title, open: () => openDetails({ kind: 'decision', id: entry.id, projectId: context.project.id }, { back: 'push' }) }))} />
           </section>
         ) : null}
         <OtherRelationships object={item} relations={relations} project={context.project} />
@@ -708,7 +708,7 @@ function Prerequisites({ item, openDetails }: { item: OwnWork; openDetails: Retu
             <button type="button" className="wd-link" onClick={() => openDetails({ kind: 'work', id: prerequisite.id, projectId: item.projectId })}>
               <StatusGlyph status={prerequisite.status} size={14} />
               <span>{prerequisite.title}</span>
-              <small>{STATUS_LABEL[prerequisite.status]}{prerequisite.parked ? ' · parked' : ''}{prerequisite.met ? '' : ' · waiting'}</small>
+              <small>{STATUS_LABEL[prerequisite.status]}{prerequisite.met ? '' : ' · waiting'}</small>
               <Icon name="chevron-right" size={14} />
             </button>
           </li>

@@ -34,8 +34,8 @@ export function taskPrerequisiteIds(tx: Transaction, workspaceId: string, taskId
 
 /**
  * Run after the caller holds the complete sorted task locks; takes none itself and reads the locked
- * current rows. Every direct prerequisite must exist in the task's workspace and project and be `done`
- * and unparked, otherwise 409 `TASK_PREREQUISITES_UNMET` (404 when the task itself is not there).
+ * current rows. Every direct prerequisite must exist in the task's workspace and project and be `done`,
+ * otherwise 409 `TASK_PREREQUISITES_UNMET` (404 when the task itself is not there).
  */
 export function requireTaskPrerequisitesMet(tx: Transaction, workspaceId: string, taskId: string): Promise<void> {
   return assertPrerequisitesMet(taskGraphRows(tx), workspaceId, taskId);

@@ -61,7 +61,7 @@ async function linkVerified(ports: GithubPorts, github: Principal, work: { id: s
   if (role === 'required_output') await adoptGithubRuleOnLink(ports, github, work.id, binding, repository, by);
   return linkView(record);
 }
-/** The agent holds the task now (the facts of Stop): the task is its own, open and not parked. */
+/** The agent holds the task now (the facts of Stop): the task is its own, open. */
 async function requireHold(ports: GithubPorts, taskId: string, agentId: string) {
   if (await ports.rows.hold(taskId, agentId) === 'none') throw new ForbiddenError('Only the agent that holds this task can link its pull request. A person assigns the task to the agent first.', 'TASK_NOT_HELD');
 }

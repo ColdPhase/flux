@@ -80,7 +80,7 @@ export function parseCoWorkCheckpointProgress(value: unknown): CoWorkCheckpointP
 export interface CoWorkClaimEligibilityReader {
   /** The unit's task row, already locked by the composition's complete sorted task pass. */
   task(taskId: string): Promise<{ id: string; projectId: string; status: WorkStatus } | null>;
-  /** #171: every direct prerequisite done and unparked now, else TASK_PREREQUISITES_UNMET. Takes no lock. */
+  /** #171: every direct prerequisite done now, else TASK_PREREQUISITES_UNMET. Takes no lock. */
   requirePrerequisitesMet(taskId: string): Promise<void>;
 }
 /**

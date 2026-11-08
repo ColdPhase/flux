@@ -161,7 +161,7 @@ class NativeDetailsJourney(unittest.TestCase):
         accept.click()
         expect(panel).to_contain_text("Decision · accepted")
         after=api(self.ctx,"GET",self.root+"/work?limit=100")["items"]
-        self.assertEqual([(item["id"],item["version"],item["parked"]) for item in before],[(item["id"],item["version"],item["parked"]) for item in after],"no task was moved or parked")
+        self.assertEqual([(item["id"],item["version"]) for item in before],[(item["id"],item["version"]) for item in after],"no task was moved")
         self.assertFalse(any(link["role"]=="still_applies" for link in self.native("decision",self.pivot["id"])["links"]))
         self.assertEqual(self.native("decision",self.rules[0]["id"])["status"],"superseded")
         expect(panel.get_by_role("button",name=self.rules[0]["title"],exact=True)).to_be_visible()

@@ -28,7 +28,7 @@ export interface GithubRepositoryPort {
   bind(record: GithubBindingRecord): Promise<GithubBindingRecord>;
   disconnect(id: string): Promise<void>;
   task(id: string): Promise<{ id: string; workspaceId: string; projectId: string } | null>;
-  /** An agent's hold on a task now (#160 AC-3): held, or not held (including a closed or parked task). */
+  /** An agent's hold on a task now (#160 AC-3): held, or not held (including a closed task). */
   hold(taskId: string, agentId: string): Promise<'held' | 'none'>;
   links(taskId: string): Promise<GithubLinkRecord[]>;
   linkedPulls(bindingId: string): Promise<GithubLinkRecord[]>;
@@ -62,7 +62,7 @@ export interface GithubRuleChangeRecord {
 export interface GithubRuleDefaultRecord { mode: GithubRuleMode | null; setByUserId: string | null; updatedAt: Date }
 /** The native task as the rule reads and changes it. */
 export interface GithubTaskState {
-  id: string; workspaceId: string; projectId: string; status: WorkStatus; blocker: string | null; parked: boolean;
+  id: string; workspaceId: string; projectId: string; status: WorkStatus; blocker: string | null;
   criteria: string[]; version: number; prerequisitesMet: boolean;
 }
 /**

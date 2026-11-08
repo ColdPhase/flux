@@ -215,7 +215,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
   async function assigned(tx: Transaction, event: Event) {
     const rows = agentTaskRows(tx);
     const work = await workRows(tx).findWork(event.workId, { lock: true });
-    if (!work || FINISHED.has(work.status) || work.parked) return;
+    if (!work || FINISHED.has(work.status)) return;
     if (event.ownerUserId) {
       // A person was given the task and chose an agent: their setting gives it to that agent, as them.
       if (work.owner?.kind !== 'human' || work.owner.id !== event.ownerUserId) return;

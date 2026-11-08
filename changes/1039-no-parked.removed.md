@@ -1,0 +1,1 @@
+- Tasks: the parked state of a task, which nothing set after decisions stopped moving tasks, and the `still_applies` link role: the database columns, the API fields (`parked` on a task, a row and a prerequisite, the summary's parked count, the `parked` group, the project export's `parked`) and the places that read them ([#1039](https://github.com/ColdPhase/flux/issues/1039)).

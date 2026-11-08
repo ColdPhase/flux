@@ -300,7 +300,6 @@
             "enum": [
               "source",
               "affects",
-              "still_applies",
               "about",
               "related",
               "mentions",
@@ -953,31 +952,6 @@
               }
             ]
           },
-          "parked": {
-            "anyOf": [
-              {
-                "additionalProperties": false,
-                "properties": {
-                  "at": {
-                    "format": "date-time",
-                    "type": "string"
-                  },
-                  "decisionId": {
-                    "minLength": 1,
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "at",
-                  "decisionId"
-                ],
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "status": {
             "enum": [
               "open",
@@ -1023,7 +997,6 @@
           "number",
           "outcome",
           "owner",
-          "parked",
           "status",
           "title",
           "updatedAt",

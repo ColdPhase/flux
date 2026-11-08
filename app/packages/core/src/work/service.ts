@@ -49,7 +49,7 @@ import { readTaskActivity } from './task-activity.js';
 // immutable plan intent. Writers that touch the graph or an intent take their locks in one order:
 // project access rows -> the plan material row -> the command identity -> the project task-graph lock
 // -> the complete task rows in ascending id -> everything else. Starting or finishing a task needs every
-// prerequisite done and unparked. Nothing infers that listed criteria are satisfied.
+// prerequisite done. Nothing infers that listed criteria are satisfied.
 //
 // Explicit effects on a task's canonical thread (#154): an explicitly saved nonempty blocker and a
 // published result contribute through the mandatory `ports.contributions` hook, inside the same unit
@@ -121,7 +121,7 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
   });
   const githubRule = (record: WorkRecord): WorkItem['githubRule'] => {
     const rule = rules.get(record.id);
-    return rule ? { ...presentGithubRule(rule, { ...record, parked: !!record.parked }),
+    return rule ? { ...presentGithubRule(rule, record),
       setUpBy: rule.authorUserId ? named({ kind: 'human', id: rule.authorUserId }) : null } : null;
   };
   return {
@@ -134,10 +134,9 @@ async function presenter(ports: WorkPorts, ids: string[], actors: (ActorRef | nu
         dropped: record.dropped, cameOfIt: record.cameOfIt,
         dueOn: record.dueOn,
         dependencyIds: plan.prerequisites.map((item) => item.id),
-        prerequisites: plan.prerequisites.map((item) => ({ ...item, met: item.status === 'done' && !item.parked })),
+        prerequisites: plan.prerequisites.map((item) => ({ ...item, met: item.status === 'done' })),
         planIntent: plan.planIntent,
         owner: record.owner ? named(record.owner) : null,
-        parked: record.parked ? { decisionId: record.parked.decisionId, at: iso(record.parked.at) } : null,
         lifecycle: record.creationRevertedAt && record.creationRevertedBy && record.creationReversionNoticeId
           ? { state: 'creation_reverted', noticeId: record.creationReversionNoticeId, revertedAt: iso(record.creationRevertedAt), revertedBy: named(record.creationRevertedBy) } : { state: 'active' },
         createdBy: named(record.createdBy), githubRule: githubRule(record), version: record.version, updatedAt: iso(record.updatedAt),
@@ -607,9 +606,6 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (ruleRevision !== undefined && ((await ports.work.githubRules([id])).get(id)?.revision ?? 0) !== ruleRevision)
           throw new VersionConflictError(current.version, await presentWork(ports, current));
         const nextStatus = changes.status ?? current.status;
-        // A person who explicitly finishes parked work with its current version also takes it
-        // out of the parked list; work is never both finished and parked.
-        if (nextStatus === 'done' && current.parked) changes.parked = null;
         if (nextStatus !== 'blocked') {
           if (changes.blocker) throw new InvalidInputError('A blocker applies to blocked work only');
           changes.blocker = null;
@@ -647,7 +643,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         if (record.status === 'done' && current.status !== 'done' && waiters.length)
           await resumeWaiting(ports, principal, by, waiters, (task) => task.waitingOn?.kind === 'task' && task.waitingOn.id === id,
             { said: `#${record.number} ${record.dropped ? 'was dropped' : 'is done'}`, token: 'work', taskId: id });
-        // It starts or finishes only with every prerequisite done and unparked, and keeps that while it
+        // It starts or finishes only with every prerequisite done, and keeps that while it
         // is active. The check reads the edges as just replaced; a failure rolls back the whole change.
         if (ELIGIBLE_STATUSES.has(nextStatus) && (dependencyIds !== undefined || nextStatus !== current.status)) await assertPrerequisitesMet(ports.work, workspaceId, id);
         await useFence.mark(used);
@@ -730,7 +726,7 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
 
     /**
      * A person with write access accepts a proposal. If it replaces an accepted decision, the earlier one is
-     * marked superseded (kept, with its rationale). Nothing else changes: no task is moved or parked (#871).
+     * marked superseded (kept, with its rationale). Nothing else changes: no task is moved (#871).
      */
     async acceptDecision(principal: Principal, decisionId: string, expected: number | undefined): Promise<Decision> {
       const by = actor(principal);
@@ -831,12 +827,10 @@ export function createWorkUseCases(uow: WorkUnitOfWork) {
         const wanted = sortedIds([...directTasks, ...waiters, ...(finishes ? await directPrerequisiteIds(ports.work, workspaceId, [finishes.id]) : [])], 'taskIds');
         const useFence = await ports.work.lockPreparedTaskUse(wanted);
         const locked = contributions ? await ports.contributions.lockTasks(contributions) : [];
-        // Finishing changes someone's work: it needs the version the author saw and a status
-        // that can become done. A parked or not-pursued item is another person's disposition.
+        // Finishing changes someone's work: it needs the version the author saw.
         const finished = finishes ? locked.find((row) => row.id === finishes!.id)! : null;
         if (finished && finishes) {
           if (finished.version !== finishes.version) throw new VersionConflictError(finished.version, await presentWork(ports, finished));
-          if (finished.parked) throw new ConflictError('Parked work must be brought back into the plan before a result finishes it', 'WORK_NOT_FINISHABLE');
         }
         const scope = { workspaceId, projectId: project };
         const record = await ports.work.insertResult({ id: resultId, ...scope, title, finding, evidence, createdBy: by });

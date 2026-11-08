@@ -25,7 +25,6 @@ export interface PrerequisiteState {
   id: string;
   /** Null when the prerequisite row is not in the task's workspace and project. */
   status: WorkStatus | null;
-  parked: boolean;
 }
 
 /** The reads and the lock the graph rules need. `workRows`/`taskGraphRows` implement it. */
@@ -87,24 +86,24 @@ export async function assertNoDependencyCycle(reader: Pick<TaskGraphReader, 'dir
   }
 }
 
-/** A prerequisite is met only when it exists in the task's project, is done and is not parked. */
+/** A prerequisite is met only when it exists in the task's project, is done. */
 export function unmetPrerequisites(prerequisites: readonly PrerequisiteState[]): PrerequisiteState[] {
-  return prerequisites.filter((item) => item.status !== 'done' || item.parked);
+  return prerequisites.filter((item) => item.status !== 'done');
 }
 
 /**
  * Runs after the caller holds the complete sorted task locks and acquires none itself: it reads the
- * locked current rows. Every direct prerequisite must be done and unparked; a missing, foreign, open,
- * blocked, in-progress, not-pursued or parked one is a visible 409 TASK_PREREQUISITES_UNMET.
+ * locked current rows. Every direct prerequisite must be done; a missing, foreign, open,
+ * blocked or in-progress one is a visible 409 TASK_PREREQUISITES_UNMET.
  */
 export async function assertPrerequisitesMet(reader: Pick<TaskGraphReader, 'prerequisiteStates'>, workspaceId: string, taskId: string): Promise<void> {
   const state = await reader.prerequisiteStates(valid.id(workspaceId, 'workspaceId'), valid.id(taskId, 'taskId'));
   if (!state) throw new NotFoundError('Work item', 'WORK_NOT_FOUND');
   const unmet = unmetPrerequisites(state.prerequisites);
   if (!unmet.length) return;
-  const error = new ConflictError(`Finish its ${unmet.length === 1 ? 'prerequisite' : `${unmet.length} prerequisites`} first: it can start only when every prerequisite is done and not parked`,
+  const error = new ConflictError(`Finish its ${unmet.length === 1 ? 'prerequisite' : `${unmet.length} prerequisites`} first: it can start only when every prerequisite is done`,
     'TASK_PREREQUISITES_UNMET');
-  error.details = { prerequisites: unmet.slice(0, 50).map((item) => ({ id: item.id, status: item.status, parked: item.parked })) };
+  error.details = { prerequisites: unmet.slice(0, 50).map((item) => ({ id: item.id, status: item.status })) };
   throw error;
 }
 

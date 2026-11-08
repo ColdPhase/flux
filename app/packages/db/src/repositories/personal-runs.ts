@@ -433,11 +433,11 @@ export function personalRunRows(db: DbExecutor) {
       return row ?? null;
     },
 
-    /** Unfinished, unparked work of the project, newest first. */
+    /** Unfinished work of the project, newest first. */
     async openWork(projectId: string, limit: number) {
       const w = schema.projectWorkItems;
       return db.select({ id: w.id, version: w.version, number: w.number, title: w.title, outcome: w.outcome, status: w.status }).from(w)
-        .where(and(eq(w.projectId, projectId), notInArray(w.status, FINISHED_WORK), sql`${w.creationRevertedAt} IS NULL`, sql`${w.parkedByDecisionId} IS NULL`))
+        .where(and(eq(w.projectId, projectId), notInArray(w.status, FINISHED_WORK), sql`${w.creationRevertedAt} IS NULL`))
         .orderBy(desc(w.createdAt), desc(w.id)).limit(limit);
     },
 

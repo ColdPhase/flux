@@ -162,7 +162,6 @@ export function projectExportRows(db: DbExecutor) {
             createdBy: { kind: notice.createdByKind, id: notice.createdById }, sources: notice.sources, createdAt: iso(notice.createdAt) })) },
         id: row.id, number: row.number, title: row.title, outcome: row.outcome, status: row.status, blocker: row.blocker, dropped: row.dropped, cameOfIt: row.cameOfIt,
         owner: row.ownerUserId ? human(row.ownerUserId) : row.ownerAgentId ? { kind: 'agent' as const, id: row.ownerAgentId } : null,
-        parked: row.parkedByDecisionId && row.parkedAt ? { decisionId: row.parkedByDecisionId, at: iso(row.parkedAt) } : null,
         createdBy: { kind: row.createdByKind, id: row.createdById }, version: row.version, createdAt: iso(row.createdAt), updatedAt: iso(row.updatedAt),
       }));
     },

@@ -13,7 +13,7 @@ export async function nativePrerequisiteCounts(db: DbExecutor, projectId: string
   const prerequisite = alias(task, 'bounded_prerequisite');
   const rows = await db.select({ id: task.id,
     total: sql<number>`count(${edge.prerequisiteId})::integer`,
-    unmet: sql<number>`count(${edge.prerequisiteId}) FILTER (WHERE ${prerequisite.id} IS NULL OR ${prerequisite.status} <> 'done' OR ${prerequisite.parkedAt} IS NOT NULL)::integer`,
+    unmet: sql<number>`count(${edge.prerequisiteId}) FILTER (WHERE ${prerequisite.id} IS NULL OR ${prerequisite.status} <> 'done')::integer`,
     invalid: sql<number>`count(${edge.prerequisiteId}) FILTER (WHERE ${edge.workspaceId} <> ${task.workspaceId} OR ${edge.projectId} <> ${task.projectId} OR ${prerequisite.id} IS NULL)::integer`,
   }).from(task).leftJoin(edge, eq(edge.taskId, task.id))
     .leftJoin(prerequisite, and(eq(prerequisite.id, edge.prerequisiteId), eq(prerequisite.workspaceId, task.workspaceId), eq(prerequisite.projectId, task.projectId)))

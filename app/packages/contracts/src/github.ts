@@ -68,7 +68,7 @@ export const githubTaskLinksPath = (taskId: string) => `/api/v1/work/${taskId}/g
  * "Let linked PRs move this task" (#74 G-1a). A person who can edit the task turns it on, and that publishes the status
  * changes its required PRs cause, with their PR numbers, head commits and check names, to everyone who can read the task.
  * Repository names, PR titles and other provider facts stay behind each reader's own GitHub access. The rule never
- * reassigns the task, changes its audience or touches parked, done or not-pursued work.
+ * reassigns the task, changes its audience or touches done work.
  */
 export interface GithubTaskRule {
   mode: GithubRuleMode;

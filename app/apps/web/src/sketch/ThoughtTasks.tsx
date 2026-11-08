@@ -4,7 +4,7 @@ import { useRevalidator } from 'react-router';
 import type { ThoughtTaskRow, WorkThoughtTasks } from '@flux/contracts';
 import { AgentTag, Icon, IconButton, MEDIA, StatusGlyph, duration, play, trapTab, useMediaQuery } from '../ui';
 import { useShellActions, type ThoughtTasksView } from '../app/shellContext';
-import { STATUS_LABEL, taskNumber } from '../work/format';
+import { STATUS_LABEL, statusPhrase, taskNumber } from '../work/format';
 import { getWorkThoughtTasks, thoughtChunks } from '../work/read-api';
 import { useWorkRead } from '../work/useWorkRead';
 import { quote } from './format';
@@ -94,10 +94,10 @@ function ThoughtTaskList({ thought, projectId, list, titleId, onClose, onChoose 
         {tasks.map((item) => (
           <li key={item.id}>
             <RefLink className="sk-task" to={taskHref(projectId, item.id)} title={`Task ${item.id}`} data-work-id={item.id} onClick={(event) => onChoose(event, item.id)}>
-              <StatusGlyph status={item.status} className={item.parked ? 'ui-glyph--parked' : undefined} />
+              <StatusGlyph status={item.status} />
               <span className="sk-task__b">
                 <span className="sk-task__t">{item.title}</span>
-                <span className="sk-task__m"><span className="sk-task__id"><span className="ui-task-number">{taskNumber(item)}</span></span> · {STATUS_LABEL[item.status]}{item.parked ? ' · parked' : ''}</span>
+                <span className="sk-task__m"><span className="sk-task__id"><span className="ui-task-number">{taskNumber(item)}</span></span> · {statusPhrase(item)}</span>
                 <span className="sk-task__m sk-task__people">{item.owner ? <>Owner {item.owner.name}{item.owner.kind === 'agent' ? <> <AgentTag /></> : null}</> : 'No owner yet'} · added by {item.createdBy.name}{item.createdBy.kind === 'agent' ? <> <AgentTag /></> : null}</span>
               </span>
               <Icon name="chevron-right" size={14} />
