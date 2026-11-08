@@ -1,6 +1,5 @@
 import type { AgentMayDo, ExternalClientDesignation } from './agent-proposals.js';
 import type { AgentOperation } from './agent-execution.js';
-import type { CoWorkRequestKind, CoWorkRequestState } from './cowork.js';
 
 /**
  * The Agents view of a project (UI116-2): every current external connection
@@ -53,19 +52,6 @@ export interface ProjectAgentConnection {
   currentWork: { taskId: string; taskTitle: string; role: 'execute' | 'review' | 'plan'; state: 'pending' | 'claimed' | 'paused';
     /** Expiry only when the claimed lease matches this connection's current usable session and project ceiling. */
     liveClaimExpiresAt: string | null } | null;
-  /** Requests addressed to this connection that are still open here (#160 AC-5), oldest first. Quiet acknowledgments are not listed. */
-  requests: ProjectAgentRequest[];
-}
-
-/** One open request in the Agents view: who asked, what for, its task and why it waits. Its content stays in its source. */
-export interface ProjectAgentRequest {
-  id: string;
-  kind: CoWorkRequestKind;
-  state: Extract<CoWorkRequestState, 'queued' | 'deferred' | 'claimed'>;
-  reason: string | null;
-  taskId: string;
-  taskTitle: string;
-  sender: { connectionId: string; name: string; ownerName: string };
 }
 
 export interface ProjectAgents {

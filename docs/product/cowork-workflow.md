@@ -60,12 +60,9 @@ did it, and the admin cannot prompt it.
 - The agent thread in the Agents tab, and the separate "agents' thread" beside a task's discussion.
 - Addressed requests between clients (help, review, fix, hand-off) with their lineage limits, and
   wake-up at the next Resume, as a way for agents to work together. TA-3 is how they do now.
-  **Still in the code, unused by the story above:** the local client's tools `flux_send_request`,
-  `flux_claim_request`, `flux_defer_request`, `flux_decline_request`, `flux_resolve_request` and
-  `flux_coordination_inbox`, their limits (`COWORK_REQUEST_POLICY`), the request cards in a task's
-  Details and their storage. Removing them is not a clean part of another change (it versions the
-  pinned MCP tool contract, needs a migration and takes the cards out of the panel), so it is its own
-  issue: [#973](https://github.com/ColdPhase/flux/issues/973).
+  They are gone from the code too (#973): the local client's tools `flux_send_request`, `flux_claim_request`, `flux_defer_request`,
+  `flux_decline_request`, `flux_resolve_request` and `flux_coordination_inbox`, their limits (`COWORK_REQUEST_POLICY`), the request
+  cards in a task's Details and their storage. A local client hands work to another with a unit (`flux_create_unit`, `flux_transfer_unit`).
 - The playbook bundle and Start/Resume as steps a person runs.
 - The gate of a formal co-work review verdict pinned to a pull request head (the review gate of F-016's CO-4
   and F-018's "formal review/check gates"). Its removal is a **coordinator default, not a founder decision**
@@ -75,6 +72,5 @@ did it, and the admin cannot prompt it.
   check". A separate reviewer is optional, for example a subtask for a Reviewer agent, which is
   an ordinary agent. GitHub's own reviews and checks stay GitHub's (LC-4). Hubert can reinstate
   the gate. Nothing waits for a verdict any more and the project's Review rule is gone (#959); the
-  record of a verdict on a *review request* (`cowork_review_verdicts`) goes with the requests above
-  ([#973](https://github.com/ColdPhase/flux/issues/973)). The one rule kept is that a run is not
+  record of a verdict on a *review request* (`cowork_review_verdicts`) went with the requests above (#973). The one rule kept is that a run is not
   reviewed by its own author's connection (`COWORK_REVIEW_SEPARATION`).

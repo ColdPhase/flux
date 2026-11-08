@@ -30,7 +30,7 @@ const missing = () => new NotFoundError('Assistant change', 'ASSISTANT_CHANGE_NO
 const STALE = 'Changed since you asked';
 /** What Approve says when its owner can no longer use the space the change is in: not that the target changed (#930). */
 const LOST_SPACE = 'You no longer have access to this space, so this wasn’t made';
-/** What a client's unit, transfer or request says when its Approve comes after the claim or session it was made under ended (a 300 s lease). */
+/** What a client's unit or transfer says when its Approve comes after the claim or session it was made under ended (a 300 s lease). */
 const CLAIM_ENDED = 'The claim this was made under has ended, so it can\'t be made now. Ask again with a live claim';
 const CLAIM_ENDED_CODES = new Set(['COWORK_CLAIM_LOST', 'AGENT_EXECUTION_UNAVAILABLE', 'RUNTIME_UNAVAILABLE']);
 type ToolOutput = { content?: { text?: string }[]; isError?: boolean };
@@ -44,7 +44,7 @@ function savedTools(db: Database, claims: FluxMcpClaims): Map<string, SavedTool>
     register(registry as unknown as AgentToolRegistry, db, claims);
   // The hand-off tool of the same registry: only its run-private view is ever stored, and Approve decodes exactly that (below).
   // (Its recovery-cursor secret serves tools a saved change never calls; the registration only needs a well-formed one.)
-  registerAgentCoworkActions(registry as unknown as AgentToolRegistry, db, claims, 'a-saved-change-reads-no-recovery-cursor');
+  registerAgentCoworkActions(registry as unknown as AgentToolRegistry, db, claims);
   return callbacks;
 }
 

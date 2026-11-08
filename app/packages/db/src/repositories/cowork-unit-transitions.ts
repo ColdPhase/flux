@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import type { CoWorkSourceRef } from '@flux/contracts';
 import * as schema from '../schema.js';
 import { aiEpochIsCurrent } from './space-ai.js';
@@ -11,7 +11,6 @@ import { taskUseRows } from './task-use.js';
 // preparation (current bearer/runtime/grant/command ledger) in this same outer transaction. No grant, receipt,
 // request, claim, stream event or model invocation is written here.
 const units = schema.coworkUnits, slots = schema.coworkConnectionSlots, connections = schema.agentConnections;
-const requests = schema.coworkRequests;
 type UnitRow = typeof units.$inferSelect;
 export interface CoWorkUnitTransitionScope {
   workspaceId: string;
@@ -36,12 +35,6 @@ function unit(row: UnitRow) {
     checkpointId: row.checkpointId, transferredFromConnectionId: row.transferredFromConnectionId ?? null, outcomeRef: row.outcomeRef ?? null,
     lease: row.leaseId ? { id: row.leaseId, runtimeSessionId: row.leaseSessionId!, expiresAt: row.leaseExpiresAt! } : null };
 }
-/** Requests addressed to the unit that can still be claimed or answered. An expired request no longer can. */
-function openRequestsOf(unitId: SQL) {
-  return sql`SELECT 1 FROM cowork_requests open_request WHERE open_request.unit_id = ${unitId}
-    AND open_request.state IN ('queued', 'deferred', 'claimed') AND open_request.expires_at > clock_timestamp()`;
-}
-
 export function coworkUnitTransitionRows(tx: DbExecutor) {
   /** Fresh database wall time, never transaction-start `now()` or a client timestamp. */
   const fresh = async () => {
@@ -50,12 +43,11 @@ export function coworkUnitTransitionRows(tx: DbExecutor) {
   };
   const inProject = (scope: { workspaceId: string; projectId: string }) =>
     and(eq(units.workspaceId, scope.workspaceId), eq(units.projectId, scope.projectId), aiEpochIsCurrent(units.aiEpoch, units.projectId));
-  /** The conditional write repeats the holder fence, the version and the open-request rule. */
+  /** The conditional write repeats the holder fence and the version. */
   const held = (scope: CoWorkUnitTransitionScope, fence: CoWorkUnitTransitionFence) => and(inProject(scope),
     eq(units.id, scope.unitId), eq(units.assignmentConnectionId, scope.holderConnectionId), eq(units.state, 'claimed'),
     eq(units.version, fence.expectedVersion), eq(units.generation, fence.generation), eq(units.leaseId, fence.leaseId),
-    eq(units.leaseSessionId, fence.runtimeSessionId), sql`${units.leaseExpiresAt} > clock_timestamp()`,
-    sql`NOT EXISTS (${openRequestsOf(sql`${units.id}`)})`);
+    eq(units.leaseSessionId, fence.runtimeSessionId), sql`${units.leaseExpiresAt} > clock_timestamp()`);
   return {
     /**
      * Assignee connection row (FOR SHARE, transfer only) -> sorted holder/assignee slots -> caller's graph
@@ -77,7 +69,7 @@ export function coworkUnitTransitionRows(tx: DbExecutor) {
         .orderBy(asc(slots.connectionId)).for('update');
       // The unit's task and lineage are immutable; read them before any task lock, then lock the complete set.
       const [located] = await tx.select().from(units).where(and(inProject(scope), eq(units.id, scope.unitId)));
-      if (!located) return { unit: null, openRequests: 0, assignee: null, runUnits: [], now: await fresh(), taskFence: null };
+      if (!located) return { unit: null, assignee: null, runUnits: [], now: await fresh(), taskFence: null };
       const inputs: CoWorkTaskLockInput[] = [{ id: located.id, taskId: located.taskId, projectId: located.projectId,
         lineageTaskId: located.lineageTaskId }];
       const additional = await prepareTasks(inputs);
@@ -85,21 +77,16 @@ export function coworkUnitTransitionRows(tx: DbExecutor) {
       // #238: the one sorted task pass is the shared use fence; it refuses a missing or creation-undone task.
       const taskFence = await taskUseRows(tx).lockPrepared(taskIds);
       const [locked] = await tx.select().from(units).where(and(inProject(scope), eq(units.id, scope.unitId))).for('update');
-      if (!locked) return { unit: null, openRequests: 0, assignee: null, runUnits: [], now: await fresh(), taskFence };
+      if (!locked) return { unit: null, assignee: null, runUnits: [], now: await fresh(), taskFence };
       // Every unit of a run changes only under its task row lock, held above.
       const runUnits = await tx.select({ id: units.id, role: units.role, assignmentConnectionId: units.assignmentConnectionId,
         ownerUserId: connections.ownerUserId }).from(units)
         .leftJoin(connections, and(eq(connections.workspaceId, units.workspaceId), eq(connections.id, units.assignmentConnectionId)))
         .where(and(inProject(scope), eq(units.lineageTaskId, locked.lineageTaskId), eq(units.runId, locked.runId))).orderBy(asc(units.id));
-      // Admissions and request claims for this unit hold its assignee's slot through commit, so the count is stable.
-      const [open] = await tx.select({ n: sql<number>`count(*)::int` }).from(requests)
-        .where(and(eq(requests.workspaceId, scope.workspaceId), eq(requests.projectId, scope.projectId), eq(requests.unitId, locked.id),
-          inArray(requests.state, ['queued', 'deferred', 'claimed']), sql`${requests.expiresAt} > clock_timestamp()`));
       // Fresh wall time AFTER every lock wait; this fences the holder's lease.
       const now = await fresh();
       return {
         unit: unit(locked),
-        openRequests: open?.n ?? 0,
         assignee: assignee && !assignee.revokedAt && assignee.mayDo !== 'read' && await connectionReaches(tx, assignee.id, scope.projectId)
           ? { id: assignee.id, ownerUserId: assignee.ownerUserId } : null,
         runUnits, now, taskFence,
@@ -130,7 +117,7 @@ export function coworkUnitTransitionRows(tx: DbExecutor) {
     /**
      * Declined by the receiving assignee before it ever claimed the unit: back, paused, to the connection that handed it
      * over, with its checkpoint and task untouched. Null if the unit is no longer pending for this connection at this
-     * version, was not handed over by `scope.assigneeConnectionId`, has open requests, or that connection is gone.
+     * version, was not handed over by `scope.assigneeConnectionId`, or that connection is gone.
      */
     async decline(scope: CoWorkUnitTransitionScope, expectedVersion: number) {
       const prior = scope.assigneeConnectionId;
@@ -139,7 +126,7 @@ export function coworkUnitTransitionRows(tx: DbExecutor) {
         generation: sql`${units.generation} + 1`, version: sql`${units.version} + 1`, leaseId: null, leaseSessionId: null,
         leaseExpiresAt: null, updatedAt: sql`clock_timestamp()` }).where(and(inProject(scope), eq(units.id, scope.unitId),
         eq(units.assignmentConnectionId, scope.holderConnectionId), eq(units.state, 'pending'), eq(units.version, expectedVersion),
-        eq(units.transferredFromConnectionId, prior), sql`NOT EXISTS (${openRequestsOf(sql`${units.id}`)})`, sql`EXISTS (
+        eq(units.transferredFromConnectionId, prior), sql`EXISTS (
           SELECT 1 FROM agent_connections prior WHERE prior.id = ${prior}::uuid
             AND prior.workspace_id = ${scope.workspaceId}::uuid AND prior.revoked_at IS NULL)`)).returning();
       return row ? unit(row) : null;

@@ -1,5 +1,5 @@
 import type { AgentExecutionCommand, AgentJsonValue, AgentPeerRequestClass, AgentPostcondition, CoWorkSourceRef } from '@flux/contracts';
-import { coworkAdmissionRows, coworkUnitTransitionRows, referencedTaskIds, type Transaction } from '@flux/db';
+import { coworkReferenceRows, coworkUnitTransitionRows, referencedTaskIds, type Transaction } from '@flux/db';
 import { agentOutcomeFingerprint, ConflictError, InvalidInputError, normalizeAgentExecution, normalizeCoWorkUnitTransition,
   NotFoundError, requireCoWorkUnitTransition, type CoWorkContext } from '@flux/core';
 import { agentExecutionInTransaction } from '../agent-connection/execution.js';
@@ -77,7 +77,7 @@ export async function coWorkUnitTransitionInTransaction(tx: Transaction, claims:
   locked = true;
   // The role never changes; a grant of another class names no unit here.
   if (!facts.unit || facts.unit.role !== command.peerRequestClass) throw new NotFoundError('Work unit', 'COWORK_UNIT_NOT_FOUND');
-  const readable = (ref: CoWorkSourceRef) => coworkAdmissionRows(tx).referencesReadable(context.workspaceId, context.projectId, [ref]);
+  const readable = (ref: CoWorkSourceRef) => coworkReferenceRows(tx).referencesReadable(context.workspaceId, context.projectId, [ref]);
 
   if (prepared.replay) {
     // Observation only: no fence, update or debit. `complete` rechecks current authority and the post-state hook

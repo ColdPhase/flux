@@ -60,7 +60,6 @@ export interface AgentInstructionAcknowledgment {
 export interface AgentCoordinationReference {
   activeClaimReference: string | null;
   checkpointReference: string | null;
-  inboxContinuation: string | null;
   /** Opt-in recovery of existing work; no claim/lease secret or checkpoint content. */
   work?: {
     units: { id: string; taskId: string; role: 'execute' | 'review' | 'plan'; state: 'pending' | 'paused' | 'claimed';

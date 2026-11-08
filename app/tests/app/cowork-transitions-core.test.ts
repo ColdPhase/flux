@@ -14,7 +14,7 @@ function scene(role: CoWorkTransitionUnit['role'] = 'execute') {
     runId: randomUUID(), role, assignmentConnectionId: context.connectionId, state: 'claimed', version: 2, generation: 1,
     lease: { id: randomUUID(), runtimeSessionId: context.runtimeSessionId, expiresAt: new Date(now.getTime() + 60_000) } };
   const assignee = { id: randomUUID(), ownerUserId: 'owner-b' };
-  const facts: CoWorkUnitTransitionFacts = { unit, openRequests: 0, assignee, now,
+  const facts: CoWorkUnitTransitionFacts = { unit, assignee, now,
     runUnits: [{ id: unit.id, role, assignmentConnectionId: context.connectionId, ownerUserId: 'owner-a' }] };
   const fence = { expectedVersion: 2, generation: 1, leaseId: unit.lease!.id };
   const complete: CoWorkUnitTransitionInput = { operation: 'complete', ...fence, outcome: { type: 'result', id: randomUUID() } };
@@ -43,7 +43,7 @@ test('payloads are exact: a native outcome or an assignee plus the holder fence;
     assert.throws(() => normalizeCoWorkUnitTransition('transfer', payload), code('INVALID_INPUT'), JSON.stringify(payload));
 });
 
-test('only the current holder under its live claim completes or transfers, and nothing addressed to the unit may be open', () => {
+test('only the current holder under its live claim completes or transfers', () => {
   for (const which of ['complete', 'transfer'] as const) {
     const s = scene();
     const input = s[which];
@@ -63,7 +63,6 @@ test('only the current holder under its live claim completes or transfers, and n
     refuse({}, 'COWORK_CLAIM_LOST', {}, { leaseId: randomUUID() });
     refuse({}, 'COWORK_CLAIM_LOST', { runtimeSessionId: randomUUID() });
     refuse({ now: s.unit.lease!.expiresAt }, 'COWORK_CLAIM_LOST');
-    refuse({ openRequests: 1 }, 'COWORK_UNIT_REQUESTS_OPEN');
   }
 });
 

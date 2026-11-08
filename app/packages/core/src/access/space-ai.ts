@@ -74,10 +74,9 @@ export async function sweepSpaceAi(job: SpaceAiSweepJob, db: Database, ports: Pi
       return ended.length + stopping.length;
     }],
     ['tokens', (rows) => rows.closeRunTokens(projectId, epoch)],
-    ['requests', (rows) => rows.cancelRequests(projectId, epoch)],
     ['units', (rows) => rows.stopUnits(projectId, epoch)],
   ];
-  const swept: SpaceAiSwept = { runs: 0, tokens: 0, requests: 0, units: 0, failed: [] };
+  const swept: SpaceAiSwept = { runs: 0, tokens: 0, units: 0, failed: [] };
   const errors: unknown[] = [];
   for (const [name, step] of steps) {
     try { swept[name] = await db.transaction((tx) => step(ports.aiSweep(tx), tx)); }

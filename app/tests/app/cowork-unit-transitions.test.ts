@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { after, test } from 'node:test';
-import type { Agent, AgentConnection, AgentExecutionCommand, CoWorkRequestLimits, Project, WorkItem,
+import type { Agent, AgentConnection, AgentExecutionCommand, Project, WorkItem,
   WorkResult } from '@flux/contracts';
 import { createConnection } from './support/mcp-actions.js';
 import { createDatabase } from '@flux/db';
@@ -9,8 +9,6 @@ import { DomainError, type CoWorkUnitPolicy } from '@flux/core';
 import { agentRuntimeInTransaction } from '../../apps/server/src/agent-connection/runtime.js';
 import { coWorkClaimInTransaction, type CoWorkClaimPolicy } from '../../apps/server/src/co-work/claims.js';
 import { coWorkTaskGraphLocks } from '../../apps/server/src/co-work/graph.js';
-import { coWorkRequestInTransaction, type CoWorkRequestPolicy } from '../../apps/server/src/co-work/requests.js';
-import { coWorkRequestResponseInTransaction } from '../../apps/server/src/co-work/responses.js';
 import { coWorkUnitTransitionInTransaction } from '../../apps/server/src/co-work/transitions.js';
 import { coWorkUnitCreateInTransaction } from '../../apps/server/src/co-work/units.js';
 import { addMember, expectStatus, grant, person, project, workspace, type Person } from './support/people.js';
@@ -25,9 +23,6 @@ const UNITS: CoWorkUnitPolicy = { maximumRunUnits: 8 };
 const CLAIMS: CoWorkClaimPolicy = { maximumConnectionUnits: 2, leaseSeconds: 120,
   prepareTaskLocks: (tx, context, units) => coWorkTaskGraphLocks(tx, context.workspaceId, units),
   async requireEligible() {}, async requireCheckpointSources() {} };
-const LIMITS: CoWorkRequestLimits = { maximumRequests: 128, maximumDepth: 8, maximumReviewRounds: 16 };
-const REQUESTS: CoWorkRequestPolicy = { limits: LIMITS };
-const NO_PUBLICATION = { async publishResponse(): Promise<never> { throw new Error('A claim or decline never publishes'); } };
 type Role = 'execute' | 'review' | 'plan';
 
 async function world() {
@@ -106,19 +101,17 @@ async function effects(w: World, connections: readonly Connected[]) {
   const ids = connections.map((c) => c.connection.id);
   const units = (await pool.query(`SELECT id, work_id, lineage_work_id, run_id, unit_key, role, assignment_connection_id, state, version,
     generation, lease_id, lease_expires_at, checkpoint_id, outcome_ref FROM cowork_units WHERE workspace_id=$1 ORDER BY id`, [w.ws.id])).rows;
-  const requests = (await pool.query('SELECT id, state, version, claimed_generation, reason, response_ref FROM cowork_requests WHERE workspace_id=$1 ORDER BY id',
-    [w.ws.id])).rows;
   const receipts = (await pool.query('SELECT count(*)::int AS n FROM agent_command_receipts WHERE connection_id = ANY($1::uuid[])', [ids])).rows[0].n;
   const tasks = (await pool.query(`SELECT id, version, status, owner_user_id, owner_agent_id, updated_at FROM project_work_items
     WHERE workspace_id=$1 ORDER BY id`, [w.ws.id])).rows;
   const slots = (await pool.query('SELECT connection_id FROM cowork_connection_slots WHERE workspace_id=$1 ORDER BY connection_id', [w.ws.id])).rows;
-  return { units, requests, receipts, tasks, slots };
+  return { units, receipts, tasks, slots };
 }
 /** The attempt starts only after the snapshot, so nothing it does can leak into `before`. */
 async function refusedWithoutEffects(w: World, connections: readonly Connected[], attempt: () => Promise<unknown>, code: string) {
   const before = await effects(w, connections);
   await rejects(attempt(), code);
-  assert.deepEqual(await effects(w, connections), before, `${code}: no unit, request, slot row, grant use, receipt or task change`);
+  assert.deepEqual(await effects(w, connections), before, `${code}: no unit, slot row, grant use, receipt or task change`);
 }
 /** Lock types the sessions blocked by `holder` are waiting on (row locks show as `transactionid`). */
 async function waitingOn(holderPid: number) {
@@ -143,7 +136,7 @@ async function setup() {
   const own = await holder(w, codex, root.unitId, 'execute');
   return { w, a, codex, marekClaude, root, claim, fence: fenceOf(claim), own };
 }
-/** A review unit of the codex run assigned to Marek, claimed by Marek, plus the author's request helper. */
+/** A review unit of the codex run assigned to Marek, claimed by Marek,  */
 async function reviewScene() {
   const f = await setup();
   const { w } = f;
@@ -151,20 +144,7 @@ async function reviewScene() {
   const review = await createUnit(w, f.codex, f.a, 'review', 'review-a', { assignee: f.marekClaude.connection.id, parent });
   const reviewClaim = await claimUnit(w, f.marekClaude, review.unitId, 'review');
   const reviewer = await holder(w, f.marekClaude, review.unitId, 'review');
-  const ask = (intentKey: string, lifetimeSeconds = 3600) => command(w, f.codex, 'cowork.request', f.root.unitId, 'execute',
-    { generation: f.claim.generation, leaseId: f.claim.lease!.id, request: { unitId: review.unitId, expectedUnitVersion: reviewClaim.version,
-      recipientConnectionId: f.marekClaude.connection.id, intentKey, parentRequestId: null, kind: 'review',
-      target: { type: 'work', id: f.a.id, version: f.a.version }, sourceRefs: [{ type: 'material', id: w.material.materialId, version: 1 }],
-      criteriaRefs: [{ type: 'work', id: f.a.id, version: f.a.version }], priority: 1, peerUnblocking: true, lifetimeSeconds } });
-  const admit = (input: AgentExecutionCommand) => db.transaction((tx) => coWorkRequestInTransaction(tx, f.codex.claims, input, REQUESTS));
-  const live = { generation: reviewClaim.generation, leaseId: reviewClaim.lease!.id };
-  const take = (requestId: string, expectedRequestVersion = 1) => db.transaction((tx) => coWorkRequestResponseInTransaction(tx,
-    f.marekClaude.claims, command(w, f.marekClaude, 'cowork.request.claim', review.unitId, 'review',
-      { ...live, requestId, expectedRequestVersion }), NO_PUBLICATION));
-  const decline = (requestId: string, expectedRequestVersion = 2) => db.transaction((tx) => coWorkRequestResponseInTransaction(tx,
-    f.marekClaude.claims, command(w, f.marekClaude, 'cowork.request.respond', review.unitId, 'review',
-      { ...live, requestId, expectedRequestVersion, outcome: 'declined', reason: 'scope' }), NO_PUBLICATION));
-  return { ...f, review, reviewClaim, reviewer, reviewFence: fenceOf(reviewClaim), ask, admit, take, decline };
+  return { ...f, review, reviewClaim, reviewer, reviewFence: fenceOf(reviewClaim) };
 }
 
 test('the holder completes its claimed unit with an outcome: terminal, task untouched, replay observes, every later attempt is fenced', async () => {
@@ -293,7 +273,7 @@ test('the holder transfers its unit; the assignee claims it with its own grant; 
   // Replay by the former holder observes the unchanged unit, without a second debit.
   assert.deepEqual(await f.own.run(first), moved);
 
-  // The former holder lost the unit: claim, completion, another transfer and request claims are not found; its old
+  // The former holder lost the unit: claim, completion and another transfer are not found; its old
   // claim receipt no longer locates its unit.
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => db.transaction((tx) => coWorkClaimInTransaction(tx, f.codex.claims,
     command(w, f.codex, 'cowork.claim', f.root.unitId, 'execute', { expectedVersion: moved.version }), CLAIMS)), 'COWORK_UNIT_NOT_FOUND');
@@ -303,9 +283,6 @@ test('the holder transfers its unit; the assignee claims it with its own grant; 
     'COWORK_UNIT_NOT_FOUND');
   await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => f.own.run(f.own.handOver({ ...lateFence,
     assignmentConnectionId: f.codex.connection.id })), 'COWORK_UNIT_NOT_FOUND');
-  await refusedWithoutEffects(w, [f.codex, f.marekClaude], () => db.transaction((tx) => coWorkRequestResponseInTransaction(tx, f.codex.claims,
-    command(w, f.codex, 'cowork.request.claim', f.root.unitId, 'execute', { generation: f.claim.generation, leaseId: f.claim.lease!.id,
-      requestId: randomUUID(), expectedRequestVersion: 1 }), NO_PUBLICATION)), 'COWORK_UNIT_NOT_FOUND');
 
   // The transfer gave Marek nothing but a pending unit: Marek's own owner grants his claim, and the claim fences again.
   const marekClaim = await claimUnit(w, f.marekClaude, f.root.unitId, 'execute', moved.version);
@@ -426,80 +403,6 @@ test('transfer negative controls: an ineligible, revoked or self assignee and se
   // The author's execute unit can go to another connection of its own owner that holds no review unit of the run.
   const yetAnother = await w.connect(w.hubert, 'Hubert Gemini');
   assert.equal((await f.own.run(to(yetAnother.connection.id))).assignmentConnectionId, yetAnother.connection.id);
-});
-
-test('open requests addressed to the unit block completion and transfer until answered; expired ones do not; a completed unit takes no request', async () => {
-  const f = await reviewScene();
-  const { w } = f;
-  const all = [f.codex, f.marekClaude];
-  const result = await w.result('Review findings');
-  const finish = () => f.reviewer.run(f.reviewer.finish({ ...f.reviewFence, outcome: { type: 'result', id: result.id } }));
-  const marekCodex = await w.connect(w.marek, 'Marek Codex');
-  const asked = await f.admit(f.ask('review-1'));
-  assert.equal(asked.state, 'queued');
-  // Queued, then claimed under the live claim: both block.
-  await refusedWithoutEffects(w, all, finish, 'COWORK_UNIT_REQUESTS_OPEN');
-  await refusedWithoutEffects(w, all, () => f.reviewer.run(f.reviewer.handOver({ ...f.reviewFence,
-    assignmentConnectionId: marekCodex.connection.id })), 'COWORK_UNIT_REQUESTS_OPEN');
-  assert.equal((await f.take(asked.requestId)).state, 'claimed');
-  await refusedWithoutEffects(w, all, finish, 'COWORK_UNIT_REQUESTS_OPEN');
-  // Declined (a visible outcome for the sender): nothing is open any more. A request that expired cannot be answered and does not block.
-  assert.equal((await f.decline(asked.requestId)).state, 'declined');
-  const fleeting = await f.admit(f.ask('review-2', 1));
-  assert.equal(fleeting.state, 'queued');
-  await refusedWithoutEffects(w, all, finish, 'COWORK_UNIT_REQUESTS_OPEN');
-  await new Promise((resolve) => setTimeout(resolve, 1_200));
-  const done = await finish();
-  assert.equal(done.state, 'completed');
-  assert.deepEqual((await pool.query('SELECT state FROM cowork_requests WHERE id = ANY($1::uuid[]) ORDER BY created_at',
-    [[asked.requestId, fleeting.requestId]])).rows.map((x) => x.state), ['declined', 'queued'], 'completion changes no request row');
-  // A request to a completed unit could never be answered, so admission refuses it.
-  await refusedWithoutEffects(w, all, () => f.admit(f.ask('review-3')), 'COWORK_REQUEST_UNAVAILABLE');
-});
-
-test('race: a request admission and the completion of its recipient unit serialize on the holder slot, in both orders', async () => {
-  // Admission first: the completion waits on the recipient's slot and then sees the open request.
-  const f = await reviewScene();
-  const { w } = f;
-  const result = await w.result('Review findings');
-  const ready = barrier<number>(), release = barrier();
-  const holding = db.transaction(async (tx) => {
-    const outcome = await coWorkRequestInTransaction(tx, f.codex.claims, f.ask('review-race'), REQUESTS);
-    ready.resolve(await backendPid(tx)); await release.promise; return outcome;
-  });
-  holding.catch(() => ready.resolve(-1));
-  const holderPid = await ready.promise; assert.ok(holderPid > 0);
-  const completion = f.reviewer.run(f.reviewer.finish({ ...f.reviewFence, outcome: { type: 'result', id: result.id } }));
-  completion.catch(() => undefined);
-  const done = settled(completion);
-  await waitUntilBlockedBy(pool, holderPid);
-  assert.equal(done(), false, 'the completion waits for the admission');
-  assert.deepEqual(await waitingOn(holderPid), ['transactionid'], 'it waits on the recipient slot row');
-  release.resolve();
-  assert.equal((await holding).status, 'created');
-  await rejects(completion, 'COWORK_UNIT_REQUESTS_OPEN');
-  assert.equal((await unitRow(f.review.unitId)).state, 'claimed');
-
-  // Completion first: the admission waits on the same slot and is then refused, so no request is left unanswerable.
-  const g = await reviewScene();
-  const findings = await g.w.result('Second findings');
-  const ready2 = barrier<number>(), release2 = barrier();
-  const finishing = db.transaction(async (tx) => {
-    const outcome = await coWorkUnitTransitionInTransaction(tx, g.marekClaude.claims,
-      g.reviewer.finish({ ...g.reviewFence, outcome: { type: 'result', id: findings.id } }));
-    ready2.resolve(await backendPid(tx)); await release2.promise; return outcome;
-  });
-  finishing.catch(() => ready2.resolve(-1));
-  const finisher = await ready2.promise; assert.ok(finisher > 0);
-  const before = await effects(g.w, [g.codex, g.marekClaude]);
-  const admission = g.admit(g.ask('review-late'));
-  admission.catch(() => undefined);
-  await waitUntilBlockedBy(pool, finisher);
-  release2.resolve();
-  assert.equal((await finishing).state, 'completed');
-  await rejects(admission, 'COWORK_REQUEST_UNAVAILABLE');
-  const after = await effects(g.w, [g.codex, g.marekClaude]);
-  assert.deepEqual(after.requests, before.requests, 'no request was admitted');
 });
 
 test('race: two transitions of one unit by its holder serialize; exactly one wins and the other is fenced', async () => {

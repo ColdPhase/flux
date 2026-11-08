@@ -42,7 +42,6 @@ export const AGENT_TOOLS: readonly AgentToolEntry[] = [
   read('flux_read_web'),
   read('flux_bootstrap'),
   read('flux_acknowledge_playbook'),
-  read('flux_coordination_inbox'),
   effect('flux_create_task', 'work.create'),
   effect('flux_update_task', 'work.update'),
   effect('flux_link_pull_request', 'work.update'),
@@ -70,11 +69,6 @@ export const AGENT_TOOLS: readonly AgentToolEntry[] = [
   effect('flux_complete_unit', 'cowork.unit.complete'),
   effect('flux_transfer_unit', 'cowork.unit.transfer'),
   effect('flux_decline_unit', 'cowork.unit.decline'),
-  effect('flux_claim_request', 'cowork.request.claim'),
-  effect('flux_decline_request', 'cowork.request.respond'),
-  effect('flux_resolve_request', 'cowork.request.respond'),
-  effect('flux_defer_request', 'cowork.request.respond'),
-  effect('flux_send_request', 'cowork.request'),
   effect('flux_create_proposal', null),
   alias('resource', 'flux_cowork_playbook'),
   alias('prompt', 'start_work'),
@@ -82,4 +76,4 @@ export const AGENT_TOOLS: readonly AgentToolEntry[] = [
 ];
 
 /** The co-work session tools of a local client: never offered to the assistant's runs (F-027 AST-3 "Not offered to the assistant"). */
-export const TOOLS_NOT_FOR_RUNS: ReadonlySet<string> = new Set(['flux_bootstrap', 'flux_acknowledge_playbook', 'flux_coordination_inbox']);
+export const TOOLS_NOT_FOR_RUNS: ReadonlySet<string> = new Set(['flux_bootstrap', 'flux_acknowledge_playbook']);

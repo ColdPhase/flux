@@ -2,7 +2,7 @@ import type { CoWorkSourceRef } from '@flux/contracts';
 import { ConflictError, InvalidInputError, NotFoundError } from '../access/errors.js';
 import type { CoWorkContext, CoWorkLease, CoWorkRole } from './claims.js';
 import { stoppedError } from './claims.js';
-import { normalizeCoWorkSource } from './requests.js';
+import { normalizeCoWorkSource } from './sources.js';
 
 /** The holder's live claim on its own unit at the exact version it last read. */
 export interface CoWorkHolderFence { expectedVersion: number; generation: number; leaseId: string }
@@ -34,8 +34,6 @@ export interface CoWorkTransitionUnit {
 export interface CoWorkUnitTransitionFacts {
   /** The unit with this ID in this project, whatever its assignment; null when there is none. */
   unit: CoWorkTransitionUnit | null;
-  /** Requests addressed to the unit that are queued, deferred or claimed and unexpired. */
-  openRequests: number;
   /** Transfer only: the assignee when it is a live connection of this workspace that takes work (not Only read) and whose owner can use this space: a non-guest member who sees it, with AI on there. */
   assignee: { id: string; ownerUserId: string } | null;
   /** Every unit of the unit's run, with its assignee's owner (null when that connection no longer exists). */
@@ -103,8 +101,6 @@ export function requireCoWorkUnitTransition(context: CoWorkContext, facts: CoWor
     // Only a unit that was handed over and not yet claimed can be declined; after a claim the receiver owns it.
     if (unit.state !== 'pending' || !unit.transferredFromConnectionId)
       throw new ConflictError('Only a transferred unit you have not claimed can be declined', 'COWORK_DECLINE_REFUSED');
-    if (facts.openRequests > 0)
-      throw new ConflictError('Resolve or decline the requests addressed to this unit first', 'COWORK_UNIT_REQUESTS_OPEN');
     if (!facts.assignee || facts.assignee.id !== unit.transferredFromConnectionId)
       throw new NotFoundError('Unit assignee', 'COWORK_ASSIGNEE_UNAVAILABLE');
     // The prior assignee may have become the run's author while the unit was away: the same rule as a transfer applies.
@@ -115,9 +111,6 @@ export function requireCoWorkUnitTransition(context: CoWorkContext, facts: CoWor
   if (unit.state !== 'claimed' || unit.generation !== input.generation || !unit.lease || unit.lease.id !== input.leaseId
     || unit.lease.runtimeSessionId !== context.runtimeSessionId || !(unit.lease.expiresAt.getTime() > now.getTime()))
     throw new ConflictError('The claim is no longer live; recover before continuing', 'COWORK_CLAIM_LOST');
-  if (!Number.isSafeInteger(facts.openRequests) || facts.openRequests < 0) throw new Error('Invalid open request count');
-  if (facts.openRequests > 0)
-    throw new ConflictError('Resolve or decline the requests addressed to this unit first', 'COWORK_UNIT_REQUESTS_OPEN');
   if (input.operation === 'transfer') {
     if (input.assignmentConnectionId === context.connectionId)
       throw new ConflictError('A unit is transferred to another connection', 'COWORK_ASSIGNMENT_REFUSED');

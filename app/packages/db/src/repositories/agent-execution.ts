@@ -49,7 +49,7 @@ export function agentExecutionRows(tx: DbExecutor) {
      * produced thought to its map or a produced message to the conversation the command targeted.
      */
     async nativePostcondition(workspaceId: string, projectId: string, condition: AgentPostcondition, containerId?: string): Promise<boolean> {
-      if (condition.kind === 'cowork.claim_state' || condition.kind === 'cowork.request_state' || condition.kind === 'cowork.unit_state')
+      if (condition.kind === 'cowork.claim_state' || condition.kind === 'cowork.unit_state')
         return false; // #153 supplies its canonical unit/request adapter.
       if (condition.kind === 'map_checkpoint') {
         const table = schema.sketches;

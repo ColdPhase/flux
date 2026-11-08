@@ -3,7 +3,6 @@ import type { Agent, WorkItem } from '@flux/contracts';
 import { pool } from './db.js';
 import { agentConnection, approveWaiting, waits } from './mcp-actions.js';
 import { toolValue } from './mcp.js';
-import { assistantChangeActionPath } from '@flux/contracts';
 import { addMember, expectStatus, person, project, workspace, type Person } from './people.js';
 
 // The shared starting point of the co-work card and concurrency tests (#153, #400): two owners, three real OAuth
@@ -69,8 +68,6 @@ export async function coworkScene() {
   const unit = async (unitId: string) => (await pool.query(
     'SELECT state, generation, version, assignment_connection_id AS assignee, transferred_from_connection_id AS "from", lease_id AS lease FROM cowork_units WHERE id=$1',
     [unitId])).rows[0] as { state: string; generation: number; version: number; assignee: string; from: string | null; lease: string | null };
-  const request = async (requestId: string) => (await pool.query('SELECT state, version, reason, cancelled_by AS "cancelledBy" FROM cowork_requests WHERE id=$1', [requestId])).rows[0] as
-    { state: string; version: number; reason: string | null; cancelledBy: string | null };
 
   /** `owner` takes a task (a root execute unit it claims) and returns the unit with its live claim. */
   async function take(owner: Conn, t: WorkItem, key = 'take') {
@@ -92,40 +89,17 @@ export async function coworkScene() {
     return String(toolValue(answer).unitId);
   }
   /**
-   * A request to another person's client waits for its sender's owner (C-18): this approves it and answers as the tool would have
-   * had it not waited. An Approve that is refused answers as a failed tool call, with the owner's words.
-   */
-  async function approvedReply(sender: Conn, recipient: Conn, reply: Reply): Promise<Reply> {
-    if (recipient.who.id === sender.who.id || !waits(reply)) return reply;
-    const [waiting] = (await pool.query(`SELECT id FROM assistant_changes WHERE connection_id = $1 AND operation = 'cowork.request' AND state = 'waiting' ORDER BY created_at DESC`,
-      [sender.connectionId])).rows as { id: string }[];
-    const id = waiting!.id;
-    expectStatus(await sender.who.browser.request('POST', assistantChangeActionPath(id, 'apply'), { body: {} }), 200);
-    const [row] = (await pool.query(`SELECT state, refusal, receipt FROM assistant_changes WHERE id = $1`, [id])).rows as
-      { state: string; refusal: string | null; receipt: { value: unknown } | null }[];
-    return row!.state === 'applied_after_wait'
-      ? { result: { content: [{ type: 'text', text: JSON.stringify(row!.receipt!.value) }] } }
-      : { result: { isError: true, content: [{ type: 'text', text: JSON.stringify({ code: 'ASSISTANT_CHANGE_REFUSED', error: row!.refusal }) }] } };
-  }
-  /**
    * The author takes `t`, opens a review unit for `reviewer`, which claims it: the
-   * normal start of a review. `send` is the author's flux_send_request.
+   * normal start of a review.
    */
   async function startReview(author: Conn, reviewer: Conn, t: WorkItem, key = 'r1') {
     const held = await take(author, t);
     const reviewUnit = await openUnit(author, held, t, 'review', reviewer, key);
     const reviewClaim = await reviewer.claimUnit(reviewUnit, 'review');
-    const sendArgs = (intentKey: string, target: Record<string, unknown>, options: { clientCommandId?: string; kind?: string; sourceRefs?: unknown[] } = {}) =>
-      ({ ...author.base('execute', options.clientCommandId), unitId: held.unitId, generation: held.claim.generation,
-        leaseId: held.claim.lease.id, recipientUnitId: reviewUnit, expectedRecipientUnitVersion: reviewClaim.version, recipientConnectionId: reviewer.connectionId,
-        intentKey, parentRequestId: null, kind: options.kind ?? 'review', target,
-        sourceRefs: options.sourceRefs ?? [{ type: 'material', id: material.materialId, version: 1 }], criteriaRefs: [target], peerUnblocking: true });
-    const send = async (intentKey: string, target: Record<string, unknown>, options: { clientCommandId?: string; kind?: string; sourceRefs?: unknown[] } = {}) =>
-      approvedReply(author, reviewer, await author.call('flux_send_request', sendArgs(intentKey, target, options)));
-    return { held, reviewUnit, reviewClaim, send, sendArgs };
+    return { held, reviewUnit, reviewClaim };
   }
 
-  return { hubert, marek, ada, vera, olga, ws, p, removeAccess, demote, connect, task, material, unit, request, take, openUnit, startReview, approvedReply };
+  return { hubert, marek, ada, vera, olga, ws, p, removeAccess, demote, connect, task, material, unit, take, openUnit, startReview };
 }
 export type CoworkScene = Awaited<ReturnType<typeof coworkScene>>;
 export type CoworkConn = Awaited<ReturnType<CoworkScene['connect']>>;

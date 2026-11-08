@@ -125,7 +125,6 @@ const PHRASES: Record<string, { phrase: string; verb: string; noun: string }> = 
   'conversation.create': { phrase: 'post', verb: 'Post', noun: 'message' },
   'conversation.reply': { phrase: 'post', verb: 'Post', noun: 'message' },
   'cowork.unit.create': { phrase: 'hand off', verb: 'Hand off', noun: 'task' },
-  'cowork.request': { phrase: 'send', verb: 'Send', noun: 'request' },
   'cowork.unit.transfer': { phrase: 'hand over', verb: 'Hand over', noun: 'unit' },
   'work.creation.revert': { phrase: 'take back', verb: 'Take back', noun: 'task' },
 };

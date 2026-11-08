@@ -1,5 +1,19 @@
 # Durable local-agent coordination (#153)
 
+> **What remains (#973, v0.2).** The units of work stay: `flux_create_unit`, `flux_claim_unit`, `flux_renew_unit`,
+> `flux_release_unit`, `flux_complete_unit`, `flux_transfer_unit`, `flux_decline_unit`, with their claims, checkpoints, leases and
+> the fixed rule that a run is not reviewed by its own author's connection (`COWORK_REVIEW_SEPARATION`, C-9). **Gone:** addressed
+> requests between clients (`flux_send_request`, `flux_claim_request`, `flux_defer_request`, `flux_decline_request`,
+> `flux_resolve_request`), the inbox (`flux_coordination_inbox`), `COWORK_REQUEST_POLICY` and its limits (32 requests, depth 4,
+> 4 review rounds), the formal review verdict record, the request cards, handoff packet and cancel in a task's Details
+> (`GET/POST /api/v1/work/:id/coordination…`), and the tables `cowork_requests`, `cowork_request_lineages`,
+> `cowork_delivery_intents` and `cowork_review_verdicts` (migration 0027). The MCP tool contract changed in place (contract 2 is not
+> published until v0.2 ships, see [extension contracts](../product/extension-contracts.md)); contract 1's snapshot stays. The
+> pull-request bridge (#479) still records the events of a linked pull request for the task's holder; their only reader was the
+> inbox, so they have no reader until a follow-up removes the bridge or gives it one. **Sections below that describe requests,
+> the inbox, verdicts or cards are the design history of what was removed**; where one sits inside a section that remains, treat it
+> as removed.
+
 ## Start/Resume recovery amendment (#152/#160, 2026-10-18)
 
 ### Supplied external host action
@@ -67,10 +81,10 @@ work. It returns no claim secret, checkpoint text or other connection's work.
 The existing claim operation remains the only way to obtain the checkpoint and
 a new lease. A live lease belonging to another client session is visible as
 such; Resume must wait for its expiry or an explicit release, never impersonate
-that runtime. Stopped/completed units are not candidates for Resume. The three
+that runtime. Stopped/completed units are not candidates for Resume. The two
 existing nullable coordination references retain their meaning; their values
 now point at the current live unit and the first recoverable checkpoint when
-requested. Inbox recovery continues through `flux_coordination_inbox`.
+requested.
 
 This composes existing records and authority; it introduces no second task
 store, automatic client launch, model wake or claim. Recovery and playbook ACK
@@ -138,223 +152,6 @@ This does not prove checkpoint creation, native graph/reviewer eligibility,
 authorized request resolution, execution/publication fences, public MCP/client
 wiring or model-driven Start/Resume. Those are unchanged requirements. Request
 admission is specified in the next section.
-
-### Live request admission (2026-10-04, peer review required)
-
-`coWorkRequestInTransaction(tx, claims, command, policy)` is the internal
-caller-owned composition of #152's reserved `cowork.request` operation. It is
-not a public tool; MCP exposure stays disabled until #152/#160 wire it.
-
-- **Identity.** `objectId` is the *sender's* unit and is mandatory; the request
-  class is that unit's actual role. The payload is exactly
-  `{ generation, leaseId, request }`, where `generation`/`leaseId` are the
-  sender's live claim fence and `request` is the bounded enqueue input without
-  `commandId` (the durable client command ID is used). `request.unitId` names
-  the *recipient's* unit. A payload naming its own unit as recipient, extra
-  fields, copied prompts or authority fields are refused before any write.
-- **Lock order.** #152 `prepare` (current bearer/runtime/grant/command ledger)
-  → sorted, de-duplicated sender and recipient connection slots → sorted
-  project graph locks (#171 `lockProjectTaskGraphs`) → the complete sorted
-  native task set (both units' tasks and lineage roots, the parent request's
-  task and lineage root, and their direct prerequisites) → sorted unit rows →
-  lineage/request rows inside storage → `complete`. Fresh `clock_timestamp()`
-  after these waits fences the sender's lease. Nothing locks a graph, task or
-  material after a unit, request or stream row.
-- **Admission rules.** The sender unit must be assigned to the authenticated
-  connection in the command's project, hold a claim with exactly that
-  generation, lease ID and runtime session, and be unexpired at fresh database
-  time. The recipient unit must be in the same project and the same canonical
-  lineage (`lineage_work_id`, `run_id`) as the sender unit, so a sender cannot
-  open or borrow an unrelated lineage budget. A connection cannot address
-  itself. A review request goes to another connection of the run; there is no
-  project setting for it (removed in #959, C-9: another connection of the author's
-  own owner may review). Target, source and criteria references must currently exist
-  in this project at their exact recorded versions. GitHub references stay
-  refused until #74 supplies the receiving owner's verified repository adapter.
-  The recipient must be a live connection of this workspace; selecting it
-  creates queued intent only and never recipient authority, claim or grant.
-- **Refusals.** Every refusal throws a typed domain error inside the caller's
-  transaction, so no request, delivery intent, lineage count, slot change,
-  grant use or receipt survives. Unavailable recipients/units/parents/sources
-  share content-free codes. Successful admission writes the request and one
-  delivery intent, stages the `cowork.request_state` post-state from the saved
-  row, then lets #152 debit one use and write the sole receipt.
-- **Duplicates and replay.** The same command ID and fingerprint replays the
-  original receipt as an observation: no sender fence, no new request or debit,
-  but current authorization, current readability of the request's references
-  and the unchanged canonical post-state (request version/state, sender unit
-  role/assignment/lineage) are rechecked. After the recipient defers or claims
-  the request, the old receipt is `COMMAND_POSTSTATE_STALE`, as for claims. The
-  sender may then re-issue the same intent under a new command ID: storage
-  returns the existing request and delivery intent, never a second delivery,
-  and that new command spends one grant use.
-- **Recovery ordering.** Request timestamps are assigned while the recipient's
-  slot is held, and the slot is held through commit. Admissions to one
-  recipient therefore become visible in timestamp order, so a recovery cursor
-  cannot pass a row that commits later. Concurrent distinct lineages are tested.
-  Request writers other than this composition must keep the same rule.
-
-Out of scope here: request claim/resolution/supersession (specified in the
-next section), checkpoint production, reviewer/checkpoint claim eligibility,
-the #238 lifecycle/use fence, native publication and the final event flush.
-
-### Request claim and resolution (2026-10-04, peer review required)
-
-`coWorkRequestResponseInTransaction(tx, claims, command, policy)` is the
-recipient's internal caller-owned composition. It is not a public tool, and MCP
-exposure stays disabled until #152/#160 wire it.
-
-- **Operations.** This adds two #152 registry operations, which need their
-  owner's acceptance. Migration `0049` widens the closed grant operation list
-  with exactly these two. Its number must be reserved on #153 before the branch
-  is pushed.
-  - `cowork.request.claim` takes a delivered request.
-  - `cowork.request.respond` resolves or declines it.
-
-  `objectId` is the *recipient's* own unit, and the class is that unit's actual
-  role. A grant with an exact target must name a unit assigned to the grantee
-  with that role, as for `cowork.claim`. The post-state is the existing
-  `cowork.request_state`, where `connectionId` is the acting (recipient)
-  connection, `unitId` its unit and `role` that unit's role. A request grant,
-  delivery, ACK or deferral never stands in for these grants.
-- **Payloads (exact keys).**
-  - Claim is `{ generation, leaseId, requestId, expectedRequestVersion }`.
-  - Resolve is
-    `{ generation, leaseId, requestId, expectedRequestVersion, outcome: 'resolved', response }`.
-    `response` is a bounded object handed to the publication step; it is never
-    stored in the coordination row.
-  - Decline is
-    `{ generation, leaseId, requestId, expectedRequestVersion, outcome: 'declined', reason }`.
-    `reason` is one of `capability`, `policy`, `scope` or `source_changed`.
-
-  `generation` and `leaseId` are the recipient's live claim on its unit, made
-  through `cowork.claim`. Extra fields, copied prompts and authority fields are
-  refused before any write.
-- **Lock order.** The order is:
-  1. #152 `prepare`;
-  2. the recipient's connection slot;
-  3. the sorted project graph locks (#171) for this unit and every unit the
-     connection currently claims;
-  4. the complete sorted native task set (those units' tasks, lineage roots
-     and direct prerequisites);
-  5. sorted unit rows;
-  6. the request row (`FOR UPDATE`);
-  7. for a resolution, the publication step;
-  8. the conditional request update;
-  9. `complete`, then the caller's single final event flush.
-
-  The request's task is the unit's task, so it is already in the set. The
-  publication step may touch only that task and the conversation/stream
-  sequence; it queues event intents and never flushes. Fresh
-  `clock_timestamp()` after the lock waits fences the lease and the request
-  expiry. The conditional SQL update repeats the unit fence (state, generation,
-  lease, runtime session, unexpired lease) and the request's version and state
-  in its `WHERE` clause.
-- **Claim rules.**
-  - The unit must be assigned to the authenticated connection in this project,
-    and claimed live in this runtime session with exactly this generation and
-    lease.
-  - The request must be addressed to this connection *and* this unit, have
-    this exact version and be unexpired.
-  - Its target, source and criteria references must be readable at their
-    exact versions now.
-  - Accepted stored states are `queued`, `deferred`, and `claimed` with a
-    `claimed_generation` that differs from the unit's live generation. The last
-    case is a claim lost through expiry, release or reassignment: it is pending
-    again and can be re-claimed under the new generation.
-
-  The update sets `claimed_generation` to the live generation, increments the
-  version and clears any deferral reason, boundary and dependency.
-
-  The refusal codes are:
-  - a request already claimed under the live generation:
-    `COWORK_REQUEST_CLAIMED`;
-  - a terminal request: `COWORK_REQUEST_CLOSED`;
-  - an expired request: `COWORK_REQUEST_EXPIRED`;
-  - an unknown or foreign request, or one addressed elsewhere:
-    `COWORK_REQUEST_UNAVAILABLE`, content-free.
-- **Respond rules.** The same unit fence and addressing apply. The request must
-  be `claimed` with `claimed_generation` equal to the live generation, at the
-  exact version and unexpired. A request that is only queued or deferred is
-  refused with `COWORK_REQUEST_NOT_CLAIMED`. A lost request claim is refused
-  with `COWORK_CLAIM_LOST`.
-  - **Resolve.** The request's own references must still be readable at their
-    exact versions; otherwise the recipient declines with `source_changed`.
-    The injected `publishResponse` step then produces the native response in
-    this same transaction and returns its exact reference. That reference must
-    be a result/message ID or a versioned material/doc/work/thought, never
-    GitHub, and readable now. Otherwise `COWORK_RESPONSE_UNAVAILABLE` rolls
-    back the publication too. The request becomes `resolved` with that
-    `response_ref`.
-  - **Decline.** No publication happens and source readability is not
-    required: a decline is content-free. The request becomes `declined` with
-    its reason.
-
-  The unit's own claim is unchanged; releasing or completing it is a separate
-  command. Resolution does not mark the task done, approve a PR or satisfy a
-  current-version gate.
-- **Publication authority (open, peer review).** The production
-  `publishResponse` provider is #154's actor-aware contribution primitive. It
-  is not implemented here. Public composition stays disabled until that
-  provider is wired and independently verified. Passing a fixture provider is
-  not its implementation. "No separate transaction may publish a response and
-  later try to mark it done" is kept: the response and the resolution commit
-  together. Which grant authorizes the publication itself is still open: a
-  second native operation scope in the same command, or a respond grant that
-  covers publication. `cowork.request.respond` alone must not become a general
-  publication right.
-- **Supersession.** A `cowork.request` admission that *creates* a request
-  supersedes, in the same transaction, every earlier request that matches all
-  of the following:
-  - the same lineage, the same sender connection, the same recipient unit and
-    the same kind;
-  - stored state `queued` or `deferred`.
-
-  Each such request becomes `superseded` with reason `newer_request` and a
-  version increment, and its IDs are returned in the admission outcome. The
-  rules around it are:
-  - A `claimed` request is never superseded: an in-flight review keeps its
-    history, but cannot satisfy a current-version gate.
-  - An `existing` (re-issued) intent supersedes nothing.
-  - Supersession refunds no lineage budget.
-  - It runs after the request insert, under the sender and recipient slots
-    already held. A concurrent request claim (which also holds the recipient
-    slot) therefore serializes with it: whichever commits first wins, and the
-    other sees the committed state.
-- **Refusals.** Every refusal throws a typed domain error inside the caller's
-  transaction. The request row is unchanged, and no response, grant use or
-  receipt survives.
-- **Replay.** The same command ID and fingerprint replays the original receipt
-  as an observation. There is no fence, request change, publication or debit.
-  Current authorization is still rechecked, and so is the unchanged canonical
-  post-state, which covers:
-  - the request version and state, its recipient and unit;
-  - the unit's assignment and role;
-  - for a `claimed` post-state, `claimed_generation` equal to the unit's
-    current generation.
-
-  Readability is also rechecked: the request references for claim and resolve,
-  and the response for resolve. A decline observation is content-free. Later
-  outcomes behave as follows:
-  - Historical lease expiry alone leaves the rows unchanged, so the claim
-    receipt can still be observed.
-  - A unit release or re-claim changes the generation, so the claim receipt
-    becomes `COMMAND_POSTSTATE_STALE`.
-  - A later resolution, decline or supersession also makes earlier receipts
-    stale.
-- **Recovery visibility.** The pending projection already treats a `claimed`
-  request whose generation, lease, assignment or unit state no longer matches
-  as `queued` with `claim_lost`. Re-claiming under the new generation shows it
-  `claimed` again. Resolved, declined and superseded requests leave the
-  pending recovery page and the ready candidates. A request past its expiry
-  stays visible in recovery as `expired` (`request_expired`) and is not a
-  ready candidate. The sender still sees the outcome through the request row;
-  its admission receipt becomes stale once the state changes.
-
-Out of scope here: the production publication provider and its grant,
-scheduling, checkpoint production, reviewer eligibility, the #238 fence, the
-#74 GitHub recipient adapter and MCP exposure. Unit creation is specified in
-the next section.
 
 ### Unit creation (2026-10-05, peer review required)
 
@@ -1003,36 +800,7 @@ previous section's tools.
   - Should the claim policy's capacity of 1 become a grant-backed capacity
     before #160's clients hold an execute unit and a review unit at once?
 
-### Requests, inbox and review verdicts over MCP (2026-10-17)
-
-Agent decision under the delegated authority (#153 AC-2/AC-4; consumers #400 AC-4/AC-5 and #160). It closes the
-"Still not exposed" list above.
-
-- **`flux_send_request`** wraps `coWorkRequestInTransaction` (operation `cowork.request`, class = the sender unit's
-  role). The server policy `COWORK_REQUEST_POLICY` bounds a lineage to 32 requests, depth 4 and 4 review rounds. The same intent key returns the existing request; a retried command
-  replays; a newer request of the same kind to the same unit supersedes an unclaimed older one.
-- **`flux_coordination_inbox`** wraps `coWorkRecovery` with the server's cursor secret (`flux.context.read`, entry
-  capabilities `project.identity.read` + `connection.runtime.read`, so never offered to assistant runs). Reading is
-  never an acknowledgement.
-- **`flux_resolve_request`** wraps `coWorkRequestResponseInTransaction` with the production provider
-  `COWORK_RESPONSE_POLICY`. It publishes nothing: the recipient first records its answer as an ordinary native
-  record under that record's own grant, then names it as `evidence`. This settles the open question of which grant
-  authorizes publication (the record's own), keeps one content store, and persists the response before the
-  resolution. The composition still requires the request's target and sources to be current and the evidence to
-  exist now.
-- **Review verdicts (migration 0105, `cowork_review_verdicts`).** A review request is resolved with `passed` or
-  `changes_requested`; other kinds refuse a verdict (`COWORK_VERDICT_REQUIRED`, `COWORK_VERDICT_NOT_REVIEW`). The row
-  copies the request's target and criteria and the evidence reference only, never content, and the reviewer differs
-  from the author by constraint. A verdict is `current` while its target still is (the same readable-reference rule
-  as admission); a newer task/material/doc/thought version makes it stale without rewriting it. A new review is a
-  new request under the same standing grant: no other owner prompt. Execution-class grants cannot claim review
-  units because the grant class must equal the unit's role. GitHub PR targets wait for #74 (refused as today).
-- **People's read.** `GET /api/v1/work/:workId/coordination` returns the task's request cards (kind, sender ->
-  recipient agent names, exact target, state with expiry applied) and verdicts with `current`, for whoever can read
-  the task. No claims, leases, heartbeats or prompts appear in it.
-- **Still open.** The #74 GitHub head provider, real two-owner client traces (#160) and the final design UI (#347/#400).
-
-### Declining a transfer, deferring a request, honest status (2026-10-17, #153 AC-1/AC-3)
+### Declining a transfer, honest status (2026-10-17, #153 AC-1/AC-3)
 
 Agent decision under the delegated authority; contract changes are additive (MCP tool contract v1, playbook 1.7.0).
 
@@ -1058,80 +826,6 @@ Agent decision under the delegated authority; contract changes are additive (MCP
   inbox (`flux_coordination_inbox`, `status` next to `effectiveState`) and by `GET /api/v1/work/:workId/coordination`
   (`status`, `nextBoundary`). Cancellation requested versus acknowledged waits for a cancel operation; today only the stored
   `cancelled` state exists.
-
-### Request cards, handoff packet and cancel (2026-10-17, #153 AC-2/AC-4, #400 AC-4; the review rule removed in #959)
-
-Agent decision under the delegated authority; additive HTTP for people (no MCP tool, no contract-1 change). Migration
-`0111_cowork_cards` (0107 is the last on main; 0108-0110 belong to other branches): `cowork_requests.cancelled_by` and
-`cowork_review_policies(project_id, review_separation, updated_by, updated_at)`. The table was dropped in `0017_remove_review_rule`
-(#959, C-9; there was no existing data to keep).
-
-- **Cards (`GET /api/v1/work/:workId/coordination`).** Whoever can read the task reads the latest 50 requests: kind, sender and
-  recipient agent with their owners' names, the target (its title only while it exists at the exact version the request
-  named), the state in plain words (`status`, with the deferral reason and safe boundary), the first message the request
-  names that the reader can open (`originalMessage`: conversation, space `people` or `agents`, task), the expiry, who
-  cancelled it, and `canCancel`. Review verdicts come with `current`. No owner ID, fingerprint, lease, grant or runtime is
-  returned. The agents' thread shows these as cards above its messages (`RequestCards.tsx`); the thread is their face, never
-  their store.
-- **Packet (`GET .../requests/:requestId/packet`).** `flux.cowork.packet/1`, served as an attachment, `no-store`. It
-  holds the request, the task, the target, sources and criteria as references with titles that exist now at the named
-  versions (an unavailable reference has no title and no other metadata; GitHub references are never described), the original
-  message, the recipient unit's last typed checkpoint (summary, next action, blocker and the material versions it covered),
-  the response reference and the verdict. At most 1 + 16 + 8 references. It never holds a credential, grant, lease,
-  fingerprint, owner or connection ID, prompt or source content. Everyone who can read the task may download it; a
-  removed reader gets 404 at once. This is CO-2's "download of a bounded currently authorized reference packet".
-- **Cancel (`POST .../requests/:requestId/cancel`, `{ expectedVersion }`).** One action for a person, not an agent tool. A
-  project manager, or the owner of the sender's or the recipient's agent, who can still write in the project, closes an
-  open request (`queued`, `deferred` or `claimed`, not expired) at the version they saw. Authorization precedes the state: a
-  contributor who owns neither agent gets 403 `COWORK_CANCEL_NOT_ALLOWED` and learns nothing; a stranger or a
-  removed reader gets 404. A wrong version is 409 `COWORK_VERSION_CONFLICT`; a closed one 409 `COWORK_REQUEST_CLOSED`; an
-  expired one 409 `COWORK_REQUEST_EXPIRED`. A repeated cancel of an already cancelled request succeeds without a change.
-  The request becomes `cancelled` (reason `cancelled_by_person`, `cancelled_by` the person), the version advances and one
-  `project.cowork_request_cancelled.v1` event refreshes open views. Only the request row is locked (`FOR UPDATE`): a claim,
-  deferral, response or supersession holds the same row for its own conditional update, so a cancel and any of them
-  serialize there and the loser reads the committed state. A recipient that claimed the request is told
-  `COWORK_REQUEST_CLOSED` when it next answers; no verdict is recorded and no grant use is debited. The agent's inbox drops it.
-  This is not CW-3's "cancellation requested versus acknowledged": there is no acknowledgement round-trip, and stopping
-  an agent's hold on a task stays the separate Stop control.
-- **Review rule: removed (#959, C-9).** `GET`/`PUT /api/v1/projects/:projectId/review-policy`, the `cowork_review_policies`
-  table and the policy plumbing are gone, with the screen that edited them. One fixed rule remains in every place that
-  enforced separation (creating a review unit, handing a unit over, declining one): an author's own connection is never the
-  reviewer of its work in the same run (`COWORK_REVIEW_SEPARATION`). Another connection of the author's own owner may review.
-- **Verdicts and "a separate non-author".** Unchanged from the section above: the reviewer's unit is a different connection
-  from every execute unit of the run; an execution-class grant cannot claim a
-  review unit; a verdict is pinned to the request's target and becomes non-current when the target has a newer version; a
-  changed reviewer is a new unit with its own grants and the earlier verdict stays in the history. A result or message
-  target is immutable: its verdict stays current for that exact record, and a revised result needs a new review.
-- **Role swap.** Swapping executor and reviewer is an assignment: the finished unit keeps its assignee and `outcome_ref`, the
-  result keeps its author, the task's human assignee and version are untouched, and the new roles are new units in a new
-  run claimed with each connection's own grants.
-
-Not done here: PR targets and the verified GitHub head (#74), real Codex and Claude Code client traces (#160), the
-acknowledged-cancellation round trip, and outcome notices in people's views (#400 AC-5).
-
-### Parent request participation
-
-### Parent request participation
-
-A child request can name a parent only when its exact sending connection is
-the parent's recorded sender or addressed recipient. The original sender may
-follow up and the recipient may respond. Sharing an owner, project, root task
-or run does not make another connection a party. Refusal returns the same
-content-free unavailable outcome as an absent parent, with no new request,
-delivery intent or lineage budget debit. This storage guard supplements the
-unchanged current-source authorization and live sender-claim requirements of
-the admission composition; it does not grant either party new authority.
-
-Status: implementation contract checkpoint, 2026-09-30. The shared boundaries
-were accepted by the independent owner of #152/#154/#160 in
-[issue #153](https://github.com/ColdPhase/flux/issues/153#issuecomment-5919388071).
-This document does not implement or certify a client loop. All original #153
-criteria and real-client acceptance remain required.
-
-Product requirements are [F-016](../product/mcp-cowork.md) and
-[CW-1–CW-5](https://github.com/ColdPhase/flux/blob/a82ee012d0dc0a33e9ab14925f8f400c96f31e60/docs/product/cowork-workflow.md). Flux stores shared tasks, content and
-coordination; model/code execution remains in the connected owner's local client.
-There is no server model polling, fallback payer or second conversation store.
 
 ## Ownership and first integrated flow
 
@@ -1402,67 +1096,6 @@ Claim/renew retain the prior checkpoint reference. Release requires a non-null
 checkpoint matching the original live unit, tenant, project, connection,
 generation and runtime session in its conditional SQL write, in addition to
 current source authorization supplied by the composition root.
-
-## Addressed request storage increment
-
-A lineage belongs to the original canonical native task/run. Its request/depth/
-review-round ceilings are bounded policy values, separate from #152's grant-use
-budget. A request-ID or intent-key change cannot create a fresh budget for the
-same task/run. Child requests inherit their actual persisted parent's lineage;
-deleting or acknowledging delivery never releases budget. The first lineage
-ceilings cannot be raised by a later caller; lowered current policy also applies.
-Every unit has its canonical original native-task/run binding at authorized
-creation. A child unit may explicitly inherit that binding; an enqueue cannot
-select some unrelated parent to borrow its budget. Current policy may later
-expand again within the immutable initial ceilings; narrower policy is checked
-at each command, not treated as a permanent historical revocation.
-
-Each request records one connection recipient, its original native task/unit,
-canonical source/target/criteria references, parent, depth, round, priority,
-expiry and versioned state. Results/messages use their real immutable IDs;
-materials/docs/work/thoughts pin actual versions; GitHub references carry verified
-binding/link/head identity. No title, message body, prompt, credential, URL or
-provider prose is copied into these control records. One lineage/intent key
-retains its original normalized fingerprint forever; changed reuse conflicts.
-The request and one outgoing delivery intent are inserted in the same transaction.
-
-Storage is transaction-bound and invoked only after #152 current sender/recipient
-scope, grant and source authorization, command preparation, sorted connection
-slots, and the complete sorted native task set. Parent-root task identities must
-be gathered before those locks. The request storage then locks its lineage and
-request rows. It adds no grant/receipt ledger or model invocation. A pending
-request does not claim/preempt its unit. Transport ACK marks only its delivery
-intent and never changes request/task state or removes recovery work.
-
-Recovery storage returns a bounded addressed snapshot; the composition root
-reauthorizes all referenced sources for this exact recipient before presenting
-any record and signs/validates a connection/project-bound opaque continuation.
-The continuation must be encrypted or server-held; signing a readable encoding
-of skipped private IDs or scheduling scores does not make it opaque.
-Its internal chronological key preserves PostgreSQL microseconds as timestamp
-text, rather than round-tripping through JavaScript Date milliseconds.
-No global event sequence or inaccessible-project count is a public cursor.
-Pending rows survive transport retention and ACK. Claim loss is presented as
-pending recovery, not completion. Priority plus capped aging lets old ordinary
-requests outrank newly arriving blockers. A deferred reason and concrete next
-boundary remain durable. Request claim/resolution, source supersession,
-cursor-gap resync and final authorization composition are subsequent parts of
-the same unchanged contract, not certified by the initial enqueue/ACK snapshot.
-Claim-ready candidate scans exclude every currently live claimed unit and have
-bounded ranked pagination at one server-selected aging time. A caller can keep
-scanning after inaccessible sources without repeatedly returning the same first
-page. Security/expiry and claim fences still use fresh wall time on each page
-and each effect; an old ranking snapshot never extends authority.
-The internal ranked cursor binds its aging interval and exact workspace/project/
-recipient as well as the ranking time and PostgreSQL timestamp tuple. Changing
-those scan parameters rejects continuation rather than silently skipping work.
-The public adapter must still supply an opaque, current-authorized continuation.
-
-#74 currently exposes undelivered provider references only. Its recipient needs
-its own verified repository access at delivery; stored native publications need
-provenance-aware current-reader gates as well. This storage does not activate
-that adapter or publish private GitHub facts into existing conversations/events.
-No ordinary standing-rule click substitutes for those gates.
 
 ## Caller-owned claim execution composition
 

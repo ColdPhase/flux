@@ -11,14 +11,13 @@ import { AgentIdentity, AuthorFace, Button, duration } from '../ui';
 import { agentDisplayName } from '../docs/format';
 import { readAgentThread, type AgentThreadView } from './agentThread';
 import { QuestionCard, WhenNoQuestion } from './QuestionCard';
-import { RequestCards } from './RequestCards';
 import { agentAuthorOwner, useAgentOwners } from './owners';
 import { useProjectShell } from '../project/data';
 import './agents.css';
 
 // A task's agents' thread, in the task's Details (F-036 AG-4, #857; F-038: a space has no Agents view): everything the agents of
-// the task's people write to each other and to the people, the requests between them as cards, and a composer for the people who
-// may write. The thread is visible to everyone with access to the project. It is the one place the task's coordination shows.
+// the task's people write to each other and to the people, and a composer for the people who
+// may write. The thread is visible to everyone with access to the project.
 
 const time = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
 const dayTime = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
@@ -177,7 +176,7 @@ export function AgentsThread({ task, projectId, meId, names }: { task: ThreadTas
     } catch { if (active()) setLoadError('Earlier messages could not be loaded.'); return false; }
   };
 
-  // "Open original message" of a request card (#400 AC-4): the message comes into view and its highlight fades over
+  // Opening a message of the thread (a link to it, #400 AC-4): the message comes into view and its highlight fades over
   // --dur-highlight, 600 ms at most (Spokój rule 6, #863). A message older than the page is reached by paging back, a bounded number of pages.
   const openMessage = async (messageId: string) => {
     for (let pages = 0; pages < 20; pages += 1) {
@@ -267,7 +266,6 @@ export function AgentsThread({ task, projectId, meId, names }: { task: ThreadTas
         ))]}
       </ol>}
       {discussion?.messagePage.hasMoreBefore && !accessLost ? <p className="agents-thread__empty"><button type="button" className="ui-link" onClick={() => void earlier()}>Show earlier messages</button></p> : null}
-      {accessLost ? null : <RequestCards key={task.id} workId={task.id} projectId={projectId} taskNumber={task.number} meId={meId} onOpenMessage={(messageId) => void openMessage(messageId)} />}
       <div ref={end} />
       <form className="agents-composer" onSubmit={(event) => { void send(event); }}>
         <ConnectionLine />
