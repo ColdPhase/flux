@@ -134,13 +134,23 @@ class RouteChunksJourney(unittest.TestCase):
             page.get_by_role("button", name=re.compile(self.name)).click()
             page.get_by_role("link", name="All settings", exact=True).click()
 
+    def my_map(self, page: Page):
+        """A place whose header has Details in its More menu: Home has the button only with an encrypted space (#865)."""
+        page.goto("/map")
+        expect(page.get_by_role("heading", level=1, name="My map", exact=True)).to_be_visible()
+
     def open_details_by_keyboard(self, page: Page):
-        opener = page.get_by_role("button", name="Details", exact=True)
+        """Tab to the header's More, open its menu and choose Details with the keyboard; More is the opener focus comes back to."""
+        opener = page.get_by_role("button", name="More", exact=True)
         for _ in range(50):
             if opener.evaluate("element => element === document.activeElement"):
                 break
             page.keyboard.press("Tab")
         expect(opener).to_be_focused()
+        page.keyboard.press("Enter")
+        item = page.get_by_role("menu", name="More").get_by_role("menuitem", name=re.compile(r"^(Details|Space details|Message info)$"))
+        expect(item).to_be_visible()
+        item.focus()
         page.keyboard.press("Enter")
         return opener
 
@@ -357,7 +367,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.on("request", lambda request: requested.append(request.url))
                 self.home(page)
                 worker = page.request.get(f"{ORIGIN}/sw.js").text()
-                for module in ("SettingsHome", "SketchView", "DocEditor", "ProjectTasks", "ProjectAgents", "Details", "JumpTo", "LiveStage"):
+                for module in ("SettingsHome", "SketchView", "WikiEditor", "ProjectTasks", "Details", "JumpTo", "LiveStage"):
                     self.assertRegex(worker, rf"/assets/{module}-[^/\"]+\.js", f"{module} has an actual emitted lazy chunk")
                     self.assertFalse(any(re.search(rf"/assets/{module}-[^/]+\.js", url) for url in requested), f"Cold Home never imports {module}")
 
@@ -527,7 +537,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.goto(f"/projects/{self.project_id}/conversations/{self.conversation_id}")
                 expect(page.get_by_role("heading", name="Chunk boundaries", exact=True)).to_be_visible()
                 expect(page.get_by_label("Message from you", exact=True).get_by_text("An eager conversation stays available before secondary routes", exact=True)).to_be_visible()
-                for module in ("ProjectTasks", "ProjectAgents", "DocEditor", "SketchView", "Details", "JumpTo", "LiveStage"):
+                for module in ("ProjectTasks", "WikiEditor", "SketchView", "Details", "JumpTo", "LiveStage"):
                     self.assertFalse(any(re.search(rf"/assets/{module}-[^/]+\.js", url) for url in requested), f"The eager conversation does not import {module}")
 
     def test_07_held_details_close_returns_focus_and_resolution_never_reopens(self):
@@ -535,7 +545,7 @@ class RouteChunksJourney(unittest.TestCase):
             with self.subTest(engine=engine):
                 page = self.page(engine)
                 held = self.hold(page, "Details")
-                self.home(page)
+                self.my_map(page)
                 opener = self.open_details_by_keyboard(page)
                 # The panel's own layout in quiet bars, at its final heights, not a spinner (#863 rule 6).
                 expect(page.locator("#details .wd-skeleton")).to_be_visible()
@@ -545,7 +555,7 @@ class RouteChunksJourney(unittest.TestCase):
                 page.keyboard.press("Escape")
                 expect(page.locator("#details")).to_have_count(0)
                 expect(opener).to_be_focused()
-                # Home has no text field since #342: the opener, where focus returned, keeps it.
+                # My map's header has no text field: the opener, where focus returned, keeps it.
                 with page.expect_response(re.compile(r"/assets/Details-[^/]+\.js")):
                     held.pop().continue_()
                 page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))")
@@ -630,7 +640,7 @@ class RouteChunksJourney(unittest.TestCase):
                 self.assertTrue(row.is_visible(), "The first project/Details render stands with the Map code still on the way")
                 shot(page, f"route-chunks-first-project-details-{engine}-phone")
 
-    CODE = {"Details": "Details", "JumpTo": "JumpTo", "ProjectTasks": "ProjectTasks", "ProjectViews": "ProjectViews", "Wiki": "Wiki", "ProjectAgents": "ProjectAgents"}
+    CODE = {"Details": "Details", "JumpTo": "JumpTo", "ProjectTasks": "ProjectTasks", "ProjectViews": "ProjectViews", "Wiki": "Wiki"}
 
     def wait_for_chunks(self, page: Page, requested: list, seconds: float) -> list[str]:
         """The deferred code that has been asked for, waiting up to `seconds` for all of it."""
