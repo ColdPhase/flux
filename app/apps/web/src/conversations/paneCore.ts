@@ -15,6 +15,11 @@ export interface PaneCore {
   /** The pane's own field: the stream's composer, or the open thread's reply field. */
   composerId: string;
   writable: boolean;
+  /**
+   * A company owner or admin who can open this space without being in it (C-15): their assistant works only in spaces they are in,
+   * so the ask bar says so and offers Add me.
+   */
+  outside: boolean;
   /** AG-10: while the space's AI is off this conversation is human-only: no assistant, no AI commands, no suggestions. */
   aiOff: boolean;
   /** "Only you and Kai", and the same without "only you two" for the assistant's line. */
@@ -31,14 +36,15 @@ export function usePaneCore(data: ProjectData, variant: 'stream' | 'thread'): Pa
   const { project } = data;
   const conversation = variant === 'thread' ? data.conversation : null;
   const people = useProjectShell()?.people ?? null;
-  const { me } = useShellData();
+  const { me, reachableSpaces } = useShellData();
   const revalidator = useRevalidator();
   const revalidateRef = useRef<() => unknown>(revalidator.revalidate);
   useEffect(() => { revalidateRef.current = revalidator.revalidate; });
   const aiOff = useSpaceAi(project.id).blocked;
+  const outside = reachableSpaces.find((space) => space.id === project.id)?.member === false;
   const audience = audienceLine(people, me.user.id, project.visibility === 'workspace');
   return {
-    me, project, conversation, people, composerId: conversation ? 'thread-composer' : 'project-composer', writable: true, aiOff,
+    me, project, conversation, people, composerId: conversation ? 'thread-composer' : 'project-composer', writable: true, aiOff, outside,
     audience, audienceShort: audience.replace(/ · only you two$/, ''), revalidateRef,
   };
 }

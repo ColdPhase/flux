@@ -39,7 +39,7 @@ function runExpression(run: AssistantRun): KreskaExpression {
 
 /** "Your assistant ×" above the box, and what will happen: who sees it and who pays, or why not. */
 export function AskBar({ id, state, onExit, onAction, error }: {
-  id: string; state: AskState; onExit: () => void; onAction: (action: 'connect' | 'resume' | 'settings' | 'tell' | 'key') => void; error: string;
+  id: string; state: AskState; onExit: () => void; onAction: (action: 'connect' | 'resume' | 'settings' | 'tell' | 'key' | 'join') => void; error: string;
 }) {
   return (
     <div className="ask assistant-ask" id={id}>

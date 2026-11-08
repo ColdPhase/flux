@@ -5,6 +5,7 @@ import { agentLabel, answerLines, askableLines, createPersonalRunUseCases, Domai
 import { personalRunPorts, type PersonalRunComposition, type PersonalRunQueueFactory } from '../personal-runs/adapters.js';
 import { taskDiscussionUseCases } from '../work/task-discussions.js';
 import { workUseCases } from '../work/adapters.js';
+import { policyWorkAccess } from '../work/access.js';
 
 // The server's side of people's agents taking tasks (#856, F-036 AG-5). `agent_task_events` holds what happened in the
 // transaction that caused it; this drains it as soon as the API is told (NOTIFY), so a task is taken within seconds and
@@ -35,6 +36,8 @@ const human = (id: string): Principal => ({ kind: 'human', id });
 const agent = (id: string): Principal => ({ kind: 'agent', id });
 const FINISHED = new Set(['done', 'not_pursued']);
 const IN_FLIGHT = ['queued', 'reading', 'dispatching'];
+/** The person's own line when "Give it to" could not give them the task because their agent has no access to this space. */
+const NOT_TAKEN_WORDS = 'My assistant can\'t work in this space, so it hasn\'t taken this task. It\'s still with me.';
 
 type Event = NonNullable<Awaited<ReturnType<ReturnType<typeof agentTaskRows>['claimNext']>>>;
 type RunRow = NonNullable<Awaited<ReturnType<ReturnType<typeof personalRunRows>['findRun']>>>;
@@ -181,13 +184,19 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     }
   }
 
-  /** The agents of the task's other people that an agent may ask (TA-3): both owners are among the task's people. */
-  async function askable(tx: Transaction, workId: string, askerOwner: string): Promise<Askable[]> {
+  /**
+   * The agents of the task's other people that an agent may ask (TA-3): both owners are among the task's people. Only an agent that
+   * can read the space is offered: the agent of a company owner or admin who wrote in the task without being added to the space has
+   * no level there (C-15), and its answer run would be refused (#955).
+   */
+  async function askable(tx: Transaction, work: { id: string; projectId: string }, askerOwner: string): Promise<Askable[]> {
     const rows = agentTaskRows(tx);
+    const access = policyWorkAccess(tx);
     const found: Askable[] = [];
-    for (const person of (await rows.taskPeople(workId)).filter((id) => id !== askerOwner)) {
+    for (const person of (await rows.taskPeople(work.id)).filter((id) => id !== askerOwner)) {
       const ownerName = (await rows.personName(person)) ?? 'Former member';
-      for (const other of await rows.ownServerAgents(person)) found.push({ id: other.id, name: other.name, ownerId: person, ownerName });
+      for (const other of await rows.ownServerAgents(person))
+        if (await access.canRead({ kind: 'agent', id: other.id }, work.projectId)) found.push({ id: other.id, name: other.name, ownerId: person, ownerName });
     }
     // Always in the same order, so a line that names two agents reads the same each time.
     return found.sort((a, b) => a.ownerName.localeCompare(b.ownerName) || a.name.localeCompare(b.name));
@@ -202,8 +211,17 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
       if (work.owner?.kind !== 'human' || work.owner.id !== event.ownerUserId) return;
       const agentId = await rows.taking(event.ownerUserId);
       if (!agentId || !(await rows.isOwnServerAgent(event.ownerUserId, agentId))) return;
-      await attempt('give', () => workUseCases(tx as unknown as Database).updateWork(human(event.ownerUserId!), work.id,
-        { owner: { kind: 'agent', id: agentId } }, work.version, 'agent_rule'));
+      try {
+        await workUseCases(tx as unknown as Database).updateWork(human(event.ownerUserId), work.id, { owner: { kind: 'agent', id: agentId } }, work.version, 'agent_rule');
+      } catch (error) {
+        if (!(error instanceof DomainError)) throw error;
+        log.warn({ error, what: 'give' }, 'An agent task step was refused');
+        // The agent of a company owner or admin who was not added to this space has no access here (C-15), so it cannot speak: the
+        // line is the person's own. The task stays with them, and now they know why it was not taken (#955).
+        if (error.code === 'OWNER_WITHOUT_ACCESS')
+          await attempt('say', () => taskDiscussionUseCases(tx as unknown as Database).contribute(human(event.ownerUserId!), work.id,
+            { body: NOT_TAKEN_WORDS, clientMessageId: uuidFrom(`agent-task:not-taken:${event.id}`) }));
+      }
       return;
     }
     if (!event.ownerAgentId || work.owner?.kind !== 'agent' || work.owner.id !== event.ownerAgentId) return;
@@ -225,7 +243,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
         const place = await taskDiscussionUseCases(inner as unknown as Database).getDiscussionRoot(human(ownerId), work.id).catch(() => null);
         const started: TaskStart = place
           ? await runs.startTask(ports, { ownerUserId: ownerId, agentId: holder.id, workId: work.id, projectId: work.projectId, conversationId: place.conversationId,
-            prompt: (taskRunPrompt(work) + askableLines((await askable(inner, work.id, ownerId)).map((other) => ({ name: other.name, owner: other.ownerName })))).slice(0, 3900),
+            prompt: (taskRunPrompt(work) + askableLines((await askable(inner, work, ownerId)).map((other) => ({ name: other.name, owner: other.ownerName })))).slice(0, 3900),
             clientRunId: taskRunClientId(event.id) })
           : { started: false, line: 'I can\'t start: this task has no discussion yet.' };
         if (!started.started) throw new Refused(started.line);
@@ -319,7 +337,7 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
   async function asking(tx: Transaction, work: WorkRecord, run: RunRow, ask: AgentQuestion) {
     const asker = { id: run.agentId, ownerUserId: run.ownerUserId };
     if (run.exchangeTurn >= MAX_EXCHANGE_TURNS) return toThePeople(tx, work, asker, 'We have gone back and forth for long enough. This needs a person.', `asked-out:${run.id}`);
-    const resolved = resolveAsked(ask, await askable(tx, work.id, run.ownerUserId));
+    const resolved = resolveAsked(ask, await askable(tx, work, run.ownerUserId));
     if ('none' in resolved) return toThePeople(tx, work, asker, `I can't ask ${ask.agent}${ask.owner ? ` (${ask.owner}'s agent)` : ''}: they are not in this task. This needs a person.`, `asked-nobody:${run.id}`);
     // Never a guess: two agents of that name, and the block did not say whose, is a question for the people.
     if ('ambiguous' in resolved) return toThePeople(tx, work, asker, `There is more than one agent called ${ask.agent} in this task: ${resolved.ambiguous.map(agentLabel).join(' and ')}. Say whose you mean. This needs a person.`, `asked-ambiguous:${run.id}`);
