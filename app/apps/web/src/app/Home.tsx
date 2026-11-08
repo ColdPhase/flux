@@ -173,14 +173,13 @@ function WaitingItem({ row }: { row: WaitingRow }) {
 export function Home() {
   const moments = useSmallMoments();
   const { me, workspace, workspaces, projects, lockedWorkspaces } = useShellData();
-  const { openCreate, openDetails } = useShellActions();
+  const { openCreate } = useShellActions();
   const phone = useMediaQuery(MEDIA.navDrawer);
   const queue = useNeedsYou(me.user.id);
   const now = useMemo(() => new Date(), []);
   const firstName = me.user.name.trim().split(/\s+/)[0] || me.user.name;
   const rows = waitingRows(queue.items ?? []);
   const workspaceIds = useMemo(() => workspaces.map((space) => space.id), [workspaces]);
-  const sealedSpaces = [...workspaces, ...lockedWorkspaces].some((space) => space.encryption);
   const reads = useContinue(me.user.id, workspaceIds);
   // A person with no space yet gets one first step, not an empty queue and links to empty pages (#763 FT-1, S21).
   // A space waiting to be unlocked is not a first run (F-030, #655).
@@ -189,12 +188,7 @@ export function Home() {
 
   return (
     <div className="pane-scroll"><div className="pane-in home">
-      {/* Details sits in the date line, above everything that arrives later, so it never moves (motion rule 6). Only a person with an encrypted
-          space needs it: the company's people are in Settings, an encrypted space's people and keys only here (until #964). */}
-      <div className="home__top">
-        <p className="home__date">{dateFormat.format(now)}</p>
-        {sealedSpaces ? <p className="home__details"><button type="button" onClick={() => openDetails()}>Details</button></p> : null}
-      </div>
+      <p className="home__date">{dateFormat.format(now)}</p>
       <h2 className="home__hello">{greeting(now.getHours())}, {firstName}</h2>
 
       {/* Without a sidebar (phone) Home carries the working agents with Stop; nothing shows while none works (S13). */}

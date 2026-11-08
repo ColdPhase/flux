@@ -54,8 +54,8 @@ export function Details({ view, placeTitle, dm = null, onBack }: {
       </div>
     );
   }
-  // Home and My map (#508, #866) are private to you.
-  const home = placeTitle === 'Home' || placeTitle === 'My map';
+  // My map (#508, #866) is private to you.
+  const home = placeTitle === 'My map';
   return (
     <div className="details">
       <p className="details__eyebrow">{placeTitle}</p>
@@ -82,7 +82,7 @@ const ROLE_LINE = {
 } as const;
 
 /**
- * The company's people (F-037), one step away from Home's Details: they live in Settings › Company. An encrypted space keeps its people
+ * The company's people (F-037), one step away from a place's Details: they live in Settings › Company. An encrypted space keeps its people
  * and keys in its own settings (C-24), not here.
  */
 function PeopleEntries() {
