@@ -105,6 +105,8 @@ export interface RunRecord {
   exchangeTurn: number;
   /** 0115 (F-029): the workspace AI policy epoch the run was admitted under; every later step requires it. */
   aiEpoch: number;
+  /** 0018 (#953): the normalized web addresses the run was given, fixed at its start from text a person wrote. */
+  given: string[];
 }
 
 /**
@@ -116,6 +118,8 @@ export type RunEndStatus = RunRecord['status'] | 'ai_off';
 export type NewRun = Pick<RunRecord, 'id' | 'workspaceId' | 'projectId' | 'conversationId' | 'ownerUserId' | 'agentId' | 'connectionId'
   | 'clientRunId' | 'requestFingerprint' | 'kind' | 'prompt' | 'targetSketchId' | 'targetThoughtId' | 'continuesRunId' | 'retryOfRunId'
   | 'reservedMicros' | 'provider' | 'model' | 'aiEpoch'> & { engine?: AssistantEngine; silent?: boolean; authority?: RunRecord['authority']; backgroundLabel?: string | null; workId?: string | null; askedByRunId?: string | null; exchangeTurn?: number;
+    /** The web addresses the run may read from the start (#953): see `givenAtStart`. */
+    given?: string[];
     /** A paused request: queued until then, with the reason it waits (#854). */
     resumeAt?: Date | null; endReason?: AssistantRunEndReason | null; planLimitResetsAt?: Date | null };
 export type RunChanges = Partial<Pick<RunRecord, 'status' | 'stoppedAtStage' | 'stopRequestedAt' | 'stopRequestedBy' | 'costState' | 'chargedMicros'
@@ -155,7 +159,9 @@ export interface ThoughtSource { id: string; sketchId: string; version: number; 
 /** Rows only; the repository makes no access decisions (the use cases ask {@link PersonalRunAccess}). */
 export interface PersonalRunRepository {
   /** The pages the run read on the web (#918), each once, in the order they were first read. */
-  webReads(runId: string): Promise<{ finalUrl: string; title: string | null }[]>;
+  webReads(runId: string): Promise<{ finalUrl: string; outcome: string }[]>;
+  /** The text a person wrote that a new run may be given (#953): the task's, if a person made it and no agent wrote it, and the people's messages in the conversation. */
+  personTexts(conversationId: string, workId: string | null): Promise<string[]>;
   prepareTaskUse(projectId: string, conversationId: string, sources?: readonly { type: string; id: string }[]): Promise<{ mark(): Promise<void> }>;
   /** The AI setup of one of the owner's agents: the one named, else their first (Assistant). A deleted agent has none. */
   enablement(ownerUserId: string, options?: { lock?: boolean; agentId?: string; workspaceId?: string }): Promise<EnablementRecord | null>;

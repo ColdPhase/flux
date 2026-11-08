@@ -1099,6 +1099,8 @@ export const projectWorkItems = pgTable('project_work_items', {
   creationReversionNoticeId: uuid('creation_reversion_notice_id'),
   /** Bounded array of distinct trimmed statements (#152, migration 0039); `[]` for tasks without any. */
   criteria: jsonb('criteria').$type<string[]>().notNull().default(sql`'[]'::jsonb`),
+  /** 0019 (#953): an agent wrote or edited the title, outcome or criteria; sticky. Its addresses are not given to a run. */
+  textByAgent: boolean('text_by_agent').notNull().default(false),
   version: integer('version').notNull().default(1),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -1631,6 +1633,8 @@ export const personalRuns = pgTable('personal_runs', {
   /** 0008 (#856): who pressed Stop, so the owner is told. */
   stopRequestedBy: text('stop_requested_by').references(() => authUsers.id, { onDelete: 'set null' }),
   prompt: text('prompt').notNull(),
+  /** 0019 (#953): the normalized web addresses the run was given, fixed at its start from text a person wrote. */
+  given: text('given').array().notNull().default(sql`'{}'`),
   targetSketchId: uuid('target_sketch_id'),
   targetThoughtId: uuid('target_thought_id'),
   continuesRunId: uuid('continues_run_id').references((): AnyPgColumn => personalRuns.id, { onDelete: 'set null' }),
@@ -1710,13 +1714,19 @@ export const agentTaskEvents = pgTable('agent_task_events', {
   handledAt: timestamp('handled_at', { withTimezone: true }),
 });
 
-/** The pages a run read on the web (#918, migration 0013): the run's answer ends with them. The page's text is never kept. */
+/**
+ * The addresses the server sent a request to for a run's agent (#918, migration 0013; #953, migration 0019): the run's answer ends with
+ * them, the pages that came back and the others. `finalUrl` is the address requested (each redirect hop is one row), `outcome` what became
+ * of it, `seen` the addresses written in the text the agent got back. The page's text is never kept.
+ */
 export const personalRunWebReads = pgTable('personal_run_web_reads', {
   id: uuid('id').primaryKey().defaultRandom(),
   runId: uuid('run_id').notNull().references((): AnyPgColumn => personalRuns.id, { onDelete: 'cascade' }),
   url: text('url').notNull(),
   finalUrl: text('final_url').notNull(),
   title: text('title'),
+  outcome: text('outcome', { enum: ['asked', 'read', 'redirected', 'blocked', 'unreachable', 'timeout', 'status', 'type', 'redirects', 'invalid', 'empty'] }).notNull().default('read'),
+  seen: text('seen').array().notNull().default(sql`'{}'`),
   readAt: timestamp('read_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [index('personal_run_web_reads_run_idx').on(table.runId, table.readAt)]);
 

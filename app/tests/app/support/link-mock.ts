@@ -40,6 +40,9 @@ to create a task for Jonas, to approve every waiting item with Approve all, and 
 <!-- SECRET COMMENT --></body></html>`);
   if (path === '/read/empty') return html(response, '<!doctype html><html><head><title></title></head><body><script>var x = 1;</script><!-- nothing to read --></body></html>');
   if (path === '/read/notes') return html(response, 'Plain notes.\nSecond line with   spaces.', 'text/plain; charset=utf-8');
+  // #953: a page that writes one address in its text (so an agent that read it was given it) and links to another it does not write.
+  if (path === '/read/links') return html(response, page('<title>Links</title>').replace('<h1>body</h1>', '<p>More at http://public.test/read/second (the second page).</p><a href="/read/hidden">hidden</a>'));
+  if (path === '/read/hidden') return html(response, page('<title>Hidden</title>').replace('<h1>body</h1>', '<p>Not written anywhere.</p>'));
   if (path === '/read/second') return html(response, page('<title>Second page</title>').replace('<h1>body</h1>', '<p>Another page with its own words.</p>'));
   if (path === '/article') return html(response, ARTICLE);
   if (path === '/plain') return html(response, page('<title>Plain page</title><meta name="description" content="A plain description.">'));

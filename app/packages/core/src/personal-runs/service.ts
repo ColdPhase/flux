@@ -39,6 +39,8 @@ import {
   apiModelAccount, CODEX_RUNTIME_MODEL, connectionOnModel, defaultPick, isModelId, modelChoice, modelNameOf, RUNTIME_MODEL, runtimeModelAccount, type ConnectionModels,
 } from './model.js';
 import { announce, updateAndAnnounce } from './progress.js';
+import { givenAddresses, GIVEN_AT_START_MAX } from './web-addresses.js';
+import { endedWithWebSources } from './web-sources.js';
 import {
   budgetedReservationMicros, centsToMicros, connectionRef, memoryText, normalizeAgentChange, normalizeEnable, normalizeInvoke, retryRequest, runReservationMicros,
   type NormalizedInvoke,
@@ -167,6 +169,11 @@ export async function answerView(ports: PersonalRunPorts, record: RunRecord): Pr
   };
 }
 
+async function webSourcesOf(ports: PersonalRunPorts, record: RunRecord): Promise<{ webSources?: string }> {
+  const line = await endedWithWebSources(ports, record);
+  return line ? { webSources: line } : {};
+}
+
 export async function runView(ports: PersonalRunPorts, record: RunRecord): Promise<AssistantRun> {
   return {
     id: record.id, clientRunId: record.clientRunId, workspaceId: record.workspaceId, projectId: record.projectId,
@@ -178,6 +185,8 @@ export async function runView(ports: PersonalRunPorts, record: RunRecord): Promi
     resumesAt: record.status === 'queued' && record.resumeAt ? iso(record.resumeAt) : null,
     cost: { state: record.costState, reservedMicros: record.reservedMicros, chargedMicros: record.chargedMicros, inputTokens: record.inputTokens, outputTokens: record.outputTokens },
     answer: await answerView(ports, record),
+    // A run that ended without an answer lists the web addresses it asked for in its end line (#953): nothing else shows them.
+    ...(record.answerBody === null && !['queued', 'reading', 'dispatching'].includes(record.status) ? await webSourcesOf(ports, record) : {}),
     authority: record.authority, backgroundLabel: record.backgroundLabel,
     behind: record.status === 'queued' && !record.resumeAt ? await behindView(ports, record) : null,
     createdAt: iso(record.createdAt), dispatchedAt: record.dispatchedAt ? iso(record.dispatchedAt) : null,
@@ -399,6 +408,18 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
   }
 
   /**
+   * The web addresses a run is given when it starts (#953, C-30): written in text a person wrote, never in what an agent wrote. That is the
+   * request when the owner or their schedule wrote it, the task when a person made it and no agent has written it since, and the people's
+   * messages in the conversation. A task run's prompt (and the prompt of a question between agents, and of a continuation, which holds the
+   * agents' question and answer lines) is built by the server from agents' words, so it is not read for addresses. Fixed here, with the run.
+   */
+  async function givenAtStart(ports: PersonalRunPorts, run: { kind: string; prompt: string; conversationId: string; workId?: string | null }): Promise<string[]> {
+    const texts = await ports.runs.personTexts(run.conversationId, run.workId ?? null);
+    if (run.kind !== 'task' && run.kind !== 'task_answer') texts.unshift(run.prompt);
+    return [...givenAddresses(texts)].slice(0, GIVEN_AT_START_MAX);
+  }
+
+  /**
    * The shared path of invoke, continue and retry. Order matters: identity claims, then the place, then the caller's own
    * enablement, connection, agent and the key's daily budget. Nothing is written unless every check passes; a request
    * that finds the budget used is written paused, to start by itself when the key's next day begins.
@@ -448,6 +469,7 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
       id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: conversationId.toLowerCase(),
       ownerUserId: owner, agentId, connectionId: enablement.connectionId, clientRunId: request.clientRunId,
       requestFingerprint: request.fingerprint, kind: request.kind, prompt: request.prompt,
+      given: await givenAtStart(ports, { kind: request.kind, prompt: request.prompt, conversationId: conversationId.toLowerCase() }),
       targetSketchId: request.target?.sketchId ?? null, targetThoughtId: request.target?.thoughtId ?? null,
       continuesRunId: request.continuesRunId, retryOfRunId, ...admitted.fields, engine: enablement.engine, aiEpoch,
     });
@@ -504,7 +526,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const run = await ports.runs.insertRun({
       id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, ownerUserId: owner, agentId,
       connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `background:${spec.kind}:${spec.clientRunId}`, kind: spec.kind,
-      prompt: spec.prompt, targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine, silent: spec.silent,
+      prompt: spec.prompt, given: await givenAtStart(ports, { kind: spec.kind, prompt: spec.prompt, conversationId: spec.conversationId }),
+      targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine, silent: spec.silent,
       aiEpoch: ai.epoch,
       // A schedule is the owner's own stored request: it waits behind their own requests and says what it is (AST-6 "Queue").
       authority: 'owner_schedule', backgroundLabel: spec.label.trim().slice(0, 80) || 'Schedule',
@@ -550,7 +573,8 @@ export function createPersonalRunUseCases({ uow, connections, providerEnabled, r
     const run = await ports.runs.insertRun({
       id: randomUUID(), workspaceId: place.workspaceId, projectId: place.projectId, conversationId: spec.conversationId, ownerUserId: owner, agentId: spec.agentId,
       connectionId: enablement.connectionId, clientRunId: spec.clientRunId, requestFingerprint: `${kind}:${spec.workId}:${spec.clientRunId}`, kind,
-      prompt: spec.prompt, targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine,
+      prompt: spec.prompt, given: await givenAtStart(ports, { kind, prompt: spec.prompt, conversationId: spec.conversationId, workId: spec.workId }),
+      targetSketchId: null, targetThoughtId: null, continuesRunId: null, retryOfRunId: null, ...admitted.fields, engine: enablement.engine,
       aiEpoch: ai.epoch, workId: spec.workId, ...(spec.askedByRunId ? { askedByRunId: spec.askedByRunId } : {}), exchangeTurn: spec.exchangeTurn ?? 0,
     });
     // A request paused until the key's next day starts by itself then (the worker's queue tick); any other starts now.

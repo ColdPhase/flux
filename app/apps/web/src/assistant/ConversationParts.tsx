@@ -100,6 +100,8 @@ export function WorkingLine({ run, onStop, onRetry, onDismiss, composerId, chang
         <p className="assistant-working__text">
           {working ? <WorkingWords run={run} /> : ended}
         </p>
+        {/* A run that ended without an answer still says every web address it asked for (#953): nothing else would show them. */}
+        {!working && run.webSources ? <p className="assistant-working__sources" data-web-sources>{run.webSources}</p> : null}
         <p className="assistant-working__who"><Icon name="lock" size={12} />Only you see this · “{run.prompt.length > 90 ? `${run.prompt.slice(0, 90)}…` : run.prompt}”</p>
         {failed ? <p className="assistant-working__error" role="alert">{failed}</p> : null}
       </div>

@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { AGENT_TASK_EVENT_ATTEMPTS, AGENT_TASK_GIVE_UP_ATTEMPTS, agentTaskRows, assistantChangeRows, assistantRemovalRows, personalRunRows, workRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
-import { agentLabel, answerLines, askableLines, createPersonalRunUseCases, DomainError, MAX_EXCHANGE_TURNS, noPersonalConnections, resolveAsked, stopRunBy, TAKEN_WORDS, takeAsk, taskRunClientId,
+import { AGENT_TASK_EVENT_ATTEMPTS, AGENT_TASK_GIVE_UP_ATTEMPTS, agentTaskRows, assistantChangeRows, assistantRemovalRows, personalRunRows, personalRunWebReadRows, workRows, type Database, type DbExecutor, type Transaction } from '@flux/db';
+import { agentLabel, answerLines, askableLines, createPersonalRunUseCases, DomainError, MAX_EXCHANGE_TURNS, noPersonalConnections, resolveAsked, stopRunBy, TAKEN_WORDS, takeAsk, taskRunClientId, webSourcesLine,
   taskRunPrompt, uuidFrom, type AgentQuestion, type Askable, type Principal, type TaskStart, type UndoRecord, type WorkRecord } from '@flux/core';
 import { personalRunPorts, type PersonalRunComposition, type PersonalRunQueueFactory } from '../personal-runs/adapters.js';
 import { taskDiscussionUseCases } from '../work/task-discussions.js';
@@ -297,7 +297,14 @@ export function createAgentTaskDrain(db: Database, queue: PersonalRunQueueFactor
     const run = event.runId ? await personalRunRows(tx).findRun(event.runId, { lock: true }) : null;
     if (!run || (run.kind !== 'task' && run.kind !== 'task_answer') || !run.workId) return;
     const work = await workRows(tx).findWork(run.workId, { lock: true });
-    if (!work || FINISHED.has(work.status)) return;
+    if (!work) return;
+    // A run that ended without an answer still says the web addresses it asked for (#953), whoever holds the task now: the discussion is
+    // where the people of the task read what the agent did, and nothing else would show them.
+    if (run.status !== 'completed' && run.status !== 'truncated' && run.endReason !== 'ai_off') {
+      const line = webSourcesLine(await personalRunWebReadRows(tx).forRun(run.id));
+      if (line) await say(tx, work, run.agentId, line, `web:${run.id}`);
+    }
+    if (FINISHED.has(work.status)) return;
     if (run.kind === 'task_answer') return answered(tx, work, run);
     // The task is still the agent's. If its owner took it back or gave it away meanwhile, there is nothing to finish.
     const holds = work.owner?.kind === 'agent' && work.owner.id === run.agentId;

@@ -21,8 +21,12 @@ export const FETCH_LIMITS = { connectMs: 2_000, totalMs: 3_000, maxBytes: 256 * 
 
 type AddressClass = 'public' | 'private' | 'metadata';
 export type FetchFailure = 'blocked' | 'unreachable' | 'timeout' | 'status' | 'type' | 'redirects' | 'invalid';
-/** `type` is the content type of the body that was read (absent from a fake in a test). */
-export type FetchResult = { ok: true; url: string; html: string; type?: string } | { ok: false; reason: FetchFailure };
+/**
+ * `type` is the content type of the body that was read (absent from a fake in a test). `requested` is every address the server sent a
+ * request to, in order, the redirect hops included, whether or not anything readable came back (#953): a failed fetch has sent the address
+ * to the site all the same. Absent from a fake in a test.
+ */
+export type FetchResult = { ok: true; url: string; html: string; type?: string; requested?: string[] } | { ok: false; reason: FetchFailure; requested?: string[] };
 
 /**
  * What a caller reads with the same guard. A link card reads the head of a web page (`text/html`); an agent that reads a page (#918)
@@ -161,21 +165,37 @@ function requestOnce(url: URL, rules: FetchRules, signal: AbortSignal, connectTo
   });
 }
 
-/** Fetches the page at `address`: the start of its body (HTML unless `kind` says otherwise), or why not. Never throws. */
-export async function fetchPage(address: string, rules: FetchRules = PRODUCTION_RULES, connectTo?: (host: string) => { host: string; port: number } | null, kind: FetchKind = HTML_KIND): Promise<FetchResult> {
+/** What the caller does around a fetch. Whatever `beforeRequest` throws ends the fetch before that request is sent, and is thrown on. */
+export interface FetchHooks { beforeRequest?: (address: string) => Promise<void> }
+class HookFailed extends Error { constructor(readonly original: unknown) { super('beforeRequest failed'); } }
+
+/**
+ * Fetches the page at `address`: the start of its body (HTML unless `kind` says otherwise), or why not. Never throws, except what the
+ * caller's own `beforeRequest` throws. That hook runs with each address just before its request goes out (the first and every redirect
+ * hop), so the caller can keep the address before the site can see it (#953). A fragment is never sent and is not part of the address.
+ */
+export async function fetchPage(address: string, rules: FetchRules = PRODUCTION_RULES, connectTo?: (host: string) => { host: string; port: number } | null, kind: FetchKind = HTML_KIND, hooks?: FetchHooks): Promise<FetchResult> {
   const deadline = AbortSignal.timeout(rules.limits.totalMs);
+  const requested: string[] = [];
   let url: URL;
-  try { url = new URL(address); } catch { return { ok: false, reason: 'invalid' }; }
+  try { url = new URL(address); } catch { return { ok: false, reason: 'invalid', requested }; }
   try {
     for (let hop = 0; hop <= rules.limits.maxRedirects; hop++) {
-      if (literalRefusal(url, rules)) return { ok: false, reason: 'blocked' };
+      url.hash = '';
+      if (literalRefusal(url, rules)) return { ok: false, reason: 'blocked', requested };
+      // Written down before the request goes out: whatever it comes to, the address was sent.
+      if (hooks?.beforeRequest) {
+        try { await hooks.beforeRequest(url.href); } catch (error) { throw new HookFailed(error); }
+      }
+      requested.push(url.href);
       const result = await requestOnce(url, rules, deadline, connectTo?.(hostOf(url)) ?? null, kind);
-      if (result.kind === 'page') return { ok: true, url: url.href, html: result.html, type: result.type };
-      try { url = new URL(result.location, url); } catch { return { ok: false, reason: 'invalid' }; }
+      if (result.kind === 'page') return { ok: true, url: url.href, html: result.html, type: result.type, requested };
+      try { url = new URL(result.location, url); } catch { return { ok: false, reason: 'invalid', requested }; }
     }
-    return { ok: false, reason: 'redirects' };
+    return { ok: false, reason: 'redirects', requested };
   } catch (error) {
-    return { ok: false, reason: error instanceof Refused ? error.failure : 'unreachable' };
+    if (error instanceof HookFailed) throw error.original;
+    return { ok: false, reason: error instanceof Refused ? error.failure : 'unreachable', requested };
   }
 }
 

@@ -1,4 +1,4 @@
-import { fetchPage, FETCH_LIMITS, literalRefusal, PRODUCTION_RULES, type FetchFailure, type FetchKind, type FetchResult, type FetchRules } from '../link-previews/safe-fetch.js';
+import { fetchPage, FETCH_LIMITS, literalRefusal, PRODUCTION_RULES, type FetchFailure, type FetchHooks, type FetchKind, type FetchResult, type FetchRules } from '../link-previews/safe-fetch.js';
 import { readablePage, type ReadablePage } from './readable.js';
 
 // An agent reads a web page (#918, F-036 AG-8): the server fetches it, never the agent's own process, with the same guard as a link
@@ -13,10 +13,14 @@ export const WEB_READ_KIND: FetchKind = { accept: 'text/html,application/xhtml+x
 export const READS_PER_MINUTE = 20;
 export const READS_AT_ONCE = 6;
 
-export type WebReadFailure = FetchFailure | 'busy' | 'off' | 'empty';
+export type WebReadFailure = FetchFailure | 'busy' | 'off' | 'empty' | 'not_given' | 'run_limit';
+/**
+ * `requested` is every address the server sent a request to for this read (#953): empty when it was refused from the address alone or for
+ * the rate, otherwise the address and each redirect hop, whether or not a page came back.
+ */
 export type WebReadResult =
-  | { ok: true; url: string; finalUrl: string; title: string | null; text: string; truncated: boolean }
-  | { ok: false; reason: WebReadFailure };
+  | { ok: true; url: string; finalUrl: string; title: string | null; text: string; truncated: boolean; requested: string[] }
+  | { ok: false; reason: WebReadFailure; requested: string[] };
 
 export interface WebReaderOptions {
   enabled: boolean;
@@ -41,6 +45,8 @@ export const WEB_READ_WORDS: Record<WebReadFailure, string> = {
   busy: 'Too many pages were read just now. Carry on without it, or try again later.',
   off: 'Reading the web is not turned on for this Flux.',
   empty: 'The page has no text to read.',
+  not_given: 'That address was not given to you. You can read an address that is written in the request, in the task or its conversation, or on a page you read; you cannot make one up.',
+  run_limit: 'This run has asked for as many addresses as it may. Carry on without more.',
 };
 
 export function webReader(options: WebReaderOptions) {
@@ -63,21 +69,32 @@ export function webReader(options: WebReaderOptions) {
 
   return {
     get enabled() { return options.enabled; },
-    /** Reads one page for an owner's agent. Never throws. */
-    async read(ownerUserId: string, address: string): Promise<WebReadResult> {
-      if (!options.enabled) return { ok: false, reason: 'off' };
+    /**
+     * Reads one page for an owner's agent. Never throws, except what the caller's `beforeRequest` throws: it runs with each address just
+     * before its request is sent (the first and every redirect hop) and a throw ends the read before that request.
+     */
+    async read(ownerUserId: string, address: string, hooks: FetchHooks = {}): Promise<WebReadResult> {
+      if (!options.enabled) return { ok: false, reason: 'off', requested: [] };
       // Refused from the address alone (not a web address, scheme, port, credentials, local name, IP literal): no network, so no rate is spent.
       let url: URL;
-      try { url = new URL(address); } catch { return { ok: false, reason: 'invalid' }; }
-      if (literalRefusal(url, rules)) return { ok: false, reason: 'blocked' };
-      if (!allow(ownerUserId)) return { ok: false, reason: 'busy' };
+      try { url = new URL(address); } catch { return { ok: false, reason: 'invalid', requested: [] }; }
+      url.hash = ''; // never sent, and no part of the address that is recorded
+      if (literalRefusal(url, rules)) return { ok: false, reason: 'blocked', requested: [] };
+      if (!allow(ownerUserId)) return { ok: false, reason: 'busy', requested: [] };
       running++;
       try {
-        const page = await (options.fetch ? options.fetch(address) : fetchPage(address, rules, options.connectTo, WEB_READ_KIND));
-        if (!page.ok) return { ok: false, reason: page.reason };
+        let page: FetchResult;
+        if (options.fetch) {
+          // TEST ONLY: a fake says nothing of hops, so the hook is run for the address asked, and then for where it ended.
+          await hooks.beforeRequest?.(url.href);
+          page = await options.fetch(address);
+          if (page.ok && page.url !== url.href) await hooks.beforeRequest?.(page.url);
+        } else page = await fetchPage(address, rules, options.connectTo, WEB_READ_KIND, hooks);
+        const requested = page.requested ?? (page.ok ? [...new Set([url.href, page.url])] : [url.href]);
+        if (!page.ok) return { ok: false, reason: page.reason, requested };
         const readable: ReadablePage = readablePage(page.html, !/^text\/plain\b/i.test(page.type ?? ''));
-        if (!readable.text && !readable.title) return { ok: false, reason: 'empty' };
-        return { ok: true, url: address, finalUrl: page.url, title: readable.title, text: readable.text, truncated: readable.truncated };
+        if (!readable.text && !readable.title) return { ok: false, reason: 'empty', requested };
+        return { ok: true, url: address, finalUrl: page.url, title: readable.title, text: readable.text, truncated: readable.truncated, requested };
       } finally { running--; }
     },
   };

@@ -281,6 +281,11 @@ export interface AssistantRun {
   backgroundLabel?: string | null;
   /** While queued: the run it waits behind, so the line can say "Next: …" or "Finishing your daily check first". Optional for older servers. */
   behind?: AssistantRunBehind | null;
+  /**
+   * A run that ended without an answer and asked for web addresses: every address the server sent a request to, in Flux's words ("Read on the web:",
+   * "Requested, not read:"), for its end line (#953). Absent otherwise; an answer lists them itself.
+   */
+  webSources?: string;
   createdAt: string;
   dispatchedAt: string | null;
   completedAt: string | null;

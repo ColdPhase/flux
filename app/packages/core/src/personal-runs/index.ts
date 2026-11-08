@@ -13,4 +13,5 @@ export { TEST_FIXTURE_API_KEY, TEST_FIXTURE_KEY_REF, testFixturePersonalConnecti
 export { apiModelAccount, connectionOnModel, modelGroups, runtimeModelAccount, runtimeModelFlag } from './model.js';
 export { createRuntimeRunProcessor, localToolInInit, runtimePrompt } from './runtime-run.js';
 export { redactSecrets, REDACTED_SECRET } from './redaction.js';
-export { answerWithWebSources, webSourcesLine } from './web-sources.js';
+export { answerWithWebSources, endedWithWebSources, webSourcesLine, WEB_SOURCES_HEADINGS } from './web-sources.js';
+export { ADDRESS_MAX, ADDRESSES_PER_TEXT, WEB_READS_PER_RUN, addressesIn, givenAddresses, isGivenAddress, normalizedAddress } from './web-addresses.js';

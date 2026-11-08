@@ -21,6 +21,7 @@
 .assistant-working__body { flex: 1; min-width: 0; }
 .assistant-working__text { display: flex; align-items: center; gap: 8px; font-size: var(--fs-md); color: var(--t2); }
 .assistant-working__who { display: flex; align-items: center; gap: 5px; margin-top: 2px; font-size: var(--fs-xs); color: var(--t3); overflow-wrap: anywhere; }
+.assistant-working__sources { margin-top: 4px; font-size: var(--fs-xs); color: var(--t2); white-space: pre-line; overflow-wrap: anywhere; }
 .assistant-working__actions { display: flex; align-items: center; gap: 4px; flex: none; }
 @keyframes assistant-breathe { 50% { opacity: .45; } }
 

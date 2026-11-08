@@ -221,8 +221,8 @@ operator decides for their server through the operator step (RT-9).
 7. **Sign-in methods.** Every `claude auth login` method is offered, but a pasted setup token is
    refused because it is a Claude account credential. Whether Anthropic reads that as restricting a
    method is unknown.
-8. **Web reading.** Egress beyond the vendors' hosts, and prompt injection from any page. The
-   defence is AG-2, AG-3 and AG-8, and the test in #856.
+8. **Web reading.** Egress beyond the vendors' hosts, prompt injection from any page, and an address that carries what the agent knows to
+   a site. The defence is AG-2, AG-3 and AG-8 (an agent reads only addresses it was given, C-30), and the tests in #856 and #953.
 9. **Change without notice.** Anthropic may enforce "without prior notice"; plan eligibility, the
    CLIs' flags and Codex's app-server can change. Mitigations: pinned versions, the flag contract
    test, the start-up and JSONL checks, and honest *Sign in again* and *Provider refused* states.

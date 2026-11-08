@@ -93,18 +93,23 @@ export async function assistantScene(label: string) {
     if ((await settings()).mayDo !== 'act') await setMayDo('act');
   }
   /** A run moved to `reading` (as the worker's claim does), with its token minted. */
-  async function liveRun(conversation: Conversation = thread) {
-    const started = await runs.invoke(human(owner), conversation.id, { clientRunId: randomUUID(), kind: 'ask', prompt: 'Tidy the project' });
-    await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [started.run.id]);
+  /** A run of the owner's assistant with a live token; `prompt` is what they asked (the addresses written in it are the ones an agent may read on the web). */
+  async function liveRun(conversation: Conversation = thread, prompt = 'Tidy the project') {
+    const started = await runs.invoke(human(owner), conversation.id, { clientRunId: randomUUID(), kind: 'ask', prompt });
+    return liveOf(started.run.id);
+  }
+  /** The same for a run that was started some other way (a task's, say): moved to `reading`, its token minted, its MCP calls through the real route. */
+  async function liveOf(runId: string) {
+    await pool.query(`UPDATE personal_runs SET status = 'reading' WHERE id = $1`, [runId]);
     const nonce = randomBytes(32).toString('hex');
-    assert.equal(await db.transaction((tx) => personalRunTokenRows(tx).arm(started.run.id, sha256(nonce))), true);
-    const response = await fetch(`${apiUrl}${personalRunTokenPath(started.run.id)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce }) });
+    assert.equal(await db.transaction((tx) => personalRunTokenRows(tx).arm(runId, sha256(nonce))), true);
+    const response = await fetch(`${apiUrl}${personalRunTokenPath(runId)}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ nonce }) });
     assert.equal(response.status, 200);
     const minted = await response.json() as { token: string; tools: string[] };
     let id = 0;
     const call = (name: string, args: Record<string, unknown>) => mcp(minted.token, ++id, 'tools/call', { name, arguments: { clientCommandId: randomUUID(), ...args } });
     const raw = (method: string, params?: Record<string, unknown>) => mcp(minted.token, ++id, method, params);
-    return { runId: started.run.id, token: minted.token, tools: minted.tools, call, raw };
+    return { runId, token: minted.token, tools: minted.tools, call, raw };
   }
   /** The run ends normally, its token closed and expired: provenance only. */
   const complete = (runId: string) => pool.query(`UPDATE personal_runs SET status = 'completed', completed_at = now(), committed_at = now(), answer_body = 'Done',
@@ -155,6 +160,6 @@ export async function assistantScene(label: string) {
     (expectStatus(await who.browser.request('GET', `/api/v1/conversations/${conversation.id}/assistant-changes`), 200) as { items: AssistantChange[] }).items;
 
   return { connections, queue, runs, compute, processor, assistantConnectionId, lead, owner, peer, outsider, admin, viewer, stranger, guest, ws, place, agentId, thread, connectionId, settings, setMayDo, reset,
-    liveRun, complete, task, doc, docBody, map, patchWork, taskRow, dependencies, holding, listConversation, changesOf };
+    liveRun, liveOf, complete, task, doc, docBody, map, patchWork, taskRow, dependencies, holding, listConversation, changesOf };
 }
 export type AssistantScene = Awaited<ReturnType<typeof assistantScene>>;

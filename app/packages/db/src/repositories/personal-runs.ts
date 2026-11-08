@@ -186,6 +186,7 @@ export function personalRunRows(db: DbExecutor) {
     },
 
     webReads: (runId: string) => personalRunWebReadRows(db).forRun(runId),
+    personTexts: (conversationId: string, workId: string | null) => personalRunWebReadRows(db).personTexts(conversationId, workId),
 
     prepareTaskUse: (projectId: string, conversationId: string, sources: readonly { type: string; id: string }[] = []) =>
       prepareReferencedTaskUse(db, projectId, [{ type: 'conversation', id: conversationId }, ...sources]),

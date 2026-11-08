@@ -9,14 +9,24 @@ import { decodeEntities, parsePagePreview } from '../link-previews/html.js';
 export const READ_TEXT_MAX = 8_000;
 
 /** Elements whose content is not text for a reader. */
-const RAW_TEXT = new Set(['script', 'style', 'noscript', 'template', 'svg', 'textarea', 'head', 'title', 'iframe', 'object', 'canvas', 'select']);
+// `head` is not one of them: a page that leaves out `</head>` (minified pages often do) would be read as nothing but its head. Its `title`,
+// `script` and `style` are skipped on their own, and its `meta` and `link` have no text.
+const RAW_TEXT = new Set(['script', 'style', 'noscript', 'template', 'svg', 'textarea', 'title', 'iframe', 'object', 'canvas', 'select']);
 /** Elements that end a line. */
 const BLOCK = new Set(['p', 'div', 'br', 'li', 'ul', 'ol', 'dl', 'dt', 'dd', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'tr', 'table', 'section', 'article', 'header',
   'footer', 'main', 'aside', 'nav', 'blockquote', 'pre', 'hr', 'figure', 'figcaption', 'details', 'summary', 'form', 'fieldset']);
 
-/** Control characters other than the line break, line and paragraph separators, the byte order mark and the bidirectional overrides. */
+/** Control characters other than the line break, the line and paragraph separators, the byte order mark and the bidirectional marks and overrides: a space. */
 // eslint-disable-next-line no-control-regex
-const UNSAFE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029\ufeff\u202a-\u202e\u2066-\u2069\u200e\u200f]/g;
+const UNSAFE = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f\u2028\u2029\ufeff\u202a-\u202e\u2066-\u2069\u200e\u200f\u061c]/g;
+/**
+ * Characters a reader never sees and an instruction can hide in (#953): the zero-width space, the word joiner and the invisible operators, the
+ * soft hyphen, the Mongolian, Hangul and Khmer fillers, the combining grapheme joiner, and the tag characters and variation selectors
+ * supplement (U+E0000 to U+E0FFF), which can spell a whole text no one can read. They are removed, not turned into a space, so a word with a
+ * soft hyphen stays one word. The zero-width joiner and non-joiner stay: emoji and several scripts need them.
+ */
+// eslint-disable-next-line no-misleading-character-class -- the combining characters are listed on purpose: they are what is removed
+const INVISIBLE = /[\u00ad\u034f\u115f\u1160\u17b4\u17b5\u180b-\u180e\u200b\u2060-\u2064\u3164\uffa0]|[\u{e0000}-\u{e0fff}]/gu;
 
 export interface ReadablePage {
   title: string | null;
@@ -74,7 +84,7 @@ export function readablePage(source: string, html: boolean): ReadablePage {
     }
     if (BLOCK.has(name)) push('\n');
   }
-  const cleaned = decodeEntities(pieces.join('')).replace(UNSAFE, ' ')
+  const cleaned = decodeEntities(pieces.join('')).replace(INVISIBLE, '').replace(UNSAFE, ' ')
     .split('\n').map((line) => line.replace(/[ \t\u00a0]+/g, ' ').trim()).join('\n').replace(/\n{3,}/g, '\n\n').trim();
   const characters = [...cleaned];
   const truncated = characters.length > READ_TEXT_MAX || length >= room;

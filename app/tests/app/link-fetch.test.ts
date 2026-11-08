@@ -79,6 +79,8 @@ const rules = (limits: Partial<FetchRules['limits']> = {}, overrides: Partial<Fe
   ...overrides,
 });
 const at = (host: string, path: string) => `http://${host}:${port}${path}`;
+/** A fetch result without the list of addresses it asked for (checked on its own in the redirect tests). */
+const plain = async (...args: Parameters<typeof fetchPage>) => { const result: Record<string, unknown> = { ...await fetchPage(...args) }; delete result.requested; return result; };
 const reached = () => requests.length;
 
 describe('the address check', () => {
@@ -101,8 +103,8 @@ describe('the address check', () => {
 
   test('a name that resolves to a private address, alone or among public ones, is refused before any connection', async () => {
     const before = connections;
-    for (const host of ['internal.test', 'mixed.test', 'meta.test', 'mapped.test']) assert.deepEqual(await fetchPage(at(host, '/ok'), rules()), { ok: false, reason: 'blocked' }, host);
-    assert.deepEqual(await fetchPage(at('nowhere.test', '/ok'), rules()), { ok: false, reason: 'unreachable' });
+    for (const host of ['internal.test', 'mixed.test', 'meta.test', 'mapped.test']) assert.deepEqual(await plain(at(host, '/ok'), rules()), { ok: false, reason: 'blocked' }, host);
+    assert.deepEqual(await plain(at('nowhere.test', '/ok'), rules()), { ok: false, reason: 'unreachable' });
     assert.equal(connections, before, 'no socket was opened');
     assert.equal(requests.filter((request) => request.host?.startsWith('internal.test') || request.host?.startsWith('mixed.test')).length, 0);
   });
@@ -117,14 +119,14 @@ describe('the address check', () => {
     assert.equal(request.local, '127.0.0.2', 'connected to the checked address, not the one a second lookup would give');
     // The next fetch's lookup answers the private address: refused, no connection.
     const sockets = connections;
-    assert.deepEqual(await fetchPage(at('rebind.test', '/ok'), rules()), { ok: false, reason: 'blocked' });
+    assert.deepEqual(await plain(at('rebind.test', '/ok'), rules()), { ok: false, reason: 'blocked' });
     assert.equal(connections, sockets);
   });
 
   test('the default-port rule of production: another port is refused without a connection', async () => {
     const sockets = connections;
     const production: FetchRules = { ...rules(), port: PRODUCTION_RULES.port };
-    assert.deepEqual(await fetchPage(at('ok.test', '/ok'), production), { ok: false, reason: 'blocked' });
+    assert.deepEqual(await plain(at('ok.test', '/ok'), production), { ok: false, reason: 'blocked' });
     assert.equal(connections, sockets);
   });
 });
@@ -176,9 +178,9 @@ describe('the resolver (c-ares, off the shared thread pool)', () => {
     assert.deepEqual(dnsServer.asked.filter((question) => question.endsWith('ok.test')).sort(), ['A ok.test', 'AAAA ok.test']);
     const during = connections;
     for (const host of ['loop.test', 'six.test', 'mixed.test', 'meta.test'])
-      assert.deepEqual(await fetchPage(at(host, '/ok'), viaDns), { ok: false, reason: 'blocked' }, host);
+      assert.deepEqual(await plain(at(host, '/ok'), viaDns), { ok: false, reason: 'blocked' }, host);
     assert.equal(connections, during, 'a loopback, IPv6, metadata or mixed answer opened no socket');
-    assert.deepEqual(await fetchPage(at('gone.test', '/ok'), viaDns), { ok: false, reason: 'unreachable' });
+    assert.deepEqual(await plain(at('gone.test', '/ok'), viaDns), { ok: false, reason: 'unreachable' });
     assert.ok(connections - sockets >= 1);
   });
 
@@ -210,8 +212,11 @@ describe('the resolver (c-ares, off the shared thread pool)', () => {
 
 describe('redirects', () => {
   test('up to three are followed, a fourth is not', async () => {
-    assert.deepEqual(await fetchPage(at('ok.test', '/r/3'), rules()), { ok: true, url: at('ok.test', '/r/0'), html: page('<title>Arrived</title>'), type: 'text/html' });
-    assert.deepEqual(await fetchPage(at('ok.test', '/r/4'), rules()), { ok: false, reason: 'redirects' });
+    assert.deepEqual(await plain(at('ok.test', '/r/3'), rules()), { ok: true, url: at('ok.test', '/r/0'), html: page('<title>Arrived</title>'), type: 'text/html' });
+    assert.deepEqual(await plain(at('ok.test', '/r/4'), rules()), { ok: false, reason: 'redirects' });
+    // Every address the server sent a request to is listed, in order, the redirected ones too (#953).
+    assert.deepEqual((await fetchPage(at('ok.test', '/r/3'), rules())).requested, [3, 2, 1, 0].map((n) => at('ok.test', `/r/${n}`)));
+    assert.equal((await fetchPage(at('ok.test', '/r/4'), rules())).requested?.length, 4, 'a fourth redirect is refused after the fourth address');
   });
 
   test('every hop is judged: a redirect to a private name, mixed answers, metadata, a non-http scheme or credentials is refused and never requested', async () => {
@@ -221,12 +226,30 @@ describe('redirects', () => {
       'ftp://ok.test/ok', 'file:///etc/passwd', `http://user:pw@ok.test:{PORT}/ok`, 'http://169.254.169.254/'];
     for (const target of targets) {
       const result = await fetchPage(at('ok.test', `/to/${encodeURIComponent(target)}`), rules());
-      assert.deepEqual(result, { ok: false, reason: 'blocked' }, target);
+      assert.deepEqual({ ...result, requested: undefined }, { ok: false, reason: 'blocked', requested: undefined }, target);
+      assert.equal(result.requested?.[0], at('ok.test', `/to/${encodeURIComponent(target)}`), 'the address asked for comes first');
     }
     // Only the redirecting requests reached the server; no target was requested, and the only new sockets are theirs.
     assert.equal(reached() - before, targets.length);
     assert.ok(requests.slice(before).every((request) => request.path.startsWith('/to/')));
     assert.equal(connections - sockets, targets.length);
+  });
+
+  test('the caller\'s hook runs with each address just before its request, a throw stops the fetch before that request, and a fragment is never sent (#953)', async () => {
+    const start = reached();
+    const seen: string[] = [];
+    const ok = await fetchPage(at('ok.test', '/r/2#top'), rules(), undefined, undefined, { beforeRequest: async (address) => {
+      assert.equal(reached(), start + seen.length, 'the request of this address has not gone out yet');
+      seen.push(address);
+    } });
+    assert.equal(ok.ok, true);
+    assert.deepEqual(seen, [2, 1, 0].map((n) => at('ok.test', `/r/${n}`)), 'each hop, without the fragment');
+    assert.deepEqual(ok.requested, seen);
+    // Stopped at the second address: the first went out, the second never does, and the caller\'s error comes out as it was.
+    const before = reached();
+    await assert.rejects(fetchPage(at('ok.test', '/r/3'), rules(), undefined, undefined, { beforeRequest: async (address) => { if (address.endsWith('/r/2')) throw new Error('the run was stopped'); } }),
+      /the run was stopped/);
+    assert.equal(reached() - before, 1);
   });
 
   test('a redirect to a public name is followed with a fresh request, carrying nothing of the first', async () => {
@@ -246,9 +269,9 @@ describe('the request and its bounds', () => {
   });
 
   test('only text/html with a 200 is read', async () => {
-    assert.deepEqual(await fetchPage(at('ok.test', '/png'), rules()), { ok: false, reason: 'type' });
-    assert.deepEqual(await fetchPage(at('ok.test', '/boom'), rules()), { ok: false, reason: 'status' });
-    assert.deepEqual(await fetchPage(at('ok.test', '/missing'), rules()), { ok: false, reason: 'status' });
+    assert.deepEqual(await plain(at('ok.test', '/png'), rules()), { ok: false, reason: 'type' });
+    assert.deepEqual(await plain(at('ok.test', '/boom'), rules()), { ok: false, reason: 'status' });
+    assert.deepEqual(await plain(at('ok.test', '/missing'), rules()), { ok: false, reason: 'status' });
   });
 
   test('the page is decoded with its declared charset', async () => {
@@ -259,7 +282,7 @@ describe('the request and its bounds', () => {
   test('a server that never answers, and one that drips forever, are given up on at the total limit', async () => {
     for (const path of ['/stall', '/drip']) {
       const started = Date.now();
-      assert.deepEqual(await fetchPage(at('ok.test', path), rules({ totalMs: 500 })), { ok: false, reason: 'timeout' }, path);
+      assert.deepEqual(await plain(at('ok.test', path), rules({ totalMs: 500 })), { ok: false, reason: 'timeout' }, path);
       assert.ok(Date.now() - started < 1_500, `${path} took ${Date.now() - started} ms`);
     }
   });
