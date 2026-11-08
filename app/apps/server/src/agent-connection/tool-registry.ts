@@ -51,7 +51,7 @@ const RUN_PRIVATE: Record<string, { input: z.ZodType; view: string }> = {
 const RUN_EFFECTS = new Set<string>(ASSISTANT_RUN_EFFECT_TOOLS);
 /**
  * The change tools a local client shares with a run, and the co-work tools that can give something to another person's client: a unit
- * assigned or transferred to it and a request to it wait for the owner's OK like a task for someone else, and taking back a task it created
+ * assigned or transferred to it waits for the owner's OK like a task for someone else, and taking back a task it created
  * is a deletion, which always waits (C-18). Their other uses do not wait.
  */
 const CHANGE_TOOLS = new Set<string>([...ASSISTANT_RUN_EFFECT_TOOLS, 'flux_transfer_unit', 'flux_undo_task_creation']);

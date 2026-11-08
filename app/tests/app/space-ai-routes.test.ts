@@ -73,7 +73,7 @@ describe('space AI switch: HTTP routes', () => {
   after(async () => { await ensureSpaceAiAllowed(blocked.place.id); });
 
   test('every gated route refuses while AI is off and writes nothing; AI on and outsiders are unaffected', async () => {
-    assert.ok(gatedRoutes.length >= 25, `the manifest gates the AI routes (${gatedRoutes.length})`);
+    assert.ok(gatedRoutes.length >= 24, `the manifest gates the AI routes (${gatedRoutes.length})`);
     const counts = async () => (await pool.query(`SELECT
       (SELECT count(*) FROM personal_runs WHERE workspace_id = $1) AS runs, (SELECT count(*) FROM agent_connections WHERE workspace_id = $1) AS connections,
       (SELECT count(*) FROM assistant_jobs WHERE workspace_id = $1) AS jobs,

@@ -7,7 +7,7 @@ import { AgentsThread, type ThreadTask } from './AgentsThread';
 
 /**
  * A task's agents' thread in its Details (F-038: a space has no Agents view). One row, "Agents’ thread · N messages", opens the
- * thread, its request cards and its composer in place. There is no review rule here: review is the agent's "What it may do" (C-9).
+ * thread and its composer in place. There is no review rule here: review is the agent's "What it may do" (C-9).
  * Reading the count never creates the thread; a failed read leaves the row without a number, and so does an empty thread
  * (Spokój rule 4: no zero counters, #763 C8). A space whose AI is off has no such row and nothing is read (F-029, #614).
  */

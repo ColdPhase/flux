@@ -19,10 +19,9 @@ export function coWorkTaskReference(ref: CoWorkSourceRef): { type: string; id: s
 }
 
 /**
- * #238: {@link coWorkTaskGraphLocks} for a writer that also names tasks (a request's target, sources and criteria, or a
- * completion outcome). The named tasks' projects join the ONE sorted graph pass; the names are resolved again under
- * those graph locks, and a task that appears meanwhile refuses with TASK_TARGET_SET_CHANGED rather than escaping the
- * fence. The returned ids join the caller's single sorted task pass, which refuses a task whose creation was undone.
+ * #238: {@link coWorkTaskGraphLocks} for a writer that also names tasks (a completion outcome). The named tasks' projects
+ * join the ONE sorted graph pass; the names are resolved again under those graph locks, and a task that appears meanwhile
+ * refuses with TASK_TARGET_SET_CHANGED rather than escaping the fence. The returned ids join the caller's single sorted task pass, which refuses a task whose creation was undone.
  */
 export async function coWorkNamedTaskGraphLocks(tx: Transaction, workspaceId: string, units: readonly CoWorkTaskLockInput[],
   refs: readonly CoWorkSourceRef[]): Promise<readonly string[]> {

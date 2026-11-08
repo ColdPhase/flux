@@ -57,7 +57,7 @@ complicated or different").
   Taking a task, claiming or releasing it, asking a question, writing in the task's agents' thread and linking a pull request are
   its own work on a task it holds, not changes to anyone's things, so they do not wait; Only read refuses them like any change.
   Taking back its own unused task (`flux_undo_task_creation`) is a deletion, so it waits like any deletion (AG-3). Giving a unit to
-  another person's client (a new child unit or a transfer), and a request to it, are another person's things: they wait like a task
+  another person's client (a new child unit or a transfer) is another person's thing: it waits like a task
   for someone else. Approve repeats the call as the client's own, which works while the claim and session it was made under are live
   (a 300 second lease). A later Approve cannot apply it, and says so in plain words: "The claim this was made under has ended, so it
   can't be made now. Ask again with a live claim" (the simpler of the two options; it records that the owner's rights today are not a

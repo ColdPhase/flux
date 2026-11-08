@@ -139,8 +139,8 @@ The [accepted design](2026-09-30-design.md) and
 
 ## #153 current-recipient bridge (#479 AC-3/AC-4, 2026-10-30)
 
-A linked PR's event reaches the one agent connection that works on the task now, as a reference in its addressed
-inbox. It carries no comment text and no authority; the agent reads current PR state with its own access.
+A linked PR's event is recorded for the one agent connection that works on the task now, as a reference. It carries no
+comment text and no authority; the agent reads current PR state with its own access. Since #973 no tool reads it (see Read below).
 
 - **When.** In the same processing transaction, after the link's current facts are saved, once per new outbox
   correlation (a redelivery with the same facts never delivers twice).
@@ -153,19 +153,13 @@ inbox. It carries no comment text and no authority; the agent reads current PR s
 - **Repository access.** A private repository's facts reach the recipient only when the recipient's owner is the
   binding's author, whose GitHub access this very processing just verified. Otherwise the row is `no_access`; Flux
   does not call GitHub on another person's behalf. A public repository needs only the Flux checks above.
-- **Echo suppression.** A `pull_request_review` event is `suppressed_echo` only when its GitHub author is the reviewer
-  Flux already asked: the GitHub account (from that person's App authorization for this App) of the recipient owner
-  of a Flux `review` request on the same link and head (queued, deferred, claimed or resolved). Anyone else's review,
-  for example a third party's "changes requested", reaches the holder.
-- **New head.** Every reconciliation of a link (webhook, G-1c poll, 30-minute catch-up or a person's reconcile) applies
-  the link's current head: queued or deferred Flux review requests of an older head are superseded (`reason =
-  'head_changed'`, version advances). A claimed review keeps its claim; its verdict stays pinned to its own head.
 - **No recipient.** `no_recipient` when nobody holds the task. Nothing is woken or created; the next holder sees
   current state through ordinary reads.
 - **Read.** Nothing reads these rows now: their only reader was the coordination inbox (`flux_coordination_inbox`), which went with the
-  addressed requests (#973). They are written and kept for seven days; removing the bridge, or a reader for it, is a follow-up.
-- **Storage.** Migration 0132 widens `github_bridge_outbox.state` to `pending_audience_adapter` (rows from before
-  0132), `delivered`, `no_recipient`, `no_access` and `suppressed_echo`, and adds `recipient_connection_id`.
+  addressed requests (#973). They are written and nothing prunes them; removing the bridge, or a reader for it, is a follow-up (#1032).
+- **Storage.** Migration 0132 widened `github_bridge_outbox.state` to `pending_audience_adapter` (rows from before
+  0132), `delivered`, `no_recipient`, `no_access` and `suppressed_echo`, and added `recipient_connection_id`. Migration 0027
+  (#973) drops `suppressed_echo`: Flux asks no review of its own whose echo it would hold back.
 
 ## Agent pull request link (#160 AC-3, 2026-10-30)
 
@@ -198,7 +192,7 @@ way round; this table uses the design document's labels ([G-1 §2](2026-10-05-ap
 | G-1c polling for instances without public HTTPS (2-minute poll of linked open PRs, conditional requests, mode shown in Settings) | AC-3, AC-5 | Delivered 2026-10-30 (`FLUX_GITHUB_DELIVERY=poll`, G-1c "As implemented"). |
 | G-1b one-click App setup through the manifest flow | AC-1 | Deferred to a later version, [#755](https://github.com/ColdPhase/flux/issues/755). |
 | G-1d suggested links found in PR titles, branches and bodies | AC-2 | Deferred to a later version, [#755](https://github.com/ColdPhase/flux/issues/755). |
-| #153 current-recipient bridge and causal echo suppression | AC-3, AC-4 | Delivered 2026-10-30 (section above). |
+| #153 current-recipient bridge and causal echo suppression | AC-3, AC-4 | Delivered 2026-10-30 (section above); echo suppression and the inbox that read the rows went with #973. |
 | Eligible once-only external review | AC-5 | Deferred, [#755](https://github.com/ColdPhase/flux/issues/755) (proposed direction B2 above). |
 | Portable source history import | AC-3 | Deferred to a later version, [#755](https://github.com/ColdPhase/flux/issues/755). |
 

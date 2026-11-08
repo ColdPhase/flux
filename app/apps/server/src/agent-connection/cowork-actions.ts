@@ -53,8 +53,8 @@ async function forAnotherPerson(db: Database, claims: FluxMcpClaims, connectionI
 /**
  * Co-work tools (#153) over the existing internal compositions, one transaction per call. Each composition runs #152's
  * prepare/complete itself (current runtime, owner rights, command ledger, receipt) and writes no stream event. Unit claims,
- * renewal, release, completion and transfer are tools since 2026-10-06 ("Unit claims over MCP"); sending a request,
- * the inbox and resolving with evidence (and a review verdict) since 2026-10-17 (docs/development/cowork-coordination.md).
+ * renewal, release, completion and transfer are tools since 2026-10-06 ("Unit claims over MCP"). Requests between clients, the inbox and
+ * the review verdict were tools too until #973 removed them (docs/development/cowork-coordination.md).
  */
 export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Database, claims: FluxMcpClaims) {
   const execute = nativeActionExecutor(db, claims);
@@ -109,7 +109,7 @@ export function registerAgentCoworkActions(tools: AgentToolRegistry, db: Databas
       + 'one runtime session hold it, for 300 seconds. Needs the '
       + 'runtime from flux_bootstrap. One connection holds one live unit at a time (COWORK_CONNECTION_BUSY): release or complete '
       + 'it first. The task must be open (COWORK_TASK_CLOSED), and an execute unit needs every prerequisite done '
-      + '(TASK_PREREQUISITES_UNMET). The result has the generation and lease ID that later unit and request tools need, and the '
+      + '(TASK_PREREQUISITES_UNMET). The result has the generation and lease ID that later unit tools need, and the '
       + 'unit\'s last checkpoint (summary, next action, blocker and the source versions it covered), if any.',
     inputSchema: z.strictObject({ ...execution, unitId: unitFence.unitId, expectedVersion: unitFence.expectedVersion }), annotations,
   }, ({ unitId, expectedVersion, ...input }) => run(() => db.transaction(async (tx) => {

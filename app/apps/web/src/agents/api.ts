@@ -25,4 +25,3 @@ export const getAgentQuestions = (projectId: string, signal?: AbortSignal) => re
 /** The asked person's answer: an option or their own words. The same answer again returns the stored one (`409 QUESTION_ANSWERED` for another). */
 export const answerAgentQuestion = (questionId: string, command: AnswerAgentQuestionCommand, idempotencyKey: string, keepalive = false) =>
   request<AgentQuestion>(agentQuestionAnswerPath(questionId), { method: 'POST', body: command, headers: { 'idempotency-key': idempotencyKey }, keepalive });
-

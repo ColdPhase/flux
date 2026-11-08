@@ -123,4 +123,3 @@ test('flux_create_unit takes a task atomically: a retry replays, a re-issued int
   }
   assert.equal((await f.units()).length, 1);
 });
-

@@ -176,7 +176,7 @@ export function AgentsThread({ task, projectId, meId, names }: { task: ThreadTas
     } catch { if (active()) setLoadError('Earlier messages could not be loaded.'); return false; }
   };
 
-  // "Open original message" of a request card (#400 AC-4): the message comes into view and its highlight fades over
+  // Opening a message of the thread (a link to it, #400 AC-4): the message comes into view and its highlight fades over
   // --dur-highlight, 600 ms at most (Spokój rule 6, #863). A message older than the page is reached by paging back, a bounded number of pages.
   const openMessage = async (messageId: string) => {
     for (let pages = 0; pages < 20; pages += 1) {
