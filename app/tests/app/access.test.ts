@@ -1,39 +1,23 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
-import type { Draft, Page, Project, ProjectGrant, ProjectPerson, Workspace, WorkspaceMember } from '@flux/contracts';
+import type { Page, Project, ProjectGrant, ProjectPerson, Sketch, Workspace, WorkspaceMember } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { Browser } from './support/http.js';
-import { addMember, draft, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project, workspace, type Person } from './support/people.js';
 
-// Workspace, project, grant and draft policy through the running API (issue #29, AC-2/AC-3).
+// Workspace, project, grant and map policy through the running API (issue #29, AC-2/AC-3).
 
-/**
- * If-Match for the actor's current view of a draft. A draft the actor cannot read gets a
- * placeholder version: authorization is decided before the precondition, so the request
- * still answers 404/403 and never reveals whether the version matched.
- */
-async function ifMatch(actor: Person, draftId: string) {
-  const current = await actor.browser.request('GET', `/api/v1/drafts/${draftId}`);
-  return { 'if-match': current.status === 200 ? current.headers.get('etag')! : '"1"' };
+/** A map in a space, made by `actor`; the map is the object whose audience these tests follow. */
+async function mapIn(actor: Person, workspaceId: string, title: string, projectId: string) {
+  return expectStatus(await actor.browser.request('POST', `/api/v1/workspaces/${workspaceId}/sketches`, { body: { title, scope: 'project', projectId } }), 201, 'create map') as Sketch;
 }
 
-/** The share request as sent, for refusals; `share` in support/people.ts asserts success. */
-async function shareRequest(actor: Person, draftId: string, scope: 'private' | 'project' | 'workspace', projectId?: string) {
-  return actor.browser.request('POST', `/api/v1/drafts/${draftId}/share`, { body: projectId ? { scope, projectId } : { scope }, headers: await ifMatch(actor, draftId) });
+async function maps(actor: Person, workspaceId: string, query = '') {
+  return actor.browser.request('GET', `/api/v1/workspaces/${workspaceId}/sketches${query}`);
 }
 
-async function patch(actor: Person, draftId: string, body: Record<string, unknown>) {
-  return actor.browser.request('PATCH', `/api/v1/drafts/${draftId}`, { body, headers: await ifMatch(actor, draftId) });
-}
-
-async function move(actor: Person, draftId: string, body: { projectId: string | null; visibility: string }) {
-  return actor.browser.request('POST', `/api/v1/drafts/${draftId}/move`, { body, headers: await ifMatch(actor, draftId) });
-}
-
-async function drafts(actor: Person, workspaceId: string, query = '') {
-  return actor.browser.request('GET', `/api/v1/workspaces/${workspaceId}/drafts${query}`);
-}
+const readMap = (actor: Person, sketchId: string) => actor.browser.request('GET', `/api/v1/sketches/${sketchId}`);
 
 describe('workspace access policy over HTTP', () => {
   let owner: Person;
@@ -60,53 +44,46 @@ describe('workspace access policy over HTTP', () => {
       `${owner.id}:owner`, `${admin.id}:admin`, `${member.id}:member`, `${other.id}:member`, `${guest.id}:guest`,
     ]));
     expectStatus(await outsider.browser.request('GET', `/api/v1/workspaces/${ws.id}`), 404, 'outsider reads workspace');
-    expectStatus(await drafts(outsider, ws.id), 404, 'outsider lists drafts');
+    expectStatus(await maps(outsider, ws.id), 404, 'outsider lists maps');
     expectStatus(await outsider.browser.request('GET', `/api/v1/workspaces/${ws.id}/projects`), 404, 'outsider lists projects');
-    expectStatus(await outsider.browser.request('POST', `/api/v1/workspaces/${ws.id}/drafts`, { body: { title: 'intrusion' } }), 404, 'outsider creates draft');
+    expectStatus(await outsider.browser.request('POST', `/api/v1/workspaces/${ws.id}/sketches`, { body: { title: 'intrusion', scope: 'private' } }), 404, 'outsider creates a map');
     const listed = expectStatus(await outsider.browser.request('GET', '/api/v1/workspaces'), 200) as Workspace[];
     assert.equal(listed.some((w) => w.id === ws.id), false);
     expectStatus(await guest.browser.request('GET', `/api/v1/workspaces/${ws.id}/members`), 403, 'guest cannot list members');
     expectStatus(await new Browser().request('GET', `/api/v1/workspaces/${ws.id}`), 401, 'anonymous');
-    expectStatus(await new Browser().request('GET', `/api/v1/drafts/${randomUUID()}`), 401, 'anonymous draft');
-    expectStatus(await owner.browser.request('GET', '/api/v1/drafts/not-a-uuid'), 404, 'malformed id');
+    expectStatus(await new Browser().request('GET', `/api/v1/sketches/${randomUUID()}`), 401, 'anonymous map');
+    expectStatus(await owner.browser.request('GET', '/api/v1/sketches/not-a-uuid'), 404, 'malformed id');
     expectStatus(await owner.browser.request('POST', '/api/v1/workspaces', { body: { name: 'x' }, origin: 'https://evil.example' }), 403, 'foreign origin');
   });
 
-  test('a new draft is private: other members, admins and guests cannot see it', async () => {
-    const secret = await draft(member, ws.id, 'Unredacted support report');
-    assert.equal(secret.visibility, 'private');
-    assert.deepEqual(secret.owner, { kind: 'human', id: member.id });
-    expectStatus(await member.browser.request('GET', `/api/v1/drafts/${secret.id}`), 200);
+  test('a private map is its author\'s alone: other members, admins and guests cannot see it', async () => {
+    const secret = expectStatus(await member.browser.request('POST', `/api/v1/workspaces/${ws.id}/sketches`, { body: { title: 'Unredacted support report', scope: 'private' } }), 201, 'create private map') as Sketch;
+    assert.equal(secret.scope, 'private');
+    assert.deepEqual({ kind: secret.createdBy.kind, id: secret.createdBy.id }, { kind: 'human', id: member.id });
+    expectStatus(await readMap(member, secret.id), 200);
     for (const viewer of [other, admin, owner, guest, outsider]) {
-      expectStatus(await viewer.browser.request('GET', `/api/v1/drafts/${secret.id}`), 404, 'private draft read');
-      expectStatus(await patch(viewer, secret.id, { title: 'edited' }), 404, 'private draft write');
-      expectStatus(await shareRequest(viewer, secret.id, 'workspace'), 404, 'private draft share');
+      expectStatus(await readMap(viewer, secret.id), 404, 'private map read');
     }
-    const listed = expectStatus(await drafts(other, ws.id), 200) as Page<Draft>;
+    const listed = expectStatus(await maps(other, ws.id), 200) as Page<Sketch>;
     assert.equal(listed.items.some((d) => d.id === secret.id), false);
   });
 
-  test('sharing to a restricted project reveals the draft only to project grantees', async () => {
+  test('a map in a restricted project is read only by the project\'s people and the company\'s admins', async () => {
     const restricted = await project(owner, ws.id, 'Support escalations', 'restricted');
     await grant(owner, restricted.id, member, 'contributor');
     await grant(owner, restricted.id, guest, 'contributor');
-    const report = await draft(member, ws.id, 'Redacted report', { projectId: restricted.id });
-    expectStatus(await guest.browser.request('GET', `/api/v1/drafts/${report.id}`), 404, 'still private');
-    const shared = expectStatus(await shareRequest(member, report.id, 'project'), 200) as Draft;
-    assert.equal(shared.visibility, 'project');
-    assert.equal(shared.version, 2);
-    expectStatus(await guest.browser.request('GET', `/api/v1/drafts/${report.id}`), 200, 'guest grantee');
-    expectStatus(await admin.browser.request('GET', `/api/v1/drafts/${report.id}`), 200, 'admin manages every project');
-    expectStatus(await other.browser.request('GET', `/api/v1/drafts/${report.id}`), 404, 'member without grant');
-    expectStatus(await outsider.browser.request('GET', `/api/v1/drafts/${report.id}`), 404, 'outsider');
-    expectStatus(await shareRequest(member, report.id, 'workspace'), 422, 'restricted project cannot go workspace-wide');
+    const report = await mapIn(member, ws.id, 'Redacted report', restricted.id);
+    expectStatus(await readMap(guest, report.id), 200, 'guest grantee');
+    expectStatus(await readMap(admin, report.id), 200, 'admin manages every project');
+    expectStatus(await readMap(other, report.id), 404, 'member without grant');
+    expectStatus(await readMap(outsider, report.id), 404, 'outsider');
   });
 
   test('a restricted project is invisible to a member without a grant in get, list and count', async () => {
     const hidden = await project(owner, ws.id, 'Hidden budget', 'restricted');
     const open = await project(owner, ws.id, 'Open roadmap', 'workspace');
-    const inside = await draft(owner, ws.id, 'Budget line', { projectId: hidden.id });
-    expectStatus(await shareRequest(owner, inside.id, 'project'), 200);
+    const inside = await mapIn(owner, ws.id, 'Budget line', hidden.id);
+    expectStatus(await readMap(other, inside.id), 404, 'get a map in the hidden project');
     expectStatus(await other.browser.request('GET', `/api/v1/projects/${hidden.id}`), 404, 'get hidden');
     expectStatus(await other.browser.request('GET', `/api/v1/projects/${hidden.id}/grants`), 404, 'grants of hidden');
     expectStatus(await other.browser.request('GET', `/api/v1/projects/${open.id}`), 200, 'get open');
@@ -118,22 +95,20 @@ describe('workspace access policy over HTTP', () => {
     const restrictedCount = all.items.filter((p) => p.visibility === 'restricted').length;
     assert.equal(mine.total, all.total - restrictedCount, 'count excludes restricted projects');
     assert.equal(mine.items.length, mine.total);
-    const filtered = expectStatus(await drafts(other, ws.id, `?projectId=${hidden.id}`), 200) as Page<Draft>;
+    const filtered = expectStatus(await maps(other, ws.id, `?projectId=${hidden.id}`), 200) as Page<Sketch>;
     assert.equal(filtered.total, 0);
     assert.deepEqual(filtered.items, []);
   });
 
-  test('a member writes in the space; managing it and re-sharing another person\'s note stay with its admins', async () => {
+  test('a member writes in the space; managing it stays with its admins', async () => {
     const docs = await project(owner, ws.id, 'Export docs', 'restricted');
     await grant(owner, docs.id, other, 'contributor');
-    const spec = await draft(owner, ws.id, 'Export spec', { projectId: docs.id });
-    expectStatus(await shareRequest(owner, spec.id, 'project'), 200);
-    expectStatus(await other.browser.request('GET', `/api/v1/drafts/${spec.id}`), 200, 'member reads');
-    const edited = expectStatus(await patch(other, spec.id, { body: 'member edit' }), 200) as Draft;
-    assert.equal(edited.body, 'member edit');
-    assert.equal(edited.version, 3);
-    expectStatus(await other.browser.request('POST', `/api/v1/workspaces/${ws.id}/drafts`, { body: { title: 'into docs', projectId: docs.id } }), 201, 'member adds to project');
-    expectStatus(await shareRequest(other, spec.id, 'private'), 403, 'member cannot re-share another person\'s note');
+    const spec = await mapIn(owner, ws.id, 'Export spec', docs.id);
+    expectStatus(await readMap(other, spec.id), 200, 'member reads');
+    const edited = expectStatus(await other.browser.request('PATCH', `/api/v1/sketches/${spec.id}`, { body: { title: 'member edit' }, headers: { 'if-match': `"${spec.version}"` } }), 200) as Sketch;
+    assert.equal(edited.title, 'member edit');
+    assert.equal(edited.version, spec.version + 1);
+    await mapIn(other, ws.id, 'into docs', docs.id);
     expectStatus(await other.browser.request('GET', `/api/v1/projects/${docs.id}/grants`), 403, 'member cannot manage grants');
     await grant(owner, docs.id, other, 'contributor');
     const grants = expectStatus(await owner.browser.request('GET', `/api/v1/projects/${docs.id}/grants`), 200) as ProjectGrant[];
@@ -141,26 +116,23 @@ describe('workspace access policy over HTTP', () => {
     assert.deepEqual(grants.filter((g) => g.principal.id !== owner.id).map((g) => [g.principal.id, g.role]), [[other.id, 'contributor']], 'grant replaced, not duplicated');
   });
 
-  test('a guest sees only explicitly granted projects and no workspace-wide drafts', async () => {
+  test('a guest sees only explicitly granted projects', async () => {
     const lobby = await project(owner, ws.id, 'Lobby', 'workspace');
     const portal = await project(owner, ws.id, 'Customer portal', 'restricted');
     await grant(owner, portal.id, guest, 'contributor');
-    const announcement = await draft(owner, ws.id, 'Team announcement');
-    expectStatus(await shareRequest(owner, announcement.id, 'workspace'), 200);
-    expectStatus(await member.browser.request('GET', `/api/v1/drafts/${announcement.id}`), 200, 'member sees workspace draft');
-    expectStatus(await guest.browser.request('GET', `/api/v1/drafts/${announcement.id}`), 404, 'guest does not');
+    const announcement = await mapIn(owner, ws.id, 'Team announcement', lobby.id);
+    expectStatus(await readMap(member, announcement.id), 200, 'member sees a map in a workspace project');
+    expectStatus(await readMap(guest, announcement.id), 404, 'guest does not');
     expectStatus(await guest.browser.request('GET', `/api/v1/projects/${lobby.id}`), 404, 'guest and workspace project');
     const projects = expectStatus(await guest.browser.request('GET', `/api/v1/workspaces/${ws.id}/projects`), 200) as Page<Project>;
     assert.ok(projects.items.every((p) => p.visibility === 'restricted'), 'guest lists only granted projects');
     assert.ok(projects.items.some((p) => p.id === portal.id));
     assert.equal(projects.total, projects.items.length);
-    const note = await draft(guest, ws.id, 'Guest note', { projectId: portal.id });
-    expectStatus(await shareRequest(guest, note.id, 'workspace'), 403, 'guest cannot share workspace-wide');
-    expectStatus(await shareRequest(guest, note.id, 'project'), 200, 'guest contributor shares into project');
+    await mapIn(guest, ws.id, 'Guest map', portal.id);
     expectStatus(await guest.browser.request('POST', `/api/v1/workspaces/${ws.id}/projects`, { body: { name: 'Guest project' } }), 403, 'guest creates project');
     expectStatus(await guest.browser.request('POST', `/api/v1/workspaces/${ws.id}/members`, { body: { email: outsider.email, role: 'member' } }), 403, 'guest adds member');
-    const listed = expectStatus(await drafts(guest, ws.id, '?limit=100'), 200) as Page<Draft>;
-    assert.ok(listed.items.every((d) => d.owner.id === guest.id || d.visibility === 'project'));
+    const listed = expectStatus(await maps(guest, ws.id, '?limit=100'), 200) as Page<Sketch>;
+    assert.ok(listed.items.every((d) => d.projectId !== lobby.id), 'no map of a workspace project');
     assert.equal(listed.items.some((d) => d.id === announcement.id), false);
   });
 
@@ -182,29 +154,22 @@ describe('workspace access policy over HTTP', () => {
     expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${team.id}/members`, { body: { email: member.email, role: 'member' } }), 409, 'duplicate member');
     expectStatus(await owner.browser.request('PATCH', `/api/v1/workspaces/${team.id}/members/${admin.id}`, { body: { role: 'owner' } }), 200, 'owner promotes admin to owner');
     expectStatus(await owner.browser.request('PATCH', `/api/v1/workspaces/${team.id}/members/${owner.id}`, { body: { role: 'admin' } }), 200, 'second owner allows stepping down');
-    const privateToMember = await draft(member, team.id, 'Member only');
-    expectStatus(await admin.browser.request('GET', `/api/v1/drafts/${privateToMember.id}`), 404, 'owners do not see private drafts either');
+    const privateToMember = expectStatus(await member.browser.request('POST', `/api/v1/workspaces/${team.id}/sketches`, { body: { title: 'Member only', scope: 'private' } }), 201) as Sketch;
+    expectStatus(await readMap(admin, privateToMember.id), 404, 'owners do not see private maps either');
   });
 
-  test('cross-workspace share, move and link are rejected', async () => {
+  test('a map in a space of another company is refused', async () => {
     const second = await workspace(outsider, 'Other company');
     await addMember(outsider, second.id, owner, 'member');
     const foreign = await project(outsider, second.id, 'Foreign project', 'workspace');
     const local = await project(owner, ws.id, 'Local project', 'workspace');
-    const item = await draft(owner, ws.id, 'Stay home', { projectId: local.id });
-    const crossMove = expectStatus(await move(owner, item.id, { projectId: foreign.id, visibility: 'project' }), 422, 'move') as { code: string };
-    assert.equal(crossMove.code, 'CROSS_WORKSPACE');
-    expectStatus(await shareRequest(owner, item.id, 'project', foreign.id), 422, 'share');
-    expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/drafts`, { body: { title: 'link', projectId: foreign.id } }), 422, 'create link');
-    expectStatus(await member.browser.request('POST', `/api/v1/workspaces/${ws.id}/drafts`, { body: { title: 'link', projectId: foreign.id } }), 404, 'invisible foreign project');
+    const item = await mapIn(owner, ws.id, 'Stay home', local.id);
+    expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/sketches`, { body: { title: 'link', scope: 'project', projectId: foreign.id } }), 422, 'create link');
+    expectStatus(await member.browser.request('POST', `/api/v1/workspaces/${ws.id}/sketches`, { body: { title: 'link', scope: 'project', projectId: foreign.id } }), 404, 'invisible foreign project');
     const outsiderGrant = await owner.browser.request('POST', `/api/v1/projects/${local.id}/grants`, { body: { principal: { kind: 'human', id: outsider.id }, role: 'contributor' } });
     expectStatus(outsiderGrant, 422, 'grant to a non-member');
-    const stored = await pool.query('SELECT workspace_id, project_id FROM drafts WHERE id = $1', [item.id]);
-    assert.deepEqual(stored.rows[0], { workspace_id: ws.id, project_id: local.id }, 'rejected commands left the draft unchanged');
-    const moved = expectStatus(await move(owner, item.id, { projectId: null, visibility: 'workspace' }), 200) as Draft;
-    assert.equal(moved.projectId, null);
-    assert.equal(moved.visibility, 'workspace');
-    expectStatus(await move(owner, item.id, { projectId: null, visibility: 'project' }), 400, 'project visibility needs a project');
+    const stored = await pool.query('SELECT workspace_id, project_id FROM sketches WHERE id = $1', [item.id]);
+    assert.deepEqual(stored.rows[0], { workspace_id: ws.id, project_id: local.id }, 'rejected commands left the map unchanged');
   });
 
   test('removing a membership or a grant applies on the very next request', async () => {
@@ -212,24 +177,23 @@ describe('workspace access policy over HTTP', () => {
     await addMember(owner, team.id, member, 'member');
     const room = await project(owner, team.id, 'War room', 'restricted');
     await grant(owner, room.id, member, 'contributor');
-    const wide = await draft(owner, team.id, 'All hands');
-    expectStatus(await shareRequest(owner, wide.id, 'workspace'), 200);
-    const narrow = await draft(owner, team.id, 'Incident', { projectId: room.id });
-    expectStatus(await shareRequest(owner, narrow.id, 'project'), 200);
-    expectStatus(await member.browser.request('GET', `/api/v1/drafts/${narrow.id}`), 200);
+    const lobby = await project(owner, team.id, 'Lobby', 'workspace');
+    const wide = await mapIn(owner, team.id, 'All hands', lobby.id);
+    const narrow = await mapIn(owner, team.id, 'Incident', room.id);
+    expectStatus(await readMap(member, narrow.id), 200);
 
     const grants = expectStatus(await owner.browser.request('GET', `/api/v1/projects/${room.id}/grants`), 200) as ProjectGrant[];
     expectStatus(await owner.browser.request('DELETE', `/api/v1/projects/${room.id}/grants/${grants.find((g) => g.principal.id === member.id)!.id}`), 204);
-    expectStatus(await member.browser.request('GET', `/api/v1/drafts/${narrow.id}`), 404, 'grant revoked');
+    expectStatus(await readMap(member, narrow.id), 404, 'grant revoked');
     expectStatus(await member.browser.request('GET', `/api/v1/projects/${room.id}`), 404, 'project hidden again');
 
     await grant(owner, room.id, member, 'contributor');
-    expectStatus(await member.browser.request('GET', `/api/v1/drafts/${wide.id}`), 200);
+    expectStatus(await readMap(member, wide.id), 200);
     expectStatus(await owner.browser.request('DELETE', `/api/v1/workspaces/${team.id}/members/${member.id}`), 204);
-    expectStatus(await member.browser.request('GET', `/api/v1/drafts/${wide.id}`), 404, 'workspace draft after removal');
-    expectStatus(await member.browser.request('GET', `/api/v1/drafts/${narrow.id}`), 404, 'project draft after removal');
+    expectStatus(await readMap(member, wide.id), 404, 'workspace project map after removal');
+    expectStatus(await readMap(member, narrow.id), 404, 'restricted project map after removal');
     expectStatus(await member.browser.request('GET', `/api/v1/workspaces/${team.id}`), 404, 'workspace after removal');
-    expectStatus(await drafts(member, team.id), 404, 'draft list after removal');
+    expectStatus(await maps(member, team.id), 404, 'map list after removal');
     const left = await pool.query('SELECT count(*)::int AS count FROM project_grants WHERE workspace_id = $1 AND user_id = $2', [team.id, member.id]);
     assert.equal(left.rows[0].count, 0, 'membership removal deleted its grants');
   });
@@ -237,16 +201,14 @@ describe('workspace access policy over HTTP', () => {
   test('list counts and pages exclude rows the caller cannot see', async () => {
     const team = await workspace(owner, 'Pagination');
     await addMember(owner, team.id, member, 'member');
+    const closed = await project(owner, team.id, 'Closed', 'restricted');
+    const open = await project(owner, team.id, 'Open', 'workspace');
     const hidden: string[] = [];
     const shared: string[] = [];
-    for (let i = 0; i < 5; i += 1) hidden.push((await draft(owner, team.id, `private ${i}`)).id);
-    for (let i = 0; i < 3; i += 1) {
-      const item = await draft(owner, team.id, `shared ${i}`);
-      expectStatus(await shareRequest(owner, item.id, 'workspace'), 200);
-      shared.push(item.id);
-    }
-    const first = expectStatus(await drafts(member, team.id, '?limit=2&offset=0'), 200) as Page<Draft>;
-    const second = expectStatus(await drafts(member, team.id, '?limit=2&offset=2'), 200) as Page<Draft>;
+    for (let i = 0; i < 5; i += 1) hidden.push((await mapIn(owner, team.id, `closed ${i}`, closed.id)).id);
+    for (let i = 0; i < 3; i += 1) shared.push((await mapIn(owner, team.id, `open ${i}`, open.id)).id);
+    const first = expectStatus(await maps(member, team.id, '?limit=2&offset=0'), 200) as Page<Sketch>;
+    const second = expectStatus(await maps(member, team.id, '?limit=2&offset=2'), 200) as Page<Sketch>;
     assert.equal(first.total, 3);
     assert.equal(second.total, 3);
     assert.equal(first.items.length, 2);
@@ -254,10 +216,10 @@ describe('workspace access policy over HTTP', () => {
     const seen = [...first.items, ...second.items].map((d) => d.id);
     assert.deepEqual(new Set(seen), new Set(shared));
     assert.ok(seen.every((id) => !hidden.includes(id)));
-    const everything = expectStatus(await drafts(owner, team.id, '?limit=100'), 200) as Page<Draft>;
+    const everything = expectStatus(await maps(owner, team.id, '?limit=100'), 200) as Page<Sketch>;
     assert.equal(everything.total, 8);
-    expectStatus(await drafts(member, team.id, '?limit=0'), 400, 'limit bounds');
-    expectStatus(await drafts(member, team.id, '?limit=101'), 400, 'limit bounds');
+    expectStatus(await maps(member, team.id, '?limit=0'), 400, 'limit bounds');
+    expectStatus(await maps(member, team.id, '?limit=101'), 400, 'limit bounds');
   });
 
   test('a space has two roles, and nothing keeps a company admin out of one (#903)', async () => {
@@ -265,13 +227,12 @@ describe('workspace access policy over HTTP', () => {
     await addMember(owner, team.id, admin, 'admin');
     await addMember(owner, team.id, member, 'member');
     const room = await project(owner, team.id, 'Closed floor', 'restricted');
-    const item = await draft(owner, team.id, 'Floor plan', { projectId: room.id });
-    expectStatus(await shareRequest(owner, item.id, 'project'), 200);
+    const item = await mapIn(owner, team.id, 'Floor plan', room.id);
     for (const role of ['viewer', 'denied']) {
       expectStatus(await owner.browser.request('POST', `/api/v1/projects/${room.id}/grants`, { body: { principal: { kind: 'human', id: member.id }, role } }), 400, role);
     }
     expectStatus(await admin.browser.request('GET', `/api/v1/projects/${room.id}`), 200, 'an admin reaches a space without a grant');
-    expectStatus(await admin.browser.request('GET', `/api/v1/drafts/${item.id}`), 200, 'and its notes');
+    expectStatus(await readMap(admin, item.id), 200, 'and its maps');
     await grant(owner, room.id, admin, 'contributor');
     await removeFromSpace(owner, room.id, admin);
     expectStatus(await admin.browser.request('GET', `/api/v1/projects/${room.id}`), 200, 'removing the grant takes them off its people, not out of the space');

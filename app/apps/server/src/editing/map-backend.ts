@@ -41,9 +41,9 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
       const result=await action({db,actor,principal,room,sketch,access,finalFence});await finalFence();return result;
     },commit);active.add(work);editingResourcesChanged();try{return await work;}finally{active.delete(work);editingResourcesChanged();}
   }
-  async function delta(db:Db,principal:{kind:'human';id:string},room:{generation:string;workspaceId:string},sketch:Parameters<typeof presentThoughts>[2],record:NonNullable<Awaited<ReturnType<ReturnType<typeof liveMapRows<MapNativeChange>>['after']>>>,access:'read'|'write'):Promise<LiveMapDelta> {
-    const change=record.change;const accessPort=policySketchAccess(accessReader(db));
-    const thoughts=await presentThoughts({access:accessPort,files:sketchFiles(db)},principal,{...sketch,workspaceId:room.workspaceId},change.thoughts.filter(t=>t.after&&changed(t.before,t.after)).map(t=>t.after!));
+  async function delta(db:Db,principal:{kind:'human';id:string},room:{generation:string;workspaceId:string},sketch:Parameters<typeof presentThoughts>[1],record:NonNullable<Awaited<ReturnType<ReturnType<typeof liveMapRows<MapNativeChange>>['after']>>>,access:'read'|'write'):Promise<LiveMapDelta> {
+    const change=record.change;
+    const thoughts=await presentThoughts({files:sketchFiles(db)},sketch,change.thoughts.filter(t=>t.after&&changed(t.before,t.after)).map(t=>t.after!));
     const [author]=record.actorKind==='human'?await db.select({name:schema.authUsers.name}).from(schema.authUsers).where(eq(schema.authUsers.id,record.actorId))
       :await db.select({name:schema.agents.name}).from(schema.agents).where(eq(schema.agents.id,record.actorId));
     return {generation:record.generation,sequence:record.sequence,commandId:record.commandId,actor:{kind:record.actorKind,id:record.actorId,name:author?.name??'Former collaborator'},
@@ -76,10 +76,7 @@ export function mapBackend(database:{pool:Pick<ReturnType<typeof createDatabase>
         if(value instanceof Date)return value;
         const result:Record<string,unknown>={};
         for(const [key,child] of Object.entries(value)) {
-          if(key==='placement'&&child&&typeof child==='object'&&'type' in child&&child.type==='draft'&&'id' in child&&typeof child.id==='string') {
-            const current=await policySketchAccess(accessReader(c.db)).placement(c.principal,{type:'draft',id:child.id});
-            result[key]={type:'draft',id:child.id,title:current.readable&&current.workspaceId===c.room.workspaceId?current.title:null};
-          } else result[key]=await project(child,depth+1);
+          result[key]=await project(child,depth+1);
         }
         return result;
       }

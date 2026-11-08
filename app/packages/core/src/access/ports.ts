@@ -22,7 +22,7 @@ export interface SpaceAi { state: 'allowed' | 'blocked'; epoch: number }
 
 export interface LoadOptions {
   /**
-   * Inside a mutation transaction: lock the membership/agent rows, the draft, and the
+   * Inside a mutation transaction: lock the membership/agent rows, and the
    * project and grant rows the decision reads, so a concurrent revocation waits or is seen.
    */
   lock?: boolean;
@@ -30,19 +30,8 @@ export interface LoadOptions {
 
 // What a decision needs to know about each kind of object. The reader returns whole table rows,
 // which are assignable to these; evaluations are generic in the row, so callers that hold the
-// adapter keep every column (the use cases in `workspaces.ts`, `projects.ts`, `grants.ts`, `agents.ts` and
-// `drafts.ts` read them through `RecordReader` and map them to the API's shapes).
+// adapter keep every column (the use cases in `workspaces.ts`, `projects.ts`, `grants.ts`, and `agents.ts` read them through `RecordReader` and map them to the API's shapes).
 export interface ProjectFacts { id: string; workspaceId: string; visibility: 'workspace' | 'restricted' }
-export interface DraftFacts {
-  id: string;
-  workspaceId: string;
-  projectId: string | null;
-  ownerUserId: string | null;
-  ownerAgentId: string | null;
-  title: string;
-  version: number;
-  visibility: 'private' | 'project' | 'workspace';
-}
 export interface AgentFacts { id: string; workspaceId: string; ownerUserId: string; revokedAt: Date | null }
 export interface SketchFacts { id: string; workspaceId: string; scope: 'project' | 'private'; projectId: string | null }
 export interface DmFacts { id: string; workspaceId: string }
@@ -55,25 +44,12 @@ export interface ActorReads {
   spaceAi(projectId: string, options?: { lock?: boolean }): Promise<SpaceAi>;
 }
 
-export interface WorkspaceReads {
-  /** Some project of the actor's workspace where the actor's level is at least contributor now. */
-  hasWritableProject(actor: Actor): Promise<boolean>;
-}
-
 export interface ProjectReads<P extends ProjectFacts = ProjectFacts> {
   locateProject(projectId: string): Promise<{ workspaceId: string } | null>;
   /** The project row and the actor's grants on it, `FOR SHARE`, grants ordered by id. */
   lockProjectAccess(actor: Actor, projectId: string): Promise<void>;
   /** The project and the actor's access level (0-3) to it, or null when it does not exist. */
   readProject(actor: Actor, projectId: string): Promise<{ project: P; level: number } | null>;
-}
-
-export interface DraftReads<D extends DraftFacts = DraftFacts> {
-  locateDraft(draftId: string): Promise<{ workspaceId: string } | null>;
-  /** The draft row `FOR UPDATE`; returns the project it is in. */
-  lockDraftForUpdate(draftId: string): Promise<{ projectId: string | null } | null>;
-  /** The draft with whether the actor may read it, its project level and ownership. With `lock`, the row `FOR UPDATE`. */
-  readDraft(actor: Actor, draftId: string, options: { lock: boolean }): Promise<{ draft: D; readable: boolean; level: number; isOwner: boolean } | null>;
 }
 
 export interface AgentReads<A extends AgentFacts = AgentFacts> {
@@ -111,8 +87,7 @@ export interface AssistantRunReads {
  */
 export interface AccessReader<
   P extends ProjectFacts = ProjectFacts,
-  D extends DraftFacts = DraftFacts,
   A extends AgentFacts = AgentFacts,
   S extends SketchFacts = SketchFacts,
   M extends DmFacts = DmFacts,
-> extends ActorReads, WorkspaceReads, ProjectReads<P>, DraftReads<D>, AgentReads<A>, SketchReads<S>, DmReads<M>, AssistantRunReads {}
+> extends ActorReads, ProjectReads<P>, AgentReads<A>, SketchReads<S>, DmReads<M>, AssistantRunReads {}

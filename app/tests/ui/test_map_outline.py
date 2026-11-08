@@ -76,7 +76,6 @@ class MapOutlineJourney(unittest.TestCase):
         cls.project_id = post(f"/api/v1/workspaces/{cls.workspace_id}/projects", {"name": "Quiet gesture lamp", "visibility": "restricted"})["id"]
         post(f"/api/v1/projects/{cls.project_id}/grants", {"principal": {"kind": "human", "id": cls.ids["viewer"]}, "role": "contributor"})
         cls.sketch_id = post(f"/api/v1/workspaces/{cls.workspace_id}/sketches", {"title": "Bedside interaction directions", "scope": "project", "projectId": cls.project_id})["id"]
-        cls.private_draft = post(f"/api/v1/workspaces/{cls.workspace_id}/drafts", {"title": "PRIVATE CALIBRATION NOTES", "body": "Never disclose this draft to the project viewer"})["id"]
         for context in contexts.values():
             context.close()
 
@@ -452,15 +451,13 @@ class MapOutlineJourney(unittest.TestCase):
         self.assertEqual(self.stored(page), before)
         self.save(page)
 
-    def test_06_another_member_reads_the_same_tree_and_private_placement_stays_restricted(self):
+    def test_06_another_member_reads_the_same_tree(self):
         owner = self.page()
-        data = self.api(owner, "POST", f"/api/v1/sketches/{self.sketch_id}/thoughts", {"text": "Compare calibration notes without sharing the private source", "x": 0, "y": 300, "placement": {"type": "draft", "id": self.private_draft}, "linkFrom": {"thoughtId": self.thoughts[0]}}, status=201)
+        data = self.api(owner, "POST", f"/api/v1/sketches/{self.sketch_id}/thoughts", {"text": "Compare calibration notes", "x": 0, "y": 300, "linkFrom": {"thoughtId": self.thoughts[0]}}, status=201)
         placed_id = data["thought"]["id"]
         viewer = self.page("viewer")
         self.open(viewer)
-        expect(self.tree(viewer)).not_to_contain_text("PRIVATE CALIBRATION NOTES")
         placed = viewer.locator(f'.sk-li-t[data-id="{placed_id}"]')
-        expect(placed).to_contain_text("Draft you can’t open")
         expect(placed).to_have_attribute("aria-level", "2")
         levels = self.levels(viewer)
         self.assertEqual({key: value for key, value in levels.items() if key != placed_id}, self.expected(TREE), "the member sees the same tree")

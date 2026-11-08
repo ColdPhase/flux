@@ -131,8 +131,6 @@ workspaces=$(api /api/v1/workspaces)
 printf '%s' "$workspaces" | grep -q 'Riverside Makers (demo)' || fail "owner cannot see the demo workspace"
 ws=$(printf '%s' "$workspaces" | sed -n 's/.*"id":"\([^"]*\)","name":"Riverside Makers (demo)".*/\1/p')
 [ -n "$ws" ] || fail "could not read the workspace id"
-drafts=$(api "/api/v1/workspaces/$ws/drafts")
-printf '%s' "$drafts" | grep -q 'Before Thursday (private)' || fail "owner does not see the private note"
 project=$(api "/api/v1/workspaces/$ws/projects" | sed -n 's/.*"id":"\([^"]*\)".*"name":"Community garden sensors".*/\1/p')
 [ -n "$project" ] || fail "demo project missing"
 conversation=$(printf '%s\n' "$out" | sed -n 's/.*"conversationId":"\([^"]*\)".*/\1/p')
@@ -140,7 +138,6 @@ thread=$(api "/api/v1/conversations/$conversation")
 [ "$(printf '%s' "$thread" | grep -o '"sequence":' | wc -l | tr -d ' ')" = 4 ] || fail "conversation does not have 4 messages"
 printf '%s' "$thread" | grep -q '"source":{"materialId"' || fail "no message cites the material"
 sign_in jonas@demo.flux.test "$partner_pw"
-if api "/api/v1/workspaces/$ws/drafts" | grep -q 'Before Thursday'; then fail "partner can see the owner's private note"; fi
 api "/api/v1/conversations/$conversation" | grep -q 'Moisture first' || fail "partner cannot read the conversation"
 dm=$(printf '%s\n' "$out" | sed -n 's/.*"dmId":"\([^"]*\)".*/\1/p')
 [ -n "$dm" ] || fail "demo did not report the direct message"

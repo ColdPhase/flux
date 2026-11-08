@@ -2,7 +2,6 @@ import { PgBoss } from 'pg-boss';
 import { assertExactMigrationLedger, createDatabase, FLUX_SCHEMA_VERSION, readAppliedMigrationVersions, readMigrationManifest } from '@flux/db';
 import { loadAgentRuntimeConfig } from '@flux/core';
 import { startAgentRuntimeReconciler } from './agent-runtime/index.js';
-import { registerDraftSummaryWorker } from './jobs/draft-summary.js';
 import { registerIdempotencyCleanup } from './jobs/idempotency-cleanup.js';
 import { registerSearchChangesCleanup } from './jobs/search-changes-cleanup.js';
 import { registerAssistantTick } from './assistant/index.js';
@@ -41,7 +40,6 @@ await registerPushWorker(boss, db, createVapidAuthorizer());
 // Notifications from committed events and their email (#116).
 const email = await registerNotificationEmailWorker(boss, db);
 const generator = startNotificationGenerator({ db, boss, connectionString, emailAvailable: email.available });
-await registerDraftSummaryWorker(boss, db);
 // Personal assistant runs (#68): the payload is a run id; every step rechecks the owner.
 const agentRuntimeConfig = loadAgentRuntimeConfig(process.env);
 const personalRuns = personalRunWorkerComposition(process.env, db, agentRuntimeConfig);

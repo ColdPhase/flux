@@ -33,16 +33,10 @@ export async function projectReferences(projectId: string) {
 }
 
 /**
- * Rows of the features that 0101 lets leave with their project: receipts, grants, discussions and drafts;
+ * Rows of the features that 0101 lets leave with their project: receipts, grants and discussions;
  * and the task activity of 0112 (#488), which follows its task.
  */
-export const erasedWithProject = ['agent_command_receipts', 'project_task_discussions', 'drafts', 'project_task_activity'] as const;
-
-export async function seedDraft(f: ThreadNativeScene) {
-  const owner = (await pool.query<{ created_by: string }>('SELECT created_by FROM projects WHERE id=$1', [f.projectId])).rows[0]!.created_by;
-  await pool.query(`INSERT INTO drafts(id,workspace_id,project_id,owner_user_id,title,visibility,created_by) VALUES($1,$2,$3,$4,'A project draft','project',$4)`,
-    [randomUUID(), f.workspaceId, f.projectId, owner]);
-}
+export const erasedWithProject = ['agent_command_receipts', 'project_task_discussions', 'project_task_activity'] as const;
 
 export async function upload(f: ThreadNativeScene, text: string) {
   const response = await fetch(new URL(`/api/v1/projects/${f.projectId}/files?uploadId=${randomUUID()}&name=erasure.txt`, f.owner.base), {
@@ -81,7 +75,6 @@ export async function fullProject() {
   const file = await upload(f, `erasure ${randomUUID()}`);
   expect(await f.owner.request('POST', `/api/v1/work/${task.id}/discussion`,
     { body: { body: 'A published work product', attachmentIds: [file.id], clientMessageId: randomUUID() } }), 201);
-  await seedDraft(f);
   return { ...f, task };
 }
 

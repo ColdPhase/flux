@@ -33,7 +33,6 @@ CAMERA = "Camera-only gesture recognition"
 QUIET = "What should happen when nobody is in the room?"
 DRAFTED = "Compare calibration notes without sharing the private source"
 LATER = "Later: a mechanical brightness dial"
-PRIVATE = "PRIVATE CALIBRATION NOTES"
 
 ORDER = "Order two VL53L5CX ToF sensor boards"
 CALIBRATE = "Calibrate the ToF sensor against the camera at 5 lux"
@@ -105,8 +104,7 @@ class MapTaskCountJourney(unittest.TestCase):
         post(f"/api/v1/projects/{project}/grants", {"principal": {"kind": "human", "id": cls.ids["kai"]}, "role": "contributor"})
         post(f"/api/v1/projects/{project}/grants", {"principal": {"kind": "human", "id": cls.ids["nia"]}, "role": "contributor"})
         sketch = post(f"/api/v1/workspaces/{workspace}/sketches", {"title": "Sensing directions", "scope": "project", "projectId": project})["id"]
-        draft = post(f"/api/v1/workspaces/{workspace}/drafts", {"title": PRIVATE, "body": "Only Ada can read this draft"})["id"]
-        cls.ids.update(workspace=workspace, project=project, sketch=sketch, draft=draft)
+        cls.ids.update(workspace=workspace, project=project, sketch=sketch)
 
         def thought(key: str, text: str, x: int, y: int, **extra) -> None:
             cls.thoughts[key] = post(f"/api/v1/sketches/{sketch}/thoughts", {"text": text, "x": x, "y": y, **extra})["thought"]["id"]
@@ -114,7 +112,7 @@ class MapTaskCountJourney(unittest.TestCase):
         thought("dark", DARK_ROOM, 420, 260)
         thought("camera", CAMERA, 60, 40, linkFrom={"thoughtId": cls.thoughts["dark"]})
         thought("quiet", QUIET, 780, 40, linkFrom={"thoughtId": cls.thoughts["dark"]})
-        thought("drafted", DRAFTED, 780, 480, placement={"type": "draft", "id": draft}, linkFrom={"thoughtId": cls.thoughts["dark"]})
+        thought("drafted", DRAFTED, 780, 480, linkFrom={"thoughtId": cls.thoughts["dark"]})
         thought("later", LATER, 1500, 900)
 
         def task(key: str, title: str, **extra) -> None:
@@ -406,19 +404,15 @@ class MapTaskCountJourney(unittest.TestCase):
         expect(tab.locator(".details__title")).to_have_text(ORDER)
         self.unchanged(page)
 
-    def test_05_another_member_sees_the_counts_and_tasks_and_not_the_private_draft(self) -> None:
+    def test_05_another_member_sees_the_counts_and_tasks(self) -> None:
         page = self.page("kai")
         self.open(page)
         expect(self.badge(page, "dark")).to_have_accessible_name(tasks_label(3, DARK_ROOM))
         expect(self.badge(page, "drafted")).to_have_accessible_name(tasks_label(1, DRAFTED))
-        # The private draft under a thought stays private; the count does not reveal it.
-        expect(self.node(page, "drafted")).to_contain_text("Draft you can’t open")
-        expect(page.locator("body")).not_to_contain_text(PRIVATE)
         self.badge(page, "drafted").click()
         chooser = self.chooser(page, DRAFTED)
         expect(chooser.get_by_role("link")).to_have_count(1)
         expect(chooser.get_by_role("link")).to_contain_text(DIFFUSER)
-        expect(chooser).not_to_contain_text(PRIVATE)
         # Reading only: links to the tasks and Close, nothing that edits.
         expect(chooser.get_by_role("button")).to_have_count(1)
         expect(chooser.get_by_role("textbox")).to_have_count(0)
@@ -429,7 +423,6 @@ class MapTaskCountJourney(unittest.TestCase):
         expect(page.locator(".details__title")).to_have_text(ORDER)
         show_map_as(page, "List")
         expect(self.row_badge(page, "dark")).to_have_text(chip(3))
-        # Compared as the owner, who can also read the private placement.
         self.unchanged(self.page())
 
     def test_06_phone_390_sheet_without_horizontal_overflow(self) -> None:

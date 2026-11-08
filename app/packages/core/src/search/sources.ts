@@ -21,7 +21,6 @@ const WORK_STATUS: Record<string, string> = {
   not_pursued: 'Task · not pursued', parked: 'Task · parked',
 };
 const DECISION_STATUS: Record<string, string> = { accepted: 'Decision · accepted', proposed: 'Decision · proposed', superseded: 'Decision · replaced' };
-const DRAFT_STATUS: Record<string, string> = { private: 'Thought · only you', project: 'Thought · shared with the space', workspace: 'Thought · shared with everyone' };
 
 function materialLabel(row: SearchRow) {
   const version = row.version ?? 1;
@@ -79,17 +78,13 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
     target: (row) => ({ type: 'result', projectId: inProject(row), id: row.objectId }),
   },
   sketch: {
-    filter: 'sketch', audience: 'sketch', textIsTitle: false, label: (row) => (row.status === 'private' ? 'My map' : row.status === 'dm' ? 'Map in a direct message' : 'Map'),
+    filter: 'sketch', audience: 'sketch', textIsTitle: false, label: (row) => (row.status === 'private' ? 'My map' : 'Map'),
     target: (row) => ({ type: 'sketch', sketchId: row.objectId }),
   },
   thought: {
     filter: 'sketch', audience: 'sketch', textIsTitle: true,
     label: (row) => (row.sketchTitle ? `Thought on the map ${quote(row.sketchTitle)}` : 'Thought'),
     target: (row) => ({ type: 'thought', sketchId: row.parentId ?? '', thoughtId: row.objectId }),
-  },
-  draft: {
-    filter: 'draft', audience: 'draft', textIsTitle: false, label: (row) => DRAFT_STATUS[row.status ?? ''] ?? 'Thought',
-    target: (row) => ({ type: 'draft', draftId: row.objectId }),
   },
   person: {
     filter: 'person', audience: 'members', textIsTitle: false,

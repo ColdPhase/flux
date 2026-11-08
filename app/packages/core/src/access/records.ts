@@ -1,5 +1,5 @@
 import type { ProjectGrantRole, ProjectVisibility, WorkspaceRole } from '@flux/contracts';
-import type { AgentFacts, DraftFacts, ProjectFacts } from './ports.js';
+import type { AgentFacts, ProjectFacts } from './ports.js';
 
 // The rows the access use cases read and write (issues #46, #91). A `@flux/db` repository returns them
 // (whole table rows are assignable) and the use cases present them as the API's shapes. Keep this file
@@ -34,8 +34,6 @@ export interface GrantRecord {
 export type GrantWrite = { grant: GrantRecord } | { conflict: 'GRANT_CONFLICT' | 'GRANTEE_REMOVED' };
 
 export interface AgentRecord extends AgentFacts { name: string; createdAt: Date }
-
-export interface DraftRecord extends DraftFacts { body: string; createdAt: Date; updatedAt: Date }
 
 /** One personal run the AI turn-off sweep ended or asked to stop, for its owner's progress events. */
 export interface SweptRun { id: string; workspaceId: string; projectId: string; conversationId: string; ownerUserId: string; agentId: string; status: string }

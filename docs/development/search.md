@@ -2,7 +2,7 @@
 
 Foundation 8.12: a person knows something exists but not where or under which name. One search
 covers project messages, direct messages, docs and materials and every version of them, work items,
-decisions, results, sketches and their thoughts, drafts and people. It runs in PostgreSQL only
+decisions, results, sketches and their thoughts and people. It runs in PostgreSQL only
 (`tsvector`, GIN, `websearch_to_tsquery`, `ts_headline`, `pg_trgm`), in line with O-002: there is
 no separate search server. The #16 rule applies throughout: **access filtering happens before
 ranking, limits and snippets.**
@@ -14,8 +14,8 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
 
 | Column | Meaning |
 | --- | --- |
-| `kind` | `project`, `message`, `dm_message`, `material`, `doc`, `work`, `decision`, `result`, `sketch`, `thought`, `draft` or `person`. |
-| `audience_key` | The object that carries the row's permission: `project:<id>`, `dm:<id>`, `sketch:<id>`, `draft:<id>` or `members:<workspace>`. |
+| `kind` | `project`, `message`, `dm_message`, `material`, `doc`, `work`, `decision`, `result`, `sketch`, `thought` or `person`. |
+| `audience_key` | The object that carries the row's permission: `project:<id>`, `dm:<id>`, `sketch:<id>` or `members:<workspace>`. |
 | `project_id`, `parent_id`, `object_id`, `version` | The place and the exact target: the conversation of a message, the DM of a DM message, the sketch of a thought, and the material version. |
 | `title`, `body`, `status`, `author_kind`/`author_id`, `at` | Content, the status that names it ("Task · blocked"), who wrote it and when. |
 | `tsv` | Generated: `title` weighted A and `body` weighted B, with the `simple` configuration. |
@@ -29,14 +29,14 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
   says "Project" or "Project · restricted"; its place is the workspace.
 - **Kept current in the same transaction.** `AFTER INSERT OR UPDATE OR DELETE` row triggers on
   `projects`, `project_messages`, `dm_messages`, `project_material_versions`, `project_work_items`,
-  `project_decisions`, `project_results`, `sketches`, `sketch_thoughts`, `drafts` and
+  `project_decisions`, `project_results`, `sketches`, `sketch_thoughts` and
   `workspace_members` (plus `auth_users` name changes) write the row with the change itself. A
   committed edit is searchable at once; a deleted object, including cascades from a deleted
   project, DM or sketch, disappears with it. Moving a thought on the map does not reindex it. The
   migration indexes what already exists.
 - **Rows hold content, not permissions.** Who may read a row is decided at query time from its
   `audience_key`, so a revoked grant, a left DM or a membership removal applies on
-  the next search without touching the index. A sketch's scope and a draft's visibility are
+  the next search without touching the index. A sketch's scope is
   read from their own rows by the policy.
 - **Old citations still resolve.** Every material and doc version has its own row. A search that
   matches only an older version finds that version ("Material · version 1 of 2", "Doc · version 1
@@ -62,7 +62,7 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
 
 1. **Audiences, fresh on every request.** `policySearchAccess` (`app/apps/server/src/search/adapters.ts`)
    lists the workspaces the principal is active in and, for each, asks the policy for the list
-   condition of every audience type: `visibleFilter(…, 'project' | 'dm' | 'sketch' | 'draft')`
+   condition of every audience type: `visibleFilter(…, 'project' | 'dm' | 'sketch')`
    and, for people, `authorize(…, 'workspace.read_members')`. Nothing is cached.
 2. **Composed into SQL.** `searchRows` (`app/packages/db/src/repositories/search.ts`) turns the
    conditions into one array of visible audience keys (`ARRAY(SELECT 'project:' || id FROM
@@ -97,7 +97,7 @@ contrib extension) and one table, `search_documents`. Each row is one searchable
 
 Matches the reader cannot see therefore change neither the answer (items, snippets,
 `next`) nor the rows, row addresses and index or table buffers the database reads for it. The remaining shared costs are not per-match:
-the policy conditions scan the workspace's projects, DMs, sketches and drafts (their number, not
+the policy conditions scan the workspace's projects, DMs and sketches (their number, not
 their content), recent writes leave dead row versions in those tables until autovacuum removes
 them, and the height of the shared GIN entry tree grows with the number of distinct keys in the
 whole database (logarithmically, one level per ~150× more keys). That is load, as for the stream, and it is not padded to constant time.
@@ -110,8 +110,8 @@ needs a live session and answers `Cache-Control: no-store`.
 - `q`: 1–200 characters (`400 QUERY_REQUIRED` / `QUERY_TOO_LONG`). A query without any letter or
   digit returns an empty answer. Queries are always parameters; operators, quotes and SQL are data.
 - `type`: `project` (project names), `message` (project and direct messages), `doc`, `material`, `work`, `decision`, `result`,
-  `sketch` (sketches and thoughts), `draft` or `person`.
-- `place`: `project:<id>`, `dm:<id>` or `private` (your private drafts and sketches). A place
+  `sketch` (sketches and thoughts) or `person`.
+- `place`: `project:<id>`, `dm:<id>` or `private` (your private map). A place
   the reader cannot see gives the same empty answer as a place without matches.
 - `author`: `human:<id>` or `agent:<id>`.
 - `limit`: 1–50, default 20.
@@ -163,11 +163,11 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
   skeleton counts the same rows, so nothing is added to the dialog after it is on screen.
 - **Opening a result** goes to the exact object: a message or DM message opens on that whole
   message (`#message-<id>`, highlighted and focused), a material or doc at the matched version, a thought
-  selected in its sketch (`#thought-<id>`), a private draft on Home (`#draft-<id>`), a person to a
+  selected in its sketch (`#thought-<id>`), a person to a
   direct message with them, and work, decisions and results in Details on their project. A message
   older than the conversation's first window is reached by paging back (`app/apps/web/src/app/seekMessage.ts`,
   pages of 100 through the same authorized DM and conversation reads, at most 10,000 messages) and
-  then shown and focused. Drafts shared with a project have no view of their own yet and open Home.
+  then shown and focused.
 - **Recent places** (`app/apps/web/src/search/recent.ts`) are kept in this browser only, per account
   (`flux.places.recent.<userId>`), and every account's list is removed on sign-out. What is typed in
   Search is not remembered.
@@ -177,7 +177,7 @@ Direct messages were added this way (`dm_message`, audience `dm`), and docs (`do
 - `app/tests/app/search.test.ts` (in `./scripts/check_application.sh`) uses an owner, a contributor in
   a restricted project, a member outside it and a guest. It covers every kind and its label, place
   and target; the restricted project and a DM leaking nothing to an outsider, including when he
-  filters by their ids; private drafts and sketches reaching only their author, and a group DM
+  filters by their ids; private maps reaching only their author, and a group DM
   hidden from the workspace owner; people for members but not guests; the API's type filters;
   an edit searchable at once and an old material version; docs as drafts and published, at the
   version that matched and once per doc; revocation by removing a grant and by

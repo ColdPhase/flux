@@ -21,7 +21,6 @@ export { workspaceRepository } from './repositories/workspaces.js';
 export { workspaceInviteRepository } from './repositories/workspace-invites.js';
 export { projectRepository } from './repositories/projects.js';
 export { agentRepository } from './repositories/agents.js';
-export { draftRepository } from './repositories/drafts.js';
 export { accessPorts } from './repositories/access-ports.js';
 export * from './repositories/workspace-encryption.js';
 export * from './repositories/key-rotation.js';
@@ -35,7 +34,7 @@ export * from './repositories/idp-standing.js';
 export * from './repositories/idp-logout.js';
 export * from './migrations/ledger.js';
 // Highest numbered file in packages/db/migrations. The API refuses other versions.
-export const FLUX_SCHEMA_VERSION = 27;
+export const FLUX_SCHEMA_VERSION = 28;
 // pg-boss 12.38.0 declares schema 46. Update this with the pinned package.
 export const PG_BOSS_SCHEMA_VERSION = 46;
 
@@ -112,7 +111,6 @@ export * from './repositories/doc-live.js';
 export * from './repositories/sample.js';
 export * from './repositories/fixture-oauth-clients.js';
 export * from './repositories/idempotency.js';
-export * from './repositories/draft-results.js';
 export * from './repositories/events.js';
 export * from './repositories/agent-thread-guard.js';
 export * from './repositories/artifact-task-associations.js';

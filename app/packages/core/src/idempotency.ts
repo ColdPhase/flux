@@ -12,7 +12,7 @@ export interface IdempotencyScope {
   principal: Principal;
   /** The workspace the command acts in, or null for commands outside a workspace. */
   workspaceId: string | null;
-  /** Stable operation name, e.g. `POST /api/v1/drafts/:draftId/share`. */
+  /** Stable operation name, e.g. `POST /api/v1/projects/:projectId/docs`. */
   operation: string;
   key: string;
   /** Hash of everything that defines the request (see {@link requestHash}). */

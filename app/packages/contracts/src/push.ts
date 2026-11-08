@@ -55,7 +55,7 @@ export type PushPayload =
   }
   | { preview: 'generic'; notificationId: string; title: string };
 
-export type NotificationSourceType = 'workspace' | 'project' | 'draft' | 'dm';
+export type NotificationSourceType = 'workspace' | 'project' | 'dm';
 
 /** The object a notification is about. Its `<type>.read` decides who may see the notification. */
 export interface NotificationSourceRef {

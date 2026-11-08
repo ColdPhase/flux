@@ -27,7 +27,7 @@
 .sk-outline-title { min-width: 0; font-size: var(--fs-md); font-weight: 500; color: var(--t1); line-height: 1.45; overflow-wrap: anywhere; white-space: pre-line; }
 .sk-outline-list > li > .sk-outline-row .sk-outline-title { font-weight: 600; }
 .sk-outline-main > .sk-li-edit { flex: 1 1 100%; min-width: 0; }
-.sk-outline-meta, .sk-li-s { flex: none; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; white-space: nowrap; }
+.sk-li-s { flex: none; font-size: var(--fs-xs); color: var(--t3); line-height: 1.4; white-space: nowrap; }
 /* #510 AC-3: the date keeps its room so nothing shifts when it shows on hover or focus; the selected row shows its actions there instead (board A04). */
 .sk-outline-row .sk-li-s { display: inline; opacity: 0; transition: opacity var(--dur-1) var(--ease-out); }
 .sk-outline-row:hover .sk-li-s, .sk-outline-row:focus .sk-li-s { opacity: 1; }

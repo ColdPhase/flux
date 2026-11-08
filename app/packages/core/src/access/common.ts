@@ -5,10 +5,10 @@ import { ForbiddenError } from './errors.js';
 import type { Actor } from './policy.js';
 import type { AccessPorts } from './repositories.js';
 
-// What the workspace, project, agent and draft use cases (issues #46, #91) have in common.
+// What the workspace, project and agent use cases (issues #46, #91) have in common.
 //
 // Every use case authorizes through ./policy.ts before touching data; mutations decide and write in the
-// same transaction with the rows the decision depends on locked (membership/agent, draft, project and
+// same transaction with the rows the decision depends on locked (membership/agent, project and
 // the actor's grants on it). Membership, grant and agent changes take conflicting locks on the rows they
 // change, so a concurrent revocation is either seen or waits until the mutation commits. Entry points
 // must call these use cases, never the tables. Events are the last write of a mutation.

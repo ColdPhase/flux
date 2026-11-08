@@ -620,8 +620,7 @@ function SketchEditor({ sketchId, projectId, back = '/map', doc }: ViewProps & {
     doc.perform(thoughts.map((t): Op => ({ kind: 'remove', id: t.id })), thoughts.length === 1 ? 'removed a thought' : 'removed thoughts');
     setSelection([]);
     setConnectFrom(null);
-    const placed = thoughts.some((t) => t.placement);
-    say(`Removed ${thoughts.length === 1 ? quote(thoughts[0]!.text) : `${thoughts.length} thoughts`} from the map${placed ? '; the draft itself is kept' : ''}`, true);
+    say(`Removed ${thoughts.length === 1 ? quote(thoughts[0]!.text) : `${thoughts.length} thoughts`} from the map`, true);
     focusThought('.sk-node:not([aria-pressed="true"]), .sk-li-t, .sk-canvas');
   };
 

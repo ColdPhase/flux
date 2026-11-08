@@ -3,13 +3,13 @@
 // container, fed on stdin like scripts/flux-demo.mjs, and uses only the public HTTP API.
 //
 //   FLUX_FIXTURE_MODE=seed    after ./flux demo: adds content of every kind (conversation, DM,
-//                             private note, project sketch, work/decision/result with links, doc
+//                             private map, project sketch, work/decision/result with links, doc
 //                             with versions, push subscription, a revoked and a live session, an
 //                             outsider) and prints `FLUX_FIXTURE {json}`: logins, cookies and a
 //                             snapshot read back through the API.
 //   FLUX_FIXTURE_MODE=verify  with FLUX_FIXTURE_STATE={json} from seed, against a restored or
 //                             upgraded instance: the same snapshot, sign-in, the sessions policy
-//                             and permissions (outsider denied, private note still private).
+//                             and permissions (outsider denied, private map still private).
 //   FLUX_FIXTURE_MODE=revoke-live   after the backup: revokes the live agent connection.
 //   FLUX_FIXTURE_MODE=agents-revoked after restore --revoke-agent-connections: no bearer works.
 //   FLUX_FIXTURE_MODE=demo    after an upgrade from an older version: the demo data is readable.
@@ -179,8 +179,8 @@ async function snapshot(ada, jonas, state) {
   const dms = await all(ada, `/api/v1/workspaces/${workspaceId}/dms`);
   const dmMessages = [];
   for (const dm of dms) dmMessages.push((await ada.expect('GET', `/api/v1/dms/${dm.id}`)).messages.map((message) => message.body));
-  const adaDrafts = (await all(ada, `/api/v1/workspaces/${workspaceId}/drafts`)).map((draft) => [draft.id, draft.title, draft.visibility, draft.version]).sort();
-  const jonasDrafts = (await all(jonas, `/api/v1/workspaces/${workspaceId}/drafts`)).map((draft) => draft.id).sort();
+  const adaMaps = (await all(ada, `/api/v1/workspaces/${workspaceId}/sketches?scope=private`)).map((map) => [map.id, map.title, map.scope, map.version]).sort();
+  const jonasMaps = (await all(jonas, `/api/v1/workspaces/${workspaceId}/sketches`)).map((map) => map.id).sort();
   const push = (await ada.expect('GET', '/api/v1/push/subscriptions')).map((item) => [item.endpointOrigin, item.deviceLabel]).sort();
   const members = (await ada.expect('GET', `/api/v1/workspaces/${workspaceId}/members`)).map((member) => [member.email, member.role]).sort();
   const connections = (await ada.expect('GET', '/api/v1/agent-connections')).map((item) => [item.id, item.revokedAt]).sort();
@@ -195,7 +195,7 @@ async function snapshot(ada, jonas, state) {
   const undone = await ada.expect('GET', `/api/v1/work/${state.undo.workId}`);
   const undoNotices = (await all(ada, `/api/v1/projects/${projectId}/task-notices`)).filter((notice) => notice.workId === state.undo.workId)
     .map((notice) => [notice.id, notice.kind, notice.createdBy.kind, notice.createdBy.id, notice.createdAt]).sort();
-  return { exported, threads, docVersions, dmMessages, adaDrafts, jonasDrafts, push, members, connections, notifications, fileHex, undone, undoNotices };
+  return { exported, threads, docVersions, dmMessages, adaMaps, jonasMaps, push, members, connections, notifications, fileHex, undone, undoNotices };
 }
 
 async function seed() {
@@ -220,7 +220,7 @@ async function seed() {
   await jonas.expect('POST', `/api/v1/projects/${projectId}/results`, { title: token('BACKUP-result'), finding: 'positive', work: [work.id], finishes: { id: work.id, expectedVersion: work.version } });
   const doc = await ada.expect('POST', `/api/v1/projects/${projectId}/docs`, { title: token('BACKUP-doc'), body: token('BACKUP-doc-v1') }, [201], { 'idempotency-key': ids() });
   await jonas.expect('PATCH', `/api/v1/docs/${doc.id}`, { body: `${token('BACKUP-doc-v2')} [work](flux:work/${work.id})` }, [200], { 'if-match': `"${doc.version}"` });
-  const note = await ada.expect('POST', `/api/v1/workspaces/${workspaceId}/drafts`, { title: token('BACKUP-private-note'), body: token('BACKUP-private-body'), projectId });
+  const note = await ada.expect('POST', `/api/v1/workspaces/${workspaceId}/sketches`, { title: token('BACKUP-private-note'), scope: 'private' });
   const dm = (await all(ada, `/api/v1/workspaces/${workspaceId}/dms`))[0];
   assert.ok(dm, 'the demo DM exists');
   const dmMessage = await jonas.expect('POST', `/api/v1/dms/${dm.id}/messages`, { body: token('BACKUP-dm'), clientMessageId: ids() });
@@ -284,8 +284,8 @@ async function seed() {
 
   const state = { tag, workspaceId, projectId, fileId: file.id, fileHex: fileBytes.toString('hex'), adaId, jonasId, dmId: dm.id, noteId: note.id, docId: doc.id, outsider, liveConnection, bearers, undo };
   const expected = await snapshot(ada, jonas, state);
-  assert.ok(expected.adaDrafts.some(([id]) => id === note.id), 'Ada sees her private note');
-  assert.ok(!expected.jonasDrafts.includes(note.id), 'Jonas cannot see Ada\'s private note');
+  assert.ok(expected.adaMaps.some(([id]) => id === note.id), 'Ada sees her private map');
+  assert.ok(!expected.jonasMaps.includes(note.id), 'Jonas cannot see Ada\'s private map');
   console.log(`FLUX_FIXTURE ${JSON.stringify({ ...state, cookies: { jonas: jonas.jar(), revoked: revoked.jar() }, expected })}`);
 }
 
@@ -307,7 +307,7 @@ async function verify() {
   for (const word of ['BACKUP-message', 'BACKUP-thought', 'BACKUP-work', 'BACKUP-decision', 'BACKUP-result', 'BACKUP-doc-v1', 'BACKUP-doc-v2']) {
     assert.ok(text.includes(`${word}-${state.tag}`), `restored export has ${word}`);
   }
-  assert.ok(!text.includes('BACKUP-private') && !text.includes('BACKUP-dm'), 'the export still leaves out the private note and the DM');
+  assert.ok(!text.includes('BACKUP-private') && !text.includes('BACKUP-dm'), 'the export still leaves out the private map and the DM');
   assert.equal(actual.exported.docs.find((doc) => doc.id === state.docId).versions.length, 2, 'both doc versions restored');
   assert.ok(actual.exported.links.some((link) => link.from.type === 'doc' && link.role === 'mentions' && link.to.type === 'work'), 'doc link restored');
   assert.deepEqual(actual.push, [['https://push.example.test', 'Backup test phone']], 'push subscription restored');
@@ -336,12 +336,12 @@ async function verify() {
   assert.equal((await ada.expect('GET', `/api/v1/work/${state.undo.workId}`)).version, actual.undone.version, 'the replay changed nothing');
   assert.ok(!(await all(ada, `/api/v1/projects/${projectId}/work`)).some((item) => item.id === state.undo.workId), 'active work leaves it out');
 
-  // Permissions: the private note is still private, and an outsider is still denied.
-  assert.equal((await jonas.request('GET', `/api/v1/drafts/${noteId}`)).status, 404, 'Jonas cannot open Ada\'s private note');
-  assert.equal((await ada.request('GET', `/api/v1/drafts/${noteId}`)).status, 200, 'Ada still opens her private note');
+  // Permissions: the private map is still private, and an outsider is still denied.
+  assert.equal((await jonas.request('GET', `/api/v1/sketches/${noteId}`)).status, 404, 'Jonas cannot open Ada\'s private map');
+  assert.equal((await ada.request('GET', `/api/v1/sketches/${noteId}`)).status, 200, 'Ada still opens her private map');
   const outsider = await signIn(state.outsider);
   assert.ok(!(await outsider.expect('GET', '/api/v1/workspaces')).some((ws) => ws.id === workspaceId), 'outsider sees no demo workspace');
-  for (const path of [`/api/v1/projects/${projectId}`, `/api/v1/projects/${projectId}/export`, `/api/v1/dms/${dmId}`, `/api/v1/drafts/${noteId}`]) {
+  for (const path of [`/api/v1/projects/${projectId}`, `/api/v1/projects/${projectId}/export`, `/api/v1/dms/${dmId}`, `/api/v1/sketches/${noteId}`]) {
     assert.equal((await outsider.request('GET', path)).status, 404, `outsider is denied ${path}`);
   }
   assert.equal((await jonas.request('GET', `/api/v1/projects/${projectId}/export`)).status, 403, 'a member without project.manage cannot export');
@@ -380,9 +380,6 @@ async function demo() {
   assert.equal((await ada.expect('GET', `/api/v1/conversations/${conversations[0].id}`)).messages.length, 4, 'the four demo messages survived');
   const dms = await all(jonas, `/api/v1/workspaces/${workspaceId}/dms`);
   assert.equal((await jonas.expect('GET', `/api/v1/dms/${dms[0].id}`)).messages.length, 4, 'the four demo DM messages survived');
-  const drafts = await all(ada, `/api/v1/workspaces/${workspaceId}/drafts`);
-  assert.ok(drafts.some((draft) => draft.title === 'Before Thursday (private)'), 'the private note survived');
-  assert.ok(!(await all(jonas, `/api/v1/workspaces/${workspaceId}/drafts`)).some((draft) => draft.title === 'Before Thursday (private)'), 'and is still private');
   const sketches = await all(ada, `/api/v1/workspaces/${workspaceId}/sketches?projectId=${projectId}`);
   assert.equal((await ada.expect('GET', `/api/v1/sketches/${sketches[0].id}`)).thoughts.length, 4, 'the demo sketch survived');
   // Features of the new version work on the upgraded data.
@@ -390,8 +387,7 @@ async function demo() {
   assert.equal(doc.version, 1);
   const exported = await ada.expect('GET', `/api/v1/projects/${projectId}/export`);
   assert.equal(exported.conversations[0].messages.length, 4);
-  assert.ok(!JSON.stringify(exported).includes('Before Thursday'), 'the export leaves out the private note');
-  console.log(`verified upgraded demo: 4 messages, 4 DM messages, private note, sketch, new doc and export (schema ${exported.provenance.schemaVersion})`);
+  console.log(`verified upgraded demo: 4 messages, 4 DM messages, sketch, new doc and export (schema ${exported.provenance.schemaVersion})`);
 }
 
 if (mode === 'seed') await seed();

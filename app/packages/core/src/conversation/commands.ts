@@ -111,11 +111,8 @@ export function normalizeMaterial(command: CreateMaterialCommand) {
   const url = optionalUrl(command.url);
   if (!body.trim() && !url) throw new InvalidInputError('Material needs text or a link');
   const clientMutationId = uuid(command.clientMutationId, 'clientMutationId');
-  const sourceDraftId = command.sourceDraftId === undefined ? null : uuid(command.sourceDraftId, 'sourceDraftId');
-  const sourceDraftVersion = command.sourceDraftVersion === undefined ? null : positiveVersion(command.sourceDraftVersion, 'sourceDraftVersion');
-  if ((sourceDraftId === null) !== (sourceDraftVersion === null)) throw new InvalidInputError('sourceDraftId and sourceDraftVersion must be given together');
-  return { title, body, url, clientMutationId, sourceDraftId, sourceDraftVersion,
-    fingerprint: fingerprint({ title, body, url, sourceDraftId, sourceDraftVersion }) };
+  return { title, body, url, clientMutationId,
+    fingerprint: fingerprint({ title, body, url }) };
 }
 
 export function normalizeMaterialUpdate(command: UpdateMaterialCommand) {

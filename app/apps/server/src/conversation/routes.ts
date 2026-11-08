@@ -31,8 +31,7 @@ const plainText = async (request: { body?: unknown }) => {
 };
 const createMaterialBody = { type: 'object', required: ['clientMutationId', 'title'], additionalProperties: false,
   properties: { clientMutationId: { type: 'string' }, title: { type: 'string', minLength: 1, maxLength: 200 },
-    body: { type: 'string', maxLength: 100_000 }, url: { type: 'string', maxLength: 2048 },
-    sourceDraftId: { type: 'string' }, sourceDraftVersion: { type: 'integer' } } } as const;
+    body: { type: 'string', maxLength: 100_000 }, url: { type: 'string', maxLength: 2048 } } } as const;
 const updateMaterialBody = { type: 'object', required: ['clientMutationId', 'expectedVersion'], additionalProperties: false,
   properties: { clientMutationId: { type: 'string' }, expectedVersion: { type: 'integer' }, title: { type: 'string', minLength: 1, maxLength: 200 },
     body: { type: 'string', maxLength: 100_000 }, url: { type: ['string', 'null'], maxLength: 2048 } } } as const;

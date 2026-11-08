@@ -23,12 +23,12 @@ import {
 import { pool as connectionPool } from './support/db.js';
 import { Browser, type ClientResponse } from './support/http.js';
 import { createConnection } from './support/mcp-actions.js';
-import { addMember, draft, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, person, project as createProject, workspace, type Person } from './support/people.js';
 
 // Project export (issue #123): only a manager exports; the document and bundle hold the
 // project's conversation, materials and docs with versions, project sketches with thoughts and
 // links, work, decisions and results with links, members and provenance, and never another
-// project, a DM, a private note or a private sketch (checked with distinctive tokens).
+// project, a DM or a private sketch (checked with distinctive tokens).
 
 const post = (someone: Person, path: string, body: unknown, headers?: Record<string, string>) => someone.browser.request('POST', path, { body, headers });
 const json = <T>(response: ClientResponse, status: number, label?: string) => expectStatus(response, status, label) as T;
@@ -90,7 +90,6 @@ describe('project export', () => {
   let work: WorkItem;
   let decision: Decision;
   let result: WorkResult;
-  let privateDraftId: string;
   let materialMutationId: string;
   let agentId: string;
   let connectionId: string;
@@ -106,12 +105,10 @@ describe('project export', () => {
     await grant(owner, lamp.id, partner, 'contributor');
     await grant(owner, lamp.id, viewer, 'contributor');
 
-    // Private note in the project; a material is published from a redacted part of it.
-    const note = await draft(owner, ws.id, token('PRIVATENOTE-title'), { projectId: lamp.id, body: token('PRIVATENOTE-body') });
-    privateDraftId = note.id;
+    // A material in the project.
     materialMutationId = randomUUID();
     const material = json<{ materialId: string; version: number }>(await post(owner, `/api/v1/projects/${lamp.id}/materials`, {
-      clientMutationId: materialMutationId, title: token('MATERIAL-title'), body: token('MATERIAL-body'), sourceDraftId: note.id, sourceDraftVersion: note.version,
+      clientMutationId: materialMutationId, title: token('MATERIAL-title'), body: token('MATERIAL-body'),
     }), 201, 'material');
     materialId = material.materialId;
     json(await owner.browser.request('PATCH', `/api/v1/materials/${materialId}`, {
@@ -129,9 +126,9 @@ describe('project export', () => {
     const leaf = json<{ thought: { id: string } }>(await post(partner, `/api/v1/sketches/${sketchId}/thoughts`,
       { text: token('THOUGHT-leaf'), x: 240, y: 0, linkFrom: { thoughtId: root.thought.id, label: 'because' } }), 201, 'linked thought');
     thoughtIds = [root.thought.id, leaf.thought.id];
-    // A private sketch, placing the private note: never exported.
+    // A private sketch: never exported.
     const secret = json<{ id: string }>(await post(owner, `/api/v1/workspaces/${ws.id}/sketches`, { title: token('PRIVATESKETCH-title'), scope: 'private' }), 201, 'private sketch');
-    json(await post(owner, `/api/v1/sketches/${secret.id}/thoughts`, { text: token('PRIVATESKETCH-thought'), x: 0, y: 0, placement: { type: 'draft', id: note.id } }), 201, 'private thought');
+    json(await post(owner, `/api/v1/sketches/${secret.id}/thoughts`, { text: token('PRIVATESKETCH-thought'), x: 0, y: 0 }), 201, 'private thought');
 
     const messages = json<{ messages: { id: string }[] }>(await owner.browser.request('GET', `/api/v1/conversations/${conversation.id}`), 200).messages;
     work = json<WorkItem>(await post(owner, `/api/v1/projects/${lamp.id}/work`, {
@@ -161,12 +158,11 @@ describe('project export', () => {
     }), 200, 'notification preferences');
     json(await partner.browser.request('PUT', '/api/v1/notification-preferences/mutes', { body: { type: 'project', id: lamp.id, muted: true } }), 200, 'mute');
 
-    // Content that must stay out: another project, a DM, a workspace-level private note.
+    // Content that must stay out: another project, a DM.
     json(await post(owner, `/api/v1/projects/${other.id}/conversations`, { body: token('OTHERPROJECT-message'), clientMessageId: randomUUID() }), 201, 'other conversation');
     json(await post(owner, `/api/v1/projects/${other.id}/docs`, { title: token('OTHERPROJECT-doc'), body: token('OTHERPROJECT-doc-body') }), 201, 'other doc');
     const dm = json<{ id: string }>(await post(owner, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [partner.id] }), 201, 'dm');
     json(await post(owner, `/api/v1/dms/${dm.id}/messages`, { body: token('DMSECRET-message'), clientMessageId: randomUUID() }), 201, 'dm message');
-    await draft(owner, ws.id, token('PRIVATENOTE-workspace'), { body: token('PRIVATENOTE-workspace-body') });
   });
 
   test('only a project manager can export; others get 403, an outsider 404', async () => {
@@ -232,8 +228,8 @@ describe('project export', () => {
     for (const [someone, name] of [[owner, 'export-owner'], [partner, 'export-partner']] as const) assert.equal(names.get(someone.id), name);
 
     const text = JSON.stringify(data);
-    assert.deepEqual(leaked(text, ['OTHERPROJECT', 'DMSECRET', 'PRIVATENOTE', 'PRIVATESKETCH', 'extra-address', ...QUIET_HOURS_MARKERS]), [], 'export leaks');
-    for (const hidden of [privateDraftId, materialMutationId, connectionId, other.id, owner.email, partner.email, outsider.id]) assert.ok(!text.includes(hidden), `export leaks ${hidden}`);
+    assert.deepEqual(leaked(text, ['OTHERPROJECT', 'DMSECRET', 'PRIVATESKETCH', 'extra-address', ...QUIET_HOURS_MARKERS]), [], 'export leaks');
+    for (const hidden of [materialMutationId, connectionId, other.id, owner.email, partner.email, outsider.id]) assert.ok(!text.includes(hidden), `export leaks ${hidden}`);
 
     const validate = await validator();
     const checked = await validate(data);
@@ -327,6 +323,6 @@ describe('project export', () => {
     assert.deepEqual(JSON.parse(read('schema/project-export.v1.schema.json')!.toString('utf8')), JSON.parse(JSON.stringify(PROJECT_EXPORT_JSON_SCHEMA)));
     assert.match(read('README.md')!.toString('utf8'), /Re-import into Flux is not supported/);
     const everything = [...files.values()].map((content) => content.toString('utf8')).join('\n');
-    for (const hidden of ['OTHERPROJECT', 'DMSECRET', 'PRIVATENOTE', 'PRIVATESKETCH']) assert.ok(!everything.includes(hidden), `bundle leaks ${hidden}`);
+    for (const hidden of ['OTHERPROJECT', 'DMSECRET', 'PRIVATESKETCH']) assert.ok(!everything.includes(hidden), `bundle leaks ${hidden}`);
   });
 });

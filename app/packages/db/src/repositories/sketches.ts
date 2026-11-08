@@ -52,7 +52,6 @@ const thoughtSourceAgent = alias(agents, 'thought_source_agent');
 function toThoughtRecord({ row, userName, agentName, sourceAgentName }: { row: typeof t.$inferSelect; userName: string | null; agentName: string | null; sourceAgentName: string | null }) {
   return {
     id: row.id, sketchId: row.sketchId, text: row.text, x: row.x, y: row.y, width: row.width, height: row.height, shape: row.shape,
-    placement: row.placementType && row.placementId ? { type: row.placementType, id: row.placementId } : null,
     source: (row.sourceAuthorId || row.sourceAuthorAgentId) && row.sourceSentAt && row.sourceProjectMessageId
       ? { authorId: row.sourceAuthorId ?? row.sourceAuthorAgentId!, authorKind: row.sourceAuthorId ? 'human' as const : 'agent' as const,
         authorName: row.sourceAuthorName ?? sourceAgentName ?? '', sentAt: row.sourceSentAt, projectMessageId: row.sourceProjectMessageId! }
@@ -72,7 +71,7 @@ export interface NewSketchRow {
 export interface ThoughtSourceRow { authorId: string; authorKind: 'human' | 'agent'; authorName: string; sentAt: Date; projectMessageId: string }
 export interface NewThoughtRow {
   id: string; workspaceId: string; sketchId: string; text: string; x: number; y: number; width: number; height: number;
-  shape: 'card' | 'pill' | 'circle'; placement: { type: 'draft'; id: string } | null; source?: ThoughtSourceRow | null; createdBy: Author;
+  shape: 'card' | 'pill' | 'circle'; source?: ThoughtSourceRow | null; createdBy: Author;
   /** Server-only retained version allocation; never accepted from the native command body. */
   version?:number;
 }
@@ -194,7 +193,7 @@ export function sketchRows(db: DbExecutor) {
       await db.insert(t).values(await sealFor(db, 'sketch_thoughts', thought.workspaceId, {
         id: thought.id, workspaceId: thought.workspaceId, sketchId: thought.sketchId, text: thought.text, x: thought.x, y: thought.y,
         width: thought.width, height: thought.height, shape: thought.shape, version:thought.version??1,
-        placementType: thought.placement?.type ?? null, placementId: thought.placement?.id ?? null, ...author(thought.createdBy),
+        ...author(thought.createdBy),
         ...(thought.source ? {
           ...(thought.source.authorKind === 'human' ? { sourceAuthorId: thought.source.authorId } : { sourceAuthorAgentId: thought.source.authorId }),
           sourceAuthorName: thought.source.authorName, sourceSentAt: thought.source.sentAt,

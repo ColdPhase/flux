@@ -2,7 +2,6 @@ import { and, eq, or, sql, type SQL } from 'drizzle-orm';
 import { fromDrizzle, type PgBoss } from 'pg-boss';
 import { markAllNotificationsRead, notificationRows, pushSubscriptionRepository, schema, type DbExecutor, visibleFilter, memberFilter, accessReader, type Database } from '@flux/db';
 import {
-  DRAFT_SUMMARY_JOB,
   PUSH_SEND_JOB,
   createNotification,
   policySourceReader,
@@ -21,7 +20,7 @@ const n = schema.notifications;
 /**
  * The inbox audience as one SQL condition over `notifications`: per workspace the recipient has
  * notifications in, the source must pass the policy's own list filter (`visibleFilter`) for
- * projects, drafts and direct messages, or the workspace itself must be readable. Applied before the limit and
+ * projects and direct messages, or the workspace itself must be readable. Applied before the limit and
  * in the unread count, so invisible rows never reach pages, counts or payloads.
  */
 async function inboxAudience(db: DbExecutor, userId: string): Promise<SQL> {
@@ -34,23 +33,21 @@ async function inboxAudience(db: DbExecutor, userId: string): Promise<SQL> {
     if (!workspace.visible) continue;
     // F-037 (coordinator default): a company admin's Inbox holds only what is in the spaces they were added to.
     const projects = await memberFilter(principal, workspaceId, 'project', db);
-    const drafts = await memberFilter(principal, workspaceId, 'draft', db);
     const dms = await visibleFilter(principal, workspaceId, 'dm', db);
     // Each set starts from the distinct sources of the reader's own notifications of that kind in
     // this workspace and keeps those that pass the policy's filter, looked up one by one by
     // primary key (a LATERAL subquery with LIMIT, which PostgreSQL cannot turn into a scan of the
     // whole table). The outer `IN` is then decided once per query as a hashed set. Its size and
-    // estimate follow the reader's notifications, never the workspace's projects, drafts or DMs
+    // estimate follow the reader's notifications, never the workspace's projects or DMs
     // (#298): as correlated EXISTS the checks were costed once per notification and crossed
     // jit_above_cost at about a thousand of them; as sets of every readable row they grew with
     // the workspace; as semi-joins PostgreSQL could still choose to scan every DM.
-    const readable = (type: 'project' | 'draft' | 'dm', table: typeof schema.projects | typeof schema.drafts | typeof schema.dms, filter: SQL) =>
+    const readable = (type: 'project' | 'dm', table: typeof schema.projects | typeof schema.dms, filter: SQL) =>
       sql`SELECT own.source_id FROM (SELECT DISTINCT mine.source_id FROM notifications mine
         WHERE mine.user_id = ${userId} AND mine.workspace_id = ${workspaceId} AND mine.source_type = ${type}) AS own
         CROSS JOIN LATERAL (SELECT 1 FROM ${table} WHERE ${table.id} = own.source_id AND ${filter} LIMIT 1) AS passes`;
     const sources: SQL[] = [
       sql`(${n.sourceType} = 'project' AND ${n.sourceId} IN (${readable('project', schema.projects, projects)}))`,
-      sql`(${n.sourceType} = 'draft' AND ${n.sourceId} IN (${readable('draft', schema.drafts, drafts)}))`,
       // Direct messages (#116): only while the recipient is a participant (#107).
       sql`(${n.sourceType} = 'dm' AND ${n.sourceId} IN (${readable('dm', schema.dms, dms)}))`,
     ];
@@ -86,7 +83,6 @@ export function pgBossQueue(boss: Pick<PgBoss, 'send'>): QueueFactory {
     const db = fromDrizzle(tx as Parameters<typeof fromDrizzle>[0], sql);
     return {
       enqueuePushSend: (job) => boss.send(PUSH_SEND_JOB, job, { db, singletonKey: `${job.notificationId}:${job.subscriptionId}` }),
-      enqueueDraftSummary: (job) => boss.send(DRAFT_SUMMARY_JOB, job, { db }),
     };
   };
 }

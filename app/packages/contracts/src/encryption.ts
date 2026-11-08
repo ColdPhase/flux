@@ -263,7 +263,7 @@ export const EVENT_DATA_KEYS = [
   'access', 'actor', 'actorId', 'additionalProperties', 'agentId', 'agentIds', 'ai', 'assignedTo', 'at', 'audience',
   'author', 'automation', 'body', 'boundary', 'by', 'canCreateProject', 'caps', 'changed', 'changes',
   'clientCommandId', 'clientMessageId', 'code', 'columns', 'command', 'commandId', 'contentIdentity',
-  'conversationId', 'createdAt', 'createdBy', 'data', 'decisionId', 'dm', 'dmId', 'docId', 'draft', 'draftId',
+  'conversationId', 'createdAt', 'createdBy', 'data', 'decisionId', 'dm', 'dmId', 'docId',
   'email', 'end', 'error', 'eventId', 'events', 'evidenceRef', 'expected', 'expiresAt', 'fence', 'file', 'fileId',
   'fingerprint', 'firstMessageBody', 'from', 'fromTitle', 'goal', 'goalId', 'grantId', 'hasMoreBefore', 'height', 'holders',
   'id', 'ids', 'inbox', 'index', 'input', 'intent', 'intents', 'interpretation', 'invitationId', 'inviteId', 'items', 'keys',

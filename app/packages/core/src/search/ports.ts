@@ -9,7 +9,7 @@ import type { Principal } from '../principal.js';
  */
 
 /** The object that carries the permission of a search row. */
-export type SearchAudienceType = 'project' | 'dm' | 'sketch' | 'draft' | 'members';
+export type SearchAudienceType = 'project' | 'dm' | 'sketch' | 'members';
 
 /** Audiences of one type in one workspace that the principal may read now, as the policy's list condition. */
 export interface SearchAudience<C> {

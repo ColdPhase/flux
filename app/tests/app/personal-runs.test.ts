@@ -34,7 +34,6 @@ const processor = createPersonalRunProcessor({ uow: personalRunWorkerUnitOfWork(
 
 const TOKENS = {
   dm: `DM-SECRET-${randomUUID()}`,
-  draft: `PRIVATE-DRAFT-${randomUUID()}`,
   sketch: `PRIVATE-SKETCH-${randomUUID()}`,
   otherProject: `OTHER-PROJECT-${randomUUID()}`,
 };
@@ -109,7 +108,6 @@ describe('personal assistant runs (#68, fake compute: no provider pass is claime
     assert.ok(payroll.id);
     const dm = await post<{ id: string }>(hubert, `/api/v1/workspaces/${ws.id}/dms`, { participantIds: [kai.id] });
     await post(hubert, `/api/v1/dms/${dm.id}/messages`, { body: `Between us: ${TOKENS.dm}`, clientMessageId: randomUUID() });
-    await post(hubert, `/api/v1/workspaces/${ws.id}/drafts`, { title: 'Notes', body: `Private capture ${TOKENS.draft}`, projectId: lamp.id });
     const mine = await post<{ id: string }>(hubert, `/api/v1/workspaces/${ws.id}/sketches`, { title: 'My private map', scope: 'private' });
     privateSketch = { id: mine.id, thoughtId: (await post<{ thought: { id: string } }>(hubert, `/api/v1/sketches/${mine.id}/thoughts`, { text: TOKENS.sketch, x: 0, y: 0 })).thought.id };
     const shared = await post<{ id: string }>(kai, `/api/v1/workspaces/${ws.id}/sketches`, { title: 'Sensor options', scope: 'project', projectId: lamp.id });

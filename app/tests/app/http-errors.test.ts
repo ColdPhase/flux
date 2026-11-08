@@ -25,7 +25,7 @@ function refusedUpgrade(origin: string): Promise<{ status: number; body: unknown
 
 test('access, push, stream and identity answer a missing session with the same 401 body', async () => {
   const anonymous = new Browser();
-  for (const path of ['/api/v1/workspaces', '/api/v1/drafts/00000000-0000-4000-8000-000000000000', '/api/v1/push/public-key',
+  for (const path of ['/api/v1/workspaces', '/api/v1/sketches/00000000-0000-4000-8000-000000000000', '/api/v1/push/public-key',
     '/api/v1/push/subscriptions', '/api/v1/inbox', '/api/v1/stream/work',
     '/api/v1/me', '/api/v1/sessions', '/api/v1/agent-oauth/consent-context?oauth_query=x']) {
     const response = await anonymous.request('GET', path);

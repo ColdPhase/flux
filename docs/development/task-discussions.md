@@ -416,7 +416,7 @@ thought transaction: sketch write lock, then the file row lock with the checks o
 message attachments (uploader, project, ready, expiry, bytes present with exact
 size and SHA-256), then an image signature check of the stored bytes (PNG, JPEG,
 GIF or WebP; never SVG), else `400 UNSUPPORTED_IMAGE` and the file stays staged.
-A private or DM sketch answers `422 IMAGES_NEED_A_PROJECT`; an agent
+A private map answers `422 IMAGES_NEED_A_PROJECT`; an agent
 `403 AGENT_FILES_UNAVAILABLE`.
 
 Publication sets `project_files.thought_id`, `published_at` and clears the

@@ -12,7 +12,7 @@ import type {
 } from './ports.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const SOURCE_TYPES = new Set(['workspace', 'project', 'draft', 'dm']);
+const SOURCE_TYPES = new Set(['workspace', 'project', 'dm']);
 
 export interface NotificationInput {
   userId: string;
@@ -51,7 +51,7 @@ export async function createNotification(uow: NotificationUnitOfWork, input: Not
   const url = input.url ?? null;
   if (url !== null && !isSafeAppPath(url)) throw new InvalidInputError('Notification url must be a same-origin path');
   if (!input.source || !SOURCE_TYPES.has(input.source.type) || !UUID.test(input.source.id)) {
-    throw new InvalidInputError('Notification source must name a workspace, project, draft or direct message', 'NOTIFICATION_SOURCE_REQUIRED');
+    throw new InvalidInputError('Notification source must name a workspace, project or direct message', 'NOTIFICATION_SOURCE_REQUIRED');
   }
   const id = randomUUID();
   return uow.run(async ({ authorizer, notifications, subscriptions, queue }) => {

@@ -48,7 +48,6 @@ export function accessContext({ db, sessions, liveRevocation, verifiedEmailMembe
     ...commandRunner(db, sessions),
     workspaceScope: (id: string): ResourceRef => ({ type: 'workspace', id }),
     projectScope: (id: string): ResourceRef => ({ type: 'project', id }),
-    draftScope: (id: string): ResourceRef => ({ type: 'draft', id }),
     workspaceChange,
     projectChange,
   };

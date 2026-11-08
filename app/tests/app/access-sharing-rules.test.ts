@@ -7,23 +7,18 @@ import {
   addMember,
   ConflictError,
   createAgent,
-  createDraft,
   createProject,
   createWorkspace,
   DomainError,
-  ForbiddenError,
   grantProject,
-  moveDraft,
   removeMember,
   revokeAgent,
   RuleViolationError,
-  shareDraft,
-  type Principal,
 } from '@flux/core';
 import { db, insertedHuman, pool } from './support/db.js';
 import { interleave } from './support/locks.js';
 
-// The audience, target and grantee rules of the draft and grant use cases, and the constraint violations of a grant write,
+// The grantee rules of the grant use cases, and the constraint violations of a grant write,
 // through the real SQL repositories on the Compose PostgreSQL (issues #46, #91). access-use-cases.test.ts pins the statement order over
 // in-memory ports; here the rows are real, so a rule that moved into a repository or lost its condition fails.
 
@@ -41,11 +36,6 @@ async function scene(label: string) {
   return { owner, member, guest, ws };
 }
 
-async function draftRow(id: string) {
-  const [row] = await db.select().from(schema.drafts).where(eq(schema.drafts.id, id));
-  return row!;
-}
-
 async function grantsOf(projectId: string, userId: string) {
   return db.select().from(schema.projectGrants).where(and(eq(schema.projectGrants.projectId, projectId), eq(schema.projectGrants.userId, userId)));
 }
@@ -54,45 +44,6 @@ async function grantEvents(projectId: string) {
   const [row] = await db.select({ n: count() }).from(schema.events).where(and(eq(schema.events.kind, 'project.grant_set.v1'), eq(schema.events.objectId, projectId)));
   return row!.n;
 }
-
-describe('draft audience and target rules through the SQL repositories', () => {
-  test('RESTRICTED_PROJECT: a draft in a restricted project is never shared with the whole workspace, by share or by move', async () => {
-    const { owner, ws } = await scene('restricted');
-    const vault = await createProject(owner, ws.id, { name: 'Vault', visibility: 'restricted' }, db, accessPorts);
-    const open = await createProject(owner, ws.id, { name: 'Open', visibility: 'workspace' }, db, accessPorts);
-    const inVault = await createDraft(owner, ws.id, { title: 'Vault notes', projectId: vault.id }, db, accessPorts);
-    await assert.rejects(shareDraft(owner, inVault.id, { scope: 'workspace', expectedVersion: inVault.version }, db, accessPorts),
-      (error) => on(error, RuleViolationError, 422, 'RESTRICTED_PROJECT'));
-    const loose = await createDraft(owner, ws.id, { title: 'Loose notes', projectId: open.id }, db, accessPorts);
-    await assert.rejects(moveDraft(owner, loose.id, { projectId: vault.id, visibility: 'workspace', expectedVersion: loose.version }, db, accessPorts),
-      (error) => on(error, RuleViolationError, 422, 'RESTRICTED_PROJECT'));
-    for (const before of [inVault, loose]) {
-      const after = await draftRow(before.id);
-      assert.deepEqual([after.version, after.visibility, after.projectId], [before.version, 'private', before.projectId], 'a refused change writes nothing');
-    }
-    assert.equal((await shareDraft(owner, inVault.id, { scope: 'project', expectedVersion: inVault.version }, db, accessPorts)).visibility, 'project', 'the project audience is allowed');
-  });
-
-  test('WORKSPACE_SHARE_FORBIDDEN: a guest and an agent cannot share with the whole workspace, by share or by move', async () => {
-    const { owner, guest, ws } = await scene('share-forbidden');
-    const mine = await createDraft(guest, ws.id, { title: 'Guest notes' }, db, accessPorts);
-    await assert.rejects(shareDraft(guest, mine.id, { scope: 'workspace', expectedVersion: mine.version }, db, accessPorts),
-      (error) => on(error, ForbiddenError, 403, 'WORKSPACE_SHARE_FORBIDDEN'));
-    await assert.rejects(moveDraft(guest, mine.id, { projectId: null, visibility: 'workspace', expectedVersion: mine.version }, db, accessPorts),
-      (error) => on(error, ForbiddenError, 403, 'WORKSPACE_SHARE_FORBIDDEN'));
-
-    const room = await createProject(owner, ws.id, { name: 'Room', visibility: 'workspace' }, db, accessPorts);
-    const agent = await createAgent(owner, ws.id, { name: 'Helper', owner: 'self' }, db, accessPorts);
-    const bot: Principal = { kind: 'agent', id: agent.id };
-    const botDraft = await createDraft(bot, ws.id, { title: 'Agent notes', projectId: room.id }, db, accessPorts);
-    await assert.rejects(shareDraft(bot, botDraft.id, { scope: 'workspace', expectedVersion: botDraft.version }, db, accessPorts),
-      (error) => on(error, ForbiddenError, 403, 'WORKSPACE_SHARE_FORBIDDEN'));
-    for (const before of [mine, botDraft]) {
-      const after = await draftRow(before.id);
-      assert.deepEqual([after.version, after.visibility], [before.version, 'private'], 'a refused change writes nothing');
-    }
-  });
-});
 
 describe('grantees and grant writes through the SQL repositories', () => {
   test('AGENT_NOT_IN_WORKSPACE and NOT_A_MEMBER: a grant names only a member or an active agent of the project workspace', async () => {

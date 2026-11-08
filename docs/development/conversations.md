@@ -48,10 +48,7 @@ docs and the creator of sketches in the project lists; see
 [access policy](access-policy.md#agent-owner-labels-f-026-339).
 
 `POST /api/v1/projects/:projectId/materials` takes an explicit title, body or
-HTTP(S) URL, and `clientMutationId`. A private draft can be a provenance source
-with `sourceDraftId` and `sourceDraftVersion`; the caller must explicitly provide
-the selected or redacted public content. The draft is never copied implicitly.
-Only its author sees the source draft reference in material responses. `PATCH
+HTTP(S) URL, and `clientMutationId`. A material has no private source (private drafts went in #947). `PATCH
 /api/v1/materials/:id` requires `expectedVersion` and `clientMutationId`. Retry
 the exact edit with the same UUID after a lost response: it returns the original
 committed revision, even if a later edit has advanced the material. Reusing that
@@ -185,13 +182,9 @@ composer draft is kept per signed-in user and conversation; a sent message waits
 in its queue with its command and UUID until it is confirmed (see [Instant sending
 and the offline queue](#instant-sending-and-the-offline-queue-264-2026-10-06)), and
 a draft returned after a failed send keeps that UUID until its text, files or
-citation change. Starting a conversation and replying cannot reuse one another's UUID. A published
-material from a private draft uses the chosen draft version and the exact edited
-public text. The private draft stays separate.
+citation change. Starting a conversation and replying cannot reuse one another's UUID.
 
-Home captures are server-backed private drafts when a space exists. With no space,
-Home explicitly labels browser-only notes. People with several spaces select the
-space for a new private draft. The project setup route asks for a space name when
+A person's private capture is a thought on My map (#866, #947). The project setup route asks for a space name when
 there is none; it does not silently create an administrative boundary. UI project
 creation currently uses a restricted audience. Member invitation and access
 management remain through the #29 API; a full in-app invitation surface is still

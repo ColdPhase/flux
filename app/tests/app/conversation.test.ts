@@ -23,23 +23,13 @@ describe('project capture and inline conversation', () => {
       { body: { principal: { kind: 'human', id: partner.id }, role: 'contributor' } }), 201);
   });
 
-  test('private draft remains private; selected redacted text becomes a versioned project material', async () => {
-    const draft = expectStatus(await owner.browser.request('POST', `/api/v1/workspaces/${ws.id}/drafts`,
-      { body: { title: 'private thought', body: 'personal address; camera privacy', projectId: project.id } }), 201) as { id: string; version: number };
-    expectStatus(await partner.browser.request('GET', `/api/v1/drafts/${draft.id}`), 404);
+  test('a text becomes a versioned project material; its readers are the project\'s', async () => {
     const created = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${project.id}/materials`,
-      { body: { clientMutationId: randomUUID(), title: 'Camera option', body: 'Camera privacy', sourceDraftId: draft.id, sourceDraftVersion: draft.version } }), 201) as Material;
+      { body: { clientMutationId: randomUUID(), title: 'Camera option', body: 'Camera privacy' } }), 201) as Material;
     assert.equal(created.version, 1);
-    assert.deepEqual(created.sourceDraft, { id: draft.id, version: draft.version });
     const partnerView = expectStatus(await partner.browser.request('GET', `/api/v1/materials/${created.materialId}`), 200) as Material;
     assert.equal(partnerView.body, 'Camera privacy');
-    assert.equal(partnerView.sourceDraft, null);
-    assert.equal(JSON.stringify(partnerView).includes('personal address'), false);
     expectStatus(await outsider.browser.request('GET', `/api/v1/materials/${created.materialId}`), 404);
-    expectStatus(await partner.browser.request('POST', `/api/v1/projects/${project.id}/materials`, { body: {
-      clientMutationId: randomUUID(), title: 'Cannot publish someone else draft', body: 'copy',
-      sourceDraftId: draft.id, sourceDraftVersion: draft.version,
-    } }), 404);
     const editKey = randomUUID();
     const edit = { clientMutationId: editKey, expectedVersion: 1, body: 'Camera fails in low light' };
     const v2 = expectStatus(await owner.browser.request('PATCH', `/api/v1/materials/${created.materialId}`,
@@ -65,8 +55,6 @@ describe('project capture and inline conversation', () => {
     const stored = await pool.query('SELECT version, body FROM project_material_versions WHERE material_id = $1 ORDER BY version', [created.materialId]);
     assert.deepEqual(stored.rows.map((row) => [row.version, row.body]),
       [[1, 'Camera privacy'], [2, 'Camera fails in low light'], [3, 'Sensor alternative']]);
-    const snapshot = await pool.query('SELECT version, body FROM draft_versions WHERE draft_id = $1', [draft.id]);
-    assert.equal(snapshot.rows[0].body, 'personal address; camera privacy');
   });
 
   test('two people send inline, retry safely, and keep a historical material citation', async () => {

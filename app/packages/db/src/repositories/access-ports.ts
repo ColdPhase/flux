@@ -1,6 +1,5 @@
 import { accessReader } from './access.js';
 import { agentRepository } from './agents.js';
-import { draftRepository } from './drafts.js';
 import { eventRepository } from './events.js';
 import { projectRepository } from './projects.js';
 import { spaceAiSweepRows } from './space-ai.js';
@@ -21,7 +20,6 @@ export const accessPorts = {
   invites: workspaceInviteRepository,
   projects: projectRepository,
   agents: agentRepository,
-  drafts: draftRepository,
   encryption: workspaceEncryptionRows,
   aiSweep: spaceAiSweepRows,
   access: accessReader,

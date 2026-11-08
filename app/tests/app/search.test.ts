@@ -2,14 +2,14 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { before, describe, test } from 'node:test';
 import type { SearchWork } from '@flux/core';
-import type { Conversation, Decision, Dm, Draft, Material, Project, SearchResponse, SearchResult, Sketch, CreatedThought, WorkItem, WorkResult, Workspace } from '@flux/contracts';
+import type { Conversation, Decision, Dm, Material, Project, SearchResponse, SearchResult, Sketch, CreatedThought, WorkItem, WorkResult, Workspace } from '@flux/contracts';
 import { pool } from './support/db.js';
 import { type ClientResponse } from './support/http.js';
-import { addMember, draft as createDraft, expectStatus, grant, removeFromSpace, person, project as createProject, workspace, type Person } from './support/people.js';
+import { addMember, expectStatus, grant, removeFromSpace, person, project as createProject, workspace, type Person } from './support/people.js';
 import { inBatches } from './support/batches.js';
 
 // Search across Flux (issue #114): one query over project and direct messages, materials and
-// their versions, work, decisions, results, sketches and thoughts, drafts and people. The access
+// their versions, work, decisions, results, sketches and thoughts and people. The access
 // policy is applied in SQL before ranking, limits and snippets, so nothing hidden ever
 // shows or changes the work the database does.
 
@@ -60,8 +60,6 @@ describe('search: one query across Flux, only what you may read', () => {
   let material: Material;
   let work: WorkItem;
   let privateSketch: Sketch;
-  let ariDraft: Draft;
-  let niaDraft: Draft;
   let direct: Dm;
 
   before(async () => {
@@ -92,15 +90,13 @@ describe('search: one query across Flux, only what you may read', () => {
     void openThread;
     privateSketch = await sketch(ari, ws.id, 'Ari private ideas');
     await thought(ari, privateSketch.id, 'Secret sensor pricing');
-    ariDraft = await createDraft(ari, ws.id, 'Sensor shopping list', { body: 'Only for Ari' });
-    niaDraft = await createDraft(nia, ws.id, 'Nia sensor notes', { body: 'Only for Nia' });
     direct = await dm(ari, ws.id, [nia]);
     await dmSay(ari, direct.id, 'Did the sensor arrive at your place?');
   });
 
   test('a contributor finds every kind she may read, with places, labels and exact targets', async () => {
     const answer = await search(nia, 'sensor');
-    assert.deepEqual(kinds(answer), ['decision', 'dm_message', 'draft', 'material', 'message', 'message', 'message', 'result', 'thought', 'work'].sort());
+    assert.deepEqual(kinds(answer), ['decision', 'dm_message', 'material', 'message', 'message', 'message', 'result', 'thought', 'work'].sort());
     const byKind = (kind: string) => answer.items.filter((item) => item.kind === kind);
     const materialHit = byKind('material')[0]!;
     assert.equal(text(materialHit.title), 'Sensor comparison');
@@ -121,8 +117,6 @@ describe('search: one query across Flux, only what you may read', () => {
     // The task's number in its project leads its text, so "#n" finds it (#276); the outcome follows.
     assert.equal(text(workHit.snippet), `#${work.number}\nNumbers for the low-light case`);
     assert.equal(byKind('thought')[0]!.label, 'Thought on the map “Lamp shapes”');
-    assert.equal(byKind('draft')[0]!.label, 'Thought · only you');
-    assert.deepEqual(byKind('draft')[0]!.target, { type: 'draft', draftId: niaDraft.id });
     assert.equal(byKind('decision')[0]!.label, 'Decision · proposed');
     assert.equal(byKind('result')[0]!.label, 'Positive result');
     // The matched word is marked, never as markup.
@@ -130,7 +124,7 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.ok(message.title.some((part) => part.match && /sensor/i.test(part.text)), 'the match is highlighted');
     assert.deepEqual(message.target, { type: 'message', projectId: lamp.id, conversationId: lampThread.id, messageId: (message.target as { messageId: string }).messageId });
     assert.equal(answer.next, null);
-    for (const hidden of ['Ari private ideas', 'Secret sensor pricing', 'Sensor shopping list', ariDraft.id, privateSketch.id]) assert.equal(JSON.stringify(answer).includes(hidden), false, hidden);
+    for (const hidden of ['Ari private ideas', 'Secret sensor pricing', privateSketch.id]) assert.equal(JSON.stringify(answer).includes(hidden), false, hidden);
   });
 
   test('a member outside the restricted project and the DM finds only the open project, and nothing hints at the rest', async () => {
@@ -144,14 +138,12 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.deepEqual(await search(olek, { q: 'sensor', place: `dm:${direct.id}` }), { items: [], next: null });
   });
 
-  test('private drafts and sketches reach only their author; owners do not see other people’s private drafts or DMs they are not in', async () => {
+  test('a private map reaches only its author; owners do not see other people’s private maps or DMs they are not in', async () => {
     const answer = await search(ari, 'sensor');
     const found = titles(answer);
     assert.ok(found.includes('Secret sensor pricing'), 'own private thought');
-    assert.ok(found.includes('Sensor shopping list'), 'own private draft');
-    assert.equal(found.includes('Nia sensor notes'), false, 'not another person’s private draft');
     const privateHits = await search(ari, { q: 'sensor', place: 'private' });
-    assert.deepEqual(titles(privateHits).sort(), ['Secret sensor pricing', 'Sensor shopping list']);
+    assert.deepEqual(titles(privateHits).sort(), ['Secret sensor pricing']);
     assert.ok(privateHits.items.every((item) => item.place.type === 'private'));
     // A group DM without Ari stays invisible to the workspace owner.
     const side = await dm(nia, ws.id, [olek, gus]);
@@ -377,7 +369,7 @@ describe('search: hidden matches never change the answer or the work', () => {
     // changes with every message or thought) until autovacuum removes them. That is write load,
     // not matching, so both measurements start from a vacuumed state.
     // search_documents itself is only analyzed: its GIN indexes have no pending list to flush.
-    const settle = async () => { await pool.query('VACUUM ANALYZE projects, dms, dm_participants, sketches, drafts'); await pool.query('ANALYZE search_documents'); };
+    const settle = async () => { await pool.query('VACUUM ANALYZE projects, dms, dm_participants, sketches'); await pool.query('ANALYZE search_documents'); };
     await settle();
     const baseline = await search(olek, query);
     const baselineWork = await explain(olek, query);

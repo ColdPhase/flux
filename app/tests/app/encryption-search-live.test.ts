@@ -48,7 +48,8 @@ async function writeSet(ws: string, side: 'A' | 'B') {
   expectStatus(await ada.browser.request('PATCH', `/api/v1/docs/${doc.id}`, { body: { body: 'Notes about the sensor and the lamp enclosure. Presentation outline follows.' },
     headers: { ...key(), 'if-match': `"${doc.currentVersion ?? doc.version}"` } }), 200, 'doc PATCH');
   await post(ada, `/api/v1/projects/${project.id}/materials`, { clientMutationId: randomUUID(), title: 'Datasheet', body: 'Reference sheet for the distance sensor', url: 'https://example.test/sheet' }, 201);
-  await post(ada, `/api/v1/workspaces/${ws}/drafts`, { title: 'Presentation outline', body: 'Open with the lamp story.', projectId: project.id }, 201);
+  const outline = await post(ada, `/api/v1/workspaces/${ws}/sketches`, { title: 'Presentation outline', scope: 'project', projectId: project.id }, 201);
+  await post(ada, `/api/v1/sketches/${outline.id}/thoughts`, { text: 'Open with the lamp story.', x: 0, y: 0 }, 201);
   const sketch = await post(ada, `/api/v1/workspaces/${ws}/sketches`, { title: 'Sensing options', scope: 'project', projectId: project.id }, 201);
   await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: 'Ultrasonic is noisy', x: 0, y: 0 }, 201);
   await post(ada, `/api/v1/sketches/${sketch.id}/thoughts`, { text: 'Infrared drifts in sunlight', x: 200, y: 0 }, 201);
@@ -101,7 +102,7 @@ describe('F-030 S2b: search in an encrypted workspace', () => {
       { q: 'sensor' }, { q: 'sens' }, { q: 'SENSOR' }, { q: 'sensor lamp' }, { q: 'lamp camera' }, { q: '"sensor comparison"' }, { q: '"comparison sensor"' },
       { q: 'sensor -camera' }, { q: 'camera or privacy' }, { q: 'ensor' }, { q: 'omparison' }, { q: 'presentation' }, { q: 'present' }, { q: '#1' }, { q: 'workshop' },
       { q: 'the' }, { q: 'ultrasonic' }, { q: 'ultra' }, { q: 'zzzz' }, { q: 'sensor', type: 'doc' }, { q: 'sensor', type: 'message' }, { q: 'sensor', type: 'work' },
-      { q: 'lamp', type: 'draft' }, { q: 'noisy', type: 'sketch' }, { q: 'pavilion' }, { q: 'roadmap pav' }, { q: 'field notes' }, { q: 'sunlight' },
+      { q: 'lamp', type: 'sketch' }, { q: 'noisy', type: 'sketch' }, { q: 'pavilion' }, { q: 'roadmap pav' }, { q: 'field notes' }, { q: 'sunlight' },
     ];
     for (const query of queries) {
       const [a, b] = [await search(ben, { ...query, place: `project:${ids.A.project}` }), await search(ben, { ...query, place: `project:${ids.B.project}` })];
@@ -137,10 +138,10 @@ describe('F-030 S2b: search in an encrypted workspace', () => {
 
   test('the index follows edits, deletions and access changes at once', async () => {
     const note = followup;
-    const draft = await post(ada, `/api/v1/workspaces/${A}/drafts`, { title: note, body: 'fresh' }, 201);
-    assert.equal((await search(ada, { q: note, place: 'private' })).items.length, 1, 'a new draft is found at once');
+    const draft = await post(ada, `/api/v1/workspaces/${A}/sketches`, { title: note, scope: 'project', projectId: ids.A.project }, 201);
+    assert.equal((await search(ada, { q: note })).items.length, 1, 'a new map is found at once');
     const renamed = canary('renamed').replace(/-/g, ' ');
-    expectStatus(await ada.browser.request('PATCH', `/api/v1/drafts/${draft.id}`, { body: { title: renamed }, headers: { ...key(), 'if-match': `"${draft.version}"` } }), 200, 'rename');
+    expectStatus(await ada.browser.request('PATCH', `/api/v1/sketches/${draft.id}`, { body: { title: renamed }, headers: { ...key(), 'if-match': `"${draft.version}"` } }), 200, 'rename');
     assert.equal((await search(ada, { q: note })).items.length, 0, 'the old title is gone at once');
     assert.equal((await search(ada, { q: renamed })).items.length, 1, 'the new one is found at once');
     // A deleted thought leaves the index at once.

@@ -7,7 +7,7 @@ import type {
   AgentProjectOwner, AuthenticatedAgentRuntime, MaterialVersion, MessageReferenceCard, Page, PageQuery, TaskAgentThread,
 } from '@flux/contracts';
 import {
-  ConflictError, conversationUseCases, enforce, evaluateDraft, evaluateProject, InvalidInputError, NotFoundError,
+  ConflictError, conversationUseCases, enforce, evaluateProject, InvalidInputError, NotFoundError,
   lockAttachments, messageContribution, storedDetail, positiveVersion, uuid, type FileStorage,
   parsePage, recordEvent, ServiceUnavailableError, type Principal,
 } from '@flux/core';
@@ -66,17 +66,15 @@ function message(row: MessageRow & { files?: import('@flux/contracts').MessageFi
 }
 
 
-function versionFields(row: VersionRow, principal: Principal) {
+function versionFields(row: VersionRow) {
   return { materialId: row.materialId, version: row.version, title: row.title, body: row.body, url: row.url,
-    sourceDraft: principal.kind === 'human' && row.authorId !== null && principal.id === row.authorId && row.sourceDraftId && row.sourceDraftVersion
-      ? { id: row.sourceDraftId, version: row.sourceDraftVersion } : null,
     createdAt: row.createdAt.toISOString() };
 }
 
 /** The actual author: a person, or the agent that wrote a doc version under a standing grant (#152). */
 function version(row: VersionRow, principal: Principal, names: Map<string, string> = new Map()): MaterialVersion {
-  if (row.authorId !== null) return { ...versionFields(row, principal), authorId: row.authorId };
-  return { ...versionFields(row, principal), authorId: null,
+  if (row.authorId !== null) return { ...versionFields(row), authorId: row.authorId };
+  return { ...versionFields(row), authorId: null,
     author: { kind: 'agent', id: row.authorAgentId!, name: names.get(`agent:${row.authorAgentId}`) ?? 'Agent' } };
 }
 
@@ -85,9 +83,9 @@ const materialFields = (row: MaterialRow) => ({ kind: row.kind, projectId: row.p
   createdAt: row.createdAt.toISOString(), updatedAt: row.updatedAt.toISOString() });
 
 /** A plain #36 material: always person-written (the database refuses an agent author outside docs). */
-function material(row: MaterialRow, current: VersionRow, principal: Principal): Material {
+function material(row: MaterialRow, current: VersionRow): Material {
   if (current.authorId === null) throw new Error('A project material version must have a human author');
-  return { ...versionFields(current, principal), authorId: current.authorId, ...materialFields(row) };
+  return { ...versionFields(current), authorId: current.authorId, ...materialFields(row) };
 }
 
 function materialOrDoc(row: MaterialRow, current: VersionRow, principal: Principal, names: Map<string, string>): MaterialOrDoc {
@@ -468,7 +466,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
       const rows = await db.select().from(schema.projectMaterials).where(materials)
         .orderBy(desc(schema.projectMaterials.createdAt), desc(schema.projectMaterials.id)).limit(page.limit).offset(page.offset);
       const versions = await currentVersions(rows, db);
-      const items = rows.map((row, index) => material(row, versions[index]!, principal));
+      const items = rows.map((row, index) => material(row, versions[index]!));
       return { items, total: count?.total ?? 0, ...page };
     },
 
@@ -525,15 +523,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           eq(schema.projectMaterials.clientMutationId, input.clientMutationId))))[0]);
         if (existing) {
           if (existing.requestFingerprint !== input.fingerprint) throw new ConflictError('This clientMutationId was used for another material', 'IDEMPOTENCY_CONFLICT');
-          return material(existing, await currentVersion(existing, tx), principal);
-        }
-        if (input.sourceDraftId && input.sourceDraftVersion) {
-          const source = enforce(await evaluateDraft(principal, 'draft.read', input.sourceDraftId, accessReader(tx), { lock: true }), 'draft').draft!;
-          if (source.ownerUserId !== authorId || source.workspaceId !== project.workspaceId)
-            throw new NotFoundError('Draft', 'DRAFT_NOT_FOUND');
-          const snapshot = await tx.execute(sql`SELECT 1 FROM draft_versions WHERE draft_id = ${input.sourceDraftId}
-            AND version = ${input.sourceDraftVersion}`);
-          if (!snapshot.rows.length) throw new NotFoundError('Draft version', 'DRAFT_VERSION_NOT_FOUND');
+          return material(existing, await currentVersion(existing, tx));
         }
         const id = randomUUID();
         const [created] = await tx.insert(schema.projectMaterials).values(await sealFor(tx as unknown as DbExecutor, 'project_materials', project.workspaceId, {
@@ -545,15 +535,14 @@ export function conversationStore(db: Database, options: ConversationStoreOption
             eq(schema.projectMaterials.projectId, projectId), eq(schema.projectMaterials.createdBy, authorId),
             eq(schema.projectMaterials.clientMutationId, input.clientMutationId))))[0]);
           if (!raced || raced.requestFingerprint !== input.fingerprint) throw new ConflictError('This clientMutationId was used for another material', 'IDEMPOTENCY_CONFLICT');
-          return material(raced, await currentVersion(raced, tx), principal);
+          return material(raced, await currentVersion(raced, tx));
         }
         const [first] = await openVersions(tx, await tx.insert(schema.projectMaterialVersions).values(await sealFor(tx as unknown as DbExecutor, 'project_material_versions', project.workspaceId, {
           workspaceId: project.workspaceId, projectId, materialId: id, version: 1,
           title: input.title, body: input.body, url: input.url, authorId,
-          sourceDraftId: input.sourceDraftId, sourceDraftVersion: input.sourceDraftVersion,
         })).returning());
         await recordEvent(eventPorts(tx), principal, project.workspaceId, 'project.material_created.v1', projectId, { materialId: id, version: 1 });
-        return material(created, first!, principal);
+        return material(created, first!);
       });
     },
 
@@ -570,7 +559,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
           if (priorEdit.requestFingerprint !== input.fingerprint)
             throw new ConflictError('This clientMutationId was used for another edit', 'IDEMPOTENCY_CONFLICT');
           // Return the original committed revision even if later edits have advanced the material.
-          return material({ ...locked!, updatedAt: priorEdit.createdAt }, priorEdit, principal);
+          return material({ ...locked!, updatedAt: priorEdit.createdAt }, priorEdit);
         }
         if (!locked || locked.currentVersion !== input.expectedVersion)
           throw new ConflictError('Material changed; refresh before editing', 'STALE_MATERIAL');
@@ -590,7 +579,7 @@ export function conversationStore(db: Database, options: ConversationStoreOption
         if(progress)await artifactResetRows(tx).canonical(scope,{kind:'material',id:row.id,version:snapshot!.version},
           {kind:'material',id:row.id,revision:String(snapshot!.version)},fence);
         await recordEvent(eventPorts(tx), principal, row.workspaceId, 'project.material_updated.v1', row.projectId, { materialId: row.id, version: updated!.currentVersion });
-        return material(updated!, snapshot!, principal);
+        return material(updated!, snapshot!);
       });
     },
   };

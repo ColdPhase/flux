@@ -73,7 +73,7 @@ test('standing conversation grants start a project conversation and reply in a t
   assert.deepEqual([await messages(conversationId)], [4]);
 });
 
-test('conversation actions never post into a direct message, a private draft, someone else\'s space or a guessed conversation, and debit nothing', async () => {
+test('conversation actions never post into a direct message, a private map, someone else\'s space or a guessed conversation, and debit nothing', async () => {
   const f = await actionScene(pool);
   const peerEmail = uniqueEmail('mcp-dm-peer');
   const { browser: peerBrowser } = await register(peerEmail, 'correct horse battery staple', 'DM peer');
@@ -81,7 +81,7 @@ test('conversation actions never post into a direct message, a private draft, so
   expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/members`, { body: { email: peerEmail, role: 'member' } }), 201);
   const dm = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/dms`, { body: { participantIds: [peer.id] } }), 201);
   expect(await f.owner.request('POST', `/api/v1/dms/${dm.id}/messages`, { body: { body: 'Just between us', clientMessageId: randomUUID() } }), 201);
-  const draft = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/drafts`, { body: { title: 'Private plan' } }), 201);
+  const draft = expect(await f.owner.request('POST', `/api/v1/workspaces/${f.workspaceId}/sketches`, { body: { title: 'Private plan', scope: 'private' } }), 201);
   // Another person's space: the client has its owner's rights and no more, so it is neither readable nor a destination.
   const stranger = await actionScene(pool);
   const elsewhere = { id: stranger.projectId };
@@ -93,10 +93,10 @@ test('conversation actions never post into a direct message, a private draft, so
     f.tool('flux_reply_in_conversation', { ...command(f.projectId, f, peerRequestClass), conversationId, message });
   const dmMessages = async () => (await pool.query('SELECT count(*)::int AS n FROM dm_messages WHERE dm_id=$1', [dm.id])).rows[0].n as number;
 
-  // A DM, a private draft, another project's conversation and a guessed ID are all just "not a project conversation".
+  // A DM, a private map, another project's conversation and a guessed ID are all just "not a project conversation".
   for (const target of [dm.id, draft.id, hidden.id, randomUUID()]) assert.equal(toolFailure(await post(target)).code, 'OBJECT_NOT_FOUND');
-  // A private draft is never a citation, and another person's space is never a destination.
-  assert.equal(toolFailure(await post(a.id, { body: 'Cites a draft', cite: { materialId: draft.id, version: 1 } })).code, 'MATERIAL_VERSION_NOT_FOUND');
+  // A private map is never a citation, and another person's space is never a destination.
+  assert.equal(toolFailure(await post(a.id, { body: 'Cites a map', cite: { materialId: draft.id, version: 1 } })).code, 'MATERIAL_VERSION_NOT_FOUND');
   assert.equal(toolFailure(await f.tool('flux_start_conversation', { ...command(String(elsewhere.id), f), message: { body: 'Elsewhere' } })).code,
     'PROJECT_NOT_FOUND');
 

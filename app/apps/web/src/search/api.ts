@@ -23,8 +23,6 @@ export function targetHref(target: SearchTarget): string {
     case 'doc': return `/projects/${target.projectId}/docs/${target.docId}/versions/${target.version}`;
     case 'sketch': return `/map/${target.sketchId}`;
     case 'thought': return `/map/${target.sketchId}#thought-${target.thoughtId}`;
-    // A private draft was one of "Your notes"; they are thoughts on My map now (#866), so an old one opens it.
-    case 'draft': return '/map';
     case 'person': return `/dm/new?workspace=${encodeURIComponent(target.workspaceId)}&with=${encodeURIComponent(target.userId)}`;
     // Work, decisions and results open in Details on the project's Tasks view (#101, #117).
     default: return `/projects/${target.projectId}/tasks?open=${target.type}:${target.id}`;
