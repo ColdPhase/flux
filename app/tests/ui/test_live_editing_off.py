@@ -51,8 +51,8 @@ class LiveEditingOffJourney(unittest.TestCase):
         cls.browser.close()
         cls.pw.stop()
 
-    def page(self) -> tuple[Page, list[str]]:
-        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, color_scheme="light", storage_state=self.state)
+    def page(self, service_workers: str = "allow") -> tuple[Page, list[str]]:
+        context = self.browser.new_context(base_url=ORIGIN, viewport=DESKTOP, color_scheme="light", storage_state=self.state, service_workers=service_workers)
         self.addCleanup(context.close)
         page = context.new_page()
         errors: list[str] = []
@@ -127,6 +127,40 @@ class LiveEditingOffJourney(unittest.TestCase):
                 break
             time.sleep(0.25)
         self.assertIn("Left at once.", doc["body"])
+
+    def test_02c_closing_the_tab_during_a_save_still_saves_the_newer_text(self) -> None:
+        # #946 review round 2: a closing tab never starts a save that waits behind the running one, so the newer text
+        # goes at once with keepalive. The first save reaches the server and makes its version, but its answer is held
+        # (the save is still running in the page) when the tab closes. A request a service worker handles cannot be held
+        # by the test (WebKit), so this tab runs without one.
+        page, _ = self.page(service_workers="block")
+        page.goto(self.doc_url)
+        text = page.locator('.cm-content[aria-label="Page text"]')
+        expect(text).to_have_attribute("contenteditable", "true")
+        doc_id = self.doc_url.rsplit('/', 1)[-1]
+        before = self.api(page, "GET", f"/api/v1/docs/{doc_id}", status=200)["version"]
+        held: list = []
+        def answer_later(route) -> None:
+            held.append((route.request.method, route.fetch().status))
+        page.route(lambda url: url.split("?", 1)[0].endswith(f"/api/v1/docs/{doc_id}"), answer_later, times=1)
+        text.focus()
+        page.keyboard.press("Control+End")
+        page.keyboard.insert_text(" First part.")
+        deadline = time.monotonic() + 10
+        while not held and time.monotonic() < deadline:
+            page.wait_for_timeout(100)
+        self.assertEqual(held, [("PATCH", 200)], "the version saved by itself was made; its answer is held")
+        page.keyboard.insert_text(" Second part, then the tab closed.")
+        page.close(run_before_unload=True)
+        reader, _ = self.page()
+        deadline = time.monotonic() + 10
+        while True:
+            doc = self.api(reader, "GET", f"/api/v1/docs/{doc_id}", status=200)
+            if "then the tab closed." in doc["body"] or time.monotonic() > deadline:
+                break
+            time.sleep(0.25)
+        self.assertIn("First part. Second part, then the tab closed.", doc["body"])
+        self.assertEqual(doc["version"], before + 2, "one version for each text, never two of the same")
 
     def test_03_map_is_ordinary_with_immediate_undo(self) -> None:
         page, live = self.page()

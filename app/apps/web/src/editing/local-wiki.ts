@@ -100,11 +100,13 @@ export class LocalWiki {
     this.running = (async () => {
       try {
         const saved = await updateDoc(this.doc.id, this.base, { body, ...(change.title ? { title: change.title } : {}), ...(change.reason ? { reason: change.reason } : {}) }, this.attempt, keepalive);
-        this.base = saved.version; this.title = saved.title; this.savedAt = Date.parse(saved.createdAt); this.problem = null; this.lastSaveAt = Date.now();
-        if (this.text.toString() === body) { this.dirty = false; keep(this.key, null, this.lifetime); }
-        else if (!this.stopped) this.schedule();
+        this.adopt(saved, body);
+        if (this.dirty && !this.stopped) this.schedule();
       } catch (cause) {
-        if (cause instanceof ApiError && cause.code === 'VERSION_CONFLICT') this.conflict = (cause.body as { current?: Doc } | null)?.current ?? null;
+        const current = cause instanceof ApiError && cause.code === 'VERSION_CONFLICT' ? (cause.body as { current?: Doc } | null)?.current ?? null : null;
+        // The newer version already holds this text (the save sent when the page was left): nothing to choose.
+        if (current && current.body === this.text.toString() && !explicit) this.adopt(current, current.body);
+        else if (cause instanceof ApiError && cause.code === 'VERSION_CONFLICT') this.conflict = current;
         else if (cause instanceof ApiError && cause.status === 403) this.problem = 'You can read this space but not change its pages.';
         else if (cause instanceof ApiError && cause.status === 404) this.problem = 'This page is no longer available to you.';
         else { this.problem = 'Not saved yet. Your text is kept here and saves when the connection is back.'; if (!this.stopped) this.schedule(5000); }
@@ -114,10 +116,27 @@ export class LocalWiki {
     return this.running;
   }
 
-  /** Leaving the page saves what rests unsaved at once, also after a save still running; the request outlives the page. */
+  /**
+   * Leaving the page saves what rests unsaved at once; the request outlives the page. A closing tab never starts a save
+   * that waits behind a running one (#946 review), so the text goes at once as well: on the version it started from and
+   * on the version the running save makes if it reaches the server first. The server refuses a stale version and makes
+   * none of an unchanged text, so one version holds the text and never two. While the page still runs, the save after
+   * the running one follows as well.
+   */
   leave() {
     if (!this.dirty || this.conflict) return this.running ?? Promise.resolve();
+    if (this.running) {
+      const body = this.text.toString();
+      for (const base of [this.base, this.base + 1]) void updateDoc(this.doc.id, base, { body }, crypto.randomUUID(), true).then((saved) => this.adopt(saved, body), () => undefined);
+    }
     return this.save({}, true);
+  }
+
+  /** A version that holds `body` is saved: it becomes the base, and the text is clean if it still reads `body`. */
+  private adopt(saved: Doc, body: string) {
+    if (saved.version < this.base) return;
+    this.base = saved.version; this.title = saved.title; this.savedAt = Date.parse(saved.createdAt); this.problem = null; this.lastSaveAt = Date.now();
+    if (this.text.toString() === body) { this.dirty = false; keep(this.key, null, this.lifetime); }
   }
 
   /** The person keeps their text and saves it on top of the newer version. */

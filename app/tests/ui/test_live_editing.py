@@ -547,6 +547,69 @@ class LiveEditingJourney(LiveFixture):
         saved = await self.saved_doc(ada, "Second part, then left.", timeout=15)
         self.assertIn("First part.", saved["body"])
 
+    async def test_10d_a_socket_dropped_mid_typing_loses_nothing_and_the_editor_keeps_taking_input(self):
+        # #946 review round 2: Kai's socket closes while both type. The text he types through the reconnect, and the text
+        # whose receipts come while the room catches up after it, are shared without another keystroke; his editor stays
+        # writable and keeps its focus the whole time. FLUX_LIVE_DROP_ROUNDS sets the rounds (same and other paragraph).
+        await self.contexts[1].add_init_script("""(() => { const Native = window.WebSocket; window.__sockets = [];
+          window.WebSocket = class extends Native { constructor(...args) { super(...args); window.__sockets.push(this); } }; })();""")
+        base = "Alpha paragraph start. Middle words here."
+        for round_ in range(int(os.environ.get("FLUX_LIVE_DROP_ROUNDS", "6"))):
+            with self.subTest(round=round_):
+                await self.create_doc(base)
+                ada, kai = self.pages["ada"], self.pages["kai"]
+                ada_field, kai_field = await self.editor("ada"), await self.editor("kai")
+                for page, field, steps in ((ada, ada_field, 22), (kai, kai_field, 22 if round_ % 2 == 0 else 41)):
+                    await field.focus()
+                    await page.keyboard.press("Control+Home")
+                    for _ in range(steps):
+                        await page.keyboard.press("ArrowRight")
+                await kai.evaluate("""() => {
+                  window.__readOnly = 0; window.__blur = 0;
+                  const field = document.querySelector('.cm-content');
+                  new MutationObserver(() => { if (field.getAttribute('contenteditable') !== 'true') window.__readOnly++; })
+                    .observe(field, { attributes: true, attributeFilter: ['contenteditable'] });
+                  field.addEventListener('blur', () => window.__blur++);
+                }""")
+                a_text, k_text = f" A{round_}AAA aaaa AAAA aaaa AAAA", f" K{round_}KKK kkkk KKKK kkkk KKKK"
+                async def drop():
+                    await asyncio.sleep(0.3)
+                    return await kai.evaluate("() => { let closed = 0; for (const socket of window.__sockets) if (socket.readyState === 1) { socket.close(); closed++; } return closed; }")
+                dropped, *_ = await asyncio.gather(drop(), ada.keyboard.type(a_text, delay=35), kai.keyboard.type(k_text, delay=35))
+                self.assertGreaterEqual(dropped, 1, "Kai's socket closed while both typed")
+                for page in (ada, kai):
+                    await expect(page.locator('[data-live-status="live"][data-live-pending="0"]')).to_be_visible(timeout=15000)
+                live = (await self.api(ada, "GET", f"/api/v1/docs/{self.doc_id}/live"))["body"]
+                self.assertIn(a_text, live, "every one of Ada's keystrokes, in order")
+                self.assertIn(k_text, live, "every one of Kai's keystrokes, typed through the reconnect, in order")
+                self.assertEqual(live.replace(a_text, "").replace(k_text, ""), base)
+                self.assertEqual(await kai.evaluate("() => [window.__readOnly, window.__blur]"), [0, 0], "Kai's editor stayed writable and kept its focus")
+                await expect(kai_field).to_be_focused()
+                for page in (ada, kai):
+                    await page.wait_for_function("(body) => document.querySelector('.cm-content').cmTile?.root?.view?.state.doc.toString() === body", arg=live, timeout=10000)
+
+    async def test_10e_closing_the_tab_during_a_save_still_saves_the_newer_text(self):
+        # #946 review round 2: a closing tab never starts a save that waits behind the running one, so the newer head
+        # goes at once with keepalive. The first save is held (never answered) and the tab closes.
+        await self.create_doc()
+        page = await self.contexts[0].new_page()
+        await page.goto(self.doc_url)
+        await expect(page.locator('[data-live-status="live"]')).to_be_visible()
+        field = page.locator('.cm-content[aria-label="Page text"]')
+        await expect(field).to_have_attribute("contenteditable", "true")
+        held = []
+        await page.route(f"**/api/v1/docs/{self.doc_id}/live/save", lambda route: held.append(route), times=1)
+        await self.type_text(page, field, " First part.")
+        deadline = time.monotonic() + 10
+        while not held and time.monotonic() < deadline:
+            await asyncio.sleep(0.1)
+        self.assertTrue(held, "the version saved by itself started")
+        await self.type_text(page, field, " Second part, then the tab closed.")
+        await expect(page.locator('[data-live-pending="0"]')).to_be_visible()
+        await page.close(run_before_unload=True)
+        saved = await self.saved_doc(self.pages["ada"], "Second part, then the tab closed.", timeout=15)
+        self.assertIn("First part.", saved["body"])
+
     async def test_11_quota_and_concurrent_own_undo_keep_100k_body(self):
         await self.create_doc('A' * 99_999 + 'B')
         ada, kai = self.pages['ada'], self.pages['kai']

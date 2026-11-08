@@ -506,7 +506,7 @@ export function PageEditor({ doc, project, userId, mode }: PageEditorProps) {
   const at = (time: number | null) => ago(new Date(time ?? docTime).toISOString(), now);
   const state = local
     ? local.conflict ? 'Not saved · this page changed' : local.saving || local.dirty ? 'Saving…' : local.problem ? 'Not saved yet' : `Saved · ${at(local.savedAt)}`
-    : !shared || shared.status === 'connecting' ? `Saved · ${at(docTime)}`
+    : !shared || shared.status === 'connecting' && !shared.pendingCount ? `Saved · ${at(shared?.savedAt ?? null)}`
       : shared.status === 'reconnecting' ? 'Reconnecting · your text is kept'
         : shared.status === 'private' ? 'Not saved · your text is kept in this tab'
           : shared.pendingCount ? 'Saving…' : `Saved · ${at(shared.savedAt)}`;

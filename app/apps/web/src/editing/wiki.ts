@@ -118,10 +118,11 @@ export class SharedWiki {
   get pendingBytes() { return this.unsealedBytes + [...this.pending.values()].reduce((total, item) => total + item.bytes.length * 3 / 4 + new TextEncoder().encode(JSON.stringify(item.envelope)).length + 32, 0); }
   get editable() { return !!(this.writer && this.status === 'live' && this.head?.canWrite && !this.recovering); }
   /**
-   * Whether the person can type: also while a short reconnect runs. Text typed then waits as pending input and is shared
-   * when the room is back (#946 review B1: a read-only editor took the focus away and dropped the keystrokes).
+   * Whether the person can type: also while a short reconnect runs and while the room catches up after it. Text typed
+   * then waits as pending input and is shared once the room is back (#946 review: a read-only editor took the focus away
+   * and dropped the keystrokes). Before the first answer `recovering` holds the editor read-only.
    */
-  get writable() { return !!(this.writer && (this.status === 'live' || this.status === 'reconnecting') && this.head?.canWrite && !this.recovering); }
+  get writable() { return !!(this.writer && (this.status === 'live' || this.status === 'reconnecting' || this.status === 'connecting') && this.head?.canWrite && !this.recovering); }
   subscribe(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; }
   refuseInput(message: string) { this.problem = message; this.changed(); }
   private changed() { for (const listener of this.listeners) listener(); }
@@ -325,7 +326,8 @@ export class SharedWiki {
         if (!message.canWrite && this.pending.size) { this.retire('Write access ended. Your pending text is kept privately.'); return; }
         if (message.workspaceId !== this.head.workspaceId || message.resourceId !== this.id || message.actor.id !== this.userId || message.actor.kind !== 'human') { this.retire('The shared identity changed. Pending text stays private.'); return; }
         this.status = 'live'; this.recovering = this.pending.size > 0 && this.recovering;
-        this.scheduleSend(); break;
+        // Text typed while the socket was away goes now, also when nobody types again.
+        this.seal(); this.scheduleSend(); break;
       case 'update': {
         if (!('bytes' in message) || message.sequence <= this.appliedSequence) break;
         if (message.sequence !== this.appliedSequence + 1) { this.disconnected(); return; }
@@ -392,7 +394,10 @@ export class SharedWiki {
         break;
     }
     if (this.appliedSequence < this.subscribedSequence) this.status = 'connecting';
-    else if (this.status === 'connecting') this.status = 'live';
+    else if (this.status === 'connecting') {
+      // Caught up: a receipt that came while catching up sent nothing, so the text that waited goes now (#946 review).
+      this.status = 'live'; this.seal(); this.scheduleSend();
+    }
     if (this.preview?.sequence === this.appliedSequence && this.preview.hash === this.head.hash) { this.html = this.preview.html; this.htmlSequence = this.preview.sequence; this.mentions = this.preview.mentions; this.preview = null; }
     this.changed();
   };
@@ -428,8 +433,14 @@ export class SharedWiki {
    * goes now and outlives the page.
    */
   autosave(leaving = false): Promise<void> {
-    // A save already running is the one this asks for, unless the page is being left: then one more follows it.
-    if (this.running) return leaving ? this.running.then(() => this.autosave(true)) : this.running;
+    // A save already running is the one this asks for, unless the page is being left. A closing tab never starts a save
+    // that waits behind the running one, so a newer head goes at once as well; while the page still runs, one more save
+    // follows the running one in case that one made its version first (#946 review).
+    if (this.running) {
+      if (!leaving) return this.running;
+      const now = this.saveNewerHead();
+      return Promise.allSettled([this.running, now]).then(() => this.autosave(true));
+    }
     // The head is saved only once it holds this editor's own confirmed text (no update still on its way).
     if (!this.writer || !this.head?.canWrite || !this.settledText || !this.initialized || this.status === 'private' || this.appliedSequence < this.aheadSequence) return Promise.resolve();
     if (!leaving && (this.stopped || !this.editable)) return Promise.resolve();
@@ -451,6 +462,23 @@ export class SharedWiki {
   }
   private running: Promise<void> | null = null;
   private openedAt = Date.now();
+  private leftAt = -1;
+  /**
+   * Leaving during a save of an older head: this head goes now with keepalive and its own command. The server makes no
+   * version of a head that changed or of a version that moved on, so the two never make two versions: the older save is
+   * refused once this head is confirmed, and if it made its version first, this one is refused and the save that follows
+   * it (while the page still runs) saves this head. The text itself is in the confirmed head either way.
+   */
+  private saveNewerHead(): Promise<void> {
+    const head = this.head;
+    if (!this.writer || !head?.canWrite || !this.settledText || !this.initialized || this.status === 'private' || this.appliedSequence < this.aheadSequence) return Promise.resolve();
+    if (!this.ownUnsaved || head.sequence === this.leftAt || (this.saveAttempt && this.saveAttempt.headSequence >= head.sequence)) return Promise.resolve();
+    this.leftAt = head.sequence;
+    const command: SaveSharedDoc = { generation: head.generation, headSequence: head.sequence, headHash: head.hash, expectedVersion: head.savedVersion, clientCommandId: crypto.randomUUID() };
+    return saveLiveDoc(this.id, command, true).then((receipt) => {
+      if (receipt.savedDoc && receipt.savedDoc.version >= head.savedVersion) { head.savedVersion = receipt.savedDoc.version; head.savedSequence = command.headSequence; }
+    }, () => undefined);
+  }
   /** Every change of this editor is confirmed, so the head holds it. */
   private get settledText() { return !this.pending.size && !this.unsealed.length; }
   async save(metadata: { title?: string; reason?: string }, metadataVersion?: number, keepalive = false) {
