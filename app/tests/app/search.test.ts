@@ -233,22 +233,22 @@ describe('search: one query across Flux, only what you may read', () => {
     assert.ok(old.items[0]!.snippet?.some((part) => part.match && part.text.toLowerCase() === 'humidity'));
   });
 
-  test('docs are found at the version that matched, as drafts or published, only by project readers', async () => {
+  test('docs are found at the version that matched, only by project readers', async () => {
     const created = json<{ id: string; version: number }>(await post(ari, `/api/v1/projects/${lamp.id}/docs`, {
-      title: 'Lamp wiring guide', body: 'Solder the dimmer before the brass fitting.', state: 'draft',
+      title: 'Lamp wiring guide', body: 'Solder the dimmer before the brass fitting.',
     }), 201, 'doc');
-    const draftHit = await search(nia, 'dimmer');
-    assert.equal(draftHit.items.length, 1);
-    assert.equal(draftHit.items[0]!.kind, 'doc');
-    assert.equal(draftHit.items[0]!.label, 'Wiki page · draft');
-    assert.deepEqual(draftHit.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 1 });
-    json(await patch(ari, `/api/v1/docs/${created.id}`, { body: 'Fit the brass collar first, then the switch.', state: 'published' },
-      { 'if-match': `"${created.version}"` }), 200, 'publish doc');
-    const published = await search(nia, 'collar');
-    assert.equal(published.items[0]!.label, 'Wiki page · published');
-    assert.deepEqual(published.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 2 });
+    const first = await search(nia, 'dimmer');
+    assert.equal(first.items.length, 1);
+    assert.equal(first.items[0]!.kind, 'doc');
+    assert.equal(first.items[0]!.label, 'Wiki page');
+    assert.deepEqual(first.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 1 });
+    json(await patch(ari, `/api/v1/docs/${created.id}`, { body: 'Fit the brass collar first, then the switch.' },
+      { 'if-match': `"${created.version}"` }), 200, 'edit doc');
+    const edited = await search(nia, 'collar');
+    assert.equal(edited.items[0]!.label, 'Wiki page');
+    assert.deepEqual(edited.items[0]!.target, { type: 'doc', projectId: lamp.id, docId: created.id, version: 2 });
     const old = await search(nia, 'dimmer');
-    assert.equal(old.items[0]!.label, 'Wiki page · version 1 of 2, draft', 'the old text is found at its own version');
+    assert.equal(old.items[0]!.label, 'Wiki page · version 1 of 2', 'the old text is found at its own version');
     const both = await search(nia, 'brass');
     assert.equal(both.items.filter((item) => item.kind === 'doc').length, 1, 'one result per doc');
     assert.deepEqual((await search(olek, 'brass')).items, [], 'not outside the project');

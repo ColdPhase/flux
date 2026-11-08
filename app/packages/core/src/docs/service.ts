@@ -7,8 +7,8 @@ import {
   type DocMention,
   type DocPreview,
   type DocPreviewCommand,
+  type DocChangeCause,
   type DocSectionSource,
-  type DocState,
   type DocSummary,
   type DocVersion,
   type DocVersionSummary,
@@ -113,7 +113,7 @@ async function names(ports: DocPorts, actors: ActorRef[]) {
 }
 
 function summaryOf(version: DocVersionRecord, named: (actor: ActorRef) => NamedPrincipal): DocVersionSummary {
-  return { docId: version.docId, version: version.version, title: version.title, state: version.state, reason: version.reason, author: named(version.author), createdAt: iso(version.createdAt),
+  return { docId: version.docId, version: version.version, title: version.title, reason: version.reason, author: named(version.author), createdAt: iso(version.createdAt),
     ...(version.contributors ? { contributors: version.contributors.map(named), liveSnapshot: version.liveSnapshot } : {}) };
 }
 
@@ -133,7 +133,7 @@ async function present(ports: DocPorts, row: DocWithCurrent): Promise<Doc> {
 async function summaries(ports: DocPorts, rows: DocWithCurrent[]): Promise<DocSummary[]> {
   const named = await names(ports, rows.map((row) => row.current.author));
   return rows.map(({ doc, current, projectName }) => ({
-    id: doc.id, projectId: doc.projectId, projectName, workspaceId: doc.workspaceId, title: current.title, state: current.state,
+    id: doc.id, projectId: doc.projectId, projectName, workspaceId: doc.workspaceId, title: current.title,
     version: current.version, updatedBy: named(current.author), updatedAt: iso(current.createdAt), reason: current.reason, excerpt: excerpt(current.body),
   }));
 }
@@ -217,6 +217,22 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
     return ports.work.insertLinks([{ id: randomUUID(), ...scope, role: 'source', from: { type: 'doc', id: docId }, to: { type: source.type, id: source.id }, createdBy: by }]);
   }
 
+  /**
+   * The sentence for a person's save: the server's own words for a cause it checked against the page, or the empty string
+   * when the change describes itself ("Edited the text"). A restored or replaced version must exist, so a cause cannot name
+   * one that is not there.
+   */
+  async function causeSentence(ports: DocPorts, docId: string, by: ActorRef, given: DocChangeCause | undefined, head: number): Promise<string> {
+    if (!given) return '';
+    if (given.kind === 'import') return text.causeSentence(given, null);
+    if (given.version > head) throw new InvalidInputError('cause.version is a version this page does not have');
+    const version = await ports.docs.version(docId, given.version);
+    if (!version) throw versionNotFound();
+    if (given.kind !== 'keep_mine') return text.causeSentence(given, null);
+    if (version.author.kind === by.kind && version.author.id === by.id) return '';
+    return text.causeSentence(given, (await names(ports, [version.author]))(version.author).name);
+  }
+
   return {
     /** Docs of a project, the most recently changed first. */
     async listProjectDocs(principal: Principal, projectId: string, query?: PageQuery): Promise<Page<DocSummary>> {
@@ -286,27 +302,29 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       });
     },
 
-    async createDoc(principal: Principal, projectId: string, command: CreateDocCommand): Promise<Doc> {
+    /** `note` is a sentence a server-side caller wrote for the first version; the routes never pass one. */
+    async createDoc(principal: Principal, projectId: string, command: CreateDocCommand, note?: string): Promise<Doc> {
       const by = authorOf(principal, agentAuthors);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Doc is required');
       const project = valid.id(projectId, 'projectId');
       const title = text.title(command.title);
       const initial = text.body(command.body);
-      const state: DocState = command.state === undefined ? 'draft' : text.state(command.state);
-      const given = text.reason(command.reason);
+      const given = text.sentence(note);
+      const cause = text.cause(command.cause, ['import']);
       const from = command.from === undefined ? null : text.sectionSource(command.from);
       return uow.run(async (ports) => {
         const { workspaceId } = await ports.access.requireProject(principal, 'write', project, { lock: true });
         const scope = { workspaceId, projectId: project };
         let body = initial;
-        let reason = given || 'Started the page';
+        const caused = await causeSentence(ports, '', by, cause, 0);
+        let reason = given || caused || 'Started the page';
         if (from) {
           const composed = await composeSection(ports, project, from);
           body = place(initial, from, composed).body;
-          reason = given || `Started from the ${composed.label} “${composed.title}”`;
+          reason = given || caused || `Started from the ${composed.label} “${composed.title}”`;
         }
         if (body.length > DOC_LIMITS.body) throw new InvalidInputError(`body must be at most ${DOC_LIMITS.body} characters`);
-        const first: NewDocVersion = { title, body, state, reason, author: by };
+        const first: NewDocVersion = { title, body, reason, author: by };
         const row = await ports.docs.insert({ id: randomUUID(), workspaceId, projectId: project, createdBy: by }, first);
         const taskFence = await prepareDocBodyTaskUse(ports, row, [body], from ? [from] : [], 1);
         if (from) { await requireSourceStill(ports, project, from); await linkSource(ports, scope, row.doc.id, from, by); }
@@ -319,25 +337,26 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
      * editor started from: a stale one is 409 VERSION_CONFLICT with the latest doc, never a
      * silent overwrite. Saving without a change returns the doc as it is.
      */
-    async updateDoc(principal: Principal, docId: string, command: UpdateDocCommand, expected: number | undefined): Promise<Doc> {
+    async updateDoc(principal: Principal, docId: string, command: UpdateDocCommand, expected: number | undefined, note?: string): Promise<Doc> {
       const by = authorOf(principal, agentAuthors);
       if (!command || typeof command !== 'object') throw new InvalidInputError('Change is required');
       const version = valid.expectedVersion(expected);
       const title = command.title === undefined ? undefined : text.title(command.title);
       const body = command.body === undefined ? undefined : text.body(command.body);
-      const state = command.state === undefined ? undefined : text.state(command.state);
-      const given = text.reason(command.reason);
-      if (title === undefined && body === undefined && state === undefined) throw new InvalidInputError('Nothing to change');
+      const given = text.sentence(note);
+      const cause = text.cause(command.cause, ['restore', 'keep_mine', 'page_left']);
+      if (title === undefined && body === undefined) throw new InvalidInputError('Nothing to change');
       return uow.run(async (ports) => {
         const { id, projectId, workspaceId } = await authorized(ports, principal, docId, 'write');
         const current = (await ports.docs.find(id, { lock: true }))!;
         await fenceLegacy(ports, current);
         if (current.doc.currentVersion !== version) throw new VersionConflictError(current.doc.currentVersion, await present(ports, current));
-        const next = { title: title ?? current.current.title, body: body ?? current.current.body, state: state ?? current.current.state };
+        const next = { title: title ?? current.current.title, body: body ?? current.current.body };
         const change = text.describeChange(current.current, next);
         if (!change) return present(ports, current);
+        const caused = await causeSentence(ports, id, by, cause, current.doc.currentVersion);
         const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, next.body]);
-        const row = await ports.docs.append(id, { ...next, reason: given || change, author: by });
+        const row = await ports.docs.append(id, { ...next, reason: given || caused || change, author: by });
         await ports.live.rebindSaved(row, randomUUID());
         return commit(ports, principal, { workspaceId, projectId }, row, false, taskFence);
       });
@@ -372,7 +391,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         }
         if (body.length > DOC_LIMITS.body) throw new RuleViolationError('The doc would become too long; start a new doc for this', 'DOC_TOO_LONG');
         const reason = `${replaced && from.type === 'result' ? 'Updated' : 'Added'} the ${composed.label} “${composed.title}”`;
-        const row = await ports.docs.append(id, { title: current.current.title, body, state: current.current.state, reason, author: by });
+        const row = await ports.docs.append(id, { title: current.current.title, body, reason, author: by });
         await ports.live.rebindSaved(row, randomUUID());
         return commit(ports, principal, scope, row, false, taskFence);
       });
@@ -386,8 +405,7 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
       if (!command || !valid.isId(command.generation) || !Number.isSafeInteger(command.headSequence) || command.headSequence < 0
         || typeof command.headHash !== 'string' || !/^[a-f0-9]{64}$/.test(command.headHash)) throw new InvalidInputError('An acknowledged shared head is required');
       const title = command.title === undefined ? undefined : text.title(command.title);
-      const state = command.state === undefined ? undefined : text.state(command.state);
-      const given = text.reason(command.reason);
+      const cause = text.cause(command.cause, ['restore', 'keep_mine', 'page_left']);
       return uow.run(async (ports) => {
         const { id, projectId, workspaceId } = await authorized(ports, principal, docId, 'write');
         const current = (await ports.docs.find(id, { lock: true }))!;
@@ -400,11 +418,12 @@ export function createDocUseCases(uow: DocUnitOfWork, options: DocUseCaseOptions
         }
         // A snapshot is byte-for-byte the acknowledged body; never normalize it on this path.
         if (typeof head.body !== 'string' || head.body.length > DOC_LIMITS.body) throw new RuleViolationError('The shared text exceeds the doc limit', 'DOC_TOO_LONG');
-        const next = { title: title ?? current.current.title, body: head.body, state: state ?? current.current.state };
+        const next = { title: title ?? current.current.title, body: head.body };
         const change = text.describeChange(current.current, next);
         if (!change) return present(ports, current);
+        const caused = await causeSentence(ports, id, by, cause, current.doc.currentVersion);
         const taskFence = await prepareDocBodyTaskUse(ports, current, [current.current.body, next.body]);
-        const row = await ports.docs.append(id, { ...next, reason: given || change, author: by });
+        const row = await ports.docs.append(id, { ...next, reason: caused || change, author: by });
         const snapshot = await ports.live.bindSnapshot(row, head);
         return commit(ports, principal, { workspaceId, projectId }, snapshot, false, taskFence);
       });

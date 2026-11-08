@@ -33,8 +33,7 @@ function materialLabel(row: SearchRow) {
 function docLabel(row: SearchRow) {
   const version = row.version ?? 1;
   const current = row.currentVersion ?? version;
-  const state = row.status === 'draft' ? 'draft' : 'published';
-  return version >= current ? `Wiki page · ${state}` : `Wiki page · version ${version} of ${current}, ${state}`;
+  return version >= current ? 'Wiki page' : `Wiki page · version ${version} of ${current}`;
 }
 
 const quote = (text: string) => `“${text}”`;

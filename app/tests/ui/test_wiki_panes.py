@@ -226,11 +226,11 @@ class WikiPanesJourney(unittest.TestCase):
         base = f"/api/v1/projects/{project['id']}/docs"
         key = lambda: {"idempotency-key": str(uuid.uuid4())}  # noqa: E731
         wiring = self.api(owner, "POST", base, {"title": WIRING, "body": WIRING_BODY}, status=201, headers=key())
-        parts = self.api(owner, "POST", base, {"title": PARTS, "body": PARTS_BODY, "reason": "What we ordered"}, status=201, headers=key())
+        parts = self.api(owner, "POST", base, {"title": PARTS, "body": PARTS_BODY}, status=201, headers=key())
         lamp_v1 = LAMP_V1 + f"\nThe parts are in [{PARTS}](flux:doc/{parts['id']}).\n"
-        lamp = self.api(owner, "POST", base, {"title": LAMP, "body": lamp_v1, "reason": "First notes"}, status=201, headers=key())
+        lamp = self.api(owner, "POST", base, {"title": LAMP, "body": lamp_v1}, status=201, headers=key())
         partner = self.page("partner")
-        self.api(partner, "PATCH", f"/api/v1/docs/{lamp['id']}", {"body": lamp_v1 + PRIVACY, "reason": "Added the privacy section"}, status=200,
+        self.api(partner, "PATCH", f"/api/v1/docs/{lamp['id']}", {"body": lamp_v1 + PRIVACY}, status=200,
                  headers={"if-match": '"1"', **key()})
         type(self).ids = {"lamp": lamp["id"], "parts": parts["id"], "wiring": wiring["id"]}
         self.assertEqual([item["id"] for item in self.docs(owner)][0], lamp["id"], "the lamp page is the latest change")
@@ -392,7 +392,7 @@ class WikiPanesJourney(unittest.TestCase):
         expect(page.locator(".wiki-head")).to_contain_text("History · 2 versions")
         versions = page.locator(".doc-versions > li")
         expect(versions).to_have_count(2)
-        expect(versions.first).to_contain_text("Added the privacy section")
+        expect(versions.first).to_contain_text("Edited the text")
         expect(versions.first).to_contain_text(PARTNER["name"])
         expect(versions.first).not_to_contain_text("Published")
         expect(page.get_by_label("Changes in the text").locator(".wiki-chg--added")).to_contain_text(["Privacy"])

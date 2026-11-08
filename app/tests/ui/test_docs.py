@@ -406,8 +406,8 @@ class DocsJourney(unittest.TestCase):
                  "The far beds report over LoRa. Range is not tested yet.\n\n| Bed | Distance |\n| --- | ---: |\n| Far east | 120 m |\n")
         second = ("## Sensors\n\n- Capacitive soil probe\n- DS18B20 probe\n- Shed gateway\n\n## Radio\n\n"
                   "The far beds report over LoRa. Two sensors reached the gateway from 140 m.\n\n| Bed | Distance |\n| --- | ---: |\n| Far east | 140 m |\n| Shed | 60 m |\n")
-        doc = self.api(owner, "POST", f"/api/v1/projects/{self.project_id}/docs", {"title": "Garden radio", "body": first, "reason": "First notes"}, status=201)
-        self.api(owner, "PATCH", f"/api/v1/docs/{doc['id']}", {"body": second, "reason": "Added the LoRa range test"}, status=200,
+        doc = self.api(owner, "POST", f"/api/v1/projects/{self.project_id}/docs", {"title": "Garden radio", "body": first}, status=201)
+        self.api(owner, "PATCH", f"/api/v1/docs/{doc['id']}", {"body": second}, status=200,
                  headers={"if-match": '"1"', "idempotency-key": str(uuid.uuid4())})
         page = self.page("owner")
         page.goto(f"/projects/{self.project_id}/docs/{doc['id']}")
@@ -419,11 +419,11 @@ class DocsJourney(unittest.TestCase):
         # AC-2: versions are a timeline (version, summary, author, date); the header reads "v1 → v2 · +N −M".
         versions = page.locator(".doc-versions > li")
         expect(versions).to_have_count(2)
-        expect(versions.first).to_contain_text("Added the LoRa range test")
+        expect(versions.first).to_contain_text("Edited the text")
         expect(versions.first).to_contain_text(f"v2 · {OWNER['name']}")
         expect(versions.last).to_contain_text("v1 · ")
         expect(page.get_by_role("heading", name=re.compile(r"^v1 → v2 · \+\d+ −\d+$"))).to_be_visible()
-        expect(page.locator(".doc-versions .doc-version[aria-current='true']")).to_contain_text("Added the LoRa range test")
+        expect(page.locator(".doc-versions .doc-version[aria-current='true']")).to_contain_text("Edited the text")
 
         # AC-1: the changes are the page itself, in its typography: headings, a list, a table.
         diff = page.get_by_label("Changes in the text")
@@ -490,7 +490,7 @@ class DocsJourney(unittest.TestCase):
         first = "Plain start.\n\n<img src=x onerror=\"alert('img')\">\n\n[click me](javascript:alert('link'))\n"
         second = first + "\n<script>alert('script')</script>\n\n| a | b |\n| --- | --- |\n| <b onmouseover=alert(1)>x</b> | y |\n"
         doc = self.api(page, "POST", f"/api/v1/projects/{self.project_id}/docs", {"title": "Hostile history", "body": first}, status=201)
-        self.api(page, "PATCH", f"/api/v1/docs/{doc['id']}", {"body": second, "reason": "More pasted text"}, status=200,
+        self.api(page, "PATCH", f"/api/v1/docs/{doc['id']}", {"body": second}, status=200,
                  headers={"if-match": '"1"', "idempotency-key": str(uuid.uuid4())})
         page.goto(f"/projects/{self.project_id}/docs/{doc['id']}/history")
         changes = page.get_by_label("Changes in the text")

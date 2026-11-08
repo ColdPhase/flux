@@ -98,7 +98,7 @@ class FinalCheck763(unittest.TestCase):
         accepted = api("ada", "POST", f"/api/v1/projects/{cls.project_id}/decisions", {"title": ACCEPTED, "rationale": "Seedlings die in June from dry soil."})
         api("ada", "POST", f"/api/v1/decisions/{accepted['id']}/accept", {"expectedVersion": accepted["version"]})
         body = f"The rules we keep.\n\n[{ACCEPTED}](flux:decision/{accepted['id']})\n\nThe far bed sits behind a hedge.\n"
-        cls.doc_id = api("ada", "POST", f"/api/v1/projects/{cls.project_id}/docs", {"title": "Decisions and why", "body": body, "state": "published"},
+        cls.doc_id = api("ada", "POST", f"/api/v1/projects/{cls.project_id}/docs", {"title": "Decisions and why", "body": body},
                          {"idempotency-key": str(uuid.uuid4())})["id"]
         for key, context in contexts.items():
             cls.states[key] = context.storage_state()

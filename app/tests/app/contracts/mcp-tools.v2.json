@@ -832,13 +832,6 @@
                 "type": "string",
                 "maxLength": 100000
               },
-              "state": {
-                "type": "string",
-                "enum": [
-                  "draft",
-                  "published"
-                ]
-              },
               "reason": {
                 "type": "string",
                 "maxLength": 500
@@ -4308,13 +4301,6 @@
               "body": {
                 "type": "string",
                 "maxLength": 100000
-              },
-              "state": {
-                "type": "string",
-                "enum": [
-                  "draft",
-                  "published"
-                ]
               },
               "reason": {
                 "type": "string",

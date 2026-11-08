@@ -1,7 +1,6 @@
 import type { MessageFile } from './files.js';
 import type { ProjectAccess, ProjectGrantRole, ProjectVisibility, WorkspaceRole } from './access.js';
 import type { MessageContribution } from './conversation.js';
-import type { DocState } from './docs.js';
 import type { DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, ResultFinding, WorkStatus } from './work.js';
 
 /**
@@ -12,7 +11,7 @@ import type { DecisionStatus, LinkOwnerType, LinkRole, ObjectRef, ResultFinding,
  * It holds exactly what the project's own audience can read in the project: its conversations,
  * materials and docs with every version, project sketches with thoughts and links, work,
  * decisions and results with their typed links, members and roles, and who made what. It never
- * holds other projects, direct messages, private notes (drafts), private sketches, sessions,
+ * holds other projects, direct messages, private sketches, sessions,
  * push subscriptions, notifications, agent connections, OAuth tokens, agent proposals or events. Re-import is not part of format version 1.
  */
 export const projectExportPath = (projectId: string) => `/api/v1/projects/${projectId}/export`;
@@ -26,8 +25,7 @@ export const PROJECT_EXPORT_SCHEMA_ID = 'https://flux.coldphase.dev/schemas/proj
 export const PROJECT_EXPORT_EXCLUDED = [
   'other projects',
   'direct messages',
-  'private notes (drafts), including the private source of a published material',
-  'private sketches and placements of notes on a sketch',
+  'private sketches',
   'images placed on map thoughts (the thoughts and captions are exported; full backups keep the images)',
   'accounts, e-mail addresses, sessions, push subscriptions and notifications',
   'agent connections, OAuth clients and tokens, and pending agent proposals',
@@ -103,7 +101,8 @@ export interface ProjectExportDocVersion {
   version: number;
   title: string;
   body: string;
-  state: DocState;
+  /** Always `published` since v0.2: a page has no Draft any more. Format 1 keeps the field, because removing it needs a new `formatVersion`. */
+  state: 'published';
   reason: string;
   author: ExportActor;
   createdAt: string;

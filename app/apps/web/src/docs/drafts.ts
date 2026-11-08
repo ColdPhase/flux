@@ -1,10 +1,9 @@
-import type { DocState } from '@flux/contracts';
 import { forgetReloadRetention, setReloadRetention } from '../app/reload-retention.js';
 
 // Unsaved editor text, kept per person and page in this tab (#112) so a reload or a move to
 // another page or tab does not lose it. The reader says when a page has some (#136).
 
-export interface Fields { title: string; body: string; state: DocState; reason: string }
+export interface Fields { title: string; body: string }
 /** `attempt`: the idempotency key of a save whose answer was lost, reused after a reload. */
 export interface Kept extends Fields { base: number; attempt?: string }
 

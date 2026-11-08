@@ -148,7 +148,7 @@ def seed(browser) -> dict:
 
     # Wiki: one published page with long prose.
     ids["doc"] = api(hubert, "POST", f"/api/v1/projects/{project}/docs",
-                     {"title": WIKI_PAGE, "body": WIKI_BODY, "state": "published", "reason": "First notes"})["id"]
+                     {"title": WIKI_PAGE, "body": WIKI_BODY})["id"]
 
     # Agents (F-017): Hubert's agent with two personal connections, Marek's with one.
     for who, name, connections in (("hubert", "Hubert's coding agent", (("Desk laptop", "codex"), ("Travel laptop", "claude_code"))),

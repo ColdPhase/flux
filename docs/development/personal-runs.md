@@ -341,8 +341,8 @@ else edited. Nothing that waits ever expires.
   message with Undo beside it (`assistantChangeLine`), then "Undone by Ada"; there is no Activity list. The restore is recorded as "Jonas
   undid Ada's assistant's change". Task fields come back where untouched since: title, outcome, status (with the
   blocker and who it waited for, when leaving Blocked), done-when, prerequisites and who a task waits for; a map's
-  name; a page's text; a thought's text and position; created thoughts, links and tasks are removed, a created page
-  moves to drafts. **A created map, a recorded result, a proposed decision and a posted message** (founder direction
+  name; a page's text; a thought's text and position; created thoughts, links and tasks are removed; a created page
+  stays, as there is no Draft to move it back to (#942). **A created map, a recorded result, a proposed decision and a posted message** (founder direction
   2026-10-29, #68 closeout) are taken back by `assistantRemovalRows` (`packages/db/src/repositories/assistant-removals.ts`), reachable only
   from this Undo, only for the assistant's owner, only for what this agent made and only while nobody used it (edited, decided,
   replied to, cited; the reason comes back in words). It takes the project's task-graph lock first (a map's own row before that, `FOR NO KEY UPDATE`, as the writers

@@ -62,7 +62,7 @@ test('confirmed device retirement invalidates a held reload decision even with n
 test('Wiki refused newer bytes retain exact fields/base/attempt over older storage; a refused clear remains a tombstone', () => {
   const { items, refusal } = storage();
   const key = draftKey(owner, 'doc', 'project');
-  const earlier: Kept = { title: 'Earlier A', body: 'Older private bytes', state: 'draft', reason: '', base: 7, attempt: 'same-save-command' };
+  const earlier: Kept = { title: 'Earlier A', body: 'Older private bytes', base: 7, attempt: 'same-save-command' };
   const latest: Kept = { ...earlier, title: 'Newest B', body: 'Latest private bytes including [source](doc:123)' };
   keep(key, earlier);
   refusal.write = true;
@@ -84,7 +84,7 @@ test('Wiki refused newer bytes retain exact fields/base/attempt over older stora
 test('confirmed Wiki retirement fences a held earlier writer even when durable removal is refused', () => {
   const { items, refusal } = storage();
   const key = draftKey(owner, 'old-doc', 'project');
-  const value: Kept = { title: 'Private', body: 'Visit work', state: 'draft', reason: '', base: 2, attempt: 'old-attempt' };
+  const value: Kept = { title: 'Private', body: 'Visit work', base: 2, attempt: 'old-attempt' };
   const oldLifetime = documentDraftGeneration();
   keep(key, value, oldLifetime);
   refusal.clear = true;

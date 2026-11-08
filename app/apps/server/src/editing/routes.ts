@@ -21,7 +21,8 @@ const enrollment = { type: 'object', additionalProperties: false, required: ['ge
 const snapshot = { type: 'object', additionalProperties: false, required: ['clientCommandId','expectedVersion','generation','headSequence','headHash'], properties: {
   clientCommandId: uuid, expectedVersion: { type: 'integer', minimum: 1 }, generation: uuid,
   headSequence: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER }, headHash: { type: 'string', pattern: '^[a-f0-9]{64}$' },
-  title: { type: 'string', minLength: 1, maxLength: 200 }, state: { type: 'string', enum: ['draft','published'] }, reason: { type: 'string', maxLength: 1000 } } } as const;
+  title: { type: 'string', minLength: 1, maxLength: 200 }, cause: { type: 'object', required: ['kind'], additionalProperties: false, properties: {
+    kind: { type: 'string', enum: ['restore', 'keep_mine', 'page_left'] }, version: { type: 'integer', minimum: 1 } } } } } as const;
 
 function closed(body: unknown, allowed: string[]) {
   if (body && typeof body === 'object' && Object.keys(body).some((key) => !allowed.includes(key))) throw new InvalidInputError('Unknown immutable command parameter');
@@ -65,7 +66,7 @@ export async function editingRoutes(app: FastifyInstance, { sessions, authority,
     const session = await sessions.requirePrincipal(request); const result = await wiki().enroll(session, request.params.docId, request.body);
     await wiki().handoff(session, request.params.docId, () => send(reply, result, lifetime));
   }));
-  app.post<{ Params: { docId: string }; Body: SaveSharedDoc }>(liveDocSavePath(':docId'), { bodyLimit: 8192, preValidation: async (request) => closed(request.body, ['clientCommandId','expectedVersion','generation','headSequence','headHash','title','state','reason']), schema: { body: snapshot } }, async (request, reply) => response(reply, { params: request.params, headers: request.headers, body: request.body }, async (lifetime) => {
+  app.post<{ Params: { docId: string }; Body: SaveSharedDoc }>(liveDocSavePath(':docId'), { bodyLimit: 8192, preValidation: async (request) => closed(request.body, ['clientCommandId','expectedVersion','generation','headSequence','headHash','title','cause']), schema: { body: snapshot } }, async (request, reply) => response(reply, { params: request.params, headers: request.headers, body: request.body }, async (lifetime) => {
     const session = await sessions.requirePrincipal(request);
     if (expectedVersion(request) !== request.body.expectedVersion || request.headers['idempotency-key'] !== undefined && request.headers['idempotency-key'] !== request.body.clientCommandId) throw new InvalidInputError('Snapshot headers and immutable parameters disagree');
     await wiki().save(session, request.params.docId, request.body);

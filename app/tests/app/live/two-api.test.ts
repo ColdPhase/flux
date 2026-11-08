@@ -198,7 +198,7 @@ test('two actual API processes deliver commit NOTIFY, pre-drop preview, characte
     assert.equal(decodedDelta(await catchup.wait(byCommand('map-delta', peerCommand))).sequence,mapStart+1);
     assert.equal(decodedDelta(await catchup.wait(byCommand('map-delta', dropCommand))).sequence,mapStart+2);
 
-    const created = status(await ada.browser.request('POST', `/api/v1/projects/${project.id}/docs`, { body: { title: 'Cross-process live characters', body: 'Saved original. ', state: 'published' } }), 201) as Doc;
+    const created = status(await ada.browser.request('POST', `/api/v1/projects/${project.id}/docs`, { body: { title: 'Cross-process live characters', body: 'Saved original. ' } }), 201) as Doc;
     const [docA, docB] = await Promise.all([ada.browser.request('GET', `/api/v1/docs/${created.id}/live`), kai.browser.request('GET', `/api/v1/docs/${created.id}/live`)]);
     const first = status(docA, 200) as LiveDocBootstrap, second = status(docB, 200) as LiveDocBootstrap;
     assert.equal(first.generation, second.generation); assert.equal(first.checkpoint, second.checkpoint);

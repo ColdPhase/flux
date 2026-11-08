@@ -137,7 +137,7 @@ class SearchJourney(unittest.TestCase):
         self.api(nia, "POST", f"/api/v1/projects/{p}/results", {"title": "Infrared sensor passed the low-light test", "finding": "positive", "evidence": "20 gestures at 5 lux"}, status=201)
         sketch = self.api(nia, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": "Sensing options", "scope": "project", "projectId": p}, status=201)
         thought = self.api(nia, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Sensor hidden behind the walnut veneer", "x": 0, "y": 0}, status=201)
-        doc = self.api(ari, "POST", f"/api/v1/projects/{p}/docs", {"title": "Lamp wiring guide", "body": "Fit the brass collar before the sensor board.", "state": "published"}, status=201)
+        doc = self.api(ari, "POST", f"/api/v1/projects/{p}/docs", {"title": "Lamp wiring guide", "body": "Fit the brass collar before the sensor board."}, status=201)
         self.api(nia, "POST", f"/api/v1/workspaces/{ws['id']}/drafts", {"title": "Sensor questions for Ari", "body": "Ask about the lens"}, status=201)
         dm = self.api(ari, "POST", f"/api/v1/workspaces/{ws['id']}/dms", {"participantIds": [PEOPLE["nia"]["id"]]}, status=201)
         self.api(ari, "POST", f"/api/v1/dms/{dm['id']}/messages", {"body": "Did the spare sensor arrive at your place?", "clientMessageId": str(uuid.uuid4())}, status=201)

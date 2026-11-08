@@ -1,4 +1,4 @@
-import type { DocMention, DocRefType, DocState, ObjectRef } from '@flux/contracts';
+import type { DocMention, DocRefType, ObjectRef } from '@flux/contracts';
 import type { Principal } from '../principal.js';
 import type { ActorRef, Paged, PageWindow, WorkAccess, WorkRepository } from '../work/ports.js';
 import type { DocLiveVersions } from '../editing/doc-ports.js';
@@ -27,7 +27,6 @@ export interface DocVersionRecord {
   version: number;
   title: string;
   body: string;
-  state: DocState;
   reason: string;
   /** The actual author of this version: a person, or an agent writing under a standing grant (#152). */
   author: ActorRef;
@@ -44,7 +43,7 @@ export interface DocWithCurrent {
   projectName: string;
 }
 
-export type NewDocVersion = Pick<DocVersionRecord, 'title' | 'body' | 'state' | 'reason' | 'author'>;
+export type NewDocVersion = Pick<DocVersionRecord, 'title' | 'body' | 'reason' | 'author'>;
 
 /** #238: the complete graph/task fence a doc writer retains; `mark` only after the saved effect. */
 export interface DocTaskUseFence { readonly ids: readonly string[]; mark(ids?: readonly string[]): Promise<void> }

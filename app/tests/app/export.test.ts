@@ -143,9 +143,9 @@ describe('project export', () => {
       title: token('RESULT-title'), finding: 'negative', evidence: token('RESULT-evidence'), work: [work.id], decisions: [decision.id],
     }), 201, 'result');
 
-    doc = json<Doc>(await post(owner, `/api/v1/projects/${lamp.id}/docs`, { title: token('DOC-title'), body: token('DOC-v1'), reason: 'First notes' }), 201, 'doc');
+    doc = json<Doc>(await post(owner, `/api/v1/projects/${lamp.id}/docs`, { title: token('DOC-title'), body: token('DOC-v1') }), 201, 'doc');
     doc = json<Doc>(await partner.browser.request('PATCH', `/api/v1/docs/${doc.id}`, {
-      body: { body: `${token('DOC-v2')} see [the root](flux:thought/${thoughtIds[0]}) and [work](flux:work/${work.id})`, state: 'published', reason: 'Linked the map' },
+      body: { body: `${token('DOC-v2')} see [the root](flux:thought/${thoughtIds[0]}) and [work](flux:work/${work.id})` },
       headers: { 'if-match': `"${doc.version}"` },
     }), 200, 'doc v2');
 
@@ -211,7 +211,7 @@ describe('project export', () => {
 
     assert.equal(data.docs.length, 1);
     assert.deepEqual(data.docs[0]!.versions.map((version) => [version.version, version.state, version.reason, version.author.id]),
-      [[1, 'draft', 'First notes', owner.id], [2, 'published', 'Linked the map', partner.id]]);
+      [[1, 'published', 'Started the page', owner.id], [2, 'published', 'Edited the text', partner.id]]);
     assert.equal(data.docs[0]!.file, `docs/${doc.id}.md`);
 
     assert.equal(data.sketches.length, 1);

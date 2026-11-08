@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import type { Doc } from '@flux/contracts';
+import type { Doc, DocChangeCause } from '@flux/contracts';
 import { ApiError } from '../api/client.js';
 import { updateDoc } from '../docs/api.js';
 import { documentDraftGeneration, draftKey, keep, keepLeft, readKept, takeLeft, type Kept } from '../docs/drafts.js';
@@ -44,7 +44,7 @@ export class LocalWiki {
   private readonly lifetime = documentDraftGeneration();
   private leaving = () => { void this.leave(); };
 
-  constructor(private readonly doc: Doc, private readonly userId: string) {
+  constructor(private readonly doc: Doc, userId: string) {
     this.key = draftKey(userId, doc.id, doc.projectId);
     this.base = doc.version;
     this.title = doc.title;
@@ -90,11 +90,11 @@ export class LocalWiki {
   }
 
   /**
-   * Saves the text (and a new title or a restore's reason) as the next version; a refusal keeps the text here. A save
+   * Saves the text (and a new title or the cause of a restore) as the next version; a refusal keeps the text here. A save
    * asked for while one runs follows it.
    */
-  save(change: { title?: string; reason?: string } = {}, keepalive = false): Promise<void> {
-    const explicit = change.title !== undefined || change.reason !== undefined;
+  save(change: { title?: string; cause?: DocChangeCause } = {}, keepalive = false): Promise<void> {
+    const explicit = change.title !== undefined || change.cause !== undefined;
     if (explicit && this.conflict) return Promise.reject(new Error(CONFLICT));
     if (this.running) return this.running.then(() => this.save(change, keepalive));
     if ((this.stopped && !keepalive) || this.conflict || (!this.dirty && !explicit)) return Promise.resolve();
@@ -103,7 +103,7 @@ export class LocalWiki {
     const body = this.text.toString();
     this.running = (async () => {
       try {
-        const saved = await updateDoc(this.doc.id, this.base, { body, ...(change.title ? { title: change.title } : {}), ...(change.reason ? { reason: change.reason } : {}) }, this.attempt, keepalive);
+        const saved = await updateDoc(this.doc.id, this.base, { body, ...(change.title ? { title: change.title } : {}), ...(change.cause ? { cause: change.cause } : {}) }, this.attempt, keepalive);
         this.adopt(saved, body);
         if (this.dirty && !this.stopped) this.schedule();
       } catch (cause) {
@@ -121,7 +121,7 @@ export class LocalWiki {
   }
 
   private copy(): Kept {
-    return { title: this.title, body: this.text.toString(), state: this.doc.state, reason: '', base: this.base, attempt: this.attempt };
+    return { title: this.title, body: this.text.toString(), base: this.base, attempt: this.attempt };
   }
 
   /**
@@ -139,8 +139,8 @@ export class LocalWiki {
       const body = this.text.toString();
       // On the version the running save makes, which may be another person's: the version says what it replaced (#967).
       const after = this.base + 1;
-      for (const [base, reason] of [[this.base, undefined], [after, `Saved as the page was left, in place of version ${after}`]] as const) {
-        void updateDoc(this.doc.id, base, { body, ...(reason ? { reason } : {}) }, crypto.randomUUID(), true).then((saved) => this.adopt(saved, body), () => undefined);
+      for (const [base, cause] of [[this.base, undefined], [after, { kind: 'page_left', version: after } as const]] as const) {
+        void updateDoc(this.doc.id, base, { body, ...(cause ? { cause } : {}) }, crypto.randomUUID(), true).then((saved) => this.adopt(saved, body), () => undefined);
       }
     }
     return this.save({}, true);
@@ -158,9 +158,8 @@ export class LocalWiki {
     const theirs = this.conflict;
     if (!theirs) return;
     this.base = theirs.version; this.title = theirs.title; this.conflict = null; this.attempt = crypto.randomUUID();
-    const reason = theirs.author.id === this.userId ? undefined : `In place of ${theirs.author.name}’s version ${theirs.version}`;
-    // A refusal shows in the page's notice; nothing more to report here.
-    void this.save(reason ? { reason } : {}).catch(() => undefined);
+    // The server words it ("In place of Ada’s version 4") unless the version was this person's own. A refusal shows in the page's notice.
+    void this.save({ cause: { kind: 'keep_mine', version: theirs.version } }).catch(() => undefined);
   }
   /** The person takes the newer version and drops their unsaved change. */
   takeTheirs() {
@@ -178,7 +177,7 @@ export class LocalWiki {
     if (this.conflict) throw new Error(CONFLICT);
     this.document.transact(() => { this.text.delete(0, this.text.length); this.text.insert(0, version.body); }, LOADED);
     this.dirty = true;
-    await this.save({ title: version.title, reason: `Restored version ${version.version}` });
+    await this.save({ title: version.title, cause: { kind: 'restore', version: version.version } });
   }
 
   async rename(title: string) { await this.save({ title }); }

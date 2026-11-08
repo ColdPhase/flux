@@ -86,9 +86,9 @@ class SpokojHomeSearch(unittest.TestCase):
         ws = self.api(page, "POST", "/api/v1/workspaces", {"name": "Garden studio"}, status=201)
         project = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/projects", {"name": "Radio garden", "visibility": "workspace"}, status=201)
         body = "## Radio\n\n| Bed | Distance |\n|---|---|\n| North | 3 m |\n\nUse **the radio** near [the gateway](https://example.test/gate) and `set_band()`."
-        self.api(page, "POST", f"/api/v1/projects/{project['id']}/docs", {"title": "Radio guide", "body": body, "state": "published"}, status=201)
+        self.api(page, "POST", f"/api/v1/projects/{project['id']}/docs", {"title": "Radio guide", "body": body}, status=201)
         for number in range(1, 5):
-            self.api(page, "POST", f"/api/v1/projects/{project['id']}/docs", {"title": f"Radio note {number}", "body": "A radio note for the garden.", "state": "published"}, status=201)
+            self.api(page, "POST", f"/api/v1/projects/{project['id']}/docs", {"title": f"Radio note {number}", "body": "A radio note for the garden."}, status=201)
         self.api(page, "POST", f"/api/v1/projects/{project['id']}/work", {"title": "Check the radio at the gateway"}, status=201)
         named = self.api(page, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": "My map", "scope": "private"}, status=201)
         thought = self.api(page, "POST", f"/api/v1/sketches/{named['id']}/thoughts", {"text": "Beans on the south side", "x": 0, "y": 0}, status=201)

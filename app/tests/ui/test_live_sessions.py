@@ -218,7 +218,7 @@ class LiveBase(unittest.TestCase):
         work = self.api(nia, "POST", f"{base}/work", {"title": TASK, "outcome": "Know whether rev B can see gestures at 5 lux", "owner": {"kind": "human", "id": PEOPLE["nia"]["id"]},
                                                        "status": "blocked", "blocker": BLOCKER, "sources": [{"type": "message", "id": thread["messages"][0]["id"]}]}, status=201)
         self.api(jonas, "POST", f"{base}/work", {"title": "Order two VL53L5CX boards", "owner": {"kind": "human", "id": PEOPLE["jonas"]["id"]}}, status=201)
-        doc = self.api(ada, "POST", f"{base}/docs", {"title": DOC, "body": DOC_BODY, "state": "published", "reason": "Protocol for the camera tests"}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
+        doc = self.api(ada, "POST", f"{base}/docs", {"title": DOC, "body": DOC_BODY}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
         sketch = self.api(jonas, "POST", f"/api/v1/workspaces/{ws['id']}/sketches", {"title": "Why are night frames black?", "scope": "project", "projectId": pid}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
         root = self.api(jonas, "POST", f"/api/v1/sketches/{sketch['id']}/thoughts", {"text": "Black frames at 5 lux on rev B", "x": 0, "y": 0}, status=201, headers={"idempotency-key": str(uuid.uuid4())})
         thoughts = []

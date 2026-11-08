@@ -81,7 +81,7 @@ class SpokojLayout(unittest.TestCase):
                  {"body": "Where should the first probes go: the raised beds or the greenhouse?", "clientMessageId": str(uuid.uuid4())}, 201)
         response = page.request.fetch(f"{ORIGIN}/api/v1/projects/{cls.project_id}/docs", method="POST",
                                       headers={"origin": ORIGIN, "content-type": "application/json", "idempotency-key": str(uuid.uuid4())},
-                                      data=json.dumps({"title": "Hardware", "body": "Six capacitive probes and two ESP32 boards.", "state": "published"}))
+                                      data=json.dumps({"title": "Hardware", "body": "Six capacitive probes and two ESP32 boards."}))
         assert response.status == 201, response.text()
         cls.doc_id = response.json()["id"]
         page.goto(f"/dm/new?workspace={workspace['id']}&with={cls.kai_id}")

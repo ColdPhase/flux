@@ -137,7 +137,7 @@ describe('What it may do, approvals, Undo and the Inbox (F-036 AG-3, AG-7, #855)
     await pool.query(`UPDATE project_work_items SET created_by_kind = 'agent', created_by_id = $2 WHERE id = $1`, [byMyAgent.id, otherAgent]);
     const page = await scene.doc(scene.owner, 'Shared notes');
     const edited = await scene.doc(scene.owner, 'Edited by Jonas');
-    expectStatus(await scene.peer.browser.request('PATCH', docPath(edited.id), { body: { body: 'Jonas wrote this', state: 'published' }, headers: { 'if-match': `"${edited.version}"` } }), 200);
+    expectStatus(await scene.peer.browser.request('PATCH', docPath(edited.id), { body: { body: 'Jonas wrote this' }, headers: { 'if-match': `"${edited.version}"` } }), 200);
     const editedNow = await scene.docBody(edited.id);
     const live = await scene.liveRun();
     assert.match(text((await live.call('flux_update_task', { workId: theirs.id, expectedVersion: theirs.version, changes: { title: 'Calibrate today' } })).message), /^Waiting for /);

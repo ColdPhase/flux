@@ -352,7 +352,7 @@ export function assistantChangeUseCases(db: Database, clock: () => Date = () => 
       for (const row of list) if (REMOVAL_OPERATIONS.has(row.operation)) { await requireAiOn(db, row.projectId); break; }
       for (const row of list) {
         const message = await undoOne(principal, row);
-        if (message === null || message === 'Moved to your drafts') undone++; else changedSince.push(row.objectType === 'work' ? row.objectTitle.split(' ')[0]! : row.objectTitle || row.operation);
+        if (message === null) undone++; else changedSince.push(row.objectType === 'work' ? row.objectTitle.split(' ')[0]! : row.objectTitle || row.operation);
         changes.push({ change: await viewOne((await rows().find(row.id))!, principal), message });
       }
       return { changes, undone, changedSince, message: undoSentence(undone, changedSince) };

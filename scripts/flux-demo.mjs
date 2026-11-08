@@ -198,7 +198,6 @@ if (existing) {
         '## Radio', '',
         'The far beds report over LoRa. Range is not tested yet.',
       ].join('\n'),
-      reason: 'First notes from the shortlist',
     }, [201], { 'idempotency-key': ids() });
     const updated = await partner.session.expect('PATCH', `/api/v1/docs/${doc.id}`, {
       body: [
@@ -210,8 +209,6 @@ if (existing) {
         '',
         '| Bed | Distance | Signal |', '| --- | ---: | --- |', '| Far east | 140 m | ok |', '| Shed | 60 m | strong |',
       ].join('\n'),
-      state: 'published',
-      reason: 'Added the LoRa range test',
     }, [200], { 'if-match': `"${doc.version}"`, 'idempotency-key': ids() });
     summary.seeded.push(`doc "${doc.title}" with ${updated.version} versions by ${owner.name} and ${partner.name}`);
   } else {

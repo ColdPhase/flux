@@ -160,15 +160,15 @@ export function assistantChangeRows(db: DbExecutor) {
       return { ...row, dependencyIds: dependencies.map((item) => item.id) };
     },
     async doc(id: string) {
-      return first<{ id: string; projectId: string; title: string; body: string; state: 'draft' | 'published' | null; version: number; userId: string | null; agentId: string | null }>(db, sql`
-        SELECT m.id, m.project_id AS "projectId", v.title, v.body, v.state, m.current_version AS version, m.created_by AS "userId", m.created_by_agent_id AS "agentId"
+      return first<{ id: string; projectId: string; title: string; body: string; version: number; userId: string | null; agentId: string | null }>(db, sql`
+        SELECT m.id, m.project_id AS "projectId", v.title, v.body, m.current_version AS version, m.created_by AS "userId", m.created_by_agent_id AS "agentId"
         FROM project_materials m JOIN project_material_versions v ON v.material_id = m.id AND v.version = m.current_version
         WHERE m.id = ${id} AND m.kind = 'doc'`);
     },
     /** One version of a page, to restore the earlier text as a new version (A4 Undo). */
     async docVersion(id: string, version: number) {
-      return first<{ title: string; body: string; state: 'draft' | 'published' | null }>(db, sql`
-        SELECT title, body, state FROM project_material_versions WHERE material_id = ${id} AND version = ${version}`);
+      return first<{ title: string; body: string }>(db, sql`
+        SELECT title, body FROM project_material_versions WHERE material_id = ${id} AND version = ${version}`);
     },
     /** How each run stands: working, ended, or stopped by its owner (the message header, A4). */
     async runStates(runIds: string[]): Promise<Map<string, { status: string; stopRequestedAt: Date | null }>> {
