@@ -24,6 +24,17 @@ function carriesIdToken(body: unknown): boolean {
 }
 
 /**
+ * Whether any text in a request body, or its query, carries a NUL character (#838, found by the ZAP active scan: an address of
+ * "a\u0000b@example.com" answered 500). PostgreSQL refuses 0x00 in text, Better Auth turns that into a bare 500, and it is the sender's
+ * input, so the bridge answers 400 before Better Auth sees it. A text that merely spells the escape out is not one.
+ */
+function carriesNul(value: unknown, depth = 0): boolean {
+  if (typeof value === 'string') return value.includes('\u0000');
+  if (depth > 8 || !value || typeof value !== 'object') return false;
+  return Object.values(value).some((entry) => carriesNul(entry, depth + 1));
+}
+
+/**
  * Better Auth echoes the raw session token in sign-in/sign-up and get-session bodies. The
  * browser only needs the HttpOnly cookie, so the bridge removes the token from JSON bodies
  * and script cannot read or exfiltrate it.
@@ -65,6 +76,9 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
       // present a raw ID token it obtained elsewhere.
       if (url.pathname === SOCIAL_SIGN_IN_PATH && carriesIdToken(request.body)) {
         return reply.code(400).send({ error: 'Sign-in with a raw ID token is not accepted', code: 'ID_TOKEN_SIGN_IN_DISABLED' } satisfies ApiError);
+      }
+      if (/%00/i.test(request.url) || carriesNul(typeof request.body === 'string' ? safeJson(request.body) : request.body)) {
+        return reply.code(400).send({ error: 'Text cannot contain a NUL character', code: 'INVALID_INPUT' } satisfies ApiError);
       }
       if (passwordReset === 'unavailable' && PASSWORD_RESET_REQUEST_PATHS.has(url.pathname)) {
         return reply.code(503).send({ error: 'Password reset is unavailable', code: 'PASSWORD_RESET_UNAVAILABLE' } satisfies ApiError);
@@ -135,6 +149,10 @@ export function registerAuthBridge(app: FastifyInstance, { auth, publicOrigin, p
     '/.well-known/oauth-authorization-server/api/auth',
     '/.well-known/openid-configuration/api/auth',
   ]) app.route({ method: ['GET', 'HEAD'], url, handler: forward });
+}
+
+function safeJson(text: string): unknown {
+  try { return JSON.parse(text); } catch { return text; }
 }
 
 function readCookie(header: string | undefined, name: string) {

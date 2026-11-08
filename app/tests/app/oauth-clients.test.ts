@@ -163,6 +163,11 @@ test('no Flux page can be framed: the authorization, connect and consent pages r
   for (const [name, response] of Object.entries(responses)) {
     assert.equal(response.headers.get('x-frame-options'), 'DENY', `${name} (${response.status}) sends X-Frame-Options`);
     assert.match(response.headers.get('content-security-policy') ?? '', /(?:^|;)\s*frame-ancestors 'none'\s*(?:;|$)/, `${name} sends frame-ancestors 'none'`);
+    // The other headers of the same hook (#838): no sniffing, a Permissions-Policy that keeps calls and refuses location and payment,
+    // and same-origin resource policy.
+    assert.equal(response.headers.get('x-content-type-options'), 'nosniff', `${name} sends nosniff`);
+    assert.match(response.headers.get('permissions-policy') ?? '', /camera=\(self\).*microphone=\(self\).*display-capture=\(self\).*geolocation=\(\).*payment=\(\)/, `${name} sends a Permissions-Policy`);
+    assert.equal(response.headers.get('cross-origin-resource-policy'), 'same-origin', `${name} sends CORP`);
   }
   assert.equal(responses.consent.status, 200);
   assert.match(responses.consent.text, /<div id="root">/, 'the consent page is the web app document');

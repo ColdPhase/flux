@@ -21,10 +21,10 @@ import { profileFromClaims } from './claim-profile.js';
 import { offlineStepProblem } from './offline-step.js';
 import { createConfirmation, type Confirmation } from './confirmation.js';
 import { signInAgainMessage, type IdpStanding } from './standing.js';
+import { SESSION_COOKIE_PREFIX } from './session-cookie.js';
 
 /** Set by the Fastify bridge from the socket or trusted-proxy address; client copies are dropped. */
 export const CLIENT_IP_HEADER = 'x-flux-client-ip';
-export const SESSION_COOKIE_PREFIX = 'flux';
 const AUTH_VERIFY_PATH = '/api/auth/verify-email';
 /** Ordinary password routes. They exist only in password mode: with a sign-on provider configured, they are refused (#313). */
 const PASSWORD_ROUTES = ['/sign-in/email', '/change-password', '/request-password-reset', '/forget-password', '/reset-password'];

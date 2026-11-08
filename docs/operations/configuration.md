@@ -200,7 +200,7 @@ Lifetime of a password reset link. Links are single use and stored hashed. Examp
 
 **Type** `true`, `false` · **Default** `true` · **Used by** api (release, source)
 
-In-memory rate limit on sign-in, sign-up and reset. Only the test scripts turn it off. Example: `true`.
+In-memory rate limits: Better Auth's on sign-in, sign-up and reset, and the API-wide floor under every other route (1,200 requests a minute per session, 600 per address without one, 600 new sessions a minute per address; no total per address). Only the test scripts turn them off. Example: `true`.
 
 ## Single sign-on (OpenID Connect)
 

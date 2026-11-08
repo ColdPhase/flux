@@ -1,6 +1,6 @@
 import type { FastifyError, FastifyInstance, FastifyReply } from 'fastify';
 import type { ApiError } from '@flux/contracts';
-import { ConflictError, DomainError, redactedError } from '@flux/core';
+import { ConflictError, DomainError, InvalidInputError, redactedError } from '@flux/core';
 import { sealedWorkScope, touchedSealedWorkspace } from '@flux/db';
 import { taskUseDomainError } from '../work/task-use-errors.js';
 
@@ -34,6 +34,9 @@ const DATABASE_CONFLICTS = new Map([
 export function databaseConflict(error: unknown): unknown {
   for (let candidate = error as { code?: unknown; hint?: unknown; cause?: unknown } | undefined, depth = 0; candidate && depth < 3;
     candidate = candidate.cause as typeof candidate, depth += 1) {
+    // A NUL character in any text (#838, found by ZAP: a name of "\u0000" answered 500): PostgreSQL refuses it in text (22021) and in
+    // jsonb (22P05). That is the sender's input, so it is a 400, whichever field or route carried it.
+    if (candidate.code === '22021' || candidate.code === '22P05') return new InvalidInputError('Text cannot contain a NUL character');
     if (candidate.code === 'FX409' && typeof candidate.hint === 'string' && DATABASE_CONFLICTS.has(candidate.hint)) {
       return new ConflictError(DATABASE_CONFLICTS.get(candidate.hint)!, candidate.hint);
     }

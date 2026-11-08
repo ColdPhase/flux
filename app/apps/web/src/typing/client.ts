@@ -1,4 +1,5 @@
 import { TYPING_PATH, type TypingContext, type TypingSnapshot } from '@flux/contracts';
+import { reconnectDelay } from '../api/busy.js';
 
 /**
  * 'connecting' is the quiet state before the first server frame and while a tab is paused: nothing is said about
@@ -159,7 +160,7 @@ export class TypingClient {
   }
   private schedule() {
     if (!this.started || this.terminal || this.retryTimer !== null || document.visibilityState !== 'visible') return;
-    this.retryTimer = window.setTimeout(() => { this.retryTimer = null; this.connect(); }, Math.min(15000, 500 * 2 ** Math.min(5, this.retry++)));
+    this.retryTimer = window.setTimeout(() => { this.retryTimer = null; this.connect(); }, reconnectDelay(Math.min(15000, 500 * 2 ** Math.min(5, this.retry++))));
   }
   private clearFreshness() { if (this.freshnessTimer !== null) window.clearTimeout(this.freshnessTimer); this.freshnessTimer = null; }
 }

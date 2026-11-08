@@ -1,6 +1,7 @@
 import * as Y from 'yjs';
 import { DOC_LIMITS, EDITING_LIMITS, type DocChangeCause, type DocMention, type EditingServerMessage, type LiveCursor, type LiveDocBootstrap, type NamedPrincipal, type SaveSharedDoc, type WikiTextEnvelope } from '@flux/contracts';
 import { ApiError } from '../api/client.js';
+import { reconnectDelay } from '../api/busy.js';
 import { enrollLiveDoc, getLiveDoc, saveLiveDoc } from '../docs/api.js';
 import { setReloadRetention } from '../app/reload-retention.js';
 import { keepLiveCopy, liveCopyLifetime, readLiveCopy } from '../docs/drafts.js';
@@ -270,7 +271,7 @@ export class SharedWiki {
         if (error instanceof ApiError && (error.status === 403 || error.status === 404)) this.retire('Access ended. Your pending text is kept privately.');
         else this.disconnected();
       }
-    }, 600);
+    }, reconnectDelay(600));
   };
   /** Nothing of this editor waits to be shared or saved. */
   private get settled() { return !this.pending.size && !this.unsealed.length && !this.saveAttempt; }

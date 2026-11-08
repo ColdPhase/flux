@@ -9,3 +9,9 @@
 .deferred-surface { padding: 16px; }
 .deferred-surface > p { display: flex; align-items: center; gap: 8px; color: var(--t2); }
 .deferred-surface--stage { position: absolute; inset: 0; z-index: 3; background: var(--bg); }
+/* The API said "busy" (#838): a calm pill at the bottom, clear of the phone's tab bar, so it never sits over the route progress row at the top. */
+.busy-notice {
+  position: fixed; inset: auto 0 calc(16px + env(safe-area-inset-bottom)) 0; margin-inline: auto; width: max-content; max-width: calc(100vw - 32px);
+  min-height: 40px; padding: 0 16px; justify-content: center; border: 1px solid var(--line); border-radius: 999px;
+}
+@media (max-width: 700px) { .busy-notice { bottom: calc(84px + env(safe-area-inset-bottom)); } }

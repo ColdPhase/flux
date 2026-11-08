@@ -148,6 +148,15 @@ exact backup, upgrade and restore commands for that version. The source-checkout
 [`./flux backup` and `./flux restore`](backup-restore.md) and [`./flux upgrade`](upgrade.md); they
 use `docker/compose.source.yaml` and are not the release path.
 
+## Verify the images
+
+Before you pull, check the signature and the build provenance of the two images with `cosign verify` (cosign v3 or later) and
+`gh attestation verify`, exactly as the release's `INSTALL.md` shows
+([the same section](release-guide.md#verify-the-images-before-you-pull-them)). The release workflow signs the digests
+keylessly after its scan and packaged install pass, and `publish-release.yml` refuses a draft whose digests
+are not signed. `./scripts/release/check_signing.sh` tries the same signing and checking in Docker with a throwaway key
+and registry; the keyless signature itself can only be made by the real workflow.
+
 ## Verification
 
 `./scripts/check_operator_compose.sh` exercises this file without a published image: it builds

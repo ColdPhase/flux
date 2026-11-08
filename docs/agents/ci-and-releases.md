@@ -75,6 +75,63 @@ pages are generated from `README.md` and the user-facing files under `docs/` by
 `site/scripts/sync-docs.mjs`; internal agent, process and design documents are not published. A new
 user-facing document is published by adding it to `PAGES` there and to the workflow's paths.
 
+## Signing release images (#840)
+
+[`final-release.yml`](../../.github/workflows/final-release.yml) job `sign` signs both image digests (`ghcr.io/coldphase/flux`
+and `ghcr.io/coldphase/flux-agent-runtime`) **keylessly** with cosign (Sigstore, the job's GitHub OIDC token, `id-token: write`),
+after the `scan` and `package` jobs pass and before the draft is created (`draft` needs `sign`). The certificate names
+`https://github.com/ColdPhase/flux/.github/workflows/final-release.yml@refs/heads/main`, which is what the release can only be
+dispatched from. There is no signing key to store, rotate or leak. Nothing else changed in the release path: the action is pinned by
+SHA like the others (`sigstore/cosign-installer`, cosign `v3.0.6`), no check was added, no PR check starts it.
+
+[`publish-release.yml`](../../.github/workflows/publish-release.yml) job `verify` runs `scripts/release/verify_signatures.sh` on
+the reviewed image digest and the agent-runtime digest from `release.json` before anything is promoted or published: a digest
+without that workflow's signature stops the publication. Operators run the same `cosign verify`
+([`release-guide.md`](../operations/release-guide.md#verify-the-images-before-you-pull-them), shipped as `INSTALL.md`).
+The script accepts only `image@sha256:` references (a tag can move).
+
+What is proved without a release: `scripts/release/check_signing.sh` signs two digests with a throwaway key against a throwaway
+registry in Docker (the pinned cosign image), and shows that `verify_signatures.sh` accepts the signed digests and refuses an unsigned
+one, a digest signed with another key, a tag, and new content pushed under a signed tag; `tests/test_release_signing.py` checks the
+keyless command line, the identity pattern against workflow paths that must and must not match, the pins and the job order. What
+only a real release proves: that GitHub's OIDC token yields a certificate with that identity, that Rekor records the entry, and
+that ghcr.io accepts the signature manifest. The first release after this change is the proof: verify its two digests with the
+commands of `INSTALL.md` from a machine that has nothing of ours before you publish it.
+
+## Dynamic security testing (#838)
+
+`./scripts/check_dast.sh` runs OWASP ZAP (pinned by digest, 2.17.0) against the real application in Docker: the stack started with
+the `./flux demo` data and two people, a baseline scan of the web app, and an **active, authenticated** scan of the API once as
+the owner and once as a member, from an OpenAPI document made from the server's own route listing
+(`scripts/dast/prepare.py`). It is a manual acceptance step before a release (a full run takes tens of minutes), never a PR check.
+Reports and `summary.md` go to `dast-reports/`. [`scripts/dast/zap-rules.conf`](../../scripts/dast/zap-rules.conf) records each false
+positive with its reason; `summarize.py` exits 10 while a Medium or higher alert is neither fixed nor recorded there, and 2 when a
+report is missing (a scan that did not run is not clean). A real finding that cannot be fixed in the same change is an issue in the
+milestone, and its rule line says `Tracked in #N` (the summary lists it apart from the false positives). The stack is a test
+deployment because the OpenAPI document is made from its route listing; the rate limits are off in it (an active scan would be answered
+429, and test the limiter instead of the application).
+
+**What the first runs found** (2026-11-08, ZAP 2.17.0, 288 operations, two signed-in people): no injection, XSS, path traversal or
+authorization alert from the active scan of either person. Fixed in the same change: a NUL character in a name answered 500 on every
+route that stored it (now a 400 for any text, `databaseConflict`); no `X-Content-Type-Options`, `Permissions-Policy` or
+`Cross-Origin-Resource-Policy` header (now on every response, `framing.ts`). Tracked: the web app's missing Content-Security-Policy beyond
+`frame-ancestors` (#979). Recorded as false positives: ZAP's "PII Disclosure" on the last 12 digits of a UUID, and the caller's own session
+address in `get-session`. The 503s on the GitHub routes are the App not being configured in this stack.
+
+### Rate limits and CodeQL `js/missing-rate-limiting` (#956)
+
+CodeQL flags 16 route registrations that reach PostgreSQL, the keyring or an outside service with no rate limit. Sign-in, sign-up,
+password reset, invites, encryption unlock and live join already have limits of their own; for the rest the decision is **one floor
+under every API route** (`apps/server/src/http/rate-limit.ts`, registered in `app.ts`) rather than sixteen route limits:
+1,200 requests a minute per session (the browser's cookie `flux.session_token`, or an Authorization header), 600 per address without a
+credential and 600 new sessions a minute per address, and no total per address, so people behind one office address or one proxy are not
+limited together; fixed one-minute windows in the API process, memory-bounded, `429 RATE_LIMITED` with `Retry-After`. A person using Flux does not come near it; a runaway client or
+a flood does. `FLUX_AUTH_RATE_LIMIT=false` turns it off with the sign-in limit (the test stacks do). It covers the routes of all 16
+alerts (`/api/v1/health` and the back-channel logout answer the anonymous count; the Better Auth catch-all also keeps its own limit).
+Route-specific limits stay where a route is costly by design and already have one. CodeQL does not recognise this limiter as one, so
+the alerts are dismissed in the Security tab as "won't fix", naming `rate-limit.ts`, once the limiter is on `main`;
+`tests/app/api-rate-limit-core.test.ts` is the evidence that it holds.
+
 ## Security scanning
 
 Four scanners watch the code, the dependencies and the images (v0.2: #834, #835, #836). None is a required check yet; the
