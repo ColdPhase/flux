@@ -14,10 +14,6 @@
 .create__panel[hidden] { display: none; }
 .create__where { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 40px; padding: 10px 20px 0; flex: none; font-size: var(--fs-md); color: var(--t2); }
 .create__private { display: inline-flex; align-items: center; gap: 6px; }
-/* New space is its own window, one step from here; the phone reaches it from the Spaces list. */
-.create__space-link.ui-btn { flex: none; margin-left: auto; min-height: 32px; padding: 0 10px; color: var(--t2); }
-.create__space-link + .create__x { margin-left: 0; }
-@media (max-width: 640px) { .create__space-link.ui-btn { display: none; } }
 .create__x { margin-left: auto; display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: var(--r-pill); color: var(--t2); }
 .create__x:hover { background: var(--hov); color: var(--t1); }
 .create__scroll { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 20px 16px; display: flex; flex-direction: column; gap: 10px; overscroll-behavior: contain; }

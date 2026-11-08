@@ -1,7 +1,6 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
+import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router';
 import { Avatar, BottomNav, FluxLogo, Icon, IconButton, Overlay, publishTopEdge, type BottomNavItem, type IconName, Select, Option } from '../ui';
-import { handFilesToComposer } from '../composer/handoff';
 import { useDraft } from '../drafts/store';
 import { useShellActions } from './shellContext';
 import { useShellData, type ProjectSummary } from './data';
@@ -138,18 +137,15 @@ export function PhoneHomeLead() {
   return <span className="phead__logo"><FluxLogo size={28} /></span>;
 }
 
-interface Tile { id: string; label: string; icon: IconName; run: (() => void) | null; hint?: string; pick?: boolean }
+interface Tile { id: string; label: string; icon: IconName; run: (() => void) | null; hint?: string }
 
 /**
- * "+" Create (F-026 S2, S3): Task, Thought, Message, Decision, File or link, Map and Space. Each tile starts that
- * thing where it is made, in the project you are in or the one chosen here: Task opens a new task,
- * Decision the "Propose a decision" sheet, and File or link the file picker inside the tap; the picked
- * files join the project's message draft (a cancelled picker leaves the composer ready for a link). Space
- * opens the New space window (F-037), which is made in the company and needs no space chosen; a guest does not start spaces.
+ * "+" Create (F-026 S2, S3, #867): the same five types as the computer's New: Task, Thought, Decision, Page and Space. Each tile opens the
+ * one Create window on that type, in the space you are in or the one chosen here (a thought needs none, and a space is made in the
+ * company; a guest does not start spaces). Writing a message and attaching a file or link happen in the composer.
  */
-export function PhoneCreate({ open, onClose, projects, projectId, go }: {
+export function PhoneCreate({ open, onClose, projects, projectId }: {
   open: boolean; onClose: () => void; projects: ProjectSummary[]; projectId: string | undefined;
-  go: (to: string) => void;
 }) {
   const titleId = useId();
   const { me, workspace } = useShellData();
@@ -159,32 +155,13 @@ export function PhoneCreate({ open, onClose, projects, projectId, go }: {
     ? selectedProject.text
     : projectId;
   const chosen = projects.find((project) => project.id === preferredProjectId) ?? projects[0];
-  const to = (path: string | null) => (path ? () => { onClose(); go(path); } : null);
-  const inProject = chosen ? `/projects/${chosen.id}` : null;
-  // The picker must open within the tap (WebKit refuses it later), so the sheet holds the file input.
-  const fileInput = useRef<HTMLInputElement>(null);
-  const toComposer = (files: File[]) => {
-    if (!chosen || !inProject) return;
-    handFilesToComposer(me.user.id, chosen.id, files);
-    onClose(); go(`${inProject}?compose=${files.length ? 'files' : 'link'}`);
-  };
-  const [pickerOpen, setPickerOpen] = useState(false);
-  useEffect(() => {
-    const input = fileInput.current;
-    if (!input || !pickerOpen) return;
-    const cancelled = () => { setPickerOpen(false); toComposer([]); };
-    input.addEventListener('cancel', cancelled);
-    return () => input.removeEventListener('cancel', cancelled);
-  });
+  const create = (request: Parameters<typeof openCreate>[0]) => () => { onClose(); requestAnimationFrame(() => openCreate(request)); };
   const tiles: Tile[] = [
-    { id: 'task', label: 'Task', icon: 'plus', run: chosen ? () => { onClose(); requestAnimationFrame(() => openCreate({ kind: 'task', projectId: chosen.id })); } : null, hint: 'needs a space' },
-    { id: 'thought', label: 'Thought', icon: 'edit', run: () => { onClose(); requestAnimationFrame(() => openCreate({ kind: 'thought' })); } },
-    { id: 'message', label: 'Message', icon: 'chat', run: to('/dm/new') },
-    { id: 'decision', label: 'Decision', icon: 'rule', run: to(inProject && `${inProject}?open=propose-decision`), hint: 'needs a space' },
-    { id: 'file', label: 'File or link', icon: 'clip', hint: 'needs a space', pick: true, run: inProject ? () => setPickerOpen(true) : null },
-    { id: 'map', label: 'Map', icon: 'shape', run: to(inProject ? `${inProject}/map` : '/map') },
-    { id: 'space', label: 'Space', icon: 'people', run: workspace?.role === 'guest' ? null : () => { onClose(); requestAnimationFrame(() => openCreate({ kind: 'project' })); },
-      hint: 'not for guests' },
+    { id: 'task', label: 'Task', icon: 'plus', run: chosen ? create({ kind: 'task', projectId: chosen.id }) : null, hint: 'needs a space' },
+    { id: 'thought', label: 'Thought', icon: 'edit', run: create({ kind: 'thought' }) },
+    { id: 'decision', label: 'Decision', icon: 'rule', run: chosen ? create({ kind: 'decision', projectId: chosen.id }) : null, hint: 'needs a space' },
+    { id: 'page', label: 'Page', icon: 'doc', run: chosen ? create({ kind: 'page', projectId: chosen.id }) : null, hint: 'needs a space' },
+    { id: 'space', label: 'Space', icon: 'people', run: workspace?.role === 'guest' ? null : create({ kind: 'space' }), hint: 'not for guests' },
   ];
   return (
     <Overlay open={open} onClose={onClose} placement="bottom" labelledBy={titleId} className="phone-create">
@@ -200,13 +177,11 @@ export function PhoneCreate({ open, onClose, projects, projectId, go }: {
           </label>
         ) : null}
       </div>
-      <input ref={fileInput} className="ui-vh" type="file" multiple tabIndex={-1} aria-hidden="true"
-        onChange={(event) => { const files = [...event.currentTarget.files ?? []]; event.currentTarget.value = ''; setPickerOpen(false); toComposer(files); }} />
       <ul className="phone-create__grid">
         {tiles.map((tile) => (
           <li key={tile.id}>
             <button type="button" className="phone-create__item" aria-disabled={tile.run ? undefined : true}
-              onClick={() => { if (!tile.run) return; tile.run(); if (tile.pick) fileInput.current?.click(); }}>
+              onClick={() => { tile.run?.(); }}>
               <Icon name={tile.icon} size={24} /><span>{tile.label}</span>
               {!tile.run && tile.hint ? <small>{tile.hint}</small> : null}
             </button>

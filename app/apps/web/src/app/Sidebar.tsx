@@ -201,7 +201,7 @@ export function Sidebar({ projects, directMessages, agents = [], user, session, 
           <div className="side__head">
             <h2 className="side__h" id="side-projects">Spaces</h2>
             {/* On the computer New (C) creates; the narrow-tablet drawer keeps its own "+". */}
-            {onClose ? <button type="button" className="side__add" aria-label="New space" onClick={() => { onClose(); openCreate({ kind: 'project' }); }}><Icon name="plus" size={14} /></button> : null}
+            {onClose ? <button type="button" className="side__add" aria-label="New space" onClick={() => { onClose(); openCreate({ kind: 'space' }); }}><Icon name="plus" size={14} /></button> : null}
           </div>
           {projects.length || locked.length ? (
             <ul className="side__list" ref={projectList}>

@@ -1,14 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { useComposerDraft, useComposerScope, type DraftCite } from '../composer/draft';
-import { takeHandedFiles } from '../composer/handoff';
 import { onCite, takeHeldCite } from '../app/citeBus';
 import type { PaneCore } from './paneCore';
 
 /**
  * The pane's two drafts (#264): the public one (a new root in the stream, a reply in a thread) and the private
  * prompt to the person's assistant, with which of them the field edits now ("asking"). What arrives from elsewhere
- * joins them here: files from the phone's Create, `?ask=1`, and a cited message or thought.
+ * joins them here: `?ask=1`, and a cited message or thought.
  */
 export function useComposerDrafts({ me, project, conversation, composerId, writable, aiOff }: PaneCore) {
   const [asking, setAsking] = useState(false);
@@ -19,21 +18,6 @@ export function useComposerDrafts({ me, project, conversation, composerId, writa
   const composer = asking ? helperComposer : publicComposer;
   const location = useLocation();
   const navigate = useNavigate();
-  // The phone's "+" Create → File or link (F-026 S2) arrives as ?compose=files|link: the picked files
-  // join this project's message draft and the field takes focus, ready for a link or a line. Once.
-  const addDraftFiles = publicComposer.addFiles;
-  useEffect(() => {
-    if (conversation) return;
-    const params = new URLSearchParams(location.search);
-    if (!params.has('compose')) return;
-    params.delete('compose');
-    const search = params.toString();
-    navigate({ pathname: location.pathname, search: search ? `?${search}` : '', hash: location.hash }, { replace: true, defaultShouldRevalidate: false, state: location.state });
-    const files = takeHandedFiles(me.user.id, project.id);
-    if (!writable) return;
-    if (files?.length) addDraftFiles(files);
-    requestAnimationFrame(() => document.getElementById(composerId)?.focus());
-  }, [conversation, location.search, location.pathname, location.hash, location.state, navigate, me.user.id, project.id, writable, addDraftFiles, composerId]);
   // ⌘K "Ask my assistant…" and the assistant panel's Message arrive as ?ask=1 in a thread: ask mode opens once.
   const askParam = !aiOff && !!conversation && writable && new URLSearchParams(location.search).get('ask') === '1';
   const [askHandled, setAskHandled] = useState(false);

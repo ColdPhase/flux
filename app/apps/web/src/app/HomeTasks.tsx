@@ -89,7 +89,7 @@ export function HomeTasks() {
       );
     }
     const action = !projects.length
-      ? <Button onClick={() => openCreate({ kind: 'project' })}><Icon name="plus" size={14} />Create a space</Button>
+      ? <Button onClick={() => openCreate({ kind: 'space' })}><Icon name="plus" size={14} />Create a space</Button>
       : narrow ? <Button onClick={openNavigation}>Open your spaces</Button> : null;
     return pulling(
       <div className="view-empty">

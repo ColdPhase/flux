@@ -207,7 +207,7 @@ export function Home() {
             {/* #763 FT-3, F-037: someone in the company with only Everyone is told how other spaces reach them. */}
             <h3 id="home-first">You’re in {joinedSpace.name}</h3>
             <p>When someone adds you to a space, it appears here at once. You can also start your own.</p>
-            {joinedSpace.role === 'guest' ? null : <Button variant="secondary" size="lg" onClick={() => openCreate({ kind: 'project' })}>Start a space</Button>}
+            {joinedSpace.role === 'guest' ? null : <Button variant="secondary" size="lg" onClick={() => openCreate({ kind: 'space' })}>Start a space</Button>}
           </> : <>
           {/* F-037: an account nobody has invited yet joins through a link from the company's admin. */}
           <h3 id="home-first">You’re not in a company here yet</h3>
