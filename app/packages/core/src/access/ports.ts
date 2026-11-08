@@ -44,7 +44,7 @@ export interface DraftFacts {
   visibility: 'private' | 'project' | 'workspace';
 }
 export interface AgentFacts { id: string; workspaceId: string; ownerUserId: string; revokedAt: Date | null }
-export interface SketchFacts { id: string; workspaceId: string; scope: 'project' | 'private' | 'dm'; projectId: string | null; dmId: string | null }
+export interface SketchFacts { id: string; workspaceId: string; scope: 'project' | 'private'; projectId: string | null }
 export interface DmFacts { id: string; workspaceId: string }
 export interface AssistantRunFacts { id: string; workspaceId: string; ownerUserId: string }
 
@@ -58,8 +58,6 @@ export interface ActorReads {
 export interface WorkspaceReads {
   /** Some project of the actor's workspace where the actor's level is at least contributor now. */
   hasWritableProject(actor: Actor): Promise<boolean>;
-  /** The workspace row `FOR SHARE`. */
-  lockWorkspaceForShare(workspaceId: string): Promise<void>;
 }
 
 export interface ProjectReads<P extends ProjectFacts = ProjectFacts> {
@@ -68,8 +66,6 @@ export interface ProjectReads<P extends ProjectFacts = ProjectFacts> {
   lockProjectAccess(actor: Actor, projectId: string): Promise<void>;
   /** The project and the actor's access level (0-3) to it, or null when it does not exist. */
   readProject(actor: Actor, projectId: string): Promise<{ project: P; level: number } | null>;
-  /** The project row alone `FOR SHARE`. */
-  lockProjectForShare(projectId: string): Promise<void>;
 }
 
 export interface DraftReads<D extends DraftFacts = DraftFacts> {
@@ -85,22 +81,18 @@ export interface AgentReads<A extends AgentFacts = AgentFacts> {
 }
 
 export interface SketchReads<S extends SketchFacts = SketchFacts> {
-  locateSketch(sketchId: string): Promise<{ workspaceId: string; projectId: string | null; dmId: string | null } | null>;
+  locateSketch(sketchId: string): Promise<{ workspaceId: string; projectId: string | null } | null>;
   /** The sketch row `FOR NO KEY UPDATE`. */
   lockSketchForNoKeyUpdate(sketchId: string): Promise<void>;
   /** The sketch with whether the actor may read it and its project level. */
   readSketch(actor: Actor, sketchId: string): Promise<{ sketch: S; readable: boolean; level: number } | null>;
-  sketchWorkspace(sketchId: string): Promise<string | null>;
 }
 
 export interface DmReads<M extends DmFacts = DmFacts> {
   locateDm(dmId: string): Promise<{ workspaceId: string } | null>;
-  lockDmForShare(dmId: string): Promise<void>;
   lockDmForNoKeyUpdate(dmId: string): Promise<void>;
   /** One participant's row `FOR SHARE`. */
   lockParticipantForShare(dmId: string, userId: string): Promise<void>;
-  /** Every participant row `FOR SHARE`, in user id order; returns the participants. */
-  lockParticipantsForShare(dmId: string): Promise<string[]>;
   /** The DM with whether the actor is a current participant. */
   readDm(actor: Actor, dmId: string): Promise<{ dm: M; readable: boolean } | null>;
   /** A DM's kind, pair key and workspace, for the closed-DM rule. */

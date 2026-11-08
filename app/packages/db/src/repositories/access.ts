@@ -227,11 +227,7 @@ export function visibleSketchesSql(actor: AccessActor): SQL {
   // Agents never see private sketches, not even their owner's.
   if (actor.principal.kind !== 'human') return and(eq(s.workspaceId, actor.workspaceId), project)!;
   const own = sql`(${s.scope} = 'private' AND ${s.createdByUserId} = ${actor.principal.id})`;
-  // A DM sketch is visible to the DM's current participants only (#96). Qualified by hand:
-  // Drizzle leaves columns of a single-table select unqualified, and an unqualified `dm_id`
-  // inside this subquery would name dm_participants.dm_id.
-  const dm = sql`(${s.scope} = 'dm' AND EXISTS (SELECT 1 FROM dm_participants dp WHERE dp.dm_id = "sketches"."dm_id" AND dp.user_id = ${actor.principal.id}))`;
-  return and(eq(s.workspaceId, actor.workspaceId), or(project, own, dm))!;
+  return and(eq(s.workspaceId, actor.workspaceId), or(project, own))!;
 }
 
 /**
@@ -316,14 +312,6 @@ export function accessReader(db: DbExecutor) {
       // Reached only for an active member (core loads the actor first), so only a member learns a lock (423).
       return row ? { ...row, project: openRow('projects', row.project, await sealOf(db, row.project.workspaceId, { write: false })) } : null;
     },
-    /** `FOR SHARE` on the project row alone (the promotion scope, before the sketch is evaluated). */
-    async lockProjectForShare(projectId: string) {
-      await db.select({ id: schema.projects.id }).from(schema.projects).where(eq(schema.projects.id, projectId)).for('share');
-    },
-    /** `FOR SHARE` on the workspace row (member added, removed or re-roled take it `FOR NO KEY UPDATE`). */
-    async lockWorkspaceForShare(workspaceId: string) {
-      await db.select({ id: schema.workspaces.id }).from(schema.workspaces).where(eq(schema.workspaces.id, workspaceId)).for('share');
-    },
 
     async locateDraft(draftId: string) {
       const [located] = await db.select({ workspaceId: schema.drafts.workspaceId }).from(schema.drafts).where(eq(schema.drafts.id, draftId));
@@ -354,7 +342,7 @@ export function accessReader(db: DbExecutor) {
 
     async locateSketch(sketchId: string) {
       const s = schema.sketches;
-      const [located] = await db.select({ workspaceId: s.workspaceId, projectId: s.projectId, dmId: s.dmId }).from(s).where(eq(s.id, sketchId));
+      const [located] = await db.select({ workspaceId: s.workspaceId, projectId: s.projectId }).from(s).where(eq(s.id, sketchId));
       return located ?? null;
     },
     async lockSketchForNoKeyUpdate(sketchId: string) {
@@ -367,19 +355,11 @@ export function accessReader(db: DbExecutor) {
         .from(s).where(eq(s.id, sketchId));
       return row ?? null;
     },
-    /** The workspace of a sketch, for the promotion scope. */
-    async sketchWorkspace(sketchId: string) {
-      const [sketch] = await db.select({ workspaceId: schema.sketches.workspaceId }).from(schema.sketches).where(eq(schema.sketches.id, sketchId));
-      return sketch?.workspaceId ?? null;
-    },
 
     async locateDm(dmId: string) {
       const d = schema.dms;
       const [located] = await db.select({ workspaceId: d.workspaceId }).from(d).where(eq(d.id, dmId));
       return located ?? null;
-    },
-    async lockDmForShare(dmId: string) {
-      await db.select({ id: schema.dms.id }).from(schema.dms).where(eq(schema.dms.id, dmId)).for('share');
     },
     async lockDmForNoKeyUpdate(dmId: string) {
       const d = schema.dms;
@@ -389,12 +369,6 @@ export function accessReader(db: DbExecutor) {
     async lockParticipantForShare(dmId: string, userId: string) {
       await db.select({ userId: schema.dmParticipants.userId }).from(schema.dmParticipants)
         .where(and(eq(schema.dmParticipants.dmId, dmId), eq(schema.dmParticipants.userId, userId))).for('share');
-    },
-    /** Every participant row `FOR SHARE`, in user id order; returns the participants. */
-    async lockParticipantsForShare(dmId: string): Promise<string[]> {
-      const rows = await db.select({ userId: schema.dmParticipants.userId }).from(schema.dmParticipants)
-        .where(eq(schema.dmParticipants.dmId, dmId)).orderBy(schema.dmParticipants.userId).for('share');
-      return rows.map((row) => row.userId);
     },
     async readDm(actor: AccessActor, dmId: string) {
       const d = schema.dms;

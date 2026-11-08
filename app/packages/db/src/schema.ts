@@ -969,13 +969,8 @@ export const agentQuestions = pgTable('agent_questions', {
 export const sketches = pgTable('sketches', {
   id: uuid('id').primaryKey(),
   workspaceId: uuid('workspace_id').notNull().references(() => workspaces.id, { onDelete: 'cascade' }),
-  scope: text('scope', { enum: ['project', 'private', 'dm'] }).notNull(),
+  scope: text('scope', { enum: ['project', 'private'] }).notNull(),
   projectId: uuid('project_id'),
-  // A DM sketch's direct message (migration 0025, #96): composite FK to dms(workspace_id, id).
-  dmId: uuid('dm_id'),
-  copiedFromSketchId: uuid('copied_from_sketch_id'),
-  copiedByUserId: text('copied_by_user_id').references(() => authUsers.id),
-  copiedAt: timestamp('copied_at', { withTimezone: true }),
   title: text('title').notNull(),
   createdByUserId: text('created_by_user_id').references(() => authUsers.id),
   createdByAgentId: uuid('created_by_agent_id'),
@@ -989,6 +984,8 @@ export const sketches = pgTable('sketches', {
   foreignKey({ columns: [table.workspaceId, table.projectId], foreignColumns: [projects.workspaceId, projects.id] }).onDelete('cascade'),
   foreignKey({ columns: [table.workspaceId, table.createdByAgentId], foreignColumns: [agents.workspaceId, agents.id] }),
   index('sketches_workspace_idx').on(table.workspaceId, table.updatedAt.desc(), table.id),
+  // One private map for each person in a company (migration 0020).
+  uniqueIndex('sketches_one_private_map_idx').on(table.workspaceId, table.createdByUserId).where(sql`${table.scope} = 'private'`),
 ]);
 
 export const sketchThoughts = pgTable('sketch_thoughts', {
@@ -1008,8 +1005,6 @@ export const sketchThoughts = pgTable('sketch_thoughts', {
   sourceAuthorAgentId: uuid('source_author_agent_id').references(() => agents.id),
   sourceAuthorName: text('source_author_name'),
   sourceSentAt: timestamp('source_sent_at', { withTimezone: true }),
-  sourceDmId: uuid('source_dm_id'),
-  sourceMessageId: uuid('source_message_id'),
   sourceProjectMessageId: uuid('source_project_message_id'),
   createdByUserId: text('created_by_user_id').references(() => authUsers.id),
   createdByAgentId: uuid('created_by_agent_id'),

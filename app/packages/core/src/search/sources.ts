@@ -81,12 +81,12 @@ export const SEARCH_SOURCES: Record<SearchKind, SearchSource> = {
   },
   sketch: {
     filter: 'sketch', audience: 'sketch', textIsTitle: false, label: (row) => (row.status === 'private' ? 'My map' : row.status === 'dm' ? 'Map in a direct message' : 'Map'),
-    target: (row) => ({ type: 'sketch', sketchId: row.objectId, dmId: row.dmId }),
+    target: (row) => ({ type: 'sketch', sketchId: row.objectId }),
   },
   thought: {
     filter: 'sketch', audience: 'sketch', textIsTitle: true,
     label: (row) => (row.sketchTitle ? `Thought on the map ${quote(row.sketchTitle)}` : 'Thought'),
-    target: (row) => ({ type: 'thought', sketchId: row.parentId ?? '', thoughtId: row.objectId, dmId: row.dmId }),
+    target: (row) => ({ type: 'thought', sketchId: row.parentId ?? '', thoughtId: row.objectId }),
   },
   draft: {
     filter: 'draft', audience: 'draft', textIsTitle: false, label: (row) => DRAFT_STATUS[row.status ?? ''] ?? 'Thought',
@@ -109,8 +109,6 @@ export function searchPlaceOf(row: SearchRow): SearchPlace {
   // A project's place is its workspace: its name is the result itself, not a place it lives in.
   if (row.kind === 'project') return { type: 'workspace', id: row.workspaceId, name: row.workspaceName ?? '' };
   if (row.kind === 'dm_message' && row.parentId) return { type: 'dm', id: row.parentId, name: row.dmName ?? 'Direct message' };
-  // A DM sketch or thought lives in its DM (#96); only its participants can see it at all.
-  if ((row.kind === 'sketch' || row.kind === 'thought') && row.dmId) return { type: 'dm', id: row.dmId, name: row.dmName ?? 'Direct message' };
   if (row.kind === 'person') return { type: 'workspace', id: row.workspaceId, name: row.workspaceName ?? '' };
   // The project is named only when it is itself visible to the reader (the rows check it).
   if (row.projectId && row.projectName !== null) return { type: 'project', id: row.projectId, name: row.projectName };

@@ -48,6 +48,8 @@ test('a live sketch anchor stays project-scoped and its read lock covers presenc
 
   // There is no public scope-change API today, and the live-session composite
   // foreign key also prevents a database move to a private scope while anchored.
+  // (The person's one private map is out of the way first: the unique index would answer before the key.)
+  await pool.query('DELETE FROM sketches WHERE id = $1', [privateSketch.id]);
   await assert.rejects(pool.query(
     "UPDATE sketches SET scope = 'private', project_id = NULL WHERE id = $1", [projectSketch.id]),
   (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && error.code === '23503');

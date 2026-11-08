@@ -3,7 +3,6 @@
 // owners and admins who are not participants cannot see a DM, its existence or its count.
 // Messages reuse the #36 message shape, ordering and `clientMessageId` retry rule.
 import type { HumanConversationMessage, MessageReference } from './conversation.js';
-import type { PromotionPerson } from './sketch.js';
 import type { WorkItem } from './work.js';
 
 export const DMS_PATH = '/api/v1/dms';
@@ -130,6 +129,8 @@ export const RECEIPT_LIMITS = { messagesPerCall: 50, runsPerCall: 20, messagesPe
  * person chose (default: the whole message); it must appear in the message exactly. Without `projectId` the
  * first project the caller can change is proposed.
  */
+/** One person who could open the task, and why: they are in its project. Agents are not listed; an agent reads with exactly its owner's rights. */
+export interface DmTaskCopyPerson { id: string; name: string; reason: 'project' }
 export interface DmTaskCopyPreviewCommand { messageId: string; excerpt?: string; projectId?: string }
 export interface DmTaskCopyPreview {
   messageId: string;
@@ -139,7 +140,7 @@ export interface DmTaskCopyPreview {
   /** Projects the caller can change. */
   projects: { id: string; name: string }[];
   /** Every person who could open the task: its project's people, as the access policy lists them now. */
-  audience: PromotionPerson[];
+  audience: DmTaskCopyPerson[];
   /** Opaque; names this exact message version, excerpt, project and audience. */
   token: string;
 }

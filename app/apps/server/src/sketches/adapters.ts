@@ -1,27 +1,17 @@
-import { artifactResetRows, canonicalArtifactTaskIds, fileRows, liveMapRows, prepareCanonicalArtifactTasks, sketchRows, type DbExecutor, visibleFilter, accessPorts, accessReader, type Database, type Transaction } from '@flux/db';
-import type { PromotionPerson } from '@flux/contracts';
+import { artifactResetRows, canonicalArtifactTaskIds, fileRows, liveMapRows, prepareCanonicalArtifactTasks, sketchRows, type DbExecutor, visibleFilter, accessReader, type Database, type Transaction } from '@flux/db';
 import {
-  authorize,
-  createProject,
   createSketchUseCases,
   ForbiddenError,
   ConflictError,
   placeThoughtImage,
   prepareThoughtImage,
-  getProject,
-  grantProject,
-  listMembers,
-  listProjectPeople,
-  listProjects,
   policySketchAccess,
   recordEvent,
-  RuleViolationError,
   ServiceUnavailableError,
   type FileStorage,
   type Principal,
   type SketchFiles,
   type SketchPorts,
-  type SketchPromotion,
   type SketchRepository,
   type SketchUnitOfWork,
 } from '@flux/core';
@@ -46,7 +36,16 @@ export function sketchRepository(db: DbExecutor): SketchRepository {
     async listVisible(principal, workspaceId, filter, page) {
       return rows.list(workspaceId, await visibleFilter(principal, workspaceId, 'sketch', db), filter, page);
     },
-    insertSketch: (sketch) => rows.insertSketch({ ...sketch, createdBy: author(sketch.createdBy) }),
+    // A second private map for one person is refused by the database too (#947); two requests that raced answer like the check.
+    insertSketch: async (sketch) => {
+      try {
+        return await rows.insertSketch({ ...sketch, createdBy: author(sketch.createdBy) });
+      } catch (error) {
+        const code = (error as { code?: string; cause?: { code?: string } } | null);
+        if (sketch.scope === 'private' && (code?.code ?? code?.cause?.code) === '23505') throw new ConflictError('You already have your map', 'MY_MAP_EXISTS');
+        throw error;
+      }
+    },
     insertThought: async (thought) => {
       const versions=liveMapRows(db,decodeMapChange);const previous=await versions.version('thought',thought.id);
       if(previous&&previous.sketchId!==thought.sketchId)throw new ConflictError('This retained ID belongs to another map','EDITING_IDEMPOTENCY_CONFLICT');
@@ -56,60 +55,6 @@ export function sketchRepository(db: DbExecutor): SketchRepository {
       const previous=await liveMapRows(db,decodeMapChange).version('link',link.id);
       if(previous&&previous.sketchId!==link.sketchId)throw new ConflictError('This retained link ID belongs to another map','EDITING_IDEMPOTENCY_CONFLICT');
       return rows.insertLink({ ...link, createdBy: author(link.createdBy) });
-    },
-  };
-}
-
-const isManager = (role: string) => role === 'owner' || role === 'admin';
-
-/**
- * Promotion of a DM sketch (#96) through the core project use cases, so every check, grant and
- * event is theirs: `project.create` for a new project, `project.write` for an existing one, and
- * the project's people from `listProjectPeople` (the access policy per person). The audience is people
- * only. An agent is no reader of its own: it is not a member of a space and reads with exactly its owner's
- * rights (F-036 AG-1, AG-3), so naming the owner covers it. Another person's assistant is also private (#522),
- * so a list of agents could never be whole.
- */
-export function sketchPromotion(tx: Database): SketchPromotion {
-  return {
-    async targets(principal, workspaceId) {
-      const create = await authorize(principal, 'project.create', { type: 'workspace', id: workspaceId }, accessReader(tx));
-      const projects: { id: string; name: string }[] = [];
-      for (let offset = 0; ; offset += 100) {
-        const page = await listProjects(principal, workspaceId, { limit: 100, offset }, tx, accessPorts);
-        projects.push(...page.items.filter((p) => p.access === 'contributor' || p.access === 'manager').map((p) => ({ id: p.id, name: p.name })));
-        if (offset + page.items.length >= page.total || !page.items.length) break;
-      }
-      projects.sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-      return { canCreateProject: create.allowed, projects };
-    },
-
-    async audience(principal, workspaceId, participants, target) {
-      if (target.kind === 'existing') {
-        const project = await getProject(principal, target.projectId, tx, accessPorts);
-        if (project.workspaceId !== workspaceId) throw new RuleViolationError('The space belongs to another company', 'CROSS_WORKSPACE');
-        const people = await listProjectPeople(principal, project.id, tx, accessPorts);
-        return { people: people.filter((p) => p.kind === 'human').map((p): PromotionPerson => ({ id: p.id, name: p.name, reason: 'project' })), projectName: project.name };
-      }
-      // A new restricted project: read by its grantees (the participants) and by the workspace's
-      // owners and admins, who manage every project.
-      const inDm = new Set(participants.map((p) => p.id));
-      const people = (await listMembers(principal, workspaceId, tx, accessPorts))
-        .filter((m) => inDm.has(m.userId) || isManager(m.role))
-        .map((m): PromotionPerson => ({ id: m.userId, name: m.name, reason: inDm.has(m.userId) ? 'participant' : 'manager' }))
-        .sort((a, b) => Number(a.reason !== 'participant') - Number(b.reason !== 'participant') || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
-      return { people, projectName: null };
-    },
-
-    async createProject(principal, workspaceId, name, participantIds) {
-      const project = await createProject(principal, workspaceId, { name, visibility: 'restricted' }, tx, accessPorts);
-      const roles = new Map((await listMembers(principal, workspaceId, tx, accessPorts)).map((m) => [m.userId, m.role]));
-      for (const id of participantIds) {
-        const role = roles.get(id);
-        if (!role || isManager(role)) continue;
-        await grantProject(principal, project.id, { principal: { kind: 'human', id }, role: 'contributor' }, tx, accessPorts);
-      }
-      return { id: project.id, name: project.name };
     },
   };
 }
@@ -139,7 +84,6 @@ export function sketchPorts(tx: Database, storage?: FileStorage): SketchPorts {
     files: sketchFiles(tx, storage),
     sketches,
     live:nativeMapJournal(tx as DbExecutor,sketches).journal,
-    promotion: sketchPromotion(tx),
     artifacts:{async prepare(sketch,thoughtIds){
       if(sketch.scope!=='project'||!sketch.projectId)return null;
       const scope={workspaceId:sketch.workspaceId,projectId:sketch.projectId};

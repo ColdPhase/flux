@@ -3,7 +3,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { UNTITLED_SKETCH } from '@flux/contracts';
 import * as schema from '../schema.js';
 import type { DbExecutor } from './push.js';
-import { openAliased, openRows, sealFor, sealOf } from '../sealing.js';
+import { openRows, sealFor, sealOf } from '../sealing.js';
 
 /**
  * Drizzle persistence for sketches, thoughts and links (issues #69, #46). The rows satisfy the
@@ -18,8 +18,6 @@ const t = schema.sketchThoughts;
 const l = schema.sketchLinks;
 const users = schema.authUsers;
 const agents = schema.agents;
-const m = schema.dmMessages;
-const dp = schema.dmParticipants;
 
 /** Adds whoever changed a map or a thought to its `edited_by`, once (F-036 Terms "Yours"). */
 function editedBy(column: typeof s.editedBy | typeof t.editedBy, editor: Author) {
@@ -37,14 +35,12 @@ function person(userId: string | null, agentId: string | null, userName: string 
 
 const sketchCreator = alias(users, 'sketch_creator');
 const sketchAgent = alias(agents, 'sketch_agent');
-const sketchCopier = alias(users, 'sketch_copier');
-const sketchColumns = { row: s, userName: sketchCreator.name, agentName: sketchAgent.name, copierName: sketchCopier.name };
+const sketchColumns = { row: s, userName: sketchCreator.name, agentName: sketchAgent.name };
 
-function toSketchRecord({ row, userName, agentName, copierName }: { row: typeof s.$inferSelect; userName: string | null; agentName: string | null; copierName: string | null }) {
+function toSketchRecord({ row, userName, agentName }: { row: typeof s.$inferSelect; userName: string | null; agentName: string | null }) {
   return {
-    id: row.id, workspaceId: row.workspaceId, scope: row.scope, projectId: row.projectId, dmId: row.dmId, title: row.title,
+    id: row.id, workspaceId: row.workspaceId, scope: row.scope, projectId: row.projectId, title: row.title,
     createdBy: person(row.createdByUserId, row.createdByAgentId, userName, agentName),
-    copied: row.copiedByUserId && row.copiedAt ? { by: { kind: 'human' as const, id: row.copiedByUserId, name: copierName ?? '' }, at: row.copiedAt } : null,
     version: row.version, createdAt: row.createdAt, updatedAt: row.updatedAt,
   };
 }
@@ -57,10 +53,9 @@ function toThoughtRecord({ row, userName, agentName, sourceAgentName }: { row: t
   return {
     id: row.id, sketchId: row.sketchId, text: row.text, x: row.x, y: row.y, width: row.width, height: row.height, shape: row.shape,
     placement: row.placementType && row.placementId ? { type: row.placementType, id: row.placementId } : null,
-    source: (row.sourceAuthorId || row.sourceAuthorAgentId) && row.sourceSentAt
+    source: (row.sourceAuthorId || row.sourceAuthorAgentId) && row.sourceSentAt && row.sourceProjectMessageId
       ? { authorId: row.sourceAuthorId ?? row.sourceAuthorAgentId!, authorKind: row.sourceAuthorId ? 'human' as const : 'agent' as const,
-        authorName: row.sourceAuthorName ?? sourceAgentName ?? '', sentAt: row.sourceSentAt, dmId: row.sourceDmId, messageId: row.sourceMessageId,
-        projectMessageId: row.sourceProjectMessageId }
+        authorName: row.sourceAuthorName ?? sourceAgentName ?? '', sentAt: row.sourceSentAt, projectMessageId: row.sourceProjectMessageId! }
       : null,
     createdBy: person(row.createdByUserId, row.createdByAgentId, userName, agentName),
     version: row.version, createdAt: row.createdAt, updatedAt: row.updatedAt,
@@ -72,15 +67,12 @@ function toLinkRecord(row: typeof l.$inferSelect) {
 }
 
 export interface NewSketchRow {
-  id: string; workspaceId: string; scope: 'project' | 'private' | 'dm'; projectId: string | null; dmId: string | null; title: string; createdBy: Author;
-  copy?: { fromSketchId: string; byUserId: string };
+  id: string; workspaceId: string; scope: 'project' | 'private'; projectId: string | null; title: string; createdBy: Author;
 }
-export interface ThoughtSourceRow { authorId: string; authorKind: 'human' | 'agent'; authorName: string; sentAt: Date; dmId: string | null; messageId: string | null; projectMessageId: string | null }
+export interface ThoughtSourceRow { authorId: string; authorKind: 'human' | 'agent'; authorName: string; sentAt: Date; projectMessageId: string }
 export interface NewThoughtRow {
   id: string; workspaceId: string; sketchId: string; text: string; x: number; y: number; width: number; height: number;
   shape: 'card' | 'pill' | 'circle'; placement: { type: 'draft'; id: string } | null; source?: ThoughtSourceRow | null; createdBy: Author;
-  /** A copy keeps the original's times, so its provenance and reading order stay true. */
-  createdAt?: Date; updatedAt?: Date;
   /** Server-only retained version allocation; never accepted from the native command body. */
   version?:number;
 }
@@ -92,8 +84,7 @@ export type ThoughtChangeRow = Partial<{ text: string; x: number; y: number; wid
 export function sketchRows(db: DbExecutor) {
   const selectSketches = () => db.select(sketchColumns).from(s)
     .leftJoin(sketchCreator, eq(sketchCreator.id, s.createdByUserId))
-    .leftJoin(sketchAgent, eq(sketchAgent.id, s.createdByAgentId))
-    .leftJoin(sketchCopier, eq(sketchCopier.id, s.copiedByUserId));
+    .leftJoin(sketchAgent, eq(sketchAgent.id, s.createdByAgentId));
   const selectThoughts = () => db.select({ row: t, userName: thoughtCreator.name, agentName: thoughtAgent.name, sourceAgentName: thoughtSourceAgent.name }).from(t)
     .leftJoin(thoughtCreator, eq(thoughtCreator.id, t.createdByUserId))
     .leftJoin(thoughtAgent, eq(thoughtAgent.id, t.createdByAgentId))
@@ -117,12 +108,12 @@ export function sketchRows(db: DbExecutor) {
 
   return {
     /** Rows of `workspaceId` matching `audience` (the policy's list condition), newest change first. */
-    async list(workspaceId: string, audience: SQL, filter: { projectId?: string; dmId?: string; scope?: 'private'; hideEmpty?: boolean }, page: { limit: number; offset: number }) {
+    async list(workspaceId: string, audience: SQL, filter: { projectId?: string; scope?: 'private'; hideEmpty?: boolean }, page: { limit: number; offset: number }) {
       // F-030 (AC-6): a locked encrypted workspace answers 423 even when the page would be empty.
       await sealOf(db, workspaceId, { write: false });
       // An empty sketch (no thought, still the default title) is left out before the limit and in the total (#508).
       const base = and(eq(s.workspaceId, workspaceId), audience, filter.projectId ? eq(s.projectId, filter.projectId) : undefined,
-        filter.dmId ? eq(s.dmId, filter.dmId) : undefined, filter.scope ? eq(s.scope, filter.scope) : undefined);
+        filter.scope ? eq(s.scope, filter.scope) : undefined);
       let withContent: SQL | undefined;
       if (filter.hideEmpty) {
         if ((await sealOf(db, workspaceId, { write: false })).sealed) {
@@ -147,10 +138,13 @@ export function sketchRows(db: DbExecutor) {
     findSketch,
     async insertSketch(sketch: NewSketchRow) {
       await db.insert(s).values(await sealFor(db, 'sketches', sketch.workspaceId, {
-        id: sketch.id, workspaceId: sketch.workspaceId, scope: sketch.scope, projectId: sketch.projectId, dmId: sketch.dmId, title: sketch.title, ...author(sketch.createdBy),
-        ...(sketch.copy ? { copiedFromSketchId: sketch.copy.fromSketchId, copiedByUserId: sketch.copy.byUserId, copiedAt: new Date() } : {}),
+        id: sketch.id, workspaceId: sketch.workspaceId, scope: sketch.scope, projectId: sketch.projectId, title: sketch.title, ...author(sketch.createdBy),
       }));
       return (await findSketch(sketch.id))!;
+    },
+    async privateSketchOf(workspaceId: string, userId: string) {
+      const [row] = await db.select({ id: s.id }).from(s).where(and(eq(s.workspaceId, workspaceId), eq(s.scope, 'private'), eq(s.createdByUserId, userId)));
+      return row?.id ?? null;
     },
     async renameSketch(id: string, title: string, editor: Author) {
       const [located] = await db.select({ workspaceId: s.workspaceId }).from(s).where(eq(s.id, id));
@@ -163,8 +157,7 @@ export function sketchRows(db: DbExecutor) {
         updatedAt: sql`GREATEST(clock_timestamp(), ${s.updatedAt} + interval '1 millisecond')` }).where(eq(s.id, id));
     },
     async thoughts(sketchId: string, page?: { limit: number; offset: number }) {
-      // Thoughts started from messages in one change share created_at: they follow the conversation.
-      const query = selectThoughts().where(eq(t.sketchId, sketchId)).orderBy(asc(t.createdAt), sql`${t.sourceSentAt} ASC NULLS LAST`, asc(t.id)).$dynamic();
+      const query = selectThoughts().where(eq(t.sketchId, sketchId)).orderBy(asc(t.createdAt), asc(t.id)).$dynamic();
       return (await within('sketch_thoughts', await (page ? query.limit(page.limit).offset(page.offset) : query))).map(toThoughtRecord);
     },
     async mapCounts(sketchId: string) {
@@ -177,12 +170,6 @@ export function sketchRows(db: DbExecutor) {
       const locked = await db.select({ id: t.id }).from(t).where(and(eq(t.sketchId, sketchId), inArray(t.id, ids))).orderBy(asc(t.id)).for('update');
       if (!locked.length) return [];
       return (await within('sketch_thoughts', await selectThoughts().where(and(eq(t.sketchId, sketchId), inArray(t.id, locked.map((row) => row.id)))).orderBy(asc(t.id)))).map(toThoughtRecord);
-    },
-    async dmMessages(dmId: string, ids: string[]) {
-      if (!ids.length) return [];
-      const rows = await within('dm_messages', await db.select({ row: m, authorName: users.name }).from(m).innerJoin(users, eq(users.id, m.authorId))
-        .where(and(eq(m.dmId, dmId), inArray(m.id, ids))).orderBy(asc(m.sequence)));
-      return rows.map(({ row, authorName }) => ({ id: row.id, dmId: row.dmId, sequence: row.sequence, authorId: row.authorId, authorName, body: row.body, createdAt: row.createdAt }));
     },
     async projectMessages(projectId: string, ids: string[]) {
       if (!ids.length) return [];
@@ -200,21 +187,6 @@ export function sketchRows(db: DbExecutor) {
           authorName, body: row.body, createdAt: row.createdAt }] : [];
       });
     },
-    async dmMessageCount(dmId: string) {
-      const [row] = await db.select({ total: count() }).from(m).where(eq(m.dmId, dmId));
-      return row?.total ?? 0;
-    },
-    async dmParticipants(dmId: string) {
-      return db.select({ id: dp.userId, name: users.name }).from(dp).innerJoin(users, eq(users.id, dp.userId))
-        .where(eq(dp.dmId, dmId)).orderBy(asc(dp.joinedAt), asc(users.name), asc(dp.userId));
-    },
-    async copiesOf(sketchId: string) {
-      const read = await db.select({ sketchId: s.id, workspaceId: s.workspaceId, projectId: s.projectId, projectName: schema.projects.name, copiedAt: s.copiedAt }).from(s)
-        .innerJoin(schema.projects, eq(schema.projects.id, s.projectId))
-        .where(eq(s.copiedFromSketchId, sketchId)).orderBy(asc(s.copiedAt), asc(s.id));
-      const rows = await openAliased(db, read, { table: 'projects', column: 'name', key: 'projectName', workspace: (row) => row.workspaceId, identity: (row) => [row.projectId!] });
-      return rows.map((row) => ({ sketchId: row.sketchId, projectId: row.projectId!, projectName: row.projectName, copiedAt: row.copiedAt!.toISOString() }));
-    },
     async thoughtExists(id: string) {
       return (await db.select({ id: t.id }).from(t).where(eq(t.id, id))).length > 0;
     },
@@ -223,11 +195,10 @@ export function sketchRows(db: DbExecutor) {
         id: thought.id, workspaceId: thought.workspaceId, sketchId: thought.sketchId, text: thought.text, x: thought.x, y: thought.y,
         width: thought.width, height: thought.height, shape: thought.shape, version:thought.version??1,
         placementType: thought.placement?.type ?? null, placementId: thought.placement?.id ?? null, ...author(thought.createdBy),
-        ...(thought.createdAt ? { createdAt: thought.createdAt, updatedAt: thought.updatedAt ?? thought.createdAt } : {}),
         ...(thought.source ? {
           ...(thought.source.authorKind === 'human' ? { sourceAuthorId: thought.source.authorId } : { sourceAuthorAgentId: thought.source.authorId }),
           sourceAuthorName: thought.source.authorName, sourceSentAt: thought.source.sentAt,
-          sourceDmId: thought.source.dmId, sourceMessageId: thought.source.messageId, sourceProjectMessageId: thought.source.projectMessageId,
+          sourceProjectMessageId: thought.source.projectMessageId,
         } : {}),
       }));
       return findThought(thought.sketchId, thought.id);

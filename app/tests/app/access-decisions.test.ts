@@ -13,7 +13,6 @@ import {
   ForbiddenError,
   NotFoundError,
   policyEventPorts,
-  policySketchAccess,
   recordEvents,
   requireSpaceAi,
   visibleWorkspaceOf,
@@ -74,9 +73,6 @@ function memoryReader(world: World) {
       calls.push('hasWritableProject');
       return world.writableProject;
     },
-    async lockWorkspaceForShare(workspaceId) {
-      calls.push(`lockWorkspaceForShare(${workspaceId === WS ? 'ws' : workspaceId})`);
-    },
     async locateProject(projectId) {
       calls.push('locateProject');
       const found = world.projects[projectId];
@@ -89,9 +85,6 @@ function memoryReader(world: World) {
       calls.push('readProject');
       const found = world.projects[projectId];
       return found ? { project: found.project, level: found.levels[key(actor.principal)] ?? 0 } : null;
-    },
-    async lockProjectForShare() {
-      calls.push('lockProjectForShare');
     },
     async locateDraft(draftId) {
       calls.push('locateDraft');
@@ -116,7 +109,7 @@ function memoryReader(world: World) {
     async locateSketch(sketchId) {
       calls.push('locateSketch');
       const found = world.sketches[sketchId];
-      return found ? { workspaceId: found.sketch.workspaceId, projectId: found.sketch.projectId, dmId: found.sketch.dmId } : null;
+      return found ? { workspaceId: found.sketch.workspaceId, projectId: found.sketch.projectId } : null;
     },
     async lockSketchForNoKeyUpdate() {
       calls.push('lockSketchForNoKeyUpdate');
@@ -127,27 +120,16 @@ function memoryReader(world: World) {
       const who = key(actor.principal);
       return found ? { sketch: found.sketch, readable: found.readable.includes(who), level: found.levels[who] ?? 0 } : null;
     },
-    async sketchWorkspace(sketchId) {
-      calls.push('sketchWorkspace');
-      return world.sketches[sketchId]?.sketch.workspaceId ?? null;
-    },
     async locateDm(dmId) {
       calls.push('locateDm');
       const found = world.dms[dmId];
       return found ? { workspaceId: found.workspaceId } : null;
-    },
-    async lockDmForShare() {
-      calls.push('lockDmForShare');
     },
     async lockDmForNoKeyUpdate() {
       calls.push('lockDmForNoKeyUpdate');
     },
     async lockParticipantForShare() {
       calls.push('lockParticipantForShare');
-    },
-    async lockParticipantsForShare(dmId) {
-      calls.push('lockParticipantsForShare');
-      return [...(world.dms[dmId]?.participants ?? [])].sort();
     },
     async readDm(actor, dmId) {
       calls.push('readDm');
@@ -379,10 +361,9 @@ describe('agent, sketch, direct message and assistant run decisions (pure)', () 
   const sketchId = randomUUID();
   const dmId = randomUUID();
   const projectId = randomUUID();
-  const sketchWorld = (sketch: Partial<SketchFacts>, readable: Principal[], level = 0, dm?: World['dms'][string]) => {
+  const sketchWorld = (sketch: Partial<SketchFacts>, readable: Principal[], level = 0) => {
     const w = agentWorld();
-    w.sketches[sketchId] = { sketch: { id: sketchId, workspaceId: WS, scope: 'project', projectId, dmId: null, ...sketch }, readable: readable.map(key), levels: { [key(owner)]: level } };
-    if (dm) w.dms[dmId] = dm;
+    w.sketches[sketchId] = { sketch: { id: sketchId, workspaceId: WS, scope: 'project', projectId, ...sketch }, readable: readable.map(key), levels: { [key(owner)]: level } };
     return w;
   };
 
@@ -394,16 +375,6 @@ describe('agent, sketch, direct message and assistant run decisions (pure)', () 
     assert.equal((await authorize(owner, 'sketch.write', sketch, memoryReader(sketchWorld({}, [owner], 0)).reader)).allowed, false);
     assert.deepEqual(await authorize(owner, 'sketch.read', sketch, memoryReader(sketchWorld({}, [owner], 0)).reader), { allowed: true, visible: true });
     assert.equal((await authorize(owner, 'sketch.write', sketch, memoryReader(sketchWorld({}, [owner], 1)).reader)).allowed, true);
-  });
-
-  test('a DM sketch is read-only once the other person of a 1:1 has left', async () => {
-    const sketch = { type: 'sketch', id: sketchId } as const;
-    const pair = (participants: string[]) => ({ id: dmId, workspaceId: WS, kind: 'pair' as const, pairKey: [owner.id, 'friend'].sort().join(':'), readable: [owner.id], participants });
-    const open = sketchWorld({ scope: 'dm', projectId: null, dmId }, [owner], 0, pair([owner.id, 'friend']));
-    assert.equal((await authorize(owner, 'sketch.write', sketch, memoryReader(open).reader)).allowed, true);
-    const left = sketchWorld({ scope: 'dm', projectId: null, dmId }, [owner], 0, pair([owner.id]));
-    assert.deepEqual(await authorize(owner, 'sketch.write', sketch, memoryReader(left).reader), { allowed: false, visible: true });
-    assert.deepEqual(await authorize(owner, 'sketch.read', sketch, memoryReader(left).reader), { allowed: true, visible: true });
   });
 
   test('a DM is for its current participants and for people only', async () => {
@@ -489,7 +460,7 @@ describe('the order of the policy\'s reads and locks (pure)', () => {
     w.projects[projectId] = { project: { id: projectId, workspaceId: WS, visibility: 'workspace' }, levels: { [key(owner)]: 1 } };
     w.drafts[draftId] = { draft: { id: draftId, workspaceId: WS, projectId, ownerUserId: owner.id, ownerAgentId: null, title: 'T', version: 1, visibility: 'project' },
       readable: [key(owner)], levels: { [key(owner)]: 1 }, owners: [key(owner)] };
-    w.sketches[sketchId] = { sketch: { id: sketchId, workspaceId: WS, scope: 'project', projectId, dmId: null }, readable: [key(owner)], levels: { [key(owner)]: 1 } };
+    w.sketches[sketchId] = { sketch: { id: sketchId, workspaceId: WS, scope: 'project', projectId }, readable: [key(owner)], levels: { [key(owner)]: 1 } };
     w.dms[dmId] = { id: dmId, workspaceId: WS, kind: 'group', pairKey: null, readable: [owner.id], participants: [owner.id, 'other'] };
     return w;
   };
@@ -509,34 +480,16 @@ describe('the order of the policy\'s reads and locks (pure)', () => {
     assert.deepEqual(calls, ['locateDraft', 'loadActor(lock)', 'lockDraftForUpdate', 'lockProjectAccess', 'readDraft(lock)']);
   });
 
-  test('a sketch check takes the membership, the sketch row, then its project, or its DM and participant row', async () => {
+  test('a sketch check takes the membership, the sketch row, then its project', async () => {
     const { reader, calls } = memoryReader(world());
     await authorize(owner, 'sketch.write', { type: 'sketch', id: sketchId }, reader, { lock: true });
     assert.deepEqual(calls, ['locateSketch', 'loadActor(lock)', 'lockSketchForNoKeyUpdate', 'lockProjectAccess', 'readSketch']);
-    const w = world();
-    w.sketches[sketchId] = { sketch: { id: sketchId, workspaceId: WS, scope: 'dm', projectId: null, dmId }, readable: [key(owner)], levels: {} };
-    const dm = memoryReader(w);
-    await authorize(owner, 'sketch.write', { type: 'sketch', id: sketchId }, dm.reader, { lock: true });
-    assert.deepEqual(dm.calls, ['locateSketch', 'loadActor(lock)', 'lockSketchForNoKeyUpdate', 'lockDmForShare', 'lockParticipantForShare', 'readSketch', 'dmPair']);
   });
 
   test('a DM check takes the membership, the DM row, then the participant row', async () => {
     const { reader, calls } = memoryReader(world());
     await authorize(owner, 'dm.write', { type: 'dm', id: dmId }, reader, { lock: true });
     assert.deepEqual(calls, ['locateDm', 'loadActor(lock)', 'lockDmForNoKeyUpdate', 'lockParticipantForShare', 'readDm']);
-  });
-
-  test('promoting a DM sketch locks the workspace, then the target project, then the participants after the DM row', async () => {
-    const { reader, calls } = memoryReader(world());
-    const access = policySketchAccess(reader);
-    await access.lockPromotion(sketchId, projectId);
-    assert.deepEqual(calls, ['sketchWorkspace', 'lockWorkspaceForShare(ws)', 'lockProjectForShare']);
-    calls.length = 0;
-    assert.deepEqual(await access.lockParticipants(dmId), ['other', owner.id].sort());
-    assert.deepEqual(calls, ['lockDmForShare', 'lockParticipantsForShare']);
-    calls.length = 0;
-    await access.lockPromotion('not-a-uuid', projectId);
-    assert.deepEqual(calls, [], 'a malformed sketch id locks nothing');
   });
 
   test('the event audience takes the space\'s AI switch once, before the first agent candidate, and before any insert', async () => {

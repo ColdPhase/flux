@@ -20,7 +20,7 @@ import {
   type ThoughtLink,
   type UpdateThoughtCommand,
 } from '@flux/contracts';
-import { request } from './client';
+import { ApiError, request } from './client';
 
 // Sketch API (issue #69). Every change carries an Idempotency-Key so a retry after a lost
 // answer never applies twice; versioned changes send If-Match.
@@ -35,9 +35,20 @@ const key = (idempotencyKey: string) => ({ 'idempotency-key': idempotencyKey });
  */
 export const myMapKey = (workspaceId: string) => `my-map:${workspaceId}`;
 export async function openMyMap(workspaceId: string, signal?: AbortSignal): Promise<Sketch> {
-  const listed = await request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=100&offset=0&scope=private`, { signal });
-  const mine = [...listed.items].sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
-  return mine ?? request<Sketch>(workspaceSketchesPath(workspaceId), { method: 'POST', body: { title: 'My map', scope: 'private' }, headers: key(myMapKey(workspaceId)), signal });
+  const find = async () => {
+    const listed = await request<SketchPage>(`${workspaceSketchesPath(workspaceId)}?limit=100&offset=0&scope=private`, { signal });
+    return [...listed.items].sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0];
+  };
+  const mine = await find();
+  if (mine) return mine;
+  // The server holds one private map for each person: if another tab made it first, that is the one to open.
+  try {
+    return await request<Sketch>(workspaceSketchesPath(workspaceId), { method: 'POST', body: { title: 'My map', scope: 'private' }, headers: key(myMapKey(workspaceId)), signal });
+  } catch (error) {
+    const existing = error instanceof ApiError && error.code === 'MY_MAP_EXISTS' ? await find() : undefined;
+    if (existing) return existing;
+    throw error;
+  }
 }
 
 export const getSketch = (sketchId: string, signal?: AbortSignal) => request<SketchDetail>(sketchPath(sketchId), { signal });

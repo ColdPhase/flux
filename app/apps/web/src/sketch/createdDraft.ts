@@ -179,7 +179,7 @@ export function recoverableThoughtDraftKey(personId: string, sketchId: string): 
 
 /** One private capture for this account and actual authorized map audience. */
 export function useThoughtDraft(personId: string, sketchId: string, sketch: SketchDetail | null) {
-  const key = sketch ? `${PREFIX}${personId}:${sketch.workspaceId}:${sketch.scope}:${sketch.projectId ?? sketch.dmId ?? personId}:${sketch.id}` : recoverableThoughtDraftKey(personId, sketchId);
+  const key = sketch ? `${PREFIX}${personId}:${sketch.workspaceId}:${sketch.scope}:${sketch.projectId ?? personId}:${sketch.id}` : recoverableThoughtDraftKey(personId, sketchId);
   const generation = useMemo(() => draftGeneration, [key]);
   const [loaded, setLoaded] = useState(() => ({ key, draft: readThoughtDraft(key) }));
   let current = loaded;

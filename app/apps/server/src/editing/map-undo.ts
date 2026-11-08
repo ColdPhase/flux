@@ -91,7 +91,7 @@ export async function undoMap(db:DbExecutor,principal:{kind:'human';id:string},r
         placementType:target.placement?.type??null,placementId:target.placement?.id??null,
         sourceAuthorId:target.source?.authorKind==='human'?target.source.authorId:null,
         sourceAuthorAgentId:target.source?.authorKind==='agent'?target.source.authorId:null,
-        sourceAuthorName:target.source?.authorName??null,sourceSentAt:target.source?.sentAt??null,sourceDmId:target.source?.dmId??null,sourceMessageId:target.source?.messageId??null,
+        sourceAuthorName:target.source?.authorName??null,sourceSentAt:target.source?.sentAt??null,
         sourceProjectMessageId:target.source?.projectMessageId??null,
         createdByUserId:target.createdBy.kind==='human'?target.createdBy.id:null,createdByAgentId:target.createdBy.kind==='agent'?target.createdBy.id:null,createdAt:target.createdAt,updatedAt:sql`clock_timestamp()`};
       // F-030: the text is sealed with the thought's identity in an encrypted workspace, on insert and on conflict alike.

@@ -34,9 +34,7 @@ Migration `0010_direct_messages.sql` adds three tables.
   those keys. `app/apps/server/src/conversation` is unchanged.
 - **Citations.** A DM message cannot cite project material yet (`422 DM_SOURCE_UNSUPPORTED`).
   Every participant would first need to be able to read the cited version.
-- **Sketches.** A DM can hold sketches, and selected messages can start one
-  ([#96](https://github.com/ColdPhase/flux/issues/96), see [sketches](sketches.md#sketches-in-a-direct-message)).
-  They follow the same participant audience and the same rule for a 1:1 whose other person left.
+- **Sketches.** A DM holds no maps (#866, #947). Copying a message excerpt into a space's task is the one way out of a DM.
 
 ## Access policy
 

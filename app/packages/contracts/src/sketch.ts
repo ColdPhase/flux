@@ -16,19 +16,13 @@ export const sketchThoughtPath = (sketchId: string, thoughtId: string) => `${ske
 export const sketchPositionsPath = (sketchId: string) => `${sketchPath(sketchId)}/positions`;
 export const sketchLinksPath = (sketchId: string) => `${sketchPath(sketchId)}/links`;
 export const sketchLinkPath = (sketchId: string, linkId: string) => `${sketchLinksPath(sketchId)}/${linkId}`;
-/** GET: the exact audience and content of copying a DM sketch into a project. POST: make the copy (#96). */
-export const sketchPromotionPath = (sketchId: string) => `${sketchPath(sketchId)}/promotion`;
 
 /**
  * `project`: readable by everyone who can read the project, changeable by its contributors.
- * `private`: only the person who created it. Workspace owners and admins do not see it, and
- * agents never do.
- * `dm` (#96): bound to one direct message (`dmId`). Its audience is exactly the DM's current
- * participants; leaving the DM or the workspace ends access on the next request. Owners, admins
- * and agents outside the DM get 404. A 1:1 DM whose other person left is read-only (403 on
- * changes) until that person reopens it.
+ * `private`: only the person who created it, and one for each person in a company: "My map" (#947). Workspace owners
+ * and admins do not see it, and agents never do.
  */
-export type SketchScope = 'project' | 'private' | 'dm';
+export type SketchScope = 'project' | 'private';
 /** The title a new map starts with until someone names it. */
 export const UNTITLED_SKETCH = 'Untitled map';
 export type ThoughtShape = 'card' | 'pill' | 'circle';
@@ -36,8 +30,6 @@ export const THOUGHT_SHAPES: readonly ThoughtShape[] = ['card', 'pill', 'circle'
 
 /** Plane coordinates are integers in [-100000, 100000]; sizes in [80, 800] × [40, 800]. */
 export const SKETCH_LIMITS = {
-  /** Messages per "Start sketch from these messages". */
-  fromMessages: 50,
   title: 200,
   text: 1000,
   label: 80,
@@ -66,15 +58,8 @@ export interface Sketch {
   workspaceId: string;
   scope: SketchScope;
   projectId: string | null;
-  /** The direct message a `dm` sketch belongs to; null otherwise. */
-  dmId: string | null;
   title: string;
   createdBy: PersonRef;
-  /**
-   * A project sketch copied from a DM sketch (#96): who copied it and when. The copy is
-   * independent; it never names the DM and nothing in the DM syncs into it later.
-   */
-  origin: { kind: 'dm_copy'; copiedBy: PersonRef; copiedAt: string } | null;
   /** What the caller may do now. */
   access: 'read' | 'write';
   /** Changes with the title; thoughts and links carry their own versions. */
@@ -96,16 +81,10 @@ export interface Placement {
   title: string | null;
 }
 
-/**
- * The message a thought was started from (#96): its author and time as they were then.
- * `dmMessageId` names the message in the sketch's own DM; a copy in a project has only the
- * author and time (null id), because the DM is not part of the project.
- */
+/** The message a thought was started from: its author and time as they were then. */
 export interface ThoughtSource {
   author: PrincipalRef & { name: string };
   sentAt: string;
-  /** Present only for a thought started inside that same direct message. */
-  dmMessageId: string | null;
   /** Present only while the thought and its source message remain in the same project. */
   projectMessageId?: string | null;
 }
@@ -149,25 +128,13 @@ export interface ThoughtLink {
   createdAt: string;
 }
 
-/** A project copy of a DM sketch, listed on the DM sketch only when the caller can open it. */
-export interface SketchCopy {
-  sketchId: string;
-  projectId: string;
-  projectName: string;
-  copiedAt: string;
-}
-
 export interface SketchDetail extends Sketch {
   thoughts: Thought[];
   links: ThoughtLink[];
-  /** `dm` sketches: the project copies the caller can open. Empty otherwise. */
-  copies: SketchCopy[];
 }
 
 export interface SketchListQuery extends PageQuery {
   projectId?: string;
-  /** Only the sketches of this direct message (#96). */
-  dmId?: string;
   /** Only private sketches: the person's own sketchbook (#189). */
   scope?: 'private';
   /** Leave out sketches nobody put anything on: no thought and still {@link UNTITLED_SKETCH} (#508). */
@@ -180,13 +147,6 @@ export interface CreateSketchCommand {
   scope: SketchScope;
   /** Required for `project` sketches; absent otherwise. */
   projectId?: string;
-  /** Required for `dm` sketches; absent otherwise. The caller must be a participant. */
-  dmId?: string;
-  /**
-   * `dm` sketches only: "Start sketch from these messages". Each message of the DM becomes one
-   * thought with its author and time as its source, in conversation order (up to 50).
-   */
-  fromMessageIds?: string[];
 }
 
 /** Needs `If-Match` with the sketch version. */
@@ -208,11 +168,6 @@ export interface CreateThoughtCommand {
   placement?: { type: 'draft'; id: string };
   /** Create the thought already linked to another one (the "+" beside a thought). */
   linkFrom?: { thoughtId: string; label?: string | null; linkId?: string };
-  /**
-   * A message source for this sketch: a DM's own message or a message in this project. The server
-   * derives its author and time from the message; the project source stays within the project.
-   */
-  sourceMessageId?: string;
   /** Project sketches only: the project message this thought quotes (e.g. when Undo restores it). */
   sourceProjectMessageId?: string;
   /**
@@ -281,63 +236,6 @@ export interface LinkLabelConflict {
   code: 'LABEL_CONFLICT';
   currentLabel: string | null;
   current: ThoughtLink;
-}
-
-/** Where a promotion copies the sketch: a new restricted project, or an existing project the caller can change. */
-export type PromotionTarget = { kind: 'new'; name: string } | { kind: 'existing'; projectId: string };
-
-/** One person who could open the copy, and why. Agents are not listed: an agent reads with exactly its owner's rights (F-036 AG-1, AG-3). */
-export interface PromotionPerson {
-  id: string;
-  name: string;
-  /** `participant`: in the DM and given access; `manager`: a workspace owner or admin; `project`: already in the project. */
-  reason: 'participant' | 'manager' | 'project';
-}
-
-/**
- * `GET /api/v1/sketches/:id/promotion?target=new|projectId=…` (#96): exactly who could open the
- * copy and exactly what goes in, computed by the access policy from current rows. Nothing is
- * shared until `POST` with the same `token`; if anything changed meanwhile it answers
- * `409 PROMOTION_CHANGED` with the new preview.
- */
-export interface SketchPromotionPreview {
-  sketchId: string;
-  /** null when the caller has nowhere to copy it (no project they can change and no right to create one). */
-  target: { kind: 'new' } | { kind: 'existing'; projectId: string; projectName: string } | null;
-  /** Everyone in the company but a guest may start a space (F-037); a guest copies into a space they can change. */
-  canCreateProject: boolean;
-  /** Projects of the workspace the caller can change, by name. */
-  projects: { id: string; name: string }[];
-  /** Everyone who could open the copy, people first. */
-  audience: PromotionPerson[];
-  /** DM participants who would not see the copy (an existing project they are not in). */
-  leftOut: { id: string; name: string }[];
-  /** What goes in: the thoughts with their links, and how many of them came from messages. */
-  content: { thoughts: number; links: number; fromMessages: number };
-  /** What stays in the DM: its other messages, and everything written there later. */
-  staysInDm: { messages: number };
-  /** Opaque; names this exact target, audience and content. */
-  token: string;
-}
-
-export interface PromoteSketchCommand {
-  target: PromotionTarget;
-  /** The `token` of the preview the person saw. */
-  token: string;
-  /**
-   * A new project only (#188): `grant` (the default, #96) gives the DM's other participants access
-   * as contributors; `none` gives nobody but the workspace's owners and admins access. Send the same
-   * value as the preview's `participants` query, since the token names the readers.
-   */
-  participants?: PromotionParticipants;
-}
-
-/** Whether a new project from a DM sketch is granted to the DM's other participants (#188). */
-export type PromotionParticipants = 'grant' | 'none';
-
-export interface PromotedSketch {
-  sketch: Sketch;
-  project: { id: string; name: string };
 }
 
 export type { PrincipalRef };
