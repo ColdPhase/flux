@@ -1,8 +1,8 @@
-import { messagePreview, type MessageReference, type MessageReferenceCard } from '@flux/contracts';
-import { accessReader, messageReferenceRows, workRows, type DbExecutor, type LocatedMessage, type LocatedThought } from '@flux/db';
-import { evaluateDm, evaluateProject, evaluateSketch, NotFoundError, type Principal } from '@flux/core';
+import type { MessageReference, MessageReferenceCard } from '@flux/contracts';
+import { accessReader, messageReferenceRows, workRows, type DbExecutor, type LocatedThought } from '@flux/db';
+import { evaluateSketch, NotFoundError, type Principal } from '@flux/core';
 
-/** The longest title a card shows: one line of the thought or message, never its whole text. */
+/** The longest title a card shows: one line of the thought, never its whole text. */
 const TITLE = 160;
 const oneLine = (text: string) => {
   const first = text.split('\n').map((line) => line.trim()).find(Boolean) ?? '';
@@ -14,8 +14,7 @@ type Owner = { kind: 'project' | 'dm'; workspaceId: string };
 
 /**
  * What a message cites, for the reader who asks (#469, F-026 §6). A reference stores only the kind and the id of its target;
- * every card is made here, after the reader's own access to that target is decided by the one access policy (`sketch.read`,
- * `project.read`, `dm.read`). A target the reader cannot open, one that no longer exists and one in another workspace all come
+ * every card is made here, after the reader's own access to that target is decided by the one access policy (`sketch.read`). A target the reader cannot open, one that no longer exists and one in another workspace all come
  * back as the same `unavailable` card with no id, title, author or place, so a reference never shows what its reader may not read.
  */
 export function messageReferences(db: DbExecutor) {
@@ -28,26 +27,10 @@ export function messageReferences(db: DbExecutor) {
       place: located.sketchTitle, target: { type: 'thought', sketchId: located.sketchId, thoughtId: located.id } } };
   }
 
-  async function message(principal: Principal, located: LocatedMessage): Promise<Opened | null> {
-    if (located.kind === 'dm') {
-      if (!(await evaluateDm(principal, 'dm.read', located.dmId, reader)).allowed) return null;
-      return { author: located.author, card: { kind: 'message', state: 'available', title: oneLine(located.body) || 'Message', author: null, at: located.createdAt.toISOString(),
-        place: 'Direct message', target: { type: 'dm_message', dmId: located.dmId, messageId: located.id } } };
-    }
-    if (!(await evaluateProject(principal, 'project.read', located.projectId, reader)).allowed) return null;
-    return { author: located.author, card: { kind: 'message', state: 'available', title: oneLine(located.body) || messagePreview('', located.attachmentCount) || 'Message',
-      author: null, at: located.createdAt.toISOString(), place: located.projectName,
-      target: { type: 'message', projectId: located.projectId, conversationId: located.conversationId, messageId: located.id } } };
-  }
-
   /** The target as this reader may open it now, or null; the workspace of the citing message bounds it. */
   async function open(principal: Principal, reference: MessageReference, workspaceId: string): Promise<Opened | null> {
-    if (reference.kind === 'thought') {
-      const located = await rows.thought(reference.id, workspaceId);
-      return located ? thought(principal, located) : null;
-    }
-    const located = await rows.message(reference.id, workspaceId);
-    return located ? message(principal, located) : null;
+    const located = await rows.thought(reference.id, workspaceId);
+    return located ? thought(principal, located) : null;
   }
 
   /** The cards of these messages for `principal`, by message id; a message with no references is absent. */
@@ -80,15 +63,9 @@ export function messageReferences(db: DbExecutor) {
      * is absent, another workspace's or unreadable all answer 404 REFERENCE_UNAVAILABLE, so the answer tells nothing about it.
      */
     async assertReadable(principal: Principal, workspaceId: string, references: readonly MessageReference[]) {
-      const cited: string[] = [];
       for (const reference of references) {
-        const opened = await open(principal, reference, workspaceId);
-        if (!opened) throw new NotFoundError('Reference', 'REFERENCE_UNAVAILABLE');
-        if (opened.card.kind === 'message' && opened.card.state === 'available' && opened.card.target.type === 'message') cited.push(reference.id);
+        if (!(await open(principal, reference, workspaceId))) throw new NotFoundError('Reference', 'REFERENCE_UNAVAILABLE');
       }
-      // A project message cited now cannot be taken back by the assistant's Undo while this commits; one already taken back is unavailable.
-      const wanted = [...new Set(cited)].sort();
-      if (wanted.length && (await rows.lockCitable(wanted)).size !== wanted.length) throw new NotFoundError('Reference', 'REFERENCE_UNAVAILABLE');
     },
 
     cards,

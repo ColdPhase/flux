@@ -157,7 +157,7 @@ const validFile = (file: DraftFile, projectId: string) => uuid(file.uploadId) &&
 const validRefs = (refs: unknown): refs is DraftReference[] => Array.isArray(refs) && refs.length <= 1
   && refs.every((ref: DraftReference) => uuid(ref.materialId) && Number.isInteger(ref.version) && typeof ref.title === 'string');
 const validCites = (cites: unknown): cites is DraftCite[] => cites === undefined || (Array.isArray(cites) && cites.length <= MESSAGE_REFERENCE_LIMIT
-  && cites.every((cite: DraftCite) => (cite.kind === 'thought' || cite.kind === 'message') && uuid(cite.id) && typeof cite.title === 'string' && typeof cite.context === 'string'));
+  && cites.every((cite: DraftCite) => cite.kind === 'thought' && uuid(cite.id) && typeof cite.title === 'string' && typeof cite.context === 'string'));
 // A reload interrupts an upload: its bytes are gone, so the person selects the same file again.
 const interrupted = (files: DraftFile[]) => files.map((file): DraftFile => file.state === 'uploading'
   ? { ...file, state: 'failed', offline: undefined, error: 'Upload was interrupted. Select the same file to retry.' } : file);

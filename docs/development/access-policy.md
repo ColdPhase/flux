@@ -734,15 +734,15 @@ outside a project never carry it.
 
 ### Message references and file details (#469, F-026 §6)
 
-A message cites a map thought or another message through `references: [{ kind: 'thought' | 'message', id }]` on
+A message cites a map thought through `references: [{ kind: 'thought', id }]` on
 `POST /api/v1/projects/:id/conversations`, `POST /api/v1/conversations/:id/messages`,
 `POST /api/v1/work/:id/agent-thread` and the direct-message sends (`POST /api/v1/dms/:id/messages` and its thread
-replies). At most four, distinct, each a UUID; the `message` kind names a project message or a direct message, which the
-server tells apart. Migration 0122 stores only the kind and the id (`message_references`, owned by the citing message and
+replies). At most four, distinct, each a UUID. (A message was citable too, through a `message` kind, until #867 removed the Cite
+action: the kind is refused now, and no row of it is read.) Migration 0122 stores only the kind and the id (`message_references`, owned by the citing message and
 removed with it); nothing of the target is copied, so a title, an author or a place never outlives the target's own
 audience.
 
-- **At send** the sender must be able to read every target now (`sketch.read`, `project.read` or `dm.read` through the one
+- **At send** the sender must be able to read every target now (`sketch.read` through the one
   policy), and the target must be in the message's own workspace. Anything else (absent, unreadable, another workspace's,
   a private sketch of someone else's) answers the same `404 REFERENCE_UNAVAILABLE`, so the answer tells nothing about the
   target. A retry with the same `clientMessageId` and the same references replays; other references under it are `409`.

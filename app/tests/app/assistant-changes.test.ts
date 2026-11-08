@@ -773,20 +773,6 @@ describe('the assistant\'s change log, run authority and "Ask me first" (F-027 A
         const links = Number((await pool.query(`SELECT count(*) FROM project_object_links WHERE to_id = $1`, [made.messageId])).rows[0].count);
         assert.ok(!(removed && links > 0), `message taken back but cited: undo ${undone.status}, citation ${cited.status}`);
       }],
-      ['message referenced by another message', async (offset, swap) => {
-        const run = await liveRun();
-        const made = value(await run.call('flux_start_conversation', { message: { body: `Race reference ${offset}` } }));
-        await complete(run.runId);
-        const [change] = await changesOf(run.runId);
-        const elsewhere = expectStatus(await owner.browser.request('POST', `/api/v1/projects/${place.id}/conversations`,
-          { body: { body: `Elsewhere ${offset}`, clientMessageId: randomUUID() } }), 201) as Conversation;
-        const [undone, cited] = await race(undoRequest(change!.id), () => peer.browser.request('POST', `/api/v1/conversations/${elsewhere.id}/messages`,
-          { body: { body: `Cites ${offset}`, clientMessageId: randomUUID(), references: [{ kind: 'message', id: made.messageId }] } }), offset, swap);
-        noServerError('message reference', undone.status, cited.status);
-        const removed = (await pool.query(`SELECT removed_at FROM project_messages WHERE id = $1`, [made.messageId])).rows[0].removed_at !== null;
-        const references = Number((await pool.query(`SELECT count(*) FROM message_references WHERE target_id = $1`, [made.messageId])).rows[0].count);
-        assert.ok(!(removed && references > 0), `message taken back but referenced: undo ${undone.status}, citation ${cited.status}`);
-      }],
     ];
     for (const [name, trial] of trials) for (const offset of [0, 3, 8]) for (const swap of [false, true]) {
       try { await trial(offset, swap); } catch (error) { throw new Error(`${name} offset ${offset} swap ${swap}: ${(error as Error).message}`); }

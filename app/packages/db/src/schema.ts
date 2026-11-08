@@ -1509,7 +1509,7 @@ export const messageReferences = pgTable('message_references', {
   projectMessageId: uuid('project_message_id').references(() => projectMessages.id, { onDelete: 'cascade' }),
   dmMessageId: uuid('dm_message_id').references(() => dmMessages.id, { onDelete: 'cascade' }),
   position: smallint('position').notNull(),
-  kind: text('kind', { enum: ['thought', 'message'] }).notNull(),
+  kind: text('kind', { enum: ['thought'] }).notNull(),
   targetId: uuid('target_id').notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [

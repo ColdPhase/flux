@@ -47,30 +47,30 @@ export interface ConversationMessageFields {
    */
   files?: import('./files.js').MessageFile[];
   /**
-   * Present only when the message cites a map thought or another message (#469): one card per reference, in the
+   * Present only when the message cites a map thought (#469): one card per reference, in the
    * order they were attached, resolved for the reader who asks. A target the reader cannot open now is an
    * `unavailable` card with no id, title or place, so a reference never reveals what the reader may not read.
    */
   references?: MessageReferenceCard[];
 }
 
-/** What a message may cite besides a Wiki version (#469, F-026 §6): a map thought or another message. */
-export type MessageReferenceKind = 'thought' | 'message';
+/** What a message may cite besides a Wiki version (#469, F-026 §6): a map thought. (A message was citable too until #867 removed Cite.) */
+export type MessageReferenceKind = 'thought';
 export interface MessageReference { kind: MessageReferenceKind; id: string }
 /** At most this many references on one message. */
 export const MESSAGE_REFERENCE_LIMIT = 4;
 /** Where a card opens; the same targets search results open (`targetHref` in the web app). */
-export type MessageReferenceTarget = Extract<SearchTarget, { type: 'thought' | 'message' | 'dm_message' }>;
+export type MessageReferenceTarget = Extract<SearchTarget, { type: 'thought' }>;
 export type MessageReferenceCard =
   | {
     kind: MessageReferenceKind; state: 'available';
-    /** The thought's text, or the message's first line, on one line. */
+    /** The thought's first line, on one line. */
     title: string;
     /** Who wrote it; null when the writer is not known (an agent that was removed). */
     author: string | null;
     /** When it was written or last changed. */
     at: string;
-    /** The place it lives in: the project, the sketch or "Direct message". */
+    /** The place it lives in: the sketch. */
     place: string;
     target: MessageReferenceTarget;
   }
